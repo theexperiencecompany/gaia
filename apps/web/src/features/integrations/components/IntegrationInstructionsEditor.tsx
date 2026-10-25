@@ -4,7 +4,7 @@ import { useDisclosure } from "@heroui/react";
 import { Skeleton } from "@heroui/skeleton";
 import { NoteEditIcon } from "@icons";
 import { ChevronRight } from "@/components/shared/icons";
-import { useIntegrationInstructions } from "@/features/integrations/hooks/useIntegrationInstructions";
+import { useInstructions } from "@/features/instructions";
 import type { Integration } from "@/features/integrations/types";
 import { instructionsPreview } from "@/features/integrations/utils/instructionsPreview";
 
@@ -19,13 +19,15 @@ export const IntegrationInstructionsEditor = ({
   integration,
   toolNames,
 }: IntegrationInstructionsEditorProps) => {
-  const { instructions, isLoading, isSaving, save } =
-    useIntegrationInstructions(integration.id);
+  const instructions = useInstructions(integration.id);
   const { isOpen, onOpen, onClose } = useDisclosure();
 
-  const preview = instructionsPreview(instructions?.content ?? "");
+  const preview = instructionsPreview(instructions.instructions?.content ?? "");
+  const subtitle = instructions.loadFailed
+    ? "Couldn't load your instructions"
+    : preview || `Teach GAIA how you use ${integration.name}`;
 
-  if (isLoading) {
+  if (instructions.isLoading) {
     return (
       <div className="flex w-full items-center gap-3 rounded-2xl bg-zinc-800/40 p-3">
         <Skeleton className="size-9 rounded-xl" />
@@ -51,9 +53,7 @@ export const IntegrationInstructionsEditor = ({
           <p className="text-sm font-medium text-zinc-100">
             Custom instructions
           </p>
-          <p className="truncate text-xs text-zinc-500">
-            {preview || `Teach GAIA how you use ${integration.name}`}
-          </p>
+          <p className="truncate text-xs text-zinc-500">{subtitle}</p>
         </div>
         <ChevronRight className="size-4 shrink-0 text-zinc-500 transition-transform group-hover:translate-x-0.5" />
       </button>
@@ -62,10 +62,8 @@ export const IntegrationInstructionsEditor = ({
         isOpen={isOpen}
         onClose={onClose}
         integration={integration}
-        savedContent={instructions?.content ?? ""}
-        isSaving={isSaving}
+        instructions={instructions}
         toolNames={toolNames}
-        onSave={save}
       />
     </>
   );

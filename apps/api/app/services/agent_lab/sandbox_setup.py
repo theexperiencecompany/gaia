@@ -19,6 +19,7 @@ from app.services.agent_lab.agents_home import (
 )
 from app.services.agent_lab.lab_runs import run_dir
 from app.services.sandbox.execute_token import mint_execute_token
+from app.services.sandbox.local_sandbox import LocalDockerSandbox
 from app.utils.errors import AppError
 
 LAB_ENV_FILENAME: Final[str] = "lab-env"
@@ -31,14 +32,24 @@ LAB_CLAUDE_SETTINGS_VAR: Final[str] = "GAIA_LAB_CLAUDE_SETTINGS"
 OPENCODE_CONFIG_DIR_VAR: Final[str] = "OPENCODE_CONFIG_DIR"
 
 
-def lab_events_url() -> str:
-    """Sandbox-reachable receiver URL; fails loud when unconfigured."""
-    url = settings.SANDBOX_LAB_EVENTS_CALLBACK_URL
+def lab_events_url(sbx: object) -> str:
+    """Return the receiver URL as this sandbox reaches GAIA; fails loud when unconfigured.
+
+    An E2B sandbox dials the public API; a local container, the proxy on its host.
+    """
+    if isinstance(sbx, LocalDockerSandbox):
+        url = settings.LOCAL_SANDBOX_LAB_EVENTS_CALLBACK_URL
+        setting = "LOCAL_SANDBOX_LAB_EVENTS_CALLBACK_URL"
+        fix = "apply docker-compose.sandbox.yml (gaia up --code-sandbox), which sets it"
+    else:
+        url = settings.SANDBOX_LAB_EVENTS_CALLBACK_URL
+        setting = "SANDBOX_LAB_EVENTS_CALLBACK_URL"
+        fix = "set it to the public /api/v1/lab/events URL so sandbox hooks can reach GAIA"
     if not url:
         raise AppError(
             message="lab lifecycle pushes are not configured",
-            why="SANDBOX_LAB_EVENTS_CALLBACK_URL is unset",
-            fix="set it to the public /api/v1/lab/events URL so sandbox hooks can reach GAIA",
+            why=f"{setting} is unset",
+            fix=fix,
             status_code=503,
             code="agent_lab_events_unconfigured",
         )

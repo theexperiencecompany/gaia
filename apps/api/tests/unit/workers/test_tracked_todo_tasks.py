@@ -2501,6 +2501,12 @@ class TestTriggerEventsCoalesce:
     while the run was still going, never reached the todo.
     """
 
+    @pytest.fixture(autouse=True)
+    def _frozen_clock(self) -> Iterator[None]:
+        """Hold wall time still: a second ticking mid-test names a second drain job, which then defers."""
+        with time_machine.travel(datetime(2026, 10, 1, 9, tzinfo=UTC), tick=False):
+            yield
+
     @contextmanager
     def _live(self, row: _TodoRow, run: AsyncMock | None = None) -> Iterator[AsyncMock]:
         run = run or AsyncMock()

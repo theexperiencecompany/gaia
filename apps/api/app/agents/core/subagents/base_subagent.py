@@ -35,7 +35,10 @@ from app.agents.tools.core.tool_runtime_config import (
 from app.agents.tools.execute.execute_tool import build_execute_tool
 from app.agents.tools.execute.schema_tool import get_tool_schema
 from app.agents.tools.finish_task_tool import finish_task
-from app.agents.tools.integration_instructions_tools import update_integration_instructions
+from app.agents.tools.instructions_tools import (
+    get_user_instructions,
+    update_integration_instructions,
+)
 from app.agents.tools.memory_tools import search_memory
 from app.agents.tools.research_tool import deep_research
 from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
@@ -128,10 +131,12 @@ def build_scoped_tool_dict(
         scoped_tool_dict[web_search_tool.name] = web_search_tool
         scoped_tool_dict[fetch_webpages.name] = fetch_webpages
         scoped_tool_dict[deep_research.name] = deep_research
-        # Always-on so a subagent can persist a user's durable preference for its
-        # own integration the moment it hears one (its instructions are already in
-        # context, so it can rewrite the full block without a separate read).
+        # Always-on so a subagent can persist a durable preference for its own
+        # integration the moment it hears one. The integration-only variant: a
+        # subagent reads untrusted data, so it never writes the global scope.
         scoped_tool_dict[update_integration_instructions.name] = update_integration_instructions
+        # The read that hands over the revision a save must build on.
+        scoped_tool_dict[get_user_instructions.name] = get_user_instructions
         # The execute proxy runs integration tools retrieve_tools returned as
         # schema docs. Built against THIS dict so it honors the same tool space
         # retrieve_tools binds against — otherwise a subagent runs any tool by name.

@@ -95,8 +95,8 @@ exactly one place, so every later run obeys it:
     one line in its canvas.md "## Standing rules" with today's date ("- 2026-09-28: skip
     newsletters"). Rewrite a rule the feedback changes; remove one only when the user retracts it.
   - How GAIA writes email, to one person or in general ("write to Sarah more formally", "never
-    draft replies to my landlord"): the Gmail integration instructions (get_integration_instructions,
-    then update_integration_instructions with the full text), so drafting in chat obeys it too.
+    draft replies to my landlord"): the user's standing instructions for Gmail (get_user_instructions
+    scope="gmail", then update_user_instructions with the full text), so drafting in chat obeys it too.
   - When it runs ("brief me at 7"): update_tracked_todo's recurrence or scheduled_at.
 Every run obeys its todo's Standing rules, and a sub-todo's run also obeys its parent's
 (create_tracked_todo parent_todo_id=...), over its own defaults.

@@ -22,6 +22,7 @@ from app.agents.middleware.subagent import SubagentMiddleware, SubagentMiddlewar
 from app.agents.tools.core import retrieval as retrieval_module
 from app.agents.tools.core.registry import ToolRegistry
 from app.agents.tools.core.retrieval import (
+    _RankedHits,
     _render_discovery_response,
     _split_prefixed_entry,
     get_retrieve_tools_function,
@@ -31,6 +32,10 @@ from app.agents.tools.core.tool_runtime_config import (
     build_create_agent_tool_kwargs,
     build_executor_child_tool_runtime_config,
     build_provider_parent_tool_runtime_config,
+)
+from app.agents.tools.instructions_tools import (
+    get_user_instructions,
+    update_integration_instructions,
 )
 from app.constants.general import FINISH_TASK_NAME, SPAWN_AGENT_NAME
 from app.models.integration_models import UserToolNamespaces
@@ -1038,6 +1043,15 @@ def test_a_scoped_subagent_binds_its_space_the_proxy_and_finish_task():
     }
 
 
+def test_a_scoped_subagent_can_read_and_save_only_its_own_integrations_instructions():
+    """The read hands over the revision a save builds on; the global-scope writer stays executor-only."""
+    scoped, _ = _scoped_provider_tools()
+
+    assert scoped["get_user_instructions"] is get_user_instructions
+    assert scoped["update_integration_instructions"] is update_integration_instructions
+    assert "update_user_instructions" not in scoped
+
+
 @pytest.mark.asyncio
 async def test_a_subagents_execute_proxy_is_confined_to_its_own_tool_dict():
     """A Gmail subagent's execute must refuse Slack's tools; the proxy sees exactly this dict."""
@@ -1107,14 +1121,12 @@ def _render_text(
     """Return the raw string the model receives, formatting and all."""
     opts = options or _DiscoveryOptions()
     return _render_discovery_response(
-        final_tools,
+        _RankedHits(final_tools, opts.total_candidates, opts.limit),
         _DiscoveryRegistry(opts.categories or {}, opts.destructive),
         opts.connected or {},
         query,
-        opts.total_candidates,
-        opts.limit,
-        not_connected=(),
-        background=False,
+        (),
+        False,
     )
 
 

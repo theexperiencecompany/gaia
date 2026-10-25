@@ -46,10 +46,10 @@ vi.mock("@/features/auth/api/authApi", () => ({
 import { CURRENT_USER_QUERY_KEY } from "@/features/auth/hooks/useCurrentUser";
 import useFetchUser from "@/features/auth/hooks/useFetchUser";
 import {
-  analyticsRequestHeaders,
   flushPendingAnalytics,
   resetLegacyEmailIdentity,
 } from "@/lib/analytics";
+import { analyticsRequestHeaders } from "@/lib/analytics-headers";
 import { apiauth } from "@/lib/api/client";
 
 const SIGNED_IN_USER = {

@@ -3,15 +3,18 @@
 import type React from "react";
 import AccountSettings from "@/features/settings/components/AccountSettings";
 import BrowserSettings from "@/features/settings/components/BrowserSettings";
+import { ComposioSetupSettings } from "@/features/settings/components/ComposioSetupSettings";
 import DesktopSettings from "@/features/settings/components/DesktopSettings";
 import DevicesSettings from "@/features/settings/components/DevicesSettings";
 import ExperimentalFeaturesSettings from "@/features/settings/components/ExperimentalFeaturesSettings";
 import { IntegrationInstructionsSettings } from "@/features/settings/components/IntegrationInstructionsSettings";
 import LinkedAccountsSettings from "@/features/settings/components/LinkedAccountsSettings";
+import { MembersSettings } from "@/features/settings/components/MembersSettings";
 import MemorySettings from "@/features/settings/components/MemorySettings";
 import NotificationSettings from "@/features/settings/components/NotificationSettings";
 import PreferencesSettings from "@/features/settings/components/PreferencesSettings";
 import ProfileCardSettings from "@/features/settings/components/ProfileCardSettings";
+import { ProvidersSettings } from "@/features/settings/components/ProvidersSettings";
 import type { ModalAction } from "@/features/settings/components/SettingsMenu";
 import SkillsSettings from "@/features/settings/components/SkillsSettings";
 import { SubscriptionSettings } from "@/features/settings/components/SubscriptionSettings";
@@ -36,6 +39,9 @@ const SECTION_PANELS: Record<
   ),
   profile: () => <ProfileCardSettings />,
   "linked-accounts": () => <LinkedAccountsSettings />,
+  providers: () => <ProvidersSettings />,
+  "integrations-setup": () => <ComposioSetupSettings />,
+  members: () => <MembersSettings />,
   subscription: () => <SubscriptionSettings />,
   usage: () => <UsageSettings />,
   preferences: (setModalAction) => (

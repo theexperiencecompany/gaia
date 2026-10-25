@@ -5,17 +5,21 @@ routing, status codes, response bodies, auth, and validation.
 """
 
 from collections.abc import Callable
+from http.cookies import SimpleCookie
 from typing import get_type_hints
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
+import pytest
 
 from app.api.v1.endpoints.user import get_me
+from app.config.settings import settings
 from app.models.user_models import (
     AuthenticatedUser,
     AuthenticatedUserResponse,
     OnboardingPreferences,
     OnboardingStatusResponse,
+    ProfilePictureUpload,
     UserDocument,
 )
 from app.services.onboarding.onboarding_service import get_user_onboarding_status
@@ -23,6 +27,7 @@ from shared.py.analytics import UserId
 from shared.py.analytics.catalog.auth import UserLoggedOut
 from shared.py.analytics.catalog.settings import ProfileUpdated
 from tests.conftest import FAKE_USER
+from tests.helpers import captured_wide_event
 
 USER_BASE = "/api/v1/user"
 FAKE_USER_ID = "507f1f77bcf86cd799439011"
@@ -208,19 +213,23 @@ class TestUpdateMe:
             **FAKE_USER_UPDATE,
             "picture": "https://img.example.com/a.png",
         }
+        png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
         with patch("app.api.v1.endpoints.user.capture") as mock_capture:
-            response = await client.patch(
-                f"{USER_BASE}/me",
-                data={"name": "Updated User"},
-                files={
-                    "picture": (
-                        "avatar.png",
-                        b"\x89PNG\r\n\x1a\n" + b"\x00" * 100,
-                        "image/png",
-                    )
-                },
-            )
+            async with captured_wide_event() as event:
+                response = await client.patch(
+                    f"{USER_BASE}/me",
+                    data={"name": "Updated User"},
+                    files={"picture": ("avatar.png", png, "image/png")},
+                )
         assert response.status_code == 200
+        mock_update.assert_awaited_once_with(
+            user_id=FAKE_USER_ID,
+            name="Updated User",
+            picture=ProfilePictureUpload(data=png, content_type="image/png"),
+        )
+        assert event["audit"] == [
+            {"msg": "profile updated", "actor": FAKE_USER_ID, "changed_fields": ["name", "picture"]}
+        ]
         mock_capture.assert_called_once_with(
             UserId(FAKE_USER.user_id),
             ProfileUpdated(changed_field_count=2, has_picture_upload=True),
@@ -454,11 +463,38 @@ class TestUpdateHoloCardColors:
 class TestLogout:
     """POST /api/v1/user/logout."""
 
-    @patch("app.api.v1.endpoints.user.workos")
+    @pytest.mark.parametrize(("forwarded_proto", "secure"), [("http", ""), ("https", True)])
+    async def test_a_local_session_logout_clears_the_cookie_and_is_audited(
+        self,
+        client: AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+        forwarded_proto: str,
+        secure: bool | str,
+    ):
+        monkeypatch.setattr(settings, "ENV", "selfhost")
+        monkeypatch.setattr(settings, "AUTH_MODE", "local")
+
+        async with captured_wide_event() as live:
+            response = await client.post(
+                f"{USER_BASE}/logout", headers={"x-forwarded-proto": forwarded_proto}
+            )
+            event = dict(live)  # before the boundary stamps its own outcome on exit
+
+        assert response.status_code == 200
+        assert response.json() == {"logout_url": None}
+        cleared = SimpleCookie(response.headers["set-cookie"])["gaia_session"]
+        assert cleared.value == ""
+        assert (cleared["max-age"], cleared["path"], cleared["samesite"]) == ("0", "/", "lax")
+        assert (cleared["httponly"], cleared["secure"]) == (True, secure)
+        assert event["operation"] == "logout"
+        assert event["outcome"] == "success"
+        assert event["audit"] == [{"msg": "logged out", "actor": FAKE_USER_ID, "mode": "local"}]
+
+    @patch("app.api.v1.endpoints.user.get_workos_client")
     async def test_logout_success(self, mock_workos: MagicMock, client: AsyncClient):
         session = MagicMock()
         session.get_logout_url.return_value = "https://auth.example.com/logout"
-        mock_workos.user_management.load_sealed_session.return_value = session
+        mock_workos.return_value.user_management.load_sealed_session.return_value = session
         client.cookies.set("wos_session", "sealed_token")
         with patch("app.api.v1.endpoints.user.capture") as mock_capture:
             response = await client.post(f"{USER_BASE}/logout")
@@ -466,7 +502,7 @@ class TestLogout:
         assert response.json()["logout_url"] == "https://auth.example.com/logout"
         mock_capture.assert_called_once_with(UserId("507f1f77bcf86cd799439011"), UserLoggedOut())
 
-    @patch("app.api.v1.endpoints.user.workos")
+    @patch("app.api.v1.endpoints.user.get_workos_client")
     async def test_logout_track_failure_is_logged_not_fatal(
         self,
         mock_workos: MagicMock,
@@ -479,7 +515,7 @@ class TestLogout:
         posthog_provider(available=True, client=posthog_client)
         session = MagicMock()
         session.get_logout_url.return_value = "https://auth.example.com/logout"
-        mock_workos.user_management.load_sealed_session.return_value = session
+        mock_workos.return_value.user_management.load_sealed_session.return_value = session
         client.cookies.set("wos_session", "sealed_token")
         with patch("app.services.analytics_service.log") as mock_log:
             response = await client.post(f"{USER_BASE}/logout")
@@ -494,17 +530,17 @@ class TestLogout:
         response = await client.post(f"{USER_BASE}/logout")
         assert response.status_code == 401
 
-    @patch("app.api.v1.endpoints.user.workos")
+    @patch("app.api.v1.endpoints.user.get_workos_client")
     async def test_logout_invalid_session(self, mock_workos: MagicMock, client: AsyncClient):
         # The HTTPException(401) is inside a bare except that re-raises as 500
-        mock_workos.user_management.load_sealed_session.return_value = None
+        mock_workos.return_value.user_management.load_sealed_session.return_value = None
         client.cookies.set("wos_session", "bad_token")
         response = await client.post(f"{USER_BASE}/logout")
         assert response.status_code == 500
 
-    @patch("app.api.v1.endpoints.user.workos")
+    @patch("app.api.v1.endpoints.user.get_workos_client")
     async def test_logout_exception(self, mock_workos: MagicMock, client: AsyncClient):
-        mock_workos.user_management.load_sealed_session.side_effect = Exception("boom")
+        mock_workos.return_value.user_management.load_sealed_session.side_effect = Exception("boom")
         client.cookies.set("wos_session", "sealed_token")
         response = await client.post(f"{USER_BASE}/logout")
         assert response.status_code == 500

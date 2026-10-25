@@ -105,7 +105,21 @@ export interface DesktopSettings {
   /** Register the app as a macOS login item so it starts hidden (tray-only) at
    * login and keeps the paired device online unattended. */
   launchAtLogin: boolean;
+  /** Origin of the self-hosted GAIA server the app loads, or null for GAIA Cloud. */
+  selfHostOrigin: string | null;
 }
+
+/** Query param on the bundled /desktop-login that opens the self-hosted server
+ * form; its value says why the form is shown. */
+export const DESKTOP_SERVER_FORM_PARAM = "server";
+
+export type DesktopServerFormReason = "choose" | "unreachable";
+
+/** Outcome of pointing the desktop app at a self-hosted server; on success the
+ * app relaunches against it. */
+export type DesktopServerConnectResult =
+  | { ok: true }
+  | { ok: false; error: string };
 
 export interface DesktopAppIconOption {
   id: string;

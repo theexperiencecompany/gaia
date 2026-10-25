@@ -158,6 +158,7 @@ def test_allowlist_snapshot(gated_app: FastAPI) -> None:
         "/api/v1/bot/auth-status/platform/platform_user_id",
         "/api/v1/bot/chat-stream",
         "/api/v1/bot/create-link-token",
+        "/api/v1/bot/delivery-failures",
         "/api/v1/bot/link-token-info/token",
         "/api/v1/bot/linked-users/platform",
         "/api/v1/bot/redeem-link-code",
@@ -218,6 +219,7 @@ def test_allowlist_snapshot(gated_app: FastAPI) -> None:
         "/api/v1/webhook/composio",
         "/api/v1/workflows/explore",
         "/health",
+        "/health/ready",
     ]
 
 
@@ -246,6 +248,27 @@ async def test_the_activation_checklist_never_raises_the_paywall(
 ) -> None:
     """A 402 here opens the app-wide non-dismissible paywall for up to 5 minutes on a user who just paid, off the stale plan cache."""
     response = await gated_client.request(method, path, json={"collapsed": True})
+
+    assert response.status_code != 402
+
+
+@pytest.mark.parametrize(("method", "path"), PRO_SAMPLE)
+async def test_self_host_passes_everything_without_a_plan_read(
+    gated_client: AsyncClient, method: str, path: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No paywall on self-host: every user resolves to Pro without a subscription or cache read."""
+    from app.config.settings import settings
+
+    monkeypatch.setattr(settings, "ENV", "selfhost")
+    unreachable = AsyncMock(side_effect=AssertionError("no plan store read without plans"))
+    with (
+        patch("app.services.payments.payment_service.redis_cache.get", unreachable),
+        patch(
+            "app.services.payments.payment_service.subscription_repository.get_active_for_user",
+            unreachable,
+        ),
+    ):
+        response = await gated_client.request(method, path, json={"collapsed": True})
 
     assert response.status_code != 402
 

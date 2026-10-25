@@ -4,26 +4,25 @@ OAuth Token Management for MCP integrations.
 Handles token refresh, revocation, and client credential resolution.
 """
 
-import base64
 import os
-from typing import TypedDict, cast
 from urllib.parse import urlparse
 
-import httpx
-
 from app.constants.log_tags import LogTag
-from app.models.mcp_config import DCRClientRegistration, MCPConfig, OAuthDiscovery
+from app.models.mcp_config import (
+    DCRClientRegistration,
+    MCPConfig,
+    OAuthDiscovery,
+    OAuthErrorResponse,
+)
 from app.services.mcp.mcp_token_store import MCPTokenStore
-from app.utils.mcp_oauth_utils import oauth_token_expiry
+from app.utils.mcp_oauth_utils import (
+    basic_auth_header,
+    mcp_http_client,
+    oauth_token_expiry,
+    parse_oauth_error_response,
+)
 from mcp.shared.auth import OAuthToken
 from shared.py.wide_events import log
-
-
-class _TokenErrorBody(TypedDict, total=False):
-    """Token-endpoint error fields read for logging (RFC 6749 section 5.2)."""
-
-    error: str
-    error_description: str
 
 
 def _endpoint_host(url: str | None) -> str | None:
@@ -47,6 +46,19 @@ def resolve_client_credentials(
     if not client_secret and mcp_config.client_secret_env:
         client_secret = os.getenv(mcp_config.client_secret_env)
 
+    return client_id, client_secret
+
+
+async def _client_credentials(
+    token_store: MCPTokenStore, integration_id: str, mcp_config: MCPConfig
+) -> tuple[str | None, str | None]:
+    """Resolve the OAuth client from config or env, else from the stored DCR registration."""
+    client_id, client_secret = resolve_client_credentials(mcp_config)
+    if not client_id:
+        dcr_data: DCRClientRegistration | None = await token_store.get_dcr_client(integration_id)
+        if dcr_data:
+            client_id = dcr_data.get("client_id")
+            client_secret = dcr_data.get("client_secret")
     return client_id, client_secret
 
 
@@ -77,15 +89,9 @@ async def try_refresh_token(
     try:
         token_endpoint = str(oauth_config.as_metadata.token_endpoint)
 
-        client_id, client_secret = resolve_client_credentials(mcp_config)
-        if not client_id:
-            dcr_data: DCRClientRegistration | None = await token_store.get_dcr_client(
-                integration_id
-            )
-            if dcr_data:
-                client_id = dcr_data.get("client_id")
-                client_secret = dcr_data.get("client_secret")
-
+        client_id, client_secret = await _client_credentials(
+            token_store, integration_id, mcp_config
+        )
         if not client_id:
             log.warning(
                 f"{LogTag.MCP} try_refresh_token: no client_id resolved (no pre-configured creds, no DCR registration); user must re-authorize",
@@ -96,7 +102,7 @@ async def try_refresh_token(
 
         resource = oauth_config.resource
 
-        async with httpx.AsyncClient() as http_client:
+        async with mcp_http_client() as http_client:
             token_data = {
                 "grant_type": "refresh_token",
                 "refresh_token": refresh_token,
@@ -106,9 +112,7 @@ async def try_refresh_token(
             headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
             if client_secret:
-                credentials = f"{client_id}:{client_secret}"
-                encoded = base64.b64encode(credentials.encode()).decode()
-                headers["Authorization"] = f"Basic {encoded}"
+                headers["Authorization"] = basic_auth_header(client_id, client_secret)
             else:
                 token_data["client_id"] = client_id
 
@@ -117,29 +121,17 @@ async def try_refresh_token(
             )
 
             if response.status_code != 200:
-                error_code: str | None = None
-                error_description: str | None = None
-                try:
-                    # Raw token-endpoint error body (RFC 6749 §5.2) — read for
-                    # logging only, never propagated past this block.
-                    payload = response.json()
-                    if isinstance(payload, dict):
-                        body: _TokenErrorBody = cast(_TokenErrorBody, payload)
-                        error_code = body.get("error")
-                        error_description = body.get("error_description")
-                except ValueError:
-                    pass
-
+                error_info: OAuthErrorResponse = parse_oauth_error_response(response)
                 log.warning(
                     f"{LogTag.MCP} try_refresh_token: token endpoint returned an error",
                     status_code=response.status_code,
                     integration_id=integration_id,
                     user_id=token_store.user_id,
-                    oauth_error=error_code,
-                    oauth_error_description=error_description,
+                    oauth_error=error_info["error"],
+                    oauth_error_description=error_info["error_description"],
                     endpoint_host=_endpoint_host(token_endpoint),
                 )
-                if error_code == "invalid_grant":
+                if error_info["error"] == "invalid_grant":
                     # The grant itself is dead (revoked/rotated server-side):
                     # no later retry can succeed, so drop the token now rather
                     # than letting liveness checks keep reporting recoverable.
@@ -198,12 +190,7 @@ async def revoke_tokens(
         return
     revocation_endpoint = str(oauth_config.as_metadata.revocation_endpoint)
 
-    client_id, client_secret = resolve_client_credentials(mcp_config)
-    if not client_id:
-        dcr_data: DCRClientRegistration | None = await token_store.get_dcr_client(integration_id)
-        if dcr_data:
-            client_id = dcr_data.get("client_id")
-            client_secret = dcr_data.get("client_secret")
+    client_id, client_secret = await _client_credentials(token_store, integration_id, mcp_config)
 
     tokens_to_revoke: list[tuple[str, str]] = []
 
@@ -216,7 +203,7 @@ async def revoke_tokens(
         tokens_to_revoke.append(("access_token", access_token))
 
     try:
-        async with httpx.AsyncClient() as http_client:
+        async with mcp_http_client() as http_client:
             for token_type, token in tokens_to_revoke:
                 data = {"token": token, "token_type_hint": token_type}
                 if client_id:
@@ -224,9 +211,7 @@ async def revoke_tokens(
 
                 headers = {"Content-Type": "application/x-www-form-urlencoded"}
                 if client_secret:
-                    credentials = f"{client_id}:{client_secret}"
-                    encoded = base64.b64encode(credentials.encode()).decode()
-                    headers["Authorization"] = f"Basic {encoded}"
+                    headers["Authorization"] = basic_auth_header(client_id, client_secret)
 
                 await http_client.post(revocation_endpoint, data=data, headers=headers, timeout=10)
     except Exception as e:

@@ -23,6 +23,7 @@ import fakeredis.aioredis
 from fastapi import HTTPException
 import pytest
 
+from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.constants.onboarding import (
     FIRST_CONVERSATION_ID_FIELD,
@@ -527,7 +528,6 @@ class TestCompleteOnboarding:
                 profession="Engineer",
                 needs=[OnboardingNeed.INBOX, OnboardingNeed.CALENDAR],
                 response_style="casual",
-                custom_instructions=None,
             ),
         )
 
@@ -1104,6 +1104,73 @@ class TestGetUserOnboardingStatus:
         assert exc_info.value.status_code == 500
 
 
+class TestLocalAuthOnboardingSynthesis:
+    """Report completed=True regardless of stored state under AUTH_MODE=local.
+
+    The unified synthesis (F8): the status endpoint and build_user_context must
+    agree, because self-host has no pipeline that could produce a meaningful
+    False.
+    """
+
+    @pytest.fixture
+    def local_auth(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(settings, "AUTH_MODE", "local")
+
+    async def test_local_forces_completed_over_stored_false(
+        self, mock_repo, sample_user_id, local_auth
+    ):
+        mock_repo.get.return_value = UserDocument.model_validate(
+            {"id": sample_user_id, "onboarding": {"completed": False}}
+        )
+
+        result = await get_user_onboarding_status(sample_user_id)
+
+        assert result.completed is True
+
+    async def test_local_synthesizes_completion_when_nothing_stored(
+        self, mock_repo, sample_user_id, local_auth
+    ):
+        mock_repo.get.return_value = UserDocument.model_validate({"id": sample_user_id})
+
+        result = await get_user_onboarding_status(sample_user_id)
+
+        assert result.completed is True
+        assert result.phase == "completed"
+
+    async def test_local_preserves_stored_phase_and_metadata(
+        self, mock_repo, sample_user_id, local_auth
+    ):
+        mock_repo.get.return_value = UserDocument.model_validate(
+            {
+                "id": sample_user_id,
+                "onboarding": {
+                    "completed": False,
+                    "phase": OnboardingPhase.PERSONALIZATION_PENDING,
+                    "preferences": {"profession": "Engineer"},
+                },
+            }
+        )
+
+        result = await get_user_onboarding_status(sample_user_id)
+
+        assert result.completed is True  # forced…
+        assert result.phase == OnboardingPhase.PERSONALIZATION_PENDING  # …stored phase kept
+        assert result.preferences.profession == "Engineer"
+
+    async def test_workos_keeps_stored_state_untouched(
+        self, mock_repo, sample_user_id, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.setattr(settings, "AUTH_MODE", "workos")
+        mock_repo.get.return_value = UserDocument.model_validate(
+            {"id": sample_user_id, "onboarding": {"completed": False}}
+        )
+
+        result = await get_user_onboarding_status(sample_user_id)
+
+        assert result.completed is False
+        assert result.phase is None
+
+
 class TestUpdateOnboardingPreferences:
     async def test_saving_the_answers_starts_writing_the_question(
         self, mock_repo: MagicMock, sample_user_id: str
@@ -1239,14 +1306,14 @@ class TestUpdateOnboardingPreferences:
             {"id": sample_user_id, "onboarding": {"preferences": {}}}
         )
 
-        # Only custom_instructions is provided — the patch must carry only that key.
-        prefs = OnboardingPreferences(custom_instructions="Focus on email")
+        # Only response_style is provided — the patch must carry only that key.
+        prefs = OnboardingPreferences(response_style="brief")
         await update_onboarding_preferences(sample_user_id, prefs)
 
         # The repository writes model_dump(exclude_unset=True) as the $set, so the
         # unsent fields must be absent from the model's set-fields, not merely None.
         patch_arg = mock_repo.update_onboarding_preferences.call_args[0][1]
-        assert patch_arg.model_dump(exclude_unset=True) == {"custom_instructions": "Focus on email"}
+        assert patch_arg.model_dump(exclude_unset=True) == {"response_style": "brief"}
 
     async def test_generic_exception_returns_500(
         self, mock_repo: MagicMock, sample_user_id: str
@@ -1410,5 +1477,4 @@ class TestCompleteOnboardingExactKwargs:
             profession="Engineer",
             needs=[OnboardingNeed.MORNINGS],
             response_style="casual",
-            custom_instructions=None,
         )

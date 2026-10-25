@@ -26,7 +26,7 @@ tests:
               summary: ChromaDB has been failing its heartbeat probe for 2 minutes
               description: >-
                 ChromaDB is the vector store behind executor-agent tool retrieval, workflow trigger matching, and search over notes, files and knowledge. While it is down the agent cannot retrieve its tool set at inference time, so complex requests silently degrade to plain answers with no tools. Chroma exposes no metrics of its own, so this probe against /api/v2/heartbeat is the only signal.
-              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-chromadb-down
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-chromadb-down
               __dashboardUid__: gaia-databases
               __panelId__: '19'
 

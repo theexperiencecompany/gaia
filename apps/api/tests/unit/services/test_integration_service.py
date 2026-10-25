@@ -28,6 +28,7 @@ import pytest
 from app.agents.core.integration_capabilities import (
     get_user_integration_capabilities,
 )
+from app.config.settings import settings
 from app.constants.integrations import MAX_ACCOUNTS_PER_INTEGRATION
 from app.helpers.mcp_helpers import get_api_base_url
 from app.models.integration_models import (
@@ -50,6 +51,7 @@ from app.schemas.integrations.responses import (
     ConnectIntegrationResponse,
     IntegrationSuccessResponse,
 )
+from app.services.composio import auth_config_resolver
 from app.services.integrations.custom_crud import (
     create_and_connect_custom_integration,
     create_custom_integration,
@@ -58,6 +60,7 @@ from app.services.integrations.custom_crud import (
 )
 from app.services.integrations.integration_connection_service import (
     _handle_auth_required,
+    _McpConnectTarget,
     _redirect_to_oauth,
     build_integrations_config,
     connect_composio_integration,
@@ -372,7 +375,7 @@ class TestGetUserAvailableToolNamespaces:
         "app.services.integrations.integration_service.get_all_integrations_status",
         new_callable=AsyncMock,
     )
-    @patch("app.services.integrations.integration_service.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     async def test_returns_core_namespaces_when_no_integrations(
         self, mock_status, mock_get_by_id, mock_derive, mock_server_url
     ):
@@ -394,7 +397,7 @@ class TestGetUserAvailableToolNamespaces:
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.integration_service.OAUTH_INTEGRATIONS",
+        "app.config.oauth_config.OAUTH_INTEGRATIONS",
         [
             _make_oauth_integration(integration_id="todos", managed_by="internal", available=True),
         ],
@@ -418,7 +421,7 @@ class TestGetUserAvailableToolNamespaces:
         "app.services.integrations.integration_service.get_all_integrations_status",
         new_callable=AsyncMock,
     )
-    @patch("app.services.integrations.integration_service.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     async def test_connected_platform_integration_uses_tool_space(
         self, mock_status, mock_get_by_id, mock_derive, mock_server_url
     ):
@@ -450,7 +453,7 @@ class TestGetUserAvailableToolNamespaces:
         "app.services.integrations.integration_service.get_all_integrations_status",
         new_callable=AsyncMock,
     )
-    @patch("app.services.integrations.integration_service.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     async def test_connected_custom_integration_derives_namespace(
         self, mock_status, mock_get_by_id, mock_derive, mock_server_url
     ):
@@ -474,7 +477,7 @@ class TestGetUserAvailableToolNamespaces:
         "app.services.integrations.integration_service.get_all_integrations_status",
         new_callable=AsyncMock,
     )
-    @patch("app.services.integrations.integration_service.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     async def test_disconnected_integrations_excluded(
         self, mock_status, mock_get_by_id, mock_derive, mock_server_url
     ):
@@ -496,7 +499,7 @@ class TestGetUserAvailableToolNamespaces:
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.integration_service.OAUTH_INTEGRATIONS",
+        "app.config.oauth_config.OAUTH_INTEGRATIONS",
         [
             _make_oauth_integration(
                 integration_id="reminders", managed_by="internal", available=False
@@ -522,7 +525,7 @@ class TestGetUserAvailableToolNamespaces:
         "app.services.integrations.integration_service.get_all_integrations_status",
         new_callable=AsyncMock,
     )
-    @patch("app.services.integrations.integration_service.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     async def test_platform_without_subagent_falls_to_custom_path(
         self, mock_status, mock_get_by_id, mock_derive, mock_server_url
     ):
@@ -2389,7 +2392,7 @@ class TestCreateAndConnectCustomIntegration:
 
 class TestBuildIntegrationsConfig:
     @patch(
-        "app.services.integrations.integration_connection_service.OAUTH_INTEGRATIONS",
+        "app.config.oauth_config.OAUTH_INTEGRATIONS",
         [
             _make_oauth_integration(
                 integration_id="github",
@@ -2408,7 +2411,7 @@ class TestBuildIntegrationsConfig:
         assert "todos" not in ids
 
     @patch(
-        "app.services.integrations.integration_connection_service.OAUTH_INTEGRATIONS",
+        "app.config.oauth_config.OAUTH_INTEGRATIONS",
         [
             _make_oauth_integration(
                 integration_id="no-auth-mcp",
@@ -2424,7 +2427,7 @@ class TestBuildIntegrationsConfig:
         assert result.integrations[0].auth_type == "none"
 
     @patch(
-        "app.services.integrations.integration_connection_service.OAUTH_INTEGRATIONS",
+        "app.config.oauth_config.OAUTH_INTEGRATIONS",
         [
             _make_oauth_integration(
                 integration_id="oauth-mcp",
@@ -2440,7 +2443,7 @@ class TestBuildIntegrationsConfig:
         assert result.integrations[0].auth_type == "oauth"
 
     @patch(
-        "app.services.integrations.integration_connection_service.OAUTH_INTEGRATIONS",
+        "app.config.oauth_config.OAUTH_INTEGRATIONS",
         [
             _make_oauth_integration(integration_id="no-mcp", managed_by="self"),
         ],
@@ -2452,7 +2455,7 @@ class TestBuildIntegrationsConfig:
         assert result.integrations[0].auth_type is None
 
     @patch(
-        "app.services.integrations.integration_connection_service.OAUTH_INTEGRATIONS",
+        "app.config.oauth_config.OAUTH_INTEGRATIONS",
         [],
     )
     def test_empty_integrations(self):
@@ -2515,6 +2518,47 @@ class TestConnectMcpIntegration:
 
         assert result.status == "redirect"
         assert result.redirect_url == "https://auth.example.com"
+        mock_update_status.assert_awaited_once_with(USER_ID, INTEGRATION_ID, "created")
+        assert mock_client.build_oauth_auth_url.await_args.kwargs["redirect_path"] == (
+            "/integrations"
+        )
+
+    @patch(
+        "app.services.integrations.integration_connection_service.update_user_integration_status",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.services.integrations.integration_connection_service.get_mcp_client",
+        new_callable=AsyncMock,
+    )
+    async def test_a_failed_connect_is_a_structured_error_not_a_500(
+        self, mock_get_client, mock_update_status
+    ):
+        mock_client = AsyncMock()
+        mock_client.connect.side_effect = RuntimeError("server unreachable")
+        mock_get_client.return_value = mock_client
+
+        async with captured_wide_event() as event:
+            result = await connect_mcp_integration(
+                user_id=USER_ID,
+                integration_id=INTEGRATION_ID,
+                integration_name="Test",
+                requires_auth=False,
+                redirect_path="/integrations",
+                server_url=SERVER_URL,
+                probe_result={},
+            )
+
+        assert (result.status, result.error, result.message) == (
+            "error",
+            "server unreachable",
+            "Connection failed",
+        )
+        assert event["integration"] == {
+            "provider": "Test",
+            "action": "connect_mcp",
+            "status": "error",
+        }
         mock_update_status.assert_awaited_once_with(USER_ID, INTEGRATION_ID, "created")
 
     @patch(
@@ -2772,6 +2816,36 @@ class TestConnectComposioIntegration:
         seams["attach"].assert_awaited_once_with("state-token", "ca_initiated")
         seams["status"].assert_awaited_once_with(USER_ID, "slack", "created")
         seams["record"].assert_awaited_once_with(USER_ID, "slack")
+
+    async def test_an_integration_not_set_up_on_this_instance_mints_no_link(
+        self, seams: dict[str, MagicMock], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", "selfhost")
+        monkeypatch.setattr(settings, "COMPOSIO_AUTH_CONFIG_OVERRIDES", {})
+        monkeypatch.setattr(
+            auth_config_resolver,
+            "instance_settings_repository",
+            SimpleNamespace(find_by_key=AsyncMock(return_value=None)),
+        )
+        auth_config_resolver.invalidate_auth_config_cache()
+
+        async with captured_wide_event() as event:
+            result = await self._connect()
+        auth_config_resolver.invalidate_auth_config_cache()
+
+        assert event["integration"] == {
+            "provider": "slack",
+            "action": "connect_composio",
+            "status": "not_set_up",
+        }
+        assert result.status == "error"
+        assert result.error == (
+            "Slack is not set up on this instance. An admin can add it in "
+            "Settings > Integrations setup."
+        )
+        seams["service"].connect_account.assert_not_awaited()
+        seams["attach"].assert_not_awaited()
+        seams["status"].assert_not_awaited()
 
     async def test_adding_an_account_leaves_a_working_integration_connected(
         self, seams: dict[str, MagicMock]
@@ -3322,6 +3396,15 @@ class TestRedirectToOauth:
         assert kwargs["challenge_data"] == challenge
 
 
+_PLATFORM_TARGET = _McpConnectTarget(
+    user_id="u1",
+    integration_id="int-1",
+    integration_name="gmail",
+    redirect_path="/cb",
+    is_platform=True,
+)
+
+
 class TestHandleAuthRequired:
     """Direct tests for _handle_auth_required: bearer vs OAuth routing."""
 
@@ -3329,14 +3412,7 @@ class TestHandleAuthRequired:
         mcp_client = AsyncMock()
 
         response = await _handle_auth_required(
-            "u1",
-            "int-1",
-            "gmail",
-            "/cb",
-            is_platform=True,
-            detected_auth_type="bearer",
-            probe_result=None,
-            mcp_client=mcp_client,
+            _PLATFORM_TARGET, mcp_client, detected_auth_type="bearer", probe_result=None
         )
 
         assert response.status == "error"
@@ -3350,14 +3426,7 @@ class TestHandleAuthRequired:
         probe = {"oauth_challenge": {"state": "s"}}
 
         response = await _handle_auth_required(
-            "u1",
-            "int-1",
-            "gmail",
-            "/cb",
-            is_platform=True,
-            detected_auth_type="oauth",
-            probe_result=probe,
-            mcp_client=mcp_client,
+            _PLATFORM_TARGET, mcp_client, detected_auth_type="oauth", probe_result=probe
         )
 
         assert response.status == "redirect"

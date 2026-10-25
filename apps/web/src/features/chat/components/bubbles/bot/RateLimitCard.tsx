@@ -14,7 +14,7 @@ export default function RateLimitCard({ data }: RateLimitCardProps) {
   const {
     message,
     isUpgradeRequired,
-    isPro,
+    showUpgradeNudge,
     resetInfo,
     featureName,
     planName,
@@ -72,7 +72,7 @@ export default function RateLimitCard({ data }: RateLimitCardProps) {
         ) : (
           <DailyLimitBody
             featureName={featureName}
-            isPro={isPro}
+            showUpgradeNudge={showUpgradeNudge}
             resetInfo={resetInfo}
           />
         )}
