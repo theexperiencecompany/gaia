@@ -233,7 +233,10 @@ class TestPut:
         store = _store(index=True, fields=["t"])
         store.embeddings.aembed_query = AsyncMock(side_effect=TimeoutError())
 
-        with patch(f"{MODULE}.log") as log, pytest.raises(ChromaBatchWriteError):
+        with (
+            patch(f"{MODULE}.log") as log,
+            pytest.raises(ChromaBatchWriteError, match="^embedding a batch of 1 failed$"),
+        ):
             await store.abatch([PutOp(namespace=("n", "m"), key="k", value={"t": "mail"})])
 
         log.error.assert_any_call(

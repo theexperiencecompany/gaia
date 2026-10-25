@@ -567,7 +567,8 @@ class ChromaStore(BaseStore):
                 deletes.append(doc_id)
             else:
                 rows.append(self._put_row(doc_id, op))
-        await self._embed_rows(rows)
+        if self.embeddings is not None:
+            await self._embed_rows([row for row in rows if row.text is not None], self.embeddings)
 
         writes: list[tuple[list[str], Coroutine[object, object, object]]] = []
         if deletes:
@@ -651,14 +652,14 @@ class ChromaStore(BaseStore):
                 row.text = " ".join(texts)
         return row
 
-    async def _embed_rows(self, rows: list[_PutRow]) -> None:
+    @staticmethod
+    async def _embed_rows(pending: list[_PutRow], embeddings: Embeddings) -> None:
         """Embed every row that carries text, a bounded number at a time across the process."""
-        pending = [row for row in rows if row.text is not None]
-        if not pending or self.embeddings is None:
-            return
-        embeddings = self.embeddings
         # Process-wide, so concurrent batches share the fd cap rather than each taking it whole.
-        sem = loop_bound_semaphore("chroma_put_embeddings", MAX_CONCURRENT_INDEX_EMBEDDINGS)
+        sem = loop_bound_semaphore(
+            "chroma_put_embeddings",  # pragma: no mutate -- an identity token; any other name is the same cap
+            MAX_CONCURRENT_INDEX_EMBEDDINGS,
+        )
 
         async def embed(row: _PutRow) -> None:
             async with sem:
