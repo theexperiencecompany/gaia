@@ -7,12 +7,17 @@ export default defineConfig({
     jsxImportSource: "react",
   },
   test: {
+    // Per project: parallel nx test tasks sharing the root cache race to clear it (ENOTEMPTY).
+    fsModuleCachePath: "node_modules/.vitest-cache",
     // Every co-located test under src/, not just src/__tests__ — narrow globs
     // silently drop any test placed next to its module (it never runs and
     // nothing tells you).
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
     globals: true,
     environment: "node",
+    // One box, eight neighbouring lanes: tests at tens of ms idle cross 5s
+    // under load. 20s still fails a real hang.
+    testTimeout: 20_000,
     setupFiles: ["./vitest.setup.ts"],
     reporters: ["verbose"],
     // NEXT_PUBLIC_API_BASE_URL: the api client validates it at module load.

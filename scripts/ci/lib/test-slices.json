@@ -2,6 +2,7 @@
   "slices": [
     {
       "name": "unit-a",
+      "tier": "fast",
       "paths": "tests/unit/services tests/unit/agents tests/unit/storage",
       "ignore": "",
       "node": "false",
@@ -14,6 +15,7 @@
     },
     {
       "name": "unit-b",
+      "tier": "fast",
       "paths": "tests/unit tests/meta",
       "ignore": "--ignore=tests/unit/services --ignore=tests/unit/agents --ignore=tests/unit/storage",
       "node": "false",
@@ -26,6 +28,7 @@
     },
     {
       "name": "integration",
+      "tier": "full",
       "paths": "tests/integration/real tests/e2e tests/stress tests/integration tests/contracts",
       "ignore": "--ignore=tests/integration/real/test_device_bridge_e2e.py --ignore=tests/integration/real/browser",
       "node": "false",
@@ -38,6 +41,7 @@
     },
     {
       "name": "bridge",
+      "tier": "full",
       "paths": "tests/integration/real/test_device_bridge_e2e.py",
       "ignore": "",
       "node": "true",
@@ -50,6 +54,7 @@
     },
     {
       "name": "browser",
+      "tier": "full",
       "paths": "tests/integration/real/browser",
       "ignore": "",
       "node": "false",

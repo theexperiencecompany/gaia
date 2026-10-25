@@ -137,7 +137,8 @@ def interpret_comms_output(text: str) -> CommsDirective:
     """Classify comms' final narration text as a reply, a silence, or a reaction.
 
     Only directive bubbles make the first directive the outcome; beside text
-    they are dropped from the reply, and logged as the model's confusion.
+    they are dropped from the reply, and logged as the model's confusion. A
+    reply is what a user may see of it, so bare breaks reply with nothing.
     """
     directives: list[CommsDirective] = []
     has_text = False
@@ -148,7 +149,7 @@ def interpret_comms_output(text: str) -> CommsDirective:
         else:
             directives.append(directive)
     if not directives:
-        return CommsDirective(CommsDirectiveKind.REPLY, text)
+        return CommsDirective(CommsDirectiveKind.REPLY, visible_comms_text(text))
     if not has_text:
         return directives[0]
     log.warning(

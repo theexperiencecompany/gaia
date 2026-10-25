@@ -4,9 +4,9 @@
 # Why this exists: the home CI box is 8 physical cores / 16 threads, but the
 # heavy lanes size their own parallelism independently and land together. The
 # four test-python slices alone budget ~16 threads; on the SAME cores at the
-# same time run main.yml's `build` (nx --parallel 6), `test-typescript`,
-# `docker-image`, and the whole of code-quality.yml (mypy, semgrep, and the
-# sharded `mutation.sh shard`, four at a time each wanting nproc/2). Two
+# same time run ci.yml's ts-build-test (nx --parallel 6, then vitest),
+# `docker-image`, the lint jobs (mypy, semgrep) and the
+# sharded `mutation.py shard`, four at a time each wanting nproc/2). Two
 # overlapping pushes double it. The 15-min load average has been measured at
 # ~18.5 (2.3x oversubscription); the SAME PR ran 3.6 min idle vs 11.3 min
 # loaded. This governor caps the concurrent heavy work at the physical-core
@@ -81,7 +81,7 @@ _cpu_slots_is_uint() { case "$1" in ''|*[!0-9]*) return 1 ;; *) return 0 ;; esac
 # Echo the resolved, existing pool directory; return non-zero if none is
 # writable (caller then fails open). Preference: an explicit override, then the
 # host-global /run tmpfs, then $HOME/ci-cache — the latter is shared across every
-# runner instance because they share $HOME (runner.sh's action-archive cache
+# runner instance because they share $HOME (runner.py's action-archive cache
 # lives there for the same reason). Never key the pool by RUNNER_NAME: a
 # per-instance pool gives each of the box's runners its own private budget and
 # defeats the host-wide cap. (RUNNER_LOCAL_CACHE is per runner USER, the same
@@ -104,8 +104,8 @@ _cpu_slots_dir() {
 #
 # It started at nproc, sized so a single run's four test-python slices (5+7+4
 # static worker shares = the box's 16 threads) fit exactly while two overlapping
-# runs were held to the thread count: measured on two concurrent main.yml
-# dispatches, the 1-min loadavg peak dropped from 59 (governor off) to 32 (pool
+# runs were held to the thread count: measured on two concurrent dispatches
+# of the old main.yml, the 1-min loadavg peak dropped from 59 (governor off) to 32 (pool
 # = 16), per-run wall 6.4/6.1 min -> 5.5/4.8 min.
 #
 # At nproc the MUTATION lane then had nothing left. Measured 2026-09-17 on the
@@ -124,7 +124,7 @@ _cpu_slots_dir() {
 # active (16 workers) the loadavg stayed at 5-10 and nothing timed out.
 #
 # nproc * 3 / 2 = 24 is the value between them: three 8-worker mutation shards
-# (mutation.sh _mutant_workers is nproc/2) plus headroom for a test slice, a
+# (mutation.py mutant_workers is nproc/2) plus headroom for a test slice, a
 # lone run's own 16 xdist workers still fitting exactly.
 _cpu_slots_total() {
   if _cpu_slots_is_uint "${GAIA_CPU_TOKENS:-}" && [ "${GAIA_CPU_TOKENS}" -ge 1 ]; then

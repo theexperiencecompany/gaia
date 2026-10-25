@@ -30,7 +30,11 @@ from langchain_openrouter import ChatOpenRouter
 from openrouter.utils import BackoffStrategy, RetryConfig
 from pydantic import BaseModel, ConfigDict, SecretStr, ValidationError
 
-from app.agents.llm.dev_lane import build_custom_chat_model, custom_lane_forced
+from app.agents.llm.dev_lane import (
+    build_custom_chat_model,
+    custom_endpoint,
+    custom_lane_forced,
+)
 from app.agents.llm.exceptions import (
     LLM_FALLBACK_EXCEPTIONS,
     LLM_RETRYABLE_EXCEPTIONS,
@@ -40,11 +44,8 @@ from app.agents.llm.exceptions import (
 from app.agents.llm.types import LLMFallback, LLMProvider, ProviderLLM
 from app.config.settings import settings
 from app.constants.llm import (
-    AUX_MODEL_NAME,
     AUX_SESSION_SUFFIX,
-    COMMS_MODEL_NAME,
     COMMS_REASONING_EFFORT,
-    DEFAULT_GEMINI_MODEL_NAME,
     DEFAULT_LLM_TEMPERATURE,
     DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
@@ -53,14 +54,14 @@ from app.constants.llm import (
     FELL_BACK_METADATA_KEY,
     HELPER_MAX_OUTPUT_TOKENS,
     HIL_JUDGE_FALLBACK_MODEL_NAMES,
-    HIL_JUDGE_MODEL_NAME,
     LLM_INVOKE_TIMEOUT_SECONDS,
     LLM_LABEL_METADATA_KEY,
     LLM_RETRY_MAX_ATTEMPTS,
-    MEMORY_MODEL_NAME,
     MODEL_FIELD_ID,
     MODEL_KWARGS_FIELD_ID,
+    OLLAMA_PLACEHOLDER_API_KEY,
     OPENAI_MAX_OUTPUT_TOKENS,
+    OPENAI_REASONING_EFFORT,
     OPENROUTER_APP_CATEGORIES,
     OPENROUTER_APP_TITLE,
     OPENROUTER_DEV_APP_TITLE,
@@ -73,7 +74,6 @@ from app.constants.llm import (
     SIM_STUB_BASE_URL,
     SIM_STUB_MODEL_NAME,
     UNKNOWN_MODEL_NAME,
-    VISION_MODEL_NAME,
     LLMProviderKey,
     LLMProviderName,
     ModelUse,
@@ -81,6 +81,13 @@ from app.constants.llm import (
     ReasoningLevel,
 )
 from app.constants.log_tags import LogTag
+from app.constants.providers import (
+    HOSTED_COMMS_ONLY_PROVIDERS,
+    HOSTED_ONE_SHOT_PROVIDERS,
+    LLM_MODEL_PROFILES,
+    LLM_PROVIDER_PRIORITY,
+    CredentialProviderName,
+)
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.models.agent_config import AgentConfigurable
 from app.models.agent_models import agent_configurable
@@ -94,6 +101,15 @@ from app.services.llm_metering import (
     record_llm_call,
     resolve_channel,
 )
+from app.services.providers.provider_credentials_service import (
+    ProviderConfig,
+    is_usable,
+    on_local_invalidation,
+    resolve,
+    resolved_config,
+    resolved_configs,
+)
+from app.services.providers.provider_registry import PROVIDER_SPECS
 from shared.py.wide_events import log
 
 _StructuredT = TypeVar("_StructuredT", bound=BaseModel)
@@ -144,26 +160,82 @@ def with_llm_retry(runnable: Runnable, *, max_attempts: int = LLM_RETRY_MAX_ATTE
     )
 
 
-PROVIDER_MODELS: dict[LLMProviderName, str] = {
-    LLMProviderName.GEMINI: DEFAULT_GEMINI_MODEL_NAME,
-    LLMProviderName.OPENROUTER: DEFAULT_MODEL_NAME,
-    # The env-defined custom dev endpoint; empty when unset — the provider is
-    # only registered in development with all DEV_LLM_* settings present.
-    LLMProviderName.CUSTOM: settings.DEV_LLM_MODEL or "",
-    LLMProviderName.OPENAI: COMMS_MODEL_NAME,
-}
-PROVIDER_PRIORITY: dict[int, LLMProviderName] = {
-    1: LLMProviderName.OPENROUTER,
-    2: LLMProviderName.GEMINI,
-    3: LLMProviderName.CUSTOM,
-}
-# Selected only by name (the comms lane), so never a primary or fallback for another lane.
-LANE_ONLY_PROVIDERS: frozenset[LLMProviderName] = frozenset({LLMProviderName.OPENAI})
+NO_PROVIDER_CONFIGURED_MESSAGE = (
+    "No AI provider configured. Open Settings → AI Providers or run the setup wizard."
+)
 
 
-def _secret_or_none(api_key: str | None) -> SecretStr | None:
-    """Wrap an API key exactly as pydantic coerces one into a SecretStr | None field."""
-    return None if api_key is None else SecretStr(api_key)
+async def refresh_provider_configs() -> None:
+    """Resolve every credential-backed provider, so sync readers see the store without awaiting.
+
+    Each resolve mirrors into the credential service's snapshot; until the first
+    refresh lands, sync readers read the env fallback.
+    """
+    await asyncio.gather(*(resolve(name) for name in CredentialProviderName))
+
+
+_refresh_tasks: set[asyncio.Task[None]] = set()
+
+
+def _on_refresh_done(task: asyncio.Task[None]) -> None:
+    """Drop the finished refresh task; log loud if it failed."""
+    _refresh_tasks.discard(task)
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        log.error(
+            "Runtime provider-config refresh failed",
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
+
+
+def _schedule_runtime_config_refresh() -> None:
+    """Best-effort snapshot refresh when an event loop is already running.
+
+    Fire-and-forget by design: registration and cache invalidation are sync
+    seams inside async contexts (lifespan, request handlers), where blocking on
+    the resolver is impossible. Outside a loop (eval scripts, unit tests) it is
+    a no-op — those run on env fallback, which is their contract.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    task = loop.create_task(refresh_provider_configs())
+    _refresh_tasks.add(task)
+    task.add_done_callback(_on_refresh_done)
+
+
+def _require_provider_config(provider: LLMProviderName) -> ProviderConfig:
+    """Return the provider's config for building a client; raise the actionable self-host error when it cannot serve one."""
+    credential = CredentialProviderName(provider)
+    config: ProviderConfig | None = resolved_config(credential)
+    if config is None or not is_usable(credential, config):
+        raise LLMNotConfiguredError(NO_PROVIDER_CONFIGURED_MESSAGE)
+    return config
+
+
+def chat_model(provider: LLMProviderName) -> str | None:
+    """Return the model a provider's chat lane runs: the operator's configured one, else the catalog's.
+
+    None only when neither exists (a custom endpoint saved without a model).
+    Production reads env alone, which never names a model, so it runs the catalog's.
+    """
+    config: ProviderConfig | None = resolved_config(CredentialProviderName(provider))
+    configured = config.model if config else None
+    return configured or LLM_MODEL_PROFILES[provider].chat
+
+
+def _is_hosted_comms_only(provider: LLMProviderName) -> bool:
+    """Whether production keeps provider to comms' own lane (see HOSTED_COMMS_ONLY_PROVIDERS)."""
+    return settings.deployment.hosted_models and provider in HOSTED_COMMS_ONLY_PROVIDERS
+
+
+def _chat_priority() -> tuple[LLMProviderName, ...]:
+    """Return the providers a default lane or fallback may take, in order; comms-only ones never in production."""
+    return tuple(p for p in LLM_PROVIDER_PRIORITY if not _is_hosted_comms_only(p))
 
 
 @cache
@@ -219,7 +291,7 @@ def _openrouter_wire_configurables(llm: ChatOpenRouter) -> LanguageModelLike:
 
 @lazy_provider(
     name=LLMProviderKey.GEMINI,
-    required_keys=[SIM_STUB_API_KEY if settings.GAIA_SIM_MODE else settings.GOOGLE_API_KEY],
+    required_keys=[],
     strategy=MissingKeyStrategy.WARN,
     warning_message="Google API key not configured. Models provided by Google Gemini will not work.",
 )
@@ -227,10 +299,12 @@ def init_gemini_llm() -> LanguageModelLike:
     """Initialize Gemini LLM with default model."""
     if settings.GAIA_SIM_MODE:
         return _sim_llm()
+    config: ProviderConfig = _require_provider_config(LLMProviderName.GEMINI)
     llm = ChatGoogleGenerativeAI(
-        model=PROVIDER_MODELS[LLMProviderName.GEMINI],
+        model=config.model or LLM_MODEL_PROFILES[LLMProviderName.GEMINI].chat,
         temperature=DEFAULT_LLM_TEMPERATURE,
         streaming=True,
+        google_api_key=config.api_key,
     )
     # Every chat LLM must carry the context-window profile — fractional-token
     # middleware (summarization/compaction triggers) raises without it. Same
@@ -250,12 +324,11 @@ class _AppAttribution(TypedDict):
 def _app_attribution() -> _AppAttribution:
     """OpenRouter app-attribution params, for EVERY real OpenRouter client.
 
-    Development sends a synthetic referer — a localhost FRONTEND_URL would land
-    traffic in the dashboard's "unknown app" bucket. Shared by the graph and aux
-    lanes; the aux lane once shipped without attribution, so memory extraction,
-    follow-ups and onboarding all reported as "unknown".
+    Only GAIA Cloud is attributed to GAIA's app; elsewhere a synthetic referer
+    stands in, since a localhost FRONTEND_URL lands in "unknown app". Shared by
+    the graph and aux lanes, which once reported as "unknown" without it.
     """
-    if settings.ENV == "production":
+    if settings.deployment.hosted_models:
         return {
             "app_url": settings.FRONTEND_URL,
             "app_title": OPENROUTER_APP_TITLE,
@@ -270,7 +343,7 @@ def _app_attribution() -> _AppAttribution:
 
 @lazy_provider(
     name=LLMProviderKey.OPENROUTER,
-    required_keys=[SIM_STUB_API_KEY if settings.GAIA_SIM_MODE else settings.OPENROUTER_API_KEY],
+    required_keys=[],
     strategy=MissingKeyStrategy.WARN,
     warning_message="OpenRouter API key not configured. Models provided via OpenRouter (Grok, etc.) will not work.",
 )
@@ -284,16 +357,23 @@ def init_openrouter_llm() -> LanguageModelLike:
     """
     if settings.GAIA_SIM_MODE:
         return _sim_llm()
+    config: ProviderConfig = _require_provider_config(LLMProviderName.OPENROUTER)
+    # No base_url kwarg unless the resolved config carries one: passing None
+    # would override the field's OPENROUTER_API_BASE env default_factory.
+    # Redirecting to the stub is sim mode's job (_sim_llm).
+    base_url = config.base_url
+    base_url_kwargs: dict[str, Any] = {"base_url": base_url} if base_url else {}
     llm = without_sdk_retry(
         ChatOpenRouter(
-            model=PROVIDER_MODELS[LLMProviderName.OPENROUTER],
+            model=config.model or LLM_MODEL_PROFILES[LLMProviderName.OPENROUTER].chat,
             temperature=DEFAULT_LLM_TEMPERATURE,
             streaming=True,
             stream_usage=True,
             # Output cap; must stay well under the model's shared input+output context
             # window (see OPENROUTER_MAX_OUTPUT_TOKENS) or OpenRouter rejects the request.
             max_tokens=OPENROUTER_MAX_OUTPUT_TOKENS,
-            api_key=_secret_or_none(settings.OPENROUTER_API_KEY),
+            api_key=SecretStr(config.api_key),
+            **base_url_kwargs,
             # App attribution → OpenRouter rankings/analytics. ChatOpenRouter exposes
             # these as dedicated params (NOT `default_headers`, which it forwards to
             # send_async and crashes on). https://openrouter.ai/docs/app-attribution
@@ -314,63 +394,92 @@ def init_openrouter_llm() -> LanguageModelLike:
 
 
 @lazy_provider(
+    name=LLMProviderKey.OLLAMA,
+    required_keys=[],
+    strategy=MissingKeyStrategy.WARN,
+    warning_message="Ollama endpoint not configured. Models provided by Ollama will not work.",
+)
+def init_ollama_llm() -> LanguageModelLike:
+    """Initialize the local keyless Ollama LLM over its OpenAI-wire API at base_url/v1.
+
+    The key is a constant placeholder the OpenAI client requires but Ollama ignores.
+    Available only with a configured endpoint: a store credential or OLLAMA_BASE_URL.
+    """
+    if settings.GAIA_SIM_MODE:
+        return _sim_llm()
+    config: ProviderConfig = _require_provider_config(LLMProviderName.OLLAMA)
+    llm = ChatOpenAI(
+        model=config.model or LLM_MODEL_PROFILES[LLMProviderName.OLLAMA].chat,
+        temperature=DEFAULT_LLM_TEMPERATURE,
+        streaming=True,
+        base_url=_ollama_openai_url(config),
+        api_key=SecretStr(OLLAMA_PLACEHOLDER_API_KEY),
+        max_retries=0,
+    )
+    # Same reason as _build_default_llm: fractional-window middleware needs a
+    # context-window profile at graph-build time.
+    llm.profile = {"max_input_tokens": DEFAULT_MAX_TOKENS}
+    return llm
+
+
+@lazy_provider(
     name=LLMProviderKey.CUSTOM,
-    required_keys=[SIM_STUB_API_KEY]
-    if settings.GAIA_SIM_MODE
-    else [settings.DEV_LLM_BASE_URL, settings.DEV_LLM_API_KEY, settings.DEV_LLM_MODEL],
+    required_keys=[],
     strategy=MissingKeyStrategy.WARN,
     warning_message="DEV_LLM_BASE_URL / DEV_LLM_API_KEY / DEV_LLM_MODEL not configured. The custom dev LLM endpoint will not work.",
 )
 def init_custom_llm() -> LanguageModelLike:
-    """DEV-ONLY: build the env-defined custom provider from the DEV_LLM_* settings.
+    """Build the custom OpenAI-compatible provider, constructed by dev_lane.build_custom_chat_model.
 
-    Any OpenAI-compatible endpoint, over the API DEV_LLM_API names: discounted
-    lanes (e.g. Nous Research's DeepSeek) or OpenAI's own models. Registered
-    only when ENV=development (see register_llm_providers).
+    A store-saved key makes this lane usable outside development with no restart.
+    With no store entry the resolver env fallback still yields the DEV_LLM_*
+    endpoint, which is how the discounted dev lanes keep working.
     """
     if settings.GAIA_SIM_MODE:
         return _sim_llm()
-    # Only the model pin: the custom lane runs ChatOpenAI (no reasoning field to
-    # bind, binding keys omit reasoning/model_kwargs). model_name is the field id
-    # both ChatOpenAI and ChatOpenRouter expose (see _MODEL_FIELD).
+    # model_name is the field id both ChatOpenAI and ChatOpenRouter expose, so the
+    # per-request lane can retarget the model on this client.
     return build_custom_chat_model(
-        temperature=DEFAULT_LLM_TEMPERATURE, max_tokens=DEV_LLM_MAX_OUTPUT_TOKENS
+        temperature=DEFAULT_LLM_TEMPERATURE,
+        max_tokens=DEV_LLM_MAX_OUTPUT_TOKENS,
+        endpoint=custom_endpoint(),
     ).configurable_fields(model_name=_MODEL_FIELD)
+
+
+def _ollama_openai_url(config: ProviderConfig) -> str:
+    """Return Ollama's OpenAI-wire API root for a config whose base_url is already required."""
+    return f"{str(config.base_url).rstrip('/')}/v1"
 
 
 @lazy_provider(
     name=LLMProviderKey.OPENAI,
-    required_keys=[SIM_STUB_API_KEY if settings.GAIA_SIM_MODE else settings.OPENAI_API_KEY],
+    required_keys=[],
     strategy=MissingKeyStrategy.WARN,
-    warning_message="OpenAI API key not configured. Comms falls back to the default OpenRouter lane.",
+    warning_message="OpenAI API key not configured. Comms falls back to the default lane.",
 )
 def init_openai_llm() -> LanguageModelLike:
-    """Initialize the direct OpenAI client that serves the comms lane.
+    """Initialize the direct OpenAI client: comms' own lane, and a chat lane like any other.
 
     reasoning_effort, never reasoning=: any reasoning= switches ChatOpenAI to the
     Responses API, while comms stays on chat completions.
     """
     if settings.GAIA_SIM_MODE:
         return _sim_llm()
+    config: ProviderConfig = _require_provider_config(LLMProviderName.OPENAI)
     llm = without_sdk_retry(
         ChatOpenAI(
-            model=PROVIDER_MODELS[LLMProviderName.OPENAI],
+            model=chat_model(LLMProviderName.OPENAI),
             reasoning_effort=COMMS_REASONING_EFFORT,
             temperature=DEFAULT_LLM_TEMPERATURE,
             streaming=True,
             stream_usage=True,
             max_completion_tokens=OPENAI_MAX_OUTPUT_TOKENS,
             max_retries=0,
-            api_key=_secret_or_none(settings.OPENAI_API_KEY),
+            api_key=SecretStr(str(config.api_key)),
         )
     )
     llm.profile = {"max_input_tokens": DEFAULT_MAX_TOKENS}
     return llm.configurable_fields(model_name=_MODEL_FIELD)
-
-
-def openai_lane_available() -> bool:
-    """Whether the direct OpenAI comms lane can serve a call; without it comms runs the default lane."""
-    return bool(settings.GAIA_SIM_MODE or settings.OPENAI_API_KEY)
 
 
 def init_llm(
@@ -384,8 +493,8 @@ def init_llm(
     """
     # preferred_provider is untrusted input (a request configurable), so it stays
     # a plain str on the signature and is narrowed to the enum once validated.
-    if preferred_provider and preferred_provider not in PROVIDER_MODELS:
-        valid_providers = list(PROVIDER_MODELS.keys())
+    if preferred_provider and preferred_provider not in LLM_MODEL_PROFILES:
+        valid_providers = list(LLM_MODEL_PROFILES)
         raise ValueError(
             f"Invalid preferred_provider '{preferred_provider}'. "
             f"Valid providers are: {valid_providers}"
@@ -413,7 +522,7 @@ def init_llm(
 
     log.set(
         llm={
-            "model": PROVIDER_MODELS.get(primary_provider.name, primary_provider.name),
+            "model": chat_model(primary_provider.name) or primary_provider.name,
             "provider": primary_provider.name,
             "is_free": False,
         }
@@ -422,43 +531,58 @@ def init_llm(
 
 
 def _get_available_providers() -> dict[LLMProviderName, ProviderLLM]:
-    """Retrieve available LLM provider instances from the global registry, mapped by provider name."""
-    provider_instance_mapping: dict[LLMProviderName, LLMProviderKey] = {
-        LLMProviderName.GEMINI: LLMProviderKey.GEMINI,
-        LLMProviderName.OPENROUTER: LLMProviderKey.OPENROUTER,
-        LLMProviderName.CUSTOM: LLMProviderKey.CUSTOM,
-        LLMProviderName.OPENAI: LLMProviderKey.OPENAI,
-    }
+    """Return the usable provider instances from the global registry, mapped by name.
 
+    Availability follows the resolved runtime config, never the registry's
+    import-time required_keys. Missing registrations are skipped: providers.get
+    raises KeyError on an unregistered name, which took every agent graph down.
+    """
     available: dict[LLMProviderName, ProviderLLM] = {}
-    for provider_name, instance_key in provider_instance_mapping.items():
-        # custom_llm is only registered in development; providers.get() raises
-        # KeyError on an unregistered name, which took every agent graph down.
-        if not providers.is_available(instance_key):
+    for provider_name in LLM_PROVIDER_PRIORITY:
+        instance_key = PROVIDER_SPECS[CredentialProviderName(provider_name)].registry_key
+        if instance_key is None or not provider_configured(provider_name):
             continue
-        instance = cast(ProviderLLM | None, providers.get(instance_key))
+        try:
+            instance = cast(ProviderLLM | None, providers.get(instance_key))
+        except KeyError:
+            continue
         if instance is not None:
             available[provider_name] = instance
 
     return available
 
 
-def next_fallback_provider(current: str | None) -> tuple[LLMProviderName, str] | None:
-    """Return the highest-priority configured provider other than current, and its model.
+def provider_configured(provider_name: LLMProviderName) -> bool:
+    """Report whether provider_name can serve a request under the active runtime config."""
+    if settings.GAIA_SIM_MODE:
+        # Sim mode pins EVERY lane to the scripted stub (the loaders return
+        # _sim_llm), mirroring the old behavior where the stub key satisfied
+        # every import-time required_keys list.
+        return True
+    credential = CredentialProviderName(provider_name)
+    return is_usable(credential, resolved_config(credential))
 
-    None when nothing else is usable. The agent graph picks its lane by
-    configurable["provider"] and never fails over itself, so this is what a caller that
-    caught a provider failure retries onto. A provider with no model is skipped, never
-    returned with "": PROVIDER_MODELS[CUSTOM] is DEV_LLM_MODEL or "", a bad request.
+
+def chat_routes() -> list[tuple[LLMProviderName, str]]:
+    """Return every usable chat provider and its model, in the order lanes take them.
+
+    A provider with no model (a custom endpoint saved without one) is skipped.
     """
     available = _get_available_providers()
-    for priority in sorted(PROVIDER_PRIORITY):
-        name = PROVIDER_PRIORITY[priority]
-        if name == current or name not in available:
-            continue
-        if model := PROVIDER_MODELS.get(name):
-            return name, model
-    return None
+    return [
+        (name, model)
+        for name in _chat_priority()
+        if name in available and (model := chat_model(name))
+    ]
+
+
+def chat_route(exclude: LLMProviderName | None = None) -> tuple[LLMProviderName, str] | None:
+    """Return the highest-priority usable chat provider other than exclude, and its model.
+
+    The default lane takes it with no exclusion; a lane's fallback excludes the
+    provider that just failed. None when nothing (else) is usable.
+    """
+    return next((route for route in chat_routes() if route[0] != exclude), None)
 
 
 def _get_ordered_providers(
@@ -483,19 +607,18 @@ def _get_ordered_providers(
 
     # Add remaining providers based on priority order (if fallback enabled or no preferred provider)
     if fallback_enabled or not ordered:
-        for priority in sorted(PROVIDER_PRIORITY.keys()):
-            provider_name = PROVIDER_PRIORITY[priority]
-            if provider_name in remaining_providers:
-                ordered.append(
-                    LLMProvider(name=provider_name, instance=remaining_providers[provider_name])
-                )
+        ordered.extend(
+            LLMProvider(name=name, instance=remaining_providers[name])
+            for name in _chat_priority()
+            if name in remaining_providers
+        )
 
-    # Registered as alternatives so a lane can select them, never as the primary.
+    # Registered as alternatives so comms can select them by name, never as the primary.
     if fallback_enabled and ordered:
         ordered.extend(
             LLMProvider(name=name, instance=instance)
             for name, instance in remaining_providers.items()
-            if name in LANE_ONLY_PROVIDERS
+            if _is_hosted_comms_only(name)
         )
 
     return ordered
@@ -527,11 +650,16 @@ def register_llm_providers() -> None:
     init_gemini_llm()
     init_openrouter_llm()
     init_openai_llm()
-    # The custom endpoint is a dev/testing-only lane — never registered in
-    # production, so DEV_LLM_* vars present in a prod environment can't route
-    # real traffic.
-    if settings.ENV == "development":
+    init_ollama_llm()
+    # The custom endpoint never registers under SaaS production, so a stray
+    # DEV_LLM_* env var there still can't route real traffic. Dev and self-host
+    # register it; availability still follows the resolver.
+    if not settings.deployment.hosted_models:
         init_custom_llm()
+    # Pull the credential store's current state into the runtime snapshot so
+    # the sync paths above serve store-configured providers without awaiting.
+    # No-op outside a running loop (scripts/tests stay on env fallback).
+    _schedule_runtime_config_refresh()
 
 
 class _ProviderOrderKwargs(TypedDict, total=False):
@@ -562,7 +690,15 @@ def _provider_order_kwargs() -> _ProviderOrderKwargs:
 
 
 @cache
-def _build_default_llm(temperature: float) -> ChatOpenRouter:
+def _build_default_llm(
+    temperature: float, api_key: str, base_url: str | None = None
+) -> ChatOpenRouter:
+    kwargs: dict[str, Any] = {}
+    # Only forward a truthy base_url: a None kwarg would override the field's
+    # OPENROUTER_API_BASE env default_factory (the shared env fallback leaves it
+    # unset unless OPENROUTER_BASE_URL was explicitly configured).
+    if base_url:
+        kwargs["base_url"] = base_url
     llm = without_sdk_retry(
         ChatOpenRouter(
             model=DEFAULT_MODEL_NAME,
@@ -572,8 +708,9 @@ def _build_default_llm(temperature: float) -> ChatOpenRouter:
             streaming=True,
             stream_usage=True,
             max_tokens=OPENROUTER_MAX_OUTPUT_TOKENS,
-            api_key=_secret_or_none(settings.OPENROUTER_API_KEY),
+            api_key=SecretStr(api_key),
             **_app_attribution(),
+            **kwargs,
             **_provider_order_kwargs(),
         )
     )
@@ -582,6 +719,34 @@ def _build_default_llm(temperature: float) -> ChatOpenRouter:
     # the window and raises at construction without a profile here.
     llm.profile = {"max_input_tokens": DEFAULT_MAX_TOKENS}
     return llm
+
+
+def _one_shot_model(provider: LLMProviderName, use: ModelUse) -> str | None:
+    """Return the model provider runs use on, or None when it cannot serve it.
+
+    A text use the catalog leaves open runs on the provider's chat model;
+    vision never does, since a chat pick may be blind.
+    """
+    catalog = LLM_MODEL_PROFILES[provider].for_use(use)
+    if catalog is not None or use is ModelUse.VISION:
+        return catalog
+    return chat_model(provider)
+
+
+def one_shot_route(use: ModelUse) -> tuple[LLMProviderName, str] | None:
+    """Return the provider and model a one-shot use runs on, or None when nothing configured can serve it.
+
+    Production runs the hosted table and nothing else. Elsewhere the hosted
+    provider still comes first, then every configured provider in priority order.
+    """
+    hosted = HOSTED_ONE_SHOT_PROVIDERS[use]
+    candidates = (
+        (hosted,) if settings.deployment.hosted_models else (hosted, *LLM_PROVIDER_PRIORITY)
+    )
+    for provider in candidates:
+        if provider_configured(provider) and (model := _one_shot_model(provider, use)):
+            return provider, model
+    return None
 
 
 def resolve_model(
@@ -593,33 +758,66 @@ def resolve_model(
     """Return the chat model a one-shot call for use runs on: the one place a one-shot's model is chosen.
 
     Sim mode wins, then the forced dev lane (every use on the custom endpoint),
-    then the use's production model. reasoning None keeps the model's default.
-    Raises LLMNotConfiguredError when the chosen provider has no key.
+    then one_shot_route. reasoning None keeps the model's default. Raises
+    LLMNotConfiguredError naming the use when no configured provider can serve it.
     """
     if settings.GAIA_SIM_MODE:
         return _sim_llm(temperature)
     if custom_lane_forced():
         return build_custom_chat_model(
-            temperature=temperature, max_tokens=HELPER_MAX_OUTPUT_TOKENS, reasoning=reasoning
+            temperature=temperature,
+            max_tokens=HELPER_MAX_OUTPUT_TOKENS,
+            endpoint=custom_endpoint(),
+            reasoning=reasoning,
         )
-    match use:
-        case ModelUse.HELPER:
-            return _openrouter_one_shot(temperature, reasoning, model_name=AUX_MODEL_NAME)
-        case ModelUse.JUDGE:
+    route = one_shot_route(use)
+    if route is None:
+        raise LLMNotConfiguredError(
+            f"No configured AI provider can serve {use.value} calls. Configure "
+            f"{HOSTED_ONE_SHOT_PROVIDERS[use].value} (or, off production, any provider that "
+            "serves it) in Settings → AI Providers or via its API-key env var."
+        )
+    provider, model = route
+    match provider:
+        case LLMProviderName.OPENROUTER:
             return _openrouter_one_shot(
                 temperature,
                 reasoning,
-                model_name=HIL_JUDGE_MODEL_NAME,
-                fallback_model_names=HIL_JUDGE_FALLBACK_MODEL_NAMES,
+                model_name=model,
+                fallback_model_names=HIL_JUDGE_FALLBACK_MODEL_NAMES
+                if use is ModelUse.JUDGE
+                else (),
             )
-        case ModelUse.MEMORY:
-            if not settings.GOOGLE_API_KEY:
-                raise LLMNotConfiguredError("Memory model not configured. Set GOOGLE_API_KEY.")
-            return _build_memory_llm(temperature)
-        case ModelUse.VISION:
-            if not settings.GOOGLE_API_KEY:
-                raise LLMNotConfiguredError("Vision model not configured. Set GOOGLE_API_KEY.")
-            return _build_vision_llm(temperature)
+        case LLMProviderName.GEMINI:
+            config: ProviderConfig = _require_provider_config(provider)
+            return _build_gemini_one_shot(model, temperature, api_key=str(config.api_key))
+        case LLMProviderName.OPENAI:
+            config = _require_provider_config(provider)
+            effort = OPENAI_REASONING_EFFORT[reasoning or ReasoningLevel.OFF]
+            return _build_openai_wire_one_shot(
+                model,
+                # OpenAI reasoning models reject a temperature once reasoning is on.
+                temperature if effort == OPENAI_REASONING_EFFORT[ReasoningLevel.OFF] else None,
+                api_key=str(config.api_key),
+                base_url=None,
+                reasoning_effort=effort,
+            )
+        case LLMProviderName.OLLAMA:
+            config = _require_provider_config(provider)
+            return _build_openai_wire_one_shot(
+                model,
+                temperature,
+                api_key=OLLAMA_PLACEHOLDER_API_KEY,
+                base_url=_ollama_openai_url(config),
+                reasoning_effort=None,
+            )
+        case LLMProviderName.CUSTOM:
+            return build_custom_chat_model(
+                temperature=temperature,
+                max_tokens=HELPER_MAX_OUTPUT_TOKENS,
+                endpoint=custom_endpoint(),
+                reasoning=reasoning,
+            )
 
 
 def _openrouter_one_shot(
@@ -636,9 +834,8 @@ def _openrouter_one_shot(
     fallback_model_names ride OpenRouter's models array, tried in order on
     transport errors only, with the provider order the client already carries.
     """
-    if not settings.OPENROUTER_API_KEY:
-        raise LLMNotConfiguredError("Default LLM not configured. Set OPENROUTER_API_KEY.")
-    base = _build_default_llm(temperature)
+    config: ProviderConfig = _require_provider_config(LLMProviderName.OPENROUTER)
+    base = _build_default_llm(temperature, api_key=str(config.api_key), base_url=config.base_url)
     update: dict[str, object] = {"max_tokens": HELPER_MAX_OUTPUT_TOKENS, "model_name": model_name}
     if reasoning is not None:
         update["reasoning"] = {"effort": OPENROUTER_REASONING_EFFORT[reasoning]}
@@ -651,33 +848,65 @@ def _openrouter_one_shot(
 
 
 @cache
-def _build_vision_llm(temperature: float) -> BaseChatModel:
-    # Not the default model: that one is picked for cheap text and may be blind,
-    # and describe_image degrades to None when vision fails.
-    llm = ChatGoogleGenerativeAI(model=VISION_MODEL_NAME, temperature=temperature)
+def _build_gemini_one_shot(model: str, temperature: float, api_key: str) -> BaseChatModel:
+    llm = ChatGoogleGenerativeAI(model=model, temperature=temperature, google_api_key=api_key)
     # Same reason as _build_default_llm: fractional-window middleware reads this.
+    llm.profile = {"max_input_tokens": DEFAULT_MAX_TOKENS}
+    return llm
+
+
+@cache
+def _build_openai_wire_one_shot(
+    model: str,
+    temperature: float | None,
+    *,
+    api_key: str,
+    base_url: str | None,
+    reasoning_effort: str | None,
+) -> BaseChatModel:
+    """Build a one-shot client for OpenAI itself (base_url None) or Ollama's OpenAI-wire API."""
+    llm = ChatOpenAI(
+        model=model,
+        temperature=temperature,
+        max_completion_tokens=HELPER_MAX_OUTPUT_TOKENS,
+        # The OpenAI SDK honors max_retries=0, so retries stay with with_llm_retry.
+        max_retries=0,
+        api_key=SecretStr(api_key),
+        base_url=base_url,
+        reasoning_effort=reasoning_effort,
+    )
     llm.profile = {"max_input_tokens": DEFAULT_MAX_TOKENS}
     return llm
 
 
 def memory_lane_available() -> bool:
-    """Whether the direct-Gemini memory lane can serve a call — what resolve_model(MEMORY) raises on."""
-    return bool(settings.GAIA_SIM_MODE or settings.GOOGLE_API_KEY)
+    """Whether resolve_model(MEMORY) can serve a call instead of raising."""
+    return settings.GAIA_SIM_MODE or one_shot_route(ModelUse.MEMORY) is not None
 
 
 def aux_lane_available() -> bool:
-    """Whether the aux lane can serve a call — the mirror of :func:memory_lane_available."""
-    return bool(settings.GAIA_SIM_MODE or custom_lane_forced() or settings.OPENROUTER_API_KEY)
+    """Whether resolve_model(HELPER) can serve a call: the mirror of memory_lane_available."""
+    if settings.GAIA_SIM_MODE or custom_lane_forced():
+        return True
+    return one_shot_route(ModelUse.HELPER) is not None
 
 
-@cache
-def _build_memory_llm(temperature: float) -> BaseChatModel:
-    # Direct Gemini: extraction overlaps the graph's next turn, and concurrent calls on
-    # one provider's cache wipe each other's chains (comms ~0 on the aux lane, ~99.5% here).
-    llm = ChatGoogleGenerativeAI(model=MEMORY_MODEL_NAME, temperature=temperature)
-    # Same reason as _build_default_llm: fractional-window middleware reads this.
-    llm.profile = {"max_input_tokens": DEFAULT_MAX_TOKENS}
-    return llm
+def reset_aux_llm_caches() -> None:
+    """Clear every cached auxiliary builder and the runtime-config snapshot.
+
+    The snapshot drops with the model caches so a rebuilt client cannot pin the
+    old store key indefinitely. Called by the credential service invalidation
+    fan-out after a Settings or setup-wizard save.
+    """
+    _sim_llm.cache_clear()
+    _build_default_llm.cache_clear()
+    _build_gemini_one_shot.cache_clear()
+    _build_openai_wire_one_shot.cache_clear()
+    resolved_configs.clear()
+    _schedule_runtime_config_refresh()
+
+
+on_local_invalidation(reset_aux_llm_caches)
 
 
 def _stamp_fallback(result: _ResultT, model: str) -> _ResultT:
@@ -1413,14 +1642,15 @@ def _parse_structured_reply(message: BaseMessage, schema: type[_StructuredT]) ->
 
 
 def _structured_tool_choice(llm: BaseChatModel) -> str:
-    """Return how a structured one-shot offers its one tool to llm: forced on the Responses API only.
+    """Return how a structured one-shot offers its one tool to llm: forced on OpenAI-style APIs only.
 
     Forced tools get grammar-decoded on Baidu/Together, cutting at an unescaped quote:
     27 of 43 closing answers cut forced, 0 of 28 offered (deepseek-v4-flash replay).
-    Offered, gpt-6-luna on the Responses API answered in prose instead (3 of 3 on a
-    memory-style prompt); forced, it called the tool 12 of 12.
+    Offered, OpenAI models answer in prose instead: gpt-6-luna on the Responses API
+    3 of 3, gpt-5.6-luna on OpenAI's chat completions on every follow-up.
     """
-    return "required" if isinstance(llm, ChatOpenAI) and llm.use_responses_api else "auto"
+    forced = isinstance(llm, ChatOpenAI) and (llm.use_responses_api or _is_openai_wire(llm))
+    return "required" if forced else "auto"
 
 
 def _structured_tool_runnable(llm: BaseChatModel, schema: type[_StructuredT]) -> Runnable:

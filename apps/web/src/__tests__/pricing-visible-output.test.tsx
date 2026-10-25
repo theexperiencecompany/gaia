@@ -23,6 +23,10 @@ import type {
   UserSubscriptionStatus,
 } from "@/features/pricing/api/pricingApi";
 
+vi.mock("@/features/settings/hooks/useSetupStatus", () => ({
+  useDeployment: () => ({ bills: true }),
+}));
+
 vi.mock("@/lib/analytics", () => ({
   track: vi.fn(),
 }));

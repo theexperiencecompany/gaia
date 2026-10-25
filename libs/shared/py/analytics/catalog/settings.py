@@ -12,6 +12,9 @@ __all__ = [
     "FeatureFlagEvaluated",
     "FeatureToggled",
     "FlagFallbackReason",
+    "InstructionsConflict",
+    "InstructionsScopeKind",
+    "InstructionsUpdated",
     "ProfileLinkCopied",
     "ProfileUpdated",
     "SettingsChatChannelPriorityUpdated",
@@ -19,6 +22,9 @@ __all__ = [
     "SettingsNotificationsToggled",
     "SettingsPreferencesChanged",
 ]
+
+#: Which kind of scope a set of standing instructions covers; never the integration's own id.
+InstructionsScopeKind = Literal["global", "integration"]
 
 FlagFallbackReason = Literal[
     "posthog_unconfigured", "evaluation_error", "flag_unevaluated", "killed", "user_choice"
@@ -56,7 +62,6 @@ class SettingsPreferencesChanged(ServerEvent):
         "onboarding_preferences", "voice", "voice_star", "hil_approvals", "tool_approval"
     ]
     fields: list[Identifier] | None = None
-    has_custom_instructions: bool | None = None
     voice_id: Identifier | None = None
     is_starred: bool | None = None
     mode: Identifier | None = None
@@ -132,3 +137,25 @@ class FeatureFlagEvaluated(ServerEvent):
     flag: Identifier
     enabled: bool
     fallback_reason: FlagFallbackReason
+
+
+class InstructionsUpdated(ServerEvent):
+    """A set of standing instructions (global or one integration's) was saved or cleared."""
+
+    event: ClassVar[str] = "instructions:updated"
+    previous_names: ClassVar[tuple[str, ...]] = ("integration:instructions_updated",)
+    budget_per_user_day: ClassVar[int] = 30
+
+    scope_kind: InstructionsScopeKind
+    # Who wrote it: "user" in Settings, or "agent" for GAIA's instructions tools.
+    updated_by: Identifier
+    cleared: bool
+
+
+class InstructionsConflict(ServerEvent):
+    """A standing-instructions save was refused because another write landed first."""
+
+    event: ClassVar[str] = "instructions:conflict"
+    budget_per_user_day: ClassVar[int] = 20
+
+    scope_kind: InstructionsScopeKind

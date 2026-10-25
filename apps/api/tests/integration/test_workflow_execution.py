@@ -920,7 +920,7 @@ class TestGenerationServiceRetries:
                 return_value="manual trigger",
             ),
             patch(
-                "app.services.workflow.generation_service.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 [],
             ),
         ):

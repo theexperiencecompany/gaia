@@ -136,10 +136,10 @@ def materialize_skills(user_root: Path, connected_ids: set[str]) -> int:
 
 
 def materialize_instructions(user_root: Path, instructions: dict[str, str]) -> int:
-    """Write per-user custom instructions under integrations/<id>/agent/.
+    """Write per-user integration instructions under integrations/<id>/agent/.
 
     Each entry lands at integrations/<id>/agent/instructions.md as a
-    read-only projection of the integration_instructions MongoDB collection.
+    read-only projection of the user_instructions MongoDB collection.
     Stale files (cleared instructions) are removed so the projection never
     outlives its source.
     """

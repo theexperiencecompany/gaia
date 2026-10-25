@@ -7,12 +7,12 @@ export const OPEN_SOURCE_FAQS = [
   {
     question: "Is GAIA really free to self-host?",
     answer:
-      "Yes, for personal and other noncommercial use. You can clone the repository, deploy it on your own infrastructure and use it indefinitely with no per-seat charge and no expiring trial. Your costs are the server you run it on and the usage on your own LLM provider account.",
+      "Yes, for personal and other noncommercial use. You can deploy it on your own infrastructure with one command and use it indefinitely with no per-seat charge and no expiring trial. Your costs are the server you run it on and the usage on your own LLM provider account.",
   },
   {
     question: "Can I host an AI assistant on my own server?",
     answer:
-      "Yes. Install the GAIA CLI, run `gaia init`, choose Self-Host (Docker) and then `gaia start`. The CLI starts the web app, the API and every database in Docker on your machine or VPS. Open http://localhost:3000 (or your server's address) and sign in.",
+      "Yes. Run `curl -fsSL https://heygaia.io/install.sh | sh` to install the GAIA CLI, then `gaia up`. It installs Docker if it is missing and starts the web app, the API and every database in Docker on your machine or VPS. Open the address it prints, create the admin account and paste your AI provider key.",
   },
   {
     question:
@@ -39,21 +39,21 @@ export const OPEN_SOURCE_FAQS = [
   {
     question: "What are the system requirements to self-host GAIA?",
     answer:
-      "Docker Engine 20.10+ with Compose v2, Node.js 20+ for the CLI, at least 2 CPU cores, 4GB of RAM (8GB recommended) and 10GB of disk. Linux, macOS and Windows all work through Docker. You also need an API key for OpenAI or Google Gemini.",
+      "A Linux server, macOS or Windows machine with at least 2 CPU cores, 8 GB of RAM and 10 GB of disk, plus Docker with Compose v2 (the installer sets Docker up for you on Ubuntu and Debian). You also need an API key for your LLM provider.",
   },
 ];
 
 export const SELF_HOST_STEPS = [
   {
     name: "Install the GAIA CLI",
-    text: "Run `npm install -g @heygaia/cli` (or the pnpm or bun equivalent). The CLI needs Node.js 20+ and Docker with Compose v2.",
+    text: "Run `curl -fsSL https://heygaia.io/install.sh | sh`. It sets up Node.js if needed and installs the `gaia` command.",
   },
   {
-    name: "Initialize self-host mode",
-    text: "Run `gaia init` and choose Self-Host (Docker) in the setup wizard. It scaffolds your environment and asks for your LLM API key and the integrations you want.",
+    name: "Run gaia up",
+    text: "Run `gaia up`. It installs Docker if it is missing, downloads GAIA's setup files and images, writes the configuration, and starts every service: the API, worker, databases, and message broker. No Git needed.",
   },
   {
-    name: "Start GAIA",
-    text: "Run `gaia start` to bring up the web app, API, worker, PostgreSQL, MongoDB, Redis, ChromaDB and RabbitMQ in Docker. Check them with `gaia status` and `gaia logs`, then open http://localhost:3000.",
+    name: "Finish setup in the browser",
+    text: "Open the address `gaia up` prints, create the admin account, and paste your AI provider key. GAIA is running on your server.",
   },
 ];

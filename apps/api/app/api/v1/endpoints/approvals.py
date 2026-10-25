@@ -5,9 +5,6 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
-from app.constants.log_tags import LogTag
-from app.db.repositories.approval_ledger import approval_ledger_repository
-from app.models.hil_models import LedgerState
 from app.models.user_models import AuthenticatedUser
 from app.schemas.hil_schemas import (
     ApprovalDecisionRequest,
@@ -20,7 +17,7 @@ from app.schemas.hil_schemas import (
 )
 from app.services.analytics_service import capture
 from app.services.feature_flags import is_hil_ledger_enabled
-from app.services.hil.ledger_decide import decide_ledger, decide_ledger_batch
+from app.services.hil.ledger_decide import decide_ledger_batch, decide_ledger_card
 from app.services.hil.preferences import (
     get_hil_preferences,
     set_tool_override,
@@ -58,29 +55,7 @@ async def post_approval_decision(
         # Executor-free path: CAS commit on the ledger, instant-eligible
         # execution, agent wake — no paused run to resume. Errors are the same
         # AppError shapes, so status codes never diverge between paths.
-        outcome = await decide_ledger(
-            approval_id,
-            user_id=user_id,
-            kind=payload.decision,
-            feedback=payload.feedback,
-            v=payload.v,
-            via="card",
-        )
-        if (
-            payload.scope == "always_tool"
-            and outcome.committed
-            and outcome.state is LedgerState.APPROVED
-        ):
-            row = await approval_ledger_repository.get_by_approval_id(approval_id)
-            if row is not None:
-                await set_tool_override(user_id, row.tool_name, False)
-            else:
-                # The commit won but the row vanished before the override read:
-                # success would lie about "never ask again", so say so loudly.
-                log.error(
-                    f"{LogTag.HIL} Ledger row gone after commit; tool override skipped",
-                    approval_id=approval_id,
-                )
+        outcome = await decide_ledger_card(approval_id, user_id=user_id, tap=payload)
         log.set(hil={"resolved": outcome.committed})
         # Honest, not optimistic: a stale-v tap committed nothing, and the
         # client must refresh the row instead of believing its tap landed.

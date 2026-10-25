@@ -4,7 +4,8 @@ import { Button } from "@heroui/button";
 import { Input, Textarea } from "@heroui/input";
 import { Select, SelectItem } from "@heroui/select";
 import type React from "react";
-
+import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
+import { SelfHostedSupportNotice } from "@/features/support/components/SelfHostedSupportNotice";
 import {
   SUPPORT_REQUEST_TYPE_LABELS,
   SUPPORT_REQUEST_TYPES,
@@ -17,7 +18,15 @@ type Props = React.ComponentProps<"form"> & {
   initialDescription?: string;
 };
 
-export default function ContactForm({
+export default function ContactForm(props: Props) {
+  return useDeployment().gaia_support ? (
+    <ContactRequestForm {...props} />
+  ) : (
+    <SelfHostedSupportNotice />
+  );
+}
+
+function ContactRequestForm({
   initialType,
   initialTitle,
   initialDescription,

@@ -33,7 +33,7 @@ from app.constants.hil import (
     HIL_DECIDED_UNRESUMED_GRACE_SECONDS,
 )
 from app.constants.log_tags import LogTag
-from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
+from app.models.hil_models import ApprovalScope, HILApprovalRecord, HILApprovalStatus
 from app.schemas.hil_schemas import BatchDecisionOutcome
 from app.services.hil.approvals_store import (
     clear_resume_item,
@@ -45,6 +45,7 @@ from app.services.hil.approvals_store import (
     mark_resumed,
 )
 from app.services.hil.bridge import publish_decision
+from app.services.hil.policy import asks_every_time
 from app.services.hil.resume_slot import claim_resume_dispatch, release_resume_dispatch
 from app.services.latency_metrics import observe_hil_dispatch_lag, observe_hil_user_wait
 from app.utils.errors import AppError
@@ -97,6 +98,16 @@ class ApprovalRequestForbiddenError(AppError):
         )
 
 
+class ToolAlwaysAsksError(AppError):
+    """Raised (422) when "always allow" is asked of a call that asks every time."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            message="This action always asks for approval and can't be set to always allow",
+            status_code=HTTPStatus.UNPROCESSABLE_ENTITY,
+        )
+
+
 class ApprovalNotResumableError(AppError):
     """Raised (503) when the paused run's re-dispatch context is missing.
 
@@ -118,7 +129,7 @@ async def resolve_approval(
     user_id: str,
     kind: DecisionKind,
     feedback: str | None = None,
-    scope: str = "once",
+    scope: ApprovalScope = "once",
 ) -> HILApprovalRecord:
     """Record the decision, then resume the run waiting on it."""
     record = await get_approval(approval_id)
@@ -267,11 +278,13 @@ async def _resolve_record(
     user_id: str,
     kind: DecisionKind,
     feedback: str | None,
-    scope: str = "once",
+    scope: ApprovalScope = "once",
 ) -> HILApprovalRecord:
     """Authorize, transition exactly once, and resume — from an already-loaded record."""
     if record.user_id != user_id:
         raise ApprovalRequestForbiddenError()
+    if scope == "always_tool" and await asks_every_time(record.tool_name, record.args):
+        raise ToolAlwaysAsksError()
     # An approval with feedback is conditional; the stored call carries none.
     # Same conversion as ledger and chat paths: record as denied with the note.
     if kind == "approve" and feedback is not None and feedback.strip() != "":

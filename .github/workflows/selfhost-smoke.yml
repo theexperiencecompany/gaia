@@ -1,0 +1,287 @@
+name: Self-host smoke
+
+# Two lanes. `selfhost-smoke` proves ENV=selfhost hasn't regressed without
+# booting anything: the selfhost profile boots and the setup-API contract suite,
+# which drives the router over fakes, still passes (under 2 minutes).
+# `selfhost-e2e` is the real thing: `gaia up --code-sandbox` from this
+# checkout's CLI build on a GitHub-hosted runner, the scripted LLM stub as the
+# `custom` provider, and a Playwright journey through setup, chat, tools,
+# uploads, invites, roles, readiness and the code sandbox
+# (scripts/ci/selfhost.sh + apps/web/e2e/selfhost). It runs on PRs that touch
+# what a self-hoster runs (changes.sh selfhost-inputs) and on dispatch.
+# No `branches:` filter on pull_request: it matches the PR's base, so it would
+# exempt every stacked PR (see CLAUDE.md, Skipped / Non-Gated Lanes).
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Pull gaia + gaia-web at this tag (e.g. a master commit sha) instead of building them"
+        required: false
+        default: ""
+
+concurrency:
+  group: selfhost-smoke-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # --- Change detection (mirrors ci.yml#detect) ---
+  # Unified with the two main gates: uses nx-set-shas + nx show projects
+  # --affected with the same origin/master base so all three workflows agree
+  # on what "affected" means. Push/dispatch → __FULL__ semantics.
+  changes:
+    name: Detect changed languages
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+    outputs:
+      has_python: ${{ steps.detect.outputs.has_python }}
+      has_typescript: ${{ steps.detect.outputs.has_typescript }}
+      selfhost_e2e: ${{ github.event_name == 'workflow_dispatch' || steps.selfhost.outputs.build == 'true' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: nrwl/nx-set-shas@afb73a62d26e41464e9254689e1fd6122ee683c1 # v5.0.1
+        with:
+          main-branch-name: master
+
+      - uses: ./.github/actions/setup-node-pnpm
+
+      - name: Detect affected projects
+        id: detect
+        run: |
+          set -euo pipefail
+          normalize() { tr -d '[]"' | tr -s ' \n' ',' | sed 's/^,//; s/,$//'; }
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            PY=$(pnpm exec nx show projects --projects 'tag:scope:python' | normalize)
+            TS=$(pnpm exec nx show projects --projects 'tag:scope:typescript' | normalize)
+          else
+            PY=$(pnpm exec nx show projects --affected --projects 'tag:scope:python' | normalize)
+            TS=$(pnpm exec nx show projects --affected --projects 'tag:scope:typescript' | normalize)
+          fi
+
+          echo "python_projects=$PY" >> "$GITHUB_OUTPUT"
+          echo "typescript_projects=$TS" >> "$GITHUB_OUTPUT"
+          echo "has_python=$([[ -n "$PY" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "has_typescript=$([[ -n "$TS" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "python: ${PY:-none} | typescript: ${TS:-none}"
+
+      # The PR's real base (a stacked PR's payload names the stack trunk).
+      - name: Resolve the PR base
+        id: base
+        if: github.event_name == 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: bash scripts/ci/changes.sh base
+
+      - name: Does this PR touch self-host inputs?
+        id: selfhost
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_BRANCH: ${{ steps.base.outputs.base_ref }}
+        run: bash scripts/ci/changes.sh selfhost-inputs
+
+  # --- Self-host smoke: ENV=selfhost boots, setup contract holds -------------
+  # Gated on either language so infra/compose/self-host changes are covered
+  # even when they touch no single language project. Docs-only PRs skip (fast).
+  # No Docker, no live services — the setup-API tests drive the router over
+  # in-memory fakes and already pin ENV=selfhost via conftest; the extra
+  # `settings` assertion proves the profile itself boots without a full env.
+  selfhost-smoke:
+    name: Self-host smoke (ENV=selfhost)
+    needs: [changes]
+    if: needs.changes.outputs.has_python == 'true' || needs.changes.outputs.has_typescript == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-uv
+
+      - name: Sync Python deps
+        run: uv sync --frozen --package gaia --group backend --group dev
+
+      - name: ENV=selfhost boots without crash
+        id: boot
+        working-directory: apps/api
+        shell: python3 ../../scripts/ci/verdict.py check --path-prefix apps/api/ -- bash -e {0}
+        env:
+          ENV: selfhost
+          AUTH_MODE: local
+          # Minimal infra dummies so SelfHostSettings bootstraps (see
+          # _SELFHOST_INFRA_FIELDS in test_prod_isolation.py). Real services
+          # aren't needed — the setup suite drives the router over fakes.
+          MONGO_DB: mongodb://localhost/gaia
+          REDIS_URL: redis://localhost:6379/0
+          CHROMADB_HOST: localhost
+          CHROMADB_PORT: "8000"
+          POSTGRES_URL: postgresql://gaia:gaia@localhost/gaia
+          RABBITMQ_URL: amqp://guest:guest@localhost/
+          AGENT_SECRET: ci-selfhost-smoke
+          BOT_SESSION_TOKEN_SECRET: ci-selfhost-smoke
+          EMAIL_UNSUBSCRIBE_SECRET: ci-selfhost-smoke
+        run: |
+          uv run --frozen --no-sync python -c "
+          from app.config.settings import get_settings
+          get_settings.cache_clear()
+          s = get_settings()
+          assert s.ENV == 'selfhost', s.ENV
+          assert s.AUTH_MODE == 'local', s.AUTH_MODE
+          assert s.deployment.bills is False, 'billing must be off under selfhost'
+          print(f'boot OK: ENV={s.ENV} AUTH_MODE={s.AUTH_MODE} bills={s.deployment.bills}')
+          "
+
+      - name: Setup-API contract under ENV=selfhost
+        id: setup-contract
+        working-directory: apps/api
+        shell: python3 ../../scripts/ci/verdict.py check --path-prefix apps/api/ -- bash -e {0}
+        env:
+          ENV: selfhost
+          AUTH_MODE: local
+          MONGO_DB: mongodb://localhost/gaia
+          REDIS_URL: redis://localhost:6379/0
+          CHROMADB_HOST: localhost
+          CHROMADB_PORT: "8000"
+          POSTGRES_URL: postgresql://gaia:gaia@localhost/gaia
+          RABBITMQ_URL: amqp://guest:guest@localhost/
+          AGENT_SECRET: ci-selfhost-smoke
+          BOT_SESSION_TOKEN_SECRET: ci-selfhost-smoke
+          EMAIL_UNSUBSCRIBE_SECRET: ci-selfhost-smoke
+        run: |
+          echo "::group::pytest setup contract"
+          uv run --frozen --no-sync pytest tests/integration/endpoints/test_setup_api.py -q --tb=short --override-ini=addopts="--strict-markers --timeout=30"
+          echo "::endgroup::"
+          echo "### Self-host smoke — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "ENV=selfhost boot + setup contract: OK"
+
+      - name: Self-host isolation + infra contract (prod_isolation -k selfhost)
+        id: prod-isolation
+        # Lightweight second probe: SelfHostSettings requires only infra secrets,
+        # local auth doesn't need WorkOS, etc. Keeps the lane honest when someone
+        # sneaks a required SaaS key back into the selfhost profile.
+        working-directory: apps/api
+        shell: python3 ../../scripts/ci/verdict.py check --path-prefix apps/api/ -- bash -e {0}
+        env:
+          ENV: selfhost
+          AUTH_MODE: local
+          MONGO_DB: mongodb://localhost/gaia
+          REDIS_URL: redis://localhost:6379/0
+          CHROMADB_HOST: localhost
+          CHROMADB_PORT: "8000"
+          POSTGRES_URL: postgresql://gaia:gaia@localhost/gaia
+          RABBITMQ_URL: amqp://guest:guest@localhost/
+          AGENT_SECRET: ci-selfhost-smoke
+          BOT_SESSION_TOKEN_SECRET: ci-selfhost-smoke
+          EMAIL_UNSUBSCRIBE_SECRET: ci-selfhost-smoke
+        run: |
+          echo "::group::pytest prod_isolation (selfhost)"
+          uv run --frozen --no-sync pytest tests/unit/config/test_prod_isolation.py -q -k selfhost --tb=short --override-ini=addopts="--strict-markers --timeout=30"
+          echo "::endgroup::"
+          echo "prod_isolation (selfhost): OK"
+
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          status: ${{ job.status }}
+          name: selfhost-smoke
+
+  # --- Self-host end to end: gaia up + Playwright on a GitHub-hosted runner ---
+  # PRs build both images from the checkout (`gaia up --build`); a dispatch can
+  # pull a published tag instead. The stub runs on the runner's private address.
+  selfhost-e2e:
+    name: Self-host end to end (gaia up + Playwright)
+    needs: [changes]
+    if: needs.changes.outputs.selfhost_e2e == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      E2E_OUT: ${{ github.workspace }}/selfhost-e2e
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-node-pnpm
+
+      - uses: ./.github/actions/setup-uv
+
+      - name: Prepare the runner and record this checkout as the install
+        id: prepare
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
+        run: bash scripts/ci/selfhost.sh prepare
+
+      - name: Start the scripted LLM stub
+        id: stub
+        env:
+          OUT_DIR: ${{ env.E2E_OUT }}
+        run: bash scripts/ci/selfhost.sh stub
+
+      - name: gaia up --yes --code-sandbox
+        id: up
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: bash scripts/ci/selfhost.sh up
+
+      - name: Install Chromium for Playwright
+        run: pnpm --filter ./apps/web exec playwright install --with-deps chromium
+
+      - name: Drive the self-host journey
+        id: journey
+        working-directory: apps/web
+        shell: python3 ../../scripts/ci/verdict.py check --path-prefix apps/web/ -- bash -e {0}
+        env:
+          CI: "true"
+          GAIA_REPO_ROOT: ${{ github.workspace }}
+          LLM_STUB_BASE_URL: ${{ steps.stub.outputs.base_url }}
+        run: pnpm exec playwright test -c playwright.selfhost.config.ts
+      # Before the log collection below: the failing tests are readable now.
+      - name: Upload the verdict so far (a step above failed)
+        if: always() && env.GAIA_VERDICT_PENDING == '1'
+        uses: ./.github/actions/upload-verdict
+        with:
+          status: ${{ job.status }}
+          name: selfhost-e2e
+          partial: "true"
+
+      - name: Collect the stack's logs
+        if: always()
+        env:
+          OUT_DIR: ${{ env.E2E_OUT }}/logs
+        run: bash scripts/ci/selfhost.sh logs
+
+      - name: Upload screenshots, traces and logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: selfhost-e2e
+          path: |
+            apps/web/test-results/selfhost
+            apps/web/playwright-report/selfhost
+            ${{ env.E2E_OUT }}
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          status: ${{ job.status }}
+          name: selfhost-e2e

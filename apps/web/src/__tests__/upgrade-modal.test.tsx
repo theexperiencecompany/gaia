@@ -13,6 +13,10 @@ let checkoutPhase = "idle";
 let hasEverSubscribed: boolean | undefined;
 
 let pathname = "/c";
+vi.mock("@/features/settings/hooks/useSetupStatus", () => ({
+  useDeployment: () => ({ bills: true }),
+}));
+
 vi.mock("@/i18n/navigation", () => ({
   usePathname: () => pathname,
 }));

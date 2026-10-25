@@ -4,236 +4,57 @@ description: "Full reference for GAIA bot commands on Discord, Slack, Telegram, 
 icon: "terminal"
 ---
 
-All available commands across GAIA bot platforms: Discord, Slack, Telegram, and WhatsApp.
+Every command GAIA understands on Discord, Slack, Telegram, WhatsApp, and iMessage.
 
-## General commands
+## Chat and account
 
-### Chat with GAIA
+| Command | What it does |
+| ------- | ------------ |
+| `/gaia <message>` | Send a message to GAIA |
+| `/auth` | Get a link to connect your account |
+| `/unlink` | Disconnect your account. Re-link any time with `/auth` |
+| `/status` | Check the bot and API are online and your account is linked |
+| `/settings` | Show your integrations and selected model |
+| `/help` | List all commands |
 
-```
-/gaia <message>
-```
+## Conversations
 
-Send a message to GAIA and get a response.
+| Command | What it does |
+| ------- | ------------ |
+| `/new` | Start a fresh conversation. The old one stays in the web app |
+| `/stop` | Stop the current response and start a new conversation |
+| `/conversations [page]` | List recent conversations with web app links |
 
-**Example:**
+## Todos
 
-```
-/gaia What's on my schedule today?
-```
-
-### Link account
-
-```
-/auth
-```
-
-Generate a link to connect your messaging account to GAIA.
-
-**Example:**
-
-```
-/auth
-```
-
-You'll receive a URL to complete authentication in your browser.
-
-### Unlink account
+| Command | What it does |
+| ------- | ------------ |
+| `/todo list` | Show active todos |
+| `/todo add <title> [priority] [description]` | Create a todo. Priority is `low`, `medium`, or `high` |
+| `/todo complete <id>` | Mark a todo done |
+| `/todo delete <id>` | Delete a todo |
 
 ```
-/unlink
-```
-
-Disconnect your messaging account from GAIA. You can re-link at any time with `/auth`.
-
-### Check status
-
-```
-/status
-```
-
-Check if the bot and API are online, and whether your account is linked.
-
-### View settings
-
-```
-/settings
-```
-
-View your GAIA account settings, connected integrations, and selected model.
-
-### Help
-
-```
-/help
-```
-
-Show all available commands and getting-started information.
-
----
-
-## Conversation commands
-
-### Start a new conversation
-
-```
-/new
-```
-
-Reset your session and start a fresh conversation. Your previous conversation is preserved in the GAIA web app.
-
-### Stop the current response
-
-```
-/stop
-```
-
-Stop the current response and start a new conversation. Use this when GAIA is taking too long or you want to change direction.
-
-### List conversations
-
-```
-/conversations [page]
-```
-
-View your recent GAIA conversations with links to the web interface.
-
-**Example:**
-
-```
-/conversations
-/conversations 2
-```
-
----
-
-## Workflow commands
-
-### List workflows
-
-```
-/workflow list
-```
-
-Display all your workflows with their status.
-
-### Get workflow details
-
-```
-/workflow get <id>
-```
-
-Get detailed information about a specific workflow.
-
-### Execute a workflow
-
-```
-/workflow execute <id>
-```
-
-Manually trigger a workflow to run.
-
-### Create a workflow (Discord only)
-
-```
-/workflow create <name> <description>
-```
-
-Create a new workflow with a name and description.
-
----
-
-## Todo commands
-
-### List todos
-
-```
-/todo list
-```
-
-Show all active (incomplete) todos.
-
-### Add a todo
-
-```
-/todo add <title> [priority] [description]
-```
-
-Create a new todo. Priority is optional (low, medium, high).
-
-**Examples:**
-
-```
-/todo add "Buy groceries"
 /todo add "Fix bug in login" high
-/todo add "Update documentation" medium "Add API examples"
 ```
 
-### Complete a todo
+## Workflows
 
-```
-/todo complete <id>
-```
+| Command | What it does |
+| ------- | ------------ |
+| `/workflow list` | List your workflows and their status |
+| `/workflow get <id>` | Show one workflow |
+| `/workflow execute <id>` | Run a workflow now |
+| `/workflow create <name> <description>` | Create a workflow (Discord only) |
 
-Mark a todo as completed.
+## Platform differences
 
-### Delete a todo
+| Platform | Notes |
+| -------- | ----- |
+| Discord | Slash commands with autocomplete. Replies are private by default. You can also @mention the bot |
+| Slack | Slash replies are private. DMs take free text. Channels need `/gaia` or an @mention |
+| Telegram | Free text goes straight to GAIA. Supports Markdown |
+| WhatsApp | Free text goes straight to GAIA. No streaming or edits. 4,096 characters per message. `*bold*` and `_italic_` formatting. Voice notes are transcribed. Video and stickers are not supported |
+| iMessage | Direct messages only. Plain text |
 
-```
-/todo delete <id>
-```
-
-Permanently delete a todo.
-
----
-
-## Platform-specific notes
-
-### Discord
-
-- All commands are slash commands with autocomplete
-- Responses are ephemeral (only visible to you) by default
-- Can also mention the bot: `@GAIA what's the weather?`
-- `/workflow create` is Discord-only
-
-### Slack
-
-- Commands use Slack's slash command syntax
-- All responses are ephemeral
-- Works in DMs (free-text chat) and channels
-
-### Telegram
-
-- Commands start with `/` as standard in Telegram
-- Free-text messages (without a command prefix) are sent to GAIA automatically
-- Supports Markdown formatting
-
-### WhatsApp
-
-- Message GAIA directly at [wa.me/12762088737](https://wa.me/12762088737)
-- Commands are matched by text prefix (for example, type `/gaia` at the start of a message)
-- Free-text messages go straight to GAIA, no command needed
-- No streaming, responses arrive as complete messages
-- Sent messages can't be edited
-- Responses are limited to 4,096 characters per message
-- Formatting uses WhatsApp markdown: `*bold*` and `_italic_`
-- Voice notes are transcribed automatically
-- Images and documents are uploaded to GAIA
-- Video and stickers aren't supported
-
----
-
-## Getting help
-
-Can't find what you need? Use the help command:
-
-```
-/help
-```
-
-Or visit the platform guides:
-
-- [Discord bot guide](/guides/discord-bot)
-- [Slack bot guide](/guides/slack-bot)
-- [Telegram bot guide](/guides/telegram-bot)
-- [WhatsApp bot guide](/guides/whatsapp-bot)
+Platform setup guides: [Discord](/guides/discord-bot), [Slack](/guides/slack-bot), [Telegram](/guides/telegram-bot), [WhatsApp](/guides/whatsapp-bot), [iMessage](/guides/imessage-bot).

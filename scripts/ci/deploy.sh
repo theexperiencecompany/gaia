@@ -39,7 +39,8 @@
 #           ${VAR:-latest} defaults. Needs the `prod` docker context.
 #   verify  as `stack`, minus the write.
 #   retag   from-env: APPS_IMAGE_TAG / BOTS_IMAGE_TAG / GRAFANA_IMAGE_TAG.
-#           rolled-back: ROLLBACK_MODE, IMAGE_DIGEST, DOCKER_CONTEXT, STACK.
+#           rolled-back: ROLLBACK_MODE, IMAGE_DIGEST, DOCKER_CONTEXT, STACK;
+#           re-points every service on one of our repos, grafana included.
 #           Both need a GHCR login with packages:write.
 #   notify  MESSAGE, COLOR (required); DISCORD_WEBHOOK, SLACK_WEBHOOK (each
 #           attempted; a missing or failed one fails the step); USERNAME.
@@ -126,7 +127,7 @@ cmd_plan() {
         ;;
     esac
   else
-    # Automatic push-triggered plan (main.yml phase=deploy passes GATE_RESULT).
+    # Automatic push-triggered plan (build.yml phase=deploy, called from ci.yml with the gate's result).
     if [[ "$gate_passed" = "true" ]] && [[ "$backend_affected" = "true" ]] && [[ "$DOCKER_RELEASE_RESULT" = "success" ]]; then
       backend_deploy=true
     fi
@@ -211,6 +212,14 @@ cmd_retag() {
     fi
   }
 
+  is_deployed_repo() {
+    local name
+    for name in "${APPS_IMAGE_REPOS[@]}" "${BOTS_IMAGE_REPOS[@]}" "$GRAFANA_IMAGE_REPO"; do
+      [[ "$1" == "$GHCR_NAMESPACE/$name" ]] && return 0
+    done
+    return 1
+  }
+
   retag() {
     local ref="$1" repo
     repo=$(repo_of "$ref")
@@ -256,21 +265,42 @@ cmd_retag() {
         retag "$IMAGE_DIGEST"
       else
         # `service rollback` restored each service's previous spec; read the
-        # image (repo:tag@digest) each rolled-back service now runs and
-        # re-point that repo's :latest at it. Deduped: gaia-backend and
-        # arq_worker share the gaia repo.
-        refs=$(for svc in $(docker --context "$DOCKER_CONTEXT" stack services "$STACK" --format '{{.Name}}' \
-            | grep -E 'gaia-backend|arq_worker|voice-agent-worker|discord-bot|slack-bot|telegram-bot|whatsapp-bot|imessage-bot'); do
-            docker --context "$DOCKER_CONTEXT" service inspect "$svc" \
-              --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}'
-          done | sort -u)
-        if [[ -z "$refs" ]]; then
-          echo "::error::rolled-back retag: no matching services found in stack $STACK"
+        # image each service now runs and re-point its repo's :latest at it.
+        # Every service on one of OUR repos counts, grafana included, rather
+        # than a hand-kept name list that once left grafana's :latest on the
+        # build it had just been rolled away from. Keyed by repo and pinned by
+        # DIGEST: deduping whole `repo:tag@digest` refs let services sharing a
+        # repo issue one retag each, so :latest landed on whichever sorted last.
+        local services svc image repo targets="" conflicts
+        services="$(docker --context "$DOCKER_CONTEXT" stack services "$STACK" --format '{{.Name}}')"
+        while IFS= read -r svc; do
+          [[ -n "$svc" ]] || continue
+          image="$(docker --context "$DOCKER_CONTEXT" service inspect "$svc" \
+            --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}')"
+          repo="$(repo_of "$image")"
+          is_deployed_repo "$repo" || continue
+          if [[ "$image" == *@* ]]; then
+            targets+="$repo $repo@${image#*@}"$'\n'
+          else
+            targets+="$repo $image"$'\n'
+          fi
+        done <<< "$services"
+        targets="$(printf '%s' "$targets" | sort -u)"
+        if [[ -z "$targets" ]]; then
+          echo "::error::rolled-back retag: no service in stack $STACK runs one of our images"
           exit 1
         fi
-        while IFS= read -r ref; do
-          retag "$ref"
-        done <<< "$refs"
+        # One repo, two images: prod is split across builds and :latest can
+        # name only one of them, so moving it would make the alias a guess.
+        conflicts="$(awk '{n[$1]++; l[$1] = l[$1] $2 "\n"} END {for (r in n) if (n[r] > 1) printf "%s", l[r]}' <<< "$targets")"
+        if [[ -n "$conflicts" ]]; then
+          echo "::error::rolled-back retag: services on one repo run different images — :latest left unchanged"
+          printf '%s\n' "$conflicts"
+          exit 1
+        fi
+        while IFS=' ' read -r _repo target; do
+          retag "$target"
+        done <<< "$targets"
       fi
       ;;
 

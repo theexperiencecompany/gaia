@@ -12,7 +12,8 @@ from chromadb.api.models.AsyncCollection import AsyncCollection
 from chromadb.api.types import GetResult
 from langgraph.store.base import PutOp
 
-from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.agents.tools.core.store import embedding_dims
+from app.config.oauth_config import all_integrations
 from app.constants.chroma import CHROMA_TRIGGERS_STORE_COLLECTION
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
@@ -49,7 +50,7 @@ class ExistingTriggerEntry(TypedDict):
 
 
 class IndexedTriggerMetadata(TypedDict, total=False):
-    """The Chroma metadata key the diff reads back; ChromaStore._upsert_item writes it."""
+    """The Chroma metadata key the diff reads back; ChromaStore._put_row writes it."""
 
     trigger_hash: str
 
@@ -87,7 +88,7 @@ def _get_current_triggers_with_hashes() -> dict[str, IndexedTriggerEntry]:
     """Map every registered trigger's slug to its hash and persisted fields."""
     current_triggers: dict[str, IndexedTriggerEntry] = {}
 
-    for integration in OAUTH_INTEGRATIONS:
+    for integration in all_integrations():
         if not integration.associated_triggers:
             continue
 
@@ -216,23 +217,40 @@ def _build_put_operations(
 @lazy_provider(
     name="chroma_triggers_store",
     required_keys=[],
-    strategy=MissingKeyStrategy.ERROR,
+    strategy=MissingKeyStrategy.WARN,
+    warning_message=(
+        "Workflow trigger search disabled — it needs the embeddings backend "
+        "(a Google API key, or the built-in keyless local fastembed fallback "
+        "when even that fails to load). Everything else works; agents get a "
+        "clear 'unavailable' answer from the search_triggers tool."
+    ),
     auto_initialize=True,
 )
 async def initialize_chroma_triggers_store() -> ChromaStore:
-    """Initialize the triggers store, updating only changed/new/deleted triggers."""
+    """Initialize and return the ChromaDB-backed triggers store, updating only changed triggers.
+
+    Compares current triggers with stored hashes and writes only new, changed,
+    or deleted ones. WARN semantics on purpose: without an embeddings provider
+    this degrades to a boot warning and an unavailable search_triggers tool
+    instead of aborting the whole server.
+    """
     chroma_client = await ChromaClient.get_client()
+    # Registered by init_embeddings() in app/agents/tools/core/store.py —
+    # Google when a key exists, LOCAL fastembed on a bare self-host. The
+    # two backends have different vector sizes; the instance declares its own.
     embeddings = await providers.aget("google_embeddings")
 
     if embeddings is None:
         raise RuntimeError("Embeddings not available for triggers store")
+
+    dims = embedding_dims(embeddings)
 
     store = ChromaStore(
         client=chroma_client,
         collection_name=CHROMA_TRIGGERS_STORE_COLLECTION,
         index={
             "embed": embeddings,
-            "dims": 768,
+            "dims": dims,
             "fields": ["rich_description"],
         },
     )

@@ -120,6 +120,123 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Login
+         * @description Verify email + password and open a session.
+         *
+         *     Every failure — unknown email, missing credential, wrong password — returns
+         *     the same body with the same status AND burns the same bcrypt work, so the
+         *     endpoint can neither enumerate accounts nor distinguish them by latency.
+         */
+        post: operations["auth_login"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change Password
+         * @description Rotate the caller's own password after re-verifying the current one.
+         *
+         *     Not in the middleware's ``exclude_paths`` — a live local session is
+         *     required to even reach this handler. The current-password verify runs the
+         *     same bcrypt path as login and fails with the same uniform
+         *     ``invalid_credentials`` shape (401): whether the credential is missing or
+         *     the password is wrong must stay indistinguishable. No timing equalizer is
+         *     burned for a missing credential — unlike login, the caller already holds
+         *     an authenticated session, so there is no account left to enumerate.
+         *
+         *     Deliberately narrow failure semantics: a wrong current password is a
+         *     401 (the client renders it inline next to that field), while an over-cap
+         *     or too-short NEW password is rejected on the wire as a 422 before any
+         *     verification runs.
+         *
+         *     On success the credential's ``token_version`` is bumped and a fresh JWT
+         *     (``ver`` = new version) is returned as a ``Set-Cookie`` so the caller's
+         *     current session survives while every other previously issued JWT — whose
+         *     ``ver`` no longer matches — is revoked. Previous sessions remain valid for
+         *     up to 30 days only if password rotation never happened; after a rotation
+         *     they are rejected on the next request.
+         */
+        patch: operations["auth_change_password"];
+        trace?: never;
+    };
+    "/api/v1/auth/signup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Signup
+         * @description Create an account and open a session.
+         *
+         *     The first account administers the instance. Its gate is an ATOMIC CLAIM (a
+         *     partial unique index on slot=admin), not check-then-create: two concurrent
+         *     first signups both read no admin, Mongo lets precisely one insert land, and
+         *     the loser gets 403 registration_closed with its half-created user row removed.
+         *
+         *     Every later account is a member, admitted by a valid invite or, when the
+         *     administrator has opened signup, by anyone; otherwise 403 registration_closed.
+         *
+         *     A pre-existing user row with the same email is NOT claimed — knowledge of
+         *     an email address is not proof of ownership, and a migrated WorkOS-era row
+         *     must not be attachable by an attacker (Greptile finding). Such signups are
+         *     refused as closed before any invite is spent.
+         */
+        post: operations["auth_signup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/blobs/{owner_id}/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Blob
+         * @description Return a blob the caller may read (BLOB_AUDIENCE); local blobs honour Range requests.
+         */
+        get: operations["blob_get_blob"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/blogs": {
         parameters: {
             query?: never;
@@ -234,6 +351,26 @@ export interface paths {
          * @description Generate a secure, time-limited token for platform account linking.
          */
         post: operations["bot_create_link_token"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bot/delivery-failures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report Delivery Failure
+         * @description Queue a message a bot could not deliver for the delivery-alerts channel.
+         */
+        post: operations["bot_report_bot_delivery_failure"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1939,6 +2076,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/instructions/{scope}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Instructions
+         * @description Return one scope's instructions with the revision a save must send back.
+         */
+        get: operations["instructions_get_instructions"];
+        /**
+         * Update Instructions
+         * @description Replace one scope's instructions; 409 when base_revision is no longer current.
+         */
+        put: operations["instructions_update_instructions"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/integrations/{integration_id}": {
         parameters: {
             query?: never;
@@ -2385,33 +2546,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/integrations/users/me/integrations/{integration_id}/instructions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Integration Instructions
-         * @description Return the current user's custom instructions for an integration.
-         *
-         *     Responds with empty content (not 404) when none are set, so the editor can
-         *     always render against a stable shape.
-         */
-        get: operations["integrations_get_integration_instructions"];
-        /**
-         * Update Integration Instructions
-         * @description Create or replace the current user's custom instructions for an integration.
-         */
-        put: operations["integrations_update_integration_instructions"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/lab/events": {
         parameters: {
             query?: never;
@@ -2585,6 +2719,106 @@ export interface paths {
          *     Can be used to retry failed connections.
          */
         post: operations["mcp_test_mcp_connection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Members
+         * @description List accounts, pending invites, and the registration policy.
+         */
+        get: operations["members_get_members"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/members/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Member
+         * @description Remove a member: their login stops, and their workflows, reminders and bot links stop too.
+         */
+        delete: operations["members_delete_member"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/members/invites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Invite
+         * @description Create a single-use invite link that expires in seven days.
+         */
+        post: operations["members_post_invite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/members/invites/{invite_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Invite
+         * @description Revoke a pending invite link.
+         */
+        delete: operations["members_delete_invite"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/members/registration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Registration
+         * @description Choose whether anyone can sign up or only people with an invite.
+         */
+        put: operations["members_put_registration"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4253,6 +4487,251 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/setup/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Provider Catalog
+         * @description The provider catalog the setup wizard and Settings render from.
+         *
+         *     Serves each provider spec's preset — display metadata only (no secrets, no
+         *     configuration state) — partitioned by role so clients can render every
+         *     card without shipping their own copy of the catalog:
+         *
+         *     - ``providers``: one entry per credential-store provider, in display order
+         *       (``CredentialProviderName``),
+         *     - ``custom_presets``: OpenAI-compatible gateway presets offered inside the
+         *       custom lane's card (``opencode`` / ``nous``),
+         *     - ``llm_provider_keys``: which providers can serve chat (the wizard's
+         *       readiness rule mirrors ``_needs_setup``),
+         *     - ``features``: the providers grouped by what they are for, with what each
+         *       feature runs on when no key is set.
+         *
+         *     Adding or renaming a provider becomes a Python-only change; the UI picks
+         *     it up here. Public under local auth like ``/status`` — the wizard renders
+         *     cards before an admin session exists.
+         */
+        get: operations["setup_get_provider_catalog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/setup/composio": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Composio Setup
+         * @description Each Composio integration's auth config in effect, plus matches found in the Composio project.
+         */
+        get: operations["setup_get_composio_setup"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/setup/composio/auth-configs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Composio Auth Configs
+         * @description Replace the instance's stored auth config ids and return the updated view.
+         */
+        put: operations["setup_put_composio_auth_configs"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/setup/composio/toolkits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Composio Toolkits
+         * @description Search Composio's toolkit catalog; each entry says whether it is built in, enabled or available.
+         */
+        get: operations["setup_list_composio_toolkits"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/setup/composio/toolkits/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Composio Toolkit
+         * @description Return how enabling the toolkit authenticates and the values it needs, if any.
+         */
+        get: operations["setup_get_composio_toolkit"];
+        put?: never;
+        /**
+         * Enable Composio Toolkit
+         * @description Create the toolkit's auth config in the instance's Composio project and make it connectable.
+         */
+        post: operations["setup_enable_composio_toolkit"];
+        /**
+         * Disable Composio Toolkit
+         * @description Remove a toolkit the admin enabled; built-in integrations are cleared from the auth config list instead.
+         */
+        delete: operations["setup_disable_composio_toolkit"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/setup/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Providers
+         * @description Masked per-provider view for the settings UI. Never returns raw keys.
+         *
+         *     Admin-only: the listing reveals configured base_urls and models.
+         */
+        get: operations["setup_list_providers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/setup/providers/{provider}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Provider
+         * @description Store (or replace) one provider's credential. Presets prefill server-side.
+         *
+         *     Admin-only: rewriting a provider's endpoint redirects every LLM call the
+         *     instance makes. Validation and the merge live in save_provider_credential.
+         */
+        put: operations["setup_put_provider"];
+        post?: never;
+        /**
+         * Remove Provider
+         * @description Drop one provider's stored credential.
+         */
+        delete: operations["setup_remove_provider"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/setup/providers/{provider}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Provider
+         * @description Live-connectivity probe with strict credential binding.
+         *
+         *     Contract (H1): once a credential is stored for ``provider`` — including an
+         *     environment-fallback config — the probe uses the STORED ``base_url`` and
+         *     api_key exclusively; body values are ignored, so a caller-supplied URL can
+         *     never be paired with a server-held key. Body values (preset / base_url /
+         *     api_key / model) are honored only for first-time validation before
+         *     anything has been saved. Non-public endpoints are refused outright with a
+         *     422 by the SSRF guard inside ``probe_provider``.
+         */
+        post: operations["setup_test_provider"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/setup/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Setup Status
+         * @description First-run status for the web setup wizard and desktop CLI.
+         *
+         *     Public only under AUTH_MODE=local (middleware conditionally excludes it
+         *     there); in workos mode the route requires a session like any other.
+         */
+        get: operations["setup_get_setup_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/setup/wizard/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dismiss Wizard
+         * @description Stop the setup wizard opening itself; the chat setup banner nudges instead.
+         */
+        post: operations["setup_dismiss_wizard"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/skills": {
         parameters: {
             query?: never;
@@ -5724,6 +6203,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/health/ready": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Readiness Check
+         * @description Report whether every backing service answers a real request; 503 names the ones that do not.
+         */
+        get: operations["health_readiness_check"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/live/{code}/decision": {
         parameters: {
             query?: never;
@@ -6158,6 +6657,7 @@ export interface components {
             platform_links_connected_at?: {
                 [key: string]: unknown;
             } | null;
+            role?: components["schemas"]["InstanceRole"] | null;
             /** Selected Voice Id */
             selected_voice_id?: string | null;
             /** Starred Voice Ids */
@@ -6337,6 +6837,12 @@ export interface components {
             /** Conversations */
             conversations: components["schemas"]["ConversationSyncRow"][];
         };
+        /**
+         * BlobStoreKind
+         * @description Where uploaded and generated files live; the value is the BLOB_STORE setting.
+         * @enum {string}
+         */
+        BlobStoreKind: "local" | "cloudinary" | "s3";
         /**
          * BlogCountResponse
          * @description Response for the total count of blog posts.
@@ -6651,6 +7157,23 @@ export interface components {
             reset_time: string;
         };
         /**
+         * BuiltInEngine
+         * @description An engine a feature runs on with no credential at all.
+         * @enum {string}
+         */
+        BuiltInEngine: "duckduckgo" | "page_reader" | "local_sandbox" | "local_disk" | "s3_bucket" | "local_parser" | "public_github" | "hosted_browser" | "hosted_voice";
+        /**
+         * BuiltInOption
+         * @description What a feature runs on with no key, as the UI names it.
+         */
+        BuiltInOption: {
+            /** Description */
+            description: string;
+            engine: components["schemas"]["BuiltInEngine"];
+            /** Label */
+            label: string;
+        };
+        /**
          * BuiltinSkillInfo
          * @description A read-only built-in skill shipped with GAIA, for display in settings.
          */
@@ -6956,6 +7479,17 @@ export interface components {
             success: boolean;
         };
         /**
+         * ChangePasswordRequest
+         * @description Body of ``PATCH /api/v1/auth/password`` — rotates the caller's own
+         *     password after re-verifying the current one.
+         */
+        ChangePasswordRequest: {
+            /** Current Password */
+            current_password: string;
+            /** New Password */
+            new_password: string;
+        };
+        /**
          * ChannelConfig
          * @description Per-channel delivery settings for a notification request.
          */
@@ -7141,6 +7675,185 @@ export interface components {
              * @description Generated email subject line
              */
             subject: string;
+        };
+        /**
+         * ComposioAuthConfigCandidate
+         * @description An enabled auth config in the admin's Composio project for this integration's toolkit.
+         */
+        ComposioAuthConfigCandidate: {
+            /**
+             * Id
+             * @description Composio auth config id (ac_...)
+             */
+            id: string;
+            /**
+             * Name
+             * @description Name the admin gave it in Composio
+             */
+            name: string;
+        };
+        /**
+         * ComposioAuthConfigSource
+         * @description Where the auth config an integration connects through comes from.
+         * @enum {string}
+         */
+        ComposioAuthConfigSource: "stored" | "env" | "catalog";
+        /**
+         * ComposioAuthField
+         * @description A value the admin must supply to create the toolkit's auth config.
+         */
+        ComposioAuthField: {
+            /** Description */
+            description: string;
+            /** Display Name */
+            display_name: string;
+            /** Is Secret */
+            is_secret: boolean;
+            /** Name */
+            name: string;
+            /** Required */
+            required: boolean;
+        };
+        /**
+         * ComposioCatalogEntry
+         * @description A catalog toolkit plus what it is on this instance.
+         */
+        ComposioCatalogEntry: {
+            /** Auth Schemes */
+            auth_schemes: string[];
+            /** Categories */
+            categories: string[];
+            /**
+             * Composio Managed
+             * @description Composio can sign users in with its own app
+             */
+            composio_managed: boolean;
+            /** Description */
+            description: string;
+            /**
+             * Integration Id
+             * @description The GAIA integration it backs, if any
+             */
+            integration_id: string | null;
+            /** Logo */
+            logo: string | null;
+            /** Name */
+            name: string;
+            /** No Auth */
+            no_auth: boolean;
+            /**
+             * Set Up
+             * @description Whether that integration has an auth config here
+             */
+            set_up: boolean;
+            /** Slug */
+            slug: string;
+            /**
+             * Status
+             * @description built_in: defined in GAIA's code; enabled: added by the admin; available: can be enabled; unsupported: needs no sign-in, which GAIA cannot connect yet
+             * @enum {string}
+             */
+            status: "built_in" | "enabled" | "available" | "unsupported";
+            /** Tools Count */
+            tools_count: number;
+            /** Triggers Count */
+            triggers_count: number;
+        };
+        /**
+         * ComposioCatalogResponse
+         * @description GET /setup/composio/toolkits: one page of the searched catalog.
+         */
+        ComposioCatalogResponse: {
+            /**
+             * Categories
+             * @description Every category in the catalog, for the filter
+             */
+            categories: string[];
+            /**
+             * Composio Configured
+             * @description Whether a Composio API key resolves; without one the catalog is empty
+             */
+            composio_configured: boolean;
+            /** Items */
+            items: components["schemas"]["ComposioCatalogEntry"][];
+            /**
+             * Total
+             * @description Matches across all pages
+             */
+            total: number;
+        };
+        /**
+         * ComposioIntegrationSetup
+         * @description One Composio integration and the auth config it connects through on this instance.
+         */
+        ComposioIntegrationSetup: {
+            /**
+             * Auth Config Id
+             * @description The id in effect; None means not set up
+             */
+            auth_config_id: string | null;
+            /**
+             * Detected
+             * @description Matching auth configs found in the Composio project
+             */
+            detected: components["schemas"]["ComposioAuthConfigCandidate"][];
+            /**
+             * Icon Url
+             * @description Logo for integrations GAIA ships no icon for
+             */
+            icon_url: string | null;
+            /** Integration Id */
+            integration_id: string;
+            /** Name */
+            name: string;
+            /**
+             * Origin
+             * @description instance: a toolkit the admin enabled from the catalog
+             * @enum {string}
+             */
+            origin: "code" | "instance";
+            /** @description Where the id in effect comes from */
+            source: components["schemas"]["ComposioAuthConfigSource"] | null;
+            /**
+             * Toolkit
+             * @description Composio toolkit slug the auth config must belong to
+             */
+            toolkit: string;
+        };
+        /**
+         * ComposioSetupResponse
+         * @description GET /setup/composio: the per-integration view the admin panel renders.
+         */
+        ComposioSetupResponse: {
+            /**
+             * Composio Configured
+             * @description Whether a Composio API key resolves
+             */
+            composio_configured: boolean;
+            /** Integrations */
+            integrations: components["schemas"]["ComposioIntegrationSetup"][];
+        };
+        /**
+         * ComposioToolkitDetailResponse
+         * @description GET /setup/composio/toolkits/{slug}: how enabling this toolkit will authenticate.
+         */
+        ComposioToolkitDetailResponse: {
+            /**
+             * Auth Scheme
+             * @description The scheme GAIA will create; None if unsupported
+             */
+            auth_scheme: string | null;
+            /**
+             * Composio Managed
+             * @description Whether that scheme uses Composio's own app
+             */
+            composio_managed: boolean;
+            /**
+             * Fields
+             * @description Values to send with the enable request; empty means one click
+             */
+            fields: components["schemas"]["ComposioAuthField"][];
+            toolkit: components["schemas"]["ComposioCatalogEntry"];
         };
         /**
          * ComposioWebhookAckResponse
@@ -7761,6 +8474,18 @@ export interface components {
             trigger_config: components["schemas"]["TriggerConfig"];
         };
         /**
+         * CredentialProviderName
+         * @description A provider the credential store can hold, in display order.
+         * @enum {string}
+         */
+        CredentialProviderName: "openrouter" | "gemini" | "ollama" | "custom" | "tavily" | "exa" | "brave" | "searxng" | "composio" | "e2b" | "openai" | "resend" | "cloudinary" | "google_oauth" | "firecrawl" | "openweather" | "llamaparse" | "github";
+        /**
+         * CredentialSource
+         * @description Where a provider's active credential comes from: a saved one wins over env.
+         * @enum {string}
+         */
+        CredentialSource: "stored" | "env" | "unset";
+        /**
          * CronValidationResponse
          * @description Result of validating a cron expression.
          */
@@ -7810,7 +8535,7 @@ export interface components {
          *     the user switched off themselves (no reason) is never silently re-enabled.
          * @enum {string}
          */
-        DeactivationReason: "user_dormant" | "integration_expired" | "subscription_lapsed" | "integration_never_connected" | "invalid_schedule" | "owner_not_found";
+        DeactivationReason: "user_dormant" | "integration_expired" | "subscription_lapsed" | "integration_never_connected" | "invalid_schedule" | "owner_not_found" | "member_removed";
         /**
          * DegradedHealthResponse
          * @description The 503 body returned when the event loop is lagged past the threshold.
@@ -7844,6 +8569,129 @@ export interface components {
             message: string;
             /** Success */
             success: boolean;
+        };
+        /**
+         * DeliveryFailureAccepted
+         * @description The report was queued for alerting.
+         */
+        DeliveryFailureAccepted: {
+            /**
+             * Status
+             * @default queued
+             * @constant
+             */
+            status: "queued";
+        };
+        /**
+         * DeliveryFailureKind
+         * @description Where in the pipeline a message was lost.
+         * @enum {string}
+         */
+        DeliveryFailureKind: "platform_rejected" | "send_failed" | "envelope_rejected" | "reply_failed" | "enqueue_failed" | "expired";
+        /**
+         * DeliveryFailureReport
+         * @description A bot's report of a message it could not deliver.
+         */
+        DeliveryFailureReport: {
+            /**
+             * Country
+             * @description Recipient country, ISO 3166-1 alpha-2.
+             */
+            country?: string | null;
+            /**
+             * Destination Id
+             * @description Platform-native recipient (a user id, or a channel id when is_channel); absent when the lost message could not be read.
+             */
+            destination_id?: string | null;
+            /** Envelope Id */
+            envelope_id?: string | null;
+            /**
+             * Error Code
+             * @description The platform's own error code, e.g. 130497.
+             */
+            error_code?: string | null;
+            /**
+             * Error Message
+             * @description The platform's description of the error.
+             */
+            error_message?: string | null;
+            /**
+             * Is Channel
+             * @default false
+             */
+            is_channel?: boolean;
+            kind: components["schemas"]["DeliveryFailureKind"];
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at?: string;
+            platform: components["schemas"]["ConversationSource"];
+            /** Platform Message Id */
+            platform_message_id?: string | null;
+            /**
+             * Reason
+             * @description Closed snake_case failure code, e.g. destination_blocked or platform_error.
+             */
+            reason: string;
+        };
+        /**
+         * DependencyStatus
+         * @description One backing service's answer to a real round-trip, as /health/ready reports it.
+         */
+        DependencyStatus: {
+            /**
+             * Error Type
+             * @description Exception class name when the check failed; never its message
+             */
+            error_type?: string | null;
+            /** Latency Ms */
+            latency_ms: number;
+            /** Name */
+            name: string;
+            /** Ok */
+            ok: boolean;
+        };
+        /**
+         * DeploymentKind
+         * @description Which kind of instance this is; the value is the ENV it boots under.
+         * @enum {string}
+         */
+        DeploymentKind: "production" | "development" | "selfhost";
+        /**
+         * DeploymentStatus
+         * @description The deployment profile's capabilities a client branches on.
+         */
+        DeploymentStatus: {
+            /**
+             * Bills
+             * @description Whether payments are live for this instance
+             */
+            bills: boolean;
+            /** @description Where uploaded and generated files live (BLOB_STORE) */
+            blob_store: components["schemas"]["BlobStoreKind"];
+            /**
+             * Gaia Support
+             * @description Whether in-app support requests reach GAIA's support team
+             */
+            gaia_support: boolean;
+            /**
+             * Instance Toolkits
+             * @description Whether the admin may enable Composio toolkits beyond the built-in ones
+             */
+            instance_toolkits: boolean;
+            /** @description Which kind of instance this is (ENV) */
+            kind: components["schemas"]["DeploymentKind"];
+            /**
+             * Local Code Sandbox
+             * @description Whether code runs in the opt-in local Docker sandbox when no E2B key is saved
+             */
+            local_code_sandbox: boolean;
+            /**
+             * Private Network Endpoints
+             * @description Whether a configured endpoint such as an MCP server may be a private address
+             */
+            private_network_endpoints: boolean;
         };
         /**
          * DeregisterServerResponse
@@ -8272,6 +9120,36 @@ export interface components {
             search_data: components["schemas"]["WebSearchResult"];
         };
         /**
+         * EnableComposioToolkitRequest
+         * @description Values for the auth config's creation fields, keyed by field name.
+         */
+        EnableComposioToolkitRequest: {
+            /** Credentials */
+            credentials?: {
+                [key: string]: string;
+            };
+        };
+        /**
+         * EnableComposioToolkitResponse
+         * @description The integration the toolkit now backs and the auth config created for it.
+         */
+        EnableComposioToolkitResponse: {
+            /** Auth Config Id */
+            auth_config_id: string;
+            /**
+             * Composio Managed
+             * @description Users sign in through Composio's own app
+             */
+            composio_managed: boolean;
+            /** Integration Id */
+            integration_id: string;
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "code" | "instance";
+        };
+        /**
          * ErrorEnvelope
          * @description Body of every 4xx/5xx response.
          */
@@ -8406,11 +9284,46 @@ export interface components {
             used: number;
         };
         /**
+         * FeatureSpec
+         * @description One feature: what it does, its keyless engine if any, and the providers that upgrade it.
+         */
+        FeatureSpec: {
+            built_in: components["schemas"]["BuiltInOption"] | null;
+            /** Description */
+            description: string;
+            /** Label */
+            label: string;
+            /** Providers */
+            providers: components["schemas"]["CredentialProviderName"][];
+            self_host_gap?: components["schemas"]["SelfHostGap"] | null;
+        };
+        /**
          * FeatureStage
          * @description How finished a user-facing feature is, shown next to its toggle.
          * @enum {string}
          */
         FeatureStage: "experimental";
+        /**
+         * FeatureStatus
+         * @description Whether one feature works and what it runs on.
+         */
+        FeatureStatus: {
+            /**
+             * Available
+             * @description Whether this deployment can run the feature at all; false means its catalog self_host_gap explains why
+             */
+            available: boolean;
+            /**
+             * In Use
+             * @description What the feature runs on, in the order it tries them; the first serves
+             */
+            in_use: (components["schemas"]["CredentialProviderName"] | components["schemas"]["BuiltInEngine"])[];
+            /**
+             * Working
+             * @description Whether the feature works right now
+             */
+            working: boolean;
+        };
         /**
          * FeatureUpgrade
          * @description The Pro tier's limits for a feature, so a free user sees the delta.
@@ -9087,11 +10000,7 @@ export interface components {
             commit: string;
             /** Description */
             description: string;
-            /**
-             * Environment
-             * @enum {string}
-             */
-            environment: "production" | "development";
+            environment: components["schemas"]["DeploymentKind"];
             /**
              * Event Loop Lag Ms
              * @description Time to round-trip one event-loop tick
@@ -9285,11 +10194,59 @@ export interface components {
             instructions: string | null;
         };
         /**
+         * InstanceBots
+         * @description The chat bots this instance runs, for the web Bots page; null where none is set up.
+         */
+        InstanceBots: {
+            /**
+             * Discord Client Id
+             * @description The Discord application id the bot's invite link names
+             */
+            discord_client_id: string | null;
+            /**
+             * Slack Workspace Url
+             * @description The Slack workspace the bot is installed in
+             */
+            slack_workspace_url: string | null;
+            /**
+             * Telegram Username
+             * @description The Telegram bot's @username
+             */
+            telegram_username: string | null;
+        };
+        /**
+         * InstanceRole
+         * @description A self-host account's role: the first account administers the instance.
+         * @enum {string}
+         */
+        InstanceRole: "admin" | "member";
+        /**
          * InstructionsEditor
-         * @description Who last wrote the instructions — surfaced in the UI audit line.
+         * @description Who last wrote a scope's instructions.
          * @enum {string}
          */
         InstructionsEditor: "user" | "agent";
+        /**
+         * InstructionsResponse
+         * @description A scope's current instructions; revision 0 means never written.
+         */
+        InstructionsResponse: {
+            /**
+             * Content
+             * @default
+             */
+            content: string;
+            /**
+             * Revision
+             * @default 0
+             */
+            revision: number;
+            /** Scope */
+            scope: string;
+            /** Updated At */
+            updated_at: string | null;
+            updated_by: components["schemas"]["InstructionsEditor"] | null;
+        };
         /** IntegrationAccountResponse */
         IntegrationAccountResponse: {
             /**
@@ -9336,6 +10293,8 @@ export interface components {
             description: string;
             /** Displaypriority */
             displayPriority: number;
+            /** Iconurl */
+            iconUrl?: string | null;
             /** Id */
             id: string;
             /** Includedintegrations */
@@ -9351,6 +10310,12 @@ export interface components {
             managedBy: "self" | "composio" | "mcp" | "internal";
             /** Name */
             name: string;
+            /**
+             * Origin
+             * @default code
+             * @enum {string}
+             */
+            origin?: "code" | "instance";
             /** Provider */
             provider: string;
             /**
@@ -9433,19 +10398,6 @@ export interface components {
              * @description Integration status: 'created' or 'connected'
              */
             status: string;
-        };
-        /**
-         * IntegrationInstructionsResponse
-         * @description A user's custom instructions for one integration.
-         */
-        IntegrationInstructionsResponse: {
-            /** Content */
-            content: string;
-            /** Integrationid */
-            integrationId: string;
-            /** Updatedat */
-            updatedAt: string | null;
-            updatedBy: components["schemas"]["InstructionsEditor"];
         };
         /**
          * IntegrationRef
@@ -9573,6 +10525,30 @@ export interface components {
              * @default []
              */
             tools: components["schemas"]["IntegrationTool"][];
+        };
+        /**
+         * InviteCreatedResponse
+         * @description A new invite and its one-time token, which the web turns into /signup?invite=<token>.
+         */
+        InviteCreatedResponse: {
+            invite: components["schemas"]["InviteResponse"];
+            /** Token */
+            token: string;
+        };
+        /**
+         * InviteResponse
+         * @description A pending invite link; the token itself is only ever returned at creation.
+         */
+        InviteResponse: {
+            /** Created At */
+            created_at: string | null;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Id */
+            id: string;
         };
         /**
          * LabelRequest
@@ -9742,6 +10718,19 @@ export interface components {
             token: string;
         };
         /**
+         * LoginRequest
+         * @description Body of ``POST /api/v1/auth/login``.
+         */
+        LoginRequest: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Password */
+            password: string;
+        };
+        /**
          * LogoutResponse
          * @description ``POST /user/logout``: where the client sends the browser next.
          */
@@ -9751,6 +10740,16 @@ export interface components {
              * @description Identity-provider logout URL to redirect to
              */
             logout_url: string | null;
+        };
+        /**
+         * ManagedAt
+         * @description The settings page that owns a credential, when its provider card does not.
+         */
+        ManagedAt: {
+            /** Href */
+            href: string;
+            /** Label */
+            label: string;
         };
         /**
          * MarkAllReadSummary
@@ -9796,6 +10795,44 @@ export interface components {
              * @default 0
              */
             total?: number;
+        };
+        /**
+         * MaskedProvider
+         * @description One row of ``GET /setup/providers`` — a credential with the key masked.
+         */
+        MaskedProvider: {
+            /**
+             * Account Id
+             * @description The non-secret account half, e.g. Cloudinary's cloud name
+             */
+            account_id?: string | null;
+            /**
+             * Api Key Hint
+             * @description Last four characters of the key; the key itself never leaves the server
+             */
+            api_key_hint?: string | null;
+            /**
+             * Api Secret Hint
+             * @description Last four characters of the second secret, e.g. Cloudinary's API secret
+             */
+            api_secret_hint?: string | null;
+            /**
+             * Base Url
+             * @description Configured endpoint, if any
+             */
+            base_url?: string | null;
+            /**
+             * Configured
+             * @description Whether a credential resolves for this provider
+             */
+            configured: boolean;
+            /**
+             * Model
+             * @description Configured model, if any
+             */
+            model?: string | null;
+            /** @description Provider name */
+            provider: components["schemas"]["CredentialProviderName"];
         };
         /**
          * MCPConfigDetail
@@ -9950,6 +10987,32 @@ export interface components {
              * @default false
              */
             is_error?: boolean;
+        };
+        /**
+         * MemberResponse
+         * @description One active account on the instance.
+         */
+        MemberResponse: {
+            /** Created At */
+            created_at: string | null;
+            /** Email */
+            email: string | null;
+            /** Name */
+            name: string | null;
+            role: components["schemas"]["InstanceRole"];
+            /** User Id */
+            user_id: string;
+        };
+        /**
+         * MembersOverviewResponse
+         * @description Everything the admin Members settings page shows.
+         */
+        MembersOverviewResponse: {
+            /** Invites */
+            invites: components["schemas"]["InviteResponse"][];
+            /** Members */
+            members: components["schemas"]["MemberResponse"][];
+            registration_policy: components["schemas"]["RegistrationPolicy"];
         };
         /**
          * MemoryDocType
@@ -10796,6 +11859,11 @@ export interface components {
             /** Id */
             id: string;
             /**
+             * Instancesetuprequired
+             * @default false
+             */
+            instanceSetupRequired?: boolean;
+            /**
              * Isfeatured
              * @default false
              */
@@ -10809,6 +11877,12 @@ export interface components {
             managedBy: "self" | "composio" | "mcp" | "internal";
             /** Name */
             name: string;
+            /**
+             * Origin
+             * @default code
+             * @enum {string}
+             */
+            origin?: "code" | "instance";
             /** Publishedat */
             publishedAt?: string | null;
             /**
@@ -11277,11 +12351,6 @@ export interface components {
         };
         /** OnboardingPreferences */
         OnboardingPreferences: {
-            /**
-             * Custom Instructions
-             * @description Custom instructions for the AI assistant
-             */
-            custom_instructions?: string | null;
             /**
              * Needs
              * @description The jobs the user handed GAIA (onboarding Q2, up to three)
@@ -11901,6 +12970,168 @@ export interface components {
             type?: string | null;
         };
         /**
+         * ProviderCatalogResponse
+         * @description ``GET /setup/catalog`` — display metadata, partitioned by role.
+         *
+         *     Each map holds catalog presets verbatim, so the wizard never ships its own
+         *     copy of the catalog.
+         */
+        ProviderCatalogResponse: {
+            /**
+             * Custom Presets
+             * @description OpenAI-compatible gateway presets for the custom lane's card
+             */
+            custom_presets: {
+                [key: string]: components["schemas"]["ProviderPreset"];
+            };
+            /**
+             * Features
+             * @description What each feature does, what it runs on with no key, and its optional providers
+             */
+            features: {
+                [key: string]: components["schemas"]["FeatureSpec"];
+            };
+            /**
+             * Llm Provider Keys
+             * @description Which providers can serve chat
+             */
+            llm_provider_keys: components["schemas"]["CredentialProviderName"][];
+            /**
+             * Providers
+             * @description One entry per credential-store provider, in display order
+             */
+            providers: {
+                [key: string]: components["schemas"]["ProviderPreset"];
+            };
+        };
+        /**
+         * ProviderConfiguredState
+         * @description Per-provider readiness as the wizard reads it: "can this serve a request?".
+         */
+        ProviderConfiguredState: {
+            /**
+             * Configured
+             * @description Whether a usable credential or env fallback exists
+             */
+            configured: boolean;
+            /**
+             * Env Shadowed
+             * @description Whether the environment sets a different credential the saved one overrides
+             */
+            env_shadowed: boolean;
+            /** @description Where the active credential comes from; a saved one overrides env */
+            source: components["schemas"]["CredentialSource"];
+        };
+        /**
+         * ProviderCredentialBody
+         * @description Provider payload shared by upsert and test.
+         *
+         *     ``preset`` prefills the endpoint + default model server-side so configuring
+         *     OpenCode/Nous is paste-an-API-key-only.
+         */
+        ProviderCredentialBody: {
+            /** Account Id */
+            account_id?: string | null;
+            /** Api Key */
+            api_key?: string | null;
+            /** Api Secret */
+            api_secret?: string | null;
+            /** Base Url */
+            base_url?: string | null;
+            /** Model */
+            model?: string | null;
+            /** Preset */
+            preset?: ("opencode" | "nous") | null;
+        };
+        /**
+         * ProviderFeature
+         * @description What a provider is for, as Settings and the setup wizard group them.
+         * @enum {string}
+         */
+        ProviderFeature: "ai_models" | "web_search" | "page_reading" | "code_running" | "file_storage" | "email" | "integrations" | "weather" | "scanned_documents" | "skill_installs" | "browser" | "voice";
+        /** ProviderListResponse */
+        ProviderListResponse: {
+            /**
+             * Providers
+             * @description Masked view per provider
+             */
+            providers: {
+                [key: string]: components["schemas"]["MaskedProvider"];
+            };
+        };
+        /**
+         * ProviderPreset
+         * @description A provider card's copy, endpoint defaults and the fields it takes, as the catalog serves it.
+         */
+        ProviderPreset: {
+            /** Account Id Label */
+            account_id_label: string | null;
+            /**
+             * Api Key Label
+             * @default API key
+             */
+            api_key_label: string;
+            /** Base Url */
+            base_url: string | null;
+            /** Default Model */
+            default_model: string | null;
+            /** Description */
+            description: string | null;
+            /** Favicon Url */
+            favicon_url: string;
+            /** Key Url */
+            key_url: string | null;
+            /** Label */
+            label: string;
+            managed_at: components["schemas"]["ManagedAt"] | null;
+            /**
+             * Needs Base Url
+             * @default false
+             */
+            needs_base_url: boolean;
+            /** Second Key Label */
+            second_key_label: string | null;
+            /**
+             * Takes Key
+             * @default true
+             */
+            takes_key: boolean;
+            /**
+             * Takes Model
+             * @default false
+             */
+            takes_model: boolean;
+        };
+        /**
+         * ProviderTestFailure
+         * @description Why a provider's connectivity probe failed; clients map it to a recovery hint.
+         * @enum {string}
+         */
+        ProviderTestFailure: "not_configured" | "auth_rejected" | "rate_limited" | "refused" | "timeout" | "unreachable";
+        /**
+         * ProviderTestResponse
+         * @description ``POST /setup/providers/{provider}/test`` — the live connectivity probe.
+         */
+        ProviderTestResponse: {
+            /**
+             * Detail
+             * @description Human-readable outcome; never contains credentials
+             */
+            detail: string;
+            /** @description Why the probe failed, for a recovery hint; null when it passed */
+            failure: components["schemas"]["ProviderTestFailure"] | null;
+            /**
+             * Models
+             * @description Model ids the endpoint listed; empty for OpenAI-wire providers, which are probed with a chat completion
+             */
+            models: string[];
+            /**
+             * Ok
+             * @description Whether the provider answered the test request
+             */
+            ok: boolean;
+        };
+        /**
          * PublicHoloCardResponse
          * @description Public-facing subset of a user's profile, keyed by user id (``card_id``).
          *
@@ -12135,6 +13366,19 @@ export interface components {
             success: boolean;
         };
         /**
+         * ReadinessResponse
+         * @description ``GET /health/ready``: whether every backing service answered a real request.
+         */
+        ReadinessResponse: {
+            /** Dependencies */
+            dependencies: components["schemas"]["DependencyStatus"][];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ready" | "not_ready";
+        };
+        /**
          * RecordedCall
          * @description One tool call as it actually ran.
          *
@@ -12348,6 +13592,27 @@ export interface components {
             server_key: string;
         };
         /**
+         * RegistrationPolicy
+         * @description Who may create a self-host account once the administrator exists.
+         * @enum {string}
+         */
+        RegistrationPolicy: "invite_only" | "open";
+        /**
+         * RegistrationPolicyRequest
+         * @description Body of PUT /api/v1/members/registration.
+         */
+        RegistrationPolicyRequest: {
+            /** @description Who may create an account */
+            policy: components["schemas"]["RegistrationPolicy"];
+        };
+        /**
+         * RegistrationPolicyResponse
+         * @description The registration policy now in force.
+         */
+        RegistrationPolicyResponse: {
+            policy: components["schemas"]["RegistrationPolicy"];
+        };
+        /**
          * ReminderResponse
          * @description Response model for reminder operations.
          *
@@ -12510,6 +13775,19 @@ export interface components {
         SandboxToolSchemaRequest: {
             /** Tool Name */
             tool_name: string;
+        };
+        /**
+         * SaveComposioAuthConfigsRequest
+         * @description The full set of auth config ids to store; integrations left out are cleared.
+         */
+        SaveComposioAuthConfigsRequest: {
+            /**
+             * Auth Configs
+             * @description Integration id to Composio auth config id
+             */
+            auth_configs: {
+                [key: string]: string;
+            };
         };
         /**
          * SaveSocialProfilesResponse
@@ -12692,6 +13970,16 @@ export interface components {
             title: string;
         };
         /**
+         * SelfHostGap
+         * @description Why a feature cannot run on a self-hosted instance, and where the docs explain it.
+         */
+        SelfHostGap: {
+            /** Docs Url */
+            docs_url: string;
+            /** Reason */
+            reason: string;
+        };
+        /**
          * SelfPairRequest
          * @description An authenticated host pairs itself as a device in one call (no user_code).
          *
@@ -12803,6 +14091,86 @@ export interface components {
         SetToolOverrideRequest: {
             /** Ask */
             ask?: boolean | null;
+        };
+        /**
+         * SetupStatusResponse
+         * @description ``GET /setup/status`` — what the first-run wizard branches on.
+         */
+        SetupStatusResponse: {
+            /**
+             * Auth Mode
+             * @description Active auth stack
+             * @enum {string}
+             */
+            auth_mode: "workos" | "local";
+            /** @description The chat bots this instance runs */
+            bots: components["schemas"]["InstanceBots"];
+            /** @description What this deployment does */
+            deployment: components["schemas"]["DeploymentStatus"];
+            /**
+             * Features
+             * @description Whether each feature works and what it runs on
+             */
+            features: {
+                [key: string]: components["schemas"]["FeatureStatus"];
+            };
+            /**
+             * Has Admin Account
+             * @description Whether the instance administrator exists
+             */
+            has_admin_account: boolean;
+            /**
+             * Needs Setup
+             * @description Whether an LLM lane still has to be configured
+             */
+            needs_setup: boolean;
+            /**
+             * Plans Seeded
+             * @description Whether the billing plans have been seeded
+             */
+            plans_seeded: boolean;
+            /**
+             * Providers
+             * @description Readiness per credential-store provider
+             */
+            providers: {
+                [key: string]: components["schemas"]["ProviderConfiguredState"];
+            };
+            /** @description Who may sign up once the administrator exists */
+            registration_policy: components["schemas"]["RegistrationPolicy"];
+            /**
+             * Wizard Dismissed
+             * @description Whether the administrator skipped the wizard, which then stops opening itself
+             */
+            wizard_dismissed: boolean;
+        };
+        /**
+         * SetupWizardResponse
+         * @description `POST /setup/wizard/dismiss` — the wizard state after the call.
+         */
+        SetupWizardResponse: {
+            /**
+             * Wizard Dismissed
+             * @description Whether the wizard stops opening itself
+             */
+            wizard_dismissed: boolean;
+        };
+        /**
+         * SignupRequest
+         * @description Body of POST /api/v1/auth/signup; invite is the token from an invite link.
+         */
+        SignupRequest: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Invite */
+            invite?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Password */
+            password: string;
         };
         /**
          * Skill
@@ -14536,6 +15904,22 @@ export interface components {
             success: boolean;
         };
         /**
+         * UpdateInstructionsRequest
+         * @description Replace one scope's instructions, guarded by the revision the editor loaded.
+         */
+        UpdateInstructionsRequest: {
+            /**
+             * Base Revision
+             * @description Revision the edit started from; a mismatch means someone else saved first
+             */
+            base_revision: number;
+            /**
+             * Content
+             * @description Full replacement markdown; an empty string clears the scope
+             */
+            content: string;
+        };
+        /**
          * UpdateIntegrationAccountRequest
          * @description Make the account primary and/or rename it; an empty nickname clears it.
          */
@@ -14544,18 +15928,6 @@ export interface components {
             isPrimary?: boolean | null;
             /** Nickname */
             nickname?: string | null;
-        };
-        /**
-         * UpdateIntegrationInstructionsRequest
-         * @description Request to set a user's custom instructions for one integration.
-         */
-        UpdateIntegrationInstructionsRequest: {
-            /**
-             * Content
-             * @description Markdown instructions the agent should honor for this integration
-             * @default
-             */
-            content?: string;
         };
         /**
          * UpdateMemoryRequest
@@ -15625,6 +16997,7 @@ export type BatchEventUpdateRequest = components['schemas']['BatchEventUpdateReq
 export type BatchEventUpdateResponse = components['schemas']['BatchEventUpdateResponse'];
 export type BatchSyncRequest = components['schemas']['BatchSyncRequest'];
 export type BatchSyncResponse = components['schemas']['BatchSyncResponse'];
+export type BlobStoreKind = components['schemas']['BlobStoreKind'];
 export type BlogCountResponse = components['schemas']['BlogCountResponse'];
 export type BlogPost = components['schemas']['BlogPost'];
 export type Body_bot_transcribe_bot_audio = components['schemas']['Body_bot_transcribe_bot_audio'];
@@ -15647,6 +17020,8 @@ export type BrowserSessionStatus = components['schemas']['BrowserSessionStatus']
 export type BrowserTaskFrame = components['schemas']['BrowserTaskFrame'];
 export type BrowserTaskResponse = components['schemas']['BrowserTaskResponse'];
 export type BudgetWindow = components['schemas']['BudgetWindow'];
+export type BuiltInEngine = components['schemas']['BuiltInEngine'];
+export type BuiltInOption = components['schemas']['BuiltInOption'];
 export type BuiltinSkillInfo = components['schemas']['BuiltinSkillInfo'];
 export type BuiltinSkillsResponse = components['schemas']['BuiltinSkillsResponse'];
 export type BulkActionRequest = components['schemas']['BulkActionRequest'];
@@ -15666,6 +17041,7 @@ export type CalendarPreferencesResponse = components['schemas']['CalendarPrefere
 export type CalendarPreferencesUpdateRequest = components['schemas']['CalendarPreferencesUpdateRequest'];
 export type CalendarPreferencesUpdateResponse = components['schemas']['CalendarPreferencesUpdateResponse'];
 export type CancelStreamResponse = components['schemas']['CancelStreamResponse'];
+export type ChangePasswordRequest = components['schemas']['ChangePasswordRequest'];
 export type ChannelConfig = components['schemas']['ChannelConfig'];
 export type ChannelDeliveryStatus = components['schemas']['ChannelDeliveryStatus'];
 export type ChannelPreferences = components['schemas']['ChannelPreferences'];
@@ -15676,6 +17052,14 @@ export type CommunityIntegrationCreator = components['schemas']['CommunityIntegr
 export type CommunityIntegrationItem = components['schemas']['CommunityIntegrationItem'];
 export type CommunityListResponse = components['schemas']['CommunityListResponse'];
 export type ComposedEmailOutput = components['schemas']['ComposedEmailOutput'];
+export type ComposioAuthConfigCandidate = components['schemas']['ComposioAuthConfigCandidate'];
+export type ComposioAuthConfigSource = components['schemas']['ComposioAuthConfigSource'];
+export type ComposioAuthField = components['schemas']['ComposioAuthField'];
+export type ComposioCatalogEntry = components['schemas']['ComposioCatalogEntry'];
+export type ComposioCatalogResponse = components['schemas']['ComposioCatalogResponse'];
+export type ComposioIntegrationSetup = components['schemas']['ComposioIntegrationSetup'];
+export type ComposioSetupResponse = components['schemas']['ComposioSetupResponse'];
+export type ComposioToolkitDetailResponse = components['schemas']['ComposioToolkitDetailResponse'];
 export type ComposioWebhookAckResponse = components['schemas']['ComposioWebhookAckResponse'];
 export type ConditionMatch = components['schemas']['ConditionMatch'];
 export type ConditionOperator = components['schemas']['ConditionOperator'];
@@ -15705,12 +17089,20 @@ export type CreateSubscriptionRequest = components['schemas']['CreateSubscriptio
 export type CreateSubscriptionResponse = components['schemas']['CreateSubscriptionResponse'];
 export type CreateWorkflowFromTodoRequest = components['schemas']['CreateWorkflowFromTodoRequest'];
 export type CreateWorkflowRequest = components['schemas']['CreateWorkflowRequest'];
+export type CredentialProviderName = components['schemas']['CredentialProviderName'];
+export type CredentialSource = components['schemas']['CredentialSource'];
 export type CronValidationResponse = components['schemas']['CronValidationResponse'];
 export type CustomIntegrationConnectionResult = components['schemas']['CustomIntegrationConnectionResult'];
 export type DeactivationReason = components['schemas']['DeactivationReason'];
 export type DegradedHealthResponse = components['schemas']['DegradedHealthResponse'];
 export type DeleteAllConversationsResponse = components['schemas']['DeleteAllConversationsResponse'];
 export type DeleteMemoryResponse = components['schemas']['DeleteMemoryResponse'];
+export type DeliveryFailureAccepted = components['schemas']['DeliveryFailureAccepted'];
+export type DeliveryFailureKind = components['schemas']['DeliveryFailureKind'];
+export type DeliveryFailureReport = components['schemas']['DeliveryFailureReport'];
+export type DependencyStatus = components['schemas']['DependencyStatus'];
+export type DeploymentKind = components['schemas']['DeploymentKind'];
+export type DeploymentStatus = components['schemas']['DeploymentStatus'];
 export type DeregisterServerResponse = components['schemas']['DeregisterServerResponse'];
 export type DesktopReleaseAsset = components['schemas']['DesktopReleaseAsset'];
 export type DesktopReleaseResponse = components['schemas']['DesktopReleaseResponse'];
@@ -15738,13 +17130,17 @@ export type EmailImportanceSummaryResponse = components['schemas']['EmailImporta
 export type EmailReadStatusRequest = components['schemas']['EmailReadStatusRequest'];
 export type EmailRequest = components['schemas']['EmailRequest'];
 export type EmailSearchResponse = components['schemas']['EmailSearchResponse'];
+export type EnableComposioToolkitRequest = components['schemas']['EnableComposioToolkitRequest'];
+export type EnableComposioToolkitResponse = components['schemas']['EnableComposioToolkitResponse'];
 export type ErrorEnvelope = components['schemas']['ErrorEnvelope'];
 export type EventCreateRequest = components['schemas']['EventCreateRequest'];
 export type EventDeleteRequest = components['schemas']['EventDeleteRequest'];
 export type EventDeleteResponse = components['schemas']['EventDeleteResponse'];
 export type EventUpdateRequest = components['schemas']['EventUpdateRequest'];
 export type FeaturePeriodUsage = components['schemas']['FeaturePeriodUsage'];
+export type FeatureSpec = components['schemas']['FeatureSpec'];
 export type FeatureStage = components['schemas']['FeatureStage'];
+export type FeatureStatus = components['schemas']['FeatureStatus'];
 export type FeatureUpgrade = components['schemas']['FeatureUpgrade'];
 export type FeatureUsageSummary = components['schemas']['FeatureUsageSummary'];
 export type FileData = components['schemas']['FileData'];
@@ -15799,7 +17195,10 @@ export type ImportedOrigin = components['schemas']['ImportedOrigin'];
 export type ImportTokenResponse = components['schemas']['ImportTokenResponse'];
 export type InitiatePlatformConnectRequest = components['schemas']['InitiatePlatformConnectRequest'];
 export type InitiatePlatformConnectResponse = components['schemas']['InitiatePlatformConnectResponse'];
+export type InstanceBots = components['schemas']['InstanceBots'];
+export type InstanceRole = components['schemas']['InstanceRole'];
 export type InstructionsEditor = components['schemas']['InstructionsEditor'];
+export type InstructionsResponse = components['schemas']['InstructionsResponse'];
 export type IntegrationAccountResponse = components['schemas']['IntegrationAccountResponse'];
 export type IntegrationAccountsResponse = components['schemas']['IntegrationAccountsResponse'];
 export type IntegrationConfigItem = components['schemas']['IntegrationConfigItem'];
@@ -15807,7 +17206,6 @@ export type IntegrationContent = components['schemas']['IntegrationContent'];
 export type IntegrationFAQ = components['schemas']['IntegrationFAQ'];
 export type IntegrationHowItWorksStep = components['schemas']['IntegrationHowItWorksStep'];
 export type IntegrationInfo = components['schemas']['IntegrationInfo'];
-export type IntegrationInstructionsResponse = components['schemas']['IntegrationInstructionsResponse'];
 export type IntegrationRef = components['schemas']['IntegrationRef'];
 export type IntegrationResponse = components['schemas']['IntegrationResponse'];
 export type IntegrationsConfigResponse = components['schemas']['IntegrationsConfigResponse'];
@@ -15815,6 +17213,8 @@ export type IntegrationStatusesResponse = components['schemas']['IntegrationStat
 export type IntegrationSuccessResponse = components['schemas']['IntegrationSuccessResponse'];
 export type IntegrationTool = components['schemas']['IntegrationTool'];
 export type IntegrationToolsResponse = components['schemas']['IntegrationToolsResponse'];
+export type InviteCreatedResponse = components['schemas']['InviteCreatedResponse'];
+export type InviteResponse = components['schemas']['InviteResponse'];
 export type LabelRequest = components['schemas']['LabelRequest'];
 export type LabEventResponse = components['schemas']['LabEventResponse'];
 export type LinearCommentAddedConfig = components['schemas']['LinearCommentAddedConfig'];
@@ -15825,11 +17225,14 @@ export type LinkPlatformRequest = components['schemas']['LinkPlatformRequest'];
 export type LinkPlatformResponse = components['schemas']['LinkPlatformResponse'];
 export type LinkTokenInfoResponse = components['schemas']['LinkTokenInfoResponse'];
 export type LiveViewTokenResponse = components['schemas']['LiveViewTokenResponse'];
+export type LoginRequest = components['schemas']['LoginRequest'];
 export type LogoutResponse = components['schemas']['LogoutResponse'];
+export type ManagedAt = components['schemas']['ManagedAt'];
 export type MarkAllReadSummary = components['schemas']['MarkAllReadSummary'];
 export type MarkAsReadResponse = components['schemas']['MarkAsReadResponse'];
 export type MarkAsUnreadResponse = components['schemas']['MarkAsUnreadResponse'];
 export type MarketplaceResponse = components['schemas']['MarketplaceResponse'];
+export type MaskedProvider = components['schemas']['MaskedProvider'];
 export type MCPConfigDetail = components['schemas']['MCPConfigDetail'];
 export type MCPConnectionTestResponse = components['schemas']['MCPConnectionTestResponse'];
 export type MCPProxyPromptsListRequest = components['schemas']['MCPProxyPromptsListRequest'];
@@ -15842,6 +17245,8 @@ export type MCPProxyResourceTemplatesListRequest = components['schemas']['MCPPro
 export type MCPProxyResourceTemplatesListResponse = components['schemas']['MCPProxyResourceTemplatesListResponse'];
 export type MCPProxyToolCallRequest = components['schemas']['MCPProxyToolCallRequest'];
 export type MCPProxyToolCallResponse = components['schemas']['MCPProxyToolCallResponse'];
+export type MemberResponse = components['schemas']['MemberResponse'];
+export type MembersOverviewResponse = components['schemas']['MembersOverviewResponse'];
 export type MemoryDocType = components['schemas']['MemoryDocType'];
 export type MemoryDocument = components['schemas']['MemoryDocument'];
 export type MemoryDocumentPreview = components['schemas']['MemoryDocumentPreview'];
@@ -15938,6 +17343,14 @@ export type Priority = components['schemas']['Priority'];
 export type ProjectCreate = components['schemas']['ProjectCreate'];
 export type ProjectResponse = components['schemas']['ProjectResponse'];
 export type PromptTriggerHint = components['schemas']['PromptTriggerHint'];
+export type ProviderCatalogResponse = components['schemas']['ProviderCatalogResponse'];
+export type ProviderConfiguredState = components['schemas']['ProviderConfiguredState'];
+export type ProviderCredentialBody = components['schemas']['ProviderCredentialBody'];
+export type ProviderFeature = components['schemas']['ProviderFeature'];
+export type ProviderListResponse = components['schemas']['ProviderListResponse'];
+export type ProviderPreset = components['schemas']['ProviderPreset'];
+export type ProviderTestFailure = components['schemas']['ProviderTestFailure'];
+export type ProviderTestResponse = components['schemas']['ProviderTestResponse'];
 export type PublicHoloCardResponse = components['schemas']['PublicHoloCardResponse'];
 export type PublicIntegrationDetailResponse = components['schemas']['PublicIntegrationDetailResponse'];
 export type PublicWorkflowCard = components['schemas']['PublicWorkflowCard'];
@@ -15947,6 +17360,7 @@ export type PublishIntegrationResponse = components['schemas']['PublishIntegrati
 export type PublishWorkflowResponse = components['schemas']['PublishWorkflowResponse'];
 export type PushTokenRequest = components['schemas']['PushTokenRequest'];
 export type PushTokenResponse = components['schemas']['PushTokenResponse'];
+export type ReadinessResponse = components['schemas']['ReadinessResponse'];
 export type RecordedCall = components['schemas']['RecordedCall'];
 export type RecurrenceData = components['schemas']['RecurrenceData'];
 export type RecurrenceRule = components['schemas']['RecurrenceRule'];
@@ -15957,6 +17371,9 @@ export type RegenerateStepsRequest = components['schemas']['RegenerateStepsReque
 export type RegenerateWritingStyleExampleResponse = components['schemas']['RegenerateWritingStyleExampleResponse'];
 export type RegisterServerRequest = components['schemas']['RegisterServerRequest'];
 export type RegisterServerResponse = components['schemas']['RegisterServerResponse'];
+export type RegistrationPolicy = components['schemas']['RegistrationPolicy'];
+export type RegistrationPolicyRequest = components['schemas']['RegistrationPolicyRequest'];
+export type RegistrationPolicyResponse = components['schemas']['RegistrationPolicyResponse'];
 export type ReminderResponse = components['schemas']['ReminderResponse'];
 export type ReplyToMessageData = components['schemas']['ReplyToMessageData'];
 export type ResetSessionRequest = components['schemas']['ResetSessionRequest'];
@@ -15965,6 +17382,7 @@ export type ResetWorkflowResponse = components['schemas']['ResetWorkflowResponse
 export type SandboxExecuteRequest = components['schemas']['SandboxExecuteRequest'];
 export type SandboxExecuteResponse = components['schemas']['SandboxExecuteResponse'];
 export type SandboxToolSchemaRequest = components['schemas']['SandboxToolSchemaRequest'];
+export type SaveComposioAuthConfigsRequest = components['schemas']['SaveComposioAuthConfigsRequest'];
 export type SaveSocialProfilesResponse = components['schemas']['SaveSocialProfilesResponse'];
 export type SaveWritingStyleResponse = components['schemas']['SaveWritingStyleResponse'];
 export type ScheduledTaskStatus = components['schemas']['ScheduledTaskStatus'];
@@ -15977,6 +17395,7 @@ export type SearchResultsResponse = components['schemas']['SearchResultsResponse
 export type SelectedCalendarEventData = components['schemas']['SelectedCalendarEventData'];
 export type SelectedWorkflowDataInput = components['schemas']['SelectedWorkflowDataInput'];
 export type SelectedWorkflowDataOutput = components['schemas']['SelectedWorkflowDataOutput'];
+export type SelfHostGap = components['schemas']['SelfHostGap'];
 export type SelfPairRequest = components['schemas']['SelfPairRequest'];
 export type SelfPairResponse = components['schemas']['SelfPairResponse'];
 export type SendDraftResponse = components['schemas']['SendDraftResponse'];
@@ -15985,6 +17404,9 @@ export type SendEmailRequest = components['schemas']['SendEmailRequest'];
 export type SendEmailResponse = components['schemas']['SendEmailResponse'];
 export type SendEmailWithAttachmentsResponse = components['schemas']['SendEmailWithAttachmentsResponse'];
 export type SetToolOverrideRequest = components['schemas']['SetToolOverrideRequest'];
+export type SetupStatusResponse = components['schemas']['SetupStatusResponse'];
+export type SetupWizardResponse = components['schemas']['SetupWizardResponse'];
+export type SignupRequest = components['schemas']['SignupRequest'];
 export type Skill = components['schemas']['Skill'];
 export type SkillInlineCreateRequest = components['schemas']['SkillInlineCreateRequest'];
 export type SkillListResponse = components['schemas']['SkillListResponse'];
@@ -16069,8 +17491,8 @@ export type UpdateDocumentRequest = components['schemas']['UpdateDocumentRequest
 export type UpdateFileRequest = components['schemas']['UpdateFileRequest'];
 export type UpdateHILPreferencesRequest = components['schemas']['UpdateHILPreferencesRequest'];
 export type UpdateHoloCardColorsResponse = components['schemas']['UpdateHoloCardColorsResponse'];
+export type UpdateInstructionsRequest = components['schemas']['UpdateInstructionsRequest'];
 export type UpdateIntegrationAccountRequest = components['schemas']['UpdateIntegrationAccountRequest'];
-export type UpdateIntegrationInstructionsRequest = components['schemas']['UpdateIntegrationInstructionsRequest'];
 export type UpdateMemoryRequest = components['schemas']['UpdateMemoryRequest'];
 export type UpdateMessagesRequest = components['schemas']['UpdateMessagesRequest'];
 export type UpdateMessagesResponse = components['schemas']['UpdateMessagesResponse'];
@@ -16472,6 +17894,207 @@ export interface operations {
             };
         };
     };
+    auth_login: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    auth_change_password: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangePasswordRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Invalid body, or a password longer than bcrypt's 72-byte (UTF-8) limit. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    auth_signup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignupRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Invalid body, or a password longer than bcrypt's 72-byte (UTF-8) limit. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    blob_get_blob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+                owner_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     blog_get_blogs: {
         parameters: {
             query?: {
@@ -16761,6 +18384,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CreateLinkTokenResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    bot_report_bot_delivery_failure: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeliveryFailureReport"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryFailureAccepted"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -21284,6 +22958,153 @@ export interface operations {
             };
         };
     };
+    instructions_get_instructions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scope: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstructionsResponse"];
+                };
+            };
+            /** @description Invalid scope */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Integration not connected */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    instructions_update_instructions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scope: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateInstructionsRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstructionsResponse"];
+                };
+            };
+            /** @description Invalid scope or content */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Integration not connected */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Changed elsewhere since base_revision */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     integrations_disconnect_integration_endpoint: {
         parameters: {
             query?: never;
@@ -22539,144 +24360,6 @@ export interface operations {
             };
         };
     };
-    integrations_get_integration_instructions: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                integration_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IntegrationInstructionsResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Failed to fetch integration instructions */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    integrations_update_integration_instructions: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                integration_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateIntegrationInstructionsRequest"];
-            };
-        };
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IntegrationInstructionsResponse"];
-                };
-            };
-            /** @description Invalid integration_id */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Integration not found in workspace */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Failed to update integration instructions */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
     lab_report_lab_event: {
         parameters: {
             query?: never;
@@ -23124,6 +24807,245 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MCPConnectionTestResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    members_get_members: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MembersOverviewResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    members_delete_member: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    members_post_invite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InviteCreatedResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    members_delete_invite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invite_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    members_put_registration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegistrationPolicyRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegistrationPolicyResponse"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -27583,6 +29505,653 @@ export interface operations {
             };
         };
     };
+    setup_get_provider_catalog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderCatalogResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setup_get_composio_setup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComposioSetupResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setup_put_composio_auth_configs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveComposioAuthConfigsRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComposioSetupResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setup_list_composio_toolkits: {
+        parameters: {
+            query?: {
+                category?: string | null;
+                limit?: number;
+                offset?: number;
+                /** @description Search text */
+                q?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComposioCatalogResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setup_get_composio_toolkit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComposioToolkitDetailResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setup_enable_composio_toolkit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EnableComposioToolkitRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnableComposioToolkitResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setup_disable_composio_toolkit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setup_list_providers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderListResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setup_put_provider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: components["schemas"]["CredentialProviderName"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProviderCredentialBody"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setup_remove_provider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: components["schemas"]["CredentialProviderName"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setup_test_provider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: components["schemas"]["CredentialProviderName"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProviderCredentialBody"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderTestResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setup_get_setup_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupStatusResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setup_dismiss_wizard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupWizardResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     skills_list_skills_endpoint: {
         parameters: {
             query?: {
@@ -31599,6 +34168,62 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DegradedHealthResponse"];
+                };
+            };
+        };
+    };
+    health_readiness_check: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReadinessResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReadinessResponse"];
                 };
             };
         };

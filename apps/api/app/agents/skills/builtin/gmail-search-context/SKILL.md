@@ -21,7 +21,7 @@ Gmail supports powerful search operators:
 
 **People:** `from:user@x.com` / `to:user@x.com` / `cc:user@x.com`
 **Status:** `is:unread` / `is:read` / `is:starred` / `is:important` / `is:snoozed`
-**Categories:** `category:primary|social|promotions|updates` / `label:custom-label`
+**Categories:** `category:personal|social|promotions|updates` (personal is the Primary tab) / `label:custom-label`
 **Time:** `after:2025/01/01` / `before:2025/02/01` / `newer_than:7d` / `older_than:30d`
 - All emails for one day: `after:YYYY/MM/DD before:YYYY/MM/DD+1` (Jan 15: `after:2025/01/15 before:2025/01/16`)
 

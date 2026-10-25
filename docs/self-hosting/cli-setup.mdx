@@ -1,110 +1,112 @@
 ---
 title: "CLI Setup"
-description: "Set up GAIA using the interactive CLI wizard, which handles repository cloning, environment configuration, and service management."
+description: "Install the gaia CLI and start your own GAIA with one command."
 icon: "terminal"
 ---
 
-## CLI-Based Setup
+Install the `gaia` CLI, run `gaia up`, and finish setup in your browser.
 
-The GAIA CLI is the primary way to set up GAIA. It handles repository setup, environment configuration, and service management through an interactive wizard.
-
-<Info>
-  For installation instructions, see [CLI Installation](/cli/installation). For
-  the full command reference, see [CLI Commands](/cli/commands).
-</Info>
-
-## Quick Start
-
-<Snippet file="cli-install.mdx" />
-
-```bash
-# Run the setup wizard
-gaia init
-
-# Clone a specific branch
-gaia init --branch master
-```
-
-## What the Wizard Does
-
-The `gaia init` command walks you through:
+## Install and start
 
 <Steps>
-  <Step title="Prerequisites Check">
-    Verifies Git and Docker are installed, then checks for port conflicts and suggests alternatives. Mise is only checked for developer mode.
+  <Step title="Install the CLI">
+    ```bash
+    curl -fsSL https://heygaia.io/install.sh | sh
+    ```
+
+    <Accordion title="Other ways to install">
+      <Snippet file="cli-install.mdx" />
+    </Accordion>
+
+    <Frame caption="The installer carries straight on into gaia up and downloads GAIA">
+      <img src="/images/self-hosting/terminal-install.webp" width="720" alt="The GAIA installer under the GAIA logo: Node.js, the GAIA CLI and Docker installed, setup files fetched, then Downloading GAIA at 52%, 1.5 of 2.7 GB with about 2 minutes left, and a row per image: web app done, the rest unpacking or downloading" />
+    </Frame>
   </Step>
 
-<Step title="Repository Setup">
-  Clones the GAIA repository to your chosen directory with progress tracking.
-</Step>
+  <Step title="Start GAIA">
+    ```bash
+    gaia up
+    ```
 
-<Step title="Tool Installation (Developer Mode)">
-  Installs required development tools (Node.js, Python, uv, Nx) via Mise.
-</Step>
+    It checks Docker (and offers to install it), downloads GAIA into `~/gaia`, writes the settings and starts everything. Git is not needed.
+  </Step>
 
-<Step title="Environment Configuration">
-  Choose between **Self-Host (Docker)** or **Developer Mode (Local)**, then
-  configure environment variables either: - **Manually**: Interactive prompts
-  for each variable with descriptions and defaults - **Via Infisical**: Enter
-  your Infisical credentials for secret management
-</Step>
-
-  <Step title="Project Setup">
-    - Self-Host mode: Builds/pulls and starts Docker services
-    - Developer mode: Runs `mise setup` to install dependencies and initialize services
+  <Step title="Finish in the browser">
+    Open http://localhost:3000/setup, create the admin account and pick an AI provider.
   </Step>
 </Steps>
 
-## Already Have the Repo?
+New to this? The [walkthrough](/self-hosting/walkthrough) shows every step with screenshots.
 
-If you've already cloned GAIA and just need to configure it, use `gaia setup` instead:
+## Everyday commands
+
+| Command | What it does |
+| --- | --- |
+| `gaia status` | Shows each service and whether it is healthy |
+| `gaia doctor` | Finds what is broken and tells you how to fix it |
+| `gaia logs` | Streams logs |
+| `gaia stop` / `gaia start` | Stops and starts GAIA |
+| `gaia update` | Moves to the GAIA release your CLI ships. Your data stays |
+| `gaia backup` / `gaia restore` | Saves and restores your data |
+
+Every flag and command is in the [CLI reference](/self-hosting/cli-reference).
+
+<Frame caption="gaia status: every dependency and container">
+  <img src="/images/self-hosting/terminal-gaia-status.webp" width="720" alt="Terminal output of gaia status: GAIA is running at its .local address; the web app, server, background jobs and proxy, and MongoDB, PostgreSQL, Redis, RabbitMQ and ChromaDB all checked; no bots yet; setup not finished, with the link to finish it" />
+</Frame>
+
+## Update
 
 ```bash
-cd /path/to/gaia
-gaia setup
+gaia update
 ```
 
-This skips cloning and goes straight to environment configuration and project setup.
+Each CLI version ships one tested GAIA release. To get a newer GAIA, update the CLI first with the install command above, then run `gaia update`. If the download fails, nothing changes.
 
-## Running GAIA After Setup
+## Something broke?
 
 ```bash
-# Self-host mode
-gaia start
-
-# Developer mode (Nx TUI)
-gaia dev
-gaia dev full
-
-# Utilities
-gaia logs
-gaia status
-gaia stop
-gaia setup
+gaia doctor
 ```
 
-## Monitoring Logs
+It checks Docker, containers, ports, every database, the web app, disk and memory, and prints a fix for each problem.
 
-Use `gaia logs` to stream logs for currently running services.
+<Frame caption="gaia doctor on a fresh install, before the admin account exists">
+  <img src="/images/self-hosting/terminal-gaia-doctor.webp" width="720" alt="Terminal output of gaia doctor: Docker, ports, the 9 running containers, the API, each database, the web app, disk space, memory and the GAIA version all checked, and one warning that setup is not finished yet, with the link to finish it" />
+</Frame>
 
-In developer mode, `gaia dev` runs in the foreground and shows Nx TUI output in the same terminal. Keep that terminal open, and use another terminal for `gaia logs` when needed.
+## Good to know
 
-## Port Conflict Handling
+<AccordionGroup>
+  <Accordion title="Port 3000 is taken">
+    GAIA opens one port. If it is busy, `gaia up` shows what uses it and suggests another. The choice is saved in `infra/docker/.env` inside `~/gaia`. To change it later, edit that file, then run `gaia stop && gaia start`.
 
-If required ports are already in use, the CLI detects the conflict, shows which process is using the port, and suggests an alternative port. Infrastructure URLs in your `.env` files are automatically updated to use the alternative ports.
+    | Variable | What it sets | Default |
+    | --- | --- | --- |
+    | `WEB_HOST_PORT` | The HTTP port | 3000 |
+    | `HTTPS_HOST_PORT` | The HTTPS port, used with `GAIA_DOMAIN` | 3443 |
+    | `GAIA_DOMAIN` | Your domain (set by `--domain`) | unset |
+  </Accordion>
 
-Port overrides are saved to `infra/docker/.env` inside your GAIA repo and persist across restarts.
+  <Accordion title="Try a beta">
+    Betas are early versions, numbered like `0.7.0-beta.1`. Add `GAIA_CHANNEL=beta` to the install command, then run `gaia up`:
 
-To change port assignments after setup, edit `infra/docker/.env` directly:
+    ```bash
+    curl -fsSL https://heygaia.io/install.sh | GAIA_CHANNEL=beta sh
+    ```
 
-| Variable             | Service    | Default |
-| -------------------- | ---------- | ------- |
-| `API_HOST_PORT`      | API        | 8000    |
-| `WEB_HOST_PORT`      | Web        | 3000    |
-| `POSTGRES_HOST_PORT` | PostgreSQL | 5432    |
-| `REDIS_HOST_PORT`    | Redis      | 6379    |
-| `MONGO_HOST_PORT`    | MongoDB    | 27017   |
-| `RABBITMQ_HOST_PORT` | RabbitMQ   | 5672    |
-| `CHROMADB_HOST_PORT` | ChromaDB   | 8080    |
+    Expect rough edges, and run `gaia backup` first if you rely on the install.
+  </Accordion>
 
-<Info>Restart services after editing: `gaia stop && gaia start`</Info>
+  <Accordion title="What is in ~/gaia">
+    - `infra/docker/`: the Compose files and proxy settings
+    - Your files: `apps/api/.env`, `apps/bots/.env`, `infra/docker/.env` and `backups/`
+    - `gaia-selfhost.json`: the list of files that came with the release
+
+    Run the commands from inside this folder.
+  </Accordion>
+
+  <Accordion title="Installs made by an older gaia up">
+    These were git checkouts. The next `gaia update` converts them: the tracked files and `.git` are removed, and your settings and backups stay. A checkout on a branch, or with local edits, is refused and pointed at `gaia update --git`.
+  </Accordion>
+</AccordionGroup>
