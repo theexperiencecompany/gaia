@@ -16,7 +16,9 @@ Subcommands:
                       are stuck queued on the home label while no home
                       runner is online (scheduled: ci-requeue.yml).
   cancel-superseded   Cancel older queued/in-progress runs of this workflow
-                      on this branch (per-SHA concurrency needs it).
+                      on this branch (per-SHA concurrency needs it); on a
+                      merge group, every active merge_group run whose head is
+                      no longer a live merge-queue entry.
   rescope <workflow>  Re-run the PR head's latest pull_request run of
                       <workflow> in full, force-cancelling it first if it is
                       still going: a retarget (pr-title.yml) re-scopes CI
@@ -56,7 +58,8 @@ Env contract:
                       POLL_SECS (10), REQUEUE_RUN_ID (one handed-over run
                       instead of the sweep).
   cancel-superseded   GITHUB_REPOSITORY, GITHUB_RUN_ID, GITHUB_WORKFLOW_REF,
-                      GITHUB_HEAD_REF or GITHUB_REF_NAME, GITHUB_EVENT_NAME.
+                      GITHUB_HEAD_REF or GITHUB_REF_NAME, GITHUB_EVENT_NAME,
+                      MERGE_GROUP_BASE_REF (merge_group: the queue's branch).
   rescope             GITHUB_REPOSITORY, HEAD_SHA (the PR head), CANCEL_WAIT_SECS
                       (180), POLL_SECS (10).
   prime-archive       ACTIONS_RUNNER_ACTION_ARCHIVE_CACHE, GAIA_REPO
@@ -709,16 +712,38 @@ def cmd_requeue_stranded(_args: list[str]) -> int:
 # Not concurrency.cancel-in-progress: a shared group makes the new run wait out
 # the old one's cancel, and a cancelled pytest step on the box wedges the
 # listener for its 5-minute timeout. Per-SHA groups plus this async cancel.
+# A merge group's ref is new on every queue rebuild, so no branch or
+# concurrency group links a stale group's runs to the live one: the queue does.
+
+MERGE_QUEUE_QUERY = """
+query($owner: String!, $name: String!, $branch: String!) {
+  repository(owner: $owner, name: $name) {
+    mergeQueue(branch: $branch) {
+      entries(first: 100) { totalCount nodes { headCommit { oid } } }
+    }
+  }
+}
+"""
+# GitHub's answer when the run completed between the listing and the cancel.
+CANCEL_ALREADY_COMPLETED = 409
 
 
-def cmd_cancel_superseded(_args: list[str]) -> int:
-    repo = env_required("GITHUB_REPOSITORY")
-    run_id = env_int("GITHUB_RUN_ID", 0)
+def _cancel(gh: GitHub, repo: str, run_id: int, why: str) -> None:
+    try:
+        gh.post(f"repos/{repo}/actions/runs/{run_id}/cancel")
+    except GitHubError as err:
+        if err.status != CANCEL_ALREADY_COMPLETED:
+            raise
+        ok(f"run {run_id} completed before its cancel landed")
+        return
+    ok(f"cancelled {why} run {run_id}")
+
+
+def _cancel_superseded_branch_runs(gh: GitHub, repo: str, run_id: int) -> None:
     workflow, branch = workflow_file(), head_branch()
     query = urllib.parse.urlencode(
         {"branch": branch, "event": os.environ.get("GITHUB_EVENT_NAME", ""), "per_page": 50}
     )
-    gh = GitHub.from_env()
     runs = gh.collect(f"repos/{repo}/actions/workflows/{workflow}/runs?{query}", "workflow_runs")
     older = [
         field_of(r, "id", int)
@@ -727,14 +752,57 @@ def cmd_cancel_superseded(_args: list[str]) -> int:
     ]
     if not older:
         ok(f"no superseded {workflow} runs on {branch}")
-        return 0
     for old in older:
-        try:
-            gh.post(f"repos/{repo}/actions/runs/{old}/cancel")
-        except GitHubError as err:
-            warn(f"could not cancel run {old} (already finishing?) — {err}")
-            continue
-        ok(f"cancelled superseded run {old}")
+        _cancel(gh, repo, old, "superseded")
+
+
+def _live_queue_heads(gh: GitHub, repo: str) -> set[str]:
+    owner, name = repo.split("/", 1)
+    branch = env_required("MERGE_GROUP_BASE_REF").removeprefix("refs/heads/")
+    data = gh.graphql(MERGE_QUEUE_QUERY, {"owner": owner, "name": name, "branch": branch})
+    queue = field_of(field_of(data, "repository", dict), "mergeQueue", dict)
+    entries = field_of(queue, "entries", dict)
+    nodes = records(entries, "nodes")
+    if field_of(entries, "totalCount", int) != len(nodes):
+        raise GitHubError(f"the {branch} merge queue holds more entries than one page reads")
+    return {
+        field_of(head, "oid", str)
+        for node in nodes
+        if isinstance(head := node.get("headCommit"), dict)
+    }
+
+
+def _cancel_dead_merge_groups(gh: GitHub, repo: str, run_id: int) -> None:
+    # Runs before the queue: a group created in between is then missing from the
+    # listing, instead of listed yet absent from an older queue snapshot.
+    runs = [
+        run
+        for status in sorted(ACTIVE_RUN_STATUSES)
+        for run in gh.collect(
+            f"repos/{repo}/actions/runs?event=merge_group&status={status}&per_page=100",
+            "workflow_runs",
+        )
+    ]
+    live = _live_queue_heads(gh, repo)
+    dead = [
+        field_of(r, "id", int)
+        for r in runs
+        if field_of(r, "id", int) != run_id and field_of(r, "head_sha", str) not in live
+    ]
+    if not dead:
+        ok(f"every active merge_group run belongs to one of {len(live)} live queue entries")
+    for stale in dead:
+        _cancel(gh, repo, stale, "dead merge-group")
+
+
+def cmd_cancel_superseded(_args: list[str]) -> int:
+    repo = env_required("GITHUB_REPOSITORY")
+    run_id = env_int("GITHUB_RUN_ID", 0)
+    gh = GitHub.from_env()
+    if os.environ.get("GITHUB_EVENT_NAME") == "merge_group":
+        _cancel_dead_merge_groups(gh, repo, run_id)
+    else:
+        _cancel_superseded_branch_runs(gh, repo, run_id)
     return 0
 
 
