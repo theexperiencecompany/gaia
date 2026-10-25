@@ -15,7 +15,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 import logging
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -31,7 +31,7 @@ from sentry_sdk.types import Event
 
 from app.config import sentry as sentry_config
 from app.config.loggers import REQUEST_LOGGER_NAME
-from app.config.sentry import _make_sentry_loguru_sink
+from app.config.sentry import _before_send, _make_sentry_loguru_sink
 from shared.py.logging import MCP_USE_LOGGER_DISPLAY_NAME, _InterceptHandler, env_context
 from shared.py.wide_events import (
     BACKGROUND_LOGGER_NAME,
@@ -371,3 +371,79 @@ def test_a_swallowed_tool_listing_failure_still_reaches_sentry() -> None:
     )
 
     cap_msg.assert_called_once()
+
+
+def _event(**overrides: object) -> Event:
+    """Build a minimal message event, shaped like what capture_message builds."""
+    return cast("Event", {"logentry": {"message": "boom"}, **overrides})
+
+
+def test_a_wide_event_user_becomes_the_sentry_user() -> None:
+    event = _before_send(_event(extra={"user": {"id": "67bdb4367c7dd1f0ea343216"}}), {})
+
+    assert event is not None
+    assert event["user"] == {"id": "67bdb4367c7dd1f0ea343216"}
+
+
+def test_the_user_falls_back_to_a_flat_user_id() -> None:
+    event = _before_send(_event(extra={"user_id": "67bdb4367c7dd1f0ea343216"}), {})
+
+    assert event is not None
+    assert event["user"] == {"id": "67bdb4367c7dd1f0ea343216"}
+
+
+def test_an_event_without_a_user_stays_anonymous() -> None:
+    event = _before_send(_event(extra={"trace_id": "t1"}), {})
+
+    assert event is not None
+    assert "user" not in event
+
+
+def test_two_messages_differing_only_by_identifiers_share_a_fingerprint() -> None:
+    first = _before_send(
+        _event(
+            tags={"logger": "APP"},
+            logentry={"message": "MCP DCR failed for https://x.dev/u/67bdb4367c7dd1f0ea343216"},
+        ),
+        {},
+    )
+    second = _before_send(
+        _event(
+            tags={"logger": "APP"},
+            logentry={"message": "MCP DCR failed for https://y.dev/u/aaaaaaaaaaaaaaaaaaaa"},
+        ),
+        {},
+    )
+
+    assert first is not None and second is not None
+    assert first["fingerprint"] == second["fingerprint"]
+
+
+def test_different_messages_keep_different_fingerprints() -> None:
+    first = _before_send(_event(logentry={"message": "redis unreachable"}), {})
+    second = _before_send(_event(logentry={"message": "mongo unreachable"}), {})
+
+    assert first is not None and second is not None
+    assert first["fingerprint"] != second["fingerprint"]
+
+
+def test_a_message_fingerprint_names_the_logger_that_said_it() -> None:
+    event = _before_send(_event(tags={"logger": "MCP_USE"}), {})
+
+    assert event is not None
+    assert event["fingerprint"][1] == "MCP_USE"
+
+
+def test_an_exception_event_is_grouped_by_its_stack_not_its_message() -> None:
+    event = _before_send(_event(exception={"values": []}, logentry={"message": "boom 12"}), {})
+
+    assert event is not None
+    assert "fingerprint" not in event
+
+
+def test_a_retried_llm_attempt_is_dropped_before_anything_else() -> None:
+    trace = {
+        "origin": LangchainIntegration.origin,
+        "op": OP.GEN_AI_CHAT,
+    }
+    assert _before_send(_event(contexts={"trace": trace}), {}) is None
