@@ -11,7 +11,9 @@ import {
 } from "@heroui/modal";
 import { Tab, Tabs } from "@heroui/tabs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Components } from "react-markdown";
+// The renderer takes streamdown's Components, not react-markdown's: the two are
+// structurally incompatible, and react-markdown's is not assignable to it.
+import type { Components } from "streamdown";
 import CustomAnchor from "@/features/chat/components/code-block/CustomAnchor";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import {

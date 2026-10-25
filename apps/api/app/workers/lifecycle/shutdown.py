@@ -6,6 +6,7 @@ from collections.abc import MutableMapping
 from app.constants.log_tags import LogTag
 from app.constants.startup import WORKER_STARTUP_TIME_CTX_KEY
 from app.core.provider_registration import unified_shutdown
+from app.core.runtime_config_subscriber import stop_runtime_config_subscriber
 from app.services.delivery_alerts.dead_letter_tap import stop_dead_letter_tap
 from app.services.device.up_listener import stop_up_listener
 from app.utils.browser_reaper import stop_browser_reaper
@@ -33,6 +34,10 @@ async def shutdown(ctx: MutableMapping[str, object]) -> None:
         # Stop the per-pod up-listener the warm-connect path relies on (started
         # in worker startup). Symmetric with core/lifespan on the API side.
         await stop_up_listener()
+
+        # Apply provider-credential updates published by the API pod (and any
+        # other worker) until it stops.
+        await stop_runtime_config_subscriber()
 
         # Use unified shutdown function - handles context-aware service cleanup
         await unified_shutdown("arq_worker")

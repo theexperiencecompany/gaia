@@ -77,6 +77,10 @@ def _expect_arg(workflow: dict[str, Any]) -> str:
     raise AssertionError("the quality-gate job passes no EXPECT to `verdict.py consolidate`")
 
 
+def _is_partial(step: dict[str, Any]) -> bool:
+    return str(step.get("with", {}).get("partial", "")) == "true"
+
+
 def test_every_gated_job_uploads_its_verdict(workflow: dict[str, Any]) -> None:
     for name in _reporting_jobs(workflow):
         steps = [s for s in workflow["jobs"][name]["steps"] if s.get("uses") == UPLOAD_VERDICT]
@@ -112,7 +116,7 @@ def test_verdict_artifact_names_are_unique(workflow: dict[str, Any]) -> None:
             continue
         seen_steps.append(job["steps"])
         for step in job["steps"]:
-            if step.get("uses") != UPLOAD_VERDICT:
+            if step.get("uses") != UPLOAD_VERDICT or _is_partial(step):
                 continue
             given = str(step["with"]["name"])
             if "strategy" in job:
@@ -409,3 +413,81 @@ def test_a_reused_check_is_one_the_lane_table_maps(workflow: dict[str, Any]) -> 
             if found:
                 gated.add(found.group(1))
     assert mapped <= gated, f"lane-table checks no step reuses on: {sorted(mapped - gated)}"
+
+
+# ---------------------------------------------------------------------------
+# Readable the moment a check fails. A job's verdict used to upload at its very
+# end, and its log only once the whole RUN ended — 30 min after a lint check
+# went red. Each check now runs under `verdict.py check`, which writes its own
+# `<job>/<check>` verdict from what it printed, and an upload right after it
+# ships that verdict while the job keeps going.
+# ---------------------------------------------------------------------------
+
+CHECK_SHELL = re.compile(
+    r"^python3 (?:\.\./\.\./)?scripts/ci/verdict\.py check\b.* -- bash .*\{0\}$"
+)
+
+
+def _check_steps(job: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        s
+        for s in job["steps"]
+        if s.get("continue-on-error") and s.get("id") and not str(s["id"]).endswith("-start")
+    ]
+
+
+def test_every_grouped_run_check_writes_its_own_verdict(workflow: dict[str, Any]) -> None:
+    for name, job in _grouped_jobs(workflow).items():
+        for step in _check_steps(job):
+            if "run" not in step:
+                continue
+            assert CHECK_SHELL.match(str(step.get("shell", ""))), (
+                f"{name}/{step['id']}: a check step's shell must be `verdict.py check -- bash … {{0}}`, "
+                "or a red check reports only '<tool> failed'"
+            )
+
+
+def test_every_check_is_followed_by_an_upload_of_the_verdicts_so_far(
+    workflow: dict[str, Any],
+) -> None:
+    for name, job in _grouped_jobs(workflow).items():
+        steps = job["steps"]
+        for step in _check_steps(job):
+            after = steps[steps.index(step) + 1 :]
+            upload = next((s for s in after if s.get("uses") == UPLOAD_VERDICT), None)
+            assert upload is not None and _is_partial(upload), (
+                f"{name}/{step['id']}: the next upload after this check must be a partial one, "
+                "or its verdict waits for the end of the job"
+            )
+            between = after[: after.index(upload)]
+            assert all(s.get("continue-on-error") is not True for s in between), (
+                f"{name}/{step['id']}: another check runs before its verdict is uploaded"
+            )
+
+
+def test_a_partial_upload_runs_only_when_a_failing_verdict_is_waiting(
+    workflow: dict[str, Any],
+) -> None:
+    pending = f"env.{verdict.PENDING_UPLOAD_ENV} == '1'"
+    partials = 0
+    for name, job in workflow["jobs"].items():
+        for step in job.get("steps", []):
+            if step.get("uses") == UPLOAD_VERDICT and _is_partial(step):
+                partials += 1
+                assert pending in str(step.get("if", "")), (name, step.get("if"))
+                assert "always()" in str(step.get("if", "")), name
+    assert partials, "no job uploads its verdicts mid-run"
+
+
+def test_a_partial_upload_overwrites_the_jobs_own_artifact(workflow: dict[str, Any]) -> None:
+    # Two names would put one lane in front of the gate twice; the composite
+    # overwrites, so a partial upload must name the artifact the job ends with.
+    for name in _reporting_jobs(workflow):
+        job = workflow["jobs"][name]
+        uploads = [s for s in job["steps"] if s.get("uses") == UPLOAD_VERDICT]
+        finals = {str(s["with"]["name"]) for s in uploads if not _is_partial(s)}
+        for step in uploads:
+            if not _is_partial(step):
+                continue
+            given = str(step["with"]["name"]).replace("${{ github.job }}", name)
+            assert given in finals, f"{name}: partial upload {given!r} is not one of {finals}"

@@ -1,17 +1,27 @@
 """Unit tests for user service operations."""
 
 from collections.abc import Iterator
+import contextlib
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from bson import ObjectId
 from fastapi import HTTPException
 import pytest
 
-from app.models.user_models import UserDocument, UserUpdateResponse
+from app.constants.files import BlobKind
+from app.models.user_models import ProfilePictureUpload, UserDocument, UserUpdateResponse
 from app.services.user_service import get_user_by_id, update_user_profile
 
 UPDATED_AT = datetime(2025, 7, 1, 12, 0, 0, tzinfo=UTC)
+
+
+@contextlib.contextmanager
+def _patched_store() -> Iterator[AsyncMock]:
+    """Yield the blob store's put; the store choice itself is covered in test_blob_store."""
+    store = MagicMock(put=AsyncMock(return_value="https://res.cloudinary.com/pic.jpg"))
+    with patch("app.services.user_service.blob_store", return_value=store):
+        yield store.put
 
 
 @pytest.fixture
@@ -197,14 +207,21 @@ class TestUpdateUserProfile:
         )
         mock_update.return_value = updated_user
 
-        with patch(
-            "app.services.user_service.upload_user_picture", new_callable=AsyncMock
-        ) as mock_upload:
+        with _patched_store() as mock_upload:
             mock_upload.return_value = uploaded_url
-            result = await update_user_profile(sample_user.id, picture_data=b"fake_image")
+            result = await update_user_profile(
+                sample_user.id, picture=ProfilePictureUpload(b"fake_image", "image/jpeg")
+            )
 
         # public_id is derived from the email: @ -> _at_, . -> _dot_, prefixed user_
-        mock_upload.assert_awaited_once_with(b"fake_image", "user_alice_at_example_dot_com")
+        mock_upload.assert_awaited_once_with(
+            sample_user.id,
+            "user_alice_at_example_dot_com",
+            b"fake_image",
+            resource_type="image",
+            kind=BlobKind.AVATAR,
+            content_type="image/jpeg",
+        )
         update_arg = mock_update.call_args.args[1]
         assert update_arg.model_dump(exclude_unset=True) == {"picture": uploaded_url}
         assert result.picture == uploaded_url
@@ -216,24 +233,24 @@ class TestUpdateUserProfile:
         mock_get.return_value = user_no_email
         mock_update.return_value = user_no_email
 
-        with patch(
-            "app.services.user_service.upload_user_picture", new_callable=AsyncMock
-        ) as mock_upload:
+        with _patched_store() as mock_upload:
             mock_upload.return_value = "https://res.cloudinary.com/pic.jpg"
-            await update_user_profile(user_no_email.id, picture_data=b"fake_image")
+            await update_user_profile(
+                user_no_email.id, picture=ProfilePictureUpload(b"fake_image", "image/jpeg")
+            )
 
-        mock_upload.assert_awaited_once_with(b"fake_image", "user_")
+        assert mock_upload.await_args.args[:2] == (user_no_email.id, "user_")
 
     async def test_empty_picture_bytes_skip_upload(self, mock_repo, sample_user):
         mock_get, mock_update = mock_repo
         mock_get.return_value = sample_user
 
-        with patch(
-            "app.services.user_service.upload_user_picture", new_callable=AsyncMock
-        ) as mock_upload:
-            await update_user_profile(sample_user.id, picture_data=b"")
+        with _patched_store() as mock_upload:
+            await update_user_profile(
+                sample_user.id, picture=ProfilePictureUpload(b"", "image/jpeg")
+            )
 
-        mock_upload.assert_not_called()
+        mock_upload.assert_not_awaited()
         mock_update.assert_not_called()
 
     async def test_raises_500_on_picture_upload_failure(self, mock_repo, sample_user):
@@ -241,13 +258,12 @@ class TestUpdateUserProfile:
         mock_get.return_value = sample_user
         original = Exception("Upload failed")
 
-        with patch(
-            "app.services.user_service.upload_user_picture",
-            new_callable=AsyncMock,
-            side_effect=original,
-        ):
+        with _patched_store() as mock_upload:
+            mock_upload.side_effect = original
             with pytest.raises(HTTPException) as exc_info:
-                await update_user_profile(sample_user.id, picture_data=b"fake_image")
+                await update_user_profile(
+                    sample_user.id, picture=ProfilePictureUpload(b"fake_image", "image/jpeg")
+                )
 
         assert exc_info.value.status_code == 500
         assert exc_info.value.detail == "Failed to upload profile picture"
@@ -293,11 +309,11 @@ class TestUpdateUserProfile:
 
         with (
             patch("app.services.user_service.log") as mock_log,
-            patch(
-                "app.services.user_service.upload_user_picture", new_callable=AsyncMock
-            ) as mock_upload,
+            _patched_store() as mock_upload,
         ):
             mock_upload.return_value = "https://res.cloudinary.com/pic.jpg"
-            await update_user_profile(sample_user.id, picture_data=b"fake_image")
+            await update_user_profile(
+                sample_user.id, picture=ProfilePictureUpload(b"fake_image", "image/jpeg")
+            )
 
         assert mock_log.set.call_args.kwargs["has_picture"] is True

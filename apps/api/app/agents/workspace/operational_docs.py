@@ -18,6 +18,8 @@ from __future__ import annotations
 
 from typing import Final, Literal, NamedTuple, get_args
 
+from app.config.settings import settings
+
 # Topic docs: one self-contained file per concern, faithfully merged from
 # the prior GUIDE.md + gaia-* skill content.
 
@@ -785,7 +787,7 @@ Pro, there is nothing to sell: tell them when it resets and leave it there.
 
 - **Never cancel, refund, change, or pause a subscription.** You have no tool
   for it, and money moving without the user doing it themselves is not
-  something to improvise. Send them to Settings, or open a support ticket.
+  something to improvise. Send them to Settings{support_route}.
 - Never promise a discount, a trial, a refund, or an exception. You cannot
   grant one.
 - Never quote a price, a limit, or a feature you did not read from a tool.
@@ -1188,9 +1190,21 @@ def manual_topics() -> list[ManualDoc]:
     return list(MANUAL_DOCS.values())
 
 
+# Where the support route sits in a doc; filled per deployment at read time.
+_SUPPORT_ROUTE_SLOT: Final[str] = "{support_route}"
+_SUPPORT_ROUTE: Final[str] = ", or open a support ticket"
+
+
 def get_manual(name: str) -> ManualDoc | None:
-    """Return one manual doc by name, or None if unknown."""
-    return MANUAL_DOCS.get(name.strip().lower())
+    """Return one manual doc by name, or None if unknown.
+
+    A deployment without GAIA's support desk (self-host) gets no support route.
+    """
+    doc = MANUAL_DOCS.get(name.strip().lower())
+    if doc is None:
+        return None
+    route = _SUPPORT_ROUTE if settings.deployment.gaia_support else ""
+    return doc._replace(body=doc.body.replace(_SUPPORT_ROUTE_SLOT, route))
 
 
 def manual_index_text() -> str:

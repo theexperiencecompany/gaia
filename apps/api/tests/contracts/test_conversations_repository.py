@@ -1066,3 +1066,15 @@ class TestActivitySignal:
 
         cutoff = datetime.now(UTC) - timedelta(days=1)
         assert await repo.has_activity_since(mine.user_id, cutoff) is False
+
+
+async def test_owners_of_maps_each_existing_conversation_to_its_owner(repo):
+    alice, bob = _uid(), _uid()
+    a_conv, b_conv = _doc(user_id=alice), _doc(user_id=bob)
+    await repo.create(a_conv)
+    await repo.create(b_conv)
+    await repo.create(_doc(user_id=alice))
+
+    owners = await repo.owners_of([a_conv.conversation_id, b_conv.conversation_id, _cid()])
+
+    assert owners == {a_conv.conversation_id: alice, b_conv.conversation_id: bob}

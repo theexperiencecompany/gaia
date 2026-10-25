@@ -358,7 +358,9 @@ class _CachingQueryApi:
         self.rows = rows
         self.cache: dict[str, dict[str, Any]] = {}
 
-    def request(self, method: str, path: str, body: Any = None) -> dict[str, Any]:
+    def request(
+        self, method: str, path: str, body: Any = None, *, idempotent: bool | None = None
+    ) -> dict[str, Any]:
         key = json.dumps(body["query"], sort_keys=True)
         if body.get("refresh") != "force_blocking" and key in self.cache:
             return self.cache[key]
@@ -397,7 +399,9 @@ def test_the_probe_asks_a_trends_query_the_way_a_tile_does(
     client = analytics.PostHog("https://us.posthog.com", 1, "phx_test")
     sent: list[tuple[str, str, Any]] = []
 
-    def request(method: str, path: str, body: Any = None) -> dict[str, Any]:
+    def request(
+        method: str, path: str, body: Any = None, *, idempotent: bool | None = None
+    ) -> dict[str, Any]:
         sent.append((method, path, body))
         return {"results": [{"count": 54.0, "data": [10, 44]}]}
 
@@ -978,3 +982,78 @@ def test_the_actions_are_held_to_the_files_passed_as_live(
 
     args = ["--live-actions", str(live_actions)] if held_to_live else []
     assert analytics.main(["check", *args]) == code
+
+
+class _FlakyTransport:
+    """Stands in for PostHog._send: each call pops the next scripted outcome."""
+
+    def __init__(self, outcomes: list[tuple[int, str] | Exception]) -> None:
+        self.outcomes = outcomes
+        self.calls: list[str] = []
+
+    def __call__(self, method: str, path: str, body: Any) -> tuple[int, str]:
+        self.calls.append(method)
+        outcome = self.outcomes.pop(0)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+
+def _client_over(
+    monkeypatch: pytest.MonkeyPatch, outcomes: list[tuple[int, str] | Exception]
+) -> tuple[Any, _FlakyTransport]:
+    client = analytics.PostHog("https://us.posthog.com", 1, "phx_test")
+    transport = _FlakyTransport(outcomes)
+    monkeypatch.setattr(client, "_send", transport)
+    monkeypatch.setattr(analytics.time, "sleep", lambda _s: None)
+    return client, transport
+
+
+@pytest.mark.parametrize(
+    "flake",
+    [
+        analytics.http.client.IncompleteRead(b"partial"),
+        TimeoutError("timed out"),
+        (502, "bad gateway"),
+        (429, "slow down"),
+    ],
+    ids=["incomplete-read", "timeout", "5xx", "429"],
+)
+def test_a_read_that_flakes_once_is_retried_and_succeeds(
+    monkeypatch: pytest.MonkeyPatch, flake: tuple[int, str] | Exception
+) -> None:
+    client, transport = _client_over(monkeypatch, [flake, (200, '{"id": 1}')])
+    assert client.project() == {"id": 1}
+    assert transport.calls == ["GET", "GET"]
+
+
+def test_the_hogql_query_post_is_a_read_and_is_retried(monkeypatch: pytest.MonkeyPatch) -> None:
+    client, transport = _client_over(monkeypatch, [(503, "busy"), (200, '{"results": [[1]]}')])
+    assert client.hogql("select 1") == [[1]]
+    assert transport.calls == ["POST", "POST"]
+
+
+def test_a_create_is_never_retried_because_it_may_have_landed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, transport = _client_over(monkeypatch, [(502, "bad gateway"), (200, "{}")])
+    with pytest.raises(analytics.PostHogError, match="HTTP 502"):
+        client.create_action({"name": "x"})
+    assert transport.calls == ["POST"]
+
+
+def test_a_client_error_is_not_retried(monkeypatch: pytest.MonkeyPatch) -> None:
+    client, transport = _client_over(monkeypatch, [(403, "forbidden"), (200, "{}")])
+    with pytest.raises(analytics.PostHogError, match="HTTP 403"):
+        client.project()
+    assert transport.calls == ["GET"]
+
+
+def test_a_read_that_keeps_failing_raises_after_every_attempt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    outcomes: list[tuple[int, str] | Exception] = [(500, "down")] * analytics.HTTP_ATTEMPTS
+    client, transport = _client_over(monkeypatch, outcomes)
+    with pytest.raises(analytics.PostHogError, match=r"after 4 attempt"):
+        client.project()
+    assert len(transport.calls) == analytics.HTTP_ATTEMPTS

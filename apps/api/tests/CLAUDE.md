@@ -102,7 +102,7 @@ deterministic and can never bill a real API.
 Exceptions are explicit declarations, never accidents:
 
 - The harness's own fake values (`WORKOS_API_KEY`, `MCP_ENCRYPTION_KEY`,
-  `AGENT_SECRET`, `GOOGLE_API_KEY` fake) survive by allowlist.
+  `AGENT_SECRET`) survive by allowlist.
 - A live-credential tier declares the keys it legitimately needs by setting
   `HERMETIC_ALLOW_KEYS` (comma-separated) in its conftest at import time —
   e.g. `tests/composio/conftest.py` declares `COMPOSIO_KEY,

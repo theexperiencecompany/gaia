@@ -295,7 +295,7 @@ async def _resolve_lab_todo(*, user_id: str, run_todo_id: str) -> TodoDocument |
 async def _seed_lab_run(*, user_id: str, sandbox_run_id: str, sbx: object) -> tuple[str, str] | str:
     """Mint the hooks token, stage the seed, run it; or the loud error. Returns (url, token)."""
     try:
-        url = lab_events_url()
+        url = lab_events_url(sbx)
         token = mint_lab_hooks_token(user_id, sandbox_run_id)
         seed = build_seed_command(url, token, sandbox_run_id)
     except Exception as e:

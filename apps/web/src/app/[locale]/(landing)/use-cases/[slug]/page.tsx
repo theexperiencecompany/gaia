@@ -7,6 +7,7 @@ import {
   type Workflow,
   workflowApi,
 } from "@/features/workflows/api/workflowApi";
+import { prerenderedMarketingParams } from "@/lib/selfhost";
 import { generateBreadcrumbSchema, siteConfig } from "@/lib/seo";
 import type { UseCase } from "@/types/features/workflowTypes";
 import {
@@ -29,7 +30,7 @@ interface PageProps {
 
 export const revalidate = 3600; // Revalidate every hour
 
-export async function generateStaticParams() {
+async function allStaticParams() {
   try {
     const isDev = process.env.NODE_ENV === "development";
 
@@ -60,6 +61,10 @@ export async function generateStaticParams() {
     console.error("Error generating static params for use-cases:", error);
     return [];
   }
+}
+
+export function generateStaticParams() {
+  return prerenderedMarketingParams(allStaticParams);
 }
 
 export const dynamicParams = true;

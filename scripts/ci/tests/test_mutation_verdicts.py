@@ -185,6 +185,7 @@ def _sandbox(tmp_path: Path) -> Path:
         MUTATION.name,
         "verdict.py",
         "lib/github.py",
+        "lib/output_findings.py",
         "lib/log.sh",
         "lib/cpu-slots.sh",
         "lib/mutation_gap.py",

@@ -119,7 +119,7 @@ async def _fetch_github_contents(
     if resp.status_code == 403:
         log.warning(f"{LogTag.SKILLS} GitHub API rate limit exceeded. Try again later.")
         raise ValueError(
-            "GitHub API rate limit exceeded. Please try again later, or set GITHUB_TOKEN for higher limits (5000/hr vs 60/hr)."
+            "GitHub API rate limit exceeded. Try again later, or add a GitHub token in Settings → Providers & Tools (GITHUB_TOKEN in env) for 5000 lookups an hour instead of 60."
         )
 
     resp.raise_for_status()

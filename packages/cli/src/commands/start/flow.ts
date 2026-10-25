@@ -1,116 +1,107 @@
+import { setEnding } from "../../lib/command-ending.js";
+import { dockerAccessError, getDockerAccess } from "../../lib/docker-access.js";
+import {
+  DEFAULT_WEB_PORT,
+  installWebUrl,
+  localApiUrl,
+} from "../../lib/endpoints.js";
 import { readDockerComposePortOverrides } from "../../lib/env-writer.js";
+import { detectSetupMode, findInstallRoot } from "../../lib/install-root.js";
 import {
-  checkDockerDetailed,
-  PREREQUISITE_URLS,
-} from "../../lib/prerequisites.js";
+  endActiveStep,
+  finishStep,
+  initSteps,
+  startStep,
+} from "../../lib/run-steps.js";
+import type { StartServicesOptions } from "../../lib/service-starter.js";
 import {
-  detectSetupMode,
-  findRepoRoot,
-  type StartServicesOptions,
-  startServices,
-} from "../../lib/service-starter.js";
-import { LOG_BUFFER_LINES } from "../../ui/constants.js";
+  imagesStep,
+  START_STEP,
+  startSelfhostServices,
+  waitForGaia,
+} from "../../lib/start-steps.js";
 import type { CLIStore } from "../../ui/store.js";
 
-const ANSI_ESCAPE_RE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
+function fail(store: CLIStore, error: Error): void {
+  endActiveStep(store, "failed");
+  store.setError(error);
+}
 
 export async function runStartFlow(
   store: CLIStore,
-  options?: StartServicesOptions,
+  options: StartServicesOptions = {},
 ): Promise<void> {
-  store.setStep("Starting");
-  store.setStatus("Locating GAIA repository...");
+  initSteps(store, [
+    {
+      id: "docker",
+      label: "Checking Docker",
+      doneLabel: "Docker is ready",
+      minor: true,
+    },
+    imagesStep(options.build === true),
+    START_STEP,
+  ]);
+  startStep(store, "docker");
 
-  const repoPath = findRepoRoot();
+  const repoPath = findInstallRoot();
   if (!repoPath) {
-    store.setError(
+    fail(
+      store,
       new Error(
-        "Could not find GAIA repository. Run from within a cloned gaia repo.",
+        "GAIA isn't installed here, so there is nothing to start.\nInstall it with 'gaia up'.",
       ),
     );
     return;
   }
-
-  store.updateData("repoPath", repoPath);
-
   const mode = await detectSetupMode(repoPath);
-  if (!mode) {
-    store.setError(
+  if (mode !== "selfhost") {
+    fail(
+      store,
       new Error(
-        "No .env file found. Run 'gaia init' for fresh setup, or 'gaia setup' to configure an existing repo.",
+        mode === "developer"
+          ? "This is a development copy of GAIA, which runs in the foreground.\nStart it with 'gaia dev' (or 'gaia dev full')."
+          : "This GAIA install isn't set up yet.\nFinish it with 'gaia up'.",
       ),
     );
     return;
   }
-
-  if (mode === "developer") {
-    store.setError(
-      new Error(
-        "Developer mode runs in foreground. Use 'gaia dev' or 'gaia dev full' instead of 'gaia start'.",
-      ),
-    );
+  const access = await getDockerAccess();
+  if (access !== "ready") {
+    fail(store, await dockerAccessError(access));
     return;
   }
-
-  // Check prerequisites before starting
-  if (mode === "selfhost") {
-    store.setStatus("Checking Docker...");
-    const dockerInfo = await checkDockerDetailed();
-    if (!dockerInfo.working) {
-      store.setError(
-        new Error(
-          dockerInfo.errorMessage ||
-            `Docker is not running. Please start Docker and try again.\n  ${PREREQUISITE_URLS.docker}`,
-        ),
-      );
-      return;
-    }
-  }
+  finishStep(store, "docker");
 
   const portOverrides = readDockerComposePortOverrides(repoPath);
-  const webPort = portOverrides[3000] ?? 3000;
-  const apiPort = portOverrides[8000] ?? 8000;
-
-  store.updateData("setupMode", mode);
-  store.updateData("webPort", webPort);
-  store.updateData("apiPort", apiPort);
-  store.updateData("dockerLogs", []);
-  store.setStatus(`Starting GAIA in ${mode} mode...`);
-
-  const logHandler = (chunk: string) => {
-    const lines = chunk
-      .split("\n")
-      .map((l) => l.replace(ANSI_ESCAPE_RE, "").trim())
-      .filter((l) => l.length > 0);
-    if (lines.length === 0) return;
-    const current: string[] = store.currentState.data.dockerLogs || [];
-    store.updateData(
-      "dockerLogs",
-      [...current, ...lines].slice(-LOG_BUFFER_LINES),
-    );
-  };
-
+  const webPort = portOverrides[DEFAULT_WEB_PORT] ?? DEFAULT_WEB_PORT;
+  let startedServices: number;
   try {
-    await startServices(
+    startedServices = await startSelfhostServices(
+      store,
       repoPath,
-      mode,
-      (status) => {
-        store.setStatus(status);
-      },
       portOverrides,
-      logHandler,
-      options,
+      { ...options, rebuildCommand: "gaia start --build" },
     );
-
-    store.setStep("Running");
-    store.setStatus("GAIA is running!");
-    store.updateData("started", true);
   } catch (e) {
+    fail(store, new Error(`GAIA didn't start. ${(e as Error).message}`));
+    return;
+  }
+  const readiness = await waitForGaia(
+    store,
+    { apiUrl: localApiUrl("selfhost", portOverrides), webPort },
+    startedServices,
+  );
+  if (!readiness.ready) {
     store.setError(
-      new Error(`Failed to start services: ${(e as Error).message}`),
+      new Error(
+        "GAIA started but didn't answer in time.\n'gaia status' shows which part is down; 'gaia logs' shows why.",
+      ),
     );
     return;
   }
-
-  await store.waitForInput("exit");
+  setEnding(store, {
+    lead: "Open:",
+    target: installWebUrl(repoPath, webPort),
+    also: ["gaia status checks its health · gaia stop stops it"],
+  });
 }

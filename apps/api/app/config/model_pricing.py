@@ -120,7 +120,7 @@ def get_model_pricing(model_name: str) -> ModelPricing:
 
 def _is_dev_custom_model(model_name: str) -> bool:
     """Whether model_name is the development-only custom endpoint's model (DEV_LLM_MODEL)."""
-    return settings.ENV == "development" and model_name == settings.DEV_LLM_MODEL
+    return settings.deployment.dev_tools and model_name == settings.DEV_LLM_MODEL
 
 
 def calculate_token_cost(

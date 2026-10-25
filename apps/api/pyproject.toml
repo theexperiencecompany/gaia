@@ -123,6 +123,11 @@ dev = [
   "hypothesis>=6.165.2",
   "mutmut>=3.7.0",
   "import-linter>=2.6",
+  # The eval harness (scripts/evals) only: nothing under app/ imports them, and
+  # the API image installs --no-dev.
+  "opik>=1.10.0",
+  "pandas>=2.3.0",
+  "pyarrow>=25.0.0",
 ]
 
 backend = [
@@ -154,7 +159,6 @@ backend = [
   "pymupdf>=1.25.5",
   "markdown2>=2.5.3",
   "pillow==13.0.0",
-  "pandas>=2.3.0",
   "beautifulsoup4>=4.13.5,<5",
   "bs4==0.0.2",
   "lxml>=5.3",
@@ -165,7 +169,6 @@ backend = [
   "tavily-python>=0.7.12",
   "crawl4ai>=0.7.7",
   "ftfy>=6.3.0",
-  "google-api-python-client>=2.162.0",
   "googleapis-common-protos==1.66.0",
   "cloudinary==1.41.0",
   "resend>=2.10.0",
@@ -195,8 +198,7 @@ backend = [
   "posthog>=7.44.2",
   "sentry-sdk[langgraph]>=2.44.0",
   "langfuse>=3.7.0",
-  "opik>=1.10.0",
-  "litellm>=1.83.4,<1.90",
+  "litellm>=1.89.7,<1.90",
   "prometheus-fastapi-instrumentator>=7.0.0",
   "prometheus-client>=0.20.0",
   # Browser automation: Browser-Use agent layer over gaia-browser-host.
@@ -207,7 +209,6 @@ backend = [
   # bubus's event-bus lock, and the stalled-load watcher registers cdp-use events.
   "bubus==1.5.6",
   "cdp-use==1.4.5",
-  "pyarrow>=25.0.0",
   "slack-sdk>=3.36.0",
 ]
 
@@ -389,6 +390,8 @@ ignore_imports = [
   "app.utils.agent_utils -> app.agents.tools.core.registry",
   "app.utils.chat_utils -> app.agents.llm.chatbot",
   "app.utils.file_utils -> app.agents.llm.client",
+  # Catches the vision helper's not-configured error to degrade an image upload.
+  "app.utils.file_utils -> app.agents.llm.exceptions",
   "app.utils.file_utils -> app.agents.llm.vision",
   "app.utils.image_utils -> app.agents.llm.vision",
   "app.utils.profile_card -> app.agents.llm.client",

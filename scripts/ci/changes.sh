@@ -17,6 +17,9 @@
 #   docker-inputs            Does this PR touch anything the api image build
 #                            depends on? Writes build=true|false to
 #                            $GITHUB_OUTPUT.
+#   selfhost-inputs          Does this PR touch what a self-hoster runs (the
+#                            CLI, self-host compose, app images, setup/auth)?
+#                            Writes build=true|false to $GITHUB_OUTPUT.
 #   web-inputs               Does this change touch anything the web Worker
 #                            bundle depends on? Same output, for deploy-web.
 #   desktop-inputs           Does this change touch anything the packaged
@@ -77,6 +80,7 @@
 #   files          GAIA_PR_BASE, GITHUB_BASE_REF, GITHUB_ACTIONS, NX_BASE (local).
 #   py-source      as `files`; also reads pyproject.toml from the repo root.
 #   docker-inputs  BASE_BRANCH (the RESOLVED base, not github.base_ref), GITHUB_OUTPUT.
+#   selfhost-inputs  BASE_BRANCH (github.base_ref), GITHUB_OUTPUT.
 #   web-inputs     BASE_BRANCH (a branch or a merge_group base sha), GITHUB_OUTPUT.
 #   desktop-inputs BASE_BRANCH (a branch or a merge_group base sha), GITHUB_OUTPUT.
 set -euo pipefail
@@ -338,6 +342,35 @@ cmd_desktop_inputs() {
   _inputs_changed "desktop app" "$BASE_BRANCH" "${DESKTOP_INPUTS[@]}"
 }
 
+# Does this PR touch what a self-hoster runs? The self-host end-to-end lane boots
+# the whole stack through the CLI, so it is scoped to the CLI, the self-host
+# compose files, the two app images and the setup/auth/member surfaces it drives.
+cmd_selfhost_inputs() {
+  BASE_BRANCH="${BASE_BRANCH:?BASE_BRANCH is required (github.base_ref)}"
+  SELFHOST_INPUTS=(
+    packages/cli
+    infra/docker/docker-compose.selfhost.yml
+    infra/docker/docker-compose.build.yml
+    infra/docker/docker-compose.sandbox.yml
+    infra/docker/selfhost
+    apps/api/Dockerfile
+    apps/web/Dockerfile
+    apps/api/app/api/v1/endpoints/setup.py
+    apps/api/app/api/v1/endpoints/auth_local.py
+    apps/api/app/api/v1/endpoints/members.py
+    apps/api/app/api/v1/endpoints/readiness.py
+    apps/api/app/api/v1/endpoints/blob.py
+    apps/web/src/features/setup-wizard
+    apps/web/src/features/auth
+    apps/web/e2e/selfhost
+    apps/web/playwright.selfhost.config.ts
+    tools/llm-stub
+    scripts/ci/selfhost.sh
+    .github/workflows/selfhost-smoke.yml
+  )
+  _inputs_changed "self-host" "$BASE_BRANCH" "${SELFHOST_INPUTS[@]}"
+}
+
 # Write build=true|false: did anything under <paths> change against <base>?
 _inputs_changed() {
   local what="$1" base="$2" rev changed
@@ -359,7 +392,7 @@ _inputs_changed() {
 }
 
 usage() {
-  sed -n '2,24p' "$0" >&2
+  sed -n '2,27p' "$0" >&2
 }
 
 main() {
@@ -371,6 +404,7 @@ main() {
     files)         cmd_files "$@" ;;
     py-source)     cmd_py_source "$@" ;;
     docker-inputs) cmd_docker_inputs "$@" ;;
+    selfhost-inputs) cmd_selfhost_inputs "$@" ;;
     web-inputs)    cmd_web_inputs "$@" ;;
     desktop-inputs) cmd_desktop_inputs "$@" ;;
     *)

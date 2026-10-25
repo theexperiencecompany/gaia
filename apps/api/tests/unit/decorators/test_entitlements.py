@@ -89,6 +89,23 @@ class TestIsPaid:
             assert await is_paid(USER_ID) is False
         invalidate.assert_not_awaited()
 
+    async def test_every_user_is_paid_where_plans_are_not_enforced(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Regression: self-host answered False, blocking bot chat, reminders and workflows."""
+        from app.config.settings import settings
+
+        monkeypatch.setattr(settings, "ENV", "selfhost")
+        unreachable = AsyncMock(side_effect=AssertionError("no plan store without plans"))
+        with (
+            patch("app.services.payments.payment_service.redis_cache.get", unreachable),
+            patch(
+                "app.services.payments.payment_service.subscription_repository.get_active_for_user",
+                unreachable,
+            ),
+        ):
+            assert await is_paid(USER_ID) is True
+
 
 class TestRequireActiveSubscription:
     async def test_pro_user_passes_without_minting_a_checkout_link(self) -> None:

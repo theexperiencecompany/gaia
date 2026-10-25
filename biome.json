@@ -299,6 +299,10 @@
       "plugins": ["./config/biome-rules/no-barrel-reexport.grit"]
     },
     {
+      "includes": ["apps/web/src/**", "!apps/web/src/lib/clipboard.ts"],
+      "plugins": ["./config/biome-rules/no-direct-clipboard.grit"]
+    },
+    {
       "includes": [
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -321,6 +325,16 @@
           },
           "performance": {
             "noReExportAll": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/cli/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noExplicitAny": "error"
           }
         }
       }

@@ -387,6 +387,7 @@ class TestHandoffLinks:
 
     def test_unconfigured_platform_is_omitted_not_broken(self) -> None:
         with (
+            patch.object(svc.settings, "ENV", "selfhost"),
             patch.object(svc.settings, "TELEGRAM_BOT_USERNAME", None),
             patch.object(svc.settings, "WHATSAPP_PHONE_NUMBER", None),
         ):

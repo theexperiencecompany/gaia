@@ -87,7 +87,7 @@ repos:
           "$regenerated"; git add -- $regenerated; else echo "api-types: already in sync";
           fi'
         language: system
-        files: '^apps/api/app/.*\.py$|^apps/api/scripts/export_openapi\.py$|^apps/api/tests/offline_env\.py$|^apps/api/pyproject\.toml$|^apps/api/openapi\.json$|^uv\.lock$|^libs/shared/ts/src/api/generated/|^scripts/ci/checks\.mjs$|^package\.json$'
+        files: '^apps/api/app/.*\.py$|^apps/api/scripts/(export_openapi|openapi_contract)\.py$|^apps/api/tests/offline_env\.py$|^apps/api/pyproject\.toml$|^apps/api/openapi\.json$|^uv\.lock$|^libs/shared/ts/src/api/generated/|^scripts/ci/checks\.mjs$|^package\.json$'
         pass_filenames: false
 
       - id: analytics-types

@@ -1366,3 +1366,160 @@ def test_only_the_newest_upload_of_a_shard_name_is_read(
     out = capsys.readouterr().out
     assert "app/services/y.py  survivors:" in out
     assert "log tail" not in out, "the stale empty upload won and sent the reader to the log"
+
+
+# ------------------------------------------------------------------------------- watch
+
+
+class SequencedGh(FakeGh):
+    """Serves the next check set on each check-runs poll, repeating the last one."""
+
+    def __init__(self, polls: list[list[dict[str, Any]]], **kwargs: Any) -> None:
+        super().__init__(checks=polls[0], **kwargs)
+        self.polls = polls
+        self.check_polls = 0
+
+    def text(
+        self, args: list[str], timeout_s: int, stdin_text: str | None = None
+    ) -> tuple[int, str, str]:
+        if "/check-runs" in (args[1] if len(args) > 1 else ""):
+            self.checks = self.polls[min(self.check_polls, len(self.polls) - 1)]
+            self.check_polls += 1
+        return super().text(args, timeout_s, stdin_text)
+
+
+PENDING_CHECK: dict[str, Any] = dict(
+    PASSED_CHECK, name="test-python", status="in_progress", conclusion=None
+)
+
+
+@pytest.fixture
+def no_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(ci_remote.time, "sleep", lambda _s: None)
+
+
+def test_fail_fast_stops_at_the_first_red_check_and_prints_its_failure(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = wire(
+        SequencedGh(
+            [[PENDING_CHECK], [FAILED_CHECK, PENDING_CHECK], [FAILED_CHECK, PASSED_CHECK]],
+            artifacts=[{"id": 55, "name": "verdict-mutation-shard-3", "expired": False}],
+            zip_blobs={None: verdict_zip(VERDICT)},
+        )
+    )
+    assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"]) == 1
+    out = capsys.readouterr().out
+    assert fake.check_polls == 2, "kept polling after a check went red"
+    assert "stopping at the first failure" in out
+    assert "app/api/v1/endpoints/bot.py:212" in out
+
+
+def test_without_fail_fast_watch_waits_for_every_check_to_finish(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = wire(
+        SequencedGh([[PENDING_CHECK], [FAILED_CHECK, PENDING_CHECK], [FAILED_CHECK, PASSED_CHECK]])
+    )
+    assert run_cli(monkeypatch, ["--watch", "--no-stack"]) == 1
+    assert fake.check_polls == 3
+    assert "stopping at the first failure" not in capsys.readouterr().out
+
+
+def test_fail_fast_on_a_green_run_waits_for_it_to_finish_and_exits_zero(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = wire(SequencedGh([[PENDING_CHECK], [PENDING_CHECK], [PASSED_CHECK]]))
+    assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"]) == 0
+    assert fake.check_polls == 3
+
+
+def test_fail_fast_without_watch_is_a_usage_error(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    with pytest.raises(SystemExit) as exc:
+        run_cli(monkeypatch, ["--fail-fast"])
+    assert exc.value.code == 2
+    assert "only applies to --watch" in capsys.readouterr().err
+
+
+# ------------------------------------------------------------- read while the job still runs
+# A check's verdict is uploaded the moment it fails; its job (and the run whose
+# end releases the log) can go on for half an hour. The finding is the answer.
+
+RUNNING_LINT = dict(PASSED_CHECK, name="lint-python", status="in_progress", conclusion=None)
+EARLY_VERDICT: dict[str, Any] = {
+    "lane": "lint-python/tool-pins",
+    "status": "fail",
+    "summary": "tool-pins: 2 finding(s) (exit 1)",
+    "findings": [
+        {
+            "file": "apps/api/app/services/sandbox/local_sandbox.Dockerfile",
+            "line": 1,
+            "message": "hardcodes a python version: 'python:3.12'",
+        },
+        {
+            "file": "tools/lints/test_check_tool_pins.py",
+            "line": 40,
+            "message": "FAILED tools/lints/test_check_tool_pins.py::test_real_tree_is_consistent",
+            "detail": "AssertionError: 1 violation\nassert 1 == 0\n--\nthird\nfourth",
+        },
+        {"file": "", "line": 0, "message": "npm ERR! code ERESOLVE"},
+    ],
+    "advice": [],
+}
+
+
+def test_a_running_jobs_failing_verdict_is_printed_in_full_and_reds_the_exit(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    wire(
+        FakeGh(
+            checks=[RUNNING_LINT],
+            artifacts=[{"id": 70, "name": "verdict-lint-python", "expired": False}],
+            zip_blobs={70: verdict_zip(EARLY_VERDICT)},
+        )
+    )
+    assert run_cli(monkeypatch, []) == 1
+    out = capsys.readouterr().out
+    assert "FAIL  lint-python  [still running" in out
+    assert "PEND  lint-python" not in out
+    # Every finding, with its first three detail lines and no fourth.
+    assert "apps/api/app/services/sandbox/local_sandbox.Dockerfile:1 — hardcodes" in out
+    assert "tools/lints/test_check_tool_pins.py:40 — FAILED" in out
+    assert "AssertionError: 1 violation" in out
+    assert "fourth" not in out
+    # A finding the tool gave no location prints as its message, not as ":0".
+    assert "    npm ERR! code ERESOLVE" in out
+    assert ":0" not in out
+
+
+def test_a_running_job_with_no_failing_verdict_is_only_pending(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    passing = dict(EARLY_VERDICT, status="pass", findings=[])
+    wire(
+        FakeGh(
+            checks=[RUNNING_LINT],
+            artifacts=[{"id": 71, "name": "verdict-lint-python", "expired": False}],
+            zip_blobs={71: verdict_zip(passing)},
+        )
+    )
+    assert run_cli(monkeypatch, []) == 0
+    out = capsys.readouterr().out
+    assert "PEND  lint-python" in out
+    assert "FAIL" not in out
+
+
+def test_a_watch_downloads_each_uploaded_verdict_once(wire) -> None:
+    fake = wire(
+        FakeGh(
+            checks=[RUNNING_LINT],
+            artifacts=[{"id": 72, "name": "verdict-lint-python", "expired": False}],
+            zip_blobs={72: verdict_zip(EARLY_VERDICT)},
+        )
+    )
+    repo = ci_remote.Repo("o", "r", 10)
+    for _ in range(3):
+        ci_remote.snapshot_once(repo, 7, "feat/thing", with_stack=False)
+    assert sum(1 for call in fake.calls if call.endswith("/72/zip")) == 1

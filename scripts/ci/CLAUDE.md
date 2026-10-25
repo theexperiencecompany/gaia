@@ -18,12 +18,13 @@ lane without grepping the workflow first.
 | Running the Python suite | `pytest.sh` | `slices`, `slice`, `flake-gate`, `regression-proof` |
 | Is the suite strong enough | `mutation.py` | `matrix`, `plan`, `shard`, `module`, `local`, `replay` |
 | Which tests a diff can reach | `test_impact.py` | `record`, `select`, `fetch`, `selection-path` |
-| What this PR changed | `changes.sh` | `base`, `base-rev`, `files`, `py-source`, `docker-inputs`, `web-inputs` |
-| Standing dependency + pin gates | `audit.sh` | `pnpm`, `pip`, `playwright-pin`, `alert-rule-tools`, `evlog` |
-| Static hygiene over the TS/JS surface | `checks.mjs` | `file-sizes`, `components-per-file`, `types-location`, `duplication`, `evlog-map-bots`, `api-schema`, `analytics-catalog`, `api-schema-types`, `api-client-imports`, `doc-comments` |
+| What this PR changed | `changes.sh` | `base`, `base-rev`, `files`, `py-source`, `docker-inputs`, `selfhost-inputs`, `web-inputs`, `desktop-inputs` |
+| The self-host stack an end-to-end lane boots and drives | `selfhost.sh` | `prepare`, `stub`, `up`, `mongo`, `logs` |
+| Standing dependency + pin gates | `audit.sh` | `pnpm`, `pip`, `playwright-pin`, `model-pin`, `alert-rule-tools`, `evlog` |
+| Static hygiene over the TS/JS surface | `checks.mjs` | `file-sizes`, `components-per-file`, `types-location`, `duplication`, `evlog-map-bots`, `api-schema`, `analytics-catalog`, `api-schema-types`, `api-client-imports`, `cli-config-schema`, `deploy-templates`, `doc-comments` |
 | The PostHog project against the event catalog | `analytics.py` | `check`, `sync-actions`, `sync-loop-alert` |
-| Turning a run's output into a verdict | `verdict.py` | `emit`, `consolidate`, `dir`, `check-ownership`, `pytest-verdict`, `regression-proof-select`, `regression-proof-verdict`, `collect`, `step-outcomes`, `post-statuses`, `reuse-plan` |
-| Publishing what a green master produced | `release.sh` | `resolve-image-tags`, `promote-latest`, `dispatch-cli-publish`, `disable-cf-builds` |
+| Turning a run's output into a verdict | `verdict.py` | `emit`, `consolidate`, `dir`, `check-ownership`, `pytest-verdict`, `regression-proof-select`, `regression-proof-verdict`, `collect`, `check`, `sarif`, `step-outcomes`, `post-statuses`, `reuse-plan` |
+| Publishing what a green master produced | `release.sh` | `resolve-image-tags`, `promote-latest`, `dispatch-cli-publish`, `cli-release-images`, `pin-selfhost-release`, `cli-beta-release`, `selfhost-bots-arm64`, `selfhost-bots-manifest`, `connect-cross-check`, `connect-binaries`, `selfhost-bundle`, `disable-cf-builds` |
 | The release-metadata guards | `release.mjs` | `validate-manifest`, `verify-cli` |
 | Shipping to production | `deploy.sh` | `plan`, `stack`, `verify`, `retag`, `notify`, `served-commit`, `verify-commit`, `changelog`, `unwedge` |
 
@@ -47,7 +48,10 @@ saying what would remove it, and the gate fails on anything NOT listed while
 reporting a line that no longer matches as merely removable — so a baseline can
 be emptied without reddening the PR that empties it.
 
-`lib/` holds what the entrypoints share or delegate to: `github.py` (the one
+`lib/` holds what the entrypoints share or delegate to: `output_findings.py`
+(what a tool printed, read back as findings at file:line — pytest, vitest,
+Playwright, mypy, tsc, ruff, biome, the lints, workflow annotations — behind
+`verdict.py check` and `collect`), `github.py` (the one
 GitHub REST client `runner.py`, `verdict.py` and `test_impact.py` call the API
 through — retries, timeouts, and a raised `GitHubError` instead of an empty
 answer; a caller with a safe fallback catches it at the call site), `log.sh` (the log
@@ -60,7 +64,11 @@ observability scanner behind `checks.mjs evlog-map-bots`),
 api-schema-types` and `api-client-imports` — pure functions over a file's
 source text plus openapi.json, with the file list, baselines and reporting
 left in checks.mjs), `doc-comments.mjs` (the JSDoc/line-comment content gate
-behind `checks.mjs doc-comments`) and
+behind `checks.mjs doc-comments`), `generated-artifacts.mjs` (the
+regenerate-and-diff gates behind `checks.mjs api-schema`, `analytics-catalog`,
+`cli-config-schema` and `deploy-templates`), `deploy_templates.py` (the Coolify and
+Render template generator behind `checks.mjs deploy-templates`; Python for
+PyYAML, run through the apps/api environment) and
 `mutation_matrix.py` (the AST detector behind `mutation.py matrix`),
 `mutation_gap.py` (the executable-line detector behind the no-covering-test
 verdict) and `mutation_report.py` (the grouped human report, the shard's
@@ -274,6 +282,26 @@ its own findings even when it named the file differently). Adopting a lane is
 therefore a strict improvement, not a prerequisite. The gate downloads every
 `verdict-*` and runs `verdict.py consolidate` with
 `--expect "<job>[@<family>]=<job result>,…"` covering exactly its `needs:` list.
+
+**A red check is readable the moment it fails, not when its job ends.** A
+check step's shell is `python3 scripts/ci/verdict.py check -- bash -e {0}`
+(`bash --noprofile --norc -eo pipefail {0}` where the step wants pipefail): the
+step body is unchanged, its output streams as before, and when it exits
+non-zero `check` writes `<job>/<step id>` from what it printed — every
+file:line it names, else its first error lines — unless the step wrote its own.
+Any failing verdict also sets `GAIA_VERDICT_PENDING=1` in the job's env, and
+the step after every check is the `upload-verdict` composite with
+`partial: "true"` under `if: always() && env.GAIA_VERDICT_PENDING == '1'`
+(one YAML alias, `*upload-verdict-so-far`): it overwrites the job's artifact
+with what is there so far and clears the flag. Artifacts are readable mid-run
+and job logs are not, so `mise ci:remote` prints the finding under the still
+running job. The job's rollup (`step-outcomes`) only names the red checks; their
+findings live in their own verdicts. A step that is not a check (a spawn, a
+setup) keeps its plain shell: `check` reads its command's output to EOF, so a
+command that leaves a child holding stdout would hold the step open. Scanners
+that are actions (gitleaks, semgrep) cannot take a shell, so the step after
+them is `verdict.py sarif` over the report they wrote. The gate writes its own
+`quality-gate` verdict too — one finding per lane that did not pass.
 
 Two jobs CANNOT report, and say so: the composite is a path in the checked-out
 tree, so `probe` (no checkout at all) and `select-runner` (checks out the

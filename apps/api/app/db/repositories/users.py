@@ -22,6 +22,7 @@ from typing import cast
 from bson import ObjectId
 
 from app.config.feature_flags import FeatureFlag
+from app.constants.auth import InstanceRole
 from app.constants.cache import (
     LAST_ACTIVE_DEBOUNCE_SECONDS,
     LAST_ACTIVE_GATE_PREFIX,
@@ -651,6 +652,16 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         )
 
     # --------------------------------------------------------- settings writes
+
+    async def set_role_if_unset(self, user_id: str, role: InstanceRole) -> bool:
+        """Give a self-host account its role unless it already has one; True when written."""
+        updated = await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {"$set": {"role": role.value}},
+            scope=REPO_GLOBAL_SCOPE,
+            extra_filter={"role": None},
+        )
+        return updated is not None
 
     async def set_channel_preferences(
         self,

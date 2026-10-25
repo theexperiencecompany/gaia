@@ -46,6 +46,8 @@ jobs:
       cli_release_created: ${{ steps.release.outputs['packages/cli--release_created'] }}
       cli_tag_name: ${{ steps.release.outputs['packages/cli--tag_name'] }}
       cli_version: ${{ steps.release.outputs['packages/cli--version'] }}
+      # The release commit: the CLI pins the gaia + gaia-web images built from it.
+      cli_sha: ${{ steps.release.outputs['packages/cli--sha'] }}
       desktop_release_created: ${{ steps.release.outputs['apps/desktop--release_created'] }}
       desktop_tag_name: ${{ steps.release.outputs['apps/desktop--tag_name'] }}
     steps:
@@ -87,7 +89,9 @@ jobs:
 
   # Trigger CLI publish workflow only when a new CLI release is produced.
   trigger-cli-publish:
-    timeout-minutes: 10
+    # Blocks on publish-cli.yml end to end (binaries, the image pin's bounded
+    # wait for the release commit's build, then npm); release.sh waits 60 min.
+    timeout-minutes: 70
     needs: release-please
     if: needs.release-please.outputs.cli_release_created == 'true'
     runs-on: ubuntu-latest
@@ -106,4 +110,5 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.release-please.outputs.cli_tag_name }}
           VERSION: ${{ needs.release-please.outputs.cli_version }}
+          SHA: ${{ needs.release-please.outputs.cli_sha }}
         run: bash scripts/ci/release.sh dispatch-cli-publish

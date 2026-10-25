@@ -53,3 +53,8 @@ TOOLS_SEED_LOCK_MAX_HOLD_SECONDS = 300
 # writes drop the snapshot directly; a re-populate from the offline script is a
 # separate process and is picked up within this TTL, the cross-process bound.
 GAIA_KNOWLEDGE_SNAPSHOT_TTL_SECONDS = ONE_HOUR_TTL
+
+# Tool/trigger search embeddings when a Google key is configured, and the vector
+# size their collections declare for it (FastEmbedEmbeddings declares its own).
+GEMINI_EMBEDDING_MODEL = "models/gemini-embedding-001"
+GEMINI_EMBEDDING_DIMS = 768

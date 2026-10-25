@@ -49,3 +49,7 @@ paths = [
   '''^apps/api/scripts/evals/data/''',
   '''(^|/)\.mutation-[0-9]+/''',
 ]
+# The WorkOS settings test's made-up API key: an sk_test_-prefixed placeholder the
+# stripe-access-token rule reads as a Stripe key. Matched by value, not by commit,
+# because a squash merge gives every finding a new commit id.
+regexes = ['''sk_test_configured''']

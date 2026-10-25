@@ -171,6 +171,21 @@ const config: KnipConfig = {
   // package.json). Includes nx target names invoked as `nx run <target>`.
   ignoreBinaries: [
     "wrangler",
+    // shadow-utils on the self-host box: the CLI re-runs itself under the
+    // docker group right after adding the user to it (packages/cli docker-group).
+    "sg",
+    // apt on the self-host box: the CLI asks it how big Docker's packages are
+    // to show the download's total (packages/cli apt-activity).
+    "apt-get",
+    // avahi-utils on a Linux self-host box: the CLI checks that gaia.local is
+    // announced over mDNS (packages/cli local-name).
+    "avahi-resolve-host-name",
+    // iproute2 on a Linux self-host box: the CLI reads the host's stable IPv6
+    // address to announce gaia.local's AAAA record (packages/cli local-name-ipv6).
+    "ip",
+    // iproute2 on a Linux self-host box: the CLI asks it whether a port GAIA
+    // needs is taken (packages/cli prerequisites).
+    "ss",
     "biome",
     "clean",
     "check",
@@ -191,6 +206,7 @@ const config: KnipConfig = {
     "web",
     "eslint",
     "prettier",
+    "vm_stat",
     "lsof",
     "netstat",
     "tasklist",
@@ -412,7 +428,12 @@ const config: KnipConfig = {
 
     // ── CLI Package ──────────────────────────────────────────────────
     "packages/cli": {
-      entry: ["src/index.{ts,tsx}", "src/commands/**/*.{ts,tsx}"],
+      // scripts/: generators run from package.json (bake:logo), not imported.
+      entry: [
+        "src/index.{ts,tsx}",
+        "src/commands/**/*.{ts,tsx}",
+        "scripts/*.mjs",
+      ],
       // Tests are not live references — see apps/bots note.
       project: [
         "src/**/*.{ts,tsx}",

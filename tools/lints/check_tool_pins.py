@@ -495,13 +495,17 @@ def _node_violations() -> list[Violation]:
 
 # ── Python and Rust: the same single-declaration shape ───────────────────────
 # Python is declared in .python-version (uv and mise both read it) and mirrored
-# in the two images. Rust has no idiomatic file, so mise.toml declares it and
+# in the three images. Rust has no idiomatic file, so mise.toml declares it and
 # the api image mirrors it. apps/api/.python-version used to pin 3.12.11 while
 # the root said 3.12.15, which is exactly the drift the stray scan catches.
 PYTHON_VERSION_FILE = REPO_ROOT / ".python-version"
 PYTHON_MIRRORS = (
     (REPO_ROOT / "apps/api/Dockerfile", r"ARG\s+PYTHON_VERSION=(\d+\.\d+\.\d+)"),
     (REPO_ROOT / "apps/voice-agent/Dockerfile", r"ARG\s+PYTHON_VERSION=(\d+\.\d+\.\d+)"),
+    (
+        REPO_ROOT / "apps/api/app/services/sandbox/local_sandbox.Dockerfile",
+        r"ARG\s+PYTHON_VERSION=(\d+\.\d+\.\d+)",
+    ),
 )
 RUST_MIRRORS = ((REPO_ROOT / "apps/api/Dockerfile", r"ARG\s+RUST_VERSION=(\d+\.\d+\.\d+)"),)
 PYTHON_FROM = re.compile(r"^FROM\s+python:\$\{PYTHON_VERSION\}", re.MULTILINE)

@@ -18,7 +18,6 @@ FIVE_MINUTES_TTL = 300
 
 
 # TTL Aliases
-DEFAULT_CACHE_TTL = ONE_HOUR_TTL
 CUSTOM_INT_METADATA_TTL = ONE_HOUR_TTL
 SUBAGENT_CACHE_TTL = ONE_HOUR_TTL
 # Subscription plan tier, cached for hot paths (rate limiting, per-request model
@@ -97,6 +96,13 @@ OAUTH_EXCLUDED_SCOPES_PREFIX = "mcp_oauth_excluded_scopes"
 # than the old ad-hoc dict; bump busts stale dict-shaped entries.
 OAUTH_DISCOVERY_PREFIX = "mcp_oauth_discovery_v2"
 OAUTH_STATUS_KEY = "OAUTH_STATUS"
+
+# Composio's toolkit catalog, shared by every admin; refreshed from Composio after the TTL.
+COMPOSIO_TOOLKIT_CATALOG_KEY = "composio:toolkit_catalog"
+COMPOSIO_TOOLKIT_CATALOG_TTL = SIX_HOUR_TTL
+MY_INTEGRATIONS_SNAPSHOT_KEY = "tools:user:{user_id}:my_snapshot"
+# Every user's integration-derived caches; a change to the integration catalog stales them all.
+ALL_USERS_TOOLS_CACHE_PATTERN = "tools:user:*"
 
 # Every cache derived from a user's integration set; ALL must be busted
 # together on any change or the views diverge (a stale OAUTH_STATUS once hid a

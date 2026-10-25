@@ -35,6 +35,18 @@
  *                       event types in libs/shared/ts/src/analytics/generated
  *                       from the Pydantic catalog, then fail if either differs
  *                       from what is committed. --write is `mise analytics:types`.
+ *   cli-config-schema [--write]
+ *                       Regenerate the CLI's vendored config schema
+ *                       (packages/cli/src/lib/api-config-schema.generated.json)
+ *                       from the API's settings groups and capability table,
+ *                       then fail if it differs from what is committed.
+ *                       --write is `mise cli:schema`.
+ *   deploy-templates [--write]
+ *                       Regenerate deploy/coolify/gaia.yaml, render.yaml and
+ *                       deploy/proxy.Dockerfile from the self-host compose
+ *                       file, its Caddyfile and the CLI's machine secrets
+ *                       (lib/deploy_templates.py), then fail if any differs
+ *                       from what is committed. --write is `mise deploy:templates`.
  *   doc-comments        Fail on a JSDoc block that narrates (>6 lines) or
  *                       restates its declaration/@param, a run of more than
  *                       3 // lines, or a banner inside a body. The TS half of
@@ -66,6 +78,13 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { checkDocComments } from "./lib/doc-comments.mjs";
 import { explicitFileList } from "./lib/explicit-file-list.mjs";
+import {
+  OPENAPI_JSON,
+  cmdAnalyticsCatalog,
+  cmdApiSchema,
+  cmdCliConfigSchema,
+  cmdDeployTemplates,
+} from "./lib/generated-artifacts.mjs";
 import { runEvlogMapBots } from "./lib/evlog-map-bots.mjs";
 import {
   BASELINES,
@@ -734,126 +753,6 @@ function cmdDuplication() {
 
 
 // ---------------------------------------------------------------------------
-// api-schema — rebuild openapi.json + generated types and diff; catches a missed `mise api:types`
-// ---------------------------------------------------------------------------
-
-const OPENAPI_JSON = "apps/api/openapi.json";
-const GENERATED_TYPES = "libs/shared/ts/src/api/generated/schema.d.ts";
-const API_SCHEMA_DRIFT_MESSAGE =
-  "API schema drifted — run `mise api:types` and commit";
-
-function regenerateApiSchema() {
-  const opts = { stdio: "inherit" };
-  execFileSync(
-    "uv",
-    [
-      "run",
-      "--frozen",
-      "--project",
-      "apps/api",
-      "--group",
-      "backend",
-      "--group",
-      "dev",
-      "python",
-      "apps/api/scripts/export_openapi.py",
-    ],
-    { ...opts, env: { ...process.env, LOG_LEVEL: "ERROR" } },
-  );
-  // tools/api-codegen is outside the workspace: it needs the JS compiler API
-  // (ts.createPrinter), which the native 7.x package does not ship.
-  const codegenDir = resolve("tools/api-codegen");
-  const codegenBin =
-    process.env.GAIA_OPENAPI_TS || join(codegenDir, "node_modules", ".bin", "openapi-typescript");
-  if (!existsSync(codegenBin)) {
-    // Never pass on the committed schema when regeneration was skipped.
-    throw new Error(
-      `${codegenBin} is missing. Run: pnpm --dir tools/api-codegen install --frozen-lockfile --ignore-workspace`,
-    );
-  }
-  execFileSync(
-    codegenBin,
-    [
-      resolve(OPENAPI_JSON),
-      "--alphabetize",
-      // A field with a default is optional on the wire for a request body; a
-      // response-only model marks it required itself (ResponseModel).
-      "--default-non-nullable=false",
-      // One exported alias per component schema, under the API's own name
-      // (`TodoResponse`, not `Schema<"TodoResponse">`): navigable, greppable,
-      // and identical to the Pydantic class it came from.
-      "--root-types",
-      "--root-types-no-schema-prefix",
-      "--root-types-keep-casing",
-      "--output",
-      resolve(GENERATED_TYPES),
-    ],
-    opts,
-  );
-}
-
-function cmdApiSchema(argv) {
-  regenerateApiSchema();
-  if (argv.includes("--write")) return;
-
-  const dirty = execFileSync(
-    "git",
-    ["status", "--porcelain", "--", OPENAPI_JSON, GENERATED_TYPES],
-    { encoding: "utf8" },
-  ).trim();
-  if (dirty) {
-    console.log(dirty);
-    console.error(`❌ ${API_SCHEMA_DRIFT_MESSAGE}`);
-    process.exit(1);
-  }
-  console.log("✅ openapi.json and the generated API types match the routes.");
-}
-
-// ---------------------------------------------------------------------------
-// analytics-catalog — regenerate the event catalog's JSON + TS and diff; catches a missed `mise analytics:types`
-// ---------------------------------------------------------------------------
-
-const ANALYTICS_GENERATED_DIR = "libs/shared/ts/src/analytics/generated";
-const ANALYTICS_CATALOG_JSON = `${ANALYTICS_GENERATED_DIR}/analytics-catalog.json`;
-
-function cmdAnalyticsCatalog(argv) {
-  const opts = { stdio: "inherit" };
-  execFileSync(
-    "uv",
-    [
-      "run",
-      "--frozen",
-      "--project",
-      "apps/api",
-      "python",
-      "-m",
-      "shared.py.analytics.codegen",
-    ],
-    { ...opts, env: { ...process.env, LOG_LEVEL: "ERROR" } },
-  );
-  execFileSync(
-    "pnpm",
-    ["exec", "biome", "format", "--write", ANALYTICS_CATALOG_JSON],
-    opts,
-  );
-  if (argv.includes("--write")) return;
-
-  const dirty = execFileSync(
-    "git",
-    ["status", "--porcelain", "--", ANALYTICS_GENERATED_DIR],
-    { encoding: "utf8" },
-  ).trim();
-  if (dirty) {
-    console.log(dirty);
-    console.error(
-      "❌ Analytics catalog drifted — run `mise analytics:types` and commit",
-    );
-    process.exit(1);
-  }
-  console.log("✅ The generated analytics event types match the catalog.");
-}
-
-// ---------------------------------------------------------------------------
 // api-schema-types
 // ---------------------------------------------------------------------------
 
@@ -1048,6 +947,8 @@ function usage() {
       "  api-schema [--write]                   regenerate openapi.json + TS types, fail on drift",
       "  api-schema-types                       no hand-written twin of an API schema type, no untyped apiService call in web features",
       "  analytics-catalog [--write]            regenerate the analytics catalog JSON + TS event types, fail on drift",
+      "  cli-config-schema [--write]            regenerate the CLI's vendored config schema, fail on drift",
+      "  deploy-templates [--write]             regenerate the Coolify/Render templates from the compose file, fail on drift",
       "  doc-comments                           no narrating / restating JSDoc, comment runs, or in-body banners",
       "  api-client-imports                     no raw mobile API client import outside apps/mobile/src/lib",
     ].join("\n"),
@@ -1137,6 +1038,12 @@ function cmdFrameworkPair() {
       break;
     case "analytics-catalog":
       cmdAnalyticsCatalog(rest);
+      break;
+    case "cli-config-schema":
+      cmdCliConfigSchema(rest);
+      break;
+    case "deploy-templates":
+      cmdDeployTemplates(rest);
       break;
     case "doc-comments":
       cmdDocComments(rest);

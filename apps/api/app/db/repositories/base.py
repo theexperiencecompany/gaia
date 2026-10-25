@@ -464,7 +464,7 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         filter_: Mapping[str, object],
         update: Mapping[str, Mapping[str, object]],
         *,
-        scope: str,
+        scope: str | None,
         extra_filter: Mapping[str, object] | None = None,
         return_document: bool = True,
         array_filters: Sequence[Mapping[str, object]] | None = None,
@@ -475,6 +475,7 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         The internal seam for operators a typed model can't express ($push/$pull/$addToSet,
         positional $set with array_filters, $unset). With return_document=False the
         read-back is the BEFORE image, so the entity key is evicted rather than stored.
+        scope None marks a write no cached read shows, so the cache is left alone.
         """
         ops: dict[str, dict[str, object]] = {k: dict(v) for k, v in update.items()}
         if self.auto_stamp_timestamps and "updated_at" in self.document_model.model_fields:
@@ -487,6 +488,8 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
             return_document=return_document,
             upsert=upsert,
         )
+        if scope is None:
+            return None if raw is None else self._to_model(raw)
         if raw is None:
             # No match: if the filter targeted one document by identity, evict its cache
             # entry so the next read misses instead of serving a deleted document forever.
@@ -647,6 +650,16 @@ class MongoRepository(_BaseRepository[TDoc, TUpdate], abstract=True):
 
     async def update(self, doc_id: str, update: TUpdate) -> TDoc | None:
         return await self._apply_update(doc_id, REPO_GLOBAL_SCOPE, {}, update)
+
+    async def upsert(self, doc_id: str, update: TUpdate) -> None:
+        """Set update's fields on doc_id, inserting the document when it does not exist yet."""
+        await self._apply_raw_update_unfetched(
+            self._identity_filter(doc_id),
+            {"$set": update.model_dump(exclude_unset=True)},
+            scope=REPO_GLOBAL_SCOPE,
+            doc_id=doc_id,
+            upsert=True,
+        )
 
     async def delete(self, doc_id: str) -> bool:
         return await self._remove(doc_id, REPO_GLOBAL_SCOPE, {})

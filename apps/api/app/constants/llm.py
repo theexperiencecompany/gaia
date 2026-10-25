@@ -6,7 +6,7 @@ from typing_extensions import TypedDict
 
 
 class LLMProviderName(StrEnum):
-    """Logical provider names, keying PROVIDER_MODELS and PROVIDER_PRIORITY.
+    """Logical provider names, keying the catalog in app/constants/providers.py.
 
     Also the value of the provider configurable that picks a lane per request.
     """
@@ -15,6 +15,10 @@ class LLMProviderName(StrEnum):
     OPENROUTER = "openrouter"
     CUSTOM = "custom"
     OPENAI = "openai"
+    # Keyless local lane. The store credential or an explicitly-set
+    # OLLAMA_BASE_URL picks the endpoint at load time; nothing keys off the name
+    # beyond registration.
+    OLLAMA = "ollama"
 
 
 class LLMProviderKey(StrEnum):
@@ -28,6 +32,7 @@ class LLMProviderKey(StrEnum):
     OPENROUTER = "openrouter_llm"
     CUSTOM = "custom_llm"
     OPENAI = "openai_llm"
+    OLLAMA = "ollama_llm"
 
 
 class ModelUse(StrEnum):
@@ -100,7 +105,7 @@ class DevModelOption:
     crosses no validation boundary.
     """
 
-    #: Keyed like PROVIDER_MODELS and PROVIDER_PRIORITY; the enum stops the menu
+    #: Keyed like LLM_MODEL_PROFILES; the enum stops the menu
     #: naming a lane the client cannot resolve.
     provider: LLMProviderName
     #: None = pin no model; the client's own default serves the request.
@@ -310,8 +315,21 @@ MEMORY_MODEL_NAME = DEFAULT_GEMINI_MODEL_NAME
 # The model behind every image -> text call. Deliberately NOT tied to
 # DEFAULT_MODEL_NAME (may be text-only): a blind describer fails SILENTLY
 # (describe_image degrades to None with nothing in the logs).
-VISION_MODEL_PROVIDER = GEMINI_PROVIDER
 VISION_MODEL_NAME = DEFAULT_GEMINI_MODEL_NAME
+# The same model through OpenRouter, for an instance with no direct Gemini key.
+OPENROUTER_VISION_MODEL_NAME = "google/gemini-3.1-flash-lite"
+
+# The keyless local lane's model when the operator configured none. Its key is a
+# placeholder the OpenAI client requires and Ollama ignores.
+OLLAMA_DEFAULT_MODEL_NAME = "llama3.2"
+OLLAMA_PLACEHOLDER_API_KEY = "ollama"  # pragma: allowlist secret
+
+# Image generation outside production, on the operator's OpenAI key. Production
+# runs GAIA's own hosted generator instead (HOSTED_IMAGE_GENERATION_URL).
+OPENAI_IMAGE_MODEL_NAME = "gpt-image-1"
+OPENAI_IMAGE_SIZE: Final = "1024x1024"
+HOSTED_IMAGE_GENERATION_URL = "https://generateimage.aryanranderiya1478.workers.dev/"
+IMAGE_GENERATION_TIMEOUT_SECONDS = 1000
 
 # GAIA_SIM_MODE (see app/agents/llm/client.py): every model factory resolves to
 # the local scripted stub (tools/llm-stub) at this address. The model name is a
@@ -333,10 +351,12 @@ OPENAI_MAX_OUTPUT_TOKENS = 16_000
 PAID_MODEL_PROVIDER = OPENROUTER_PROVIDER
 PAID_MODEL_NAME = DEFAULT_MODEL_NAME
 
+OPENAI_API_URL = "https://api.openai.com/v1"
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1"
 # Which OpenRouter models accept image input, straight from the live catalog's
 # architecture.input_modalities — vision support needs no per-model curation
 # here (see app/agents/llm/model_catalog.py for the cache).
-OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
+OPENROUTER_MODELS_URL = f"{OPENROUTER_API_URL}/models"
 OPENROUTER_MODEL_CATALOG_TTL_SECONDS = 3600
 OPENROUTER_MODEL_CATALOG_TIMEOUT_SECONDS = 10
 # How long a failed catalog refresh is remembered: the catalog is consulted on

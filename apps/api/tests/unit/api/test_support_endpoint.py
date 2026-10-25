@@ -8,12 +8,14 @@ from unittest.mock import AsyncMock, patch
 
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+import pytest
 
 from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
     get_current_user as _get_current_user_dep,
 )
 from app.api.v1.endpoints.support import router
+from app.config.settings import settings
 from app.constants.general import MAX_PAGE_NUMBER
 from app.models.support_models import (
     SupportRequestSubmissionResponse,
@@ -25,6 +27,40 @@ from shared.py.analytics.catalog.support import SupportFormSubmitted
 from tests.conftest import FAKE_USER
 
 SUPPORT_ENDPOINT = "app.api.v1.endpoints.support"
+
+
+class TestSelfHostedInstances:
+    """A self-hosted instance's users and their data never reach GAIA's support inbox."""
+
+    async def test_every_support_route_refuses_on_a_self_hosted_instance(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", "selfhost")
+        with (
+            patch(f"{SUPPORT_ENDPOINT}.create_support_request", new_callable=AsyncMock) as create,
+            patch(f"{SUPPORT_ENDPOINT}.get_user_support_requests", new_callable=AsyncMock),
+        ):
+            submitted = await client.post(
+                "/api/v1/support/requests",
+                json={
+                    "type": "support",
+                    "title": "Need help",
+                    "description": "It broke completely",
+                },
+            )
+            listed = await client.get("/api/v1/support/requests/my")
+
+        assert submitted.status_code == 404
+        assert submitted.json()["code"] == "gaia_support_unavailable"
+        assert submitted.json()["message"] == (
+            "In-app support is not available on a self-hosted instance"
+        )
+        assert submitted.json()["fix"] == (
+            "Report bugs and request features on GitHub: "
+            "https://github.com/theexperiencecompany/gaia/issues"
+        )
+        assert listed.status_code == 404
+        create.assert_not_awaited()
 
 
 class TestGetMySupportRequests:
