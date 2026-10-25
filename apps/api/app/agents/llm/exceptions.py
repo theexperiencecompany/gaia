@@ -99,6 +99,10 @@ LLM_FALLBACK_EXCEPTIONS: tuple[type[BaseException], ...] = (
     *_HTTPX_TRANSIENT_ERRORS,
     ConnectionError,
     TimeoutError,
+    # A reply that is not the tool call the parser needs. Another sample may obey,
+    # and the fallback lane's native JSON-schema mode cannot answer in prose at
+    # all, so this is the one error where switching lanes fixes the class.
+    MalformedStructuredOutputError,
 )
 
 # chatbot.py one-shot helper: operational failures are logged and re-raised for the

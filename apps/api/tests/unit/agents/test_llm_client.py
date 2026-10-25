@@ -1488,6 +1488,18 @@ class TestConstants:
         assert not isinstance(ValueError("bad"), LLM_RETRYABLE_EXCEPTIONS)
         assert not isinstance(KeyError("missing"), LLM_RETRYABLE_EXCEPTIONS)
 
+    @pytest.mark.regression
+    def test_a_malformed_structured_reply_falls_back_instead_of_failing(self) -> None:
+        """A prose reply must reach the JSON-schema lane, which cannot answer in prose.
+
+        Regression: GAIA-BACKEND-40J (EpisodeSummary) and GAIA-BACKEND-434
+        (FollowUpActions) retried on the tool-calling lane and then surfaced as
+        errors, because only the retryable set listed this error, not the
+        fallback set. The fallback's native JSON mode makes the failure class
+        impossible rather than less likely.
+        """
+        assert issubclass(MalformedStructuredOutputError, LLM_FALLBACK_EXCEPTIONS)
+
 
 # ---------------------------------------------------------------------------
 # chatbot (from chatbot.py)
