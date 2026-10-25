@@ -4,7 +4,7 @@ Supports generic JSON caching, TTL, pattern-based invalidation, and graceful fal
 Redis is unavailable.
 """
 
-from collections.abc import Mapping, Set as AbstractSet
+from collections.abc import AsyncIterator, Mapping, Set as AbstractSet
 from typing import Any, Literal, Protocol, TypeVar, cast, overload
 
 from pydantic import JsonValue, TypeAdapter
@@ -119,6 +119,10 @@ class AsyncRedisCommands(Protocol):
 
     async def keys(self, pattern: str = "*") -> list[str]:
         """KEYS — full scan; only for small, bounded keyspaces."""
+        ...
+
+    def scan_iter(self, match: str | None = None, count: int | None = None) -> AsyncIterator[str]:
+        """SCAN — iterate matching keys in batches without blocking the server."""
         ...
 
     async def incr(self, name: str, amount: int = 1) -> int:
