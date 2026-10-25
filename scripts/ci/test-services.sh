@@ -493,7 +493,9 @@ _prepare_shared() {
 
   flush_redis_stripe "$redis_base" || ci_warn "Redis: flushing the lane stripe failed — continuing"
   drop_mongo_databases "$lane" || ci_warn "MongoDB: dropping stale gaia_test_r${lane}_* failed — continuing"
-  reset_chroma "$chroma_suffix" || ci_warn "ChromaDB: clearing collections ending in ${chroma_suffix} failed — continuing"
+  # Fatal, unlike the warnings around it: the lane's collections share one
+  # server with every other lane's, so a listing that failed cleared nothing.
+  reset_chroma "$chroma_suffix" || ci_die "ChromaDB: could not list collections to clear those ending in ${chroma_suffix}"
 
   # A vhost left by a cancelled job keeps its queues and their contents; delete
   # before adding so the lane always starts with an empty broker.
@@ -594,16 +596,18 @@ drop_mongo_databases() {
 # the name suffix the app appended (GAIA_CHROMA_COLLECTION_SUFFIX) and deleted
 # one by one through the v2 REST API. python3 does the JSON parsing: the runner
 # has it (it runs the pytest suite), and jq is not guaranteed to be installed.
+# A listing that fails returns 1: read as "no collections", it once let a lane
+# start on another lane's leftovers, failing in ways that look like pollution.
 reset_chroma() {
   local suffix="$1"
   local base="http://localhost:${CHROMA_PORT}/api/v2/tenants/default_tenant/databases/default_database/collections"
-  local names
-  names="$(curl -sf "${base}?limit=1000" \
-    | python3 -c 'import json,sys
+  local listing names
+  listing="$(curl -sf "${base}?limit=1000")" || return 1
+  names="$(python3 -c 'import json,sys
 for c in json.load(sys.stdin):
-    print(c["name"])' 2>/dev/null || true)"
+    print(c["name"])' <<< "$listing")" || return 1
   if [ -z "$names" ]; then
-    echo "ChromaDB: no collections listed (empty server or v2 API unavailable)"
+    echo "ChromaDB: the server holds no collections"
     return 0
   fi
   local name deleted=0

@@ -16,6 +16,7 @@ import { getMarketplacePath } from "@/features/integrations/lib/serverMarketplac
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { getLocalizedAlternates } from "@/i18n/getAlternates";
 import { getAutomateDocsLinks } from "@/lib/docs-links";
+import { prerenderedMarketingParams } from "@/lib/selfhost";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
@@ -37,9 +38,13 @@ interface PageProps {
   }>;
 }
 
-export async function generateStaticParams() {
+async function allStaticParams() {
   const slugs = await getAllComboSlugs();
   return slugs.map((slug) => ({ combo: slug }));
+}
+
+export function generateStaticParams() {
+  return prerenderedMarketingParams(allStaticParams);
 }
 
 export const dynamicParams = false;

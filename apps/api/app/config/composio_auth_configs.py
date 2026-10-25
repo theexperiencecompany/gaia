@@ -1,36 +1,25 @@
-"""Point the integration catalog at another Composio project's auth configs.
+"""Check a set of Composio auth config ids against the integration catalog.
 
-Auth config ids belong to one Composio project, and the catalog hardcodes
-production's; a local key on a dev project mints links against configs that do
-not exist there. Every reader of an auth config id goes through the catalog, so
-swapping the ids where it is built covers links, callbacks, webhooks and sync.
+Auth config ids belong to one Composio project and the catalog declares
+production's; a non-production instance supplies its own per integration, from
+COMPOSIO_AUTH_CONFIG_OVERRIDES or the admin's stored set. Which one wins is
+app.services.composio.auth_config_resolver's call; this only refuses entries
+that could never connect.
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 from app.models.oauth_models import OAuthIntegration
 
 
-def with_auth_config_overrides(
-    integrations: list[OAuthIntegration], overrides: Mapping[str, str]
-) -> list[OAuthIntegration]:
-    """Return the catalog with each overridden integration on its new auth config; refuse bad entries."""
+def check_auth_config_ids(
+    integrations: Sequence[OAuthIntegration], auth_configs: Mapping[str, str], *, origin: str
+) -> None:
+    """Raise ValueError when an entry names no Composio integration or has a blank id."""
     composio_ids = {i.id for i in integrations if i.composio_config}
-    unknown = sorted(overrides.keys() - composio_ids)
+    unknown = sorted(auth_configs.keys() - composio_ids)
     if unknown:
-        raise ValueError(f"COMPOSIO_AUTH_CONFIG_OVERRIDES names no Composio integration: {unknown}")
-    blank = sorted(integration_id for integration_id, ac in overrides.items() if not ac.strip())
+        raise ValueError(f"{origin} names no Composio integration: {unknown}")
+    blank = sorted(integration_id for integration_id, ac in auth_configs.items() if not ac.strip())
     if blank:
-        raise ValueError(f"COMPOSIO_AUTH_CONFIG_OVERRIDES has an empty auth config id: {blank}")
-    return [
-        i.model_copy(
-            update={
-                "composio_config": i.composio_config.model_copy(
-                    update={"auth_config_id": overrides[i.id].strip()}
-                )
-            }
-        )
-        if i.composio_config and i.id in overrides
-        else i
-        for i in integrations
-    ]
+        raise ValueError(f"{origin} has an empty auth config id: {blank}")

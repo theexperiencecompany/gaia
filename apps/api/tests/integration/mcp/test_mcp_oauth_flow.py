@@ -523,7 +523,7 @@ class TestTokenExchange:
                 "app.services.mcp.mcp_client.update_user_integration_status",
                 new=AsyncMock(),
             ),
-            patch("app.services.mcp.mcp_client.httpx.AsyncClient") as mock_http_cls,
+            patch("app.services.mcp.mcp_client.mcp_http_client") as mock_http_cls,
             patch.object(client, "connect", new=connect_mock),
         ):
             mock_http_instance = AsyncMock()
@@ -596,7 +596,7 @@ class TestTokenExchange:
                 "_discover_oauth_config",
                 new=AsyncMock(return_value=oauth_config),
             ),
-            patch("app.services.mcp.mcp_client.httpx.AsyncClient") as mock_http_cls,
+            patch("app.services.mcp.mcp_client.mcp_http_client") as mock_http_cls,
         ):
             mock_http_instance = AsyncMock()
             mock_http_instance.post = AsyncMock(return_value=error_response)
@@ -643,7 +643,7 @@ class TestTokenExchange:
                 "_discover_oauth_config",
                 new=AsyncMock(return_value=oauth_config),
             ),
-            patch("app.services.mcp.mcp_client.httpx.AsyncClient") as mock_http_cls,
+            patch("app.services.mcp.mcp_client.mcp_http_client") as mock_http_cls,
         ):
             mock_http_instance = AsyncMock()
             mock_http_instance.post = AsyncMock(return_value=bad_token_response)
@@ -691,7 +691,7 @@ class TestTokenRefresh:
             },
         )
 
-        with patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_cls:
+        with patch("app.services.mcp.token_management.mcp_http_client") as mock_cls:
             mock_instance = AsyncMock()
             mock_instance.post = AsyncMock(return_value=refresh_response)
             mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)
@@ -733,7 +733,7 @@ class TestTokenRefresh:
             json={"error": "invalid_grant"},
         )
 
-        with patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_cls:
+        with patch("app.services.mcp.token_management.mcp_http_client") as mock_cls:
             mock_instance = AsyncMock()
             mock_instance.post = AsyncMock(return_value=error_response)
             mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)
@@ -780,7 +780,7 @@ class TestTokenRevocation:
 
         revoke_response = httpx.Response(status_code=200)
 
-        with patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_cls:
+        with patch("app.services.mcp.token_management.mcp_http_client") as mock_cls:
             mock_instance = AsyncMock()
             mock_instance.post = AsyncMock(return_value=revoke_response)
             mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)
@@ -815,7 +815,7 @@ class TestTokenRevocation:
         mcp_config = _make_mcp_config()
         oauth_config = _make_oauth_discovery()
 
-        with patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_cls:
+        with patch("app.services.mcp.token_management.mcp_http_client") as mock_cls:
             mock_instance = AsyncMock()
             mock_instance.post = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
             mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)

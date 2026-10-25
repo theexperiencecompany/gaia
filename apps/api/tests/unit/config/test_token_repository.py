@@ -19,6 +19,10 @@ from authlib.oauth2.rfc6749 import OAuth2Token
 from fastapi import HTTPException
 import pytest
 
+from app.constants.log_tags import LogTag
+from app.services.providers.provider_credentials_service import ProviderConfig
+from tests.helpers import captured_wide_event
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -87,36 +91,81 @@ def _mock_db_session(
 
 
 class TestTokenRepositoryInit:
-    """Tests for __init__ and _init_oauth_clients."""
+    """Tests for __init__ + the lazy Google client registration."""
 
     @patch("app.config.token_repository.get_db_session")
-    @patch("app.config.token_repository.settings")
+    @patch("app.services.providers.provider_credentials_service.settings")
     @patch("app.config.token_repository.OAuth")
-    def test_init_registers_google_when_credentials_present(
+    async def test_lazy_client_registers_from_stored_credential(
         self, mock_oauth_cls: MagicMock, mock_settings: MagicMock, _mock_db: MagicMock
     ) -> None:
         from app.config.token_repository import TokenRepository
 
         mock_settings.GOOGLE_CLIENT_ID = "client_id"
-        mock_settings.GOOGLE_CLIENT_SECRET = "client_secret"  # pragma: allowlist secret
+        mock_settings.GOOGLE_CLIENT_SECRET = None
         mock_oauth_instance = MagicMock()
         mock_oauth_cls.return_value = mock_oauth_instance
+        registered_client = MagicMock()
+        mock_oauth_instance.register.return_value = registered_client
+
+        repo = TokenRepository()
+        # Nothing registers at construction — Mongo isn't consulted there.
+        mock_oauth_instance.register.assert_not_called()
+
+        with patch(
+            "app.config.token_repository.resolve_provider_config",
+            new=AsyncMock(
+                return_value=ProviderConfig(
+                    api_key="stored-secret",
+                    account_id="client_id",
+                )
+            ),
+        ):
+            assert await repo._ensure_google_client() is registered_client
+
+        call_kwargs = mock_oauth_instance.register.call_args
+        assert call_kwargs[1]["name"] == "google"
+        # The store carries the SECRET (the service's own mapping); the
+        # non-secret client id still comes from env.
+        assert call_kwargs[1]["client_id"] == "client_id"
+        assert (
+            call_kwargs[1]["client_secret"] == "stored-secret"  # pragma: allowlist secret
+        )
+
+    @patch("app.config.token_repository.get_db_session")
+    @patch("app.services.providers.provider_credentials_service.settings")
+    @patch("app.config.token_repository.OAuth")
+    async def test_lazy_client_uses_the_env_secret_the_resolver_serves(
+        self, mock_oauth_cls: MagicMock, mock_settings: MagicMock, _mock_db: MagicMock
+    ) -> None:
+        from app.config.token_repository import TokenRepository
+
+        mock_settings.GOOGLE_CLIENT_ID = "env_id"
+        mock_oauth_instance = MagicMock()
+        mock_oauth_cls.return_value = mock_oauth_instance
+        registered_client = MagicMock()
+        mock_oauth_instance.register.return_value = registered_client
 
         repo = TokenRepository()
 
-        mock_oauth_instance.register.assert_called_once()
-        call_kwargs = mock_oauth_instance.register.call_args
-        assert call_kwargs[1]["name"] == "google"
-        assert call_kwargs[1]["client_id"] == "client_id"
-        assert (
-            call_kwargs[1]["client_secret"] == "client_secret"  # pragma: allowlist secret
+        env_config = ProviderConfig(
+            api_key="env_secret",  # pragma: allowlist secret
+            account_id="env_id",
         )
-        assert repo.oauth is mock_oauth_instance
+        with patch(
+            "app.config.token_repository.resolve_provider_config",
+            new=AsyncMock(return_value=env_config),
+        ):
+            assert await repo._ensure_google_client() is registered_client
+        assert (
+            mock_oauth_instance.register.call_args[1]["client_secret"]
+            == "env_secret"  # pragma: allowlist secret
+        )
 
     @patch("app.config.token_repository.get_db_session")
-    @patch("app.config.token_repository.settings")
+    @patch("app.services.providers.provider_credentials_service.settings")
     @patch("app.config.token_repository.OAuth")
-    def test_init_skips_google_when_credentials_missing(
+    async def test_lazy_client_skips_google_when_unconfigurable(
         self, mock_oauth_cls: MagicMock, mock_settings: MagicMock, _mock_db: MagicMock
     ) -> None:
         from app.config.token_repository import TokenRepository
@@ -124,28 +173,126 @@ class TestTokenRepositoryInit:
         mock_settings.GOOGLE_CLIENT_ID = None
         mock_settings.GOOGLE_CLIENT_SECRET = None
         mock_oauth_instance = MagicMock()
-        mock_oauth_cls.return_value = mock_oauth_instance
 
-        TokenRepository()
+        repo = TokenRepository()
 
+        with patch(
+            "app.config.token_repository.resolve_provider_config",
+            new=AsyncMock(return_value=None),
+        ):
+            assert await repo._ensure_google_client() is None
         mock_oauth_instance.register.assert_not_called()
 
     @patch("app.config.token_repository.get_db_session")
-    @patch("app.config.token_repository.settings")
+    @patch("app.services.providers.provider_credentials_service.settings")
     @patch("app.config.token_repository.OAuth")
-    def test_init_skips_google_when_only_client_id_present(
+    async def test_lazy_client_reuses_the_registered_client(
         self, mock_oauth_cls: MagicMock, mock_settings: MagicMock, _mock_db: MagicMock
     ) -> None:
+        """Reuse the registered client on later refreshes; credentials must not swap mid-flow."""
         from app.config.token_repository import TokenRepository
 
         mock_settings.GOOGLE_CLIENT_ID = "client_id"
         mock_settings.GOOGLE_CLIENT_SECRET = None
         mock_oauth_instance = MagicMock()
-        mock_oauth_cls.return_value = mock_oauth_instance
+        registered_client = MagicMock()
+        mock_oauth_instance.register.return_value = registered_client
 
-        TokenRepository()
+        repo = TokenRepository()
+        repo._google_client = registered_client
 
+        with patch(
+            "app.config.token_repository.resolve_provider_config",
+            new=AsyncMock(side_effect=AssertionError("must not re-resolve")),
+        ):
+            assert await repo._ensure_google_client() is registered_client
         mock_oauth_instance.register.assert_not_called()
+
+    @patch("app.config.token_repository.get_db_session")
+    @patch("app.config.token_repository.OAuth")
+    async def test_lazy_client_registers_google_openid_with_account_selection(
+        self, mock_oauth_cls: MagicMock, _mock_db: MagicMock
+    ) -> None:
+        from app.config.token_repository import TokenRepository
+
+        oauth = mock_oauth_cls.return_value
+        resolver = AsyncMock(return_value=("cid", "csecret"))
+        repo = TokenRepository()
+
+        with patch("app.config.token_repository.google_oauth_client", new=lambda c: c):
+            with patch("app.config.token_repository.resolve_provider_config", new=resolver):
+                assert await repo._ensure_google_client() is oauth.register.return_value
+
+        resolver.assert_awaited_once_with("google_oauth")
+        oauth.register.assert_called_once_with(
+            name="google",
+            client_id="cid",
+            client_secret="csecret",  # pragma: allowlist secret
+            server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+            client_kwargs={"scope": "openid email profile", "prompt": "select_account"},
+        )
+
+    @patch("app.config.token_repository.get_db_session")
+    @patch("app.config.token_repository.OAuth")
+    async def test_an_unconfigurable_google_client_warns_on_the_wide_event(
+        self, _mock_oauth_cls: MagicMock, _mock_db: MagicMock
+    ) -> None:
+        from app.config.token_repository import TokenRepository
+
+        repo = TokenRepository()
+        with patch(
+            "app.config.token_repository.resolve_provider_config",
+            new=AsyncMock(return_value=None),
+        ):
+            async with captured_wide_event() as event:
+                assert await repo._ensure_google_client() is None
+
+        assert [w["msg"] for w in event["warnings"]] == [
+            f"{LogTag.STARTUP} Google OAuth credentials not found "
+            "(no stored credential, no GOOGLE_CLIENT_ID/SECRET env), client not registered"
+        ]
+
+
+class TestResolveGoogleOauthCredentials:
+    """Tests for the shared store-first Google credential resolver."""
+
+    @patch("app.services.providers.provider_credentials_service.settings")
+    async def test_store_secret_wins_over_env(self, mock_settings: MagicMock) -> None:
+        from app.config.token_repository import resolve_google_oauth_credentials
+
+        mock_settings.GOOGLE_CLIENT_ID = "cid"
+        mock_settings.GOOGLE_CLIENT_SECRET = "env_secret"  # pragma: allowlist secret
+
+        with patch(
+            "app.config.token_repository.resolve_provider_config",
+            new=AsyncMock(
+                return_value=ProviderConfig(
+                    api_key="stored_secret",
+                    account_id="cid",
+                )
+            ),
+        ):
+            result = await resolve_google_oauth_credentials()
+
+        assert result == ("cid", "stored_secret")
+
+    @patch("app.services.providers.provider_credentials_service.settings")
+    async def test_returns_none_when_half_configured(self, mock_settings: MagicMock) -> None:
+        from app.config.token_repository import resolve_google_oauth_credentials
+
+        # A stored secret without a client id can never complete OAuth.
+        mock_settings.GOOGLE_CLIENT_ID = None
+        mock_settings.GOOGLE_CLIENT_SECRET = None
+
+        with patch(
+            "app.config.token_repository.resolve_provider_config",
+            new=AsyncMock(
+                return_value=ProviderConfig(
+                    api_key="stored_secret",
+                )
+            ),
+        ):
+            assert await resolve_google_oauth_credentials() is None
 
 
 # ---------------------------------------------------------------------------
@@ -487,18 +634,19 @@ class TestRefreshGoogleToken:
         self.mock_settings = mock_settings
 
     async def test_refresh_google_no_client_returns_none(self) -> None:
-        self.repo.oauth = MagicMock()
-        self.repo.oauth.google = None
-
-        result = await self.repo._refresh_google_token("refresh_tok")
+        # No client registered and nothing resolvable from store/env.
+        with patch(
+            "app.config.token_repository.resolve_provider_config",
+            new=AsyncMock(return_value=None),
+        ):
+            result = await self.repo._refresh_google_token("refresh_tok")
         assert result is None
 
     async def test_refresh_google_success(self) -> None:
         mock_client = MagicMock()
         mock_client.client_id = "cid"
         mock_client.client_secret = "csec"  # pragma: allowlist secret
-        self.repo.oauth = MagicMock()
-        self.repo.oauth.google = mock_client
+        self.repo._google_client = mock_client
         self.mock_settings.GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 
         response_data = {
@@ -527,8 +675,7 @@ class TestRefreshGoogleToken:
         mock_client = MagicMock()
         mock_client.client_id = "cid"
         mock_client.client_secret = "csec"  # pragma: allowlist secret
-        self.repo.oauth = MagicMock()
-        self.repo.oauth.google = mock_client
+        self.repo._google_client = mock_client
         self.mock_settings.GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 
         mock_response = MagicMock()
@@ -549,8 +696,7 @@ class TestRefreshGoogleToken:
         mock_client = MagicMock()
         mock_client.client_id = "cid"
         mock_client.client_secret = "csec"  # pragma: allowlist secret
-        self.repo.oauth = MagicMock()
-        self.repo.oauth.google = mock_client
+        self.repo._google_client = mock_client
         self.mock_settings.GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 
         with patch("app.config.token_repository.httpx.AsyncClient") as mock_httpx:
@@ -701,6 +847,65 @@ class TestRefreshToken:
                     result = await self.repo.refresh_token("user_1", "google")
 
         assert result is stored_token
+
+    async def _refresh_storing(self, provider_token: dict[str, Any]) -> AsyncMock:
+        """Run a successful refresh and return the store_token mock it wrote through."""
+        session = _mock_db_session(scalar_one_or_none_return=_make_token_record())
+        store = AsyncMock(return_value=OAuth2Token(params={"access_token": "x"}))
+        with patch("app.config.token_repository.get_db_session") as mock_get_db:
+            mock_get_db.return_value.__aenter__ = AsyncMock(return_value=session)
+            mock_get_db.return_value.__aexit__ = AsyncMock(return_value=False)
+            with (
+                patch.object(
+                    self.repo,
+                    "_refresh_provider_token",
+                    new=AsyncMock(return_value=provider_token),
+                ),
+                patch.object(self.repo, "store_token", new=store),
+            ):
+                assert await self.repo.refresh_token(USER_ID, PROVIDER) is store.return_value
+        return store
+
+    async def test_refresh_stores_every_field_the_provider_returned(self) -> None:
+        store = await self._refresh_storing(
+            {
+                "access_token": "new_access",
+                "token_type": "mac",
+                "scope": "openid",
+                "expires_in": 3600,
+                "expires_at": 1_900_000_000,
+                "refresh_token": "new_refresh",
+            }
+        )
+
+        store.assert_awaited_once_with(
+            USER_ID,
+            PROVIDER,
+            {
+                "access_token": "new_access",
+                "token_type": "mac",
+                "scope": "openid",
+                "expires_in": 3600,
+                "expires_at": 1_900_000_000,
+                "refresh_token": "new_refresh",
+            },
+        )
+
+    async def test_refresh_keeps_the_stored_scope_and_refresh_token_when_omitted(self) -> None:
+        store = await self._refresh_storing({"access_token": "new_access"})
+
+        store.assert_awaited_once_with(
+            USER_ID,
+            PROVIDER,
+            {
+                "access_token": "new_access",
+                "token_type": "Bearer",
+                "scope": SCOPES,
+                "expires_in": None,
+                "expires_at": None,
+                "refresh_token": REFRESH_TOKEN,
+            },
+        )
 
     async def test_refresh_exception_returns_none(self) -> None:
         record = _make_token_record()

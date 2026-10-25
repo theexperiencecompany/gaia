@@ -2,6 +2,9 @@
 
 from enum import StrEnum
 
+# GAIA Cloud's Telegram bot, used when the deployment runs on GAIA Cloud's bots.
+GAIA_CLOUD_TELEGRAM_BOT_USERNAME = "heygaia_bot"
+
 
 class BotRequestFailure(StrEnum):
     """Why a bot request was refused or failed; the wide event's reason field."""

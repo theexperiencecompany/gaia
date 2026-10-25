@@ -37,7 +37,7 @@ tests:
             exp_annotations:
               description: >-
                 Same signal as the warning-tier latency rule, at the point where the product is effectively unusable rather than merely slow. This tier also pages email. Treat it as an incident — check whether the API is saturated, a downstream database is slow, or an upstream LLM provider is degraded.
-              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-api-p95-latency-critical
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-api-p95-latency-critical
               __dashboardUid__: gaia-api-prometheus
               __panelId__: '6'
 

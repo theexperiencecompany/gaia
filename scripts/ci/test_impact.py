@@ -7,7 +7,7 @@ three files. This script turns a coverage database recorded WITH dynamic
 contexts (``--cov-context=test``) into a source-file -> test-ids map, and then
 turns a diff into the subset of tests that can actually see the change.
 
-Three subcommands:
+Four subcommands:
 
   record --coverage-db .coverage.unit --out test-impact-map-unit.json
       Read a coverage DB and emit the map.
@@ -20,9 +20,14 @@ Three subcommands:
       slice.
 
   select
-      Diff the PR against its merge-base and write
-      apps/api/.test-impact/selected-<slice>.txt — either a list of pytest
-      node ids or the single line ``ALL``. `pytest.sh slice` consumes it.
+      Diff the PR against its merge-base and write the slice's selection file
+      — either a list of pytest node ids or the single line ``ALL``.
+
+  selection-path
+      Print where that file lives, so `pytest.sh slice` reads it without
+      re-deriving the path: $RUNNER_TEMP/test-impact on a runner, which is
+      per-job, so a selection an earlier job left in the box's persistent
+      workspace can never narrow a later run; apps/api/.test-impact off one.
 
 `fetch` and `select` read their inputs from the environment (SLICE_NAME,
 SLICE_PATHS, SLICE_IGNORE, BASE_REF, MAP_DIR, TEST_IMPACT_ENABLED,
@@ -34,8 +39,8 @@ The full suite on master is the backstop, so a wrong-but-wide answer costs
 seconds and a wrong-but-narrow answer would cost a green PR on a broken tree.
 
 Off switch: TEST_IMPACT_ENABLED=0 (or false) makes `fetch` download nothing and
-`select` write ALL; main.yml exposes it as a workflow_dispatch input so a full
-run on a branch is one click away when a selection looks wrong.
+`select` write ALL, so a full run on a branch is one env var away when a
+selection looks wrong.
 
 Staleness: a map older than the PR's merge-base is still valid because
 selection is by file, not by revision. What an old map can miss is coverage
@@ -55,16 +60,17 @@ from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import sys
 from typing import Any
 
+from lib.github import GitHub, GitHubError, field_of, records, text_of
+
 MAP_VERSION = 1
 
-# Where the slice's selection and its scratch files live, relative to the repo
-# root. `pytest.sh slice` reads selected-<slice>.txt from here.
-SELECTION_DIR = Path("apps/api/.test-impact")
+# Off a runner, where the slice's selection and its scratch files live,
+# relative to the repo root every caller runs from.
+LOCAL_SELECTION_DIR = Path("apps/api/.test-impact")
 DEFAULT_MAP_DIR = ".test-impact-map"
 ARTIFACT_PREFIX = "test-impact-map-"
 
@@ -105,14 +111,14 @@ INERT_DIRS = ("docs/",)
 # The whole of scripts/ci/ counts, not a hand-picked few: EVERY script in there
 # shapes the environment the suite runs in — the services it talks to
 # (test-services.sh), the sidecar it embeds against (embedding-sidecar.sh), the
-# parallelism it gets (runner.sh parallel), the image digests those pull
+# parallelism it gets (runner.py parallel), the image digests those pull
 # (lib/service-images.sh). Naming individual files meant a change to any of the
 # others left the map trusted, and a stale map's answer is a silently narrower
 # test run. Widening is cheap; being wrong here is a green PR on a broken tree.
 SUITE_CONFIG_NAMES = frozenset(
     {"uv.lock", "pyproject.toml", ".python-version", "pytest.ini", "setup.cfg", "tox.ini"}
 )
-SUITE_CONFIG_PATHS = frozenset({".github/workflows/main.yml"})
+SUITE_CONFIG_PATHS = frozenset({".github/workflows/ci.yml"})
 SUITE_CONFIG_PREFIXES = ("scripts/ci/", ".github/actions/setup-python-test-env/")
 
 TEST_MODULE_PREFIX = "test_"
@@ -333,7 +339,7 @@ def _classify_change(
 class SliceScope:
     """What ONE slice runs — the three lists are only meaningful together.
 
-    `paths` and `exclude` come from the same matrix entry (`matrix.slice.paths`
+    `paths` and `exclude` come from the same slice definition (`SLICE_PATHS`
     and its `--ignore` flags): unit-b's paths are `tests/unit tests/meta` and it
     ignores the three directories unit-a owns, so neither list alone says what
     the slice runs. `always` is the API contract, which every slice runs.
@@ -411,10 +417,25 @@ def select_tests(
     return node_ids, head + extra, estimated, total
 
 
+def selection_file(slice_name: str) -> Path:
+    """Return the one path `select` writes a slice's selection to and `pytest.sh slice` reads."""
+    runner_temp = os.environ.get("RUNNER_TEMP")
+    base = Path(runner_temp) / "test-impact" if runner_temp else LOCAL_SELECTION_DIR
+    return base / f"selected-{slice_name}.txt"
+
+
+def cmd_selection_path(args: argparse.Namespace) -> int:
+    slice_name = args.slice or os.environ.get("SLICE_NAME", "")
+    if not slice_name:
+        raise SystemExit("selection-path: SLICE_NAME (or --slice) is required")
+    print(selection_file(slice_name).resolve())
+    return 0
+
+
 def _parse_ignore(slice_ignore: str) -> list[str]:
     """``--ignore=tests/unit/services --ignore=...`` -> the bare paths.
 
-    matrix.slice.ignore is a pytest flag list, because that is what the slice
+    SLICE_IGNORE is a pytest flag list, because that is what the slice
     runner needs; the selector needs the same information as plain paths.
     Reading it from the one place the workflow already states it keeps the two
     from drifting — a slice whose exclusions were listed twice would drift.
@@ -471,7 +492,7 @@ def cmd_select(args: argparse.Namespace) -> int:
     slice_name = args.slice or os.environ.get("SLICE_NAME", "")
     if not slice_name and not (args.out and args.map):
         raise SystemExit("select: SLICE_NAME (or --slice) is required to derive its paths")
-    out = Path(args.out) if args.out else SELECTION_DIR / f"selected-{slice_name}.txt"
+    out = Path(args.out) if args.out else selection_file(slice_name)
     out.parent.mkdir(parents=True, exist_ok=True)
 
     if not _enabled():
@@ -503,7 +524,7 @@ def cmd_select(args: argparse.Namespace) -> int:
         changed = found
 
     # tests/contracts is the API contract and always runs; the bridge slice
-    # never reaches this command at all (see main.yml).
+    # never reaches this command at all (see ci.yml).
     restrict_to = args.restrict_to or os.environ.get("SLICE_PATHS", "").split()
     exclude = args.exclude or _parse_ignore(os.environ.get("SLICE_IGNORE", ""))
 
@@ -540,7 +561,7 @@ def cmd_select(args: argparse.Namespace) -> int:
 def cmd_fetch(args: argparse.Namespace) -> int:
     """Download the newest AVAILABLE map artifact for this slice into $MAP_DIR.
 
-    Maps are uploaded as workflow artifacts by master / dispatch runs (main.yml
+    Maps are uploaded as workflow artifacts by master / dispatch runs (ci.yml
     "Upload test impact map"), not actions/cache: a pull_request run may only
     restore caches written on its own merge ref or on the default branch, so a
     map recorded by a master run was invisible to the PR — measured: four maps
@@ -574,7 +595,14 @@ def cmd_fetch(args: argparse.Namespace) -> int:
     map_dir = Path(os.environ.get("MAP_DIR", DEFAULT_MAP_DIR))
     map_dir.mkdir(parents=True, exist_ok=True)
 
-    runs = _trusted_runs(repo)
+    try:
+        runs = _trusted_runs(repo)
+    except GitHubError as err:
+        print(
+            f"::warning::test impact ({slice_name}): the trusted master runs are unreadable "
+            f"({err}); running the whole slice"
+        )
+        return 0
     if not runs:
         print(f"test impact ({slice_name}): no trusted master run with a map yet")
         return 0
@@ -592,7 +620,7 @@ def cmd_fetch(args: argparse.Namespace) -> int:
 
 
 def _trusted_runs(repo: str) -> list[tuple[int, str]]:
-    """Successful push-to-master runs of main.yml, newest first.
+    """Successful push-to-master runs of ci.yml, newest first.
 
     Resolved by RUN, never by the artifact's ``head_branch`` string. A branch
     name is not provenance: a fork can open a PR from a branch it named
@@ -602,38 +630,25 @@ def _trusted_runs(repo: str) -> list[tuple[int, str]]:
     a PR author choose which of our tests run against their diff — a map that
     claims one test covers everything skips the suite.
 
-    So: ask the API for runs of main.yml that are ``event=push`` on ``master``
+    So: ask the API for runs of ci.yml that are ``event=push`` on ``master``
     and ``status=success``, and then re-check each candidate's own event and
     head repository, because query parameters are a filter, not a guarantee.
     The whole filtered list is returned, not just the first entry: callers
     walk it until one run's map artifact actually downloads.
     """
-    listing = _gh_json(
-        f"repos/{repo}/actions/workflows/main.yml/runs"
+    listing = GitHub.from_env().get(
+        f"repos/{repo}/actions/workflows/ci.yml/runs"
         "?branch=master&event=push&status=success&per_page=20"
     )
     runs: list[tuple[int, str]] = []
-    for run in (listing or {}).get("workflow_runs", []):
+    for run in records(listing, "workflow_runs"):
         if run.get("event") == "pull_request":
             continue
-        head_repo = (run.get("head_repository") or {}).get("full_name")
-        if head_repo != repo:
+        head_repo = run.get("head_repository")
+        if not isinstance(head_repo, dict) or head_repo.get("full_name") != repo:
             continue
-        runs.append((int(run["id"]), str(run.get("created_at", ""))))
+        runs.append((field_of(run, "id", int), text_of(run, "created_at")))
     return runs
-
-
-def _gh_json(endpoint: str) -> dict[str, Any] | None:
-    """`gh api <endpoint>` decoded, or None when gh/the API fails."""
-    if shutil.which("gh") is None:
-        return None
-    proc = subprocess.run(["gh", "api", endpoint], capture_output=True, text=True, check=False)
-    if proc.returncode != 0:
-        return None
-    try:
-        return json.loads(proc.stdout)
-    except json.JSONDecodeError:
-        return None
 
 
 def _download_map(repo: str, artifact: str, run_id: int, map_dir: Path) -> bool:
@@ -691,7 +706,7 @@ def build_parser() -> argparse.ArgumentParser:
     sel.add_argument("--slice", default="", help="defaults to $SLICE_NAME")
     sel.add_argument("--map", action="append", help="defaults to $MAP_DIR/<artifact>.json")
     sel.add_argument("--changed", help="defaults to the diff against the merge-base")
-    sel.add_argument("--out", help="defaults to apps/api/.test-impact/selected-<slice>.txt")
+    sel.add_argument("--out", help="defaults to the path `selection-path` prints")
     sel.add_argument("--repo-root", default="apps/api", help="for existence checks")
     sel.add_argument(
         "--restrict-to",
@@ -712,6 +727,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="paths that always run, e.g. tests/contracts",
     )
     sel.set_defaults(func=cmd_select)
+
+    path = sub.add_parser("selection-path", help="where select writes this slice's selection")
+    path.add_argument("--slice", default="", help="defaults to $SLICE_NAME")
+    path.set_defaults(func=cmd_selection_path)
     return parser
 
 

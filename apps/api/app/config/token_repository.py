@@ -10,9 +10,10 @@ Note: User authentication via WorkOS is handled separately by the WorkOSAuthMidd
 
 from datetime import UTC, datetime, timedelta
 import json
-from typing import Any
+from typing import TypedDict, cast
 
 from authlib.integrations.starlette_client import OAuth
+from authlib.integrations.starlette_client.apps import StarletteOAuth2App
 from authlib.oauth2.rfc6749 import OAuth2Token
 from fastapi import HTTPException
 import httpx
@@ -20,9 +21,42 @@ from sqlalchemy import select, update
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
+from app.constants.providers import CredentialProviderName
 from app.db.postgresql import get_db_session
 from app.models.db_oauth import OAuthToken
+from app.services.providers.provider_credentials_service import (
+    GoogleOAuthClient,
+    google_oauth_client,
+    resolve as resolve_provider_config,
+)
 from shared.py.wide_events import log
+
+
+async def resolve_google_oauth_credentials() -> GoogleOAuthClient | None:
+    """Return the Google OAuth client id and secret, store credential first.
+
+    The stored google_oauth credential carries the client secret as its api_key
+    field; the client id has no stored representation and comes from the
+    environment. Returns None unless both halves resolve: a half-configured
+    Google must never reach an OAuth endpoint.
+    """
+    return google_oauth_client(await resolve_provider_config(CredentialProviderName.GOOGLE_OAUTH))
+
+
+class GoogleTokenData(TypedDict, total=False):
+    """The OAuth token fields this module reads off a Google token response.
+
+    A partial shape on purpose: Google's endpoint returns more than we consume
+    and the row is stored verbatim elsewhere, so the fields read here are the
+    declared contract rather than the whole payload.
+    """
+
+    expires_at: str | int | float | None
+    expires_in: str | int | float | None
+    access_token: str | None
+    refresh_token: str | None
+    token_type: str | None
+    scope: str | None
 
 
 class TokenRepository:
@@ -37,35 +71,49 @@ class TokenRepository:
         """Initialize the token repository."""
 
         self.oauth = OAuth()
-
-        # Initialize supported providers
-        self._init_oauth_clients()
+        # The Google client registers lazily on first use: credentials can
+        # come from the credential store (Mongo), which is unreachable at
+        # import time where this singleton is constructed.
+        self._google_client: StarletteOAuth2App | None = None
 
         log.info(
             f"{LogTag.STARTUP} Token repository initialized for managing API tokens (Google, etc.)"
         )
 
-    def _init_oauth_clients(self) -> None:
-        """Initialize OAuth clients for all supported providers."""
-        # Google OAuth client
-        if settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET:
-            self.oauth.register(
-                name="google",
-                client_id=settings.GOOGLE_CLIENT_ID,
-                client_secret=settings.GOOGLE_CLIENT_SECRET,
-                server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
-                client_kwargs={
-                    "scope": "openid email profile",
-                    "prompt": "select_account",
-                },
-            )
-            log.info(f"{LogTag.STARTUP} Google OAuth client registered")
-        else:
-            log.warning(
-                f"{LogTag.STARTUP} Google OAuth credentials not found, client not registered"
-            )
+    async def _ensure_google_client(self) -> StarletteOAuth2App | None:
+        """Return the Google OAuth client, registered on first need; None if unconfigurable.
 
-    def _get_token_expiration(self, token_data: dict[str, Any]) -> datetime:
+        Resolution runs store → env on every call until it succeeds, so a
+        credential saved in Settings takes effect without a restart. Once
+        registered the client is reused as-is (re-registering mid-flight
+        could swap credentials under an active flow).
+        """
+        if self._google_client is not None:
+            return self._google_client
+
+        credentials = await resolve_google_oauth_credentials()
+        if credentials is None:
+            log.warning(
+                f"{LogTag.STARTUP} Google OAuth credentials not found "
+                "(no stored credential, no GOOGLE_CLIENT_ID/SECRET env), client not registered"
+            )
+            return None
+
+        client_id, client_secret = credentials
+        self._google_client = self.oauth.register(
+            name="google",
+            client_id=client_id,
+            client_secret=client_secret,
+            server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+            client_kwargs={
+                "scope": "openid email profile",
+                "prompt": "select_account",
+            },
+        )
+        log.info(f"{LogTag.STARTUP} Google OAuth client registered")
+        return self._google_client
+
+    def _get_token_expiration(self, token_data: GoogleTokenData) -> datetime:
         """Get token expiration time with fallback logic."""
 
         # Try expires_at first (epoch seconds are UTC).
@@ -88,7 +136,7 @@ class TokenRepository:
             return datetime.now(UTC) + timedelta(seconds=3600)
 
     async def store_token(
-        self, user_id: str, provider: str, token_data: dict[str, Any]
+        self, user_id: str, provider: str, token_data: GoogleTokenData
     ) -> OAuth2Token:
         """Store a new integration OAuth token in the database."""
         async with get_db_session() as session:
@@ -175,8 +223,9 @@ class TokenRepository:
                     status_code=401, detail=f"No {provider} token found for this user"
                 )
 
-            # Parse token data from JSON for additional fields
-            token_data = json.loads(token_record.token_data)
+            # Parse token data from JSON for additional fields. Bound to the
+            # declared shape rather than read off a bare json.loads dict.
+            token_data: GoogleTokenData = json.loads(token_record.token_data)
 
             # Create OAuth2Token from the database record
             oauth_token = OAuth2Token(
@@ -206,11 +255,11 @@ class TokenRepository:
     async def _refresh_google_token(self, refresh_token: str) -> OAuth2Token | None:
         """Refresh a Google OAuth token using the refresh token."""
 
-        if not self.oauth.google:
+        client = await self._ensure_google_client()
+        if client is None:
             log.error(f"{LogTag.STARTUP} Google OAuth client not properly initialized")
             return None
 
-        client = self.oauth.google
         try:
             # Prepare the refresh token request
             data = {
@@ -303,19 +352,23 @@ class TokenRepository:
                     )
                     return None
 
-                # Convert OAuth2Token to a dictionary we can store
-                token_dict = {}
-
-                # Extract necessary attributes safely
-                token_dict["access_token"] = token.get("access_token", None)
-                token_dict["token_type"] = token.get("token_type", "Bearer")
-                token_dict["scope"] = token.get("scope", token_record.scopes)
-                token_dict["expires_in"] = token.get("expires_in", None)
-                token_dict["expires_at"] = token.get("expires_at", None)
+                # Convert OAuth2Token to a dictionary we can store. `token` is
+                # the oauthlib token; bind the declared shape so the reads below
+                # are key-checked rather than left to inference.
+                token_params: GoogleTokenData = cast(GoogleTokenData, token)
+                token_dict: GoogleTokenData = {
+                    "access_token": token_params.get("access_token"),
+                    "token_type": token_params.get("token_type", "Bearer"),
+                    "scope": token_params.get("scope", token_record.scopes),
+                    "expires_in": token_params.get("expires_in"),
+                    "expires_at": token_params.get("expires_at"),
+                }
 
                 # Preserve the refresh token
                 # If the new token has a refresh token, use it; otherwise keep the existing one
-                token_dict["refresh_token"] = token.get("refresh_token", token_record.refresh_token)
+                token_dict["refresh_token"] = token_params.get(
+                    "refresh_token", token_record.refresh_token
+                )
 
                 # Store the refreshed token using our existing store_token method
                 # This will return the properly formatted OAuth2Token object directly

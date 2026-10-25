@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
+import { InstanceSetupNotice } from "@/features/integrations/components/InstanceSetupNotice";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import type { SuggestedIntegration } from "@/features/integrations/types";
@@ -158,8 +159,12 @@ function IntegrationListSection({
           </div>
         </button>
 
+        {!isConnected && integration.instanceSetupRequired && (
+          <InstanceSetupNotice />
+        )}
+
         {/* Show connect button for all available integrations */}
-        {!isConnected && isAvailable && (
+        {!isConnected && isAvailable && !integration.instanceSetupRequired && (
           <Button
             size="sm"
             variant="flat"

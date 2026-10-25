@@ -171,7 +171,8 @@ class OAuthScope(BaseModel):
 class ComposioConfig(BaseModel):
     """Configuration for Composio integration."""
 
-    auth_config_id: str
+    # GAIA Cloud's auth config in its own Composio project; None for instance toolkits.
+    auth_config_id: str | None
     toolkit: str
     toolkit_version: str | None = None
 

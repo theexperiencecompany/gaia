@@ -103,5 +103,5 @@ class TestTheExecutorApplyingTheFeedback:
 
         assert "THE USER'S FEEDBACK ON A TODO" in context
         assert 'one line in its canvas.md "## Standing rules"' in context
-        assert "update_integration_instructions" in context
+        assert "update_user_instructions" in context
         assert "update_tracked_todo's recurrence or scheduled_at" in context

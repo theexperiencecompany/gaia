@@ -34,8 +34,8 @@
       "cache": true,
       "dependsOn": ["^build"],
       "inputs": [
-        "default",
-        "^production",
+        "typecheck",
+        { "env": "NEXT_PUBLIC_API_BASE_URL" },
         "{workspaceRoot}/apps/web/next.config.mjs",
         "{workspaceRoot}/apps/web/tsconfig.json",
         "{workspaceRoot}/apps/web/tailwind.config.ts"
@@ -79,14 +79,14 @@
     "type-check": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "pnpm type && pnpm exec tsc -p e2e/tsconfig.json --noEmit",
+        "command": "pnpm type && node \"$NX_WORKSPACE_ROOT/scripts/ts/type-check.mjs\" -p e2e/tsconfig.json --noEmit",
         "cwd": "{projectRoot}"
       },
       "cache": true,
       "inputs": [
-        "default",
-        "{workspaceRoot}/apps/web/tsconfig.json",
-        "^production"
+        "typecheck",
+        "^production",
+        "{workspaceRoot}/apps/web/tsconfig.json"
       ]
     },
     "e2e": {

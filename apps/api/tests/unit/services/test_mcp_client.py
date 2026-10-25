@@ -36,6 +36,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 import time_machine
 
+from app.config.settings import settings
 from app.constants.device_bridge import DEVICE_TRANSPORT
 from app.constants.log_tags import LogTag
 from app.constants.mcp import MCP_RENAMED_TOOL_NOTE
@@ -68,6 +69,7 @@ from app.services.mcp.token_management import (
     revoke_tokens,
     try_refresh_token,
 )
+from app.services.providers.provider_credentials_service import ProviderConfig
 from app.utils.mcp_oauth_utils import MCP_PROTOCOL_VERSION
 from shared.py.wide_events import log
 
@@ -323,6 +325,32 @@ class TestMCPClientBuildConfig:
         with pytest.raises(ValueError, match="No valid token"):
             await client._build_config(INTEGRATION_ID, mcp_config)
 
+    async def test_composio_gateway_header_uses_stored_platform_key(self):
+        """Authenticate via x-api-key at the Composio gateway; the key resolves store-first."""
+        client = MCPClient(user_id=USER_ID)
+        composio_url = "https://backend.composio.dev/v3/mcp/abc/mcp"
+        mcp_config = _make_mcp_config(server_url=composio_url)
+        client.token_store.get_bearer_token = AsyncMock(return_value=None)
+        stored = ProviderConfig(
+            api_key="stored-composio-key",
+        )
+        resolver = AsyncMock(return_value=stored)
+        with patch("app.services.mcp.mcp_client.resolve_composio_config", new=resolver):
+            config = await client._build_config(INTEGRATION_ID, mcp_config)
+        assert config["mcpServers"][INTEGRATION_ID]["headers"]["x-api-key"] == "stored-composio-key"
+        resolver.assert_awaited_once_with("composio")
+
+    async def test_non_composio_servers_never_resolve_the_platform_key(self):
+        client = MCPClient(user_id=USER_ID)
+        mcp_config = _make_mcp_config()
+        client.token_store.get_bearer_token = AsyncMock(return_value=None)
+        with patch(
+            "app.services.mcp.mcp_client.resolve_composio_config",
+            new=AsyncMock(side_effect=AssertionError("must not resolve off-gateway")),
+        ):
+            config = await client._build_config(INTEGRATION_ID, mcp_config)
+        assert "x-api-key" not in config["mcpServers"][INTEGRATION_ID].get("headers", {})
+
     async def test_build_config_explicit_transport(self):
         client = MCPClient(user_id=USER_ID)
         mcp_config = _make_mcp_config(transport="sse")
@@ -392,7 +420,7 @@ class TestMCPClientDoConnect:
     def _mock_ssrf_guard(self) -> Iterator[None]:
         """Neutralize the DNS-resolving SSRF guard so tests use fake hostnames."""
         with patch(
-            "app.services.mcp.mcp_client.assert_public_http_url",
+            "app.services.mcp.mcp_client.assert_endpoint_url_allowed",
             new_callable=AsyncMock,
         ):
             yield
@@ -1813,6 +1841,10 @@ class TestResolveClientCredentials:
             assert cid == "from_config"
 
 
+def _basic(client_id: str, client_secret: str) -> str:
+    return "Basic " + base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
+
+
 class TestTryRefreshToken:
     async def test_successful_refresh(self):
         token_store = AsyncMock(spec=MCPTokenStore)
@@ -1832,7 +1864,7 @@ class TestTryRefreshToken:
             "expires_in": 3600,
         }
 
-        with patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_http:
+        with patch("app.services.mcp.token_management.mcp_http_client") as mock_http:
             mock_client = AsyncMock()
             mock_client.post = AsyncMock(return_value=mock_response)
             mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_client)
@@ -1842,6 +1874,10 @@ class TestTryRefreshToken:
 
         assert result is True
         token_store.store_oauth_tokens.assert_awaited_once()
+        posted = mock_client.post.await_args
+        # A confidential client authenticates with Basic auth, never a client_id field.
+        assert posted.kwargs["headers"]["Authorization"] == _basic("cid", "csec")
+        assert "client_id" not in posted.kwargs["data"]
 
     async def test_no_refresh_token(self):
         token_store = AsyncMock(spec=MCPTokenStore)
@@ -1891,7 +1927,7 @@ class TestTryRefreshToken:
             "error_description": "Token expired",
         }
 
-        with patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_http:
+        with patch("app.services.mcp.token_management.mcp_http_client") as mock_http:
             mock_client = AsyncMock()
             mock_client.post = AsyncMock(return_value=mock_response)
             mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_client)
@@ -1915,7 +1951,7 @@ class TestTryRefreshToken:
         }
 
         with (
-            patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_http,
+            patch("app.services.mcp.token_management.mcp_http_client") as mock_http,
             patch("app.services.mcp.token_management.log") as mock_log,
         ):
             mock_client = AsyncMock()
@@ -1952,7 +1988,7 @@ class TestTryRefreshToken:
         mock_response.status_code = 500
         mock_response.json.return_value = {}
 
-        with patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_http:
+        with patch("app.services.mcp.token_management.mcp_http_client") as mock_http:
             mock_client = AsyncMock()
             mock_client.post = AsyncMock(return_value=mock_response)
             mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_client)
@@ -1977,7 +2013,7 @@ class TestTryRefreshToken:
         mcp_config = _make_mcp_config(client_id="cid")
         oauth_config = _make_oauth_discovery()
 
-        with patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_http:
+        with patch("app.services.mcp.token_management.mcp_http_client") as mock_http:
             mock_http.return_value.__aenter__ = AsyncMock(side_effect=Exception("Network error"))
             mock_http.return_value.__aexit__ = AsyncMock()
 
@@ -2003,7 +2039,7 @@ class TestTryRefreshToken:
             "expires_in": 3600,
         }
 
-        with patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_http:
+        with patch("app.services.mcp.token_management.mcp_http_client") as mock_http:
             mock_client = AsyncMock()
             mock_client.post = AsyncMock(return_value=mock_response)
             mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_client)
@@ -2029,7 +2065,7 @@ class TestTryRefreshToken:
         mock_response.status_code = 200
         mock_response.json.return_value = {"access_token": "", "expires_in": 3600}
 
-        with patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_http:
+        with patch("app.services.mcp.token_management.mcp_http_client") as mock_http:
             mock_client = AsyncMock()
             mock_client.post = AsyncMock(return_value=mock_response)
             mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_client)
@@ -2053,7 +2089,7 @@ class TestRevokeTokens:
             metadata_overrides={"revocation_endpoint": "https://auth.example.com/revoke"}
         )
 
-        with patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_http:
+        with patch("app.services.mcp.token_management.mcp_http_client") as mock_http:
             mock_client = AsyncMock()
             mock_client.post = AsyncMock()
             mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_client)
@@ -2075,7 +2111,7 @@ class TestRevokeTokens:
             metadata_overrides={"revocation_endpoint": "https://auth.example.com/revoke"}
         )
 
-        with patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_http:
+        with patch("app.services.mcp.token_management.mcp_http_client") as mock_http:
             mock_client = AsyncMock()
             mock_client.post = AsyncMock()
             mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_client)
@@ -2086,7 +2122,7 @@ class TestRevokeTokens:
         token_store.get_dcr_client.assert_awaited_once_with(INTEGRATION_ID)
         posted = mock_client.post.await_args
         assert posted.kwargs["data"]["client_id"] == "dcr_cid"
-        assert posted.kwargs["headers"]["Authorization"].startswith("Basic ")
+        assert posted.kwargs["headers"]["Authorization"] == _basic("dcr_cid", "dcr_sec")
 
     async def test_skips_when_no_endpoint(self):
         token_store = AsyncMock(spec=MCPTokenStore)
@@ -2107,7 +2143,7 @@ class TestRevokeTokens:
             metadata_overrides={"revocation_endpoint": "https://auth.example.com/revoke"}
         )
 
-        with patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_http:
+        with patch("app.services.mcp.token_management.mcp_http_client") as mock_http:
             mock_http.return_value.__aenter__ = AsyncMock(side_effect=Exception("Network"))
             mock_http.return_value.__aexit__ = AsyncMock()
 
@@ -2163,7 +2199,7 @@ class TestDiscoverOAuthConfig:
                     "raw": 'Bearer resource_metadata="https://mcp.example.com/.well-known/prm"',
                     "resource_metadata": "https://mcp.example.com/.well-known/prm",
                 },
-            ),
+            ) as mock_extract,
             patch(
                 "app.services.mcp.oauth_discovery.find_protected_resource_metadata",
                 new_callable=AsyncMock,
@@ -2196,6 +2232,7 @@ class TestDiscoverOAuthConfig:
             patch("app.services.mcp.oauth_discovery.validate_oauth_endpoints"),
         ):
             result = await discover_oauth_config(token_store, INTEGRATION_ID, mcp_config)
+        mock_extract.assert_awaited_once_with(SERVER_URL)
         assert result.discovery_method == "rfc9728_prm"
         assert (
             str(result.as_metadata.authorization_endpoint) == "https://auth.example.com/authorize"
@@ -2322,7 +2359,7 @@ class TestProbeMcpConnection:
     def _mock_ssrf_guard(self) -> Iterator[None]:
         """Neutralize the DNS-resolving SSRF guard so tests use fake hostnames."""
         with patch(
-            "app.services.mcp.oauth_discovery.assert_public_http_url",
+            "app.services.mcp.oauth_discovery.assert_endpoint_url_allowed",
             new_callable=AsyncMock,
         ):
             yield
@@ -3114,7 +3151,7 @@ class TestMCPClientRegisterClient:
             ).encode()
         )
 
-        with patch("app.services.mcp.mcp_client.httpx.AsyncClient") as mock_http:
+        with patch("app.services.mcp.mcp_client.mcp_http_client") as mock_http:
             mock_http_client = AsyncMock()
             mock_http_client.send = AsyncMock(return_value=mock_response)
             mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_http_client)
@@ -3141,7 +3178,7 @@ class TestMCPClientRegisterClient:
         mock_http_client = AsyncMock()
         mock_http_client.send = AsyncMock(return_value=mock_response)
 
-        with patch("app.services.mcp.mcp_client.httpx.AsyncClient") as mock_http:
+        with patch("app.services.mcp.mcp_client.mcp_http_client") as mock_http:
             mock_cm = AsyncMock()
             mock_cm.__aenter__.return_value = mock_http_client
             mock_http.return_value = mock_cm
@@ -3165,7 +3202,7 @@ class TestMCPClientRegisterClient:
         mock_http_client = AsyncMock()
         mock_http_client.send = AsyncMock(return_value=mock_response)
 
-        with patch("app.services.mcp.mcp_client.httpx.AsyncClient") as mock_http:
+        with patch("app.services.mcp.mcp_client.mcp_http_client") as mock_http:
             mock_cm = AsyncMock()
             mock_cm.__aenter__.return_value = mock_http_client
             mock_http.return_value = mock_cm
@@ -3189,7 +3226,7 @@ class TestMCPClientRegisterClient:
         mock_http_client = AsyncMock()
         mock_http_client.send = AsyncMock(return_value=mock_response)
 
-        with patch("app.services.mcp.mcp_client.httpx.AsyncClient") as mock_http:
+        with patch("app.services.mcp.mcp_client.mcp_http_client") as mock_http:
             mock_cm = AsyncMock()
             mock_cm.__aenter__.return_value = mock_http_client
             mock_http.return_value = mock_cm
@@ -3207,7 +3244,7 @@ class TestMCPClientRegisterClient:
             registration_endpoint="https://auth.example.com/register"
         )
 
-        with patch("app.services.mcp.mcp_client.httpx.AsyncClient") as mock_http:
+        with patch("app.services.mcp.mcp_client.mcp_http_client") as mock_http:
             mock_http.return_value.__aenter__ = AsyncMock(side_effect=Exception("Network error"))
             mock_http.return_value.__aexit__ = AsyncMock()
 
@@ -3243,7 +3280,7 @@ class TestMCPClientRegisterClient:
         mock_http_client.send = AsyncMock(return_value=mock_response)
 
         with (
-            patch("app.services.mcp.mcp_client.httpx.AsyncClient") as mock_http,
+            patch("app.services.mcp.mcp_client.mcp_http_client") as mock_http,
             patch("app.services.mcp.mcp_client.log") as mock_log,
         ):
             mock_cm = AsyncMock()
@@ -3276,7 +3313,7 @@ class TestMCPClientRegisterClient:
         )
 
         with (
-            patch("app.services.mcp.mcp_client.httpx.AsyncClient") as mock_http,
+            patch("app.services.mcp.mcp_client.mcp_http_client") as mock_http,
             patch("app.services.mcp.mcp_client.log") as mock_log,
         ):
             mock_http.return_value.__aenter__ = AsyncMock(side_effect=Exception("Network error"))
@@ -3996,7 +4033,7 @@ class TestMCPClientHandleOauthCallback:
                 },
             ),
             patch(
-                "app.services.mcp.mcp_client.httpx.AsyncClient",
+                "app.services.mcp.mcp_client.mcp_http_client",
                 return_value=fake_http_client(),
             ),
         ):
@@ -4231,7 +4268,7 @@ class TestMCPClientDoConnectSSRF:
 
         client = MCPClient(user_id=USER_ID)
 
-        with pytest.raises(ValueError, match="non-public"):
+        with pytest.raises(ValueError, match="link-local"):
             await client._do_connect(INTEGRATION_ID)
 
         # The guard fired first: no outbound MCP client was ever built.
@@ -4239,9 +4276,10 @@ class TestMCPClientDoConnectSSRF:
 
     @patch("app.services.mcp.mcp_client.BaseMCPClient")
     @patch("app.services.mcp.mcp_client.IntegrationResolver")
-    async def test_loopback_server_url_blocked_before_connect(
-        self, mock_resolver, mock_base_client_cls
+    async def test_loopback_server_url_blocked_before_connect_on_gaia_cloud(
+        self, mock_resolver, mock_base_client_cls, monkeypatch: pytest.MonkeyPatch
     ):
+        monkeypatch.setattr(settings, "ENV", "production")
         resolved = MagicMock()
         resolved.mcp_config = _make_mcp_config(server_url="https://127.0.0.1:8000/mcp")
         resolved.source = "platform"
@@ -4254,6 +4292,21 @@ class TestMCPClientDoConnectSSRF:
             await client._do_connect(INTEGRATION_ID)
 
         mock_base_client_cls.assert_not_called()
+
+    @patch("app.services.mcp.mcp_client.BaseMCPClient")
+    async def test_a_selfhost_instance_dials_a_server_on_its_own_network(
+        self, mock_base_client_cls, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.setattr(settings, "ENV", "selfhost")
+        mock_base_client_cls.return_value = AsyncMock()
+        client = MCPClient(user_id=USER_ID)
+        mcp_config = _make_mcp_config(server_url="http://127.0.0.1:8931/mcp")
+
+        config = {"mcpServers": {INTEGRATION_ID: {"url": mcp_config.server_url}}}
+        with patch.object(client, "_build_config", new_callable=AsyncMock, return_value=config):
+            await client._open_session(INTEGRATION_ID, mcp_config)
+
+        mock_base_client_cls.assert_called_once()
 
 
 class TestProbeMcpConnectionSSRF:
@@ -4268,6 +4321,21 @@ class TestProbeMcpConnectionSSRF:
         assert result["requires_auth"] is False
         assert "error" in result
         mock_extract.assert_not_awaited()
+
+    @pytest.mark.parametrize(("env", "probed"), [("selfhost", True), ("production", False)])
+    @patch("app.services.mcp.oauth_discovery.extract_auth_challenge", new_callable=AsyncMock)
+    async def test_a_lan_server_is_probed_only_where_the_deployment_allows_private_endpoints(
+        self, mock_extract: AsyncMock, monkeypatch: pytest.MonkeyPatch, env: str, probed: bool
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", env)
+        mock_extract.return_value = {}
+
+        result = await probe_mcp_connection("http://10.0.0.5/mcp")
+
+        assert ("error" not in result) is probed
+        assert mock_extract.await_args_list == (
+            [((("http://10.0.0.5/mcp",), {}))] if probed else []
+        )
 
 
 # Mutation-hardening: exact assertions on log writes, dict-key writes,
@@ -4339,7 +4407,7 @@ class TestOpenSessionExact:
                 client, "_build_device_client", new_callable=AsyncMock, return_value=device_client
             ) as mock_build_device,
             patch(
-                "app.services.mcp.mcp_client.assert_public_http_url", new_callable=AsyncMock
+                "app.services.mcp.mcp_client.assert_endpoint_url_allowed", new_callable=AsyncMock
             ) as mock_ssrf,
             patch("app.services.mcp.mcp_client.log") as mock_log,
         ):
@@ -4360,7 +4428,7 @@ class TestOpenSessionExact:
 
         call_order: list[str] = []
 
-        async def _record_ssrf(url: str) -> None:
+        async def _record_ssrf(url: str, *, allow_private: bool) -> None:
             call_order.append("ssrf")
 
         async def _record_build(iid: str, cfg: MCPConfig) -> dict[str, Any]:
@@ -4369,7 +4437,7 @@ class TestOpenSessionExact:
 
         with (
             patch(
-                "app.services.mcp.mcp_client.assert_public_http_url",
+                "app.services.mcp.mcp_client.assert_endpoint_url_allowed",
                 new_callable=AsyncMock,
                 side_effect=_record_ssrf,
             ),
@@ -5174,7 +5242,9 @@ class TestRenameShadowingTools:
 class TestDoConnectWiringExact:
     @pytest.fixture(autouse=True)
     def _mock_ssrf_guard(self) -> Iterator[None]:
-        with patch("app.services.mcp.mcp_client.assert_public_http_url", new_callable=AsyncMock):
+        with patch(
+            "app.services.mcp.mcp_client.assert_endpoint_url_allowed", new_callable=AsyncMock
+        ):
             yield
 
     @staticmethod
@@ -5662,7 +5732,7 @@ class TestExchangeCodeForTokensExact:
         post = AsyncMock(return_value=_ok_response({"access_token": "at"}))
         with (
             patch(
-                "app.services.mcp.mcp_client.httpx.AsyncClient",
+                "app.services.mcp.mcp_client.mcp_http_client",
                 return_value=_fake_http_client(post)(),
             ),
         ):
@@ -5692,7 +5762,7 @@ class TestExchangeCodeForTokensExact:
         client = MCPClient(user_id=USER_ID)
         post = AsyncMock(return_value=_ok_response({"access_token": "at"}))
         with patch(
-            "app.services.mcp.mcp_client.httpx.AsyncClient",
+            "app.services.mcp.mcp_client.mcp_http_client",
             return_value=_fake_http_client(post)(),
         ):
             await client._exchange_code_for_tokens(
@@ -5713,7 +5783,7 @@ class TestExchangeCodeForTokensExact:
         post = AsyncMock(return_value=_ok_response({"access_token": "at"}))
         expected_basic = "Basic " + base64.b64encode(b"cid:sec").decode()
         with patch(
-            "app.services.mcp.mcp_client.httpx.AsyncClient",
+            "app.services.mcp.mcp_client.mcp_http_client",
             return_value=_fake_http_client(post)(),
         ):
             await client._exchange_code_for_tokens(
@@ -5729,7 +5799,7 @@ class TestExchangeCodeForTokensExact:
         client = MCPClient(user_id=USER_ID)
         post = AsyncMock(return_value=_ok_response({"access_token": "at"}))
         with patch(
-            "app.services.mcp.mcp_client.httpx.AsyncClient",
+            "app.services.mcp.mcp_client.mcp_http_client",
             return_value=_fake_http_client(post)(),
         ):
             await client._exchange_code_for_tokens(
@@ -5745,7 +5815,7 @@ class TestExchangeCodeForTokensExact:
         response = _ok_response({"access_token": "at"})
         response.status_code = status
         with patch(
-            "app.services.mcp.mcp_client.httpx.AsyncClient",
+            "app.services.mcp.mcp_client.mcp_http_client",
             return_value=_fake_http_client(AsyncMock(return_value=response))(),
         ):
             result = await client._exchange_code_for_tokens(
@@ -5758,7 +5828,7 @@ class TestExchangeCodeForTokensExact:
         client = MCPClient(user_id=USER_ID)
         body = {"access_token": "at", "token_type": "bearer", "id_token": "h.p.s"}
         with patch(
-            "app.services.mcp.mcp_client.httpx.AsyncClient",
+            "app.services.mcp.mcp_client.mcp_http_client",
             return_value=_fake_http_client(AsyncMock(return_value=_ok_response(body)))(),
         ):
             result = await client._exchange_code_for_tokens(
@@ -5772,7 +5842,7 @@ class TestExchangeCodeForTokensExact:
         client = MCPClient(user_id=USER_ID)
         with (
             patch(
-                "app.services.mcp.mcp_client.httpx.AsyncClient",
+                "app.services.mcp.mcp_client.mcp_http_client",
                 return_value=_fake_http_client(AsyncMock(return_value=_ok_response({})))(),
             ),
             pytest.raises(ValidationError),
@@ -5788,7 +5858,7 @@ class TestExchangeCodeForTokensExact:
         response.status_code = status
         with (
             patch(
-                "app.services.mcp.mcp_client.httpx.AsyncClient",
+                "app.services.mcp.mcp_client.mcp_http_client",
                 return_value=_fake_http_client(AsyncMock(return_value=response))(),
             ),
             patch(
@@ -5812,7 +5882,7 @@ class TestExchangeCodeForTokensExact:
         response.status_code = 400
         with (
             patch(
-                "app.services.mcp.mcp_client.httpx.AsyncClient",
+                "app.services.mcp.mcp_client.mcp_http_client",
                 return_value=_fake_http_client(AsyncMock(return_value=response))(),
             ),
             patch(
@@ -5834,7 +5904,7 @@ class TestExchangeCodeForTokensExact:
         bad_response.status_code = 400
         with (
             patch(
-                "app.services.mcp.mcp_client.httpx.AsyncClient",
+                "app.services.mcp.mcp_client.mcp_http_client",
                 return_value=_fake_http_client(AsyncMock(return_value=bad_response))(),
             ),
             patch(
@@ -5886,7 +5956,7 @@ class TestHandleOauthCallbackNonceEnforcement:
             patch("app.services.mcp.mcp_client.validate_https_url"),
             patch("app.services.mcp.mcp_client.validate_jwt_issuer", return_value=True),
             patch(
-                "app.services.mcp.mcp_client.httpx.AsyncClient",
+                "app.services.mcp.mcp_client.mcp_http_client",
                 return_value=_fake_http_client(AsyncMock(return_value=_ok_response(tokens)))(),
             ),
             patch(

@@ -18,13 +18,16 @@ interface FooterProps {
 
 /**
  * Footer component displaying current step and status.
- * Hidden during the Welcome step.
+ * Hidden on the Welcome and Finished steps.
  * @param props - Footer properties
  * @param props.status - Status message
  * @param props.step - Current step name
  */
+/** Welcome has nothing to report yet; Finished says it all in its summary. */
+const HIDDEN_ON_STEPS = new Set(["Welcome", "Finished"]);
+
 export const Footer: React.FC<FooterProps> = ({ status, step }) => {
-  if (step.toLowerCase() === "welcome") return null;
+  if (HIDDEN_ON_STEPS.has(step)) return null;
   return (
     <Box width="100%" paddingX={1} marginTop={1}>
       <Text color="gray" dimColor>
