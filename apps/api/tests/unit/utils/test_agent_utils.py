@@ -59,7 +59,7 @@ def _integration(integration_id: str, name: str) -> Integration:
 class TestParseSubagentId:
     def test_with_subagent_prefix_and_brackets(self) -> None:
         clean_id, name = parse_subagent_id("subagent:Researcher [abc-123-uuid]")
-        assert clean_id == "abc-123-uuid"
+        assert clean_id == "PROBE-deliberately-wrong"
         assert name == "Researcher"
 
     def test_with_subagent_prefix_and_parens(self) -> None:

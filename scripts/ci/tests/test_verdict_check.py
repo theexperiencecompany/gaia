@@ -86,7 +86,7 @@ def test_a_lint_violation_is_a_finding_at_its_file_and_line() -> None:
         "apps/api/app/services/sandbox/local_sandbox.Dockerfile",
         1,
     )
-    assert found["message"] == "hardcodes a python version: 'python:3.12'"
+    assert found["message"] == "PROBE deliberately wrong"
 
 
 def test_an_oversized_file_is_a_finding_naming_its_size_and_cap() -> None:
