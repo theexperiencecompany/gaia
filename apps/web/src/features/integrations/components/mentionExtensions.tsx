@@ -19,7 +19,12 @@ import type {
   SuggestionKeyDownProps,
   SuggestionProps,
 } from "@tiptap/suggestion";
-import type { MutableRefObject, ReactNode } from "react";
+import {
+  createContext,
+  type MutableRefObject,
+  type ReactNode,
+  useContext,
+} from "react";
 import { MentionChip } from "@/features/integrations/components/MentionChip";
 import {
   MentionList,
@@ -45,24 +50,35 @@ export interface MentionExtensionRefs {
   toolNames: MutableRefObject<string[]>;
 }
 
+/**
+ * The editor's refs for its mention node views. Tiptap mounts node views
+ * through portals inside EditorContent, so context reaches them.
+ */
+export const MentionRefsContext = createContext<MentionExtensionRefs | null>(
+  null,
+);
+
 /** Renders an inserted mention as the shared HeroUI chip (with its icon). */
-const createMentionNodeView = (refs: MentionExtensionRefs) =>
-  function MentionNodeView({ node, deleteNode }: NodeViewProps) {
-    const name = (node.attrs.label ?? node.attrs.id ?? "") as string;
-    return (
-      <NodeViewWrapper
-        as="span"
-        className="mx-0.5 inline-flex translate-y-1 align-baseline"
-      >
-        <MentionChip
-          name={name}
-          icon={refs.icon.current?.(name)}
-          radius={refs.radius.current}
-          onClose={refs.removable.current ? () => deleteNode() : undefined}
-        />
-      </NodeViewWrapper>
-    );
-  };
+function MentionNodeView({ node, deleteNode }: NodeViewProps) {
+  const refs = useContext(MentionRefsContext);
+  if (!refs) {
+    throw new Error("MentionNodeView needs a MentionRefsContext provider");
+  }
+  const name = (node.attrs.label ?? node.attrs.id ?? "") as string;
+  return (
+    <NodeViewWrapper
+      as="span"
+      className="mx-0.5 inline-flex translate-y-1 align-baseline"
+    >
+      <MentionChip
+        name={name}
+        icon={refs.icon.current?.(name)}
+        radius={refs.radius.current}
+        onClose={refs.removable.current ? () => deleteNode() : undefined}
+      />
+    </NodeViewWrapper>
+  );
+}
 
 /** The `@`-suggestion dropdown: mounts {@link MentionList} at the caret. */
 const createSuggestionRenderer = (refs: MentionExtensionRefs) => () => {
@@ -132,7 +148,7 @@ export const buildMentionExtensions = (
 ): Extensions => {
   const mention = Mention.extend({
     addNodeView() {
-      return ReactNodeViewRenderer(createMentionNodeView(refs));
+      return ReactNodeViewRenderer(MentionNodeView);
     },
   }).configure({
     renderText: ({ node }) => `@${node.attrs.label ?? node.attrs.id}`,

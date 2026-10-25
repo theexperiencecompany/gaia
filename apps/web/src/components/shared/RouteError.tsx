@@ -3,7 +3,8 @@
 import { Button } from "@heroui/button";
 import { Spinner } from "@heroui/spinner";
 import { Home01Icon } from "@icons";
-import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { startTransition, useEffect, useState } from "react";
 import { track } from "@/lib/analytics";
 import {
   isChunkLoadError,
@@ -21,6 +22,7 @@ interface RouteErrorProps {
  * of bubbling to `global-error.tsx` and replacing the whole document.
  */
 export default function RouteError({ error, reset }: RouteErrorProps) {
+  const router = useRouter();
   const isChunk = isChunkLoadError(error);
 
   // Errors whose recovery attempt already concluded without a reload. Keyed by
@@ -69,7 +71,17 @@ export default function RouteError({ error, reset }: RouteErrorProps) {
         An unexpected error occurred. Please try again or return home.
       </p>
       <div className="flex items-center gap-3 pt-4">
-        <Button color="primary" onPress={reset}>
+        <Button
+          color="primary"
+          onPress={() => {
+            // reset alone re-renders the client tree; a server component that
+            // threw (e.g. an unreachable API) only re-runs after a refresh.
+            startTransition(() => {
+              router.refresh();
+              reset();
+            });
+          }}
+        >
           Try again
         </Button>
         <Button

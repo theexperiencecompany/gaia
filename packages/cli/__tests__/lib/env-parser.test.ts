@@ -7,10 +7,10 @@ import {
   getCoreVariables,
   getDefaultValue,
   getDeploymentDefaults,
-  getDeploymentVariables,
   getInfrastructureVariables,
   getWebInfrastructureDefaults,
   isCategorySatisfied,
+  loadVendoredSchema,
 } from "../../src/lib/env-parser.js";
 
 // ---------------------------------------------------------------------------
@@ -34,10 +34,40 @@ function makeCategory(overrides?: Partial<EnvCategory>): EnvCategory {
     affectedFeatures: "testing",
     requiredInProd: false,
     allRequired: false,
+    selfhostSetup: true,
     variables: [makeVar()],
     ...overrides,
   };
 }
+
+// ---------------------------------------------------------------------------
+// loadVendoredSchema
+// ---------------------------------------------------------------------------
+describe("loadVendoredSchema", () => {
+  it("returns categories from the vendored JSON (no host Python)", () => {
+    const categories = loadVendoredSchema();
+    expect(categories.length).toBeGreaterThan(0);
+    for (const category of categories) {
+      expect(category.name).toBeTruthy();
+      expect(Array.isArray(category.variables)).toBe(true);
+    }
+  });
+
+  it("preserves grouping semantics: alternative groups intact", () => {
+    const alternatives = getAlternativeGroups(loadVendoredSchema());
+    // OpenAI Integration ↔ Google AI pair ships in the vendored schema.
+    expect(alternatives.get("OpenAI Integration")).toBe("Google AI");
+    expect(alternatives.get("Google AI")).toBe("OpenAI Integration");
+  });
+
+  it("returns a deep copy — mutating the result never corrupts the source", () => {
+    const first = loadVendoredSchema();
+    first[0]!.name = "MUTATED";
+
+    const second = loadVendoredSchema();
+    expect(second[0]!.name).not.toBe("MUTATED");
+  });
+});
 
 // ---------------------------------------------------------------------------
 // getDefaultValue
@@ -62,12 +92,11 @@ describe("getDefaultValue", () => {
   });
 
   it("returns deployment defaults", () => {
-    expect(getDefaultValue("HOST", "selfhost")).toBe("http://localhost:8000");
+    // Self-host is one origin: the API lives under the web port via the proxy.
+    expect(getDefaultValue("HOST", "selfhost")).toBe("http://localhost:3000");
     expect(getDefaultValue("FRONTEND_URL", "developer")).toBe(
       "http://localhost:3000",
     );
-    expect(getDefaultValue("SETUP_MODE", "selfhost")).toBe("selfhost");
-    expect(getDefaultValue("SETUP_MODE", "developer")).toBe("developer");
   });
 
   it("returns undefined for unknown variables", () => {
@@ -187,7 +216,7 @@ describe("applyModeDefaults", () => {
 });
 
 // ---------------------------------------------------------------------------
-// getInfrastructureVariables / getDeploymentVariables
+// getInfrastructureVariables
 // ---------------------------------------------------------------------------
 describe("getInfrastructureVariables", () => {
   it("returns correct variable names", () => {
@@ -199,17 +228,6 @@ describe("getInfrastructureVariables", () => {
     expect(vars).toContain("CHROMADB_PORT");
     expect(vars).toContain("RABBITMQ_URL");
     expect(vars).toHaveLength(6);
-  });
-});
-
-describe("getDeploymentVariables", () => {
-  it("returns correct variable names", () => {
-    const vars = getDeploymentVariables();
-    expect(vars).toContain("HOST");
-    expect(vars).toContain("FRONTEND_URL");
-    expect(vars).toContain("GAIA_BACKEND_URL");
-    expect(vars).toContain("SETUP_MODE");
-    expect(vars).toHaveLength(4);
   });
 });
 
@@ -231,13 +249,11 @@ describe("getDeploymentDefaults", () => {
 
   it("returns selfhost deployment defaults", () => {
     const defaults = getDeploymentDefaults("selfhost");
-    expect(defaults.SETUP_MODE).toBe("selfhost");
-    expect(defaults.GAIA_BACKEND_URL).toBe("http://gaia-backend:80"); // NOSONAR — internal Docker network URL, not a public endpoint
+    expect(defaults.GAIA_BACKEND_URL).toBe("http://gaia-backend:8000"); // NOSONAR — internal Docker network URL, not a public endpoint
   });
 
   it("returns developer deployment defaults", () => {
     const defaults = getDeploymentDefaults("developer");
-    expect(defaults.SETUP_MODE).toBe("developer");
     expect(defaults.GAIA_BACKEND_URL).toBe("http://host.docker.internal:8000"); // NOSONAR — internal Docker network URL, not a public endpoint
   });
 });

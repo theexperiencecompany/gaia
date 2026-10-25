@@ -96,6 +96,8 @@ ONBOARDING_EMAIL_SCAN_LIMIT = 200
 # Outbound platform email (transactional sends via app/services/email)
 CONTACT_EMAIL = "aryan@heygaia.io"
 SUPPORT_EMAIL = "support@heygaia.io"
+# Where a self-hosted instance's users report bugs and request features instead.
+GAIA_GITHUB_ISSUES_URL = "https://github.com/theexperiencecompany/gaia/issues"
 FOUNDER_SENDER = f"Aryan from GAIA <{CONTACT_EMAIL}>"
 SUPPORT_SENDER = f"GAIA Support <{SUPPORT_EMAIL}>"
 DISCORD_URL = "https://discord.heygaia.io"

@@ -7,6 +7,7 @@ keeps the real-client round trips and this file pins the store's own logic.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 import pickle  # nosec B403 - the fake stores exactly what ChromaStore pickled
 from typing import ClassVar
@@ -22,6 +23,7 @@ from langgraph.store.base import (
 )
 import pytest
 
+from app.constants.chroma import MAX_CONCURRENT_INDEX_EMBEDDINGS
 from app.constants.log_tags import LogTag
 from app.db.chroma.chroma_store import ChromaBatchWriteError, ChromaStore, _stored_time
 from tests._harness.chroma_fakes import (
@@ -231,11 +233,14 @@ class TestPut:
         store = _store(index=True, fields=["t"])
         store.embeddings.aembed_query = AsyncMock(side_effect=TimeoutError())
 
-        with patch(f"{MODULE}.log") as log, pytest.raises(ChromaBatchWriteError):
+        with (
+            patch(f"{MODULE}.log") as log,
+            pytest.raises(ChromaBatchWriteError, match="^1 of 1 ChromaDB writes failed$"),
+        ):
             await store.abatch([PutOp(namespace=("n", "m"), key="k", value={"t": "mail"})])
 
         log.error.assert_any_call(
-            f"{LogTag.CHROMA} _upsert_item embedding failed",
+            f"{LogTag.CHROMA} _apply_put_ops embedding failed",
             doc_id="n::m::k",
             namespace="n::m",
             text_len=4,
@@ -251,12 +256,35 @@ class TestPut:
 
         assert _collection(store).rows == {}
 
-    async def test_failed_writes_fail_the_batch_after_the_rest_land(self) -> None:
+    async def test_a_failed_embedding_still_lets_the_rest_of_the_batch_land(self) -> None:
+        store = _store(index=True, fields=["t"])
+        collection = _collection(store)
+        collection.add("n::gone", {}, {"x": 1})
+        real = store.embeddings.aembed_query
+
+        async def embed(text: str) -> list[float]:
+            if text == "broken":
+                raise TimeoutError
+            return await real(text)
+
+        store.embeddings.aembed_query = embed
+
+        with pytest.raises(ChromaBatchWriteError, match="^1 of 3 ChromaDB writes failed$"):
+            await store.abatch(
+                [
+                    PutOp(namespace=("n",), key="ok", value={"t": "mail"}),
+                    PutOp(namespace=("n",), key="bad", value={"t": "broken"}),
+                    PutOp(namespace=("n",), key="gone", value=None),
+                ]
+            )
+
+        assert set(collection.rows) == {"n::ok"}
+
+    async def test_a_failed_write_fails_the_batch_and_counts_its_rows(self) -> None:
         store = _store()
         collection = _collection(store)
         collection.add("n::gone", {}, {"x": 1})
         collection.fail_upsert_for = {"n::bad"}
-        collection.fail_delete_for = {"n::gone"}
 
         with patch(f"{MODULE}.log") as log, pytest.raises(ChromaBatchWriteError) as raised:
             await store.abatch(
@@ -269,41 +297,77 @@ class TestPut:
 
         assert str(raised.value) == "2 of 3 ChromaDB writes failed"
         assert isinstance(raised.value.__cause__, ConnectionError)
-        assert "n::ok" in collection.rows
-        log.error.assert_any_call(
-            f"{LogTag.CHROMA} Error upserting item",
-            doc_id="n::bad",
-            namespace="n",
-            error_type="ConnectionError",
-        )
-        log.error.assert_any_call(
-            f"{LogTag.CHROMA} Error deleting item", doc_id="n::gone", error_type="ConnectionError"
-        )
-        log.error.assert_any_call(
+        assert "n::gone" not in collection.rows
+        log.error.assert_called_once_with(
             f"{LogTag.CHROMA} _apply_put_ops failure",
-            doc_id="n::bad",
-            error_type="ConnectionError",
-        )
-        log.error.assert_any_call(
-            f"{LogTag.CHROMA} _apply_put_ops failure",
-            doc_id="n::gone",
+            doc_count=2,
+            first_doc_id="n::ok",
             error_type="ConnectionError",
         )
 
-    async def test_at_most_three_failures_are_itemised(self) -> None:
+    async def test_a_failed_delete_is_counted_beside_the_upserts_that_landed(self) -> None:
         store = _store()
-        _collection(store).fail_upsert_for = {f"n::{i}" for i in range(5)}
+        collection = _collection(store)
+        collection.add("n::gone", {}, {"x": 1})
+        collection.fail_delete_for = {"n::gone"}
 
-        with patch(f"{MODULE}.log") as log, pytest.raises(ChromaBatchWriteError) as raised:
+        with pytest.raises(ChromaBatchWriteError, match="1 of 2 ChromaDB writes failed"):
             await store.abatch(
-                [PutOp(namespace=("n",), key=str(i), value={"i": i}) for i in range(5)]
+                [
+                    PutOp(namespace=("n",), key="ok", value={"x": 1}),
+                    PutOp(namespace=("n",), key="gone", value=None),
+                ]
             )
 
-        itemised = [
-            c for c in log.error.call_args_list if c.args[0].endswith("_apply_put_ops failure")
-        ]
-        assert [c.kwargs["doc_id"] for c in itemised] == ["n::0", "n::1", "n::2"]
-        assert str(raised.value) == "5 of 5 ChromaDB writes failed"
+        assert "n::ok" in collection.rows
+
+    async def test_a_batch_is_one_request_per_kind_of_write_not_one_per_row(self) -> None:
+        store = _store(index=True, fields=["t"])
+        collection = _collection(store)
+        collection.add("n::old1", {}, {"x": 1})
+        collection.add("n::old2", {}, {"x": 1})
+
+        await store.abatch(
+            [PutOp(namespace=("n",), key=f"v{i}", value={"t": "mail"}) for i in range(5)]
+            + [PutOp(namespace=("n",), key=f"p{i}", value={"other": 1}) for i in range(2)]
+            + [PutOp(namespace=("n",), key=f"old{i}", value=None) for i in (1, 2)]
+        )
+
+        assert collection.deletes == [["n::old1", "n::old2"]]
+        assert collection.upserts == [[f"n::v{i}" for i in range(5)], ["n::p0", "n::p1"]]
+        assert collection.rows["n::v4"][0] == [1.0, 0.0, 0.0]
+        assert collection.rows["n::p1"][0] is None
+
+    async def test_concurrent_batches_share_one_cap_on_embeddings_in_flight(self) -> None:
+        in_flight = 0
+        peak = 0
+
+        class _SlowEmbeddings(_AxisEmbeddings):
+            async def aembed_query(self, text: str) -> list[float]:
+                nonlocal in_flight, peak
+                in_flight += 1
+                peak = max(peak, in_flight)
+                await asyncio.sleep(0.01)
+                in_flight -= 1
+                return self.embed_query(text)
+
+        collection = FakeChromaCollection()
+        store = ChromaStore(
+            client=FakeChromaClient(collection),
+            collection_name="c",
+            index={"embed": _SlowEmbeddings(), "dims": 3, "fields": ["t"]},
+        )
+
+        def ops(prefix: str) -> list[PutOp]:
+            return [
+                PutOp(namespace=(prefix,), key=str(i), value={"t": "mail"})
+                for i in range(MAX_CONCURRENT_INDEX_EMBEDDINGS)
+            ]
+
+        await asyncio.gather(store.abatch(ops("a")), store.abatch(ops("b")))
+
+        assert peak == MAX_CONCURRENT_INDEX_EMBEDDINGS
+        assert len(collection.rows) == 2 * MAX_CONCURRENT_INDEX_EMBEDDINGS
 
 
 def _seed(store: ChromaStore) -> None:

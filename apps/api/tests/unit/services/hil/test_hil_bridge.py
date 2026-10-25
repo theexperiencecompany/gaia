@@ -46,7 +46,7 @@ from app.utils.general_utils import ELLIPSIS
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.hil import HilCardShown
 
-from .conftest import CONVERSATION_ID, STREAM_ID, USER_ID, make_record
+from .conftest import CONVERSATION_ID, STREAM_ID, USER_ID, make_record, tools_that_always_ask
 
 MODULE = "app.services.hil.bridge"
 
@@ -211,6 +211,37 @@ class TestDualDelivery:
         assert data["gated_tool_name"] == "send_email"
         assert data["tool_call_id"] == "call-1"
         assert data["timeout_seconds"] > 0
+        assert data["always_asks"] is False
+
+    @pytest.mark.regression
+    async def test_a_call_that_always_asks_tells_the_client_not_to_offer_always_allow(
+        self, bridge: dict
+    ) -> None:
+        with tools_that_always_ask("send_email"):
+            await publish(bridge)
+
+        assert published_frame(bridge)["data"]["always_asks"] is True
+
+    async def test_a_disconnect_card_always_asks_because_of_its_arguments(
+        self, bridge: dict
+    ) -> None:
+        disconnect = GatedCall(
+            id="call-2", name="manage_linked_account", args={"action": "disconnect"}
+        )
+        with tools_that_always_ask():
+            await publish_approval_request(
+                GatedApproval(
+                    approval_id="appr-2",
+                    stream_id=STREAM_ID,
+                    user_id=USER_ID,
+                    conversation_id=CONVERSATION_ID,
+                    tool_call=disconnect,
+                    summary="Disconnect Gmail",
+                    integration_name="Gmail",
+                )
+            )
+
+        assert published_frame(bridge)["data"]["always_asks"] is True
 
 
 class TestTheOutcomeSettlesTheCard:

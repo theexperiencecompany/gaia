@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
+from app.constants.providers import CredentialProviderName
 from app.models.integrations.weather import (
     DailyForecast,
     GeocodedLocation,
@@ -15,6 +16,7 @@ from app.models.integrations.weather import (
     ResolvedLocation,
     WeatherReport,
 )
+from app.services.providers.provider_credentials_service import ProviderConfig
 from app.utils.weather_utils import (
     fetch_weather_data,
     geocode_location,
@@ -23,12 +25,20 @@ from app.utils.weather_utils import (
     process_forecast_data,
     user_weather,
 )
+from tests.helpers import captured_wide_event
 
 # ---------------------------------------------------------------------------
 # Helpers / Factories
 # ---------------------------------------------------------------------------
 
 FAKE_API_KEY = "test-api-key-12345"  # pragma: allowlist secret
+
+
+def _resolving(api_key: str | None) -> AsyncMock:
+    """Stand in for the credential store's resolve of the openweather provider."""
+    return AsyncMock(return_value=ProviderConfig(api_key=api_key) if api_key is not None else None)
+
+
 _LOCATION = {"city": "London", "country": "GB", "region": "England"}
 
 
@@ -746,29 +756,21 @@ class TestPrepareWeatherData:
 class TestUserWeather:
     """Tests for the top-level user_weather orchestrator."""
 
-    @pytest.fixture(autouse=True)
-    def _patch_log(self) -> None:
-        """Suppress structured logging in tests."""
-        # log.set / log.debug / log.error are called; just let them pass
+    @pytest.mark.parametrize("api_key", [None, ""])
+    async def test_an_unconfigured_instance_says_so_instead_of_returning_data(
+        self, api_key: str | None
+    ) -> None:
+        resolving = _resolving(api_key)
+        with patch("app.utils.weather_utils.resolve", resolving):
+            async with captured_wide_event() as event:
+                result = await user_weather(location_name="London")
 
-    async def test_missing_api_key_returns_error(self) -> None:
-        mock_settings = MagicMock()
-        mock_settings.OPENWEATHER_API_KEY = None
-
-        with patch("app.utils.weather_utils.settings", mock_settings):
-            result = await user_weather(location_name="London")
-
-        assert "Failed to fetch weather" in result
-        assert "API key" in result
-
-    async def test_empty_string_api_key_returns_error(self) -> None:
-        mock_settings = MagicMock()
-        mock_settings.OPENWEATHER_API_KEY = ""
-
-        with patch("app.utils.weather_utils.settings", mock_settings):
-            result = await user_weather(location_name="London")
-
-        assert "Failed to fetch weather" in result
+        resolving.assert_awaited_once_with(CredentialProviderName.OPENWEATHER)
+        assert event["weather"] == {"configured": False}
+        assert result == (
+            "Weather isn't set up on this GAIA instance, so no weather data is available. "
+            "An admin can add an OpenWeather key in Settings → Providers & Tools."
+        )
 
     async def test_cached_weather_returned(self) -> None:
         mock_settings = MagicMock()
@@ -780,7 +782,7 @@ class TestUserWeather:
         location_data = _resolved("London", "GB", "England", "weather:location:london")
 
         with (
-            patch("app.utils.weather_utils.settings", mock_settings),
+            patch("app.utils.weather_utils.resolve", _resolving(mock_settings.OPENWEATHER_API_KEY)),
             patch(
                 "app.utils.weather_utils.get_location_data",
                 new_callable=AsyncMock,
@@ -812,7 +814,7 @@ class TestUserWeather:
         location_data = _resolved("Paris", "France", "Ile-de-France", "weather:location:paris")
 
         with (
-            patch("app.utils.weather_utils.settings", mock_settings),
+            patch("app.utils.weather_utils.resolve", _resolving(mock_settings.OPENWEATHER_API_KEY)),
             patch(
                 "app.utils.weather_utils.get_location_data",
                 new_callable=AsyncMock,
@@ -846,7 +848,7 @@ class TestUserWeather:
         mock_settings.OPENWEATHER_API_KEY = FAKE_API_KEY
 
         with (
-            patch("app.utils.weather_utils.settings", mock_settings),
+            patch("app.utils.weather_utils.resolve", _resolving(mock_settings.OPENWEATHER_API_KEY)),
             patch(
                 "app.utils.weather_utils.get_location_data",
                 new_callable=AsyncMock,
@@ -863,7 +865,7 @@ class TestUserWeather:
         mock_settings.OPENWEATHER_API_KEY = FAKE_API_KEY
 
         with (
-            patch("app.utils.weather_utils.settings", mock_settings),
+            patch("app.utils.weather_utils.resolve", _resolving(mock_settings.OPENWEATHER_API_KEY)),
             patch(
                 "app.utils.weather_utils.get_location_data",
                 new_callable=AsyncMock,
@@ -881,7 +883,7 @@ class TestUserWeather:
         location_data = _resolved("London", "GB", "England", "weather:location:london")
 
         with (
-            patch("app.utils.weather_utils.settings", mock_settings),
+            patch("app.utils.weather_utils.resolve", _resolving(mock_settings.OPENWEATHER_API_KEY)),
             patch(
                 "app.utils.weather_utils.get_location_data",
                 new_callable=AsyncMock,
@@ -914,7 +916,7 @@ class TestUserWeather:
         location_data = _resolved("Berlin", "DE", "Berlin", "weather:location:berlin")
 
         with (
-            patch("app.utils.weather_utils.settings", mock_settings),
+            patch("app.utils.weather_utils.resolve", _resolving(mock_settings.OPENWEATHER_API_KEY)),
             patch(
                 "app.utils.weather_utils.get_location_data",
                 new_callable=AsyncMock,

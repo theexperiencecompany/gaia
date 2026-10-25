@@ -19,6 +19,6 @@
     "spectrum-ts": "^12.7.0",
     "typescript": "^7.0.2",
     "vite": "^7.3.6",
-    "vitest": "^4.1.10"
+    "vitest": "^5.0.5"
   }
 }

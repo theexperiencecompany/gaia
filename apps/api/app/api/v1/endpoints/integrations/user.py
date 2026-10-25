@@ -1,39 +1,24 @@
 """User workspace integration routes."""
 
-from typing import Annotated
-
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
 from app.constants.log_tags import LogTag
 from app.db.repositories.user_integrations import user_integration_repository
-from app.models.integration_instructions_models import InstructionsEditor
-from app.schemas.errors import error_responses
-from app.schemas.integrations.requests import (
-    AddUserIntegrationRequest,
-    UpdateIntegrationInstructionsRequest,
-)
+from app.schemas.integrations.requests import AddUserIntegrationRequest
 from app.schemas.integrations.responses import (
     AddUserIntegrationResponse,
-    IntegrationInstructionsResponse,
     IntegrationSuccessResponse,
 )
 from app.services.analytics_service import capture
-from app.services.integration_instructions_service import (
-    get_instructions_record,
-    upsert_instructions,
-)
 from app.services.integrations.integration_connection_service import remove_from_workspace
 from app.services.integrations.user_integrations import (
     add_user_integration as add_user_integration_service,
-    check_user_has_integration,
 )
-from app.services.storage.juicefs import ensure_safe_path_id
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import (
     IntegrationConnected,
     IntegrationDisconnected,
-    IntegrationInstructionsUpdated,
 )
 from shared.py.wide_events import log
 
@@ -131,106 +116,3 @@ async def remove_integration_from_workspace(
             error=str(e),
         )
         raise HTTPException(status_code=500, detail="Failed to remove integration") from e
-
-
-@router.get(
-    "/{integration_id}/instructions",
-    responses=error_responses({500: "Failed to fetch integration instructions"}),
-)
-async def get_integration_instructions(
-    integration_id: str,
-    user_id: Annotated[str, Depends(get_user_id)],
-) -> IntegrationInstructionsResponse:
-    """Return the current user's custom instructions for an integration.
-
-    Responds with empty content (not 404) when none are set, so the editor can
-    always render against a stable shape.
-    """
-    try:
-        log.set(
-            operation="get_integration_instructions",
-            user={"id": user_id},
-            integration={"id": integration_id},
-        )
-        record = await get_instructions_record(user_id, integration_id)
-        log.set(outcome="success", has_instructions=record is not None)
-        if not record:
-            return IntegrationInstructionsResponse(
-                integration_id=integration_id,
-                content="",
-                updated_by=InstructionsEditor.USER,
-                updated_at=None,
-            )
-        return IntegrationInstructionsResponse(
-            integration_id=record.integration_id,
-            content=record.content,
-            updated_by=record.updated_by,
-            updated_at=record.updated_at,
-        )
-    except Exception as e:
-        log.error(
-            f"{LogTag.INTEGRATION} Error fetching integration instructions",
-            integration_id=integration_id,
-            user_id=user_id,
-            error_type=type(e).__name__,
-            error=str(e),
-        )
-        raise HTTPException(
-            status_code=500, detail="Failed to fetch integration instructions"
-        ) from e
-
-
-@router.put(
-    "/{integration_id}/instructions",
-    responses=error_responses(
-        {
-            400: "Invalid integration_id",
-            404: "Integration not found in workspace",
-            500: "Failed to update integration instructions",
-        }
-    ),
-)
-async def update_integration_instructions(
-    integration_id: str,
-    request: UpdateIntegrationInstructionsRequest,
-    user_id: Annotated[str, Depends(get_user_id)],
-) -> IntegrationInstructionsResponse:
-    """Create or replace the current user's custom instructions for an integration."""
-    try:
-        log.set(
-            operation="update_integration_instructions",
-            user={"id": user_id},
-            integration={"id": integration_id},
-        )
-        ensure_safe_path_id(integration_id, label="integration_id")
-        if not await check_user_has_integration(user_id, integration_id):
-            raise HTTPException(status_code=404, detail="Integration not found in workspace")
-        record = await upsert_instructions(
-            user_id=user_id,
-            integration_id=integration_id,
-            content=request.content,
-            updated_by=InstructionsEditor.USER,
-        )
-        log.set(outcome="success")
-    except HTTPException:
-        raise
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-    except Exception as e:
-        log.error(
-            f"{LogTag.INTEGRATION} Error updating integration instructions",
-            integration_id=integration_id,
-            user_id=user_id,
-            error_type=type(e).__name__,
-            error=str(e),
-        )
-        raise HTTPException(
-            status_code=500, detail="Failed to update integration instructions"
-        ) from e
-    capture(UserId(user_id), IntegrationInstructionsUpdated(integration_id=integration_id))
-    return IntegrationInstructionsResponse(
-        integration_id=record.integration_id,
-        content=record.content,
-        updated_by=record.updated_by,
-        updated_at=record.updated_at,
-    )

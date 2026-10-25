@@ -87,6 +87,9 @@ EXECUTOR_INITIAL_TOOL_IDS = [
     "subscribe_todo_to_trigger",
     "unsubscribe_todo_from_trigger",
     "save_learned_skill",
+    "update_skill",
+    "get_user_instructions",
+    "update_user_instructions",
     # Bound, not retrieved: fetching it cost two retrieve_tools rounds
     # and two model calls (about 8s) before the browser even started.
     "browser_task",
@@ -146,6 +149,8 @@ async def build_executor_graph(
         "message_subagent",
         "cancel_subagent",
         "activate_integration",
+        # A spawn mines untrusted output; global instructions reach every tier.
+        "update_user_instructions",
     }
 
     middleware = create_executor_middleware(

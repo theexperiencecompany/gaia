@@ -3,7 +3,7 @@
 The scripts under test are the real lane scripts, and they reach for the job's
 shared state through the environment:
 
-* `lib/cpu-slots.sh` — `mutation.sh shard` and `pytest.sh slice` take their
+* `lib/cpu-slots.sh` — `mutation.py shard` and `pytest.sh slice` take their
   host tokens before their first real step. Run on the self-hosted box with
   the pool inherited, each sandboxed shard in this suite queued behind the
   real mutation shards for the semaphore's full 600 s fail-open wait, and the
@@ -21,9 +21,15 @@ tests that prove the lower rungs strip it themselves.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 import shutil
+import sys
 
+# The scripts import `lib.*` from their own directory; tests import them the same way.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from github_fake import FakeGitHub, serve
 import pytest
 
 # More than any lane requests (a mutation shard takes nproc/2 on the 16-thread
@@ -38,6 +44,23 @@ def _private_job_state(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("GAIA_CPU_SLOTS_DIR", str(tmp_path / "cpu-slots"))
     monkeypatch.setenv("GAIA_CPU_TOKENS", PRIVATE_POOL_TOKENS)
     monkeypatch.setenv("GAIA_VERDICT_DIR", str(tmp_path / "verdicts"))
+
+
+@pytest.fixture
+def github() -> Iterator[FakeGitHub]:
+    """Serve a local api.github.com that runner.py reaches over real HTTP (see github_fake.py)."""
+    with serve() as fake:
+        yield fake
+
+
+@pytest.fixture
+def api(github: FakeGitHub, monkeypatch: pytest.MonkeyPatch) -> FakeGitHub:
+    """Point an in-process lib/github.py client at the fake GitHub, never at a real token."""
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    for key, value in github.env().items():
+        if key.startswith("GITHUB_"):
+            monkeypatch.setenv(key, value)
+    return github
 
 
 @pytest.fixture

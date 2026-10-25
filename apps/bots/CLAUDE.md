@@ -25,7 +25,7 @@ pnpm --filter @gaia/bot-discord deploy-commands   # Discord slash + context menu
 pnpm --filter @gaia/bot-telegram set-commands     # Telegram /-menu
 # Slack: configured in the Slack App dashboard. WhatsApp: matched by text prefix.
 
-mise ci:docker:bot-<platform>    # Dagger Docker build
+nx docker:build bot-<platform>   # Docker image build
 ```
 
 **Single-instance constraint**: Discord and Telegram hold a persistent connection per token. Running `mise dev:bots` while a Docker container runs the same bot causes Telegram `409 Conflict` / Discord gateway disconnects. Run one or the other, not both.
@@ -57,7 +57,7 @@ Required for every bot (process throws if missing): `GAIA_API_URL`, `GAIA_BOT_AP
 
 Platform-specific: Discord `DISCORD_BOT_TOKEN` + `DISCORD_CLIENT_ID`; Slack `SLACK_BOT_TOKEN` + `SLACK_SIGNING_SECRET` + `SLACK_APP_TOKEN`; Telegram `TELEGRAM_BOT_TOKEN`; WhatsApp `KAPSO_API_KEY` + `KAPSO_PHONE_NUMBER_ID` + `KAPSO_WEBHOOK_SECRET`; iMessage `SPECTRUM_PROJECT_ID` + `SPECTRUM_PROJECT_SECRET` + `SPECTRUM_WEBHOOK_SECRET`.
 
-Infisical is optional in dev, fatal-if-missing in production, and only fills keys not already in `process.env`. The environment slug comes from `ENV`, falling back to `NODE_ENV === "production"` and otherwise `development`. A bare local checkout therefore resolves `development` with no setup; deployed containers can only resolve `production`, because `apps/bots/Dockerfile` pins `ENV=production` and `docker-compose.prod.yml` sets it again per service. This differs from the Python loaders, which default an absent `ENV` to `production` — deliberate, since `ENV` has never been required in `apps/bots/.env`.
+Infisical is optional in dev, fatal-if-missing in production, skipped entirely under `ENV=selfhost`, and only fills keys not already in `process.env`. The environment slug comes from `ENV`, falling back to `NODE_ENV === "production"` and otherwise `development`. A bare local checkout therefore resolves `development` with no setup; the `apps/bots/Dockerfile` image pins `ENV=production` and `docker-compose.prod.yml` sets it again per service. Self-host bots override it: `infra/docker/selfhost/bot.yml` sets `ENV: selfhost`, `GAIA_API_URL=http://gaia-backend:8000` and `BOT_SERVER_PORT=3200`, and `gaia bots add` (`packages/cli/src/lib/bots.ts`) writes the tokens into `apps/bots/.env`. This differs from the Python loaders, which default an absent `ENV` to `production` — deliberate, since `ENV` has never been required in `apps/bots/.env`.
 
 ## Logging
 

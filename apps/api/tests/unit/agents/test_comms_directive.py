@@ -12,6 +12,7 @@ from app.agents.core.comms_directive import (
 from app.constants.comms import CommsDirectiveKind
 from app.constants.general import NEW_MESSAGE_BREAKER as BREAK
 from app.constants.log_tags import LogTag
+from app.models.agent_models import CommsDirective
 from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
@@ -102,7 +103,7 @@ class TestInterpretCommsOutput:
         d = interpret_comms_output(text)
         if emoji is None:
             assert d.kind == CommsDirectiveKind.REPLY
-            assert d.payload == text
+            assert d.payload == visible_comms_text(text)
         else:
             assert d.kind == CommsDirectiveKind.REACT
             assert d.payload == emoji
@@ -166,11 +167,18 @@ class TestADirectiveBesideAReplyIsNeverDelivered:
         )
         assert warning["dropped_directives"] == [{"kind": "silence", "payload": "threshold"}]
 
-    async def test_a_reply_with_no_directive_is_untouched(self) -> None:
+    async def test_a_reply_with_no_directive_keeps_every_bubble_it_shows(self) -> None:
         text = f"On it.{BREAK}Done.{BREAK}"
         async with captured_wide_event() as event:
-            assert interpret_comms_output(text).payload == text
+            assert interpret_comms_output(text).payload == f"On it.{BREAK}Done."
         assert "warnings" not in event
+
+    @pytest.mark.regression
+    def test_a_reply_of_only_bubble_breaks_shows_nothing(self) -> None:
+        """Regression: a looping model's 50k chars of bare breaks were saved verbatim as the reply."""
+        directive = interpret_comms_output(BREAK * 2700)
+
+        assert directive == CommsDirective(CommsDirectiveKind.REPLY, "")
 
 
 class TestVisibleCommsText:

@@ -3,6 +3,8 @@
 from httpx import AsyncClient
 import pytest
 
+from app.config.settings import settings
+
 _URL = "/api/v1/integrations/custom"
 
 BLOCKED_URLS = [
@@ -14,9 +16,10 @@ BLOCKED_URLS = [
 
 
 @pytest.mark.parametrize("url", BLOCKED_URLS)
-async def test_create_custom_integration_rejects_ssrf_url(
-    test_client: AsyncClient, url: str
+async def test_create_custom_integration_rejects_ssrf_url_on_gaia_cloud(
+    test_client: AsyncClient, url: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setattr(settings, "ENV", "production")
     response = await test_client.post(_URL, json={"name": "evil", "server_url": url})
 
     assert response.status_code == 422

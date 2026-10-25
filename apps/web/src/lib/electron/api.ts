@@ -13,6 +13,7 @@ import type {
 import type {
   DesktopPermissionPane,
   DesktopPermissionStatus,
+  DesktopServerConnectResult,
   DesktopSettingsSnapshot,
   DesktopShortcutUpdateResult,
   DesktopToolRequest,
@@ -51,6 +52,13 @@ export interface ElectronAPI {
     accelerator: string,
   ) => Promise<DesktopShortcutUpdateResult>;
   setAppIcon: (id: string) => Promise<boolean>;
+  /** Validate a self-hosted server; on success the app relaunches against it.
+   * The desktop app accepts this only from its bundled web app. */
+  connectSelfHostServer: (
+    address: string,
+  ) => Promise<DesktopServerConnectResult>;
+  /** Forget the self-hosted server and relaunch against GAIA Cloud. */
+  switchToGaiaCloud: () => void;
   /** Device bridge control surface (pair, tunnel run/stop, MCP servers). Every
    * call resolves to a {@link BridgeInvokeResult} envelope; the device refresh
    * token never crosses this boundary. */

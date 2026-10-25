@@ -40,7 +40,11 @@ from app.models.hil_models import (
     LedgerState,
 )
 from app.models.user_models import AuthenticatedUser
-from app.schemas.hil_schemas import BatchDecisionItem, BatchDecisionOutcome
+from app.schemas.hil_schemas import (
+    ApprovalDecisionRequest,
+    BatchDecisionItem,
+    BatchDecisionOutcome,
+)
 from app.services.analytics_service import capture
 from app.services.hil.bridge import (
     SettledApprovalCard,
@@ -49,9 +53,12 @@ from app.services.hil.bridge import (
     settle_session_approval_frame,
     sync_conversation_approval_flag,
 )
+from app.services.hil.policy import asks_every_time
+from app.services.hil.preferences import set_tool_override
 from app.services.hil.resolution import (
     ApprovalRequestForbiddenError,
     ApprovalRequestNotFoundError,
+    ToolAlwaysAsksError,
 )
 from app.services.hil.resume import record_owner_deny, resume_owner_after_approval
 from app.services.hil.utils import GatedCall
@@ -108,6 +115,26 @@ async def decide_ledger(
     via: HilDecisionVia,
 ) -> LedgerDecision:
     """Commit one decision and wake the model with the ticket. Never blocks."""
+    row = await _owned_row(approval_id, user_id)
+    return await _commit_decision(row, user_id=user_id, kind=kind, feedback=feedback, v=v, via=via)
+
+
+async def decide_ledger_card(
+    approval_id: str, *, user_id: str, tap: ApprovalDecisionRequest
+) -> LedgerDecision:
+    """Commit a card tap; an approved "always" tap also stops asking for the tool."""
+    row = await _owned_row(approval_id, user_id)
+    if tap.scope == "always_tool" and await asks_every_time(row.tool_name, row.args):
+        raise ToolAlwaysAsksError()
+    outcome = await _commit_decision(
+        row, user_id=user_id, kind=tap.decision, feedback=tap.feedback, v=tap.v, via="card"
+    )
+    if tap.scope == "always_tool" and outcome.committed and outcome.state is LedgerState.APPROVED:
+        await set_tool_override(user_id, row.tool_name, False)
+    return outcome
+
+
+async def _owned_row(approval_id: str, user_id: str) -> ApprovalLedgerDocument:
     row = await approval_ledger_repository.get_by_approval_id(approval_id)
     if row is None:
         raise ApprovalRequestNotFoundError()
@@ -115,7 +142,19 @@ async def decide_ledger(
     # decidable by whoever asks first. The gate always stamps a real id.
     if row.user_id != user_id:
         raise ApprovalRequestForbiddenError()
+    return row
 
+
+async def _commit_decision(
+    row: ApprovalLedgerDocument,
+    *,
+    user_id: str,
+    kind: DecisionKind,
+    feedback: str | None,
+    v: int | None,
+    via: HilDecisionVia,
+) -> LedgerDecision:
+    approval_id = row.approval_id
     if v is not None and v != row.v:
         return LedgerDecision(
             committed=False,

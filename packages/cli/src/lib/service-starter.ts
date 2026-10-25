@@ -1,17 +1,50 @@
+import { execa } from "execa";
 import * as fs from "fs";
 import * as path from "path";
-import { readConfig, updateConfig } from "./config.js";
+import { botComposeFile, botService, writeBotsEnv } from "./bots.js";
+import { runCommand } from "./child-process.js";
+import { ComposeError } from "./compose-failure.js";
+import type { ComposePhase } from "./compose-progress.types.js";
+import {
+  type ComposeRunOptions,
+  type ComposeRunResult,
+  runCompose,
+} from "./compose-run.js";
+import { readConfig } from "./config.js";
+import { stopDeveloperProcesses } from "./dev-processes.js";
+import {
+  assertEngineSupportsCodeSandbox,
+  dockerVolumeExists,
+} from "./docker.js";
+import { dockerAccessError, getDockerAccess } from "./docker-access.js";
 import type { SetupMode } from "./env-parser.js";
 import { portOverridesToDockerEnv } from "./env-writer.js";
+import { assertBuildableInstall, detectSetupMode } from "./install-root.js";
+import {
+  measurePull,
+  readComposeServices,
+  servicesInStartOrder,
+} from "./pull-size.js";
 
-const delay = (ms: number): Promise<void> =>
-  new Promise((r) => setTimeout(r, ms));
-
-export const DEV_LOG_FILE = "dev-start.log";
-export const DEV_PID_FILE = ".gaia-dev.pid";
+/** Rebuilds an install's images from source; named when an image is missing. */
+const REBUILD_COMMAND = "gaia start --build";
 
 export interface StopServicesOptions {
   forcePorts?: boolean;
+  /** Uninstalling: remove the images too, and the volumes (all data) when asked. */
+  remove?: { volumes: boolean };
+}
+
+/** `docker compose down` for a stop, or for an uninstall when options.remove is set. */
+export function composeDownArgs(options?: StopServicesOptions): string[] {
+  if (!options?.remove) return ["down"];
+  return [
+    "down",
+    "--rmi",
+    "all",
+    "--remove-orphans",
+    ...(options.remove.volumes ? ["--volumes"] : []),
+  ];
 }
 
 function getEnvFileArgs(dockerDir: string): string[] {
@@ -24,8 +57,17 @@ function getEnvFileArgs(dockerDir: string): string[] {
 
 export interface StartServicesOptions {
   build?: boolean;
-  pull?: boolean;
+  /**
+   * Image pull policy for `up`: "missing" pulls only absent images (first
+   * start); "always" refreshes every tag (`gaia update`, `gaia start --pull`).
+   */
+  pull?: "always" | "missing";
+  /** The command a missing-image error tells the user to build with. */
+  rebuildCommand?: string;
 }
+
+/** Progress callback for a compose start: the phase line and the finished steps. */
+export type StartProgress = NonNullable<ComposeRunOptions["onProgress"]>;
 
 /** Default ceiling for `gaia start`, in minutes. */
 const DEFAULT_START_TIMEOUT_MIN = 60;
@@ -33,11 +75,10 @@ const DEFAULT_START_TIMEOUT_MIN = 60;
 /**
  * Resolve the `docker compose up` timeout in milliseconds.
  *
- * docker-compose.selfhost.yml has build-only services (gaia-backend, arq_worker, seed-models)
- * that compose builds implicitly on first start even without --build; on a resource-constrained
- * VM (e.g. 4 GB) the Web production build alone can take 30+ minutes. The default ceiling
- * covers that slow path while still catching a genuinely stuck build; override with
- * GAIA_START_TIMEOUT_MIN, or 0 to disable.
+ * A pull-based start takes minutes, but `--build` (docker-compose.build.yml) on a
+ * resource-constrained VM can spend 30+ minutes on the web production build alone. The
+ * default ceiling covers that slow path while still catching a genuinely stuck build;
+ * override with GAIA_START_TIMEOUT_MIN, or 0 to disable.
  */
 function resolveStartTimeoutMs(): number | undefined {
   // Number("") and Number("  ") are 0, which would silently disable the
@@ -51,44 +92,74 @@ function resolveStartTimeoutMs(): number | undefined {
   return timeoutMin === 0 ? undefined : timeoutMin * 60 * 1000;
 }
 
-/** Build the `docker compose ... up` argument list for self-host mode. */
+/**
+ * Compose files for a self-host install. The base file is image-only; building,
+ * the Docker-socket code sandbox and each chat bot are explicit override files.
+ * The sandbox and bots come from the saved config, so a restart or update can
+ * never silently drop (or add) one.
+ */
+export function selfhostComposeFiles(
+  options: { build?: boolean } = {},
+): string[] {
+  const config = readConfig();
+  const files = ["docker-compose.selfhost.yml"];
+  if (options.build) files.push("docker-compose.build.yml");
+  if (config?.codeSandbox === true) files.push("docker-compose.sandbox.yml");
+  files.push(...(config?.bots ?? []).map(botComposeFile));
+  return files;
+}
+
+export function composeFileArgs(files: string[]): string[] {
+  return files.flatMap((file) => ["-f", file]);
+}
+
+/** The volume every code sandbox shared before per-user isolation. */
+const LEGACY_SANDBOX_VOLUME = "gaia-sandbox-workspace";
+const LEGACY_SANDBOX_MOUNT = "/legacy-sandbox-workspace";
+
+/**
+ * One-shot copy of the pre-isolation shared sandbox volume into per-user
+ * workspaces, mounted read-only; the script's report makes reruns no-ops.
+ */
+function legacySandboxMigrationArgs(
+  files: string[],
+  envArgs: string[],
+): string[] {
+  return [
+    "compose",
+    ...composeFileArgs(files),
+    ...envArgs,
+    "run",
+    "--rm",
+    "--no-deps",
+    "-v",
+    `${LEGACY_SANDBOX_VOLUME}:${LEGACY_SANDBOX_MOUNT}:ro`,
+    "gaia-backend",
+    "python",
+    "-m",
+    "app.scripts.migrate_legacy_sandbox_workspace",
+    "--legacy-root",
+    LEGACY_SANDBOX_MOUNT,
+  ];
+}
+
+/** The `docker compose ... up` arguments (after `compose`) for self-host mode. */
 function buildSelfhostUpArgs(
+  files: string[],
   envArgs: string[],
   options?: StartServicesOptions,
 ): string[] {
   const upArgs = [
-    "compose",
-    "-f",
-    "docker-compose.selfhost.yml",
+    ...composeFileArgs(files),
     ...envArgs,
     "up",
     "-d",
     "--remove-orphans",
   ];
-  if (options?.build) upArgs.push("--build");
-  if (options?.pull) upArgs.push("--pull", "always");
+  // Without --no-build compose silently builds any image it cannot pull from source.
+  upArgs.push(options?.build ? "--build" : "--no-build");
+  if (options?.pull) upArgs.push("--pull", options.pull);
   return upArgs;
-}
-
-export function readStoredDevPid(repoPath: string): number | null {
-  const pidPath = path.join(repoPath, DEV_PID_FILE);
-  if (!fs.existsSync(pidPath)) return null;
-  try {
-    const pid = Number.parseInt(fs.readFileSync(pidPath, "utf-8").trim(), 10);
-    return Number.isNaN(pid) || pid <= 0 ? null : pid;
-  } catch {
-    return null;
-  }
-}
-
-export function isPidAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    return code === "EPERM";
-  }
 }
 
 export async function startServices(
@@ -96,9 +167,9 @@ export async function startServices(
   setupMode: SetupMode,
   onStatus?: (status: string) => void,
   portOverrides?: Record<number, number>,
-  onLog?: (chunk: string) => void,
+  onProgress?: StartProgress,
   options?: StartServicesOptions,
-): Promise<void> {
+): Promise<ComposeRunResult> {
   if (setupMode !== "selfhost") {
     onStatus?.("Developer mode must run in foreground.");
     throw new Error(
@@ -106,28 +177,153 @@ export async function startServices(
     );
   }
 
-  onStatus?.(
-    options?.build
-      ? "Building and starting all services in Docker..."
-      : "Starting all services in Docker (selfhost mode)...",
-  );
+  onStatus?.(options?.build ? "Building GAIA from source…" : "Starting GAIA…");
 
   const dockerComposePath = path.join(repoPath, "infra/docker");
   const dockerEnv =
     portOverrides && Object.keys(portOverrides).length > 0
       ? portOverridesToDockerEnv(portOverrides)
       : undefined;
+  const config = readConfig();
+  if (config?.codeSandbox === true) await assertEngineSupportsCodeSandbox();
+  // Re-copies the bot key and public URL, which `gaia up` or a restore may have changed.
+  if (config?.bots?.length) writeBotsEnv(repoPath);
+  const files = selfhostComposeFiles({ build: options?.build });
+  if (options?.build) assertBuildableInstall(repoPath);
+  const envArgs = getEnvFileArgs(dockerComposePath);
 
+  const composeArgs = [...composeFileArgs(files), ...envArgs];
+  const services = await readComposeServices(
+    dockerComposePath,
+    composeArgs,
+    dockerEnv,
+  );
+  const pullSize = options?.build
+    ? undefined
+    : await measurePull(services, { always: options?.pull === "always" });
+  const result = await runCompose(
+    buildSelfhostUpArgs(files, envArgs, options),
+    {
+      cwd: dockerComposePath,
+      env: dockerEnv,
+      timeoutMs: resolveStartTimeoutMs(),
+      logName: options?.build ? "compose-build" : "compose-up",
+      rebuildCommand: options?.rebuildCommand ?? REBUILD_COMMAND,
+      onProgress,
+      pullSize,
+      services: servicesInStartOrder(services),
+    },
+  ).catch(async (error: unknown) => {
+    throw await withServiceLogTail(error, composeArgs, dockerComposePath);
+  });
+  if (await dockerVolumeExists(LEGACY_SANDBOX_VOLUME)) {
+    onStatus?.("Moving code-sandbox files into per-user workspaces…");
+    await runCommand("docker", legacySandboxMigrationArgs(files, envArgs), {
+      cwd: dockerComposePath,
+      env: dockerEnv,
+    });
+  }
+  onStatus?.("GAIA's services are running.");
+  return result;
+}
+
+/** How many of a failed service's last log lines an error quotes. */
+const FAILED_SERVICE_LOG_LINES = 8;
+
+/**
+ * Add the failed service's own last log lines to a compose error that names
+ * one (an unhealthy container); its words say why far better than compose's.
+ */
+async function withServiceLogTail(
+  error: unknown,
+  composeArgs: string[],
+  cwd: string,
+): Promise<unknown> {
+  if (!(error instanceof ComposeError) || !error.failure.service) return error;
+  const { stdout } = await execa(
+    "docker",
+    [
+      "compose",
+      ...composeArgs,
+      "logs",
+      "--no-color",
+      "--no-log-prefix",
+      "--tail",
+      String(FAILED_SERVICE_LOG_LINES),
+      error.failure.service,
+    ],
+    { cwd },
+  );
+  const logTail = stdout.split("\n").filter((line) => line.trim());
+  return new ComposeError({ ...error.failure, logTail }, error.logPath);
+}
+
+/** `docker compose` plus the self-host install's files and env file, run from dockerDir. */
+export function selfhostComposeArgs(dockerDir: string): string[] {
+  return [
+    "compose",
+    ...composeFileArgs(selfhostComposeFiles()),
+    ...getEnvFileArgs(dockerDir),
+  ];
+}
+
+/** Run a one-off command in a fresh container of a self-host service. */
+export async function runSelfhostOneOff(
+  repoPath: string,
+  service: string,
+  command: string[],
+  onLog?: (chunk: string) => void,
+): Promise<void> {
+  const dockerComposePath = path.join(repoPath, "infra/docker");
   await runCommand(
     "docker",
-    buildSelfhostUpArgs(getEnvFileArgs(dockerComposePath), options),
-    dockerComposePath,
-    undefined,
-    onLog,
-    dockerEnv,
-    resolveStartTimeoutMs(),
+    [
+      ...selfhostComposeArgs(dockerComposePath),
+      "run",
+      "--rm",
+      "--no-deps",
+      service,
+      ...command,
+    ],
+    { cwd: dockerComposePath, onLog },
   );
-  onStatus?.("All services started in Docker!");
+}
+
+/** The self-host services that run GAIA's own images (GAIA_VERSION). */
+const SELFHOST_APP_SERVICES = ["gaia-backend", "arq_worker", "gaia-web"];
+
+/**
+ * Pull GAIA's images (enabled bots included) at one tag without touching
+ * running containers, so a tag that does not exist fails before anything
+ * about the install changes.
+ */
+export async function pullSelfhostImages(
+  repoPath: string,
+  version: string,
+  onProgress?: StartProgress,
+): Promise<void> {
+  const dockerComposePath = path.join(repoPath, "infra/docker");
+  const composeArgs = [
+    ...composeFileArgs(selfhostComposeFiles()),
+    ...getEnvFileArgs(dockerComposePath),
+  ];
+  const services = [
+    ...SELFHOST_APP_SERVICES,
+    ...(readConfig()?.bots ?? []).map(botService),
+  ];
+  // The shell environment outranks infra/docker/.env in compose interpolation.
+  const env = { GAIA_VERSION: version };
+  await runCompose([...composeArgs, "pull", ...services], {
+    cwd: dockerComposePath,
+    env,
+    logName: "compose-pull",
+    rebuildCommand: "gaia up --build",
+    onProgress,
+    pullSize: await measurePull(
+      await readComposeServices(dockerComposePath, composeArgs, env),
+      { only: services, always: true },
+    ),
+  });
 }
 
 export async function stopServices(
@@ -135,248 +331,41 @@ export async function stopServices(
   onStatus?: (status: string) => void,
   portOverrides?: Record<number, number>,
   options?: StopServicesOptions,
+  /** Each phase of compose's stop, for a step that shows its services; else onStatus gets its label. */
+  onPhase?: (phase: ComposePhase) => void,
 ): Promise<void> {
   const dockerComposePath = path.join(repoPath, "infra/docker");
-  const mode = await detectSetupMode(repoPath);
-
-  onStatus?.("Stopping Docker services...");
-  try {
+  const [mode, access] = await Promise.all([
+    detectSetupMode(repoPath),
+    getDockerAccess(),
+  ]);
+  if (access === "ready") {
+    onStatus?.("Stopping GAIA's containers…");
     const envArgs = getEnvFileArgs(dockerComposePath);
-    const composeArgs =
-      mode === "selfhost"
-        ? ["compose", "-f", "docker-compose.selfhost.yml", ...envArgs, "down"]
-        : ["compose", ...envArgs, "down"];
-    await runCommand("docker", composeArgs, dockerComposePath);
-  } catch {
-    // Docker compose may not be running
+    const fileArgs =
+      mode === "selfhost" ? composeFileArgs(selfhostComposeFiles()) : [];
+    await runCompose([...fileArgs, ...envArgs, ...composeDownArgs(options)], {
+      cwd: dockerComposePath,
+      logName: "compose-down",
+      rebuildCommand: REBUILD_COMMAND,
+      onProgress: (phase) =>
+        onPhase ? onPhase(phase) : onStatus?.(phase.label),
+    });
+  } else if (mode === "selfhost") {
+    // Self-host runs only in Docker: "stopped" would be a lie.
+    throw await dockerAccessError(access);
+  } else if (access === "no-permission") {
+    throw await dockerAccessError(access);
   }
 
   // In selfhost mode everything runs in Docker, no local processes to kill
   if (mode !== "selfhost") {
-    onStatus?.("Stopping GAIA-managed local processes (safe mode)...");
-    const pidPath = path.join(repoPath, DEV_PID_FILE);
-    let killedByPid = false;
-
-    // Try to kill by stored PID first (targets only GAIA processes).
-    const pid = readStoredDevPid(repoPath);
-    const hadStoredPid = typeof pid === "number";
-    if (pid && isPidAlive(pid)) {
-      try {
-        if (process.platform === "win32") {
-          await runCommand(
-            "taskkill",
-            ["/PID", String(pid), "/T", "/F"],
-            repoPath,
-          );
-          killedByPid = true;
-        } else {
-          // Prefer process-group termination for detached `gaia dev` sessions.
-          try {
-            process.kill(-pid, "SIGTERM");
-            killedByPid = true;
-          } catch {
-            // Fallback to direct PID if group kill is unavailable.
-            process.kill(pid, "SIGTERM");
-            killedByPid = true;
-          }
-          await delay(800);
-          if (isPidAlive(pid)) {
-            try {
-              process.kill(-pid, "SIGKILL");
-            } catch {
-              process.kill(pid, "SIGKILL");
-            }
-          }
-        }
-      } catch {
-        // Ignore PID termination errors
-      }
-    }
-
-    try {
-      fs.unlinkSync(pidPath);
-    } catch {
-      // Ignore cleanup errors
-    }
-
-    // Fall back to port-based cleanup only when explicitly requested.
-    if (!killedByPid && options?.forcePorts) {
-      onStatus?.("No GAIA PID found. Force-stopping listeners on app ports...");
-      try {
-        const apiPort = portOverrides?.[8000] ?? 8000;
-        const webPort = portOverrides?.[3000] ?? 3000;
-
-        if (process.platform === "win32") {
-          for (const port of [apiPort, webPort]) {
-            try {
-              await runCommand(
-                "powershell",
-                [
-                  "-Command",
-                  `Get-NetTCPConnection -LocalPort ${port} -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }`,
-                ],
-                repoPath,
-              );
-            } catch {
-              // Port not in use
-            }
-          }
-        } else {
-          for (const port of [apiPort, webPort]) {
-            try {
-              await runCommand(
-                "sh",
-                [
-                  "-c",
-                  `lsof -ti :${port} -sTCP:LISTEN | xargs kill 2>/dev/null || true`,
-                ],
-                repoPath,
-              );
-            } catch {
-              // Port not in use
-            }
-          }
-        }
-      } catch {
-        // Ignore cleanup errors
-      }
-    } else if (!killedByPid) {
-      onStatus?.(
-        hadStoredPid
-          ? "Stored GAIA PID is stale. Skipping port cleanup in safe mode. Use `gaia stop --force-ports` for aggressive cleanup."
-          : "No GAIA-managed PID found. Skipping port cleanup in safe mode. Use `gaia stop --force-ports` for aggressive cleanup.",
-      );
-    }
-  }
-
-  onStatus?.("All services stopped.");
-}
-
-export async function detectSetupMode(
-  repoPath: string,
-): Promise<SetupMode | null> {
-  const apiEnvPath = path.join(repoPath, "apps", "api", ".env");
-  if (!fs.existsSync(apiEnvPath)) return null;
-
-  const content = fs.readFileSync(apiEnvPath, "utf-8");
-
-  // First, check for explicit SETUP_MODE marker (most robust)
-  const setupModeMatch = content.match(/^SETUP_MODE=(.+)$/m);
-  if (setupModeMatch?.[1]) {
-    const mode = setupModeMatch[1].trim().replace(/^["']|["']$/g, "");
-    if (mode === "selfhost" || mode === "developer") {
-      return mode;
-    }
-  }
-
-  if (content.includes("mongodb://mongo:"))
-    // Fallback: string matching for backward compatibility
-    return "selfhost";
-  if (content.includes("mongodb://localhost:")) return "developer";
-
-  return "developer";
-}
-
-export async function runCommand(
-  cmd: string,
-  args: string[],
-  cwd: string,
-  onProgress?: (progress: number) => void,
-  onLog?: (chunk: string) => void,
-  env?: Record<string, string>,
-  timeoutMs?: number,
-): Promise<void> {
-  const { spawn } = await import("child_process");
-
-  return new Promise((resolve, reject) => {
-    const proc = spawn(cmd, args, {
-      cwd,
-      stdio: ["ignore", "pipe", "pipe"],
-      shell: true,
-      env: env ? { ...process.env, ...env } : undefined,
-    });
-
-    let output = "";
-    let progress = 0;
-    let timedOut = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-
-    if (timeoutMs) {
-      timer = setTimeout(() => {
-        timedOut = true;
-        proc.kill("SIGTERM");
-        reject(
-          new Error(
-            `Command timed out after ${Math.round(timeoutMs / 60000)}m. Check \`docker compose logs\` to debug.`,
-          ),
-        );
-      }, timeoutMs);
-    }
-
-    proc.stdout?.on("data", (data) => {
-      const chunk = data.toString();
-      output += chunk;
-      onLog?.(chunk);
-      progress = Math.min(progress + 5, 95);
-      onProgress?.(progress);
-    });
-
-    proc.stderr?.on("data", (data) => {
-      const chunk = data.toString();
-      output += chunk;
-      onLog?.(chunk);
-      progress = Math.min(progress + 5, 95);
-      onProgress?.(progress);
-    });
-
-    proc.on("close", (code) => {
-      if (timer) clearTimeout(timer);
-      if (timedOut) return;
-      if (code === 0) {
-        onProgress?.(100);
-        resolve();
-      } else {
-        reject(
-          new Error(`Command failed with code ${code}: ${output.slice(-500)}`),
-        );
-      }
-    });
-
-    proc.on("error", (err) => {
-      if (timer) clearTimeout(timer);
-      if (timedOut) return;
-      reject(err);
-    });
-  });
-}
-
-export function findRepoRoot(startDir?: string): string | null {
-  let currentDir = startDir || process.cwd();
-  while (currentDir !== path.dirname(currentDir)) {
-    if (
-      fs.existsSync(
-        path.join(currentDir, "apps/api/app/config/settings_validator.py"),
-      )
-    ) {
-      return currentDir;
-    }
-    currentDir = path.dirname(currentDir);
-  }
-
-  const config = readConfig();
-  if (config?.repoPath) {
-    if (
-      fs.existsSync(
-        path.join(config.repoPath, "apps/api/app/config/settings_validator.py"),
-      )
-    ) {
-      return config.repoPath;
-    }
-    console.warn(
-      `Warning: Saved repo path "${config.repoPath}" is no longer a valid GAIA installation. Resetting config.`,
+    await stopDeveloperProcesses(
+      repoPath,
+      onStatus,
+      portOverrides,
+      options?.forcePorts,
     );
-    updateConfig({ repoPath: "", setupComplete: false });
   }
-
-  return null;
+  onStatus?.("All services stopped.");
 }

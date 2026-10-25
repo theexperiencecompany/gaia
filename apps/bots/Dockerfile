@@ -3,7 +3,12 @@
 
 ARG BOT_NAME
 
-FROM node:20-alpine AS builder
+# Node version is declared once in .node-version. Docker cannot read a file in a
+# FROM line, so this default mirrors it and tools/lints/check_tool_pins.py fails
+# if the two disagree. Build scripts may override with --build-arg NODE_VERSION.
+ARG NODE_VERSION=24.22.1
+
+FROM node:${NODE_VERSION}-alpine AS builder
 ARG BOT_NAME
 WORKDIR /app
 
@@ -47,7 +52,7 @@ RUN set -e; \
     fi
 
 # ---- Production image ----
-FROM node:20-alpine AS runner
+FROM node:${NODE_VERSION}-alpine AS runner
 ARG BOT_NAME
 WORKDIR /app
 

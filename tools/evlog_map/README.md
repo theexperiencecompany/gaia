@@ -246,7 +246,7 @@ the rule on purpose, because a test that cannot fail is not a test.
 
 ## CI
 
-The `observability` lane in `.github/workflows/code-quality.yml`:
+The `observability-*` checks of `.github/workflows/ci.yml`'s lint-mixed job:
 
 0. runs this scanner's own test suite first (`pytest tools/evlog_map
    tools/logcheck`) — a rule that inverts silently keeps printing a score, so

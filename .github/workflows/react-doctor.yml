@@ -12,6 +12,20 @@ on:
   # `edited` is in the list because retargeting a PR (changing its base branch) fires only that event: the scan reads the base SHA out of the event payload, so without it a retargeted PR keeps the stale result computed against the OLD base — and when the old base is a diverged branch that merge base is thousands of commits back, which makes every pre-existing issue in that range look like one this PR introduced and fails the gate on findings the PR never touched. `edited` also fires on title/body edits; the concurrency group below cancels the redundant runs.
   pull_request:
     types: [opened, edited, synchronize, reopened, ready_for_review]
+    # Only React/TS surfaces can produce a finding. Without this the scan ran
+    # on every PR in the repo — 1,048 runs/month, Python-only, docs-only and
+    # infra-only diffs included, each taking a runner slot and a checkout for
+    # a scan that could not find anything.
+    paths:
+      - "apps/web/**"
+      - "apps/mobile/**"
+      - "apps/desktop/**"
+      - "libs/shared/**"
+      - "packages/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "tsconfig*.json"
+      - ".github/workflows/react-doctor.yml"
   # Scans `master` on every push to track the health-score trend and catch regressions that slipped past PR review.
   push:
     branches: ["master"]
@@ -29,7 +43,10 @@ concurrency:
 
 jobs:
   react-doctor:
-    runs-on: ubuntu-latest
+    # Control-plane job (40 s of work): queue it behind the hosted backlog and
+    # a PR waits 15+ min for a verdict. CI_DISPATCH_RUNNER unset keeps
+    # ubuntu-latest.
+    runs-on: ${{ vars.CI_DISPATCH_RUNNER || 'ubuntu-latest' }}
     steps:
       # fetch-depth: 0 gives React Doctor the full git history it needs to find the merge base with the target branch. Without it a shallow checkout has no merge base, so PR runs can't compare against the base and fall back to reporting every issue in the changed files (pre-existing ones included) instead of only the ones the PR introduced.
       - uses: actions/checkout@v5

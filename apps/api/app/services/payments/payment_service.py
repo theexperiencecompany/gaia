@@ -83,7 +83,7 @@ class DodoPaymentService:
     def __init__(self) -> None:
         try:
             environment: Literal["live_mode", "test_mode"] = (
-                "live_mode" if settings.ENV == "production" else "test_mode"
+                "live_mode" if settings.deployment.bills else "test_mode"
             )
 
             # DODO_PAYMENTS_BASE_URL points the SDK at a non-default endpoint
@@ -100,11 +100,21 @@ class DodoPaymentService:
                     environment=environment,
                 )
         except Exception as e:
-            log.error(
-                f"{LogTag.PAYMENT} Failed to instantiate dodo payments",
-                error=str(e),
-                error_type=type(e).__name__,
-            )
+            # Self-host has no Dodo by design, so log info; every other
+            # environment (including dev, which mirrors production) logs the
+            # failure as an error.
+            if not settings.deployment.enforces_plans:
+                log.info(
+                    f"{LogTag.PAYMENT} Dodo payments not configured — "
+                    "billing disabled on self-host",
+                    error=str(e),
+                )
+            else:
+                log.error(
+                    f"{LogTag.PAYMENT} Failed to instantiate dodo payments",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
 
     async def get_plans(self, active_only: bool = True) -> list[PlanResponse]:
         """Get subscription plans with caching."""
@@ -207,7 +217,7 @@ class DodoPaymentService:
             if discount_code:
                 # Pre-apply a known discount (customer can still edit it on the page)
                 params["discount_code"] = discount_code
-            if settings.ENV == "development":
+            if settings.deployment.dev_tools:
                 # Local dev only: prefills everything but the card, and a card
                 # used once is offered back as a saved method, so a developer
                 # pays in one click after the first run.
@@ -514,6 +524,15 @@ class DodoPaymentService:
         )
 
     async def get_user_subscription_status(self, user_id: str) -> UserSubscriptionStatus:
+        """Return the user's plan and subscription; every user is Pro where plans are not enforced."""
+        if not settings.deployment.enforces_plans:
+            return UserSubscriptionStatus(
+                user_id=user_id,
+                can_upgrade=False,
+                can_downgrade=False,
+                has_subscription=False,
+                plan_type=PlanType.PRO,
+            )
         subscription = await subscription_repository.get_active_for_user(user_id)
 
         if not subscription:
@@ -655,6 +674,8 @@ class DodoPaymentService:
         self, user_id: str, history_limit: int = PAYMENT_HISTORY_LIMIT
     ) -> SubscriptionDetails:
         """Plan, billing state, and recent charges — the flattened view GAIA reads."""
+        if not settings.deployment.enforces_plans:
+            return SubscriptionDetails(plan_type=PlanType.PRO, is_subscribed=False)
         subscription = await subscription_repository.get_active_for_user(user_id)
         if not subscription:
             # No ACTIVE subscription — but a former subscriber's charges still
@@ -689,6 +710,9 @@ class DodoPaymentService:
         downstream from a user who really is free — so without plan_source
         the first question of every paywall incident has no answer.
         """
+        if not settings.deployment.enforces_plans:
+            log.set_ns("payment", plan_type=PlanType.PRO.value, plan_source="unenforced")
+            return PlanType.PRO
         cache_key = f"{SUBSCRIPTION_PLAN_CACHE_PREFIX}{user_id}"
         cached = await redis_cache.get(cache_key)
         if isinstance(cached, dict):

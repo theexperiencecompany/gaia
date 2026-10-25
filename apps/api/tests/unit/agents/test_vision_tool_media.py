@@ -12,10 +12,17 @@ from unittest.mock import AsyncMock, patch
 from langchain_core.messages import ToolMessage
 import pytest
 
+from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.llm.vision.tool_media import describe_tool_media
 from app.agents.middleware.media import MediaDescriptionMiddleware
-from app.constants.media import MEDIA_DESCRIBE_FAILED, MEDIA_DESCRIPTIONS_KEY
+from app.constants.log_tags import LogTag
+from app.constants.media import (
+    MEDIA_DESCRIBE_FAILED,
+    MEDIA_DESCRIPTIONS_KEY,
+    MEDIA_VISION_NOT_CONFIGURED,
+)
 from app.utils.multimodal import has_media_blocks
+from tests.helpers import captured_wide_event
 
 CONFIG = {"configurable": {"provider": "openrouter", "model": "some-model", "user_id": "user-1"}}
 
@@ -101,10 +108,14 @@ class TestDescribing:
     async def test_every_image_gets_its_own_description_in_block_order(self):
         lane = patch(f"{_MOD}.model_can_view_images", AsyncMock(return_value=False))
         vision = patch(f"{_MOD}.describe_image", AsyncMock(side_effect=["first", "second"]))
-        with lane, vision:
+        with lane, vision as mock_vision:
             out = await describe_tool_media(_tool_msg(_img("A"), _img("B")), CONFIG)
 
         assert out.additional_kwargs[MEDIA_DESCRIPTIONS_KEY] == ["first", "second"]
+        assert [(c.args, c.kwargs["label"]) for c in mock_vision.call_args_list] == [
+            (("BASE64-A", "image/png"), "tool_media_vision"),
+            (("BASE64-B", "image/png"), "tool_media_vision"),
+        ]
 
     async def test_the_original_message_is_not_mutated_in_place(self):
         msg = _tool_msg(_img())
@@ -165,6 +176,26 @@ class TestFailurePaths:
             out = await describe_tool_media(_tool_msg(_img("A"), _img("B")), CONFIG)
 
         assert out.additional_kwargs[MEDIA_DESCRIPTIONS_KEY] == ["good", MEDIA_DESCRIBE_FAILED]
+
+    async def test_no_vision_provider_says_so_instead_of_a_generic_failure(self):
+        lane = patch(f"{_MOD}.model_can_view_images", AsyncMock(return_value=False))
+        vision = patch(
+            f"{_MOD}.describe_image",
+            AsyncMock(
+                side_effect=LLMNotConfiguredError("No configured AI provider can serve vision")
+            ),
+        )
+        with lane, vision:
+            async with captured_wide_event() as event:
+                out = await describe_tool_media(_tool_msg(_img("A"), _img("B")), CONFIG)
+
+        assert out.additional_kwargs[MEDIA_DESCRIPTIONS_KEY] == [MEDIA_VISION_NOT_CONFIGURED] * 2
+        assert event["warnings"] == [
+            {
+                "msg": f"{LogTag.TOOL} No vision provider for tool media",
+                "error": "No configured AI provider can serve vision",
+            }
+        ]
 
 
 @pytest.mark.asyncio
