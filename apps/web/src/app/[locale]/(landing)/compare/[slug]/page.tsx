@@ -15,6 +15,7 @@ import {
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { getTranslatedPersona } from "@/features/personas/data/getTranslatedPersona";
 import { getLocalizedAlternates } from "@/i18n/getAlternates";
+import { prerenderedMarketingParams } from "@/lib/selfhost";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
@@ -31,9 +32,13 @@ interface PageProps {
   }>;
 }
 
-export async function generateStaticParams() {
+async function allStaticParams() {
   const slugs = await getAllComparisonSlugs();
   return slugs.map((slug) => ({ slug }));
+}
+
+export function generateStaticParams() {
+  return prerenderedMarketingParams(allStaticParams);
 }
 
 export const dynamicParams = false;

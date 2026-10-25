@@ -6,10 +6,12 @@ endpoint still returns it.
 """
 
 from app.db.repositories.base import UserScopedRepository
-from app.models.files_models import FileDocument, FileUpdate
+from app.models.files_models import FileDocument, FileMimetypeRow, FileUpdate
 
 
 class FilesRepository(UserScopedRepository[FileDocument, FileUpdate]):
+    """File metadata, scoped to the owning user and addressed by file_id."""
+
     collection_name = "files"
     document_model = FileDocument
     update_model = FileUpdate
@@ -17,14 +19,17 @@ class FilesRepository(UserScopedRepository[FileDocument, FileUpdate]):
     cache_policy = None
 
     async def get_by_file_id(self, file_id: str, user_id: str) -> FileDocument | None:
+        """Return one file the user owns, or None."""
         return await self._find_one({"file_id": file_id, "user_id": user_id})
 
     async def find_by_ids_for_user(self, file_ids: list[str], user_id: str) -> list[FileDocument]:
+        """Return the user's files among these ids, skipping unknown or foreign ids."""
         if not file_ids:
             return []
         return await self._find({"file_id": {"$in": file_ids}, "user_id": user_id})
 
     async def find_for_conversation(self, conversation_id: str, user_id: str) -> list[FileDocument]:
+        """Return every file the user uploaded in this conversation."""
         return await self._find({"user_id": user_id, "conversation_id": conversation_id})
 
     async def find_ids_for_conversation(self, conversation_id: str, user_id: str) -> list[str]:
@@ -61,8 +66,38 @@ class FilesRepository(UserScopedRepository[FileDocument, FileUpdate]):
         )
 
     async def delete_by_file_id(self, file_id: str, user_id: str) -> bool:
+        """Delete one file the user owns; False when nothing matched."""
         deleted = await self._delete_many({"file_id": file_id, "user_id": user_id}, scope=user_id)
         return deleted > 0
+
+    async def find_mimetype_rows(self) -> list[FileMimetypeRow]:
+        """Every file's mimetype fields, including rows FileDocument would reject."""
+        cursor = self._raw_collection().find()
+        return [FileMimetypeRow.model_validate(row) async for row in cursor]
+
+    async def rename_legacy_mimetype(self, file_id: str, content_type: str) -> bool:
+        """Move content_type to type on one row, only if it still looks as planned."""
+        result = await self._raw_collection().update_one(
+            {
+                "file_id": file_id,
+                "type": {"$exists": False},
+                "content_type": content_type,
+            },
+            {"$set": {"type": content_type}, "$unset": {"content_type": ""}},  # pragma: no mutate
+        )
+        return result.modified_count == 1
+
+    async def restore_legacy_mimetype(self, file_id: str, content_type: str) -> bool:
+        """Reverse rename_legacy_mimetype for one row from a recorded backup."""
+        result = await self._raw_collection().update_one(
+            {
+                "file_id": file_id,
+                "type": content_type,
+                "content_type": {"$exists": False},
+            },
+            {"$set": {"content_type": content_type}, "$unset": {"type": ""}},  # pragma: no mutate
+        )
+        return result.modified_count == 1
 
 
 file_repository = FilesRepository()

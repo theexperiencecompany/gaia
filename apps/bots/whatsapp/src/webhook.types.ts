@@ -110,3 +110,28 @@ export interface KapsoMessageBatch {
     conversation_id: string;
   };
 }
+
+// Kapso v2 whatsapp.message.failed payload, exactly as delivered: it names the
+// message and recipient but carries no error detail — Meta's error is read from
+// the message's statuses via the Kapso API (see adapter reportMessageFailed).
+export interface KapsoMessageFailedEvent {
+  message: {
+    id: string;
+    to?: string;
+    timestamp?: string;
+  };
+  conversation: {
+    phone_number: string;
+    phone_number_id: string;
+    /** Meta's business-scoped user id, prefixed with the user's country: "BR.163...". */
+    business_scoped_user_id?: string;
+  };
+  phone_number_id: string;
+}
+
+// One Meta error on a failed message status (Cloud API error codes, e.g. 130497).
+export interface MetaStatusError {
+  code: number;
+  title?: string;
+  message?: string;
+}

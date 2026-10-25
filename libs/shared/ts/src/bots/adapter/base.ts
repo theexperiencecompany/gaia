@@ -47,11 +47,19 @@ import type {
   OutboundReaction,
 } from "../consumer/envelope";
 import { OutboundConsumer } from "../consumer/outbound-consumer";
+import {
+  createDeliveryFailureReporter,
+  DELIVERY_FAILURE_KIND,
+  describeErrorForAlert,
+  isLostReply,
+  type ReportDeliveryFailure,
+} from "../delivery-failures";
 import type {
   AuthStatus,
   BotCommand,
   BotConfig,
   CommandContext,
+  OutboundNotifications,
   PlatformName,
   RichMessageTarget,
 } from "../types";
@@ -112,8 +120,17 @@ export abstract class BaseBotAdapter {
    */
   protected readonly consumesOutbound: boolean = true;
 
+  /**
+   * Set by a platform that can only message a user freely inside a window
+   * (WhatsApp); the outbound consumer sends a template outside it.
+   */
+  protected readonly outboundNotifications?: OutboundNotifications;
+
   /** GAIA API client shared across all command handlers. */
   protected gaia!: GaiaClient;
+
+  /** Alerts on a message a user should have received and did not. Never throws. */
+  protected reportDeliveryFailure!: ReportDeliveryFailure;
 
   /** Bot configuration loaded from environment variables. */
   protected config!: BotConfig;
@@ -182,6 +199,10 @@ export abstract class BaseBotAdapter {
           this.config.gaiaApiUrl,
           this.config.gaiaApiKey,
           this.config.gaiaFrontendUrl,
+        );
+        this.reportDeliveryFailure = createDeliveryFailureReporter(
+          this.gaia,
+          this.platform,
         );
         this.analytics = new Analytics(this.config.posthogProjectToken);
 
@@ -274,8 +295,10 @@ export abstract class BaseBotAdapter {
       (id, attachment, isChannel) =>
         this.deliverOutboundFile(id, attachment, isChannel),
       this.config.gaiaApiUrl,
+      this.reportDeliveryFailure,
       (id, reaction, isChannel) =>
         this.deliverOutboundReaction(id, reaction, isChannel),
+      this.outboundNotifications,
     );
     void this._outboundConsumer.start();
   }
@@ -554,10 +577,18 @@ export abstract class BaseBotAdapter {
         } catch (error) {
           const durationMs = Date.now() - startMs;
           const errorType = error instanceof Error ? error.name : "Unknown";
-          recordBotFailure("command_dispatch_failed", error, {
+          const reason = recordBotFailure("command_dispatch_failed", error, {
             command: name,
             duration_ms: durationMs,
           });
+          if (isLostReply(reason)) {
+            this.reportDeliveryFailure({
+              kind: DELIVERY_FAILURE_KIND.REPLY_FAILED,
+              reason,
+              error_message: describeErrorForAlert(error, `/${name}`),
+              destination_id: target.userId,
+            });
+          }
           // Capture only the error class name. Raw messages can contain file
           // paths, request IDs, or upstream-echoed tokens — never ship them.
           this.analytics.capture(distinctId, "bot:command_executed", {

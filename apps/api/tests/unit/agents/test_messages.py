@@ -54,6 +54,7 @@ class _Returns(NamedTuple):
     tool_msg: str = "Tool selection"
     reply_msg: str = "Reply context\n\noriginal"
     files_str: str = ""
+    server_files: tuple[FileData, ...] = ()
 
 
 def _patches(returns: _Returns = _Returns()) -> dict[str, Any]:
@@ -90,6 +91,11 @@ def _patches(returns: _Returns = _Returns()) -> dict[str, Any]:
         "format_files": patch(
             "app.agents.core.messages.format_files_list",
             return_value=returns.files_str,
+        ),
+        "get_uploads": patch(
+            "app.agents.core.messages.FileService.get_uploads",
+            new_callable=AsyncMock,
+            return_value=list(returns.server_files),
         ),
     }
 
@@ -384,13 +390,17 @@ class TestUserContentExtraction:
     async def test_a_files_only_turn_becomes_a_message_listing_the_files(self) -> None:
         """A user may send files with no text; the turn is the files, not an error."""
         files = [FileData(fileId="f1", url="https://example.com/f1", filename="report.pdf")]
-        p = _patches()
-        with p["create_system"], p["build_dynamic"]:
+        p = _patches(
+            _Returns(
+                files_str="[Uploaded files]\n- report.pdf",
+                server_files=tuple(files),
+            )
+        )
+        with p["create_system"], p["build_dynamic"], p["get_uploads"], p["format_files"]:
             result = await construct_langchain_messages(
                 query="",
-                attachments=MessageAttachments(
-                    files_data=files, currently_uploaded_file_ids=["f1"]
-                ),
+                scope=MessageScope(user_id="uid-1"),
+                attachments=MessageAttachments(currently_uploaded_file_ids=["f1"]),
             )
 
         human = result[2]
@@ -400,15 +410,12 @@ class TestUserContentExtraction:
 
     @pytest.mark.asyncio
     async def test_files_the_turn_did_not_upload_do_not_stand_in_for_a_message(self) -> None:
-        files = [FileData(fileId="f1", url="https://example.com/f1", filename="report.pdf")]
         p = _patches()
         with p["create_system"], p["build_dynamic"]:
             with pytest.raises(ValueError, match="No human message"):
                 await construct_langchain_messages(
                     query="",
-                    attachments=MessageAttachments(
-                        files_data=files, currently_uploaded_file_ids=[]
-                    ),
+                    attachments=MessageAttachments(currently_uploaded_file_ids=[]),
                 )
 
 
@@ -450,55 +457,58 @@ class TestReplyContext:
 class TestFileContext:
     @pytest.mark.asyncio
     async def test_files_appended_to_content(self) -> None:
-        files_data = [
+        files = [
             FileData(fileId="f1", url="https://example.com/f1", filename="test.txt"),
         ]
-        p = _patches(_Returns(files_str="Uploaded Files:\n- Name: test.txt Id: f1"))
+        p = _patches(
+            _Returns(
+                files_str="Uploaded Files:\n- Name: test.txt Id: f1",
+                server_files=tuple(files),
+            )
+        )
         with (
             p["create_system"],
             p["build_dynamic"],
+            p["get_uploads"],
             p["format_files"] as mock_files,
         ):
             result = await construct_langchain_messages(
                 query="check this",
-                attachments=MessageAttachments(
-                    files_data=files_data, currently_uploaded_file_ids=["f1"]
-                ),
+                scope=MessageScope(user_id="uid-1"),
+                attachments=MessageAttachments(currently_uploaded_file_ids=["f1"]),
             )
 
         # Comms suppresses the processing guide — that lane can't act on files.
-        mock_files.assert_called_once_with(files_data, ["f1"], None, include_processing_guide=False)
+        mock_files.assert_called_once_with(files, ["f1"], None, include_processing_guide=False)
         assert result[-2].content == "check this\n\nUploaded Files:\n- Name: test.txt Id: f1"
 
     @pytest.mark.asyncio
-    async def test_stored_descriptions_reach_the_files_list_for_this_conversation(self) -> None:
-        files_data = [
-            FileData(fileId="f1", url="https://example.com/f1", filename="a.txt"),
-            FileData(fileId="f2", url="https://example.com/f2", filename="b.txt"),
+    async def test_server_metadata_reaches_the_files_list_for_this_conversation(self) -> None:
+        server_files = [
+            FileData(
+                fileId="f1",
+                url="https://example.com/f1",
+                filename="a.txt",
+                description="a quarterly report",
+                sandbox_path="/workspace/sessions/conv-1/user-uploaded/a.txt",
+            ),
         ]
-        p = _patches(_Returns(files_str="FILES"))
+        p = _patches(_Returns(files_str="FILES", server_files=tuple(server_files)))
         with (
             p["create_system"],
             p["build_dynamic"],
+            p["get_uploads"] as get_uploads,
             p["format_files"] as mock_files,
-            patch(
-                "app.agents.core.messages.FileService.get_descriptions",
-                new_callable=AsyncMock,
-                return_value={"f1": "a quarterly report"},
-            ) as get_descriptions,
         ):
             await construct_langchain_messages(
                 query="check these",
                 scope=MessageScope(user_id="uid-1", conversation_id="conv-1"),
-                attachments=MessageAttachments(
-                    files_data=files_data, currently_uploaded_file_ids=["f1", "f2"]
-                ),
+                attachments=MessageAttachments(currently_uploaded_file_ids=["f1", "f2"]),
             )
 
-        get_descriptions.assert_awaited_once_with(["f1", "f2"], "uid-1")
-        assert [f.description for f in files_data] == ["a quarterly report", None]
+        get_uploads.assert_awaited_once_with(["f1", "f2"], "uid-1", "conv-1")
         mock_files.assert_called_once_with(
-            files_data, ["f1", "f2"], "conv-1", include_processing_guide=False
+            server_files, ["f1", "f2"], "conv-1", include_processing_guide=False
         )
 
     @pytest.mark.asyncio

@@ -1,0 +1,30 @@
+export type CheckResult = "success" | "error" | "missing" | "pending";
+
+export interface PortCheckResult {
+  /** The port GAIA uses by default, which names the compose variable that moves it. */
+  defaultPort: number;
+  /** The host port checked: the default, or the override it was moved to. */
+  port: number;
+  service: string;
+  available: boolean;
+  usedBy?: string;
+  alternative?: number;
+}
+
+/** Outcome of {@link ensureDocker}. */
+export type DockerReadiness =
+  /** Docker answers this process; carry on. */
+  | "ready"
+  /**
+   * This user was just granted the docker group, which only a new process
+   * picks up: the command runner relaunches in the docker group and the flow
+   * must stop here (see lib/docker-group.ts).
+   */
+  | "relaunch";
+
+export interface InstallConsentOptions {
+  /** `--yes`: consent to installing a missing prerequisite (and joining the docker group). */
+  assumeYes?: boolean;
+  /** What a declined install tells the user to run once it is done, e.g. "gaia up". */
+  rerunCommand?: string;
+}

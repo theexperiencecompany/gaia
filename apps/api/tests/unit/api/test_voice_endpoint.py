@@ -172,6 +172,27 @@ class TestGetVoiceToken:
         assert resp.status_code == 500
         assert "Failed to generate voice token" in resp.json()["message"]
 
+    async def test_a_self_host_refuses_voice_naming_why(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ):
+        self._enable_livekit(monkeypatch)
+        monkeypatch.setattr(settings, "ENV", "selfhost")
+        monkeypatch.setattr(settings, "AUTH_MODE", "local")
+
+        resp = await client.get(VOICE_BASE + "/token")
+
+        assert resp.status_code == 501
+        body = resp.json()
+        assert body["code"] == "voice_not_available"
+        assert body["message"] == "Voice isn't available on this GAIA instance."
+        assert body["why"] == (
+            "Voice needs a LiveKit server and GAIA's voice worker, "
+            "which the self-host install does not include."
+        )
+        assert body["fix"] == (
+            "See https://docs.heygaia.io/self-hosting/overview#self-host-vs-cloud"
+        )
+
     async def test_requires_auth(self, unauthed_client: AsyncClient):
         resp = await unauthed_client.get(VOICE_BASE + "/token")
         assert resp.status_code == 401

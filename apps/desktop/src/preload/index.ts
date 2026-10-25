@@ -23,6 +23,7 @@ import type {
 import type {
   DesktopPermissionPane,
   DesktopPermissionStatus,
+  DesktopServerConnectResult,
   DesktopSettingsSnapshot,
   DesktopShortcutUpdateResult,
   DesktopToolRequest,
@@ -212,6 +213,16 @@ const api = {
   /** Switch the dock icon (Arc-style) and persist the choice. */
   setAppIcon: (id: string): Promise<boolean> =>
     ipcRenderer.invoke(IPC.desktopSettingsSetIcon, id),
+
+  /** Validate a self-hosted server address; on success the app relaunches
+   * against it. Accepted only from the bundled web app. */
+  connectSelfHostServer: (
+    address: string,
+  ): Promise<DesktopServerConnectResult> =>
+    ipcRenderer.invoke(IPC.desktopServerConnect, address),
+
+  /** Forget the self-hosted server and relaunch against GAIA Cloud. */
+  switchToGaiaCloud: (): void => ipcRenderer.send(IPC.desktopServerUseCloud),
 
   /**
    * Device bridge control surface — pair this Mac, run/stop its MCP tunnel,

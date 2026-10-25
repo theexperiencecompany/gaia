@@ -16,6 +16,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+from typing import Protocol
 
 import pytest
 
@@ -35,8 +36,14 @@ def _stub(bin_dir: Path, name: str, body: str) -> None:
     path.chmod(0o755)
 
 
+class _Scan(Protocol):
+    def __call__(
+        self, *, vulture: str, knip: str
+    ) -> tuple[subprocess.CompletedProcess[str], Path]: ...
+
+
 @pytest.fixture
-def run_scan(tmp_path: Path):
+def run_scan(tmp_path: Path) -> _Scan:
     """Drive the real script with stubbed vulture/pnpm and a private verdict dir."""
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -67,7 +74,7 @@ def run_scan(tmp_path: Path):
     return run
 
 
-def test_a_red_scan_names_every_item_at_its_own_line(run_scan) -> None:
+def test_a_red_scan_names_every_item_at_its_own_line(run_scan: _Scan) -> None:
     proc, path = run_scan(vulture=VULTURE_FINDINGS, knip=KNIP_FINDINGS)
 
     assert proc.returncode == 1, proc.stdout
@@ -85,7 +92,7 @@ def test_a_red_scan_names_every_item_at_its_own_line(run_scan) -> None:
     assert doc["advice"], "a failing lane with no remediation is a log to go read"
 
 
-def test_a_clean_scan_reports_a_pass_rather_than_nothing(run_scan) -> None:
+def test_a_clean_scan_reports_a_pass_rather_than_nothing(run_scan: _Scan) -> None:
     """Silence is how a lane stops running without anybody noticing."""
     proc, path = run_scan(vulture="", knip="")
 
@@ -95,7 +102,7 @@ def test_a_clean_scan_reports_a_pass_rather_than_nothing(run_scan) -> None:
     assert doc["findings"] == []
 
 
-def test_the_annotation_count_is_capped_so_the_summary_survives(run_scan) -> None:
+def test_the_annotation_count_is_capped_so_the_summary_survives(run_scan: _Scan) -> None:
     many = "".join(
         f"apps/api/app/f{i}.py:{i + 1}: unused function 'g{i}' (60% confidence)\n"
         for i in range(80)

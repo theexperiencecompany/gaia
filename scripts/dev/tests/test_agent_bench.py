@@ -1,7 +1,8 @@
 """agent_bench token attribution: only the bench user's traces count, whichever LangSmith path answers.
 
-The network seams are mocked — `subprocess.run` (the langsmith CLI) and
-`langsmith.Client` (the SDK). Everything above them is the real code.
+The network seams are mocked — `subprocess.run` (the langsmith CLI) and the
+`langsmith` SDK module, so the package need not be installed. Everything above
+them is the real code.
 
 Run: uv run pytest scripts/dev/tests/test_agent_bench.py -p no:xdist
 """
@@ -12,9 +13,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 import subprocess
 import sys
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 
-import langsmith
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -38,6 +38,10 @@ class _FakeClient:
         return [_root(100, BENCH_USER), _root(9_000, "user-other-worktree")]
 
 
+class _FakeLangsmithSdk(ModuleType):
+    Client = _FakeClient
+
+
 def _cli_missing(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
     raise FileNotFoundError("langsmith")
 
@@ -48,7 +52,7 @@ def test_the_sdk_fallback_counts_only_the_bench_users_traces(
     monkeypatch.setenv("LANGSMITH_PROJECT", "bench")
     monkeypatch.setattr(agent_bench, "_load_api_env", lambda: None)
     monkeypatch.setattr(subprocess, "run", _cli_missing)
-    monkeypatch.setattr(langsmith, "Client", _FakeClient)
+    monkeypatch.setitem(sys.modules, "langsmith", _FakeLangsmithSdk("langsmith"))
     assert agent_bench._tokens_between(START, END, BENCH_USER) == 100
 
 
@@ -58,5 +62,5 @@ def test_an_unresolved_bench_user_reports_tokens_as_unavailable(
     monkeypatch.setenv("LANGSMITH_PROJECT", "bench")
     monkeypatch.setattr(agent_bench, "_load_api_env", lambda: None)
     monkeypatch.setattr(subprocess, "run", _cli_missing)
-    monkeypatch.setattr(langsmith, "Client", _FakeClient)
+    monkeypatch.setitem(sys.modules, "langsmith", _FakeLangsmithSdk("langsmith"))
     assert agent_bench._tokens_between(START, END, None) is None
