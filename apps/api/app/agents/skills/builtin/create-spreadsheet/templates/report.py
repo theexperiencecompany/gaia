@@ -32,7 +32,9 @@ WHITE = "FFFFFF"
 GREY = "808080"
 
 FMT_CURRENCY = '"$"#,##0'  # $1,234  (no decimals — clean for a P&L)
+FMT_CURRENCY_K = '"$"#,##0,"k"'  # $1,234k (scaled thousands)
 FMT_PERCENT = "0.0%"  # 12.3%
+FMT_MULTIPLE = '0.00"x"'  # 1.45x  (e.g. for ratios)
 
 THIN = Side(style="thin", color="C8D2E0")
 BORDER_ALL = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)

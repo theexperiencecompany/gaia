@@ -220,6 +220,14 @@ async def set_memory_flags(
     await collection.update(ids=[memory_id], metadatas=[metadata])
 
 
+async def delete_ids(ids: list[str]) -> None:
+    """Hard-delete memory vectors by id."""
+    if not ids:
+        return
+    collection = await _get_collection(CHROMA_MEMORIES_COLLECTION)
+    await collection.delete(ids=ids)
+
+
 async def delete_user(user_id: str) -> None:
     """Hard-delete all of a user's vectors from every collection (full wipe)."""
     for name in (

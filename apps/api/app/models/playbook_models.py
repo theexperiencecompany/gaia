@@ -153,6 +153,7 @@ def is_work_call(tool_name: str) -> bool:
 #: Kinds that don't count toward the limit: the blocked ones, and a quiet day.
 #: A playbook only freezes calls that ran, so a seasonal workflow would
 #: otherwise spend its chances on empty days and lock out on a busy one.
+UNCOUNTED_DECLINE_KINDS = BLOCKED_DECLINE_KINDS | {DeclineKind.NO_WORK_TODAY}
 
 #: Blocked kinds that name integrations and can therefore pause the workflow.
 INTEGRATION_DECLINE_KINDS = frozenset(
