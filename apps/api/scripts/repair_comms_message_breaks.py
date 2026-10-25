@@ -49,6 +49,8 @@ SELECT thread_id FROM checkpoint_blobs
 
 @dataclass(frozen=True, slots=True)
 class ThreadReport:
+    """What the repair found, or did, in one thread."""
+
     thread_id: str
     checkpoint_before: str | None
     rewritten: int
@@ -75,6 +77,7 @@ def repair_writes(messages: Sequence[BaseMessage]) -> list[BaseMessage]:
 
 
 async def candidate_threads() -> list[str]:
+    """Comms thread ids whose stored messages hold two or more consecutive breaks."""
     manager = await get_checkpointer_manager()
     if manager.pool is None:
         raise RuntimeError("checkpointer pool is not open")
@@ -88,6 +91,7 @@ async def candidate_threads() -> list[str]:
 async def repair_thread(
     graph: CompiledAgentGraph, thread_id: str, *, apply: bool, now: datetime
 ) -> ThreadReport:
+    """Repair one thread unless it was written inside the idle window."""
     config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
     state = await graph.aget_state(config)
     writes = repair_writes(state.values.get("messages", []))
@@ -119,6 +123,7 @@ async def _run(*, apply: bool) -> None:
 
 
 def main() -> None:
+    """Parse --apply and run the repair."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--apply", action="store_true", help="rewrite the threads (default: report)"

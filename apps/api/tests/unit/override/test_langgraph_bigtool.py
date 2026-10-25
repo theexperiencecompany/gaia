@@ -522,6 +522,44 @@ class TestCallModel:
 
         assert result["messages"][-1].content == "hello"
 
+    def test_sync_call_model_other_agents_keep_their_breaks(self) -> None:
+        reply = f"one{NEW_MESSAGE_BREAKER * 2}two{NEW_MESSAGE_BREAKER}"
+        llm = _make_llm()
+        llm.with_config.return_value.bind_tools.return_value.invoke.return_value = AIMessage(
+            content=reply
+        )
+        builder = create_agent(
+            llm,
+            _make_tool_registry(),
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            agent_config=AgentConfig(agent_name="executor_agent"),
+        )
+
+        result = builder.nodes["agent"].runnable.func(  # type: ignore[union-attr]  # RunnableCallable types func/afunc as Optional
+            _make_state(), _make_config(), store=MagicMock()
+        )
+
+        assert result["messages"][-1].content == reply
+
+    def test_sync_call_model_comms_agent_leaves_non_string_content_alone(self) -> None:
+        blocks = [{"type": "text", "text": f"hi{NEW_MESSAGE_BREAKER}"}]
+        llm = _make_llm()
+        llm.with_config.return_value.bind_tools.return_value.invoke.return_value = AIMessage(
+            content=blocks
+        )
+        builder = create_agent(
+            llm,
+            _make_tool_registry(),
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            agent_config=AgentConfig(agent_name="comms_agent"),
+        )
+
+        result = builder.nodes["agent"].runnable.func(  # type: ignore[union-attr]  # RunnableCallable types func/afunc as Optional
+            _make_state(), _make_config(), store=MagicMock()
+        )
+
+        assert result["messages"][-1].content == blocks
+
 
 class TestAcallModel:
     @pytest.mark.asyncio

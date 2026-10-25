@@ -97,7 +97,7 @@ from app.override.langgraph_bigtool.utils import (
     pop_pruned_tombstones,
 )
 from app.utils.mcp_utils import canonical_tool_name_map
-from app.utils.message_breaks import MESSAGE_BREAK_SENTINEL_RE, normalize_message_breaks
+from app.utils.message_breaks import normalize_message_breaks
 from app.utils.multimodal import extract_text_content
 from shared.py.wide_events import log
 
@@ -291,13 +291,7 @@ def _tools_to_bind(deps: _AgentDeps, state: State) -> list[BaseTool]:
 
 def _finalize_model_response(response: AIMessage, agent_name: str) -> AIMessage:
     if agent_name == "comms_agent" and isinstance(response.content, str):
-        normalized = normalize_message_breaks(response.content)
-        dropped = len(MESSAGE_BREAK_SENTINEL_RE.findall(response.content)) - len(
-            MESSAGE_BREAK_SENTINEL_RE.findall(normalized)
-        )
-        if dropped:
-            log.set_ns("comms_output", breaks_dropped=dropped)
-        response.content = normalized
+        response.content = normalize_message_breaks(response.content)
 
     if not response.tool_calls and not response.content:
         response.content = "Empty response from model."
