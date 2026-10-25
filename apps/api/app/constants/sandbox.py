@@ -81,9 +81,9 @@ LEGACY_LOCAL_SANDBOX_VOLUME = "gaia-sandbox-workspace"
 
 # Label recording the layout and image a sandbox was created with; an older one is replaced.
 # v2: resource limits, dropped capabilities, isolated network.
-# v3: built image, shared agents' home, host-gateway alias.
+# v3: built image, shared agents' home, host-gateway alias. v4: --init reaps zombies.
 LOCAL_SANDBOX_LAYOUT_LABEL = "gaia.sandbox.layout"
-LOCAL_SANDBOX_LAYOUT = "per-user-subpath-v3"
+LOCAL_SANDBOX_LAYOUT = "per-user-subpath-v4"
 
 # Per-container ceilings, so one user's runaway build or fork bomb cannot starve
 # the API and datastores sharing the host. Swap equals memory: no swap at all.

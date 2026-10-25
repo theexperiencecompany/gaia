@@ -131,8 +131,11 @@ async def _acquire_local_sandbox(user_id: str) -> AsyncIterator[LocalDockerSandb
     try:
         sbx = get_local_sandbox(user_id)
         async with fs_timer(FsOps.SBX_ACQUIRE):
-            await sbx.ensure_started()
+            created = await sbx.ensure_started()
         _record(operation="acquire", source="local_docker", sandbox_id=sbx.sandbox_id)
+        if created:
+            # A run watching this user lived in a container that is gone, so this is a replacement.
+            await _set_up_agents_home(user_id, sbx, replaced=True)
         try:
             yield sbx
         except Exception:
@@ -310,8 +313,10 @@ async def _create_fresh_sandbox(user_id: str, shard_id: int, template_id: str) -
     return sbx
 
 
-async def _set_up_agents_home(user_id: str, sbx: AsyncSandbox, *, replaced: bool) -> None:
-    """Lay out the coding agents' home on a fresh agent-lab sandbox, restoring the last save.
+async def _set_up_agents_home(
+    user_id: str, sbx: AsyncSandbox | LocalDockerSandbox, *, replaced: bool
+) -> None:
+    """Lay out the coding agents' home on a fresh agent-lab or local sandbox, restoring the last save.
 
     Runs once the sandbox is recorded, so a failure never orphans it: the
     error is logged, the next run seed retries the idempotent setup, and a

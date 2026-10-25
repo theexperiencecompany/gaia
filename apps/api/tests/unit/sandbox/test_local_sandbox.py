@@ -1079,6 +1079,36 @@ async def test_a_container_from_an_older_image_is_replaced_not_restarted(
     assert recorder.argv(4)[:2] == ["docker", "run"]
 
 
+async def test_an_init_process_reaps_the_agents_orphaned_children(
+    recorder: SpawnRecorder, workspace_root: Path
+) -> None:
+    run = await _create(recorder, "userB")
+    assert "--init" in run
+
+
+async def test_ensure_started_reports_a_create_but_not_a_reuse_or_restart(
+    recorder: SpawnRecorder, workspace_root: Path
+) -> None:
+    recorder._responses = [
+        FakeProcess(stderr=b"No such object", returncode=1),
+        _image_present(),
+        FakeProcess(returncode=0),
+        FakeProcess(returncode=0),
+        _inspect_response(),
+    ]
+    assert await _sandbox("userB").ensure_started() is True
+
+    recorder._responses = [_inspect_response()]
+    assert await _sandbox("userB").ensure_started() is False
+
+    recorder._responses = [
+        _inspect_response(f"false {local_sandbox.RUN_SPEC}"),
+        FakeProcess(returncode=0),
+        _inspect_response(),
+    ]
+    assert await _sandbox("userB").ensure_started() is False
+
+
 async def test_the_sandbox_reaches_the_host_through_the_gateway_alias(
     recorder: SpawnRecorder, workspace_root: Path
 ) -> None:

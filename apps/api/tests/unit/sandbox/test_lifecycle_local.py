@@ -29,12 +29,13 @@ def _uid() -> str:
     return f"u-{uuid.uuid4().hex}"
 
 
-def _fake_local_sandbox(alive: bool = True) -> Any:
+def _fake_local_sandbox(alive: bool = True, *, created: bool = False) -> Any:
     sbx = MagicMock(spec=LocalDockerSandbox)
     sbx.user_id = "u"
     sbx.container_name = "gaia-sandbox-u"
     sbx.sandbox_id = "gaia-sandbox-u"
-    sbx.ensure_started = AsyncMock()
+    sbx.ensure_started = AsyncMock(return_value=created)
+    sbx.commands = MagicMock(run=AsyncMock(return_value=MagicMock(stdout="")))
     sbx.is_running = AsyncMock(return_value=alive)
     sbx.kill = AsyncMock()
     return sbx
@@ -112,6 +113,49 @@ async def test_selfhost_without_an_e2b_key_yields_the_local_sandbox(
                 sbx.ensure_started.assert_awaited_once()
         # Not one byte of the E2B machinery may run in local mode.
         e2b_acquire.assert_not_awaited()
+    finally:
+        lifecycle.pop_local_sandbox(uid)
+
+
+async def test_a_recreated_local_container_reports_the_replacement_like_e2b(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Its runs' processes died with the old container; their todos must hear it.
+    uid = _uid()
+    sbx = _fake_local_sandbox(created=True)
+    report = AsyncMock()
+    try:
+        monkeypatch.setattr(lifecycle, "get_local_sandbox", lambda u: sbx)
+        with _selfhost_no_key(), patch.object(lifecycle, "report_sandbox_event", report):
+            async with lifecycle.acquire_sandbox(uid):
+                pass
+        sbx.commands.run.assert_awaited_once_with(
+            lifecycle.build_agents_setup_command(),
+            timeout=lifecycle.SANDBOX_AGENTS_SETUP_TIMEOUT_SECONDS,
+        )
+        report.assert_awaited_once_with(
+            uid,
+            lifecycle.SandboxEventKind.REPLACED,
+            "the sandbox was replaced, so the coding agents' processes stopped; "
+            "no save existed to restore",
+        )
+    finally:
+        lifecycle.pop_local_sandbox(uid)
+
+
+async def test_reusing_a_running_local_container_reports_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    uid = _uid()
+    sbx = _fake_local_sandbox(created=False)
+    report = AsyncMock()
+    try:
+        monkeypatch.setattr(lifecycle, "get_local_sandbox", lambda u: sbx)
+        with _selfhost_no_key(), patch.object(lifecycle, "report_sandbox_event", report):
+            async with lifecycle.acquire_sandbox(uid):
+                pass
+        sbx.commands.run.assert_not_awaited()
+        report.assert_not_awaited()
     finally:
         lifecycle.pop_local_sandbox(uid)
 

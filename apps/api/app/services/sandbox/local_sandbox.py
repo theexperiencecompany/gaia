@@ -399,18 +399,21 @@ class LocalDockerSandbox:
             f"HOME={SANDBOX_USER_HOME}",
             "--restart",
             "unless-stopped",
+            # PID 1 is sleep, which reaps nothing: tini reaps the agents' orphaned children.
+            "--init",
             self.image,
             "sleep",
             "infinity",
         )
         return rc, stderr
 
-    async def ensure_started(self) -> None:
-        """Start the user container, creating it on first acquire.
+    async def ensure_started(self) -> bool:
+        """Start the user container, creating it when missing; True when it was created.
 
         Idempotent across running, stopped, and missing states; bounded so a cold
-        image pull cannot stall the agent indefinitely.
+        image build cannot stall the agent indefinitely.
         """
+        created = False
         async with self._start_lock, asyncio.timeout(LOCAL_SANDBOX_START_TIMEOUT_SECONDS):
             state = await self._container_state()
             if state.exists and state.layout != RUN_SPEC:
@@ -429,6 +432,7 @@ class LocalDockerSandbox:
                 else:
                     rc, stderr = await self._create_container()
                     action = "run"
+                    created = rc == 0
                 if rc != 0:
                     raise LocalSandboxError(
                         f"docker {action} failed for {self.container_name}: {stderr.strip()}"
@@ -442,7 +446,9 @@ class LocalDockerSandbox:
             f"{LogTag.SANDBOX} local container ready",
             container=self.container_name,
             user_id=self.user_id,
+            created=created,
         )
+        return created
 
     async def is_running(self, request_timeout: float | None = None) -> bool:
         """Return True while the container exists and runs, False when missing.

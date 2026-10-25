@@ -10,6 +10,14 @@ set -uo pipefail
 
 payload="$(cat)"
 
+# claude -p kills the hook and every descendant when it exits (about 2s after a
+# StopFailure), so the save and relay run in a new session the hook does not
+# wait for: orphaned at once, they are no longer its descendants and outlive it.
+if [ -z "${GAIA_HOOK_DETACHED:-}" ]; then
+    printf '%s' "$payload" | GAIA_HOOK_DETACHED=1 setsid --fork "$0" >>"{{HOOK_LOG}}" 2>&1
+    exit 0
+fi
+
 post() {
     curl -fsS -m 15 -X POST "$GAIA_LAB_CALLBACK_URL" \
         -H "Authorization: Bearer $GAIA_LAB_TOKEN" \
