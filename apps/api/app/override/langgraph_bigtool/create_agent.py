@@ -59,7 +59,7 @@ from app.constants.agents import (
     MAX_PLAYBOOK_DECISION_NUDGES,
     PLAYBOOK_DECISION_NUDGE_MESSAGE,
 )
-from app.constants.general import FINISH_TASK_NAME, NEW_MESSAGE_BREAKER
+from app.constants.general import FINISH_TASK_NAME
 from app.constants.llm import (
     COMPLETION_NUDGE_MESSAGE,
     LANE_FIELD_ID,
@@ -97,6 +97,7 @@ from app.override.langgraph_bigtool.utils import (
     pop_pruned_tombstones,
 )
 from app.utils.mcp_utils import canonical_tool_name_map
+from app.utils.message_breaks import MESSAGE_BREAK_SENTINEL_RE, normalize_message_breaks
 from app.utils.multimodal import extract_text_content
 from shared.py.wide_events import log
 
@@ -289,11 +290,17 @@ def _tools_to_bind(deps: _AgentDeps, state: State) -> list[BaseTool]:
 
 
 def _finalize_model_response(response: AIMessage, agent_name: str) -> AIMessage:
+    if agent_name == "comms_agent" and isinstance(response.content, str):
+        normalized = normalize_message_breaks(response.content)
+        dropped = len(MESSAGE_BREAK_SENTINEL_RE.findall(response.content)) - len(
+            MESSAGE_BREAK_SENTINEL_RE.findall(normalized)
+        )
+        if dropped:
+            log.set_ns("comms_output", breaks_dropped=dropped)
+        response.content = normalized
+
     if not response.tool_calls and not response.content:
         response.content = "Empty response from model."
-
-    if isinstance(response.content, str) and agent_name == "comms_agent":
-        response.content = response.content + NEW_MESSAGE_BREAKER
 
     return response
 
@@ -915,8 +922,8 @@ def create_agent(
     """Create a ReAct agent that starts with only a tool-retrieval tool and binds retrieved tools as it runs.
 
     hooks_config.require_finish_to_end nudges-and-loops instead of ending early
-    on an unfinished plain-text reply; agent_config.agent_name == "comms_agent"
-    appends NEW_MESSAGE_BREAKER to string replies.
+    on an unfinished plain-text reply; comms_agent string replies are stored
+    with their message breaks normalized.
     """
     tools = tools_config or ToolRetrievalConfig()
     hooks = hooks_config or HookConfig()
