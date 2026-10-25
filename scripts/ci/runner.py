@@ -110,7 +110,7 @@ DEFAULT_FALLBACK = '["ubuntu-latest"]'
 HOSTED_SATURATED_QUEUE_DEPTH = 5
 TEST_SLICES_JSON = HERE / "lib" / "test-slices.json"
 # test-mutation's `max-parallel` in ci.yml: the shards one run holds at once.
-MUTATION_WAVE = 4
+MUTATION_WAVE = 6
 REQUEUE_WORKFLOW = "ci-requeue.yml"
 SELF_HOSTED = "self-hosted"
 

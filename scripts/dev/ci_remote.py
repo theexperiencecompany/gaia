@@ -38,7 +38,7 @@ from __future__ import annotations
 
 import argparse
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 import io
 import json
@@ -68,6 +68,10 @@ VERDICT_PREFIX = "verdict-"
 FALLBACK_TAIL_LINES = 40  # kept in --json; the human render shows the last SHOWN_TAIL_LINES
 SHOWN_TAIL_LINES = 20
 DETAIL_PREVIEW_LINES = 3
+# A finding's message and detail lines are clipped to this in the human render
+# (`--verbose` and `--json` keep them whole): one long assertion must not wrap
+# into a screenful and push the next failing test out of view.
+SHOWN_LINE_CHARS = 220
 MAX_CHECK_PAGE_SIZE = 100
 FAILING = ("failed", "error", "timeout")
 # The one required check: ci.yml's aggregate over every gated job.
@@ -203,6 +207,9 @@ class Repo:
     owner: str
     name: str
     timeout_s: int
+    # An artifact id names one immutable upload (a job's mid-run re-upload gets
+    # a new id), so `--watch` downloads each verdict once, not on every poll.
+    artifacts: dict[int, bytes] = field(default_factory=dict, compare=False, repr=False)
 
     @property
     def slug(self) -> str:
@@ -395,7 +402,7 @@ def fetch_run_verdicts(repo: Repo, run_id: int) -> list[Verdict]:
         if a.get("name", "").startswith(VERDICT_PREFIX) and not a.get("expired")
     ]
     with ThreadPoolExecutor(max_workers=MAX_PARALLEL_FETCHES) as pool:
-        blobs = list(pool.map(lambda a: fetch_artifact(repo, a["id"]), wanted))
+        blobs = list(pool.map(lambda a: cached_artifact(repo, a["id"]), wanted))
 
     verdicts: list[Verdict] = []
     for artifact, blob in zip(wanted, blobs, strict=True):
@@ -408,6 +415,12 @@ def fetch_run_verdicts(repo: Repo, run_id: int) -> list[Verdict]:
                 parsed["run_id"] = run_id
                 verdicts.append(parsed)
     return verdicts
+
+
+def cached_artifact(repo: Repo, artifact_id: int) -> bytes:
+    if artifact_id not in repo.artifacts:
+        repo.artifacts[artifact_id] = fetch_artifact(repo, artifact_id)
+    return repo.artifacts[artifact_id]
 
 
 def fetch_artifact(repo: Repo, artifact_id: int) -> bytes:
@@ -712,10 +725,14 @@ def diagnose(
     """
     covered = covered_steps(checks)
     failing = [c for c in checks if c["status"] in FAILING and c["name"] not in covered]
-    if not failing:
+    # A running job uploads a red check's verdict the moment it fails, so its
+    # run's artifacts are read too: the finding is on screen while the job,
+    # and the run whose end releases its log, are still going.
+    running = [c for c in checks if c["status"] == "pending" and c["app"] != STATUS_APP]
+    run_ids = sorted({c["run_id"] for c in failing + running if c["run_id"] is not None})
+    if not run_ids and not failing:
         return [], [], {}, {}
 
-    run_ids = sorted({c["run_id"] for c in failing if c["run_id"] is not None})
     with ThreadPoolExecutor(max_workers=MAX_PARALLEL_FETCHES) as pool:
         batches = list(pool.map(lambda r: fetch_run_verdicts(repo, r), run_ids))
     verdicts = [v for batch in batches for v in batch]
@@ -1020,20 +1037,27 @@ def header(report: dict) -> None:
     )
 
 
+def clip(text: str, verbose: bool) -> str:
+    if verbose or len(text) <= SHOWN_LINE_CHARS:
+        return text
+    return text[: SHOWN_LINE_CHARS - 1] + "…"
+
+
 def render_verdict(verdict: Verdict, verbose: bool, pad: str = "  ") -> None:
     """Print a verdict's body: its summary, then every finding at file:line."""
     if verdict.get("summary"):
         print(f"{pad}{verdict['summary']}")
     for finding in verdict.get("findings", []):
-        where = finding.get("file", "?")
-        if finding.get("line") is not None:
+        where = finding.get("file") or ""
+        if where and finding.get("line"):
             where = f"{where}:{finding['line']}"
-        print(f"{pad}{where} — {finding.get('message', '')}")
+        message = clip(finding.get("message", ""), verbose)
+        print(f"{pad}{where} — {message}" if where else f"{pad}{message}")
         detail = (finding.get("detail") or "").splitlines()
         if not detail:
             continue
         for detail_line in detail if verbose else detail[:DETAIL_PREVIEW_LINES]:
-            print(f"{pad}    {detail_line}")
+            print(f"{pad}    {clip(detail_line, verbose)}")
         if not verbose and len(detail) > DETAIL_PREVIEW_LINES:
             print(f"{pad}    … {len(detail) - DETAIL_PREVIEW_LINES} more lines (--verbose)")
 
@@ -1056,6 +1080,17 @@ def render_shard(check: Check, shard: Shard, source: str) -> None:
         print(f"  {module_line(module, shard)}")
 
 
+def render_matched(check: Check, matched: list[Verdict], verbose: bool) -> None:
+    """Print each verdict a check owns, under its lane when the lane is a sub-unit."""
+    for verdict in matched:
+        lane = verdict.get("lane", "?")
+        if slug(lane) == slug(check["name"]):
+            render_verdict(verdict, verbose, pad="  ")
+        else:
+            print(f"  {lane}  [{verdict.get('status', '?')}]")
+            render_verdict(verdict, verbose, pad="    ")
+
+
 def render_failing_check(report: dict, check: Check, verbose: bool) -> set[str]:
     """Render one red check. Returns the lane slugs it accounted for."""
     source = report["sources"].get(check["name"], "")
@@ -1067,13 +1102,7 @@ def render_failing_check(report: dict, check: Check, verbose: bool) -> set[str]:
         render_log_tail(report, check, source, verbose)
     else:
         print(f"FAIL  {check['name']}  [{check['status']}]  ({source})")
-        for verdict in matched:
-            lane = verdict.get("lane", "?")
-            if slug(lane) == slug(check["name"]):
-                render_verdict(verdict, verbose, pad="  ")
-            else:
-                print(f"  {lane}  [{verdict.get('status', '?')}]")
-                render_verdict(verdict, verbose, pad="    ")
+        render_matched(check, matched, verbose)
     steps = red_steps_by_job(report["checks"]).get(check["job_id"] or 0, [])
     if steps:
         print(f"  red steps: {', '.join(steps)}")
@@ -1083,12 +1112,29 @@ def render_failing_check(report: dict, check: Check, verbose: bool) -> set[str]:
     return {slug(v.get("lane", "")) for v in matching_failing_verdicts(check, report["verdicts"])}
 
 
+def early_failures(report: dict) -> list[Check]:
+    """Every still-running check that has already uploaded a failing verdict."""
+    return [
+        c
+        for c in report["checks"]
+        if c["status"] == "pending" and explaining_verdicts(c, report["verdicts"])
+    ]
+
+
 def render_failures(report: dict, verbose: bool) -> None:
     printed: set[str] = set()
     covered = covered_steps(report["checks"])
     for check in report["checks"]:
         if check["status"] in FAILING and check["name"] not in covered:
             printed |= render_failing_check(report, check, verbose)
+
+    for check in early_failures(report):
+        print(f"FAIL  {check['name']}  [still running — verdict uploaded the moment it failed]")
+        render_matched(check, explaining_verdicts(check, report["verdicts"]), verbose)
+        print()
+        printed |= {
+            slug(v.get("lane", "")) for v in matching_failing_verdicts(check, report["verdicts"])
+        }
 
     for verdict in report["verdicts"]:
         if verdict.get("status") in VERDICT_BAD and slug(verdict.get("lane", "")) not in printed:
@@ -1099,7 +1145,10 @@ def render_failures(report: dict, verbose: bool) -> None:
 
 
 def render_pending(report: dict) -> None:
-    pending = [c["name"] for c in report["checks"] if c["status"] == "pending"]
+    early = {c["name"] for c in early_failures(report)}
+    pending = [
+        c["name"] for c in report["checks"] if c["status"] == "pending" and c["name"] not in early
+    ]
     for name in pending:
         print(f"PEND  {name}")
     if pending:
@@ -1319,7 +1368,8 @@ def snapshot_once(repo: Repo, pr_number: int, branch: str, with_stack: bool) -> 
         "durationMs": int((time.monotonic() - t0) * 1000),
     }
     report["advice"] = collect_advice(report, branch)
-    red = counts["failed"] or counts["error"] or counts["timeout"]
+    report["early_failures"] = [c["name"] for c in early_failures(report)]
+    red = counts["failed"] or counts["error"] or counts["timeout"] or report["early_failures"]
     return report, (1 if (red or pr_meta["mergeable"] == "CONFLICTING") else 0)
 
 

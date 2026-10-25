@@ -371,6 +371,7 @@ jobs:
       - name: Plan the mutation shards (one per changed module)
         id: plan
         if: steps.affected.outputs.has_python == 'true'
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         env:
           GAIA_PR_BASE: ${{ steps.base.outputs.base_ref }}
         run: python3 scripts/ci/mutation.py plan
@@ -451,7 +452,7 @@ jobs:
         id: biome
         continue-on-error: true
         if: needs.detect.outputs.has_typescript == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'biome')
-        shell: bash
+        shell: python3 scripts/ci/verdict.py check -- bash --noprofile --norc -eo pipefail {0}
         run: |
           # shellcheck source=scripts/ci/lib/log.sh
           source scripts/ci/lib/log.sh
@@ -495,40 +496,52 @@ jobs:
           fi
           ci_verdict --lane lint-node/biome --status pass \
             --summary "biome: 0 errors, and no dead biome-ignore"
+      - &upload-verdict-so-far
+        name: Upload the verdicts so far (a check above failed)
+        if: always() && env.GAIA_VERDICT_PENDING == '1'
+        uses: ./.github/actions/upload-verdict
+        with:
+          status: ${{ job.status }}
+          name: ${{ github.job }}
+          partial: "true"
 
       # syncpack, manypkg and npm-package-json-lint name a PACKAGE, not a line,
-      # so each tees its output and `collect --fallback` pins it to the manifest
-      # the reader has to open anyway. All three always run; PIPESTATUS because
-      # a `| tee` pipeline's own status is tee's.
+      # so `check --fallback` pins their output to the manifest the reader has
+      # to open anyway. All three always run.
       - name: deps — workspace packages agree on versions, topology and package.json shape
         id: deps
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check --fallback package.json -- bash -e {0}
         if: needs.detect.outputs.has_typescript == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'deps')
         run: |
           rc=0
           echo "::group::syncpack lint"
-          pnpm exec syncpack lint --config config/.syncpackrc.json 2>&1 | tee "$RUNNER_TEMP/syncpack.out"; [ "${PIPESTATUS[0]}" -eq 0 ] || { rc=1; python3 scripts/ci/verdict.py collect --into "$RUNNER_TEMP/findings.jsonl" --fallback package.json < "$RUNNER_TEMP/syncpack.out"; }
+          pnpm exec syncpack lint --config config/.syncpackrc.json || rc=1
           echo "::endgroup::"
           echo "::group::manypkg check"
-          pnpm exec manypkg check 2>&1 | tee "$RUNNER_TEMP/manypkg.out"; [ "${PIPESTATUS[0]}" -eq 0 ] || { rc=1; python3 scripts/ci/verdict.py collect --into "$RUNNER_TEMP/findings.jsonl" --fallback pnpm-workspace.yaml < "$RUNNER_TEMP/manypkg.out"; }
+          pnpm exec manypkg check || rc=1
           echo "::endgroup::"
           echo "::group::package.json lint"
-          pnpm run quality:pkg-json 2>&1 | tee "$RUNNER_TEMP/pkg-json.out"; [ "${PIPESTATUS[0]}" -eq 0 ] || { rc=1; python3 scripts/ci/verdict.py collect --into "$RUNNER_TEMP/findings.jsonl" --fallback package.json < "$RUNNER_TEMP/pkg-json.out"; }
+          pnpm run quality:pkg-json || rc=1
           echo "::endgroup::"
           exit $rc
+      - *upload-verdict-so-far
 
       - name: circular — no circular imports (Biome)
         id: circular
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: needs.detect.outputs.has_typescript == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'circular')
         run: |
           echo "::group::biome lint --only=suspicious/noImportCycles"
           pnpm run quality:circular
           echo "::endgroup::"
+      - *upload-verdict-so-far
 
       - name: file-size — per-file line count (default 400, relaxed 700, hard cap 1200)
         id: file-size
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: needs.detect.outputs.has_typescript == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'file-size')
         run: |
           FILES=$(scripts/ci/changes.sh files ts tsx js jsx mjs cjs)
@@ -539,10 +552,12 @@ jobs:
           else
             CHANGED_FILES="$FILES" node scripts/ci/checks.mjs file-sizes
           fi
+      - *upload-verdict-so-far
 
       - name: types-location — types live in dedicated *.types.ts files
         id: types-location
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: needs.detect.outputs.has_typescript == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'types-location')
         run: |
           FILES=$(scripts/ci/changes.sh files ts tsx)
@@ -553,10 +568,12 @@ jobs:
           else
             CHANGED_FILES="$FILES" node scripts/ci/checks.mjs types-location --enforce
           fi
+      - *upload-verdict-so-far
 
       - name: doc-comments — JSDoc and line comments state the contract
         id: doc-comments
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: needs.detect.outputs.has_js_sources == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'doc-comments')
         run: |
           FILES=$(scripts/ci/changes.sh files ts tsx js jsx mjs cjs)
@@ -567,10 +584,12 @@ jobs:
           else
             CHANGED_FILES="$FILES" node scripts/ci/checks.mjs doc-comments
           fi
+      - *upload-verdict-so-far
 
       - name: components-per-file — at most 2 React components per file
         id: components-per-file
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: needs.detect.outputs.has_typescript == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'components-per-file')
         run: |
           FILES=$(scripts/ci/changes.sh files tsx)
@@ -581,10 +600,12 @@ jobs:
           else
             CHANGED_FILES="$FILES" node scripts/ci/checks.mjs components-per-file
           fi
+      - *upload-verdict-so-far
 
       - name: package-hygiene — publint and are-the-types-wrong on packages/cli
         id: package-hygiene
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: needs.detect.outputs.has_typescript == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'package-hygiene')
         run: |
           echo "::group::publint packages/cli"
@@ -601,6 +622,7 @@ jobs:
             echo "attw: OK (packages/cli is a CLI binary — no exported types is expected)"
           fi
           exit $rc
+      - *upload-verdict-so-far
 
       # Never reused: an advisory is published without any commit. On a PR and
       # in the merge queue only an advisory in a version the change added
@@ -608,14 +630,17 @@ jobs:
       - name: pnpm-audit — production dependencies, high and above
         id: pnpm-audit
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: needs.detect.outputs.has_typescript == 'true'
         env:
           AUDIT_SCOPE: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'introduced' || 'all' }}
         run: bash scripts/ci/audit.sh pnpm
+      - *upload-verdict-so-far
 
       - name: type-check — strict tsrs across every TS workspace
         id: type-check
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: needs.detect.outputs.has_typescript == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'type-check')
         run: |
           echo "::group::nx type-check"
@@ -627,13 +652,16 @@ jobs:
             pnpm exec nx run-many -t type-check --projects=web,desktop,mobile,cli,bot-discord,bot-slack,bot-telegram,bot-whatsapp,bot-imessage
           fi
           echo "::endgroup::"
+      - *upload-verdict-so-far
 
       - name: duplicates — copy-paste detection (jscpd, fails over 3% on changed lines)
         id: duplicates
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: steps.jscpd-start.outcome == 'success'
         timeout-minutes: 10
         run: python3 scripts/ci/runner.py join duplicates
+      - *upload-verdict-so-far
 
       # Not on a dispatch: a branch head an open PR shares would get its
       # statuses overwritten. The job summary still lists every check.
@@ -660,7 +688,7 @@ jobs:
       - name: Verdict (every check above ran; this fails if any of them failed)
         if: always()
         env: *lint-node-checks
-        run: python3 scripts/ci/verdict.py step-outcomes --lane lint-node --findings "$RUNNER_TEMP/findings.jsonl" --reused "$REUSED" $CHECKS
+        run: python3 scripts/ci/verdict.py step-outcomes --lane lint-node --reused "$REUSED" $CHECKS
       - name: Upload the verdict
         if: always()
         uses: ./.github/actions/upload-verdict
@@ -705,6 +733,7 @@ jobs:
       - name: ruff — ruff check + format (pinned to the uv.lock ruff)
         id: ruff
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: needs.detect.outputs.has_python_sources == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'ruff')
         # Pinned to the uv.lock ruff version — bump both together. Unpinned, a
         # ruff release can flip this check red with zero code changes.
@@ -723,48 +752,60 @@ jobs:
             uvx --no-build ruff@0.14.13 format --check $FILES
           fi
           echo "::endgroup::"
+      - *upload-verdict-so-far
 
       - name: custom-lints — route contract, service classes, wide events, docstring + comment content
         id: custom-lints
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: needs.detect.outputs.has_python_sources == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'custom-lints')
         # apps/api/tests is in scope because the docstring/comment rules opt
         # into the test tree (INCLUDES_TESTS); the other rules still skip it.
         run: python3 tools/lints/run.py apps/api/app apps/api/tests
+      - *upload-verdict-so-far
 
       - name: lint-imports — app.constants / app.config / app.utils stay leaves
         id: lint-imports
         continue-on-error: true
+        shell: python3 ../../scripts/ci/verdict.py check --path-prefix apps/api/ -- bash -e {0}
         if: needs.detect.outputs.has_python_sources == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'lint-imports')
         # Contracts live in apps/api/pyproject.toml [tool.importlinter].
         # --no-cache is load-bearing: grimp's on-disk cache drops function-scope
         # imports, so a cached run analyses a subset of the graph.
         working-directory: apps/api
         run: uvx --no-build --from import-linter==2.6 lint-imports --no-cache
+      - *upload-verdict-so-far
 
       - name: ignore-whys — every ruff/mypy escape hatch carries a why
         id: ignore-whys
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: needs.detect.outputs.has_python_sources == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'ignore-whys')
         run: python3 tools/lints/check_ignore_whys.py
+      - *upload-verdict-so-far
 
       - name: plr-complexity — touch a grandfathered file, fix it now
         id: plr-complexity
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: needs.detect.outputs.has_python_sources == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'plr-complexity')
         # PLR0911/0912/0913/0915 are in ruff's ignore list so ruff doesn't
         # double-report them; this ratchet is what enforces them.
         run: python3 tools/lints/check_plr_complexity.py
+      - *upload-verdict-so-far
 
       - name: typed-boundaries — touch a grandfathered file, fix it now
         id: typed-boundaries
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: needs.detect.outputs.has_python_sources == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'typed-boundaries')
         run: python3 tools/lints/check_typed_boundaries.py
+      - *upload-verdict-so-far
 
       - name: xenon — complexity (max-absolute F, max-modules E, max-average B)
         id: xenon
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: needs.detect.outputs.has_python_sources == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'xenon')
         run: |
           FILES=$(scripts/ci/changes.sh py-source)
@@ -786,10 +827,12 @@ jobs:
               --max-average B \
               $FILES
           fi
+      - *upload-verdict-so-far
 
       - name: interrogate — docstring coverage on the public API surface
         id: interrogate
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: needs.detect.outputs.has_python_sources == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'interrogate')
         run: |
           FILES=$(scripts/ci/changes.sh py-source)
@@ -800,20 +843,23 @@ jobs:
           else
             uvx interrogate==1.7.0 -c pyproject.toml $FILES
           fi
+      - *upload-verdict-so-far
 
       - name: bandit — security scan (zero-warning policy)
         id: bandit
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: needs.detect.outputs.has_python_sources == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'bandit')
         run: |
           FILES=$(scripts/ci/changes.sh py-source)
           if [ "$FILES" = "__FULL__" ]; then
-            uvx --no-build bandit@1.9.4 -c pyproject.toml -r apps/api/app apps/voice-agent/src libs/shared/py --severity-level low --confidence-level low 2>&1 | tee "$RUNNER_TEMP/bandit.out"; _rc=${PIPESTATUS[0]}; python3 scripts/ci/verdict.py collect --into "$RUNNER_TEMP/findings.jsonl" < "$RUNNER_TEMP/bandit.out"; test $_rc -eq 0
+            uvx --no-build bandit@1.9.4 -c pyproject.toml -r apps/api/app apps/voice-agent/src libs/shared/py --severity-level low --confidence-level low
           elif [ -z "$FILES" ]; then
             echo "No matching changed files — skipping."
           else
-            uvx --no-build bandit@1.9.4 -c pyproject.toml $FILES --severity-level low --confidence-level low 2>&1 | tee "$RUNNER_TEMP/bandit.out"; _rc=${PIPESTATUS[0]}; python3 scripts/ci/verdict.py collect --into "$RUNNER_TEMP/findings.jsonl" < "$RUNNER_TEMP/bandit.out"; test $_rc -eq 0
+            uvx --no-build bandit@1.9.4 -c pyproject.toml $FILES --severity-level low --confidence-level low
           fi
+      - *upload-verdict-so-far
 
       # One cache dir per runner instance, keyed by RUNNER_NAME: two mypy runs
       # from different trees writing one cache leave a meta/data pair that reads
@@ -841,6 +887,7 @@ jobs:
       - name: mypy — api + voice-agent + shared + lint tooling + CI scripts (staged-strict)
         id: mypy
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: needs.detect.outputs.has_python_sources == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'mypy')
         run: |
           echo "::group::mypy"
@@ -889,6 +936,7 @@ jobs:
             MYPYPATH=scripts/ci:scripts/ci/tests uv run --project apps/api --frozen --group backend --group dev mypy --explicit-package-bases scripts/ci --ignore-missing-imports --cache-dir "${MYPY_CACHE_DIR:-.mypy_cache}/scripts-ci"
           fi
           echo "::endgroup::"
+      - *upload-verdict-so-far
 
       # Baseline-free governance: every inline suppression carries a same-line
       # why, every escape hatch still masks a live finding, and hooks pin the
@@ -896,6 +944,7 @@ jobs:
       - name: suppression-hygiene — every noqa / type-ignore / biome-ignore has a why
         id: suppression-hygiene
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: ${{ !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'suppression-hygiene') }}
         run: |
           FILES=$(scripts/ci/changes.sh files py toml lock ts tsx js jsx mjs cjs json jsonc css yaml)
@@ -904,10 +953,12 @@ jobs:
             exit 0
           fi
           python3 tools/lints/check_suppressions.py
+      - *upload-verdict-so-far
 
       - name: ignore-staleness — per-file-ignores entries still mask a finding
         id: ignore-staleness
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: ${{ !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'ignore-staleness') }}
         run: |
           FILES=$(scripts/ci/changes.sh files py toml lock)
@@ -916,10 +967,12 @@ jobs:
             exit 0
           fi
           python3 tools/lints/check_ignore_staleness.py
+      - *upload-verdict-so-far
 
       - name: tool-pins — hooks and CI run the same tool versions
         id: tool-pins
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: ${{ !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'tool-pins') }}
         # check_tool_pins reads the workflow files themselves, so this is the
         # one check that must NOT drop yml from its scoping.
@@ -930,14 +983,17 @@ jobs:
             exit 0
           fi
           python3 tools/lints/check_tool_pins.py
+      - *upload-verdict-so-far
 
       # Every tracked uv.lock, nested standalone projects included, must still
       # resolve from its pyproject.toml; `uv sync --frozen` would not notice.
       - name: uv-lock — every uv.lock still resolves from its pyproject.toml
         id: uv-lock
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: ${{ !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'uv-lock') }}
         run: bash scripts/ci/audit.sh uv-lock
+      - *upload-verdict-so-far
 
       # Grafana's alert rules are managed objects, not Prometheus rule files; the
       # extractor derives a rule file from the single source of truth, then pint
@@ -948,11 +1004,14 @@ jobs:
       - name: Install pint + promtool (pinned release binaries, same versions prod runs)
         id: alert-rule-tools
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: needs.detect.outputs.has_alert_rules == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'alert-rules')
         run: bash scripts/ci/audit.sh alert-rule-tools
+      - *upload-verdict-so-far
       - name: alert-rules — extract, pint lint, promtool check and test
         id: alert-rules
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: needs.detect.outputs.has_alert_rules == 'true' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'alert-rules')
         run: |
           echo "::group::extract (every rule matches the A/B/C shape and has a test)"
@@ -966,6 +1025,7 @@ jobs:
           promtool check rules tools/alert-rules/gaia-rules.yaml
           echo "::endgroup::"
           promtool test rules tools/alert-rules/tests/*.yaml
+      - *upload-verdict-so-far
 
       - name: Post one commit status per check
         if: ${{ always() && contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')) }}
@@ -993,7 +1053,7 @@ jobs:
       - name: Verdict (every check above ran; this fails if any of them failed)
         if: always()
         env: *lint-python-checks
-        run: python3 scripts/ci/verdict.py step-outcomes --lane lint-python --findings "$RUNNER_TEMP/findings.jsonl" --reused "$REUSED" $CHECKS
+        run: python3 scripts/ci/verdict.py step-outcomes --lane lint-python --reused "$REUSED" $CHECKS
       - name: Upload the verdict
         if: always()
         uses: ./.github/actions/upload-verdict
@@ -1047,24 +1107,32 @@ jobs:
       - name: api-schema — openapi.json and the generated TypeScript types match the routes
         id: api-schema
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: (needs.detect.outputs.has_python == 'true' || needs.detect.outputs.has_typescript == 'true' || needs.detect.outputs.has_api_schema == 'true') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'api-schema')
         run: node scripts/ci/checks.mjs api-schema
+      - *upload-verdict-so-far
       - name: analytics-catalog — the event catalog's generated types match the catalog
         id: analytics-catalog
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: (needs.detect.outputs.has_python == 'true' || needs.detect.outputs.has_typescript == 'true' || needs.detect.outputs.has_api_schema == 'true') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'analytics-catalog')
         run: node scripts/ci/checks.mjs analytics-catalog
+      - *upload-verdict-so-far
       - name: cli-config-schema — the CLI's config schema matches the settings
         id: cli-config-schema
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: (needs.detect.outputs.has_python == 'true' || needs.detect.outputs.has_typescript == 'true' || needs.detect.outputs.has_api_schema == 'true') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'cli-config-schema')
         run: node scripts/ci/checks.mjs cli-config-schema
+      - *upload-verdict-so-far
       # has_deploy_templates: the compose file and Caddyfile belong to no nx project.
       - name: deploy-templates — the one-click deploy templates match the self-host compose
         id: deploy-templates
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: (needs.detect.outputs.has_python == 'true' || needs.detect.outputs.has_typescript == 'true' || needs.detect.outputs.has_api_schema == 'true' || needs.detect.outputs.has_deploy_templates == 'true') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'deploy-templates')
         run: node scripts/ci/checks.mjs deploy-templates
+      - *upload-verdict-so-far
 
       # Every check from here to its join below only reads the tree (the four
       # above regenerate tracked files in place, so they run first and alone).
@@ -1187,6 +1255,11 @@ jobs:
           # The default per-finding summary blows GitHub's 1024k step-summary
           # cap on a history-touching diff; full results are in the sarif.
           GITLEAKS_ENABLE_SUMMARY: false
+      # The action writes results.sarif in the workspace; each leak is a finding.
+      - name: gitleaks — read its findings into the verdict
+        if: always() && steps.gitleaks.outcome == 'failure'
+        run: python3 scripts/ci/verdict.py sarif --lane lint-mixed/gitleaks results.sarif
+      - *upload-verdict-so-far
 
       # Reads the LIVE PostHog project against the event catalog and
       # config/posthog/. Never reused: a dashboard edit can break it between
@@ -1196,12 +1269,14 @@ jobs:
       - name: Sync the live PostHog actions and loop alert to the merged files
         id: analytics-sync
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: needs.detect.outputs.has_analytics == 'true' && github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
         env:
           POSTHOG_PERSONAL_API_KEY: ${{ secrets.POSTHOG_PERSONAL_API_KEY }}
         run: |
           python3 scripts/ci/analytics.py sync-actions --apply
           python3 scripts/ci/analytics.py sync-loop-alert --apply
+      - *upload-verdict-so-far
       - name: Read the files the live PostHog project is synced to
         continue-on-error: true
         if: needs.detect.outputs.has_analytics == 'true' && github.event_name != 'push' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && github.actor != 'dependabot[bot]'
@@ -1214,67 +1289,87 @@ jobs:
       - name: analytics-check — PostHog insights, settings and actions match the catalog
         id: analytics-check
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: needs.detect.outputs.has_analytics == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && github.actor != 'dependabot[bot]'
         env:
           POSTHOG_PERSONAL_API_KEY: ${{ secrets.POSTHOG_PERSONAL_API_KEY }}
           LIVE: ${{ github.event_name != 'push' && runner.temp || '' }}
         run: python3 scripts/ci/analytics.py check ${LIVE:+--live-catalog "$LIVE/live-catalog.json" --live-actions "$LIVE/live-actions.json"}
+      - *upload-verdict-so-far
 
       # The background checks, each reported in its own step.
       - name: api-schema-types — no hand-written twin of an API schema type
         id: api-schema-types
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: steps.api-schema-types-start.outcome == 'success'
         timeout-minutes: 20
         run: python3 scripts/ci/runner.py join api-schema-types
+      - *upload-verdict-so-far
       - name: observability-evlog-tests — the observability scanners' own tests
         id: observability-evlog-tests
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: steps.observability-evlog-tests-start.outcome == 'success'
         timeout-minutes: 20
         run: python3 scripts/ci/runner.py join observability-evlog-tests
+      - *upload-verdict-so-far
       - name: observability-map — full wide-event score, API + voice-agent + bots
         id: observability-map
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: steps.observability-map-start.outcome == 'success'
         timeout-minutes: 20
         run: python3 scripts/ci/runner.py join observability-map
+      - *upload-verdict-so-far
       - name: observability-ratchet — no changed Python file scores below its merge-base
         id: observability-ratchet
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: steps.observability-ratchet-start.outcome == 'success'
         timeout-minutes: 20
         run: python3 scripts/ci/runner.py join observability-ratchet
+      - *upload-verdict-so-far
       - name: observability-bots — the bots surface stays at 100
         id: observability-bots
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: steps.observability-bots-start.outcome == 'success'
         timeout-minutes: 20
         run: python3 scripts/ci/runner.py join observability-bots
+      - *upload-verdict-so-far
       - name: wide-event-conformance — wide events have one shape across Python and TypeScript
         id: wide-event-conformance
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: steps.wide-event-conformance-start.outcome == 'success'
         timeout-minutes: 20
         run: python3 scripts/ci/runner.py join wide-event-conformance
+      - *upload-verdict-so-far
       - name: dead-code — knip + vulture, strict
         id: dead-code
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: steps.dead-code-start.outcome == 'success'
         timeout-minutes: 20
         run: python3 scripts/ci/runner.py join dead-code
+      - *upload-verdict-so-far
       - name: harness-tests — tools/lints, tools/llm-stub, scripts/ci and scripts/dev
         id: harness-tests
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: steps.harness-tests-start.outcome == 'success'
         timeout-minutes: 20
         run: python3 scripts/ci/runner.py join harness-tests
+      - *upload-verdict-so-far
       - name: go-connect — vet, test and cross-compile tools/gaia-connect
         id: go-connect
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: steps.go-connect-start.outcome == 'success'
         timeout-minutes: 20
         run: python3 scripts/ci/runner.py join go-connect
+      - *upload-verdict-so-far
 
       - name: Post one commit status per check
         if: ${{ always() && contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')) }}
@@ -1303,7 +1398,7 @@ jobs:
       - name: Verdict (every check above ran; this fails if any of them failed)
         if: always()
         env: *lint-mixed-checks
-        run: python3 scripts/ci/verdict.py step-outcomes --lane lint-mixed --findings "$RUNNER_TEMP/findings.jsonl" --reused "$REUSED" $CHECKS
+        run: python3 scripts/ci/verdict.py step-outcomes --lane lint-mixed --reused "$REUSED" $CHECKS
       - name: Upload the verdict
         if: always()
         uses: ./.github/actions/upload-verdict
@@ -1345,15 +1440,19 @@ jobs:
       - name: import-cost — import cost of the base layers (trend; not gating yet)
         id: import-cost
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         run: python3 tools/lints/check_import_cost.py --report
+      - *upload-verdict-so-far
       # In the merge queue only an advisory in a version the change added
       # fails; master fails on any (scripts/ci/audit.sh, AUDIT_SCOPE).
       - name: pip-audit — dependency CVEs
         id: pip-audit
         continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         env:
           AUDIT_SCOPE: ${{ github.event_name == 'merge_group' && 'introduced' || 'all' }}
         run: bash scripts/ci/audit.sh pip
+      - *upload-verdict-so-far
       - name: Post one commit status per check
         if: ${{ always() && contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')) }}
         env: &python-audit-checks
@@ -1412,7 +1511,7 @@ jobs:
         # pipefail, so `cmd | tee` swallowed the exit code. The inner `bash -c`
         # needs its own `-o pipefail`: a child shell does not inherit it, and
         # without it `nx | tail` reported a failed web build as a pass.
-        shell: bash
+        shell: python3 scripts/ci/verdict.py check -- bash --noprofile --norc -eo pipefail {0}
         env:
           AFFECTED_TS_PROJECTS: ${{ needs.detect.outputs.typescript_projects }}
           NX_PARALLEL: ${{ steps.par.outputs.nx }}
@@ -1429,9 +1528,7 @@ jobs:
           # queues against the box's core budget instead of thrashing the
           # concurrent lanes; the wait is BEFORE /usr/bin/time. No-op off the box.
           python3 scripts/ci/runner.py with-slots "$NX_PARALLEL" -- /usr/bin/time -v bash -o pipefail -c 'pnpm exec nx run-many -t build -p "$AFFECTED_TS_PROJECTS" --parallel="$NX_PARALLEL" --output-style=stream 2>&1 | tail -n 60' 2>&1 | tee "$RUNNER_TEMP/build.time"
-      - name: Read the build's own last error lines into the verdict
-        if: steps.build.outcome == 'failure'
-        run: python3 scripts/ci/verdict.py collect --into "$RUNNER_TEMP/findings.jsonl" --fallback nx.json < "$RUNNER_TEMP/build.time"
+      - *upload-verdict-so-far
       - name: test-typescript — vitest across every affected TS project
         id: test-typescript
         continue-on-error: true
@@ -1442,11 +1539,12 @@ jobs:
         # FAIL block and summary. with-slots for the same reason as the build:
         # a jsdom render that takes 137 ms idle blew vitest's 5 s timeout on
         # the loaded box.
-        shell: bash
+        shell: python3 scripts/ci/verdict.py check -- bash --noprofile --norc -eo pipefail {0}
         env:
           AFFECTED_TS_PROJECTS: ${{ needs.detect.outputs.typescript_projects }}
           NX_PARALLEL: ${{ steps.par.outputs.nx }}
         run: python3 scripts/ci/runner.py with-slots "$NX_PARALLEL" -- /usr/bin/time -v bash -c 'pnpm exec nx run-many -t test -p "$AFFECTED_TS_PROJECTS" --parallel="$NX_PARALLEL" --output-style=stream' 2>&1 | tee "$RUNNER_TEMP/tstest.time"
+      - *upload-verdict-so-far
       - name: Post one commit status per check
         if: ${{ always() && contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')) }}
         env: &ts-build-test-checks
@@ -1459,7 +1557,7 @@ jobs:
       - name: Verdict (build and tests ran; this fails if either failed)
         if: always()
         env: *ts-build-test-checks
-        run: python3 scripts/ci/verdict.py step-outcomes --lane ts-build-test --findings "$RUNNER_TEMP/findings.jsonl" $CHECKS
+        run: python3 scripts/ci/verdict.py step-outcomes --lane ts-build-test $CHECKS
       - name: Upload the verdict
         if: always()
         uses: ./.github/actions/upload-verdict
@@ -1497,7 +1595,11 @@ jobs:
         if: needs.detect.outputs.has_python == 'true'
         uses: docker://semgrep/semgrep@sha256:b68f9b68483955b85042dac7b4533757779625a02dcf91e470da4c2df1b430be # v1.145.0
         with:
-          args: semgrep scan --config tools/semgrep/p-python.yaml apps/api/app --error --metrics=off
+          args: semgrep scan --config tools/semgrep/p-python.yaml apps/api/app --error --metrics=off --sarif-output=semgrep.sarif
+      - name: semgrep — read its findings into the verdict
+        if: always() && steps.semgrep.outcome == 'failure'
+        run: python3 scripts/ci/verdict.py sarif --lane scan/semgrep semgrep.sarif
+      - *upload-verdict-so-far
       # Self-hosted keeps the vuln DB on local disk, one dir per runner
       # instance (trivy refuses concurrent use of one cache dir), and setup.sh
       # installs the pinned trivy; GitHub-hosted round-trips it through the
@@ -1537,6 +1639,7 @@ jobs:
           # change; keep advisory until that PR merges, then flip to exit-code:1.
           exit-code: "0"
           ignore-unfixed: false
+      - *upload-verdict-so-far
       - name: Post one commit status per check
         if: ${{ always() && contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')) }}
         env: &scan-checks
@@ -1701,6 +1804,15 @@ jobs:
           # The browser slice keeps its own share everywhere.
           XDIST_N: ${{ env.SLICE_SERIAL == 'true' && '0' || ((runner.environment == 'self-hosted' || env.SLICE_NAME == 'browser') && env.SLICE_WORKERS || steps.par.outputs.py) }}
         run: bash scripts/ci/pytest.sh slice
+      # Before the suites below and the teardown: a red slice is readable now.
+      - name: Upload the verdict so far (a test failed)
+        if: always() && env.GAIA_VERDICT_PENDING == '1'
+        uses: ./.github/actions/upload-verdict
+        with:
+          status: ${{ job.status }}
+          name: test-python-${{ matrix.slice }}
+          lane: test-python/${{ matrix.slice }}
+          partial: "true"
       # The suites a slice runs after its own — `after` in test-slices.json.
       - name: gaia-shared tests
         if: contains(env.SLICE_AFTER, 'shared-suite')
@@ -1817,7 +1929,9 @@ jobs:
           path: apps/api
           merge-multiple: true
       - name: Combine and gate (80%)
+        id: combine
         working-directory: apps/api
+        shell: python3 ../../scripts/ci/verdict.py check --path-prefix apps/api/ -- bash -e {0}
         env:
           FAIL_UNDER: "80"
         run: |
@@ -1873,14 +1987,19 @@ jobs:
           BASE_BRANCH: ${{ needs.detect.outputs.base_ref }}
         run: bash scripts/ci/changes.sh docker-inputs
       - name: Playwright pin matches uv.lock
+        id: playwright-pin
         if: steps.inputs.outputs.build != 'false'
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         run: bash scripts/ci/audit.sh playwright-pin
       - name: Baked models match app/constants/memory.py
+        id: model-pin
         if: steps.inputs.outputs.build != 'false'
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         run: bash scripts/ci/audit.sh model-pin
       - name: Build api image (timed, not pushed)
+        id: build
         if: steps.inputs.outputs.build != 'false'
-        shell: bash
+        shell: python3 scripts/ci/verdict.py check -- bash --noprofile --norc -eo pipefail {0}
         env:
           # The box's persistent shared builder. Passed as --builder, never
           # `buildx use`: `use` rewrites the global default every instance shares.
@@ -1936,9 +2055,10 @@ jobs:
     strategy:
       # Every module reports: this gate's value is the complete list.
       fail-fast: false
-      # The wave size, NOT the shard count: `mutation.py plan` packs modules
-      # into up to 6 shards, so a large diff runs as 4 + 2.
-      max-parallel: 4
+      # Every shard at once (`mutation.py plan` packs at most 6). A wave of 4
+      # held shards 5-6 back a whole wave (~13 min, run 40206323992) on
+      # GitHub-hosted runners; on the box the CPU governor queues what it cannot fit.
+      max-parallel: 6
       matrix:
         shard: ${{ fromJSON(needs.detect.outputs.mutation_shards) }}
     steps:
@@ -1964,7 +2084,17 @@ jobs:
         timeout-minutes: 30
         env:
           GROUP: ${{ fromJSON(needs.detect.outputs.mutation_shard_defs)[matrix.shard].group }}
+          SHARD_LANE: mutation/shard-${{ strategy.job-index }}
         run: python3 scripts/ci/mutation.py shard
+      - name: Upload the verdicts so far (a module failed)
+        if: always() && env.GAIA_VERDICT_PENDING == '1'
+        uses: ./.github/actions/upload-verdict
+        with:
+          status: ${{ job.status }}
+          name: test-mutation-${{ strategy.job-index }}
+          lane: mutation/shard-${{ strategy.job-index }}
+          family: mutation
+          partial: "true"
       # Only the services shards took a namespace, and only they hand it back:
       # releasing a lane a shard never claimed is a teardown error.
       - name: Release the test services
@@ -2116,7 +2246,16 @@ jobs:
           # a shard cancelled before its upload cannot be spoken for by another.
           EXPECT: >-
             select-runner@result-only=${{ needs.select-runner.result }},detect=${{ needs.detect.result }},probe@result-only=${{ needs.probe.result }},lint-node=${{ needs.lint-node.result }},lint-python=${{ needs.lint-python.result }},lint-mixed=${{ needs.lint-mixed.result }},python-audit=${{ needs.python-audit.result }},ts-build-test=${{ needs.ts-build-test.result }},scan=${{ needs.scan.result }},obscura-bin=${{ needs.obscura-bin.result }},test-python=${{ needs.test-python.result }},test-python-engines@test-python/browser=${{ needs.test-python-engines.result }},coverage=${{ needs.coverage.result }},docker-image=${{ needs.docker-image.result }},test-mutation@mutation*${{ needs.detect.outputs.mutation_count }}=${{ needs.test-mutation.result }}
-        run: python3 scripts/ci/verdict.py consolidate "$RUNNER_TEMP/verdicts" --expect "$EXPECT"
+        run: python3 scripts/ci/verdict.py consolidate "$RUNNER_TEMP/verdicts" --expect "$EXPECT" --out "$RUNNER_TEMP/gate-verdict"
+      # Its own directory: the one above holds every lane's verdict, which this
+      # job does not own.
+      - name: Upload the gate's verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          status: ${{ job.status }}
+          name: quality-gate
+          path: ${{ runner.temp }}/gate-verdict
 
   # ── Master only: the docker build phase beside the checks, deploy after ──
   # A deploy parked on an environment gate nothing can release holds
