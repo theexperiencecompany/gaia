@@ -338,7 +338,13 @@ async def start_platform_connect(
 
     # Telegram manual flow (no OAuth)
     if platform == Platform.TELEGRAM.value:
-        bot_username = settings.TELEGRAM_BOT_USERNAME or "gaia_bot"
+        bot_username = settings.telegram_bot_username
+        if not bot_username:
+            raise create_error(
+                message="telegram connect is not configured",
+                fix="The instance administrator adds a Telegram bot with 'gaia bots add telegram'.",
+                status_code=501,
+            )
         return InitiatePlatformConnectResponse(
             auth_url=None,
             auth_type="manual",

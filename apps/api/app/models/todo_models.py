@@ -573,7 +573,6 @@ class TodoUpdate(BaseModel):
     observations_content: str | None = None
     log_content: str | None = None
     source_conversation_id: str | None = None
-    trigger_subscriptions: list[TriggerSubscription] | None = None
 
 
 class ProjectDocument(UserScopedDocument):

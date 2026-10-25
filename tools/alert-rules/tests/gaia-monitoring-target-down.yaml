@@ -30,7 +30,7 @@ tests:
             exp_annotations:
               description: >-
                 Part of the monitoring stack has stopped reporting, so the rules that depend on it have gone quiet rather than green. node_exporter down silently disables the host disk, inode and memory alerts; cadvisor down silently disables OOM and restart detection; blackbox_exporter down takes ChromaDB, the public API probe and all five internal health probes with it at once, which looks like three simultaneous outages when the real fault is one container. Read the job named above before believing anything that fired alongside it.
-              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-monitoring-target-down
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-monitoring-target-down
 
   - name: gaia-monitoring-target-down stays quiet when monitoring jobs are up
     interval: 1m

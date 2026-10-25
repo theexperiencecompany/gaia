@@ -406,6 +406,9 @@ def _bootstrap_loop() -> None:
 
 async def _bootstrap_needed(mount_path: Path) -> bool:
     """Whether the background mount thread should be (re)started."""
+    if settings.deployment.local_workspace:
+        log.info(f"{LogTag.STORAGE} workspace is the local volume — no JuiceFS mount")
+        return False
     if shutil.which("juicefs") is None:
         log.warning(f"{LogTag.STORAGE} CLI not found on PATH — skipping bootstrap")
         return False

@@ -7,6 +7,7 @@ import { defaultFont, getAllFontVariables } from "@/app/fonts";
 import { AgentationProvider } from "@/components/dev/AgentationProvider";
 import JsonLd from "@/components/seo/JsonLd";
 import { ChunkErrorRecovery } from "@/components/shared/ChunkErrorRecovery";
+import { prerenderedLocales } from "@/i18n/prerenderedLocales";
 import { routing } from "@/i18n/routing";
 import AnalyticsLayout from "@/layouts/AnalyticsLayout";
 import RootProviders from "@/layouts/RootProviders";
@@ -32,7 +33,7 @@ type Props = {
 };
 
 export function generateStaticParams() {
-  return routing.locales.map((locale) => ({ locale }));
+  return prerenderedLocales().map((locale) => ({ locale }));
 }
 
 export async function generateMetadata({

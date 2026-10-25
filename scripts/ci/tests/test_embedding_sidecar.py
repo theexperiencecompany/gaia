@@ -92,7 +92,9 @@ def make_env(tmp_path: Path, port: int, uv_stub: str = UV_STUB, **extra: str) ->
     return env
 
 
-def run(tmp_path: Path, port: int, *args: str, uv_stub: str = UV_STUB, **extra: str):
+def run(
+    tmp_path: Path, port: int, *args: str, uv_stub: str = UV_STUB, **extra: str
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["bash", str(SCRIPT), *args],
         env=make_env(tmp_path, port, uv_stub, **extra),

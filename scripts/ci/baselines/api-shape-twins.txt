@@ -36,7 +36,7 @@ apps/mobile/src/features/chat/tool-data/cards/calendar-options-card.tsx:SameDayE
 apps/mobile/src/features/chat/tool-data/cards/chart-card.tsx:ChartDisplayData=SupportRequestCreate
 apps/mobile/src/features/chat/tool-data/cards/connection-status-card.tsx:ConnectionStatusData=IntegrationSuccessResponse
 apps/mobile/src/features/chat/tool-data/cards/email-fetch-card.tsx:EmailFetchItem=GmailMessageSummary
-apps/mobile/src/features/chat/tool-data/cards/integration-list-card.tsx:SuggestedIntegration=MyIntegrationItem
+apps/mobile/src/features/chat/tool-data/cards/integration-list-card.tsx:SuggestedIntegration=IntegrationConfigItem
 apps/mobile/src/features/chat/tool-data/cards/notification-card.tsx:NotificationActionItem=NotificationAction
 apps/mobile/src/features/chat/tool-data/cards/support-ticket-card.tsx:SupportResponse=SupportRequestSubmissionResponse
 apps/mobile/src/features/chat/tool-data/cards/support-ticket-card.tsx:SupportTicketData=SupportRequestCreate
@@ -89,7 +89,7 @@ apps/web/src/features/integrations/data/combosData.ts:IntegrationCombo=Integrati
 apps/web/src/features/integrations/hooks/useBearerTokenModal.ts:BearerConnectResult=AddIntegrationResponse
 apps/web/src/features/integrations/types/index.ts:Integration=IntegrationConfigItem
 apps/web/src/features/integrations/types/index.ts:PublicIntegrationResponse=PublicIntegrationDetailResponse
-apps/web/src/features/integrations/types/index.ts:SuggestedIntegration=MyIntegrationItem
+apps/web/src/features/integrations/types/index.ts:SuggestedIntegration=IntegrationConfigItem
 apps/web/src/features/landing/components/demo/constants.ts:DummyIntegration=DeviceResponse
 apps/web/src/features/landing/components/demo/founders-demo/types.ts:ChatMessage=ReplyToMessageData
 apps/web/src/features/landing/components/demo/integrations-demo/integrationsDemoConstants.ts:DemoIntegration=MyIntegrationItem
@@ -99,6 +99,7 @@ apps/web/src/features/landing/components/demo/todos-demo/todosDemoConstants.type
 apps/web/src/features/landing/components/demo/todos-demo/todosDemoConstants.types.ts:DemoWorkflowStep=PublicWorkflowStep
 apps/web/src/features/landing/components/features/demos/MCPSupportDemo.tsx:Tool=IntegrationConfigItem
 apps/web/src/features/landing/components/features/demos/SkillsDemo.tsx:DemoSkill=MyIntegrationItem
+apps/web/src/features/landing/components/sections/ComparisonGrid.tsx:CompetitorInfo=ComposioCatalogEntry
 apps/web/src/features/landing/data/featuresData.types.ts:FeatureBenefit=CreateWorkflowRequest
 apps/web/src/features/landing/data/featuresData.types.ts:FeatureData=IntegrationContent
 apps/web/src/features/mail/components/EmailComposeCard.tsx:EmailData=DraftRequest

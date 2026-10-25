@@ -109,6 +109,7 @@ export {
   PLATFORM_LIMITS,
   parseTextArgs,
 } from "./text";
+export { withTimeout } from "./timeout";
 export type {
   BotWideEventFields,
   WideEventBoundaryFields,

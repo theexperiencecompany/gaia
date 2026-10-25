@@ -5,8 +5,8 @@ import type React from "react";
 import { useState } from "react";
 
 import CodeBlock from "@/features/chat/components/code-block/CodeBlock";
+import { copyWithFeedback } from "@/lib/clipboard";
 import type { CodeData } from "@/types/features/toolDataTypes";
-
 import CodeExecutionOutput from "./CodeExecutionOutput";
 
 // recharts (~100 KB gz) is only needed when a code-execution result actually
@@ -25,8 +25,8 @@ const createCopyHandler = (
   text: string,
   setCopied: (value: boolean) => void,
 ) => {
-  return () => {
-    navigator.clipboard.writeText(text);
+  return async () => {
+    if (!(await copyWithFeedback(text))) return;
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

@@ -1,16 +1,44 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import type { SelfhostBot } from "./bots.js";
 import { CLI_VERSION } from "./version.js";
 
 export const GAIA_CONFIG_DIR = path.join(os.homedir(), ".gaia");
 export const CONFIG_PATH = path.join(GAIA_CONFIG_DIR, "config.json");
 
+/** How `gaia setup` filled apps/api/.env: prompts, or an Infisical project. */
+export type EnvMethod = "manual" | "infisical";
+
 export interface GaiaConfig {
   version: string;
   setupComplete: boolean;
-  setupMethod: "manual" | "infisical";
+  setupMethod: EnvMethod;
   repoPath: string;
+  /**
+   * Saved non-secret answers from previous runs (ports, paths). Provider
+   * keys must NEVER be persisted here — they come from flags or the web
+   * wizard only.
+   */
+  values?: Record<string, string>;
+  /**
+   * Run the local coding sandbox (docker-compose.sandbox.yml, which mounts the
+   * host Docker socket). Set by `gaia up --code-sandbox`; every later start
+   * and update keeps it until `gaia up --no-code-sandbox`.
+   */
+  codeSandbox?: boolean;
+  /**
+   * Chat bots layered on the stack (docker-compose.bot-<bot>.yml), set by
+   * `gaia bots add/remove`; every later start and update keeps them.
+   */
+  bots?: SelfhostBot[];
+  /**
+   * The .local name gaia up set up ("gaia", or "gaia-2" when another GAIA on
+   * the network holds gaia.local), so reruns keep it and a later
+   * --no-local-name, --domain or uninstall removes it. Read it with
+   * recordedLocalName: CLIs before 0.7.0-beta.9 wrote true for gaia.
+   */
+  localName?: string | true;
   createdAt: string;
   updatedAt: string;
 }
@@ -19,6 +47,13 @@ function ensureConfigDir(): void {
   if (!fs.existsSync(GAIA_CONFIG_DIR)) {
     fs.mkdirSync(GAIA_CONFIG_DIR, { recursive: true });
   }
+}
+
+/** The .local name a config records as confirmed; true marks a setup that began without one. */
+export function recordedLocalName(
+  recorded: string | true | undefined,
+): string | null {
+  return typeof recorded === "string" ? recorded : null;
 }
 
 export function readConfig(): GaiaConfig | null {

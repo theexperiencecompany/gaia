@@ -28,11 +28,9 @@ import {
   CONNECT_RELEASE_TAG,
   resolveAssetName,
 } from "../../src/commands/connect/asset.js";
-import {
-  digestForAsset,
-  ensureConnectBinary,
-} from "../../src/commands/connect/binary.js";
+import { ensureConnectBinary } from "../../src/commands/connect/binary.js";
 import { runConnectBinary } from "../../src/commands/connect/run.js";
+import { digestForAsset } from "../../src/lib/download.js";
 
 const BINARY_BYTES = Buffer.from("fake gaia-connect binary");
 const BINARY_SHA = createHash("sha256").update(BINARY_BYTES).digest("hex");
@@ -44,12 +42,7 @@ function mockRelease(bytes: Buffer, checksums: string): void {
       const body = url.endsWith("SHA256SUMS")
         ? Buffer.from(checksums)
         : Buffer.from(bytes);
-      return {
-        ok: true,
-        status: 200,
-        statusText: "OK",
-        arrayBuffer: async () => body,
-      };
+      return new Response(body);
     }),
   );
 }
@@ -106,12 +99,14 @@ describe("release layout", () => {
 describe("digestForAsset", () => {
   it("picks the line for the requested asset", () => {
     const sums = `aaa  gaia-connect-linux-amd64\nbbb  gaia-connect-darwin-arm64\n`;
-    expect(digestForAsset(sums, "gaia-connect-darwin-arm64")).toBe("bbb");
+    expect(digestForAsset(sums, "gaia-connect-darwin-arm64", "SUMS")).toBe(
+      "bbb",
+    );
   });
 
   it("throws when the asset has no entry", () => {
     expect(() =>
-      digestForAsset("aaa  other\n", "gaia-connect-linux-arm64"),
+      digestForAsset("aaa  other\n", "gaia-connect-linux-arm64", "SUMS"),
     ).toThrowError(/no entry for gaia-connect-linux-arm64/);
   });
 });

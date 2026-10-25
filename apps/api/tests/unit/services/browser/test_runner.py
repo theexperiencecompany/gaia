@@ -917,13 +917,17 @@ async def test_a_run_silent_from_its_start_gets_the_stall_note(
 
 
 async def test_steps_arriving_in_time_are_never_a_stall(monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = [0.0]
+    monkeypatch.setattr(runner_mod, "perf_counter", lambda: clock[0])
     monkeypatch.setattr(runner_mod, "_STALL_POLL_SECONDS", 0.01)
-    monkeypatch.setattr(runner_mod, "BROWSER_STALL_NOTE_AFTER_SECONDS", 0.2)
+    monkeypatch.setattr(runner_mod, "BROWSER_STALL_NOTE_AFTER_SECONDS", 5.0)
 
     async def _steady(run: _ScriptedRun) -> RunOutcome:
+        # Each gap is just under the threshold, and the run as a whole is far over it.
         for n in range(1, 6):
             run.step(n)
-            await asyncio.sleep(0.03)
+            clock[0] += 4.9
+            await asyncio.sleep(0.05)
         return RunOutcome(True, "booked")
 
     note = AsyncMock()

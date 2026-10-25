@@ -18,7 +18,7 @@ import { useQuery } from "@tanstack/react-query";
 import { type Dispatch, useCallback, useEffect, useState } from "react";
 import type { PhoneLinkTarget } from "@/components/shared/PhoneLinkModal";
 import { BOT_AUTH_COMMAND, type BotPlatform } from "@/config/botPlatforms";
-import { BOT_LINKS } from "@/features/bots/constants";
+import { useBotLinks } from "@/features/bots/hooks/useBotLinks";
 import { api } from "@/lib/api/typed";
 import { toast } from "@/lib/toast";
 import { type LinkCodeResponse, mintLinkCode } from "../api/onboardingApi";
@@ -75,6 +75,7 @@ export function useConnectPlatform(
     retry: false,
   });
   const linkCode: LinkCodeResponse | null = data ?? null;
+  const botLinks = useBotLinks();
 
   useEffect(() => {
     // Degrade to the plain bot links: the user links with /auth instead of
@@ -89,12 +90,12 @@ export function useConnectPlatform(
         setPhoneModalOpen(true);
         return;
       }
-      const url = linkCode?.links[platform] ?? BOT_LINKS[platform];
+      const url = linkCode?.links[platform] ?? botLinks?.[platform];
       if (url) window.open(url, "_blank", "noopener,noreferrer");
       dispatch({ type: "platformConnected", platform });
       onConfirmed();
     },
-    [dispatch, linkCode, onConfirmed],
+    [botLinks, dispatch, linkCode, onConfirmed],
   );
 
   const submitPhone = useCallback(

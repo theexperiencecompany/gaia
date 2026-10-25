@@ -11,6 +11,7 @@ from httpx import AsyncClient
 import pytest
 
 from app.config.settings import settings
+from app.constants.auth import WOS_SESSION_COOKIE, WOS_SESSION_MAX_AGE_SECONDS
 from app.constants.integrations import AccountConnectOutcome
 from app.constants.log_tags import LogTag
 from app.models.integration_models import IntegrationAccount
@@ -18,6 +19,7 @@ from app.services.integrations.integration_account_lifecycle import AccountConne
 from app.services.oauth.composio_callback import ConnectionCompleted, ConnectionRejected
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import IntegrationConnected
+from tests.helpers import session_set_cookie
 
 OAUTH_BASE = "/api/v1/oauth"
 FRONTEND = settings.FRONTEND_URL
@@ -113,14 +115,14 @@ class TestLoginWorkOS:
     """GET /api/v1/oauth/login/workos."""
 
     @patch("app.api.v1.endpoints.oauth.redis_cache")
-    @patch("app.api.v1.endpoints.oauth.workos")
+    @patch("app.api.v1.endpoints.oauth.get_workos_client")
     async def test_login_workos_redirect(
         self,
         mock_workos: MagicMock,
         mock_redis: MagicMock,
         client: AsyncClient,
     ):
-        mock_workos.user_management.get_authorization_url.return_value = (
+        mock_workos.return_value.user_management.get_authorization_url.return_value = (
             "https://workos.example.com/auth"
         )
         mock_redis.client = AsyncMock()
@@ -129,14 +131,14 @@ class TestLoginWorkOS:
         assert "workos.example.com" in response.headers["location"]
 
     @patch("app.api.v1.endpoints.oauth.redis_cache")
-    @patch("app.api.v1.endpoints.oauth.workos")
+    @patch("app.api.v1.endpoints.oauth.get_workos_client")
     async def test_login_workos_with_return_url(
         self,
         mock_workos: MagicMock,
         mock_redis: MagicMock,
         client: AsyncClient,
     ):
-        mock_workos.user_management.get_authorization_url.return_value = (
+        mock_workos.return_value.user_management.get_authorization_url.return_value = (
             "https://workos.example.com/auth"
         )
         mock_redis.client = AsyncMock()
@@ -156,7 +158,7 @@ class TestLoginWorkOS:
 class TestLoginWorkOSMobile:
     """GET /api/v1/oauth/login/workos/mobile."""
 
-    @patch("app.api.v1.endpoints.oauth.workos")
+    @patch("app.api.v1.endpoints.oauth.get_workos_client")
     @patch("app.api.v1.endpoints.oauth._store_mobile_redirect", new_callable=AsyncMock)
     async def test_login_mobile_returns_url(
         self,
@@ -164,7 +166,7 @@ class TestLoginWorkOSMobile:
         mock_workos: MagicMock,
         client: AsyncClient,
     ):
-        mock_workos.user_management.get_authorization_url.return_value = (
+        mock_workos.return_value.user_management.get_authorization_url.return_value = (
             "https://workos.example.com/mobile"
         )
         response = await client.get(f"{OAUTH_BASE}/login/workos/mobile")
@@ -183,7 +185,7 @@ class TestWorkOSMobileCallback:
     """GET /api/v1/oauth/workos/mobile/callback."""
 
     @patch("app.api.v1.endpoints.oauth.store_user_info", new_callable=AsyncMock)
-    @patch("app.api.v1.endpoints.oauth.workos")
+    @patch("app.api.v1.endpoints.oauth.get_workos_client")
     @patch(
         "app.api.v1.endpoints.oauth._get_and_delete_mobile_redirect",
         new_callable=AsyncMock,
@@ -196,8 +198,8 @@ class TestWorkOSMobileCallback:
         client: AsyncClient,
     ):
         mock_redirect.return_value = "gaiamobile://auth/callback"
-        mock_workos.user_management.authenticate_with_code.return_value = _mock_auth_response(
-            picture_url=PICTURE_URL
+        mock_workos.return_value.user_management.authenticate_with_code.return_value = (
+            _mock_auth_response(picture_url=PICTURE_URL)
         )
         mock_store.return_value = (MagicMock(), False)
         response = await client.get(
@@ -226,7 +228,7 @@ class TestWorkOSMobileCallback:
         assert "error=missing_code" in response.headers["location"]
 
     @patch("app.api.v1.endpoints.oauth.store_user_info", new_callable=AsyncMock)
-    @patch("app.api.v1.endpoints.oauth.workos")
+    @patch("app.api.v1.endpoints.oauth.get_workos_client")
     @patch(
         "app.api.v1.endpoints.oauth._get_and_delete_mobile_redirect",
         new_callable=AsyncMock,
@@ -239,7 +241,9 @@ class TestWorkOSMobileCallback:
         client: AsyncClient,
     ):
         mock_redirect.return_value = "gaiamobile://auth/callback"
-        mock_workos.user_management.authenticate_with_code.side_effect = Exception("boom")
+        mock_workos.return_value.user_management.authenticate_with_code.side_effect = Exception(
+            "boom"
+        )
         response = await client.get(
             f"{OAUTH_BASE}/workos/mobile/callback?code=abc&state=xyz",
             follow_redirects=False,
@@ -256,17 +260,21 @@ class TestWorkOSMobileCallback:
 class TestLoginWorkOSDesktop:
     """GET /api/v1/oauth/login/workos/desktop."""
 
-    @patch("app.api.v1.endpoints.oauth.workos")
+    @patch("app.api.v1.endpoints.oauth.get_workos_client")
     async def test_login_desktop_redirect(
         self,
         mock_workos: MagicMock,
         client: AsyncClient,
     ):
-        mock_workos.user_management.get_authorization_url.return_value = (
+        mock_workos.return_value.user_management.get_authorization_url.return_value = (
             "https://workos.example.com/desktop"
         )
         response = await client.get(f"{OAUTH_BASE}/login/workos/desktop", follow_redirects=False)
         assert response.status_code == 307
+        assert response.headers["location"] == "https://workos.example.com/desktop"
+        mock_workos.return_value.user_management.get_authorization_url.assert_called_once_with(
+            provider="authkit", redirect_uri=settings.WORKOS_DESKTOP_REDIRECT_URI
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -278,15 +286,15 @@ class TestWorkOSDesktopCallback:
     """GET /api/v1/oauth/workos/desktop/callback."""
 
     @patch("app.api.v1.endpoints.oauth.store_user_info", new_callable=AsyncMock)
-    @patch("app.api.v1.endpoints.oauth.workos")
+    @patch("app.api.v1.endpoints.oauth.get_workos_client")
     async def test_desktop_callback_success(
         self,
         mock_workos: MagicMock,
         mock_store: AsyncMock,
         client: AsyncClient,
     ):
-        mock_workos.user_management.authenticate_with_code.return_value = _mock_auth_response(
-            picture_url=PICTURE_URL
+        mock_workos.return_value.user_management.authenticate_with_code.return_value = (
+            _mock_auth_response(picture_url=PICTURE_URL)
         )
         mock_store.return_value = (MagicMock(), False)
         response = await client.get(
@@ -306,14 +314,16 @@ class TestWorkOSDesktopCallback:
         assert "error=missing_code" in response.headers["location"]
 
     @patch("app.api.v1.endpoints.oauth.store_user_info", new_callable=AsyncMock)
-    @patch("app.api.v1.endpoints.oauth.workos")
+    @patch("app.api.v1.endpoints.oauth.get_workos_client")
     async def test_desktop_callback_exception(
         self,
         mock_workos: MagicMock,
         mock_store: AsyncMock,
         client: AsyncClient,
     ):
-        mock_workos.user_management.authenticate_with_code.side_effect = Exception("boom")
+        mock_workos.return_value.user_management.authenticate_with_code.side_effect = Exception(
+            "boom"
+        )
         response = await client.get(
             f"{OAUTH_BASE}/workos/desktop/callback?code=abc",
             follow_redirects=False,
@@ -331,7 +341,7 @@ class TestWorkOSCallback:
     """GET /api/v1/oauth/workos/callback."""
 
     @patch("app.api.v1.endpoints.oauth.store_user_info", new_callable=AsyncMock)
-    @patch("app.api.v1.endpoints.oauth.workos")
+    @patch("app.api.v1.endpoints.oauth.get_workos_client")
     @patch("app.api.v1.endpoints.oauth.redis_cache")
     async def test_web_callback_success(
         self,
@@ -341,8 +351,8 @@ class TestWorkOSCallback:
         client: AsyncClient,
     ):
         mock_redis.client.get = AsyncMock(return_value=None)
-        mock_workos.user_management.authenticate_with_code.return_value = _mock_auth_response(
-            picture_url=PICTURE_URL
+        mock_workos.return_value.user_management.authenticate_with_code.return_value = (
+            _mock_auth_response(picture_url=PICTURE_URL)
         )
         mock_store.return_value = (MagicMock(), False)
         response = await client.get(
@@ -353,9 +363,35 @@ class TestWorkOSCallback:
         assert "wos_session" in response.headers.get("set-cookie", "")
         mock_store.assert_awaited_once_with(*STORED_PROFILE, auth_method="GoogleOAuth")
 
+    @patch("app.api.v1.endpoints.oauth.store_user_info", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.oauth.get_workos_client")
+    @patch("app.api.v1.endpoints.oauth.redis_cache")
+    async def test_the_login_cookie_lives_as_long_as_a_refreshed_one(
+        self,
+        mock_redis: MagicMock,
+        mock_workos: MagicMock,
+        mock_store: AsyncMock,
+        client: AsyncClient,
+    ):
+        """Regression: sign-in set a browser-session cookie while every refresh set seven days."""
+        mock_redis.client.get = AsyncMock(return_value=None)
+        mock_workos.return_value.user_management.authenticate_with_code.return_value = (
+            _mock_auth_response(picture_url=PICTURE_URL)
+        )
+        mock_store.return_value = (MagicMock(), False)
+        response = await client.get(
+            f"{OAUTH_BASE}/workos/callback?code=abc&state=xyz",
+            follow_redirects=False,
+        )
+        assert response.headers.get_list("set-cookie") == [
+            session_set_cookie(
+                WOS_SESSION_COOKIE, "sealed_token_abc", WOS_SESSION_MAX_AGE_SECONDS, secure=False
+            )
+        ]
+
     @pytest.mark.regression
     @patch("app.api.v1.endpoints.oauth.store_user_info", new_callable=AsyncMock)
-    @patch("app.api.v1.endpoints.oauth.workos")
+    @patch("app.api.v1.endpoints.oauth.get_workos_client")
     @patch("app.api.v1.endpoints.oauth.redis_cache")
     async def test_web_callback_hands_on_the_method_workos_reports(
         self,
@@ -365,7 +401,9 @@ class TestWorkOSCallback:
         client: AsyncClient,
     ):
         mock_redis.client.get = AsyncMock(return_value=None)
-        mock_workos.user_management.authenticate_with_code.return_value = _mock_auth_response()
+        mock_workos.return_value.user_management.authenticate_with_code.return_value = (
+            _mock_auth_response()
+        )
         mock_store.return_value = (MagicMock(), False)
 
         await client.get(f"{OAUTH_BASE}/workos/callback?code=abc&state=xyz", follow_redirects=False)
@@ -383,7 +421,7 @@ class TestWorkOSCallback:
         assert "error=missing_code" in response.headers["location"]
 
     @patch("app.api.v1.endpoints.oauth.store_user_info", new_callable=AsyncMock)
-    @patch("app.api.v1.endpoints.oauth.workos")
+    @patch("app.api.v1.endpoints.oauth.get_workos_client")
     @patch("app.api.v1.endpoints.oauth.redis_cache")
     async def test_web_callback_with_return_url(
         self,
@@ -394,7 +432,9 @@ class TestWorkOSCallback:
     ):
         mock_redis.client.get = AsyncMock(return_value="/settings")
         mock_redis.client.delete = AsyncMock()
-        mock_workos.user_management.authenticate_with_code.return_value = _mock_auth_response()
+        mock_workos.return_value.user_management.authenticate_with_code.return_value = (
+            _mock_auth_response()
+        )
         mock_store.return_value = (MagicMock(), False)
         response = await client.get(
             f"{OAUTH_BASE}/workos/callback?code=abc&state=xyz",
@@ -404,7 +444,7 @@ class TestWorkOSCallback:
         assert "/settings" in response.headers["location"]
 
     @patch("app.api.v1.endpoints.oauth.store_user_info", new_callable=AsyncMock)
-    @patch("app.api.v1.endpoints.oauth.workos")
+    @patch("app.api.v1.endpoints.oauth.get_workos_client")
     @patch("app.api.v1.endpoints.oauth.redis_cache")
     async def test_web_callback_exception(
         self,
@@ -414,7 +454,9 @@ class TestWorkOSCallback:
         client: AsyncClient,
     ):
         mock_redis.client.get = AsyncMock(return_value=None)
-        mock_workos.user_management.authenticate_with_code.side_effect = Exception("boom")
+        mock_workos.return_value.user_management.authenticate_with_code.side_effect = Exception(
+            "boom"
+        )
         response = await client.get(
             f"{OAUTH_BASE}/workos/callback?code=abc&state=xyz",
             follow_redirects=False,
@@ -464,7 +506,9 @@ class TestComposioCallback:
         new_callable=AsyncMock,
         return_value=NEW_ACCOUNT,
     )
-    @patch("app.services.oauth.composio_callback.get_integration_by_config")
+    @patch(
+        "app.services.oauth.composio_callback.integration_for_auth_config", new_callable=AsyncMock
+    )
     @patch("app.services.oauth.composio_callback.get_composio_service")
     @patch(
         "app.api.v1.endpoints.oauth.validate_and_consume_oauth_state",
@@ -507,7 +551,9 @@ class TestComposioCallback:
         )
 
     @pytest.mark.usefixtures("stubbed_oauth_side_effects")
-    @patch("app.services.oauth.composio_callback.get_integration_by_config")
+    @patch(
+        "app.services.oauth.composio_callback.integration_for_auth_config", new_callable=AsyncMock
+    )
     @patch("app.services.oauth.composio_callback.get_composio_service")
     @patch(
         "app.api.v1.endpoints.oauth.validate_and_consume_oauth_state",

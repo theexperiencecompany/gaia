@@ -20,6 +20,7 @@ import {
 import { getTranslatedPersona } from "@/features/personas/data/getTranslatedPersona";
 import { getAllPersonaSlugs } from "@/features/personas/data/personasData";
 import { getLocalizedAlternates } from "@/i18n/getAlternates";
+import { prerenderedMarketingParams } from "@/lib/selfhost";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
@@ -235,9 +236,13 @@ const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
   },
 };
 
-export async function generateStaticParams() {
+async function allStaticParams() {
   const slugs = await getAllPersonaSlugs();
   return slugs.map((persona) => ({ persona }));
+}
+
+export function generateStaticParams() {
+  return prerenderedMarketingParams(allStaticParams);
 }
 
 export async function generateMetadata({

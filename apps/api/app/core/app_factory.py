@@ -15,6 +15,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from app.api.v1.endpoints.browser_live_view import router as browser_live_view_router
 from app.api.v1.endpoints.dev import router as dev_router
 from app.api.v1.endpoints.health import router as health_router
+from app.api.v1.endpoints.readiness import router as readiness_router
 from app.api.v1.routes import router as api_router
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
@@ -31,6 +32,17 @@ from app.services import latency_metrics as _latency_metrics  # noqa: F401 -- si
 from app.services.storage import metrics as _fs_metrics  # noqa: F401 -- side effects
 from shared.py.wide_events import log as wide_log
 
+_metrics_bearer = HTTPBearer(auto_error=True)
+
+
+def _verify_metrics_token(
+    credentials: HTTPAuthorizationCredentials = Depends(_metrics_bearer),
+) -> None:
+    """Admit only the scraper presenting METRICS_TOKEN."""
+    token = settings.METRICS_TOKEN
+    if token is None or not secrets.compare_digest(credentials.credentials, token):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
+
 
 def create_app() -> FastAPI:
     """
@@ -39,9 +51,10 @@ def create_app() -> FastAPI:
     Returns:
         FastAPI: Configured FastAPI application
     """
-    # In production, disable the OpenAPI schema entirely so /openapi.json,
-    # /docs, and /redoc all 404 — no endpoint listing or model shapes leak.
-    is_prod = settings.ENV == "production"
+    # OpenAPI docs are developer-only: selfhost and production hide the schema
+    # and interactive docs so endpoint listings don't leak. Only development
+    # gets an unauthenticated /metrics; elsewhere METRICS_TOKEN is required.
+    is_dev = settings.deployment.dev_tools
     app = FastAPI(
         lifespan=lifespan,
         title="GAIA API",
@@ -51,9 +64,9 @@ def create_app() -> FastAPI:
             "url": "http://heygaia.io",
             "email": "hi@heygaia.io",
         },
-        openapi_url=None if is_prod else "/openapi.json",
-        docs_url=None if is_prod else "/docs",
-        redoc_url=None if is_prod else "/redoc",
+        openapi_url="/openapi.json" if is_dev else None,
+        docs_url="/docs" if is_dev else None,
+        redoc_url="/redoc" if is_dev else None,
         default_response_class=UJSONResponse,
         generate_unique_id_function=api_operation_id,
     )
@@ -67,25 +80,27 @@ def create_app() -> FastAPI:
         app, latency_lowr_buckets=(0.1, 0.25, 0.5, 1, 2.5, 5, 10)
     )
     if settings.METRICS_TOKEN:
-        _bearer = HTTPBearer(auto_error=True)
-
-        def _verify_metrics_token(
-            credentials: HTTPAuthorizationCredentials = Depends(_bearer),
-        ) -> None:
-            if not secrets.compare_digest(credentials.credentials, settings.METRICS_TOKEN):
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
-
         instrumentator.expose(
             app, include_in_schema=False, dependencies=[Depends(_verify_metrics_token)]
         )
-    # No token configured — only expose in non-production environments.
-    elif settings.ENV != "production":
+    # No token configured — only expose unauthenticated metrics in development.
+    elif is_dev:
         instrumentator.expose(app, include_in_schema=False)
 
     register_exception_handlers(app)
 
     app.include_router(api_router, prefix="/api/v1", responses=ERROR_RESPONSES)
     app.include_router(health_router, responses=ERROR_RESPONSES)
+    # Readiness pings every datastore and names them: public to an instance's
+    # operator, behind the metrics token on GAIA Cloud.
+    if settings.deployment.public_readiness:
+        app.include_router(readiness_router, responses=ERROR_RESPONSES)
+    elif settings.METRICS_TOKEN:
+        app.include_router(
+            readiness_router,
+            responses=ERROR_RESPONSES,
+            dependencies=[Depends(_verify_metrics_token)],
+        )
     # Root-mounted on purpose: these are the links a user is handed, fronted by a
     # friendly vhost that proxies here, so they carry no /api/v1 prefix. Each one
     # authenticates itself with the capability in its own URL.
@@ -93,7 +108,7 @@ def create_app() -> FastAPI:
 
     # Dev-only identity + seeding router. Mounted only when the auth bypass is
     # active in development, so it never exists in production (every route 404s).
-    if settings.ENV == "development" and settings.DEV_AUTH_BYPASS_EMAIL:
+    if settings.deployment.dev_tools and settings.DEV_AUTH_BYPASS_EMAIL:
         app.include_router(dev_router, prefix="/api/v1", responses=ERROR_RESPONSES)
         wide_log.warning(
             f"{LogTag.STARTUP} Dev identity router mounted at /api/v1/dev "

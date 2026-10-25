@@ -26,7 +26,9 @@ from app.models.todo_models import TodoDocument
 from app.models.trigger_subscription_models import (
     SubscriptionAction,
     SubscriptionResolution,
+    TriggerSubscription,
 )
+from tests.e2e._harness.fake_todos import with_watch
 from tests.e2e.conftest import build_gaia_test_graph
 from tests.helpers import BindableToolsFakeModel
 
@@ -47,6 +49,16 @@ def _todo() -> TodoDocument:
     return TodoDocument.model_validate(
         {"id": TODO_ID, "user_id": USER_ID, "title": "Chase Acme about the invoice"}
     )
+
+
+def _appending_to(todo: TodoDocument) -> AsyncMock:
+    """Stand in for the repository's append on this todo, which holds no identical watch."""
+
+    def add(todo_id: str, *, user_id: str, subscription: TriggerSubscription) -> TodoDocument:
+        assert (todo_id, user_id) == (TODO_ID, USER_ID)
+        return with_watch(todo, subscription)
+
+    return AsyncMock(side_effect=add)
 
 
 @pytest.mark.e2e
@@ -107,19 +119,12 @@ class TestSubscribeThroughTheGraph:
             AIMessage(content="That todo is now watching the thread."),
         ]
 
-        async def compare_and_set(
-            todo_id: str, user_id: str, *, subscriptions: list, expected_updated_at=None
-        ):
-            assert (todo_id, user_id) == (TODO_ID, USER_ID)
-            return _todo().model_copy(update={"trigger_subscriptions": subscriptions})
-
-        set_subscriptions = AsyncMock(side_effect=compare_and_set)
+        add_subscription = _appending_to(_todo())
         with (
             patch(
                 f"{_SERVICE}.todo_repository",
                 get=AsyncMock(return_value=_todo()),
-                update=AsyncMock(return_value=None),
-                set_trigger_subscriptions=set_subscriptions,
+                add_trigger_subscription=add_subscription,
             ),
             patch(
                 f"{_SERVICE}.TriggerService",
@@ -134,7 +139,7 @@ class TestSubscribeThroughTheGraph:
         assert "is now watching" in result.content
         assert "Repaired automatically" in result.content
 
-        stored = set_subscriptions.await_args.kwargs["subscriptions"][0]
+        stored = add_subscription.await_args.kwargs["subscription"]
         assert stored.conditions[0].field_name == "thread_id"
         assert stored.action is SubscriptionAction.EXECUTE
         # Gmail registers no per-todo instance, so dispatch must find it by user.
@@ -190,19 +195,12 @@ class TestSubscribeThroughTheGraph:
             AIMessage(content="Watching for anything from acme.com."),
         ]
 
-        async def compare_and_set(
-            todo_id: str, user_id: str, *, subscriptions: list, expected_updated_at=None
-        ):
-            assert (todo_id, user_id) == (TODO_ID, USER_ID)
-            return _todo().model_copy(update={"trigger_subscriptions": subscriptions})
-
-        set_subscriptions = AsyncMock(side_effect=compare_and_set)
+        add_subscription = _appending_to(_todo())
         with (
             patch(
                 f"{_SERVICE}.todo_repository",
                 get=AsyncMock(return_value=_todo()),
-                update=AsyncMock(return_value=None),
-                set_trigger_subscriptions=set_subscriptions,
+                add_trigger_subscription=add_subscription,
             ),
             patch(
                 f"{_SERVICE}.TriggerService",
@@ -221,9 +219,8 @@ class TestSubscribeThroughTheGraph:
 
         accepted = _tool_message(messages, "call-good")
         assert "is now watching" in accepted.content
-        assert (
-            set_subscriptions.await_args.kwargs["subscriptions"][0].conditions[0].field_name
-            == "sender"
+        assert add_subscription.await_args.kwargs["subscription"].conditions[0].field_name == (
+            "sender"
         )
 
     async def test_the_model_can_ask_what_a_trigger_delivers_first(

@@ -37,7 +37,7 @@ services:
       - opik-redis:/data
 
   clickhouse-init:
-    image: alpine:latest
+    image: alpine:3.24.3
     volumes:
       - ./clickhouse_config:/clickhouse_config_files
       - opik-clickhouse-config:/config

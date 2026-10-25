@@ -69,7 +69,7 @@ FIXED_HOST = "https://api.heygaia.io"
 SPAWN_SYSTEM_PROMPT = "You are a spawned worker subagent."
 
 #: A real, registered integration, so ``get_integration_by_id`` resolves and the
-#: provider-metadata and custom-instructions sections are genuinely reachable
+#: provider-metadata and integration-instructions sections are genuinely reachable
 #: rather than short-circuiting on an unknown id.
 PROVIDER_INTEGRATION_ID = "gmail"
 PROVIDER_AGENT_NAME = "gmail_agent"

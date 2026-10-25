@@ -1,4 +1,5 @@
 import axios, { type AxiosInstance } from "axios";
+import type { DeliveryFailureReport } from "../../api/generated";
 import type {
   AuthStatus,
   BotConversation,
@@ -659,6 +660,25 @@ export class GaiaClient {
         token: data.token,
         authUrl: data.auth_url,
       };
+    });
+  }
+
+  /**
+   * Reports a message a user should have received and did not, for the
+   * delivery-alerts channel. Prefer the fire-and-forget reporter from
+   * `createDeliveryFailureReporter`, which never throws into a delivery path.
+   */
+  async reportDeliveryFailure(report: DeliveryFailureReport): Promise<void> {
+    await this.request(async () => {
+      const headers: Record<string, string> = {
+        "X-Bot-API-Key": this.apiKey,
+        "X-Bot-Platform": report.platform,
+      };
+      const traceId = wideLog.getTraceId();
+      if (traceId) headers["x-trace-id"] = traceId;
+      await this.client.post("/api/v1/bot/delivery-failures", report, {
+        headers,
+      });
     });
   }
 

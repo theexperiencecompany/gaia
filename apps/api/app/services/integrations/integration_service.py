@@ -10,7 +10,7 @@ For main functions, import directly from:
 
 from pydantic import ValidationError
 
-from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
+from app.config.oauth_config import all_integrations, get_integration_by_id
 from app.constants.cache import ONE_DAY_TTL
 from app.constants.log_tags import LogTag
 from app.decorators.caching import Cacheable
@@ -46,7 +46,7 @@ async def get_user_available_tool_namespaces(user_id: str) -> UserToolNamespaces
     # They're NOT integrations that need connecting via UI
     internal_integrations = [
         integration.id
-        for integration in OAUTH_INTEGRATIONS
+        for integration in all_integrations()
         if integration.managed_by == "internal" and integration.available
     ]
     namespaces.update(internal_integrations)
