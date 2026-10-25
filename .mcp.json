@@ -1,10 +1,5 @@
 {
   "mcpServers": {
-    "dagger": {
-      "command": "dagger",
-      "args": ["-s", "mcp"],
-      "env": {}
-    },
     "infisical": {
       "command": "sh",
       "args": [

@@ -73,7 +73,6 @@ async def complete_onboarding(
             needs=onboarding_data.needs,
             other_need=onboarding_data.other_need,
             response_style="casual",  # Default response style
-            custom_instructions=None,
         )
 
         # Atomic gate inside the repository: only the request that creates the

@@ -41,6 +41,12 @@ export {
   getSimpleTimeGreeting,
 } from "./greetingUtils";
 export type {
+  InstructionsDraftView,
+  InstructionsEdit,
+  InstructionsRecordLike,
+} from "./instructionsDraft";
+export { editInstructions, viewInstructionsDraft } from "./instructionsDraft";
+export type {
   ConnectionPromptState,
   IntegrationConnectionState,
 } from "./integrationStatus";

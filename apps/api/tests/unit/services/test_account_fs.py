@@ -1,7 +1,7 @@
 """Unit tests for the account-center workspace sync glue.
 
-Every source (payment provider, Redis-backed usage, Mongo user, ElevenLabs
-catalog, platform links, JuiceFS) is mocked at its seam; the logic under test
+Every source (payment provider, Redis-backed usage, Mongo user, user
+instructions, ElevenLabs catalog, platform links, JuiceFS) is mocked at its seam; the logic under test
 is the projection assembly, the per-group failure isolation, and the
 changed-body-only materialization contract.
 
@@ -21,6 +21,7 @@ import pytest
 
 from app.constants.account import ACCOUNT_DIR, ACCOUNT_LINKED_ACCOUNTS_DIRNAME
 from app.models.payment_models import PlanDuration, PlanResponse, PlanType, SubscriptionDocument
+from app.models.user_instructions_models import GLOBAL_INSTRUCTIONS_SCOPE, UserInstructionsDocument
 from app.models.user_models import UserDocument
 from app.schemas.usage import FeatureUsageSummary, UsageBudget
 from app.services import account_fs
@@ -145,10 +146,11 @@ def sources():
     )
     channel_preferences = AsyncMock(return_value={"email": True})
     users = SimpleNamespace(
-        get=AsyncMock(
-            return_value=_user(
-                preferences={"response_style": "brief", "custom_instructions": "Be terse."}
-            )
+        get=AsyncMock(return_value=_user(preferences={"response_style": "brief"}))
+    )
+    instructions = AsyncMock(
+        return_value=UserInstructionsDocument(
+            user_id="user-42", scope=GLOBAL_INSTRUCTIONS_SCOPE, content="Be terse.", revision=1
         )
     )
     voices = AsyncMock(return_value=catalog)
@@ -158,6 +160,7 @@ def sources():
         patch(f"{MODULE}.build_usage_summary", new=usage_summary),
         patch(f"{MODULE}.fetch_channel_preferences", new=channel_preferences),
         patch(f"{MODULE}.user_repository", new=users),
+        patch(f"{MODULE}.user_instructions_repository.get_record", new=instructions),
         patch(f"{MODULE}.list_voices", new=voices),
         patch(f"{MODULE}.PlatformLinkService.get_linked_platforms", new=linked_platforms),
     ):
@@ -166,6 +169,7 @@ def sources():
             usage_summary=usage_summary,
             channel_preferences=channel_preferences,
             users=users,
+            instructions=instructions,
             voices=voices,
             linked_platforms=linked_platforms,
         )
@@ -267,6 +271,7 @@ class TestSourceIdentity:
         ]
         sources.linked_platforms.assert_awaited_once_with("user-42")
         assert {call.args[0] for call in sources.users.get.await_args_list} == {"user-42"}
+        sources.instructions.assert_awaited_once_with("user-42", GLOBAL_INSTRUCTIONS_SCOPE)
 
     async def test_sync_builds_the_projections_for_the_requested_user(self, sources) -> None:
         with (
@@ -458,8 +463,7 @@ class TestProjectionBodies:
 
     async def test_custom_instructions_are_null_when_unset(self, sources) -> None:
         with patch(
-            f"{MODULE}.user_repository",
-            get=AsyncMock(return_value=_user(preferences={"response_style": "brief"})),
+            f"{MODULE}.user_instructions_repository.get_record", new=AsyncMock(return_value=None)
         ):
             assert await _body("custom-instructions") == {"instructions": None}
 

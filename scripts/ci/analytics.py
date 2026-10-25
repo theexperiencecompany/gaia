@@ -2,7 +2,8 @@
 """analytics.py — the PostHog side of the event catalog contract.
 
 Subcommands:
-  check [--loop-catalog P] Fail when the PostHog project drifts from the repo:
+  check [--live-catalog P] [--live-actions P]
+                          Fail when the PostHog project drifts from the repo:
                           (a) a saved insight on a live dashboard references an
                               event or property the catalog does not have;
                           (b) the project settings differ from
@@ -15,6 +16,11 @@ Subcommands:
                           (e) the loop insight or alert in
                               config/posthog/loop-alert.json differs from what
                               the catalog's budget_per_user_day generates.
+                          (d) and (e) read what the project is SYNCED to: a
+                          push to master syncs it from the merged files, so a
+                          PR passes master's catalog and actions.json as the
+                          live ones — its own copies cannot be live until it
+                          merges, and checking them failed every such PR.
   sync-actions [--apply]  Create or update the canonical actions so the project
                           matches config/posthog/actions.json. A dry run that
                           prints the plan unless --apply is given.
@@ -167,6 +173,51 @@ class PostHogError(RuntimeError):
     """A PostHog API call failed; the message carries the status and response body."""
 
 
+class JsonShapeError(TypeError):
+    """A JSON value is not the shape this script reads it as."""
+
+
+# ---------------------------------------------------------------------------
+# Narrowing JSON values: each raises on another shape rather than defaulting
+
+
+def _obj(value: JsonValue, what: str) -> JsonObject:
+    if isinstance(value, dict):
+        return value
+    raise JsonShapeError(f"{what}: expected an object, got {value!r:.200}")
+
+
+def _list(value: JsonValue, what: str) -> list[JsonValue]:
+    if isinstance(value, list):
+        return value
+    raise JsonShapeError(f"{what}: expected a list, got {value!r:.200}")
+
+
+def _objs(value: JsonValue, what: str) -> list[JsonObject]:
+    return [_obj(item, what) for item in _list(value, what)]
+
+
+def _str(value: JsonValue, what: str) -> str:
+    if isinstance(value, str):
+        return value
+    raise JsonShapeError(f"{what}: expected a string, got {value!r:.200}")
+
+
+def _int(value: JsonValue, what: str) -> int:
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    raise JsonShapeError(f"{what}: expected an integer, got {value!r:.200}")
+
+
+def _id(value: JsonValue, what: str) -> int:
+    """Read an id inside a stored insight query, which PostHog serves as an int, float or string."""
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return _int(value, what)
+
+
 # ---------------------------------------------------------------------------
 # The catalog
 
@@ -186,22 +237,25 @@ class Catalog:
         renamed: dict[str, str] = {}
         budgets: dict[str, int] = {}
         base_sets = {
-            name: frozenset(schema.get("properties", {}))
-            for name, schema in doc["base_properties"].items()
+            name: _schema_properties(schema, f"base_properties.{name}")
+            for name, schema in _obj(doc["base_properties"], "base_properties").items()
         }
-        for entry in doc["events"]:
-            own = frozenset(entry["properties"].get("properties", {}))
+        for entry in _objs(doc["events"], "events"):
+            event = _str(entry["event"], "events[].event")
+            own = _schema_properties(entry["properties"], f"{event}.properties")
             base = entry["base_properties"]
-            properties[entry["event"]] = own | base_sets[base] if base else own
-            budgets[entry["event"]] = entry["budget_per_user_day"]
-            for old in entry["previous_names"]:
-                renamed[old] = entry["event"]
+            properties[event] = (
+                own | base_sets[_str(base, f"{event}.base_properties")] if base else own
+            )
+            budgets[event] = _int(entry["budget_per_user_day"], f"{event}.budget_per_user_day")
+            for old in _list(entry["previous_names"], f"{event}.previous_names"):
+                renamed[_str(old, f"{event}.previous_names[]")] = event
         return cls(properties=properties, renamed=renamed, budgets=budgets)
 
     @classmethod
     def load(cls, path: Path = CATALOG_JSON) -> Catalog:
         """Read the generated catalog JSON."""
-        return cls.from_doc(json.loads(path.read_text(encoding="utf-8")))
+        return cls.from_doc(_read_json(path))
 
     def has_event(self, name: str) -> bool:
         """Whether the catalog defines this event name."""
@@ -220,6 +274,11 @@ class Catalog:
                 same_domain, key=lambda event: difflib.SequenceMatcher(None, name, event).ratio()
             )
         return _closest(name, self.properties)
+
+
+def _schema_properties(schema: JsonValue, what: str) -> frozenset[str]:
+    """Return the property names a JSON schema object declares."""
+    return frozenset(_obj(_obj(schema, what).get("properties", {}), f"{what}.properties"))
 
 
 def _closest(name: str, candidates: Iterable[str]) -> str | None:
@@ -312,9 +371,9 @@ def _add_filters(refs: _Refs, filters: JsonValue, scope: frozenset[str] | None) 
         return
     kind = filters.get("type", EVENT_PROPERTY_TYPE)
     if kind == EVENT_PROPERTY_TYPE:
-        refs.properties.append((filters["key"], scope))
+        refs.properties.append((_str(filters["key"], "property filter key"), scope))
     elif kind == HOGQL_TYPE:
-        _add_hogql(refs, filters["key"], scope)
+        _add_hogql(refs, _str(filters["key"], "hogql filter key"), scope)
 
 
 def _add_event(refs: _Refs, name: str) -> frozenset[str]:
@@ -337,9 +396,13 @@ def _add_series(refs: _Refs, node: Mapping[str, JsonValue]) -> None:
     kind = node.get("kind")
     if kind == "EventsNode":
         # A null event is "All events": its properties may belong to any of them.
-        scope = _add_event(refs, node["event"]) if node.get("event") else frozenset()
+        scope = (
+            _add_event(refs, _str(node["event"], "EventsNode.event"))
+            if node.get("event")
+            else frozenset()
+        )
     elif kind == "ActionsNode":
-        scope = _add_action(refs, node["id"])
+        scope = _add_action(refs, _id(node["id"], "ActionsNode.id"))
     else:
         refs.unreadable.append(BadRef(RefKind.QUERY_KIND, str(kind), None))
         return
@@ -348,29 +411,31 @@ def _add_series(refs: _Refs, node: Mapping[str, JsonValue]) -> None:
         EVENT_PROPERTY_TYPE,
         "event_properties",
     ):
-        refs.properties.append((node["math_property"], scope))
+        refs.properties.append((_str(node["math_property"], "math_property"), scope))
     if node.get("math_hogql"):
-        _add_hogql(refs, node["math_hogql"], scope)
+        _add_hogql(refs, _str(node["math_hogql"], "math_hogql"), scope)
 
 
-def _add_entity(refs: _Refs, entity: Mapping[str, JsonValue] | None) -> None:
+def _add_entity(refs: _Refs, entity: JsonValue) -> None:
     """Add a retention target or returning entity: an event by id or name, or an action by id."""
     if not entity:
         return
+    entity = _obj(entity, "retention entity")
     if entity.get("type") == "actions":
-        _add_action(refs, int(entity["id"]))
+        _add_action(refs, _id(entity["id"], "retention action id"))
         return
     name = entity.get("id") or entity.get("name")
     if isinstance(name, str) and name != ALL_EVENTS_ENTITY:
         _add_event(refs, name)
 
 
-def _add_breakdowns(refs: _Refs, breakdown_filter: Mapping[str, JsonValue] | None) -> None:
+def _add_breakdowns(refs: _Refs, breakdown_filter: JsonValue) -> None:
     if not breakdown_filter:
         return
-    pairs: list[tuple[str, JsonValue]] = [
+    breakdown_filter = _obj(breakdown_filter, "breakdownFilter")
+    pairs: list[tuple[JsonValue, JsonValue]] = [
         (b.get("type", EVENT_PROPERTY_TYPE), b["property"])
-        for b in breakdown_filter.get("breakdowns") or []
+        for b in _objs(breakdown_filter.get("breakdowns") or [], "breakdownFilter.breakdowns")
     ]
     single = breakdown_filter.get("breakdown")
     single_type = breakdown_filter.get("breakdown_type") or EVENT_PROPERTY_TYPE
@@ -380,29 +445,31 @@ def _add_breakdowns(refs: _Refs, breakdown_filter: Mapping[str, JsonValue] | Non
         if kind == EVENT_PROPERTY_TYPE and isinstance(value, str):
             refs.properties.append((value, None))
         elif kind == HOGQL_TYPE:
-            _add_hogql(refs, value, None)
+            _add_hogql(refs, _str(value, "hogql breakdown"), None)
 
 
-def _add_query(refs: _Refs, node: Mapping[str, JsonValue] | None) -> None:
+def _add_query(refs: _Refs, node: JsonValue) -> None:
     if not node:
         refs.unreadable.append(BadRef(RefKind.QUERY_KIND, "no query", None))
         return
+    node = _obj(node, "insight query")
     kind = node.get("kind")
     if kind in WRAPPER_KINDS:
         _add_query(refs, node.get("source"))
         return
     if kind == "HogQLQuery":
-        _add_hogql(refs, node["query"], None)
+        _add_hogql(refs, _str(node["query"], "HogQLQuery.query"), None)
         return
     if kind in SERIES_QUERY_KINDS:
-        for series in node.get("series", []):
+        for series in _objs(node.get("series", []), "series"):
             _add_series(refs, series)
-        for exclusion in (node.get("funnelsFilter") or {}).get("exclusions") or []:
+        funnels = _obj(node.get("funnelsFilter") or {}, "funnelsFilter")
+        for exclusion in _objs(funnels.get("exclusions") or [], "funnelsFilter.exclusions"):
             _add_series(refs, exclusion)
         if node.get("funnelAggregateByHogQL"):
-            _add_hogql(refs, node["funnelAggregateByHogQL"], None)
+            _add_hogql(refs, _str(node["funnelAggregateByHogQL"], "funnelAggregateByHogQL"), None)
     elif kind == "RetentionQuery":
-        retention = node.get("retentionFilter") or {}
+        retention = _obj(node.get("retentionFilter") or {}, "retentionFilter")
         _add_entity(refs, retention.get("targetEntity"))
         _add_entity(refs, retention.get("returningEntity"))
     # A paths query's own filters name URLs and event types, so only its properties
@@ -433,9 +500,7 @@ def _property_finding(name: str, scope: frozenset[str], catalog: Catalog) -> Bad
     return BadRef(RefKind.PROPERTY, name, _closest(name, candidates))
 
 
-def bad_refs(
-    query: Mapping[str, JsonValue] | None, catalog: Catalog, actions: Mapping[int, set[str]]
-) -> list[BadRef]:
+def bad_refs(query: JsonValue, catalog: Catalog, actions: Mapping[int, set[str]]) -> list[BadRef]:
     """Every event, property, action or query kind in one insight that the catalog cannot back."""
     refs = _Refs(actions=actions)
     _add_query(refs, query)
@@ -513,7 +578,7 @@ def _clean(value: JsonValue) -> JsonValue:
 
 def normalize_step(step: Mapping[str, JsonValue]) -> JsonObject:
     """Strip an action step of its nulls, empty filters, and *_matching modes for unset fields."""
-    clean = _clean(dict(step))
+    clean = _obj(_clean(dict(step)), "action step")
     for matched in ("url", "text", "href"):
         if matched not in clean:
             clean.pop(f"{matched}_matching", None)
@@ -525,8 +590,8 @@ def normalize_step(step: Mapping[str, JsonValue]) -> JsonObject:
 def _comparable(action: Mapping[str, JsonValue]) -> JsonObject:
     return {
         "description": action.get("description", ""),
-        "tags": sorted(action.get("tags") or []),
-        "steps": [normalize_step(step) for step in action.get("steps") or []],
+        "tags": sorted(_list(action.get("tags") or [], "tags"), key=lambda t: _str(t, "tag")),
+        "steps": [normalize_step(step) for step in _objs(action.get("steps") or [], "steps")],
     }
 
 
@@ -550,14 +615,18 @@ def action_diff(
     listed = {action["name"] for action in expected}
     diffs.extend(
         f"{action['name']}: tagged {tag} in the project but not in config/posthog/actions.json"
-        for action in sorted(live, key=lambda a: a["name"])
-        if tag in (action.get("tags") or []) and action["name"] not in listed
+        for action in sorted(live, key=lambda a: _str(a["name"], "action name"))
+        if tag in _list(action.get("tags") or [], "tags") and action["name"] not in listed
     )
     return diffs
 
 
 def _step_events(action: Mapping[str, JsonValue]) -> set[str]:
-    return {step["event"] for step in action.get("steps") or [] if step.get("event")}
+    return {
+        _str(step["event"], "action step event")
+        for step in _objs(action.get("steps") or [], "steps")
+        if step.get("event")
+    }
 
 
 def coverage_gaps(catalog: Catalog, expected: Sequence[Mapping[str, JsonValue]]) -> list[str]:
@@ -600,9 +669,10 @@ WHERE timestamp >= toStartOfDay(toTimeZone(now(), '{LOOP_TIMEZONE}')) - INTERVAL
 GROUP BY event, distinct_id, day
 HAVING {LOOP_COLUMN} > {LOOP_BUDGET_USED_LIMIT}
 ORDER BY {LOOP_COLUMN} DESC"""  # noqa: S608 -- catalog-validated domain:action names, int budgets and checked-in config, no runtime input
+    insight = _obj(spec["insight"], "loop-alert.json insight")
     return {
-        "name": spec["insight"]["name"],
-        "description": spec["insight"]["description"],
+        "name": insight["name"],
+        "description": insight["description"],
         "query": {
             "kind": "DataVisualizationNode",
             "source": {
@@ -618,8 +688,8 @@ ORDER BY {LOOP_COLUMN} DESC"""  # noqa: S608 -- catalog-validated domain:action 
 def loop_alert(spec: Mapping[str, JsonValue]) -> JsonObject:
     """Generate the loop alert as PATCH takes it: fire when any row used more than its whole budget."""
     return {
-        "name": spec["alert"]["name"],
-        "insight": spec["insight"]["id"],
+        "name": _obj(spec["alert"], "loop-alert.json alert")["name"],
+        "insight": _obj(spec["insight"], "loop-alert.json insight")["id"],
         "threshold": {
             "configuration": {"type": "absolute", "bounds": {"upper": LOOP_BUDGET_USED_LIMIT}}
         },
@@ -636,8 +706,8 @@ def _live_alert_fields(live: Mapping[str, JsonValue]) -> JsonObject:
     """Reshape a GET alert into loop_alert's shape: the insight by id, the threshold without its own id."""
     return {
         "name": live["name"],
-        "insight": live["insight"]["id"],
-        "threshold": {"configuration": live["threshold"]["configuration"]},
+        "insight": _obj(live["insight"], "alert insight")["id"],
+        "threshold": {"configuration": _obj(live["threshold"], "alert threshold")["configuration"]},
         "config": live["config"],
     }
 
@@ -699,7 +769,7 @@ class PostHog:
             connection.close()
         if response.status >= HTTPStatus.BAD_REQUEST:
             raise PostHogError(f"{method} {path}: HTTP {response.status} {payload[:500]}")
-        return json.loads(payload)
+        return _obj(json.loads(payload), f"{method} {path}")
 
     def _all(self, path: str) -> list[JsonObject]:
         """Follow the API's `next` links; each must stay on this host."""
@@ -707,8 +777,9 @@ class PostHog:
         items: list[JsonObject] = []
         while url:
             page = self._request("GET", url)
-            items.extend(page["results"])
-            url = page.get("next")
+            items.extend(_objs(page["results"], f"{path} results"))
+            next_page = page.get("next")
+            url = None if next_page is None else _str(next_page, f"{path} next")
             if url:
                 parts = urlsplit(url)
                 if parts.netloc != self.netloc:
@@ -737,7 +808,7 @@ class PostHog:
     ) -> list[list[JsonValue]]:
         """Run a HogQL query with {placeholder} values and return its rows."""
         node: JsonObject = {"kind": "HogQLQuery", "query": query, "values": dict(values or {})}
-        return self._query(node)
+        return [_list(row, "HogQL row") for row in self._query(node)]
 
     def probe(self, filter_test_accounts: bool) -> int:
         """Count the probe event over the probe window, with the test-account filter on or off."""
@@ -749,14 +820,18 @@ class PostHog:
             "filterTestAccounts": filter_test_accounts,
         }
         [series] = self._query(query)
-        return int(series["count"])
+        count = _obj(series, "trends series")["count"]
+        if not isinstance(count, int | float):
+            raise JsonShapeError(f"trends series count: expected a number, got {count!r:.200}")
+        return int(count)
 
     def _query(self, node: JsonObject) -> list[JsonValue]:
         """Run a query node and return its rows, never from PostHog's result cache."""
         # A cached read after a write (a merge, a filter change) reports the state before it.
-        return self._request(
+        response = self._request(
             "POST", f"{self.base}/query/", {"query": node, "refresh": QUERY_REFRESH}
-        )["results"]
+        )
+        return _list(response["results"], "query results")
 
     def create_action(self, action: Mapping[str, JsonValue]) -> None:
         """Create an action."""
@@ -794,7 +869,11 @@ def client_from_env(
     key = os.environ.get(key_env, "")
     project = _read_json(project_json)
     if key:
-        return PostHog(project["host"], project["project_id"], key)
+        return PostHog(
+            _str(project["host"], f"{project_json} host"),
+            _int(project["project_id"], f"{project_json} project_id"),
+            key,
+        )
     print(
         f"{key_env} is not set. Create a personal API key at {project['host']}/settings/user-api-keys "
         f"scoped to project {project['project_id']} with {', '.join(scopes)}, then export it "
@@ -810,7 +889,7 @@ def client_from_env(
 
 
 def _read_json(path: Path) -> JsonObject:
-    return json.loads(path.read_text(encoding="utf-8"))
+    return _obj(json.loads(path.read_text(encoding="utf-8")), str(path))
 
 
 def _report(section: str, failures: list[str]) -> None:
@@ -823,14 +902,40 @@ def _report(section: str, failures: list[str]) -> None:
             print(f"::error title={section}::{failure}")
 
 
+def _read_actions(path: Path) -> tuple[str, list[JsonObject]]:
+    """Return an actions.json file's canonical tag and its actions."""
+    doc = _read_json(path)
+    return _str(doc["tag"], f"{path} tag"), _objs(doc["actions"], f"{path} actions")
+
+
+def _loop_ids(spec: Mapping[str, JsonValue]) -> tuple[int, str]:
+    """Return the ids of the loop insight and of its alert from loop-alert.json."""
+    insight = _obj(spec["insight"], "loop-alert.json insight")
+    alert = _obj(spec["alert"], "loop-alert.json alert")
+    return _int(insight["id"], "loop-alert.json insight.id"), _str(
+        alert["id"], "loop-alert.json alert.id"
+    )
+
+
+def _dashboard_ids(insight: Mapping[str, JsonValue]) -> set[int]:
+    """Return the ids of the dashboards an insight sits on."""
+    return {
+        _int(d, "insight dashboard id")
+        for d in _list(insight.get("dashboards") or [], "insight dashboards")
+    }
+
+
 def _insight_failures(client: PostHog, catalog: Catalog) -> list[str]:
-    dashboards = {d["id"]: d["name"] for d in client.dashboards()}
-    actions = {a["id"]: _step_events(a) for a in client.actions()}
+    dashboards = {
+        _int(d["id"], "dashboard id"): _str(d["name"], "dashboard name")
+        for d in client.dashboards()
+    }
+    actions = {_int(a["id"], "action id"): _step_events(a) for a in client.actions()}
     insights = client.insights()
-    on_dashboards = [i for i in insights if set(i.get("dashboards") or []) & dashboards.keys()]
-    failures = []
+    on_dashboards = [i for i in insights if _dashboard_ids(i) & dashboards.keys()]
+    failures: list[str] = []
     for insight in on_dashboards:
-        where = ", ".join(sorted(dashboards[d] for d in insight["dashboards"] if d in dashboards))
+        where = ", ".join(sorted(dashboards[d] for d in _dashboard_ids(insight) if d in dashboards))
         failures.extend(
             f'{where} › "{insight.get("name") or insight.get("derived_name")}" (insight {insight["id"]}) › '
             f"{describe(bad, catalog)}"
@@ -847,22 +952,30 @@ def cmd_check(args: list[str]) -> int:
     """Run the five checks and exit non-zero on any failure."""
     parser = argparse.ArgumentParser(prog="analytics.py check")
     parser.add_argument(
-        "--loop-catalog",
+        "--live-catalog",
         type=Path,
-        default=CATALOG_JSON,
-        help="catalog the live loop alert is held to; a PR passes master's, the one a merge syncs",
+        default=None,
+        help="catalog the live actions and loop alert are held to; a PR passes master's, the one a merge syncs",
+    )
+    parser.add_argument(
+        "--live-actions",
+        type=Path,
+        default=None,
+        help="actions.json the live canonical actions are held to; a PR passes master's",
     )
     opts = parser.parse_args(args)
     client = client_from_env(READ_SCOPES)
     if client is None:
         return 1
     catalog = Catalog.load()
-    expected = _read_json(ACTIONS_JSON)
+    live_catalog = Catalog.load(opts.live_catalog or CATALOG_JSON)
+    tag, expected = _read_actions(opts.live_actions or ACTIONS_JSON)
 
     insight_failures = _insight_failures(client, catalog)
     _report("insights reference only catalog events and properties", insight_failures)
 
-    settings_failures = settings_diff(_read_json(PROJECT_JSON)["settings"], client.project())
+    settings = _obj(_read_json(PROJECT_JSON)["settings"], f"{PROJECT_JSON} settings")
+    settings_failures = settings_diff(settings, client.project())
     _report("project settings match config/posthog/project.json", settings_failures)
 
     filtered, unfiltered = (
@@ -875,19 +988,17 @@ def cmd_check(args: list[str]) -> int:
     probe_failures = [f] if (f := probe_failure(filtered, unfiltered)) else []
     _report("the test-account filter keeps real events", probe_failures)
 
-    action_failures = action_diff(expected["actions"], client.actions(), expected["tag"])
-    action_failures += coverage_gaps(catalog, expected["actions"])
+    action_failures = action_diff(expected, client.actions(), tag)
+    action_failures += coverage_gaps(live_catalog, expected)
     _report(
         "canonical actions match config/posthog/actions.json and cover every rename",
         action_failures,
     )
 
     spec = _read_json(LOOP_ALERT_JSON)
+    insight_id, alert_id = _loop_ids(spec)
     loop_failures = loop_alert_diff(
-        Catalog.load(opts.loop_catalog),
-        spec,
-        client.insight(spec["insight"]["id"]),
-        client.alert(spec["alert"]["id"]),
+        live_catalog, spec, client.insight(insight_id), client.alert(alert_id)
     )
     _report("the loop alert divides by the catalog's budgets", loop_failures)
 
@@ -907,12 +1018,12 @@ def cmd_sync_actions(args: list[str]) -> int:
     client = client_from_env((*READ_SCOPES, WRITE_SCOPE) if opts.apply else READ_SCOPES)
     if client is None:
         return 1
-    expected = _read_json(ACTIONS_JSON)
-    live = {action["name"]: action for action in client.actions()}
+    tag, expected = _read_actions(ACTIONS_JSON)
+    live = {_str(action["name"], "action name"): action for action in client.actions()}
     planned = 0
-    for action in expected["actions"]:
+    for action in expected:
         payload = {k: action[k] for k in ("name", "description", "tags", "steps")}
-        current = live.get(action["name"])
+        current = live.get(_str(action["name"], "action name"))
         if current is None:
             print(f"create  {action['name']}")
             if opts.apply:
@@ -920,16 +1031,14 @@ def cmd_sync_actions(args: list[str]) -> int:
         elif _comparable(current) != _comparable(action):
             print(f"update  {action['name']} (action {current['id']})")
             if opts.apply:
-                client.update_action(current["id"], payload)
+                client.update_action(_int(current["id"], "action id"), payload)
         else:
             continue
         planned += 1
-    listed = {action["name"] for action in expected["actions"]}
+    listed = {action["name"] for action in expected}
     for name, action in sorted(live.items()):
-        if expected["tag"] in (action.get("tags") or []) and name not in listed:
-            print(
-                f"left    {name} (action {action['id']}): tagged {expected['tag']} but not in the file"
-            )
+        if tag in _list(action.get("tags") or [], "tags") and name not in listed:
+            print(f"left    {name} (action {action['id']}): tagged {tag} but not in the file")
     verb = "applied" if opts.apply else "planned (dry run; re-run with --apply to perform)"
     print(f"{planned} change(s) {verb}")
     return 0
@@ -946,7 +1055,7 @@ def cmd_sync_loop_alert(args: list[str]) -> int:
     if client is None:
         return 1
     catalog, spec = Catalog.load(), _read_json(LOOP_ALERT_JSON)
-    insight_id, alert_id = spec["insight"]["id"], spec["alert"]["id"]
+    insight_id, alert_id = _loop_ids(spec)
     insight, alert = loop_insight(catalog, spec), loop_alert(spec)
     planned = 0
     if drifted := _drifted(insight, client.insight(insight_id)):

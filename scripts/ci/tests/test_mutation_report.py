@@ -22,11 +22,14 @@ from pathlib import Path
 import subprocess
 import sys
 
+from doc_shape import mapping, sequence
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+from lib import mutation_report as report_lib
+
 REPORT = REPO_ROOT / "scripts" / "ci" / "lib" / "mutation_report.py"
-MUTATION_SH = REPO_ROOT / "scripts" / "ci" / "mutation.sh"
+MUTATION_PY = REPO_ROOT / "scripts" / "ci" / "mutation.py"
 LOG_LIB = REPO_ROOT / "scripts" / "ci" / "lib" / "log.sh"
 CPU_SLOTS_LIB = REPO_ROOT / "scripts" / "ci" / "lib" / "cpu-slots.sh"
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -34,7 +37,6 @@ FIXTURES = Path(__file__).parent / "fixtures"
 # silently leave these fixtures out of the commit and red the suite on a fresh
 # clone. The content is a verbatim shard-log excerpt either way.
 SURVIVOR_LOG = FIXTURES / "mutation_shard_survivors.txt"
-SKIP_LOG = FIXTURES / "mutation_shard_skip.txt"
 
 # The survivors the grouping tests key on, and the source line each one mutates
 # as `mutation_classify.py` resolved it against the real module.
@@ -54,65 +56,48 @@ BOT_SOURCE = '''def _may_mint_bot_upgrade_link(user_id: str) -> bool:
 BOT_ARGS_LINE = 5
 
 
-def _run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+def _run(args: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, str(REPORT), *args],
-        capture_output=True,
-        text=True,
-        check=False,
-        **kwargs,
+        [sys.executable, str(REPORT), *args], capture_output=True, text=True, check=False
     )
 
 
-def _records(tmp_path: Path, rows: list[tuple[str, str, str]]) -> Path:
-    path = tmp_path / "records.tsv"
-    path.write_text("".join("\t".join(row) + "\n" for row in rows))
-    return path
+def _bot_verdict(
+    tmp_path: Path, rows: list[tuple[str, str]], status: str = "survivors"
+) -> report_lib.ModuleVerdict:
+    """Build the bot module's verdict over the real fixture diffs, as mutation.py does."""
+    module_file = tmp_path / "bot.py"
+    module_file.write_text(BOT_SOURCE)
+    verdict = report_lib.ModuleVerdict(
+        module=BOT_MODULE,
+        status=status,
+        path=f"apps/api/{BOT_MODULE}",
+        testfiles=["tests/unit/api/test_bot_endpoint.py"],
+    )
+    return report_lib.add_classified(verdict, module_file, rows, SURVIVOR_LOG.read_text())
 
 
 def _module_record(
-    tmp_path: Path, rows: list[tuple[str, str, str]], status: str = "survivors"
+    tmp_path: Path, rows: list[tuple[str, str]], status: str = "survivors"
 ) -> dict[str, object]:
-    """Run the `module` subcommand over the real fixture diffs and read it back."""
-    module_file = tmp_path / "bot.py"
-    module_file.write_text(BOT_SOURCE)
+    """Write the bot module's record the way mutation.py does and read it back."""
+    verdict = _bot_verdict(tmp_path, rows, status)
     out = tmp_path / "records" / f"{BOT_SLUG}.json"
-    result = _run(
-        [
-            "module",
-            "--module",
-            BOT_MODULE,
-            "--path",
-            f"apps/api/{BOT_MODULE}",
-            "--module-file",
-            str(module_file),
-            "--records",
-            str(_records(tmp_path, rows)),
-            "--diffs",
-            str(SURVIVOR_LOG),
-            "--testfiles",
-            '["tests/unit/api/test_bot_endpoint.py"]',
-            "--status",
-            status,
-            "--out",
-            str(out),
-        ]
-    )
-    assert result.returncode == 0, result.stderr
-    data = json.loads(out.read_text())
-    data["_report"] = result.stdout
+    report_lib.write_record(out, verdict)
+    data = mapping(json.loads(out.read_text()))
+    data["_report"] = report_lib.render_report(verdict) if verdict.survivors else ""
     return data
 
 
 def test_the_module_record_carries_every_survivor_with_its_full_diff(tmp_path: Path) -> None:
     """Record one entry per mutant with its whole diff — mutmut ids cannot be regenerated, and replay reads this."""
-    rows = [(f"{BOT_PREFIX}{n}", "survived", f"CHANGED:{BOT_ARGS_LINE}") for n in (3, 4, 5)]
+    rows = [(f"{BOT_PREFIX}{n}", f"CHANGED:{BOT_ARGS_LINE}") for n in (3, 4, 5)]
     record = _module_record(tmp_path, rows)
 
     assert record["module"] == BOT_MODULE
     assert record["status"] == "survivors"
     assert record["testfiles"] == ["tests/unit/api/test_bot_endpoint.py"]
-    survivors = record["survivors"]
+    survivors = sequence(record["survivors"])
     assert [entry["name"] for entry in survivors] == [row[0] for row in rows]
     for entry in survivors:
         assert entry["function"] == "_may_mint_bot_upgrade_link"
@@ -133,7 +118,7 @@ def test_the_record_is_not_written_into_the_verdict_tree(tmp_path: Path) -> None
     `consolidate` reads every JSON in that tree and indexes `doc["lane"]`; a
     file of a different shape there does not degrade, it crashes the gate.
     """
-    rows = [(f"{BOT_PREFIX}3", "survived", f"CHANGED:{BOT_ARGS_LINE}")]
+    rows = [(f"{BOT_PREFIX}3", f"CHANGED:{BOT_ARGS_LINE}")]
     record = _module_record(tmp_path, rows)
     record.pop("_report")
     assert "lane" not in record
@@ -145,14 +130,14 @@ def test_excluded_survivors_stay_visible_in_the_record(tmp_path: Path) -> None:
     record = _module_record(
         tmp_path,
         [
-            (f"{BOT_PREFIX}3", "survived", f"CHANGED:{BOT_ARGS_LINE}"),
-            (f"{BOT_PREFIX}4", "survived", "LOGGING:8"),
-            (f"{BOT_PREFIX}5", "survived", "EQUIV"),
-            (f"{BOT_PREFIX}7", "survived", "UNCHANGED:9"),
+            (f"{BOT_PREFIX}3", f"CHANGED:{BOT_ARGS_LINE}"),
+            (f"{BOT_PREFIX}4", "LOGGING:8"),
+            (f"{BOT_PREFIX}5", "EQUIV"),
+            (f"{BOT_PREFIX}7", "UNCHANGED:9"),
         ],
     )
-    assert len(record["survivors"]) == 1
-    excluded = {entry["name"]: entry["reason"] for entry in record["excluded"]}
+    assert len(sequence(record["survivors"])) == 1
+    excluded = {entry["name"]: entry["reason"] for entry in sequence(record["excluded"])}
     assert set(excluded) == {f"{BOT_PREFIX}{n}" for n in (4, 5, 7)}
     assert "logging-only" in excluded[f"{BOT_PREFIX}4"]
     report = str(record["_report"])
@@ -169,10 +154,7 @@ def test_a_clean_module_still_records(tmp_path: Path) -> None:
 
 def test_report_groups_mutants_under_one_source_line(tmp_path: Path) -> None:
     """Eight mutants on one line read as one heading, not eight mutmut names."""
-    rows = [
-        (f"{BOT_PREFIX}{n}", "survived", f"CHANGED:{BOT_ARGS_LINE}")
-        for n in (3, 4, 5, 7, 8, 9, 10, 11)
-    ]
+    rows = [(f"{BOT_PREFIX}{n}", f"CHANGED:{BOT_ARGS_LINE}") for n in (3, 4, 5, 7, 8, 9, 10, 11)]
     report = str(_module_record(tmp_path, rows)["_report"])
 
     assert f"apps/api/{BOT_MODULE}:{BOT_ARGS_LINE}" in report
@@ -184,7 +166,7 @@ def test_report_groups_mutants_under_one_source_line(tmp_path: Path) -> None:
     # Each mutant still names its own edit, in words rather than in mutant ids.
     assert '"1" → None' in report
     assert "nx=True → nx=None" in report
-    assert "mutation.sh replay" in report
+    assert "mutation.py replay" in report
 
 
 def test_report_splits_distinct_lines(tmp_path: Path) -> None:
@@ -193,8 +175,8 @@ def test_report_splits_distinct_lines(tmp_path: Path) -> None:
         _module_record(
             tmp_path,
             [
-                (f"{BOT_PREFIX}9", "survived", "CHANGED:8"),
-                (f"{BOT_PREFIX}3", "survived", f"CHANGED:{BOT_ARGS_LINE}"),
+                (f"{BOT_PREFIX}9", "CHANGED:8"),
+                (f"{BOT_PREFIX}3", f"CHANGED:{BOT_ARGS_LINE}"),
             ],
         )["_report"]
     )
@@ -203,70 +185,47 @@ def test_report_splits_distinct_lines(tmp_path: Path) -> None:
     assert first < second, "surviving lines must be listed in file order"
 
 
-# --- collect -----------------------------------------------------------------
+# --- report_shard ------------------------------------------------------------
 
 
-def _collect(
-    tmp_path: Path, log: Path, rcs: list[tuple[str, str]]
+def _report_shard(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+    verdicts: list[report_lib.ModuleVerdict],
 ) -> tuple[str, dict[str, object], dict[str, dict[str, object]]]:
-    """Run `collect` for real, and read back BOTH artifacts it produces.
+    """Report verdicts through the real `verdict.py emit`, and read back both artifacts.
 
-    Returns (output, shard.verdict.json, {lane: shared verdict}). The shared
-    verdicts come from the real `verdict.py emit` — stubbing the one producer
-    would prove only that this file can call a stub.
+    Returns (output, shard.verdict.json, {lane: shared verdict}); stubbing the
+    one producer would prove only that this file can call a stub.
     """
-    rcs_file = tmp_path / "rcs.tsv"
-    rcs_file.write_text("".join(f"{module}\t{rc}\n" for module, rc in rcs))
-    records = tmp_path / "records"
-    records.mkdir(exist_ok=True)
     shard_verdict = tmp_path / "shard.verdict.json"
-    verdicts = tmp_path / "verdicts"
+    verdict_out = tmp_path / "verdicts"
     summary = tmp_path / "summary.md"
     summary.touch()
-    result = subprocess.run(
-        [
-            sys.executable,
-            str(REPORT),
-            "collect",
-            "--log",
-            str(log),
-            "--dir",
-            str(records),
-            "--rcs",
-            str(rcs_file),
-            "--out",
-            str(shard_verdict),
-            "--repo-root",
-            str(REPO_ROOT),
-            "--verdict-out",
-            str(verdicts),
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-        env=_isolated_env(tmp_path, GITHUB_STEP_SUMMARY=str(summary)),
+    for key, value in _isolated_env(tmp_path, GITHUB_STEP_SUMMARY=str(summary)).items():
+        monkeypatch.setenv(key, value)
+    report_lib.report_shard(
+        verdicts, repo_root=REPO_ROOT, verdict_out=verdict_out, out=shard_verdict
     )
-    assert result.returncode == 0, result.stdout + result.stderr
+    captured = capfd.readouterr()
     _assert_nothing_escaped(tmp_path)
     emitted = {
         json.loads(path.read_text())["lane"]: json.loads(path.read_text())
-        for path in verdicts.rglob("*.json")
+        for path in verdict_out.rglob("*.json")
     }
-    output = result.stdout + result.stderr + summary.read_text()
+    output = captured.out + captured.err + summary.read_text()
     return output, json.loads(shard_verdict.read_text()), emitted
 
 
-def test_collect_reports_each_module_through_the_shared_producer(tmp_path: Path) -> None:
-    """One lane verdict per module, in the shape the quality gate consolidates.
-
-    Written by `verdict.py emit`, not by this lane: `emit` is the contract's
-    only producer, and it is what keeps the file, the annotation and the
-    step-summary block from drifting apart.
-    """
-    rows = [(f"{BOT_PREFIX}{n}", "survived", f"CHANGED:{BOT_ARGS_LINE}") for n in (3, 4)]
-    # `module` writes its record into the very directory `collect` reads.
-    _module_record(tmp_path, rows)
-    _output, _shard, emitted = _collect(tmp_path, SURVIVOR_LOG, [(BOT_MODULE, "1")])
+def test_the_shard_reports_each_module_through_the_shared_producer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+) -> None:
+    """One lane verdict per module, in the shape the gate consolidates, written by `emit` alone."""
+    rows = [(f"{BOT_PREFIX}{n}", f"CHANGED:{BOT_ARGS_LINE}") for n in (3, 4)]
+    _output, _shard, emitted = _report_shard(
+        tmp_path, monkeypatch, capfd, [_bot_verdict(tmp_path, rows)]
+    )
 
     verdict = emitted[f"mutation/{BOT_MODULE}"]
     assert set(verdict) == {"lane", "status", "summary", "findings", "advice"}
@@ -274,20 +233,16 @@ def test_collect_reports_each_module_through_the_shared_producer(tmp_path: Path)
     assert "2 surviving mutant(s) on 1 changed line(s)" in str(verdict["summary"])
 
 
-def test_collect_emits_one_finding_per_surviving_line(tmp_path: Path) -> None:
-    """The shared verdict groups by LINE; the mutant-level record stays ours.
+def test_the_shard_emits_one_finding_per_surviving_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+) -> None:
+    """The shared verdict groups by LINE; the mutant-level record stays in the replay artifact."""
+    rows = [(f"{BOT_PREFIX}{n}", f"CHANGED:{BOT_ARGS_LINE}") for n in (3, 4, 5, 7, 8, 9, 10, 11)]
+    _output, shard, emitted = _report_shard(
+        tmp_path, monkeypatch, capfd, [_bot_verdict(tmp_path, rows)]
+    )
 
-    One entry per thing to fix on the gate's table and on the PR's diff — eight
-    findings on one line would be eight copies of the same finding.
-    """
-    rows = [
-        (f"{BOT_PREFIX}{n}", "survived", f"CHANGED:{BOT_ARGS_LINE}")
-        for n in (3, 4, 5, 7, 8, 9, 10, 11)
-    ]
-    _module_record(tmp_path, rows)
-    output, shard, emitted = _collect(tmp_path, SURVIVOR_LOG, [(BOT_MODULE, "1")])
-
-    findings = emitted[f"mutation/{BOT_MODULE}"]["findings"]
+    findings = sequence(emitted[f"mutation/{BOT_MODULE}"]["findings"])
     assert len(findings) == 1
     assert findings[0]["file"] == f"apps/api/{BOT_MODULE}"
     assert findings[0]["line"] == BOT_ARGS_LINE
@@ -295,113 +250,80 @@ def test_collect_emits_one_finding_per_surviving_line(tmp_path: Path) -> None:
     assert '"1" → None; nx=True → nx=None' in findings[0]["message"]
     # The detail is every diff on that line, so the finding is self-contained.
     assert findings[0]["detail"].count("--- app/api/v1/endpoints/bot.py") == 8
-    # And the mutant-level record is still there, in the replay artifact.
-    assert len(shard["modules"][0]["survivors"]) == 8
+    assert len(sequence(shard["modules"])[0]["survivors"]) == 8
 
 
-def test_collect_annotates_once_per_line_through_emit(tmp_path: Path) -> None:
+def test_the_shard_annotates_once_per_line_through_emit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+) -> None:
     """`emit` prints the annotations — this lane must not print them again."""
-    rows = [(f"{BOT_PREFIX}{n}", "survived", f"CHANGED:{BOT_ARGS_LINE}") for n in (3, 4)]
-    _module_record(tmp_path, rows)
-    output, _shard, _emitted = _collect(tmp_path, SURVIVOR_LOG, [(BOT_MODULE, "1")])
+    rows = [(f"{BOT_PREFIX}{n}", f"CHANGED:{BOT_ARGS_LINE}") for n in (3, 4)]
+    output, _shard, _emitted = _report_shard(
+        tmp_path, monkeypatch, capfd, [_bot_verdict(tmp_path, rows)]
+    )
 
     annotations = [line for line in output.splitlines() if line.startswith("::error file=")]
     assert len(annotations) == 1
     assert annotations[0].startswith(f"::error file=apps/api/{BOT_MODULE},line={BOT_ARGS_LINE}::")
     assert "2 mutant(s) survive" in annotations[0]
-    assert "\n" not in annotations[0]
 
 
-def test_collect_advice_points_at_the_replay_artifact(tmp_path: Path) -> None:
+def test_the_shard_advice_points_at_the_replay_artifact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+) -> None:
     """The advice is a command, and it names the file that can actually run it."""
-    rows = [(f"{BOT_PREFIX}3", "survived", f"CHANGED:{BOT_ARGS_LINE}")]
-    _module_record(tmp_path, rows)
-    _output, _shard, emitted = _collect(tmp_path, SURVIVOR_LOG, [(BOT_MODULE, "1")])
+    rows = [(f"{BOT_PREFIX}3", f"CHANGED:{BOT_ARGS_LINE}")]
+    _output, _shard, emitted = _report_shard(
+        tmp_path, monkeypatch, capfd, [_bot_verdict(tmp_path, rows)]
+    )
 
-    advice = [str(item) for item in emitted[f"mutation/{BOT_MODULE}"]["advice"]]
+    advice = [str(item) for item in sequence(emitted[f"mutation/{BOT_MODULE}"]["advice"])]
     assert any(f"apps/api/{BOT_MODULE}:{BOT_ARGS_LINE}" in item for item in advice)
-    replay = next(item for item in advice if "mutation.sh replay" in item)
+    replay = next(item for item in advice if "mutation.py replay" in item)
     assert "shard.verdict.json" in replay
     assert "verify-logs/verdicts" not in replay
 
 
-def test_collect_rebuilds_a_module_that_wrote_no_record(tmp_path: Path) -> None:
-    """A module killed mid-run still reaches the gate, read off its log."""
-    _output, shard, emitted = _collect(tmp_path, SURVIVOR_LOG, [(BOT_MODULE, "1")])
-    assert emitted[f"mutation/{BOT_MODULE}"]["status"] == "fail"
-    # Every diff the log carried, recovered — the cap is gone from both sides.
-    survivors = shard["modules"][0]["survivors"]
-    assert len(survivors) == 8
-    assert all(entry["diff"] for entry in survivors)
-
-
-def test_collect_reads_a_skip_as_a_skip_with_its_reason(tmp_path: Path) -> None:
-    """A skipped module is `skip`, not `pass` and not `error`."""
-    module = "app/agents/tools/workflow_shared_tools.py"
-    _output, _shard, emitted = _collect(tmp_path, SKIP_LOG, [(module, "0")])
-    verdict = emitted[f"mutation/{module}"]
-    assert verdict["status"] == "skip"
-    assert "no mutant had covering tests" in str(verdict["summary"])
-    assert verdict["findings"] == []
-
-
-def test_collect_reads_the_no_test_gap_as_a_failure(tmp_path: Path) -> None:
-    """Changed lines no test reaches are a `fail` with one finding per line.
-
-    No diff exists for them — mutmut never generated a mutant for a line
-    nothing covers — so the message carries the whole finding.
-    """
-    log = tmp_path / "shard.log"
-    log.write_text(
-        "=== app/services/x.py ===\n"
-        "mutating app/services/x.py (tests: tests/unit/test_x.py) ...\n"
-        "MUTATION FAILED — changed code no test reaches in app/services/x.py:\n"
-        "      line(s) 12 13 40\n"
-    )
-    output, _shard, emitted = _collect(tmp_path, log, [("app/services/x.py", "1")])
-    verdict = emitted["mutation/app/services/x.py"]
-    assert verdict["status"] == "fail"
-    assert "3 changed line(s) no test reaches" in str(verdict["summary"])
-    assert [finding["line"] for finding in verdict["findings"]] == [12, 13, 40]
-    assert all("no mapped test executes" in f["message"] for f in verdict["findings"])
-    assert any("Write a test that executes" in str(item) for item in verdict["advice"])
-    assert output.count("::error file=apps/api/app/services/x.py,line=") == 3
-
-
-def test_collect_lets_a_nonzero_exit_beat_an_inconclusive_log(tmp_path: Path) -> None:
-    """A module that exited non-zero is never reported as a pass.
-
-    An inconclusive section read as `pass` is exactly the silence-read-as-success
-    this gate exists to stop.
-    """
-    log = tmp_path / "shard.log"
-    log.write_text("=== app/services/x.py ===\nmutating app/services/x.py (tests: t.py) ...\n")
-    _output, _shard, emitted = _collect(tmp_path, log, [("app/services/x.py", "1")])
+def test_a_module_that_wrote_no_record_and_exited_non_zero_is_an_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+) -> None:
+    """A module that died before its record is never reported as a pass."""
+    verdict = report_lib.missing_record_verdict("app/services/x.py", 1, "apps/api")
+    _output, _shard, emitted = _report_shard(tmp_path, monkeypatch, capfd, [verdict])
     assert emitted["mutation/app/services/x.py"]["status"] == "error"
+    assert "exited 1 without writing a verdict" in str(
+        emitted["mutation/app/services/x.py"]["summary"]
+    )
 
 
-def test_collect_reads_a_killed_module_as_timed_out(tmp_path: Path) -> None:
+def test_a_module_killed_before_its_record_is_timed_out(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+) -> None:
     """124/137 is the watchdog, not a test weakness — and not a pass either."""
-    log = tmp_path / "shard.log"
-    log.write_text("=== app/services/x.py ===\nMutation: OK — no survivors\n")
-    _output, _shard, emitted = _collect(tmp_path, log, [("app/services/x.py", "137")])
-    verdict = emitted["mutation/app/services/x.py"]
-    assert verdict["status"] == "timed_out"
-    assert "killed at its timeout" in str(verdict["summary"])
+    verdict = report_lib.missing_record_verdict("app/services/x.py", 137, "apps/api")
+    _output, _shard, emitted = _report_shard(tmp_path, monkeypatch, capfd, [verdict])
+    shared = emitted["mutation/app/services/x.py"]
+    assert shared["status"] == "timed_out"
+    assert "killed at its timeout" in str(shared["summary"])
 
 
-def test_collect_summary_counts_modules_without_repeating_findings(tmp_path: Path) -> None:
+def test_the_shard_summary_counts_modules_without_repeating_findings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+) -> None:
     """The shard's block is a roll-up; `emit` already wrote every finding."""
-    output, _shard, _emitted = _collect(tmp_path, SURVIVOR_LOG, [(BOT_MODULE, "1")])
+    rows = [(f"{BOT_PREFIX}3", f"CHANGED:{BOT_ARGS_LINE}")]
+    output, _shard, _emitted = _report_shard(
+        tmp_path, monkeypatch, capfd, [_bot_verdict(tmp_path, rows)]
+    )
     assert "| status | modules |" in output
     assert "| survivors | 1 |" in output
 
 
-# --- driven end to end through mutation.sh shard -----------------------------
+# --- driven end to end through mutation.py shard -----------------------------
 
 
 def _sandbox(tmp_path: Path, mutmut_behaviour: str) -> Path:
-    """Return a miniature repo `mutation.sh shard` can run for real, end to end.
+    """Return a miniature repo `mutation.py shard` can run for real, end to end.
 
     The fake venv python is the point: it answers the mutmut invocations the way
     a broken (or empty) run does and hands everything else to the real
@@ -423,8 +345,9 @@ def _sandbox(tmp_path: Path, mutmut_behaviour: str) -> Path:
     scripts_ci = root / "scripts" / "ci"
     (scripts_ci / "lib").mkdir(parents=True)
     for source, name in (
-        (MUTATION_SH, "mutation.sh"),
+        (MUTATION_PY, "mutation.py"),
         (REPO_ROOT / "scripts" / "ci" / "verdict.py", "verdict.py"),
+        (REPO_ROOT / "scripts" / "ci" / "lib" / "github.py", "lib/github.py"),
         (LOG_LIB, "lib/log.sh"),
         (CPU_SLOTS_LIB, "lib/cpu-slots.sh"),
         (REPO_ROOT / "scripts" / "ci" / "lib" / "mutation_gap.py", "lib/mutation_gap.py"),
@@ -512,7 +435,7 @@ def _run_shard(root: Path, module: str = "app/services/x.py") -> subprocess.Comp
         [{"module": module, "testfiles": '["tests/unit/test_x.py"]', "ranges": "[[2,2]]"}]
     )
     return subprocess.run(
-        ["bash", str(root / "scripts" / "ci" / "mutation.sh"), "shard"],
+        [sys.executable, str(root / "scripts" / "ci" / "mutation.py"), "shard"],
         capture_output=True,
         text=True,
         check=False,
@@ -637,7 +560,7 @@ def test_the_gate_consolidates_the_mutation_family_and_fails_on_it(tmp_path: Pat
     `test-mutation@mutation` is the gate's own mapping — the job is
     `test-mutation`, the lane family is `mutation`, and the family is satisfied
     by any `mutation/...` verdict, because how many modules there are is decided
-    by `mutation.sh plan` at runtime.
+    by `mutation.py plan` at runtime.
     """
     root = _sandbox(tmp_path, "exit 0")
     _run_shard(root)
@@ -670,7 +593,7 @@ def _shard_with_env(root: Path, **env: str) -> subprocess.CompletedProcess[str]:
         ]
     )
     return subprocess.run(
-        ["bash", str(root / "scripts" / "ci" / "mutation.sh"), "shard"],
+        [sys.executable, str(root / "scripts" / "ci" / "mutation.py"), "shard"],
         capture_output=True,
         text=True,
         check=False,
@@ -719,7 +642,7 @@ def test_the_shard_falls_back_to_the_runner_temp_rung(tmp_path: Path) -> None:
 
     Nothing sets GAIA_VERDICT_DIR on a runner: `verdict.py` resolves
     `$RUNNER_TEMP/verdicts`, which is per-job, wiped between jobs, and where the
-    upload composite and the gate both read. A mutation.sh that defaulted to the
+    upload composite and the gate both read. A mutation lane that defaulted to the
     checkout instead would put every verdict somewhere the gate calls NO
     VERDICT — so this rung is asserted, not assumed.
     """
@@ -727,7 +650,7 @@ def test_the_shard_falls_back_to_the_runner_temp_rung(tmp_path: Path) -> None:
     runner_temp = tmp_path / "runner-temp"
     env = {key: value for key, value in os.environ.items() if key != "GAIA_VERDICT_DIR"}
     result = subprocess.run(
-        ["bash", str(root / "scripts" / "ci" / "mutation.sh"), "shard"],
+        [sys.executable, str(root / "scripts" / "ci" / "mutation.py"), "shard"],
         capture_output=True,
         text=True,
         check=False,
@@ -998,7 +921,7 @@ def test_replay_fails_loudly_when_the_diff_no_longer_matches(tmp_path: Path) -> 
     assert "does not match the file on disk" in result.stderr
 
 
-def test_mutation_sh_asks_for_the_verdict_directory_instead_of_deriving_it() -> None:
+def test_mutation_py_asks_for_the_verdict_directory_instead_of_deriving_it() -> None:
     """`verdict.py dir` is the only thing that knows where verdicts go.
 
     A copy of the resolution order in shell is wrong the moment it moves, and
@@ -1006,14 +929,14 @@ def test_mutation_sh_asks_for_the_verdict_directory_instead_of_deriving_it() -> 
     the checkout, where no runner reads and the gate sees NO VERDICT.
     """
     code = [
-        line for line in MUTATION_SH.read_text().splitlines() if not line.lstrip().startswith("#")
+        line for line in MUTATION_PY.read_text().splitlines() if not line.lstrip().startswith("#")
     ]
-    assert [line for line in code if 'verdict.py" dir' in line or 'verdict.py" dir' in line], (
-        "mutation.sh must ask `verdict.py dir` for the verdict directory"
+    assert [line for line in code if '"verdict.py"), "dir"' in line], (
+        "mutation.py must ask `verdict.py dir` for the verdict directory"
     )
     for derived in ("verify-logs/verdicts", "GAIA_VERDICT_DIR", "RUNNER_TEMP"):
         assert not [line for line in code if derived in line], (
-            f"mutation.sh derives the verdict directory itself via {derived}"
+            f"mutation.py derives the verdict directory itself via {derived}"
         )
 
 
@@ -1029,19 +952,19 @@ def test_default_replay_invocation_stays_local_friendly() -> None:
     assert 'REPLAY_ADDOPTS = "--strict-markers --timeout=120"' in source
 
 
-def test_mutation_sh_exposes_replay() -> None:
+def test_mutation_py_exposes_replay() -> None:
     """The subcommand is reachable and self-documenting from the entrypoint."""
     result = subprocess.run(
-        ["bash", str(MUTATION_SH), "replay"],
+        [sys.executable, str(MUTATION_PY), "replay"],
         capture_output=True,
         text=True,
         check=False,
         cwd=REPO_ROOT,
     )
     assert result.returncode == 2
-    assert "usage: mutation.sh replay" in result.stderr
+    assert "usage: mutation.py replay" in result.stderr
     usage = subprocess.run(
-        ["bash", str(MUTATION_SH), "nonsense"],
+        [sys.executable, str(MUTATION_PY), "nonsense"],
         capture_output=True,
         text=True,
         check=False,
@@ -1061,7 +984,4 @@ def test_mutation_sh_exposes_replay() -> None:
 )
 def test_change_summary_names_the_edit(removed: list[str], added: list[str], expected: str) -> None:
     """The one-line change is the whole point: a name plus `→` beats a diff to scan."""
-    sys.path.insert(0, str(REPORT.parent))
-    import mutation_report
-
-    assert mutation_report.change_summary(removed, added) == expected
+    assert report_lib.change_summary(removed, added) == expected

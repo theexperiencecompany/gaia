@@ -15,7 +15,7 @@
 #                        must then be published even when nx sees api/web
 #                        unaffected. Writes required=true|false.
 #   pin-selfhost-release Wait for the release commit's gaia + gaia-web +
-#                        self-host bot :<sha> images and main.yml's quality
+#                        self-host bot :<sha> images and ci.yml's quality
 #                        gate on it, then tag them v<CLI version>, the set that
 #                        CLI release's `gaia update` pins.
 #   cli-beta-release     Create the cli-v<beta> GitHub Release as a
@@ -233,18 +233,32 @@ cmd_dispatch_cli_publish() {
   # npm publish is the last job: gaia-connect binaries (~15 min), then the
   # image pin's wait for the release commit's build (<= 30 min), then npm.
   local TIMEOUT_SECONDS=3600
+  # npm's registry read lags a publish by up to a minute; a finished run is
+  # judged only after the read has had that long to catch up.
+  local REGISTRY_RETRIES=6
+  local REGISTRY_RETRY_SECONDS=10
 
   published() {
     # Exits non-zero when the exact version is absent from the registry.
     npm view "${PACKAGE}@${VERSION}" version >/dev/null 2>&1
   }
 
+  published_after_lag() {
+    local attempt
+    for ((attempt = 1; attempt <= REGISTRY_RETRIES; attempt++)); do
+      published && return 0
+      sleep "$REGISTRY_RETRY_SECONDS"
+    done
+    return 1
+  }
+
   # Counts publish runs that have not finished yet — any run, not just one we
   # started. It only ever makes us wait longer, never mistake someone else's
-  # result for ours.
+  # result for ours. A failed read fails here: read as 0, one API blip made a
+  # running publish look finished.
   active_runs() {
     gh run list --workflow "$WORKFLOW" --limit 20 --json status \
-      --jq '[.[] | select(.status != "completed")] | length' 2>/dev/null || echo 0
+      --jq '[.[] | select(.status != "completed")] | length'
   }
 
   if published; then
@@ -268,14 +282,21 @@ cmd_dispatch_cli_publish() {
       return 0
     fi
 
-    active=$(active_runs)
+    if ! active=$(active_runs); then
+      ci_warn "could not list ${WORKFLOW} runs — polling again"
+      continue
+    fi
     if ((active > 0)); then
       # A publish is still running; keep waiting for it to land.
       seen_active=1
     elif ((seen_active == 1)); then
-      # We watched a publish run start and finish, and the version still is not
-      # on the registry — that is a failed publish, reported now rather than at
-      # the timeout.
+      # We watched a publish run start and finish. Still absent once the
+      # registry read has had time to catch up, that is a failed publish,
+      # reported now rather than at the timeout.
+      if published_after_lag; then
+        ci_ok "${PACKAGE}@${VERSION} published."
+        return 0
+      fi
       ci_die "Publish finished but ${PACKAGE}@${VERSION} is not on npm. See ${runs_url}"
     fi
   done
@@ -457,10 +478,10 @@ cmd_cli_release_images() {
 # timeout fails loud instead of falling back to whatever :latest is. Nothing is
 # tagged until all exist, so a timeout never leaves a partial set. Idempotent:
 # an existing v<version> tag is kept, because an install may already run it.
-# main.yml's quality-gate verdict across the runs on <sha> of the given events:
+# ci.yml's quality-gate verdict across the runs on <sha> of the given events:
 # passed when any run's gate succeeded, failed when every run's gate finished
 # otherwise, pending while one is still running or no run exists yet.
-main_quality_gate() {
+ci_quality_gate() {
   local sha="$1"
   shift
   local api="repos/${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}/actions"
@@ -468,7 +489,7 @@ main_quality_gate() {
   # Called inside $(...), where errexit does not reach: every gh call returns
   # its own failure so the caller can die on it.
   for event in "$@"; do
-    event_runs=$(gh api "$api/workflows/main.yml/runs?head_sha=$sha&event=$event" --jq '.workflow_runs[].id') || return 1
+    event_runs=$(gh api "$api/workflows/ci.yml/runs?head_sha=$sha&event=$event" --jq '.workflow_runs[].id') || return 1
     run_ids+=" $event_runs"
   done
   for run_id in $run_ids; do
@@ -512,7 +533,7 @@ cmd_pin_selfhost_release() {
     fi
   done
 
-  # build.yml publishes :<sha> before main.yml's quality gate has judged the
+  # build.yml publishes :<sha> before ci.yml's quality gate has judged the
   # commit, so the images alone do not say the release commit is green.
   local deadline=$((SECONDS + wait_seconds))
   local missing gate
@@ -523,14 +544,14 @@ cmd_pin_selfhost_release() {
         missing+=("$GHCR_NAMESPACE/$repo:$SHA")
       fi
     done
-    gate=$(main_quality_gate "$SHA" "${gate_events[@]}") ||
-      ci_die "could not read main.yml's runs for $SHA from the Actions API (GH_TOKEN needs actions:read)."
+    gate=$(ci_quality_gate "$SHA" "${gate_events[@]}") ||
+      ci_die "could not read ci.yml's runs for $SHA from the Actions API (GH_TOKEN needs actions:read)."
     if [[ "$gate" == failed ]]; then
-      ci_die "main.yml's quality gate failed on $SHA; a release commit must pass it. Fix master and cut the release from a green commit."
+      ci_die "ci.yml's quality gate failed on $SHA; a release commit must pass it. Fix master and cut the release from a green commit."
     fi
     [[ "$gate" == passed ]] && ((${#missing[@]} == 0)) && break
     if ((SECONDS >= deadline)); then
-      [[ "$gate" == passed ]] || ci_die "Timed out after ${wait_seconds}s waiting for main.yml's quality gate to pass on $SHA (a run cancelled by a newer master push needs a re-run: gh run rerun <id>), then re-dispatch this publish."
+      [[ "$gate" == passed ]] || ci_die "Timed out after ${wait_seconds}s waiting for ci.yml's quality gate to pass on $SHA (a run cancelled by a newer master push needs a re-run: gh run rerun <id>), then re-dispatch this publish."
       ci_die "Timed out after ${wait_seconds}s waiting for ${missing[*]}. build.yml publishes them for the release commit: re-run the master run for $SHA, then re-dispatch this publish."
     fi
     echo "Waiting for: quality gate ${gate}${missing[*]:+, ${missing[*]}}"

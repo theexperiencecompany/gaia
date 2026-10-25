@@ -9,6 +9,7 @@
   "include": [
     "**/*.ts",
     "../playwright.config.ts",
-    "../playwright.selfhost.config.ts"
+    "../playwright.selfhost.config.ts",
+    "../playwright.worker.config.ts"
   ]
 }

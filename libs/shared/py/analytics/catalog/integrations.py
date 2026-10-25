@@ -20,7 +20,6 @@ __all__ = [
     "IntegrationInstanceSetupSaved",
     "IntegrationToolkitDisabled",
     "IntegrationToolkitEnabled",
-    "IntegrationInstructionsUpdated",
     "IntegrationPrimaryChanged",
     "McpConnectionTested",
     "SkillDisabled",
@@ -144,15 +143,6 @@ class IntegrationToolkitDisabled(ServerEvent):
     toolkit: Identifier
 
 
-class IntegrationInstructionsUpdated(ServerEvent):
-    """A user edited an integration's custom instructions."""
-
-    event: ClassVar[str] = "integration:instructions_updated"
-    budget_per_user_day: ClassVar[int] = 10
-
-    integration_id: Identifier
-
-
 class IntegrationCustomUpdated(ServerEvent):
     """A user edited a custom integration."""
 
@@ -212,21 +202,27 @@ class McpConnectionTested(ServerEvent):
 
 
 class SkillInstalled(ServerEvent):
-    """A user installed a skill from GitHub or inline."""
+    """A skill was installed from GitHub, written inline, or learned by GAIA's agent."""
 
     event: ClassVar[str] = "skill:installed"
     budget_per_user_day: ClassVar[int] = 10
 
     target: Identifier
-    source: Literal["github", "inline"]
+    source: Literal["github", "inline", "learned"]
+    # Who did it: "user" in Settings, or "agent" for GAIA's own skill tools.
+    author: Identifier
     skill_id: Identifier | None = None
 
 
 class SkillUpdated(ServerEvent):
-    """A user edited a skill."""
+    """A skill's instructions were edited, by the user or by GAIA's agent."""
 
     event: ClassVar[str] = "skill:updated"
     budget_per_user_day: ClassVar[int] = 50
+
+    target: Identifier
+    # Who did it: "user" in Settings, or "agent" for GAIA's own skill tools.
+    author: Identifier
 
 
 class SkillEnabled(ServerEvent):

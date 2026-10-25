@@ -51,7 +51,7 @@ OAUTH_DISCOVERY_TTL = ONE_DAY_TTL
 MCP_TOOLS_CACHE_TTL = ONE_DAY_TTL
 USER_SKILLS_CACHE_TTL = TWELVE_HOUR_TTL
 SKILLS_TEXT_CACHE_TTL = TWELVE_HOUR_TTL
-INTEGRATION_INSTRUCTIONS_CACHE_TTL = ONE_DAY_TTL
+USER_INSTRUCTIONS_CACHE_TTL = ONE_DAY_TTL
 COMMUNITY_CACHE_TTL = FIVE_MINUTES_TTL
 FAVICON_CACHE_TTL = SIX_MONTH_TTL
 SEARCH_CACHE_TTL = ONE_DAY_TTL
@@ -133,7 +133,7 @@ MCP_TOOLS_CACHE_KEY = "mcp:tools:all"
 USER_SKILLS_CACHE_KEY = "skills:user:{user_id}:agent:{agent_name}"
 # v2: the listing now merges in-memory builtin skills; bump busts stale empty entries.
 SKILLS_TEXT_CACHE_KEY = "skills:text:v2:{user_id}:{agent_name}"
-INTEGRATION_INSTRUCTIONS_CACHE_KEY = "integration_instructions:{user_id}"
+USER_INSTRUCTIONS_CACHE_KEY = "user_instructions:{user_id}"
 # Conversation-level artifact registry; long TTL with event-driven invalidation
 # on every upsert/remove — a chat turn reads it once instead of re-scanning the costly JuiceFS dir.
 CONV_ARTIFACTS_CACHE_PATTERN = "conv_artifacts:{user_id}:{conv_id}"
@@ -209,6 +209,9 @@ EXECUTOR_ALIVE_PREFIX = "executor:alive:"
 EXECUTOR_ALIVE_TTL = 60
 EXECUTOR_ALIVE_BEAT_SECONDS = 20
 EXECUTOR_ALIVE_TASK_NAME = "executor_alive_beat"
+# What a live holder has done so far (see executor_progress). Keyed by holder like the
+# alive key and renewed by the same beat, so it lives exactly as long as its run.
+EXECUTOR_PROGRESS_PREFIX = "executor:progress:"
 # A holder that has not proven it lives for this long could lapse before its next
 # renewal lands, so it stops rather than run beside whoever reclaims its lock.
 EXECUTOR_ALIVE_GIVE_UP_SECONDS = EXECUTOR_ALIVE_TTL - EXECUTOR_ALIVE_BEAT_SECONDS

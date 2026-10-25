@@ -5,7 +5,7 @@
 
 import { execa } from "execa";
 import fs from "fs";
-import simpleGit from "simple-git";
+import { simpleGit } from "simple-git";
 import { formatBytes, parseBinarySize } from "./byte-size.js";
 
 /**

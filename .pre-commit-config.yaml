@@ -37,7 +37,7 @@ repos:
 
   # Ruff is version-sensitive: rule promotions between releases flip previously
   # clean files. Pin ALL surfaces to the same version and bump them together —
-  # this rev, CI's pin (.github/workflows/code-quality.yml), and the ruff entry
+  # this rev, CI's pin (.github/workflows/ci.yml), and the ruff entry
   # in the root uv.lock. See #1063 for the drift this caused.
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.14.13
@@ -57,6 +57,13 @@ repos:
         entry: bash -c 'cd apps/api && uvx --no-build --from import-linter==2.6 lint-imports --no-cache'
         language: system
         files: '^apps/api/(app/.*\.py|pyproject\.toml)$'
+        pass_filenames: false
+
+      - id: uv-lock
+        name: every uv.lock still resolves from its pyproject.toml
+        entry: bash scripts/ci/audit.sh uv-lock
+        language: system
+        files: '(^|/)(pyproject\.toml|uv\.lock)$'
         pass_filenames: false
 
       - id: openui-gen-prompt

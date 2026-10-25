@@ -1,3 +1,5 @@
+import { INSTRUCTIONS_CONFLICT_CODE } from "@shared/constants/instructions";
+
 // API error codes shared with the backend (apps/api/app/constants/error_codes.py).
 export const API_ERROR_CODES = {
   NOT_AUTHENTICATED: "NOT_AUTHENTICATED",
@@ -6,4 +8,5 @@ export const API_ERROR_CODES = {
   REGISTRATION_CLOSED: "registration_closed",
   INVITE_INVALID: "invite_invalid",
   CANNOT_REMOVE_ADMIN: "cannot_remove_admin",
+  INSTRUCTIONS_CONFLICT: INSTRUCTIONS_CONFLICT_CODE,
 } as const;

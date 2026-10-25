@@ -17,6 +17,7 @@ from app.agents.skills.registry import (
     SkillInstallRequest,
     disable_skill,
     enable_skill,
+    ensure_skill_name_available,
     get_skill,
     get_skill_by_name,
     get_skills_for_agent,
@@ -353,12 +354,6 @@ class TestInstallSkill:
             skill={"operation": "install", "skill_name": "my-skill"},
         )
 
-    async def test_checks_duplicate_by_user_name_and_target(self, mock_skill_repo):
-        mock_skill_repo.find_by_name = AsyncMock(return_value=None)
-        mock_skill_repo.create = AsyncMock()
-        await install_skill(_request(user_id="u1", name="my-skill", target="gmail_agent"))
-        mock_skill_repo.find_by_name.assert_awaited_once_with("u1", "my-skill", "gmail_agent")
-
     async def test_creates_skill_with_uuid_id(self, mock_skill_repo):
         mock_skill_repo.find_by_name = AsyncMock(return_value=None)
         mock_skill_repo.create = AsyncMock()
@@ -386,15 +381,30 @@ class TestInstallSkill:
         assert isinstance(skill, Skill)
         assert skill.user_id == "u1" and skill.enabled is True and skill.id
 
-    async def test_raises_on_duplicate(self, mock_skill_repo):
-        mock_skill_repo.find_by_name = AsyncMock(return_value=_skill(name="my-skill"))
-        mock_skill_repo.create = AsyncMock()
-        with pytest.raises(AppError, match="already installed") as exc_info:
-            await install_skill(_request())
+
+class TestEnsureSkillNameAvailable:
+    """The one name check, run by every installer before SKILL.md is written."""
+
+    async def test_a_free_name_passes_and_is_looked_up_by_user_and_name_only(self, mock_skill_repo):
+        mock_skill_repo.find_by_name = AsyncMock(return_value=None)
+        await ensure_skill_name_available("u1", "my-skill")
+        mock_skill_repo.find_by_name.assert_awaited_once_with("u1", "my-skill")
+
+    async def test_a_name_taken_on_another_target_is_refused(self, mock_skill_repo):
+        """SKILL.md lives at /skills/<user>/<name>, so a same-named skill on a second target would overwrite the first one's file."""
+        existing = _skill(name="triage", target="executor")
+
+        async def find_by_name(user_id: str, name: str, target: str | None = None) -> Skill | None:
+            if name == existing.name and target in (None, existing.target):
+                return existing
+            return None
+
+        mock_skill_repo.find_by_name = AsyncMock(side_effect=find_by_name)
+        with pytest.raises(AppError) as exc_info:
+            await ensure_skill_name_available("u1", "triage")
         assert exc_info.value.status_code == 409
-        assert exc_info.value.why == "Skill names are unique per user and target."
-        assert (
-            exc_info.value.fix
-            == "Uninstall the existing skill first, or install under a different name."
+        assert exc_info.value.message == "A skill named 'triage' already exists (for executor)."
+        assert exc_info.value.why == "Skill names are unique per user."
+        assert exc_info.value.fix == (
+            "Update the existing skill, uninstall it first, or use a different name."
         )
-        mock_skill_repo.create.assert_not_awaited()

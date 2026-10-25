@@ -3,6 +3,10 @@
  * checks.mjs — the static hygiene gates over the TypeScript/JS surface.
  *
  * Subcommands:
+ *   biome               Biome over CHANGED_FILES (or the repo), failing on any
+ *                       error and on a dead biome-ignore (`suppressions/unused`,
+ *                       a warning biome itself never fails on). CI and
+ *                       `mise ci:local` both run this.
  *   file-sizes [--enforce-all] [--quiet]
  *                       File size gate. Default mode reports every file over
  *                       its target limit but only FAILS on the 1200-line hard
@@ -68,10 +72,10 @@
  * `duplication` reads GAIA_PR_BASE, then GITHUB_BASE_REF, for its diff base
  * (default master).
  */
-import { execFileSync, execSync } from "node:child_process";
+import { execFileSync, execSync, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { checkDocComments } from "./lib/doc-comments.mjs";
 import { explicitFileList } from "./lib/explicit-file-list.mjs";
 import { runEvlogMapBots } from "./lib/evlog-map-bots.mjs";
@@ -192,6 +196,23 @@ function sizeFiles(args) {
 }
 
 const countLines = (p) => readFileSync(p, "utf8").split("\n").length;
+
+function cmdBiome(argv) {
+  const files = explicitFileList(argv);
+  const result = spawnSync(
+    "pnpm",
+    ["exec", "biome", "check", "--no-errors-on-unmatched", ...(files.length ? files : ["."])],
+    { encoding: "utf8", maxBuffer: 256 * 1024 * 1024 },
+  );
+  if (result.error) throw result.error;
+  const output = `${result.stdout}${result.stderr}`;
+  process.stdout.write(output);
+  if (output.includes("suppressions/unused")) {
+    console.error("biome: a dead biome-ignore no longer masks anything — delete it");
+    process.exit(1);
+  }
+  process.exit(result.status ?? 1);
+}
 
 function cmdFileSizes(argv) {
   const args = new Set(argv);
@@ -588,9 +609,15 @@ function cmdDocComments(argv) {
 const DUPLICATION_THRESHOLD = 3;
 
 function cmdDuplication() {
-  // GAIA_PR_BASE first: a stacked PR's payload names the trunk, not its parent (see changes.sh).
+  // GAIA_PR_BASE first: a stacked PR's payload names the trunk, not its parent,
+  // and a merge_group's base is a commit, not a branch — `changes.sh base-rev`
+  // owns turning either into a revision.
   const baseRef = process.env.GAIA_PR_BASE || process.env.GITHUB_BASE_REF;
-  const BASE = baseRef ? `origin/${baseRef}` : "origin/master";
+  const BASE = baseRef
+    ? execFileSync("bash", ["scripts/ci/changes.sh", "base-rev"], {
+        encoding: "utf8",
+      }).trim()
+    : "origin/master";
 
   const sh = (cmd) =>
     execSync(cmd, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
@@ -745,12 +772,21 @@ function regenerateApiSchema() {
     ],
     { ...opts, env: { ...process.env, LOG_LEVEL: "ERROR" } },
   );
+  // tools/api-codegen is outside the workspace: it needs the JS compiler API
+  // (ts.createPrinter), which the native 7.x package does not ship.
+  const codegenDir = resolve("tools/api-codegen");
+  const codegenBin =
+    process.env.GAIA_OPENAPI_TS || join(codegenDir, "node_modules", ".bin", "openapi-typescript");
+  if (!existsSync(codegenBin)) {
+    // Never pass on the committed schema when regeneration was skipped.
+    throw new Error(
+      `${codegenBin} is missing. Run: pnpm --dir tools/api-codegen install --frozen-lockfile --ignore-workspace`,
+    );
+  }
   execFileSync(
-    "pnpm",
+    codegenBin,
     [
-      "exec",
-      "openapi-typescript",
-      OPENAPI_JSON,
+      resolve(OPENAPI_JSON),
       "--alphabetize",
       // A field with a default is optional on the wire for a request body; a
       // response-only model marks it required itself (ResponseModel).
@@ -762,7 +798,7 @@ function regenerateApiSchema() {
       "--root-types-no-schema-prefix",
       "--root-types-keep-casing",
       "--output",
-      GENERATED_TYPES,
+      resolve(GENERATED_TYPES),
     ],
     opts,
   );
@@ -1107,9 +1143,65 @@ function usage() {
 }
 
 function main() {
+// next and @opennextjs/cloudflare are one unit: OpenNext's shims hard-code
+// which Next manifests they load, so a Next minor can satisfy the peer range
+// and still 500 at runtime (16.4 + 1.20.2, 2026-10-23).
+const FRAMEWORK_PAIR_FLOORS = {
+  "16.4": "1.20.12",
+};
+
+function parseVersion(v) {
+  return v.split(".").map((part) => Number.parseInt(part, 10) || 0);
+}
+
+function compareVersions(a, b) {
+  const [x, y] = [parseVersion(a), parseVersion(b)];
+  for (let i = 0; i < 3; i++) {
+    if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) < (y[i] ?? 0) ? -1 : 1;
+  }
+  return 0;
+}
+
+function cmdFrameworkPair() {
+  const manifest = JSON.parse(readFileSync("apps/web/package.json", "utf8"));
+  const nextSpec = manifest.dependencies?.next;
+  const opennextSpec =
+    manifest.dependencies?.["@opennextjs/cloudflare"] ??
+    manifest.devDependencies?.["@opennextjs/cloudflare"];
+  if (!nextSpec || !opennextSpec) {
+    console.error("❌ apps/web must declare both next and @opennextjs/cloudflare");
+    process.exit(1);
+  }
+
+  // `exports` in both packages blocks the `/package.json` subpath, so read the
+  // installed manifest through node_modules directly.
+  const installed = (name) =>
+    JSON.parse(readFileSync(resolve("apps/web/node_modules", name, "package.json"), "utf8"));
+  const next = installed("next").version;
+  const opennext = installed("@opennextjs/cloudflare").version;
+
+  const [major, minor] = next.split(".");
+  const floor = FRAMEWORK_PAIR_FLOORS[`${major}.${minor}`];
+  if (floor && compareVersions(opennext, floor) < 0) {
+    console.error(
+      `❌ next ${next} needs @opennextjs/cloudflare >= ${floor} (installed ${opennext}). ` +
+        "Its manifest loader does not know this Next's manifest set, so routes will 500 at runtime.",
+    );
+    process.exit(1);
+  }
+
+  console.log(
+    `✅ framework pair: next ${next} + @opennextjs/cloudflare ${opennext}` +
+      (floor ? ` (floor ${floor})` : ""),
+  );
+}
+
   const sub = process.argv[2];
   const rest = process.argv.slice(3);
   switch (sub) {
+    case "biome":
+      cmdBiome(rest);
+      break;
     case "file-sizes":
       cmdFileSizes(rest);
       break;
@@ -1145,6 +1237,9 @@ function main() {
       break;
     case "api-client-imports":
       cmdApiClientImports(rest);
+      break;
+    case "framework-pair":
+      cmdFrameworkPair();
       break;
     default:
       console.error(`checks.mjs: unknown subcommand '${sub ?? ""}'`);

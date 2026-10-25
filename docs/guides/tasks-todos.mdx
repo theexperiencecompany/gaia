@@ -40,6 +40,19 @@ You can also ask about, move, or complete tasks in bulk:
 
 To create a project, click **+** in the project sidebar or ask: "create a project called Product Launch".
 
+## Long-running delegated work
+
+For jobs that run for hours (coding agents, monitors, migrations), GAIA hands the work to a tracked task and reports back instead of making you wait:
+
+<Chat
+  messages={[
+    { from: "user", text: "migrate my Postgres to Neon in OpenCode" },
+    { from: "gaia", text: "On it. I'll message you when it needs you or finishes." },
+  ]}
+/>
+
+Ask about progress from anywhere, even a different chat or device. GAIA reads the task's log and answers in plain words. Questions, completion, and failures arrive as messages on your preferred chat app. Everything is recorded on the task, so nothing is ever lost even if you close the app.
+
 ## Suggested workflows
 
 GAIA can turn a task into a step-by-step plan it can run for you. Open a task and look for the **Workflow** section.

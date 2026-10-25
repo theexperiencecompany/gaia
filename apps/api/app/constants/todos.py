@@ -135,6 +135,7 @@ class TodoActivityEvent(StrEnum):
     APPROVAL_GRANTED = "approval_granted"
     APPROVAL_DENIED = "approval_denied"
     MAINTENANCE = "maintenance"
+    SANDBOX_EVENT = "sandbox_event"
     COMPLETED = "completed"
 
 
@@ -209,8 +210,10 @@ INBOX_DESK_AUTOMATED_SENDERS: Final[tuple[str, ...]] = (
     "mailer-daemon",
     "donotreply",
 )
-# Gmail terms the desk's fetch adds to its window.
-INBOX_DESK_MAIL_FILTER: Final[str] = "category:primary " + " ".join(
+# Primary inbox fetch: in:inbox plus the CATEGORY_PERSONAL label the watch uses, minus
+# automated senders. "category:primary" is not a Gmail term: it matched 0 on one live
+# mailbox and non-Primary mail on another.
+INBOX_DESK_MAIL_FILTER: Final[str] = "in:inbox category:personal " + " ".join(
     f"-from:{sender}" for sender in INBOX_DESK_AUTOMATED_SENDERS
 )
 # Gmail labels new mail needs to wake the desk: in the inbox, in Primary.

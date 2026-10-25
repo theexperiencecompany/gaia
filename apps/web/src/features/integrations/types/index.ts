@@ -11,7 +11,6 @@ import type {
   CommunityIntegrationItem,
   CommunityListResponse,
   IntegrationContent,
-  IntegrationInstructionsResponse,
   MyIntegrationItem,
 } from "@shared/api/generated";
 
@@ -41,8 +40,6 @@ export type IntegrationCategoryValue =
   | "personal"
   | "capabilities"
   | "other";
-
-export type IntegrationInstructions = IntegrationInstructionsResponse;
 
 export interface Integration {
   id: string;

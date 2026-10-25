@@ -127,6 +127,7 @@ async def test_selfhost_with_an_e2b_key_stays_on_the_e2b_path(
     with (
         patch.object(lifecycle.settings, "ENV", "selfhost"),
         patch.object(lifecycle, "_resolved_e2b_api_key", AsyncMock(return_value="test-e2b-key")),
+        patch.object(lifecycle, "_template_for", AsyncMock(return_value="gaia-coder")),
         patch.object(lifecycle, "_acquire_or_create", AsyncMock(return_value=entry)),
         patch.object(lifecycle, "e2b_sandbox_repository", AsyncMock()),
         patch.object(lifecycle, "_schedule_pause"),
@@ -147,6 +148,7 @@ async def test_production_without_a_key_stays_on_the_e2b_path(
     with (
         patch.object(lifecycle.settings, "ENV", "production"),
         patch.object(lifecycle, "_resolved_e2b_api_key", AsyncMock(return_value=None)),
+        patch.object(lifecycle, "_template_for", AsyncMock(return_value="gaia-coder")),
         patch.object(lifecycle, "_acquire_or_create", error),
     ):
         with pytest.raises(lifecycle.SandboxAcquisitionError, match="E2B_API_KEY"):

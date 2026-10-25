@@ -166,7 +166,7 @@ services:
     name: gaia-mongo
     runtime: image
     image:
-      url: docker.io/library/mongo:8
+      url: docker.io/library/mongo:8.3.13
     plan: 1c-2g
     envVars:
       - key: GLIBC_TUNABLES

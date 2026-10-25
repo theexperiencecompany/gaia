@@ -348,11 +348,13 @@ def test_init_gemini_llm_pins_context_window_profile(monkeypatch):
     assert llm.profile == {"max_input_tokens": DEFAULT_MAX_TOKENS}
 
 
-def test_init_custom_llm_wires_every_kwarg_and_profile(monkeypatch):
+def test_init_custom_llm_wires_every_kwarg_and_profile(monkeypatch, request):
     """Wire every construction kwarg of a stored custom endpoint via the shared dev-lane build site."""
     captured: dict[str, object] = {}
     monkeypatch.setattr(dev_lane, "ChatOpenAI", _fake_chat_openrouter(captured))
     dev_lane.build_custom_chat_model.cache_clear()
+    # Cleared after too: the cached fake otherwise serves every later test's custom lane.
+    request.addfinalizer(dev_lane.build_custom_chat_model.cache_clear)
     # Runtime-stored credentials only exist on a self-hosted instance.
     monkeypatch.setattr(client.settings, "ENV", "selfhost")
     monkeypatch.setattr(client.settings, "AUTH_MODE", "local")
@@ -388,11 +390,12 @@ def test_init_custom_llm_wires_every_kwarg_and_profile(monkeypatch):
     assert captured["cf_model_name"] is client._MODEL_FIELD
 
 
-def test_the_custom_endpoint_reads_the_dev_settings_when_nothing_is_stored(monkeypatch):
+def test_the_custom_endpoint_reads_the_dev_settings_when_nothing_is_stored(monkeypatch, request):
     """With no store entry the env fallback yields the DEV_LLM endpoint at the same build site."""
     captured: dict[str, object] = {}
     monkeypatch.setattr(dev_lane, "ChatOpenAI", _fake_chat_openrouter(captured))
     dev_lane.build_custom_chat_model.cache_clear()
+    request.addfinalizer(dev_lane.build_custom_chat_model.cache_clear)
     monkeypatch.setattr(client.settings, "ENV", "development")
     monkeypatch.setattr(client.settings, "GAIA_SIM_MODE", False)
     monkeypatch.setattr(client.settings, "DEV_LLM_API", DevLLMApi.CHAT_COMPLETIONS)

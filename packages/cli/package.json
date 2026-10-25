@@ -18,7 +18,7 @@
     "lint:fix": "pnpm run fix",
     "prepublishOnly": "pnpm run build",
     "start": "NODE_ENV=production node dist/index.js",
-    "type-check": "tsc --noEmit"
+    "type-check": "node ../../scripts/ts/type-check.mjs --noEmit"
   },
   "dependencies": {
     "@inkjs/ui": "^2.0.0",
@@ -29,17 +29,17 @@
     "ink": "^6.8.0",
     "ink-text-input": "^6.0.0",
     "is-unicode-supported": "^2.1.0",
-    "react": "19.1.0",
-    "react-dom": "19.1.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
     "semver": "^7.8.5",
-    "simple-git": "^3.36.0",
+    "simple-git": "^4.0.2",
     "supports-hyperlinks": "^3.2.0",
     "wrap-ansi": "^9.0.2",
     "ws": "^8.21.0",
-    "zod": "^4.3.6"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.7",
+    "@biomejs/biome": "^2.6.2",
     "@gaia/shared": "workspace:*",
     "@resvg/resvg-js": "^2.6.2",
     "@types/node": "^24.13.3",
@@ -51,13 +51,13 @@
     "tsx": "^4.23.11",
     "typescript": "^7.0.2",
     "vite": "^7.3.6",
-    "vitest": "^4.1.10"
+    "vitest": "^5.0.5"
   },
   "bin": {
     "gaia": "./dist/index.js"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "keywords": [
     "ai-assistant",

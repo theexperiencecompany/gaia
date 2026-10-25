@@ -50,7 +50,7 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      # The build main.yml's obscura-bin job makes too, under one cache scope.
+      # The build ci.yml's obscura-bin job makes too, under one cache scope.
       - uses: ./.github/actions/build-obscura
 
       - name: Locate the binaries (Obscura built above, Chrome from the runner image)

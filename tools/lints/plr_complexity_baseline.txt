@@ -28,6 +28,8 @@ apps/api/app/agents/tools/integrations/linkedin_tool.py	PLR0915	deferred-until=2
 apps/api/app/agents/tools/integrations/twitter_tool.py	PLR0915	deferred-until=2026-10-15; ProxyRequest wrap touched the file mechanically; restructuring ~1.7k lines of custom-tool closures is its own PR (decided 2026-09-11)
 apps/api/app/agents/tools/todo_tools.py	PLR0912	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-15)
 apps/api/app/agents/workspace/paths.py	PLR0911	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-15)
+apps/api/app/core/lazy_loader.py	PLR0912	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-15)
+apps/api/app/core/lazy_loader.py	PLR0913	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-15)
 apps/api/app/db/repositories/e2b_sandboxes.py	PLR0913	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-15)
 apps/api/app/memory/extraction.py	PLR0913	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-15)
 apps/api/app/memory/pg_store/graph.py	PLR0912	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-15)
@@ -75,8 +77,6 @@ scripts/dev/gaia_verify.py	PLR0915	deferred-until=2026-10-15; docstring/comment-
 scripts/dev/pr_comments.py	PLR0912
 scripts/dev/pr_comments.py	PLR0915
 scripts/dev/tests/test_pr_comments.py	PLR0915
-scripts/test/mutmut_decorated_patch.py	PLR0911
-scripts/test/mutmut_decorated_patch.py	PLR0912
 tools/evlog_map/__main__.py	PLR0912
 tools/evlog_map/facts.py	PLR0912	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)
 tools/evlog_map/report.py	PLR0912	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)

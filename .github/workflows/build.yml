@@ -39,7 +39,7 @@ on:
         required: false
         type: string
         default: auto
-      # Two-phase invocation from main.yml: phase=build builds+publishes images
+      # Two-phase invocation from ci.yml: phase=build builds+publishes images
       # in parallel with the quality gate; phase=deploy runs the deploy plan +
       # swarm deploy AFTER the gate, fed by the build phase's outputs (passed as
       # inputs below). Unset (manual dispatch / repository_dispatch) keeps the
@@ -298,13 +298,9 @@ jobs:
 
       - name: Setup Node.js + pnpm
         uses: ./.github/actions/setup-node-pnpm
-        # with:
-        #   nx-cloud-access-token: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }} # disabled — local .nx/cache only, no Nx Cloud (cost)
 
       - name: Sync Python dependencies (Nx cached)
         run: pnpm exec nx sync api
-        # env:
-        #   NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }} # disabled — local .nx/cache only
 
       # resolve-image-tags pushes the released tags to GHCR.
       - name: Log in to GHCR

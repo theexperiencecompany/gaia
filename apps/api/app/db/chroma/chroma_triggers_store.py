@@ -50,7 +50,7 @@ class ExistingTriggerEntry(TypedDict):
 
 
 class IndexedTriggerMetadata(TypedDict, total=False):
-    """The Chroma metadata key the diff reads back; ChromaStore._upsert_item writes it."""
+    """The Chroma metadata key the diff reads back; ChromaStore._put_row writes it."""
 
     trigger_hash: str
 

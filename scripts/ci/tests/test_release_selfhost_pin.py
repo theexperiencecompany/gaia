@@ -4,7 +4,7 @@
 whatever master last deployed, not the code the CLI was released with. The pin
 now waits for build.yml's per-commit :<sha> pair and fails loud when it never
 appears, and build.yml must publish that pair for every CLI release commit.
-The :<sha> images exist before main.yml's quality gate has judged that commit,
+The :<sha> images exist before ci.yml's quality gate has judged that commit,
 so the pin also waits for the gate to pass on it.
 """
 
@@ -53,7 +53,7 @@ set -euo pipefail
 [[ "$1" == "api" && "$3" == "--jq" ]] || { echo "gh stub: unexpected $*" >&2; exit 1; }
 echo "$2" >> "$GH_CALLS"
 case "$2" in
-  */actions/workflows/main.yml/runs\\?*) file="$GH_FIXTURES/runs-${2##*event=}.json" ;;
+  */actions/workflows/ci.yml/runs\\?*) file="$GH_FIXTURES/runs-${2##*event=}.json" ;;
   */actions/runs/*/jobs*) id="${2#*/actions/runs/}"; file="$GH_FIXTURES/jobs-${id%%/*}.json" ;;
   *) echo "gh stub: unexpected path $2" >&2; exit 1 ;;
 esac
@@ -271,9 +271,7 @@ def test_the_pin_asks_for_the_quality_gate_of_the_release_commit(workspace: Path
 
     assert result.returncode == 0, result.stderr
     calls = (workspace / "gh-calls.txt").read_text()
-    assert (
-        f"repos/theexperiencecompany/gaia/actions/workflows/main.yml/runs?head_sha={sha}" in calls
-    )
+    assert f"repos/theexperiencecompany/gaia/actions/workflows/ci.yml/runs?head_sha={sha}" in calls
 
 
 def test_a_failed_quality_gate_refuses_the_release_and_tags_nothing(workspace: Path) -> None:
@@ -409,7 +407,7 @@ def test_an_unreadable_actions_api_fails_the_pin_loud(workspace: Path) -> None:
     )
 
     assert result.returncode != 0
-    assert "could not read main.yml's runs" in result.stderr
+    assert "could not read ci.yml's runs" in result.stderr
     assert _created(workspace) == []
 
 

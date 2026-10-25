@@ -5,7 +5,12 @@
 # API through API_BASE_URL_INTERNAL instead.
 ARG NEXT_PUBLIC_API_BASE_URL=/api/v1/
 
-FROM node:24-alpine AS base
+# Node version is declared once in .node-version. Docker cannot read a file in a
+# FROM line, so this default mirrors it and tools/lints/check_tool_pins.py fails
+# if the two disagree. Build scripts may override with --build-arg NODE_VERSION.
+ARG NODE_VERSION=24.22.1
+
+FROM node:${NODE_VERSION}-alpine AS base
 # Pinned via corepack, same as apps/bots/Dockerfile. Unpinned `npm install -g
 # pnpm` pulled pnpm 11 against this repo's pnpm@10 lockfile and the install
 # died on native-binary identity verification (the never-run-unpinned lesson
@@ -76,7 +81,7 @@ RUN pnpm build
 # runtime deps into .next/standalone — no pnpm or node_modules
 # needed in the final image.
 # ===================================
-FROM node:24-alpine AS runner
+FROM node:${NODE_VERSION}-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production

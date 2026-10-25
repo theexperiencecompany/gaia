@@ -26,7 +26,7 @@ import json
 from pathlib import Path
 import sys
 
-# scripts/test holds the lane's own mutmut patches; loaded the way mutation.sh
+# scripts/test holds the lane's own mutmut patches; loaded the way mutation.py
 # loads them so this answers exactly what the lane would generate.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "test"))
 

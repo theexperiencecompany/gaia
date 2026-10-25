@@ -414,7 +414,7 @@ _EXPECTED_CATEGORY_METADATA: dict[str, tuple[str, bool, str | None, bool, bool]]
     "manual": ("general", False, None, False, False),
     "memory": ("general", False, None, False, False),
     "integrations": ("general", False, None, False, False),
-    "integration_instructions": ("general", False, None, False, True),
+    "instructions": ("general", False, None, False, True),
     "development": ("general", False, None, False, True),
     "execute": ("general", False, None, False, True),
     "creative": ("general", False, None, False, False),
@@ -431,6 +431,21 @@ _EXPECTED_DESTRUCTIVE_TOOL_NAMES = {
     "execute_workflow",
     "connect_integration",
     "browser_task",
+}
+
+
+#: Tools that ask the user in every HIL mode, including the always_allow default.
+#: Standing-instruction writes are here because what the agent saves rides in every
+#: later conversation: text planted in an email must never persist without a yes.
+_EXPECTED_ALWAYS_GATE_TOOL_NAMES = {
+    "add_custom_mcp_server",
+    "approve_device_pairing",
+    "disconnect_integration",
+    "set_selected_voice",
+    "update_notification_settings",
+    "update_preferences",
+    "update_user_instructions",
+    "update_integration_instructions",
 }
 
 
@@ -456,8 +471,8 @@ def expected_category_tool_names() -> dict[str, set[str]]:
         finish_task_tool,
         flowchart_tool,
         image_tool,
+        instructions_tools,
         integration_account_tools,
-        integration_instructions_tools,
         integration_tool,
         manual_tool,
         memory_tools,
@@ -500,7 +515,7 @@ def expected_category_tool_names() -> dict[str, set[str]]:
         "integrations": {
             t.name for t in [*integration_tool.tools, *integration_account_tools.tools]
         },
-        "integration_instructions": {t.name for t in integration_instructions_tools.tools},
+        "instructions": {t.name for t in instructions_tools.tools},
         "development": {t.name for t in coding.tools},
         "execute": {execute_tool.execute.name, schema_tool.get_tool_schema.name},
         "creative": {image_tool.generate_image.name, flowchart_tool.create_flowchart.name},
@@ -572,6 +587,17 @@ class TestInitializeCategoriesReal:
             if tool.destructive
         }
         assert destructive_names == _EXPECTED_DESTRUCTIVE_TOOL_NAMES
+
+    def test_always_gated_tools_are_exactly_the_reviewed_set(
+        self, initialized_registry: ToolRegistry
+    ):
+        gated_names = {
+            tool.name
+            for category in initialized_registry._categories.values()
+            for tool in category.tools
+            if tool.always_gate
+        }
+        assert gated_names == _EXPECTED_ALWAYS_GATE_TOOL_NAMES
 
     @pytest.mark.parametrize("name", list(_EXPECTED_CATEGORY_METADATA.keys()))
     def test_category_tool_membership_matches_source_modules(
@@ -710,15 +736,26 @@ class TestCoreInitializationContract:
         assert [tool.name for tool in category.tools] == [
             "update_notification_settings",
             "update_preferences",
-            "update_custom_instructions",
             "set_selected_voice",
             "manage_linked_account",
         ]
         assert {tool.name for tool in category.tools if tool.always_gate} == {
             "update_notification_settings",
             "update_preferences",
-            "update_custom_instructions",
             "set_selected_voice",
+        }
+        assert all(tool.destructive is False for tool in category.tools)
+
+    def test_instructions_category_pins_both_saves_as_forced_ask(self):
+        """What the agent saves rides in every later conversation, so both writers ask in every mode; the read does not."""
+        registry = ToolRegistry()
+        registry._initialize_categories()
+
+        category = registry.get_category("instructions")
+        assert category is not None
+        assert {tool.name for tool in category.tools if tool.always_gate} == {
+            "update_user_instructions",
+            "update_integration_instructions",
         }
         assert all(tool.destructive is False for tool in category.tools)
 
@@ -959,7 +996,7 @@ class TestInitializedCategoryContract:
         "manual": {},
         "memory": {},
         "integrations": {},
-        "integration_instructions": {"internal": True},
+        "instructions": {"internal": True},
         "development": {"internal": True},
         "execute": {"internal": True},
         "creative": {},

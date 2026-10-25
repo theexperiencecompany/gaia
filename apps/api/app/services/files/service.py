@@ -6,13 +6,15 @@ summaries) into one readable flow. Durable storage (the blob store) and metadata
 """
 
 import asyncio
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 import uuid
 
 from fastapi import HTTPException, UploadFile
 
-from app.agents.workspace.paths import safe_upload_filename
+from app.agents.workspace.paths import USER_UPLOADED_DIRNAME
 from app.constants.cache import FILES_CACHE_PATTERN
 from app.constants.files import BlobKind
 from app.db.repositories.files import file_repository
@@ -22,7 +24,13 @@ from app.models.message_models import FileData as MessageFileData
 from app.schemas.file import FileDeletedResponse, UpdateFileRequest
 from app.services.analytics_service import capture
 from app.services.blob_store import blob_store
-from app.services.files.sandbox import mirror_upload, write_summary_sidecar
+from app.services.files.sandbox import (
+    UploadMirror,
+    delete_upload,
+    mirror_upload,
+    workspace_upload_name,
+    write_summary_sidecar,
+)
 from app.services.files.store import (
     delete_from_index,
     index_file,
@@ -33,6 +41,7 @@ from app.services.files.summaries import (
     process_summary,
     render_summary_markdown,
 )
+from app.services.storage import session_root
 from app.utils.file_utils import generate_file_summary
 from app.utils.upload_validation import validate_upload
 from shared.py.analytics import UserId
@@ -180,13 +189,17 @@ class FileService:
 
             # 2. Mirror into the session workspace + summary sidecar (best-effort; needs JuiceFS).
             sandbox_path = (
-                await FileService._mirror_to_session(
+                await mirror_upload(
                     user_id=user_id,
                     conversation_id=conversation_id,
-                    filename=upload.filename,
-                    content=upload.content,
-                    content_type=content_type,
-                    summary=summary,
+                    upload=UploadMirror(
+                        file_id=upload.file_id,
+                        filename=upload.filename,
+                        content=upload.content,
+                        content_type=content_type,
+                        description=description,
+                        page_wise_summary=page_wise_summary,
+                    ),
                 )
                 if conversation_id
                 else None
@@ -239,19 +252,34 @@ class FileService:
             raise HTTPException(status_code=500, detail=f"Failed to upload file: {e!s}") from e
 
     @staticmethod
-    async def get_descriptions(file_ids: list[str], user_id: str) -> dict[str, str]:
-        """Return {file_id: description} for the user's files, in one batched query.
+    async def get_uploads(
+        file_ids: list[str], user_id: str, conversation_id: str | None
+    ) -> list[MessageFileData]:
+        """Return this turn's uploads as server-owned context, in request order.
 
-        Authoritative source for the agent's file context — never trust the
-        client request for this. Files without a stored summary are omitted.
+        Mongo is authoritative here: filename, summary, mimetype and workspace
+        path all come from the stored document, never from the inbound payload.
+        Files the user does not own, or that belong to another conversation,
+        are omitted.
         """
         if not file_ids:
-            return {}
+            return []
 
         documents = await file_repository.find_by_ids_for_user(file_ids, user_id)
-        return {
-            document.file_id: document.description for document in documents if document.description
-        }
+        by_id = {document.file_id: document for document in documents}
+        return [
+            MessageFileData(
+                fileId=document.file_id,
+                url=document.url,
+                filename=document.filename,
+                type=document.type,
+                description=document.description,
+                sandbox_path=document.sandbox_path,
+            )
+            for file_id in dict.fromkeys(file_ids)
+            if (document := by_id.get(file_id)) is not None
+            and document.conversation_id == conversation_id
+        ]
 
     @staticmethod
     async def list_conversation_files(conversation_id: str, user_id: str) -> list[MessageFileData]:
@@ -301,6 +329,12 @@ class FileService:
             )
 
         await delete_from_index(file_id)
+        if file_data.sandbox_path and file_data.conversation_id:
+            await delete_upload(
+                user_id=user_id,
+                conversation_id=file_data.conversation_id,
+                name=Path(file_data.sandbox_path).name,
+            )
         log.info("[files] delete complete file_id", file_id=file_id)
 
         return FileDeletedResponse(
@@ -315,10 +349,9 @@ class FileService:
         file_id: str,
         user_id: str,
         update_data: UpdateFileRequest,
-        file_content: bytes | None = None,
         conversation_id: str | None = None,
     ) -> FileDocument:
-        """Update file metadata, regenerating the summary + vector index when new content is given."""
+        """Update display metadata and keep the workspace sidecar in sync."""
         log.info("[files] update start file_id", file_id=file_id)
         log.set(file=FileContext(operation="update", file_id=file_id))
 
@@ -332,35 +365,30 @@ class FileService:
         # can never mass-assign protected ones (user_id, …).
         update = FileUpdate.model_validate(update_data.model_dump(exclude_none=True))
 
-        if file_content:
-            try:
-                generated_summary = await generate_file_summary(
-                    file_content=file_content,
-                    content_type=file_data.type,
-                    filename=update.filename or file_data.filename,
-                    user_id=user_id,
-                )
-                description, page_wise_summary = process_summary(generated_summary)
-                update.description = description
-                update.page_wise_summary = page_wise_summary
-            except Exception as e:
-                log.error(
-                    "[files] update: summary regeneration failed",
-                    error=str(e),
-                    error_type=type(e).__name__,
-                    file_id=file_id,
-                    user_id=user_id,
-                    conversation_id=conversation_id,
-                    exc_info=True,
-                )
-                raise HTTPException(status_code=500, detail=f"Failed to process file: {e!s}") from e
-
         # updated_at is stamped by the repository.
         updated_file = await file_repository.apply_metadata_update(
             file_id, user_id=user_id, update=update
         )
         if not updated_file:
             raise HTTPException(status_code=404, detail="File not found after update")
+
+        if (
+            conversation_id
+            and updated_file.sandbox_path
+            and (update.filename is not None or update.description is not None)
+        ):
+            if updated_file.description or updated_file.page_wise_summary:
+                await write_summary_sidecar(
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    safe_filename=Path(updated_file.sandbox_path).name,
+                    summary_md=render_summary_markdown(
+                        filename=updated_file.filename,
+                        content_type=updated_file.type,
+                        description=updated_file.description,
+                        page_wise_summary=updated_file.page_wise_summary,
+                    ),
+                )
 
         if update.description is not None:
             await reindex_file(
@@ -376,140 +404,107 @@ class FileService:
         return updated_file
 
     @staticmethod
-    async def seed_uploads(
-        file_data: list[MessageFileData],
+    async def attach_uploads(
+        file_ids: Sequence[str],
         user_id: str,
         conversation_id: str,
     ) -> None:
-        """Associate pre-conversation uploads with a freshly created session.
+        """Scope this turn's uploads to the conversation and mirror them on disk.
 
-        Files attached before a conversation existed landed in the blob store only.
-        Once the session exists, mirror each into user-uploaded/, write its
-        summary sidecar, and stamp conversation_id on its Mongo record so
-        conversation-scoped search can find it.
+        Idempotent: a file already scoped and present is untouched. The blob is
+        located from Mongo, never the request, so a client cannot choose what
+        the server reads.
         """
-        if not file_data:
+        unique_ids = list(dict.fromkeys(file_ids))
+        if not unique_ids:
             return
 
         log.info(
-            "[files] seeding upload(s) into conversation",
-            file_data_count=len(file_data),
+            "[files] attaching upload(s) to conversation",
+            file_count=len(unique_ids),
             conversation_id=conversation_id,
         )
         await asyncio.gather(
-            *(FileService._seed_one(file, user_id, conversation_id) for file in file_data)
+            *(FileService._attach_one(file_id, user_id, conversation_id) for file_id in unique_ids)
         )
 
     @staticmethod
-    async def _mirror_to_session(
-        user_id: str,
-        conversation_id: str,
-        filename: str,
-        content: bytes,
-        content_type: str,
-        summary: _UploadSummary,
-    ) -> str | None:
-        """Mirror an upload + its summary sidecar into the session workspace (best-effort).
-
-        Returns the /workspace/... path the file was mirrored to, or None when
-        the filename is unsafe or JuiceFS is unavailable.
-        """
-        try:
-            safe_filename = safe_upload_filename(filename)
-        except ValueError as e:
-            log.warning(
-                "[files] skipping sandbox mirror, unsafe filename",
-                filename=filename,
-                error=str(e),
-                error_type=type(e).__name__,
-                user_id=user_id,
-                conversation_id=conversation_id,
-            )
-            return None
-
-        sandbox_path = await mirror_upload(
-            user_id=user_id,
-            conversation_id=conversation_id,
-            safe_filename=safe_filename,
-            content=content,
-            content_type=content_type,
-        )
-        await write_summary_sidecar(
-            user_id=user_id,
-            conversation_id=conversation_id,
-            safe_filename=safe_filename,
-            summary_md=render_summary_markdown(
-                filename=filename,
-                content_type=content_type,
-                description=summary.description,
-                page_wise_summary=summary.page_wise_summary,
-            ),
-        )
-        return sandbox_path
-
-    @staticmethod
-    async def _seed_one(
-        file: MessageFileData,
+    async def _attach_one(
+        file_id: str,
         user_id: str,
         conversation_id: str,
     ) -> None:
-        """Copy one of the user's stored uploads into the conversation and associate it."""
-        try:
-            safe_name = safe_upload_filename(file.filename)
-        except ValueError:
+        """Attach one uploaded file to its conversation (see attach_uploads)."""
+        document = await file_repository.get_by_file_id(file_id, user_id)
+        if document is None:
             log.warning(
-                "[files] seed: skipping file, unsafe after sanitize",
-                filename=file.filename,
+                "[files] attach: file not found for user",
+                file_id=file_id,
                 user_id=user_id,
                 conversation_id=conversation_id,
             )
             return
 
-        # The stored document, not the request payload, says where the blob lives.
-        document = await file_repository.get_by_file_id(file.fileId, user_id)
-        if not document or not document.public_id:
+        if document.conversation_id not in (None, conversation_id):
             log.warning(
-                "[files] seed: no stored upload for file id",
-                file_id=file.fileId,
+                "[files] attach: file belongs to another conversation",
+                file_id=file_id,
+                file_conversation_id=document.conversation_id,
+                conversation_id=conversation_id,
+                user_id=user_id,
+            )
+            return
+
+        try:
+            safe_name = workspace_upload_name(file_id, document.filename)
+        except ValueError as e:
+            log.warning(
+                "[files] attach: skipping file, unsafe filename",
+                file_id=file_id,
+                filename=document.filename,
+                error=str(e),
                 user_id=user_id,
                 conversation_id=conversation_id,
             )
             return
 
+        relative_path = f"{USER_UPLOADED_DIRNAME}/{safe_name}"
+        if document.conversation_id == conversation_id and document.sandbox_path:
+            mirrored = session_root(user_id, conversation_id) / relative_path
+            if await asyncio.to_thread(mirrored.exists):
+                return
+
+        # Starts with sandbox_path unset (the model default) so a stale
+        # /workspace path is cleared unless this attempt mirrors the file.
+        update = FileUpdate(conversation_id=conversation_id)
         try:
+            if not document.public_id:
+                raise FileNotFoundError(f"file {file_id} has no stored blob")
             content = await blob_store().read(user_id, document.public_id, document.url)
         except Exception as e:
             log.warning(
-                "[files] seed: download failed for",
-                filename=file.filename,
+                "[files] attach: download failed",
+                file_id=file_id,
+                filename=document.filename,
                 error=str(e),
                 error_type=type(e).__name__,
                 user_id=user_id,
                 conversation_id=conversation_id,
             )
-            return
-
-        await mirror_upload(
-            user_id=user_id,
-            conversation_id=conversation_id,
-            safe_filename=safe_name,
-            content=content,
-            content_type=document.type or file.type or "application/octet-stream",
-        )
-
-        if document.description or document.page_wise_summary:
-            await write_summary_sidecar(
+        else:
+            sandbox_path = await mirror_upload(
                 user_id=user_id,
                 conversation_id=conversation_id,
-                safe_filename=safe_name,
-                summary_md=render_summary_markdown(
-                    filename=file.filename,
-                    content_type=document.type or file.type or "application/octet-stream",
+                upload=UploadMirror(
+                    file_id=file_id,
+                    filename=document.filename,
+                    content=content,
+                    content_type=document.type,
                     description=document.description,
                     page_wise_summary=document.page_wise_summary,
                 ),
             )
+            if sandbox_path is not None:
+                update.sandbox_path = sandbox_path
 
-        await file_repository.apply_metadata_update(
-            file.fileId, user_id=user_id, update=FileUpdate(conversation_id=conversation_id)
-        )
+        await file_repository.apply_metadata_update(file_id, user_id=user_id, update=update)

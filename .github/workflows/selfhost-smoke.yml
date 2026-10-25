@@ -31,7 +31,7 @@ permissions:
   contents: read
 
 jobs:
-  # --- Change detection (mirrors code-quality.yml#changes / main.yml#detect) ---
+  # --- Change detection (mirrors ci.yml#detect) ---
   # Unified with the two main gates: uses nx-set-shas + nx show projects
   # --affected with the same origin/master base so all three workflows agree
   # on what "affected" means. Push/dispatch → __FULL__ semantics.
@@ -46,7 +46,7 @@ jobs:
     outputs:
       has_python: ${{ steps.detect.outputs.has_python }}
       has_typescript: ${{ steps.detect.outputs.has_typescript }}
-      selfhost_e2e: ${{ github.event_name == 'workflow_dispatch' || steps.selfhost.outputs.run == 'true' }}
+      selfhost_e2e: ${{ github.event_name == 'workflow_dispatch' || steps.selfhost.outputs.build == 'true' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

@@ -256,7 +256,7 @@ class _FenceAsyncRedis:
 _fence_redis_client = _FenceAsyncRedis()
 
 # Only mock MongoDB/Redis when real services are NOT available. When
-# USE_REAL_SERVICES=1 the Dagger container has real MongoDB/Redis running and
+# USE_REAL_SERVICES=1 the CI service containers are running MongoDB/Redis and
 # integration/e2e/service tests should reach them.
 _infra_patches = (
     []

@@ -24,6 +24,7 @@ from app.constants.feature_flags import (
 from app.models.user_models import UserDocument
 from app.services.feature_flags import (
     _get_posthog_client,
+    is_agent_lab_enabled,
     is_code_mode_enabled,
     is_enabled,
     is_hil_ledger_enabled,
@@ -307,6 +308,14 @@ class TestHelperDelegation:
             assert await is_code_mode_enabled("u3") is True
             enabled.assert_called_once_with(FeatureFlag.CODE_MODE, "u3")
 
+    async def test_agent_lab_helper_forwards_flag_and_user(self, evaluated: MagicMock) -> None:
+        with patch(
+            "app.services.feature_flags.is_enabled",
+            return_value=True,
+        ) as enabled:
+            assert await is_agent_lab_enabled("u4") is True
+            enabled.assert_called_once_with(FeatureFlag.AGENT_LAB, "u4")
+
 
 class TestCodeModeDefaultFollowsSettings:
     async def test_code_mode_default_true_when_env_enables(
@@ -323,7 +332,13 @@ FLAG_KILL_SWITCHES = {
     FeatureFlag.HIL_LEDGER: "ENABLE_HIL_LEDGER",
     FeatureFlag.HIL_JEV_JUDGE: "ENABLE_HIL_JEV_JUDGE",
     FeatureFlag.HIL_JEV_REPLY: "ENABLE_HIL_JEV_REPLY",
+    FeatureFlag.AGENT_LAB: "ENABLE_AGENT_LAB",
 }
+
+
+class TestAgentLab:
+    async def test_agent_lab_flag_defaults_off(self, no_client: None) -> None:
+        assert await is_agent_lab_enabled(USER_ID) is False
 
 
 class TestShippedDefaults:

@@ -83,13 +83,3 @@ class ConnectIntegrationRequest(BaseModel):
         None,
         description="An expired account to sign back in, in place, instead of adding one",
     )
-
-
-class UpdateIntegrationInstructionsRequest(BaseModel):
-    """Request to set a user's custom instructions for one integration."""
-
-    content: str = Field(
-        default="",
-        max_length=8000,
-        description="Markdown instructions the agent should honor for this integration",
-    )

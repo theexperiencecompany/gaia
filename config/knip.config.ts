@@ -113,6 +113,10 @@ const config: KnipConfig = {
     // Jev's in-page scripts: read by jev/page.py and evaluated in the tab over CDP, never imported.
     "apps/api/app/services/browser/jev/*.js",
 
+    // Agent-lab sandbox files: read by agents_home.py render_vendored() and written
+    // into every lab sandbox at setup, never imported — so knip reads them as unused files.
+    "apps/api/app/services/agent_lab/*.js",
+
     // Parked: /calendar renders notFound() with its CalendarPage import commented out
     // (app/[locale]/(main)/calendar/page.tsx). Components stay intact for re-enablement.
     // TODO(team): re-enable the route or remove the feature.
@@ -234,6 +238,9 @@ const config: KnipConfig = {
     // ── Root ──────────────────────────────────────────────────────────
     ".": {
       ignoreDependencies: [
+        // Spawned by scripts/ts/type-check.mjs at runtime. knip only traces
+        // imports, so a compiler invoked through spawnSync reads as unused.
+        "tsrs",
         // Hoisted for React Native / Expo resolution
         "@react-navigation/native",
         "@react-navigation/native-stack",
@@ -298,6 +305,8 @@ const config: KnipConfig = {
       ignore: ["src/components/ui/**"],
 
       ignoreDependencies: [
+        // Spawned by the cf:build shell script; knip only traces imports.
+        "@opennextjs/cloudflare",
         // Path alias, not a package (see paths above).
         "@icons",
         // HeroUI ships per-component subpackages pulled in transitively.

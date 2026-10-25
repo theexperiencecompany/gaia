@@ -102,7 +102,7 @@ async def create_all_indexes() -> None:
             create_usage_indexes(),
             create_integration_indexes(),
             create_user_integration_indexes(),
-            create_integration_instructions_indexes(),
+            create_user_instructions_indexes(),
             create_device_token_indexes(),
             create_installed_skills_indexes(),
             # Security-critical (see SECURITY_CRITICAL_COLLECTIONS): these unique
@@ -146,7 +146,7 @@ async def create_all_indexes() -> None:
             "usage",
             "integrations",
             "user_integrations",
-            "integration_instructions",
+            "user_instructions",
             "device_tokens",
             "skills",
             "auth_credentials",
@@ -1310,26 +1310,26 @@ async def create_user_integration_indexes() -> None:
         raise
 
 
-async def create_integration_instructions_indexes() -> None:
+async def create_user_instructions_indexes() -> None:
     """
-    Create indexes for integration_instructions collection.
+    Create indexes for user_instructions collection.
 
     Query patterns:
-    - Read one integration's instructions: user_id + integration_id (unique)
-    - List all of a user's instructions for materialization
+    - Read or write one scope: user_id + scope (unique; also the revision guard's collision)
+    - List all of a user's instructions for the prompt and the projections
     """
-    integration_instructions_collection = get_async_collection("integration_instructions")
+    user_instructions_collection = get_async_collection("user_instructions")
     try:
         await _create_index_safe(
-            integration_instructions_collection,
-            [("user_id", 1), ("integration_id", 1)],
+            user_instructions_collection,
+            [("user_id", 1), ("scope", 1)],
             unique=True,
-            name="user_integration_instructions_unique",
+            name="user_instructions_scope_unique",
         )
 
     except Exception as e:
         log.error(
-            f"{LogTag.MONGO} Error creating integration instructions indexes",
+            f"{LogTag.MONGO} Error creating user instructions indexes",
             error=str(e),
             error_type=type(e).__name__,
         )

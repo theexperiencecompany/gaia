@@ -21,6 +21,9 @@ CANNOT_REMOVE_ADMIN = "cannot_remove_admin"
 # 503 — a removed member's automation could not all be stopped; removing again retries.
 MEMBER_OFFBOARDING_INCOMPLETE = "member_offboarding_incomplete"
 
+# 409 — a standing-instructions save raced another write; body carries current_revision.
+INSTRUCTIONS_CONFLICT = "INSTRUCTIONS_CONFLICT"
+
 # 401 — the bot request's X-Bot-API-Key is missing or wrong (bot misconfigured).
 BOT_API_KEY_INVALID = "BOT_API_KEY_INVALID"
 

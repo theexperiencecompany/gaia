@@ -25,7 +25,7 @@ pnpm --filter @gaia/bot-discord deploy-commands   # Discord slash + context menu
 pnpm --filter @gaia/bot-telegram set-commands     # Telegram /-menu
 # Slack: configured in the Slack App dashboard. WhatsApp: matched by text prefix.
 
-mise ci:docker:bot-<platform>    # Dagger Docker build
+nx docker:build bot-<platform>   # Docker image build
 ```
 
 **Single-instance constraint**: Discord and Telegram hold a persistent connection per token. Running `mise dev:bots` while a Docker container runs the same bot causes Telegram `409 Conflict` / Discord gateway disconnects. Run one or the other, not both.

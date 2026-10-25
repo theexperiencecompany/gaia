@@ -456,7 +456,6 @@ class TestDevServiceLogic:
             needs=None,
             other_need=None,
             response_style="casual",
-            custom_instructions=None,
         )
 
     @pytest.mark.parametrize(("already_active", "expect_created"), [(False, True), (True, False)])

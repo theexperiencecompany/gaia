@@ -114,7 +114,7 @@ Logs are searched in Grafana with LogQL. Only `service`, `container`, `level`, a
 </Warning>
 
 <Accordion title="Observability score in CI">
-  `python3 tools/evlog_map` scores every API and voice entry point on wide-event instrumentation. `node scripts/ci/checks.mjs evlog-map-bots` scores the bots. The `observability` lane fails if the score regresses. See `tools/evlog_map/README.md`.
+  `python3 tools/evlog_map` scores every API and voice entry point on wide-event instrumentation. `node scripts/ci/checks.mjs evlog-map-bots` scores the bots. The `observability-*` checks of ci.yml's lint-mixed job fail if the score regresses. See `tools/evlog_map/README.md`.
 </Accordion>
 
 ## Next
