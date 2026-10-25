@@ -2,6 +2,7 @@
 
 import { Tick01Icon } from "@icons";
 import { useState } from "react";
+import { copyWithFeedback } from "@/lib/clipboard";
 
 interface ColorCardProps {
   name: string;
@@ -31,8 +32,8 @@ const BRAND_COLORS: BrandColor[] = [
 function ColorCard({ name, hex }: ColorCardProps) {
   const [copied, setCopied] = useState(false);
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
+  const copyToClipboard = async (text: string) => {
+    if (!(await copyWithFeedback(text))) return;
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

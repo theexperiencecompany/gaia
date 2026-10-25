@@ -1,0 +1,212 @@
+---
+title: "Updates, backups and troubleshooting"
+sidebarTitle: "Updates & backups"
+description: "Keep a self-hosted GAIA healthy: update to new releases, back up and restore your data, protect the instance secret, and fix common problems."
+icon: "screwdriver-wrench"
+---
+
+Update, back up, restore and fix your GAIA. Run `gaia` commands from your install folder (`~/gaia` by default).
+
+## Quick reference
+
+| To | Run |
+| --- | --- |
+| Update | `gaia update` |
+| Back up | `gaia backup` |
+| Restore | `gaia restore --from backups` |
+| Find problems | `gaia doctor` |
+| Uninstall | `gaia uninstall` |
+
+## Data Persistence
+
+All your data lives in Docker volumes, so updates and restarts keep it.
+
+<Accordion title="The volumes (all start with gaia-selfhost_)">
+  | Volume | Contents |
+  | --- | --- |
+  | `pgdata` | PostgreSQL data |
+  | `mongo_data` | MongoDB data |
+  | `redis_data` | Redis data |
+  | `chroma_data` | ChromaDB vectors |
+  | `rabbitmq_data` | RabbitMQ messages |
+  | `files` | Uploaded and generated files |
+  | `workspace` | Every user's workspace: uploads the agent opens, artifacts, installed skills |
+  | `models_cache` | Embedding model cache (~1.85 GB, safe to delete, it re-downloads) |
+  | `caddy_data` | Proxy certificates and keys |
+  | `caddy_config` | Proxy runtime config |
+</Accordion>
+
+<Warning>
+  Never run `docker system prune --volumes`, `docker volume prune` or `docker compose down -v`. They delete every volume, which is all your users, chats and saved keys. Plain `docker system prune` is safe.
+</Warning>
+
+## Backups
+
+```bash
+gaia backup
+```
+
+This saves your databases and files to `./backups/`. To restore the newest backup:
+
+```bash
+gaia restore --from backups
+```
+
+<Warning>
+  A backup contains the key that protects your saved AI keys. Store it like a password: off the server, never in a public bucket.
+</Warning>
+
+What is saved:
+
+- **MongoDB**: users, sessions, chats, settings, saved provider keys and the [instance secret](#the-instance-secret)
+- **PostgreSQL**: agent and conversation state
+- **Files and workspaces**: the `files` and `workspace` volumes
+- Your `apps/api/.env`
+
+Redis, ChromaDB and RabbitMQ are not backed up. They rebuild on their own.
+
+<Accordion title="More backup and restore options">
+  ```bash
+  gaia backup --output /tmp/my-backups   # custom folder
+  gaia backup --dry-run                  # show the commands without running them
+  gaia restore --dry-run --from backups  # preview a restore
+  gaia restore --mongo backups/mongo-<stamp>.gz --postgres backups/postgres-<stamp>.sql --env backups/api-env-<stamp>.env
+  ```
+
+  Each run's files share one UTC stamp, like `2026-08-27T09-30-00Z`, so a second backup never overwrites the first. A run that fails part-way leaves no files.
+
+  `gaia restore` puts `apps/api/.env` back first and restarts GAIA. That file holds `INSTANCE_SECRET`. With explicit `--mongo`, pass the same run's `--env` file, or the restore warns and keeps the current secret.
+</Accordion>
+
+<Accordion title="Backing up without the CLI">
+  Run from `infra/docker/`. Keep the stamp format so `gaia restore --from` finds the files.
+
+  ```bash
+  mkdir -p backups
+  STAMP=$(date -u +%Y-%m-%dT%H-%M-%SZ)
+  docker compose -f docker-compose.selfhost.yml exec -T mongo mongodump --archive --gzip > backups/mongo-$STAMP.gz
+  docker compose -f docker-compose.selfhost.yml exec -T postgres pg_dump -U postgres -d langgraph > backups/postgres-$STAMP.sql
+  install -m 600 ../../apps/api/.env backups/api-env-$STAMP.env
+  ```
+
+  For a fully consistent Mongo snapshot, run `stop gaia-backend arq_worker` before the dump and `start gaia-backend arq_worker` after. `pg_dump` is safe on a live stack.
+
+  To restore MongoDB, then PostgreSQL (restart the app containers afterwards):
+
+  ```bash
+  docker compose -f docker-compose.selfhost.yml exec -T mongo mongorestore --archive --gzip --drop < backups/mongo-<stamp>.gz
+  docker compose -f docker-compose.selfhost.yml exec postgres psql -U postgres -d langgraph -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;'
+  cat backups/postgres-<stamp>.sql | docker compose -f docker-compose.selfhost.yml exec -T postgres psql -U postgres -d langgraph
+  ```
+</Accordion>
+
+<Accordion title="Backing up ChromaDB and RabbitMQ (optional)">
+  ChromaDB's vectors can be rebuilt from your content, but a backup saves the re-embedding. Stop the writers first:
+
+  ```bash
+  docker compose -f docker-compose.selfhost.yml stop gaia-backend arq_worker
+  docker compose -f docker-compose.selfhost.yml exec chromadb tar czf - -C /chroma/chroma . > backups/chroma_data-$STAMP.tar.gz
+  docker compose -f docker-compose.selfhost.yml start gaia-backend arq_worker
+  ```
+
+  To restore, untar into a fresh volume before starting GAIA:
+
+  ```bash
+  docker volume create gaia-selfhost_chroma_data
+  docker run --rm -v gaia-selfhost_chroma_data:/data -v "$PWD/backups:/backups" alpine tar xzf /backups/chroma_data-<stamp>.tar.gz -C /data
+  ```
+
+  RabbitMQ holds only temporary messages and is rebuilt on boot. To keep custom queue setup, export it. The file contains password hashes, so treat it like a credential:
+
+  ```bash
+  docker compose -f docker-compose.selfhost.yml exec rabbitmq rabbitmqctl export_definitions - > backups/rabbitmq-definitions-$(date +%F).json
+  ```
+</Accordion>
+
+## Memory sizing
+
+GAIA needs **8 GB of RAM**. It starts in less, but the embedding model loads about 1.8 GB into both `gaia-backend` and `arq_worker`, on top of the databases. On smaller machines the system kills processes the first time memory features run, not at boot.
+
+## Upgrades
+
+```bash
+gaia update
+```
+
+This moves you to the GAIA release your CLI ships. Your data, `.env` files and `backups/` stay. If the download or pull fails, nothing changes. For a newer GAIA, update the CLI first, then run it again.
+
+<Accordion title="Updating without the CLI">
+  From the install folder, with the [download step](/self-hosting/manual-docker-install) for your new version `V`:
+
+  ```bash
+  V=0.7.0
+  curl -fsSL https://github.com/theexperiencecompany/gaia/releases/download/cli-v$V/gaia-selfhost-$V.tar.gz | tar -xz
+  ```
+
+  Delete any file the old `gaia-selfhost.json` listed that the new one doesn't. Set `GAIA_VERSION=v0.7.0` in `infra/docker/.env`, then from `infra/docker/`:
+
+  ```bash
+  docker compose -f docker-compose.selfhost.yml pull
+  docker compose -f docker-compose.selfhost.yml up -d
+  ```
+</Accordion>
+
+<Accordion title="More about updates">
+  `gaia update` checks the download against its checksum, swaps in the new setup files (removing any the release dropped), pins `GAIA_VERSION` in `infra/docker/.env`, restarts, and prints the old and new version.
+
+  An install made by an older `gaia up` is a git checkout. Its next `gaia update` converts it: tracked files and `.git` are removed, and your `.env` files and `backups/` stay. A checkout on a branch, or with local edits, is refused and pointed at `gaia update --git`. Contributors use `gaia update --git` to pull and rebuild from source.
+
+  After an update that changes the embedding model, old vectors can go stale. Failures are logged and flagged for reindexing instead of stopping writes. Watch for them:
+
+  ```bash
+  docker compose -f docker-compose.selfhost.yml logs -f gaia-backend arq_worker | grep -Ei 'index_failed|memory_embedding_failed'
+  ```
+</Accordion>
+
+## The instance secret
+
+On first boot GAIA makes a root secret. It signs sessions and encrypts your saved AI keys. `gaia up` writes it to `INSTANCE_SECRET` in `apps/api/.env`.
+
+If you lose the secret, every session ends and every saved key becomes unreadable. Keep your [backups](#backups) current.
+
+<Accordion title="Rules for the secret">
+  - `INSTANCE_SECRET` in `apps/api/.env` always wins over the stored value.
+  - Without it, GAIA keeps a generated secret in MongoDB (the `instance_settings` collection). Its only copy is in your Mongo backups.
+  - Set `INSTANCE_SECRET` before you save any provider keys. The value must match whatever encrypted them.
+  - Never set a fresh random value on an instance whose keys were encrypted under another secret. It orphans every saved key.
+</Accordion>
+
+## Uninstalling
+
+```bash
+gaia uninstall
+```
+
+It asks before removing anything, and asks separately about your data. Keeping data is the default, so a later `gaia up` picks it back up. Deleting offers a backup to `~/gaia-backups` first. For no questions, use `gaia uninstall --yes` (keeps data) and add `--delete-data` to delete it.
+
+<Accordion title="What it removes, and cleaning up by hand">
+  It removes GAIA's containers, networks and images, the `gaia.local` name and its portless service, the install folder and `~/.gaia`. If you kept the data, the volumes and the `.env` files stay.
+
+  To delete data an uninstall kept:
+
+  ```bash
+  docker volume rm $(docker volume ls -q --filter label=com.docker.compose.project=gaia-selfhost)
+  rm -rf ~/gaia
+  ```
+
+  Remove the CLI with `npm rm -g @heygaia/cli` (or `pnpm remove -g` / `bun remove -g`). Docker, Node.js, portless and avahi-utils stay.
+</Accordion>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion icon="triangle-exclamation" title="Logs show JuiceFSUnavailable">
+    The backend can't see the workspace volume. Run `gaia update` to get the latest Compose file, or check that `gaia-backend` and `arq_worker` both mount `workspace:/mnt/jfs`. Test it with `docker compose -f docker-compose.selfhost.yml exec gaia-backend mountpoint /mnt/jfs`.
+  </Accordion>
+  <Accordion icon="plug" title="Ollama connection test fails">
+    Check that Ollama runs: `curl http://localhost:11434/api/tags`. On Linux, start it with `OLLAMA_HOST=0.0.0.0 ollama serve` so containers can reach it. GAIA connects through `http://host.docker.internal:11434`.
+  </Accordion>
+  <Accordion icon="stethoscope" title="Something else is broken">
+    Run `gaia doctor`. It checks Docker, containers, every dependency, the web app, disk and memory, and prints a fix for each problem.
+  </Accordion>
+</AccordionGroup>

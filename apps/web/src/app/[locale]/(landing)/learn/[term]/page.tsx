@@ -11,6 +11,7 @@ import { getAllGlossaryTermSlugs } from "@/features/glossary/data/glossaryData";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { getLocalizedAlternates } from "@/i18n/getAlternates";
 import { LEARN_DOCS_LINKS } from "@/lib/docs-links";
+import { prerenderedMarketingParams } from "@/lib/selfhost";
 import {
   generateBreadcrumbSchema,
   generateDefinedTermSchema,
@@ -27,9 +28,13 @@ interface PageProps {
   }>;
 }
 
-export async function generateStaticParams() {
+async function allStaticParams() {
   const slugs = await getAllGlossaryTermSlugs();
   return slugs.map((term) => ({ term }));
+}
+
+export function generateStaticParams() {
+  return prerenderedMarketingParams(allStaticParams);
 }
 
 export const dynamicParams = false;

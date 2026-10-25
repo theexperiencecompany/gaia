@@ -19,7 +19,7 @@ apiVersion: 1
 #               summary is a static sentence rather than a measured value.
 # `description` What breaks for users, and the first thing to check. Both
 #               annotations render in Slack and email, summary first.
-# `runbook_url` https://docs.lab.heygaia.io/production/runbooks/<uid> — required
+# `runbook_url` https://internal.lab.heygaia.io/production/runbooks/<uid> — required
 #               on every rule. The page lives in the internal-docs repo at
 #               docs/production/runbooks/<uid>.mdx; a rule whose page does not
 #               exist yet is unfinished.
@@ -145,7 +145,7 @@ groups:
             sends, blank conversations and broken integrations. Check the API
             Logs dashboard to find which handler is erroring, then the
             application logs for the exception behind it.
-          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-api-5xx
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-api-5xx
           __dashboardUid__: gaia-api-prometheus
           __panelId__: "2"
         labels:
@@ -193,7 +193,7 @@ groups:
             and the first SSE token arrives late. Use the "Slowest Endpoints
             (p95)" and "P95 Latency by Endpoint" panels to find which handler is
             responsible before looking at database or LLM latency.
-          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-api-p95-latency
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-api-p95-latency
           __dashboardUid__: gaia-api-prometheus
           __panelId__: "6"
         labels:
@@ -243,7 +243,7 @@ groups:
             This total is aggregated across queues — open the "Queue Depth by
             Queue" panel to see which platform is stuck, then check whether that
             bot's consumer is still connected.
-          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-rabbitmq-backlog
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-rabbitmq-backlog
           __dashboardUid__: gaia-rabbitmq
           __panelId__: "4"
         labels:
@@ -292,7 +292,7 @@ groups:
             ingestion and the housekeeping crons. Failures here are invisible to
             users until something they scheduled never happens. The
             "Task Rate by Name" panel breaks failures down by task_name.
-          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-arq-failures
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-arq-failures
           __dashboardUid__: gaia-arq-worker
           __panelId__: "2"
         labels:
@@ -342,7 +342,7 @@ groups:
             turns cannot check one out and fall back to in-memory state, which
             loses thread continuity. Check "Connections by State" for idle or
             idle-in-transaction connections that are not being released.
-          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-postgres-connections
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-postgres-connections
           __dashboardUid__: gaia-databases
           __panelId__: "1"
         labels:
@@ -388,7 +388,7 @@ groups:
             inference time, so complex requests silently degrade to plain
             answers with no tools. Chroma exposes no metrics of its own, so this
             probe against /api/v2/heartbeat is the only signal.
-          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-chromadb-down
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-chromadb-down
           __dashboardUid__: gaia-databases
           __panelId__: "19"
         labels:
@@ -445,7 +445,7 @@ groups:
             writes, RabbitMQ persistence and log ingestion at the same time.
             Prometheus retention and Loki are usually the largest reclaimable
             consumers.
-          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-host-disk
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-host-disk
           __dashboardUid__: gaia-host
           __panelId__: "3"
         labels:
@@ -494,7 +494,7 @@ groups:
             The largest limits on this box are the API at 4G, the embedding
             sidecar at 3G, and the ARQ worker and voice agent at 2G each — check
             "Memory Usage per Container" to see which one is growing.
-          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-host-memory
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-host-memory
           __dashboardUid__: gaia-host
           __panelId__: "2"
         labels:
@@ -541,7 +541,7 @@ groups:
             lag exceeded 2000ms. Compare against the "Internal Uptime" panel —
             internal healthy plus external down means the edge is at fault, not
             the app.
-          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-api-external-down
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-api-external-down
           __dashboardUid__: gaia-api-prometheus
           __panelId__: "10"
         labels:
@@ -607,7 +607,7 @@ groups:
             that postgres and redis scrape their exporter sidecars, not the
             databases, so those two mean the exporter died and say nothing about
             whether the database is healthy.
-          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-target-down
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-target-down
           __dashboardUid__: gaia-overview
           __panelId__: "5"
         labels:
@@ -658,7 +658,7 @@ groups:
             see silence rather than an error, which is why this is critical. The
             worker also disappears here if its poll loop wedges, not only if the
             container dies.
-          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-arq-worker-down
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-arq-worker-down
           __dashboardUid__: gaia-arq-worker
           __panelId__: "1"
         labels:
@@ -760,7 +760,7 @@ groups:
             a healthy service reads 1 and a service mid-deploy reads 2. Check
             that service's logs for the startup exception — a failing dependency,
             a bad migration or a missing secret at boot are the usual causes.
-          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-container-restarts
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-container-restarts
           __dashboardUid__: gaia-containers
           __panelId__: "1"
         labels:
@@ -815,7 +815,7 @@ groups:
             the worker cannot fit the models in its memory limit. If it is one of
             the discord, slack, telegram, whatsapp or imessage bots, that platform's users
             get no replies even though the API itself is healthy.
-          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-internal-service-down
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-internal-service-down
           __dashboardUid__: gaia-containers
           __panelId__: "1"
         labels:
@@ -867,7 +867,7 @@ groups:
             also pages email. Treat it as an incident — check whether the API is
             saturated, a downstream database is slow, or an upstream LLM provider
             is degraded.
-          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-api-p95-latency-critical
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-api-p95-latency-critical
           __dashboardUid__: gaia-api-prometheus
           __panelId__: "6"
         labels:
@@ -917,7 +917,7 @@ groups:
             moved, suspect context assembly (context_assemble_seconds) or the
             pre-LLM graph spans. No latency dashboard panel exists for these
             metrics yet — query /metrics histograms directly.
-          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-chat-ttft-p95
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-chat-ttft-p95
         labels:
           severity: warning
           service: api
@@ -964,7 +964,7 @@ groups:
             as an incident — check provider status first (llm_ttft_seconds),
             then executor queue wait (executor_queue_wait_seconds) for a stuck
             conversation lock.
-          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-chat-ttft-p95-critical
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-chat-ttft-p95-critical
         labels:
           severity: critical
           service: api
@@ -1012,7 +1012,7 @@ groups:
             (hil_user_wait_seconds) vs delivery (delivery_narration_seconds,
             delivery_persist_seconds). No latency dashboard panel exists for
             these metrics yet — query /metrics histograms directly.
-          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-chat-e2e-p95
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-chat-e2e-p95
         labels:
           severity: warning
           service: api
@@ -1058,7 +1058,7 @@ groups:
             time out rather than lag. This tier also pages email. Treat it as an
             incident — look for a wedged executor lock (executor_queue_wait_seconds
             climbing), a provider outage, or a runaway tool (tool_call_seconds).
-          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-chat-e2e-p95-critical
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-chat-e2e-p95-critical
         labels:
           severity: critical
           service: api
@@ -1115,7 +1115,7 @@ groups:
             along with the database. This is the database, not its exporter:
             the exporter is still up and answering scrapes. Check the postgres
             container and its logs first.
-          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-postgres-down
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-postgres-down
         labels:
           severity: critical
           service: postgres
@@ -1171,7 +1171,7 @@ groups:
             rules go silent during this outage because their metrics disappear
             with it, so this is the only signal. Check the redis container and
             its logs; a full disk is a common cause.
-          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-redis-down
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-redis-down
         labels:
           severity: critical
           service: redis
@@ -1230,7 +1230,7 @@ groups:
             health probes with it at once, which looks like three simultaneous
             outages when the real fault is one container. Read the job named
             above before believing anything that fired alongside it.
-          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-monitoring-target-down
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-monitoring-target-down
         labels:
           severity: warning
           service: monitoring
@@ -1289,7 +1289,7 @@ groups:
             volume at startup, so a slow first boot is normal and the 5 minute
             dwell covers it. Check the voice-agent-worker service and its logs
             for a model-load failure or missing LiveKit credentials.
-          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-voice-agent-down
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-voice-agent-down
         labels:
           severity: critical
           service: voice_agent
@@ -1345,7 +1345,7 @@ groups:
             no graceful degradation. Renewal is normally automatic, so this
             firing means the renewal path itself is broken and needs a look
             before the deadline.
-          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-ssl-cert-expiry
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-ssl-cert-expiry
           __dashboardUid__: gaia-api-prometheus
           __panelId__: "13"
         labels:
@@ -1391,7 +1391,7 @@ groups:
             at 3G against roughly 2.4G of resident models, and the ARQ worker and
             voice agent at 2G each. Check "Memory Usage % of Limit" to see which
             one is at its ceiling.
-          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-container-oom
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-container-oom
           __dashboardUid__: gaia-containers
           __panelId__: "7"
         labels:
@@ -1441,7 +1441,7 @@ groups:
             those at random; on jfs_meta_redis the policy is noeviction, so
             metadata writes start failing instead. This is the warning before
             either happens.
-          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-redis-memory
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-redis-memory
           __dashboardUid__: gaia-databases
           __panelId__: "8"
         labels:
@@ -1486,7 +1486,7 @@ groups:
             SSE buffers can be evicted mid-response so chat replies truncate, and
             rate-limit counters reset. This is the companion to the Redis memory
             warning — that one predicts, this one confirms.
-          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-redis-evictions
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-redis-evictions
           __dashboardUid__: gaia-databases
           __panelId__: "12"
         labels:
@@ -1532,7 +1532,7 @@ groups:
             its own once a consumer reconnects — but until then users are getting
             silence. Check whether the bot containers are running before
             restarting anything.
-          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-rabbitmq-no-consumers
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-rabbitmq-no-consumers
           __dashboardUid__: gaia-rabbitmq
           __panelId__: "7"
         labels:
@@ -1593,7 +1593,7 @@ groups:
             embedding and voice model caches. Confirm with `df -i /`, then find
             the consumer with `du --inodes -d 2 /var/lib/docker` and the Loki
             volume.
-          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-host-inodes
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-host-inodes
         labels:
           severity: warning
           service: host
@@ -1647,7 +1647,7 @@ groups:
             publish, so chat responses never reach the browser; and the rate
             limiter fails open or closed. The usual cause is a full or read-only
             disk — check the host disk alert first, then the redis container logs.
-          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-redis-persistence-failed
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-redis-persistence-failed
         labels:
           severity: critical
           service: redis

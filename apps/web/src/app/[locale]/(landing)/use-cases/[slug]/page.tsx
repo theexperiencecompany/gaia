@@ -10,6 +10,7 @@ import {
   getPublicWorkflowServer,
 } from "@/features/workflows/lib/serverWorkflowsApi";
 import { findCopiedTemplate } from "@/features/workflows/lib/templateCopies";
+import { prerenderedMarketingParams } from "@/lib/selfhost";
 import { generateBreadcrumbSchema, siteConfig } from "@/lib/seo";
 import type { UseCase } from "@/types/features/workflowTypes";
 import {
@@ -27,7 +28,7 @@ interface PageProps {
 
 export const revalidate = 3600; // Revalidate every hour
 
-export async function generateStaticParams() {
+async function allStaticParams() {
   const [explore, community] = await Promise.all([
     getExploreWorkflowsServer(1000),
     getAllCommunityWorkflowsServer(),
@@ -35,6 +36,10 @@ export async function generateStaticParams() {
   return [...explore, ...community].flatMap((w) =>
     w.slug ? [{ slug: w.slug }] : [],
   );
+}
+
+export function generateStaticParams() {
+  return prerenderedMarketingParams(allStaticParams);
 }
 
 export const dynamicParams = true;

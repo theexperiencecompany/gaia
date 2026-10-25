@@ -22,6 +22,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.constants import chat as chat_constants
+from app.constants.general import NEW_MESSAGE_BREAKER
 from app.models.chat_models import MessageKind, MessageModel
 from app.models.message_models import MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
@@ -295,6 +296,26 @@ class TestAnEmptyCompletionIsNeverSaved:
         _, published = await persist(state)
 
         assert any(EMPTY_RESPONSE_FALLBACK in chunk for chunk in published)
+
+    @pytest.mark.regression
+    async def test_a_reply_of_only_bubble_breaks_is_saved_as_one_honest_line(self):
+        """Regression: a looping model's 50k chars of bare breaks were saved, then broke every later bot turn's history."""
+        state = _StreamState()
+        state.complete_message = NEW_MESSAGE_BREAKER * 2700
+
+        bot, published = await persist(state)
+
+        assert bot.response == EMPTY_RESPONSE_FALLBACK
+        assert any(EMPTY_RESPONSE_FALLBACK in chunk for chunk in published)
+
+    @pytest.mark.regression
+    async def test_a_reply_is_saved_as_the_bubbles_the_user_saw(self):
+        state = _StreamState()
+        state.complete_message = f"On it.{NEW_MESSAGE_BREAKER * 3}Done.{NEW_MESSAGE_BREAKER}"
+
+        bot, _ = await persist(state)
+
+        assert bot.response == f"On it.{NEW_MESSAGE_BREAKER}Done."
 
     async def test_a_whitespace_only_completion_counts_as_empty(self):
         state = _StreamState()

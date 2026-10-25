@@ -5,6 +5,7 @@ These tools handle installing, creating, listing, and managing skills.
 They run in-context after activate_integration("skills").
 """
 
+from http import HTTPStatus
 import json
 from typing import Annotated, Any
 
@@ -16,7 +17,9 @@ from app.agents.skills.installer import (
     install_from_github,
     install_from_inline,
     uninstall_skill_full,
+    update_skill_inline,
 )
+from app.agents.skills.models import SkillAuthor, SkillInlineCreateRequest
 from app.agents.skills.registry import (
     disable_skill,
     enable_skill,
@@ -25,6 +28,7 @@ from app.agents.skills.registry import (
 )
 from app.constants.log_tags import LogTag
 from app.models.agent_models import get_user_id
+from app.utils.errors import AppError
 from shared.py.wide_events import log
 
 
@@ -68,6 +72,7 @@ async def install_skill_from_github(
             repo_url=repo_url,
             skill_path=skill_path or None,
             target_override=target or None,
+            author=SkillAuthor.AGENT,
         )
 
         files_info = f" ({len(installed.files)} files)" if len(installed.files) > 1 else ""
@@ -128,11 +133,11 @@ async def create_skill(
 
     try:
         installed = await install_from_inline(
-            user_id=user_id,
-            name=name,
-            description=description,
-            instructions=instructions,
-            target=target,
+            user_id,
+            SkillInlineCreateRequest(
+                name=name, description=description, instructions=instructions, target=target
+            ),
+            author=SkillAuthor.AGENT,
         )
 
         return (
@@ -357,12 +362,12 @@ async def save_learned_skill(
     try:
         body = _compose_learned_skill_md(spec)
         installed = await install_from_inline(
-            user_id=user_id,
-            name=spec.name,
-            description=spec.description,
-            instructions=body,
-            target=spec.target,
-            extra_metadata={"source": "learned", "learned_from_run": "1"},
+            user_id,
+            SkillInlineCreateRequest(
+                name=spec.name, description=spec.description, instructions=body, target=spec.target
+            ),
+            author=SkillAuthor.AGENT,
+            learned=True,
         )
         return (
             f"Saved skill '{installed.name}' successfully.\n"
@@ -374,14 +379,84 @@ async def save_learned_skill(
             "Available Skills. Next time this task comes up, it runs the saved steps instead "
             "of re-deriving them."
         )
+    except AppError as e:
+        if e.status_code != HTTPStatus.CONFLICT:
+            return _learned_skill_persist_failed(user_id)
+        log.set(tool={"name": "save_learned_skill", "action": "save", "error": "name_taken"})
+        return (
+            f"Not saved: {e.message} If it covers this task, revise it with update_skill "
+            "(read its SKILL.md first and keep what still applies); otherwise save under a "
+            "different name."
+        )
     except ValueError as e:
         log.set(tool={"name": "save_learned_skill", "action": "save", "error": "invalid_spec"})
         log.error(f"{LogTag.TOOL} Learned-skill save rejected", error=str(e), user_id=user_id)
         return "Failed to save skill: the recipe is invalid (check the name and step fields)."
-    except Exception as e:
-        log.set(tool={"name": "save_learned_skill", "action": "save", "error": "persist_failed"})
-        log.error(f"{LogTag.TOOL} Learned-skill save error", error=str(e), user_id=user_id)
-        return "Error saving skill: the skill could not be persisted. Try again."
+    except Exception:
+        return _learned_skill_persist_failed(user_id)
+
+
+def _learned_skill_persist_failed(user_id: str) -> str:
+    """Record a failed save; called from an except block, so log.error attaches the exception."""
+    log.set(tool={"name": "save_learned_skill", "action": "save", "error": "persist_failed"})
+    log.error(f"{LogTag.TOOL} Learned-skill save error", user_id=user_id)
+    return "Error saving skill: the skill could not be persisted. Try again."
+
+
+@tool
+async def update_skill(
+    config: RunnableConfig,
+    name: Annotated[str, "Name of the skill to revise, exactly as listed in Available Skills."],
+    instructions: Annotated[
+        str,
+        "The FULL new markdown body (replaces the current body). Read the skill's SKILL.md "
+        "first and keep every part that still applies.",
+    ],
+    description: Annotated[
+        str | None,
+        "New description, only when what the skill covers or when to use it has changed.",
+    ] = None,
+    target: Annotated[
+        str | None,
+        "The skill's target, only needed when the same name exists on more than one target.",
+    ] = None,
+) -> str:
+    """Revise one of the user's existing skills in place instead of saving a near-duplicate.
+
+    Use when a run shows a saved skill is wrong, outdated or missing a step. Builtin
+    GAIA skills cannot be revised.
+    """
+    log.set(tool={"name": "update_skill", "action": "update"})
+    user_id = get_user_id(config)
+    matches = [
+        skill
+        for skill in await list_skills(user_id)
+        if skill.name == name and (target is None or skill.target == target)
+    ]
+    if not matches or not matches[0].id:
+        return (
+            f"Skill '{name}' not found among the user's skills. Builtin skills cannot be "
+            "revised; use save_learned_skill for a new one."
+        )
+    if len(matches) > 1:
+        targets = ", ".join(skill.target for skill in matches)
+        return f"Not updated: '{name}' exists for {targets}. Pass target to choose one."
+    try:
+        updated = await update_skill_inline(
+            user_id,
+            matches[0].id,
+            description=description,
+            instructions=instructions,
+            author=SkillAuthor.AGENT,
+        )
+    except ValueError as e:
+        return f"Not updated: {e}"
+    if updated is None:
+        return f"Skill '{name}' was removed before it could be updated."
+    return (
+        f"Updated skill '{updated.name}' for {updated.target}. The next run that reads it "
+        "gets the new version."
+    )
 
 
 # Export tools list for registry
@@ -389,6 +464,7 @@ tools = [
     install_skill_from_github,
     create_skill,
     save_learned_skill,
+    update_skill,
     list_installed_skills,
     manage_skill,
 ]

@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from "react";
+import { normalizeCategoryName } from "@/config/toolIconConfig";
 import { useIntegrations } from "./useIntegrations";
 
 interface IntegrationLookupEntry {
@@ -14,12 +15,10 @@ export interface UseIntegrationLookupReturn {
 }
 
 /**
- * Resolves an integration id to its human-readable name / icon.
+ * Resolves an integration id or registry category to its name / icon.
  *
- * Custom MCP integrations are surfaced by id in several backend streams
- * (tool categories, todo_progress sources), so any UI that displays one needs
- * the same id-to-name lookup. Centralised here so there is a single source of
- * truth instead of each consumer rebuilding the map from `useIntegrations`.
+ * Ids match as categories do (normalizeCategoryName), so a workflow step's
+ * Composio category ("ATTIO") finds its integration ("attio").
  */
 export const useIntegrationLookup = (): UseIntegrationLookupReturn => {
   const { integrations } = useIntegrations();
@@ -27,18 +26,24 @@ export const useIntegrationLookup = (): UseIntegrationLookupReturn => {
   const lookup = useMemo(() => {
     const map = new Map<string, IntegrationLookupEntry>();
     for (const int of integrations) {
-      if (int.id) map.set(int.id, { iconUrl: int.iconUrl, name: int.name });
+      if (int.id)
+        map.set(normalizeCategoryName(int.id), {
+          iconUrl: int.iconUrl,
+          name: int.name,
+        });
     }
     return map;
   }, [integrations]);
 
   const getIntegrationName = useCallback(
-    (integrationId: string) => lookup.get(integrationId)?.name,
+    (integrationId: string) =>
+      lookup.get(normalizeCategoryName(integrationId))?.name,
     [lookup],
   );
 
   const getIntegrationIconUrl = useCallback(
-    (integrationId: string) => lookup.get(integrationId)?.iconUrl,
+    (integrationId: string) =>
+      lookup.get(normalizeCategoryName(integrationId))?.iconUrl,
     [lookup],
   );
 

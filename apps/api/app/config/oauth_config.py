@@ -5,7 +5,9 @@ Single source of truth for all OAuth integration configurations in GAIA.
 Defines integrations, scopes, display properties, and subagent configurations.
 """
 
-from functools import cache
+from collections.abc import Callable, Sequence
+from functools import update_wrapper
+from typing import Generic, TypeVar
 
 from app.agents.prompts.memory_prompts import (
     AGENTMAIL_MEMORY_PROMPT,
@@ -89,7 +91,7 @@ from app.agents.prompts.subagent_prompts import (
     YELP_AGENT_SYSTEM_PROMPT,
     ZOOM_AGENT_SYSTEM_PROMPT,
 )
-from app.config.composio_auth_configs import with_auth_config_overrides
+from app.config.composio_auth_configs import check_auth_config_ids
 from app.config.oauth_content import (
     AGENTMAIL_CONTENT,
     AIRTABLE_CONTENT,
@@ -187,7 +189,7 @@ from app.models.trigger_config import (
 )
 
 # Define all integrations dynamically
-_DECLARED_INTEGRATIONS: list[OAuthIntegration] = [
+OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
     # Individual Google integrations
     OAuthIntegration(
         id="googlecalendar",
@@ -485,7 +487,7 @@ _DECLARED_INTEGRATIONS: list[OAuthIntegration] = [
             agent_name="skills_agent",
             tool_space="skills",
             domain="agent skill management and configuration",
-            capabilities="installing skills from GitHub, creating custom skills inline, listing installed skills, enabling/disabling skills, uninstalling skills, managing skill scopes and targets",
+            capabilities="installing skills from GitHub, creating custom skills inline, updating existing skills, listing installed skills, enabling/disabling skills, uninstalling skills, managing skill scopes and targets",
             use_cases="installing agent skills, creating custom procedures, managing installed skills, or any skill-related task",
             system_prompt=SKILLS_AGENT_SYSTEM_PROMPT,
             use_direct_tools=True,
@@ -2227,18 +2229,72 @@ _DECLARED_INTEGRATIONS: list[OAuthIntegration] = [
     ),
 ]
 
-OAUTH_INTEGRATIONS: list[OAuthIntegration] = with_auth_config_overrides(
-    _DECLARED_INTEGRATIONS, settings.COMPOSIO_AUTH_CONFIG_OVERRIDES
+check_auth_config_ids(
+    OAUTH_INTEGRATIONS,
+    settings.COMPOSIO_AUTH_CONFIG_OVERRIDES,
+    origin="COMPOSIO_AUTH_CONFIG_OVERRIDES",
 )
 
 
-@cache
+_instance_integrations: tuple[OAuthIntegration, ...] = ()
+_instance_catalog_version = 0
+
+
+def all_integrations() -> tuple[OAuthIntegration, ...]:
+    """Return the code catalog followed by the toolkits this instance's admin enabled."""
+    return (*OAUTH_INTEGRATIONS, *_instance_integrations)
+
+
+def instance_catalog_version() -> int:
+    """Return a counter bumped on every change to the instance-enabled set, for keying caches."""
+    return _instance_catalog_version
+
+
+_T = TypeVar("_T")
+
+
+class CatalogCached(Generic[_T]):
+    """A zero-argument builder over the integration catalog, rebuilt when the instance set changes."""
+
+    def __init__(self, build: Callable[[], _T]) -> None:
+        self._build = build
+        self._entry: tuple[int, _T] | None = None
+        update_wrapper(self, build)
+
+    def __call__(self) -> _T:
+        version = instance_catalog_version()
+        if self._entry is None or self._entry[0] != version:
+            self._entry = (version, self._build())
+        return self._entry[1]
+
+    def cache_clear(self) -> None:
+        self._entry = None
+
+
+def set_instance_integrations(integrations: Sequence[OAuthIntegration]) -> None:
+    """Replace this pod's instance-enabled integrations; refuse any that shadow a code one."""
+    code_ids = {i.id for i in OAUTH_INTEGRATIONS}
+    code_toolkits = {
+        i.composio_config.toolkit.upper() for i in OAUTH_INTEGRATIONS if i.composio_config
+    }
+    shadowing = sorted(
+        i.id
+        for i in integrations
+        if i.id in code_ids
+        or (i.composio_config and i.composio_config.toolkit.upper() in code_toolkits)
+    )
+    if shadowing:
+        raise ValueError(f"Instance integrations shadow code integrations: {shadowing}")
+    global _instance_integrations, _instance_catalog_version
+    _instance_integrations = tuple(integrations)
+    _instance_catalog_version += 1
+
+
 def get_integration_by_id(integration_id: str) -> OAuthIntegration | None:
     """Return the matching integration, or None if no integration has this id."""
-    return next((i for i in OAUTH_INTEGRATIONS if i.id == integration_id), None)
+    return next((i for i in all_integrations() if i.id == integration_id), None)
 
 
-@cache
 def get_integration_scopes(integration_id: str) -> list[str]:
     """Get the OAuth scopes for a specific integration."""
     integration = get_integration_by_id(integration_id)
@@ -2247,43 +2303,27 @@ def get_integration_scopes(integration_id: str) -> list[str]:
     return [scope.scope for scope in integration.scopes]
 
 
-@cache
 def get_short_name_mapping() -> dict[str, str]:
     """Get mapping of short names to integration IDs."""
-    return {i.short_name: i.id for i in OAUTH_INTEGRATIONS if i.short_name}
+    return {i.short_name: i.id for i in all_integrations() if i.short_name}
 
 
-@cache
-def get_composio_social_configs() -> dict[str, ComposioConfig]:
-    """Get COMPOSIO_SOCIAL_CONFIGS from integrations managed by Composio."""
-    configs = {}
-    for integration in OAUTH_INTEGRATIONS:
-        if integration.managed_by == "composio" and integration.composio_config:
-            configs[integration.provider] = integration.composio_config
-    return configs
+def get_composio_integrations_by_provider() -> dict[str, OAuthIntegration]:
+    """Map each Composio-managed integration's provider to the integration."""
+    return {
+        integration.provider: integration
+        for integration in all_integrations()
+        if integration.managed_by == "composio"
+    }
 
 
-@cache
-def get_integration_by_config(auth_config_id: str) -> OAuthIntegration | None:
-    """Get an integration by its Composio auth config ID."""
-    return next(
-        (
-            i
-            for i in OAUTH_INTEGRATIONS
-            if i.composio_config and i.composio_config.auth_config_id == auth_config_id
-        ),
-        None,
-    )
-
-
-@cache
 def get_integration_by_toolkit(toolkit: str) -> OAuthIntegration | None:
     """Get an integration by its Composio toolkit slug (case-insensitive)."""
     normalized = toolkit.upper()
     return next(
         (
             i
-            for i in OAUTH_INTEGRATIONS
+            for i in all_integrations()
             if i.composio_config and i.composio_config.toolkit.upper() == normalized
         ),
         None,
@@ -2294,12 +2334,11 @@ def get_integration_by_tool_slug(tool_name: str) -> OAuthIntegration | None:
     """Get the Composio integration a tool slug belongs to ("GMAIL_SEND_EMAIL" -> gmail).
 
     Composio slugs are TOOLKIT_ACTION; the longest matching toolkit wins so a
-    toolkit that prefixes another's name cannot claim its tools. Not cached: the
-    name is model-supplied, and the scan is over a small fixed list.
+    toolkit that prefixes another's name cannot claim its tools.
     """
     matches = [
         (i.composio_config.toolkit, i)
-        for i in OAUTH_INTEGRATIONS
+        for i in all_integrations()
         if i.composio_config and tool_name.startswith(f"{i.composio_config.toolkit.upper()}_")
     ]
     if not matches:

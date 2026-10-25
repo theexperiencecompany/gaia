@@ -1,42 +1,64 @@
 name: Publish CLI
 
 concurrency:
-  group: publish-cli-${{ github.ref }}
+  group: publish-cli-${{ github.event.inputs.tag }}
   cancel-in-progress: false
 
-# Publishes @heygaia/cli from an explicit release tag/version pair, and attaches
-# the tools/gaia-connect binaries to the same cli-v<version> GitHub Release —
-# one CLI release ships both halves. The two jobs are independent on purpose:
-# npm publish self-skips when the version already exists, while the binary
-# upload is `--clobber`-idempotent and must still be able to attach missing
-# assets to an already-published release. Both run release.mjs verify-cli first,
-# so a mistyped tag or a version that disagrees with packages/cli/package.json
-# can neither publish the wrong package nor attach binaries to the wrong release.
+# Publishes one CLI release from its own tag: attaches the tools/gaia-connect
+# binaries and the self-host bundle (gaia-selfhost-<version>.tar.gz + .sha256)
+# to the cli-v<version> GitHub Release, pins the gaia + gaia-web images of the
+# release commit as v<version>, and only then publishes @heygaia/cli to npm, so
+# npm never serves a CLI whose binaries, setup files or images are missing. Every job
+# checks out the release tag (not master HEAD) and runs release.mjs verify-cli,
+# so a mistyped tag or a version that disagrees with the tagged
+# packages/cli/package.json publishes nothing. Re-dispatching an already
+# published version backfills the binaries and the image pin (both idempotent)
+# and skips only the npm publish.
+#
+# A version X.Y.Z-beta.N is a beta: release.mjs maps it to the npm dist-tag
+# beta (every other accepted version is X.Y.Z, dist-tag latest), this workflow
+# creates its GitHub Release as a prerelease, and the image pin tags
+# vX.Y.Z-beta.N. Dispatch a beta with --ref <branch> to run that branch's copy
+# of this workflow against a tag cut from it.
 on:
   # Manual dispatch keeps CLI publish intentional and auditable.
   workflow_dispatch:
     inputs:
-      # Expected format: cli-vX.Y.Z.
+      # Expected format: cli-vX.Y.Z or cli-vX.Y.Z-beta.N.
       tag:
-        description: "Release tag (e.g. cli-v0.1.3)"
+        description: "Release tag (e.g. cli-v0.1.3, or cli-v0.2.0-beta.1 for a beta)"
         required: true
-      # Expected format: X.Y.Z.
+      # Expected format: X.Y.Z or X.Y.Z-beta.N.
       version:
-        description: "Release version (e.g. 0.1.3)"
+        description: "Release version (e.g. 0.1.3, or 0.2.0-beta.1 for a beta)"
+        required: true
+      # The commit the tag points at: its :<sha> images become v<version>.
+      sha:
+        description: "Release commit SHA, all 40 chars (the commit cli-vX.Y.Z points at)"
         required: true
 
 jobs:
   publish:
+    # npm is the last step of a release: binaries and the bundle are attached first.
+    needs: publish-binaries
+    # The image pin waits up to 30 min for the release commit's build.
+    timeout-minutes: 45
     # OIDC token enables npm provenance signing.
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
+      # pin-selfhost-release tags the gaia / gaia-web / self-host bot images in GHCR.
+      packages: write
+      # ...after reading ci.yml's quality gate on the release commit.
+      actions: read
     steps:
-      # Checkout repository to read package and release manifest metadata.
+      # The release tag, not master HEAD: package.json, the build and the
+      # image pin must all be the released commit.
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.inputs.tag }}
           persist-credentials: false
 
       # Install Node toolchain for build/publish.
@@ -46,7 +68,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.1
         with:
-          node-version: "22"
+          node-version-file: ".node-version"
           registry-url: "https://registry.npmjs.org"
 
       # Trusted publishing exchanges this job's OIDC token for a short-lived
@@ -89,12 +111,36 @@ jobs:
         run: pnpm run build
         working-directory: packages/cli
 
+      # The CLI's `gaia update` pins GAIA_VERSION=v<version>; the tag must exist
+      # before the CLI that pins it reaches npm. Not gated on should_publish, so
+      # a re-dispatch of a published version backfills a missing pin.
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      - name: Pin the self-host image pair for this release
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          SHA: ${{ github.event.inputs.sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/ci/release.sh pin-selfhost-release
+
       # Authenticated by OIDC via npm trusted publishing (configured on the
       # package as theexperiencecompany/gaia + publish-cli.yml). Provenance is
       # attested automatically, so neither a token nor --provenance is needed.
+      # The dist-tag comes from the version alone (release.mjs), so a beta can
+      # only ever land on beta and never moves latest.
       - name: Publish to npm
         if: steps.verify.outputs.should_publish == 'true'
-        run: npm publish --access public
+        env:
+          NPM_DIST_TAG: ${{ steps.verify.outputs.npm_dist_tag }}
+        run: npm publish --access public --tag "$NPM_DIST_TAG"
         working-directory: packages/cli
 
       # Idempotent rerun path: emit clear skip message.
@@ -120,7 +166,7 @@ jobs:
             **Package:** `@heygaia/cli@${{ steps.release.outputs.version }}`
             **Tag:** `${{ steps.release.outputs.tag }}`
             The release tag exists but npm was never updated, so `npm install -g @heygaia/cli` still serves the previous version.
-            **To retry:** fix the cause, then re-run this workflow with the same tag/version — it is idempotent and skips versions already on npm.
+            **To retry:** fix the cause, then re-run this workflow with the same tag/version/sha — it is idempotent and skips versions already on npm.
         run: bash scripts/ci/deploy.sh notify
 
   # The Go companion tool (tools/gaia-connect) ships as release assets on the
@@ -138,6 +184,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.inputs.tag }}
           persist-credentials: false
 
       # go-version-file keeps the toolchain pinned by tools/gaia-connect/go.mod
@@ -173,10 +220,31 @@ jobs:
       # npm half must not still attach binaries there. Idempotent reruns pass
       # (an already-published version is a skip signal, not an error).
       - name: Verify CLI release tag/version
+        id: verify
         env:
           RELEASE_TAG: ${{ github.event.inputs.tag }}
           RELEASE_VERSION: ${{ github.event.inputs.version }}
         run: node scripts/ci/release.mjs verify-cli --tag "$RELEASE_TAG" --version "$RELEASE_VERSION"
+
+      # release-please creates every stable release; a beta has none until
+      # this creates it, as a prerelease that is never GitHub's latest.
+      - name: Create the beta's prerelease GitHub Release
+        if: steps.verify.outputs.prerelease == 'true'
+        env:
+          RELEASE_TAG: ${{ github.event.inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/ci/release.sh cli-beta-release
+
+      # `gaia up` and `gaia update` download gaia-selfhost-<version>.tar.gz
+      # (the compose files and Caddyfile, built from this tag) and verify it
+      # against its .sha256 instead of cloning the repo, so both must be on the
+      # release before npm serves the CLI that reads them.
+      - name: Attach the self-host bundle to the release
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+          RELEASE_TAG: ${{ github.event.inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/ci/release.sh selfhost-bundle
 
       # One command line: the five-target cross-compile, the sha256sum manifest
       # and the upload all live in the release concept script.
@@ -200,5 +268,5 @@ jobs:
             🚨 **gaia-connect Binary Upload Failed**
             **Tag:** `${{ github.event.inputs.tag }}`
             The CLI release exists but its `gaia-connect-*` assets are missing, so `gaia connect` cannot download the helper.
-            **To retry:** re-run this workflow with the same tag/version — the upload uses `--clobber` and is idempotent.
+            **To retry:** re-run this workflow with the same tag/version/sha — the upload uses `--clobber` and is idempotent.
         run: bash scripts/ci/deploy.sh notify

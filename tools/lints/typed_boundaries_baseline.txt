@@ -31,19 +31,17 @@ apps/api/app/agents/prompts/trigger_prompts.py	TB002
 apps/api/app/agents/skills/builtin/create-spreadsheet/templates/report.py	TB001
 apps/api/app/agents/skills/builtin/create-spreadsheet/templates/report.py	TB002
 apps/api/app/agents/skills/parser.py	TB002
-apps/api/app/agents/skills/registry.py	TB001
 apps/api/app/agents/tools/coding/query_json_tool.py	TB001
 apps/api/app/agents/tools/coding/query_json_tool.py	TB002
 apps/api/app/agents/tools/coding/read_tool.py	TB001
 apps/api/app/agents/tools/discovery_tools.py	TB001
 apps/api/app/agents/tools/discovery_tools.py	TB002
 apps/api/app/agents/tools/file_tools.py	TB002
-apps/api/app/agents/tools/integration_instructions_tools.py	TB002
 apps/api/app/agents/tools/integration_tool.py	TB002	deferred-until=2026-10-15; master's custom-MCP add path (#1208) reads the untyped connection dict create_and_connect_custom_integration returns; typing it changes custom_crud's return shape, a product change kept out of this merge (decided 2026-09-14)
 apps/api/app/agents/tools/playbook_tools.py	TB001	deferred-until=2026-11-08; the only change here moves the get_user_id import to the one canonical helper in app.models.agent_models (run-owner fix); typing these tool returns and config reads is its own change (decided 2026-10-08)
 apps/api/app/agents/tools/playbook_tools.py	TB002	deferred-until=2026-11-08; the only change here moves the get_user_id import to the one canonical helper in app.models.agent_models (run-owner fix); typing these tool returns and config reads is its own change (decided 2026-10-08)
-apps/api/app/agents/tools/workflow_shared_tools.py	TB001	deferred-until=2026-11-08; the only change here moves the get_user_id import to the one canonical helper in app.models.agent_models (run-owner fix); typing these tool returns and config reads is its own change (decided 2026-10-08)
-apps/api/app/agents/tools/workflow_shared_tools.py	TB002	deferred-until=2026-11-08; the only change here moves the get_user_id import to the one canonical helper in app.models.agent_models (run-owner fix); typing these tool returns and config reads is its own change (decided 2026-10-08)
+apps/api/app/agents/tools/workflow_shared_tools.py	TB001	deferred-until=2026-11-08; touched for the get_user_id import move (run-owner fix) and for search_triggers reading TriggerSearchResult attributes; the remaining dict[str, Any] tool returns and string-key reads belong to the other workflow tools, and typing them is its own change (decided 2026-10-08, reason refreshed 2026-10-15)
+apps/api/app/agents/tools/workflow_shared_tools.py	TB002	deferred-until=2026-11-08; touched for the get_user_id import move (run-owner fix) and for search_triggers reading TriggerSearchResult attributes; the remaining dict[str, Any] tool returns and string-key reads belong to the other workflow tools, and typing them is its own change (decided 2026-10-08, reason refreshed 2026-10-15)
 apps/api/app/agents/tools/workflow_tool.py	TB001	deferred-until=2026-11-08; the only change here moves the get_user_id import to the one canonical helper in app.models.agent_models (run-owner fix); typing these tool returns and config reads is its own change (decided 2026-10-08)
 apps/api/app/agents/tools/workflow_tool.py	TB002	deferred-until=2026-11-08; the only change here moves the get_user_id import to the one canonical helper in app.models.agent_models (run-owner fix); typing these tool returns and config reads is its own change (decided 2026-10-08)
 apps/api/app/agents/workspace/offload.py	TB001
@@ -51,11 +49,9 @@ apps/api/app/agents/workspace/offload.py	TB002
 apps/api/app/api/v1/endpoints/device_ws.py	TB002
 apps/api/app/api/v1/endpoints/platform_auth.py	TB001
 apps/api/app/api/v1/endpoints/platform_auth.py	TB002
-apps/api/app/config/token_repository.py	TB001
-apps/api/app/config/token_repository.py	TB002
 apps/api/app/constants/outbound.py	TB001
 apps/api/app/constants/profession_bios.py	TB002
-apps/api/app/core/lazy_loader.py	TB001
+apps/api/app/core/lazy_loader.py	TB001	deferred-until=2026-12-31; ProviderRegistry.get/aget return Any because the registry is keyed by name, not type; typing it means a typed key per provider across all 51 call sites, out of scope for a change that only taught the loader a not-configured state (decided 2026-10-14)
 apps/api/app/core/websocket_broadcast_listener.py	TB002
 apps/api/app/core/websocket_manager.py	TB001
 apps/api/app/core/websocket_manager.py	TB002
@@ -63,15 +59,10 @@ apps/api/app/db/chroma/chromadb.py	TB002
 apps/api/app/db/chroma/noop_embedding.py	TB001
 apps/api/app/db/chroma/public_integrations_store.py	TB001
 apps/api/app/db/chroma/public_integrations_store.py	TB002
-apps/api/app/db/mongodb/collections.py	TB001
-apps/api/app/db/mongodb/mongodb.py	TB001
 apps/api/app/db/repositories/usage_daily.py	TB002
 apps/api/app/memory/chroma_store.py	TB002
 apps/api/app/memory/context.py	TB002
-apps/api/app/memory/embeddings.py	TB001
-apps/api/app/memory/embeddings.py	TB002
 apps/api/app/memory/extraction.py	TB002
-apps/api/app/memory/ingestion.py	TB002
 apps/api/app/memory/mappers.py	TB002
 apps/api/app/memory/pg_store/_session.py	TB001
 apps/api/app/memory/projection.py	TB002
@@ -91,7 +82,6 @@ apps/api/app/scripts/delete_user_account.py	TB002
 apps/api/app/scripts/reset_playbook_declines.py	TB002
 apps/api/app/scripts/sync_user_workspaces.py	TB002
 apps/api/app/services/_vfs_scheduler.py	TB002
-apps/api/app/services/account_fs.py	TB002
 apps/api/app/services/bot_token_service.py	TB001
 apps/api/app/services/bot_token_service.py	TB002
 apps/api/app/services/calendar_service.py	TB002
@@ -108,7 +98,6 @@ apps/api/app/services/device/device_auth.py	TB002
 apps/api/app/services/device/revoke_listener.py	TB002
 apps/api/app/services/device/up_listener.py	TB002
 apps/api/app/services/device_token_service.py	TB002
-apps/api/app/services/files/store.py	TB002
 apps/api/app/services/files/summaries.py	TB002
 apps/api/app/services/gaia_knowledge_service.py	TB002	deferred-until=2026-10-15; master's #1240 reads chromadb's GetResult TypedDict with .get, a shape chromadb owns; a typed wrapper over the Chroma client is its own change (decided 2026-09-16)
 apps/api/app/services/hil/classification.py	TB002
@@ -119,7 +108,6 @@ apps/api/app/services/llm_metering.py	TB002	deferred-until=2026-12-31; 37 string
 apps/api/app/services/mail/email_importance_service.py	TB001
 apps/api/app/services/mcp/device_connector.py	TB002
 apps/api/app/services/mcp/device_exec.py	TB002
-apps/api/app/services/mcp/oauth_discovery.py	TB002
 apps/api/app/services/mcp/resilient_adapter.py	TB001
 apps/api/app/services/mcp/resilient_adapter.py	TB002
 apps/api/app/services/nurture/predicates.py	TB002
@@ -127,12 +115,10 @@ apps/api/app/services/onboarding/inbox_scan_cache.py	TB001
 apps/api/app/services/onboarding/inbox_triage_service.py	TB001
 apps/api/app/services/onboarding/inbox_triage_service.py	TB002
 apps/api/app/services/onboarding/onboarding_service.py	TB001	deferred-until=2026-11-08; _serialize_user feeds OnboardingResponse.user, a free-form object in the API contract; typing it changes openapi.json and the web types, a contract change kept out of the analytics catalog PR that only touched this file's capture (decided 2026-10-08)
-apps/api/app/services/onboarding/writing_style_service.py	TB002
 apps/api/app/services/photon/photon_client.py	TB001
 apps/api/app/services/photon/photon_client.py	TB002
 apps/api/app/services/storage/metrics.py	TB002
 apps/api/app/services/storage/sessions/meta.py	TB002
-apps/api/app/services/support_service.py	TB002
 apps/api/app/services/triggers/condition_matching.py	TB001
 apps/api/app/services/triggers/handlers/asana.py	TB001
 apps/api/app/services/triggers/handlers/calendar.py	TB001
@@ -144,7 +130,6 @@ apps/api/app/services/triggers/handlers/linear.py	TB001
 apps/api/app/services/triggers/handlers/notion.py	TB001
 apps/api/app/services/triggers/handlers/notion.py	TB002
 apps/api/app/services/triggers/handlers/todoist.py	TB001
-apps/api/app/services/upload_service.py	TB002
 apps/api/app/services/workflow/playbook/check.py	TB002
 apps/api/app/services/workflow/playbook/evaluator.py	TB001
 apps/api/app/services/workflow/playbook/parser.py	TB001
@@ -153,8 +138,6 @@ apps/api/app/services/workflow/playbook/scripted_model.py	TB001
 apps/api/app/services/workflow/queue_service.py	TB001
 apps/api/app/services/workflow/subagent_output.py	TB001
 apps/api/app/services/workflow/subagent_output.py	TB002
-apps/api/app/services/workflow/trigger_search.py	TB001
-apps/api/app/services/workflow/trigger_search.py	TB002
 apps/api/app/workers/config/log_config.py	TB002
 apps/api/app/workers/tasks/checkpoint_retention_tasks.py	TB001
 apps/api/app/workers/tasks/checkpoint_retention_tasks.py	TB002

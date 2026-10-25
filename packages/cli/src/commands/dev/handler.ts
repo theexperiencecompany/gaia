@@ -1,11 +1,8 @@
 import * as fs from "fs";
 import * as path from "path";
-import { runInteractiveCommand } from "../../lib/interactive.js";
-import {
-  DEV_PID_FILE,
-  detectSetupMode,
-  findRepoRoot,
-} from "../../lib/service-starter.js";
+import { runInteractiveCommand } from "../../lib/child-process.js";
+import { DEV_PID_FILE } from "../../lib/dev-processes.js";
+import { detectSetupMode, findRepoRoot } from "../../lib/install-root.js";
 
 export async function runDev(profile?: string): Promise<void> {
   if (profile && profile !== "full") {
@@ -24,7 +21,7 @@ export async function runDev(profile?: string): Promise<void> {
   const setupMode = await detectSetupMode(repoPath);
   if (!setupMode) {
     throw new Error(
-      "No .env file found. Run 'gaia init' for fresh setup, or 'gaia setup' to configure an existing repo.",
+      "This repo isn't set up for development: apps/api/.env is missing or names no SETUP_MODE.\nRun 'gaia setup' to configure it, or 'gaia init' for a fresh copy.",
     );
   }
 
