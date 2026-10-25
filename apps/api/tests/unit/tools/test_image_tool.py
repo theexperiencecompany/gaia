@@ -58,8 +58,25 @@ class TestGenerateImage:
         assert "DO NOT" in result["instructions"]
         mock_generate.assert_awaited_once_with(
             message="A beautiful sunset over the ocean",
+            user_id=FAKE_USER_ID,
             improve_prompt=False,
         )
+
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.api_generate_image", new_callable=AsyncMock)
+    async def test_a_run_without_a_user_stores_nothing(
+        self,
+        mock_generate: AsyncMock,
+        mock_writer_factory: MagicMock,
+    ) -> None:
+        mock_writer_factory.return_value = _writer_mock()
+
+        from app.agents.tools.image_tool import generate_image
+
+        result = await generate_image.coroutine(prompt="A cat", config={"metadata": {}})
+
+        assert result["status"] == "error"
+        mock_generate.assert_not_awaited()
 
     @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.api_generate_image", new_callable=AsyncMock)
@@ -141,3 +158,23 @@ class TestGenerateImage:
         error_calls = [c for c in writer.call_args_list if "error" in c[0][0]]
         assert len(error_calls) == 1
         assert "timeout" in error_calls[0][0][0]["error"]
+
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.api_generate_image", new_callable=AsyncMock)
+    async def test_a_run_without_a_user_is_refused_before_generating(
+        self,
+        mock_generate: AsyncMock,
+        mock_writer_factory: MagicMock,
+    ) -> None:
+        mock_writer_factory.return_value = _writer_mock()
+
+        from app.agents.tools.image_tool import generate_image
+
+        result = await generate_image.coroutine(prompt="A cat", config={"metadata": {}})
+
+        assert result == {
+            "status": "error",
+            "message": "Error generating image: "
+            "generate_image needs the run's user id to store the image",
+        }
+        mock_generate.assert_not_awaited()

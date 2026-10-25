@@ -42,8 +42,8 @@ _HERE = Path(__file__).resolve().parent
 BASELINE = _HERE / "plr_complexity_baseline.txt"
 PLR_RULES = ("PLR0911", "PLR0912", "PLR0913", "PLR0915")
 
-# Pinned to the same ruff version as the "Python ruff" CI lane
-# (.github/workflows/code-quality.yml) -- bump both together. `uvx` resolves
+# Pinned to the same ruff version as the python-ruff CI check
+# (.github/workflows/ci.yml) -- bump both together. `uvx` resolves
 # it without requiring a separate "install ruff onto PATH" CI step.
 _RUFF_CMD = ["uvx", "--no-build", "ruff@0.14.13"]
 

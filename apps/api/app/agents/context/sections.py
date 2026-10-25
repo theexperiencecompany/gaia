@@ -40,14 +40,15 @@ from app.agents.context.text import (
     MULTI_ACCOUNT_INSTRUCTION,
 )
 from app.agents.context.tiers import ALL_TIERS, WORKER_TIERS, AgentTier
+from app.agents.prompts.user_instructions_prompts import render_user_instructions
 from app.agents.skills.discovery import get_available_skills_text
 from app.agents.workspace.skill_loader import target_to_subagent
 from app.agents.workspace.system_docs import integration_skills_block
-from app.config.oauth_config import get_integration_by_id
 from app.constants.log_tags import LogTag
 from app.constants.skills import EXECUTOR_SUBAGENT_ID
 from app.models.chat_models import BOT_CONVERSATION_SOURCES, ConversationSource
-from app.services.integration_instructions_service import get_instructions
+from app.models.user_instructions_models import GLOBAL_INSTRUCTIONS_SCOPE
+from app.services.user_instructions_service import get_instructions
 from app.utils.user_preferences_utils import format_user_preferences_for_agent
 from shared.py.wide_events import log
 
@@ -166,31 +167,33 @@ async def _provider_metadata(ctx: SectionContext) -> str:
     return await build_provider_metadata_block(ctx.integration_id, ctx.user_id)
 
 
-async def _custom_instructions(ctx: SectionContext) -> str:
-    """Injected in full rather than as a read-on-demand pointer.
-
-    The point is that the subagent honours "focus on #eng" without an extra
-    file read.
-    """
-    target = ctx.integration_id or ctx.subagent_id
-    if not (target and ctx.user_id):
-        return ""
+async def _instructions_block(user_id: str, scope: str) -> str:
     try:
-        content = await get_instructions(ctx.user_id, target)
+        content = await get_instructions(user_id, scope)
     except Exception as e:
         log.warning(
-            f"{LogTag.AGENT} Failed to fetch custom instructions",
-            integration_id=target,
-            user_id=ctx.user_id,
+            f"{LogTag.AGENT} Failed to fetch user instructions",
+            scope=scope,
+            user_id=user_id,
             error_type=type(e).__name__,
             error=str(e),
         )
         return ""
-    if not content:
+    return render_user_instructions(scope, content) if content else ""
+
+
+async def _global_instructions(ctx: SectionContext) -> str:
+    if not ctx.user_id:
         return ""
-    integration = get_integration_by_id(target)
-    label = (integration.name if integration else target).upper()
-    return f"CUSTOM INSTRUCTIONS FOR {label} (set by the user, honor these):\n{content.strip()}"
+    return await _instructions_block(ctx.user_id, GLOBAL_INSTRUCTIONS_SCOPE)
+
+
+async def _integration_instructions(ctx: SectionContext) -> str:
+    """Injected in full rather than as a read-on-demand pointer, so "focus on #eng" needs no file read."""
+    target = ctx.integration_id or ctx.subagent_id
+    if not (target and ctx.user_id):
+        return ""
+    return await _instructions_block(ctx.user_id, target)
 
 
 async def _skills(ctx: SectionContext) -> str:
@@ -241,6 +244,7 @@ SECTIONS: tuple[Section, ...] = (
     ),
     Section("user_identity", PromptSlot.DYNAMIC_STABLE, ALL_TIERS, 10, _user_identity),
     Section("user_prefs", PromptSlot.DYNAMIC_STABLE, ALL_TIERS, 20, _user_prefs),
+    Section("global_instructions", PromptSlot.DYNAMIC_STABLE, ALL_TIERS, 22, _global_instructions),
     # Comms only: the executor never opens a conversation. Stable rather than
     # volatile since it's a pure function of signup answers plus a slow
     # counter, byte-identical until the user outgrows it.
@@ -280,11 +284,11 @@ SECTIONS: tuple[Section, ...] = (
         _provider_metadata,
     ),
     Section(
-        "custom_instructions",
+        "integration_instructions",
         PromptSlot.DYNAMIC_STABLE,
         frozenset({AgentTier.PROVIDER_SUBAGENT}),
         60,
-        _custom_instructions,
+        _integration_instructions,
     ),
     # Capability info, not retrieval: pure function of user + agent, Redis-
     # cached 12h (was re-read every worker call in the volatile slot). Same

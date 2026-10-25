@@ -32,7 +32,7 @@ tests:
               summary: https://api.heygaia.io/health has not returned 200 for 2 minutes
               description: >-
                 This is the public entry point, so this is a full outage for web, desktop, mobile, bots and voice. It fires for three different causes: the API container being gone, TLS or the host nginx failing in front of a healthy container, or the app returning 503 because event-loop lag exceeded 2000ms. Compare against the "Internal Uptime" panel — internal healthy plus external down means the edge is at fault, not the app.
-              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-api-external-down
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-api-external-down
               __dashboardUid__: gaia-api-prometheus
               __panelId__: '10'
 

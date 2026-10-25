@@ -19,10 +19,9 @@ from dataclasses import dataclass
 from pydantic import ValidationError
 from pydantic_core import ErrorDetails
 
-from app.constants.todos import BLOCKING_LABEL, TodoActivityEvent
-from app.constants.triggers import SUBSCRIPTION_WRITE_ATTEMPTS, SUBSCRIPTION_WRITE_MAX_TRIES
+from app.constants.todos import TodoActivityEvent
 from app.db.repositories.todos import todo_repository
-from app.models.todo_models import TodoDocument, TodoUpdate
+from app.models.todo_models import TodoDocument
 from app.models.trigger_subscription_models import (
     ConditionMatch,
     SubscriptionAction,
@@ -175,10 +174,7 @@ async def register_subscription(
         # The Composio instance registered above has no stored row: without a
         # release it lives upstream forever, firing for a watch nobody can see.
         await _release_unstored_registration(todo_id, user_id, subscription)
-        raise _fail(
-            "write_conflict",
-            f"The watches on {todo_id} changed while this one was being added. Try again.",
-        )
+        raise _fail("todo_not_found", f"Tracked todo {todo_id} was not found.")
     row, created = stored
     if not created:
         # A concurrent registration of the same watch landed first: its row is
@@ -189,7 +185,10 @@ async def register_subscription(
 
 
 def _same_watch(left: TriggerSubscription, right: TriggerSubscription) -> bool:
-    """Whether two watches would fire on exactly the same events, with the same settings."""
+    """Whether two watches would fire on exactly the same events, with the same settings.
+
+    Mirrored in Mongo by the todo repository's _same_active_watch, which dedupes the append.
+    """
     return (
         left.trigger_name == right.trigger_name
         and left.account_id == right.account_id
@@ -203,42 +202,6 @@ def _same_watch(left: TriggerSubscription, right: TriggerSubscription) -> bool:
         and left.status is TriggerSubscriptionStatus.ACTIVE
         and right.status is TriggerSubscriptionStatus.ACTIVE
     )
-
-
-async def _append_subscription(
-    todo_id: str, user_id: str, todo: TodoDocument, subscription: TriggerSubscription
-) -> tuple[TriggerSubscription, bool] | None:
-    """Add the watch compare-and-set on updated_at.
-
-    Returns the row now on the todo and whether this call stored it, or None
-    when the watches changed under it SUBSCRIPTION_WRITE_ATTEMPTS times.
-    """
-    current = todo
-    lost_races = 0
-    for _ in range(SUBSCRIPTION_WRITE_MAX_TRIES):
-        duplicate = next(
-            (sub for sub in current.trigger_subscriptions if _same_watch(sub, subscription)),
-            None,
-        )
-        if duplicate is not None:
-            return duplicate, False
-        written = await todo_repository.set_trigger_subscriptions(
-            todo_id,
-            user_id,
-            subscriptions=[*current.trigger_subscriptions, subscription],
-            expected_updated_at=current.updated_at,
-        )
-        if written is not None:
-            return subscription, True
-        latest = await todo_repository.get(todo_id, user_id=user_id)
-        if latest is None:
-            return None
-        if latest.trigger_subscriptions != current.trigger_subscriptions:
-            lost_races += 1
-            if lost_races == SUBSCRIPTION_WRITE_ATTEMPTS:
-                return None
-        current = latest
-    return None
 
 
 async def _release_unstored_registration(
@@ -271,11 +234,17 @@ async def store_subscription(
     """Append a ready subscription to the todo; count it and put it on the timeline if stored.
 
     The one write path for every subscription, Composio-backed or not (a sandbox
-    run's has no trigger to register). Returns what _append_subscription does.
+    run's has no trigger to register). Returns the row now on the todo and whether
+    this call stored it, or None when the todo is gone.
     """
-    appended = await _append_subscription(todo.id, todo.user_id, todo, subscription)
-    if appended is None or not appended[1]:
-        return appended
+    written = await todo_repository.add_trigger_subscription(
+        todo.id, user_id=todo.user_id, subscription=subscription
+    )
+    if written is None:
+        return None
+    if all(sub.id != subscription.id for sub in written.trigger_subscriptions):
+        duplicate, *_ = [s for s in written.trigger_subscriptions if _same_watch(s, subscription)]
+        return duplicate, False
     capture(
         UserId(todo.user_id),
         TodosSubscriptionRegistered(
@@ -298,7 +267,7 @@ async def store_subscription(
         condition_count=len(subscription.conditions),
         repaired=repaired,
     )
-    return appended
+    return subscription, True
 
 
 async def unregister_subscription(
@@ -310,20 +279,14 @@ async def unregister_subscription(
     or workflow may share the instance, and this todo is excluded from its own
     count so the last reference does release it.
     """
-    todo = await todo_repository.get(todo_id, user_id=user_id)
-    if todo is None:
-        return None
-
-    target = next((s for s in todo.trigger_subscriptions if s.id == subscription_id), None)
-    if target is None:
-        return None
-
-    remaining = [s for s in todo.trigger_subscriptions if s.id != subscription_id]
     # Write first: if unregistering upstream fails, the stored subscription is
     # already gone, so the todo cannot keep firing on a watch the user removed.
-    await todo_repository.update(
-        todo_id, user_id=user_id, update=TodoUpdate(trigger_subscriptions=remaining)
+    before = await todo_repository.remove_trigger_subscriptions(
+        todo_id, user_id=user_id, subscription_ids=[subscription_id]
     )
+    if before is None:
+        return None
+    (target,) = [s for s in before.trigger_subscriptions if s.id == subscription_id]
 
     if target.composio_trigger_ids:
         try:
@@ -359,12 +322,13 @@ async def teardown_subscriptions(todo_id: str, user_id: str, *, reason: str) -> 
     trigger any more. Composio deletion is reference-counted, and this todo is
     excluded from its own count so the last reference actually releases the trigger.
     """
-    todo = await todo_repository.get(todo_id, user_id=user_id)
-    if todo is None or not todo.trigger_subscriptions:
+    # Cleared first, so a watch added meanwhile is torn down with the rest, not left stored.
+    before = await todo_repository.clear_trigger_subscriptions(todo_id, user_id=user_id)
+    if before is None:
         return 0
 
     log.set(component="trigger_subscription", operation="teardown", todo_id=todo_id)
-    for subscription in todo.trigger_subscriptions:
+    for subscription in before.trigger_subscriptions:
         if not subscription.composio_trigger_ids:
             continue
         try:
@@ -386,11 +350,8 @@ async def teardown_subscriptions(todo_id: str, user_id: str, *, reason: str) -> 
                 error_type=type(e).__name__,
             )
 
-    count = len(todo.trigger_subscriptions)
-    await todo_repository.update(
-        todo_id, user_id=user_id, update=TodoUpdate(trigger_subscriptions=[])
-    )
-    names = ", ".join(sorted({sub.trigger_name for sub in todo.trigger_subscriptions}))
+    count = len(before.trigger_subscriptions)
+    names = ", ".join(sorted({sub.trigger_name for sub in before.trigger_subscriptions}))
     await record_activity(
         todo_id, user_id, TodoActivityEvent.WATCH_REMOVED, f"stopped watching {names} ({reason})"
     )
@@ -438,20 +399,8 @@ async def pause_subscriptions_for_trigger_names(
             ]
             if not hit:
                 continue
-            labels = (
-                todo.labels if BLOCKING_LABEL in todo.labels else [*todo.labels, BLOCKING_LABEL]
-            )
-            await todo_repository.update(
-                todo.id,
-                user_id=user_id,
-                update=TodoUpdate(
-                    labels=labels,
-                    trigger_subscriptions=_with_status(
-                        todo.trigger_subscriptions,
-                        {s.id for s in hit},
-                        TriggerSubscriptionStatus.PAUSED,
-                    ),
-                ),
+            await todo_repository.pause_trigger_subscriptions(
+                todo.id, user_id=user_id, subscription_ids={s.id for s in hit}
             )
             await record_activity(
                 todo.id,
@@ -491,7 +440,9 @@ async def resync_subscriptions_for_trigger_names(
             if not due:
                 continue
             try:
-                updated = await _resync_one(user_id, todo.id, todo.trigger_subscriptions, due)
+                trigger_ids = await _reregister(
+                    user_id, todo.id, [s for s in todo.trigger_subscriptions if s.id in due]
+                )
             except Exception as e:
                 log.error(
                     "todo_subscription.resync_failed",
@@ -501,13 +452,8 @@ async def resync_subscriptions_for_trigger_names(
                     error_type=type(e).__name__,
                 )
                 continue
-            # Another account's watch may still be paused, and its block with it.
-            still_paused = any(s.status is TriggerSubscriptionStatus.PAUSED for s in updated)
-            labels = [label for label in todo.labels if still_paused or label != BLOCKING_LABEL]
-            await todo_repository.update(
-                todo.id,
-                user_id=user_id,
-                update=TodoUpdate(labels=labels, trigger_subscriptions=updated),
+            await todo_repository.resume_trigger_subscriptions(
+                todo.id, user_id=user_id, trigger_ids=trigger_ids
             )
             await record_activity(
                 todo.id,
@@ -521,18 +467,12 @@ async def resync_subscriptions_for_trigger_names(
     return resynced
 
 
-async def _resync_one(
-    user_id: str,
-    todo_id: str,
-    subscriptions: list[TriggerSubscription],
-    due: set[str],
-) -> list[TriggerSubscription]:
-    """Re-register the subscriptions whose ids are in due and repoint their ids."""
-    refreshed: list[TriggerSubscription] = []
+async def _reregister(
+    user_id: str, todo_id: str, subscriptions: list[TriggerSubscription]
+) -> dict[str, list[str]]:
+    """Re-register each subscription and map its id to the Composio ids it now fires on."""
+    trigger_ids: dict[str, list[str]] = {}
     for subscription in subscriptions:
-        if subscription.id not in due:
-            refreshed.append(subscription)
-            continue
         new_ids = await TriggerService.register_triggers(
             user_id,
             todo_id,
@@ -541,28 +481,10 @@ async def _resync_one(
             raise_on_failure=True,
         )
         stale = [i for i in subscription.composio_trigger_ids if i not in new_ids]
-        refreshed.append(
-            subscription.model_copy(
-                update={
-                    "status": TriggerSubscriptionStatus.ACTIVE,
-                    # Account-level triggers return no ids — keep the empty list.
-                    "composio_trigger_ids": new_ids or subscription.composio_trigger_ids,
-                }
-            )
-        )
+        # Account-level triggers return no ids — keep the empty list.
+        trigger_ids[subscription.id] = new_ids or subscription.composio_trigger_ids
         if stale:
             await TriggerService.unregister_triggers(
                 user_id, subscription.trigger_name, stale, todo_id=todo_id
             )
-    return refreshed
-
-
-def _with_status(
-    subscriptions: list[TriggerSubscription],
-    subscription_ids: set[str],
-    status: TriggerSubscriptionStatus,
-) -> list[TriggerSubscription]:
-    return [
-        s.model_copy(update={"status": status}) if s.id in subscription_ids else s
-        for s in subscriptions
-    ]
+    return trigger_ids

@@ -11,10 +11,10 @@ from fastapi import (
     Response,
     UploadFile,
 )
-from workos import WorkOSClient
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
 from app.config.settings import settings
+from app.config.workos import get_workos_client
 from app.constants.auth import WOS_SESSION_COOKIE
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
@@ -24,6 +24,7 @@ from app.models.user_models import (
     AuthenticatedUserResponse,
     LogoutResponse,
     OnboardingSubdocument,
+    ProfilePictureUpload,
     PublicHoloCardResponse,
     UpdateHoloCardColorsResponse,
     UpdateTimezoneResponse,
@@ -38,6 +39,8 @@ from app.services.delivery.chat_channel import (
 )
 from app.services.onboarding.onboarding_service import get_user_onboarding_status
 from app.services.user_service import update_user_profile
+from app.utils.auth_utils import clear_session_cookie
+from app.utils.local_auth_utils import LOCAL_SESSION_COOKIE
 from app.utils.timezone import is_valid_timezone
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.auth import UserLoggedOut
@@ -49,8 +52,6 @@ router = APIRouter()
 #: ``AuthenticatedUser``'s per-auth-path flags — see ``get_me`` for why they are
 #: serialized only when set.
 _AUTH_PATH_FLAGS = ("impersonated", "bot_authenticated", "dev_bypass")
-
-workos = WorkOSClient(api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS_CLIENT_ID)
 
 
 # exclude_none: the per-auth-path flags and optional profile fields are only
@@ -117,7 +118,7 @@ async def update_me(
         raise HTTPException(status_code=400, detail="Invalid user ID")
 
     # Process profile picture if provided
-    picture_data = None
+    picture_upload: ProfilePictureUpload | None = None
     if picture and picture.size and picture.size > 0:
         # Validate file type
         allowed_types = ["image/jpeg", "image/png", "image/gif", "image/webp"]
@@ -132,14 +133,16 @@ async def update_me(
         if picture.size > max_size:
             raise HTTPException(status_code=400, detail="File size too large. Maximum size is 5MB")
 
-        picture_data = await picture.read()
+        picture_upload = ProfilePictureUpload(
+            data=await picture.read(), content_type=picture.content_type
+        )
         log.set(picture_size_bytes=picture.size)
 
-    updated_user = await update_user_profile(user_id=user_id, name=name, picture_data=picture_data)
+    updated_user = await update_user_profile(user_id=user_id, name=name, picture=picture_upload)
 
     changed_fields = [
         field
-        for field, changed in (("name", name is not None), ("picture", picture_data is not None))
+        for field, changed in (("name", name is not None), ("picture", picture_upload is not None))
         if changed
     ]
     log.audit("profile updated", actor=user_id, changed_fields=changed_fields)
@@ -147,7 +150,7 @@ async def update_me(
         UserId(user_id),
         ProfileUpdated(
             changed_field_count=len(changed_fields),
-            has_picture_upload=picture_data is not None,
+            has_picture_upload=picture_upload is not None,
         ),
     )
     log.set(outcome="success")
@@ -372,6 +375,18 @@ async def logout(
     """
     Logout user and return logout URL for frontend redirection.
     """
+    # Local mode: no hosted session to revoke; the JWT dies with the cookie.
+    # This route still passes the auth middleware, so a valid session is
+    # required to reach this point.
+    if settings.deployment.local_auth:
+        log.set(operation="logout")
+        log.audit("logged out", actor=user.user_id, mode="local")
+        # No logout_url: there is no hosted logout page, so the client stays put
+        # and drops its state. The cookie still dies here, not client-side.
+        clear_session_cookie(response, request, name=LOCAL_SESSION_COOKIE)
+        log.set(outcome="success")
+        return LogoutResponse(logout_url=None)
+
     wos_session = request.cookies.get(WOS_SESSION_COOKIE)
 
     if not wos_session:
@@ -380,7 +395,7 @@ async def logout(
     try:
         log.set(operation="logout")
 
-        session = workos.user_management.load_sealed_session(
+        session = get_workos_client().user_management.load_sealed_session(
             sealed_session=wos_session,
             cookie_password=settings.WORKOS_COOKIE_PASSWORD,
         )
@@ -401,14 +416,7 @@ async def logout(
 
         log.audit("logged out", actor=user_id)
 
-        # Clear the session cookie
-        response.delete_cookie(
-            WOS_SESSION_COOKIE,
-            httponly=True,
-            path="/",
-            secure=settings.ENV == "production",
-            samesite="lax",
-        )
+        clear_session_cookie(response, request, name=WOS_SESSION_COOKIE)
 
         log.set(outcome="success")
         return LogoutResponse(logout_url=logout_url)

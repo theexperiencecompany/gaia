@@ -3,6 +3,10 @@
  * checks.mjs — the static hygiene gates over the TypeScript/JS surface.
  *
  * Subcommands:
+ *   biome               Biome over CHANGED_FILES (or the repo), failing on any
+ *                       error and on a dead biome-ignore (`suppressions/unused`,
+ *                       a warning biome itself never fails on). CI and
+ *                       `mise ci:local` both run this.
  *   file-sizes [--enforce-all] [--quiet]
  *                       File size gate. Default mode reports every file over
  *                       its target limit but only FAILS on the 1200-line hard
@@ -31,6 +35,18 @@
  *                       event types in libs/shared/ts/src/analytics/generated
  *                       from the Pydantic catalog, then fail if either differs
  *                       from what is committed. --write is `mise analytics:types`.
+ *   cli-config-schema [--write]
+ *                       Regenerate the CLI's vendored config schema
+ *                       (packages/cli/src/lib/api-config-schema.generated.json)
+ *                       from the API's settings groups and capability table,
+ *                       then fail if it differs from what is committed.
+ *                       --write is `mise cli:schema`.
+ *   deploy-templates [--write]
+ *                       Regenerate deploy/coolify/gaia.yaml, render.yaml and
+ *                       deploy/proxy.Dockerfile from the self-host compose
+ *                       file, its Caddyfile and the CLI's machine secrets
+ *                       (lib/deploy_templates.py), then fail if any differs
+ *                       from what is committed. --write is `mise deploy:templates`.
  *   doc-comments        Fail on a JSDoc block that narrates (>6 lines) or
  *                       restates its declaration/@param, a run of more than
  *                       3 // lines, or a banner inside a body. The TS half of
@@ -56,12 +72,19 @@
  * `duplication` reads GAIA_PR_BASE, then GITHUB_BASE_REF, for its diff base
  * (default master).
  */
-import { execFileSync, execSync } from "node:child_process";
+import { execFileSync, execSync, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { checkDocComments } from "./lib/doc-comments.mjs";
 import { explicitFileList } from "./lib/explicit-file-list.mjs";
+import {
+  OPENAPI_JSON,
+  cmdAnalyticsCatalog,
+  cmdApiSchema,
+  cmdCliConfigSchema,
+  cmdDeployTemplates,
+} from "./lib/generated-artifacts.mjs";
 import { runEvlogMapBots } from "./lib/evlog-map-bots.mjs";
 import {
   BASELINES,
@@ -180,6 +203,23 @@ function sizeFiles(args) {
 }
 
 const countLines = (p) => readFileSync(p, "utf8").split("\n").length;
+
+function cmdBiome(argv) {
+  const files = explicitFileList(argv);
+  const result = spawnSync(
+    "pnpm",
+    ["exec", "biome", "check", "--no-errors-on-unmatched", ...(files.length ? files : ["."])],
+    { encoding: "utf8", maxBuffer: 256 * 1024 * 1024 },
+  );
+  if (result.error) throw result.error;
+  const output = `${result.stdout}${result.stderr}`;
+  process.stdout.write(output);
+  if (output.includes("suppressions/unused")) {
+    console.error("biome: a dead biome-ignore no longer masks anything — delete it");
+    process.exit(1);
+  }
+  process.exit(result.status ?? 1);
+}
 
 function cmdFileSizes(argv) {
   const args = new Set(argv);
@@ -576,9 +616,15 @@ function cmdDocComments(argv) {
 const DUPLICATION_THRESHOLD = 3;
 
 function cmdDuplication() {
-  // GAIA_PR_BASE first: a stacked PR's payload names the trunk, not its parent (see changes.sh).
+  // GAIA_PR_BASE first: a stacked PR's payload names the trunk, not its parent,
+  // and a merge_group's base is a commit, not a branch — `changes.sh base-rev`
+  // owns turning either into a revision.
   const baseRef = process.env.GAIA_PR_BASE || process.env.GITHUB_BASE_REF;
-  const BASE = baseRef ? `origin/${baseRef}` : "origin/master";
+  const BASE = baseRef
+    ? execFileSync("bash", ["scripts/ci/changes.sh", "base-rev"], {
+        encoding: "utf8",
+      }).trim()
+    : "origin/master";
 
   const sh = (cmd) =>
     execSync(cmd, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
@@ -705,117 +751,6 @@ function cmdDuplication() {
   }
 }
 
-
-// ---------------------------------------------------------------------------
-// api-schema — rebuild openapi.json + generated types and diff; catches a missed `mise api:types`
-// ---------------------------------------------------------------------------
-
-const OPENAPI_JSON = "apps/api/openapi.json";
-const GENERATED_TYPES = "libs/shared/ts/src/api/generated/schema.d.ts";
-const API_SCHEMA_DRIFT_MESSAGE =
-  "API schema drifted — run `mise api:types` and commit";
-
-function regenerateApiSchema() {
-  const opts = { stdio: "inherit" };
-  execFileSync(
-    "uv",
-    [
-      "run",
-      "--frozen",
-      "--project",
-      "apps/api",
-      "--group",
-      "backend",
-      "--group",
-      "dev",
-      "python",
-      "apps/api/scripts/export_openapi.py",
-    ],
-    { ...opts, env: { ...process.env, LOG_LEVEL: "ERROR" } },
-  );
-  execFileSync(
-    "pnpm",
-    [
-      "exec",
-      "openapi-typescript",
-      OPENAPI_JSON,
-      "--alphabetize",
-      // A field with a default is optional on the wire for a request body; a
-      // response-only model marks it required itself (ResponseModel).
-      "--default-non-nullable=false",
-      // One exported alias per component schema, under the API's own name
-      // (`TodoResponse`, not `Schema<"TodoResponse">`): navigable, greppable,
-      // and identical to the Pydantic class it came from.
-      "--root-types",
-      "--root-types-no-schema-prefix",
-      "--root-types-keep-casing",
-      "--output",
-      GENERATED_TYPES,
-    ],
-    opts,
-  );
-}
-
-function cmdApiSchema(argv) {
-  regenerateApiSchema();
-  if (argv.includes("--write")) return;
-
-  const dirty = execFileSync(
-    "git",
-    ["status", "--porcelain", "--", OPENAPI_JSON, GENERATED_TYPES],
-    { encoding: "utf8" },
-  ).trim();
-  if (dirty) {
-    console.log(dirty);
-    console.error(`❌ ${API_SCHEMA_DRIFT_MESSAGE}`);
-    process.exit(1);
-  }
-  console.log("✅ openapi.json and the generated API types match the routes.");
-}
-
-// ---------------------------------------------------------------------------
-// analytics-catalog — regenerate the event catalog's JSON + TS and diff; catches a missed `mise analytics:types`
-// ---------------------------------------------------------------------------
-
-const ANALYTICS_GENERATED_DIR = "libs/shared/ts/src/analytics/generated";
-const ANALYTICS_CATALOG_JSON = `${ANALYTICS_GENERATED_DIR}/analytics-catalog.json`;
-
-function cmdAnalyticsCatalog(argv) {
-  const opts = { stdio: "inherit" };
-  execFileSync(
-    "uv",
-    [
-      "run",
-      "--frozen",
-      "--project",
-      "apps/api",
-      "python",
-      "-m",
-      "shared.py.analytics.codegen",
-    ],
-    { ...opts, env: { ...process.env, LOG_LEVEL: "ERROR" } },
-  );
-  execFileSync(
-    "pnpm",
-    ["exec", "biome", "format", "--write", ANALYTICS_CATALOG_JSON],
-    opts,
-  );
-  if (argv.includes("--write")) return;
-
-  const dirty = execFileSync(
-    "git",
-    ["status", "--porcelain", "--", ANALYTICS_GENERATED_DIR],
-    { encoding: "utf8" },
-  ).trim();
-  if (dirty) {
-    console.log(dirty);
-    console.error(
-      "❌ Analytics catalog drifted — run `mise analytics:types` and commit",
-    );
-    process.exit(1);
-  }
-  console.log("✅ The generated analytics event types match the catalog.");
-}
 
 // ---------------------------------------------------------------------------
 // api-schema-types
@@ -1012,6 +947,8 @@ function usage() {
       "  api-schema [--write]                   regenerate openapi.json + TS types, fail on drift",
       "  api-schema-types                       no hand-written twin of an API schema type, no untyped apiService call in web features",
       "  analytics-catalog [--write]            regenerate the analytics catalog JSON + TS event types, fail on drift",
+      "  cli-config-schema [--write]            regenerate the CLI's vendored config schema, fail on drift",
+      "  deploy-templates [--write]             regenerate the Coolify/Render templates from the compose file, fail on drift",
       "  doc-comments                           no narrating / restating JSDoc, comment runs, or in-body banners",
       "  api-client-imports                     no raw mobile API client import outside apps/mobile/src/lib",
     ].join("\n"),
@@ -1019,9 +956,65 @@ function usage() {
 }
 
 function main() {
+// next and @opennextjs/cloudflare are one unit: OpenNext's shims hard-code
+// which Next manifests they load, so a Next minor can satisfy the peer range
+// and still 500 at runtime (16.4 + 1.20.2, 2026-10-23).
+const FRAMEWORK_PAIR_FLOORS = {
+  "16.4": "1.20.12",
+};
+
+function parseVersion(v) {
+  return v.split(".").map((part) => Number.parseInt(part, 10) || 0);
+}
+
+function compareVersions(a, b) {
+  const [x, y] = [parseVersion(a), parseVersion(b)];
+  for (let i = 0; i < 3; i++) {
+    if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) < (y[i] ?? 0) ? -1 : 1;
+  }
+  return 0;
+}
+
+function cmdFrameworkPair() {
+  const manifest = JSON.parse(readFileSync("apps/web/package.json", "utf8"));
+  const nextSpec = manifest.dependencies?.next;
+  const opennextSpec =
+    manifest.dependencies?.["@opennextjs/cloudflare"] ??
+    manifest.devDependencies?.["@opennextjs/cloudflare"];
+  if (!nextSpec || !opennextSpec) {
+    console.error("❌ apps/web must declare both next and @opennextjs/cloudflare");
+    process.exit(1);
+  }
+
+  // `exports` in both packages blocks the `/package.json` subpath, so read the
+  // installed manifest through node_modules directly.
+  const installed = (name) =>
+    JSON.parse(readFileSync(resolve("apps/web/node_modules", name, "package.json"), "utf8"));
+  const next = installed("next").version;
+  const opennext = installed("@opennextjs/cloudflare").version;
+
+  const [major, minor] = next.split(".");
+  const floor = FRAMEWORK_PAIR_FLOORS[`${major}.${minor}`];
+  if (floor && compareVersions(opennext, floor) < 0) {
+    console.error(
+      `❌ next ${next} needs @opennextjs/cloudflare >= ${floor} (installed ${opennext}). ` +
+        "Its manifest loader does not know this Next's manifest set, so routes will 500 at runtime.",
+    );
+    process.exit(1);
+  }
+
+  console.log(
+    `✅ framework pair: next ${next} + @opennextjs/cloudflare ${opennext}` +
+      (floor ? ` (floor ${floor})` : ""),
+  );
+}
+
   const sub = process.argv[2];
   const rest = process.argv.slice(3);
   switch (sub) {
+    case "biome":
+      cmdBiome(rest);
+      break;
     case "file-sizes":
       cmdFileSizes(rest);
       break;
@@ -1046,11 +1039,20 @@ function main() {
     case "analytics-catalog":
       cmdAnalyticsCatalog(rest);
       break;
+    case "cli-config-schema":
+      cmdCliConfigSchema(rest);
+      break;
+    case "deploy-templates":
+      cmdDeployTemplates(rest);
+      break;
     case "doc-comments":
       cmdDocComments(rest);
       break;
     case "api-client-imports":
       cmdApiClientImports(rest);
+      break;
+    case "framework-pair":
+      cmdFrameworkPair();
       break;
     default:
       console.error(`checks.mjs: unknown subcommand '${sub ?? ""}'`);

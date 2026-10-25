@@ -17,6 +17,7 @@ import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
+import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 import { api } from "@/lib/api/typed";
 import { toast } from "@/lib/toast";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
@@ -95,6 +96,11 @@ export default function LinkedAccountsSettings() {
   // previous attempt's number into the session the user is now in.
   const connectAttemptRef = useRef(0);
   const { isPaid, isUnknown } = useIsPaid();
+  const billingEnabled = useDeployment().bills;
+  // Unknown status stays permissive: the backend enforces the gate, and
+  // blocking a paying customer is worse than a brief open window.
+  const isLockedBehindPro = (platform: PlatformConfig) =>
+    billingEnabled && !!platform.premium && !isUnknown && !isPaid;
   const openUpgradeModal = useUpgradeModalStore((s) => s.openModal);
 
   const clearPollTimer = () => {
@@ -126,10 +132,7 @@ export default function LinkedAccountsSettings() {
   };
 
   const startConnect = (platform: PlatformConfig) => {
-    // While subscription status is unknown, let the connect attempt proceed
-    // instead of paywalling — the backend enforces the gate server-side, so a
-    // brief permissive window is safe, but blocking a paying customer is not.
-    if (platform.premium && !isUnknown && !isPaid) {
+    if (isLockedBehindPro(platform)) {
       openUpgradeModal(undefined, {
         dismissible: true,
         source: "settings_linked_accounts",
@@ -270,7 +273,7 @@ export default function LinkedAccountsSettings() {
               }
             >
               <div className="flex items-center gap-3">
-                {platform.premium && !isUnknown && !isPaid && (
+                {isLockedBehindPro(platform) && (
                   <Chip size="sm" variant="flat" color="warning">
                     Pro
                   </Chip>

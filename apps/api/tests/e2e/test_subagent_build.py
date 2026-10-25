@@ -58,6 +58,14 @@ class TestScopedToolDict:
 
         assert {"search_memory", "read", "bash"} <= set(scoped)
 
+    async def test_a_subagent_can_save_only_integration_instructions(self, registry):
+        """A subagent reads untrusted data (an inbox, a channel), so it may save its own integration's instructions but never the global ones every tier reads."""
+        scoped, _ = build_scoped_tool_dict(registry, "gmail", None, True)
+
+        assert "update_integration_instructions" in scoped
+        assert "get_user_instructions" in scoped
+        assert "update_user_instructions" not in scoped
+
     async def test_finish_task_is_included_when_asked_for(self, registry):
         scoped, initial = build_scoped_tool_dict(registry, "gmail", None, True)
 

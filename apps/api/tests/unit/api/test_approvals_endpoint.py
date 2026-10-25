@@ -10,8 +10,9 @@ from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient
 import pytest
 
-from app.models.hil_models import ApprovalLedgerDocument, HILMode, HILPreferences, LedgerState
-from app.schemas.hil_schemas import BatchDecisionOutcome
+from app.models.hil_models import HILMode, HILPreferences, LedgerState
+from app.schemas.hil_schemas import ApprovalDecisionRequest, BatchDecisionOutcome
+from app.services.hil import resolution
 from app.services.hil.ledger_decide import LedgerDecision
 from app.services.hil.resolution import (
     ApprovalNotResumableError,
@@ -340,12 +341,12 @@ class TestSetToolOverride:
 
 
 class TestLedgerDecisionRouting:
-    """Flag on routes both decision endpoints to decide_ledger; flag off keeps the interrupt-barrier path.
+    """Flag on routes both decision endpoints to the ledger; flag off keeps the interrupt-barrier path.
 
     Same URLs, same status codes, one truth.
     """
 
-    @patch("app.api.v1.endpoints.approvals.decide_ledger", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.approvals.decide_ledger_card", new_callable=AsyncMock)
     @patch("app.api.v1.endpoints.approvals.is_hil_ledger_enabled", new_callable=AsyncMock)
     @patch("app.api.v1.endpoints.approvals.resolve_approval", new_callable=AsyncMock)
     async def test_single_decision_routes_to_ledger_with_v(
@@ -373,15 +374,12 @@ class TestLedgerDecisionRouting:
         mock_decide.assert_awaited_once_with(
             "ap_1",
             user_id=USER_ID,
-            kind="approve",
-            feedback="go ahead",
-            v=3,
-            via="card",
+            tap=ApprovalDecisionRequest(decision="approve", feedback="go ahead", v=3),
         )
         log.set.assert_any_call(hil={"resolved": True})
         mock_resolve.assert_not_awaited()
 
-    @patch("app.api.v1.endpoints.approvals.decide_ledger", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.approvals.decide_ledger_card", new_callable=AsyncMock)
     @patch("app.api.v1.endpoints.approvals.is_hil_ledger_enabled", new_callable=AsyncMock)
     @patch("app.api.v1.endpoints.approvals.resolve_approval", new_callable=AsyncMock)
     async def test_single_decision_stays_on_old_path_when_flag_off(
@@ -447,7 +445,7 @@ class TestLedgerDecisionRouting:
 class TestLedgerAutoPolicyParity:
     """Auto-aligned calls run cardless on both paths: the flag flip must never change what gets asked."""
 
-    @patch("app.api.v1.endpoints.approvals.decide_ledger", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.approvals.decide_ledger_card", new_callable=AsyncMock)
     @patch("app.api.v1.endpoints.approvals.is_hil_ledger_enabled", new_callable=AsyncMock)
     @patch("app.api.v1.endpoints.approvals.resolve_approval", new_callable=AsyncMock)
     async def test_stale_single_carries_reason_and_status(
@@ -476,7 +474,7 @@ class TestLedgerAutoPolicyParity:
 class TestLedgerStaleVersionHonesty:
     """A stale-v tap must not report success: the client refreshes the row instead of believing its tap committed."""
 
-    @patch("app.api.v1.endpoints.approvals.decide_ledger", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.approvals.decide_ledger_card", new_callable=AsyncMock)
     @patch("app.api.v1.endpoints.approvals.is_hil_ledger_enabled", new_callable=AsyncMock)
     async def test_stale_version_returns_success_false(
         self, mock_flag: AsyncMock, mock_decide: AsyncMock, client: AsyncClient
@@ -495,98 +493,45 @@ class TestLedgerStaleVersionHonesty:
         assert resp.json() == {"success": False, "reason": "not_found", "status": "approved"}
 
 
-def _ledger_row(tool_name: str = "gmail_send") -> ApprovalLedgerDocument:
-    return ApprovalLedgerDocument(
-        approval_id="ap_1", conversation_id="c1", fingerprint="fp", tool_name=tool_name
-    )
-
-
 def _decision(state: LedgerState, *, committed: bool = True) -> LedgerDecision:
     return LedgerDecision(
         committed=committed, approval_id="ap_1", prior_state=LedgerState.PENDING, state=state
     )
 
 
-@patch("app.api.v1.endpoints.approvals.set_tool_override", new_callable=AsyncMock)
-@patch(
-    "app.api.v1.endpoints.approvals.approval_ledger_repository.get_by_approval_id",
-    new_callable=AsyncMock,
-)
-@patch("app.api.v1.endpoints.approvals.decide_ledger", new_callable=AsyncMock)
+@patch("app.api.v1.endpoints.approvals.decide_ledger_card", new_callable=AsyncMock)
 @patch(
     "app.api.v1.endpoints.approvals.is_hil_ledger_enabled",
     new_callable=AsyncMock,
     return_value=True,
 )
 class TestLedgerAlwaysToolScope:
-    """On the ledger path, an approved "always" tap stops future asks for that row's tool."""
+    """On the ledger path, the card's "always" scope is decided by the ledger, not the route."""
 
-    async def test_committed_approval_turns_the_tool_override_off(
-        self,
-        mock_flag: AsyncMock,
-        mock_decide: AsyncMock,
-        mock_get_row: AsyncMock,
-        mock_set_override: AsyncMock,
-        client: AsyncClient,
+    async def test_the_scope_reaches_the_ledger_decision(
+        self, mock_flag: AsyncMock, mock_decide: AsyncMock, client: AsyncClient
     ):
         mock_decide.return_value = _decision(LedgerState.APPROVED)
-        mock_get_row.return_value = _ledger_row("gmail_send")
         resp = await client.post(
             f"{APPROVALS_BASE}/ap_1/decision",
             json={"decision": "approve", "scope": "always_tool", "v": 0},
         )
         assert resp.json() == {"success": True, "reason": None, "status": "approved"}
-        mock_get_row.assert_awaited_once_with("ap_1")
-        mock_set_override.assert_awaited_once_with(USER_ID, "gmail_send", False)
+        mock_decide.assert_awaited_once_with(
+            "ap_1",
+            user_id=USER_ID,
+            tap=ApprovalDecisionRequest(decision="approve", scope="always_tool", v=0),
+        )
 
-    async def test_denial_never_touches_the_override(
-        self,
-        mock_flag: AsyncMock,
-        mock_decide: AsyncMock,
-        mock_get_row: AsyncMock,
-        mock_set_override: AsyncMock,
-        client: AsyncClient,
+    async def test_a_call_that_always_asks_refuses_the_scope_with_422(
+        self, mock_flag: AsyncMock, mock_decide: AsyncMock, client: AsyncClient
     ):
-        mock_decide.return_value = _decision(LedgerState.DENIED)
-        mock_get_row.return_value = _ledger_row()
+        mock_decide.side_effect = resolution.ToolAlwaysAsksError()
         resp = await client.post(
             f"{APPROVALS_BASE}/ap_1/decision",
-            json={"decision": "deny", "scope": "always_tool", "v": 0},
+            json={"decision": "approve", "scope": "always_tool", "v": 0},
         )
-        assert resp.json()["success"] is True
-        mock_set_override.assert_not_awaited()
-
-    async def test_once_scope_never_touches_the_override(
-        self,
-        mock_flag: AsyncMock,
-        mock_decide: AsyncMock,
-        mock_get_row: AsyncMock,
-        mock_set_override: AsyncMock,
-        client: AsyncClient,
-    ):
-        mock_decide.return_value = _decision(LedgerState.APPROVED)
-        mock_get_row.return_value = _ledger_row()
-        await client.post(f"{APPROVALS_BASE}/ap_1/decision", json={"decision": "approve", "v": 0})
-        mock_set_override.assert_not_awaited()
-
-    async def test_vanished_row_skips_the_override_and_logs_an_error(
-        self,
-        mock_flag: AsyncMock,
-        mock_decide: AsyncMock,
-        mock_get_row: AsyncMock,
-        mock_set_override: AsyncMock,
-        client: AsyncClient,
-    ):
-        mock_decide.return_value = _decision(LedgerState.APPROVED)
-        mock_get_row.return_value = None
-        with patch("app.api.v1.endpoints.approvals.log") as log:
-            resp = await client.post(
-                f"{APPROVALS_BASE}/ap_1/decision",
-                json={"decision": "approve", "scope": "always_tool", "v": 0},
-            )
-        assert resp.json()["success"] is True
-        mock_set_override.assert_not_awaited()
-        log.error.assert_called_once()
-        message = log.error.call_args.args[0]
-        assert "tool override skipped" in message
-        assert log.error.call_args.kwargs == {"approval_id": "ap_1"}
+        assert resp.status_code == 422
+        assert resp.json()["message"] == (
+            "This action always asks for approval and can't be set to always allow"
+        )

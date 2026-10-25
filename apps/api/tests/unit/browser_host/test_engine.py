@@ -255,6 +255,57 @@ async def test_a_chromium_launch_gets_a_fresh_profile_and_dials_its_port(
     assert root.urls == [_WS]
 
 
+async def test_chromium_is_spawned_without_the_desktop_session_bus(
+    root: FakeMux, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(engine_mod.tempfile, "tempdir", str(tmp_path))
+    monkeypatch.setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path=/run/user/1002/bus")
+    monkeypatch.setenv("GAIA_ENGINE_ENV_PROBE", "kept")
+    envs: list[dict[str, str] | None] = []
+
+    async def _spawn(argv: list[str], env: dict[str, str] | None) -> Any:
+        envs.append(env)
+        profile = next(a for a in argv if a.startswith("--user-data-dir=")).split("=", 1)[1]
+        (Path(profile) / "DevToolsActivePort").write_text("9333\n/devtools/browser/abc\n")
+        return _Proc()
+
+    monkeypatch.setattr(engine_mod, "spawn_engine", _spawn)
+
+    await Engine.launch(BrowserEngine.CHROMIUM, _SHELL, "UA/1")
+
+    assert envs[0] is not None
+    assert "DBUS_SESSION_BUS_ADDRESS" not in envs[0]
+    assert envs[0]["GAIA_ENGINE_ENV_PROBE"] == "kept"
+
+
+class _MuxThatNeverShakesHands:
+    def __init__(self, url: str) -> None:
+        self.url = url
+
+    async def start(self) -> None:
+        raise TimeoutError
+
+
+async def test_an_engine_that_never_finishes_the_handshake_fails_naming_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(engine_mod.tempfile, "tempdir", str(tmp_path))
+    proc = _Proc()
+    monkeypatch.setattr(engine_mod, "spawn_engine", AsyncMock(return_value=proc))
+    monkeypatch.setattr(engine_mod, "until_published", AsyncMock(return_value=_WS))
+    monkeypatch.setattr(engine_mod, "CdpMux", _MuxThatNeverShakesHands)
+    stop = AsyncMock()
+    monkeypatch.setattr(engine_mod, "stop_process", stop)
+
+    with pytest.raises(
+        EngineLaunchError, match=f"published {_WS} but did not finish the CDP handshake"
+    ):
+        await Engine.launch(BrowserEngine.CHROMIUM, _SHELL, None)
+
+    stop.assert_awaited_once_with(proc)
+    assert list(tmp_path.iterdir()) == []
+
+
 async def test_a_launch_that_fails_leaves_no_process_and_no_profile(
     root: FakeMux, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

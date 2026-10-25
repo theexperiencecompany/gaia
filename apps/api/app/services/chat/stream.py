@@ -319,7 +319,7 @@ async def _run_chat_stream(
         if user_id:
             # Keeps the session alive for idle-prune and bridges the executor's
             # artifact events to this stream. Starts before upload seeding since
-            # pubsub has no replay — must be live before seed_uploads publishes.
+            # pubsub has no replay — must be live before attach_uploads publishes.
             schedule_last_active_touch(user_id, conversation_id)
             artifact_task = asyncio.create_task(
                 forward_artifact_events(
@@ -332,12 +332,11 @@ async def _run_chat_stream(
                 )
             )
 
-        # For new conversations, files were uploaded without a conversation_id
-        # so they only landed in Cloudinary — not JuiceFS. Seed them now, before
-        # the agent runs, so they're on disk at the expected user-uploaded/ path.
-        if is_new_conversation and user_id and body.fileData:
+        # A file can arrive before its conversation exists (new chat) or from a
+        # client that omitted conversation_id. Attach it before the agent runs.
+        if user_id and body.uploaded_file_ids:
             await _wait_for_artifact_forwarder(forwarder_subscribed, stream_id)
-            await FileService.seed_uploads(body.fileData, user_id, conversation_id)
+            await FileService.attach_uploads(body.uploaded_file_ids, user_id, conversation_id)
 
         # Starts only after the conversation row exists (_publish_init_chunk);
         # starting earlier races the insert and the $set description update can
@@ -490,7 +489,7 @@ async def _resolve_pending_approval_turn(
     """Resolve a pending HIL approval from a bot user's free-text chat reply.
 
     Classifies "yes"/"no"/"do X instead" into approve/deny; runs only for button-less bot
-    channels (WhatsApp/Telegram/Slack/Discord) since UI clients resolve via real buttons and
+    channels (WhatsApp/Telegram/Slack/Discord/iMessage) since UI clients resolve via real buttons and
     guessing risks misreading a destructive action. Returns True only when a bot reply
     resolved it — the turn is then fully handled here and the caller must not run the agent.
     """

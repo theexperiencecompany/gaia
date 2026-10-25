@@ -34,3 +34,9 @@ export const TOAST_MESSAGES = {
   MAX_ATTACHMENTS_ERROR: "Maximum number of attachments exceeded",
   GENERIC_ERROR: "Something went wrong. Please try again.",
 } as const;
+
+/** Where a self-hosted instance's users report bugs and request features instead. */
+export const GAIA_GITHUB_ISSUES_URL =
+  "https://github.com/theexperiencecompany/gaia/issues";
+export const GAIA_GITHUB_DISCUSSIONS_URL =
+  "https://github.com/theexperiencecompany/gaia/discussions";

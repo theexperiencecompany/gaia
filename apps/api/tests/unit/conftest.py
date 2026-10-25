@@ -15,8 +15,15 @@ from sentry_sdk.types import Event
 
 from app.agents.core.background import session as stream_session
 from app.config.sentry import init_sentry
+from app.config.settings import settings
+from app.services.providers import provider_credentials_service
 from tests.factories import make_config, make_state, make_user
-from tests.helpers import create_fake_llm, create_fake_llm_with_tool_calls
+from tests.helpers import (
+    CREDENTIAL_STORE_SECRET,
+    InMemoryCredentialStore,
+    create_fake_llm,
+    create_fake_llm_with_tool_calls,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -144,3 +151,24 @@ def sample_state():
 @pytest.fixture
 def sample_config() -> dict:
     return make_config()
+
+
+@pytest.fixture
+def selfhost_credential_store(monkeypatch: pytest.MonkeyPatch) -> Iterator[InMemoryCredentialStore]:
+    """Boot as self-host with an empty in-memory credential store and no cached resolutions."""
+    store = InMemoryCredentialStore()
+
+    async def _secret() -> str:
+        return CREDENTIAL_STORE_SECRET
+
+    monkeypatch.setattr(settings, "ENV", "selfhost")
+    monkeypatch.setattr(settings, "AUTH_MODE", "local")
+    monkeypatch.setattr(provider_credentials_service, "provider_credentials_repository", store)
+    monkeypatch.setattr(provider_credentials_service, "get_instance_secret", _secret)
+    saved_snapshot = dict(provider_credentials_service.resolved_configs)
+    provider_credentials_service._cache.clear()
+    provider_credentials_service.resolved_configs.clear()
+    yield store
+    provider_credentials_service._cache.clear()
+    provider_credentials_service.resolved_configs.clear()
+    provider_credentials_service.resolved_configs.update(saved_snapshot)

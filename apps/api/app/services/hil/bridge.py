@@ -52,6 +52,7 @@ from app.models.stream_events import ApprovalRequestEntry, ApprovalRequestEntryD
 from app.services.analytics_service import capture
 from app.services.hil.approvals_store import record_auto_approval, upsert_pending_approval
 from app.services.hil.notify import notify_approval_pending
+from app.services.hil.policy import asks_every_time
 from app.services.hil.utils import GatedCall
 from app.services.latency_metrics import observe_hil_pause
 from app.utils.general_utils import clip_text
@@ -170,7 +171,7 @@ async def publish_approval_request(
     )
     await _publish_entry(
         approval.stream_id,
-        _approval_entry(approval, HILApprovalStatus.PENDING, auto_reason=auto_reason),
+        await _pending_entry(approval, auto_reason=auto_reason),
     )
     _schedule_pending_notification(
         approval.user_id, approval.conversation_id, approval.approval_id, approval.summary
@@ -201,7 +202,7 @@ async def publish_ledger_request(
             "stream_id": stream_id,
         }
     )
-    entry = _approval_entry(approval, HILApprovalStatus.PENDING, auto_reason=auto_reason)
+    entry = await _pending_entry(approval, auto_reason=auto_reason)
     entry.data.rationale = rationale
     entry.data.age_seconds = 0
     entry.data.ledger_version = 0
@@ -586,6 +587,13 @@ def _is_held(event: object) -> bool:
         return False
     frame: _SessionFrame = cast(_SessionFrame, event)
     return frame.get("_held_approval") is True
+
+
+async def _pending_entry(card: ApprovalCard, *, auto_reason: str | None) -> ApprovalRequestEntry:
+    """Build a PENDING card, stamped with whether its call asks every time."""
+    entry = _approval_entry(card, HILApprovalStatus.PENDING, auto_reason=auto_reason)
+    entry.data.always_asks = await asks_every_time(card.tool_call.name, card.tool_call.args)
+    return entry
 
 
 def _approval_entry(

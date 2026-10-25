@@ -1,19 +1,35 @@
 name: gaia-selfhost
 
+# Self-host ships without Loki or any log shipper — container json-file logs
+# are the ONLY record of what happened. Cap them per service so a chatty
+# container can't fill the host disk: 10 MB x 3 rotated files = 30 MB max.
+# Image-only by design: every app service pulls a published multi-arch image,
+# and GAIA_VERSION pins api, worker and web to the same tag. Building from
+# source is the separate docker-compose.build.yml override (`gaia up --build`).
+#
+# Only the `proxy` profile publishes a host port: a single origin that serves
+# /api/v1 from gaia-backend and everything else from gaia-web. Platforms that
+# bring their own proxy (Coolify, Dokploy, Traefik) leave the profile off and
+# route /api/v1 -> gaia-backend:8000 and / -> gaia-web:3000 themselves.
+
+x-default-logging: &default_logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   # ─── Infrastructure ───
 
   chromadb:
     image: chromadb/chroma:1.5.1
-    container_name: chromadb
+    logging: *default_logging
     volumes:
       - chroma_data:/chroma/chroma
     environment:
       - PERSIST_DIRECTORY=/chroma/chroma
       - CHROMA_SERVER_HOST=0.0.0.0
       - CHROMA_SERVER_PORT=8000
-    ports:
-      - "${CHROMADB_HOST_PORT:-8080}:8000"
     restart: on-failure
     healthcheck:
       test:
@@ -26,15 +42,13 @@ services:
 
   postgres:
     image: postgres:18-alpine
-    container_name: postgres
+    logging: *default_logging
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres # pragma: allowlist secret
       POSTGRES_DB: langgraph
     volumes:
       - pgdata:/var/lib/postgresql
-    ports:
-      - "${POSTGRES_HOST_PORT:-5432}:5432"
     restart: on-failure
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "postgres"]
@@ -46,9 +60,11 @@ services:
 
   redis:
     image: redis:8-alpine
-    container_name: redis
-    ports:
-      - "${REDIS_HOST_PORT:-6379}:6379"
+    logging: *default_logging
+    # AOF persistence on. Redis carries the ARQ task queue — reminders,
+    # workflows, background jobs. Without AOF a crash or recreate silently
+    # drops every queued job (the snapshot default can lose minutes of writes).
+    command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis_data:/data
     restart: on-failure
@@ -61,78 +77,95 @@ services:
       - gaia_network
 
   mongo:
-    image: mongo:8
-    container_name: mongo
+    image: mongo:8.3.13
+    logging: *default_logging
     volumes:
       - mongo_data:/data/db
     restart: on-failure
-    ports:
-      - "${MONGO_HOST_PORT:-27017}:27017"
+    # Linux 6.19+ (Ubuntu 26.04): mongod refuses to start, or its TCMalloc
+    # crashes, unless rseq is off (SERVER-121912); the same pair as the dev compose.
+    environment:
+      GLIBC_TUNABLES: glibc.pthread.rseq=0
+    security_opt:
+      - seccomp:seccomp-mongo.json
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 10s
-      timeout: 10s
+      # A TCP probe: mongosh boots a Node shell per check (3-5s CPU every 10s).
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/127.0.0.1/27017"]
+      interval: 30s
+      timeout: 5s
       retries: 5
+      start_period: 60s
+      start_interval: 2s
     networks:
       - gaia_network
 
   rabbitmq:
     image: rabbitmq:4.1.8-management
-    container_name: rabbitmq
-    ports:
-      - "${RABBITMQ_HOST_PORT:-5672}:5672"
-      - "${RABBITMQ_MGMT_PORT:-15672}:15672"
+    logging: *default_logging
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     restart: always
     healthcheck:
-      test: ["CMD", "rabbitmqctl", "status"]
+      # A TCP probe: rabbitmqctl boots an Erlang VM per check (~10s CPU).
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/127.0.0.1/5672"]
       interval: 30s
-      timeout: 10s
+      timeout: 5s
       retries: 5
+      start_period: 60s
+      start_interval: 2s
     networks:
       - gaia_network
 
   # ─── Application ───
 
   gaia-backend:
-    container_name: gaia-backend
-    build:
-      context: ../..
-      dockerfile: apps/api/Dockerfile
-    env_file:
-      - ../../apps/api/.env
-    environment:
+    logging: *default_logging
+    image: ${GAIA_API_IMAGE:-ghcr.io/theexperiencecompany/gaia}:${GAIA_VERSION:-latest}
+    # apps/api/.env is what `gaia up` writes. Platforms that deploy this file
+    # straight from the repo (Dokploy) write their UI variables to .env beside
+    # it instead; apps/api/.env is listed last so it wins where both exist.
+    env_file: &backend_env_files
+      - path: .env
+        required: false
+      - path: ../../apps/api/.env
+        required: false
+    environment: &backend_environment
       PYTHONUNBUFFERED: 1
       FORCE_COLOR: 1
       WORKER_TYPE: main_app
       PYTHONPATH: /app/apps/api
-      # Where the host-side JuiceFS sidecar mounts. The storage layer reads
-      # this to locate the mount; it must match the mountpoint inside the
-      # container. JuiceFS itself only mounts when an object store + meta DB
-      # are configured (R2_*/JUICEFS_META_URL_TEMPLATE in .env) — otherwise
-      # workspace v2 features soft-fail with JuiceFSUnavailable.
+      # The workspace root: the `workspace` volume below, a plain local
+      # volume (self-host never mounts JuiceFS). Must match its mountpoint.
       JUICEFS_HOST_MOUNT_PATH: /mnt/jfs
-      # JuiceFS is a FUSE mount; E2B's inotify watcher cannot watch a FUSE
-      # filesystem, so artifact detection must tail the JuiceFS .accesslog.
-      ARTIFACT_DETECTION_MODE: accesslog
-    ports:
-      - "${API_HOST_PORT:-8000}:8000"
-    # JuiceFS mounts via FUSE inside the container, which requires the mount
-    # capability (SYS_ADMIN), the FUSE device, and — on Ubuntu/Debian hosts —
-    # an unconfined AppArmor profile (the default docker profile denies mount
-    # even with the capability). Docker Desktop on macOS/Windows supplies
-    # /dev/fuse from its Linux VM, so this works cross-platform.
-    cap_add:
-      - SYS_ADMIN
-    devices:
-      - /dev/fuse:/dev/fuse
-    security_opt:
-      - apparmor:unconfined
+      # The default embedding and reranker models are baked into the image
+      # (MEMORY_BAKED_MODELS_DIR). This volume persists any other model a
+      # GAIA_EMBEDDING_MODEL override downloads, so it is fetched once.
+      MEMORY_MODEL_CACHE_DIR: /models
+      # A custom MCP server added as localhost runs on the machine hosting GAIA,
+      # which these containers reach as host.docker.internal (extra_hosts below).
+      LOOPBACK_HOST_ALIAS: host.docker.internal
+    # The image CMD runs uvicorn with --proxy-headers --forwarded-allow-ips *.
+    # That trust is safe here because port 8000 is never published: the only
+    # peers are containers on gaia_network, and the bundled proxy (Caddy)
+    # replaces any client-sent X-Forwarded-* with the real client address, so
+    # login rate limits key off the true IP and session cookies get Secure
+    # whenever the browser is on HTTPS.
+    expose:
+      - "8000"
+    # Lets the container reach host services (e.g. Ollama on :11434, a local MCP server).
+    extra_hosts: &host_gateway
+      - "host.docker.internal:host-gateway"
+    # No Docker socket here: the local coding sandbox is the opt-in
+    # docker-compose.sandbox.yml override (`gaia up --code-sandbox`), because
+    # socket access is root-equivalent on the host.
     volumes:
-      # Persist JuiceFS's local chunk cache so reads don't re-fetch from the
-      # object store on every restart.
-      - juicefs_cache:/var/cache/juicefs
+      - models_cache:/models
+      # Every user's workspace (users/<uid>, skills/<uid>, _system). A local
+      # code sandbox mounts only its own user's subpaths of this volume.
+      - workspace:/mnt/jfs
+      # Uploaded and generated files (LOCAL_FILE_STORAGE_PATH), served back by
+      # the authenticated /api/v1/blobs route.
+      - files:/var/lib/gaia/files
     restart: on-failure
     tty: true
     stdin_open: true
@@ -154,66 +187,33 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-
-  gaia-web:
-    container_name: gaia-web
-    image: ${GAIA_WEB_IMAGE:-ghcr.io/theexperiencecompany/gaia-web:latest}
-    build:
-      context: ../..
-      dockerfile: apps/web/Dockerfile
-      args:
-        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000/api/v1/}
-    environment:
-      # Server-side (SSR/ISR) fetches reach the API over the private network.
-      # The public NEXT_PUBLIC_API_BASE_URL is browser-only and is unreachable
-      # (or has an untrusted TLS cert) from inside this container, which would
-      # otherwise turn every server-rendered page into a "not found".
-      API_BASE_URL_INTERNAL: ${API_BASE_URL_INTERNAL:-http://gaia-backend:8000/api/v1/}
-    ports:
-      - "${WEB_HOST_PORT:-3000}:3000"
-    restart: on-failure
-    depends_on:
-      gaia-backend:
-        condition: service_healthy
-    networks:
-      - gaia_network
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
+      # First boot runs migrations and loads models; on a small ARM box that
+      # outlasts 5 x 30s and compose fails the services waiting on a healthy API.
+      start_period: 10m
+      start_interval: 5s
 
   arq_worker:
-    container_name: arq_worker
-    build:
-      context: ../..
-      dockerfile: apps/api/Dockerfile
-    env_file:
-      - ../../apps/api/.env
+    logging: *default_logging
+    image: ${GAIA_API_IMAGE:-ghcr.io/theexperiencecompany/gaia}:${GAIA_VERSION:-latest}
+    env_file: *backend_env_files
     environment:
+      <<: *backend_environment
       WORKER_TYPE: arq_worker
       # Wide-event identity — must equal the Promtail label (see prod compose).
       GAIA_SERVICE_NAME: arq_worker
-      PYTHONPATH: /app/apps/api
-      # Session/sandbox background tasks touch the workspace, so the worker
-      # needs the same JuiceFS mount as the backend.
-      JUICEFS_HOST_MOUNT_PATH: /mnt/jfs
-      ARTIFACT_DETECTION_MODE: accesslog
     # Python deps are installed system-wide via UV_PROJECT_ENVIRONMENT=/usr/local
     # in the API Dockerfile, so call python directly. `uv run` would try to
     # rewrite /app/uv.lock and fail (Permission denied) under the non-root
     # appuser the runtime image switches to.
     command: ["python", "-m", "arq", "app.worker.WorkerSettings", "--custom-log-dict", "app.workers.config.log_config.ARQ_LOG_CONFIG"]
     restart: always
-    # Same FUSE requirements as gaia-backend (see that service for details).
-    cap_add:
-      - SYS_ADMIN
-    devices:
-      - /dev/fuse:/dev/fuse
-    security_opt:
-      - apparmor:unconfined
+    # Same host-gateway need and workspace as gaia-backend: session and
+    # workflow tasks touch the workspace and run agents.
+    extra_hosts: *host_gateway
     volumes:
-      - juicefs_cache:/var/cache/juicefs
+      - models_cache:/models
+      - workspace:/mnt/jfs
+      - files:/var/lib/gaia/files
     depends_on:
       redis:
         condition: service_healthy
@@ -221,14 +221,88 @@ services:
         condition: service_healthy
     networks:
       - gaia_network
+    healthcheck:
+      # Minimal liveness probe — better than nothing for a worker with no
+      # listening port. The entrypoint exec's into arq, so PID 1 must still be
+      # the worker process. (pgrep isn't in the runtime image, and a shell
+      # `pgrep -f arq` would match its own wrapper's command line anyway.)
+      test: ["CMD", "grep", "-aq", "arq", "/proc/1/cmdline"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  gaia-web:
+    logging: *default_logging
+    image: ${GAIA_WEB_IMAGE:-ghcr.io/theexperiencecompany/gaia-web}:${GAIA_VERSION:-latest}
+    environment:
+      # Browsers call the same-origin /api/v1/ baked into the image; server-side
+      # (SSR) fetches reach the API directly over the private network.
+      API_BASE_URL_INTERNAL: http://gaia-backend:8000/api/v1/
+    expose:
+      - "3000"
+    restart: on-failure
+    depends_on:
+      gaia-backend:
+        condition: service_healthy
+    networks:
+      - gaia_network
+    healthcheck:
+      # 127.0.0.1, not localhost: busybox resolves localhost to ::1 first and
+      # the server listens on IPv4 0.0.0.0, so "localhost" is refused.
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Single public entrypoint. Without GAIA_DOMAIN it serves plain HTTP on
+  # WEB_HOST_PORT; with GAIA_DOMAIN it obtains and renews a TLS certificate
+  # automatically (publish WEB_HOST_PORT=80 and HTTPS_HOST_PORT=443, and point
+  # the domain's DNS at this host).
+  proxy:
+    profiles: ["proxy"]
+    logging: *default_logging
+    image: caddy:2.10.2-alpine
+    environment:
+      # The Caddyfile site: the domain (automatic HTTPS) or plain HTTP on :80.
+      GAIA_SITE_ADDRESS: ${GAIA_DOMAIN:-:80}
+      # "local_certs" for a domain no public CA certifies (gaia up --domain gaia.test).
+      GAIA_CADDY_GLOBAL_OPTIONS: ${GAIA_CADDY_GLOBAL_OPTIONS:-}
+    ports:
+      - "${WEB_HOST_PORT:-3000}:80"
+      - "${HTTPS_HOST_PORT:-3443}:443"
+    volumes:
+      - ./selfhost/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+    depends_on:
+      gaia-backend:
+        condition: service_healthy
+      gaia-web:
+        condition: service_healthy
+    networks:
+      - gaia_network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:2019/config/"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
 
 volumes:
   chroma_data:
+    name: gaia-selfhost_chroma_data
   pgdata:
   redis_data:
   mongo_data:
   rabbitmq_data:
-  juicefs_cache:
+  models_cache:
+  # Pinned: the API names it to the Docker daemon when it creates a sandbox.
+  workspace:
+    name: gaia-selfhost_workspace
+  files:
+    name: gaia-selfhost_files
+  caddy_data:
+  caddy_config:
 
 networks:
   gaia_network:

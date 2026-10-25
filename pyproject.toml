@@ -11,13 +11,14 @@
 # unaffected: they only read uv.lock. Escape hatch for a single package:
 # `exclude-newer-package = { name = "..." }` or `uv lock --exclude-newer ...`.
 exclude-newer = "3 days"
-# crawl4ai vendors an older fork of litellm under the same top-level `litellm`
-# namespace. Installing both lets one distribution overwrite the other file by
-# file, which can leave a mixed tree (the app's newer litellm proxy importing
-# constants that only exist in the older fork). The app depends on litellm
-# directly and crawl4ai only uses stable completion/embedding APIs, so exclude
-# the fork and keep the one real distribution.
-exclude-dependencies = ["unclecode-litellm"]
+# certifi releases are CA revocations (GHSA-6q48-6c7w-9gw2): a 3-day delay keeps a compromised root trusted
+exclude-newer-package = { certifi = false }
+# crawl4ai declares patchright (a second Playwright driver, ~127 MB with its own
+# Node) for its UndetectedAdapter path only, imported lazily inside that path.
+# GAIA never builds an UndetectedAdapter; every launch goes through playwright.
+# crawl4ai also vendors an older litellm fork under the same top-level `litellm`
+# namespace; installing both can leave a mixed tree, so the app's real litellm wins.
+exclude-dependencies = ["patchright", "unclecode-litellm"]
 # fastembed (latest 0.9.0) still caps pillow<13, but nine pillow 12.x CVEs are
 # fixed only in 13.0.0. GAIA uses fastembed's text embedding and reranking,
 # which never touch its PIL image path, so lift the cap rather than ship them.
@@ -31,8 +32,6 @@ override-dependencies = [
   "opentelemetry-sdk>=1.45.1",
   "opentelemetry-exporter-otlp>=1.45.1",
 ]
-# certifi 2026.10.19 fixes PYSEC-2026-4320 and is inside the 3-day cooldown.
-exclude-newer-package = { certifi = "2026-10-21T00:00:00Z" }
 constraint-dependencies = [
   "aiohttp>=3.14.4",
   "anyio>=4.14.2",
@@ -48,13 +47,15 @@ constraint-dependencies = [
   "nltk>=3.9.4",
   "ecdsa>=0.19.2",
   "click>=8.3.3",
-  "certifi>=2026.10.19",
+  "pillow>=13.0.0",
   "json-repair>=0.60.1",
   "virtualenv>=21.14.9",
   "graphql-core>=3.2.12",
   "fsspec>=2026.6.0",
   "multidict>=6.9.1",
   "werkzeug>=3.1.9",
+  "filelock>=4.2.1",
+  "certifi>=2026.10.19",
 ]
 
 [tool.uv.workspace]
@@ -115,6 +116,8 @@ ignore_names = [
   "__getattr__",    # module-level dunder called by Python's import machinery
   "wrap_tools",     # AgenticProvider abstract-method override (called by Composio SDK)
   "on_llm_end",     # LangChain BaseCallbackHandler override (called by the framework)
+"embed_documents",  # LangChain Embeddings interface override — Chroma invokes it
+                      # through the interface (see local_embeddings.py)
   "on_chat_model_start",  # LangChain BaseCallbackHandler override (called by the framework)
   "on_llm_new_token",  # LangChain BaseCallbackHandler override (called by the framework)
   "on_llm_error",  # LangChain BaseCallbackHandler override (called by the framework)
@@ -151,7 +154,6 @@ extend-exclude = [
   "build",
   ".next",
   ".nx",
-  ".dagger",
   "alembic",
   "migrations",
   # Agent-skill bundles. .agents and .claude/skills are two copies of the same
@@ -466,6 +468,12 @@ unfixable = [
 # keep the exact parameter name `input`. The two integration tests that used
 # to carry their own copies now import this one, so they need no exemption.
 "apps/api/app/db/chroma/noop_embedding.py" = ["A002"]  # chromadb's EmbeddingFunction protocol passes `input=` by keyword
+# A002: FilesFacade mirrors e2b's AsyncFilesystem.read, whose own keyword is
+# `format` (e2b/sandbox_async/filesystem/filesystem.py). The local sandbox is
+# its documented drop-in, and edit_tool.py / read_tool.py pass format= by keyword
+# against an AsyncSandbox-typed receiver, so both implementations must bind the
+# same name or the self-host path raises TypeError on calls that work hosted.
+"apps/api/app/services/sandbox/local_sandbox.py" = ["A002"]
 # PLR0913: these are LangChain @tool functions, so each argument is a field the
 # model fills when it calls the tool -- the arg list IS the tool's schema.
 # Collapsing them into a grouped object would change the model-facing contract
@@ -723,7 +731,7 @@ module = [
   "app.models.payment_models",
   "app.models.usage_models",
   "app.models.search_models",
-  "app.models.integration_instructions_models",
+  "app.models.user_instructions_models",
   "app.models.user_models",
   "app.models.workflow_models",
   "app.models.reminder_models",

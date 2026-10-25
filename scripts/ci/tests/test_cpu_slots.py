@@ -20,6 +20,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import time
 
 import pytest
@@ -27,7 +28,7 @@ import pytest
 CI = Path(__file__).parent.parent
 LIB = CI / "lib" / "cpu-slots.sh"
 LOG = CI / "lib" / "log.sh"
-MUTATION = CI / "mutation.sh"
+MUTATION = CI / "mutation.py"
 
 HAVE_FLOCK = shutil.which("flock") is not None
 needs_flock = pytest.mark.skipif(not HAVE_FLOCK, reason="flock absent (governor is Linux-box-only)")
@@ -133,23 +134,24 @@ def test_an_explicit_pool_size_wins_over_the_default(tmp_path: Path) -> None:
 #
 # The governor only works if each lane asks for what it really runs, so the
 # shard's own arithmetic belongs with the pool's. Driven through the REAL
-# `mutation.sh shard`, in a sandbox with no apps/api, so it prints its budget
+# `mutation.py shard` on a module that does not exist, so it prints its budget
 # and then fails on the missing module — the budget line is the contract.
 
 
 def _shard_budget(tmp_path: Path, env: dict[str, str]) -> tuple[int, int]:
-    """Run `mutation.sh shard` in a sandbox and return (workers, tokens)."""
-    scripts = tmp_path / "scripts" / "ci"
-    (scripts / "lib").mkdir(parents=True)
-    shutil.copy(MUTATION, scripts / "mutation.sh")
-    shutil.copy(LOG, scripts / "lib" / "log.sh")
-    shutil.copy(LIB, scripts / "lib" / "cpu-slots.sh")
+    """Run `mutation.py shard` on a missing module and return (workers, tokens)."""
     group = json.dumps([{"module": "app/nope.py", "testfiles": '["t.py"]', "ranges": "[[1,1]]"}])
     r = subprocess.run(
-        ["bash", str(scripts / "mutation.sh"), "shard"],
+        [sys.executable, str(MUTATION), "shard"],
         capture_output=True,
         text=True,
-        env={**os.environ, **env, "GROUP": group, "SHARD_LOG": str(tmp_path / "shard.log")},
+        env={
+            **os.environ,
+            **env,
+            "GROUP": group,
+            "SHARD_LOG": str(tmp_path / "shard.log"),
+            "GAIA_VERDICT_DIR": str(tmp_path / "verdicts"),
+        },
         cwd=tmp_path,
         timeout=120,
         check=False,

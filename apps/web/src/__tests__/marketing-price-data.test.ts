@@ -55,6 +55,8 @@ function readData(file: string): Json {
 }
 
 describe("marketing price data", () => {
+  // Reads and parses every marketing data file in seven locales; on a loaded CI
+  // runner that is well past vitest's 5s default even though it takes ~1s idle.
   it("leaves a literal $20 only where it is a competitor's price", () => {
     const remaining = pricedDataFiles().flatMap((file) =>
       [...strings(readData(file))]
@@ -76,7 +78,7 @@ describe("marketing price data", () => {
     ).toEqual(
       competitorPrices.toSorted((a, b) => byKey(a).localeCompare(byKey(b))),
     );
-  });
+  }, 30_000);
 
   it("quotes GAIA's price through the token in every locale", () => {
     for (const feature of ["alternatives", "comparisons"] as const)
