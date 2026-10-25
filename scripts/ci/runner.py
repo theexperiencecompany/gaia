@@ -99,6 +99,9 @@ DEFAULT_FALLBACK = '["ubuntu-latest"]'
 # once the 20 slots are taken: 5 waiting is the cap already hit, while a lone
 # fan-out still being provisioned clears in seconds and rarely reads that high.
 HOSTED_SATURATED_QUEUE_DEPTH = 5
+TEST_SLICES_JSON = HERE / "lib" / "test-slices.json"
+# test-mutation's `max-parallel` in ci.yml: the shards one run holds at once.
+MUTATION_WAVE = 4
 REQUEUE_WORKFLOW = "ci-requeue.yml"
 SELF_HOSTED = "self-hosted"
 
@@ -256,6 +259,24 @@ class RunnerClass(StrEnum):
     SERVICES = "services"
 
 
+def class_demand() -> dict[RunnerClass, int]:
+    """Count the listeners one full run holds at once per class; a class shares one label."""
+    slices = records(json.loads(TEST_SLICES_JSON.read_text()), "slices")
+    with_services = sum(1 for s in slices if field_of(s, "services", str) == "true")
+    return {
+        # detect, lint-node, lint-python, lint-mixed, python-audit, scan
+        RunnerClass.LIGHT: 6,
+        # probe, ts-build-test, docker-image, plus the slices that need no services
+        RunnerClass.HEAVY: 3 + len(slices) - with_services,
+        # the slices that need services (test-python, test-python-engines), test-mutation's wave
+        RunnerClass.SERVICES: with_services + MUTATION_WAVE,
+    }
+
+
+# The order the box's idle listeners are handed out: the slowest lanes first.
+OVERFLOW_ORDER = (RunnerClass.SERVICES, RunnerClass.HEAVY, RunnerClass.LIGHT)
+
+
 @dataclass(frozen=True)
 class Choice:
     runs_on: tuple[str, ...]
@@ -318,6 +339,7 @@ class Router:
     blacksmith: str
     threshold: int
     pools: dict[str, Pool | None | GitHubError] = field(default_factory=dict)
+    claimed: dict[str, int] = field(default_factory=dict)
 
     def fallback_choice(self, reason: str, note: str) -> Choice:
         return Choice(self.fallback, self.fallback[0], reason, note)
@@ -348,7 +370,7 @@ class Router:
             raise reading
         return reading
 
-    def route(self, label: str) -> Choice:
+    def route(self, label: str, demand: int) -> Choice:
         if self.force_home:
             return self._forced_home(label)
         depth = self.hosted_depth
@@ -356,17 +378,20 @@ class Router:
             return self.fallback_choice("hosted-queue-unknown", "GitHub queue unreadable")
         if depth < self.threshold:
             return self.fallback_choice("github-hosted", f"GitHub queue {depth} < {self.threshold}")
-        return self._overflow(label, f"GitHub queue {depth} >= {self.threshold}")
+        return self._overflow(label, demand, f"GitHub queue {depth} >= {self.threshold}")
 
-    def _overflow(self, label: str, saturated: str) -> Choice:
+    def _overflow(self, label: str, demand: int, saturated: str) -> Choice:
+        """Take the box only when every job of the class gets its own idle listener."""
         try:
             pool = self.pool(label)
         except GitHubError:
             return self._last_resort(f"{saturated}; `{label}` unreadable")
         if pool is None:
             return self._last_resort(f"{saturated}; no runner with label `{label}` registered")
-        note = f"{saturated}; `{label}`: {pool.describe()}"
-        if pool.idle:
+        free = pool.idle - self.claimed.get(label, 0)
+        note = f"{saturated}; `{label}`: {pool.describe()}, {free} free for {demand} job(s)"
+        if free >= demand:
+            self.claimed[label] = self.claimed.get(label, 0) + demand
             return Choice((SELF_HOSTED, label), label, "home-overflow", note)
         return self._last_resort(note)
 
@@ -407,13 +432,11 @@ def route() -> dict[RunnerClass, Choice]:
         threshold=env_int("HOSTED_QUEUE_THRESHOLD", HOSTED_SATURATED_QUEUE_DEPTH),
     )
     home = os.environ.get("RUNNER_LABEL") or DEFAULT_HOME_LABEL
-    return {
-        RunnerClass.LIGHT: router.route(home),
-        RunnerClass.HEAVY: router.route(home),
-        RunnerClass.SERVICES: router.route(
-            os.environ.get("SERVICES_RUNNER_LABEL") or DEFAULT_HOME_LABEL
-        ),
-    }
+    labels = dict.fromkeys(RunnerClass, home)
+    labels[RunnerClass.SERVICES] = os.environ.get("SERVICES_RUNNER_LABEL") or DEFAULT_HOME_LABEL
+    demand = class_demand()
+    routed = {cls: router.route(labels[cls], demand[cls]) for cls in OVERFLOW_ORDER}
+    return {cls: routed[cls] for cls in RunnerClass}
 
 
 def cmd_select(_args: list[str]) -> int:

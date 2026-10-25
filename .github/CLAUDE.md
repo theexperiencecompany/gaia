@@ -51,7 +51,9 @@ Every pool is routed the same way:
 2. Once GitHub's hosted queue holds `HOSTED_SATURATED_QUEUE_DEPTH` (5) queued
    jobs or more — the 20-job cap is hit; override with the
    `CI_HOSTED_QUEUE_THRESHOLD` repo variable — to `gaia-home`, and only when it
-   has an idle listener. A busy box is never queued on.
+   has an idle listener for every job of the pool (`class_demand` in
+   `runner.py`: light 6, heavy 5, services 7, handed out services first). A
+   busy box is never queued on; a new lane in a pool raises its count.
 3. With both saturated, to `CI_BLACKSMITH_LABEL` (unset: stay queued on GitHub).
 
 Measured: an all-GitHub run (dispatch `force_github`, run 40178782875) went

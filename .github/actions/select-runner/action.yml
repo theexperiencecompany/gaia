@@ -2,8 +2,8 @@ name: Select runner (GitHub-hosted first, home box as overflow)
 description: >
   Route each runner class (light, heavy, services) to GitHub-hosted first. Only
   once GitHub's own queue is saturated does a class overflow to the home server
-  (16c/46Gi, 100.126.190.120 via Tailscale), and only to a pool with an idle
-  listener — a busy box is never queued on, since under load its jobs waited up
+  (16c/46Gi, 100.126.190.120 via Tailscale), and only when it has an idle
+  listener for every job of the class — a busy box is never queued on, since under load its jobs waited up
   to 48 min while an all-GitHub run waited at most 6 s per job. With both
   saturated the class goes to Blacksmith, or stays queued on GitHub when no
   Blacksmith label is set. Fork PRs, PRs whose author is not an organisation
