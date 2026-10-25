@@ -17,10 +17,13 @@ from app.agents.context.slots import PRESENCE_NOTE_MARKER, mark
 from app.constants.notifications import PRESENCE_ACTIVE_WINDOW_SECONDS
 from app.models.chat_models import ConversationSource, SourceCategory
 from app.models.presence_models import PresenceSnapshot
-from app.services.delivery.chat_channel import ChatChannel, resolve_chat_channel
+from app.services.delivery.chat_channel import (
+    ChatChannel,
+    InApp,
+    ProactiveTarget,
+    resolve_proactive_target,
+)
 from app.services.delivery.presence import previous_surface, surfaces_by_recency
-
-_APP_ONLY = "the GAIA app (no chat app linked)"
 
 
 def _at(epoch: int) -> str:
@@ -33,32 +36,52 @@ def _seen(entries: list[tuple[ConversationSource, int]]) -> str:
     return ", ".join(f"{source.display_name} at {_at(at)}" for source, at in entries)
 
 
-def _destination(target: ChatChannel) -> str:
-    """Name the platform a proactive message lands on and the rule that picked it."""
-    hours = PRESENCE_ACTIVE_WINDOW_SECONDS // 3600
-    if target.basis == "recent_activity":
-        return (
-            f"{target.source.display_name}, the chat app they last wrote on "
-            f"within the past {hours} hours"
-        )
-    return (
-        f"{target.source.display_name}, first in their chat order "
-        f"(they have not written on a chat app in the past {hours} hours)"
-    )
+def _active_window() -> str:
+    """Name the active window the presence rule uses."""
+    return f"the past {PRESENCE_ACTIVE_WINDOW_SECONDS // 3600} hours"
 
 
-def _own_messages(target: ChatChannel | None) -> str:
+def _destination(target: ProactiveTarget) -> str:
+    """Where a background run's message lands and the rule that picked it."""
+    match target:
+        case ChatChannel(basis="recent_activity"):
+            return (
+                f"goes to {target.source.display_name}, where they are active "
+                f"(they wrote there within {_active_window()})"
+            )
+        case ChatChannel():
+            return (
+                f"goes to {target.source.display_name}, first in their chat order "
+                f"(not active anywhere in {_active_window()})"
+            )
+        case InApp(reason="active_in_app"):
+            return "stays in the GAIA app, where they are active"
+    return "only shows in the GAIA app (no chat app linked)"
+
+
+def _own_messages(target: ProactiveTarget) -> str:
     """Where each kind of message GAIA sends on its own lands, as reminder_tasks and todo delivery route them."""
-    if target is None:
-        return (
-            "Reminders land back in the chat they were set in; tracked todo updates and "
-            f"workflow results only show in {_APP_ONLY}."
-        )
-    name = target.source.display_name
+    kinds = "Messages you send on your own (reminders, tracked todo updates, workflow results)"
+    match target:
+        case ChatChannel(basis="recent_activity"):
+            return (
+                f"{kinds} go to {target.source.display_name}, where they are active "
+                f"(they wrote there within {_active_window()})."
+            )
+        case ChatChannel():
+            name = target.source.display_name
+            return (
+                "They are not active anywhere right now: reminders land back in the chat they "
+                f"were set in and on {name} too when that chat is not {name}; tracked todo "
+                f"updates and workflow results go to {name}, first in their chat order."
+            )
+        case InApp(reason="active_in_app"):
+            return (
+                f"{kinds} stay in the GAIA app, where they are active; nothing goes to a chat app."
+            )
     return (
-        f"Reminders land back in the chat they were set in, and on {name} too when that "
-        f"chat is not {name}. Tracked todo updates and workflow results go to "
-        f"{_destination(target)}."
+        "Reminders land back in the chat they were set in; tracked todo updates and "
+        "workflow results only show in the GAIA app (no chat app linked)."
     )
 
 
@@ -91,7 +114,7 @@ def presence_note(
     presence: PresenceSnapshot | None,
     source: str | None,
     execution_mode: ExecutionMode,
-    target: ChatChannel | None,
+    target: ProactiveTarget,
     *,
     opens_thread: bool,
 ) -> str | None:
@@ -101,10 +124,9 @@ def presence_note(
     ranked = surfaces_by_recency(presence)
     surface = ConversationSource.coerce(source)
     if surface is None or not _is_live_chat(source, execution_mode):
-        lands = f"goes to {_destination(target)}" if target else f"only shows in {_APP_ONLY}"
         return (
             f"[User presence: not in a chat with you right now. Last seen: {_seen(ranked)}. "
-            f"If this run messages the user, it {lands}.]"
+            f"If this run messages the user, it {_destination(target)}.]"
         )
     previous = previous_surface(presence, surface)
     seen_at = dict(ranked)
@@ -133,6 +155,6 @@ async def presence_note_message(
     # The target lookup is a user read; only a run that gets a note pays for it.
     if not user_id or not _note_is_due(presence, source, execution_mode, opens_thread):
         return None
-    target = await resolve_chat_channel(user_id)
+    target = await resolve_proactive_target(user_id)
     text = presence_note(presence, source, execution_mode, target, opens_thread=opens_thread)
     return mark(HumanMessage(content=text), PRESENCE_NOTE_MARKER) if text else None

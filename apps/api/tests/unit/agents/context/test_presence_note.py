@@ -17,7 +17,7 @@ from app.agents.core import messages as messages_module
 from app.models.agent_models import AgentConfigurable
 from app.models.chat_models import ConversationSource
 from app.models.presence_models import PresenceSnapshot
-from app.services.delivery.chat_channel import ChatChannel
+from app.services.delivery.chat_channel import ChatChannel, InApp
 
 pytestmark = pytest.mark.unit
 
@@ -37,6 +37,8 @@ TELEGRAM_RECENT = ChatChannel(
 WHATSAPP_BY_ORDER = ChatChannel(
     source=ConversationSource.WHATSAPP, platform_user_id="wa-1", basis="priority"
 )
+ACTIVE_IN_APP = InApp(reason="active_in_app")
+NO_CHAT_APP = InApp(reason="no_chat_app")
 
 
 def _seen(**last_seen: int) -> PresenceSnapshot:
@@ -58,9 +60,9 @@ class TestTheNote:
         assert note == (
             "[Surface change: the user is now writing from Telegram. Their previous message "
             "was on Web at 2026-10-24 16:55 UTC. Also last seen: WhatsApp at 2026-10-21 09:10 "
-            "UTC. Reminders land back in the chat they were set in, and on Telegram too when "
-            "that chat is not Telegram. Tracked todo updates and workflow results go to "
-            "Telegram, the chat app they last wrote on within the past 3 hours.]"
+            "UTC. Messages you send on your own (reminders, tracked todo updates, workflow "
+            "results) go to Telegram, where they are active (they wrote there within the past "
+            "3 hours).]"
         )
 
     def test_staying_on_the_same_surface_says_nothing(self) -> None:
@@ -79,9 +81,9 @@ class TestTheNote:
 
         assert note == (
             "[User presence: the user is writing from Telegram. Also last seen: Web at "
-            "2026-10-23 11:40 UTC. Reminders land back in the chat they were set in, and on "
-            "Telegram too when that chat is not Telegram. Tracked todo updates and workflow "
-            "results go to Telegram, the chat app they last wrote on within the past 3 hours.]"
+            "2026-10-23 11:40 UTC. Messages you send on your own (reminders, tracked todo "
+            "updates, workflow results) go to Telegram, where they are active (they wrote there "
+            "within the past 3 hours).]"
         )
 
     @pytest.mark.parametrize(
@@ -108,7 +110,8 @@ class TestTheNote:
         assert note == (
             "[User presence: not in a chat with you right now. Last seen: Telegram at "
             "2026-10-24 17:02 UTC, Web at 2026-10-23 11:40 UTC. If this run messages the user, "
-            "it goes to Telegram, the chat app they last wrote on within the past 3 hours.]"
+            "it goes to Telegram, where they are active (they wrote there within the past 3 "
+            "hours).]"
         )
 
     def test_a_chat_source_on_a_background_run_is_still_background(self) -> None:
@@ -126,16 +129,54 @@ class TestTheNote:
 
         assert note is not None
         assert note.endswith(
-            "Tracked todo updates and workflow results go to WhatsApp, first in their chat "
-            "order (they have not written on a chat app in the past 3 hours).]"
+            "They are not active anywhere right now: reminders land back in the chat they were "
+            "set in and on WhatsApp too when that chat is not WhatsApp; tracked todo updates and "
+            "workflow results go to WhatsApp, first in their chat order.]"
+        )
+
+    def test_a_background_run_with_nobody_active_names_the_first_chat_app(self) -> None:
+        note = presence_note(
+            STAYED_ON_TELEGRAM, None, "background", WHATSAPP_BY_ORDER, opens_thread=False
+        )
+
+        assert note is not None
+        assert note.endswith(
+            "If this run messages the user, it goes to WhatsApp, first in their chat order "
+            "(not active anywhere in the past 3 hours).]"
+        )
+
+    def test_a_user_active_in_the_app_hears_from_gaia_only_in_the_app(self) -> None:
+        live = presence_note(
+            _seen(telegram=TELEGRAM_AT), "web", "interactive", ACTIVE_IN_APP, opens_thread=False
+        )
+        background = presence_note(
+            _seen(web=WEB_AT), None, "background", ACTIVE_IN_APP, opens_thread=False
+        )
+
+        assert live == (
+            "[Surface change: the user is now writing from Web. Their previous message was on "
+            "Telegram at 2026-10-24 17:02 UTC. Messages you send on your own (reminders, "
+            "tracked todo updates, workflow results) stay in the GAIA app, where they are "
+            "active; nothing goes to a chat app.]"
+        )
+        assert background is not None
+        assert background.endswith(
+            "If this run messages the user, it stays in the GAIA app, where they are active.]"
         )
 
     def test_no_chat_app_means_only_the_app(self) -> None:
-        switch = presence_note(CAME_FROM_WEB, "telegram", "interactive", None, opens_thread=False)
-        background = presence_note(STAYED_ON_TELEGRAM, None, "background", None, opens_thread=False)
+        switch = presence_note(
+            CAME_FROM_WEB, "telegram", "interactive", NO_CHAT_APP, opens_thread=False
+        )
+        background = presence_note(
+            STAYED_ON_TELEGRAM, None, "background", NO_CHAT_APP, opens_thread=False
+        )
 
         assert switch is not None
-        assert switch.endswith("only show in the GAIA app (no chat app linked).]")
+        assert switch.endswith(
+            "Reminders land back in the chat they were set in; tracked todo updates and "
+            "workflow results only show in the GAIA app (no chat app linked).]"
+        )
         assert background is not None
         assert background.endswith(
             "If this run messages the user, it only shows in the GAIA app (no chat app linked).]"
@@ -148,15 +189,15 @@ class TestTheNote:
             )
 
         assert note is not None
-        assert note.endswith("the chat app they last wrote on within the past 2 hours.]")
+        assert note.endswith("(they wrote there within the past 2 hours).]")
 
     def test_the_note_never_carries_an_em_or_en_dash(self) -> None:
-        for note in (
-            presence_note(
-                CAME_FROM_WEB, "telegram", "interactive", WHATSAPP_BY_ORDER, opens_thread=False
-            ),
-            presence_note(CAME_FROM_WEB, None, "background", None, opens_thread=False),
-        ):
+        targets = (TELEGRAM_RECENT, WHATSAPP_BY_ORDER, ACTIVE_IN_APP, NO_CHAT_APP)
+        for note in [
+            presence_note(CAME_FROM_WEB, source, mode, target, opens_thread=False)
+            for target in targets
+            for source, mode in (("telegram", "interactive"), (None, "background"))
+        ]:
             assert note is not None
             assert "\u2014" not in note
             assert "\u2013" not in note
@@ -176,7 +217,7 @@ def _seed(
     }
     return ContextSeed(
         query="book the table for friday",
-        sources=ContextSources(presence=presence, chat_channel=TELEGRAM_RECENT),
+        sources=ContextSources(presence=presence, proactive_target=TELEGRAM_RECENT),
         configurable_overrides=overrides,
     )
 
@@ -215,7 +256,7 @@ class TestTheTargetLookup:
     """The delivery target is a user read: only a run that gets a note may pay for it."""
 
     async def test_a_same_surface_turn_never_reads_the_target(self) -> None:
-        with patch.object(presence_note_module, "resolve_chat_channel") as lookup:
+        with patch.object(presence_note_module, "resolve_proactive_target") as lookup:
             message = await presence_note_module.presence_note_message(
                 "user-1", STAYED_ON_TELEGRAM, "telegram", "interactive", opens_thread=False
             )
@@ -225,7 +266,7 @@ class TestTheTargetLookup:
 
     async def test_a_switch_turn_reads_it_once(self) -> None:
         with patch.object(
-            presence_note_module, "resolve_chat_channel", return_value=TELEGRAM_RECENT
+            presence_note_module, "resolve_proactive_target", return_value=TELEGRAM_RECENT
         ) as lookup:
             message = await presence_note_module.presence_note_message(
                 "user-1", CAME_FROM_WEB, "telegram", "interactive", opens_thread=False
@@ -251,7 +292,7 @@ class TestAConversationsFirstTurn:
             ),
             patch.object(
                 presence_note_module,
-                "resolve_chat_channel",
+                "resolve_proactive_target",
                 AsyncMock(return_value=TELEGRAM_RECENT),
             ),
         ):

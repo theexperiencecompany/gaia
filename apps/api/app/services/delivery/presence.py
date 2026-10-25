@@ -14,7 +14,7 @@ from app.constants.notifications import (
     PRESENCE_RETENTION_SECONDS,
 )
 from app.db.redis import redis_cache
-from app.models.chat_models import BOT_CONVERSATION_SOURCES, ConversationSource
+from app.models.chat_models import ConversationSource, SourceCategory
 from app.models.presence_models import PresenceSnapshot
 
 
@@ -73,14 +73,16 @@ def previous_surface(
     return ranked[0][0]
 
 
-def active_bot_platform(snapshot: PresenceSnapshot, now_epoch: int) -> ConversationSource | None:
-    """Return the bot platform the user last wrote on within the active window, if any."""
-    return next(
+def active_surface(snapshot: PresenceSnapshot, now_epoch: int) -> ConversationSource | None:
+    """Return the surface, app or chat app, the user last wrote on, when inside the active window."""
+    newest = next(
         (
-            source
+            (source, at)
             for source, at in surfaces_by_recency(snapshot)
-            if source in BOT_CONVERSATION_SOURCES
-            and now_epoch - at <= PRESENCE_ACTIVE_WINDOW_SECONDS
+            if SourceCategory.from_source(source) is not SourceCategory.BG
         ),
         None,
     )
+    if newest is None or now_epoch - newest[1] > PRESENCE_ACTIVE_WINDOW_SECONDS:
+        return None
+    return newest[0]

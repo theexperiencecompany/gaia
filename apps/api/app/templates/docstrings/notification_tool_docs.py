@@ -93,7 +93,7 @@ completed, especially when they are away from the app or the event is time-sensi
 
 ## CHANNEL SELECTION
 - If the user named channels, pass EXACTLY those ("text me on whatsapp" → ["whatsapp"], "ping me on slack" → ["slack"]). Valid names: "whatsapp", "telegram", "discord", "slack", "inapp".
-- If the user did NOT name a channel, omit `channels`: the notification goes where the user is reachable now (the chat app they wrote on in the past 3 hours, else the first chat app in their order, else the GAIA app). Never ask which channel, and never broadcast to channels the user did not ask for.
+- If the user did NOT name a channel, omit `channels`: the notification goes where the user is active now (a chat app or the GAIA app), else the first chat app in their order, else the GAIA app. Never ask which channel, and never broadcast to channels the user did not ask for.
 - Use get_notification_preferences first if you need to know what channels are available
 - When the user is chatting with you on a messaging platform, your result is already delivered into that chat: do not notify that same channel for "keep me posted" or "let me know when done", and never add "inapp" as a filler channel.
 

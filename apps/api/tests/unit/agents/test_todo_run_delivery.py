@@ -24,6 +24,7 @@ from app.models.notification.notification_models import NotificationType
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
+from app.services.delivery.chat_channel import InApp
 from app.services.tracked_todo_service import CANVAS_TEMPLATE
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.todos import TodosRunResultDelivered
@@ -52,6 +53,7 @@ class _Seams:
     activity: AsyncMock
     capture: MagicMock
     in_app: AsyncMock
+    target: AsyncMock
 
     def entry(self) -> str:
         return self.activity.await_args.args[3]
@@ -70,12 +72,14 @@ def _seams(
         activity=AsyncMock(return_value=True),
         capture=MagicMock(),
         in_app=AsyncMock(),
+        target=AsyncMock(return_value=InApp(reason="no_chat_app")),
     )
     repo = MagicMock()
     repo.get_by_id = AsyncMock(return_value=todo)
     with (
         patch.object(trd, "narrate_executor_result", seams.narrate),
         patch.object(trd, "deliver_result_to_platforms", seams.send),
+        patch.object(trd, "resolve_proactive_target", seams.target),
         patch.object(trd, "todo_repository", repo),
         patch.object(trd, "record_run_finished", seams.activity),
         patch.object(trd, "capture", seams.capture),

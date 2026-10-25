@@ -17,7 +17,7 @@ from app.models.integration_models import IntegrationAccount, UserIntegrationDoc
 from app.models.memory_models import MemoryEntry, MemorySearchResult
 from app.models.presence_models import PresenceSnapshot
 from app.models.todo_models import TodoDocument
-from app.services.delivery.chat_channel import ChatChannel
+from app.services.delivery.chat_channel import InApp, ProactiveTarget
 from app.services.gaia_knowledge_service import KnowledgeResult
 
 
@@ -63,8 +63,8 @@ class ContextSources:
     presence: PresenceSnapshot = field(
         default_factory=lambda: PresenceSnapshot(captured_at=0, last_seen={})
     )
-    #: The one chat platform a proactive message would land on, or ``None`` for none usable.
-    chat_channel: ChatChannel | None = None
+    #: The one place a proactive message would land on.
+    proactive_target: ProactiveTarget = field(default_factory=lambda: InApp(reason="no_chat_app"))
 
 
 def _instructions_for(sources: ContextSources, scope: str) -> str:
@@ -196,8 +196,8 @@ def fake_context_sources(sources: ContextSources) -> Iterator[None]:
             enter(patch(reader, AsyncMock(return_value=sources.presence)))
         enter(
             patch(
-                "app.agents.context.presence_note.resolve_chat_channel",
-                AsyncMock(return_value=sources.chat_channel),
+                "app.agents.context.presence_note.resolve_proactive_target",
+                AsyncMock(return_value=sources.proactive_target),
             )
         )
         enter(_patch_executor_lock(sources.executor_busy_task_id))

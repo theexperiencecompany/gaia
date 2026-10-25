@@ -46,6 +46,7 @@ from app.models.workflow_models import (
     Workflow,
     WorkflowStep,
 )
+from app.services.delivery.chat_channel import InApp
 from app.services.workflow.playbook.check import HEAL_STATUSES
 from app.services.workflow.playbook.evaluator import PlaybookUser
 from app.services.workflow.playbook.runner import FALLBACK_LINE_MAX_CHARS, PlaybookRunResult
@@ -69,6 +70,7 @@ from app.workers.tasks.workflow_tasks import (
 
 MODULE = "app.workers.tasks.workflow_tasks"
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
+NO_CHAT_APP = InApp(reason="no_chat_app")
 
 
 @pytest.fixture(autouse=True)
@@ -138,6 +140,7 @@ class _Harness:
         self.update_workflow = AsyncMock(return_value=None)
         self.add_messages = AsyncMock()
         self.platform_delivery = AsyncMock()
+        self.proactive_target = AsyncMock(return_value=NO_CHAT_APP)
         self.completion_notification = AsyncMock()
         self.tiered_limit = AsyncMock()
         self.log = MagicMock()
@@ -201,6 +204,7 @@ class _Harness:
             ),
             patch(f"{MODULE}.add_playbook_run_messages", self.add_messages),
             patch(f"{MODULE}.deliver_result_to_platforms", self.platform_delivery),
+            patch(f"{MODULE}.resolve_proactive_target", self.proactive_target),
             patch(
                 f"{MODULE}.send_workflow_completion_notification",
                 self.completion_notification,
@@ -1956,8 +1960,10 @@ class TestATrustedReplayWritesTheTurnAndTellsTheUser:
                 user_id=USER_ID,
                 notification_text="Agenda sent.",
                 origin='workflow "Daily agenda" (id wf_1)',
+                target=NO_CHAT_APP,
             )
         ]
+        harness.proactive_target.assert_awaited_once_with(USER_ID)
 
     async def test_an_outcome_the_playbook_no_longer_matches_is_reported_not_swallowed(
         self,
@@ -2108,6 +2114,7 @@ class TestTheReplayCompletionNotificationEdges:
         workflow = _workflow().model_copy(update={"id": None})
         completion = AsyncMock()
         with (
+            patch(f"{MODULE}.resolve_proactive_target", AsyncMock(return_value=NO_CHAT_APP)),
             patch(f"{MODULE}.deliver_result_to_platforms", AsyncMock()),
             patch(f"{MODULE}.send_workflow_completion_notification", completion),
         ):
@@ -2126,6 +2133,7 @@ class TestTheReplayCompletionNotificationEdges:
         workflow = _workflow()
         log_seam = MagicMock()
         with (
+            patch(f"{MODULE}.resolve_proactive_target", AsyncMock(return_value=NO_CHAT_APP)),
             patch(
                 f"{MODULE}.deliver_result_to_platforms",
                 AsyncMock(side_effect=TimeoutError("platform down")),

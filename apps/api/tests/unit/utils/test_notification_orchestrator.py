@@ -4,6 +4,8 @@ from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from app.models.chat_models import ConversationSource
 from app.models.notification.notification_models import (
     ActionConfig,
@@ -25,7 +27,7 @@ from app.models.notification.notification_models import (
     NotificationType,
     RedirectConfig,
 )
-from app.services.delivery.chat_channel import ChatChannel
+from app.services.delivery.chat_channel import ChatChannel, InApp, InAppReason
 from app.utils.notification.orchestrator import NotificationOrchestrator
 
 # ---------------------------------------------------------------------------
@@ -397,7 +399,7 @@ class TestDefaultChannels:
         with (
             patch("app.utils.notification.orchestrator.websocket_manager") as ws,
             patch(
-                "app.utils.notification.orchestrator.resolve_chat_channel",
+                "app.utils.notification.orchestrator.resolve_proactive_target",
                 AsyncMock(
                     return_value=ChatChannel(
                         source=ConversationSource.TELEGRAM,
@@ -414,7 +416,8 @@ class TestDefaultChannels:
         updates = storage.update_notification.call_args[0][1]
         assert sorted(ch["channel_type"] for ch in updates["channels"]) == ["inapp", "telegram"]
 
-    async def test_no_usable_platform_means_in_app_only(self) -> None:
+    @pytest.mark.parametrize("reason", ["active_in_app", "no_chat_app"])
+    async def test_a_target_in_the_app_means_in_app_only(self, reason: InAppReason) -> None:
         storage = AsyncMock()
         orch = self._orch_with_every_adapter_succeeding(storage)
         record = _make_record(request=_make_request(channels=[]))
@@ -422,8 +425,8 @@ class TestDefaultChannels:
         with (
             patch("app.utils.notification.orchestrator.websocket_manager") as ws,
             patch(
-                "app.utils.notification.orchestrator.resolve_chat_channel",
-                AsyncMock(return_value=None),
+                "app.utils.notification.orchestrator.resolve_proactive_target",
+                AsyncMock(return_value=InApp(reason=reason)),
             ),
         ):
             ws.broadcast_to_user = AsyncMock()
@@ -436,7 +439,7 @@ class TestDefaultChannels:
         orch = NotificationOrchestrator(storage=MagicMock())
         with (
             patch(
-                "app.utils.notification.orchestrator.resolve_chat_channel",
+                "app.utils.notification.orchestrator.resolve_proactive_target",
                 AsyncMock(side_effect=RuntimeError("db down")),
             ),
             patch("app.utils.notification.orchestrator.log") as log,
@@ -457,7 +460,7 @@ class TestDefaultChannels:
         with (
             patch("app.utils.notification.orchestrator.websocket_manager") as ws,
             patch(
-                "app.utils.notification.orchestrator.resolve_chat_channel", AsyncMock()
+                "app.utils.notification.orchestrator.resolve_proactive_target", AsyncMock()
             ) as resolve,
         ):
             ws.broadcast_to_user = AsyncMock()

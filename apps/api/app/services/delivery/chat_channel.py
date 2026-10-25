@@ -1,13 +1,13 @@
-"""The ONE chat platform a proactive message goes to.
+"""The one place a proactive message goes: where the user is active, else their first chat app.
 
 A message GAIA sends on its own initiative (a workflow result, a fired
-reminder, a notification that names no channel) belongs on one platform, not
-on every platform the user ever linked: fanning it out is the triple-delivery
+reminder, a notification that names no channel) belongs in one place, not on
+every platform the user ever linked: fanning it out is the triple-delivery
 bug, and the user reads it once anyway. This module owns that single choice:
-the platform the user most recently wrote on, else the first platform in their
-priority order, provided it is both linked and left enabled in notification
-settings. Every proactive send path resolves its platform here and nowhere
-else; the web app always gets the message as well.
+where the user is active (a chat app or the GAIA app), else the first chat app
+in their priority order, provided it is both linked and left enabled in
+notification settings, else the GAIA app. Every proactive send path resolves
+its target here and nowhere else.
 """
 
 from collections.abc import Mapping, Sequence
@@ -18,10 +18,10 @@ from app.constants.log_tags import LogTag
 from app.constants.notifications import DEFAULT_CHAT_CHANNEL_PRIORITY
 from app.db.repositories.users import user_repository
 from app.models.chat_channel_models import CHAT_CHANNEL_VALUES
-from app.models.chat_models import BOT_CONVERSATION_SOURCES, ConversationSource
+from app.models.chat_models import BOT_CONVERSATION_SOURCES, ConversationSource, SourceCategory
 from app.models.platform_models import PlatformLinkEntry
 from app.services.analytics_service import capture
-from app.services.delivery.presence import active_bot_platform, read_presence
+from app.services.delivery.presence import active_surface, read_presence
 from app.services.platform_link_service import linked_platforms_of
 from app.utils.notification.channel_preferences import normalize_channel_preferences
 from shared.py.analytics import UserId
@@ -76,6 +76,20 @@ class ChatChannel:
     basis: ChatChannelBasis
 
 
+#: Why nothing goes to a chat app: the user is active in the GAIA app, or no chat app is usable.
+InAppReason = Literal["active_in_app", "no_chat_app"]
+
+
+@dataclass(frozen=True, slots=True)
+class InApp:
+    """A proactive message that stays in the GAIA app, and why."""
+
+    reason: InAppReason
+
+
+ProactiveTarget = ChatChannel | InApp
+
+
 def pick_chat_channel(
     priority: list[str],
     linked: Mapping[str, PlatformLinkEntry],
@@ -106,11 +120,11 @@ def pick_chat_channel(
     return None
 
 
-async def resolve_chat_channel(user_id: str) -> ChatChannel | None:
-    """Return the one chat platform for user_id, from a single read of their document."""
+async def resolve_proactive_target(user_id: str) -> ProactiveTarget:
+    """Return the one place a proactive message for user_id goes, from a single read of their document."""
     user = await user_repository.get(user_id)
     if user is None:
-        return None
+        return InApp(reason="no_chat_app")
     try:
         presence = await read_presence(user_id)
     except Exception as e:  # a degraded signal: the message still goes out, by priority
@@ -122,10 +136,13 @@ async def resolve_chat_channel(user_id: str) -> ChatChannel | None:
         )
         active = None
     else:
-        active = active_bot_platform(presence, presence["captured_at"])
-    return pick_chat_channel(
+        active = active_surface(presence, presence["captured_at"])
+    if SourceCategory.from_source(active) is SourceCategory.UI:
+        return InApp(reason="active_in_app")
+    channel = pick_chat_channel(
         resolve_channel_priority(user.chat_channel_priority),
         linked_platforms_of(user),
         normalize_channel_preferences(user.notification_channel_prefs),
         active=active,
     )
+    return channel or InApp(reason="no_chat_app")

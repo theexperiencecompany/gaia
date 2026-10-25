@@ -1,6 +1,7 @@
 """Push Notification Constants."""
 
 import re
+from typing import Final
 
 # Maximum devices a user can register for push notifications
 MAX_DEVICES_PER_USER = 10
@@ -9,7 +10,7 @@ MAX_DEVICES_PER_USER = 10
 EXPO_TOKEN_PATTERN = re.compile(r"^Expo(nent)?PushToken\[[a-zA-Z0-9_-]+\]$")
 
 # Notification channel type identifiers
-CHANNEL_TYPE_INAPP = "inapp"
+CHANNEL_TYPE_INAPP: Final = "inapp"
 CHANNEL_TYPE_TELEGRAM = "telegram"
 CHANNEL_TYPE_DISCORD = "discord"
 CHANNEL_TYPE_WHATSAPP = "whatsapp"

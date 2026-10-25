@@ -19,9 +19,10 @@ from app.models.user_models import UserDocument
 from app.services.delivery import chat_channel
 from app.services.delivery.chat_channel import (
     ChatChannel,
+    InApp,
     pick_chat_channel,
     resolve_channel_priority,
-    resolve_chat_channel,
+    resolve_proactive_target,
 )
 
 USER_ID = "6acc0dac0cc0a00000000001"
@@ -243,7 +244,7 @@ class TestPickChatChannelRefusesNonBotSources:
         )
 
 
-class TestResolveChatChannel:
+class TestResolveProactiveTarget:
     @pytest.fixture(autouse=True)
     def no_recent_activity(self) -> Iterator[AsyncMock]:
         empty: PresenceSnapshot = {"captured_at": _now(), "last_seen": {}}
@@ -260,7 +261,7 @@ class TestResolveChatChannel:
         with patch.object(
             chat_channel.user_repository, "get", AsyncMock(return_value=_two_linked_user())
         ):
-            picked = await resolve_chat_channel(USER_ID)
+            picked = await resolve_proactive_target(USER_ID)
 
         no_recent_activity.assert_awaited_once_with(USER_ID)
         assert picked == ChatChannel(
@@ -277,7 +278,7 @@ class TestResolveChatChannel:
         with patch.object(
             chat_channel.user_repository, "get", AsyncMock(return_value=_two_linked_user())
         ):
-            picked = await resolve_chat_channel(USER_ID)
+            picked = await resolve_proactive_target(USER_ID)
 
         assert picked == ChatChannel(
             source=ConversationSource.SLACK, platform_user_id="sl-1", basis="priority"
@@ -293,7 +294,7 @@ class TestResolveChatChannel:
             ),
             patch.object(chat_channel.log, "warning") as warning,
         ):
-            picked = await resolve_chat_channel(USER_ID)
+            picked = await resolve_proactive_target(USER_ID)
 
         assert picked == ChatChannel(
             source=ConversationSource.SLACK, platform_user_id="sl-1", basis="priority"
@@ -316,7 +317,7 @@ class TestResolveChatChannel:
         with patch.object(
             chat_channel.user_repository, "get", AsyncMock(return_value=user)
         ) as read:
-            picked = await resolve_chat_channel(USER_ID)
+            picked = await resolve_proactive_target(USER_ID)
 
         read.assert_awaited_once_with(USER_ID)
         assert picked == ChatChannel(
@@ -330,12 +331,47 @@ class TestResolveChatChannel:
         with patch.object(
             chat_channel.user_repository, "get", AsyncMock(return_value=_two_linked_user())
         ):
-            picked = await resolve_chat_channel(USER_ID)
+            picked = await resolve_proactive_target(USER_ID)
 
         assert picked == ChatChannel(
             source=ConversationSource.SLACK, platform_user_id="sl-1", basis="priority"
         )
 
-    async def test_an_unknown_user_has_no_channel(self) -> None:
+    async def test_an_unknown_user_has_no_chat_app(self) -> None:
         with patch.object(chat_channel.user_repository, "get", AsyncMock(return_value=None)):
-            assert await resolve_chat_channel(USER_ID) is None
+            assert await resolve_proactive_target(USER_ID) == InApp(reason="no_chat_app")
+
+    async def test_a_user_with_nothing_linked_has_no_chat_app(self) -> None:
+        user = UserDocument.model_validate({"id": USER_ID})
+        with patch.object(chat_channel.user_repository, "get", AsyncMock(return_value=user)):
+            assert await resolve_proactive_target(USER_ID) == InApp(reason="no_chat_app")
+
+    async def test_a_user_active_in_the_app_is_messaged_in_the_app_not_a_chat_app(
+        self, no_recent_activity: AsyncMock
+    ) -> None:
+        no_recent_activity.return_value = {
+            "captured_at": _now(),
+            "last_seen": {"web": _now() - 30, CHANNEL_TYPE_TELEGRAM: _now() - 600},
+        }
+        with patch.object(
+            chat_channel.user_repository, "get", AsyncMock(return_value=_two_linked_user())
+        ):
+            picked = await resolve_proactive_target(USER_ID)
+
+        assert picked == InApp(reason="active_in_app")
+
+    async def test_a_chat_app_turn_newer_than_the_app_wins_back_the_chat_app(
+        self, no_recent_activity: AsyncMock
+    ) -> None:
+        no_recent_activity.return_value = {
+            "captured_at": _now(),
+            "last_seen": {"mobile": _now() - 600, CHANNEL_TYPE_TELEGRAM: _now() - 30},
+        }
+        with patch.object(
+            chat_channel.user_repository, "get", AsyncMock(return_value=_two_linked_user())
+        ):
+            picked = await resolve_proactive_target(USER_ID)
+
+        assert picked == ChatChannel(
+            source=ConversationSource.TELEGRAM, platform_user_id="tg-1", basis="recent_activity"
+        )

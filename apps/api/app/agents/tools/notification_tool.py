@@ -3,7 +3,7 @@ from typing import Annotated, Any, Literal, NotRequired, TypeAlias, TypedDict
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
-from app.constants.chat import BOT_CONVERSATION_SOURCES, ConversationSource
+from app.constants.chat import ConversationSource, SourceCategory
 from app.constants.log_tags import LogTag
 from app.constants.notifications import CHANNEL_TYPE_INAPP, NOTIFICATION_CHANNEL_TYPES
 from app.decorators import with_doc, with_rate_limiting
@@ -20,7 +20,7 @@ from app.models.notification.notification_models import (
     NotificationType,
     NotificationView,
 )
-from app.services.delivery.chat_channel import resolve_chat_channel
+from app.services.delivery.chat_channel import InApp, resolve_proactive_target
 from app.services.notification_service import notification_service
 from app.templates.docstrings.notification_tool_docs import (
     GET_NOTIFICATION_COUNT,
@@ -77,12 +77,16 @@ class SentNotificationResult(TypedDict):
     delivered_channels: list[str]
 
 
+#: Where a run's own reply lands: a chat app's conversation, or the GAIA app.
+ReplyChannel: TypeAlias = ConversationSource | Literal["inapp"]
+
+
 class NotificationFoldedIntoReply(TypedDict):
     """``send_notification`` naming only the chat the run already replies into: nothing is sent."""
 
     success: Literal[True]
     delivered_channels: list[str]
-    delivered_via_conversation: ConversationSource
+    delivered_via_conversation: ReplyChannel
     note: str
 
 
@@ -256,13 +260,18 @@ async def mark_notifications_read(
         return {"error": str(e), "success": False}
 
 
-def reply_channel_of_run(configurable: AgentConfigurableView) -> ConversationSource | None:
-    """The bot platform this run's own result is delivered into, or None when it reaches no chat."""
+def reply_channel_of_run(configurable: AgentConfigurableView) -> ReplyChannel | None:
+    """The notification channel this run's own result is delivered into, or None when it reaches no chat."""
     # Workflow and tracked-todo runs carry no conversation_source, so source + conversation suffice.
     source = ConversationSource.coerce(configurable.conversation_source)
-    if source is None or source not in BOT_CONVERSATION_SOURCES:
+    if source is None or not configurable.conversation_id:
         return None
-    return source if configurable.conversation_id else None
+    match SourceCategory.from_source(source):
+        case SourceCategory.UI:
+            return CHANNEL_TYPE_INAPP
+        case SourceCategory.BOT:
+            return source
+    return None
 
 
 @tool
@@ -308,8 +317,8 @@ async def send_notification(
         # channel and over-notify. Unnamed means where the user is reachable now, so
         # the fold below still keeps it out of the chat they are already reading.
         if not channels:
-            target = await resolve_chat_channel(user_id)
-            channels = [target.source.value] if target else [CHANNEL_TYPE_INAPP]
+            target = await resolve_proactive_target(user_id)
+            channels = [CHANNEL_TYPE_INAPP] if isinstance(target, InApp) else [target.source.value]
 
         # Unknown channel names would otherwise be accepted and silently skipped
         # at delivery, so reject them here where the LLM can read the error and
@@ -325,19 +334,25 @@ async def send_notification(
             }
         # The run's result already lands in the chat the user is in; a notification
         # there would be the same update a second time, in notification chrome.
+        # A reply into the web, mobile or desktop app is the in-app copy of the update.
         reply_channel = reply_channel_of_run(read_agent_configurable(config))
-        if reply_channel is not None and reply_channel.value in channels:
-            channels = [ch for ch in channels if ch != reply_channel.value]
-            log.set_ns("tool", folded_into_reply=reply_channel.value)
+        if reply_channel is not None and reply_channel in channels:
+            channels = [ch for ch in channels if ch != reply_channel]
+            log.set_ns("tool", folded_into_reply=reply_channel)
             if not channels:
+                place = (
+                    f"on {reply_channel.display_name}"
+                    if isinstance(reply_channel, ConversationSource)
+                    else "in the GAIA app"
+                )
                 return {
                     "success": True,
                     "delivered_channels": [],
                     "delivered_via_conversation": reply_channel,
                     "note": (
-                        f"The user is reading this conversation on {reply_channel.display_name}; "
-                        "your result is delivered here automatically. Put the update in your "
-                        "result instead of notifying."
+                        f"The user is reading this conversation {place}; your result is "
+                        "delivered here automatically. Put the update in your result instead "
+                        "of notifying."
                     ),
                 }
         channel_configs = [ChannelConfig(channel_type=ch) for ch in channels]

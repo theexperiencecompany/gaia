@@ -45,6 +45,7 @@ from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services.analytics_service import capture
 from app.services.canvas_markdown import section_body
+from app.services.delivery.chat_channel import resolve_proactive_target
 from app.services.notification_service import notification_service
 from app.services.todo_activity import record_run_finished, run_finished_marker
 from app.utils.message_breaks import split_message_bubbles
@@ -294,6 +295,7 @@ async def _narrate_and_send(
         user_id=todo.user_id,
         notification_text=message,
         origin=f'tracked todo "{todo.title}" (id {todo.id})',
+        target=await resolve_proactive_target(todo.user_id),
     )
     if platform is None:
         return await _send_in_app(todo, message)

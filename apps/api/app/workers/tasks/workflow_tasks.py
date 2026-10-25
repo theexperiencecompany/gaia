@@ -78,6 +78,7 @@ from app.models.workflow_models import (
     WorkflowUpdate,
 )
 from app.services.analytics_service import capture
+from app.services.delivery.chat_channel import resolve_proactive_target
 from app.services.hil.approvals_store import list_pending_for_conversation
 from app.services.notification_service import notification_service
 from app.services.triggers.batching import (
@@ -903,6 +904,7 @@ async def _notify_replay_finished(
             user_id=workflow.user_id,
             notification_text=text,
             origin=f'workflow "{workflow.title}" (id {workflow.id})',
+            target=await resolve_proactive_target(workflow.user_id),
         )
         await send_workflow_completion_notification(
             workflow_id=workflow.id or "",

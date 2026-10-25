@@ -56,6 +56,7 @@ from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services import todo_activity
+from app.services.delivery.chat_channel import ChatChannel, InApp
 from app.services.delivery.presence import record_turn_presence
 from app.utils import auth_utils
 from app.utils.background_tasks import spawn_background_task
@@ -66,6 +67,10 @@ from tests.helpers import WideEventRecorder, captured_wide_event
 
 # A run says it lives in Redis while it runs: give it a per-test Redis, never the ambient one.
 pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("fake_redis")]
+
+TELEGRAM = ChatChannel(
+    source=ConversationSource.TELEGRAM, platform_user_id="tg-1", basis="recent_activity"
+)
 
 USER = AuthenticatedUser(user_id="507f1f77bcf86cd799439011", email="d@gaia.local")
 TODO_ID = "6ab51f1ba7a1fcf0f00ab49a"
@@ -100,6 +105,7 @@ class _Seams:
     enqueue: AsyncMock
     pool: MagicMock
     load_user: AsyncMock
+    target: AsyncMock
 
 
 @contextmanager
@@ -122,6 +128,7 @@ def _seams(
         enqueue=AsyncMock(),
         pool=MagicMock(),
         load_user=AsyncMock(return_value=JOB_USER),
+        target=AsyncMock(return_value=TELEGRAM),
     )
     stream_manager = MagicMock()
     stream_manager.is_cancelled = AsyncMock(return_value=False)
@@ -138,6 +145,7 @@ def _seams(
         patch.object(rd, "update_messages", seams.save_to_conversation),
         patch.object(trd, "narrate_executor_result", seams.narrate),
         patch.object(trd, "deliver_result_to_platforms", seams.send),
+        patch.object(trd, "resolve_proactive_target", seams.target),
         patch.object(trd, "todo_repository", seams.repo),
         patch.object(todo_activity, "append_activity", seams.activity),
         patch.object(trd, "capture", seams.capture),
@@ -185,6 +193,8 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
         assert sent["user_id"] == USER.user_id
         assert (sent["user"].user_id, sent["user"].email) == (USER.user_id, USER.email)
         assert sent["origin"] == f'tracked todo "Watch the staging deploy" (id {TODO_ID})'
+        assert sent["target"] is TELEGRAM
+        seams.target.assert_awaited_once_with(USER.user_id)
         # Comms narrated the EXECUTOR's report, in the run's conversation, under
         # the todo's delivery rules.
         narrated_from, msg_type, conversation_id, user = seams.narrate.await_args.args
@@ -256,7 +266,11 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
                     )
                 ),
             ),
-            patch.object(presence_note, "resolve_chat_channel", AsyncMock(return_value=None)),
+            patch.object(
+                presence_note,
+                "resolve_proactive_target",
+                AsyncMock(return_value=InApp(reason="no_chat_app")),
+            ),
         ):
             messages = await subagent_runner.build_initial_messages(
                 system_message=SystemMessage(content="sys"),

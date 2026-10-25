@@ -26,7 +26,7 @@ from app.models.chat_models import (
 from app.models.user_models import AuthenticatedUser
 from app.services.bot_service import BotService
 from app.services.conversation_service import update_messages
-from app.services.delivery.chat_channel import ChatChannel, resolve_chat_channel
+from app.services.delivery.chat_channel import ChatChannel, ProactiveTarget
 from app.services.outbound_delivery import OutboundResult, publish_outbound_message
 from app.utils.message_breaks import split_message_bubbles
 from shared.py.wide_events import log
@@ -38,29 +38,27 @@ async def deliver_result_to_platforms(
     user_id: str,
     notification_text: str,
     origin: str,
+    target: ProactiveTarget,
     exclude_source: ConversationSource | None = None,
 ) -> ConversationSource | None:
-    """Deliver a proactive result to the user's ONE preferred messaging platform.
+    """Deliver a proactive result to the chat app the caller's resolved target names.
 
-    The platform is the first in their chat-channel order that is linked and
-    enabled; exclude_source skips one that already received the result.
-    Best-effort: returns the platform that got it, or None when nothing was sent.
+    The caller resolves the target once, so every send of one result follows the
+    same rule; an in-app target sends nothing here, and exclude_source skips a
+    platform that already received the result. Best-effort: returns the
+    platform that got it, or None when nothing was sent.
     """
-    if not notification_text.strip():
-        return None
-
-    try:
-        channel = await resolve_chat_channel(user_id)
-    except Exception as e:  # proactive side channel, never fatal
-        log.error(f"{LogTag.AGENT} workflow platform delivery: channel lookup failed", error=str(e))
-        return None
-    if channel is None or channel.source == exclude_source:
+    if (
+        not notification_text.strip()
+        or not isinstance(target, ChatChannel)
+        or target.source == exclude_source
+    ):
         return None
 
     return await _post_workflow_message(
         user=user,
         user_id=user_id,
-        channel=channel,
+        channel=target,
         response=notification_text,
         origin=origin,
     )

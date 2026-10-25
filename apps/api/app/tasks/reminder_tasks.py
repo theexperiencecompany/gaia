@@ -2,8 +2,9 @@
 
 from app.agents.core.background.result_delivery import deliver_message_to_conversation
 from app.agents.core.background.workflow_platform_delivery import deliver_result_to_platforms
+from app.db.repositories.conversations import conversation_repository
 from app.decorators.entitlements import capture_paywall_block, is_paid
-from app.models.chat_models import ConversationSource
+from app.models.chat_models import ConversationSource, SourceCategory
 from app.models.reminder_models import (
     AgentType,
     ReminderModel,
@@ -11,6 +12,12 @@ from app.models.reminder_models import (
 )
 from app.models.scheduler_models import TaskOutcome
 from app.services.analytics_service import capture
+from app.services.delivery.chat_channel import (
+    ChatChannel,
+    InApp,
+    ProactiveTarget,
+    resolve_proactive_target,
+)
 from app.services.notification_service import notification_service
 from app.utils.auth_utils import load_user_context
 from app.utils.notification.sources import AIProactiveNotificationSource
@@ -61,8 +68,21 @@ async def _execute_static_reminder(reminder: ReminderModel) -> None:
     log.info("Static reminder sent notification", reminder_id=reminder.id, user_id=reminder.user_id)
 
 
+async def _lands_in_source_chat(
+    target: ProactiveTarget, conversation_id: str, user_id: str
+) -> bool:
+    """Whether the reminder goes back into the chat it was set in: yes, unless the user is active elsewhere."""
+    match target:
+        case ChatChannel(basis="priority") | InApp(reason="no_chat_app"):
+            return True
+    source = await conversation_repository.get_source(conversation_id, user_id=user_id)
+    if isinstance(target, ChatChannel):
+        return source is target.source
+    return SourceCategory.from_source(source) is SourceCategory.UI
+
+
 async def _deliver_reminder_to_platforms(reminder: ReminderModel) -> None:
-    """Deliver a fired reminder into its source chat and the user's other linked platforms, best-effort.
+    """Deliver a fired reminder to the one place the user is active, else its source chat and first chat app.
 
     Side channel behind the in-app badge: swallows every failure — including
     load_user_context's HTTPException on a transient error — so it never fails the
@@ -85,8 +105,11 @@ async def _deliver_reminder_to_platforms(reminder: ReminderModel) -> None:
             f'reminder "{title}" (id {reminder.id})' if title else f"reminder (id {reminder.id})"
         )
 
+        target = await resolve_proactive_target(reminder.user_id)
         delivered_source: ConversationSource | None = None
-        if reminder.source_conversation_id:
+        if reminder.source_conversation_id and await _lands_in_source_chat(
+            target, reminder.source_conversation_id, reminder.user_id
+        ):
             delivered_source = await deliver_message_to_conversation(
                 conversation_id=reminder.source_conversation_id,
                 user=user,
@@ -99,6 +122,7 @@ async def _deliver_reminder_to_platforms(reminder: ReminderModel) -> None:
             user_id=reminder.user_id,
             notification_text=text,
             origin=origin,
+            target=target,
             exclude_source=delivered_source,
         )
     except Exception as e:  # side channel; the in-app badge already delivered

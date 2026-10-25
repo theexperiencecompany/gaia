@@ -63,6 +63,7 @@ from app.models.message_models import ReplyToMessageData
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
 from app.services.conversation_service import update_messages
+from app.services.delivery.chat_channel import resolve_proactive_target
 from app.services.hil.approvals_store import get_approval
 from app.services.latency_metrics import observe_delivery_narration, observe_delivery_persist
 from app.services.platform_message_service import (
@@ -426,6 +427,7 @@ async def _deliver_workflow_result(
             user_id=run.user.user_id,
             notification_text=notification_text,
             origin=_delivery_origin(run),
+            target=await resolve_proactive_target(run.user.user_id),
         )
     await _dispatch_workflow_notification(
         msg_type=result_type,

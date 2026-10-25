@@ -11,7 +11,7 @@ from app.constants.notifications import (
 from app.models.chat_models import ConversationSource
 from app.models.presence_models import PresenceSnapshot
 from app.services.delivery.presence import (
-    active_bot_platform,
+    active_surface,
     previous_surface,
     read_presence,
     record_turn_presence,
@@ -124,32 +124,29 @@ class TestPreviousSurface:
         assert previous_surface(_snapshot(), ConversationSource.TELEGRAM) is None
 
 
-class TestActiveBotPlatform:
-    def test_the_newest_platform_inside_the_window_wins(self) -> None:
+class TestActiveSurface:
+    def test_the_newest_surface_inside_the_window_wins(self) -> None:
         snapshot = _snapshot(whatsapp=NOW - 600, telegram=NOW - 60)
 
-        assert active_bot_platform(snapshot, NOW) is ConversationSource.TELEGRAM
+        assert active_surface(snapshot, NOW) is ConversationSource.TELEGRAM
 
-    def test_a_platform_last_used_outside_the_window_is_ignored(self) -> None:
-        snapshot = _snapshot(telegram=NOW - WINDOW - 1, slack=NOW - WINDOW)
+    def test_a_web_turn_newer_than_a_chat_app_turn_is_where_they_are(self) -> None:
+        snapshot = _snapshot(web=NOW - 30, telegram=NOW - 120)
 
-        assert active_bot_platform(snapshot, NOW) is ConversationSource.SLACK
+        assert active_surface(snapshot, NOW) is ConversationSource.WEB
 
-    def test_everything_stale_is_none(self) -> None:
-        assert active_bot_platform(_snapshot(telegram=NOW - WINDOW - 1), NOW) is None
+    def test_a_surface_at_the_window_edge_is_still_active(self) -> None:
+        assert active_surface(_snapshot(slack=NOW - WINDOW), NOW) is ConversationSource.SLACK
 
-    def test_web_only_activity_names_no_bot_platform(self) -> None:
-        assert active_bot_platform(_snapshot(web=NOW, desktop=NOW), NOW) is None
+    def test_everything_outside_the_window_is_none(self) -> None:
+        snapshot = _snapshot(telegram=NOW - WINDOW - 1, web=NOW - WINDOW - 60)
 
-    def test_a_newer_web_turn_does_not_hide_the_bot_platform(self) -> None:
-        snapshot = _snapshot(web=NOW, whatsapp=NOW - 120)
+        assert active_surface(snapshot, NOW) is None
 
-        assert active_bot_platform(snapshot, NOW) is ConversationSource.WHATSAPP
-
-    def test_unknown_field_names_are_ignored(self) -> None:
+    def test_background_stamps_are_not_a_surface_the_user_is_on(self) -> None:
         snapshot = _snapshot(carrier_pigeon=NOW, background=NOW, discord=NOW - 30)
 
-        assert active_bot_platform(snapshot, NOW) is ConversationSource.DISCORD
+        assert active_surface(snapshot, NOW) is ConversationSource.DISCORD
 
     def test_no_entries_is_none(self) -> None:
-        assert active_bot_platform(_snapshot(), NOW) is None
+        assert active_surface(_snapshot(), NOW) is None

@@ -30,7 +30,7 @@ from app.models.notification.notification_models import (
     NotificationType,
     NotificationView,
 )
-from app.services.delivery.chat_channel import ChatChannel
+from app.services.delivery.chat_channel import ChatChannel, InApp
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -417,7 +417,7 @@ class TestMarkNotificationsRead:
 class TestSendNotificationChannels:
     @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.notification_service")
-    @patch(f"{MODULE}.resolve_chat_channel", new_callable=AsyncMock)
+    @patch(f"{MODULE}.resolve_proactive_target", new_callable=AsyncMock)
     async def test_no_channel_named_goes_where_the_user_is_reachable_now(
         self, mock_resolve: AsyncMock, mock_service: MagicMock, mock_writer_factory: MagicMock
     ) -> None:
@@ -437,12 +437,12 @@ class TestSendNotificationChannels:
 
     @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.notification_service")
-    @patch(f"{MODULE}.resolve_chat_channel", new_callable=AsyncMock)
+    @patch(f"{MODULE}.resolve_proactive_target", new_callable=AsyncMock)
     async def test_no_chat_app_linked_means_in_app(
         self, mock_resolve: AsyncMock, mock_service: MagicMock, mock_writer_factory: MagicMock
     ) -> None:
         mock_writer_factory.return_value = _writer_mock()
-        mock_resolve.return_value = None
+        mock_resolve.return_value = InApp(reason="no_chat_app")
         mock_service.create_notification = AsyncMock(side_effect=_delivered_on_every_channel)
 
         await send_notification.coroutine(
@@ -453,7 +453,42 @@ class TestSendNotificationChannels:
 
     @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.notification_service")
-    @patch(f"{MODULE}.resolve_chat_channel", new_callable=AsyncMock)
+    @patch(f"{MODULE}.resolve_proactive_target", new_callable=AsyncMock)
+    async def test_a_background_run_for_a_user_in_the_app_notifies_in_the_app_only(
+        self, mock_resolve: AsyncMock, mock_service: MagicMock, mock_writer_factory: MagicMock
+    ) -> None:
+        mock_writer_factory.return_value = _writer_mock()
+        mock_resolve.return_value = InApp(reason="active_in_app")
+        mock_service.create_notification = AsyncMock(side_effect=_delivered_on_every_channel)
+
+        await send_notification.coroutine(
+            config=_chat_run_config(None, workflow_id="wf-1", execution_mode="background"),
+            message="Build done",
+            title="Build",
+        )
+
+        assert _requested_channels(mock_service) == ["inapp"]
+
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.notification_service")
+    @patch(f"{MODULE}.resolve_proactive_target", new_callable=AsyncMock)
+    async def test_an_unnamed_channel_from_a_web_chat_folds_into_the_reply(
+        self, mock_resolve: AsyncMock, mock_service: MagicMock, mock_writer_factory: MagicMock
+    ) -> None:
+        """The user is in the app and the reply lands there: a web run notifies nobody else."""
+        mock_writer_factory.return_value = _writer_mock()
+        mock_resolve.return_value = InApp(reason="active_in_app")
+
+        result = await send_notification.coroutine(
+            config=_chat_run_config("web"), message="Done", title="Done"
+        )
+
+        mock_service.create_notification.assert_not_called()
+        assert result["delivered_via_conversation"] == "inapp"
+
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.notification_service")
+    @patch(f"{MODULE}.resolve_proactive_target", new_callable=AsyncMock)
     async def test_an_unnamed_channel_on_the_chat_the_user_is_in_folds_into_the_reply(
         self, mock_resolve: AsyncMock, mock_service: MagicMock, mock_writer_factory: MagicMock
     ) -> None:
@@ -613,6 +648,25 @@ class TestSendNotificationNeverDuplicatesTheReply:
         assert result["success"] is True
         assert result["delivered_channels"] == ["whatsapp"]
 
+    @pytest.mark.parametrize("source", ["web", "mobile", "desktop"])
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.notification_service")
+    async def test_an_in_app_notification_from_an_app_chat_folds_into_the_reply(
+        self, mock_service: MagicMock, mock_writer_factory: MagicMock, source: str
+    ) -> None:
+        mock_writer_factory.return_value = _writer_mock()
+
+        result = await send_notification.coroutine(
+            config=_chat_run_config(source),
+            message="Your flight is booked",
+            title="Flight",
+            channels=["inapp"],
+        )
+
+        mock_service.create_notification.assert_not_called()
+        assert result["delivered_via_conversation"] == "inapp"
+        assert result["note"].startswith("The user is reading this conversation in the GAIA app;")
+
     @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.notification_service")
     async def test_a_web_chat_run_notifies_telegram_as_asked(
@@ -626,6 +680,23 @@ class TestSendNotificationNeverDuplicatesTheReply:
             message="Your flight is booked",
             title="Flight",
             channels=["telegram"],
+        )
+
+        assert _requested_channels(mock_service) == ["telegram"]
+
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.notification_service")
+    async def test_a_web_chat_run_drops_only_the_in_app_copy_of_a_mixed_list(
+        self, mock_service: MagicMock, mock_writer_factory: MagicMock
+    ) -> None:
+        mock_writer_factory.return_value = _writer_mock()
+        mock_service.create_notification = AsyncMock(side_effect=_delivered_on_every_channel)
+
+        await send_notification.coroutine(
+            config=_chat_run_config("web"),
+            message="Your flight is booked",
+            title="Flight",
+            channels=["inapp", "telegram"],
         )
 
         assert _requested_channels(mock_service) == ["telegram"]
