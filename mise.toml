@@ -758,6 +758,10 @@ run = "uv run --no-project python scripts/dev/gaia_verify.py"
 description = "Fetch PR review threads read-only: resolution state, IDs for resolve/reply, next-step syntax"
 run = "uv run python scripts/dev/pr_comments.py"
 
+[tasks."pr:conflicts"]
+description = "Replay the merge queue for open PRs (default: yours): which conflict with master or with each other, and the order to queue them"
+run = "uv run python scripts/dev/pr_conflicts.py"
+
 [tasks."ci:remote"]
 description = "Why a PR is red: each failing lane's verdict artifact or error-anchored job log, plus conflicts, reviews, threads and the gh stack (--verbose/--json/--watch)"
 run = "uv run python scripts/dev/ci_remote.py"
