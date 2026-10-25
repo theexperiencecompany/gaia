@@ -16,7 +16,7 @@ Subcommands:
   requeue-stranded    Force-cancel and fully re-run any re-run attempt whose lanes
                       are stuck queued on the home label while no home
                       runner is online (scheduled: ci-requeue.yml).
-  cancel-superseded   Cancel older queued/in-progress runs of this workflow
+  cancel-superseded   Force-cancel older queued/in-progress runs of this workflow
                       on this branch (per-SHA concurrency needs it); on a
                       merge group, every active merge_group run whose head is
                       no longer a live merge-queue entry.
@@ -716,6 +716,9 @@ def cmd_requeue_stranded(_args: list[str]) -> int:
 # listener for its 5-minute timeout. Per-SHA groups plus this async cancel.
 # A merge group's ref is new on every queue rebuild, so no branch or
 # concurrency group links a stale group's runs to the live one: the queue does.
+# Force-cancel, as in requeue-stranded: a plain cancel still runs the old run's
+# always() gate and deploy plan, whose build.yml call took the one pending slot
+# of build.yml's group from the newest run's build phase (run 40226045729).
 
 MERGE_QUEUE_QUERY = """
 query($owner: String!, $name: String!, $branch: String!) {
@@ -732,7 +735,7 @@ CANCEL_ALREADY_COMPLETED = 409
 
 def _cancel(gh: GitHub, repo: str, run_id: int, why: str) -> None:
     try:
-        gh.post(f"repos/{repo}/actions/runs/{run_id}/cancel")
+        gh.post(f"repos/{repo}/actions/runs/{run_id}/force-cancel")
     except GitHubError as err:
         if err.status != CANCEL_ALREADY_COMPLETED:
             raise
