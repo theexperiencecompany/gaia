@@ -258,7 +258,12 @@ async def _executor_presence_note(
     if ctx.tier is not AgentTier.EXECUTOR:
         return None
     return await presence_note_message(
-        ctx.user_id, configurable.get("presence"), ctx.source, ctx.execution_mode
+        ctx.user_id,
+        configurable.get("presence"),
+        ctx.source,
+        ctx.execution_mode,
+        # Comms voices the result and gets the first-turn note itself.
+        opens_thread=False,
     )
 
 

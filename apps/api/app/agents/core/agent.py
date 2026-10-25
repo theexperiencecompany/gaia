@@ -49,6 +49,7 @@ from app.helpers.agent_helpers import (
     build_initial_state,
     execute_graph_silent,
     execute_graph_streaming,
+    opens_thread,
     recent_user_messages,
 )
 from app.models.agent_models import (
@@ -180,6 +181,7 @@ async def _core_agent_logic(
                 active_todo_id=active_todo_id,
                 execution_mode=execution_mode,
                 presence=presence,
+                opens_thread=opens_thread(request.messages, request.message),
             ),
             attachments=MessageAttachments(
                 selected_tool=request.selectedTool,

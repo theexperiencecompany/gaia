@@ -33,6 +33,7 @@ from app.helpers.agent_helpers import (
     execute_graph_silent,
     execute_graph_streaming,
     get_handoff_metadata,
+    opens_thread,
     recent_user_messages,
 )
 from app.models.agent_models import run_analytics_context
@@ -889,6 +890,22 @@ class TestBuildInitialState:
 
         assert state["active_todo_id"] == "todo-3"
         assert state["execution_mode"] == "background"
+
+
+class TestOpensThread:
+    def test_a_turn_with_only_itself_in_history_opens_the_thread(self):
+        assert opens_thread([{"role": "user", "content": "hi "}], "hi")
+
+    def test_a_turn_sent_without_history_opens_the_thread(self):
+        assert opens_thread([], "hi")
+
+    def test_any_earlier_turn_means_the_thread_is_already_open(self):
+        history = [
+            {"role": "assistant", "content": "Your reminder: stretch"},
+            {"role": "user", "content": "thanks"},
+        ]
+
+        assert not opens_thread(history, "thanks")
 
 
 class TestRecentUserMessages:

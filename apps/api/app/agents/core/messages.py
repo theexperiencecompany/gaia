@@ -46,6 +46,8 @@ class MessageScope:
     active_todo_id: str | None = None
     execution_mode: Literal["interactive", "background"] = "interactive"
     presence: PresenceSnapshot | None = None
+    #: The turn starts a conversation, so its thread has never been told where the user is.
+    opens_thread: bool = False
 
 
 @dataclass(frozen=True)
@@ -112,7 +114,13 @@ async def construct_langchain_messages(
                 source=source,
             )
         ),
-        presence_note_message(user_id, scope.presence, source, scope.execution_mode),
+        presence_note_message(
+            user_id,
+            scope.presence,
+            source,
+            scope.execution_mode,
+            opens_thread=scope.opens_thread,
+        ),
     )
 
     # Its own slot, not the dynamic one: tagged `memory_message` it once
