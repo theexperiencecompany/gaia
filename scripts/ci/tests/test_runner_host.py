@@ -271,8 +271,10 @@ def test_prime_archive_warns_and_continues_past_an_unfetchable_action(
 
 def superseded(github: FakeGitHub, runs: list[dict[str, object]]) -> list[str]:
     github.on("GET", r"/actions/workflows/ci.yml/runs$", Reply(200, {"workflow_runs": runs}))
-    github.on("POST", r"/runs/\d+/cancel$", Reply(202, {}))
-    github.on("POST", r"/runs/10/cancel$", Reply(409, {"message": "Cannot cancel a completed run"}))
+    github.on("POST", r"/runs/\d+/force-cancel$", Reply(202, {}))
+    github.on(
+        "POST", r"/runs/10/force-cancel$", Reply(409, {"message": "Cannot cancel a completed run"})
+    )
     proc = run_runner(
         "cancel-superseded",
         env=github.env(
@@ -301,6 +303,30 @@ def test_only_older_active_runs_are_cancelled(github: FakeGitHub) -> None:
         ],
     )
     assert cancelled == ["90", "91"]
+
+
+def test_a_superseded_master_run_is_force_cancelled_so_its_always_jobs_never_run(
+    github: FakeGitHub,
+) -> None:
+    """Regression: a plain cancel still ran the old run's always() gate and deploy plan (run 40226045729)."""
+    github.on(
+        "GET",
+        r"/actions/workflows/ci.yml/runs$",
+        Reply(200, {"workflow_runs": [{"id": 90, "status": "in_progress"}]}),
+    )
+    github.on("POST", r"/runs/\d+/force-cancel$", Reply(202, {}))
+    proc = run_runner(
+        "cancel-superseded",
+        env=github.env(
+            GITHUB_RUN_ID="100",
+            GITHUB_WORKFLOW_REF="theexperiencecompany/gaia/.github/workflows/ci.yml@refs/heads/master",
+            GITHUB_REF_NAME="master",
+            GITHUB_EVENT_NAME="push",
+        ),
+    )
+    assert proc.returncode == 0, proc.stderr
+    posts = [r.path for r in github.requests if r.method == "POST"]
+    assert posts == ["/repos/theexperiencecompany/gaia/actions/runs/90/force-cancel"]
 
 
 def test_a_run_that_cannot_be_cancelled_is_a_warning_not_a_failure(github: FakeGitHub) -> None:
@@ -332,9 +358,11 @@ def queue_cancel(
 
     github.on("GET", r"/repos/[^/]+/[^/]+/actions/runs$", responder=listing)
     github.on("POST", r"/graphql$", queue)
-    github.on("POST", r"/runs/\d+/cancel$", Reply(202, {}))
-    github.on("POST", r"/runs/10/cancel$", Reply(409, {"message": "Cannot cancel a completed run"}))
-    github.on("POST", r"/runs/11/cancel$", Reply(403, {"message": "Resource not accessible"}))
+    github.on("POST", r"/runs/\d+/force-cancel$", Reply(202, {}))
+    github.on(
+        "POST", r"/runs/10/force-cancel$", Reply(409, {"message": "Cannot cancel a completed run"})
+    )
+    github.on("POST", r"/runs/11/force-cancel$", Reply(403, {"message": "Resource not accessible"}))
     return run_runner(
         "cancel-superseded",
         env=github.env(
@@ -348,7 +376,7 @@ def queue_cancel(
 
 
 def cancelled_runs(github: FakeGitHub) -> list[str]:
-    return [r.path.split("/")[-2] for r in github.requests if r.path.endswith("/cancel")]
+    return [r.path.split("/")[-2] for r in github.requests if r.path.endswith("/force-cancel")]
 
 
 def test_a_merge_group_run_whose_entry_left_the_queue_is_cancelled(github: FakeGitHub) -> None:
