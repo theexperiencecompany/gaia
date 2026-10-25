@@ -12,7 +12,7 @@ import signal
 import subprocess
 import time
 
-from github_fake import FakeGitHub, Reply, run_runner
+from github_fake import FakeGitHub, Reply, Request, run_runner
 import pytest
 
 SHA = "a" * 40
@@ -308,3 +308,117 @@ def test_a_run_that_cannot_be_cancelled_is_a_warning_not_a_failure(github: FakeG
         github, [{"id": 10, "status": "in_progress"}, {"id": 11, "status": "queued"}]
     )
     assert cancelled == ["10", "11"]
+
+
+# ── cancel-superseded on a merge group ──────────────────────────────────────
+
+LIVE_SHA = "c" * 40
+STALE_SHA = "d" * 40
+QUEUE_REF = "gh-readonly-queue/master/pr-1505-" + LIVE_SHA
+
+
+def queue_reply(*live: str) -> Reply:
+    nodes = [{"headCommit": {"oid": sha}} for sha in live]
+    entries = {"totalCount": len(nodes), "nodes": nodes}
+    return Reply(200, {"data": {"repository": {"mergeQueue": {"entries": entries}}}})
+
+
+def queue_cancel(
+    github: FakeGitHub, runs: list[dict[str, object]], queue: Reply
+) -> subprocess.CompletedProcess[str]:
+    def listing(req: Request) -> Reply:
+        matching = [r for r in runs if r["status"] == req.query.get("status")]
+        return Reply(200, {"workflow_runs": matching})
+
+    github.on("GET", r"/repos/[^/]+/[^/]+/actions/runs$", responder=listing)
+    github.on("POST", r"/graphql$", queue)
+    github.on("POST", r"/runs/\d+/cancel$", Reply(202, {}))
+    github.on("POST", r"/runs/10/cancel$", Reply(409, {"message": "Cannot cancel a completed run"}))
+    github.on("POST", r"/runs/11/cancel$", Reply(403, {"message": "Resource not accessible"}))
+    return run_runner(
+        "cancel-superseded",
+        env=github.env(
+            GITHUB_RUN_ID="100",
+            GITHUB_WORKFLOW_REF=f"theexperiencecompany/gaia/.github/workflows/ci.yml@refs/heads/{QUEUE_REF}",
+            GITHUB_REF_NAME=QUEUE_REF,
+            GITHUB_EVENT_NAME="merge_group",
+            MERGE_GROUP_BASE_REF="refs/heads/master",
+        ),
+    )
+
+
+def cancelled_runs(github: FakeGitHub) -> list[str]:
+    return [r.path.split("/")[-2] for r in github.requests if r.path.endswith("/cancel")]
+
+
+def test_a_merge_group_run_whose_entry_left_the_queue_is_cancelled(github: FakeGitHub) -> None:
+    runs = [
+        {"id": 90, "status": "in_progress", "head_sha": STALE_SHA},
+        {"id": 91, "status": "queued", "head_sha": STALE_SHA},
+    ]
+    proc = queue_cancel(github, runs, queue_reply(LIVE_SHA))
+    assert proc.returncode == 0, proc.stderr
+    assert sorted(cancelled_runs(github)) == ["90", "91"]
+    listings = [r for r in github.requests if r.method == "GET"]
+    assert {r.query["event"] for r in listings} == {"merge_group"}
+    # Runs are read before the queue, so a group created in between is never in the listing.
+    graphql = next(i for i, r in enumerate(github.requests) if r.path.endswith("/graphql"))
+    assert graphql > github.requests.index(listings[-1])
+
+
+def test_a_live_queue_entrys_run_is_kept(github: FakeGitHub) -> None:
+    runs = [{"id": 90, "status": "queued", "head_sha": LIVE_SHA}]
+    proc = queue_cancel(github, runs, queue_reply(STALE_SHA, LIVE_SHA))
+    assert proc.returncode == 0, proc.stderr
+    assert cancelled_runs(github) == []
+
+
+def test_the_current_merge_group_run_is_never_cancelled(github: FakeGitHub) -> None:
+    runs = [{"id": 100, "status": "in_progress", "head_sha": STALE_SHA}]
+    proc = queue_cancel(github, runs, queue_reply(LIVE_SHA))
+    assert proc.returncode == 0, proc.stderr
+    assert cancelled_runs(github) == []
+
+
+def test_a_stale_run_that_finished_before_its_cancel_is_done(github: FakeGitHub) -> None:
+    runs = [
+        {"id": 10, "status": "in_progress", "head_sha": STALE_SHA},
+        {"id": 12, "status": "queued", "head_sha": STALE_SHA},
+    ]
+    proc = queue_cancel(github, runs, queue_reply(LIVE_SHA))
+    assert proc.returncode == 0, proc.stderr
+    assert sorted(cancelled_runs(github)) == ["10", "12"]
+
+
+def test_a_cancel_refused_for_any_other_reason_fails_the_step(github: FakeGitHub) -> None:
+    runs = [{"id": 11, "status": "in_progress", "head_sha": STALE_SHA}]
+    proc = queue_cancel(github, runs, queue_reply(LIVE_SHA))
+    assert proc.returncode == 1
+    assert "HTTP 403" in proc.stderr
+
+
+@pytest.mark.parametrize(
+    "queue",
+    [
+        # Partial data beside errors: an empty queue read this way would cancel every run.
+        Reply(
+            200,
+            {
+                "data": {"repository": {"mergeQueue": {"entries": {"totalCount": 0, "nodes": []}}}},
+                "errors": [{"message": "Resource not accessible by integration"}],
+            },
+        ),
+        Reply(502, {"message": "Bad gateway"}),
+        Reply(200, {"data": {"repository": {"mergeQueue": None}}}),
+        Reply(
+            200,
+            {"data": {"repository": {"mergeQueue": {"entries": {"totalCount": 2, "nodes": []}}}}},
+        ),
+    ],
+)
+def test_an_unreadable_queue_cancels_nothing_and_fails(github: FakeGitHub, queue: Reply) -> None:
+    runs = [{"id": 90, "status": "in_progress", "head_sha": STALE_SHA}]
+    proc = queue_cancel(github, runs, queue)
+    assert proc.returncode == 1
+    assert "::error::" in proc.stderr
+    assert cancelled_runs(github) == []
