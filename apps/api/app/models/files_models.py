@@ -54,6 +54,19 @@ class FileDocument(UserScopedDocument):
     updated_at: datetime | None = None
 
 
+class FileMimetypeRow(BaseModel):
+    """One file row's mimetype fields, readable even when the row is legacy.
+
+    The migration needs rows that ``FileDocument`` rejects (no ``type``), so
+    this carries both field names without requiring either.
+    """
+
+    file_id: str
+    filename: str
+    type: str | None = None
+    content_type: str | None = None
+
+
 class FileUpdate(BaseModel):
     """Editable file-metadata fields (server-controlled, never the raw payload)."""
 
