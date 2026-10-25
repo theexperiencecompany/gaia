@@ -192,7 +192,6 @@ def test_production_refuses_a_local_blob_store() -> None:
         )
 
 
-@pytest.mark.regression
 def test_a_blob_store_named_by_its_string_value_gets_the_enum_member() -> None:
     """Regression: the cache keys "cloudinary" and BlobStoreKind.CLOUDINARY as one, so a str poisoned it."""
     args = {"unlimited_usage": False, "local_code_sandbox": False}
@@ -210,7 +209,6 @@ def test_a_blob_store_named_by_its_string_value_gets_the_enum_member() -> None:
     assert by_member.blob_store is BlobStoreKind.CLOUDINARY
 
 
-@pytest.mark.regression
 def test_production_refuses_a_local_blob_store_named_by_its_string_value() -> None:
     with pytest.raises(InvalidDeploymentError, match=r"^BLOB_STORE=local is set"):
         deployment_profile(
