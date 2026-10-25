@@ -254,8 +254,3 @@ def is_within_local_daytime(
 
 
 # Commonly used timezone constants for convenience.
-TIMEZONE_UTC = UTC
-TIMEZONE_KOLKATA = "Asia/Kolkata"
-TIMEZONE_NEW_YORK = "America/New_York"
-TIMEZONE_LONDON = "Europe/London"
-TIMEZONE_TOKYO = "Asia/Tokyo"

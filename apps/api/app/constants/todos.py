@@ -26,7 +26,6 @@ FAILED_LABEL: Final[str] = "failed"
 
 # Label added by the maintenance sweep to an overdue todo with no scheduled
 # follow-up, so the UI can surface it for attention.
-NEEDS_FOLLOW_UP_LABEL: Final[str] = "needs-follow-up"
 
 # Labels meaning "this todo is waiting on something outside GAIA". The sweep
 # reads them to judge whether an overdue todo is genuinely stuck, and

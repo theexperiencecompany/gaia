@@ -50,7 +50,6 @@ MCP_PROTOCOL_VERSION = LATEST_PROTOCOL_VERSION
 # Generous timeouts since TLS handshakes can take 2-5s on slow connections.
 OAUTH_PROBE_TIMEOUT = 10  # seconds - for initial server probe
 OAUTH_DISCOVERY_TIMEOUT = 15  # seconds - for metadata discovery
-OAUTH_TOKEN_TIMEOUT = 30  # seconds - for token operations
 
 _CONTENT_TYPE_JSON = "application/json"
 _ACCEPT_JSON_SSE = f"{_CONTENT_TYPE_JSON}, text/event-stream"

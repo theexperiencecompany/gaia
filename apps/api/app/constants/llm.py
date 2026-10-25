@@ -173,12 +173,8 @@ WORKFLOW_SUBAGENT_RECURSION_LIMIT = 20
 # Emit a ``recursion_high_water_mark`` wide event when a run uses ≥80% of
 # its limit so we can tune the cap from real traffic.
 RECURSION_HWM_FRACTION = 0.80
-# When this few supersteps remain before the limit, acall_model injects a
-# wrap-up notice so the model finishes with a summary instead of GraphRecursionError.
-RECURSION_WRAPUP_THRESHOLD_STEPS = 6
 # Remaining supersteps (this fraction of the run's limit, floored) at which acall_model
 # starts showing the wrap-up notice, so the model answers before GraphRecursionError.
-# Executor: 20 of 100, ~10 model turns — a fixed 6 left a looping model only 3.
 RECURSION_WRAPUP_REMAINING_FRACTION = 0.2
 RECURSION_WRAPUP_MIN_STEPS = 6
 
@@ -310,7 +306,6 @@ DEFAULT_GEMINI_MODEL_NAME = "gemini-3.1-flash-lite"
 # concurrent same-provider requests wipe each other's cached chains mid-read
 # (measured: comms chain collapses to ~0 vs. ~99.5% held with Gemini).
 MEMORY_MODEL_NAME = DEFAULT_GEMINI_MODEL_NAME
-DEFAULT_GROK_MODEL_NAME = "x-ai/grok-4.3"
 
 # The model behind every image -> text call. Deliberately NOT tied to
 # DEFAULT_MODEL_NAME (may be text-only): a blind describer fails SILENTLY

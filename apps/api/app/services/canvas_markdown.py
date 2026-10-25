@@ -16,7 +16,6 @@ from app.constants.todos import (
     STANDING_RULES_MAX_CHARS,
 )
 
-LEGACY_ACTIVITY_SECTIONS = ("Activity Log", "Timeline")
 # Activity entries the old append mode dumped into the canvas: "### 2026-08-20" blocks.
 _DATED_BLOCK_RE = re.compile(r"(?:^|\n)(### \d{4}-\d{2}-\d{2}.*?)(?=\n### |\Z)", re.DOTALL)
 # A Timeline line: "- <iso timestamp> <text>" — sortable by the timestamp prefix.

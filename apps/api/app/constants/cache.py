@@ -19,7 +19,6 @@ FIVE_MINUTES_TTL = 300
 
 # TTL Aliases
 DEFAULT_CACHE_TTL = ONE_HOUR_TTL
-STATS_CACHE_TTL = THIRTY_MINUTES_TTL
 CUSTOM_INT_METADATA_TTL = ONE_HOUR_TTL
 SUBAGENT_CACHE_TTL = ONE_HOUR_TTL
 # Subscription plan tier, cached for hot paths (rate limiting, per-request model
@@ -36,16 +35,9 @@ PLANS_CACHE_KEYS = (ACTIVE_PLANS_CACHE_KEY, ALL_PLANS_CACHE_KEY)
 # doesn't re-ask Dodo about every session. Minting a new session drops the key.
 CHECKOUT_SCAN_MISS_CACHE_PREFIX = "checkout_scan_miss:"
 CHECKOUT_SCAN_MISS_TTL = 60
-# The tracked-todo summary injected into comms context. Deliberately short: the
-# list changes as the agent works, and a stale pin is worse than the lookup it
-# saves. Keyed by user alone, so only the unpinned summary may use it.
-TRACKED_TODOS_SUMMARY_CACHE_KEY = "tracked_todos:summary:{user_id}"
-TRACKED_TODOS_SUMMARY_CACHE_TTL = 60
 # A minted Dodo checkout session, per user and billing cycle. Reused rather than
 # re-minted so a user who asks to upgrade twice — or hits a limit repeatedly —
 # doesn't leave a trail of abandoned sessions in Dodo.
-UPGRADE_LINK_CACHE_PREFIX = "upgrade_link:"
-UPGRADE_LINK_CACHE_TTL = ONE_HOUR_TTL
 OAUTH_STATE_TTL = TEN_MINUTES_TTL
 OAUTH_DISCOVERY_TTL = ONE_DAY_TTL
 MCP_TOOLS_CACHE_TTL = ONE_DAY_TTL
@@ -54,7 +46,6 @@ SKILLS_TEXT_CACHE_TTL = TWELVE_HOUR_TTL
 USER_INSTRUCTIONS_CACHE_TTL = ONE_DAY_TTL
 COMMUNITY_CACHE_TTL = FIVE_MINUTES_TTL
 FAVICON_CACHE_TTL = SIX_MONTH_TTL
-SEARCH_CACHE_TTL = ONE_DAY_TTL
 STREAM_TTL = FIVE_MINUTES_TTL
 # A streaming turn refreshes its progress/resume keys once they drop below this,
 # so the refresh costs one TTL read per frame instead of a read-plus-two-writes.
@@ -64,17 +55,11 @@ MOBILE_REDIRECT_TTL = FIVE_MINUTES_TTL
 
 # Long TTLs with event-driven invalidation — short TTLs are a symptom of
 # missing invalidation, not a safety net.
-INTEGRATION_STATUS_CACHE_TTL = ONE_DAY_TTL
-SUBAGENT_PROMPT_CACHE_TTL = ONE_DAY_TTL
 WEB_SEARCH_CACHE_TTL = TEN_MINUTES_TTL
 WEBPAGE_FETCH_CACHE_TTL = THIRTY_MINUTES_TTL
-WORKFLOW_GENERATION_CACHE_TTL = ONE_DAY_TTL
 
 # Bounded in-process LRU+TTL cache for per-(integration, user) compiled
 # subagent graphs. Caps RSS growth that scales with MAU × MCP integrations.
-SUBAGENT_GRAPH_CACHE_MAX_SIZE = 100
-SUBAGENT_GRAPH_CACHE_TTL_SECONDS = TEN_MINUTES_TTL
-SUBAGENT_GRAPH_CLEANUP_INTERVAL_SECONDS = 60
 
 # Repository layer aliases: entity rows are hot/long-lived; query caches are
 # shorter (fan out per argument set). The generation counter, not the TTL,
@@ -101,7 +86,6 @@ DEVICE_MANIFEST_CACHE_PREFIX = "device_manifest"
 LAST_ACTIVE_GATE_PREFIX = "last_active_gate"
 
 # Cache key prefixes
-TEAM_CACHE_PREFIX = "team"
 CUSTOM_INT_METADATA_CACHE_PREFIX = "custom_int_metadata"
 HANDOFF_METADATA_CACHE_PREFIX = "handoff_metadata"
 # Custom-MCP display name resolved for handoff (keyed by integration id).

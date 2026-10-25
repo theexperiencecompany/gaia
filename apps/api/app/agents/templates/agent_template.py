@@ -158,7 +158,6 @@ def get_comms_static_prompt(source: str | None) -> str:
 # Legacy name still imported by a few call sites. Kept as an alias for the
 # default web-style prompt; all per-channel users should go through
 # ``get_comms_static_prompt``.
-COMMS_PROMPT_TEMPLATE: Final[str] = COMMS_PROMPT_DEFAULT
 
 # Activation rewrite plus GAIA_CORE, appended (not interpolated) for a stable
 # provider cache. A stale anchor skips just that rewrite with a warning (never

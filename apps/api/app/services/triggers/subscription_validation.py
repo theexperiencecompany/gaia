@@ -31,7 +31,6 @@ from app.services.triggers.scope_catalog import scope_fields_for
 # silently rewrite what the user asked to watch.
 _FUZZY_CUTOFF = 0.8
 
-_NUMERIC_TYPES = frozenset({MatchableFieldType.INTEGER, MatchableFieldType.NUMBER})
 
 # Operator category errors with exactly one faithful reading. Anything not listed
 # is a rejection, not a guess — see the module docstring.

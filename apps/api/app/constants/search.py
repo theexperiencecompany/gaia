@@ -5,7 +5,6 @@ Constants for search service operations including content limits and timeouts.
 """
 
 # Request timeouts (seconds)
-URL_TIMEOUT = 20.0
 
 # Max redirect hops an outbound fetch follows manually (each hop is SSRF-checked).
 MAX_HTTPX_REDIRECTS = 5
@@ -34,10 +33,6 @@ DEEP_RESEARCH_CRAWL4AI_SEMAPHORE_COUNT = 5
 DEEP_RESEARCH_FALLBACK_SEMAPHORE_COUNT = 5
 
 # Profile crawl batch settings
-PROFILE_CRAWL4AI_SINGLE_TIMEOUT_SECONDS = 35.0
-PROFILE_CRAWL4AI_BATCH_TIMEOUT_SECONDS = 120.0
-PROFILE_CRAWL4AI_SEMAPHORE_COUNT = 20
-PROFILE_CRAWL_CONTENT_MAX_CHARS = 50_000
 
 # A cancellation landing while __aexit__ awaits close() orphans the driver
 # (~50-130 MB each; observed accumulating for days in prod), so teardown is

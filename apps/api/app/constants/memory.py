@@ -260,7 +260,6 @@ EPISODE_ENTRY_TIME_FORMAT = "%H:%M"
 # Always-injected "recent activity": today is shown as its most recent few raw
 # entries (continuity), never the whole day. Past days collapse to their
 # one-line rollover summary. The full journal stays available via search.
-RECENT_ACTIVITY_ENTRY_CAP = 6
 
 # Category folders form a real directory tree; deep enough to segregate
 # ("preferences/restaurants"), shallow enough to browse. Paths deeper than

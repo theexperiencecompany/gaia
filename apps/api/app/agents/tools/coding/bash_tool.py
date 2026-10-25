@@ -75,10 +75,6 @@ from app.templates.docstrings.coding_tools_docs import BASH_TOOL
 from app.utils.output_limiter import truncate_head_tail
 from shared.py.wide_events import log
 
-MAX_TIMEOUT_SECONDS = 600
-DEFAULT_TIMEOUT_SECONDS = 120
-MAX_COMMAND_LENGTH = 16_000
-
 # Bucketed bash exit code counter (fs-metrics-coverage contract). Mirrors
 # shell semantics: 0=success, 1-126=generic failure, 127=not found,
 # 128-254=killed by signal, 255=catch-all, "timeout"=our deadline.

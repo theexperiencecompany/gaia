@@ -96,7 +96,6 @@ class ReplyChoice(StrEnum):
 
 # The only statuses a `Command(resume=...)` payload may carry. Anything else
 # is treated as a denial. "abandoned" is absent: resolution.py maps it to a deny before sending.
-HIL_RESUMABLE_STATUSES: frozenset[str] = frozenset({"approved", "denied", "timeout"})
 
 # Statuses meaning "decided, so the paused run must be re-dispatched" — the
 # sweep's crashed-resume pass matches on these. "auto_approved" is absent: it

@@ -39,6 +39,7 @@ from app.constants.onboarding import (
     GMAIL_PERSONALIZATION_MARKER,
     HOLO_CONVERSATION_ID_FIELD,
 )
+from app.constants.voices import SELECTED_VOICE_FIELD, STARRED_VOICES_FIELD
 from app.db.redis import redis_cache
 from app.db.repositories.base import MongoRepository, cached_query
 from app.db.repositories.cache import CachePolicy
@@ -719,7 +720,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         """Persist the user's selected TTS voice id."""
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
-            {"$set": {"selected_voice_id": voice_id}},
+            {"$set": {SELECTED_VOICE_FIELD: voice_id}},
             scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
@@ -728,7 +729,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         """Replace the user's starred voice id set."""
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
-            {"$set": {"starred_voice_ids": voice_ids}},
+            {"$set": {STARRED_VOICES_FIELD: voice_ids}},
             scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )

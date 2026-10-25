@@ -288,11 +288,6 @@ GATE_ERROR_TEMPLATE = (
 # A node replay reached a call auto mode already RAN in an earlier pass of the same
 # node (a sibling paused, so LangGraph re-ran it). This is the one refusal that must
 # NOT read as "did not happen" — the model must be told it already ran, or it repeats it.
-ALREADY_RAN_TEMPLATE = (
-    "`{tool}` already ran earlier in this turn and was not run a second time. The action "
-    "WAS performed. Treat it as done and carry on from there. Do not call it again, and "
-    "do not use another tool to repeat it."
-)
 
 # A gated call reached a run that cannot pause for approval (a background subagent,
 # workflow, or scheduled run), so it is refused rather than executed unapproved; the

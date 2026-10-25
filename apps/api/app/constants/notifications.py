@@ -18,13 +18,6 @@ CHANNEL_TYPE_IMESSAGE = "imessage"
 CHANNEL_TYPE_EMAIL = "email"
 
 # External channel types a notification can be delivered on
-EXTERNAL_NOTIFICATION_CHANNELS = (
-    CHANNEL_TYPE_TELEGRAM,
-    CHANNEL_TYPE_DISCORD,
-    CHANNEL_TYPE_WHATSAPP,
-    CHANNEL_TYPE_SLACK,
-    CHANNEL_TYPE_IMESSAGE,
-)
 
 # Every channel type a notification may name explicitly (the tool validates
 # against this). One naming none goes in-app plus the user's preferred chat
