@@ -502,11 +502,11 @@ run = "cd apps/api && USE_REAL_SERVICES=1 uv run --group backend --group dev pyt
 
 [tasks."test:one"]
 description = "Run one or more API test files exactly as CI does, minus xdist: `mise test:one tests/unit/x.py [more...]` (keeps --strict-markers and the -m filter; `-o addopts=\"\"` silently drops both)"
-run = "cd apps/api && uv run pytest -p no:xdist -q {{arg(name=\"paths\", var=true)}}"
+run = "cd apps/api && uv run --group backend --group dev pytest -p no:xdist -q {{arg(name=\"paths\", var=true)}}"
 
 [tasks."test:python:unit"]
 description = "Run Python unit tests only (no services, fast)"
-run = "cd apps/api && USE_REAL_SERVICES=0 uv run pytest tests/unit --tb=short -q"
+run = "cd apps/api && USE_REAL_SERVICES=0 uv run --group backend --group dev pytest tests/unit --tb=short -q"
 
 [tasks."test:typescript"]
 description = "Run JS/TS tests via Nx"
@@ -765,3 +765,7 @@ run = "uv run python scripts/dev/pr_conflicts.py"
 [tasks."ci:remote"]
 description = "Why a PR is red: each failing lane's verdict artifact or error-anchored job log, plus conflicts, reviews, threads and the gh stack (--verbose/--json/--watch)"
 run = "uv run python scripts/dev/ci_remote.py"
+
+[tasks."ci:watch"]
+description = "Wait on a PR's CI: `mise ci:watch <PR|branch>` polls up to an hour and exits at the first red check, printing its failure. The only sanctioned way to wait on CI"
+run = "uv run python scripts/dev/ci_remote.py --watch --fail-fast --max-wait 3600"

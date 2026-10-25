@@ -345,7 +345,9 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         # the agent token carries timezone + onboarding. Hand-picking fields here dropped
         # them, so voice mode lost the user's system instructions.
         request.state.user = build_user_context(
-            user_data, auth_provider=auth_provider, impersonated=True
+            user_data,
+            auth_provider=auth_provider,
+            impersonated=True,
         )
         request.state.authenticated = True
 

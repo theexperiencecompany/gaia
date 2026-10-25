@@ -16,8 +16,14 @@ You set none of that up. It's running the moment you connect.
 
 And when something needs you, it comes to you — on iMessage, WhatsApp, Telegram, Slack or Discord.
 
-<a href="https://heygaia.io"><img src="apps/web/public/images/readme/cta-try-gaia-free.png" alt="Try GAIA Free" height="48" /></a>
-<a href="https://docs.heygaia.io/self-hosting/walkthrough"><img src="apps/web/public/images/readme/cta-self-host.png" alt="Self-host" height="48" /></a>
+<a href="https://heygaia.io/signup"><img src="apps/web/public/images/readme/cta-get-started.webp" alt="Get Started" height="52" /></a>
+<a href="https://docs.heygaia.io"><img src="apps/web/public/images/readme/cta-read-the-docs.webp" alt="Read the docs" height="52" /></a>
+
+Run GAIA on your own machine:
+
+```bash
+curl -fsSL https://heygaia.io/install.sh | sh
+```
 
 ## Why GAIA
 
@@ -52,13 +58,15 @@ Gmail, Calendar, Slack, Notion, Linear — different tools, same problem: your d
 
 ### Cloud — recommended
 
-<a href="https://heygaia.io"><img src="apps/web/public/images/screenshots/website_tab.png" alt="GAIA web app" width="500" /></a>
+<a href="https://heygaia.io"><img src="apps/web/public/images/readme/cloud.webp" alt="heygaia.io open in a browser tab" width="720" /></a>
 
-Go to **[heygaia.io](https://heygaia.io)**. Free, nothing to install, always up to date.
+Go to **[heygaia.io](https://heygaia.io)**. Nothing to install, always up to date.
 
 This is how most people should use GAIA — you skip standing up Postgres, Mongo, Redis, ChromaDB and RabbitMQ yourself.
 
 ### Self-host — full control
+
+<img src="apps/web/public/images/readme/self-host-installer.webp" alt="The GAIA installer: Node.js, the GAIA CLI and Docker installed, then GAIA downloading with a progress bar and a row per service" width="720" />
 
 Your own server, your own keys and models, your data on your disks.
 
@@ -75,11 +83,9 @@ curl -fsSL https://heygaia.io/install.sh | sh
 
 It installs the GAIA CLI, then asks to set GAIA up. Say yes: it installs Docker if it's missing, downloads GAIA and starts it on one port.
 
-<img src="docs/images/self-hosting/terminal-install.webp" alt="The GAIA installer downloading GAIA, with a progress bar and a row per image" width="720" />
-
 **2. Open the address it prints** (http://gaia.local on your network, or http://localhost:3000), create your admin account and paste your AI key. That's the whole setup.
 
-<img src="docs/images/self-hosting/terminal-gaia-up.webp" alt="The end of the install: every step checked, then a card saying GAIA is running with the link to open next" width="720" />
+<img src="apps/web/public/images/readme/self-host-ready.webp" alt="The end of the install: every step checked, then a card saying GAIA is running, with the gaia.local setup link to open next" width="720" />
 
 **3. Keep it running**
 
@@ -136,9 +142,8 @@ Workflows run on their own. This is what you ask it directly.
 
 | Plan | Cost | What you get |
 | --- | --- | --- |
-| **Free** | $0, forever | Every tool and integration, standard models, a daily usage allowance, 50 saved memories |
-| **Pro** | **$30/month** | Much higher limits, unlimited memories, more powerful models, long-running tasks, priority support, early access to new features |
-| **Enterprise** | [Talk to us](https://heygaia.io/contact) | SSO, SCIM and audit logs, custom integrations, self-host or private cloud, a dedicated engineer and an SLA |
+| **Pro** | **$30/month** | Everything GAIA does: chat on iMessage, WhatsApp, Telegram, Slack and Discord, inbox triage and drafted replies every morning, meeting briefs and reminders, todos it works on, workflows that run without you, long-running jobs, memory, priority support |
+| **Enterprise** | [Talk to us](https://heygaia.io/contact) | Everything in Pro, plus SSO, SCIM and audit logs, custom integrations, self-host or private cloud, private Slack support, a dedicated engineer and an SLA |
 
 - Pay yearly and two months are free
 - **Self-hosting is free** — you cover your own model API costs instead
