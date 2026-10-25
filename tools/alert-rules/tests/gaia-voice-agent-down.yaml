@@ -21,7 +21,7 @@ tests:
             exp_annotations:
               description: >-
                 No worker is registered with LiveKit to take a voice job, so a user who starts a voice session joins the room and gets dead air — no error, no fallback, and nothing in the API logs to show for it. The worker loads its HuggingFace models from the voice_agent_models volume at startup, so a slow first boot is normal and the 5 minute dwell covers it. Check the voice-agent-worker service and its logs for a model-load failure or missing LiveKit credentials.
-              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-voice-agent-down
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-voice-agent-down
 
   - name: gaia-voice-agent-down stays quiet when the worker reports 1
     interval: 1m
