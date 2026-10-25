@@ -11,11 +11,15 @@ from langchain_core.messages import AIMessage
 from PIL import Image
 import pytest
 
-from app.constants.files import SUMMARY_LLM_MAX_CONCURRENCY
+from app.agents.llm.exceptions import LLMNotConfiguredError
+from app.agents.prompts.image_prompts import DOCUMENT_IMAGE_SUMMARY_PROMPT
+from app.constants.files import IMAGE_SUMMARY_NO_VISION_PROVIDER, SUMMARY_LLM_MAX_CONCURRENCY
 from app.constants.llm import HELPER_MAX_OUTPUT_TOKENS
+from app.constants.log_tags import LogTag
 from app.models.files_models import DocumentPageModel, DocumentSummaryModel
 from app.utils import file_utils, local_document_parser
 from app.utils.file_utils import DocumentProcessor, generate_file_summary
+from tests.helpers import captured_wide_event
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -230,6 +234,35 @@ class TestProcessImage:
             result = await processor.process_image(_encode_image("PNG"))
         assert result == "A scenic mountain view"
 
+    async def test_no_vision_provider_degrades_to_an_explicit_summary(
+        self, processor: DocumentProcessor
+    ) -> None:
+        """An upload on an Ollama-only instance must still land, saying why it was not described."""
+        no_vision = AsyncMock(side_effect=LLMNotConfiguredError("no vision provider"))
+        with patch("app.utils.file_utils.describe_image", no_vision):
+            async with captured_wide_event() as event:
+                result = await processor.process_image(_encode_image("PNG"))
+
+        assert result == IMAGE_SUMMARY_NO_VISION_PROVIDER
+        assert event["warnings"] == [
+            {
+                "msg": f"{LogTag.TOOL} No vision provider for an uploaded image",
+                "error": "no vision provider",
+            }
+        ]
+
+    async def test_the_vision_call_is_metered_to_the_uploader_with_the_document_prompt(
+        self, processor: DocumentProcessor
+    ) -> None:
+        with _mock_vision("desc") as vision:
+            await processor.process_image(_encode_image("PNG"))
+
+        assert vision.call_args.kwargs == {
+            "prompt": DOCUMENT_IMAGE_SUMMARY_PROMPT,
+            "label": "file_image_summary",
+            "user_id": "u-test",
+        }
+
     async def test_the_mime_is_sniffed_from_the_bytes_not_assumed(
         self, processor: DocumentProcessor
     ) -> None:
@@ -324,6 +357,31 @@ class TestProcessDoc:
         processor.parser.aparse.assert_awaited_once()
         assert len(result) == 1
         assert result[0].data.content == "OCR'd content"
+
+    async def test_a_scanned_pdf_with_no_ocr_key_says_why_it_was_not_read(
+        self, processor: DocumentProcessor, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(file_utils, "resolved_config", lambda provider: None)
+        with patch(
+            "app.utils.file_utils.local_document_parser.classify_pdf",
+            return_value=local_document_parser.PdfClassification(needs_ocr=True),
+        ):
+            async with captured_wide_event() as event:
+                result = await processor.process_file(b"%PDF-scan", "application/pdf", "scan.pdf")
+
+        assert result == (
+            "scan.pdf is a scanned PDF and was not read: reading scanned pages needs OCR, "
+            "which isn't set up on this GAIA instance. An admin can add a LlamaParse key "
+            "in Settings → Providers & Tools."
+        )
+        assert event["warnings"] == [
+            {
+                "msg": f"{LogTag.TOOL} Scanned PDF skipped: no OCR provider",
+                "filename": "scan.pdf",
+                "error_type": "ProviderNotConfiguredError",
+                "error": "LlamaParse OCR has no API key",
+            }
+        ]
 
     async def test_aparse_returns_list_unwraps_first(self, processor: DocumentProcessor) -> None:
         """When aparse returns a list, the first element is used (OCR fallback path)."""

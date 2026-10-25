@@ -38,7 +38,8 @@ COMMON_SOURCES = ContextSources(
     skills="## Available skills\n- inbox-triage",
     connected_integrations=[{"id": "gmail", "name": "Gmail"}],
     account_identity={"email": "ada@example.com"},
-    custom_instructions="Always archive newsletters.",
+    global_instructions="Reply in plain English.",
+    integration_instructions="Always archive newsletters.",
     workflow_integrations_hint="# Connected integrations\nGmail (`gmail`)",
 )
 
@@ -56,7 +57,8 @@ BOUND_RUN_SOURCES = ContextSources(
     skills=COMMON_SOURCES.skills,
     connected_integrations=COMMON_SOURCES.connected_integrations,
     account_identity=COMMON_SOURCES.account_identity,
-    custom_instructions=COMMON_SOURCES.custom_instructions,
+    global_instructions=COMMON_SOURCES.global_instructions,
+    integration_instructions=COMMON_SOURCES.integration_instructions,
     active_todo=ACTIVE_TODO,
 )
 

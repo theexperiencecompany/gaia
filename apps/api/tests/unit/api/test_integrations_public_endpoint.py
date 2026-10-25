@@ -77,7 +77,7 @@ class TestGetPublicIntegration:
 
         with (
             patch(
-                "app.api.v1.endpoints.integrations.public.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 [fake_native],
             ),
             patch(
@@ -116,7 +116,7 @@ class TestGetPublicIntegration:
 
         with (
             patch(
-                "app.api.v1.endpoints.integrations.public.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 [fake_native],
             ),
             patch(
@@ -138,7 +138,7 @@ class TestGetPublicIntegration:
         fake_native.managed_by = "internal"
 
         with (
-            patch(f"{_PUBLIC}.OAUTH_INTEGRATIONS", [fake_native]),
+            patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [fake_native]),
             patch(f"{_PUBLIC}.integration_repository") as mock_repo,
             patch(f"{_PUBLIC}.parse_integration_slug", return_value=_NO_SLUG),
         ):
@@ -155,7 +155,7 @@ class TestGetPublicIntegration:
         )
 
         with (
-            patch(f"{_PUBLIC}.OAUTH_INTEGRATIONS", []),
+            patch("app.config.oauth_config.OAUTH_INTEGRATIONS", []),
             patch(f"{_PUBLIC}.integration_repository") as mock_repo,
         ):
             mock_repo.get_public_by_slug = AsyncMock(return_value=integration)
@@ -175,7 +175,7 @@ class TestGetPublicIntegration:
         integration = _with_creator("abc123", "Legacy Tool")
 
         with (
-            patch(f"{_PUBLIC}.OAUTH_INTEGRATIONS", []),
+            patch("app.config.oauth_config.OAUTH_INTEGRATIONS", []),
             patch(f"{_PUBLIC}.integration_repository") as mock_repo,
             patch(f"{_PUBLIC}.parse_integration_slug", return_value=_LEGACY_SLUG),
         ):
@@ -190,7 +190,7 @@ class TestGetPublicIntegration:
     async def test_not_found(self, client: AsyncClient) -> None:
         """Return 404 when no integration matches."""
         with (
-            patch(f"{_PUBLIC}.OAUTH_INTEGRATIONS", []),
+            patch("app.config.oauth_config.OAUTH_INTEGRATIONS", []),
             patch(f"{_PUBLIC}.integration_repository") as mock_repo,
             patch(f"{_PUBLIC}.parse_integration_slug", return_value=_NO_SLUG),
         ):
@@ -203,7 +203,7 @@ class TestGetPublicIntegration:
     async def test_unexpected_error_returns_500(self, client: AsyncClient) -> None:
         """Unexpected exception maps to 500."""
         with (
-            patch(f"{_PUBLIC}.OAUTH_INTEGRATIONS", new=[]),
+            patch("app.config.oauth_config.OAUTH_INTEGRATIONS", new=[]),
             patch(f"{_PUBLIC}.integration_repository") as mock_repo,
         ):
             mock_repo.get_public_by_slug = AsyncMock(side_effect=TypeError("boom"))

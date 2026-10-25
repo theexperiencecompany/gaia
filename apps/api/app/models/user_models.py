@@ -1,4 +1,5 @@
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum, StrEnum
 from typing import Annotated, Any, TypedDict
@@ -13,6 +14,7 @@ from pydantic import (
 )
 
 from app.config.feature_flags import FeatureFlag
+from app.constants.auth import InstanceRole
 from app.db.repositories.base import MongoDocument
 from app.models.first_steps_models import FirstStepsState
 from app.schemas.common import ResponseModel
@@ -219,9 +221,6 @@ class OnboardingPreferences(BaseModel):
         max_length=OTHER_NEED_MAX_LENGTH,
         description="What the user typed under 'Something else' in onboarding Q2, verbatim",
     )
-    custom_instructions: str | None = Field(
-        default=None, max_length=500, description="Custom instructions for the AI assistant"
-    )
     # Removed timezone field - now only stored at user.timezone root level
 
     @field_validator("other_need")
@@ -246,17 +245,6 @@ class OnboardingPreferences(BaseModel):
             # Allow custom response styles (anything that's not in the predefined list)
             if v not in valid_styles and len(v) == 0:
                 raise ValueError("Response style cannot be empty")
-            return v
-        # Return None for empty strings to normalize the data
-        return None if v == "" else v
-
-    @field_validator("custom_instructions")
-    @classmethod
-    def validate_custom_instructions(cls, v: str | None) -> str | None:
-        if v is not None and v != "":
-            v = v.strip()
-            if len(v) > 500:
-                raise ValueError("Custom instructions must be 500 characters or less")
             return v
         # Return None for empty strings to normalize the data
         return None if v == "" else v
@@ -566,6 +554,8 @@ class UserDocument(MongoDocument):
     welcome_email_sent_at: datetime | None = None
     marketing_contact_added_at: datetime | None = None
     feature_flags: FeatureFlagChoices | None = None
+    # Self-host (local auth) accounts only; hosted users never carry a role.
+    role: InstanceRole | None = None
 
 
 class AuthenticatedUser(BaseModel):
@@ -579,8 +569,8 @@ class AuthenticatedUser(BaseModel):
 
     The profile fields mirror ``UserDocument``'s declared fields one-for-one,
     because ``GET /me`` serves this object and its wire shape is those fields.
-    The agent reads ``timezone`` and ``onboarding`` (custom instructions,
-    preferences, writing style) — hand-picking a subset is what once made voice
+    The agent reads ``timezone`` and ``onboarding`` (preferences, writing
+    style) — hand-picking a subset is what once made voice
     mode and the bots silently drop the user's system instructions.
     """
 
@@ -630,6 +620,7 @@ class AuthenticatedUser(BaseModel):
     welcome_email_sent_at: datetime | None = None
     marketing_contact_added_at: datetime | None = None
     feature_flags: FeatureFlagChoices | None = None
+    role: InstanceRole | None = None
 
     def with_timezone(self, timezone: str) -> "AuthenticatedUser":
         """A copy carrying the resolved home timezone (the model is frozen)."""
@@ -712,6 +703,7 @@ class AuthenticatedUserResponse(BaseModel):
     last_inactive_email_sent: datetime | None = None
     inactive_email_count: int | None = None
     first_steps: FirstStepsState | None = None
+    role: InstanceRole | None = None
 
 
 class PersonalizationBundle(BaseModel):
@@ -767,3 +759,11 @@ class UserUpdate(BaseModel):
     name: str | None = None
     timezone: str | None = None
     picture: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ProfilePictureUpload:
+    """A validated profile picture: its bytes and its image MIME type."""
+
+    data: bytes
+    content_type: str

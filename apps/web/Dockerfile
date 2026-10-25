@@ -1,10 +1,16 @@
 # syntax=docker/dockerfile:1
-# Browser-facing API URL baked into the bundle. build.yml overrides it for the
-# self-host package; the runner stage records the value so docker-entrypoint.sh
-# can swap it for NEXT_PUBLIC_APP_URL whichever value was baked.
-ARG NEXT_PUBLIC_API_BASE_URL=https://preview.placeholder.buildtime/api/v1/
+# Browser-facing API base baked into the bundle. Same-origin by default: the
+# self-host proxy serves /api/v1 beside the app, so one image works on any
+# hostname, IP or port with no runtime rewrite. Server-side code reaches the
+# API through API_BASE_URL_INTERNAL instead.
+ARG NEXT_PUBLIC_API_BASE_URL=/api/v1/
 
-FROM node:24-alpine AS base
+# Node version is declared once in .node-version. Docker cannot read a file in a
+# FROM line, so this default mirrors it and tools/lints/check_tool_pins.py fails
+# if the two disagree. Build scripts may override with --build-arg NODE_VERSION.
+ARG NODE_VERSION=24.22.1
+
+FROM node:${NODE_VERSION}-alpine AS base
 # Pinned via corepack, same as apps/bots/Dockerfile. Unpinned `npm install -g
 # pnpm` pulled pnpm 11 against this repo's pnpm@10 lockfile and the install
 # died on native-binary identity verification (the never-run-unpinned lesson
@@ -55,8 +61,18 @@ COPY . .
 
 ARG NEXT_PUBLIC_API_BASE_URL
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
+# This image is the self-host package: the flag is inlined at build time so
+# server and browser agree with no runtime probe (see src/lib/selfhost.ts).
+ENV NEXT_PUBLIC_GAIA_SELFHOST=true
 
 WORKDIR /app/apps/web
+# Bound the Node heap for the production build. Next.js fans static rendering
+# out across every core, and on a 6-8 GB self-host box the combined heaps OOM
+# mid-compile (measured: SIGKILL building gaia-web on a 6 GB host). The cap
+# only forces earlier GC — output is identical, and big CI builders can raise
+# it per build. Workers inherit NODE_OPTIONS, so one variable covers all.
+ARG NEXT_BUILD_MAX_OLD_SPACE_MB=3072
+ENV NODE_OPTIONS=--max-old-space-size=${NEXT_BUILD_MAX_OLD_SPACE_MB}
 RUN pnpm build
 
 # ===================================
@@ -65,14 +81,14 @@ RUN pnpm build
 # runtime deps into .next/standalone — no pnpm or node_modules
 # needed in the final image.
 # ===================================
-FROM node:24-alpine AS runner
+FROM node:${NODE_VERSION}-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=3000
-ARG NEXT_PUBLIC_API_BASE_URL
-ENV BAKED_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
-
+# The standalone server binds to $HOSTNAME, which Docker sets to the container
+# id — so localhost (the healthcheck) was refused. Listen on every interface.
+ENV HOSTNAME=0.0.0.0
 RUN addgroup --system --gid 1001 nodejs \
  && adduser --system --uid 1001 nextjs
 
@@ -80,11 +96,8 @@ COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static     ./apps/web/.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/public            ./apps/web/public
 
-# Root-owned and read-only to nextjs: the process it launches must not be able to rewrite it.
-COPY --chmod=0755 apps/web/docker-entrypoint.sh ./docker-entrypoint.sh
-
 USER nextjs
 
 EXPOSE 3000
 
-CMD ["sh", "./docker-entrypoint.sh"]
+CMD ["node", "apps/web/server.js"]

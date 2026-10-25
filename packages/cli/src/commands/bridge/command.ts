@@ -2,6 +2,8 @@
 // one secure outbound tunnel.
 
 import { Command } from "commander";
+import { CLI_COMMAND_DESCRIPTIONS } from "../../../../../libs/shared/ts/src/cli/command-manifest.js";
+import { runAction } from "../../lib/command-action.js";
 import {
   apiUrlFromEnvOrCreds,
   clearCredentials,
@@ -44,22 +46,8 @@ function cmdList(): void {
   }
 }
 
-/** Commander swallows async rejections, so every action reports its own failure. */
-async function run(action: () => void | Promise<void>): Promise<void> {
-  try {
-    await action();
-  } catch (error) {
-    console.error(
-      `Error: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    process.exit(1);
-  }
-}
-
 export const bridgeCommand = new Command("bridge")
-  .description(
-    "Connect this machine's local MCP servers and files to GAIA (outbound-only, no inbound ports)",
-  )
+  .description(CLI_COMMAND_DESCRIPTIONS.bridge)
   .addHelpText(
     "after",
     "\nRevoke a device anytime from GAIA → Settings → Devices.",
@@ -80,16 +68,19 @@ bridgeCommand
   .option("--env <pair...>", "stdio: KEY=VALUE env var (repeatable)")
   .option("--header <pair...>", "url: Header:Value request header (repeatable)")
   .action(async (opts: AddOptions) => {
-    await run(() => runAdd(opts));
+    await runAction(() => runAdd(opts));
   });
 
 bridgeCommand
   .command("login")
   .description("Pair this machine with your GAIA account")
-  .option("--api <url>", "GAIA API base URL")
+  .option(
+    "--api <url>",
+    "GAIA API base URL (default: this machine's self-host install, else GAIA Cloud)",
+  )
   .option("--name <name>", "Name to show for this device in Settings")
   .action(async (options: { api?: string; name?: string }) => {
-    await run(async () => {
+    await runAction(async () => {
       await runLogin({
         ...(options.api !== undefined ? { api: options.api } : {}),
         ...(options.name !== undefined ? { name: options.name } : {}),
@@ -103,7 +94,7 @@ bridgeCommand
   .alias("list")
   .description("Show pairing status and configured servers")
   .action(async () => {
-    await run(cmdList);
+    await runAction(cmdList);
   });
 
 bridgeCommand
@@ -114,7 +105,7 @@ bridgeCommand
   )
   .argument("[key]", "Server key from `gaia bridge ls` (optional)")
   .action(async (key: string | undefined) => {
-    await run(() => runRemove(key));
+    await runAction(() => runRemove(key));
   });
 
 bridgeCommand
@@ -128,7 +119,7 @@ bridgeCommand
     "(internal) hold the tunnel in the foreground; used by the background daemon",
   )
   .action(async (options: { serve?: boolean }) => {
-    await run(options.serve ? runServe : runUp);
+    await runAction(options.serve ? runServe : runUp);
   });
 
 bridgeCommand
@@ -136,14 +127,14 @@ bridgeCommand
   .alias("stop")
   .description("Stop the background tunnel started by `gaia bridge up`")
   .action(async () => {
-    await run(stopDaemon);
+    await runAction(stopDaemon);
   });
 
 bridgeCommand
   .command("logout")
   .description("Forget local credentials")
   .action(async () => {
-    await run(() => {
+    await runAction(() => {
       clearCredentials();
       console.info(
         "Logged out. Your device record remains until you revoke it in GAIA settings.",

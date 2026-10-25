@@ -1,6 +1,7 @@
 """Tests for ComposioService and Gmail custom tools."""
 
 from types import SimpleNamespace
+from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import composio_client
@@ -8,13 +9,21 @@ import httpx
 import pytest
 
 from app.config.oauth_config import get_integration_by_id
+from app.config.settings import settings
 from app.constants.integrations import (
     COMPOSIO_ACCOUNT_LIST_LIMIT,
+    COMPOSIO_AUTH_CONFIG_PAGE_SIZE,
     COMPOSIO_SERVICE_PROVIDER,
     GMAIL_INTEGRATION_ID,
 )
+from app.services.composio import auth_config_resolver
+from app.services.providers.provider_credentials_service import ProviderConfig
+from app.utils.exceptions import ProviderNotConfiguredError
 from shared.py.wide_events import log
 from tests.helpers import captured_wide_event
+
+# An env override: the resolver reads it with no store or Composio project behind it.
+GMAIL_AC = "ac_test_gmail"
 
 # ---------------------------------------------------------------------------
 # ComposioService tests
@@ -101,15 +110,16 @@ class TestConnectAccount:
     @pytest.mark.asyncio
     async def test_unsupported_provider_raises(self):
         svc = _make_service()
-        with patch("app.services.composio.composio_service.COMPOSIO_SOCIAL_CONFIGS", {}):
+        with patch(
+            "app.services.composio.composio_service.get_composio_integrations_by_provider",
+            return_value={},
+        ):
             with pytest.raises(ValueError, match="not supported"):
                 await svc.connect_account("unsupported", "user1", "tok")
 
     @pytest.mark.asyncio
     async def test_a_new_account_link_returns_to_the_callback_with_its_state(self):
         svc = _make_service()
-        config = MagicMock()
-        config.auth_config_id = "auth123"
 
         connection_request = MagicMock()
         connection_request.redirect_url = "https://example.com/redirect"
@@ -118,10 +128,7 @@ class TestConnectAccount:
         svc.composio.connected_accounts.link.return_value = connection_request
 
         with (
-            patch(
-                "app.services.composio.composio_service.COMPOSIO_SOCIAL_CONFIGS",
-                {"gmail": config},
-            ),
+            patch.object(settings, "COMPOSIO_AUTH_CONFIG_OVERRIDES", {"gmail": GMAIL_AC}),
             patch(
                 "app.services.composio.composio_service.settings",
                 MagicMock(COMPOSIO_REDIRECT_URI="https://example.com/cb"),
@@ -136,7 +143,7 @@ class TestConnectAccount:
         }
         svc.composio.connected_accounts.link.assert_called_once_with(
             user_id="user1",
-            auth_config_id="auth123",
+            auth_config_id=GMAIL_AC,
             callback_url="https://example.com/cb?state=tok",
             allow_multiple=True,
         )
@@ -144,15 +151,10 @@ class TestConnectAccount:
     @pytest.mark.asyncio
     async def test_connect_account_propagates_exception(self):
         svc = _make_service()
-        config = MagicMock()
-        config.auth_config_id = "auth123"
         svc.composio.connected_accounts.link.side_effect = RuntimeError("boom")
 
         with (
-            patch(
-                "app.services.composio.composio_service.COMPOSIO_SOCIAL_CONFIGS",
-                {"gmail": config},
-            ),
+            patch.object(settings, "COMPOSIO_AUTH_CONFIG_OVERRIDES", {"gmail": GMAIL_AC}),
             patch(
                 "app.services.composio.composio_service.settings",
                 MagicMock(COMPOSIO_REDIRECT_URI="https://example.com/cb"),
@@ -509,28 +511,23 @@ class TestCheckConnectionStatus:
     @pytest.mark.asyncio
     async def test_returns_connected_status(self):
         svc = _make_service()
-        config = MagicMock()
-        config.auth_config_id = "auth_gmail"
 
         account = MagicMock()
         account.auth_config.is_disabled = False
         account.status = "ACTIVE"
-        account.auth_config.id = "auth_gmail"
+        account.auth_config.id = GMAIL_AC
 
         user_accounts = MagicMock()
         user_accounts.items = [account]
         svc.composio.connected_accounts.list = MagicMock(return_value=user_accounts)
 
-        with patch(
-            "app.services.composio.composio_service.COMPOSIO_SOCIAL_CONFIGS",
-            {"gmail": config},
-        ):
+        with patch.object(settings, "COMPOSIO_AUTH_CONFIG_OVERRIDES", {"gmail": GMAIL_AC}):
             result = await svc.check_connection_status(["gmail"], "user1")
 
         assert result == {"gmail": True}
         svc.composio.connected_accounts.list.assert_called_once_with(
             user_ids=["user1"],
-            auth_config_ids=["auth_gmail"],
+            auth_config_ids=[GMAIL_AC],
             statuses=["ACTIVE"],
             limit=COMPOSIO_ACCOUNT_LIST_LIMIT,
         )
@@ -538,22 +535,17 @@ class TestCheckConnectionStatus:
     @pytest.mark.asyncio
     async def test_returns_false_for_disabled(self):
         svc = _make_service()
-        config = MagicMock()
-        config.auth_config_id = "auth_gmail"
 
         account = MagicMock()
         account.auth_config.is_disabled = True
         account.status = "ACTIVE"
-        account.auth_config.id = "auth_gmail"
+        account.auth_config.id = GMAIL_AC
 
         user_accounts = MagicMock()
         user_accounts.items = [account]
         svc.composio.connected_accounts.list = MagicMock(return_value=user_accounts)
 
-        with patch(
-            "app.services.composio.composio_service.COMPOSIO_SOCIAL_CONFIGS",
-            {"gmail": config},
-        ):
+        with patch.object(settings, "COMPOSIO_AUTH_CONFIG_OVERRIDES", {"gmail": GMAIL_AC}):
             result = await svc.check_connection_status(["gmail"], "user1")
 
         assert result == {"gmail": False}
@@ -565,7 +557,10 @@ class TestCheckConnectionStatus:
         user_accounts.items = []
         svc.composio.connected_accounts.list = MagicMock(return_value=user_accounts)
 
-        with patch("app.services.composio.composio_service.COMPOSIO_SOCIAL_CONFIGS", {}):
+        with patch(
+            "app.services.composio.composio_service.get_composio_integrations_by_provider",
+            return_value={},
+        ):
             result = await svc.check_connection_status(["unknown"], "user1")
 
         assert result == {"unknown": False}
@@ -573,17 +568,74 @@ class TestCheckConnectionStatus:
     @pytest.mark.asyncio
     async def test_returns_defaults_on_exception(self):
         svc = _make_service()
-        config = MagicMock()
-        config.auth_config_id = "auth_gmail"
         svc.composio.connected_accounts.list = MagicMock(side_effect=RuntimeError("fail"))
 
-        with patch(
-            "app.services.composio.composio_service.COMPOSIO_SOCIAL_CONFIGS",
-            {"gmail": config},
-        ):
+        with patch.object(settings, "COMPOSIO_AUTH_CONFIG_OVERRIDES", {"gmail": GMAIL_AC}):
             result = await svc.check_connection_status(["gmail"], "user1")
 
         assert result == {"gmail": False}
+
+
+class TestListEnabledAuthConfigs:
+    @pytest.mark.asyncio
+    async def test_every_page_is_read_and_disabled_configs_are_dropped(self):
+        svc = _make_service()
+        pages = [
+            SimpleNamespace(
+                items=[
+                    SimpleNamespace(id="ac_1", status="ENABLED"),
+                    SimpleNamespace(id="ac_off", status="DISABLED"),
+                ],
+                next_cursor="page-2",
+            ),
+            SimpleNamespace(items=[SimpleNamespace(id="ac_2", status="ENABLED")], next_cursor=None),
+        ]
+        svc.composio.auth_configs.list = MagicMock(side_effect=pages)
+
+        configs = await svc.list_enabled_auth_configs()
+
+        assert [c.id for c in configs] == ["ac_1", "ac_2"]
+        assert [c.kwargs for c in svc.composio.auth_configs.list.call_args_list] == [
+            {"limit": COMPOSIO_AUTH_CONFIG_PAGE_SIZE},
+            {"limit": COMPOSIO_AUTH_CONFIG_PAGE_SIZE, "cursor": "page-2"},
+        ]
+
+
+class TestNotSetUpOnThisInstance:
+    @pytest.fixture(autouse=True)
+    def _selfhost_with_nothing_stored(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(settings, "ENV", "selfhost")
+        monkeypatch.setattr(settings, "COMPOSIO_AUTH_CONFIG_OVERRIDES", {})
+        monkeypatch.setattr(
+            auth_config_resolver,
+            "instance_settings_repository",
+            SimpleNamespace(find_by_key=AsyncMock(return_value=None)),
+        )
+        auth_config_resolver.invalidate_auth_config_cache()
+        yield
+        auth_config_resolver.invalidate_auth_config_cache()
+
+    @pytest.mark.asyncio
+    async def test_connect_refuses_without_minting_a_link(self):
+        svc = _make_service()
+
+        with pytest.raises(ValueError, match="Gmail is not set up on this instance"):
+            await svc.connect_account("gmail", "user1", state_token="tok")
+        svc.composio.connected_accounts.link.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_status_is_false_without_asking_composio(self):
+        svc = _make_service()
+
+        assert await svc.check_connection_status(["gmail"], "user1") == {"gmail": False}
+        svc.composio.connected_accounts.list.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_disconnect_has_nothing_to_revoke(self):
+        svc = _make_service()
+
+        assert await svc.delete_all_connected_accounts("user1", "gmail") == 0
+        svc.composio.connected_accounts.list.assert_not_called()
 
 
 class TestGetConnectedAccountById:
@@ -603,7 +655,10 @@ class TestDeleteAllConnectedAccounts:
     @pytest.mark.asyncio
     async def test_unsupported_provider(self):
         svc = _make_service()
-        with patch("app.services.composio.composio_service.COMPOSIO_SOCIAL_CONFIGS", {}):
+        with patch(
+            "app.services.composio.composio_service.get_composio_integrations_by_provider",
+            return_value={},
+        ):
             with pytest.raises(ValueError, match="not supported"):
                 await svc.delete_all_connected_accounts("user1", "bad")
 
@@ -611,8 +666,6 @@ class TestDeleteAllConnectedAccounts:
     async def test_every_account_goes_whatever_its_status(self):
         """Expired and abandoned reconnect leftovers are revoked with the live ones."""
         svc = _make_service()
-        config = MagicMock()
-        config.auth_config_id = "auth_gmail"
         accounts = []
         for account_id, status in (("acc1", "ACTIVE"), ("acc2", "EXPIRED"), ("acc3", "INITIATED")):
             account = MagicMock()
@@ -622,10 +675,7 @@ class TestDeleteAllConnectedAccounts:
         svc.composio.connected_accounts.list = MagicMock(return_value=MagicMock(items=accounts))
         svc.composio.connected_accounts.delete = MagicMock(return_value=None)
 
-        with patch(
-            "app.services.composio.composio_service.COMPOSIO_SOCIAL_CONFIGS",
-            {"gmail": config},
-        ):
+        with patch.object(settings, "COMPOSIO_AUTH_CONFIG_OVERRIDES", {"gmail": GMAIL_AC}):
             async with captured_wide_event() as event:
                 deleted = await svc.delete_all_connected_accounts("user1", "gmail")
 
@@ -633,7 +683,7 @@ class TestDeleteAllConnectedAccounts:
         assert event["composio_user_id"] == "user1"
         assert event["composio_provider"] == "gmail"
         svc.composio.connected_accounts.list.assert_called_once_with(
-            user_ids=["user1"], auth_config_ids=["auth_gmail"], limit=COMPOSIO_ACCOUNT_LIST_LIMIT
+            user_ids=["user1"], auth_config_ids=[GMAIL_AC], limit=COMPOSIO_ACCOUNT_LIST_LIMIT
         )
         assert {
             c.kwargs["nanoid"] for c in svc.composio.connected_accounts.delete.call_args_list
@@ -646,17 +696,12 @@ class TestDeleteAllConnectedAccounts:
     @pytest.mark.asyncio
     async def test_a_failed_revoke_propagates(self):
         svc = _make_service()
-        config = MagicMock()
-        config.auth_config_id = "auth_gmail"
         account = MagicMock()
         account.id = "acc1"
         svc.composio.connected_accounts.list = MagicMock(return_value=MagicMock(items=[account]))
         svc.composio.connected_accounts.delete = MagicMock(side_effect=RuntimeError("fail"))
 
-        with patch(
-            "app.services.composio.composio_service.COMPOSIO_SOCIAL_CONFIGS",
-            {"gmail": config},
-        ):
+        with patch.object(settings, "COMPOSIO_AUTH_CONFIG_OVERRIDES", {"gmail": GMAIL_AC}):
             with pytest.raises(RuntimeError, match="fail"):
                 await svc.delete_all_connected_accounts("user1", "gmail")
 
@@ -779,13 +824,84 @@ class TestGetComposioService:
         # The same name @lazy_provider registered the service under.
         mock_providers.get.assert_called_once_with(COMPOSIO_SERVICE_PROVIDER)
 
-    def test_raises_when_none(self):
-        with patch("app.services.composio.composio_service.providers") as mock_providers:
+    def test_no_key_raises_not_configured(self):
+        from app.services.composio import composio_service as mod
+
+        with (
+            patch.object(mod, "providers") as mock_providers,
+            patch.object(mod, "resolved_config", return_value=None),
+        ):
             mock_providers.get.return_value = None
-            from app.services.composio.composio_service import get_composio_service
+
+            with pytest.raises(ProviderNotConfiguredError) as refused:
+                mod.get_composio_service()
+
+        assert refused.value.message == (
+            "COMPOSIO_KEY is not set in settings and no composio credential is stored"
+        )
+
+    def test_a_key_whose_service_failed_to_build_is_a_real_failure(self):
+        from app.services.composio import composio_service as mod
+
+        with (
+            patch.object(mod, "providers") as mock_providers,
+            patch.object(mod, "resolved_config", return_value=ProviderConfig(api_key="k")),
+        ):
+            mock_providers.get.return_value = None
 
             with pytest.raises(RuntimeError, match="not available"):
-                get_composio_service()
+                mod.get_composio_service()
+
+
+class TestInitComposioService:
+    """The loader resolves store-first (runtime snapshot) with an env fallback.
+
+    Sync loader on purpose — the Composio SDK is synchronous and its consumers
+    call it from worker threads — so it reads the credential service's runtime
+    snapshot instead of awaiting resolve().
+    """
+
+    _STORED: ClassVar[dict[str, str | None]] = ProviderConfig(
+        api_key="stored-key",
+    )
+
+    def test_stored_credential_wins_over_env(self):
+        from app.services.composio import composio_service as mod
+
+        fake_sdk = MagicMock()
+        with (
+            patch.object(mod, "resolved_config", return_value=self._STORED),
+            patch.object(mod, "settings") as mock_settings,
+            patch.object(mod, "Composio", return_value=fake_sdk) as mock_composio_cls,
+        ):
+            mock_settings.COMPOSIO_KEY = "env-key"
+            service = mod.init_composio_service().loader_func()
+        assert mock_composio_cls.call_args.kwargs["api_key"] == "stored-key"
+        assert service.composio is fake_sdk
+
+    def test_env_fallback_when_nothing_is_stored(self):
+        from app.config.settings import settings
+        from app.services.composio import composio_service as mod
+
+        fake_sdk = MagicMock()
+        with (
+            patch.object(settings, "COMPOSIO_KEY", "env-key"),
+            patch.object(mod, "Composio", return_value=fake_sdk) as mock_composio_cls,
+        ):
+            service = mod.init_composio_service().loader_func()
+        assert mock_composio_cls.call_args.kwargs["api_key"] == "env-key"
+        assert service.composio is fake_sdk
+
+    def test_unconfigured_fails_loud_instead_of_building_a_dead_service(self):
+        from app.services.composio import composio_service as mod
+
+        with (
+            patch.object(mod, "resolved_config", return_value=None),
+            patch.object(mod, "settings") as mock_settings,
+        ):
+            mock_settings.COMPOSIO_KEY = None
+            with pytest.raises(ProviderNotConfiguredError, match="COMPOSIO_KEY"):
+                mod.init_composio_service().loader_func()
 
 
 # ---------------------------------------------------------------------------

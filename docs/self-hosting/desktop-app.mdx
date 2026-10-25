@@ -1,0 +1,56 @@
+---
+title: "Use the desktop app with your server"
+sidebarTitle: "Desktop app"
+description: "Point the GAIA desktop app at your self-hosted instance and sign in with your instance's email and password"
+icon: "desktop"
+---
+
+Point the GAIA desktop app at your own server.
+
+## Get the desktop app
+
+Download the app from [heygaia.io/download](https://heygaia.io/download). One app works with GAIA Cloud and your own server. Installers are in [Desktop App](/guides/desktop-app).
+
+<Warning>
+  **Use my own server** is not in a released desktop app yet. The newest release, Desktop v0.7.1, doesn't have it. Installed apps update themselves once a release includes it. Updating your instance does not add the button.
+</Warning>
+
+## Before you start
+
+- Your instance is running and its sign-in page loads in a browser.
+- You know its address, such as `https://gaia.example.com` or `http://192.168.1.20`.
+
+## Connect the app
+
+1. Open GAIA Desktop. The first screen is the desktop sign-in screen, **Welcome to GAIA Desktop**.
+2. Click **Use my own server**, under the sign-in button. (That button signs in to GAIA Cloud.)
+
+   <Frame caption="The desktop sign-in screen, with Use my own server under the GAIA Cloud sign-in button">
+     <img src="/images/self-hosting/desktop-login.webp" width="560" alt="Welcome to GAIA Desktop sign-in screen with an Open Login in Browser button and, below it, a Use my own server link" />
+   </Frame>
+
+3. Enter the address and click **Connect**. The app adds `https://` if you leave it out. For plain HTTP, type `http://`.
+
+   <Frame caption="The server form, filled in with an instance's address">
+     <img src="/images/self-hosting/desktop-server-form.webp" width="560" alt="The desktop sign-in screen with a Server address field filled in with https://gaia.example.com, the hint The address you open GAIA at in your browser, and a Connect button" />
+   </Frame>
+
+4. The app restarts and opens your instance's sign-in page. Sign in with your email and password.
+
+### If Connect shows an error
+
+| Message | What to do |
+| --- | --- |
+| Couldn't reach the address | Open the address in a browser. Add `http://` if you don't use HTTPS |
+| No GAIA server answered | Use the proxy's address, not a single container's. The API must be at `/api/v1` on it |
+| Signs in through GAIA Cloud accounts | Your instance uses WorkOS sign-in, which the desktop app doesn't support on your own server. Use the browser |
+
+## Change the server
+
+1. Click the GAIA icon in the menu bar (macOS) or the system tray (Windows and Linux).
+2. Click **Change Server…**.
+3. Enter a different address and click **Connect**, or click **Use GAIA Cloud**.
+
+The app restarts. Switching servers removes this computer's device pairing, so pair it again on the new server.
+
+If your instance is down when the app starts, the same screen shows the failed address. Click **Connect** once it is back.

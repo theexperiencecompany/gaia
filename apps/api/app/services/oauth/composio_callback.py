@@ -9,10 +9,10 @@ from typing import Literal
 
 from fastapi import BackgroundTasks
 
-from app.config.oauth_config import get_integration_by_config
 from app.constants.integrations import AccountConnectOutcome
 from app.constants.log_tags import LogTag
 from app.services.analytics_service import capture
+from app.services.composio.auth_config_resolver import integration_for_auth_config
 from app.services.composio.composio_service import get_composio_service
 from app.services.integrations.integration_account_lifecycle import AccountLimitReached
 from app.services.oauth.oauth_service import handle_oauth_connection
@@ -61,7 +61,7 @@ async def complete_composio_connection(
         )
         return ConnectionRejected(reason="user_missing")
 
-    integration_config = get_integration_by_config(config_id)
+    integration_config = await integration_for_auth_config(config_id)
     if not integration_config:
         log.error(
             f"{LogTag.OAUTH} Integration config not found",

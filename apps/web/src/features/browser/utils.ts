@@ -124,15 +124,19 @@ export function foldBrowserTask(
 }
 
 /** The origin the local `gaia-connect` tool must talk to: the web's API base
- * without its `/api/v1` path, since the tool appends that itself. */
-export function connectApiOrigin(apiBaseUrl: string): string {
-  return new URL(apiBaseUrl).origin;
+ * without its `/api/v1` path, since the tool appends that itself. A same-origin
+ * base (self-host) resolves against the page the user is on. */
+export function connectApiOrigin(apiBaseUrl: string, pageUrl: string): string {
+  return new URL(apiBaseUrl, pageUrl).origin;
 }
 
 /** The `--api` override the command needs, or null when the web's API is the
  * tool's built-in default (production), so the pasted command stays short. */
-export function connectApiOverride(apiBaseUrl: string): string | null {
-  const origin = connectApiOrigin(apiBaseUrl);
+export function connectApiOverride(
+  apiBaseUrl: string,
+  pageUrl: string,
+): string | null {
+  const origin = connectApiOrigin(apiBaseUrl, pageUrl);
   return origin === GAIA_CONNECT_DEFAULT_API_ORIGIN ? null : origin;
 }
 

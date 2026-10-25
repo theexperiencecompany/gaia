@@ -17,6 +17,7 @@ from app.agents.core.subagents.integration_activation import (
     _has_several_accounts,
     activate_integration,
 )
+from app.agents.prompts.user_instructions_prompts import USER_INSTRUCTIONS_HEADER
 from app.agents.tools.execute.resolver import ResolvedTool
 from app.constants.log_tags import LogTag
 from tests.helpers import captured_wide_event
@@ -77,7 +78,8 @@ class TestActivationContext:
         assert context == "\n\n".join(
             [
                 f"## gmail: how it works\n{REFRAME}\nYou manage gmail.",
-                "## The user's standing instructions for gmail\nAlways CC me.",
+                f'<user_instructions scope="gmail">\n{USER_INSTRUCTIONS_HEADER}\n\n'
+                "Always CC me.\n</user_instructions>",
                 "USER CONTEXT FOR GMAIL:\n- email: me@x.com",
                 "## gmail skills available to read on demand\n- gmail-draft-send",
                 "## Workspace skills\n- triage",

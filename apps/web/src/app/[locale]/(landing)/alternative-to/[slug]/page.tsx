@@ -18,6 +18,7 @@ import {
 } from "@/features/comparisons/data/getTranslatedComparison";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { getLocalizedAlternates } from "@/i18n/getAlternates";
+import { prerenderedMarketingParams } from "@/lib/selfhost";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
@@ -35,9 +36,13 @@ interface PageProps {
   }>;
 }
 
-export async function generateStaticParams() {
+async function allStaticParams() {
   const slugs = await getAllAlternativeSlugs();
   return slugs.map((slug) => ({ slug }));
+}
+
+export function generateStaticParams() {
+  return prerenderedMarketingParams(allStaticParams);
 }
 
 export async function generateMetadata({

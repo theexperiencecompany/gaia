@@ -6,5 +6,10 @@
     "moduleResolution": "Bundler",
     "noEmit": true
   },
-  "include": ["**/*.ts", "../playwright.config.ts"]
+  "include": [
+    "**/*.ts",
+    "../playwright.config.ts",
+    "../playwright.selfhost.config.ts",
+    "../playwright.worker.config.ts"
+  ]
 }

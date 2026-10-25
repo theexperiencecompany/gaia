@@ -64,7 +64,7 @@
     "type-check": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "pnpm tsc --noEmit",
+        "command": "node \"$NX_WORKSPACE_ROOT/scripts/ts/type-check.mjs\" --noEmit",
         "cwd": "{projectRoot}"
       }
     },

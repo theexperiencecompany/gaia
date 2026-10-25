@@ -363,3 +363,17 @@ class TestReminderCreationIsIdempotent:
         result = await scheduler.create_reminder(_create_request(), user_id=_uid("b"))
 
         assert result.created
+
+
+async def test_scheduled_for_user_is_every_armed_reminder_of_that_user(repo):
+    owner = _uid("owner")
+    soon = await repo.create(_reminder(user_id=owner))
+    overdue = await repo.create(
+        _reminder(user_id=owner, scheduled_at=datetime.now(UTC) - timedelta(days=1))
+    )
+    await repo.create(_reminder(user_id=owner, status=ReminderStatus.COMPLETED))
+    await repo.create(_reminder(user_id=_uid("other")))
+
+    found = await repo.find_scheduled_for_user(owner)
+
+    assert sorted(r.id for r in found) == sorted([soon.id, overdue.id])

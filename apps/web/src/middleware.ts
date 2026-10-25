@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import createMiddleware from "next-intl/middleware";
 
+import { selfhostHomeRedirect } from "./features/auth/api/selfhostHomeRedirect";
 import { routing } from "./i18n/routing";
 
 // Renamed from proxy.ts to middleware.ts: Next 16's proxy.ts convention is hard-coded to Node
@@ -33,7 +34,12 @@ const intlMiddlewareDefaultOnly = createMiddleware({
   localeDetection: false,
 });
 
-export default function middleware(request: NextRequest) {
+export default async function middleware(request: NextRequest) {
+  // A self-hosted instance has no landing page: "/" goes into the product.
+  if (request.nextUrl.pathname === "/") {
+    const selfhostHome = await selfhostHomeRedirect(request);
+    if (selfhostHome) return selfhostHome;
+  }
   if (isTranslatedRoute(request.nextUrl.pathname)) {
     return intlMiddleware(request);
   }

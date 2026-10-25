@@ -1,0 +1,11 @@
+# Opt-in Discord bot (gateway connection: no public URL needed). `gaia bots add
+# discord --token <token>` layers this on the self-host stack.
+services:
+  bot-discord:
+    extends:
+      file: selfhost/bot.yml
+      service: bot
+    image: ghcr.io/theexperiencecompany/gaia-bot-discord:${GAIA_VERSION:-latest}
+    depends_on:
+      gaia-backend:
+        condition: service_healthy
