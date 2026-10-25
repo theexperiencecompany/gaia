@@ -248,6 +248,33 @@ class TestConstructContentAccumulation:
         assert "XX" not in content
 
 
+class TestConstructContentWithoutPageNumber:
+    def test_a_bad_chunk_does_not_stop_later_documents(self) -> None:
+        page = [{"data": {"page_number": 1, "content": "body"}}]
+        docs = [_file("f1", summary=page), _file("f2", summary=page)]
+        similar = [
+            (Document(page_content="x", metadata={"file_id": "f1"}), 0.9),
+            (Document(page_content="x", metadata={"file_id": "f2", "page_number": 1}), 0.8),
+        ]
+
+        content = _construct_content(docs, similar)
+
+        assert "Document ID: f2" in content
+
+    def test_a_chunk_without_a_page_number_is_skipped_and_reported(self) -> None:
+        docs = [_file("f1", summary=[{"data": {"page_number": 1, "content": "body"}}])]
+        similar = [(Document(page_content="x", metadata={"file_id": "f1"}), 0.9)]
+
+        with patch(f"{MODULE}.log") as mock_log:
+            content = _construct_content(docs, similar)
+
+        assert content == ""
+        mock_log.warning.assert_called_once_with(
+            "[TOOL] page summary without a page number",
+            document_id="f1",
+        )
+
+
 class TestConstructContentMissingDocument:
     async def test_an_orphaned_hit_is_reported(self) -> None:
         similar = [(Document(page_content="x", metadata={"file_id": "missing"}), 0.9)]

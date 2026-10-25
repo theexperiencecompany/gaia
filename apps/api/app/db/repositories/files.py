@@ -6,17 +6,7 @@ endpoint still returns it.
 """
 
 from app.db.repositories.base import UserScopedRepository
-from app.models.files_models import FileDocument, FileMimetypeRow, FileUpdate
-
-_EXISTS = "$exists"
-
-# The fields the mimetype migration reads; FileMimetypeRow ignores the rest.
-_MIMETYPE_PROJECTION = {
-    "file_id": 1,
-    "filename": 1,
-    "type": 1,
-    "content_type": 1,
-}  # pragma: no mutate — inclusion values are equivalent in Mongo
+from app.models.files_models import FileDocument, FileUpdate
 
 
 class FilesRepository(UserScopedRepository[FileDocument, FileUpdate]):
@@ -55,7 +45,7 @@ class FilesRepository(UserScopedRepository[FileDocument, FileUpdate]):
                 "user_id": user_id,
                 "$or": [
                     {"conversation_id": conversation_id},
-                    {"conversation_id": {_EXISTS: False}},
+                    {"conversation_id": {"$exists": False}},
                     {"conversation_id": None},
                 ],
             }
@@ -79,35 +69,6 @@ class FilesRepository(UserScopedRepository[FileDocument, FileUpdate]):
         """Delete one file the user owns; False when nothing matched."""
         deleted = await self._delete_many({"file_id": file_id, "user_id": user_id}, scope=user_id)
         return deleted > 0
-
-    async def find_mimetype_rows(self) -> list[FileMimetypeRow]:
-        """Every file's mimetype fields, including rows FileDocument would reject."""
-        cursor = self._raw_collection().find()
-        return [FileMimetypeRow.model_validate(row) async for row in cursor]
-
-    async def rename_legacy_mimetype(self, file_id: str, content_type: str) -> bool:
-        """Move content_type to type on one row, only if it still looks as planned."""
-        result = await self._raw_collection().update_one(
-            {
-                "file_id": file_id,
-                "type": {_EXISTS: False},
-                "content_type": content_type,
-            },
-            {"$set": {"type": content_type}, "$unset": {"content_type": ""}},  # pragma: no mutate
-        )
-        return result.modified_count == 1
-
-    async def restore_legacy_mimetype(self, file_id: str, content_type: str) -> bool:
-        """Reverse rename_legacy_mimetype for one row from a recorded backup."""
-        result = await self._raw_collection().update_one(
-            {
-                "file_id": file_id,
-                "type": content_type,
-                "content_type": {_EXISTS: False},
-            },
-            {"$set": {"content_type": content_type}, "$unset": {"type": ""}},  # pragma: no mutate
-        )
-        return result.modified_count == 1
 
 
 file_repository = FilesRepository()

@@ -19,12 +19,12 @@ import pytest
 from app.constants.files import FILE_SEED_DOWNLOAD_TIMEOUT_SECONDS
 from app.models.files_models import DocumentPageModel, DocumentSummaryModel, FileDocument
 from app.schemas.file import UpdateFileRequest
+from app.services.files.sandbox import UploadMirror
 from app.services.files.service import (
     FileService,
     _log_upload_context,
     _PreparedUpload,
     _UploadSummary,
-    _WorkspaceProjection,
 )
 from app.services.files.store import index_file, insert_metadata, reindex_file
 from app.services.files.summaries import process_summary
@@ -215,7 +215,6 @@ class TestFileServiceUpload:
         assert result.sandbox_path == "/workspace/user-uploaded/report.pdf"
         assert result.file_id
         mock_mirror.assert_awaited_once()
-        mock_sidecar.assert_awaited_once()
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
     async def test_the_projection_gets_the_bytes_and_summary(
@@ -235,9 +234,11 @@ class TestFileServiceUpload:
                 "app.services.files.service.process_summary",
                 return_value=("This is a summary", page_summary),
             ),
-            patch.object(
-                FileService, "_project_to_workspace", AsyncMock(return_value="/workspace/x.pdf")
-            ) as project,
+            patch(
+                "app.services.files.service.mirror_upload",
+                new_callable=AsyncMock,
+                return_value="/workspace/x.pdf",
+            ) as mirror,
         ):
             await FileService.upload(
                 file=_upload_file_mock(),
@@ -245,13 +246,14 @@ class TestFileServiceUpload:
                 conversation_id="conv-1",
             )
 
-        projection = project.await_args.kwargs["projection"]
-        assert len(projection.file_id) == 36
-        assert projection.filename == "report.pdf"
-        assert projection.content == _pdf_bytes()
-        assert projection.content_type == "application/pdf"
-        assert projection.description == "This is a summary"
-        assert projection.page_wise_summary == page_summary
+        upload = mirror.await_args.kwargs["upload"]
+        assert isinstance(upload, UploadMirror)
+        assert len(upload.file_id) == 36
+        assert upload.filename == "report.pdf"
+        assert upload.content == _pdf_bytes()
+        assert upload.content_type == "application/pdf"
+        assert upload.description == "This is a summary"
+        assert upload.page_wise_summary == page_summary
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
     @patch("app.services.files.service.capture")
@@ -960,7 +962,7 @@ class TestFileServiceUpdate:
         assert exc_info.value.status_code == 404
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
-    async def test_success_without_file_content(self, mock_del_cache, mock_file_repo):
+    async def test_success_with_metadata_only(self, mock_del_cache, mock_file_repo):
         mock_file_repo.get_by_file_id = AsyncMock(return_value=_file_doc(filename="old.pdf"))
         mock_file_repo.apply_metadata_update = AsyncMock(return_value=_file_doc(filename="new.pdf"))
 
@@ -974,52 +976,35 @@ class TestFileServiceUpdate:
         mock_file_repo.apply_metadata_update.assert_awaited_once()
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
-    async def test_renaming_moves_the_workspace_copy(self, mock_del_cache, mock_file_repo):
+    async def test_renaming_updates_only_the_display_metadata(self, mock_del_cache, mock_file_repo):
         stored = _file_doc(
             file_id="f-1",
             filename="old.pdf",
             conversation_id="conv-1",
             sandbox_path="/workspace/sessions/conv-1/user-uploaded/f-1_old.pdf",
+            page_wise_summary={"data": {"page_number": 1, "content": "page-body"}},
         )
-        renamed = "/workspace/sessions/conv-1/user-uploaded/f-1_new.pdf"
         mock_file_repo.get_by_file_id = AsyncMock(return_value=stored)
         mock_file_repo.apply_metadata_update = AsyncMock(
-            return_value=stored.model_copy(update={"filename": "new.pdf", "sandbox_path": renamed})
+            return_value=stored.model_copy(update={"filename": "new.pdf"})
         )
 
-        with (
-            patch(
-                "app.services.files.service.rename_upload",
-                new_callable=AsyncMock,
-                return_value=renamed,
-            ) as rename,
-            patch(
-                "app.services.files.service.write_summary_sidecar", new_callable=AsyncMock
-            ) as sidecar,
-        ):
+        with patch(
+            "app.services.files.service.write_summary_sidecar", new_callable=AsyncMock
+        ) as sidecar:
             await FileService.update(
                 file_id="f-1",
                 user_id=USER_ID,
                 update_data=UpdateFileRequest(filename="new.pdf"),
             )
 
-        rename.assert_awaited_once_with(
-            user_id=USER_ID,
-            conversation_id="conv-1",
-            old_name="f-1_old.pdf",
-            new_name="f-1_new.pdf",
-            content_type="application/pdf",
-            size_bytes=10,
-        )
         update = mock_file_repo.apply_metadata_update.await_args.kwargs["update"]
-        assert update.sandbox_path == renamed
+        assert update.filename == "new.pdf"
+        assert update.model_fields_set == {"filename"}
         sidecar_kwargs = sidecar.await_args.kwargs
-        assert sidecar_kwargs["safe_filename"] == "f-1_new.pdf"
-        assert sidecar_kwargs["user_id"] == USER_ID
-        assert sidecar_kwargs["conversation_id"] == "conv-1"
-        assert "`application/pdf`" in sidecar_kwargs["summary_md"]
-        assert "desc" in sidecar_kwargs["summary_md"]
+        assert sidecar_kwargs["safe_filename"] == "f-1_old.pdf"
         assert "# Summary: new.pdf" in sidecar_kwargs["summary_md"]
+        assert "page-body" in sidecar_kwargs["summary_md"]
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
     async def test_a_page_only_summary_still_reaches_the_sidecar(
@@ -1038,16 +1023,9 @@ class TestFileServiceUpdate:
             return_value=stored.model_copy(update={"filename": "new.pdf"})
         )
 
-        with (
-            patch(
-                "app.services.files.service.rename_upload",
-                new_callable=AsyncMock,
-                return_value="/workspace/sessions/conv-1/user-uploaded/f-1_new.pdf",
-            ),
-            patch(
-                "app.services.files.service.write_summary_sidecar", new_callable=AsyncMock
-            ) as sidecar,
-        ):
+        with patch(
+            "app.services.files.service.write_summary_sidecar", new_callable=AsyncMock
+        ) as sidecar:
             await FileService.update(
                 file_id="f-1",
                 user_id=USER_ID,
@@ -1055,33 +1033,6 @@ class TestFileServiceUpdate:
             )
 
         assert "page-body" in sidecar.await_args.kwargs["summary_md"]
-
-    @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
-    async def test_a_failed_rename_keeps_the_stored_path(self, mock_del_cache, mock_file_repo):
-        stored = _file_doc(
-            file_id="f-1",
-            filename="old.pdf",
-            conversation_id="conv-1",
-            sandbox_path="/workspace/sessions/conv-1/user-uploaded/f-1_old.pdf",
-        )
-        mock_file_repo.get_by_file_id = AsyncMock(return_value=stored)
-        mock_file_repo.apply_metadata_update = AsyncMock(
-            return_value=stored.model_copy(update={"filename": "new.pdf"})
-        )
-
-        with patch(
-            "app.services.files.service.rename_upload",
-            new_callable=AsyncMock,
-            return_value=None,
-        ):
-            await FileService.update(
-                file_id="f-1",
-                user_id=USER_ID,
-                update_data=UpdateFileRequest(filename="new.pdf"),
-            )
-
-        update = mock_file_repo.apply_metadata_update.await_args.kwargs["update"]
-        assert update.sandbox_path is None
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
     async def test_ignores_non_allowlisted_fields(self, mock_del_cache, mock_file_repo):
@@ -1112,82 +1063,6 @@ class TestFileServiceUpdate:
         # Only the allowlisted field survives into the typed update.
         set_fields = call.kwargs["update"].model_dump(exclude_unset=True)
         assert set_fields == {"filename": "new.pdf"}
-
-    @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
-    async def test_with_file_content_regenerates_description(self, mock_del_cache, mock_file_repo):
-        mock_file_repo.get_by_file_id = AsyncMock(
-            return_value=_file_doc(conversation_id="conv-1", description="Old description")
-        )
-        mock_file_repo.apply_metadata_update = AsyncMock(
-            return_value=_file_doc(description="New summary from content")
-        )
-
-        with (
-            _summary("New summary from content"),
-            patch(
-                "app.services.files.service.reindex_file",
-                new_callable=AsyncMock,
-            ) as mock_reindex,
-        ):
-            result = await FileService.update(
-                file_id="f-1",
-                user_id=USER_ID,
-                update_data=UpdateFileRequest(),
-                file_content=b"new file bytes",
-                conversation_id="conv-1",
-            )
-
-        assert result.description == "New summary from content"
-        mock_reindex.assert_awaited_once()
-
-    @pytest.mark.parametrize(
-        ("new_filename", "summarized_as"), [("renamed.pdf", "renamed.pdf"), (None, "doc.pdf")]
-    )
-    @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
-    async def test_new_content_is_summarized_under_its_name_and_stores_every_page(
-        self,
-        mock_del_cache,
-        mock_file_repo,
-        sample_document_summary_model: DocumentSummaryModel,
-        new_filename: str | None,
-        summarized_as: str,
-    ):
-        mock_file_repo.get_by_file_id = AsyncMock(return_value=_file_doc())
-        mock_file_repo.apply_metadata_update = AsyncMock(return_value=_file_doc())
-
-        with (
-            _summary(sample_document_summary_model) as mock_summary,
-            patch("app.services.files.service.reindex_file", new_callable=AsyncMock),
-        ):
-            await FileService.update(
-                file_id="f-1",
-                user_id=USER_ID,
-                update_data=UpdateFileRequest(filename=new_filename),
-                file_content=b"new file bytes",
-            )
-
-        assert mock_summary.await_args.kwargs["filename"] == summarized_as
-        update = mock_file_repo.apply_metadata_update.await_args.kwargs["update"]
-        assert update.page_wise_summary == sample_document_summary_model.model_dump(mode="json")
-
-    @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
-    async def test_file_content_generation_fails_raises_500(self, mock_del_cache, mock_file_repo):
-        mock_file_repo.get_by_file_id = AsyncMock(return_value=_file_doc())
-
-        with patch(
-            "app.services.files.service.generate_file_summary",
-            new_callable=AsyncMock,
-            side_effect=Exception("LLM unavailable"),
-        ):
-            with pytest.raises(HTTPException) as exc_info:
-                await FileService.update(
-                    file_id="f-1",
-                    user_id=USER_ID,
-                    update_data=UpdateFileRequest(),
-                    file_content=b"content",
-                )
-            assert exc_info.value.status_code == 500
-            assert "Failed to process file" in exc_info.value.detail
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
     async def test_chromadb_reindex_fails_continues(self, mock_del_cache, mock_file_repo):
@@ -1447,9 +1322,6 @@ class TestFileServiceAttachUploads:
                 new_callable=AsyncMock,
                 return_value=mirrored,
             ) as mirror,
-            patch(
-                "app.services.files.service.write_summary_sidecar", new_callable=AsyncMock
-            ) as sidecar,
             patch("app.services.files.service.session_root") as session_root,
         ):
             session_root.return_value.exists.return_value = False
@@ -1459,20 +1331,18 @@ class TestFileServiceAttachUploads:
         http_client.assert_called_once_with(timeout=FILE_SEED_DOWNLOAD_TIMEOUT_SECONDS)
         # The URL comes from Mongo, never from a request payload.
         client.get.assert_awaited_once_with("https://cdn.example/table.png")
+        upload = mirror.await_args.kwargs["upload"]
+        assert isinstance(upload, UploadMirror)
         mirror.assert_awaited_once_with(
             user_id=USER_ID,
             conversation_id="conv-1",
-            safe_filename="f-1_table.png",
-            content=b"image-bytes",
-            content_type="image/png",
+            upload=upload,
         )
-        sidecar_kwargs = sidecar.await_args.kwargs
-        assert sidecar_kwargs["user_id"] == USER_ID
-        assert sidecar_kwargs["conversation_id"] == "conv-1"
-        assert sidecar_kwargs["safe_filename"] == "f-1_table.png"
-        assert "# Summary: table.png" in sidecar_kwargs["summary_md"]
-        assert "`image/png`" in sidecar_kwargs["summary_md"]
-        assert "desc" in sidecar_kwargs["summary_md"]
+        assert upload.file_id == "f-1"
+        assert upload.filename == "table.png"
+        assert upload.content == b"image-bytes"
+        assert upload.content_type == "image/png"
+        assert upload.description == "desc"
 
         update = mock_file_repo.apply_metadata_update.await_args.kwargs["update"]
         assert update.conversation_id == "conv-1"
@@ -1486,7 +1356,7 @@ class TestFileServiceAttachUploads:
             file_id="f-1",
             filename="table.png",
             conversation_id="conv-1",
-            sandbox_path="/workspace/sessions/conv-1/user-uploaded/table.png",
+            sandbox_path="/workspace/sessions/conv-1/user-uploaded/f-1_table.png",
         )
         mock_file_repo.get_by_file_id.return_value = document
 
@@ -1504,33 +1374,6 @@ class TestFileServiceAttachUploads:
         mock_file_repo.apply_metadata_update.assert_not_awaited()
         session_root.assert_called_once_with(USER_ID, "conv-1")
         session_root.return_value.__truediv__.assert_called_once_with("user-uploaded/f-1_table.png")
-
-    async def test_the_sidecar_carries_the_stored_page_content(self, mock_file_repo):
-        document = _file_doc(
-            file_id="f-1",
-            filename="table.png",
-            type="image/png",
-            page_wise_summary={"data": {"page_number": 1, "content": "page-body"}},
-        )
-        mock_file_repo.get_by_file_id.return_value = document
-        context, _client = _attach_http_client()
-
-        with (
-            patch("app.services.files.service.httpx.AsyncClient", return_value=context),
-            patch(
-                "app.services.files.service.mirror_upload",
-                new_callable=AsyncMock,
-                return_value="/workspace/sessions/conv-1/user-uploaded/f-1_table.png",
-            ),
-            patch(
-                "app.services.files.service.write_summary_sidecar", new_callable=AsyncMock
-            ) as sidecar,
-            patch("app.services.files.service.session_root") as session_root,
-        ):
-            session_root.return_value.exists.return_value = False
-            await FileService.attach_uploads(["f-1"], USER_ID, "conv-1")
-
-        assert "page-body" in sidecar.await_args.kwargs["summary_md"]
 
     async def test_re_mirrors_when_the_document_lost_its_path(self, mock_file_repo):
         """A scoped row without sandbox_path must not be trusted just because the file is on disk."""
@@ -1734,42 +1577,10 @@ class TestFileServiceGetUploads:
         mock_file_repo.find_by_ids_for_user.assert_awaited_once_with(
             ["mine", "legacy", "foreign"], USER_ID
         )
-        assert [upload.fileId for upload in uploads] == ["mine", "legacy"]
+        assert [upload.fileId for upload in uploads] == ["mine"]
         assert uploads[0].type == "image/png"
         assert uploads[0].description == "a table"
         assert uploads[0].sandbox_path == "/workspace/sessions/conv-1/user-uploaded/mine.png"
-
-
-class TestProjectToWorkspace:
-    async def test_an_unsafe_filename_is_logged_and_skipped(self):
-        with (
-            patch("app.services.files.service.mirror_upload", new_callable=AsyncMock) as mirror,
-            patch("app.services.files.service.log") as mock_log,
-        ):
-            result = await FileService._project_to_workspace(
-                user_id=USER_ID,
-                conversation_id="conv-1",
-                projection=_WorkspaceProjection(
-                    file_id="f-1",
-                    filename="...",
-                    content=b"x",
-                    content_type="image/png",
-                    description="desc",
-                    page_wise_summary=None,
-                ),
-            )
-
-        assert result is None
-        mirror.assert_not_awaited()
-        assert mock_log.warning.call_args.args[0] == (
-            "[files] skipping sandbox mirror, unsafe filename"
-        )
-        kwargs = mock_log.warning.call_args.kwargs
-        assert kwargs["filename"] == "..."
-        assert kwargs["error"] == "filename is empty after sanitization"
-        assert kwargs["error_type"] == "ValueError"
-        assert kwargs["user_id"] == USER_ID
-        assert kwargs["conversation_id"] == "conv-1"
 
 
 class TestUploadFailureLogging:
@@ -1800,8 +1611,8 @@ class TestUploadFailureLogging:
         assert kwargs["exc_info"] is True
 
 
-class TestAttachProjection:
-    async def test_the_projection_gets_the_document_fields(self, mock_file_repo):
+class TestAttachMirror:
+    async def test_the_mirror_gets_the_document_fields(self, mock_file_repo):
         document = _file_doc(
             file_id="f-1",
             filename="table.png",
@@ -1814,48 +1625,27 @@ class TestAttachProjection:
 
         with (
             patch("app.services.files.service.httpx.AsyncClient", return_value=context),
-            patch.object(
-                FileService, "_project_to_workspace", AsyncMock(return_value="/w/x")
-            ) as project,
-        ):
-            await FileService.attach_uploads(["f-1"], USER_ID, "conv-1")
-
-        projection = project.await_args.kwargs["projection"]
-        assert projection.file_id == "f-1"
-        assert projection.filename == "table.png"
-        assert projection.content == b"image-bytes"
-        assert projection.content_type == "image/png"
-        assert projection.description == "a table"
-        assert projection.page_wise_summary == {"data": {"page_number": 1, "content": "body"}}
-
-
-class TestProjectionSidecar:
-    async def test_a_failed_mirror_writes_no_sidecar(self):
-        with (
             patch(
                 "app.services.files.service.mirror_upload",
                 new_callable=AsyncMock,
-                return_value=None,
-            ),
-            patch(
-                "app.services.files.service.write_summary_sidecar", new_callable=AsyncMock
-            ) as sidecar,
+                return_value="/w/x",
+            ) as mirror,
         ):
-            result = await FileService._project_to_workspace(
-                user_id=USER_ID,
-                conversation_id="conv-1",
-                projection=_WorkspaceProjection(
-                    file_id="f-1",
-                    filename="table.png",
-                    content=b"x",
-                    content_type="image/png",
-                    description="a table",
-                    page_wise_summary=None,
-                ),
-            )
+            await FileService.attach_uploads(["f-1"], USER_ID, "conv-1")
 
-        assert result is None
-        sidecar.assert_not_awaited()
+        upload = mirror.await_args.kwargs["upload"]
+        assert isinstance(upload, UploadMirror)
+        mirror.assert_awaited_once_with(
+            user_id=USER_ID,
+            conversation_id="conv-1",
+            upload=upload,
+        )
+        assert upload.file_id == "f-1"
+        assert upload.filename == "table.png"
+        assert upload.content == b"image-bytes"
+        assert upload.content_type == "image/png"
+        assert upload.description == "a table"
+        assert upload.page_wise_summary == {"data": {"page_number": 1, "content": "body"}}
 
 
 class TestUpdateWithoutConversation:

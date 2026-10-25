@@ -12,5 +12,8 @@ export function currentConversationId(): string | undefined {
   const match = /\/(?:[a-z]{2}(?:-[A-Z]{2})?\/)?c\/([^/?#]+)/.exec(
     globalThis.window.location.pathname,
   );
-  return match?.[1];
+  const id = match?.[1];
+  // Mirrors the backend's SafePathId. Prevents `/c/..` or a stray segment in
+  // a non-chat path from becoming a conversation id in an API URL.
+  return id && /^[A-Za-z0-9_-]{1,64}$/.test(id) ? id : undefined;
 }

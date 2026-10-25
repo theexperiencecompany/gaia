@@ -200,7 +200,13 @@ def _construct_content(
             content += f"Document ID: {document_id}\n"
             content += f"Description: {document_content}\n\n"
         elif isinstance(document_content, list):
-            target_page_number = metadata["page_number"]
+            target_page_number = metadata.get("page_number")
+            if target_page_number is None:
+                log.warning(
+                    f"{LogTag.TOOL} page summary without a page number",
+                    document_id=document_id,
+                )
+                continue
             for raw_page in document_content:
                 page_number, page_text = _page_fields(cast(_PageRecord, raw_page))
                 if page_number == target_page_number:

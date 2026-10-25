@@ -35,6 +35,16 @@ describe("currentConversationId", () => {
     expect(currentConversationId()).toBeUndefined();
   });
 
+  it("rejects a segment that is not a safe path id", () => {
+    at("/c/..");
+    expect(currentConversationId()).toBeUndefined();
+  });
+
+  it("accepts a non-UUID safe id", () => {
+    at("/c/legacy_chat-1");
+    expect(currentConversationId()).toBe("legacy_chat-1");
+  });
+
   it("stops at a query string or fragment", () => {
     at("/c/conv-1?foo=bar");
     expect(currentConversationId()).toBe("conv-1");

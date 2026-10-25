@@ -24,11 +24,11 @@ from app.models.files_models import FileDocument, FileUpdate, PageWiseSummary
 from app.models.message_models import FileData as MessageFileData
 from app.schemas.file import FileDeletedResponse, UpdateFileRequest
 from app.services.analytics_service import capture
-from app.services.files.naming import workspace_upload_name
 from app.services.files.sandbox import (
+    UploadMirror,
     delete_upload,
     mirror_upload,
-    rename_upload,
+    workspace_upload_name,
     write_summary_sidecar,
 )
 from app.services.files.store import (
@@ -130,18 +130,6 @@ def _build_file_metadata(
     )
 
 
-@dataclass(frozen=True, slots=True)
-class _WorkspaceProjection:
-    """The file fields the workspace mirror and its summary sidecar need."""
-
-    file_id: str
-    filename: str
-    content: bytes
-    content_type: str
-    description: str | None
-    page_wise_summary: PageWiseSummary
-
-
 class FileService:
     """Lifecycle of user-uploaded files: upload, summarize, index, search context, delete, update."""
 
@@ -194,10 +182,10 @@ class FileService:
 
             # 2. Mirror into the session workspace + summary sidecar (best-effort; needs JuiceFS).
             sandbox_path = (
-                await FileService._project_to_workspace(
+                await mirror_upload(
                     user_id=user_id,
                     conversation_id=conversation_id,
-                    projection=_WorkspaceProjection(
+                    upload=UploadMirror(
                         file_id=upload.file_id,
                         filename=upload.filename,
                         content=upload.content,
@@ -283,7 +271,7 @@ class FileService:
             )
             for file_id in dict.fromkeys(file_ids)
             if (document := by_id.get(file_id)) is not None
-            and document.conversation_id in (None, conversation_id)
+            and document.conversation_id == conversation_id
         ]
 
     @staticmethod
@@ -354,10 +342,9 @@ class FileService:
         file_id: str,
         user_id: str,
         update_data: UpdateFileRequest,
-        file_content: bytes | None = None,
         conversation_id: str | None = None,
     ) -> FileDocument:
-        """Update file metadata, regenerating the summary + vector index when new content is given."""
+        """Update display metadata and keep the workspace sidecar in sync."""
         log.info("[files] update start file_id", file_id=file_id)
         log.set(file=FileContext(operation="update", file_id=file_id))
 
@@ -370,49 +357,6 @@ class FileService:
         # UpdateFileRequest declares the only client-editable fields, so a client
         # can never mass-assign protected ones (user_id, …).
         update = FileUpdate.model_validate(update_data.model_dump(exclude_none=True))
-
-        if file_content:
-            try:
-                generated_summary = await generate_file_summary(
-                    file_content=file_content,
-                    content_type=file_data.type,
-                    filename=update.filename or file_data.filename,
-                    user_id=user_id,
-                )
-                description, page_wise_summary = process_summary(generated_summary)
-                update.description = description
-                update.page_wise_summary = page_wise_summary
-            except Exception as e:
-                log.error(
-                    "[files] update: summary regeneration failed",
-                    error=str(e),
-                    error_type=type(e).__name__,
-                    file_id=file_id,
-                    user_id=user_id,
-                    conversation_id=conversation_id,
-                    exc_info=True,
-                )
-                raise HTTPException(status_code=500, detail=f"Failed to process file: {e!s}") from e
-
-        if (
-            update.filename is not None
-            and update.filename != file_data.filename
-            and file_data.sandbox_path
-            and conversation_id
-        ):
-            old_name = Path(file_data.sandbox_path).name
-            new_name = workspace_upload_name(file_id, update.filename)
-            if new_name != old_name:
-                renamed_path = await rename_upload(
-                    user_id=user_id,
-                    conversation_id=conversation_id,
-                    old_name=old_name,
-                    new_name=new_name,
-                    content_type=file_data.type,
-                    size_bytes=file_data.size,
-                )
-                if renamed_path is not None:
-                    update.sandbox_path = renamed_path
 
         # updated_at is stamped by the repository.
         updated_file = await file_repository.apply_metadata_update(
@@ -451,52 +395,6 @@ class FileService:
 
         log.info("[files] update complete file_id", file_id=file_id)
         return updated_file
-
-    @staticmethod
-    async def _project_to_workspace(
-        *,
-        user_id: str,
-        conversation_id: str,
-        projection: _WorkspaceProjection,
-    ) -> str | None:
-        """Mirror the bytes and summary sidecar into the session workspace.
-
-        The one projection path for both upload and attach. Best-effort: a
-        missing mount or write failure returns None, never fails the caller.
-        """
-        try:
-            safe_name = workspace_upload_name(projection.file_id, projection.filename)
-        except ValueError as e:
-            log.warning(
-                "[files] skipping sandbox mirror, unsafe filename",
-                filename=projection.filename,
-                error=str(e),
-                error_type=type(e).__name__,
-                user_id=user_id,
-                conversation_id=conversation_id,
-            )
-            return None
-
-        sandbox_path = await mirror_upload(
-            user_id=user_id,
-            conversation_id=conversation_id,
-            safe_filename=safe_name,
-            content=projection.content,
-            content_type=projection.content_type,
-        )
-        if sandbox_path is not None and (projection.description or projection.page_wise_summary):
-            await write_summary_sidecar(
-                user_id=user_id,
-                conversation_id=conversation_id,
-                safe_filename=safe_name,
-                summary_md=render_summary_markdown(
-                    filename=projection.filename,
-                    content_type=projection.content_type,
-                    description=projection.description,
-                    page_wise_summary=projection.page_wise_summary,
-                ),
-            )
-        return sandbox_path
 
     @staticmethod
     async def attach_uploads(
@@ -591,10 +489,10 @@ class FileService:
                 conversation_id=conversation_id,
             )
         else:
-            sandbox_path = await FileService._project_to_workspace(
+            sandbox_path = await mirror_upload(
                 user_id=user_id,
                 conversation_id=conversation_id,
-                projection=_WorkspaceProjection(
+                upload=UploadMirror(
                     file_id=file_id,
                     filename=document.filename,
                     content=response.content,
