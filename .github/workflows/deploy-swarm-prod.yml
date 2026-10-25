@@ -330,6 +330,7 @@ jobs:
         env:
           ROLLBACK_MODE: ${{ inputs.rollback_mode }}
           IMAGE_DIGEST: ${{ inputs.image_digest }}
+        shell: bash
         run: |
           if [ "$ROLLBACK_MODE" = "last" ]; then
             for svc in $(docker --context prod stack services gaia-prod --format '{{.Name}}' \
@@ -350,6 +351,7 @@ jobs:
         id: converge
         env:
           ROLLBACK_MODE: ${{ inputs.rollback_mode }}
+        shell: bash
         run: |
           if [ "$ROLLBACK_MODE" = "last" ]; then
             SERVICES=$(docker --context prod stack services gaia-prod --format '{{.Name}}' \

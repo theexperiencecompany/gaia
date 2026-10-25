@@ -65,7 +65,7 @@ Providers are registered (not initialized) during `unified_startup()` in `app/co
 
 ### State
 
-`app/agents/core/state.py` defines `State(DictLikeModel)`. It implements `MutableMapping` so LangGraph can use it like a dict. The `messages` field uses `add_messages` reducer — always append, never replace.
+`app/override/langgraph_bigtool/utils.py` defines `State` (bigtool's state plus a todos channel). `messages` is a delta channel (`messages_delta_reducer`) rather than a full-snapshot `add_messages` channel, so checkpoints don't re-serialize the whole thread — always append, never replace.
 
 ### Nodes
 
@@ -125,7 +125,7 @@ One domain per file. Never let a file span multiple domains.
 
 `app/constants/` and `app/config/` are leaves: import-linter contracts in `apps/api/pyproject.toml` `[tool.importlinter]` forbid them from reaching `app.agents`/`app.services`/`app.api`/`app.db` or langchain/langgraph/transformers, and forbid `app/utils/` from reaching the model stack. This is a startup-cost fence, not a style rule — `app.constants.llm` importing one langchain-typed alias cost every pytest process, xdist worker and mutation run ~1.5 s of transformers/langchain import, and `app.utils.timezone` did the same to every module that touches a user model.
 
-Run it from `apps/api` with `uvx --no-build --from import-linter==2.6 lint-imports --no-cache` (the `--no-cache` matters: grimp's cache drops function-scope imports and a cached run can go green on a violation). It gates the `python-static` lane in CI and a prek hook. If a new import breaks a contract, move the shared piece down into a leaf module rather than adding an `ignore_imports` entry; every existing entry is one edge with a stated reason and was verified load-bearing.
+Run it from `apps/api` with `uvx --no-build --from import-linter==2.6 lint-imports --no-cache` (the `--no-cache` matters: grimp's cache drops function-scope imports and a cached run can go green on a violation). It gates the `lint-imports` check of CI's lint-python job and a prek hook. If a new import breaks a contract, move the shared piece down into a leaf module rather than adding an `ignore_imports` entry; every existing entry is one edge with a stated reason and was verified load-bearing.
 
 ## Pydantic Models
 
@@ -629,13 +629,13 @@ If you are an agent fixing a bug here and you see `JuiceFSUnavailable`: do **not
 
 ## Environment
 
-Settings class is selected by `ENV` env var (`production` | `development`). `DevelopmentSettings` makes most keys optional. `ProductionSettings` requires all keys.
+There is one `Settings` class (`app/config/settings.py`); every integration key on it is optional. `ENV` (`production` | `development` | `selfhost`) and `AUTH_MODE` build the deployment profile (`settings.deployment`, `app/config/deployment.py`), and every behaviour that differs between deployments reads a capability off it — never `ENV` itself. `BLOB_STORE` (where files live) is the third profile input. The capabilities are the boolean fields of `DeploymentProfile` (`runtime_credentials`, `instance_toolkits`, `local_code_sandbox`, `local_workspace`, `hosted_models`, `requires_complete_config`, ...): a new deployment difference is a new field there, never an `ENV` check.
+
+What a deployment must set is one table, `app/config/capability_requirements.py`: each capability lists the keys it needs (billing → Dodo, a Cloudinary blob store → Cloudinary, a JuiceFS workspace → R2/JuiceFS/E2B, WorkOS auth → `WORKOS_*`, ...). Self-host refuses to boot without them; production and development warn and boot, so one unset integration key degrades that integration instead of taking GAIA Cloud down on deploy. Every real deployment refuses to boot with a development override set. The settings validator's warnings and the CLI's config schema (`mise cli:schema`, drift-checked in CI) derive from the same table. A new key: add the optional field, and if a capability needs it, add it to the table.
 
 Settings are loaded once via `@lru_cache` in `app/config/settings.py`. In tests, call `get_settings.cache_clear()` before recreating the app to pick up env changes.
 
-Secrets in production are injected from **Infisical** before Pydantic validates the settings object. In development, use `.env` only.
-
-See `apps/api/.env.example` or the `ProductionSettings` class in `app/config/settings.py` for the full list of required keys. For local dev, `DevelopmentSettings` makes most keys optional — set at minimum `ENV=development`, MongoDB URL, Redis URL, and WorkOS credentials.
+Secrets in production are injected from **Infisical** before Pydantic validates the settings object. In development, use `.env` only. For local dev set at minimum `ENV=development`, `MONGO_DB` and `REDIS_URL`.
 
 ### Dev auth bypass (`DEV_AUTH_BYPASS_EMAIL`)
 
@@ -647,11 +647,23 @@ Related: `GAIA_SIM_MODE=1` (`mise dev --sim`) routes every LLM call to the local
 - Per-request impersonation: with the bypass active, an `X-Dev-User: <email>` request header authenticates as that user instead of `DEV_AUTH_BYPASS_EMAIL`, so one server can act as many users without restarts. Applies to HTTP (middleware) and WebSocket paths.
 - The dev router (`/api/v1/dev/*` — mint, seed, delete, direct agent runs) is mounted only when `ENV=development` and `DEV_AUTH_BYPASS_EMAIL` is set; it 404s otherwise. It is excluded from the auth bypass so minting the first user is possible before any user exists.
 - Direct layer invocation for tests: `POST /api/v1/dev/executor` runs the executor without the comms front door; `POST /api/v1/dev/subagents/{id}` runs one subagent without comms or the executor (`GET /api/v1/dev/subagents` lists ids). Both reuse the production preparation paths (`prepare_executor_execution` / `prepare_subagent_execution`) — see the `driving-gaia` skill §5.
-- Development only: `get_settings()` raises at startup if the var is set with `ENV=production` — never weaken that check.
+- Development only: `get_settings()` raises at startup if the var is set under any deployment without `dev_tools` (production and selfhost) — never weaken that check.
 - The bypass user context carries `dev_bypass=True` for anything that needs to tell.
-- WorkOS is never called under the bypass, but `DevelopmentSettings` still requires the `WORKOS_*` keys — dummy values are fine locally.
+- WorkOS is never called under the bypass, so development runs without the `WORKOS_*` keys.
 - On Windows with a native Redis (Memurai), use `REDIS_URL=redis://127.0.0.1:6379` — Memurai binds IPv4 only and `localhost` resolves to `::1` first, which makes the ARQ/lifespan services time out and startup fail.
 - A `dev_bypass_user` cookie overrides the configured email per request, so two browser profiles can act as different users against one API instance (test free vs pro side by side).
+
+## Providers & credentials (self-host)
+
+- **One read path.** Every provider key (LLMs, search, email, Composio, Cloudinary, Google OAuth, ...) is read through `app/services/providers/provider_credentials_service.py` — `resolve()` / `resolved_config()`, stored instance credential first, then env. Never read a provider key straight off `settings`.
+- **One write path.** Saves go through `provider_setup_service.py` (`merge_provider_credential` / `save_provider_credential`), which applies the preset and the SSRF check on base URLs; a save publishes an invalidation every pod applies (`core/runtime_config_subscriber.py`).
+- **One spec per provider**: `app/services/providers/provider_registry.py` `PROVIDER_SPECS` holds each `CredentialProviderName`'s card (`ProviderPreset`: copy, endpoint defaults, takes_key / takes_model / managed_at, favicon), its env fallback, the fields a usable config needs (`is_usable`, shared by `/setup/status` and the LLM client) and its lazy-provider registry key. `app/constants/providers.py` holds the enum, the custom card's `CUSTOM_PRESETS`, and `ProviderFeature` / `PROVIDER_FEATURES`. The setup endpoints are `api/v1/endpoints/setup*.py`; the web renders every card from `GET /setup/catalog`.
+- **Model lanes**: `agents/llm/lane.py` (`resolve_lane`) picks which configured provider serves comms, executor and one-shot uses; `agents/llm/client.py` builds the models.
+- **Adding a provider** is one `CredentialProviderName` member, one `PROVIDER_SPECS` entry, and its place in `PROVIDER_FEATURES`; then `mise api:types`.
+
+## Self-host workspace
+
+Self-host sets `local_workspace`: files live in a Docker volume. Code runs in local containers (`services/sandbox/local_sandbox.py`, picked per acquire by `use_local_sandbox()`) only when the operator opted in (`gaia up --code-sandbox`) and no E2B key is saved. So self-host needs none of R2 / JuiceFS / E2B (`config/capability_requirements.py`). The JuiceFS notes below apply to the hosted deployment only.
 
 ## Pre-commit Hooks & Security Scanners
 
@@ -687,8 +699,8 @@ nx run-many -t lint --projects=web,desktop
 
 ## Non-Obvious Patterns
 
-- **`app/patches.py`** is imported at the top of `main.py` with `# noqa: F401` — it applies monkey-patches to third-party libraries at startup. Do not remove this import.
-- **Docs are disabled in production**: `/docs` and `/redoc` return 404 when `ENV=production`. Use `ENV=development` locally.
+- **`app/patches/`** is imported at the top of `main.py` with `# noqa: F401` — it applies monkey-patches to third-party libraries at startup. Do not remove this import.
+- **Docs are development-only**: `/docs` and `/redoc` return 404 unless the deployment has `dev_tools` (`app/core/app_factory.py`), so production and selfhost both hide them.
 - **`app/core/lazy_loader.py` `providers` is a global singleton** — unique provider names are critical. Use UUID suffixes in tests to avoid cross-test pollution (the registry is never reset between tests).
 - **LangGraph checkpointer**: Uses PostgreSQL (`langgraph-checkpoint-postgres`) in production, falls back to in-memory `InMemorySaver` if the checkpointer manager is unavailable.
 - **Background memory storage**: memory ingestion (`memory_node.py`) is fire-and-forget on the end-of-graph hook. Spawn it — and all fire-and-forget work — via `spawn_background_task()` (`app/utils/background_tasks.py`) so the task isn't garbage-collected mid-flight (see Anti-Patterns).

@@ -1,6 +1,7 @@
 import type { NextRequest, NextResponse } from "next/server";
 import createMiddleware from "next-intl/middleware";
 
+import { selfhostHomeRedirect } from "./features/auth/api/selfhostHomeRedirect";
 import { stripLocalePrefix } from "./i18n/config";
 import { routing } from "./i18n/routing";
 import { isTranslatedPath } from "./i18n/translatedRoutes";
@@ -45,7 +46,12 @@ function localeResponse(request: NextRequest): NextResponse {
   return response;
 }
 
-export default function middleware(request: NextRequest) {
+export default async function middleware(request: NextRequest) {
+  // A self-hosted instance has no landing page: "/" goes into the product.
+  if (request.nextUrl.pathname === "/") {
+    const selfhostHome = await selfhostHomeRedirect(request);
+    if (selfhostHome) return selfhostHome;
+  }
   const response = localeResponse(request);
   if (!isIndexableHost(request.headers.get("host"))) {
     response.headers.set("X-Robots-Tag", "noindex, nofollow");

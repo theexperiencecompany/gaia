@@ -19,6 +19,7 @@ from collections.abc import Awaitable, Callable
 
 from app.constants.account import ACCOUNT_DIR, ACCOUNT_LINKED_ACCOUNTS_DIRNAME
 from app.constants.log_tags import LogTag
+from app.db.repositories.user_instructions import user_instructions_repository
 from app.db.repositories.users import user_repository
 from app.models.account_models import (
     CustomInstructionsProjection,
@@ -32,6 +33,7 @@ from app.models.account_models import (
     VoiceSelectedProjection,
 )
 from app.models.payment_models import PlanDuration, PlanType
+from app.models.user_instructions_models import GLOBAL_INSTRUCTIONS_SCOPE
 from app.services._vfs_scheduler import make_scheduler
 from app.services.payments.payment_service import payment_service
 from app.services.platform_link_service import Platform, PlatformLinkService
@@ -184,26 +186,21 @@ async def _notifications_body(user_id: str) -> str:
 
 
 async def _preferences_body(user_id: str) -> str:
-    preferences = await _onboarding_preferences(user_id)
     user = await user_repository.get(user_id)
-    # model_validate, not the constructor: these are raw Mongo blob values and
-    # Pydantic is what actually narrows them. A cast() here would only assert
-    # the type to mypy while doing nothing at runtime.
-    projection = PreferencesProjection.model_validate(
-        {
-            "response_style": preferences.get("response_style"),
-            "timezone": user.timezone if user else None,
-            "profession": preferences.get("profession"),
-            "needs": preferences.get("needs"),
-        }
+    preferences = user.onboarding.preferences if user and user.onboarding else None
+    projection = PreferencesProjection(
+        response_style=preferences.response_style if preferences else None,
+        timezone=user.timezone if user else None,
+        profession=preferences.profession if preferences else None,
+        needs=preferences.needs if preferences else None,
     )
     return projection.model_dump_json(indent=2) + "\n"
 
 
 async def _custom_instructions_body(user_id: str) -> str:
-    preferences = await _onboarding_preferences(user_id)
-    projection = CustomInstructionsProjection.model_validate(
-        {"instructions": preferences.get("custom_instructions")}
+    record = await user_instructions_repository.get_record(user_id, GLOBAL_INSTRUCTIONS_SCOPE)
+    projection = CustomInstructionsProjection(
+        instructions=record.content if record and record.content else None
     )
     return projection.model_dump_json(indent=2) + "\n"
 
@@ -233,12 +230,12 @@ async def _linked_account_bodies(user_id: str) -> list[AccountFileProjection]:
     files: list[AccountFileProjection] = []
     for platform in Platform:
         entry = linked.get(platform.value)
-        projection = LinkedAccountProjection(
-            platform=platform.value,
-            connected=entry is not None,
-            connected_at=entry.get("connectedAt") if entry else None,
-            username=entry.get("username") if entry else None,
-            display_name=entry.get("displayName") if entry else None,
+        projection = (
+            LinkedAccountProjection.model_validate(
+                {**entry, "platform": platform.value, "connected": True}
+            )
+            if entry
+            else LinkedAccountProjection(platform=platform.value)
         )
         files.append(
             {
@@ -248,12 +245,6 @@ async def _linked_account_bodies(user_id: str) -> list[AccountFileProjection]:
             }
         )
     return files
-
-
-async def _onboarding_preferences(user_id: str) -> dict[str, object]:
-    user = await user_repository.get(user_id)
-    preferences = user.onboarding.preferences if user and user.onboarding else None
-    return preferences.model_dump() if preferences else {}
 
 
 __all__ = [

@@ -38,7 +38,7 @@ class TestConnectModes:
         with (
             patch(f"{MODULE}.current_stream_writer", return_value=MagicMock()),
             patch(
-                f"{MODULE}.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 [
                     _integration("gmail", "Gmail", composio=True),
                     _integration("posthog", "PostHog", composio=False),
@@ -180,7 +180,7 @@ class TestReconnectMode:
         with (
             patch(f"{MODULE}.current_stream_writer", return_value=MagicMock()),
             patch(
-                f"{MODULE}.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 [
                     _integration("gmail", "Gmail", composio=True),
                     _integration("posthog", "PostHog", composio=False),
@@ -306,7 +306,10 @@ class TestCheckIntegrationsStatusAccounts:
     async def test_a_composio_integration_with_no_account_record_lists_no_accounts(self) -> None:
         with (
             patch(f"{MODULE}.check_single_integration_status", AsyncMock(return_value=True)),
-            patch(f"{MODULE}.OAUTH_INTEGRATIONS", [_integration("gmail", "Gmail", composio=True)]),
+            patch(
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
+                [_integration("gmail", "Gmail", composio=True)],
+            ),
             patch(f"{MODULE}.get_account_record", AsyncMock(return_value=None)),
         ):
             result = await check_integrations_status.ainvoke(
@@ -324,7 +327,7 @@ class TestCheckIntegrationsStatusAccounts:
         with (
             patch(f"{MODULE}.check_single_integration_status", AsyncMock(return_value=True)),
             patch(
-                f"{MODULE}.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 [_integration("gmail", "Gmail", composio=True)],
             ),
             patch(f"{MODULE}.get_account_record", AsyncMock(return_value=record)) as lookup,

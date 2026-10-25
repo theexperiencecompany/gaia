@@ -22,7 +22,7 @@ from app.agents.core.graph_builder.build_graph import comms_tools
 from app.agents.core.messages import MessageScope, construct_langchain_messages
 from app.agents.core.nodes.browser_task_status import describe_browser_tasks
 from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
-from app.agents.llm.dev_lane import build_custom_chat_model
+from app.agents.llm.dev_lane import build_custom_chat_model, custom_endpoint
 from app.agents.tools.executor_tool import handoff_message
 from app.config.settings import settings
 from app.constants.agents import AgentTag, wrap_agent_payload
@@ -101,6 +101,7 @@ def _model(lane: str) -> BaseChatModel:
     return build_custom_chat_model(
         temperature=DEFAULT_LLM_TEMPERATURE,
         max_tokens=DEV_LLM_MAX_OUTPUT_TOKENS,
+        endpoint=custom_endpoint(),
         reasoning=ReasoningLevel.OFF,
     )
 

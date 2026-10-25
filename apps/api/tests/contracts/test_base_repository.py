@@ -12,6 +12,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime
 
+from bson import ObjectId
 from pydantic import BaseModel, ConfigDict
 from pymongo.errors import BulkWriteError
 import pytest
@@ -223,6 +224,18 @@ class TestBasePrimitives:
         )
         assert missed is None  # extra_filter gate did not match
 
+    async def test_a_refused_update_evicts_the_cached_copy(self, repo, make_doc, redis):
+        """A compare-and-set refused behind the cache must leave the retry nothing stale to read."""
+        created = await repo.create(make_doc(user_id="u", count=1))
+        await repo.get(created.id, user_id="u")  # populate the entity cache
+
+        refused = await repo._apply_update(
+            created.id, "u", {"user_id": "u", "count": 999}, _FixtureUpdate(title="edited")
+        )
+
+        assert refused is None
+        assert await redis.get(repo.cache_policy.entity_key("u", created.id)) is None
+
 
 _DOUBLE_COUNT = [{"$set": {"count": {"$multiply": ["$count", 2]}}}]
 
@@ -299,12 +312,14 @@ class TestPipelineUpdate:
 
 class _GlobalDocument(MongoDocument):
     name: str
+    tag: str = ""
 
 
 class _GlobalUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str | None = None
+    tag: str | None = None
 
 
 class _GlobalRepository(MongoRepository[_GlobalDocument, _GlobalUpdate]):
@@ -337,6 +352,18 @@ class TestGlobalRepository:
         await global_repo.create(_GlobalDocument(name="a"))
         await global_repo.create(_GlobalDocument(name="b"))
         assert await global_repo.count() == 2
+
+    async def test_upsert_inserts_then_updates_through_the_cache(self, global_repo):
+        doc_id = str(ObjectId())
+
+        await global_repo.upsert(doc_id, _GlobalUpdate(name="first", tag="kept"))
+        first = await global_repo.get(doc_id)
+        await global_repo.upsert(doc_id, _GlobalUpdate(name="second"))
+        second = await global_repo.get(doc_id)
+
+        assert first is not None and (first.name, first.tag) == ("first", "kept")
+        assert second is not None and (second.name, second.tag) == ("second", "kept")
+        assert await global_repo.count() == 1
 
 
 class _KeyedDocument(MongoDocument):
@@ -381,6 +408,15 @@ class TestBusinessKeyIdentity:
         assert updated is not None and updated.label == "second"
         assert await keyed_repo.delete("abc") is True
         assert await keyed_repo.get("abc") is None
+
+    async def test_upsert_creates_the_document_under_its_business_key(
+        self, keyed_repo, raw_collection
+    ):
+        await keyed_repo.upsert("fresh", _KeyedUpdate(label="made"))
+
+        fetched = await keyed_repo.get("fresh")
+        assert fetched is not None and fetched.label == "made"
+        assert await raw_collection.count_documents({}) == 1
 
     async def test_business_key_is_not_clobbered_by_object_id(self, keyed_repo):
         created = await keyed_repo.create(_KeyedDocument(ref="uuid-xyz"))

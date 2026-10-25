@@ -7,6 +7,7 @@ import {
   FEATURES,
   getFeatureBySlug,
 } from "@/features/landing/data/featuresData";
+import { prerenderedMarketingParams } from "@/lib/selfhost";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
@@ -20,8 +21,12 @@ interface Props {
   params: Promise<{ slug: string; locale: string }>;
 }
 
-export async function generateStaticParams() {
+async function allStaticParams() {
   return FEATURES.map((f) => ({ slug: f.slug }));
+}
+
+export function generateStaticParams() {
+  return prerenderedMarketingParams(allStaticParams);
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {

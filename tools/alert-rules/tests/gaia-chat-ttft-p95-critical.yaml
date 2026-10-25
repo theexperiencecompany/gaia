@@ -37,7 +37,7 @@ tests:
             exp_annotations:
               description: >-
                 Same signal as the warning-tier TTFT rule, at the point where chat feels broken rather than slow. This tier also pages email. Treat it as an incident — check provider status first (llm_ttft_seconds), then executor queue wait (executor_queue_wait_seconds) for a stuck conversation lock.
-              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-chat-ttft-p95-critical
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-chat-ttft-p95-critical
 
   - name: gaia-chat-ttft-p95-critical stays quiet when TTFT p95 is under 10s
     interval: 1m

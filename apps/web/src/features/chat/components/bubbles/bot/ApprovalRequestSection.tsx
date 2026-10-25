@@ -221,27 +221,29 @@ export default function ApprovalRequestSection({
         >
           Deny
         </Button>
-        <Dropdown placement="bottom-end">
-          <DropdownTrigger>
-            <Button
-              isIconOnly
-              size="sm"
-              variant="light"
-              isDisabled={locked}
-              aria-label="More approval options"
-            >
-              <MoreHorizontalIcon width={18} />
-            </Button>
-          </DropdownTrigger>
-          <DropdownMenu aria-label="Approval options">
-            <DropdownItem
-              key="always"
-              onPress={() => submit("approve", "always_tool")}
-            >
-              Always allow this tool
-            </DropdownItem>
-          </DropdownMenu>
-        </Dropdown>
+        {!data.always_asks && (
+          <Dropdown placement="bottom-end">
+            <DropdownTrigger>
+              <Button
+                isIconOnly
+                size="sm"
+                variant="light"
+                isDisabled={locked}
+                aria-label="More approval options"
+              >
+                <MoreHorizontalIcon width={18} />
+              </Button>
+            </DropdownTrigger>
+            <DropdownMenu aria-label="Approval options">
+              <DropdownItem
+                key="always"
+                onPress={() => submit("approve", "always_tool")}
+              >
+                Always allow this tool
+              </DropdownItem>
+            </DropdownMenu>
+          </Dropdown>
+        )}
       </div>
     </div>
   );

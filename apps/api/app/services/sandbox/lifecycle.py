@@ -29,8 +29,10 @@ from urllib.parse import unquote, urlsplit, urlunsplit
 from e2b import AsyncSandbox, NotFoundException, SandboxState
 
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
+from app.config.deployment import DeploymentKind
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
+from app.constants.providers import CredentialProviderName
 from app.constants.sandbox import (
     HEALTH_PROBE_REQUEST_TIMEOUT_SECONDS,
     HEALTH_PROBE_RETRY_REQUEST_TIMEOUT_SECONDS,
@@ -48,8 +50,21 @@ from app.services.agent_lab.agents_saves import save_agents_home
 from app.services.agent_lab.lab_runs import lab_run_status
 from app.services.agent_lab.sandbox_events import SandboxEventKind, report_sandbox_event
 from app.services.feature_flags import is_agent_lab_enabled
+from app.services.providers.provider_credentials_service import (
+    ProviderConfig,
+    resolve as resolve_e2b_config,
+)
 from app.services.sandbox.artifact_watcher import start_watcher_for
-from app.services.sandbox.errors import SandboxAcquisitionError, SandboxRateLimitError
+from app.services.sandbox.errors import (
+    CodeExecutionDisabledError,
+    SandboxAcquisitionError,
+    SandboxRateLimitError,
+)
+from app.services.sandbox.local_sandbox import (
+    LocalDockerSandbox,
+    get_local_sandbox,
+    pop_local_sandbox,
+)
 from app.services.sandbox.pool import (
     PooledSandbox,
     get_sandbox_pool,
@@ -75,6 +90,66 @@ MOUNT_SCRIPT_FILE = Path(__file__).resolve().parents[3] / "scripts" / "mount_jui
 # Graceful JuiceFS unmount before a hard kill — short, best-effort.
 JFS_UNMOUNT_TIMEOUT_SECONDS = 15
 SANDBOX_CREATION_FEATURE_KEY = "sandbox_creation"
+
+
+async def _resolved_e2b_api_key() -> str | None:
+    """Return the E2B key from the credential store, falling back to the environment.
+
+    Single seam for every E2B routing decision here: a key saved in Settings
+    wins over the env var without a restart, and resolutions cache for 60s.
+    """
+    config: ProviderConfig | None = await resolve_e2b_config(CredentialProviderName.E2B)
+    return config.api_key if config else None
+
+
+async def use_local_sandbox() -> bool:
+    """Report whether coding sandboxes should be local Docker-exec containers.
+
+    Self-host without a resolvable E2B credential is the only mode that routes
+    here, and only when the operator opted in; otherwise CodeExecutionDisabledError.
+    Checked per acquire so saving an E2B key switches backends with no restart.
+    """
+    if settings.deployment.kind is not DeploymentKind.SELFHOST:
+        return False
+    if await _resolved_e2b_api_key() is not None:
+        return False
+    if not settings.deployment.local_code_sandbox:
+        raise CodeExecutionDisabledError
+    return True
+
+
+@contextlib.asynccontextmanager
+async def _acquire_local_sandbox(user_id: str) -> AsyncIterator[LocalDockerSandbox]:
+    """Yield the local Docker-exec sandbox with the E2B path acquire guarantees.
+
+    Per-user serialized with death-eviction of dead containers; JuiceFS mounts
+    and pause scheduling are absent because a local volume needs neither.
+    """
+    pool = get_sandbox_pool()
+    lock = await pool.get_lock(user_id)
+    await lock.acquire()
+    try:
+        sbx = get_local_sandbox(user_id)
+        async with fs_timer(FsOps.SBX_ACQUIRE):
+            created = await sbx.ensure_started()
+        _record(operation="acquire", source="local_docker", sandbox_id=sbx.sandbox_id)
+        if created:
+            # A run watching this user lived in a container that is gone, so this is a replacement.
+            await _set_up_agents_home(user_id, sbx, replaced=True)
+        try:
+            yield sbx
+        except Exception:
+            # Same contract as the E2B branch below: if a tool op failed AND
+            # the container died underneath it, evict so the next acquire
+            # doesn't hand out the same corpse.
+            if not await sbx.is_running():
+                _record(health_ok=False)
+                pop_local_sandbox(user_id)
+                with contextlib.suppress(Exception):
+                    await sbx.kill()
+            raise
+    finally:
+        lock.release()
 
 
 def _now() -> datetime:
@@ -199,7 +274,8 @@ def _needs_agent_lab_upgrade(current_template_id: str | None, template_id: str) 
 
 async def _create_fresh_sandbox(user_id: str, shard_id: int, template_id: str) -> AsyncSandbox:
     """Provision a new E2B sandbox for the user, run mount script, return handle."""
-    if not settings.E2B_API_KEY:
+    e2b_api_key = await _resolved_e2b_api_key()
+    if not e2b_api_key:
         raise SandboxAcquisitionError("E2B_API_KEY is not configured")
 
     async_sandbox_cls = AsyncSandbox
@@ -219,6 +295,7 @@ async def _create_fresh_sandbox(user_id: str, shard_id: int, template_id: str) -
             template=template_id,
             timeout=sandbox_lifetime_seconds(template_id),
             metadata={"user_id": user_id, "shard_id": str(shard_id)},
+            api_key=e2b_api_key,
         )
     sandbox_id = getattr(sbx, "sandbox_id", None)
     _record(
@@ -236,8 +313,10 @@ async def _create_fresh_sandbox(user_id: str, shard_id: int, template_id: str) -
     return sbx
 
 
-async def _set_up_agents_home(user_id: str, sbx: AsyncSandbox, *, replaced: bool) -> None:
-    """Lay out the coding agents' home on a fresh agent-lab sandbox, restoring the last save.
+async def _set_up_agents_home(
+    user_id: str, sbx: AsyncSandbox | LocalDockerSandbox, *, replaced: bool
+) -> None:
+    """Lay out the coding agents' home on a fresh agent-lab or local sandbox, restoring the last save.
 
     Runs once the sandbox is recorded, so a failure never orphans it: the
     error is logged, the next run seed retries the idempotent setup, and a
@@ -403,10 +482,11 @@ async def _connect_sandbox(sandbox_id: str, lifetime_seconds: int) -> AsyncSandb
     server-side lifetime; bounded so a hung E2B control-plane call falls
     through to a fresh create instead of stalling the agent.
     """
+    e2b_api_key = await _resolved_e2b_api_key()
     async with fs_timer(FsOps.SBX_CONNECT_RESUME):
         try:
             return await asyncio.wait_for(
-                AsyncSandbox.connect(sandbox_id, timeout=lifetime_seconds),
+                AsyncSandbox.connect(sandbox_id, timeout=lifetime_seconds, api_key=e2b_api_key),
                 timeout=SANDBOX_CONNECT_TIMEOUT_SECONDS,
             )
         except Exception as e:
@@ -458,7 +538,8 @@ async def _liveness(sbx: AsyncSandbox) -> SandboxLiveness:
         return SandboxLiveness.ALIVE
     try:
         info = await asyncio.wait_for(
-            AsyncSandbox.get_info(sbx.sandbox_id), timeout=SANDBOX_CONNECT_TIMEOUT_SECONDS
+            AsyncSandbox.get_info(sbx.sandbox_id, api_key=await _resolved_e2b_api_key()),
+            timeout=SANDBOX_CONNECT_TIMEOUT_SECONDS,
         )
     except NotFoundException:
         return SandboxLiveness.GONE
@@ -656,7 +737,7 @@ async def _acquire_or_create(user_id: str, template_id: str) -> PooledSandbox:
                 sandbox_id=doc.sandbox_id,
             )
             # Killed by id, not resumed first: its JuiceFS sessions go to the stale reaper.
-            await AsyncSandbox.kill(doc.sandbox_id)
+            await AsyncSandbox.kill(doc.sandbox_id, api_key=await _resolved_e2b_api_key())
         else:
             sbx = await _resume_existing_sandbox(doc, mount_env)
             if sbx is not None:
@@ -905,13 +986,18 @@ async def pause_idle_sandbox(user_id: str) -> bool:
 
 @contextlib.asynccontextmanager
 async def acquire_sandbox(user_id: str) -> AsyncIterator[AsyncSandbox]:
-    """Context manager that yields a live AsyncSandbox for the user.
+    """Yield a live sandbox for the user, serialized per user with debounced pause.
 
-    Serializes against concurrent calls for the same user. Schedules a
-    debounced pause when the last in-flight call finishes.
+    On self-host without an E2B key this yields the local Docker-exec backend
+    and bypasses the E2B pool machinery entirely.
     """
     if not user_id:
         raise SandboxAcquisitionError("user_id is required")
+
+    if await use_local_sandbox():
+        async with _acquire_local_sandbox(user_id) as sbx:
+            yield sbx
+        return
 
     pool = get_sandbox_pool()
     template_id = await _template_for(user_id)

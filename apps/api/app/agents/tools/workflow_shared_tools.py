@@ -71,12 +71,12 @@ async def search_triggers(
             limit=limit,
         )
 
-        connected = [t for t in results if t.get("is_connected")]
-        not_connected = [t for t in results if not t.get("is_connected")]
+        connected = [t for t in results if t.is_connected]
+        not_connected = [t for t in results if not t.is_connected]
 
         return success_response(
             {
-                "triggers": results,
+                "triggers": [t.model_dump(mode="json") for t in results],
                 "connected_count": len(connected),
                 "not_connected_count": len(not_connected),
             }

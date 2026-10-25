@@ -17,6 +17,7 @@ import {
   getMarketplaceFallbackGuides,
   MARKETPLACE_DOCS_LINKS,
 } from "@/lib/docs-links";
+import { prerenderedMarketingParams } from "@/lib/selfhost";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
@@ -39,13 +40,17 @@ export const revalidate = 60;
  * This enables search engines to crawl and index all integration pages.
  * Uses slug for SEO-friendly URLs.
  */
-export async function generateStaticParams() {
+async function allStaticParams() {
   const [native, community] = await Promise.all([
     getNativeIntegrations(),
     getAllCommunityIntegrations(),
   ]);
   const slugs = new Set([...native, ...community].map((item) => item.slug));
   return [...slugs].map((slug) => ({ slug }));
+}
+
+export function generateStaticParams() {
+  return prerenderedMarketingParams(allStaticParams);
 }
 
 export const dynamicParams = true;
