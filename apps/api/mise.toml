@@ -133,7 +133,7 @@ run = "uv run --group backend python scripts/seed_workflows.py"
 
 [tasks."test:unit"]
 description = "Run unit tests only (no real services needed)"
-run = "USE_REAL_SERVICES=0 uv run pytest tests/unit --tb=short -q"
+run = "USE_REAL_SERVICES=0 uv run --group backend --group dev pytest tests/unit --tb=short -q"
 
 [tasks.clean]
 description = "Clean up __pycache__ and build artifacts"

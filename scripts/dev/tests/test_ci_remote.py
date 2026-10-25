@@ -1366,3 +1366,78 @@ def test_only_the_newest_upload_of_a_shard_name_is_read(
     out = capsys.readouterr().out
     assert "app/services/y.py  survivors:" in out
     assert "log tail" not in out, "the stale empty upload won and sent the reader to the log"
+
+
+# ------------------------------------------------------------------------------- watch
+
+
+class SequencedGh(FakeGh):
+    """Serves the next check set on each check-runs poll, repeating the last one."""
+
+    def __init__(self, polls: list[list[dict[str, Any]]], **kwargs: Any) -> None:
+        super().__init__(checks=polls[0], **kwargs)
+        self.polls = polls
+        self.check_polls = 0
+
+    def text(
+        self, args: list[str], timeout_s: int, stdin_text: str | None = None
+    ) -> tuple[int, str, str]:
+        if "/check-runs" in (args[1] if len(args) > 1 else ""):
+            self.checks = self.polls[min(self.check_polls, len(self.polls) - 1)]
+            self.check_polls += 1
+        return super().text(args, timeout_s, stdin_text)
+
+
+PENDING_CHECK: dict[str, Any] = dict(
+    PASSED_CHECK, name="test-python", status="in_progress", conclusion=None
+)
+
+
+@pytest.fixture
+def no_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(ci_remote.time, "sleep", lambda _s: None)
+
+
+def test_fail_fast_stops_at_the_first_red_check_and_prints_its_failure(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = wire(
+        SequencedGh(
+            [[PENDING_CHECK], [FAILED_CHECK, PENDING_CHECK], [FAILED_CHECK, PASSED_CHECK]],
+            artifacts=[{"id": 55, "name": "verdict-mutation-shard-3", "expired": False}],
+            zip_blobs={None: verdict_zip(VERDICT)},
+        )
+    )
+    assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"]) == 1
+    out = capsys.readouterr().out
+    assert fake.check_polls == 2, "kept polling after a check went red"
+    assert "stopping at the first failure" in out
+    assert "app/api/v1/endpoints/bot.py:212" in out
+
+
+def test_without_fail_fast_watch_waits_for_every_check_to_finish(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = wire(
+        SequencedGh([[PENDING_CHECK], [FAILED_CHECK, PENDING_CHECK], [FAILED_CHECK, PASSED_CHECK]])
+    )
+    assert run_cli(monkeypatch, ["--watch", "--no-stack"]) == 1
+    assert fake.check_polls == 3
+    assert "stopping at the first failure" not in capsys.readouterr().out
+
+
+def test_fail_fast_on_a_green_run_waits_for_it_to_finish_and_exits_zero(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = wire(SequencedGh([[PENDING_CHECK], [PENDING_CHECK], [PASSED_CHECK]]))
+    assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"]) == 0
+    assert fake.check_polls == 3
+
+
+def test_fail_fast_without_watch_is_a_usage_error(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    with pytest.raises(SystemExit) as exc:
+        run_cli(monkeypatch, ["--fail-fast"])
+    assert exc.value.code == 2
+    assert "only applies to --watch" in capsys.readouterr().err

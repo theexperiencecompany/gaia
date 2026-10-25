@@ -22,7 +22,9 @@ A grouped job (lint-node, lint-python, ...) posts each of its checks as a
 read with the check runs, and a red one is listed under its red job rather than
 explained twice.
 
-`--watch` polls until checks go terminal (bounded), printing transitions.
+`--watch` polls until checks go terminal (bounded), printing transitions;
+`--fail-fast` stops it at the first red check and prints that failure.
+`mise ci:watch` is `--watch --fail-fast --max-wait 3600`.
 `--stack` prints the gh stack alone, one line per PR.
 `--verbose` adds full finding details, passing lanes, and the source used.
 `--json` emits the same report as one object.
@@ -217,6 +219,7 @@ class Options:
     as_json: bool
     verbose: bool
     watch: bool
+    fail_fast: bool
     with_stack: bool
     stack_only: bool
     rerun_timeouts: bool
@@ -1175,8 +1178,7 @@ def state_advice(report: dict, branch: str) -> list[str]:
         )
     if counts["pending"]:
         advice.append(
-            f"{plural(counts['pending'], 'check')} still running: "
-            f"`mise ci:remote --watch {branch}`."
+            f"{plural(counts['pending'], 'check')} still running: `mise ci:watch {branch}`."
         )
     if any(is_timeout_only(s) for s in report["shards"]):
         advice.append(
@@ -1367,6 +1369,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--verbose", action="store_true", help="full finding details + passing lanes"
     )
     parser.add_argument("--watch", action="store_true", help="poll until checks are terminal")
+    parser.add_argument(
+        "--fail-fast",
+        action="store_true",
+        help="with --watch, stop at the first failed check and print its failure",
+    )
     parser.add_argument("--no-stack", action="store_true", help="skip the gh stack section")
     parser.add_argument(
         "--stack",
@@ -1413,6 +1420,9 @@ def parse_options(args: argparse.Namespace) -> Options:
         if parsed[label] <= 0:
             eprint(f"usage error: {label} must be >= 1")
             sys.exit(2)
+    if args.fail_fast and not args.watch:
+        eprint("usage error: --fail-fast only applies to --watch")
+        sys.exit(2)
     if args.stack and (args.no_stack or args.watch or args.rerun_timeouts):
         eprint("usage error: --stack is its own mode — it takes no other mode flag")
         sys.exit(2)
@@ -1420,6 +1430,7 @@ def parse_options(args: argparse.Namespace) -> Options:
         as_json=args.json,
         verbose=args.verbose,
         watch=args.watch,
+        fail_fast=args.fail_fast,
         with_stack=not args.no_stack,
         stack_only=args.stack,
         rerun_timeouts=args.rerun_timeouts,
@@ -1430,7 +1441,7 @@ def parse_options(args: argparse.Namespace) -> Options:
 
 
 def watch(repo: Repo, pr_number: int, branch: str, options: Options) -> tuple[dict, int]:
-    """Poll until no check is pending or the budget runs out."""
+    """Poll until no check is pending, the budget runs out, or (fail-fast) a check goes red."""
     deadline = time.monotonic() + options.max_wait
     poll = 0
     while True:
@@ -1444,6 +1455,10 @@ def watch(repo: Repo, pr_number: int, branch: str, options: Options) -> tuple[di
                 f"{report['counts']['failed']} failed, {pending} pending "
                 f"(elapsed {elapsed}s / max {options.max_wait}s)"
             )
+        if options.fail_fast and exit_code:
+            if not options.as_json:
+                print("watch: stopping at the first failure (--fail-fast).")
+            break
         if pending == 0 or time.monotonic() + options.interval > deadline:
             if pending and not options.as_json:
                 print(f"watch: stopped after {options.max_wait}s with {pending} still pending.")
