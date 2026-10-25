@@ -40,6 +40,8 @@ from shared.py.wide_events import VectorContext, log
 
 # Pickled bytes round-trip losslessly through latin-1, so a value is stored as a str document.
 _DOCUMENT_ENCODING = "latin1"
+# The process-wide cap's name: an identity token, so any other name is the same cap.
+_EMBEDDINGS_SEMAPHORE = "chroma_put_embeddings"  # pragma: no mutate
 
 
 class ChromaBatchWriteError(RuntimeError):
@@ -62,6 +64,10 @@ class _PutValueHints(TypedDict, total=False):
     embedding: object
     tool_hash: str
     trigger_hash: str
+
+
+#: The ids one failed request (or one failed embedding) carried, and why it failed.
+_WriteFailure = tuple[list[str], BaseException]
 
 
 @dataclass(slots=True)
@@ -567,31 +573,16 @@ class ChromaStore(BaseStore):
                 deletes.append(doc_id)
             else:
                 rows.append(self._put_row(doc_id, op))
+        failures: list[_WriteFailure] = []
         if self.embeddings is not None:
-            await self._embed_rows([row for row in rows if row.text is not None], self.embeddings)
-
-        writes: list[tuple[list[str], Coroutine[object, object, object]]] = []
-        if deletes:
-            writes.append((deletes, collection.delete(ids=deletes)))
-        for group in (
-            [r for r in rows if r.embedding is not None],
-            [r for r in rows if r.embedding is None],
-        ):
-            if group:
-                writes.append(([r.doc_id for r in group], self._upsert_rows(group, collection)))
-        if not writes:
-            return
-
-        # Surface failures instead of letting return_exceptions=True swallow them —
-        # an indexing pass previously "succeeded" while writing zero rows silently.
-        results: list[object] = await asyncio.gather(
-            *[write for _, write in writes], return_exceptions=True
+            failures = await self._embed_rows(
+                [row for row in rows if row.text is not None], self.embeddings
+            )
+        # A row whose vector failed is not written; the rest of the batch still lands.
+        unembedded = {doc_id for doc_ids, _ in failures for doc_id in doc_ids}
+        failures += await self._write(
+            deletes, [row for row in rows if row.doc_id not in unembedded], collection
         )
-        failures = [
-            (doc_ids, result)
-            for (doc_ids, _), result in zip(writes, results)
-            if isinstance(result, BaseException)
-        ]
         written = len(deletes) + len(rows)
         failed = sum(len(doc_ids) for doc_ids, _ in failures)
         log.info(
@@ -614,6 +605,30 @@ class ChromaStore(BaseStore):
             raise ChromaBatchWriteError(
                 f"{failed} of {written} ChromaDB writes failed"
             ) from failures[0][1]
+
+    async def _write(
+        self, deletes: list[str], rows: list[_PutRow], collection: AsyncCollection
+    ) -> list[_WriteFailure]:
+        """Send the deletes in one request and the rows in one per vector shape; return what failed."""
+        writes: list[tuple[list[str], Coroutine[object, object, object]]] = []
+        if deletes:
+            writes.append((deletes, collection.delete(ids=deletes)))
+        for group in (
+            [r for r in rows if r.embedding is not None],
+            [r for r in rows if r.embedding is None],
+        ):
+            if group:
+                writes.append(([r.doc_id for r in group], self._upsert_rows(group, collection)))
+        # Surface failures instead of letting return_exceptions=True swallow them —
+        # an indexing pass previously "succeeded" while writing zero rows silently.
+        results: list[object] = await asyncio.gather(
+            *[write for _, write in writes], return_exceptions=True
+        )
+        return [
+            (doc_ids, result)
+            for (doc_ids, _), result in zip(writes, results)
+            if isinstance(result, BaseException)
+        ]
 
     def _put_row(self, doc_id: str, op: PutOp) -> _PutRow:
         """Build the document, metadata and either the vector or the text to embed for one put."""
@@ -653,13 +668,10 @@ class ChromaStore(BaseStore):
         return row
 
     @staticmethod
-    async def _embed_rows(pending: list[_PutRow], embeddings: Embeddings) -> None:
-        """Embed every row that carries text, a bounded number at a time across the process."""
+    async def _embed_rows(pending: list[_PutRow], embeddings: Embeddings) -> list[_WriteFailure]:
+        """Embed every row that carries text, a bounded number at a time; return the rows that failed."""
         # Process-wide, so concurrent batches share the fd cap rather than each taking it whole.
-        sem = loop_bound_semaphore(
-            "chroma_put_embeddings",  # pragma: no mutate -- an identity token; any other name is the same cap
-            MAX_CONCURRENT_INDEX_EMBEDDINGS,
-        )
+        sem = loop_bound_semaphore(_EMBEDDINGS_SEMAPHORE, MAX_CONCURRENT_INDEX_EMBEDDINGS)
 
         async def embed(row: _PutRow) -> None:
             async with sem:
@@ -675,10 +687,14 @@ class ChromaStore(BaseStore):
                     )
                     raise
 
-        try:
-            await asyncio.gather(*(embed(row) for row in pending))
-        except Exception as exc:
-            raise ChromaBatchWriteError(f"embedding a batch of {len(pending)} failed") from exc
+        results: list[object] = await asyncio.gather(
+            *(embed(row) for row in pending), return_exceptions=True
+        )
+        return [
+            ([row.doc_id], result)
+            for row, result in zip(pending, results)
+            if isinstance(result, BaseException)
+        ]
 
     @staticmethod
     async def _upsert_rows(rows: list[_PutRow], collection: AsyncCollection) -> None:

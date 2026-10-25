@@ -235,7 +235,7 @@ class TestPut:
 
         with (
             patch(f"{MODULE}.log") as log,
-            pytest.raises(ChromaBatchWriteError, match="^embedding a batch of 1 failed$"),
+            pytest.raises(ChromaBatchWriteError, match="^1 of 1 ChromaDB writes failed$"),
         ):
             await store.abatch([PutOp(namespace=("n", "m"), key="k", value={"t": "mail"})])
 
@@ -255,6 +255,30 @@ class TestPut:
         await store.abatch([PutOp(namespace=("n",), key="k", value=None)])
 
         assert _collection(store).rows == {}
+
+    async def test_a_failed_embedding_still_lets_the_rest_of_the_batch_land(self) -> None:
+        store = _store(index=True, fields=["t"])
+        collection = _collection(store)
+        collection.add("n::gone", {}, {"x": 1})
+        real = store.embeddings.aembed_query
+
+        async def embed(text: str) -> list[float]:
+            if text == "broken":
+                raise TimeoutError
+            return await real(text)
+
+        store.embeddings.aembed_query = embed
+
+        with pytest.raises(ChromaBatchWriteError, match="^1 of 3 ChromaDB writes failed$"):
+            await store.abatch(
+                [
+                    PutOp(namespace=("n",), key="ok", value={"t": "mail"}),
+                    PutOp(namespace=("n",), key="bad", value={"t": "broken"}),
+                    PutOp(namespace=("n",), key="gone", value=None),
+                ]
+            )
+
+        assert set(collection.rows) == {"n::ok"}
 
     async def test_a_failed_write_fails_the_batch_and_counts_its_rows(self) -> None:
         store = _store()
