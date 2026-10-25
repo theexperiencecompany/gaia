@@ -1377,7 +1377,7 @@ class TestDispatchAcknowledgement:
 
         assert response == (
             f"Handed to the executor (task_id: {task_id}). If a step needs the user's approval, "
-            "they see an approval card for it."
+            "it has not run yet and their decision releases it or skips it."
         )
 
 

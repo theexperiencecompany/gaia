@@ -40,7 +40,8 @@ permissions:
 
 jobs:
   probe:
-    name: Obscura vs Chrome on common sites
+    # The name carries it because a red X in the checks list is read before any summary.
+    name: Obscura vs Chrome on common sites (non-blocking — loads live third-party sites)
     runs-on: ubuntu-latest
     # A cold cargo build of Obscura is most of this; the probe itself is ~10 min.
     timeout-minutes: 60
@@ -50,7 +51,7 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      # The build main.yml's obscura-bin job makes too, under one cache scope.
+      # The build ci.yml's obscura-bin job makes too, under one cache scope.
       - uses: ./.github/actions/build-obscura
 
       - name: Locate the binaries (Obscura built above, Chrome from the runner image)
@@ -75,6 +76,12 @@ jobs:
       - name: Write the probe report to the job summary
         if: always()
         run: |
+          {
+            echo "### Non-blocking: this probe loads live third-party sites and gates nothing"
+            echo ""
+            echo "A red run means a site renders differently in Obscura than in Chrome — read the report. It is never a required check."
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
           [ -s "$RUNNER_TEMP/probe.txt" ] || exit 0
           { echo '```'; cat "$RUNNER_TEMP/probe.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 

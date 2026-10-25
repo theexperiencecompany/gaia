@@ -21,7 +21,7 @@ tests:
             exp_annotations:
               description: >-
                 When this certificate expires every HTTPS client fails at the TLS handshake — web, desktop, mobile and any external integration — with no graceful degradation. Renewal is normally automatic, so this firing means the renewal path itself is broken and needs a look before the deadline.
-              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-ssl-cert-expiry
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-ssl-cert-expiry
               __dashboardUid__: gaia-api-prometheus
               __panelId__: '13'
 
@@ -41,7 +41,7 @@ tests:
             exp_annotations:
               description: >-
                 When this certificate expires every HTTPS client fails at the TLS handshake — web, desktop, mobile and any external integration — with no graceful degradation. Renewal is normally automatic, so this firing means the renewal path itself is broken and needs a look before the deadline.
-              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-ssl-cert-expiry
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-ssl-cert-expiry
               __dashboardUid__: gaia-api-prometheus
               __panelId__: '13'
 

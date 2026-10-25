@@ -6,6 +6,7 @@ import BlurStack, { type BlurLayer } from "@/components/ui/blur-stack";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
 import { usePathname } from "@/i18n/navigation";
 import LandingProvidersLayout from "@/layouts/LandingProvidersLayout";
+import { showsMarketingChrome } from "./marketingChrome";
 
 // Footer is always below the fold on landing pages — defer it so it doesn't
 // compete with hero-above-the-fold rendering for main-thread time.
@@ -27,11 +28,14 @@ const BLUR_CONFIG: BlurLayer[] = [
 
 export default function LandingLayoutShell({
   children,
+  selfhost,
 }: {
   children: ReactNode;
+  /** Whether this web server fronts a self-hosted instance. */
+  selfhost: boolean;
 }) {
   const pathname = usePathname();
-  const isDesktopLogin = pathname === "/desktop-login";
+  const chrome = showsMarketingChrome(pathname, selfhost);
 
   return (
     <LandingProvidersLayout>
@@ -47,14 +51,14 @@ export default function LandingLayoutShell({
         />
 
         <LazyMotionProvider>
-          {!isDesktopLogin && <Navbar />}
+          {chrome && <Navbar />}
 
           <main id="main-content" className="min-h-screen">
             {children}
           </main>
         </LazyMotionProvider>
 
-        {!isDesktopLogin && <Footer />}
+        {chrome && <Footer />}
       </div>
     </LandingProvidersLayout>
   );

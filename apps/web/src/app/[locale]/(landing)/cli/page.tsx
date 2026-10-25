@@ -9,26 +9,26 @@ import {
 import { InstallPageClient } from "./InstallPageClient";
 
 export const metadata: Metadata = generatePageMetadata({
-  title: "Install GAIA CLI",
+  title: "Install GAIA",
   description:
-    "Install the GAIA CLI tool to quickly set up and manage your self-hosted GAIA instance. One command to get started with your AI assistant.",
+    "Self-host GAIA with one command: the installer sets up the GAIA CLI, then downloads GAIA and starts it. Keep it running with gaia status, doctor, update and backup.",
   path: "/cli",
   keywords: [
     "GAIA CLI",
     "Install GAIA",
-    "Self-hosted Setup",
+    "Self-host GAIA",
+    "Self-hosted AI assistant",
+    "GAIA installer",
+    "gaia up",
+    "Docker",
     "Command Line",
-    "CLI Tool",
-    "Quick Install",
-    "GAIA Setup",
-    "Developer Tools",
   ],
 });
 
 export default function InstallPage() {
   const webPageSchema = generateWebPageSchema(
-    "Install GAIA CLI",
-    "Quick installation guide for the GAIA CLI tool",
+    "Install GAIA",
+    "Self-host GAIA with one command, then manage it with the GAIA CLI",
     `${siteConfig.url}/cli`,
     [
       { name: "Home", url: siteConfig.url },

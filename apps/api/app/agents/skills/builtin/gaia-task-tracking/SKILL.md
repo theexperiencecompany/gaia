@@ -135,7 +135,7 @@ When the user tells GAIA how a todo should behave from now on (comms hands it ov
 | Feedback | Where it goes |
 |---|---|
 | How this todo behaves: what it shows or skips, what it does on its own, how it reports ("stop showing me newsletters", "put flights on my calendar automatically") | one dated line in its canvas.md `## Standing rules` |
-| How GAIA writes email, to one person or in general ("write to Sarah more formally", "never draft replies to my landlord") | the Gmail integration instructions: `get_integration_instructions("gmail")`, then `update_integration_instructions` with the full text, so drafting in chat obeys it too |
+| How GAIA writes email, to one person or in general ("write to Sarah more formally", "never draft replies to my landlord") | the user's standing instructions for Gmail: `get_user_instructions("gmail")`, then `update_user_instructions("gmail", ...)` with the full text, so drafting in chat obeys it too |
 | When it runs ("brief me at 7") | `update_tracked_todo` with `recurrence` / `scheduled_at` |
 
 ```python

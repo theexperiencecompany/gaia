@@ -18,7 +18,6 @@ import time
 from typing import TypedDict, cast
 import urllib.parse
 
-import httpx
 from langchain_core.tools import BaseTool
 from mcp_use import MCPClient as BaseMCPClient
 from mcp_use.client.session import MCPSession
@@ -39,6 +38,7 @@ from app.constants.mcp import (
     MAX_OAUTH_INVALID_SCOPE_DROPS,
     MCP_RENAMED_TOOL_NOTE,
 )
+from app.constants.providers import CredentialProviderName
 from app.core.lazy_loader import providers
 from app.db.chroma.chroma_tools_store import index_tools_to_store
 from app.db.redis import delete_cache
@@ -84,12 +84,18 @@ from app.services.mcp.token_management import (
     revoke_tokens,
     try_refresh_token,
 )
+from app.services.providers.provider_credentials_service import (
+    ProviderConfig,
+    resolve as resolve_composio_config,
+)
 from app.utils.background_tasks import spawn_background_task
 from app.utils.mcp_oauth_utils import (
     MCP_PROTOCOL_VERSION,
     OAuthSecurityError,
+    basic_auth_header,
     get_client_metadata_document_url,
     is_localhost_url,
+    mcp_http_client,
     oauth_token_expiry,
     parse_oauth_error_response,
     parse_rejected_scopes,
@@ -101,7 +107,7 @@ from app.utils.mcp_utils import (
     source_prefixed_tool_name,
     wrap_tools_with_null_filter,
 )
-from app.utils.url_safety import assert_public_http_url
+from app.utils.url_safety import assert_endpoint_url_allowed
 from mcp import ClientSession
 from mcp.client.auth.exceptions import OAuthRegistrationError
 from mcp.client.auth.oauth2 import PKCEParameters
@@ -487,14 +493,17 @@ class MCPClient:
             )
             server_config["auth"] = None
 
-        # Composio's hosted MCP gateway authenticates via x-api-key (COMPOSIO_KEY),
-        # not per-user OAuth; requires_auth stays False since there's no user credential.
-        if (
-            mcp_config.server_url
-            and COMPOSIO_MCP_HOST in mcp_config.server_url
-            and settings.COMPOSIO_KEY
-        ):
-            server_config.setdefault("headers", {})["x-api-key"] = settings.COMPOSIO_KEY
+        # Composio gateway auth is a platform x-api-key header, not per-user
+        # OAuth; requires_auth stays False because there is no user credential.
+        if mcp_config.server_url and COMPOSIO_MCP_HOST in mcp_config.server_url:
+            # Resolved store-first so a key configured in Settings applies
+            # without a restart; env remains the fallback.
+            composio_config: ProviderConfig | None = await resolve_composio_config(
+                CredentialProviderName.COMPOSIO
+            )
+            composio_api_key = composio_config.api_key if composio_config else None
+            if composio_api_key:
+                server_config.setdefault("headers", {})["x-api-key"] = composio_api_key
 
         return {"mcpServers": {integration_id: server_config}}
 
@@ -734,7 +743,9 @@ class MCPClient:
         # SSRF re-check (DNS-rebinding defense): the schema validator only did a
         # shape check at create/update time. Re-resolved here, before _build_config
         # (which can itself trigger outbound I/O via an OAuth refresh).
-        await assert_public_http_url(mcp_config.server_url)
+        await assert_endpoint_url_allowed(
+            mcp_config.server_url, allow_private=settings.deployment.private_network_endpoints
+        )
 
         config = await self._build_config(integration_id, mcp_config)
 
@@ -1542,7 +1553,7 @@ class MCPClient:
             as_metadata, client_metadata, registration_endpoint
         )
         try:
-            async with httpx.AsyncClient() as http_client:
+            async with mcp_http_client() as http_client:
                 response = await http_client.send(request)
 
                 # Check for DCR not supported (403/404/405) before the SDK parser,
@@ -1649,11 +1660,11 @@ class MCPClient:
             "MCP-Protocol-Version": MCP_PROTOCOL_VERSION,
         }
         if exchange["client_secret"]:
-            credentials = f"{exchange['client_id']}:{exchange['client_secret']}"
-            encoded = base64.b64encode(credentials.encode()).decode()
-            headers["Authorization"] = f"Basic {encoded}"
+            headers["Authorization"] = basic_auth_header(
+                exchange["client_id"], exchange["client_secret"]
+            )
 
-        async with httpx.AsyncClient() as http_client:
+        async with mcp_http_client() as http_client:
             response = await http_client.post(
                 token_endpoint, data=token_data, headers=headers, timeout=30
             )

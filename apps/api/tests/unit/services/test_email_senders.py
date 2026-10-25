@@ -23,6 +23,7 @@ from app.services.email.senders import (
     send_limit_reached_email,
     send_workflows_paused_email,
 )
+from app.services.providers.provider_credentials_service import ProviderConfig
 from tests.helpers import captured_wide_event
 
 SENDER_USER_ID = "507f1f77bcf86cd799439011"
@@ -90,6 +91,17 @@ class TestSendWelcomeEmail:
 class TestAddMarketingContact:
     # add_contact exits early when RESEND_AUDIENCE_ID is empty (not configured).
     # All tests must patch settings so the guard passes and the real logic runs.
+
+    @pytest.fixture(autouse=True)
+    def _stored_resend_key(self):
+        """Bind the provider's credential-store seam.
+
+        The key resolves through provider_credentials_service (Mongo) at send
+        time, which no unit test may touch.
+        """
+        config = ProviderConfig(api_key="re-stored")
+        with patch(f"{RESEND_PROVIDER}.resolve_resend_config", new=AsyncMock(return_value=config)):
+            yield
 
     @patch(f"{RESEND_PROVIDER}.settings")
     @patch(f"{RESEND_PROVIDER}.resend.Contacts.create")

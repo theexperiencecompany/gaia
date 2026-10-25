@@ -17,7 +17,7 @@ export const useOnboardingGuard = () => {
   // Resolved during render, not an effect, so a guarded page never paints
   // before redirecting. Replaces (not pushes), like every guard — a pushed
   // redirect leaves Back bouncing right back out.
-  const isOnboardingCompleted = user.onboarding?.completed;
+  const isOnboardingCompleted = user.onboarding.completed;
 
   if (pathname === "/onboarding") {
     // Submitting the answers IS completion now — nothing is generated
@@ -27,12 +27,16 @@ export const useOnboardingGuard = () => {
       // user inside it rather than on an empty composer. A seed that failed is
       // never a reason to strand them — fall back to the chat home.
       const seededConversationId =
-        user.onboarding?.getting_started_conversation_id;
+        user.onboarding.getting_started_conversation_id;
       redirect(
         seededConversationId ? `/c/${seededConversationId}` : "/c",
         RedirectType.replace,
       );
     }
+  } else if (pathname === "/setup") {
+    // The self-host wizard REPLACES hosted onboarding: a local instance has no
+    // onboarding pipeline (the API reports completed=True for it), so the branch
+    // below would fire here and bounce the admin off their own setup wizard.
   } else if (!isOnboardingCompleted) {
     // If not on onboarding page but onboarding is not completed, redirect to onboarding
     redirect("/onboarding", RedirectType.replace);

@@ -180,6 +180,14 @@ class _ConversationIdRow(BaseModel):
     conversation_id: str
 
 
+class _ConversationOwnerRow(_ConversationIdRow):
+    """Projection of a conversation id and the user who owns it; anything else is a projection bug."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    user_id: str
+
+
 class _MessageProjectionRow(BaseModel):
     """Positional ``messages.$`` projection — a one-element messages slice."""
 

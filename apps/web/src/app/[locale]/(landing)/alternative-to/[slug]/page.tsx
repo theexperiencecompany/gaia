@@ -21,6 +21,7 @@ import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { getLocalizedAlternates } from "@/i18n/getAlternates";
 import { isRedirectedPath } from "@/lib/canonicalLinks";
 import { ALTERNATIVE_DOCS_LINKS, type DocsGuideLink } from "@/lib/docs-links";
+import { prerenderedMarketingParams } from "@/lib/selfhost";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
@@ -38,9 +39,13 @@ interface PageProps {
   }>;
 }
 
-export async function generateStaticParams() {
+async function allStaticParams() {
   const slugs = await getAllAlternativeSlugs();
   return slugs.map((slug) => ({ slug }));
+}
+
+export function generateStaticParams() {
+  return prerenderedMarketingParams(allStaticParams);
 }
 
 export async function generateMetadata({

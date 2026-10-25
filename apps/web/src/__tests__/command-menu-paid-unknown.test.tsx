@@ -14,6 +14,10 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 let isPaid = false;
 let isUnknown = false;
 
+vi.mock("@/features/settings/hooks/useSetupStatus", () => ({
+  useDeployment: () => ({ bills: true }),
+}));
+
 vi.mock("@/features/pricing/hooks/useIsPaid", () => ({
   useIsPaid: () => ({ isPaid, isUnknown }),
 }));

@@ -1,61 +1,74 @@
 ---
 name: gaia-custom-instructions
-description: How per-integration custom instructions work, reading them, updating them, and when to persist a user's preference (e.g. "for Slack focus on #eng"). Read this when a user states how a specific integration should be used, or asks where their integration instructions live.
+description: How the user's standing instructions work (for every conversation or one integration), how to read and update them, how they rank against platform rules, and when a preference belongs here rather than in a skill, a tracked todo or memory. Read this when a user states how GAIA or a specific integration should behave from now on.
 target: executor
 ---
 
-# Per-Integration Custom Instructions
+# Standing Instructions
 
-Every connected integration can carry a block of custom instructions. Standing
-guidance for how the user wants that service used (focus channels, default
-projects, conventions). This is the per-integration equivalent of a project's
-README: durable, scoped to one integration, honored on every future task.
+The user can give GAIA standing instructions: lasting preferences for how it
+should behave. Each set has a scope:
+
+- `global`: applies to every conversation ("always reply in Spanish",
+  "keep answers under five lines").
+- an integration id (`slack`, `linear`, `gmail`, ...): applies to that
+  integration's work only ("for Slack, focus on #eng and #design").
 
 ## Where they live
 
-- **Source of truth:** the user's account (one record per integration).
-- **Surfaced to the matching subagent** automatically every turn, as a
-  "CUSTOM INSTRUCTIONS FOR <INTEGRATION>" block. The slack subagent always sees
-  the slack instructions without reading a file.
-- **Mirrored read-only** to `integrations/<id>/agent/instructions.md` in the
-  workspace, so it's also greppable. Never edit that file directly. It's a
-  projection and the edit won't stick.
-- **Editable by the user** on the integrations page in the app.
+- **Source of truth:** the user's account, one record per scope. The user edits
+  them in Settings, and the integration page shows the integration scopes.
+- **In context automatically:** the global scope reaches every turn, and an
+  integration scope reaches that integration's work, each as a
+  `<user_instructions scope="...">` block. You rarely need to read them.
+- **Mirrored read-only** to `account/custom-instructions.json` (global) and
+  `integrations/<id>/agent/instructions.md` (per integration). Never edit those
+  files: they are projections and the edit will not stick.
 
-## Reading them
+## How they rank
 
-- `get_integration_instructions(integration_id)` returns the current content.
-- A subagent already has its own integration's instructions in context, so it
-  rarely needs to call this. The executor should call it before amending.
+They are preferences, not rules. They shape tone, format, defaults and focus.
+They never override the platform rules in the system prompt on safety, privacy,
+approvals or how tools and data are handled. If one asks for something those
+rules forbid ("never ask me before sending"), follow the rules and tell the user
+plainly what you could not do. Approval gates are enforced by GAIA itself, so
+instruction text cannot switch them off anyway.
 
-## Updating them
+Between user-level sources the more specific wins: the user's current message,
+then the active task's notes, then the skill for the task, then their standing
+instructions.
 
-`update_integration_instructions(integration_id, content)` saves the FULL new
-body (it replaces, it does not append). To amend, read first (or use the block
-already in context), merge, then write the whole thing back.
+## Reading and updating
 
-## When to persist (and when NOT to)
+- `get_user_instructions(scope)` returns the current text and its revision.
+  Call it right before every save.
+- `update_user_instructions(scope, content, based_on_revision)` saves the FULL
+  new text. It replaces rather than appends, so read, merge, then write the
+  whole thing back with the revision you read. A save built on an older
+  revision is refused so it never drops a newer edit; read again and merge.
+  An empty string clears the scope. An integration scope must be one the user
+  has connected. The user always confirms the exact text on an approval card
+  before it saves, so keep it short and in their words. If they decline, nothing
+  is saved; do not ask again in the same turn.
 
-Persist only DURABLE preferences: things that should apply to every future task
-on that integration:
+## Instructions, skill, tracked todo or memory?
 
-- "Always post to #eng and #design, never #general."
-- "Default Linear issues to the Backend project."
-- "When emailing clients, cc my assistant."
+- **Standing instruction:** how GAIA should behave for this user from now on.
+- **Skill:** a reusable procedure for a kind of task (`save_learned_skill`,
+  `update_skill`).
+- **Tracked todo:** ongoing work and its state (dates, progress, people
+  waiting).
+- **Memory:** facts about the user. It is captured automatically.
 
-Do NOT persist one-off, task-specific instructions:
-
-- "Send this particular message to #random." (just do it this turn)
-- A correction that only applies to the current request.
-
-If you're unsure whether a preference is durable, it's fine to ask the user
-whether they want it remembered for next time before writing it.
+Persist only DURABLE preferences. Do not save one-off requests ("send this one
+to #random") or corrections that only apply to the current task. If you are
+unsure whether a preference is meant to last, ask once before saving.
 
 ## Typical flow
 
 1. User: "From now on, for Slack, focus on #eng, #design, and #pm."
-2. You recognize a durable preference for the `slack` integration.
-3. Call `update_integration_instructions("slack", "<full instructions including
-   the focus channels>")`.
-4. Confirm briefly. From then on the slack subagent sees this guidance every
-   turn, and the user can review/edit it on the integrations page.
+2. Recognise a durable preference for the `slack` scope.
+3. Call `update_user_instructions(scope="slack", content="<full instructions
+   including the focus channels>")`.
+4. Confirm briefly. Every future Slack task sees it, and the user can review or
+   edit it in Settings.

@@ -16,6 +16,7 @@ import time
 import pytest
 
 from app.config.feature_flags import FeatureFlag
+from app.constants.auth import InstanceRole
 from app.constants.email import SignupDelivery
 from app.db.repositories.users import UserRepository
 from app.models.onboarding_models import SocialProfile
@@ -691,3 +692,13 @@ class TestHilPreferenceWrites:
         got = await repo.get(user.id)
         assert got is not None
         assert (got.hil_preferences or {})["tool_overrides"] == {"send": True}
+
+
+class TestSetRoleIfUnset:
+    async def test_the_first_role_sticks_and_a_second_never_overwrites_it(self, repo, make_user):
+        user = await repo.create(make_user())
+
+        assert await repo.set_role_if_unset(user.id, InstanceRole.ADMIN) is True
+        assert await repo.set_role_if_unset(user.id, InstanceRole.MEMBER) is False
+        stored = await repo.get(user.id)
+        assert stored is not None and stored.role is InstanceRole.ADMIN

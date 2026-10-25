@@ -2,6 +2,7 @@ import Image from "next/image";
 
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import ChatBubble_Actions_Image from "@/features/chat/components/bubbles/actions/ChatBubble_Actions_Image";
+import { isPrivateBlobUrl } from "@/lib/privateBlob";
 import type { SetImageDataType } from "@/types/features/chatBubbleTypes";
 import type { ImageData } from "@/types/features/convoTypes";
 
@@ -35,6 +36,7 @@ export default function GeneratedImageSheet({
               className="my-2 aspect-square rounded-3xl"
               fill={true}
               src={imageData.src}
+              unoptimized={isPrivateBlobUrl(imageData.src)}
               objectFit="contain"
               sizes="(max-width: 640px) 100vw, 640px"
             />

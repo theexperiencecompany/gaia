@@ -54,7 +54,10 @@ from app.helpers.lifespan_helpers import (
     init_websocket_broadcast_listener,
     init_workflow_service,
 )
+from app.services.blob_store import ensure_blob_store_ready
 from app.services.composio.composio_service import init_composio_service
+from app.services.composio.instance_toolkits import load_instance_toolkits
+from app.services.delivery_alerts.slack import init_delivery_alerts_slack
 from app.services.mcp.mcp_client_pool import init_mcp_client_pool
 from app.services.sandbox.pool import init_sandbox_pool
 from app.services.startup_validation import validate_startup_requirements
@@ -174,6 +177,7 @@ def register_lazy_providers(context: Literal["main_app", "arq_worker"]) -> None:
         init_sandbox_pool,
         init_posthog,
         init_langfuse,
+        init_delivery_alerts_slack,
     )
 
     for register in registrations:
@@ -197,6 +201,9 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
     # Motor/Redis clients are bound to instead of spinning a fresh one.
     capture_running_loop()
 
+    # Before anything serves: a blob volume or bucket that cannot take writes stops the boot.
+    await ensure_blob_store_ready()
+
     log.info(f"{LogTag.STARTUP} Starting with unified provider system...", context=context)
 
     register_lazy_providers(context)
@@ -208,6 +215,8 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
         StartupService(redis_cache.verify_connection, "redis", required=True),
         StartupService(init_reminder_service, "reminder_service", required=True),
         StartupService(init_workflow_service, "workflow_service", required=True),
+        # Composio toolkits the instance admin enabled join the integration catalog.
+        StartupService(load_instance_toolkits, "instance_toolkits", required=True),
         # JuiceFS mount — best-effort: the provider is a no-op when R2/JFS settings
         # are unconfigured, and a storage-backend fault (R2 read errors) must degrade
         # file features, not crash the worker.

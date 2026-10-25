@@ -8,7 +8,6 @@ exactly what these tests are asserting.
 """
 
 from collections.abc import Iterator
-from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -24,7 +23,6 @@ from app.models.trigger_subscription_models import (
     TriggerSubscription,
     TriggerSubscriptionStatus,
 )
-from app.services.triggers import subscription_service
 from app.services.triggers.subscription_service import (
     AccountScope,
     SubscriptionError,
@@ -33,6 +31,7 @@ from app.services.triggers.subscription_service import (
     register_subscription,
     resync_subscriptions_for_trigger_names,
     teardown_subscriptions,
+    unregister_subscription,
 )
 from app.services.triggers.subscription_validation import validate_conditions
 from app.utils.exceptions import TriggerRegistrationError
@@ -41,6 +40,7 @@ from shared.py.analytics.catalog.todos import (
     TodosSubscriptionFailed,
     TodosSubscriptionRegistered,
 )
+from tests.e2e._harness.fake_todos import with_watch
 from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
@@ -87,10 +87,17 @@ class _Harness:
         self.get = AsyncMock(return_value=todo)
         self.register = AsyncMock()
         self.unregister = AsyncMock(return_value=True)
-        self.update = AsyncMock(return_value=None)
-        # The watch append is compare-and-set, so the write carries the stamp it read.
-        self.set_subscriptions = AsyncMock(return_value=todo)
+        self.add = AsyncMock(side_effect=self._appended)
+        self.clear = AsyncMock(
+            return_value=todo if todo is not None and todo.trigger_subscriptions else None
+        )
         self.capture = Mock()
+
+    def _appended(
+        self, _todo_id: str, *, user_id: str, subscription: TriggerSubscription
+    ) -> TodoDocument:
+        assert self.todo is not None
+        return with_watch(self.todo, subscription)
 
     def __enter__(self) -> "_Harness":
         if isinstance(self.trigger_ids, Exception):
@@ -100,12 +107,8 @@ class _Harness:
         self._repo = patch(
             "app.services.triggers.subscription_service.todo_repository",
             get=self.get,
-            update=self.update,
-            # create=True: on a base revision the compare-and-set write does not
-            # exist yet, and this harness still has to patch so the test can run
-            # and fail on its assertions rather than error on the patch itself.
-            set_trigger_subscriptions=self.set_subscriptions,
-            create=True,
+            add_trigger_subscription=self.add,
+            clear_trigger_subscriptions=self.clear,
         )
         self._svc = patch(
             "app.services.triggers.subscription_service.TriggerService",
@@ -124,8 +127,8 @@ class _Harness:
         self._repo.stop()
 
     @property
-    def written_subscriptions(self) -> list[TriggerSubscription]:
-        return self.set_subscriptions.await_args.kwargs["subscriptions"]
+    def added(self) -> TriggerSubscription:
+        return self.add.await_args.kwargs["subscription"]
 
 
 class TestRegisterSubscription:
@@ -148,7 +151,7 @@ class TestRegisterSubscription:
         assert outcome.ok
         assert subscription.resolution is SubscriptionResolution.ACCOUNT
         assert subscription.composio_trigger_ids == []
-        assert h.written_subscriptions == [subscription]
+        assert h.added == subscription
 
     async def test_a_new_watch_is_on_the_todos_timeline(self, activity: AsyncMock) -> None:
         with _Harness(_todo(), []):
@@ -190,7 +193,7 @@ class TestRegisterSubscription:
         assert outcome.ok
         assert subscription.resolution is SubscriptionResolution.ACCOUNT
         assert subscription.composio_trigger_ids == []
-        assert h.written_subscriptions == [subscription]
+        assert h.added == subscription
 
     async def test_per_resource_trigger_stores_its_instance_ids(self) -> None:
         with _Harness(_todo(), ["ti_9"]) as h:
@@ -204,7 +207,21 @@ class TestRegisterSubscription:
 
         assert subscription.resolution is SubscriptionResolution.TRIGGER_ID
         assert subscription.composio_trigger_ids == ["ti_9"]
-        assert h.written_subscriptions[0].action is SubscriptionAction.NOTIFY
+        assert h.added.action is SubscriptionAction.NOTIFY
+
+    async def test_a_newly_stored_watch_is_created_and_keeps_its_instance(self) -> None:
+        with _Harness(_todo(), ["ti_9"]) as h:
+            subscription, _, created = await register_subscription(
+                todo_id=TODO_ID,
+                user_id=USER_ID,
+                trigger_name=INSTANCE_TRIGGER,
+                conditions=[],
+                action=SubscriptionAction.EXECUTE,
+            )
+
+        assert created is True
+        assert subscription == h.added
+        h.unregister.assert_not_awaited()
 
     async def test_per_resource_trigger_with_no_instance_is_rejected(self) -> None:
         # Nothing was registered, so the subscription could never fire. Storing it
@@ -241,35 +258,16 @@ class TestRegisterSubscription:
                 action=SubscriptionAction.EXECUTE,
             )
 
-        assert h.written_subscriptions[0].conditions[0].field_name == "thread_id"
-
-    async def test_appends_to_existing_subscriptions(self) -> None:
-        existing = _subscription()
-        with _Harness(_todo(trigger_subscriptions=[existing]), []) as h:
-            await register_subscription(
-                todo_id=TODO_ID,
-                user_id=USER_ID,
-                trigger_name=ACCOUNT_TRIGGER,
-                conditions=[],
-                action=SubscriptionAction.EXECUTE,
-            )
-
-        assert len(h.written_subscriptions) == 2
-        assert h.written_subscriptions[0].id == existing.id
+        assert h.added.conditions[0].field_name == "thread_id"
 
     @pytest.mark.regression
     async def test_a_concurrent_write_of_the_same_watch_returns_the_stored_row(self) -> None:
         """Two Gmail connects provision one desk at once; the desk ends with one watch, not two."""
         first = _subscription(composio_trigger_ids=["winner-id"])
         with _Harness(_todo(), ["loser-id"]) as h:
-            h.set_subscriptions.return_value = None  # the other writer's write won
-            reads: list[TodoDocument] = [_todo(), _todo(trigger_subscriptions=[first])]
-
-            async def read_todo(todo_id: str, *, user_id: str) -> TodoDocument:
-                assert (todo_id, user_id) == (TODO_ID, USER_ID)
-                return reads.pop(0)
-
-            h.get.side_effect = read_todo
+            # The other writer's identical watch was already on the todo, so nothing was appended.
+            h.add.side_effect = None
+            h.add.return_value = _todo(trigger_subscriptions=[first])
 
             subscription, _outcome, created = await register_subscription(
                 todo_id=TODO_ID,
@@ -281,164 +279,8 @@ class TestRegisterSubscription:
 
         assert subscription.id == first.id
         assert created is False
-        # Nothing is appended: the loser's instance is released with the winner's
-        # reference still counting.
-        assert h.set_subscriptions.await_count == 1
+        # The loser's instance is released with the winner's reference still counting.
         h.unregister.assert_awaited_once_with(USER_ID, INSTANCE_TRIGGER, ["loser-id"])
-
-    @pytest.mark.regression
-    async def test_a_paused_match_is_not_a_duplicate_of_an_active_watch(self) -> None:
-        """Regression: a re-added watch returned its paused twin, which cannot fire."""
-        paused = _subscription(status=TriggerSubscriptionStatus.PAUSED)
-        with _Harness(_todo(trigger_subscriptions=[paused]), ["ti_live"]) as h:
-            stored, _outcome, created = await register_subscription(
-                todo_id=TODO_ID,
-                user_id=USER_ID,
-                trigger_name=INSTANCE_TRIGGER,
-                conditions=[],
-                action=SubscriptionAction.EXECUTE,
-            )
-
-        assert created is True
-        assert stored.status is TriggerSubscriptionStatus.ACTIVE
-        assert [sub.id for sub in h.written_subscriptions] == [paused.id, stored.id]
-
-    @pytest.mark.regression
-    async def test_watches_with_different_settings_are_not_the_same_watch(self) -> None:
-        """A calendar watch with another reminder window is another watch, not a duplicate."""
-        existing = _subscription(cooldown_seconds=60, trigger_data={"window": "15m"})
-        with _Harness(_todo(trigger_subscriptions=[existing]), ["ti_2"]) as h:
-            stored, _outcome, created = await register_subscription(
-                todo_id=TODO_ID,
-                user_id=USER_ID,
-                trigger_name=INSTANCE_TRIGGER,
-                conditions=[],
-                action=SubscriptionAction.EXECUTE,
-                cooldown_seconds=3600,
-                trigger_data={"window": "1h"},
-            )
-
-        assert created is True
-        assert stored.cooldown_seconds == 3600
-        assert [sub.id for sub in h.written_subscriptions] == [existing.id, stored.id]
-
-    @pytest.mark.regression
-    async def test_a_write_conflict_retries_from_the_revision_the_other_writer_left(self) -> None:
-        """Both watches survive when another writer advances the todo between our read and write."""
-        first_revision = datetime(2026, 10, 3, 12, tzinfo=UTC)
-        competing_revision = first_revision + timedelta(seconds=1)
-        original = _todo(updated_at=first_revision)
-        competing = _subscription(
-            action=SubscriptionAction.NOTIFY,
-            composio_trigger_ids=["other-writer-id"],
-        )
-        concurrent_todo = _todo(
-            updated_at=competing_revision,
-            trigger_subscriptions=[competing],
-        )
-        with _Harness(original, ["new-watch-id"]) as h:
-            reads = [original, concurrent_todo]
-
-            async def read_todo(todo_id: str, *, user_id: str) -> TodoDocument:
-                assert (todo_id, user_id) == (TODO_ID, USER_ID)
-                return reads.pop(0)
-
-            h.get.side_effect = read_todo
-            revisions: list[datetime | None] = []
-
-            async def compare_and_set(
-                todo_id: str,
-                user_id: str,
-                *,
-                subscriptions: list[TriggerSubscription],
-                expected_updated_at: datetime | None,
-            ) -> TodoDocument | None:
-                assert (todo_id, user_id) == (TODO_ID, USER_ID)
-                revisions.append(expected_updated_at)
-                if expected_updated_at == first_revision:
-                    return None
-                if expected_updated_at == competing_revision:
-                    return concurrent_todo.model_copy(
-                        update={"trigger_subscriptions": subscriptions}
-                    )
-                return None
-
-            h.set_subscriptions.side_effect = compare_and_set
-
-            stored, _outcome, _created = await register_subscription(
-                todo_id=TODO_ID,
-                user_id=USER_ID,
-                trigger_name=INSTANCE_TRIGGER,
-                conditions=[],
-                action=SubscriptionAction.EXECUTE,
-            )
-
-        assert revisions == [first_revision, competing_revision]
-        assert [sub.id for sub in h.written_subscriptions] == [competing.id, stored.id]
-
-    @pytest.mark.regression
-    async def test_writes_that_leave_the_watches_alone_do_not_use_up_the_retries(self) -> None:
-        """Regression: two desk provisions at once refused a watch after three activity-log writes."""
-        start = datetime(2026, 10, 3, 12, tzinfo=UTC)
-        unrelated = [_todo(updated_at=start + timedelta(seconds=n)) for n in (1, 2, 3)]
-        with _Harness(_todo(updated_at=start), ["new-watch-id"]) as h:
-            reads = [_todo(updated_at=start), *unrelated]
-
-            async def read_todo(todo_id: str, *, user_id: str) -> TodoDocument:
-                return reads.pop(0)
-
-            h.get.side_effect = read_todo
-            last = unrelated[-1].updated_at
-
-            async def compare_and_set(
-                todo_id: str,
-                user_id: str,
-                *,
-                subscriptions: list[TriggerSubscription],
-                expected_updated_at: datetime | None,
-            ) -> TodoDocument | None:
-                if expected_updated_at != last:
-                    return None
-                return unrelated[-1].model_copy(update={"trigger_subscriptions": subscriptions})
-
-            h.set_subscriptions.side_effect = compare_and_set
-
-            stored, _outcome, created = await register_subscription(
-                todo_id=TODO_ID,
-                user_id=USER_ID,
-                trigger_name=INSTANCE_TRIGGER,
-                conditions=[],
-                action=SubscriptionAction.EXECUTE,
-            )
-
-        assert created is True
-        assert h.set_subscriptions.await_count == 4
-        assert [sub.id for sub in h.written_subscriptions] == [stored.id]
-
-    async def test_a_watch_list_that_keeps_changing_is_refused_after_three_lost_races(
-        self,
-    ) -> None:
-        competing = [
-            _subscription(action=SubscriptionAction.NOTIFY, composio_trigger_ids=[f"other-{n}"])
-            for n in range(3)
-        ]
-        with _Harness(_todo(), ["ti_9"]) as h:
-            h.set_subscriptions.return_value = None
-            h.get.side_effect = [
-                _todo(),
-                *(_todo(trigger_subscriptions=competing[: n + 1]) for n in range(len(competing))),
-            ]
-
-            with pytest.raises(SubscriptionError, match="changed while this one was being added"):
-                await register_subscription(
-                    todo_id=TODO_ID,
-                    user_id=USER_ID,
-                    trigger_name=INSTANCE_TRIGGER,
-                    conditions=[],
-                    action=SubscriptionAction.EXECUTE,
-                )
-
-        assert h.set_subscriptions.await_count == 3
 
     @pytest.mark.regression
     async def test_duplicate_cleanup_failure_is_recorded_and_keeps_the_winning_watch(
@@ -446,14 +288,8 @@ class TestRegisterSubscription:
     ) -> None:
         winner = _subscription(composio_trigger_ids=["winner-id"])
         with _Harness(_todo(), ["loser-id"]) as h:
-            h.set_subscriptions.return_value = None
-            reads: list[TodoDocument] = [_todo(), _todo(trigger_subscriptions=[winner])]
-
-            async def read_todo(todo_id: str, *, user_id: str) -> TodoDocument:
-                assert (todo_id, user_id) == (TODO_ID, USER_ID)
-                return reads.pop(0)
-
-            h.get.side_effect = read_todo
+            h.add.side_effect = None
+            h.add.return_value = _todo(trigger_subscriptions=[winner])
             h.unregister.side_effect = RuntimeError("composio down")
 
             async with captured_wide_event() as event:
@@ -474,17 +310,14 @@ class TestRegisterSubscription:
         assert error["error"] == "composio down"
         assert error["error_type"] == "RuntimeError"
 
-    @pytest.mark.regression
-    async def test_an_unresolvable_write_conflict_is_refused_not_silently_dropped(self) -> None:
+    async def test_a_todo_deleted_before_the_watch_is_stored_releases_its_instance(self) -> None:
         with _Harness(_todo(), ["ti_9"]) as h:
-            h.set_subscriptions.return_value = None  # every compare-and-set loses
-            h.get.return_value = _todo()  # the re-read finds a doc, but the stamp never matches
+            h.add.side_effect = None
+            h.add.return_value = None  # the todo was deleted after it was read
             h.unregister.side_effect = RuntimeError("composio down")
 
             async with captured_wide_event() as event:
-                with pytest.raises(
-                    SubscriptionError, match="changed while this one was being added"
-                ):
+                with pytest.raises(SubscriptionError, match="was not found"):
                     await register_subscription(
                         todo_id=TODO_ID,
                         user_id=USER_ID,
@@ -493,7 +326,6 @@ class TestRegisterSubscription:
                         action=SubscriptionAction.EXECUTE,
                     )
 
-        assert h.set_subscriptions.await_count == subscription_service.SUBSCRIPTION_WRITE_MAX_TRIES
         # The instance registered for the watch that never stored is released rather
         # than left orphaned upstream, and the failed release names the todo it
         # belongs to rather than an empty id.
@@ -503,7 +335,7 @@ class TestRegisterSubscription:
         assert error["todo_id"] == TODO_ID
         h.capture.assert_called_once_with(
             UserId(USER_ID),
-            TodosSubscriptionFailed(trigger_name=INSTANCE_TRIGGER, reason="write_conflict"),
+            TodosSubscriptionFailed(trigger_name=INSTANCE_TRIGGER, reason="todo_not_found"),
         )
 
     async def test_register_stamps_the_wide_event(self) -> None:
@@ -574,10 +406,8 @@ class TestRegisterSubscription:
         assert kwargs["raise_on_failure"] is True
         # The subscription is persisted against THIS todo and user — a swapped id
         # writes the watch onto the wrong document.
-        assert h.set_subscriptions.await_args.args[:2] == (TODO_ID, USER_ID)
-        # The write is gated on the stamp it read, so a concurrent append cannot be
-        # overwritten by this one.
-        assert h.set_subscriptions.await_args.kwargs["expected_updated_at"] == _todo().updated_at
+        assert h.add.await_args.args == (TODO_ID,)
+        assert h.add.await_args.kwargs["user_id"] == USER_ID
 
     async def test_match_and_cooldown_are_stored_on_the_subscription(self) -> None:
         # Both are registration-time knobs the payload cannot express; dropping
@@ -594,7 +424,7 @@ class TestRegisterSubscription:
                 cooldown_seconds=1234,
             )
 
-        stored = h.written_subscriptions[0]
+        stored = h.added
         assert stored.match is ConditionMatch.ANY
         assert stored.cooldown_seconds == 1234
 
@@ -684,11 +514,59 @@ class TestRegisterSubscription:
                     conditions=[],
                     action=SubscriptionAction.EXECUTE,
                 )
-            h.update.assert_not_awaited()
+            h.add.assert_not_awaited()
         h.capture.assert_called_once_with(
             UserId(USER_ID),
             TodosSubscriptionFailed(trigger_name=INSTANCE_TRIGGER, reason="registration_failed"),
         )
+
+
+class TestUnregisterSubscription:
+    async def test_removes_the_watch_for_its_owner_and_releases_its_instance(
+        self, activity: AsyncMock
+    ) -> None:
+        gone = _subscription(composio_trigger_ids=["ti_1"])
+        before = _todo(trigger_subscriptions=[_subscription(), gone])
+        remove = AsyncMock(return_value=before)
+        unregister = AsyncMock(return_value=True)
+        with (
+            patch(
+                "app.services.triggers.subscription_service.todo_repository",
+                remove_trigger_subscriptions=remove,
+            ),
+            patch(
+                "app.services.triggers.subscription_service.TriggerService",
+                unregister_triggers=unregister,
+            ),
+        ):
+            removed = await unregister_subscription(TODO_ID, USER_ID, gone.id)
+
+        assert removed == gone
+        remove.assert_awaited_once_with(TODO_ID, user_id=USER_ID, subscription_ids=[gone.id])
+        unregister.assert_awaited_once_with(USER_ID, INSTANCE_TRIGGER, ["ti_1"], todo_id=TODO_ID)
+        activity.assert_awaited_once_with(
+            TODO_ID,
+            USER_ID,
+            TodoActivityEvent.WATCH_REMOVED,
+            f"stopped watching {INSTANCE_TRIGGER}",
+        )
+
+    async def test_a_watch_the_todo_does_not_hold_is_a_no_op(self, activity: AsyncMock) -> None:
+        unregister = AsyncMock(return_value=True)
+        with (
+            patch(
+                "app.services.triggers.subscription_service.todo_repository",
+                remove_trigger_subscriptions=AsyncMock(return_value=None),
+            ),
+            patch(
+                "app.services.triggers.subscription_service.TriggerService",
+                unregister_triggers=unregister,
+            ),
+        ):
+            assert await unregister_subscription(TODO_ID, USER_ID, "absent") is None
+
+        unregister.assert_not_awaited()
+        activity.assert_not_awaited()
 
 
 class TestTeardown:
@@ -698,9 +576,9 @@ class TestTeardown:
             count = await teardown_subscriptions(TODO_ID, USER_ID, reason="completed")
 
         assert count == 1
-        # The todo is read for THIS user and cleared for THIS user — a swapped id
-        # tears down (or fails to) the wrong person's watches.
-        h.get.assert_awaited_once_with(TODO_ID, user_id=USER_ID)
+        # The todo is cleared for THIS user — a swapped id tears down (or fails to)
+        # the wrong person's watches.
+        h.clear.assert_awaited_once_with(TODO_ID, user_id=USER_ID)
         h.unregister.assert_awaited_once()
         args, kwargs = h.unregister.await_args
         assert args[0] == USER_ID
@@ -708,9 +586,6 @@ class TestTeardown:
         assert args[2] == ["ti_1", "ti_2"]
         # Excluded from its own refcount, or the last reference never releases.
         assert kwargs["todo_id"] == TODO_ID
-        update_call = h.update.await_args
-        assert update_call.args[0] == TODO_ID
-        assert update_call.kwargs["user_id"] == USER_ID
 
     async def test_teardown_stamps_the_wide_event(self) -> None:
         todo = _todo(trigger_subscriptions=[_subscription()])
@@ -791,7 +666,7 @@ class TestTeardown:
         with _Harness(todo, []) as h:
             await teardown_subscriptions(TODO_ID, USER_ID, reason="completed")
 
-        assert h.update.await_args.kwargs["update"].trigger_subscriptions == []
+        h.clear.assert_awaited_once_with(TODO_ID, user_id=USER_ID)
 
     async def test_account_level_subscription_needs_no_unregister(self) -> None:
         todo = _todo(
@@ -808,7 +683,7 @@ class TestTeardown:
 
         assert count == 1
         h.unregister.assert_not_awaited()
-        assert h.update.await_args.kwargs["update"].trigger_subscriptions == []
+        h.clear.assert_awaited_once_with(TODO_ID, user_id=USER_ID)
 
     async def test_a_stuck_unregister_still_clears_the_rest(self) -> None:
         todo = _todo(
@@ -823,7 +698,7 @@ class TestTeardown:
 
         assert count == 2
         assert h.unregister.await_count == 2
-        assert h.update.await_args.kwargs["update"].trigger_subscriptions == []
+        h.clear.assert_awaited_once_with(TODO_ID, user_id=USER_ID)
 
     async def test_paused_subscriptions_are_torn_down_too(self) -> None:
         todo = _todo(trigger_subscriptions=[_subscription(status=TriggerSubscriptionStatus.PAUSED)])
@@ -835,12 +710,11 @@ class TestTeardown:
         with _Harness(_todo(), []) as h:
             assert await teardown_subscriptions(TODO_ID, USER_ID, reason="completed") == 0
             h.unregister.assert_not_awaited()
-            h.update.assert_not_awaited()
 
     async def test_missing_todo_is_a_no_op(self) -> None:
         with _Harness(None, []) as h:
             assert await teardown_subscriptions(TODO_ID, USER_ID, reason="deleted") == 0
-            h.update.assert_not_awaited()
+            h.unregister.assert_not_awaited()
 
 
 class TestBuildTriggerConfig:
@@ -913,7 +787,7 @@ class TestCalendarReminders:
             patch(
                 "app.services.triggers.subscription_service.todo_repository",
                 find_paused_by_user_and_trigger=AsyncMock(return_value=[todo]),
-                update=AsyncMock(return_value=None),
+                resume_trigger_subscriptions=AsyncMock(return_value=None),
             ),
             patch(
                 "app.services.triggers.subscription_service.TriggerService",
@@ -944,7 +818,7 @@ class TestCalendarReminders:
                     action=SubscriptionAction.NOTIFY,
                     trigger_data={"minutes_before_start": minutes},
                 )
-                windows.append(h.written_subscriptions[-1])
+                windows.append(h.added)
 
         assert [w.composio_trigger_ids for w in windows] == [["ti_60"], ["ti_10"]]
 
@@ -978,7 +852,7 @@ class _ResyncHarness:
         self.find_paused = AsyncMock(return_value=todos)
         self.register = AsyncMock()
         self.unregister = AsyncMock(return_value=True)
-        self.update = AsyncMock(return_value=None)
+        self.resume = AsyncMock(return_value=None)
 
     def __enter__(self) -> "_ResyncHarness":
         if isinstance(self.register_result, Exception):
@@ -988,7 +862,7 @@ class _ResyncHarness:
         self._repo = patch(
             "app.services.triggers.subscription_service.todo_repository",
             find_paused_by_user_and_trigger=self.find_paused,
-            update=self.update,
+            resume_trigger_subscriptions=self.resume,
         )
         self._svc = patch(
             "app.services.triggers.subscription_service.TriggerService",
@@ -1023,13 +897,16 @@ class TestOneAccountsWatches:
         on_work = _subscription(id="s-work", account_id="acct_work")
         on_home = _subscription(id="s-home", account_id="acct_home")
         on_every = _subscription(id="s-any")
-        update = AsyncMock(return_value=None)
+        pause = AsyncMock(return_value=None)
         with (
             patch(
                 "app.services.triggers.subscription_service.todo_repository.find_active_by_user_and_trigger",
                 AsyncMock(return_value=[self._todo_watching(on_work, on_home, on_every)]),
             ),
-            patch("app.services.triggers.subscription_service.todo_repository.update", update),
+            patch(
+                "app.services.triggers.subscription_service.todo_repository.pause_trigger_subscriptions",
+                pause,
+            ),
             patch("app.services.triggers.subscription_service.record_activity", AsyncMock()),
         ):
             paused = await pause_subscriptions_for_trigger_names(
@@ -1039,16 +916,10 @@ class TestOneAccountsWatches:
             )
 
         assert paused == 1
-        written = update.await_args.kwargs["update"]
-        assert {s.id: s.status for s in written.trigger_subscriptions} == {
-            "s-work": TriggerSubscriptionStatus.PAUSED,
-            "s-home": TriggerSubscriptionStatus.ACTIVE,
-            "s-any": TriggerSubscriptionStatus.ACTIVE,
-        }
-        assert written.labels == [BLOCKING_LABEL]
+        pause.assert_awaited_once_with("todo-a", user_id=USER_ID, subscription_ids={"s-work"})
 
     async def test_the_whole_integration_dying_pauses_the_watches_on_every_account(self) -> None:
-        update = AsyncMock(return_value=None)
+        pause = AsyncMock(return_value=None)
         with (
             patch(
                 "app.services.triggers.subscription_service.todo_repository.find_active_by_user_and_trigger",
@@ -1062,7 +933,10 @@ class TestOneAccountsWatches:
                     ]
                 ),
             ),
-            patch("app.services.triggers.subscription_service.todo_repository.update", update),
+            patch(
+                "app.services.triggers.subscription_service.todo_repository.pause_trigger_subscriptions",
+                pause,
+            ),
             patch("app.services.triggers.subscription_service.record_activity", AsyncMock()),
         ):
             paused = await pause_subscriptions_for_trigger_names(
@@ -1072,10 +946,10 @@ class TestOneAccountsWatches:
             )
 
         assert paused == 2
-        assert [
-            [s.status for s in c.kwargs["update"].trigger_subscriptions]
-            for c in update.await_args_list
-        ] == [[TriggerSubscriptionStatus.PAUSED], [TriggerSubscriptionStatus.PAUSED]]
+        assert [(c.args[0], c.kwargs["subscription_ids"]) for c in pause.await_args_list] == [
+            ("todo-a", {"s-a"}),
+            ("todo-b", {"s-b"}),
+        ]
 
     async def test_a_watch_on_another_account_stays_paused_and_keeps_the_block(self) -> None:
         todo = _todo(
@@ -1094,12 +968,10 @@ class TestOneAccountsWatches:
             )
 
         assert resynced == 1
-        written = h.update.await_args.kwargs["update"]
-        assert {s.id: s.status for s in written.trigger_subscriptions} == {
-            "s-work": TriggerSubscriptionStatus.ACTIVE,
-            "s-home": TriggerSubscriptionStatus.PAUSED,
-        }
-        assert written.labels == [BLOCKING_LABEL]
+        # Only the returning account's watch resumes; whether the block lifts is the repository's call.
+        h.resume.assert_awaited_once_with(
+            "todo-a", user_id=USER_ID, trigger_ids={"s-work": ["ti_new"]}
+        )
 
     async def test_a_todo_without_the_dying_accounts_watch_does_not_end_the_pause(self) -> None:
         home_only = _todo(
@@ -1112,13 +984,16 @@ class TestOneAccountsWatches:
             labels=[],
             trigger_subscriptions=[_subscription(id="s-work", account_id="acct_work")],
         )
-        update = AsyncMock(return_value=None)
+        pause = AsyncMock(return_value=None)
         with (
             patch(
                 "app.services.triggers.subscription_service.todo_repository.find_active_by_user_and_trigger",
                 AsyncMock(return_value=[home_only, work]),
             ),
-            patch("app.services.triggers.subscription_service.todo_repository.update", update),
+            patch(
+                "app.services.triggers.subscription_service.todo_repository.pause_trigger_subscriptions",
+                pause,
+            ),
             patch("app.services.triggers.subscription_service.record_activity", AsyncMock()),
         ):
             paused = await pause_subscriptions_for_trigger_names(
@@ -1128,7 +1003,7 @@ class TestOneAccountsWatches:
             )
 
         assert paused == 1
-        assert [c.args[0] for c in update.await_args_list] == ["todo-work"]
+        assert [c.args[0] for c in pause.await_args_list] == ["todo-work"]
 
     async def test_a_todo_without_the_returning_accounts_watch_does_not_end_the_resume(
         self,
@@ -1151,7 +1026,7 @@ class TestOneAccountsWatches:
             )
 
         assert resynced == 1
-        assert [c.args[0] for c in h.update.await_args_list] == ["todo-work"]
+        assert [c.args[0] for c in h.resume.await_args_list] == ["todo-work"]
 
 
 class TestResyncSubscriptions:
@@ -1192,18 +1067,11 @@ class TestResyncSubscriptions:
         # resyncs the wrong person or the wrong trigger.
         assert h.find_paused.await_args.args == (USER_ID, INSTANCE_TRIGGER)
 
-        # Both todos were written back, each under its own id and user.
-        assert [c.args[0] for c in h.update.await_args_list] == ["todo-a", "todo-b"]
-        for call in h.update.await_args_list:
+        # Both todos were resumed, each under its own id and user, on the new instance.
+        assert [c.args for c in h.resume.await_args_list] == [("todo-a",), ("todo-b",)]
+        for call, todo in zip(h.resume.await_args_list, (todo_a, todo_b), strict=True):
             assert call.kwargs["user_id"] == USER_ID
-
-        first = h.update.await_args_list[0].kwargs["update"]
-        # The blocking label is stripped; every other label survives.
-        assert first.labels == ["keepme"]
-        # The refreshed subscription is active again and points at the new instance.
-        refreshed = first.trigger_subscriptions[0]
-        assert refreshed.status is TriggerSubscriptionStatus.ACTIVE
-        assert refreshed.composio_trigger_ids == ["ti_new"]
+            assert call.kwargs["trigger_ids"] == {todo.trigger_subscriptions[0].id: ["ti_new"]}
 
         # Re-registration is for THIS todo's identity, and must raise on failure so a
         # broken re-register is caught, not silently stored.
@@ -1232,7 +1100,7 @@ class TestResyncSubscriptions:
         assert resynced == 0
         h.find_paused.assert_not_awaited()
         h.register.assert_not_awaited()
-        h.update.assert_not_awaited()
+        h.resume.assert_not_awaited()
 
     async def test_a_trigger_with_no_handler_does_not_end_the_sweep(self) -> None:
         # Set order is per-process, so the first trigger looked up is the handlerless one and
@@ -1254,8 +1122,8 @@ class TestResyncSubscriptions:
             )
 
         assert resynced == 1
-        h.update.assert_awaited_once()
-        assert h.update.await_args.args[0] == "todo-ok"
+        h.resume.assert_awaited_once()
+        assert h.resume.await_args.args[0] == "todo-ok"
 
     async def test_one_todos_failure_is_logged_and_the_rest_still_resync(self) -> None:
         # One broken re-register must not strand the others or the OAuth flow behind
@@ -1274,10 +1142,9 @@ class TestResyncSubscriptions:
                 )
 
         assert resynced == 1
-        # The failed todo was NOT written (its labels/subscriptions never updated);
-        # only the surviving one was.
-        h.update.assert_awaited_once()
-        assert h.update.await_args.args[0] == "todo-ok"
+        # The failed todo was NOT resumed; only the surviving one was.
+        h.resume.assert_awaited_once()
+        assert h.resume.await_args.args[0] == "todo-ok"
 
         (error,) = event["errors"]
         assert error["msg"] == "todo_subscription.resync_failed"
@@ -1304,15 +1171,8 @@ class TestResyncSubscriptions:
             )
 
         assert resynced == 1
-        written = h.update.await_args.kwargs["update"].trigger_subscriptions
-        # The unrelated trigger is untouched — same id, ids, still paused.
-        assert written[0].id == other.id
-        assert written[0].composio_trigger_ids == []
-        assert written[0].status is TriggerSubscriptionStatus.PAUSED
-        # The reconnected trigger is refreshed and active.
-        assert written[1].id == target.id
-        assert written[1].composio_trigger_ids == ["ti_new"]
-        assert written[1].status is TriggerSubscriptionStatus.ACTIVE
+        # Only the reconnected trigger's watch resumes; the other stays as it is.
+        assert h.resume.await_args.kwargs["trigger_ids"] == {target.id: ["ti_new"]}
         # Only the reconnected trigger was re-registered.
         h.register.assert_awaited_once()
         assert h.register.await_args.args[2] == INSTANCE_TRIGGER
@@ -1325,4 +1185,4 @@ class TestResyncSubscriptions:
 
         assert resynced == 0
         h.register.assert_not_awaited()
-        h.update.assert_not_awaited()
+        h.resume.assert_not_awaited()
