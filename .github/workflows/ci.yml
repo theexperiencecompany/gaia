@@ -1645,7 +1645,7 @@ jobs:
       # Obscura as the obscura-bin job built it. A missing binary fails the slice.
       - name: Fetch the Obscura binaries the obscura-bin job built
         if: env.SLICE_ENGINES == 'true'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: obscura-bin
           path: ${{ runner.temp }}
@@ -1811,7 +1811,7 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
       - uses: ./.github/actions/setup-uv
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: coverage-*
           path: apps/api
@@ -2091,7 +2091,7 @@ jobs:
       # Every gated job uploads `verdict-<job>`; merge-multiple lands them as
       # the one tree `consolidate` reads. runner.temp, not the checkout: that is
       # where every lane wrote and uploaded from, and it is per-job and wiped.
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: verdict-*
           path: ${{ runner.temp }}/verdicts
