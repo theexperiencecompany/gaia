@@ -119,15 +119,8 @@ export async function runLogs(): Promise<void> {
     return;
   }
 
-  if (fs.existsSync(devLogPath) && !isDeveloperProcessAlive) {
-    out(
-      "  'gaia dev' isn't running, so these are the Docker services' logs only.",
-    );
-    await runInteractiveCommand("docker", dockerArgs, dockerDir, dockerEnv);
-  } else {
-    out(
-      "  'gaia dev' isn't running, so these are the Docker services' logs only.",
-    );
-    await runInteractiveCommand("docker", dockerArgs, dockerDir, dockerEnv);
-  }
+  out(
+    "  'gaia dev' isn't running, so these are the Docker services' logs only.",
+  );
+  await runInteractiveCommand("docker", dockerArgs, dockerDir, dockerEnv);
 }

@@ -2,12 +2,12 @@
 // Deterministic: searches scale + sub-pixel offset against a W x H grid (2 pixels per terminal row),
 // scores each fit, applies minimal cleanup, and picks the xterm-256 colours for the three fills.
 // Also bakes the small logo as ANSI lines into install.sh, between its markers.
-// Usage: node scripts/bake-logo.mjs [table output path] [install.sh path]
+// Usage: node scripts/bake-logo.mjs [--check]  (--check exits 1 when a committed file is stale)
 import { readFileSync, writeFileSync } from "node:fs";
 import { FILLS, hexRgb, renderClasses, VB_H, VB_W } from "./logo-vector.mjs";
 
-const DEFAULT_OUTPUT = new URL("../src/ui/header/logo-cells.generated.ts", import.meta.url);
-const DEFAULT_INSTALLER = new URL("../install.sh", import.meta.url);
+const TABLE_PATH = new URL("../src/ui/header/logo-cells.generated.ts", import.meta.url);
+const INSTALLER_PATH = new URL("../install.sh", import.meta.url);
 
 // The markers around the lines baked into install.sh.
 const BEGIN_MARKER = "# BEGIN GENERATED LOGO (packages/cli/scripts/bake-logo.mjs; do not edit)";
@@ -431,6 +431,14 @@ function installerSource(source, pixels) {
 }
 
 const pixels = pixelRows(bake(LOGO_LINES * 2));
-const installerPath = process.argv[3] ?? DEFAULT_INSTALLER;
-writeFileSync(process.argv[2] ?? DEFAULT_OUTPUT, moduleSource(pixels));
-writeFileSync(installerPath, installerSource(readFileSync(installerPath, "utf8"), pixels));
+const baked = [
+  [TABLE_PATH, moduleSource(pixels)],
+  [INSTALLER_PATH, installerSource(readFileSync(INSTALLER_PATH, "utf8"), pixels)],
+];
+if (process.argv.includes("--check")) {
+  const stale = baked.filter(([path, source]) => readFileSync(path, "utf8") !== source);
+  for (const [path] of stale) console.error(`stale, rerun pnpm bake:logo: ${path.pathname}`);
+  process.exitCode = stale.length > 0 ? 1 : 0;
+} else {
+  for (const [path, source] of baked) writeFileSync(path, source);
+}

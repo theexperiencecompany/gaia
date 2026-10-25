@@ -17985,7 +17985,7 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Invalid body, or a password longer than bcrypt's 72-byte (UTF-8) limit. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -18036,7 +18036,7 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Invalid body, or a password longer than bcrypt's 72-byte (UTF-8) limit. */
             422: {
                 headers: {
                     [name: string]: unknown;

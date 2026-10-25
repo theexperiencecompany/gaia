@@ -13,7 +13,7 @@ payload="$(cat)"
 # claude -p kills the hook and every descendant when it exits (about 2s after a
 # StopFailure), so the save and relay run in a new session the hook does not
 # wait for: orphaned at once, they are no longer its descendants and outlive it.
-if [ -z "${GAIA_HOOK_DETACHED:-}" ]; then
+if [[ -z "${GAIA_HOOK_DETACHED:-}" ]]; then
     printf '%s' "$payload" | GAIA_HOOK_DETACHED=1 setsid --fork "$0" >>"{{HOOK_LOG}}" 2>&1
     exit 0
 fi
@@ -30,12 +30,12 @@ if ! save_error="$(timeout {{SAVE_TIMEOUT_SECONDS}} "{{SAVE_SCRIPT}}" 2>&1)"; th
     save_failed=1
 fi
 
-if [ -z "${GAIA_LAB_CALLBACK_URL:-}" ] || [ -z "${GAIA_LAB_TOKEN:-}" ]; then
+if [[ -z "${GAIA_LAB_CALLBACK_URL:-}" || -z "${GAIA_LAB_TOKEN:-}" ]]; then
     echo "gaia-hook: no run env (GAIA_LAB_CALLBACK_URL/GAIA_LAB_TOKEN); saved, not relayed" >&2
     exit 0
 fi
 
-if [ -n "${save_failed:-}" ]; then
+if [[ -n "${save_failed:-}" ]]; then
     printf '%s' "$save_error" | tail -c 2000 \
         | python3 -c 'import json, sys; print(json.dumps({"kind": "save_failed", "error": sys.stdin.read()}))' \
         | post || echo "gaia-hook: reporting the failed save to GAIA failed" >&2

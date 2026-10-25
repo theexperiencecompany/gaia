@@ -9,6 +9,7 @@ This module provides the retrieve_tools function factory that supports:
 """
 
 import asyncio
+from collections import Counter
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 import json
@@ -65,6 +66,7 @@ from shared.py.wide_events import log
 WEBPAGE_TOOLS = [web_search_tool.name, fetch_webpages.name, deep_research.name]
 
 _SUBAGENT_PREFIX = "subagent:"
+_CHROMA_PREVIEW_SIZE = 10
 _INTEGRATION_PREFIX = "integration:"
 # How both schema-doc surfaces (startup preload, binding mode) tell the model to run them.
 _EXECUTE_DOCS_INSTRUCTION = (
@@ -1071,6 +1073,45 @@ def _render_binding_response(
     return "\n".join(bind_lines)
 
 
+async def _rescue_catalog_slugs(user_id: str, unknown: list[str]) -> tuple[list[str], list[str]]:
+    """Split unknown names into catalog slugs the resolver can run and names that stay unknown.
+
+    Catalog slugs never materialize locally, so the registry alone would report
+    a capability the catalog has as unknown.
+    """
+    rescued: list[str] = []
+    still_unknown: list[str] = []
+    for name in unknown:
+        if is_catalog_slug(name) and await _resolve_for_retrieval(user_id, name):
+            rescued.append(name)
+        else:
+            still_unknown.append(name)
+    return rescued, still_unknown
+
+
+def _split_proxied(
+    tool_registry: ToolRegistry,
+    names: list[str],
+    bindable_set: set[str],
+    mcp_tool_names: set[str],
+) -> tuple[list[str], list[str]]:
+    """Split validated names into execute-proxied integration tools and bindable internal tools.
+
+    Integration tools (Composio + MCP) are never bound: binding mode returns
+    their schema docs and they run through the execute proxy.
+    """
+    proxied: list[str] = []
+    bound: list[str] = []
+    for name in names:
+        if _is_execute_routed(tool_registry, name, mcp_tool_names) or (
+            name not in bindable_set and is_catalog_slug(name)
+        ):
+            proxied.append(name)
+        else:
+            bound.append(name)
+    return proxied, bound
+
+
 async def _bind_exact_tools(
     scope: _RetrievalScope,
     tool_registry: ToolRegistry,
@@ -1102,29 +1143,14 @@ async def _bind_exact_tools(
     )
     validated_tool_names = [n for n in triage.validated if n not in unconnected]
 
-    # Catalog slugs never materialize locally — rescue them through the
-    # resolver instead of reporting a capability the catalog HAS as unknown.
-    unknown_tool_names: list[str] = []
-    for name in triage.unknown:
-        if name in unconnected:
-            continue
-        if is_catalog_slug(name) and await _resolve_for_retrieval(scope.user_id, name):
-            validated_tool_names.append(name)
-        else:
-            unknown_tool_names.append(name)
+    rescued, unknown_tool_names = await _rescue_catalog_slugs(
+        scope.user_id, [n for n in triage.unknown if n not in unconnected]
+    )
+    validated_tool_names.extend(rescued)
 
-    # The cutover: integration tools (Composio + MCP) are never bound —
-    # they run through the execute proxy, so binding-mode returns their
-    # schema docs instead. Internal tools still bind.
-    proxied_names: list[str] = []
-    bound_tool_names: list[str] = []
-    for name in validated_tool_names:
-        if _is_execute_routed(tool_registry, name, mcp_tool_names_set) or (
-            name not in bindable_set and is_catalog_slug(name)
-        ):
-            proxied_names.append(name)
-        else:
-            bound_tool_names.append(name)
+    proxied_names, bound_tool_names = _split_proxied(
+        tool_registry, validated_tool_names, bindable_set, mcp_tool_names_set
+    )
     proxied_docs = await _render_proxied_docs(scope.user_id, proxied_names)
 
     if unknown_tool_names:
@@ -1184,32 +1210,30 @@ def _raise_if_every_search_failed(results: list[SearchTaskResult | BaseException
         raise failures[0]
 
 
+def _chroma_hit_lists(results: list[SearchTaskResult | BaseException]) -> list[list[SearchItem]]:
+    """The non-empty Chroma hit lists; public-integration hit lists hold dicts instead."""
+    return [
+        cast(list[SearchItem], result)
+        for result in results
+        if isinstance(result, list) and result and not isinstance(result[0], dict)
+    ]
+
+
 def _search_hit_stats(results: list[SearchTaskResult | BaseException]) -> _SearchHitStats:
     """Count raw Chroma and public-integration hits, per namespace, plus a short preview."""
-    chroma_hits = 0
-    public_hits = 0
-    per_namespace_hits: dict[str, int] = {}
-    for result in results:
-        if not isinstance(result, list) or not result:
-            continue
-        if isinstance(result[0], dict):
-            public_hits += len(result)
-            continue
-        chroma_hits += len(result)
-        for item in cast(list[SearchItem], result):
-            ns = "::".join(item.namespace) if item.namespace else "default"
-            per_namespace_hits[ns] = per_namespace_hits.get(ns, 0) + 1
-
-    chroma_preview: list[str] = []
-    for result in results:
-        if isinstance(result, list) and result and not isinstance(result[0], dict):
-            for item in cast(list[SearchItem], result):
-                chroma_preview.append(f"{item.namespace}::{item.key}")
-                if len(chroma_preview) >= 10:
-                    break
-        if len(chroma_preview) >= 10:
-            break
-    return _SearchHitStats(chroma_hits, public_hits, per_namespace_hits, chroma_preview)
+    public_hits = sum(
+        len(result)
+        for result in results
+        if isinstance(result, list) and result and isinstance(result[0], dict)
+    )
+    chroma_items = [item for hits in _chroma_hit_lists(results) for item in hits]
+    per_namespace_hits = Counter(
+        "::".join(item.namespace) if item.namespace else "default" for item in chroma_items
+    )
+    chroma_preview = [
+        f"{item.namespace}::{item.key}" for item in chroma_items[:_CHROMA_PREVIEW_SIZE]
+    ]
+    return _SearchHitStats(len(chroma_items), public_hits, dict(per_namespace_hits), chroma_preview)
 
 
 async def _discover_tools(

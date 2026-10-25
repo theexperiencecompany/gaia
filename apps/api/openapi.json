@@ -22852,7 +22852,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Invalid body, or a password longer than bcrypt's 72-byte (UTF-8) limit."
           },
           "4XX": {
             "content": {
@@ -22912,7 +22912,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Invalid body, or a password longer than bcrypt's 72-byte (UTF-8) limit."
           },
           "4XX": {
             "content": {

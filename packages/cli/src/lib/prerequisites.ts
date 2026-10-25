@@ -62,7 +62,7 @@ export async function checkModePorts(
     COMPOSE_PROJECT_BY_MODE[mode],
   );
   return Promise.all(
-    REQUIRED_HOST_PORTS[mode].map((defaultPort) => {
+    REQUIRED_HOST_PORTS[mode].map(async (defaultPort) => {
       const port = overrides[defaultPort] ?? defaultPort;
       const service = PORT_SERVICE_MAP[defaultPort] || `Port ${port}`;
       return ownPorts.has(port)

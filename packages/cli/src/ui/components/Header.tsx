@@ -30,9 +30,18 @@ export const Header: React.FC<HeaderOptions> = ({
       return;
     }
     let current = true;
-    probeInstance().then((probed) => {
-      if (current) setStatus(probed);
-    });
+    probeInstance().then(
+      (probed) => {
+        if (current) setStatus(probed);
+      },
+      (error: unknown) => {
+        // Thrown from a state update so Ink reports it, as the plain header's await does.
+        if (current)
+          setStatus(() => {
+            throw error;
+          });
+      },
+    );
     return () => {
       current = false;
     };

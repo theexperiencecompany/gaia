@@ -28,6 +28,7 @@ from app.models.auth_models import (
     SignupRequest,
 )
 from app.models.user_models import AuthenticatedUser, UserDocument
+from app.schemas.errors import error_responses
 from app.services.members_service import admit_member, redeem_admission
 from app.utils.auth_utils import build_user_context, set_session_cookie
 from app.utils.local_auth_utils import (
@@ -58,6 +59,11 @@ def _burn_one_verification(password: str) -> None:
         _dummy_digest = hash_password(secrets.token_hex(16))
         # pragma: no mutate end
     verify_password(password, _dummy_digest)
+
+
+PASSWORD_TOO_LONG_RESPONSES = error_responses(
+    {422: "Invalid body, or a password longer than bcrypt's 72-byte (UTF-8) limit."}
+)
 
 
 def _hash_new_password(password: str) -> str:
@@ -150,7 +156,7 @@ async def _discard_partial_account(user_id: str, credential_id: str | None) -> N
         )
 
 
-@router.post("/signup", status_code=201)
+@router.post("/signup", status_code=201, responses=PASSWORD_TOO_LONG_RESPONSES)
 @limiter.limit("10/minute")
 async def signup(request: Request, body: SignupRequest) -> JSONResponse:
     """Create an account and open a session.
@@ -269,7 +275,7 @@ async def login(request: Request, body: LoginRequest) -> JSONResponse:
     return response
 
 
-@router.patch("/password")
+@router.patch("/password", responses=PASSWORD_TOO_LONG_RESPONSES)
 @limiter.limit("5/minute")
 async def change_password(
     request: Request,

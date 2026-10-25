@@ -1,13 +1,11 @@
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { logoLines } from "../../src/ui/header/logo.js";
 
 const CLI_ROOT = fileURLToPath(new URL("../..", import.meta.url));
-const COMMITTED = path.join(CLI_ROOT, "src/ui/header/logo-cells.generated.ts");
 const INSTALLER = path.join(CLI_ROOT, "install.sh");
 
 // The bake searches every scale and sub-pixel offset: ~30s of CPU.
@@ -29,25 +27,12 @@ describe("bake-logo", () => {
   it(
     "regenerates the committed logo table and install.sh byte for byte",
     () => {
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gaia-logo-"));
-      const out = path.join(dir, "logo-cells.generated.ts");
-      const installer = path.join(dir, "install.sh");
-      fs.copyFileSync(INSTALLER, installer);
-      try {
-        execFileSync(
-          process.execPath,
-          ["scripts/bake-logo.mjs", out, installer],
-          { cwd: CLI_ROOT },
-        );
-        expect(fs.readFileSync(out, "utf8")).toBe(
-          fs.readFileSync(COMMITTED, "utf8"),
-        );
-        expect(fs.readFileSync(installer, "utf8")).toBe(
-          fs.readFileSync(INSTALLER, "utf8"),
-        );
-      } finally {
-        fs.rmSync(dir, { recursive: true, force: true });
-      }
+      expect(() =>
+        execFileSync(process.execPath, ["scripts/bake-logo.mjs", "--check"], {
+          cwd: CLI_ROOT,
+          stdio: "pipe",
+        }),
+      ).not.toThrow();
     },
     BAKE_TIMEOUT_MS,
   );

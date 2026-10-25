@@ -707,6 +707,9 @@ async function prepareInstall(
   return true;
 }
 
+/** macOS's opener by absolute path, so a writable PATH entry cannot shadow it. */
+const MACOS_OPEN = "/usr/bin/open";
+
 /**
  * Auto-open the setup wizard when running interactively on macOS. Non-blocking,
  * errors are ignored: the URL is already printed on the success screen and in
@@ -715,7 +718,7 @@ async function prepareInstall(
 function openSetupWizard(webUrl: string, options: UpFlags): void {
   const isTTY = process.stdin.isTTY === true && process.stdout.isTTY === true;
   if (!options.yes && isTTY && os.platform() === "darwin") {
-    execFile("open", [`${webUrl}/setup`], () => undefined);
+    execFile(MACOS_OPEN, [`${webUrl}/setup`], () => undefined);
   }
 }
 
