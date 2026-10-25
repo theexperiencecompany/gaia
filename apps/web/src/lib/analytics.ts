@@ -7,6 +7,8 @@ import type {
 import type { UserId } from "@gaia/shared/analytics/identity";
 import posthog from "posthog-js";
 
+import { registerPostHogSessionId } from "@/lib/analytics-headers";
+
 /**
  * Which surface put the paid-only wall on screen: the `source` property of
  * `paywall:modal_viewed`. Every `openModal` call must name one; add a member
@@ -84,14 +86,14 @@ function dispatch(call: PendingCall): void {
   send(call);
 }
 
-/** Sent on every API request so server events join this browser's session and replay. */
-const POSTHOG_SESSION_HEADER = "X-PostHog-Session-Id";
-
-/** The analytics headers for an API request; empty until PostHog has a session. */
-export function analyticsRequestHeaders(): Record<string, string> {
-  if (!isPostHogReady()) return {};
-  return { [POSTHOG_SESSION_HEADER]: posthog.get_session_id() };
-}
+/**
+ * API requests carry the session id so server events join this browser's
+ * session and replay. The header is built in `@/lib/analytics-headers`, which
+ * server code can call; this client module supplies the live id.
+ */
+registerPostHogSessionId(() =>
+  isPostHogReady() ? posthog.get_session_id() : undefined,
+);
 
 const EMAIL_SHAPED = /^[^@\s]+@[^@\s]+$/;
 

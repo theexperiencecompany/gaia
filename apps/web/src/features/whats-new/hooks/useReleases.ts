@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 import { useWhatsNewStore } from "@/stores/whatsNewStore";
 import type { Release, ReleasesResponse } from "../types";
 
@@ -9,6 +10,12 @@ const REVALIDATE_MS = 2 * 60 * 1000; // 2 minutes
 let cachedData: ReleasesResponse | null = null;
 let cachedAt = 0;
 
+const NO_RELEASES: Release[] = [];
+
+/**
+ * GAIA's release notes (docs.heygaia.io RSS). They announce the hosted
+ * product, so a self-hosted instance gets none.
+ */
 export function useReleases(): {
   releases: Release[];
   latest: Release | null;
@@ -16,9 +23,9 @@ export function useReleases(): {
   isLoading: boolean;
   error: Error | null;
 } {
-  const [releases, setReleases] = useState<Release[]>(
-    cachedData?.releases ?? [],
-  );
+  const selfHosted = useDeployment().kind === "selfhost";
+  const [feed, setReleases] = useState<Release[]>(cachedData?.releases ?? []);
+  const releases = selfHosted ? NO_RELEASES : feed;
   const [isLoading, setIsLoading] = useState(cachedData === null);
   const [error, setError] = useState<Error | null>(null);
 

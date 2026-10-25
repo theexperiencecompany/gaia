@@ -37,7 +37,8 @@ VOLATILE_SOURCES = ContextSources(
     skills="## Available skills\n- inbox-triage",
     connected_integrations=[{"id": "gmail", "name": "Gmail"}],
     account_identity={"email": "ada@example.com"},
-    custom_instructions="Always archive newsletters.",
+    global_instructions="Reply in plain English.",
+    integration_instructions="Always archive newsletters.",
     tracked_todos="Tracked: ship the context refactor",
     workflow_integrations_hint="# Connected integrations\nGmail (`gmail`)",
 )

@@ -25,7 +25,7 @@ tests:
               summary: No ARQ worker replica has reported metrics for 2 minutes
               description: >-
                 Nothing scheduled is running. Reminders will not fire, workflows will not execute, tracked todos will not advance, Gmail-to-memory ingestion has stopped, and the housekeeping crons are no longer reclaiming idle sandboxes, stale sessions or checkpoint bloat. Users see silence rather than an error, which is why this is critical. The worker also disappears here if its poll loop wedges, not only if the container dies.
-              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-arq-worker-down
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-arq-worker-down
               __dashboardUid__: gaia-arq-worker
               __panelId__: '1'
 

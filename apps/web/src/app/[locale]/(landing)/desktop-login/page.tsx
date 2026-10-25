@@ -1,203 +1,33 @@
-"use client";
+import {
+  DESKTOP_SERVER_FORM_PARAM,
+  type DesktopServerFormReason,
+} from "@shared/desktop-tools";
 
-import { Spinner } from "@heroui/spinner";
-import Image from "next/image";
-import { RedirectType, redirect, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import { ArrowUpRight } from "@/components/shared/icons";
-import { RaisedButton } from "@/components/ui/raised-button";
-import { authApi } from "@/features/auth/api/authApi";
-import { useElectron } from "@/hooks/useElectron";
-import { track } from "@/lib/analytics";
+import { resolveInstanceAuthMode } from "@/features/auth/api/serverSetupStatusApi";
+
+import { DesktopLoginClient } from "./desktop-login-client";
+
+function isServerFormReason(value: unknown): value is DesktopServerFormReason {
+  return value === "choose" || value === "unreachable";
+}
 
 /**
- * Desktop Login Page
- *
- * A polished, centered login page for the desktop app.
- * Opens system browser for OAuth and waits for deep link callback.
- * Located in (landing) to avoid sidebar layout.
+ * Desktop login: resolves the instance auth mode on the server (a self-hosted
+ * server signs in at its own /login), and whether the desktop app opened this
+ * page for its server form; the interactive Electron flow lives in
+ * ./desktop-login-client.
  */
-export default function DesktopLoginPage() {
-  const { isElectron, openExternal, signalReady } = useElectron();
-  const router = useRouter();
-  const [status, setStatus] = useState<
-    "ready" | "opened" | "waiting" | "redirecting" | "error"
-  >("ready");
-
-  // Redirect to normal login if not in Electron (after brief check)
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const timeout = setTimeout(() => {
-      if (!isElectron) {
-        router.replace("/login");
-      }
-    }, 1000);
-
-    return () => clearTimeout(timeout);
-  }, [isElectron, router]);
-
-  // The wos_session cookie persists across launches, so a valid session skips the
-  // login screen. The splash stays up until something signals ready: on success
-  // that is /c's ElectronRouteGuard, on failure here — this page has no guard.
-  useEffect(() => {
-    if (!isElectron) return;
-    let cancelled = false;
-    authApi
-      .fetchUserInfo()
-      .then(() => {
-        if (!cancelled) setStatus("redirecting");
-      })
-      .catch(() => {
-        if (!cancelled) signalReady();
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [isElectron, signalReady]);
-
-  // Listen for the main process signalling it's about to navigate to /c
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.api?.onAuthRedirecting) return;
-    const cleanup = window.api.onAuthRedirecting(() => {
-      setStatus("redirecting");
-    });
-    return cleanup;
-  }, []);
-
-  // Session verified (or Electron signalled completion) — hand off to the
-  // app. Resolved during render, not an effect, so this screen never paints
-  // before navigating; `redirect` does the same as router.replace.
-  if (status === "redirecting") {
-    redirect("/c", RedirectType.replace);
-  }
-
-  const handleOpenLogin = () => {
-    const apiBaseUrl =
-      process.env.NEXT_PUBLIC_API_BASE_URL || "https://api.heygaia.io/api/v1/";
-    const loginUrl = `${apiBaseUrl}oauth/login/workos/desktop`;
-
-    track("navigation:cta_clicked", {
-      location: "desktop_login_page",
-      destination: "workos_oauth",
-    });
-
-    try {
-      openExternal(loginUrl);
-      setStatus("opened");
-
-      // After a short delay, show waiting state
-      setTimeout(() => {
-        setStatus("waiting");
-      }, 1500);
-    } catch (error) {
-      console.error("Failed to open external URL:", error);
-      setStatus("error");
-    }
-  };
-
+export default async function DesktopLoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const { [DESKTOP_SERVER_FORM_PARAM]: reason } = await searchParams;
+  const isSelfHosted = (await resolveInstanceAuthMode()) === "local";
   return (
-    <div className="flex min-h-screen w-full items-center justify-center bg-black">
-      <div className="relative z-10 w-full max-w-xl px-6">
-        <div className="rounded-4xl bg-zinc-100/10 p-8 backdrop-blur-lg flex items-center flex-col">
-          <div className="mb-8 flex justify-center">
-            <Image
-              // src="/images/logos/macos.png"
-              src={"/images/screenshots/desktop_dock.png"}
-              alt="GAIA"
-              width={700}
-              height={100}
-              priority
-              className="rounded-2xl"
-            />
-          </div>
-
-          <h1 className="mb-2 text-center text-4xl font-semibold text-white">
-            Welcome to GAIA Desktop
-          </h1>
-          <p className="mb-8 text-center text-zinc-300 text-xl font-light">
-            Sign in to your account to continue
-          </p>
-
-          {status === "ready" && (
-            <RaisedButton
-              color="#00bbff"
-              className="w-fit gap-3 text-black!"
-              onClick={handleOpenLogin}
-            >
-              <ArrowUpRight className="h-5 w-5" />
-              Open Login in Browser
-            </RaisedButton>
-          )}
-
-          {status === "opened" && (
-            <div className="flex flex-col items-center gap-4 py-4">
-              <Spinner color="primary" />
-              <p className="text-center text-sm text-zinc-400">
-                Opening your browser...
-              </p>
-            </div>
-          )}
-
-          {status === "waiting" && (
-            <div className="flex flex-col items-center gap-4 py-4">
-              <Spinner color="primary" />
-              <div className="text-center">
-                <p className="font-medium text-white">
-                  Complete login in your browser
-                </p>
-                <p className="mt-1 text-sm text-zinc-400">
-                  You&apos;ll be redirected back automatically
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setStatus("ready")}
-                className="mt-2 text-sm text-zinc-500 underline-offset-4 transition-colors hover:text-zinc-300 hover:underline"
-              >
-                Try again
-              </button>
-            </div>
-          )}
-
-          {status === "error" && (
-            <div className="flex flex-col items-center gap-4 py-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-500/20">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="text-red-400"
-                  aria-hidden="true"
-                >
-                  <circle cx="12" cy="12" r="10" />
-                  <line x1="15" y1="9" x2="9" y2="15" />
-                  <line x1="9" y1="9" x2="15" y2="15" />
-                </svg>
-              </div>
-              <p className="text-center text-red-400">Failed to open browser</p>
-              <button
-                type="button"
-                onClick={() => setStatus("ready")}
-                className="rounded-lg bg-zinc-800 px-4 py-2 text-sm text-white transition-colors hover:bg-zinc-700"
-              >
-                Try Again
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Footer text */}
-        <p className="mt-6 text-center text-xs text-zinc-500 font-light">
-          By signing in, you agree to our Terms of Service and Privacy Policy
-        </p>
-      </div>
-    </div>
+    <DesktopLoginClient
+      isSelfHosted={isSelfHosted}
+      serverFormReason={isServerFormReason(reason) ? reason : null}
+    />
   );
 }

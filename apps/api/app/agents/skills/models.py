@@ -10,13 +10,20 @@ SKILL.md frontmatter during import.
 """
 
 from datetime import UTC, datetime
-from enum import Enum
+from enum import Enum, StrEnum
 import re
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
 from app.db.repositories.base import MongoDocument
 from app.schemas.common import ResponseModel
+
+
+class SkillAuthor(StrEnum):
+    """Who installed or changed a skill: the user in Settings, or GAIA's agent."""
+
+    USER = "user"
+    AGENT = "agent"
 
 
 class SkillSource(str, Enum):

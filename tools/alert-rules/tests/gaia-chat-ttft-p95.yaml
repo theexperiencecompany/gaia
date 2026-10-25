@@ -38,7 +38,7 @@ tests:
             exp_annotations:
               description: >-
                 One chat turn in twenty waits over five seconds for its first reply text. Decompose with llm_ttft_seconds (provider) vs chat_ttft_seconds (pipeline): if llm_ttft moved, the provider is slow; if only chat_ttft moved, suspect context assembly (context_assemble_seconds) or the pre-LLM graph spans. No latency dashboard panel exists for these metrics yet — query /metrics histograms directly.
-              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-chat-ttft-p95
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-chat-ttft-p95
 
   - name: gaia-chat-ttft-p95 stays quiet when TTFT p95 is under 5s
     interval: 1m

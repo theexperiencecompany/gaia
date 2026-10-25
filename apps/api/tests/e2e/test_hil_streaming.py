@@ -407,6 +407,7 @@ async def hil_world(
     comms: Sequence[Any] | None = None,
     executor: Sequence[Any] | None = None,
     executor_model: Any | None = None,
+    comms_model: Any | None = None,
 ) -> AsyncIterator[HilWorld]:
     """Build a live conversation with HIL configured, held open across a pause.
 
@@ -547,7 +548,8 @@ async def hil_world(
                 stack.enter_context(patcher)
             comms_graph = await stack.enter_async_context(
                 build_graph_module.build_comms_graph(
-                    chat_llm=streaming_model(comms or comms_script()), in_memory_checkpointer=True
+                    chat_llm=comms_model or streaming_model(comms or comms_script()),
+                    in_memory_checkpointer=True,
                 )
             )
             executor_graph = await stack.enter_async_context(

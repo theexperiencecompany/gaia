@@ -1,0 +1,52 @@
+---
+title: "MCP servers on a self-hosted instance"
+sidebarTitle: "MCP servers"
+description: "Connect MCP servers running on your machine or your local network to a self-hosted GAIA"
+icon: "server"
+---
+
+Connect an MCP server running on your machine or your network.
+
+## Add a server
+
+1. Start the MCP server over HTTP (streamable HTTP or SSE) and note its URL, such as `http://localhost:8931/mcp`.
+2. On the integrations page, click **Add MCP server**.
+3. Enter a **Name** and the **Server URL**, then click **Create**. If it needs a key, paste it under **API Key / Bearer Token**.
+
+<Frame caption="The New Integration dialog, filled in for a server on the machine that runs GAIA">
+  <img src="/images/self-hosting/add-mcp-server.webp" width="512" alt="New Integration dialog with the name Filesystem, the server URL http://localhost:8931/mcp, an empty optional API Key / Bearer Token field, a note that GAIA connects to MCP servers over HTTP, and Cancel and Create buttons" />
+</Frame>
+
+GAIA lists the tools and can use them in chat right away. If it can't reach the server, it saves it anyway and says so. Fix the server, then retry.
+
+## Which URL to enter
+
+| Where the server runs | URL to enter |
+| --- | --- |
+| The machine that runs GAIA | `http://localhost:PORT/mcp` |
+| Another machine on your network | Its address or hostname, such as `http://192.168.1.20:3000/mcp` |
+| Your own computer, started as a command (stdio) | Use the [device bridge](/cli/device-bridge) |
+
+On the machine that runs GAIA, make sure the server listens on `0.0.0.0` (not `127.0.0.1`) and that your firewall allows its port from Docker.
+
+<Accordion title="Why localhost works">
+  GAIA's API runs in a container, where `localhost` is the container itself. So GAIA saves `localhost` and `127.0.0.1` URLs with `host.docker.internal` instead, which the self-host Compose file points at your machine. `http://localhost:8931/mcp` is dialed as `http://host.docker.internal:8931/mcp`. This is set by `LOOPBACK_HOST_ALIAS=host.docker.internal`. If you run the API outside Docker, leave it unset.
+</Accordion>
+
+## Servers started as a command (stdio)
+
+GAIA connects over HTTP only. A server you start as a command (`npx some-mcp-server`) speaks stdio, which GAIA can't start. Put an HTTP bridge such as [supergateway](https://github.com/supercorp-ai/supergateway) in front of it:
+
+```bash
+npx -y supergateway --stdio "npx -y @modelcontextprotocol/server-filesystem /data" --outputTransport streamableHttp --port 8931
+```
+
+Then add `http://localhost:8931/mcp`.
+
+<Tip>
+  To run a stdio server on your own computer instead, use the [device bridge](/cli/device-bridge). It runs the server on the device and connects it to your account.
+</Tip>
+
+## What stays blocked
+
+Cloud metadata addresses (`169.254.169.254`, `metadata.google.internal`), other link-local addresses, and URLs with a username and password are always refused. Unlike GAIA Cloud, a self-hosted instance allows private network addresses.

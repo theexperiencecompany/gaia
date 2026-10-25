@@ -8,8 +8,17 @@ from langchain_core.messages import (
 )
 import pytest
 
+from app.config.settings import settings
+
 HELPFUL_ASSISTANT_SYSTEM_PROMPT = "You are a helpful assistant."
 WEATHER_QUERY = "What is the weather today?"
+
+
+@pytest.fixture
+def stored_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Boot as development with local auth: stored credentials outrank env and the dev tools stay on."""
+    monkeypatch.setattr(settings, "ENV", "development")
+    monkeypatch.setattr(settings, "AUTH_MODE", "local")
 
 
 @pytest.fixture

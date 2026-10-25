@@ -20,6 +20,7 @@ import { paywallCopyFor } from "@/features/pricing/constants";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { useProMonthlyPlan } from "@/features/pricing/hooks/useProMonthlyPlan";
 import { toMajorUnits } from "@/features/pricing/utils/money";
+import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 import { usePathname } from "@/i18n/navigation";
 import { track } from "@/lib/analytics";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
@@ -66,6 +67,8 @@ export default function SidebarTopButtons() {
   const { isPaid, isUnknown, hasEverSubscribed } = useIsPaid();
   const { plan: monthlyPlan, isLoading: isPriceLoading } = useProMonthlyPlan();
   const openUpgradeModal = useUpgradeModalStore((s) => s.openModal);
+  // Self-host instances have no billing — the promo makes no sense there.
+  const billingHidden = !useDeployment().bills;
 
   const price = monthlyPlan
     ? toMajorUnits(monthlyPlan.amount, monthlyPlan.currency)
@@ -96,10 +99,11 @@ export default function SidebarTopButtons() {
 
   return (
     <div className="flex flex-col">
-      {/* Only show Upgrade to Pro button when the plan is known and the user
-          doesn't have an active subscription — never while unknown, or a
-          paying user on a cold cache briefly sees the free-tier promo. */}
-      {!isUnknown && !isPaid && (
+      {/* Only show Upgrade to Pro button when billing is enabled, the plan is
+          known and the user doesn't have an active subscription — never while
+          unknown, or a paying user on a cold cache briefly sees the free-tier
+          promo. Self-host instances have no billing at all. */}
+      {!billingHidden && !isUnknown && !isPaid && (
         <SidebarPromo
           price={price}
           isPriceLoading={isPriceLoading}

@@ -448,11 +448,7 @@ class TestUpdatePreferences:
         ):
             response = await client.patch(
                 PREFERENCES_URL,
-                json={
-                    "profession": "Engineer",
-                    "response_style": "brief",
-                    "custom_instructions": "Be concise.",
-                },
+                json={"profession": "Engineer", "response_style": "brief"},
             )
 
         assert response.status_code == 200
@@ -479,16 +475,14 @@ class TestUpdatePreferences:
         ):
             response = await client.patch(
                 PREFERENCES_URL,
-                json={"profession": "Engineer", "custom_instructions": "Be concise."},
+                json={"profession": "Engineer", "response_style": "brief"},
             )
 
         assert response.status_code == 200
         mock_capture.assert_called_once_with(
             UserId(FAKE_USER.user_id),
             SettingsPreferencesChanged(
-                setting="onboarding_preferences",
-                fields=["custom_instructions", "profession"],
-                has_custom_instructions=True,
+                setting="onboarding_preferences", fields=["profession", "response_style"]
             ),
         )
         assert "response_style" not in mock_capture.call_args.args[1].to_properties()
@@ -503,15 +497,6 @@ class TestUpdatePreferences:
             response = await client.patch(PREFERENCES_URL, json={})
 
         assert response.status_code == 200
-
-    async def test_update_preferences_custom_instructions_too_long_returns_422(
-        self, client: AsyncClient
-    ):
-        response = await client.patch(
-            PREFERENCES_URL,
-            json={"custom_instructions": "a" * 501},
-        )
-        assert response.status_code == 422
 
     async def test_update_preferences_other_need_too_long_returns_422(self, client: AsyncClient):
         response = await client.patch(

@@ -18,7 +18,8 @@ export interface PromoBannerProps {
   title: string;
   description: string;
   primaryAction: PromoBannerAction;
-  secondaryAction?: PromoBannerAction;
+  /** Quieter alternatives, shown before the primary action. */
+  secondaryActions?: PromoBannerAction[];
 }
 
 /** Renders a promo action as a link button when it has an href, else a press button. */
@@ -29,6 +30,7 @@ function renderAction(action: PromoBannerAction, isPrimary: boolean) {
   if (action.href) {
     return (
       <Button
+        key={action.label}
         as={Link}
         href={action.href}
         variant={variant}
@@ -42,6 +44,7 @@ function renderAction(action: PromoBannerAction, isPrimary: boolean) {
 
   return (
     <Button
+      key={action.label}
       variant={variant}
       color={color}
       endContent={action.icon}
@@ -57,12 +60,12 @@ export function PromoBanner({
   title,
   description,
   primaryAction,
-  secondaryAction,
+  secondaryActions = [],
 }: PromoBannerProps) {
   return (
     <div className="relative overflow-hidden rounded-3xl bg-zinc-800/50">
-      <div className="relative z-10 flex items-center justify-between gap-6 p-4">
-        <div className="flex items-center gap-4">
+      <div className="relative z-10 flex flex-wrap items-center justify-between gap-4 p-4">
+        <div className="flex min-w-72 flex-1 items-center gap-4">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/20">
             {icon}
           </div>
@@ -72,8 +75,8 @@ export function PromoBanner({
           </div>
         </div>
 
-        <div className="flex shrink-0 gap-3">
-          {secondaryAction && renderAction(secondaryAction, false)}
+        <div className="flex shrink-0 flex-wrap gap-3">
+          {secondaryActions.map((action) => renderAction(action, false))}
           {renderAction(primaryAction, true)}
         </div>
       </div>

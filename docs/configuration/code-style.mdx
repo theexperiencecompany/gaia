@@ -1,167 +1,56 @@
 ---
-title: "Code Style Guide"
-description: "Coding standards and best practices for GAIA development"
+title: "Code style"
+description: "The rules GAIA code follows, the tools that enforce them, and where the full rules live."
 icon: "code"
 ---
 
-## Python Style Guide
+Most style is enforced by tools, so you rarely need to remember it: the commit hooks and CI run them for you. This page is the summary. The full rules live in the `CLAUDE.md` file of each area, and those files win if anything here disagrees:
 
-### General Guidelines
+| Area | Full rules |
+| --- | --- |
+| Everywhere | `CLAUDE.md` and `.claude/rules/general.md` at the repository root |
+| API (Python) | `apps/api/CLAUDE.md` |
+| Web (TypeScript, React) | `apps/web/CLAUDE.md`, plus the [design system](/design-system) |
+| Bots | `apps/bots/CLAUDE.md` |
+| Tests | `apps/api/tests/CLAUDE.md` |
 
-- Follow [PEP 8](https://peps.python.org/pep-0008/) for Python code style
-- Use type hints for all function parameters and return values
-- Include comprehensive docstrings for all modules, classes, and functions
-- Run `mise lint` before committing to ensure code quality
+## Across the codebase
 
-### Linting and Formatting
+- **Search before you build.** Before writing a helper, type, hook or service, look for one that already exists. Shared code goes in `libs/shared/py` or `libs/shared/ts`, never copied between apps.
+- **Fail loudly.** Don't swallow errors with a broad `except` or a silent default. Let them reach a place that can handle them.
+- **No magic values.** A literal that means something becomes a named constant, grouped by domain (for example `app/constants/` in the API).
+- **Organise by feature.** A feature keeps its components, hooks, types and API calls together.
+- **Delete what you replace.** No commented-out code, no unused imports, no old versions left "just in case".
+- **Comments say why, not what.** Names explain what the code does. A comment is one line of reasoning at the point of surprise.
 
-Check code quality:
+## Python
 
-```bash
-mise lint
-```
-
-Auto-fix issues:
-
-```bash
-mise lint:fix
-```
-
-Format code:
-
-```bash
-mise format
-```
-
-Type checking:
-
-```bash
-mise mypy
-```
-
-### Route Handler Best Practices
-
-Route handlers should be thin wrappers around service functions:
+- [Ruff](https://docs.astral.sh/ruff/) lints and formats, [mypy](https://mypy-lang.org) checks types. Run `mise run lint:py` and `mise run type-check`.
+- Every function has full type annotations. Don't add `Any` or bare `dict`/`list` to a file that has none.
+- Imports go at the top of the file, never inside a function.
+- A docstring is one imperative summary line, plus only what the signature doesn't already say. No `Args:` entry that repeats a parameter's name or type.
+- **Routes are thin**: record what the request is about with `log.set(...)`, call a service, return a Pydantic model. **Services** are plain async functions, not classes, and reach MongoDB only through a repository in `app/db/repositories/`.
 
 ```python
-@router.post("/resource", response_model=ResourceResponse)
-async def create_resource_endpoint(
-    resource: ResourceModel,
-    user: dict = Depends(get_current_user)
-):
-    """
-    Create a new resource.
-
-    Args:
-        resource: The resource data
-        user: The authenticated user information
-
-    Returns:
-        The created resource
-    """
-    return await create_resource(resource, user["user_id"])
+async def get_todo(todo_id: str, user_id: str) -> TodoDocument | None:
+    """Return the user's todo, or None when it doesn't exist."""
+    return await todo_repository.get(todo_id, user_id=user_id)
 ```
 
-### Service Function Best Practices
+## TypeScript
 
-Service functions should contain the business logic:
+- [Biome](https://biomejs.dev) lints and formats instead of ESLint and Prettier. Run `mise run lint`, or `mise run lint:fix` to fix and sort imports.
+- Never use `any`. Imports go at the top of the file.
+- API request and response types come from `@gaia/shared/api/generated`, which is generated from the API. Never write a type that copies an API model by hand. After changing an API route or model, run `mise run api:types`.
+- UI primitives come from [HeroUI](https://www.heroui.com): `<Button>`, `<Input>`, `<Modal>` and so on, never a raw `<button>` or a home-made spinner. Icons come from `@icons`, never Unicode symbols such as arrows or check marks.
+- Global state uses [Zustand](https://zustand.docs.pmnd.rs) stores.
 
-```python
-async def create_resource(resource: ResourceModel, user_id: str) -> ResourceResponse:
-    """
-    Create a new resource in the database.
+## Commits
 
-    Args:
-        resource: The resource data model
-        user_id: The ID of the user creating the resource
+Commit messages and pull request titles follow [Conventional Commits](/configuration/conventional-commits).
 
-    Returns:
-        ResourceResponse: The created resource with additional metadata
+## Next
 
-    Raises:
-        HTTPException: If resource creation fails
-    """
-    # Implementation logic here
-    return resource_response
-```
-
-## TypeScript/JavaScript Style Guide
-
-### Web Standards
-
-- Use TypeScript for all new code
-- Follow Biome configuration for formatting and linting
-- Prefer functional components and hooks
-
-### Linting and Formatting
-
-Check code quality:
-
-```bash
-mise lint
-```
-
-Auto-fix issues:
-
-```bash
-mise lint:fix
-```
-
-Format code:
-
-```bash
-mise format
-```
-
-Type checking:
-
-```bash
-mise type
-```
-
-## Commit Message Format
-
-Follow [conventional commits](/configuration/conventional-commits) format:
-
-```
-type(scope): description
-
-[optional body]
-
-[optional footer]
-```
-
-**Types:**
-
-- `feat`: New feature
-- `fix`: Bug fix
-- `docs`: Documentation changes
-- `style`: Code style changes (formatting, etc.)
-- `refactor`: Code refactoring
-- `test`: Adding or updating tests
-- `chore`: Maintenance tasks
-
-**Example:**
-
-```bash
-git commit -m "feat(auth): add OAuth2 token refresh endpoint"
-```
-
-## Testing Standards
-
-- Write tests for all new features and bug fixes
-- Maintain or improve code coverage
-- Both unit and integration tests are encouraged
-
-Run tests:
-
-```bash
-mise test
-```
-
-## Additional Resources
-
-- [FastAPI Documentation](https://fastapi.tiangolo.com/)
-- [Pydantic Documentation](https://docs.pydantic.dev/)
-- [Next.js Documentation](https://nextjs.org/docs)
-- [TypeScript Documentation](https://www.typescriptlang.org/docs/)
+<Card title="Commit messages" icon="code-commit" href="/configuration/conventional-commits">
+  The format, the allowed types and examples.
+</Card>
