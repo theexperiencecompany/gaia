@@ -13,16 +13,12 @@ const call = (overrides: Partial<ToolCallEntry> = {}): ToolCallEntry => ({
   ...overrides,
 });
 
-const noop = (): undefined => undefined;
-
 describe("StepRow approval outcome", () => {
   it("shows the receipt text next to the outcome chip", () => {
     render(
       <StepRow
         call={call()}
         isLast
-        getIconUrl={noop}
-        getIntegrationName={noop}
         pendingApprovalToolCallIds={new Set()}
         approvalOutcomeByToolCallId={
           new Map([
@@ -40,8 +36,6 @@ describe("StepRow approval outcome", () => {
       <StepRow
         call={call()}
         isLast
-        getIconUrl={noop}
-        getIntegrationName={noop}
         pendingApprovalToolCallIds={new Set()}
         approvalOutcomeByToolCallId={
           new Map([["call-1", { status: "denied", feedback: null }]])
@@ -60,8 +54,6 @@ describe("StepRow approval outcome", () => {
       <StepRow
         call={call()}
         isLast
-        getIconUrl={noop}
-        getIntegrationName={noop}
         pendingApprovalToolCallIds={new Set()}
         approvalOutcomeByToolCallId={
           new Map([["call-1", { status, feedback: null }]])

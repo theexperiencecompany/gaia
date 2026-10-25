@@ -38,7 +38,7 @@ tests:
             exp_annotations:
               description: >-
                 One request in twenty is taking over a second, so chat feels stalled and the first SSE token arrives late. Use the "Slowest Endpoints (p95)" and "P95 Latency by Endpoint" panels to find which handler is responsible before looking at database or LLM latency.
-              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-api-p95-latency
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-api-p95-latency
               __dashboardUid__: gaia-api-prometheus
               __panelId__: '6'
 

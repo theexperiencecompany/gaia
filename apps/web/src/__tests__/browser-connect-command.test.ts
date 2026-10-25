@@ -16,24 +16,34 @@ import {
   isLocalApiOrigin,
 } from "@/features/browser/utils";
 
+const PAGE_URL = "https://heygaia.io/c/123";
+
 describe("connectApiOrigin", () => {
   it("strips the /api/v1 path so the tool gets a bare origin", () => {
-    expect(connectApiOrigin("http://localhost:8510/api/v1/")).toBe(
+    expect(connectApiOrigin("http://localhost:8510/api/v1/", PAGE_URL)).toBe(
       "http://localhost:8510",
     );
-    expect(connectApiOrigin("https://api.example.com/api/v1")).toBe(
+    expect(connectApiOrigin("https://api.example.com/api/v1", PAGE_URL)).toBe(
       "https://api.example.com",
+    );
+  });
+
+  it("resolves a same-origin base against the page the user is on", () => {
+    expect(connectApiOrigin("/api/v1/", "http://203.0.113.7:3000/c/abc")).toBe(
+      "http://203.0.113.7:3000",
     );
   });
 });
 
 describe("connectApiOverride", () => {
   it("is null on production, where the tool's default already matches", () => {
-    expect(connectApiOverride("https://api.heygaia.io/api/v1/")).toBeNull();
+    expect(
+      connectApiOverride("https://api.heygaia.io/api/v1/", PAGE_URL),
+    ).toBeNull();
   });
 
   it("names the origin for dev and self-hosted APIs", () => {
-    expect(connectApiOverride("http://localhost:8510/api/v1/")).toBe(
+    expect(connectApiOverride("http://localhost:8510/api/v1/", PAGE_URL)).toBe(
       "http://localhost:8510",
     );
   });

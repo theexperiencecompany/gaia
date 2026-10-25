@@ -4,8 +4,7 @@ description: >
   install Node + pnpm deps (the device-bridge e2e tests drive the real
   `gaia bridge` CLI via tsx) when requested, sync Python deps with uv, and start
   PostgreSQL/Redis/MongoDB/ChromaDB/RabbitMQ containers on the local Docker
-  daemon. Mirrors the topology of `dagger call test-python` so the suite runs
-  identically in CI and in the local Dagger harness.
+  daemon.
 
 inputs:
   services:
@@ -73,21 +72,27 @@ runs:
       # release. Versions are hash-pinned via --frozen, so sdist builds run
       # the same audited code as every other install path.
       # Self-hosted: .venv persists in the workspace; skip the sync when the
-      # marker the previous sync left still matches (scripts/ci/runner.sh dep-marker
+      # marker the previous sync left still matches (scripts/ci/runner.py dep-marker
       # keys it on uv.lock AND the pyproject files, ~10-20s saved) and the env
       # still holds exactly that lock: a job syncing outside this composite (another
       # branch's python-mypy) can change the .venv under an unchanged marker.
+      # `--check` reads the installed packages, so a venv that lost its
+      # site-packages fails it and is re-synced. It does NOT read pyvenv.cfg:
+      # without that file `--check` still passes while the interpreter no longer
+      # sees the venv's packages at all, so the skip requires it too.
       run: |
         set -euo pipefail
-        MARK="$(bash scripts/ci/runner.sh dep-marker python)"
+        MARK="$(python3 scripts/ci/runner.py dep-marker python)"
         if [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ] && [ -f "$MARK" ] && [ -x .venv/bin/python ] &&
+           [ -f .venv/pyvenv.cfg ] &&
            uv sync --frozen --package gaia --group backend --group dev --check > /dev/null 2>&1; then
           echo ".venv already synced ($MARK) — skipping uv sync"
           exit 0
         fi
-        bash scripts/ci/runner.sh heal-venv .venv
+        # Withdrawn before the sync, so an interrupted one leaves no marker behind.
+        rm -f .venv/.gaia-synced-*
+        python3 scripts/ci/runner.py heal-venv .venv
         uv sync --frozen --package gaia --group backend --group dev # NOSONAR githubactions:S8541
-        rm -f .venv/.gaia-synced-* 2>/dev/null || true
         touch "$MARK"
 
     # Join the background boot, then claim this lane's namespace and export its

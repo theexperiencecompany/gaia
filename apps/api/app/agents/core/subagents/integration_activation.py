@@ -29,6 +29,7 @@ from app.agents.core.subagents.handoff_tools import (
 from app.agents.core.subagents.provider_subagents import register_integration_tools
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.core.subagents.subagent_helpers import build_subagent_system_prompt
+from app.agents.prompts.user_instructions_prompts import render_user_instructions
 from app.agents.skills.discovery import get_available_skills_text
 from app.agents.tools.core.registry import get_tool_registry
 from app.agents.tools.core.retrieval import render_preload_block, split_startup_tools
@@ -36,8 +37,8 @@ from app.agents.workspace.system_docs import integration_skills_block
 from app.constants.log_tags import LogTag
 from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.models.subagent_models import Subagent
-from app.services.integration_instructions_service import get_instructions
 from app.services.integrations.integration_accounts import get_account_record
+from app.services.user_instructions_service import get_instructions
 from shared.py.wide_events import log
 
 
@@ -138,9 +139,7 @@ async def _activation_context(
         if user_id:
             instructions = await get_instructions(user_id, integration_id)
             if instructions:
-                sections.append(
-                    f"## The user's standing instructions for {integration_id}\n{instructions}"
-                )
+                sections.append(render_user_instructions(integration_id, instructions))
 
             # Which account the caller is acting as. Several accounts can change
             # mid-conversation, so those are read from the per-turn manifest instead.

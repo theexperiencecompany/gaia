@@ -5,17 +5,21 @@ respx — no real network) to prove the JSON/HTML is mapped onto the shared
 SearchResultItem shape correctly.
 """
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
 import respx
 
+from app.config.settings import settings
+from app.services.providers import provider_credentials_service
+from app.services.providers.provider_credentials_service import ProviderConfig, resolve
 from app.utils.log_identifiers import user_text_shape
 from app.utils.search.providers.brave import BraveProvider
 from app.utils.search.providers.duckduckgo import DuckDuckGoProvider
 from app.utils.search.providers.exa import ExaProvider
 from app.utils.search.providers.searxng import SearxngProvider
+from tests.helpers import InMemoryCredentialStore
 
 _EXA_PAYLOAD = {
     "results": [
@@ -55,6 +59,19 @@ _SEARXNG_PAYLOAD = {
         }
     ]
 }
+
+_ENV_EXA_KEY = "env-exa-key"
+_ENV_BRAVE_KEY = "env-brave-key"
+_EXA_ENDPOINT = "https://api.exa.ai/search"
+_BRAVE_ENDPOINT = "https://api.search.brave.com/res/v1/web/search"
+
+
+@pytest.fixture(autouse=True)
+def _env_search_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Configure Exa and Brave from the environment; tests that need a stored key override it."""
+    monkeypatch.setattr(settings, "EXA_API_KEY", _ENV_EXA_KEY)
+    monkeypatch.setattr(settings, "BRAVE_API_KEY", _ENV_BRAVE_KEY)
+
 
 _DDG_HTML = """
 <html><body><table>
@@ -210,10 +227,7 @@ async def test_brave_without_web_section_is_empty() -> None:
 
 @respx.mock
 async def test_searxng_parses_json(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        "app.utils.search.providers.searxng.settings.SEARXNG_BASE_URL",
-        "https://searxng.internal",
-    )
+    monkeypatch.setattr(settings, "SEARXNG_BASE_URL", "https://searxng.internal")
     respx.get("https://searxng.internal/search").mock(
         return_value=httpx.Response(200, json=_SEARXNG_PAYLOAD)
     )
@@ -234,14 +248,25 @@ async def test_searxng_parses_json(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @respx.mock
+async def test_searxng_under_a_path_with_a_trailing_slash_searches_that_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "SEARXNG_BASE_URL", "https://tools.example/searX/")
+    route = respx.get("https://tools.example/searX/search").mock(
+        return_value=httpx.Response(200, json=_SEARXNG_PAYLOAD)
+    )
+
+    await SearxngProvider().search("query", 5)
+
+    assert route.called
+
+
+@respx.mock
 async def test_searxng_null_fields_count_cap_and_null_results(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Null fields map to defaults, count caps results, and null results is empty."""
-    monkeypatch.setattr(
-        "app.utils.search.providers.searxng.settings.SEARXNG_BASE_URL",
-        "https://searxng.internal/",
-    )
+    monkeypatch.setattr(settings, "SEARXNG_BASE_URL", "https://searxng.internal/")
     payload = {
         "results": [
             {
@@ -330,3 +355,88 @@ async def test_duckduckgo_bot_challenge_logs_the_query_shape_not_its_words() -> 
     log.warning.assert_called_once_with(
         "DuckDuckGo served a bot-challenge page", query=user_text_shape("my divorce papers")
     )
+
+
+# ---------------------------------------------------------------------------
+# Credentials: the store on self-host, the environment alone in production
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+async def test_selfhost_exa_and_brave_search_with_the_stored_key_over_env(
+    selfhost_credential_store: InMemoryCredentialStore,
+) -> None:
+    selfhost_credential_store.save("exa", api_key="stored-exa-key")
+    selfhost_credential_store.save("brave", api_key="stored-brave-key")
+    exa_route = respx.post(_EXA_ENDPOINT).mock(return_value=httpx.Response(200, json=_EXA_PAYLOAD))
+    brave_route = respx.get(_BRAVE_ENDPOINT).mock(
+        return_value=httpx.Response(200, json=_BRAVE_PAYLOAD)
+    )
+
+    await ExaProvider().search("query", 5)
+    await BraveProvider().search("query", 5)
+
+    assert exa_route.calls.last.request.headers["x-api-key"] == "stored-exa-key"
+    assert brave_route.calls.last.request.headers["X-Subscription-Token"] == "stored-brave-key"
+
+
+async def test_selfhost_search_providers_report_a_stored_credential_as_configured(
+    selfhost_credential_store: InMemoryCredentialStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for field in ("EXA_API_KEY", "BRAVE_API_KEY", "SEARXNG_BASE_URL"):
+        monkeypatch.setattr(settings, field, None)
+    providers = (ExaProvider(), BraveProvider(), SearxngProvider())
+    assert not any(p.is_configured() for p in providers)
+
+    selfhost_credential_store.save("exa", api_key="stored-exa-key")
+    selfhost_credential_store.save("brave", api_key="stored-brave-key")
+    selfhost_credential_store.save("searxng", base_url="http://searxng:8080")
+    for provider in providers:
+        await resolve(provider.name)
+
+    assert all(p.is_configured() for p in providers)
+
+
+@respx.mock
+async def test_selfhost_searxng_queries_the_stored_server(
+    selfhost_credential_store: InMemoryCredentialStore,
+) -> None:
+    selfhost_credential_store.save("searxng", base_url="http://searxng.lan:8080/")
+    route = respx.get("http://searxng.lan:8080/search").mock(
+        return_value=httpx.Response(200, json=_SEARXNG_PAYLOAD)
+    )
+
+    response = await SearxngProvider().search("query", 5)
+
+    assert route.called
+    assert response.results[0].url == "https://example.com/c"
+
+
+@respx.mock
+async def test_production_exa_and_brave_use_env_keys_and_never_read_the_store(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "ENV", "production")
+    monkeypatch.setattr(settings, "AUTH_MODE", "workos")
+    store_read = AsyncMock(side_effect=AssertionError("production read the credential store"))
+    monkeypatch.setattr(
+        provider_credentials_service.provider_credentials_repository, "find_by_provider", store_read
+    )
+    for name in ("exa", "brave"):
+        monkeypatch.setitem(
+            provider_credentials_service.resolved_configs,
+            name,
+            ProviderConfig(api_key="stored-key", base_url=None, model=None, preset=None),
+        )
+    exa_route = respx.post(_EXA_ENDPOINT).mock(return_value=httpx.Response(200, json=_EXA_PAYLOAD))
+    brave_route = respx.get(_BRAVE_ENDPOINT).mock(
+        return_value=httpx.Response(200, json=_BRAVE_PAYLOAD)
+    )
+
+    assert ExaProvider().is_configured() and BraveProvider().is_configured()
+    await ExaProvider().search("query", 5)
+    await BraveProvider().search("query", 5)
+
+    assert exa_route.calls.last.request.headers["x-api-key"] == _ENV_EXA_KEY
+    assert brave_route.calls.last.request.headers["X-Subscription-Token"] == _ENV_BRAVE_KEY
+    store_read.assert_not_awaited()

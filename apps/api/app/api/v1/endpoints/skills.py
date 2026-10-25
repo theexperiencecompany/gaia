@@ -26,6 +26,7 @@ from app.agents.skills.models import (
     DiscoveredSkillInfo,
     DiscoverSkillsResponse,
     Skill,
+    SkillAuthor,
     SkillInlineCreateRequest,
     SkillListResponse,
     SkillTargetsResponse,
@@ -48,13 +49,12 @@ from app.decorators import tiered_rate_limit
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
 from app.services.integrations.user_integrations import get_connected_integration_ids
+from app.utils.errors import AppError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import (
     SkillDisabled,
     SkillEnabled,
-    SkillInstalled,
     SkillUninstalled,
-    SkillUpdated,
 )
 from shared.py.wide_events import log
 
@@ -249,19 +249,12 @@ async def install_skill_with_auto_discover(
             skill_path=install_path,
             target_override=target,
             allowed_targets=allowed_targets,
+            author=SkillAuthor.USER,
         )
         log.set(skill_id=installed.id if hasattr(installed, "id") else None)
         log.set(outcome="success")
-        capture(
-            UserId(user_id),
-            SkillInstalled(
-                skill_id=installed.id if hasattr(installed, "id") else None,
-                target=installed.target,
-                source="github",
-            ),
-        )
         return installed
-    except HTTPException:
+    except (HTTPException, AppError):
         raise
     except ValueError as e:
         raise HTTPException(
@@ -296,25 +289,11 @@ async def create_inline_skill_endpoint(
     log.set(user={"id": user_id}, skill={"name": request.name, "target": request.target})
     try:
         await _validate_target(user_id, request.target)
-        installed = await install_from_inline(
-            user_id=user_id,
-            name=request.name,
-            description=request.description,
-            instructions=request.instructions,
-            target=request.target,
-        )
+        installed = await install_from_inline(user_id, request, author=SkillAuthor.USER)
         log.set(skill_id=installed.id if hasattr(installed, "id") else None)
         log.set(outcome="success")
-        capture(
-            UserId(user_id),
-            SkillInstalled(
-                skill_id=installed.id if hasattr(installed, "id") else None,
-                target=installed.target,
-                source="inline",
-            ),
-        )
         return installed
-    except HTTPException:
+    except (HTTPException, AppError):
         raise
     except ValueError as e:
         raise HTTPException(
@@ -357,6 +336,7 @@ async def update_skill_endpoint(
             description=request.description,
             instructions=request.instructions,
             target=request.target,
+            author=SkillAuthor.USER,
         )
         if not updated:
             raise HTTPException(
@@ -364,7 +344,6 @@ async def update_skill_endpoint(
                 detail=f"Skill {skill_id} not found",
             )
         log.set(skill_name=updated.name, outcome="success")
-        capture(UserId(user_id), SkillUpdated())
         return updated
     except HTTPException:
         raise

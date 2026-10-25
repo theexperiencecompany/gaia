@@ -1,6 +1,6 @@
 name: Setup Node.js + pnpm
 description: >
-  Install pnpm 10.17.1, Node.js 22.15.1, and project dependencies.
+  Install pnpm 10.17.1, Node.js (from .node-version), and project dependencies.
 
   Store strategy is runner-dependent. On GitHub-hosted runners the machine is
   discarded after the job, so setup-node's GH-cache save/restore of the pnpm
@@ -12,10 +12,12 @@ description: >
   entirely.
 
 inputs:
-  nx-cloud-access-token:
-    description: NX Cloud access token for remote caching
+  api-codegen:
+    description: >
+      Also install tools/api-codegen, the out-of-workspace compiler only the
+      api-schema check runs. Every other job skips it.
     required: false
-    default: ""
+    default: "false"
 
 runs:
   using: composite
@@ -69,13 +71,13 @@ runs:
       if: runner.environment == 'self-hosted'
       uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.1
       with:
-        node-version: "22.15.1"
+        node-version-file: ".node-version"
 
     - name: Setup Node.js (GitHub-hosted — cache pnpm store)
       if: runner.environment != 'self-hosted'
       uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.1
       with:
-        node-version: "22.15.1"
+        node-version-file: ".node-version"
         cache: "pnpm"
         cache-dependency-path: pnpm-lock.yaml
 
@@ -92,9 +94,12 @@ runs:
       # verification pass; --prefer-offline keeps it off the network when the
       # store already has everything.
       # Self-hosted: node_modules persists in the workspace. When the marker
-      # the previous install left still matches (scripts/ci/runner.sh dep-marker keys
-      # it on the lockfile AND the linker/workspace settings), the tree is by
-      # construction what pnpm would produce — skip the ~15s verify pass.
+      # the previous install left still matches (scripts/ci/runner.py dep-marker keys
+      # it on the lockfile AND the linker/workspace settings) and the tree still
+      # carries the two files pnpm writes to record a finished install, skip the
+      # ~15s verify pass. The marker alone vouched for a half-deleted tree: run
+      # 40031733506's detect skipped the install on gaia-home-5 and nx then
+      # failed on the missing node_modules/.modules.yaml.
       env:
         # electron is on the build allowlist so its postinstall may run, but
         # that postinstall downloads the ~110 MB Electron binary on every
@@ -105,11 +110,17 @@ runs:
         ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
       run: |
         set -euo pipefail
-        MARK="$(bash scripts/ci/runner.sh dep-marker node)"
-        if [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ] && [ -f "$MARK" ] && [ -d node_modules/.pnpm ]; then
+        MARK="$(python3 scripts/ci/runner.py dep-marker node)"
+        if [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ] && [ -f "$MARK" ] &&
+           [ -f node_modules/.modules.yaml ] && [ -f node_modules/.pnpm/lock.yaml ]; then
           echo "node_modules already installed ($MARK) — skipping pnpm install"
           exit 0
         fi
+        # Withdraw every marker BEFORE the tree is touched. The reset below
+        # deletes .modules.yaml, so an install cancelled after it used to leave
+        # the previous lockfile's marker vouching for a tree pnpm no longer
+        # recognises — and the next job on that lockfile skipped straight into it.
+        rm -f node_modules/.gaia-installed-*
         # The marker covers the install *settings* (lockfile, linker, build
         # allowlists), and pnpm caches the settings it last installed with in
         # node_modules/.modules.yaml, trusting that over pnpm-workspace.yaml.
@@ -133,10 +144,13 @@ runs:
         # Linux lanes (bash 5) sailed through.
         pnpm install --frozen-lockfile --prefer-offline ${STORE_ARGS[@]+"${STORE_ARGS[@]}"}
         echo "::endgroup::"
-        rm -f node_modules/.gaia-installed-* 2>/dev/null || true
         touch "$MARK"
 
-    - name: Set NX_CLOUD_ACCESS_TOKEN
-      if: false # Nx Cloud plan exceeded — restore condition to re-enable: inputs.nx-cloud-access-token != ''
+    # tools/api-codegen needs a compiler with the JavaScript API, which
+    # typescript 7 does not ship, and it sits outside the workspace so the app
+    # packages stay on 7.x. tools/api-codegen/README.md has the full reasoning
+    # and the conditions for deleting it.
+    - name: Install the API codegen toolchain
+      if: inputs.api-codegen == 'true'
       shell: bash
-      run: echo "NX_CLOUD_ACCESS_TOKEN=${{ inputs.nx-cloud-access-token }}" >> "$GITHUB_ENV"
+      run: pnpm --dir tools/api-codegen install --frozen-lockfile --ignore-workspace --prefer-offline

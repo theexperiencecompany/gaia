@@ -81,4 +81,6 @@ export interface ApprovalRequestData {
   age_seconds?: number | null;
   /** Row version the client saw; echoed back on decide for stale-v refresh. */
   ledger_version?: number | null;
+  /** The call asks in every mode; "always allow" must not be offered on it. */
+  always_asks?: boolean;
 }

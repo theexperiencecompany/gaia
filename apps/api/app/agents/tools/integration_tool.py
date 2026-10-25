@@ -10,7 +10,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from pydantic import BaseModel, ConfigDict
 
-from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.config.oauth_config import all_integrations
 from app.constants.integrations import (
     CONNECT_INTEGRATION_TOOL,
     MAX_AVAILABLE_FOR_LLM,
@@ -23,6 +23,7 @@ from app.db.repositories.integrations import integration_repository
 from app.db.repositories.user_integrations import user_integration_repository
 from app.decorators import with_doc
 from app.helpers.integration_helpers import build_search_patterns, normalize_server_url
+from app.helpers.mcp_helpers import dialable_mcp_server_url
 from app.helpers.slug_helpers import generate_integration_slug
 from app.models.agent_models import agent_configurable, current_stream_writer
 from app.models.device import Device
@@ -45,6 +46,7 @@ from app.services.device.device_service import (
 )
 from app.services.integrations.connect_steps import connect_step
 from app.services.integrations.custom_crud import (
+    CustomConnectionResult,
     create_and_connect_custom_integration,
     create_custom_integration,
 )
@@ -71,7 +73,6 @@ from app.templates.docstrings.integration_tool_docs import (
 from app.utils.device_onboarding import request_device_approval, request_device_onboarding
 from app.utils.integration_checker import request_integration_connection
 from app.utils.log_identifiers import user_text_shape
-from app.utils.url_safety import assert_safe_url_shape
 from shared.py.wide_events import log
 
 
@@ -102,10 +103,10 @@ class _IntegrationLists:
 
 async def _add_platform_integrations(lists: _IntegrationLists, user_id: str) -> None:
     """Platform integrations with their connection status."""
-    platform_ids = [i.id for i in OAUTH_INTEGRATIONS if i.available]
+    platform_ids = [i.id for i in all_integrations() if i.available]
     status_map = await check_multiple_integrations_status(platform_ids, user_id)
 
-    for integration in OAUTH_INTEGRATIONS:
+    for integration in all_integrations():
         if not integration.available:
             continue
 
@@ -337,12 +338,12 @@ async def connect_integration(
 
         for integration_id in integration_ids:
             integration = next(
-                (integ for integ in OAUTH_INTEGRATIONS if integ.id.lower() == integration_id),
+                (integ for integ in all_integrations() if integ.id.lower() == integration_id),
                 None,
             )
 
             if not integration:
-                available = [i.id for i in OAUTH_INTEGRATIONS if i.available]
+                available = [i.id for i in all_integrations() if i.available]
                 results.append(
                     f"❌ '{integration_id}' not found. "
                     f"Available IDs: {', '.join(available[:5])}{'...' if len(available) > 5 else ''}"
@@ -403,7 +404,7 @@ async def check_integrations_status(
             search_name = integration_name.lower().strip()
             integration = None
 
-            for integ in OAUTH_INTEGRATIONS:
+            for integ in all_integrations():
                 if (
                     integ.id.lower() == search_name
                     or integ.name.lower() == search_name
@@ -438,23 +439,15 @@ async def check_integrations_status(
         return f"Error checking status: {e!s}"
 
 
-def _reject_custom_mcp_add(server_url: str, name: str) -> str | None:
-    """A user-facing rejection if this server can't be added as custom, else None.
+def _reject_custom_mcp_add(name: str) -> str | None:
+    """A user-facing rejection if a built-in catalog connector already has this name, else None.
 
-    Rejects an unsafe/malformed URL, or a name that collides with a built-in
-    catalog connector (which must be connected, not re-added as custom)."""
-    # Cheap, non-resolving SSRF/shape guard (the request model carries no
-    # validators); the DNS-resolving guard fires again inside probe/connect.
-    try:
-        assert_safe_url_shape(server_url)
-    except ValueError as e:
-        return f"❌ That server URL can't be used: {e}"
-
+    A built-in connector must be connected, not re-added as custom."""
     search_name = name.lower().strip()
     catalog = next(
         (
             integ
-            for integ in OAUTH_INTEGRATIONS
+            for integ in all_integrations()
             if integ.id.lower() == search_name
             or integ.name.lower() == search_name
             or (integ.short_name and integ.short_name.lower() == search_name)
@@ -504,6 +497,7 @@ async def _create_and_report_custom_server(
     resolved_type = cast(
         AuthType | None, probed_type if probed_type in ("none", "oauth", "bearer") else None
     )
+    connection: CustomConnectionResult
     integration, connection = await create_and_connect_custom_integration(
         user_id,
         CreateCustomIntegrationRequest(
@@ -539,13 +533,17 @@ async def add_custom_mcp_server(
 ) -> str:
     try:
         log.set(tool={"name": "add_custom_mcp_server", "action": "create"})
-        configurable = agent_configurable(config)
-        user_id = configurable.get("user_id") if configurable else None
+        user_id = _configured_user_id(config)
         if not user_id:
             return "Error: User ID not found in configuration."
-        user_id = str(user_id)
 
-        rejection = _reject_custom_mcp_add(server_url, name)
+        # Cheap, non-resolving shape guard that also points a loopback URL at the
+        # host alias; the DNS-resolving guard fires again inside probe/connect.
+        try:
+            server_url = dialable_mcp_server_url(server_url.strip())
+        except ValueError as e:
+            return f"❌ That server URL can't be used: {e}"
+        rejection = _reject_custom_mcp_add(name)
         if rejection:
             return rejection
 
@@ -559,8 +557,8 @@ async def add_custom_mcp_server(
 
         # Probe and persist the exact user-provided URL: normalization is for
         # dedup only, and some servers distinguish /mcp from /mcp/.
-        original_url = server_url.strip()
-        probe = await mcp_client.probe_connection(original_url)
+        original_url = server_url
+        probe: McpProbeResult = await mcp_client.probe_connection(original_url)
         if probe.get("error"):
             return f"❌ Couldn't reach that MCP server: {probe['error']}"
 
@@ -577,12 +575,11 @@ async def add_custom_mcp_server(
 async def list_devices(config: RunnableConfig) -> ListDevicesResult | str:
     try:
         log.set(tool={"name": "list_devices", "action": "list"})
-        configurable = agent_configurable(config)
-        user_id = configurable.get("user_id") if configurable else None
+        user_id = _configured_user_id(config)
         if not user_id:
             return "Error: User ID not found in configuration."
 
-        devices = await list_devices_service(str(user_id))
+        devices = await list_devices_service(user_id)
         device_ids = [d.id for d in devices]
         online = await online_device_ids(device_ids)
         servers_by_device = await list_device_servers(device_ids)
@@ -665,14 +662,13 @@ def _full_disk_access_hint(device: Device) -> str:
 @with_doc(RUN_ON_DEVICE)
 async def run_on_device(device_id: str, command: str, config: RunnableConfig) -> str:
     log.set(tool={"name": "run_on_device", "action": "exec"})
-    configurable = agent_configurable(config)
-    user_id = configurable.get("user_id") if configurable else None
+    user_id = _configured_user_id(config)
     if not user_id:
         return "Error: User ID not found in configuration."
 
     # Authz: the device must belong to this user. Never trust a device_id the
     # model produced — a wrong or spoofed id must not reach another user's machine.
-    devices = await list_devices_service(str(user_id))
+    devices = await list_devices_service(user_id)
     device = next((d for d in devices if d.id == device_id), None)
     if device is None:
         return (

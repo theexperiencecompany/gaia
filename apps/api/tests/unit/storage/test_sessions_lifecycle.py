@@ -464,15 +464,13 @@ def materializers(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, Any]]:
 
 @pytest.fixture
 def instructions_source(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
-    """Stand in for the Mongo-backed per-user instructions read."""
+    """Stand in for the Mongo-backed per-user instructions read; only USER has any."""
     payload: dict[str, str] = {}
 
     async def get_all(user_id: str) -> dict[str, str]:
-        return dict(payload)
+        return dict(payload) if user_id == USER else {}
 
-    monkeypatch.setattr(
-        "app.services.integration_instructions_service.get_all_instructions", get_all
-    )
+    monkeypatch.setattr("app.services.user_instructions_service.get_all_instructions", get_all)
     return payload
 
 
@@ -532,6 +530,22 @@ async def test_edited_instructions_force_a_rewrite(
     await lc.materialize_user_integrations(USER, {"gmail"})
     assert ("instructions", {"gmail": "never cc legal"}) in materializers
     assert (mount / "users" / USER / INSTRUCTIONS_MARKER).read_text() != before
+
+
+async def test_the_global_scope_is_never_projected_under_integrations(
+    mount: Path, materializers: list[tuple[str, Any]], instructions_source: dict[str, str]
+) -> None:
+    # account/custom-instructions.json owns the global scope; writing it here would
+    # create integrations/global/agent/instructions.md for an integration that does not exist.
+    instructions_source["gmail"] = "always cc legal"
+    instructions_source["global"] = "reply in Spanish"
+    await lc.materialize_user_integrations(USER, {"gmail"})
+    assert ("instructions", {"gmail": "always cc legal"}) in materializers
+    materializers.clear()
+
+    instructions_source["global"] = "reply in French"
+    await lc.materialize_user_integrations(USER, {"gmail"})
+    assert materializers == [], "a global-scope edit rewrote the integrations projection"
 
 
 async def test_a_new_skill_library_version_forces_a_rewrite(

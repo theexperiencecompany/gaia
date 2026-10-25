@@ -45,7 +45,7 @@ Sender identities (`FOUNDER_SENDER`, `SUPPORT_SENDER`) and brand URLs live in `a
    }
    ```
 
-3. Add any credentials to `app/config/settings.py` (optional in `DevelopmentSettings`, required in `ProductionSettings`) and `app/config/settings_validator.py`.
+3. Add any credentials to `app/config/settings.py` as optional fields, to `app/config/capability_requirements.py` if a deployment capability requires them, and to `app/config/settings_validator.py`.
 
 4. Set `EMAIL_PROVIDER=<name>` in the environment. Done — every sender now routes through the new adapter.
 

@@ -16,13 +16,13 @@ from typing import Literal, cast
 from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
-import httpx
 from pydantic import BaseModel, ConfigDict
 import tldextract
 
 from app.constants.cache import FAVICON_CACHE_TTL
 from app.constants.log_tags import LogTag
 from app.db.redis import get_cache, set_cache
+from app.utils.mcp_oauth_utils import mcp_http_client
 from shared.py.wide_events import log
 
 IconFormat = Literal["png", "svg", "ico", "other"]
@@ -63,6 +63,7 @@ BROWSER_UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 )
+_BROWSER_HEADERS = {"User-Agent": BROWSER_UA}
 
 # Google Favicon Service - fast and reliable
 GOOGLE_FAVICON_URL = "https://www.google.com/s2/favicons?domain={domain}&sz=256"
@@ -116,11 +117,11 @@ async def _fetch_smithery_icon(server_url: str) -> str | None:
     if not qualified_name:
         return None
     try:
-        async with httpx.AsyncClient(
-            timeout=HTTP_TIMEOUT, headers={"User-Agent": BROWSER_UA}
-        ) as client:
+        async with mcp_http_client() as client:
             response = await client.get(
                 SMITHERY_REGISTRY_URL.format(qualified_name=qualified_name),
+                headers=_BROWSER_HEADERS,
+                timeout=HTTP_TIMEOUT,
                 follow_redirects=True,
             )
             if response.status_code != 200:
@@ -212,10 +213,10 @@ def _select_best_icon(icons: list[IconCandidate]) -> str | None:
 async def _validate_favicon_url(url: str) -> bool:
     """Verify favicon URL returns an image (HEAD request)."""
     try:
-        async with httpx.AsyncClient(
-            timeout=HTTP_TIMEOUT, headers={"User-Agent": BROWSER_UA}
-        ) as client:
-            response = await client.head(url, follow_redirects=True)
+        async with mcp_http_client() as client:
+            response = await client.head(
+                url, headers=_BROWSER_HEADERS, timeout=HTTP_TIMEOUT, follow_redirects=True
+            )
             if response.status_code != 200:
                 return False
             content_type = response.headers.get("content-type", "").lower()
@@ -230,10 +231,10 @@ async def _validate_favicon_url(url: str) -> bool:
 async def _try_html_link_parsing(url: str) -> str | None:
     """Fetch HTML and parse link[rel=icon] tags."""
     try:
-        async with httpx.AsyncClient(
-            timeout=HTTP_TIMEOUT, headers={"User-Agent": BROWSER_UA}
-        ) as client:
-            response = await client.get(url, follow_redirects=True)
+        async with mcp_http_client() as client:
+            response = await client.get(
+                url, headers=_BROWSER_HEADERS, timeout=HTTP_TIMEOUT, follow_redirects=True
+            )
             if response.status_code != 200:
                 return None
 
