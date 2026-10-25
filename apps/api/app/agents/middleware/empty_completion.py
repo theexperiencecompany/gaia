@@ -60,6 +60,7 @@ class EmptyCompletionRetryMiddleware(AgentMiddleware):
         request: ModelRequest,
         handler: ModelCallHandler,
     ) -> ModelResponse:
+        """Call the model; on an empty completion, retry once."""
         response = await handler(request)
         if not is_empty_completion(response):
             return response

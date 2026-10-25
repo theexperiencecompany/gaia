@@ -659,6 +659,7 @@ async def areject_unbound_tools(tool_calls: list[dict[str, Any]], *, store: Base
 
 
 def finish_task_node(tool_calls: list[ToolCall], *, store: BaseStore) -> State:  # noqa: ARG001 -- langgraph injects store positionally at graph-execution time
+    """Answer each finish_task call with its result as the tool message."""
     messages = []
     for call in tool_calls:
         args = call.get("args", {}) if isinstance(call, dict) else {}
@@ -706,6 +707,7 @@ def _after_finish_task(exit_node: str) -> Callable[[State], str]:
 
 
 def nudge_continue_node(state: State) -> State:
+    """Append the nudge that sends the agent back to work before it may finish."""
     # The message IS the tally: completion_nudges_spent / playbook_nudges_spent
     # count these back out of the current delegation, so there is no counter
     # to keep in sync.
