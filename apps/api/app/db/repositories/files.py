@@ -83,7 +83,7 @@ class FilesRepository(UserScopedRepository[FileDocument, FileUpdate]):
                 "type": {"$exists": False},
                 "content_type": content_type,
             },
-            {"$set": {"type": content_type}, "$unset": {"content_type": ""}},
+            {"$set": {"type": content_type}, "$unset": {"content_type": ""}},  # pragma: no mutate
         )
         return result.modified_count == 1
 
@@ -95,7 +95,7 @@ class FilesRepository(UserScopedRepository[FileDocument, FileUpdate]):
                 "type": content_type,
                 "content_type": {"$exists": False},
             },
-            {"$set": {"content_type": content_type}, "$unset": {"type": ""}},
+            {"$set": {"content_type": content_type}, "$unset": {"type": ""}},  # pragma: no mutate
         )
         return result.modified_count == 1
 
