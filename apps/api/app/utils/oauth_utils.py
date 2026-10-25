@@ -3,7 +3,6 @@ from urllib.parse import urlencode
 
 import cloudinary.uploader
 from fastapi import HTTPException
-import httpx
 from pydantic import BaseModel, ConfigDict
 
 from app.config.settings import settings
@@ -11,8 +10,6 @@ from app.config.token_repository import token_repository
 from app.constants.log_tags import LogTag
 from app.models.integrations.cloudinary import CloudinaryUploadResult
 from shared.py.wide_events import log
-
-http_async_client = httpx.AsyncClient()
 
 
 class _GrantedScopes(BaseModel):

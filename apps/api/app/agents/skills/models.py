@@ -219,7 +219,6 @@ class SkillUpdate(BaseModel):
 
 # Backward-compat alias — existing code that imports InstalledSkill still works
 # during the transition. Once all callers are updated, this can be removed.
-InstalledSkill = Skill
 
 
 class SkillInlineCreateRequest(BaseModel):

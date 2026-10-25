@@ -1,6 +1,6 @@
 """Workflow scheduler extending BaseSchedulerService for robust scheduling."""
 
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from arq.connections import RedisSettings
 
@@ -26,7 +26,6 @@ from shared.py.wide_events import log
 # How long a workflow may sit in EXECUTING before the recovery scan treats it
 # as a crashed fire and resets it to SCHEDULED. Set well above any real
 # workflow run so a legitimately long execution is never reaped.
-STALE_EXECUTING_THRESHOLD = timedelta(hours=1)
 
 # The run-states a WORKFLOW may legitimately hold: scheduled (armed/idle) ->
 # executing (claimed fire) -> scheduled (re-armed) or completed (terminal).

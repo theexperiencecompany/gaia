@@ -253,20 +253,21 @@ run_orphan_modules() {
 }
 
 # ═══════════════════════════════════════════════════════════════
-# Python — zero-reference symbols
+# Python — scope-aware dead references
 # ═══════════════════════════════════════════════════════════════
 
-run_dead_symbols() {
-  print_section "Python (zero-reference symbols)"
+run_dead_references() {
+  print_section "Python (dead references)"
 
-  # Vulture's enforced set drops "unused variable", which is where dead module
-  # constants and forgotten aliases live. This reports only a top-level name
-  # that appears nowhere else — no dynamic-use judgement, no allowlist.
+  # Vulture is name-based: a same-named local hides a dead symbol, and its
+  # enforced set drops "unused variable" where dead constants live. This
+  # resolves imports and attribute chains to the symbol they name, and counts
+  # production references only (a test is not a consumer).
   local raw_output
-  raw_output=$(python3 "$SCRIPT_DIR/ci/dead_symbols.py" 2>&1 || true)
+  raw_output=$(python3 "$SCRIPT_DIR/ci/dead_references.py" 2>&1 || true)
 
   if [[ -z "$raw_output" ]]; then
-    echo -e "  ${GREEN}No zero-reference symbols found.${RESET}"
+    echo -e "  ${GREEN}No dead references found.${RESET}"
     echo ""
     return
   fi
@@ -276,12 +277,12 @@ run_dead_symbols() {
   while IFS= read -r line; do
     [[ -z "$line" ]] && continue
     add_finding "$(echo "$line" | cut -d: -f1)" "$(echo "$line" | cut -d: -f2)" \
-      "dead symbol: $(echo "$line" | cut -d: -f3- | sed 's/^ *//')"
+      "dead reference: $(echo "$line" | cut -d: -f3- | sed 's/^ *//')"
     [[ "$VERBOSE" == true ]] && echo -e "  ${DIM}${line}${RESET}"
     count=$((count + 1))
   done <<< "$raw_output"
 
-  echo -e "  ${YELLOW}Found $count top-level name(s) with no reference${RESET}"
+  echo -e "  ${YELLOW}Found $count symbol(s) no production module references${RESET}"
   TOTAL_DEAD_CODE=$((TOTAL_DEAD_CODE + count))
   echo ""
 }
@@ -391,7 +392,7 @@ print_header
 
 run_vulture
 run_orphan_modules
-run_dead_symbols
+run_dead_references
 run_knip
 
 # Show health score if issues were found

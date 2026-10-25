@@ -246,17 +246,6 @@ class ToolCategory:
         return [tool for tool in self.tools if tool.is_core]
 
 
-class ToolInfo:
-    """Metadata for a tool."""
-
-    def __init__(self, tool: BaseTool, space: str):
-        self.tool = tool
-        self.space = space
-
-    tool: BaseTool
-    space: str
-
-
 class ToolRegistry:
     """Modern tool registry with category-based organization."""
 

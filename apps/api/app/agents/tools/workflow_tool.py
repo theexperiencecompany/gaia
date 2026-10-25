@@ -20,7 +20,6 @@ from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 
 from app.agents.tools.workflow_shared_tools import (
-    SUBAGENT_WORKFLOW_TOOLS as _SUBAGENT_WORKFLOW_TOOLS,
     list_workflows,
     search_triggers,
 )
@@ -43,8 +42,6 @@ from app.utils.workflow_utils import (
     success_response,
 )
 from shared.py.wide_events import log
-
-SUBAGENT_WORKFLOW_TOOLS = _SUBAGENT_WORKFLOW_TOOLS
 
 
 @tool

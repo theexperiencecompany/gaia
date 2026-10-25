@@ -4,7 +4,6 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import RedirectResponse
-import httpx
 from workos import WorkOSClient
 
 from app.config.settings import settings
@@ -38,7 +37,6 @@ from app.services.oauth.oauth_state_service import (
 from shared.py.wide_events import OAuthContext, log
 
 router = APIRouter()
-http_async_client = httpx.AsyncClient()
 
 workos = WorkOSClient(api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS_CLIENT_ID)
 

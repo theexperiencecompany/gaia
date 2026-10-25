@@ -96,6 +96,3 @@ async def create_support_ticket(
 
 
 # Export tools list for registry
-tools = [
-    create_support_ticket,
-]

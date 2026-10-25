@@ -9,7 +9,6 @@ app.decorators.rate_limiting (the canonical home for rate-limit decorators).
 
 import asyncio
 from datetime import UTC, datetime
-from typing import ParamSpec, TypeVar
 
 from fastapi import HTTPException
 import redis.asyncio as redis
@@ -44,9 +43,6 @@ from shared.py.wide_events import log, spawn_logged_task
 # UsageInfo is imported (not defined here) but re-exported for callers that
 # read a limiter result — explicit re-export required under no_implicit_reexport.
 __all__ = ["UsageInfo"]
-
-P = ParamSpec("P")
-R = TypeVar("R")
 
 
 class RateLimitExceededException(HTTPException):

@@ -8,7 +8,7 @@ split so callers that resolve their own user (bots) can still gate.
 
 from datetime import UTC, datetime
 import time
-from typing import ParamSpec, TypedDict, TypeVar
+from typing import TypedDict
 
 from fastapi import HTTPException
 
@@ -20,9 +20,6 @@ from app.services.payments.plan_cache import invalidate_plan_cache
 from shared.py.analytics import Dedupe, UserId
 from shared.py.analytics.catalog.billing import PAYWALL_BLOCKED_WINDOW, PaywallBlocked
 from shared.py.wide_events import log
-
-P = ParamSpec("P")
-R = TypeVar("R")
 
 PAYWALL_MESSAGE = "GAIA is paid only. Subscribe to GAIA Pro to keep chatting."
 

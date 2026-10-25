@@ -317,12 +317,6 @@ class UserIntegrationUpdate(BaseModel):
     expired_reason: str | None = None
 
 
-class AddUserIntegrationRequest(BaseModel):
-    """Request to add an integration to user's workspace."""
-
-    integration_id: str = Field(..., description="ID of integration to add")
-
-
 class CreateCustomIntegrationRequest(BaseModel):
     """Request to create a custom MCP integration."""
 
@@ -483,40 +477,6 @@ class UserIntegrationsListResponse(BaseModel):
 
     integrations: list[UserIntegrationResponse] = Field(default_factory=list)
     total: int = 0
-
-
-class ConnectIntegrationRequest(BaseModel):
-    """Request to connect an integration."""
-
-    redirect_path: str = Field(
-        default="/integrations",
-        description="Frontend path to redirect after OAuth completes",
-    )
-    bearer_token: str | None = Field(None)
-
-
-class ConnectIntegrationResponse(BaseModel):
-    """
-    Unified response for integration connection.
-
-    Frontend handles response based on status:
-    - connected: Integration is ready to use
-    - redirect: OAuth required, frontend should redirect to url
-    - error: Connection failed
-    """
-
-    status: Literal["connected", "redirect", "error"]
-    integration_id: str
-    message: str | None = None
-
-    # For status="connected"
-    tools_count: int | None = None
-
-    # For status="redirect"
-    redirect_url: str | None = None
-
-    # For status="error"
-    error: str | None = None
 
 
 # TypedDicts for integration tool LLM responses

@@ -18,7 +18,6 @@ custom REGISTRY so the same fs_op_* metric families show up at
 from __future__ import annotations
 
 import contextlib
-from typing import ParamSpec, TypeVar
 
 from prometheus_client import CollectorRegistry, Counter, Histogram, start_http_server
 
@@ -31,9 +30,6 @@ from app.services.storage.metrics import (
     _FS_OP_TOTAL,
     _SANDBOX_POOL_SIZE,
 )
-
-T = TypeVar("T")
-P = ParamSpec("P")
 
 REGISTRY = CollectorRegistry()
 
