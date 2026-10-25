@@ -445,6 +445,8 @@ def test_a_live_row_keeps_its_time_in_the_column_with_or_without_a_caption(
     fresh_server: dict[str, str], shell: str
 ) -> None:
     fresh_server["FAKE_NVM_SECONDS"] = "2"
+    # The installer download is the uncaptioned live row; an instant fake may never draw a frame of it.
+    fresh_server["FAKE_INSTALLER_SECONDS"] = "1"
 
     code, output = _run_on_tty(shell, fresh_server)
 
