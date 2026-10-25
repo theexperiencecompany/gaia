@@ -501,7 +501,6 @@ def s3_blob_store() -> S3BlobStore:
         aws_secret_access_key=settings.S3_SECRET_ACCESS_KEY,
         region_name=settings.S3_REGION,
         config=Config(
-            signature_version="s3v4",
             s3={"addressing_style": settings.S3_ADDRESSING_STYLE.value},
             connect_timeout=S3_TIMEOUT_SECONDS,
             read_timeout=S3_TIMEOUT_SECONDS,
@@ -520,8 +519,8 @@ def _served_blob_store() -> ServedBlobStore | None:
             return s3_blob_store()
         case BlobStoreKind.CLOUDINARY:
             return None
-        case unknown:
-            assert_never(unknown)
+        case _:
+            assert_never(settings.deployment.blob_store)
 
 
 def blob_store() -> BlobStore:
@@ -538,8 +537,8 @@ async def ensure_blob_store_ready() -> None:
             await s3_blob_store().verify_bucket()
         case BlobStoreKind.CLOUDINARY:
             return
-        case unknown:
-            assert_never(unknown)
+        case _:
+            assert_never(settings.deployment.blob_store)
 
 
 def _may_read(blob: ServedBlob, requester_id: str, owner_id: str) -> bool:

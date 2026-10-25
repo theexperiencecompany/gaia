@@ -74,12 +74,11 @@ _METADATA_HOSTNAMES = frozenset({"metadata.google.internal", "metadata"})
 def _assert_ip_allowed(
     ip: ipaddress.IPv4Address | ipaddress.IPv6Address, *, allow_private: bool
 ) -> None:
-    mapped = ip.ipv4_mapped if isinstance(ip, ipaddress.IPv6Address) else None
-    effective = mapped or ip
-    if effective.is_link_local or effective.is_multicast or effective.is_unspecified:
+    # An IPv4-mapped IPv6 address answers these as its IPv4 address does (3.12.4+).
+    if ip.is_link_local or ip.is_multicast or ip.is_unspecified:
         raise ValueError(f"refusing to connect to link-local or reserved address {ip}")
     if not allow_private:
-        _assert_ip_public(effective)
+        _assert_ip_public(ip)
 
 
 def _endpoint_host_port(url: str) -> tuple[str, int]:
