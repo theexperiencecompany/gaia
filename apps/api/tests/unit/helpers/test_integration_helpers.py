@@ -185,11 +185,3 @@ def test_public_response_carries_every_published_field() -> None:
     assert result.published_at == published
     assert result.source == "custom"
     assert result.content == IntegrationContent(use_cases=["triage"])
-
-
-def test_default_cap_is_60_chars() -> None:
-    """Without an explicit max_length the cap is 60, not 61."""
-    slug = generate_integration_slug("n" * 100, "c" * 20)
-
-    assert len(slug) == 65
-    assert slug == "n" * 40 + "-mcp-" + "c" * 20

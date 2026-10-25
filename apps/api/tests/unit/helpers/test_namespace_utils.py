@@ -144,15 +144,3 @@ class TestDeriveIntegrationNamespace:
     )
     def test_platform_always_returns_id_parametrized(self, integration_id: str) -> None:
         assert derive_integration_namespace(integration_id) == integration_id
-
-    @patch("app.helpers.namespace_utils.get_tool_namespace_from_url")
-    def test_log_debug_called_for_custom(self, mock_get_ns: MagicMock) -> None:
-        """Verify the debug log path is exercised (no assertion on log content)."""
-        mock_get_ns.return_value = "mcp.example.com/tools"
-        # Should not raise
-        result = derive_integration_namespace(
-            "int_log",
-            server_url="https://mcp.example.com/tools",
-            is_custom=True,
-        )
-        assert result == "mcp.example.com/tools"

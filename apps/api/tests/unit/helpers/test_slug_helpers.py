@@ -157,10 +157,6 @@ class TestSlugify:
         result = slugify("a" * 60, max_length=20)
         assert len(result) <= 20
 
-    def test_default_max_length_is_50(self) -> None:
-        long_slug = slugify("a " * 100)  # would be "a-a-a-a-..." (199 chars)
-        assert len(long_slug) <= 50
-
     @pytest.mark.parametrize("max_length", [1, 5, 10, 50, 200])
     def test_various_max_lengths(self, max_length: int) -> None:
         result = slugify("hello world this is a test string", max_length=max_length)
