@@ -1,6 +1,7 @@
 """Ask the model again when it answered with nothing at all.
 
-A comms turn can come back with no content — reasoning-only output, max_tokens
+A comms turn can come back with no content — reasoning-only output, a reply of
+nothing but message breaks, max_tokens
 spent before the first token, a content filter, a dropped body — which
 downstream treats as a real answer and turns into a fixed apology
 (_substitute_empty_completion in app/services/chat/stream.py).
@@ -22,6 +23,7 @@ from langchain.agents.middleware.types import ModelRequest, ModelResponse
 from langchain_core.messages import AIMessage
 
 from app.constants.log_tags import LogTag
+from app.utils.message_breaks import split_message_bubbles
 from app.utils.multimodal import extract_text_content
 from shared.py.wide_events import log
 
@@ -32,7 +34,7 @@ def is_empty_completion(response: ModelResponse) -> bool:
     """Return whether the model returned nothing a user or the graph can use.
 
     Empty means: no message at all, or an AIMessage with no tool calls and
-    no non-whitespace text. A non-AI result is left alone — this seam only
+    no bubble with text (whitespace and bare message breaks are nothing). A non-AI result is left alone — this seam only
     judges the model's own output.
     """
     message = response.result[0] if response.result else None
@@ -42,7 +44,7 @@ def is_empty_completion(response: ModelResponse) -> bool:
         return False
     if message.tool_calls:
         return False
-    return not extract_text_content(message.content).strip()
+    return not split_message_bubbles(extract_text_content(message.content))
 
 
 class EmptyCompletionRetryMiddleware(AgentMiddleware):
@@ -58,6 +60,7 @@ class EmptyCompletionRetryMiddleware(AgentMiddleware):
         request: ModelRequest,
         handler: ModelCallHandler,
     ) -> ModelResponse:
+        """Call the model; on an empty completion, retry once."""
         response = await handler(request)
         if not is_empty_completion(response):
             return response

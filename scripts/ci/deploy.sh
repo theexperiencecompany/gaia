@@ -386,13 +386,17 @@ cmd_notify() {
 }
 
 # image_commit <ref> — the GIT_COMMIT_SHA the image was built with (the same
-# variable env_context()/resolveCommit() read at runtime).
+# variable env_context()/resolveCommit() read at runtime). {{json .Image}} is one
+# config for a single-platform image and a platform-keyed map for an index.
 image_commit() {
-  local ref="$1" sha
-  sha=$(docker buildx imagetools inspect "$ref" --format '{{json .Image.Config.Env}}' \
-    | jq -r '.[] | select(startswith("GIT_COMMIT_SHA=")) | ltrimstr("GIT_COMMIT_SHA=")')
-  [[ -n "$sha" ]] || ci_die "image $ref carries no GIT_COMMIT_SHA — cannot tell which commit it runs"
-  echo "$sha"
+  local ref="$1" shas
+  shas=$(docker buildx imagetools inspect "$ref" --format '{{json .Image}}' \
+    | jq -r '(if has("config") then [.] else [.[]] end)
+        | [.[].config.Env // [] | .[] | select(startswith("GIT_COMMIT_SHA=")) | ltrimstr("GIT_COMMIT_SHA=")]
+        | unique | .[]')
+  [[ -n "$shas" ]] || ci_die "image $ref carries no GIT_COMMIT_SHA — cannot tell which commit it runs"
+  [[ "$shas" != *$'\n'* ]] || ci_die "image $ref platforms disagree on GIT_COMMIT_SHA: ${shas//$'\n'/, }"
+  echo "$shas"
 }
 
 # served_commit <url> — the `commit` a /health endpoint reports, empty when it
