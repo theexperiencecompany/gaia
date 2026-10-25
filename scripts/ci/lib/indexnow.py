@@ -15,6 +15,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+from typing import TypeVar
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -138,8 +139,31 @@ def read_key(root: Path) -> str:
     return key
 
 
+_T = TypeVar("_T")
+
+
 def _json_at(repo: Repo, rev: str | None, path: str) -> object:
     return json.loads(repo.show(rev, path)) if rev else None
+
+
+def _overlay_at(repo: Repo, rev: str | None, path: str) -> dict[str, object]:
+    """Read a locale overlay's entries by slug at rev; empty where the file does not exist."""
+    data = _json_at(repo, rev, path)
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        raise SystemExit(f"indexnow: {path} at {rev} is not a JSON object keyed by slug")
+    return data
+
+
+def _slugs_at(repo: Repo, rev: str | None, path: str) -> set[str]:
+    """Read a _slugs.json index at rev; empty where the file does not exist."""
+    data = _json_at(repo, rev, path)
+    if data is None:
+        return set()
+    if not isinstance(data, list) or not all(isinstance(slug, str) for slug in data):
+        raise SystemExit(f"indexnow: {path} at {rev} is not a JSON list of slugs")
+    return set(data)
 
 
 def _blog_slug(repo: Repo, rev: str | None, path: str, stem: str) -> str | None:
@@ -172,8 +196,8 @@ def _map_overlay(
     if locale not in repo.locales:
         raise SystemExit(f"indexnow: {path} is for a locale {LOCALE_CONFIG} does not declare")
     route, _ = _route_of(I18N_FEATURES[feature])
-    before = _json_at(repo, revs[0], path) or {}
-    after = _json_at(repo, revs[1], path) or {}
+    before = _overlay_at(repo, revs[0], path)
+    after = _overlay_at(repo, revs[1], path)
     for slug in set(before) | set(after):
         if before.get(slug) != after.get(slug):
             changes.touched.add(Page(route, locale, slug))
@@ -190,8 +214,8 @@ def _map_data(
     route, localized = _route_of(feature)
     prefixes = repo.prefixes(localized)
     if slug == SLUG_INDEX:
-        before = set(_json_at(repo, revs[0], path) or [])
-        after = set(_json_at(repo, revs[1], path) or [])
+        before = _slugs_at(repo, revs[0], path)
+        after = _slugs_at(repo, revs[1], path)
         changes.touched |= {Page(route, p, s) for s in after - before for p in prefixes}
         changes.removed |= {Page(route, p, s) for s in before - after for p in prefixes}
     elif _json_at(repo, revs[0], path) != _json_at(repo, revs[1], path):
@@ -308,10 +332,29 @@ def _github(path: str) -> dict[str, object]:
         },
     )
     with urllib.request.urlopen(request, timeout=TIMEOUT_S) as resp:  # noqa: S310 - see above
-        return json.load(resp)
+        body = json.load(resp)
+    if not isinstance(body, dict):
+        raise SystemExit(f"indexnow: GitHub {path} answered {type(body).__name__}, not an object")
+    return body
 
 
-def _notified(jobs: list[dict[str, str]], deploy: str, indexnow: str) -> bool:
+def _field(obj: dict[str, object], key: str, kind: type[_T]) -> _T:
+    """Read one field of a GitHub API object, failing the run when it is missing or mistyped."""
+    value = obj.get(key)
+    if not isinstance(value, kind):
+        raise SystemExit(f"indexnow: GitHub API field '{key}' is not {kind.__name__}: {value!r}")
+    return value
+
+
+def _objects(obj: dict[str, object], key: str) -> list[dict[str, object]]:
+    """Read a GitHub API field that lists objects (workflow_runs, jobs)."""
+    items = _field(obj, key, list)
+    if not all(isinstance(item, dict) for item in items):
+        raise SystemExit(f"indexnow: GitHub API field '{key}' is not a list of objects")
+    return items
+
+
+def _notified(jobs: list[dict[str, object]], deploy: str, indexnow: str) -> bool:
     """Whether a run deployed and its pages reached IndexNow, or it predates the IndexNow job."""
     conclusions = {j["name"]: j["conclusion"] for j in jobs}
     return (
@@ -337,19 +380,21 @@ def last_notified_sha() -> str:
     repo, job = os.environ["GITHUB_REPOSITORY"], os.environ["INDEXNOW_DEPLOY_JOB"]
     indexnow = os.environ["INDEXNOW_JOB"]
     run_id = int(os.environ["GITHUB_RUN_ID"])
-    workflow = _github(f"/repos/{repo}/actions/runs/{run_id}")["workflow_id"]
+    workflow = _field(_github(f"/repos/{repo}/actions/runs/{run_id}"), "workflow_id", int)
     page = 1
-    while runs := _github(
-        f"/repos/{repo}/actions/workflows/{workflow}/runs?branch={DEPLOY_BRANCH}&per_page=100&page={page}"
-    )["workflow_runs"]:
+    while runs := _objects(
+        _github(
+            f"/repos/{repo}/actions/workflows/{workflow}/runs?branch={DEPLOY_BRANCH}&per_page=100&page={page}"
+        ),
+        "workflow_runs",
+    ):
         for run in runs:
-            if run["id"] >= run_id:
+            run_n = _field(run, "id", int)
+            if run_n >= run_id:
                 continue  # this run, and pushes queued behind it
-            jobs = _github(
-                f"/repos/{repo}/actions/runs/{run['id']}/jobs?filter=latest&per_page=100"
-            )
-            if _notified(jobs["jobs"], job, indexnow):
-                return run["head_sha"]
+            jobs = _github(f"/repos/{repo}/actions/runs/{run_n}/jobs?filter=latest&per_page=100")
+            if _notified(_objects(jobs, "jobs"), job, indexnow):
+                return _field(run, "head_sha", str)
         page += 1
     raise SystemExit(
         f"indexnow: no earlier {DEPLOY_BRANCH} run has a successful '{job}' job "
