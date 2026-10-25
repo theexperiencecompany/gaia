@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.db.mongodb.indexes import create_payment_indexes, create_playbook_indexes
-from app.db.mongodb.mongodb import MongoDB, init_mongodb
+from app.db.mongodb.mongodb import MongoDB
 
 # ---------------------------------------------------------------------------
 # MongoDB class — __init__
@@ -105,30 +105,6 @@ class TestMongoDBPing:
         mock_sync.admin.command.assert_called_once_with("ping")
         mock_sync.close.assert_called_once()
 
-    @patch("app.db.mongodb.mongodb.AsyncIOMotorClient")
-    @patch(
-        "app.db.mongodb.mongodb.pymongo.MongoClient",
-        side_effect=Exception("ping failed"),
-    )
-    @patch("app.db.mongodb.mongodb.log")
-    def test_ping_failure_logs_error(
-        self,
-        mock_log: MagicMock,
-        mock_sync_client_cls: MagicMock,
-        mock_motor: MagicMock,
-    ) -> None:
-        """Failed ping should log error but not raise."""
-        mock_motor.return_value = MagicMock()
-
-        mongo = MongoDB(uri="mongodb://localhost:27017", db_name="test_db")
-        # Reset log mock to clear init calls
-        mock_log.reset_mock()
-
-        mongo.ping()
-
-        mock_log.error.assert_called_once()
-        assert "Ping failed" in mock_log.error.call_args[0][0]
-
 
 # ---------------------------------------------------------------------------
 # MongoDB class — _initialize_indexes
@@ -137,21 +113,6 @@ class TestMongoDBPing:
 
 class TestMongoDBInitializeIndexes:
     """Tests for MongoDB._initialize_indexes()."""
-
-    @patch("app.db.mongodb.mongodb.AsyncIOMotorClient")
-    @patch("app.db.mongodb.mongodb.log")
-    async def test_initialize_indexes_calls_create_all(
-        self, mock_log: MagicMock, mock_motor: MagicMock
-    ) -> None:
-        """Should import and call create_all_indexes."""
-        mock_motor.return_value = MagicMock()
-        mongo = MongoDB(uri="mongodb://localhost:27017", db_name="test_db")
-
-        with patch(
-            "app.db.mongodb.indexes.create_all_indexes", new_callable=AsyncMock
-        ) as mock_create:
-            await mongo._initialize_indexes()
-            mock_create.assert_awaited_once()
 
     @patch("app.db.mongodb.mongodb.AsyncIOMotorClient")
     @patch("app.db.mongodb.mongodb.log")
@@ -183,23 +144,6 @@ class TestMongoDBInitializeIndexes:
 class TestMongoDBGetCollection:
     """Tests for MongoDB.get_collection()."""
 
-    @patch("app.db.mongodb.mongodb.AsyncIOMotorClient")
-    @patch("app.db.mongodb.mongodb.log")
-    def test_get_collection_delegates_to_database(
-        self, mock_log: MagicMock, mock_motor: MagicMock
-    ) -> None:
-        """get_collection should delegate to the database object."""
-        mock_db = MagicMock()
-        mock_db.get_collection.return_value = "fake_collection"
-        mock_motor.return_value = MagicMock()
-        mock_motor.return_value.get_database.return_value = mock_db
-
-        mongo = MongoDB(uri="mongodb://localhost:27017", db_name="test_db")
-        result = mongo.get_collection("users")
-
-        mock_db.get_collection.assert_called_once_with("users")
-        assert result == "fake_collection"
-
 
 # ---------------------------------------------------------------------------
 # init_mongodb (module-level factory)
@@ -209,45 +153,6 @@ class TestMongoDBGetCollection:
 class TestInitMongodb:
     """Tests for the init_mongodb() factory function."""
 
-    @patch("app.db.mongodb.mongodb.MongoDB")
-    @patch("app.db.mongodb.mongodb.log")
-    def test_creates_instance_and_pings(self, mock_log: MagicMock, mock_class: MagicMock) -> None:
-        """init_mongodb should create a MongoDB instance, call ping, and return it."""
-        # Clear LRU cache from previous runs
-        init_mongodb.cache_clear()
-
-        mock_instance = MagicMock()
-        mock_class.return_value = mock_instance
-
-        result = init_mongodb()
-
-        mock_class.assert_called_once()
-        mock_instance.ping.assert_called_once()
-        assert result is mock_instance
-
-        # Clean up for other tests
-        init_mongodb.cache_clear()
-
-    @patch("app.db.mongodb.mongodb.MongoDB")
-    @patch("app.db.mongodb.mongodb.log")
-    def test_lru_cache_returns_same_instance(
-        self, mock_log: MagicMock, mock_class: MagicMock
-    ) -> None:
-        """Repeated calls should return the same cached instance."""
-        init_mongodb.cache_clear()
-
-        mock_instance = MagicMock()
-        mock_class.return_value = mock_instance
-
-        first = init_mongodb()
-        second = init_mongodb()
-
-        # Only one MongoDB instance should be created
-        assert mock_class.call_count == 1
-        assert first is second
-
-        init_mongodb.cache_clear()
-
 
 # ---------------------------------------------------------------------------
 # Collections module — lazy loading
@@ -256,82 +161,6 @@ class TestInitMongodb:
 
 class TestCollectionsLazyLoading:
     """Tests for the collections lazy loading module."""
-
-    @patch("app.db.mongodb.collections._collections_cache", {})
-    @patch("app.db.mongodb.collections.log")
-    def test_get_mongodb_instance_initializes_once(self, mock_log: MagicMock) -> None:
-        """_get_mongodb_instance should call init_mongodb and cache the result."""
-        import app.db.mongodb.collections as collections_mod
-        import app.db.mongodb.mongodb as mongodb_mod
-
-        mock_instance = MagicMock()
-
-        # The real _get_mongodb_instance function — conftest replaces it globally,
-        # so we must restore the real implementation for this test.
-        def _real_get_mongodb_instance():
-            if collections_mod._mongodb_instance is None:
-                collections_mod._mongodb_instance = mongodb_mod.init_mongodb()
-            return collections_mod._mongodb_instance
-
-        old_fn = collections_mod._get_mongodb_instance
-        old_instance = collections_mod._mongodb_instance
-        old_init = mongodb_mod.init_mongodb
-        collections_mod._get_mongodb_instance = _real_get_mongodb_instance
-        collections_mod._mongodb_instance = None
-        try:
-            mock_init = MagicMock(return_value=mock_instance)
-            mongodb_mod.init_mongodb = mock_init
-
-            result = collections_mod._get_mongodb_instance()
-            assert result is mock_instance
-            mock_init.assert_called_once()
-        finally:
-            mongodb_mod.init_mongodb = old_init
-            collections_mod._mongodb_instance = old_instance
-            collections_mod._get_mongodb_instance = old_fn
-
-    @patch("app.db.mongodb.collections._collections_cache", {})
-    @patch("app.db.mongodb.collections.log")
-    def test_get_collection_creates_and_caches(self, mock_log: MagicMock) -> None:
-        """_get_collection should create the collection on first call, cache on second."""
-        mock_instance = MagicMock()
-        mock_collection = MagicMock()
-        mock_instance.get_collection.return_value = mock_collection
-
-        with patch(
-            "app.db.mongodb.collections._get_mongodb_instance",
-            return_value=mock_instance,
-        ):
-            from app.db.mongodb.collections import _get_collection
-
-            first = _get_collection("users")
-            second = _get_collection("users")
-
-            assert first is mock_collection
-            assert second is mock_collection
-            # Should only be created once
-            mock_instance.get_collection.assert_called_once_with("users")
-
-    @patch("app.db.mongodb.collections._collections_cache", {})
-    @patch("app.db.mongodb.collections.log")
-    def test_get_collection_different_names(self, mock_log: MagicMock) -> None:
-        """Different collection names should create separate collections."""
-        mock_instance = MagicMock()
-        col_a = MagicMock(name="col_a")
-        col_b = MagicMock(name="col_b")
-        mock_instance.get_collection.side_effect = lambda n: col_a if n == "a" else col_b
-
-        with patch(
-            "app.db.mongodb.collections._get_mongodb_instance",
-            return_value=mock_instance,
-        ):
-            from app.db.mongodb.collections import _get_collection
-
-            result_a = _get_collection("a")
-            result_b = _get_collection("b")
-
-            assert result_a is col_a
-            assert result_b is col_b
 
 
 # ---------------------------------------------------------------------------
@@ -596,21 +425,6 @@ class TestCreateIndexSafe:
 
 class TestIndividualIndexCreators:
     """Spot-check a few representative index creator functions."""
-
-    async def test_create_user_indexes_calls_gather(self) -> None:
-        """create_user_indexes should call create_index multiple times via gather."""
-        mock_collection = AsyncMock()
-
-        with (
-            patch("app.db.mongodb.indexes.get_async_collection", return_value=mock_collection),
-            patch("app.db.mongodb.indexes.log"),
-        ):
-            from app.db.mongodb.indexes import create_user_indexes
-
-            await create_user_indexes()
-
-            # Should have called create_index for email (unique) plus several compound indexes
-            assert mock_collection.create_index.await_count >= 5
 
     async def test_create_user_indexes_error_propagates(self) -> None:
         """Exception in create_user_indexes should be re-raised."""

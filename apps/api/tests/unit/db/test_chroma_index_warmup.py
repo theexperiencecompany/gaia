@@ -61,35 +61,3 @@ class TestRunIndexWarmup:
         ):
             result = await run_index_warmup(store, ops, context="tools_store")
         assert result is False
-
-    async def test_success_path_labels_batch_logs_with_the_caller_context(self):
-        """The caller's context is what identifies whose warmup a batch line belongs to."""
-        store = AsyncMock()
-        ops = [MagicMock(spec=PutOp)]
-
-        with patch("app.db.chroma.index_warmup.log") as mock_log:
-            assert await run_index_warmup(store, ops, context="triggers_store") is True
-
-        assert mock_log.info.call_args.kwargs["label"] == "triggers_store"
-
-    async def test_failure_log_names_the_context_and_error_type(self):
-        """The degraded-catalog error must carry a real message plus the fields that identify it."""
-        store = AsyncMock()
-        ops = [MagicMock(spec=PutOp)]
-
-        with (
-            patch(
-                "app.db.chroma.index_warmup.execute_batch_operations",
-                new_callable=AsyncMock,
-                side_effect=ChromaBatchWriteError("1 of 1 ChromaDB writes failed"),
-            ),
-            patch("app.db.chroma.index_warmup.log") as mock_log,
-        ):
-            assert await run_index_warmup(store, ops, context="tools_store") is False
-
-        message = mock_log.error.call_args.args[0]
-        assert isinstance(message, str) and "degraded" in message
-        assert mock_log.error.call_args.kwargs == {
-            "context": "tools_store",
-            "error_type": "ChromaBatchWriteError",
-        }

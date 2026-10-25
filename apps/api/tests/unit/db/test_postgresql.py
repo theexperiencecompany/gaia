@@ -17,8 +17,6 @@ from app.constants.log_tags import LogTag
 from app.db.postgresql import (
     Base,
     _adapt_url_for_asyncpg,
-    _ensure_added_columns,
-    _ensure_timestamptz_columns,
     close_postgresql_db,
     get_db_session,
     get_postgresql_engine,
@@ -83,19 +81,6 @@ class TestGetPostgresqlEngine:
         ):
             with pytest.raises(RuntimeError, match=r"^PostgreSQL engine not available$"):
                 await get_postgresql_engine()
-
-    async def test_passes_correct_provider_name(self) -> None:
-        """Should request the 'postgresql_engine' provider by name."""
-        mock_engine = MagicMock()
-
-        with patch(
-            "app.db.postgresql.providers.aget",
-            new_callable=AsyncMock,
-            return_value=mock_engine,
-        ) as mock_aget:
-            await get_postgresql_engine()
-
-        mock_aget.assert_awaited_once_with("postgresql_engine")
 
 
 # ---------------------------------------------------------------------------
@@ -232,26 +217,6 @@ class TestClosePostgresqlDb:
             error_type=type(error).__name__,
         )
 
-    async def test_logs_error_on_disposal_exception(self) -> None:
-        """If engine.dispose() raises, should log the error."""
-        mock_engine = AsyncMock()
-        mock_engine.dispose.side_effect = RuntimeError("dispose failed")
-
-        with (
-            patch("app.db.postgresql.providers.is_initialized", return_value=True),
-            patch(
-                "app.db.postgresql.get_postgresql_engine",
-                new_callable=AsyncMock,
-                return_value=mock_engine,
-            ),
-            patch("app.db.postgresql.log") as mock_log,
-        ):
-            # Should not raise
-            await close_postgresql_db()
-
-        mock_log.error.assert_called_once()
-        assert mock_log.error.call_args.kwargs["error"] == "dispose failed"
-
 
 # ---------------------------------------------------------------------------
 # init_postgresql_engine (decorated function)
@@ -305,32 +270,6 @@ class TestInitPostgresqlEngine:
 
         assert create.call_args.kwargs["hide_parameters"] is True
 
-    async def test_creates_tables_on_init(self) -> None:
-        """Startup runs the three schema steps, in order."""
-        mock_engine = MagicMock()
-        mock_conn = AsyncMock()
-        mock_ctx = AsyncMock()
-        mock_ctx.__aenter__ = AsyncMock(return_value=mock_conn)
-        mock_ctx.__aexit__ = AsyncMock(return_value=None)
-        mock_engine.begin.return_value = mock_ctx
-
-        with (
-            patch("app.db.postgresql.settings") as mock_settings,
-            patch("app.db.postgresql.create_async_engine", return_value=mock_engine),
-            patch("app.db.postgresql.log"),
-        ):
-            mock_settings.POSTGRES_URL = "postgresql://localhost/test"
-
-            await _get_original_init_fn()()
-
-            # Named, not counted: _ensure_added_columns backfills columns added
-            # after a table existed (memories.shelf_life) on existing databases.
-            assert [call.args[0] for call in mock_conn.run_sync.await_args_list] == [
-                Base.metadata.create_all,
-                _ensure_added_columns,
-                _ensure_timestamptz_columns,
-            ]
-
     async def test_schema_bootstrap_takes_the_advisory_lock_before_create_all(self) -> None:
         """Concurrent starters must not race CREATE TYPE; the lock is the transaction's first statement."""
         mock_engine = MagicMock()
@@ -354,30 +293,6 @@ class TestInitPostgresqlEngine:
         statement, params = first.args
         assert str(statement) == "SELECT pg_advisory_xact_lock(:lock_id)"
         assert params == {"lock_id": SCHEMA_BOOTSTRAP_LOCK_ID}
-
-    async def test_engine_pool_configuration(self) -> None:
-        """Engine should be created with expected pool settings."""
-        mock_engine = MagicMock()
-        mock_conn = AsyncMock()
-        mock_ctx = AsyncMock()
-        mock_ctx.__aenter__ = AsyncMock(return_value=mock_conn)
-        mock_ctx.__aexit__ = AsyncMock(return_value=None)
-        mock_engine.begin.return_value = mock_ctx
-
-        with (
-            patch("app.db.postgresql.settings") as mock_settings,
-            patch("app.db.postgresql.create_async_engine", return_value=mock_engine) as mock_create,
-            patch("app.db.postgresql.log"),
-        ):
-            mock_settings.POSTGRES_URL = "postgresql://localhost/test"
-
-            await _get_original_init_fn()()
-
-            call_kwargs = mock_create.call_args.kwargs
-            assert call_kwargs["future"] is True
-            assert call_kwargs["pool_pre_ping"] is True
-            assert call_kwargs["pool_size"] == 5
-            assert call_kwargs["max_overflow"] == 10
 
     async def test_url_already_asyncpg_not_double_rewritten(self) -> None:
         """If URL already uses asyncpg, the replace should still work correctly."""

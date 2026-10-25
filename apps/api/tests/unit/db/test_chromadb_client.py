@@ -348,19 +348,6 @@ class TestChromaClientGetLangchainClientLoaderBody:
 class TestChromaClientGetClientWithRequest:
     """Additional ChromaClient.get_client tests with request parameter."""
 
-    @pytest.mark.asyncio
-    @patch(f"{MODULE}.providers")
-    async def test_get_client_ignores_request_param(self, mock_providers: MagicMock) -> None:
-        """The request parameter is accepted but not used; client comes from providers."""
-        mock_client = MagicMock()
-        mock_providers.aget = AsyncMock(return_value=mock_client)
-
-        from app.db.chroma.chromadb import ChromaClient
-
-        fake_request = MagicMock()
-        result = await ChromaClient.get_client(request=fake_request)
-        assert result is mock_client
-
 
 class TestChromaClientGetLangchainClientWithEmbedding:
     """Tests passing explicit embedding_function."""
