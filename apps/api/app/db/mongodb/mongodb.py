@@ -2,7 +2,7 @@ from datetime import UTC
 from functools import lru_cache
 import os
 import sys
-from typing import Any
+from typing import Any, TypeAlias
 
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection, AsyncIOMotorDatabase
@@ -17,12 +17,17 @@ from shared.py.wide_events import log
 # MONGO_DB_NAME overrides it so several CI lanes can share one mongod. Unset = "GAIA".
 MONGO_DATABASE_NAME = os.getenv("MONGO_DB_NAME", "GAIA")
 
+#: One document exactly as BSON delivers it, before any of our code names its
+#: fields. Any is honest here and only here: this is the wire, not a promised
+#: shape. Parsed once in app/db/repositories/base.py; never past the repo boundary.
+RawDocument: TypeAlias = dict[str, Any]
+
 
 class MongoDB:
     """A class to manage the MongoDB connection using Motor."""
 
-    client: AsyncIOMotorClient[dict[str, Any]]
-    database: AsyncIOMotorDatabase[dict[str, Any]]
+    client: AsyncIOMotorClient[RawDocument]
+    database: AsyncIOMotorDatabase[RawDocument]
 
     def __init__(self, uri: str | None, db_name: str):
         if not uri:
@@ -61,31 +66,27 @@ class MongoDB:
         """
         try:
             # Use the same URI that was used to initialize the async client
-            sync_client: pymongo.MongoClient[dict[str, Any]] = pymongo.MongoClient(
-                settings.MONGO_DB
-            )
+            sync_client: pymongo.MongoClient[RawDocument] = pymongo.MongoClient(settings.MONGO_DB)
             sync_client.admin.command("ping")
             sync_client.close()
         except Exception as e:
             log.error(f"{LogTag.MONGO} Ping failed", error=str(e), error_type=type(e).__name__)
 
     async def _initialize_indexes(self) -> None:
-        try:
-            log.info(f"{LogTag.MONGO} Initializing all indexes in MongoDB...")
-            # Import here to avoid circular import
-            # Deferred import: breaks circular dependency: indexes imports collections, which imports this module
-            from app.db.mongodb.indexes import create_all_indexes  # noqa: PLC0415 -- deferred
+        """Create all indexes. Errors propagate so boot aborts.
 
-            await create_all_indexes()
-            # await log_index_summary()
-        except Exception as e:
-            log.error(
-                f"{LogTag.MONGO} Error while initializing indexes",
-                error=str(e),
-                error_type=type(e).__name__,
-            )
+        No try/except on purpose: lifespan logs and re-raises into startup.
+        Swallowing here would let a failed security-critical index build come
+        up as a healthy stack with the constraint silently absent.
+        """
+        log.info(f"{LogTag.MONGO} Initializing all indexes in MongoDB...")
+        # Import here to avoid circular import
+        # Deferred import: breaks circular dependency: indexes imports collections, which imports this module
+        from app.db.mongodb.indexes import create_all_indexes  # noqa: PLC0415 -- deferred
 
-    def get_collection(self, collection_name: str) -> AsyncIOMotorCollection[dict[str, Any]]:
+        await create_all_indexes()
+
+    def get_collection(self, collection_name: str) -> AsyncIOMotorCollection[RawDocument]:
         """Return a Motor handle for one collection of the app's database."""
         return self.database.get_collection(collection_name)
 

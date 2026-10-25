@@ -58,11 +58,11 @@
     "type-check": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "pnpm tsc --noEmit",
+        "command": "node \"$NX_WORKSPACE_ROOT/scripts/ts/type-check.mjs\" --noEmit",
         "cwd": "apps/mobile"
       },
       "cache": true,
-      "inputs": ["default", "{projectRoot}/tsconfig.json"]
+      "inputs": ["typecheck", "^production", "{projectRoot}/tsconfig.json"]
     },
     "clean": {
       "executor": "nx:run-commands",

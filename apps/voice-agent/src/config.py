@@ -52,6 +52,18 @@ def bootstrap_settings() -> VoiceAgentSettings:
     its config from the inherited env without re-fetching from Infisical.
     """
     settings = get_settings()
+    missing_voice_keys = [
+        key for key in ("DEEPGRAM_API_KEY", "ELEVENLABS_API_KEY") if not getattr(settings, key)
+    ]
+    if missing_voice_keys:
+        # Optional providers (self-host runs without them): warn at boot so the
+        # gap is visible upfront instead of surfacing as a per-room plugin error.
+        # The per-session failure itself stays loud — a voice pipeline without
+        # STT/TTS has nothing to degrade to.
+        log.warning(
+            f"{LogTag.VOICE} Voice provider keys not set — voice sessions will "
+            f"fail until configured: {', '.join(missing_voice_keys)}"
+        )
     log.info(f"{LogTag.VOICE} Voice agent settings initialized")
     return settings
 

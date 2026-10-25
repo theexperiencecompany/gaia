@@ -14,6 +14,7 @@ import { BubbleMenu, EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import React from "react";
 import type { z } from "zod";
+import { copyWithFeedback } from "@/lib/clipboard";
 import { ToolCard } from "../primitives/ToolCard";
 import type { textDocumentSchema } from "../promptSpecs";
 
@@ -146,7 +147,8 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
     editor.commands.setContent(body, false);
   }, [editor, body]);
 
-  const flashCopied = () => {
+  const flashCopied = (copied: boolean) => {
+    if (!copied) return;
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -157,12 +159,7 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
       .join("\n");
     const bodyMd = htmlToMarkdown(editor?.getHTML() ?? "");
     const full = [fieldLines, bodyMd].filter(Boolean).join("\n\n");
-    void navigator.clipboard
-      .writeText(full)
-      .then(flashCopied)
-      .catch(() => {
-        /* best-effort copy: clipboard failures (permissions, insecure context) are non-actionable */
-      });
+    void copyWithFeedback(full).then(flashCopied);
   }, [fields, editor]);
 
   const copyAsText = React.useCallback(() => {
@@ -171,12 +168,7 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
       .join("\n");
     const bodyText = editor?.getText() ?? "";
     const full = [fieldLines, bodyText].filter(Boolean).join("\n\n");
-    void navigator.clipboard
-      .writeText(full)
-      .then(flashCopied)
-      .catch(() => {
-        /* best-effort copy: clipboard failures (permissions, insecure context) are non-actionable */
-      });
+    void copyWithFeedback(full).then(flashCopied);
   }, [fields, editor]);
 
   return (

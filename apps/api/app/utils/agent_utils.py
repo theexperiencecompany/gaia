@@ -8,8 +8,9 @@ from langchain_core.messages import ToolCall
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.agents.core.subagents.registry import get_subagent_by_id
-from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
+from app.agents.tools.core.registry import UNKNOWN_TOOL_CATEGORY, ToolRegistry, get_tool_registry
 from app.agents.tools.execute.unwrap import ExecuteCallArgs, unwrap_execute_call
+from app.config.oauth_config import get_integration_by_id, get_integration_by_tool_slug
 from app.constants.agents import INTERNAL_AGENT_TAG_PATTERN
 from app.constants.browser import BROWSER_TOOL_CATEGORY
 from app.constants.cache import HANDOFF_NAME_CACHE_PREFIX
@@ -18,6 +19,7 @@ from app.constants.tool_labels import TOOL_DISPLAY_NAMES, humanize_tool_name
 from app.db.repositories.integrations import integration_repository
 from app.decorators.caching import Cacheable
 from app.models.chat_models import ToolDataEntry
+from app.models.oauth_models import OAuthIntegration
 from app.models.stream_events import (
     ResponseFrame,
     SubagentEndPayload,
@@ -245,10 +247,8 @@ async def format_tool_call_entry(
         # prefix and show the raw tool name as the secondary line instead.
         show_category = tool_name_raw not in TOOL_DISPLAY_NAMES
 
-        # When a core tool runs inside an MCP subagent, also drop the
-        # integration's icon_url / display name so the secondary label
-        # reflects the tool's true category instead of the subagent context.
-        if integration_id and is_core_tool:
+        # A core tool inside a subagent shows its own category, not the subagent's.
+        if is_core_tool:
             icon_url = None
             integration_name = None
 
@@ -267,9 +267,10 @@ async def format_tool_call_entry(
     if mcp_ui is None and user_id:
         mcp_ui, mcp_server_url = await _resolve_mcp_ui_metadata(tool_name_raw, user_id)
 
-    # Lazy-fill icon/name for MCP tools the caller didn't pre-resolve.
-    if integration_id and not is_core_tool and not icon_url and user_id:
-        icon_url, integration_name = await _resolve_mcp_icon_name(integration_id)
+    if integration_id and not (icon_url and integration_name):
+        known_icon, known_name = await _integration_display(integration_id)
+        icon_url = icon_url or known_icon
+        integration_name = integration_name or known_name
 
     # ToolCallsDataEntry declares exactly the ToolDataEntry keys this variant
     # carries, in the byte order the frontend parser expects — so its dump IS a
@@ -370,36 +371,42 @@ async def _special_tool_display(
     return tool_category, tool_display_name, show_category
 
 
+def _owning_integration(tool_name: str, registry_category: str) -> OAuthIntegration | None:
+    """Return the integration a tool belongs to, or None for a core tool.
+
+    A Composio tool by its TOOLKIT_ACTION slug, registered or materialized on
+    demand; an unauthenticated platform MCP's by the category named after it.
+    """
+    composio = get_integration_by_tool_slug(tool_name)
+    if composio is not None:
+        return composio
+    mcp = get_integration_by_id(registry_category)
+    return mcp if mcp is not None and mcp.managed_by == "mcp" else None
+
+
 async def _general_tool_category(
     tool_registry: ToolRegistry,
     tool_name_raw: str,
     integration_id: str | None,
     user_id: str | None,
 ) -> tuple[str | None, str | None, bool]:
-    """Return the general tool's category, its resolved integration, and whether it is a core tool.
+    """Return the general tool's category, its owning integration, and whether it is a core tool.
 
-    Core tools (vfs_cmd, web_search_tool, tracked_todo helpers, etc.) called inside an MCP subagent keep their own category so the frontend renders the right icon instead of the subagent's integration logo; only fall back to integration_id when the tool has no known core category (i.e. it's an MCP tool).
+    A core tool (vfs_cmd, web_search_tool, ...) keeps its own category even inside
+    a subagent; an integration's tool is categorised as that integration.
     """
     registry_category = tool_registry.get_category_of_tool(tool_name_raw)
-    is_core_tool = bool(
-        registry_category
-        and registry_category != "unknown"
-        and not registry_category.startswith("mcp_")
-    )
+    owner = _owning_integration(tool_name_raw, registry_category)
+    if owner is not None:
+        return owner.id, owner.id, False
+    if registry_category and registry_category != UNKNOWN_TOOL_CATEGORY:
+        return registry_category, None, True
 
     # MCP tools no longer live in the global registry — resolve provenance
     # via the user's MCPClient when the caller didn't pre-supply it.
-    if not integration_id and not is_core_tool and user_id:
+    if not integration_id and user_id:
         integration_id = await _resolve_mcp_integration_id(tool_name_raw, user_id)
-
-    if integration_id and not is_core_tool:
-        tool_category = integration_id
-    else:
-        tool_category = registry_category
-        # Strip mcp_ prefix from MCP-namespaced categories.
-        if tool_category and tool_category.startswith("mcp_"):
-            tool_category = tool_category[4:]
-    return tool_category, integration_id, is_core_tool
+    return integration_id or registry_category, integration_id, False
 
 
 def _registry_mcp_ui_metadata(
@@ -482,8 +489,11 @@ async def _resolve_mcp_ui_metadata(
     return None, None
 
 
-async def _resolve_mcp_icon_name(integration_id: str) -> tuple[str | None, str | None]:
-    """Fetch (icon_url, integration_name) for an integration via Redis-cached Mongo."""
+async def _integration_display(integration_id: str) -> tuple[str | None, str | None]:
+    """Return (icon_url, name) for a platform integration, or a custom one via Redis-cached Mongo."""
+    platform = get_integration_by_id(integration_id)
+    if platform is not None:
+        return platform.icon_url, platform.name
     from app.constants.cache import (
         CUSTOM_INT_METADATA_CACHE_PREFIX,
         CUSTOM_INT_METADATA_TTL,

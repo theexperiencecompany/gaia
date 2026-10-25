@@ -75,7 +75,7 @@ def account_area_for(rel_path: str) -> AccountArea | None:
 AREA_MUTATION_TOOL: dict[AccountArea, str] = {
     AccountArea.NOTIFICATIONS: "update_notification_settings",
     AccountArea.PREFERENCES: "update_preferences",
-    AccountArea.CUSTOM_INSTRUCTIONS: "update_custom_instructions",
+    AccountArea.CUSTOM_INSTRUCTIONS: "update_user_instructions",
     AccountArea.VOICE: "set_selected_voice",
     AccountArea.LINKED_ACCOUNTS: "manage_linked_account",
     AccountArea.SUBSCRIPTION: "",

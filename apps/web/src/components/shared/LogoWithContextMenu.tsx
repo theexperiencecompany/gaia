@@ -16,6 +16,7 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import { copyText } from "@/lib/clipboard";
 import { toast } from "@/lib/toast";
 
 const menuItemsConfig = [
@@ -173,7 +174,7 @@ export function LogoWithContextMenu({
         );
       }
       const svgText = await response.text();
-      await navigator.clipboard.writeText(svgText);
+      await copyText(svgText);
       toast.success("Logo SVG copied to clipboard");
     } catch (error) {
       toast.error("Failed to copy SVG");

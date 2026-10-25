@@ -88,7 +88,7 @@ deterministic and can never bill a real API.
 Exceptions are explicit declarations, never accidents:
 
 - The harness's own fake values (`WORKOS_API_KEY`, `MCP_ENCRYPTION_KEY`,
-  `AGENT_SECRET`, `GOOGLE_API_KEY` fake) survive by allowlist.
+  `AGENT_SECRET`) survive by allowlist.
 - A live-credential tier declares the keys it legitimately needs by setting
   `HERMETIC_ALLOW_KEYS` (comma-separated) in its conftest at import time —
   e.g. `tests/composio/conftest.py` declares `COMPOSIO_KEY,
@@ -107,7 +107,7 @@ the whole job through the real executor graph), the integration suites
 (`tests/integration/agents/test_browser_job_*.py`, relay and delivery over real product
 code), the Obscura conformance suite (`tests/integration/real/test_obscura_conformance.py`),
 and the browser stack (`tests/integration/real/browser/`, the `browser` CI slice;
-`mise test:python:browser`, or `dagger call test-python --slice-name browser`). The stack runs the API and the ARQ browser worker as
+`mise test:python:browser`). The stack runs the API and the ARQ browser worker as
 processes, a Chrome and an Obscura host, one fake model server and a two-origin
 fixture site the hosts may reach through `BROWSER_HOST_ALLOW_PRIVATE_ORIGINS`
 (refused in production), and judges each scenario on the Telegram user's

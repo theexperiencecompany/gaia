@@ -36,9 +36,23 @@ function statusLabel(status: BridgeStatus): string {
   return status.running ? `${DEVICE_LABEL}: online` : `${DEVICE_LABEL}: paused`;
 }
 
-function buildMenu(status: BridgeStatus, onOpen: () => void): Menu {
+/** Tray actions that need the main window, owned by the app lifecycle. */
+export interface TrayActions {
+  /** Show the main window. */
+  onOpen: () => void;
+  /** Show the server form in the main window. */
+  onChangeServer: () => void;
+}
+
+function serverLabel(selfHostOrigin: string | null): string {
+  return selfHostOrigin
+    ? `Server: ${new URL(selfHostOrigin).host}`
+    : "Server: GAIA Cloud";
+}
+
+function buildMenu(status: BridgeStatus, actions: TrayActions): Menu {
   const host = getBridgeHost();
-  const { launchAtLogin } = getDesktopSettings();
+  const { launchAtLogin, selfHostOrigin } = getDesktopSettings();
 
   const toggleItem: MenuItemConstructorOptions = status.running
     ? { label: "Pause", click: () => void host.stop() }
@@ -56,7 +70,11 @@ function buildMenu(status: BridgeStatus, onOpen: () => void): Menu {
     { type: "separator" },
     toggleItem,
     { type: "separator" },
-    { label: "Open GAIA", click: onOpen },
+    { label: "Open GAIA", click: actions.onOpen },
+    { type: "separator" },
+    { label: serverLabel(selfHostOrigin), enabled: false },
+    { label: "Change Server…", click: actions.onChangeServer },
+    { type: "separator" },
     {
       label: "Launch at login",
       type: "checkbox",
@@ -78,10 +96,10 @@ function buildMenu(status: BridgeStatus, onOpen: () => void): Menu {
 
 /**
  * Create the bridge tray and keep its menu/tooltip in sync with the live
- * tunnel status. `onOpen` shows the main window (the tray may be the only
- * surface, e.g. a `--hidden` login launch).
+ * tunnel status. The tray may be the only surface (e.g. a `--hidden` login
+ * launch), so its actions reach the main window through `actions`.
  */
-export function createBridgeTray(onOpen: () => void): void {
+export function createBridgeTray(actions: TrayActions): void {
   if (tray) return;
   const host = getBridgeHost();
   tray = new Tray(trayImage());
@@ -90,7 +108,7 @@ export function createBridgeTray(onOpen: () => void): void {
   const render = (status: BridgeStatus): void => {
     if (!tray || tray.isDestroyed()) return;
     tray.setToolTip(`GAIA — ${statusLabel(status)}`);
-    tray.setContextMenu(buildMenu(status, onOpen));
+    tray.setContextMenu(buildMenu(status, actions));
   };
 
   render(host.status());

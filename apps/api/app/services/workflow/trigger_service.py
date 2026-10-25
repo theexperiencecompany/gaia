@@ -5,7 +5,7 @@ Provides high-level trigger operations that delegate to provider-specific handle
 Handles Composio trigger reference counting to prevent premature deletion.
 """
 
-from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.config.oauth_config import all_integrations
 from app.constants.log_tags import LogTag
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflows import workflow_repository
@@ -32,7 +32,7 @@ class TriggerService:
         """
         triggers = []
 
-        for integration in OAUTH_INTEGRATIONS:
+        for integration in all_integrations():
             for trigger_config in integration.associated_triggers:
                 if trigger_config.workflow_trigger_schema:
                     schema = trigger_config.workflow_trigger_schema

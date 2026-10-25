@@ -24,6 +24,9 @@ class FakeChromaCollection:
         self.gets: list[dict[str, object]] = []
         self.fail_upsert_for: set[str] = set()
         self.fail_delete_for: set[str] = set()
+        #: The ids of each upsert and delete request, in the order they arrived.
+        self.upserts: list[list[str]] = []
+        self.deletes: list[list[str]] = []
 
     def add(self, doc_id: str, metadata: dict[str, str], value: object = None) -> None:
         self.rows[doc_id] = (None, metadata, pickled_document(value) if value is not None else None)
@@ -46,14 +49,20 @@ class FakeChromaCollection:
         metadatas: list[dict[str, str]],
         documents: list[str],
     ) -> None:
-        if ids[0] in self.fail_upsert_for:
+        self.upserts.append(list(ids))
+        if self.fail_upsert_for & set(ids):
             raise ConnectionError("chroma down")
-        self.rows[ids[0]] = (embeddings[0] if embeddings else None, metadatas[0], documents[0])
+        if embeddings is not None and len(embeddings) != len(ids):
+            raise ValueError("Chroma takes a vector for every row or for none")
+        for i, doc_id in enumerate(ids):
+            self.rows[doc_id] = (embeddings[i] if embeddings else None, metadatas[i], documents[i])
 
     async def delete(self, ids: list[str]) -> None:
-        if ids[0] in self.fail_delete_for:
+        self.deletes.append(list(ids))
+        if self.fail_delete_for & set(ids):
             raise ConnectionError("chroma down")
-        self.rows.pop(ids[0], None)
+        for doc_id in ids:
+            self.rows.pop(doc_id, None)
 
     async def query(
         self,

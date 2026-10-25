@@ -10,7 +10,7 @@ tools are fetched on demand via get_integration_tools.
 import asyncio
 from typing import TypedDict, cast
 
-from app.constants.cache import ONE_DAY_TTL
+from app.constants.cache import MY_INTEGRATIONS_SNAPSHOT_KEY, ONE_DAY_TTL
 from app.decorators.caching import Cacheable
 from app.models.integration_models import UserIntegrationsListResponse
 from app.schemas.integrations.responses import (
@@ -18,6 +18,10 @@ from app.schemas.integrations.responses import (
     IntegrationToolsResponse,
     MyIntegrationItem,
     MyIntegrationsResponse,
+)
+from app.services.composio.auth_config_resolver import (
+    composio_integrations,
+    resolve_auth_configs,
 )
 from app.services.integrations.integration_connection_service import build_integrations_config
 from app.services.integrations.integration_resolver import IntegrationResolver
@@ -54,10 +58,29 @@ async def get_my_integrations(user_id: str) -> MyIntegrationsResponse:
 
 async def get_my_integrations_snapshot(user_id: str) -> MyIntegrationsResponse:
     """Return the cached catalog from Mongo without external status checks."""
-    return cast(
+    snapshot = cast(
         MyIntegrationsResponse,
         await _get_cached_my_integrations_snapshot(user_id),
     )
+    return await _flag_instance_setup(snapshot)
+
+
+async def _flag_instance_setup(snapshot: MyIntegrationsResponse) -> MyIntegrationsResponse:
+    """Mark Composio integrations this instance has no auth config for.
+
+    Applied outside the per-user cache: an admin's save must show at once.
+    """
+    resolved = await resolve_auth_configs()
+    missing = {i.id for i in composio_integrations() if i.id not in resolved}
+    if not missing:
+        return snapshot
+    items = [
+        item.model_copy(update={"instance_setup_required": True})
+        if item.source == "platform" and item.id in missing
+        else item
+        for item in snapshot.integrations
+    ]
+    return snapshot.model_copy(update={"integrations": items})
 
 
 def _apply_live_status_overlay(
@@ -87,7 +110,7 @@ def _apply_live_status_overlay(
 
 
 @Cacheable(
-    key_pattern="tools:user:{user_id}:my_snapshot",
+    key_pattern=MY_INTEGRATIONS_SNAPSHOT_KEY,
     ttl=ONE_DAY_TTL,
     model=MyIntegrationsResponse,
 )
@@ -139,6 +162,8 @@ def _build_my_integrations_response(
                 display_priority=cfg.display_priority,
                 available=cfg.available,
                 slug=cfg.slug,
+                origin=cfg.origin,
+                icon_url=cfg.icon_url,
                 tool_count=tool_count,
             )
         )

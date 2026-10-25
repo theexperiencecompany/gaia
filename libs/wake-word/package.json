@@ -19,7 +19,7 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "type-check": "tsc --noEmit"
+    "type-check": "node ../../scripts/ts/type-check.mjs --noEmit"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",
@@ -28,21 +28,21 @@
     "onnxruntime-node": "^1.27.0",
     "onnxruntime-react-native": "^1.24.3",
     "onnxruntime-web": "^1.27.0",
-    "react": "19.1.0",
-    "react-native": "^0.83.10",
+    "react": "19.2.3",
+    "react-native": "^0.86.3",
     "react-native-live-audio-stream": "^1.1.1",
     "tinybench": "^2.9.0",
     "tinypool": "^1.1.1",
     "tinyrainbow": "^2.0.0",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.10",
+    "vitest": "^5.0.5",
     "wavefile": "^11.0.0"
   },
   "peerDependencies": {
     "onnxruntime-react-native": "^1.24.3",
     "onnxruntime-web": "^1.27.0",
-    "react": "19.1.0",
-    "react-native": "^0.83.10",
+    "react": "19.2.3",
+    "react-native": "^0.86.3",
     "react-native-live-audio-stream": "^1.1.1"
   },
   "peerDependenciesMeta": {

@@ -109,6 +109,8 @@ class ApprovalRequestEntryData(BaseModel):
     rationale: str | None = None
     age_seconds: int | None = None
     ledger_version: int | None = None
+    # The call asks in every mode, so clients must not offer "always allow" on it.
+    always_asks: bool = False
 
 
 class ApprovalRequestEntry(BaseModel):

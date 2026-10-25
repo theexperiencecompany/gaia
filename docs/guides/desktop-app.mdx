@@ -4,91 +4,61 @@ description: "Run GAIA in its own window on macOS, Windows, or Linux"
 icon: "desktop"
 ---
 
-The desktop app gives you everything from the web, chat, workflows, calendar, integrations, in a dedicated window outside your browser tabs. Same UI, no learning curve. Available for **macOS**, **Windows**, and **Linux** (x64 and ARM64).
+Run the full GAIA web experience in its own window on macOS, Windows, or Linux.
 
-## Download and install
+## Install
 
 <Steps>
-  <Step title="Get the installer">
-    Go to [heygaia.io/download](https://heygaia.io/download) and pick the installer for your OS:
+  <Step title="Download">
+    Get the installer for your OS at [heygaia.io/download](https://heygaia.io/download).
 
-    - **macOS**: `.dmg` (Intel or Apple Silicon)
-    - **Windows**: `.exe` installer or portable `.exe`
-    - **Linux**: `.AppImage`, `.deb`, or `.rpm`
-
+    | OS      | Format                                    |
+    | ------- | ----------------------------------------- |
+    | macOS   | `.dmg` (Intel or Apple Silicon)           |
+    | Windows | `.exe` installer or portable `.exe`       |
+    | Linux   | `.AppImage`, `.deb`, or `.rpm`            |
   </Step>
-  <Step title="Run the installer">
-    Open the downloaded file and follow the prompts. On macOS, drag GAIA into Applications. On Windows, you can pick a custom install location.
+  <Step title="Install">
+    Open the file. On macOS, drag GAIA into Applications.
   </Step>
   <Step title="Sign in">
-    On first launch, click **Sign In** and your default browser handles the rest. Once you authenticate, the app picks up your session via a secure `gaia://` deep link, no tokens to copy, no passwords to paste.
+    Click **Sign In**. Your browser opens, and the app picks up your session when you finish.
   </Step>
 </Steps>
 
 <Tip>
-  On macOS, if you see "GAIA can't be opened because it is from an unidentified
-  developer," go to **System Settings > Privacy & Security** and click **Open
-  Anyway**.
+  On macOS, if you see "GAIA can't be opened because it is from an unidentified developer", go to **System Settings > Privacy & Security** and click **Open Anyway**.
 </Tip>
 
-## What you get
+## Updates
 
-- **A dedicated window** with a clean title bar (hidden inset style on macOS). External links open in your default browser, so the GAIA window stays focused on your work.
-- **Automatic updates.** Every launch checks for updates in the background. When one is ready, you get a prompt, restart right away or wait until you next quit.
-- **A splash screen on startup** while the app's internal server gets ready, usually a few seconds.
+The app checks for updates on launch. When one is ready, restart now or on your next quit.
 
 <Note>
-  Updates come through GitHub Releases. If your company network blocks GitHub,
-  add `github.com` to your allowlist so updates can get through.
+  Updates come from GitHub Releases. If your network blocks GitHub, allow `github.com`.
 </Note>
 
-## Desktop vs. web
+## Connect your computer to GAIA
 
-The desktop app renders the same UI as [heygaia.io](https://heygaia.io), every feature is available in both.
-
-| Feature                                             | Web                 | Desktop |
-| --------------------------------------------------- | ------------------- | ------- |
-| Chat, workflows, calendar, integrations             | Yes                 | Yes     |
-| Runs in a browser tab                               | Yes                 | No      |
-| Native OS authentication (deep link)                | No                  | Yes     |
-| Automatic updates                                   | N/A (always latest) | Yes     |
-| Works offline (cached content)                      | Partial             | Partial |
-| Dedicated window with minimal chrome                | No                  | Yes     |
-| Available on Linux as `.deb` / `.rpm` / `.AppImage` | N/A                 | Yes     |
-
-## Power-user tips
-
-You can skip this section unless you want to fine-tune your setup or fix something.
-
-<CardGroup cols={2}>
-  <Card title="Keep it running" icon="window-maximize">
-    On macOS, closing all windows keeps the app alive in the Dock. Click the
-    icon to bring it back instantly.
-  </Card>
-  <Card title="Use keyboard shortcuts" icon="keyboard">
-    Every shortcut from the web app works here too. Press <code>/</code> in
-    chat to open the command palette.
-  </Card>
-  <Card title="Check your version" icon="circle-info">
-    Reporting a bug? Find your app version in **Settings** and share it with
-    support so they can reproduce the issue on your exact build.
-  </Card>
-  <Card title="Reset if stuck" icon="arrows-rotate">
-    If the app won't load after an update, delete the app data folder and
-    relaunch. On macOS: `~/Library/Application Support/GAIA`. On Windows:
-    `%APPDATA%/GAIA`. On Linux: `~/.config/GAIA`.
-  </Card>
-</CardGroup>
-
-<Warning>
-  Deleting app data signs you out and clears local caches. You'll need to sign
-  in again after.
-</Warning>
+The desktop app can let GAIA run commands on this computer. See [Device Bridge](/cli/device-bridge).
 
 ## Troubleshooting
 
-**Blank screen after launch**: The internal server may still be starting. Wait up to 15 seconds, then quit and relaunch. Check that nothing else is using ports 5174–5180.
+<AccordionGroup>
+  <Accordion title="Blank screen after launch">
+    The app's internal server may still be starting. Wait up to 15 seconds, then quit and relaunch. Make sure nothing else uses ports 5174 to 5180.
+  </Accordion>
+  <Accordion title="No update prompt">
+    Allow outbound HTTPS to `github.com`. Corporate proxies can block the update check.
+  </Accordion>
+  <Accordion title="Sign-in doesn't return to the app">
+    Your OS must have the `gaia://` protocol registered. On Linux, `.deb` and `.rpm` installs do this for you. With the AppImage, launch the app once.
+  </Accordion>
+  <Accordion title="App won't load after an update">
+    Delete the app data folder and relaunch. You will need to sign in again.
 
-**"Update available" prompt never appears**: Make sure your network allows outbound HTTPS to `github.com`. Corporate proxies or firewalls can block the update check.
-
-**OAuth sign-in doesn't redirect back to the app**: The `gaia://` protocol needs to be registered with your OS. On Linux, the `.deb` and `.rpm` installers handle this automatically; if you're using the AppImage, launch the app once so it can register the protocol handler.
+    - macOS: `~/Library/Application Support/GAIA`
+    - Windows: `%APPDATA%/GAIA`
+    - Linux: `~/.config/GAIA`
+  </Accordion>
+</AccordionGroup>

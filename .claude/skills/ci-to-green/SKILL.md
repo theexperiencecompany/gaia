@@ -49,7 +49,7 @@ Then run **every** test file the mutation lane maps, once, serially. It's ~70s f
 files, and it catches each remaining blocker before a slow mutation run trips on it:
 
 ```bash
-GAIA_PR_BASE=master bash scripts/ci/mutation.sh matrix > /tmp/matrix.json
+GAIA_PR_BASE=master python3 scripts/ci/mutation.py matrix > /tmp/matrix.json
 python3 -c "import json;print('\n'.join(sorted({t for m in json.load(open('/tmp/matrix.json')) for t in m['testfiles']})))" > /tmp/tests.txt
 cd apps/api && LOG_LEVEL=ERROR uv run pytest -p no:xdist -q $(cat /tmp/tests.txt)
 ```
@@ -99,7 +99,7 @@ harness-managed background job was killed mid-run (exit 144).
 ```bash
 MONGO_DB=mongodb://localhost:27017/gaia_test REDIS_URL=redis://localhost:6479/0 \
 USE_REAL_SERVICES=1 MUTATION_JOBS=1 MUTMUT_MAX_CHILDREN=4 \
-nohup bash scripts/ci/mutation.sh local app/x.py app/y.py > /tmp/mut.out 2>&1 < /dev/null &
+nohup python3 scripts/ci/mutation.py local app/x.py app/y.py > /tmp/mut.out 2>&1 < /dev/null &
 ```
 
 - Watch `/tmp/mut.out` for `pass` / `SURVIVORS` / `ERROR`. Per-module logs are in

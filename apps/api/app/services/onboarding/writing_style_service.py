@@ -2,7 +2,6 @@
 
 from collections.abc import Awaitable, Callable
 import time
-from typing import Any
 
 from app.agents.llm.client import ainvoke_structured, metered_config
 from app.agents.prompts.onboarding_prompts import (
@@ -42,7 +41,10 @@ async def learn_writing_style(
             max_results=50,
         )
 
-        sent_emails: list[dict[str, Any]] = result.raw_messages()
+        # Read the parsed models, not the raw dicts: subject/snippet/body are
+        # declared fields, so attribute reads are typo-proof where .get() never
+        # fails and the boundary stays parsed.
+        sent_emails = result.messages
         sent_count = len(sent_emails)
 
         if on_status is not None:
@@ -63,8 +65,8 @@ async def learn_writing_style(
         skipped_short = 0
         skipped_autoreply = 0
         for email in sent_emails:
-            body = email.get("body", email.get("snippet", "")).strip()
-            subject = email.get("subject", "")
+            body = (email.body or email.snippet).strip()
+            subject = email.subject
             if len(body) < 20:
                 skipped_short += 1
                 continue
