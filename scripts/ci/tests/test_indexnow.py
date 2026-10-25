@@ -352,6 +352,23 @@ def test_no_earlier_successful_deploy_fails_the_run(
     assert "deploy (production)" in result.stderr
 
 
+def test_a_malformed_actions_answer_fails_the_run(
+    repo: Path, site: tuple[str, Routes, list[tuple[str, bytes]]]
+) -> None:
+    base, routes, _posts = site
+    previous, head = _shipped(repo)
+    routes.update(
+        _github("o/r", 30, [(30, head, "success", None), (28, previous, "success", None)])
+    )
+    page = "/repos/o/r/actions/workflows/7/runs?branch=master&per_page=100&page=1"
+    routes[page] = (200, {}, json.dumps({"workflow_runs": [{"id": 28}]}))
+
+    result = _run(repo, base, "--head", head, "--dry-run", env=_actions_env(base, 30))
+
+    assert result.returncode != 0
+    assert "GitHub API field 'head_sha'" in result.stderr
+
+
 def test_previous_skips_a_deploy_whose_indexnow_submission_failed(
     repo: Path, site: tuple[str, Routes, list[tuple[str, bytes]]]
 ) -> None:
