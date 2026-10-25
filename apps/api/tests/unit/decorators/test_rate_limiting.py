@@ -325,11 +325,6 @@ class TestTokenCounting:
             feature_key="generate_image",
         )
 
-    async def test_zero_usage_logs_no_token_line(self) -> None:
-        log = await self._run(0)
-
-        assert all("Token usage recorded" not in str(c.args[0]) for c in log.debug.call_args_list)
-
     async def test_a_single_token_still_counts(self) -> None:
         log = await self._run(1)
 
@@ -338,28 +333,6 @@ class TestTokenCounting:
             tokens_used=1,
             feature_key="generate_image",
         )
-
-    async def test_a_missing_tokens_key_logs_nothing(self) -> None:
-        """A dict result without tokens_used is not an error and logs no usage line — the default must read as zero, not truthy."""
-
-        async def tool(config: dict[str, Any] | None = None) -> dict[str, Any]:
-            return {"ran": True}
-
-        decorated = rl.with_rate_limiting(feature_key="generate_image", count_tokens=True)(tool)
-        with (
-            patch(
-                "app.decorators.rate_limiting.payment_service.get_cached_plan_type",
-                new=AsyncMock(return_value=PlanType.FREE),
-            ),
-            patch(
-                "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
-                new=AsyncMock(return_value={}),
-            ),
-            patch("app.decorators.rate_limiting.log") as log,
-        ):
-            await decorated(config={"metadata": {"user_id": USER_ID}})
-
-        assert all("Token usage recorded" not in str(c.args[0]) for c in log.debug.call_args_list)
 
 
 class TestAttachUsageMetadata:

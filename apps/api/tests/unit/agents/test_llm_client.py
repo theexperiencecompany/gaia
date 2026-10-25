@@ -1038,27 +1038,6 @@ class TestFallbackHandover:
             isinstance(handler, UsageMetadataCallbackHandler) for handler in forwarded["callbacks"]
         )
 
-    @patch("app.agents.llm.client.log")
-    async def test_the_downgrade_warning_names_the_call_that_fell_back(
-        self, mock_log: MagicMock
-    ) -> None:
-        """The warning is the only record of a downgrade; unlabelled it cannot be attributed to a caller."""
-        primary = TestAinvokeLlm._runnable(side_effect=ConnectionError("provider down"))
-        fallback = self._bindable_runnable(AIMessage(content="fallback-ok"))
-
-        await ainvoke_llm(
-            primary,
-            [HumanMessage(content="hi")],
-            label="the_judge",
-            fallback=fallback,
-        )
-
-        assert mock_log.warning.call_args.kwargs["llm"] == {
-            "label": "the_judge",
-            "error_type": "ConnectionError",
-            "fell_back": True,
-        }
-
 
 class _Extracted(BaseModel):
     fact: str

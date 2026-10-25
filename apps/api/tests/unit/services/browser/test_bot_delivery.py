@@ -177,21 +177,6 @@ class TestBotProgressDeliveryStep:
             mm.assert_awaited_once()
             assert mm.call_args[0][2] == ["Step 1 · Open"]
 
-    async def test_blank_tab_label_text(self, delivery):
-        snap = BrowserStepSnapshot(index=1, goal="Open", url=None, screenshot="https://cdn/1.png")
-        with (
-            patch(
-                "app.services.browser.bot_delivery.publish_outbound_photo", new=AsyncMock()
-            ) as mp,
-            patch(
-                "app.services.browser.bot_delivery.publish_outbound_message", new=AsyncMock()
-            ) as mm,
-        ):
-            await delivery.step(snap)
-            mp.assert_not_awaited()
-            mm.assert_awaited_once()
-            assert mm.call_args[0][2] == ["Step 1 · Open"]
-
     async def test_photo_sent_when_eligible(self, delivery):
         snap = BrowserStepSnapshot(
             index=2,

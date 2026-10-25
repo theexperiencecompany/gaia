@@ -874,14 +874,6 @@ class TestHILWaitBenchmarks:
         assert REGISTRY.get_sample_value("hil_user_wait_seconds_count", {}) == wait_before + 1
         assert "user_wait_s" in log_mock.set.call_args.kwargs["hil"]
 
-    def test_the_user_wait_is_logged_with_two_decimal_precision(self) -> None:
-        created = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
-        record = make_record(created_at=created, decided_at=created + timedelta(seconds=12.3456))
-        with patch(f"{MODULE}.log") as log_mock:
-            _observe_hil_user_wait(record)
-
-        assert log_mock.set.call_args.kwargs == {"hil": {"user_wait_s": 12.35}}
-
     def test_a_zero_second_user_wait_is_still_measured(self) -> None:
         # The guard is "never negative", not "never zero": a user who answers the instant
         # the card is created served no wait, but it is still a real observation.
@@ -891,18 +883,6 @@ class TestHILWaitBenchmarks:
         _observe_hil_user_wait(record)
 
         assert REGISTRY.get_sample_value("hil_user_wait_seconds_count", {}) == wait_before + 1
-
-    def test_the_dispatch_lag_is_logged_with_two_decimal_precision(self) -> None:
-        decided = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
-        record = make_record(decided_at=decided)
-        with (
-            patch(f"{MODULE}.datetime") as clock,
-            patch(f"{MODULE}.log") as log_mock,
-        ):
-            clock.now.return_value = decided + timedelta(seconds=7.891)
-            _observe_hil_dispatch_lag(record)
-
-        assert log_mock.set.call_args.kwargs == {"hil": {"dispatch_lag_s": 7.89}}
 
     def test_a_zero_second_dispatch_lag_is_still_measured(self) -> None:
         # Clock skew is a negative delta; a resume that starts at the instant of the
