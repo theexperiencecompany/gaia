@@ -422,7 +422,7 @@ class TestAnExecutorThatNeverFinishes:
         finished = await await_executor_done("s1", timeout=0.01)
 
         assert finished is False
-        assert sess.executor_failed("s1") is True
+        assert sess.executor_failure("s1") is not None
         assert "did not finish within" in (sess.executor_failure("s1") or "")
 
     async def test_a_timed_out_wait_names_the_tasks_still_running(self) -> None:

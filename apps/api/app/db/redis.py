@@ -15,14 +15,12 @@ from redis.asyncio.lock import Lock
 
 from app.config.settings import settings
 from app.constants.cache import (
-    DEFAULT_CACHE_TTL,
     ONE_YEAR_TTL,
 )
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 # Re-export for backwards compatibility
-CACHE_TTL = DEFAULT_CACHE_TTL
 
 # Carries the ``model=`` argument through to the return type: ``get_cache(key, model=User)``
 # is ``User | None``, not ``Any`` — without it a mismatched model goes unnoticed.

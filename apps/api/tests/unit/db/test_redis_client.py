@@ -848,18 +848,3 @@ class TestDeleteCacheByPattern:
             # Should not attempt any deletes
             info_msgs = [c[0][0] for c in mock_log.info.call_args_list]
             assert any("No keys" in m for m in info_msgs)
-
-
-# ---------------------------------------------------------------------------
-# CACHE_TTL re-export
-# ---------------------------------------------------------------------------
-
-
-class TestCacheTTLReExport:
-    """Test that the CACHE_TTL backwards-compat alias is correct."""
-
-    def test_cache_ttl_equals_default(self) -> None:
-        """CACHE_TTL should equal DEFAULT_CACHE_TTL (3600)."""
-        from app.db.redis import CACHE_TTL
-
-        assert CACHE_TTL == 3600

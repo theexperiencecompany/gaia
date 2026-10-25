@@ -48,11 +48,8 @@ class StreamSession:
     kind: RunKind
     executor_spawned: bool = False
     done_event: asyncio.Event = field(default_factory=asyncio.Event)
-    #: Set with ``done_event`` when the executor's run ended in an error rather
-    #: than a result. The silent path reads it so a fire whose executor died is
-    #: recorded as failed instead of as the apology comms wrote about it.
-    executor_failed: bool = False
-    #: Why, when it failed: the executor's own error text, or the wait's.
+    #: Set with ``done_event`` when the executor's run errored; ``executor_failure``
+    #: carries why, so a dead executor is recorded as failed, not as an apology.
     executor_failure: str | None = None
     tool_events: list[dict[str, Any]] = field(default_factory=list)
     # Voice-mode streams: the executor's finalize step publishes a TTS-only
@@ -317,7 +314,6 @@ def signal_executor_done(
     """Wake any waiter blocked on the executor finishing for this stream."""
     session = _sessions.get(stream_id)
     if session is not None:
-        session.executor_failed = failed
         session.executor_failure = reason if failed else None
         session.done_event.set()
 
@@ -331,7 +327,6 @@ def mark_executor_failed(stream_id: str, reason: str) -> None:
     """
     session = _sessions.get(stream_id)
     if session is not None:
-        session.executor_failed = True
         session.executor_failure = reason
     _abandoned.append(stream_id)
 
@@ -339,12 +334,6 @@ def mark_executor_failed(stream_id: str, reason: str) -> None:
 def executor_abandoned(stream_id: str) -> bool:
     """Whether the run that waited on this executor gave up on it."""
     return stream_id in _abandoned
-
-
-def executor_failed(stream_id: str) -> bool:
-    """Whether the executor this stream spawned ended in an error."""
-    session = _sessions.get(stream_id)
-    return bool(session and session.executor_failed)
 
 
 def executor_failure(stream_id: str) -> str | None:
