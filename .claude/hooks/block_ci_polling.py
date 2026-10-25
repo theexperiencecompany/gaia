@@ -51,6 +51,7 @@ def block_reason(command: str, in_background: bool) -> str | None:
 
 
 def main() -> int:
+    """Read one PreToolUse payload from stdin; return 2 to block the Bash call, 0 to allow it."""
     payload = json.load(sys.stdin)
     if payload.get("tool_name") != "Bash":
         return 0
