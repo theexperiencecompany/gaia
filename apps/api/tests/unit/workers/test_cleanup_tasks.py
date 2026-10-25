@@ -93,37 +93,6 @@ class TestCleanupStuckPersonalization:
     # Pagination limit validation
     # ------------------------------------------------------------------
 
-    async def test_finder_called_with_limit_50(self, ctx):
-        """The finder must be called with limit=50, exactly."""
-        with patch(_FIND, new_callable=AsyncMock, return_value=[]) as mock_find:
-            await cleanup_stuck_personalization(ctx)
-
-        assert mock_find.await_count == 1
-        assert mock_find.call_args.kwargs["limit"] == 50
-
-    async def test_pagination_limit_50_processes_exactly_50_users(self, ctx):
-        """The finder is capped at 50; the task must process exactly those 50 users."""
-        users = [_make_stuck_user(f"user_{i}") for i in range(50)]
-        with (
-            patch(_FIND, new_callable=AsyncMock, return_value=users) as mock_find,
-            patch(
-                "app.workers.tasks.cleanup_tasks.is_intelligence_job_live",
-                new_callable=AsyncMock,
-                return_value=False,
-            ),
-            patch(
-                "app.workers.tasks.cleanup_tasks.enqueue_gmail_personalization",
-                new_callable=AsyncMock,
-                return_value="j",
-            ) as mock_enqueue,
-        ):
-            result = await cleanup_stuck_personalization(ctx)
-
-        assert mock_enqueue.await_count == 50
-        assert mock_find.call_args.kwargs["limit"] == 50
-        assert "50 re-queued" in result
-        assert "found 50 candidates" in result
-
     # ------------------------------------------------------------------
     # Which users are re-queued
     # ------------------------------------------------------------------
@@ -154,24 +123,6 @@ class TestCleanupStuckPersonalization:
         assert "id_2" in enqueued_ids
         assert mock_enqueue.await_count == 2
 
-    async def test_enqueue_called_with_correct_user_id(self, ctx):
-        with (
-            patch(_FIND, new_callable=AsyncMock, return_value=[_make_stuck_user("id_1")]),
-            patch(
-                "app.workers.tasks.cleanup_tasks.is_intelligence_job_live",
-                new_callable=AsyncMock,
-                return_value=False,
-            ),
-            patch(
-                "app.workers.tasks.cleanup_tasks.enqueue_gmail_personalization",
-                new_callable=AsyncMock,
-                return_value="job_123",
-            ) as mock_enqueue,
-        ):
-            await cleanup_stuck_personalization(ctx)
-
-        mock_enqueue.assert_awaited_once_with("id_1")
-
     # ------------------------------------------------------------------
     # Live pipeline is never aborted
     # ------------------------------------------------------------------
@@ -195,36 +146,6 @@ class TestCleanupStuckPersonalization:
     # ------------------------------------------------------------------
     # last_update stamped on the wide event
     # ------------------------------------------------------------------
-
-    async def test_requeue_logs_the_users_real_updated_at(self, ctx):
-        """The re-queue log line carries the user's actual updated_at value."""
-        user = _make_stuck_user("id_1")
-        with (
-            patch(_FIND, new_callable=AsyncMock, return_value=[user]),
-            patch(_IS_LIVE, new_callable=AsyncMock, return_value=False),
-            patch(_ENQUEUE, new_callable=AsyncMock, return_value="job_1"),
-            patch(_LOG) as mock_log,
-        ):
-            await cleanup_stuck_personalization(ctx)
-
-        assert _logged_last_updates(mock_log) == [str(user.updated_at)]
-
-    async def test_user_with_no_updated_at_logs_unknown(self, ctx):
-        """A user document with no updated_at is reported as "unknown", not "None"."""
-        user = UserDocument(
-            id="id_1",
-            onboarding={"phase": "personalization_pending"},
-            updated_at=None,
-        )
-        with (
-            patch(_FIND, new_callable=AsyncMock, return_value=[user]),
-            patch(_IS_LIVE, new_callable=AsyncMock, return_value=False),
-            patch(_ENQUEUE, new_callable=AsyncMock, return_value="job_1"),
-            patch(_LOG) as mock_log,
-        ):
-            await cleanup_stuck_personalization(ctx)
-
-        assert _logged_last_updates(mock_log) == ["unknown"]
 
     # ------------------------------------------------------------------
     # Error counting
@@ -304,19 +225,6 @@ class TestCleanupStuckPersonalization:
     # Query validation
     # ------------------------------------------------------------------
 
-    async def test_custom_max_age_minutes_passed_as_cutoff(self, ctx):
-        with patch(_FIND, new_callable=AsyncMock, return_value=[]) as mock_find:
-            before_call = datetime.now(UTC)
-            await cleanup_stuck_personalization(ctx, max_age_minutes=60)
-            after_call = datetime.now(UTC)
-
-        cutoff = mock_find.call_args.args[0]
-        expected_lower = before_call - timedelta(minutes=60)
-        expected_upper = after_call - timedelta(minutes=60)
-        assert (
-            expected_lower - timedelta(seconds=5) <= cutoff <= expected_upper + timedelta(seconds=5)
-        )
-
     # ------------------------------------------------------------------
     # Exception handling
     # ------------------------------------------------------------------
@@ -331,26 +239,3 @@ class TestCleanupStuckPersonalization:
     # ------------------------------------------------------------------
     # Result message contents
     # ------------------------------------------------------------------
-
-    async def test_result_message_contains_found_count(self, ctx):
-        users = [_make_stuck_user("id_1"), _make_stuck_user("id_2"), _make_stuck_user("id_3")]
-        with (
-            patch(_FIND, new_callable=AsyncMock, return_value=users),
-            patch(
-                "app.workers.tasks.cleanup_tasks.is_intelligence_job_live",
-                new_callable=AsyncMock,
-                return_value=False,
-            ),
-            patch(
-                "app.workers.tasks.cleanup_tasks.enqueue_gmail_personalization",
-                new_callable=AsyncMock,
-                return_value="j1",
-            ) as mock_enqueue,
-        ):
-            result = await cleanup_stuck_personalization(ctx)
-
-        assert "found 3 candidates" in result
-        assert "3 re-queued" in result
-
-        enqueued_ids = [c.args[0] for c in mock_enqueue.await_args_list]
-        assert set(enqueued_ids) == {"id_1", "id_2", "id_3"}

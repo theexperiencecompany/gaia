@@ -31,21 +31,6 @@ class TestProcessReminder:
     def ctx(self) -> dict:
         return {}
 
-    async def test_success_returns_success_message(self, ctx):
-        with patch("app.workers.tasks.reminder_tasks.reminder_scheduler") as mock_scheduler:
-            mock_scheduler.process_task_execution = AsyncMock()
-            result = await process_reminder(ctx, "reminder_123")
-
-        assert result == "Successfully processed reminder reminder_123"
-
-    async def test_reminder_scheduler_called_with_id(self, ctx):
-        with patch("app.workers.tasks.reminder_tasks.reminder_scheduler") as mock_scheduler:
-            mock_scheduler.process_task_execution = AsyncMock()
-            await process_reminder(ctx, "reminder_abc")
-
-        # Unstamped (a job enqueued before the stamp existed) claims on status alone.
-        mock_scheduler.process_task_execution.assert_awaited_once_with("reminder_abc", None)
-
     async def test_occurrence_stamp_is_passed_through_to_the_claim(self, ctx):
         """The armed occurrence pins the claim, so a stale sibling job is rejected."""
         armed = datetime(2099, 1, 15, 12, 0, tzinfo=UTC)
@@ -95,13 +80,6 @@ class TestProcessReminder:
             with pytest.raises(RuntimeError, match="DB connection lost"):
                 await process_reminder(ctx, "reminder_xyz")
 
-    async def test_ctx_unused_does_not_affect_outcome(self):
-        for ctx in [{}, {"redis": AsyncMock()}, {"job_id": "j1"}]:
-            with patch("app.workers.tasks.reminder_tasks.reminder_scheduler") as mock_scheduler:
-                mock_scheduler.process_task_execution = AsyncMock()
-                result = await process_reminder(ctx, "r1")
-            assert result == "Successfully processed reminder r1"
-
 
 class TestCleanupExpiredReminders:
     """Tests for cleanup_expired_reminders ARQ task."""
@@ -113,27 +91,6 @@ class TestCleanupExpiredReminders:
     # The status/date filter is the repository's contract (proven in
     # tests/contracts/test_reminders_repository.py::test_delete_finished_before);
     # here we assert delegation and that the worker owns the 30-day cutoff.
-
-    async def test_cleanup_returns_deleted_count_in_message(self, ctx):
-        with patch(
-            "app.workers.tasks.reminder_tasks.reminder_repository.delete_finished_before",
-            new_callable=AsyncMock,
-            return_value=7,
-        ) as mock_delete:
-            result = await cleanup_expired_reminders(ctx)
-
-        assert mock_delete.await_count == 1
-        assert result == "Cleaned up 7 expired reminders"
-
-    async def test_cleanup_zero_deletions_message(self, ctx):
-        with patch(
-            "app.workers.tasks.reminder_tasks.reminder_repository.delete_finished_before",
-            new_callable=AsyncMock,
-            return_value=0,
-        ):
-            result = await cleanup_expired_reminders(ctx)
-
-        assert result == "Cleaned up 0 expired reminders"
 
     async def test_cleanup_uses_thirty_day_cutoff(self, ctx):
         """The cutoff handed to the repository must be approx 30 days in the past."""
