@@ -110,6 +110,17 @@ def test_a_playwright_failure_lands_on_its_test_with_the_error_first() -> None:
     assert found["detail"].splitlines()[0] == "Error: expect(locator).toBeVisible() failed"
 
 
+def test_a_bandit_issue_lands_on_its_location_line() -> None:
+    text = (
+        ">> Issue: [B105:hardcoded_password_string] Possible hardcoded password: 'x'\n"
+        "   Severity: Low   Confidence: Medium\n"
+        "   Location: ./apps/api/app/x.py:12:4\n"
+    )
+    (found,) = output_findings.read(text)
+    assert (found["file"], found["line"]) == ("apps/api/app/x.py", 12)
+    assert found["message"].startswith("[B105:hardcoded_password_string]")
+
+
 def test_a_workflow_annotation_the_tool_printed_is_read_back() -> None:
     (found,) = output_findings.read("::error file=apps/web/a.ts,line=7::doc-comments: restates")
     assert (found["file"], found["line"], found["message"]) == (

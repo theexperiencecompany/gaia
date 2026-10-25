@@ -185,6 +185,25 @@ def _playwright(lines: list[str]) -> Iterator[_Hit]:
         yield _Hit(index, _finding(file, line, f"FAILED {file} › {match.group('name')}", errors))
 
 
+_BANDIT_ISSUE = re.compile(r"^>> Issue: (?P<message>\[\S+\] .+)$")
+_BANDIT_LOCATION = re.compile(r"^Location: (?:\./)?(?P<file>\S+?):(?P<line>\d+)(?::\d+)?$")
+# The `Location:` line sits a few lines below its `>> Issue:` line.
+BANDIT_LOCATION_WINDOW = 6
+
+
+def _bandit(lines: list[str]) -> Iterator[_Hit]:
+    for index, raw in enumerate(lines):
+        issue = _BANDIT_ISSUE.match(raw.strip())
+        if not issue:
+            continue
+        for following in lines[index + 1 : index + 1 + BANDIT_LOCATION_WINDOW]:
+            where = _BANDIT_LOCATION.match(following.strip())
+            if where:
+                file, line = where.group("file"), int(where.group("line"))
+                yield _Hit(index, _finding(file, line, issue.group("message")))
+                break
+
+
 # --- one line per finding ----------------------------------------------------------
 # (pattern, message) — the message reads the match, or None for the line itself.
 
@@ -237,7 +256,7 @@ def annotated_locations(text: str) -> set[str]:
     return {f"{h.finding['file']}:{h.finding['line']}" for h in _workflow_commands(lines)}
 
 
-_READERS = (_workflow_commands, _pytest, _vitest, _playwright, _line_readers)
+_READERS = (_workflow_commands, _pytest, _vitest, _playwright, _bandit, _line_readers)
 
 # --- the fallback ------------------------------------------------------------------
 
