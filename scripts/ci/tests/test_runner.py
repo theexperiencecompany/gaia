@@ -128,7 +128,7 @@ def idle_home(count: int, busy: int = 0) -> list[dict[str, object]]:
 def test_a_saturated_github_queue_overflows_every_class_to_a_box_that_fits_them(
     github: FakeGitHub,
 ) -> None:
-    pool(github, *idle_home(18, busy=2))  # services 7 + heavy 5 + light 6
+    pool(github, *idle_home(20, busy=2))  # services 9 + heavy 5 + light 6
     saturate(github)
     out = select(github, BLACKSMITH_LABEL=BLACKSMITH)
     assert out["light"] == out["heavy"] == out["services"] == HOME
@@ -146,7 +146,7 @@ def test_one_idle_listener_takes_no_class_it_cannot_fit(github: FakeGitHub) -> N
 
 @pytest.mark.parametrize(
     ("idle", "on_box"),
-    [(5, {"heavy"}), (7, {"services"}), (12, {"services", "heavy"}), (17, {"services", "heavy"})],
+    [(5, {"heavy"}), (9, {"services"}), (14, {"services", "heavy"}), (19, {"services", "heavy"})],
 )
 def test_idle_listeners_are_shared_out_class_by_class(
     github: FakeGitHub, idle: int, on_box: set[str]

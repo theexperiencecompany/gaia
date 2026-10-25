@@ -118,7 +118,9 @@ jobs:
         run: uv sync --frozen --package gaia --group backend --group dev
 
       - name: ENV=selfhost boots without crash
+        id: boot
         working-directory: apps/api
+        shell: python3 ../../scripts/ci/verdict.py check --path-prefix apps/api/ -- bash -e {0}
         env:
           ENV: selfhost
           AUTH_MODE: local
@@ -146,7 +148,9 @@ jobs:
           "
 
       - name: Setup-API contract under ENV=selfhost
+        id: setup-contract
         working-directory: apps/api
+        shell: python3 ../../scripts/ci/verdict.py check --path-prefix apps/api/ -- bash -e {0}
         env:
           ENV: selfhost
           AUTH_MODE: local
@@ -167,10 +171,12 @@ jobs:
           echo "ENV=selfhost boot + setup contract: OK"
 
       - name: Self-host isolation + infra contract (prod_isolation -k selfhost)
+        id: prod-isolation
         # Lightweight second probe: SelfHostSettings requires only infra secrets,
         # local auth doesn't need WorkOS, etc. Keeps the lane honest when someone
         # sneaks a required SaaS key back into the selfhost profile.
         working-directory: apps/api
+        shell: python3 ../../scripts/ci/verdict.py check --path-prefix apps/api/ -- bash -e {0}
         env:
           ENV: selfhost
           AUTH_MODE: local
@@ -188,6 +194,13 @@ jobs:
           uv run --frozen --no-sync pytest tests/unit/config/test_prod_isolation.py -q -k selfhost --tb=short --override-ini=addopts="--strict-markers --timeout=30"
           echo "::endgroup::"
           echo "prod_isolation (selfhost): OK"
+
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          status: ${{ job.status }}
+          name: selfhost-smoke
 
   # --- Self-host end to end: gaia up + Playwright on a GitHub-hosted runner ---
   # PRs build both images from the checkout (`gaia up --build`); a dispatch can
@@ -210,6 +223,8 @@ jobs:
       - uses: ./.github/actions/setup-uv
 
       - name: Prepare the runner and record this checkout as the install
+        id: prepare
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         run: bash scripts/ci/selfhost.sh prepare
 
       - name: Start the scripted LLM stub
@@ -219,6 +234,8 @@ jobs:
         run: bash scripts/ci/selfhost.sh stub
 
       - name: gaia up --yes --code-sandbox
+        id: up
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         env:
           IMAGE_TAG: ${{ inputs.image_tag }}
         run: bash scripts/ci/selfhost.sh up
@@ -227,12 +244,22 @@ jobs:
         run: pnpm --filter ./apps/web exec playwright install --with-deps chromium
 
       - name: Drive the self-host journey
+        id: journey
         working-directory: apps/web
+        shell: python3 ../../scripts/ci/verdict.py check --path-prefix apps/web/ -- bash -e {0}
         env:
           CI: "true"
           GAIA_REPO_ROOT: ${{ github.workspace }}
           LLM_STUB_BASE_URL: ${{ steps.stub.outputs.base_url }}
         run: pnpm exec playwright test -c playwright.selfhost.config.ts
+      # Before the log collection below: the failing tests are readable now.
+      - name: Upload the verdict so far (a step above failed)
+        if: always() && env.GAIA_VERDICT_PENDING == '1'
+        uses: ./.github/actions/upload-verdict
+        with:
+          status: ${{ job.status }}
+          name: selfhost-e2e
+          partial: "true"
 
       - name: Collect the stack's logs
         if: always()
