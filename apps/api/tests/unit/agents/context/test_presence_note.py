@@ -54,7 +54,7 @@ class TestTheNote:
         assert note == (
             "[Surface change: the user is now writing from Telegram. Their previous message "
             "was on Web at 2026-10-24 16:55 UTC. Also last seen: WhatsApp at 2026-10-21 09:10 "
-            "UTC. Messages you send on your own (reminders, workflow results, updates) go to "
+            "UTC. Messages you send on your own (reminders, tracked todo updates, workflow results) go to "
             "Telegram, the chat app they last wrote on within the past 3 hours.]"
         )
 

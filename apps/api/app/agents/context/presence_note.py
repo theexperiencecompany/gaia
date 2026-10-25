@@ -96,7 +96,10 @@ def presence_note(
     if others := [entry for entry in ranked if entry[0] not in (surface, previous)]:
         parts.append(f"Also last seen: {_seen(others)}.")
     lands = f"go to {_destination(target)}" if target else f"only show in {_APP_ONLY}"
-    parts.append(f"Messages you send on your own (reminders, workflow results, updates) {lands}.]")
+    parts.append(
+        "Messages you send on your own (reminders, tracked todo updates, workflow results) "
+        f"{lands}.]"
+    )
     return " ".join(parts)
 
 
