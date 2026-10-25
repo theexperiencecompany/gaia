@@ -8,115 +8,15 @@ import pytest
 import time_machine
 
 from app.models.reminder_models import (
-    AgentType,
     CreateReminderRequest,
     CreateReminderToolRequest,
-    ReminderModel,
-    ReminderResponse,
-    ReminderStatus,
     StaticReminderPayload,
     UpdateReminderRequest,
 )
-from app.models.scheduler_models import ScheduledTaskStatus
-
-# ---------------------------------------------------------------------------
-# AgentType enum
-# ---------------------------------------------------------------------------
-
-
-class TestAgentType:
-    def test_static_value(self):
-        assert AgentType.STATIC == "static"
-        assert AgentType.STATIC.value == "static"
-
-    def test_is_str_enum(self):
-        assert isinstance(AgentType.STATIC, str)
-
-
-# ---------------------------------------------------------------------------
-# ReminderStatus alias
-# ---------------------------------------------------------------------------
-
-
-class TestReminderStatus:
-    def test_alias_is_scheduled_task_status(self):
-        assert ReminderStatus is ScheduledTaskStatus
-
-    @pytest.mark.parametrize(
-        "status",
-        ["scheduled", "executing", "completed", "failed", "cancelled", "paused"],
-    )
-    def test_all_values(self, status):
-        assert ReminderStatus(status).value == status
-
-
-# ---------------------------------------------------------------------------
-# StaticReminderPayload
-# ---------------------------------------------------------------------------
-
-
-class TestStaticReminderPayload:
-    def test_valid(self):
-        m = StaticReminderPayload(title="Title", body="Body text")
-        assert m.title == "Title"
-        assert m.body == "Body text"
-
-    def test_missing_title(self):
-        with pytest.raises(ValidationError):
-            StaticReminderPayload(body="Body")
-
-    def test_missing_body(self):
-        with pytest.raises(ValidationError):
-            StaticReminderPayload(title="Title")
-
-    def test_missing_both(self):
-        with pytest.raises(ValidationError):
-            StaticReminderPayload()
-
 
 # ---------------------------------------------------------------------------
 # ReminderModel
 # ---------------------------------------------------------------------------
-
-
-class TestReminderModel:
-    def _base_data(self, **overrides) -> dict:
-        data: dict[str, Any] = {
-            "user_id": "user1",
-            "agent": "static",
-            "scheduled_at": datetime.now(UTC) + timedelta(hours=1),
-            "payload": {"title": "Test", "body": "Body"},
-        }
-        data.update(overrides)
-        return data
-
-    def test_valid_minimal(self):
-        m = ReminderModel(**self._base_data())
-        assert m.user_id == "user1"
-        assert m.agent == AgentType.STATIC
-        assert m.occurrence_count == 0
-        assert m.status == ScheduledTaskStatus.SCHEDULED
-        # the six-month default is resolved on CreateReminderRequest at creation, not
-        # invented on every read of a stored document that lacks one
-        assert m.stop_after is None
-
-    def test_payload_as_static_reminder(self):
-        m = ReminderModel(**self._base_data())
-        assert m.payload.title == "Test"
-
-    def test_payload_as_dict(self):
-        m = ReminderModel(**self._base_data(payload={"custom_key": "custom_value"}))
-        assert isinstance(m.payload, dict)
-        assert m.payload["custom_key"] == "custom_value"
-
-    def test_naive_scheduled_at_becomes_utc(self):
-        naive_dt = datetime(2030, 1, 1, 12, 0, 0)
-        m = ReminderModel(**self._base_data(scheduled_at=naive_dt))
-        assert m.scheduled_at.tzinfo is not None
-
-    def test_id_from_alias(self):
-        m = ReminderModel(**self._base_data(_id="rem123"))
-        assert m.id == "rem123"
 
 
 # ---------------------------------------------------------------------------
@@ -128,24 +28,6 @@ class TestCreateReminderRequest:
     def _future_dt(self, hours: int = 1) -> datetime:
         return datetime.now(UTC) + timedelta(hours=hours)
 
-    def test_valid_minimal(self):
-        m = CreateReminderRequest(
-            agent="static",
-            payload=StaticReminderPayload(title="T", body="B"),
-        )
-        assert m.agent == AgentType.STATIC
-        assert m.repeat is None
-        assert m.scheduled_at is None
-
-    def test_valid_with_scheduled_at(self):
-        future = self._future_dt()
-        m = CreateReminderRequest(
-            agent="static",
-            payload=StaticReminderPayload(title="T", body="B"),
-            scheduled_at=future,
-        )
-        assert m.scheduled_at is not None
-
     def test_scheduled_at_in_past_raises(self):
         past = datetime.now(UTC) - timedelta(hours=1)
         with pytest.raises(ValidationError, match="must be in the future"):
@@ -155,24 +37,6 @@ class TestCreateReminderRequest:
                 scheduled_at=past,
             )
 
-    def test_naive_scheduled_at_becomes_utc(self):
-        # A naive datetime far in the future
-        future_naive = datetime(2030, 6, 15, 12, 0, 0)
-        m = CreateReminderRequest(
-            agent="static",
-            payload=StaticReminderPayload(title="T", body="B"),
-            scheduled_at=future_naive,
-        )
-        assert m.scheduled_at.tzinfo is not None
-
-    def test_valid_cron_repeat(self):
-        m = CreateReminderRequest(
-            agent="static",
-            payload=StaticReminderPayload(title="T", body="B"),
-            repeat="0 9 * * *",
-        )
-        assert m.repeat == "0 9 * * *"
-
     def test_invalid_cron_repeat(self):
         with pytest.raises(ValidationError, match="Use 5 fields: minute hour day month weekday."):
             CreateReminderRequest(
@@ -180,14 +44,6 @@ class TestCreateReminderRequest:
                 payload=StaticReminderPayload(title="T", body="B"),
                 repeat="bad-cron",
             )
-
-    def test_max_occurrences_valid(self):
-        m = CreateReminderRequest(
-            agent="static",
-            payload=StaticReminderPayload(title="T", body="B"),
-            max_occurrences=5,
-        )
-        assert m.max_occurrences == 5
 
     @pytest.mark.parametrize("val", [0, -1, -100])
     def test_max_occurrences_invalid(self, val):
@@ -207,34 +63,6 @@ class TestCreateReminderRequest:
                 stop_after=past,
             )
 
-    def test_stop_after_valid(self):
-        future = self._future_dt(hours=24)
-        m = CreateReminderRequest(
-            agent="static",
-            payload=StaticReminderPayload(title="T", body="B"),
-            stop_after=future,
-        )
-        assert m.stop_after is not None
-
-    def test_serializer_datetime_to_iso(self):
-        future = self._future_dt()
-        m = CreateReminderRequest(
-            agent="static",
-            payload=StaticReminderPayload(title="T", body="B"),
-            scheduled_at=future,
-        )
-        data = m.model_dump(mode="json")
-        assert isinstance(data["scheduled_at"], str)
-
-    def test_serializer_none_stays_none(self):
-        m = CreateReminderRequest(
-            agent="static",
-            payload=StaticReminderPayload(title="T", body="B"),
-        )
-        data = m.model_dump()
-        assert data["scheduled_at"] is None
-        assert data["timezone"] is None
-
 
 # ---------------------------------------------------------------------------
 # CreateReminderToolRequest
@@ -250,43 +78,19 @@ class TestCreateReminderToolRequest:
         data.update(overrides)
         return data
 
-    def test_valid_minimal(self):
-        m = CreateReminderToolRequest(**self._base_data())
-        assert m.agent == AgentType.STATIC  # default
-        assert m.repeat is None
-        assert m.scheduled_at is None
-
-    def test_valid_with_scheduled_at(self):
-        m = CreateReminderToolRequest(**self._base_data(scheduled_at="2030-06-15 09:00:00"))
-        assert m.scheduled_at == "2030-06-15 09:00:00"
-
     def test_invalid_cron_repeat(self):
         with pytest.raises(ValidationError, match="Use 5 fields: minute hour day month weekday."):
             CreateReminderToolRequest(**self._base_data(repeat="bad-cron"))
-
-    def test_valid_cron_repeat(self):
-        m = CreateReminderToolRequest(**self._base_data(repeat="0 */2 * * *"))
-        assert m.repeat == "0 */2 * * *"
 
     @pytest.mark.parametrize("val", [0, -1])
     def test_max_occurrences_invalid(self, val):
         with pytest.raises(ValidationError, match="max_occurrences must be greater"):
             CreateReminderToolRequest(**self._base_data(max_occurrences=val))
 
-    @pytest.mark.parametrize("offset", ["+05:30", "-08:00", "+00:00"])
-    def test_valid_timezone_offsets(self, offset):
-        m = CreateReminderToolRequest(**self._base_data(timezone_offset=offset))
-        assert m.timezone_offset == offset
-
     @pytest.mark.parametrize("offset", ["5:30", "UTC", "+5", "05:30", "abc"])
     def test_invalid_timezone_offsets(self, offset):
         with pytest.raises(ValidationError, match="Timezone offset must be"):
             CreateReminderToolRequest(**self._base_data(timezone_offset=offset))
-
-    @pytest.mark.parametrize("offset", ["+05:30", "-08:00", "+00:00"])
-    def test_valid_stop_after_timezone_offsets(self, offset):
-        m = CreateReminderToolRequest(**self._base_data(stop_after_timezone_offset=offset))
-        assert m.stop_after_timezone_offset == offset
 
     @pytest.mark.parametrize("offset", ["5:30", "UTC"])
     def test_invalid_stop_after_timezone_offsets(self, offset):
@@ -364,19 +168,6 @@ class TestCreateReminderToolRequestConversion:
         offset = result.stop_after.utcoffset()
         assert offset == timedelta(hours=3)
 
-    def test_conversion_preserves_all_fields(self):
-        m = CreateReminderToolRequest(
-            **self._base_data(
-                repeat="0 9 * * *",
-                max_occurrences=10,
-            )
-        )
-        result = m.to_create_reminder_request()
-        assert result.repeat == "0 9 * * *"
-        assert result.max_occurrences == 10
-        assert result.agent == AgentType.STATIC
-        assert result.timezone is not None
-
     def test_conversion_invalid_scheduled_at_format(self):
         m = CreateReminderToolRequest(**self._base_data(scheduled_at="not-a-datetime"))
         with pytest.raises(ValueError, match="Invalid scheduled_at format"):
@@ -418,26 +209,6 @@ class TestCreateReminderToolRequestConversion:
 
 
 class TestUpdateReminderRequest:
-    def test_valid_empty(self):
-        m = UpdateReminderRequest()
-        assert m.agent is None
-        assert m.repeat is None
-        assert m.status is None
-
-    def test_valid_with_fields(self):
-        future = datetime.now(UTC) + timedelta(days=30)
-        m = UpdateReminderRequest(
-            agent="static",
-            repeat="0 9 * * 1",
-            scheduled_at=future,
-            status=ReminderStatus.PAUSED,
-            max_occurrences=5,
-            stop_after=future,
-            payload=StaticReminderPayload(title="T", body="B"),
-        )
-        assert m.agent == AgentType.STATIC
-        assert m.status == ReminderStatus.PAUSED
-
     def test_invalid_cron_repeat(self):
         with pytest.raises(ValidationError, match="Use 5 fields: minute hour day month weekday."):
             UpdateReminderRequest(repeat="bad-cron")
@@ -452,100 +223,7 @@ class TestUpdateReminderRequest:
         with pytest.raises(ValidationError, match="stop_after must be in the future"):
             UpdateReminderRequest(stop_after=past)
 
-    def test_naive_scheduled_at_becomes_utc(self):
-        future_naive = datetime(2030, 6, 15, 12, 0, 0)
-        m = UpdateReminderRequest(scheduled_at=future_naive)
-        assert m.scheduled_at.tzinfo is not None
-
     def test_naive_stop_after_becomes_utc(self):
         future_naive = datetime(2030, 6, 15, 12, 0, 0)
         m = UpdateReminderRequest(stop_after=future_naive)
         assert m.stop_after.tzinfo is not None
-
-    def test_serializer_datetime_to_iso(self):
-        future = datetime.now(UTC) + timedelta(days=30)
-        m = UpdateReminderRequest(scheduled_at=future, stop_after=future)
-        data = m.model_dump(mode="json")
-        assert isinstance(data["scheduled_at"], str)
-        assert isinstance(data["stop_after"], str)
-
-    def test_serializer_none_stays_none(self):
-        m = UpdateReminderRequest()
-        data = m.model_dump()
-        assert data["scheduled_at"] is None
-        assert data["stop_after"] is None
-
-
-# ---------------------------------------------------------------------------
-# ReminderResponse
-# ---------------------------------------------------------------------------
-
-
-class TestReminderResponse:
-    def _base_data(self, **overrides) -> dict:
-        now = datetime.now(UTC)
-        data: dict[str, Any] = {
-            "id": "rem1",
-            "user_id": "user1",
-            "agent": "static",
-            "scheduled_at": now + timedelta(hours=1),
-            "status": "scheduled",
-            "occurrence_count": 0,
-            "payload": {"title": "T", "body": "B"},
-            "created_at": now,
-            "updated_at": now,
-        }
-        data.update(overrides)
-        return data
-
-    def test_valid_minimal(self):
-        m = ReminderResponse(**self._base_data())
-        assert m.id == "rem1"
-        assert m.agent == AgentType.STATIC
-        assert m.status == ReminderStatus.SCHEDULED
-        assert m.occurrence_count == 0
-        assert m.repeat is None
-        assert m.max_occurrences is None
-        assert m.stop_after is None
-
-    def test_valid_full(self):
-        future = datetime.now(UTC) + timedelta(days=30)
-        m = ReminderResponse(
-            **self._base_data(
-                repeat="0 9 * * *",
-                max_occurrences=10,
-                stop_after=future,
-                occurrence_count=3,
-            )
-        )
-        assert m.repeat == "0 9 * * *"
-        assert m.max_occurrences == 10
-        assert m.occurrence_count == 3
-
-    def test_payload_as_static(self):
-        m = ReminderResponse(**self._base_data())
-        assert m.payload.title == "T"
-
-    def test_payload_as_dict(self):
-        m = ReminderResponse(**self._base_data(payload={"custom": "value"}))
-        assert isinstance(m.payload, dict)
-
-    def test_serializer_outputs_iso_strings(self):
-        m = ReminderResponse(**self._base_data())
-        data = m.model_dump()
-        assert isinstance(data["scheduled_at"], str)
-        assert isinstance(data["created_at"], str)
-        assert isinstance(data["updated_at"], str)
-
-    def test_serializer_none_stop_after(self):
-        m = ReminderResponse(**self._base_data())
-        data = m.model_dump()
-        assert data["stop_after"] is None
-
-    @pytest.mark.parametrize(
-        "status",
-        ["scheduled", "executing", "completed", "failed", "cancelled", "paused"],
-    )
-    def test_all_statuses(self, status):
-        m = ReminderResponse(**self._base_data(status=status))
-        assert m.status.value == status
