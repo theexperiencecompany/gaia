@@ -35,18 +35,39 @@ work behind a runner's setup.
   reports under `<job>/<check>`, the job's namespace.
 - **Never add a check twice.** One check, one step, one job.
 
-## Where jobs run: home box first, GitHub-hosted fallback
+## Where jobs run: GitHub-hosted first, the home box as overflow
 
 ci.yml opens with a `select-runner` job (the control-plane runner, no
-Tailscale needed) that probes the Actions runners API via
-`scripts/ci/runner.py select` through the `./.github/actions/select-runner`
+Tailscale needed) that reads GitHub's hosted queue and the Actions runners API
+via `scripts/ci/runner.py select` through the `./.github/actions/select-runner`
 composite, once. It publishes three pools — `light` (detect, the lint jobs,
 the scans), `heavy` (ts-build-test, the unit slices, the image) and `services`
 (the slices and mutation shards that need the test-services namespace) — and
-every compute job takes `runs-on: ${{ fromJSON(needs.select-runner.outputs.<pool>) }}`. The fallback is total — no job ever carries a bare
-`runs-on: [self-hosted]`, so an offline box degrades to slower CI, never to a
-queue that never drains. `build.yml` and the deploy workflows are deliberately
-NOT routed through it: release images and deploys stay GitHub-hosted.
+every compute job takes `runs-on: ${{ fromJSON(needs.select-runner.outputs.<pool>) }}`.
+Every pool is routed the same way:
+
+1. `ubuntu-latest` by default (public repo: 4 vCPU / 16 GB, 20 concurrent
+   jobs on the org's Free plan).
+2. Once GitHub's hosted queue holds `HOSTED_SATURATED_QUEUE_DEPTH` (5) queued
+   jobs or more — the 20-job cap is hit; override with the
+   `CI_HOSTED_QUEUE_THRESHOLD` repo variable — to `gaia-home`, and only when it
+   has an idle listener for every job of the pool (`class_demand` in
+   `runner.py`: light 6, heavy 5, services 7, handed out services first). A
+   busy box is never queued on; a new lane in a pool raises its count.
+3. With both saturated, to `CI_BLACKSMITH_LABEL` (unset: stay queued on GitHub).
+
+Measured: an all-GitHub run (dispatch `force_github`, run 40178782875) went
+green in 10.3 min with every job started within 6 s; the box needs 9.6 min
+idle, but under load its jobs waited up to 48 min and a merge-queue entry was
+ejected for `checks_timed_out`. An unreadable hosted queue keeps GitHub (with
+a warning); an unreadable runners list skips the box (with a warning). The
+`force_home` dispatch input sends every pool to an online box and fails when
+none is; `force_github` skips both probes. No job ever carries a bare
+`runs-on: [self-hosted]`. `build.yml` and the deploy workflows are deliberately
+NOT routed through it: release images and deploys stay GitHub-hosted. Every
+box-only assumption in a lane (the persistent workspace, `RUNNER_LOCAL_CACHE`,
+the cpu-slots governor) stays behind `runner.environment == 'self-hosted'`,
+because any lane can land on either.
 
 Consequences to keep in mind when editing a lane:
 

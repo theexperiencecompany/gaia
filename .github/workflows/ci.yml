@@ -122,7 +122,7 @@ jobs:
         uses: ./.github/actions/select-runner
         with:
           blacksmith-label: ${{ vars.CI_BLACKSMITH_LABEL }}
-          blacksmith-queue-threshold: ${{ vars.CI_BLACKSMITH_QUEUE_THRESHOLD }}
+          hosted-queue-threshold: ${{ vars.CI_HOSTED_QUEUE_THRESHOLD }}
           runner-label: ${{ inputs.runner_label || 'gaia-home' }}
           force-home: ${{ inputs.force_home && 'true' || 'false' }}
           force-github: ${{ inputs.force_github && 'true' || 'false' }}

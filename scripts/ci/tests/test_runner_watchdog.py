@@ -148,7 +148,7 @@ def test_dispatch_failure_falls_back_to_cancel(github: FakeGitHub) -> None:
 
 
 def test_busy_box_is_not_cancelled(github: FakeGitHub) -> None:
-    # select's online-busy-queued branch parks lanes on a busy box on purpose.
+    # select overflows only to an idle box, but other runs can fill it before pickup.
     proc = run_watchdog(
         github,
         Scenario(
