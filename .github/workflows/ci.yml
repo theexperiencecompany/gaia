@@ -110,9 +110,11 @@ jobs:
         with:
           fetch-depth: 1
           persist-credentials: false
-      - name: Cancel superseded runs of this branch
+      # merge_group: every merge-group run (any workflow) whose group left the queue.
+      - name: Cancel superseded runs
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          MERGE_GROUP_BASE_REF: ${{ github.event.merge_group.base_ref }}
         run: python3 scripts/ci/runner.py cancel-superseded
 
       - name: Select runner
