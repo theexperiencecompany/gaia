@@ -239,8 +239,9 @@ class TestGeneratedLines:
     def test_the_channels_line_names_every_bot_platform_in_display_order(self) -> None:
         assert _channels_line() == (
             "CHANNELS: the user can text GAIA on Discord, Slack, Telegram, WhatsApp, iMessage as "
-            "well as the web app. A linked platform receives workflow results, reminders and briefs "
-            "there, so nothing waits for them to open a tab."
+            "well as the web app. Workflow results, reminders and briefs go to the one place the "
+            "user is active (a linked chat app or the GAIA app), so nothing waits for them to open "
+            "a tab."
         )
 
     def test_sections_are_separated_by_one_blank_line_under_the_header(self) -> None:

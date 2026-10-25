@@ -111,6 +111,7 @@ When you cannot decide between durable and state, choose **state**.
 10. Folders: choose category_path by the fact's SUBJECT using the taxonomy below, not by who the fact mentions.
 11. Importance: 0.9+ life-defining, 0.6-0.8 stable preferences and recurring context, 0.3-0.5 incidental.
 12. Never store the state of the user's GAIA integrations or connected accounts: connected, disconnected, expired, lost, needing reconnection, or a connect, add-account or sign-in flow still in progress. GAIA reads that live every turn, and a remembered copy outlives it and contradicts it. Keep only the durable thing the conversation reveals (which account is for work, where a client's mail arrives), and at most a journal line for what happened.
+13. Never store where GAIA delivers its messages as a preference. GAIA routes reminders, updates and results to wherever the user is active right now, and GAIA saying "I'll ping you here" or "in the app" is that live routing, not something the user wants. Only a standing instruction the user states themselves ("always text me on WhatsApp") is a preference.
 
 ## Entities and edges
 

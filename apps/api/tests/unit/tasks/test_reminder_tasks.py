@@ -547,6 +547,28 @@ class TestAReminderGoesToTheOnePlaceTheUserIsActive:
         into_chat.assert_awaited_once()
         dm.assert_not_awaited()
 
+    async def test_active_in_the_app_lands_in_a_web_chat_stored_without_a_source(
+        self, target: AsyncMock
+    ) -> None:
+        """Web chats are created with no source field; found live, the reminder skipped the chat."""
+        target.return_value = InApp(reason="active_in_app")
+        with (
+            patch(
+                f"{MODULE}.load_user_context",
+                new_callable=AsyncMock,
+                side_effect=_user_context(),
+            ),
+            patch(f"{MODULE}.conversation_repository.get_source", AsyncMock(return_value=None)),
+            patch(
+                f"{MODULE}.deliver_message_to_conversation", AsyncMock(return_value=None)
+            ) as into_chat,
+            patch(f"{PLATFORM_MODULE}._post_workflow_message", AsyncMock()) as dm,
+        ):
+            await _deliver_reminder_to_platforms(_reminder(source_conversation_id="conv-42"))
+
+        into_chat.assert_awaited_once()
+        dm.assert_not_awaited()
+
     async def test_active_in_the_app_after_setting_it_on_a_chat_app_sends_no_chat_message(
         self, target: AsyncMock
     ) -> None:

@@ -4,7 +4,7 @@ from app.agents.core.background.result_delivery import deliver_message_to_conver
 from app.agents.core.background.workflow_platform_delivery import deliver_result_to_platforms
 from app.db.repositories.conversations import conversation_repository
 from app.decorators.entitlements import capture_paywall_block, is_paid
-from app.models.chat_models import ConversationSource, SourceCategory
+from app.models.chat_models import ConversationSource
 from app.models.reminder_models import (
     AgentType,
     ReminderModel,
@@ -19,6 +19,7 @@ from app.services.delivery.chat_channel import (
     resolve_proactive_target,
 )
 from app.services.notification_service import notification_service
+from app.services.platform_message_service import is_bot_platform
 from app.utils.auth_utils import load_user_context
 from app.utils.notification.sources import AIProactiveNotificationSource
 from shared.py.analytics import UserId
@@ -78,7 +79,8 @@ async def _lands_in_source_chat(
     source = await conversation_repository.get_source(conversation_id, user_id=user_id)
     if isinstance(target, ChatChannel):
         return source is target.source
-    return SourceCategory.from_source(source) is SourceCategory.UI
+    # Web chats are stored without a source; anything not a chat app's conversation is an app chat.
+    return not is_bot_platform(source)
 
 
 async def _deliver_reminder_to_platforms(reminder: ReminderModel) -> None:
