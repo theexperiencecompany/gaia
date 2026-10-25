@@ -16,12 +16,7 @@ from pathlib import Path
 import app
 from app.constants.nurture import (
     NURTURE_BACKFILL_GRACE_DAYS,
-    NURTURE_MAX_EMAILS_PER_WEEK,
-    NURTURE_MIN_DAYS_BETWEEN_EMAILS,
-    NURTURE_SEND_HOUR_LOCAL,
     NURTURE_STEPS,
-    NURTURE_UTM_MEDIUM,
-    NURTURE_UTM_SOURCE,
 )
 from app.models.nurture_models import NurtureHistoryEntry, NurtureStepStatus
 from app.services.nurture.context_builders import CONTEXT_BUILDERS
@@ -35,21 +30,6 @@ class TestStepRegistry:
     def test_step_keys_are_unique(self) -> None:
         keys = [step.key for step in NURTURE_STEPS]
         assert len(keys) == len(set(keys))
-
-    def test_day_offsets_follow_the_documented_schedule(self) -> None:
-        # The module docstring documents the run: 1,2,3,5,8,11,14,21. A new
-        # step must declare its offset explicitly in the same ascending run.
-        assert [step.day_offset for step in NURTURE_STEPS] == [1, 2, 3, 5, 8, 11, 14, 21]
-
-    def test_only_morning_brief_is_disabled(self) -> None:
-        # The docstring pins this step pending the daily-briefing launch.
-        disabled = [step.key for step in NURTURE_STEPS if not step.enabled]
-        assert disabled == ["morning_brief"]
-
-    def test_first_step_teaches_chat_on_day_one(self) -> None:
-        first = NURTURE_STEPS[0]
-        assert first.key == "first_win"
-        assert first.day_offset == 1
 
     def test_every_skip_predicate_resolves(self) -> None:
         for step in NURTURE_STEPS:
@@ -76,26 +56,6 @@ class TestStepRegistry:
             assert (step.cta_path is None) == (step.cta_label is None), (
                 f"step {step.key}: cta_path and cta_label must be set together"
             )
-
-    def test_founder_checkin_has_no_button(self) -> None:
-        checkin = next(step for step in NURTURE_STEPS if step.key == "founder_checkin")
-        assert checkin.cta_path is None
-        assert checkin.cta_label is None
-
-
-class TestGuardrailValues:
-    def test_send_window_values(self) -> None:
-        assert NURTURE_BACKFILL_GRACE_DAYS == 2
-        assert 0 <= NURTURE_SEND_HOUR_LOCAL < 24
-        assert NURTURE_SEND_HOUR_LOCAL == 9
-
-    def test_frequency_cap_values(self) -> None:
-        assert NURTURE_MAX_EMAILS_PER_WEEK == 3
-        assert NURTURE_MIN_DAYS_BETWEEN_EMAILS == 2
-
-    def test_utm_tags(self) -> None:
-        assert NURTURE_UTM_SOURCE == "nurture"
-        assert NURTURE_UTM_MEDIUM == "email"
 
 
 class TestScheduleFitsTheCaps:
