@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 import uuid
 
+from motor.motor_asyncio import AsyncIOMotorCollection
 import pytest
 
 from app.db.repositories.files import FilesRepository
@@ -88,7 +89,9 @@ class TestFilesRepository:
             is None
         )
 
-    async def test_find_mimetype_rows_reads_both_shapes(self, repo, raw_collection):
+    async def test_find_mimetype_rows_reads_both_shapes(
+        self, repo: FilesRepository, raw_collection: AsyncIOMotorCollection
+    ) -> None:
         await raw_collection.insert_many(
             [
                 {"file_id": "legacy", "filename": "old.png", "content_type": "image/png"},
@@ -111,7 +114,9 @@ class TestFilesRepository:
         assert rows["both"].type == "image/png"
         assert rows["both"].content_type == "image/webp"
 
-    async def test_rename_legacy_mimetype_moves_the_field_once(self, repo, raw_collection):
+    async def test_rename_legacy_mimetype_moves_the_field_once(
+        self, repo: FilesRepository, raw_collection: AsyncIOMotorCollection
+    ) -> None:
         await raw_collection.insert_one(
             {"file_id": "legacy", "filename": "old.png", "content_type": "image/png"}
         )
@@ -124,7 +129,9 @@ class TestFilesRepository:
         # The same command again must not count as a second migration.
         assert await repo.rename_legacy_mimetype("legacy", "image/png") is False
 
-    async def test_rename_legacy_mimetype_refuses_a_changed_row(self, repo, raw_collection):
+    async def test_rename_legacy_mimetype_refuses_a_changed_row(
+        self, repo: FilesRepository, raw_collection: AsyncIOMotorCollection
+    ) -> None:
         await raw_collection.insert_one(
             {"file_id": "legacy", "filename": "old.png", "content_type": "image/jpeg"}
         )
@@ -135,8 +142,8 @@ class TestFilesRepository:
         assert "type" not in row
 
     async def test_rename_legacy_mimetype_leaves_a_row_that_already_has_type(
-        self, repo, raw_collection
-    ):
+        self, repo: FilesRepository, raw_collection: AsyncIOMotorCollection
+    ) -> None:
         await raw_collection.insert_one(
             {
                 "file_id": "modern",
@@ -152,8 +159,8 @@ class TestFilesRepository:
         assert row["content_type"] == "image/png"
 
     async def test_restore_legacy_mimetype_leaves_a_row_that_still_has_content_type(
-        self, repo, raw_collection
-    ):
+        self, repo: FilesRepository, raw_collection: AsyncIOMotorCollection
+    ) -> None:
         await raw_collection.insert_one(
             {
                 "file_id": "mixed",
@@ -168,7 +175,9 @@ class TestFilesRepository:
         assert row["type"] == "image/png"
         assert row["content_type"] == "image/jpeg"
 
-    async def test_restore_legacy_mimetype_reverses_the_rename(self, repo, raw_collection):
+    async def test_restore_legacy_mimetype_reverses_the_rename(
+        self, repo: FilesRepository, raw_collection: AsyncIOMotorCollection
+    ) -> None:
         await raw_collection.insert_one(
             {"file_id": "legacy", "filename": "old.png", "content_type": "image/png"}
         )
