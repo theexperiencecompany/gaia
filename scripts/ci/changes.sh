@@ -19,6 +19,9 @@
 #                            $GITHUB_OUTPUT.
 #   web-inputs               Does this change touch anything the web Worker
 #                            bundle depends on? Same output, for deploy-web.
+#   desktop-inputs           Does this change touch anything the packaged
+#                            desktop app depends on? Same output, for
+#                            desktop-pr-build.
 #
 # `base` — WHY THIS EXISTS. For a PR in a native GitHub stack, the
 # `pull_request` event payload carries the STACK'S TRUNK as base.ref, not the
@@ -75,6 +78,7 @@
 #   py-source      as `files`; also reads pyproject.toml from the repo root.
 #   docker-inputs  BASE_BRANCH (the RESOLVED base, not github.base_ref), GITHUB_OUTPUT.
 #   web-inputs     BASE_BRANCH (a branch or a merge_group base sha), GITHUB_OUTPUT.
+#   desktop-inputs BASE_BRANCH (a branch or a merge_group base sha), GITHUB_OUTPUT.
 set -euo pipefail
 
 # shellcheck source=scripts/ci/lib/log.sh
@@ -319,6 +323,21 @@ cmd_web_inputs() {
   _inputs_changed "web bundle" "$BASE_BRANCH" "${WEB_INPUTS[@]}"
 }
 
+# The paths the packaged desktop app is built from. Web is left out on purpose
+# (high churn, its own gates), and so are the generated API types: `export type`
+# only, erased at compile time, so they cannot change a packaged binary.
+DESKTOP_INPUTS=(
+  apps/desktop
+  libs/shared/ts
+  ':!libs/shared/ts/src/api/generated'
+  .github/workflows/desktop-pr-build.yml
+)
+
+cmd_desktop_inputs() {
+  BASE_BRANCH="${BASE_BRANCH:?BASE_BRANCH is required (the base branch or merge_group base sha)}"
+  _inputs_changed "desktop app" "$BASE_BRANCH" "${DESKTOP_INPUTS[@]}"
+}
+
 # Write build=true|false: did anything under <paths> change against <base>?
 _inputs_changed() {
   local what="$1" base="$2" rev changed
@@ -340,7 +359,7 @@ _inputs_changed() {
 }
 
 usage() {
-  sed -n '2,21p' "$0" >&2
+  sed -n '2,24p' "$0" >&2
 }
 
 main() {
@@ -353,6 +372,7 @@ main() {
     py-source)     cmd_py_source "$@" ;;
     docker-inputs) cmd_docker_inputs "$@" ;;
     web-inputs)    cmd_web_inputs "$@" ;;
+    desktop-inputs) cmd_desktop_inputs "$@" ;;
     *)
       echo "changes.sh: unknown subcommand '${sub}'" >&2
       usage

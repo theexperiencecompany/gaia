@@ -42,9 +42,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # ── slices ────────────────────────────────────────────────────────────────
 # lib/test-slices.json is the ONE definition of the slices: ci.yml's
-# test-python matrices read it through this subcommand and the Dagger module
-# (.dagger, `test-python --slice`) reads the file directly, so a local run
-# cannot drift from CI. Why the shares look the way they do:
+# test-python matrices read it through this subcommand. Why the shares look the way they do:
 #   * workers sum to the box (16 threads): the lanes start together, so a
 #     runtime probe sees zero neighbours and each took 16 (measured 2026-08-28).
 #   * integration's wall is flat from 6 to 16 workers (it waits on services);

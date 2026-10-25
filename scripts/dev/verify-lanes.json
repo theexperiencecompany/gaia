@@ -1,5 +1,5 @@
 {
-  "$comment": "GAIA verify lanes — local mirror of CI quality gates (.github/workflows/ci.yml). name matches the CI job/step (rows may be step-granular). ci_check = the ci.yml check (one step of a grouped job, posted as the `ci / <area> / <check>` commit status) that runs this lane on a PR push; `verdict.py reuse-plan` unions a check's scopes to decide whether its last pass on the PR still holds, so a lane without ci_check always runs, and a check whose real inputs a scope misses could be wrongly reused. Only fast-tier checks carry one: reuse applies to pull_request runs only, and the audits and the live PostHog check are never reused. scope = extended regex over changed paths; lane runs if ANY file matches (--all overrides). heavy=true needs --with-heavy. timeout_s hard cap; expiry -> status=timeout (exit 2). require_cmd: any missing -> skipped(missing-tool). require_env: an unset credential skips the lane in automatic selection (reason printed), while --only <lane> still runs it so it fails loud. command runs at repo root — keep byte-parity with the CI job's own repro line. Edit a workflow lane and this file in the SAME commit. INTENTIONALLY NOT MIRRORED (CI-only): build, build-images, coverage (combines the unit/integration/bridge slices; fail-under 80 on master, report-only on PRs), docker-image, regression-proof, validate-release-manifest, test-harness-tools, trivy-scan (advisory), changelog-sync (auto-fix PR job). Known deltas: py-tests mirrors via Dagger not byte-parity flake-gate slices; alert-rules needs locally installed pint/promtool (CI pins v0.87.0/v3.1.0 from release tarballs); whole-repo scopes are stricter than CI's changed-file scoping (safe direction). Post-merge note: master pinned bandit/xenon/interrogate and split ignore-ratchet into ignore-whys + ignore-staleness + tool-pins (2026-08 merge of origin/master).",
+  "$comment": "GAIA verify lanes — local mirror of CI quality gates (.github/workflows/ci.yml). name matches the CI job/step (rows may be step-granular). ci_check = the ci.yml check (one step of a grouped job, posted as the `ci / <area> / <check>` commit status) that runs this lane on a PR push; `verdict.py reuse-plan` unions a check's scopes to decide whether its last pass on the PR still holds, so a lane without ci_check always runs, and a check whose real inputs a scope misses could be wrongly reused. Only fast-tier checks carry one: reuse applies to pull_request runs only, and the audits and the live PostHog check are never reused. scope = extended regex over changed paths; lane runs if ANY file matches (--all overrides). heavy=true needs --with-heavy. timeout_s hard cap; expiry -> status=timeout (exit 2). require_cmd: any missing -> skipped(missing-tool). require_env: an unset credential skips the lane in automatic selection (reason printed), while --only <lane> still runs it so it fails loud. command runs at repo root — keep byte-parity with the CI job's own repro line. Edit a workflow lane and this file in the SAME commit. INTENTIONALLY NOT MIRRORED (CI-only): build, build-images, coverage (combines the unit/integration/bridge slices; fail-under 80 on master, report-only on PRs), docker-image, regression-proof, validate-release-manifest, test-harness-tools, test-python (the full pytest suite is CI's job; locally run files with `mise test:one`), trivy-scan (advisory), changelog-sync (auto-fix PR job). Known deltas: alert-rules needs locally installed pint/promtool (CI pins v0.87.0/v3.1.0 from release tarballs); whole-repo scopes are stricter than CI's changed-file scoping (safe direction). Post-merge note: master pinned bandit/xenon/interrogate and split ignore-ratchet into ignore-whys + ignore-staleness + tool-pins (2026-08 merge of origin/master).",
   "schema_version": 1,
   "lanes": [
     {
@@ -365,14 +365,6 @@
       "timeout_s": 1800,
       "require_cmd": [],
       "command": "pnpm exec nx run-many -t test --projects=web,desktop,mobile,cli,bot-discord,bot-slack,bot-telegram,bot-whatsapp,bot-imessage --output-style=stream"
-    },
-    {
-      "name": "py-tests",
-      "scope": "\\.py$",
-      "heavy": true,
-      "timeout_s": 3600,
-      "require_cmd": ["dagger"],
-      "command": "mise run test:python"
     }
   ]
 }

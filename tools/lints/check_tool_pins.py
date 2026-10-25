@@ -12,7 +12,7 @@ for uv itself mise.toml, the setup-uv action and the app Dockerfiles.
 Node is the exception to the EXPECTED table, because it is derived rather than
 repeated: ``.node-version`` is the single declaration, mise reads it (via
 ``idiomatic_version_file_enable_tools``), actions/setup-node reads it (via
-``node-version-file``) and the Dagger image reads it at run time. The only
+``node-version-file``). The only
 permitted mirror is one ``ARG NODE_VERSION`` default per Dockerfile, since
 Docker cannot read a file in a FROM line. Any other hardcoded node version in
 the scanned surfaces is a failure.
@@ -70,15 +70,13 @@ NODE_FILE_REFERENCE_SURFACES = (
     REPO_ROOT / ".github/workflows/publish-cli.yml",
     REPO_ROOT / ".github/workflows/desktop-release.yml",
 )
-# Docker cannot read a file in a FROM line, and the Dagger module would need its
-# sync container builders turned async to read one. Both therefore carry a
-# single mirrored literal, and the guard ties each one back to .node-version so
-# a stale mirror fails CI instead of shipping.
+# Docker cannot read a file in a FROM line, so each Dockerfile carries a single
+# mirrored literal, and the guard ties each one back to .node-version so a stale
+# mirror fails CI instead of shipping.
 NODE_MIRRORS = (
     (REPO_ROOT / "infra/docker/ci-base.Dockerfile", r"^ARG\s+NODE_VERSION=(\d+\.\d+\.\d+)\s*$"),
     (REPO_ROOT / "apps/web/Dockerfile", r"^ARG\s+NODE_VERSION=(\d+\.\d+\.\d+)\s*$"),
     (REPO_ROOT / "apps/bots/Dockerfile", r"^ARG\s+NODE_VERSION=(\d+\.\d+\.\d+)\s*$"),
-    (REPO_ROOT / ".dagger/src/gaia_ci/main.py", r'\.from_\("node:(\d+\.\d+\.\d+)-'),
 )
 # Every Dockerfile that must take its tag from the ARG rather than restating it.
 NODE_DOCKERFILES = (
@@ -95,7 +93,6 @@ NODE_LITERAL_SCAN = (
     ".github/actions/*/action.yml",
     "**/Dockerfile",
     "**/*.Dockerfile",
-    ".dagger/src/**/*.py",
 )
 _NODE_SKIP = ("node_modules", ".venv", ".git", ".nx", ".next", "dist")
 UV_DOCKERFILES = (
@@ -212,7 +209,7 @@ def _missing(tool: str, version: str) -> list[Path]:
 # The node version used to be restated on nine surfaces across four commits and
 # they drifted. It is now declared once in .node-version, which mise reads
 # (via idiomatic_version_file_enable_tools), actions/setup-node reads (via
-# node-version-file) and the Dagger image reads at run time. These checks turn a
+# node-version-file). These checks turn a
 # second declaration into a build failure instead of a bad afternoon later.
 _NODE_FILE_FORM = re.compile(r"^\d+\.\d+\.\d+$")
 _NODE_FILE_REF = re.compile(r"""node-version-file:\s*['"]?\.node-version""")
@@ -248,7 +245,6 @@ _PNPM_MIRRORS = (
     ),
     (REPO_ROOT / "apps/web/Dockerfile", r"corepack prepare pnpm@(\d+\.\d+\.\d+)"),
     (REPO_ROOT / "apps/bots/Dockerfile", r"corepack prepare pnpm@(\d+\.\d+\.\d+)"),
-    (REPO_ROOT / ".dagger/src/gaia_ci/main.py", r"corepack prepare pnpm@(\d+\.\d+\.\d+)"),
     (
         REPO_ROOT / ".github/actions/setup-node-pnpm/action.yml",
         r'PNPM_VERSION:\s*"(\d+\.\d+\.\d+)"',
