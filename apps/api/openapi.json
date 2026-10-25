@@ -5084,6 +5084,147 @@
         "title": "DeleteMemoryResponse",
         "type": "object"
       },
+      "DeliveryFailureAccepted": {
+        "description": "The report was queued for alerting.",
+        "properties": {
+          "status": {
+            "const": "queued",
+            "default": "queued",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "DeliveryFailureAccepted",
+        "type": "object"
+      },
+      "DeliveryFailureKind": {
+        "description": "Where in the pipeline a message was lost.",
+        "enum": [
+          "platform_rejected",
+          "send_failed",
+          "envelope_rejected",
+          "reply_failed",
+          "enqueue_failed",
+          "expired"
+        ],
+        "title": "DeliveryFailureKind",
+        "type": "string"
+      },
+      "DeliveryFailureReport": {
+        "description": "A bot's report of a message it could not deliver.",
+        "properties": {
+          "country": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z]{2}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Recipient country, ISO 3166-1 alpha-2.",
+            "title": "Country"
+          },
+          "destination_id": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Platform-native recipient (a user id, or a channel id when is_channel); absent when the lost message could not be read.",
+            "title": "Destination Id"
+          },
+          "envelope_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Envelope Id"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The platform's own error code, e.g. 130497.",
+            "title": "Error Code"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The platform's description of the error.",
+            "title": "Error Message"
+          },
+          "is_channel": {
+            "default": false,
+            "title": "Is Channel",
+            "type": "boolean"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/DeliveryFailureKind"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "platform": {
+            "$ref": "#/components/schemas/ConversationSource"
+          },
+          "platform_message_id": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Platform Message Id"
+          },
+          "reason": {
+            "description": "Closed snake_case failure code, e.g. destination_blocked or platform_error.",
+            "maxLength": 64,
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "platform",
+          "kind",
+          "reason"
+        ],
+        "title": "DeliveryFailureReport",
+        "type": "object"
+      },
       "DependencyStatus": {
         "description": "One backing service's answer to a real round-trip, as /health/ready reports it.",
         "properties": {
@@ -23280,6 +23421,68 @@
           }
         },
         "summary": "Create Platform Link Token",
+        "tags": [
+          "Bot"
+        ]
+      }
+    },
+    "/api/v1/bot/delivery-failures": {
+      "post": {
+        "description": "Queue a message a bot could not deliver for the delivery-alerts channel.",
+        "operationId": "bot_report_bot_delivery_failure",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeliveryFailureReport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryFailureAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Report Delivery Failure",
         "tags": [
           "Bot"
         ]

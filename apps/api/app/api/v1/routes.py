@@ -12,6 +12,7 @@ from app.api.v1.endpoints import (
     blob,
     blog,
     bot,
+    bot_delivery_failures,
     bot_links,
     browser,
     calendar,
@@ -123,5 +124,6 @@ router.include_router(bot.router, prefix="/bot", tags=["Bot"])
 # Same prefix as bot.router above: the platform-linking routes live in their
 # own module but are part of the same public /api/v1/bot surface.
 router.include_router(bot_links.router, prefix="/bot", tags=["Bot"])
+router.include_router(bot_delivery_failures.router, prefix="/bot", tags=["Bot"])
 router.include_router(platform_auth.router, prefix="/platform-auth", tags=["Platform Auth"])
 router.include_router(platform_links.router, prefix="/platform-links", tags=["Platform Links"])

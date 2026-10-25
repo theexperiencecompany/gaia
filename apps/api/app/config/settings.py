@@ -616,6 +616,12 @@ class Settings(BrowserHostSettings):
     SPECTRUM_PROJECT_SECRET: str | None = None
 
     # ----------------------------------------------
+    # Delivery Failure Alerts (internal Slack app, optional)
+    # ----------------------------------------------
+    SLACK_DELIVERY_ALERTS_BOT_TOKEN: str | None = None
+    SLACK_DELIVERY_ALERTS_CHANNEL_ID: str | None = None
+
+    # ----------------------------------------------
     # Bot OAuth Configuration (Optional)
     # ----------------------------------------------
     DISCORD_OAUTH_CLIENT_ID: str | None = None

@@ -57,6 +57,7 @@ from app.helpers.lifespan_helpers import (
 from app.services.blob_store import ensure_blob_store_ready
 from app.services.composio.composio_service import init_composio_service
 from app.services.composio.instance_toolkits import load_instance_toolkits
+from app.services.delivery_alerts.slack import init_delivery_alerts_slack
 from app.services.mcp.mcp_client_pool import init_mcp_client_pool
 from app.services.sandbox.pool import init_sandbox_pool
 from app.services.startup_validation import validate_startup_requirements
@@ -176,6 +177,7 @@ def register_lazy_providers(context: Literal["main_app", "arq_worker"]) -> None:
         init_sandbox_pool,
         init_posthog,
         init_langfuse,
+        init_delivery_alerts_slack,
     )
 
     for register in registrations:

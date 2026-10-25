@@ -360,6 +360,19 @@ async def fake_redis(
 
 
 @pytest.fixture(scope="session", autouse=True)
+def _delivery_alert_fence() -> Iterator[None]:
+    """Keep every failed publish's alert off the real ARQ queue.
+
+    offline_env points REDIS_URL at localhost, so without this a test that hits
+    a failed outbound publish enqueued a real job into a developer's Redis (and
+    sat through connection retries in CI). Tests of the reporting path itself
+    call queue_delivery_failure directly or patch this seam.
+    """
+    with patch("app.services.delivery_alerts.reporting.queue_delivery_failure", AsyncMock()):
+        yield
+
+
+@pytest.fixture(scope="session", autouse=True)
 def _rate_limiting_fence() -> Iterator[None]:
     """Mock the tiered limiter and the subscription lookup for the whole session."""
     for p in _rate_limiting_patches:

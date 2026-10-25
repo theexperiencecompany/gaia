@@ -209,6 +209,7 @@ backend = [
   # bubus's event-bus lock, and the stalled-load watcher registers cdp-use events.
   "bubus==1.5.6",
   "cdp-use==1.4.5",
+  "slack-sdk>=3.36.0",
 ]
 
 [tool.uv.sources]

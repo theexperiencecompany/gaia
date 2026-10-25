@@ -158,6 +158,7 @@ def test_allowlist_snapshot(gated_app: FastAPI) -> None:
         "/api/v1/bot/auth-status/platform/platform_user_id",
         "/api/v1/bot/chat-stream",
         "/api/v1/bot/create-link-token",
+        "/api/v1/bot/delivery-failures",
         "/api/v1/bot/link-token-info/token",
         "/api/v1/bot/linked-users/platform",
         "/api/v1/bot/redeem-link-code",
