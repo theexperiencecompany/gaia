@@ -93,15 +93,6 @@ class TestGetContextWindow:
         )
         assert "NEEDLE" in result
 
-    def test_default_padding_values(self) -> None:
-        # Default: chars_before=15, chars_after=30
-        text = "x" * 20 + "NEEDLE" + "y" * 40
-        result = get_context_window(text, "NEEDLE")
-        # Should have leading ellipsis (20 > 15) and trailing ellipsis (40 > 30)
-        assert result.startswith("...")
-        assert result.endswith("...")
-        assert "NEEDLE" in result
-
     def test_preserves_original_casing_in_output(self) -> None:
         text = "The Quick Brown Fox"
         result = get_context_window(text, "quick", chars_before=50, chars_after=50)

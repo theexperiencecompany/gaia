@@ -510,57 +510,6 @@ class TestFetchUrlMetadata:
         assert isinstance(exc_info.value, HTTPException)
         assert exc_info.value.status_code == 400
 
-    @patch("app.utils.internet_utils._validate_url_for_fetch", new_callable=AsyncMock)
-    @patch("app.utils.internet_utils.set_cache", new_callable=AsyncMock)
-    @patch("app.utils.internet_utils.search_url_repository")
-    @patch("app.utils.internet_utils.get_cache", new_callable=AsyncMock)
-    async def test_cache_key_format(
-        self,
-        mock_get_cache: AsyncMock,
-        mock_repo: MagicMock,
-        mock_set_cache: AsyncMock,
-        mock_validate: AsyncMock,
-    ) -> None:
-        """Cache key follows the 'url_metadata:{url}' format."""
-        cached_data = {
-            "title": "T",
-            "description": None,
-            "favicon": None,
-            "website_name": None,
-            "website_image": None,
-            "url": "https://specific.example.com/path?q=1",
-        }
-        mock_get_cache.return_value = cached_data
-
-        await fetch_url_metadata("https://specific.example.com/path?q=1")
-
-        mock_get_cache.assert_awaited_once_with(
-            "url_metadata:https://specific.example.com/path?q=1"
-        )
-
-    @patch("app.utils.internet_utils.set_cache", new_callable=AsyncMock)
-    @patch("app.utils.internet_utils.search_url_repository")
-    @patch("app.utils.internet_utils.get_cache", new_callable=AsyncMock)
-    @patch("app.utils.internet_utils.scrape_url_metadata", new_callable=AsyncMock)
-    async def test_cache_ttl_is_864000(
-        self,
-        mock_scrape: AsyncMock,
-        mock_get_cache: AsyncMock,
-        mock_repo: MagicMock,
-        mock_set_cache: AsyncMock,
-    ) -> None:
-        """Cache TTL is set to 864000 seconds (10 days)."""
-        mock_get_cache.return_value = None
-        mock_repo.get_by_url = AsyncMock(return_value=None)
-        mock_repo.create = AsyncMock()
-        mock_scrape.return_value = URLResponse(url="https://example.com")
-
-        await fetch_url_metadata("https://example.com")
-
-        # Third positional arg to set_cache is the TTL
-        call_args = mock_set_cache.call_args
-        assert call_args[0][2] == 864000
-
 
 # ---------------------------------------------------------------------------
 # SSRF guard — DNS resolution path

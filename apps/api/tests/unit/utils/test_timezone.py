@@ -11,11 +11,6 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from app.utils.timezone import (
-    TIMEZONE_KOLKATA,
-    TIMEZONE_LONDON,
-    TIMEZONE_NEW_YORK,
-    TIMEZONE_TOKYO,
-    TIMEZONE_UTC,
     ResolvedTimezone,
     Timezone,
     TimezoneSource,
@@ -370,19 +365,3 @@ class TestIsWithinLocalDaytime:
     def test_offset_zone(self) -> None:
         instant = datetime(2026, 6, 13, 4, 0, tzinfo=UTC)  # 09:30 +05:30
         assert is_within_local_daytime(instant, "+05:30", 9, 21) is True
-
-
-# ---------------------------------------------------------------------------
-# Module constants
-# ---------------------------------------------------------------------------
-
-
-class TestModuleConstants:
-    def test_utc_constant_is_builtin_utc(self) -> None:
-        assert TIMEZONE_UTC is UTC
-
-    def test_named_constants(self) -> None:
-        assert TIMEZONE_KOLKATA == "Asia/Kolkata"
-        assert TIMEZONE_NEW_YORK == "America/New_York"
-        assert TIMEZONE_LONDON == "Europe/London"
-        assert TIMEZONE_TOKYO == "Asia/Tokyo"

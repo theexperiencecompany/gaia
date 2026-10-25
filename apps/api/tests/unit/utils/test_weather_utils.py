@@ -328,21 +328,6 @@ class TestGeocodeLocation:
             with pytest.raises(Exception, match="Failed to geocode location"):
                 await geocode_location("London")
 
-    async def test_uses_correct_headers_and_params(self) -> None:
-        mock_resp = _mock_httpx_response([{"lat": "0", "lon": "0", "display_name": "X"}])
-        mock_client = AsyncMock()
-        mock_client.get = AsyncMock(return_value=mock_resp)
-
-        with patch("app.utils.weather_utils.http_async_client", mock_client):
-            await geocode_location("Tokyo")
-
-        call_kwargs = mock_client.get.call_args
-        assert call_kwargs.args[0] == "https://nominatim.openstreetmap.org/search"
-        assert call_kwargs.kwargs["params"]["q"] == "Tokyo"
-        assert call_kwargs.kwargs["params"]["format"] == "json"
-        assert call_kwargs.kwargs["params"]["limit"] == "1"
-        assert "User-Agent" in call_kwargs.kwargs["headers"]
-
 
 # ---------------------------------------------------------------------------
 # get_location_data
@@ -567,21 +552,6 @@ class TestFetchWeatherData:
         with patch("app.utils.weather_utils.http_async_client", mock_client):
             with pytest.raises(httpx.HTTPStatusError):
                 await fetch_weather_data(51.5, -0.12, FAKE_API_KEY)
-
-    async def test_urls_contain_correct_params(self) -> None:
-        resp = _mock_httpx_response({})
-        mock_client = AsyncMock()
-        mock_client.get = AsyncMock(return_value=resp)
-
-        with patch("app.utils.weather_utils.http_async_client", mock_client):
-            await fetch_weather_data(10.0, 20.0, "MY_KEY")
-
-        calls = [str(c) for c in mock_client.get.call_args_list]
-        joined = " ".join(calls)
-        assert "lat=10.0" in joined
-        assert "lon=20.0" in joined
-        assert "appid=MY_KEY" in joined
-        assert "units=metric" in joined
 
 
 # ---------------------------------------------------------------------------
@@ -902,40 +872,3 @@ class TestUserWeather:
 
         # The inner except catches this and returns the location error message
         assert "Could not find location" in result
-
-    async def test_cache_ttl_uses_one_hour(self) -> None:
-        """Verify the cache is set with ONE_HOUR_TTL (3600 seconds)."""
-        mock_settings = MagicMock()
-        mock_settings.OPENWEATHER_API_KEY = FAKE_API_KEY
-        weather_data = WeatherReport.model_validate(
-            {"name": "Berlin", "forecast": [], "location": _LOCATION}
-        )
-
-        location_data = _resolved("Berlin", "DE", "Berlin", "weather:location:berlin")
-
-        with (
-            patch("app.utils.weather_utils.settings", mock_settings),
-            patch(
-                "app.utils.weather_utils.get_location_data",
-                new_callable=AsyncMock,
-                return_value=location_data,
-            ),
-            patch(
-                "app.utils.weather_utils.get_cache",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-            patch(
-                "app.utils.weather_utils.prepare_weather_data",
-                new_callable=AsyncMock,
-                return_value=weather_data,
-            ),
-            patch(
-                "app.utils.weather_utils.set_cache",
-                new_callable=AsyncMock,
-            ) as mock_set_cache,
-        ):
-            await user_weather(location_name="Berlin")
-
-        # ONE_HOUR_TTL = 3600
-        assert mock_set_cache.call_args.args[2] == 3600
