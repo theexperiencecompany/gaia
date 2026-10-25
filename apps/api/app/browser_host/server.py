@@ -47,6 +47,7 @@ from app.browser_host.wire import (
     StorageStateResponse,
 )
 from app.config.browser_host_settings import browser_host_settings
+from app.config.deployment import DeploymentKind
 from app.constants.browser import (
     BROWSER_HOST_DEADLINE_HEADER,
     BROWSER_HOST_KEY_HEADER,
@@ -93,7 +94,7 @@ def _key_valid(candidate: str | None) -> bool:
     if key is None:
         # Fine outside production (local dev tooling); in production an unkeyed
         # host is unsafe to serve, so every request fails loud instead.
-        return browser_host_settings.ENV != "production"
+        return browser_host_settings.ENV != DeploymentKind.PRODUCTION
     return candidate is not None and secrets.compare_digest(candidate, key)
 
 

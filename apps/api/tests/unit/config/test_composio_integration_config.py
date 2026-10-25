@@ -139,7 +139,7 @@ async def test_provider_catalog_skips_unavailable_integrations() -> None:
 
     with (
         patch(
-            "app.agents.tools.core.registry.OAUTH_INTEGRATIONS",
+            "app.config.oauth_config.OAUTH_INTEGRATIONS",
             [_fake("live", available=True), _fake("staged", available=False)],
         ),
         patch(

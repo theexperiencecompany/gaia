@@ -40,7 +40,7 @@ ci_die() {
 }
 
 # Resolved when SOURCED, not when called: lanes `cd` into worktrees and
-# scratch dirs after sourcing (regression-proof, mutation.sh), and a path
+# scratch dirs after sourcing (regression-proof), and a path
 # built from ${BASH_SOURCE[0]} at call time is relative to wherever the
 # caller is standing by then — "can't open …/../../scripts/ci/lib/../verdict.py"
 # killed regression-proof on #1202 exactly so.

@@ -85,7 +85,7 @@ def test_one_platform_file_exists_per_supported_platform() -> None:
     [
         ("account/notifications.json", "update_notification_settings"),
         ("account/preferences.json", "update_preferences"),
-        ("account/custom-instructions.json", "update_custom_instructions"),
+        ("account/custom-instructions.json", "update_user_instructions"),
         ("account/voices/selected.json", "set_selected_voice"),
         ("account/voices/catalog.json", "set_selected_voice"),
         ("account/linked-accounts/telegram.json", "manage_linked_account"),

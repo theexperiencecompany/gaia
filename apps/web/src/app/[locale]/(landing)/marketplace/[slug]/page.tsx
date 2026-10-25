@@ -9,6 +9,7 @@ import type {
   CommunityIntegrationsResponse,
   PublicIntegrationResponse,
 } from "@/features/integrations/types";
+import { prerenderedMarketingParams } from "@/lib/selfhost";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
@@ -17,7 +18,6 @@ import {
   siteConfig,
 } from "@/lib/seo";
 import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
-
 import { IntegrationDetailClient } from "./client";
 
 export const revalidate = 60;
@@ -127,7 +127,7 @@ async function getNativeIntegrationSlugs(): Promise<string[]> {
  * This enables search engines to crawl and index all integration pages.
  * Uses slug for SEO-friendly URLs.
  */
-export async function generateStaticParams() {
+async function allStaticParams() {
   const [communityIntegrations, nativeSlugs] = await Promise.all([
     getAllIntegrations(),
     getNativeIntegrationSlugs(),
@@ -140,6 +140,10 @@ export async function generateStaticParams() {
   // Deduplicate by slug
   const allSlugs = [...new Set([...communitySlugs, ...nativeSlugs])];
   return allSlugs.map((slug) => ({ slug }));
+}
+
+export function generateStaticParams() {
+  return prerenderedMarketingParams(allStaticParams);
 }
 
 export const dynamicParams = true;

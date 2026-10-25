@@ -9,9 +9,9 @@ import { runStopFlow } from "./flow.js";
 
 export async function runStop(options?: StopServicesOptions): Promise<void> {
   await runCommandUI({
-    command: "stop",
+    command: "run",
     whenNonInteractive: "plain",
-    autoResolve: [["exit"]],
     runFlow: (store) => runStopFlow(store, options),
+    cancelHint: "GAIA may still be partly running. Run 'gaia stop' again.",
   });
 }

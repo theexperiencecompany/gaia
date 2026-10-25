@@ -22,7 +22,6 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import UJSONResponse
-from pydantic import BaseModel
 
 from app.constants.http import RETRY_AFTER_HEADER
 from app.constants.memory import (
@@ -33,6 +32,14 @@ from app.constants.memory import (
 )
 from app.core.exception_handlers import register_exception_handlers
 from app.memory.embeddings import _embed_query_sync, _embed_sync, _rerank_sync
+from app.models.embedding_sidecar_models import (
+    EmbedQueryRequest,
+    EmbedQueryResponse,
+    EmbedRequest,
+    EmbedResponse,
+    RerankRequest,
+    RerankResponse,
+)
 from app.schemas.errors import ERROR_RESPONSES, error_responses
 from shared.py.wide_events import log
 
@@ -96,25 +103,6 @@ def _reject_oversized(texts: list[str]) -> None:
             )
 
 
-class EmbedRequest(BaseModel):
-    """Passage texts to embed; oversized batches are bounded internally."""
-
-    texts: list[str]
-
-
-class EmbedQueryRequest(BaseModel):
-    """A single query string to embed with the model's query instruction."""
-
-    text: str
-
-
-class RerankRequest(BaseModel):
-    """A query and the documents to score against it."""
-
-    query: str
-    documents: list[str]
-
-
 @asynccontextmanager
 async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
     # Warm both models at startup so the first real request is fast and a
@@ -139,30 +127,32 @@ async def health() -> dict[str, str]:
 
 # evlog-map-disable-next-line wide-event -- standalone uvicorn app without LoggingMiddleware; log.set() would never be emitted
 @app.post("/embed", responses=_ERROR_RESPONSES)
-async def embed(request: EmbedRequest) -> dict[str, list[list[float]]]:
+async def embed(request: EmbedRequest) -> EmbedResponse:
     """Embed a batch of passage texts."""
     if not request.texts:
-        return {"vectors": []}
+        return EmbedResponse(vectors=[])
     _reject_oversized(request.texts)
     async with _inference_slot():
-        return {"vectors": await asyncio.to_thread(_embed_sync, request.texts)}
+        return EmbedResponse(vectors=await asyncio.to_thread(_embed_sync, request.texts))
 
 
 # evlog-map-disable-next-line wide-event -- standalone uvicorn app without LoggingMiddleware; log.set() would never be emitted
 @app.post("/embed_query", responses=_ERROR_RESPONSES)
-async def embed_query(request: EmbedQueryRequest) -> dict[str, list[float]]:
+async def embed_query(request: EmbedQueryRequest) -> EmbedQueryResponse:
     """Embed a single query with the model's query instruction."""
     _reject_oversized([request.text])
     async with _inference_slot():
-        return {"vector": await asyncio.to_thread(_embed_query_sync, request.text)}
+        return EmbedQueryResponse(vector=await asyncio.to_thread(_embed_query_sync, request.text))
 
 
 # evlog-map-disable-next-line wide-event -- standalone uvicorn app without LoggingMiddleware; log.set() would never be emitted
 @app.post("/rerank", responses=_ERROR_RESPONSES)
-async def rerank(request: RerankRequest) -> dict[str, list[float]]:
+async def rerank(request: RerankRequest) -> RerankResponse:
     """Score documents against the query, aligned with input order."""
     if not request.documents:
-        return {"scores": []}
+        return RerankResponse(scores=[])
     _reject_oversized([request.query, *request.documents])
     async with _inference_slot():
-        return {"scores": await asyncio.to_thread(_rerank_sync, request.query, request.documents)}
+        return RerankResponse(
+            scores=await asyncio.to_thread(_rerank_sync, request.query, request.documents)
+        )

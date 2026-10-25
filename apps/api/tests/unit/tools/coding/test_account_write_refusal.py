@@ -51,7 +51,7 @@ async def test_edit_to_an_account_file_refuses_with_the_right_tool() -> None:
             config=CONFIG,
         )
 
-    assert "update_custom_instructions" in result
+    assert "update_user_instructions" in result
     sandbox.assert_not_called()
 
 

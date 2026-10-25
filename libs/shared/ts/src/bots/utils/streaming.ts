@@ -23,6 +23,12 @@ import type { ApprovalRequestData } from "../../chat";
 import { formatApprovalAge } from "../../chat/approvals";
 import type { GaiaClient } from "../api";
 import { BOT_STREAM_ERROR, type ReactionHandler } from "../api/chat-stream";
+import {
+  createDeliveryFailureReporter,
+  DELIVERY_FAILURE_KIND,
+  describeErrorForAlert,
+  isLostReply,
+} from "../delivery-failures";
 import type { ChatRequest, PlatformName } from "../types";
 import { segmentIntoBubbles } from "./bubbles";
 import { isMessageGoneError, retryAfterMs } from "./delivery-errors";
@@ -596,13 +602,24 @@ async function runStreamingChat(
     hadError = true;
     // The failure with its reason and full latency context — a real-time line,
     // an errors[] entry, and outcome "failed" on this chat's wide event.
-    recordBotFailure("chat_stream_failed", cause, {
+    const reason = recordBotFailure("chat_stream_failed", cause, {
       duration_ms: Date.now() - startMs,
       ttfb_ms: firstChunkMs,
       chunk_count: chunkCount,
       response_length: responseLength,
       context: "chat:streaming",
     });
+    if (isLostReply(reason)) {
+      createDeliveryFailureReporter(
+        gaia,
+        request.platform,
+      )({
+        kind: DELIVERY_FAILURE_KIND.REPLY_FAILED,
+        reason,
+        error_message: describeErrorForAlert(cause, "chat"),
+        destination_id: request.platformUserId,
+      });
+    }
     // Do not ship the raw error string — it can contain paths, request IDs,
     // or upstream-echoed tokens. `context` is enough to bucket failures.
     analytics?.client.capture(analytics.distinctId, "bot:error", {

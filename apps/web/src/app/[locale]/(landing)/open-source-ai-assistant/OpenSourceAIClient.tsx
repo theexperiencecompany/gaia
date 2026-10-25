@@ -11,7 +11,7 @@ const faqs = [
   {
     question: "Is GAIA really free to self-host?",
     answer:
-      "Yes. GAIA is MIT-licensed open source software. You can clone the repository, deploy it on your own infrastructure, and use it indefinitely at no cost. There is no per-seat charge, no usage limits, and no expiring trial. You only pay for the compute you run it on.",
+      "Yes. GAIA is MIT-licensed open source software. You can deploy it on your own infrastructure with one command and use it indefinitely at no cost. There is no per-seat charge, no usage limits, and no expiring trial. You only pay for the compute you run it on.",
   },
   {
     question: "What data does GAIA store?",
@@ -26,22 +26,22 @@ const faqs = [
   {
     question: "What are the system requirements to self-host GAIA?",
     answer:
-      "GAIA runs via Docker Compose. You need a Linux server (or macOS/Windows for local dev) with at least 4GB RAM and Docker installed. A modern VPS with 2 vCPUs and 4GB RAM is sufficient for a single user. The full stack includes PostgreSQL, MongoDB, Redis, ChromaDB, and RabbitMQ, all orchestrated by Docker Compose.",
+      "GAIA runs via Docker Compose. You need a Linux server (or macOS/Windows for local dev) with at least 8 GB RAM and Docker (the installer sets Docker up for you on Ubuntu and Debian). A VPS with 2 vCPUs and 8 GB RAM is enough for a single user. The full stack includes PostgreSQL, MongoDB, Redis, ChromaDB, and RabbitMQ, all orchestrated by Docker Compose.",
   },
 ];
 
 const selfHostSteps = [
   {
-    name: "Clone the repository",
-    text: "Run `git clone https://github.com/theexperiencecompany/gaia.git` to get the full source code on your machine.",
+    name: "Install the GAIA CLI",
+    text: "Run `curl -fsSL https://heygaia.io/install.sh | sh`. It sets up Node.js if needed and installs the `gaia` command.",
   },
   {
-    name: "Configure your environment",
-    text: "Copy `.env.example` to `.env` in the `apps/api` directory. Add your LLM API key, OAuth credentials for Gmail/Calendar, and any other integrations you want to enable.",
+    name: "Run gaia up",
+    text: "Run `gaia up`. It installs Docker if it is missing, downloads GAIA's setup files and images, writes the configuration, and starts every service: the API, worker, databases, and message broker. No Git needed.",
   },
   {
-    name: "Deploy with Docker Compose",
-    text: "Run `cd infra/docker && docker compose up` to start all services (the API, worker, databases, and message broker) in one command. GAIA is running on your server.",
+    name: "Finish setup in the browser",
+    text: "Open the address `gaia up` prints, create the admin account, and paste your AI provider key. GAIA is running on your server.",
   },
 ];
 

@@ -71,16 +71,13 @@ export interface ToolCallDisplay {
   hasDetails: boolean;
 }
 
-export function deriveToolCallDisplay(
-  call: ToolCallEntry,
-  getIntegrationName: (c: ToolCallEntry) => string | undefined,
-): ToolCallDisplay {
+export function deriveToolCallDisplay(call: ToolCallEntry): ToolCallDisplay {
   // The skill label wins over any backend-provided custom message.
   const skillLabel = skillToolLabel(call);
   const primaryLabel =
     skillLabel || call.message || formatToolName(call.tool_name);
   const integrationLabel =
-    getIntegrationName(call) || categoryLabel(call.tool_category);
+    call.integration_name || categoryLabel(call.tool_category);
   // `show_category === false` means the backend sent a curated primary label,
   // so the secondary shows the raw tool name for transparency.
   const secondaryLabel =

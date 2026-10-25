@@ -1,6 +1,6 @@
 export type { TodoCounts } from "@gaia/shared/api/generated";
 
-import type { SubTask } from "@gaia/shared/types";
+import type { SubTask, Todo } from "@gaia/shared/types";
 import { Priority } from "@gaia/shared/types";
 
 export type {
@@ -13,6 +13,14 @@ export type {
   TodoUpdate,
 } from "@gaia/shared/types";
 export { Priority };
+
+/** What a todo row's overflow menu can do, on either platform's menu. */
+export interface TodoRowMenuActions {
+  onEdit: (todo: Todo) => void;
+  onSnooze: (todo: Todo) => void;
+  onDelete: (todo: Todo) => void;
+  onOpenMenu: (todo: Todo) => void;
+}
 
 export interface TodoCreate {
   title: string;

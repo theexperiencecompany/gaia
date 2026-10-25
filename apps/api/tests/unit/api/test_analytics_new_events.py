@@ -15,13 +15,18 @@ from httpx import AsyncClient
 import pytest
 from starlette.requests import Request
 
-from app.agents.skills.models import Skill
-from app.models.hil_models import LedgerState
+from app.agents.skills.models import Skill, SkillAuthor
+from app.models.hil_models import ApprovalLedgerDocument, LedgerState
 from app.models.integration_models import Integration
 from app.models.mail_models import GmailMessageResource
 from app.models.notification.notification_models import NotificationRecord
 from app.models.payment_models import PlanType
 from app.models.todo_models import TodoDocument
+from app.models.user_instructions_models import (
+    GLOBAL_INSTRUCTIONS_SCOPE,
+    InstructionsEditor,
+    UserInstructionsDocument,
+)
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import Workflow
 from app.schemas.hil_schemas import BatchDecisionOutcome
@@ -42,11 +47,9 @@ from shared.py.analytics.catalog.integrations import (
     IntegrationCustomPublished,
     IntegrationCustomUnpublished,
     IntegrationCustomUpdated,
-    IntegrationInstructionsUpdated,
     McpConnectionTested,
     SkillDisabled,
     SkillEnabled,
-    SkillUpdated,
 )
 from shared.py.analytics.catalog.mail import (
     EmailArchived,
@@ -80,6 +83,7 @@ from shared.py.analytics.catalog.onboarding import (
     OnboardingWritingStyleSaved,
 )
 from shared.py.analytics.catalog.reminders import ReminderPaused, ReminderResumed, ReminderUpdated
+from shared.py.analytics.catalog.settings import InstructionsUpdated
 from shared.py.analytics.catalog.todos import (
     ProjectsCreated,
     ProjectsDeleted,
@@ -391,15 +395,13 @@ def _make_skill() -> Skill:
 
 
 class TestSkillNewEvents:
-    async def test_update_captures(self, client: AsyncClient) -> None:
-        with (
-            patch(f"{_SKILLS}.update_skill_inline", new_callable=AsyncMock) as mock_upd,
-            patch(_SK_CAPTURE) as mock_capture,
-        ):
+    async def test_update_attributes_the_edit_to_the_user(self, client: AsyncClient) -> None:
+        """skill:updated is emitted by update_skill_inline, the path REST and update_skill share."""
+        with patch(f"{_SKILLS}.update_skill_inline", new_callable=AsyncMock) as mock_upd:
             mock_upd.return_value = _make_skill()
             resp = await client.put(f"{SK}/sk_abc123", json={"description": "new"})
         assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), SkillUpdated())
+        assert mock_upd.await_args.kwargs["author"] is SkillAuthor.USER
 
     async def test_enable_captures(self, client: AsyncClient) -> None:
         with (
@@ -982,12 +984,12 @@ def _ledger_decision(*, committed: bool, stale: bool = False) -> LedgerDecision:
 
 
 class TestLedgerApprovalEvents:
-    """decide_ledger emits hil:decision_submitted per committed decision; the endpoint must not count it twice."""
+    """The ledger emits hil:decision_submitted per committed decision; the endpoint must not count it twice."""
 
     async def test_a_committed_decision_emits_no_second_event(self, client: AsyncClient) -> None:
         with (
             patch(
-                "app.api.v1.endpoints.approvals.decide_ledger",
+                "app.api.v1.endpoints.approvals.decide_ledger_card",
                 new=AsyncMock(return_value=_ledger_decision(committed=True)),
             ),
             patch("app.api.v1.endpoints.approvals.capture") as mock_capture,
@@ -998,13 +1000,29 @@ class TestLedgerApprovalEvents:
 
     @pytest.mark.regression
     async def test_a_card_tap_is_decided_as_a_card_decision(self, client: AsyncClient) -> None:
-        with patch(
-            "app.api.v1.endpoints.approvals.decide_ledger",
-            new=AsyncMock(return_value=_ledger_decision(committed=True)),
-        ) as decide:
+        row = ApprovalLedgerDocument(
+            approval_id="ap_1",
+            conversation_id="c1",
+            fingerprint="fp",
+            tool_name="GMAIL_SEND_EMAIL",
+            user_id="507f1f77bcf86cd799439011",
+        )
+        repo = MagicMock(
+            get_by_approval_id=AsyncMock(return_value=row), transition=AsyncMock(return_value=True)
+        )
+        ledger = "app.services.hil.ledger_decide"
+        with (
+            patch(f"{ledger}.approval_ledger_repository", new=repo),
+            patch(f"{ledger}.publish_ledger_decision", new=AsyncMock()),
+            patch(f"{ledger}.sync_conversation_approval_flag", new=AsyncMock()),
+            patch(f"{ledger}._deliver_verdict", new=AsyncMock()),
+            patch(f"{ledger}.record_owner_deny", new=AsyncMock()),
+            patch(f"{ledger}.reconcile_conversation_ledger", new=AsyncMock()),
+            patch(f"{ledger}.capture") as capture,
+        ):
             await client.post("/api/v1/approvals/ap_1/decision", json={"decision": "deny"})
 
-        assert decide.await_args.kwargs["via"] == "card"
+        assert capture.call_args.args[1].via == "card"
 
     async def test_a_batch_emits_no_second_event(self, client: AsyncClient) -> None:
         with (
@@ -1420,8 +1438,6 @@ class TestOnboardingNewEvents:
 
 CUSTOM = "app.api.v1.endpoints.integrations.custom"
 _CUSTOM_CAPTURE = f"{CUSTOM}.capture"
-USERINT = "app.api.v1.endpoints.integrations.user"
-_USERINT_CAPTURE = f"{USERINT}.capture"
 
 
 def _custom_integration() -> Integration:
@@ -1493,37 +1509,38 @@ class TestCustomIntegrationNewEvents:
         )
 
 
+INSTRUCTIONS_SERVICE = "app.services.user_instructions_service"
+
+
 class TestInstructionsUpdate:
-    @pytest.mark.regression
-    async def test_instructions_update_captures(self, client: AsyncClient) -> None:
+    async def test_global_instructions_update_captures_with_user_id(
+        self, client: AsyncClient
+    ) -> None:
+        saved = UserInstructionsDocument(
+            user_id=UID,
+            scope=GLOBAL_INSTRUCTIONS_SCOPE,
+            content="Be brief",
+            revision=1,
+            updated_by=InstructionsEditor.USER,
+            updated_at=datetime(2025, 1, 1, tzinfo=UTC),
+        )
         with (
             patch(
-                f"{USERINT}.check_user_has_integration",
+                f"{INSTRUCTIONS_SERVICE}.user_instructions_repository.write",
                 new_callable=AsyncMock,
-                return_value=True,
+                return_value=saved,
             ),
-            patch(f"{USERINT}.upsert_instructions", new_callable=AsyncMock) as m,
-            patch(_USERINT_CAPTURE) as mock_capture,
+            patch(f"{INSTRUCTIONS_SERVICE}.schedule_account_sync"),
+            patch(f"{INSTRUCTIONS_SERVICE}.capture") as mock_capture,
         ):
-            m.return_value = SimpleNamespace(
-                integration_id="gmail",
-                content="Be brief",
-                updated_by="user",
-                updated_at=datetime(2025, 1, 1, tzinfo=UTC),
-            )
             resp = await client.put(
-                "/api/v1/integrations/users/me/integrations/gmail/instructions",
-                json={"content": "Be brief"},
+                f"/api/v1/instructions/{GLOBAL_INSTRUCTIONS_SCOPE}",
+                json={"content": "Be brief", "base_revision": 0},
             )
         assert resp.status_code == 200
-        assert resp.json() == {
-            "integrationId": "gmail",
-            "content": "Be brief",
-            "updatedBy": "user",
-            "updatedAt": "2025-01-01T00:00:00Z",
-        }
         mock_capture.assert_called_once_with(
-            UserId(UID), IntegrationInstructionsUpdated(integration_id="gmail")
+            UserId(UID),
+            InstructionsUpdated(scope_kind="global", updated_by="user", cleared=False),
         )
 
 

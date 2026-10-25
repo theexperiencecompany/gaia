@@ -98,6 +98,15 @@ def test_the_query_filters_automated_senders_and_rules_may_change_the_filter() -
     assert "Standing rules may widen or narrow" in step
 
 
+def test_the_fetch_filter_is_the_primary_inbox_without_automated_senders() -> None:
+    """Regression: category:primary is not a Gmail term, and a live desk fetched nothing."""
+    mail_filter = todo_constants.INBOX_DESK_MAIL_FILTER
+
+    assert mail_filter.startswith("in:inbox category:personal ")
+    for sender in todo_constants.INBOX_DESK_AUTOMATED_SENDERS:
+        assert f"-from:{sender}" in mail_filter
+
+
 def test_the_cursor_is_the_first_fetchs_own_stamp() -> None:
     assert agent_constants.TOOL_RESULT_FETCHED_AT_KEY in "\n".join(_step(CURSOR_STEP))
 

@@ -1,14 +1,14 @@
+import * as net from "node:net";
+import * as os from "node:os";
 import { execa } from "execa";
-
-export type CheckResult = "success" | "error" | "missing" | "pending";
-
-export interface PrerequisiteInfo {
-  name: string;
-  installUrl: string;
-  installed: boolean;
-  working: boolean;
-  errorMessage?: string;
-}
+import { COMPOSE_PROJECT_BY_MODE, getProjectPublishedPorts } from "./docker.js";
+import {
+  DEFAULT_API_PORT,
+  DEFAULT_HTTPS_PORT,
+  DEFAULT_WEB_PORT,
+} from "./endpoints.js";
+import type { SetupMode } from "./env-parser.js";
+import type { CheckResult, PortCheckResult } from "./prerequisites.types.js";
 
 export const PREREQUISITE_URLS = {
   git: "https://git-scm.com/downloads",
@@ -16,24 +16,61 @@ export const PREREQUISITE_URLS = {
   mise: "https://mise.jdx.dev/getting-started.html",
 } as const;
 
-export interface PortCheckResult {
-  port: number;
-  service: string;
-  available: boolean;
-  usedBy?: string;
-  alternative?: number;
-}
-
 const PORT_SERVICE_MAP: Record<number, string> = {
   8000: "API Server",
   5432: "PostgreSQL",
   6379: "Redis",
   27017: "MongoDB",
   5672: "RabbitMQ",
-  3000: "Web Frontend",
+  15672: "RabbitMQ Management",
+  [DEFAULT_WEB_PORT]: "Web Frontend",
+  [DEFAULT_HTTPS_PORT]: "Web Frontend (HTTPS)",
   8080: "ChromaDB",
   8083: "Mongo Express",
 };
+
+/**
+ * Host ports each mode publishes, by default value. Self-host publishes only
+ * its proxy; developer mode publishes every infra service plus the native
+ * API and web dev servers.
+ */
+const REQUIRED_HOST_PORTS: Record<SetupMode, readonly number[]> = {
+  selfhost: [DEFAULT_WEB_PORT, DEFAULT_HTTPS_PORT],
+  developer: [
+    DEFAULT_API_PORT,
+    5432,
+    6379,
+    27017,
+    5672,
+    15672,
+    DEFAULT_WEB_PORT,
+    8080,
+    8083,
+  ],
+};
+
+/**
+ * Port check for a mode's host ports (after overrides). Ports already
+ * published by this mode's own compose project count as available, so a
+ * rerun or `gaia doctor` against a running stack never reports GAIA itself.
+ */
+export async function checkModePorts(
+  mode: SetupMode,
+  overrides: Record<number, number> = {},
+): Promise<PortCheckResult[]> {
+  const ownPorts = await getProjectPublishedPorts(
+    COMPOSE_PROJECT_BY_MODE[mode],
+  );
+  return Promise.all(
+    REQUIRED_HOST_PORTS[mode].map(async (defaultPort) => {
+      const port = overrides[defaultPort] ?? defaultPort;
+      const service = PORT_SERVICE_MAP[defaultPort] || `Port ${port}`;
+      return ownPorts.has(port)
+        ? { defaultPort, port, service, available: true }
+        : checkPort(defaultPort, port, service);
+    }),
+  );
+}
 
 export async function checkGit(): Promise<CheckResult> {
   try {
@@ -42,41 +79,6 @@ export async function checkGit(): Promise<CheckResult> {
   } catch {
     return "error";
   }
-}
-
-export async function checkDockerDetailed(): Promise<PrerequisiteInfo> {
-  let installed = false;
-  let working = false;
-  let errorMessage: string | undefined;
-
-  try {
-    await execa("docker", ["--version"]);
-    installed = true;
-  } catch {
-    return {
-      name: "Docker",
-      installUrl: PREREQUISITE_URLS.docker,
-      installed: false,
-      working: false,
-      errorMessage: "Docker is not installed",
-    };
-  }
-
-  try {
-    await execa("docker", ["info"], { timeout: 5000 });
-    working = true;
-  } catch {
-    errorMessage =
-      "Docker is installed but the daemon is not running. Please start Docker Desktop or the Docker daemon.";
-  }
-
-  return {
-    name: "Docker",
-    installUrl: PREREQUISITE_URLS.docker,
-    installed,
-    working,
-    errorMessage,
-  };
 }
 
 export async function checkMise(): Promise<CheckResult> {
@@ -89,7 +91,6 @@ export async function checkMise(): Promise<CheckResult> {
 }
 
 export async function installMise(): Promise<boolean> {
-  const os = await import("node:os");
   const platform = os.platform();
 
   if (platform === "win32") {
@@ -112,51 +113,94 @@ export async function installMise(): Promise<boolean> {
   }
 }
 
-export async function checkPortsWithFallback(
-  ports: number[],
-): Promise<PortCheckResult[]> {
-  const net = await import("node:net");
-  const results: PortCheckResult[] = [];
-
-  const isPortFree = (port: number): Promise<boolean> => {
-    return new Promise((resolve) => {
-      const server = net.createServer();
-      server.once("error", () => resolve(false));
-      server.once("listening", () => {
-        server.close(() => resolve(true));
-      });
-      server.listen(port);
+/** How a listen probe on the port ended: free, held, or refused to this user (EACCES below 1024 without root). */
+function probeListen(port: number): Promise<"free" | "in-use" | "refused"> {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.once("error", (error: NodeJS.ErrnoException) => {
+      if (error.code === "EADDRINUSE") resolve("in-use");
+      else if (error.code === "EACCES") resolve("refused");
+      else reject(error);
     });
-  };
+    server.once("listening", () => {
+      server.close(() => resolve("free"));
+    });
+    server.listen(port);
+  });
+}
 
-  for (const port of ports) {
-    const service = PORT_SERVICE_MAP[port] || `Port ${port}`;
-    const free = await isPortFree(port);
-
-    if (free) {
-      results.push({ port, service, available: true });
-    } else {
-      const usedBy = await getPortUser(port);
-      const alternative = await findNextAvailablePort(
-        port + 1,
-        port + 100,
-        isPortFree,
-      );
-      results.push({
-        port,
-        service,
-        available: false,
-        usedBy,
-        alternative: alternative || undefined,
-      });
-    }
+/** Whether anything listens on the TCP port, as the OS reports it to an unprivileged user. */
+async function hasListener(port: number): Promise<boolean> {
+  try {
+    const { stdout } =
+      os.platform() === "linux"
+        ? await execa("ss", ["-ltnH", `sport = :${port}`])
+        : await execa("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN"], {
+            // lsof exits 1 when nothing matches.
+            reject: false,
+          });
+    return stdout.trim() !== "";
+  } catch (e) {
+    throw new Error(
+      `Couldn't check whether port ${port} is free: ${(e as Error).message}`,
+    );
   }
+}
 
-  return results;
+/**
+ * Whether the port is free for Docker to publish. Docker binds it, not this
+ * CLI, so a port this user may not bind (below 1024 without root) is free
+ * unless the OS lists a listener on it.
+ */
+async function isPortFree(port: number): Promise<boolean> {
+  const probe = await probeListen(port);
+  if (probe === "refused") return !(await hasListener(port));
+  return probe === "free";
+}
+
+/** Whether the host port is free; if not, who holds it and the next free one above it. */
+async function checkPort(
+  defaultPort: number,
+  port: number,
+  service: string,
+): Promise<PortCheckResult> {
+  if (await isPortFree(port)) {
+    return { defaultPort, port, service, available: true };
+  }
+  const alternative = await findNextAvailablePort(port + 1, port + 100);
+  return {
+    defaultPort,
+    port,
+    service,
+    available: false,
+    usedBy: await getPortUser(port),
+    alternative: alternative || undefined,
+  };
+}
+
+/** A Docker container publishing the port: lsof can't see docker-proxy's socket without root. */
+async function dockerContainerOnPort(
+  port: number,
+): Promise<string | undefined> {
+  try {
+    const { stdout } = await execa("docker", [
+      "ps",
+      "--filter",
+      `publish=${port}`,
+      "--format",
+      "{{.Names}}",
+    ]);
+    const name = stdout.trim().split("\n")[0];
+    return name ? `Docker container ${name}` : undefined;
+  } catch {
+    // Docker not answering: fall back to lsof.
+    return undefined;
+  }
 }
 
 async function getPortUser(port: number): Promise<string | undefined> {
-  const os = await import("node:os");
+  const container = await dockerContainerOnPort(port);
+  if (container) return container;
   const platform = os.platform();
 
   if (platform === "win32") {
@@ -212,7 +256,6 @@ async function getPortUser(port: number): Promise<string | undefined> {
 async function findNextAvailablePort(
   startPort: number,
   maxPort: number,
-  isPortFree: (port: number) => Promise<boolean>,
 ): Promise<number | null> {
   for (let port = startPort; port <= maxPort; port++) {
     if (await isPortFree(port)) {

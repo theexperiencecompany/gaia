@@ -6,6 +6,7 @@ import SendStopButton from "@/features/chat/components/composer/SendStopButton";
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
 import { useComposerSendMode } from "@/features/chat/hooks/useComposerSendMode";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
+import { useFeatureAvailable } from "@/features/settings/hooks/useSetupStatus";
 import {
   useComposerFiles,
   useComposerIsUploading,
@@ -91,6 +92,7 @@ export default function RightSide({
   const { selectedCalendarEvent } = useCalendarEventSelection();
   const { uploadedFiles } = useComposerFiles();
   const isUploading = useComposerIsUploading();
+  const isVoiceAvailable = useFeatureAvailable("voice");
   const hasText = (searchbarText || "").trim().length > 0;
   const hasSelectedTool = selectedTool != null;
   const hasSelectedWorkflow = selectedWorkflow != null;
@@ -151,20 +153,27 @@ export default function RightSide({
 
   return (
     <div className="ml-2 flex items-center gap-2">
-      <Tooltip content="Voice Mode" placement="left" color="primary" showArrow>
-        <Button
-          isIconOnly
-          aria-label="Voice Mode"
-          className="h-9 min-h-9 w-9 max-w-9 min-w-9"
-          color="default"
-          radius="full"
-          type="button"
-          onMouseEnter={onVoiceModeHover}
-          onPress={() => setvoiceModeActive()}
+      {isVoiceAvailable && (
+        <Tooltip
+          content="Voice Mode"
+          placement="left"
+          color="primary"
+          showArrow
         >
-          <AudioWave01Icon className="text-zinc-400" />
-        </Button>
-      </Tooltip>
+          <Button
+            isIconOnly
+            aria-label="Voice Mode"
+            className="h-9 min-h-9 w-9 max-w-9 min-w-9"
+            color="default"
+            radius="full"
+            type="button"
+            onMouseEnter={onVoiceModeHover}
+            onPress={() => setvoiceModeActive()}
+          >
+            <AudioWave01Icon className="text-zinc-400" />
+          </Button>
+        </Tooltip>
+      )}
 
       <Tooltip
         content={getTooltipContent()}

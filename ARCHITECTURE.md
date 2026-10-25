@@ -78,7 +78,7 @@ The worker tier. Has access to **everything** that does work.
 
 ### Initial tool IDs (the executor's initial bind set)
 
-`activate_integration`, `handoff`, `execute`, `get_tool_schema`, `plan_tasks`, `update_tasks`, `read`, `bash`, `deep_research`, `list_running_subagents`, `message_subagent`, `cancel_subagent`, `read_manual`, `create_tracked_todo`, `update_tracked_todo`, `complete_tracked_todo`, `search_todo_context`, `list_tracked_todos`, `list_trigger_fields`, `subscribe_todo_to_trigger`, `unsubscribe_todo_from_trigger`, `save_learned_skill`, `browser_task`, `write_playbook`, `decline_playbook`, `read_playbook`, `disable_playbook`, `add_device`, `approve_device_pairing`, `list_devices`, `run_on_device`.
+`activate_integration`, `handoff`, `execute`, `get_tool_schema`, `plan_tasks`, `update_tasks`, `read`, `bash`, `deep_research`, `list_running_subagents`, `message_subagent`, `cancel_subagent`, `read_manual`, `create_tracked_todo`, `update_tracked_todo`, `complete_tracked_todo`, `search_todo_context`, `list_tracked_todos`, `list_trigger_fields`, `subscribe_todo_to_trigger`, `unsubscribe_todo_from_trigger`, `save_learned_skill`, `update_skill`, `get_user_instructions`, `update_user_instructions`, `browser_task`, `write_playbook`, `decline_playbook`, `read_playbook`, `disable_playbook`, `add_device`, `approve_device_pairing`, `list_devices`, `run_on_device`.
 
 ### Handoff lifecycle (background, async)
 
@@ -140,7 +140,7 @@ Provider and built-in integrations are NOT subagents: the executor loads them in
 ### Core subagent files
 
 - `apps/api/app/agents/core/subagents/__init__.py`
-- `apps/api/app/agents/core/subagents/registry.py` — `all_subagents()` and `get_subagent_by_id()`. **Single source of truth** that combines OAuth-derived subagents + builtins. Process-lifetime `@cache`'d.
+- `apps/api/app/agents/core/subagents/registry.py` — `all_subagents()` and `get_subagent_by_id()`. **Single source of truth** that combines OAuth-derived subagents + builtins. Cached per catalog version (`CatalogCached`), so it rebuilds when the instance admin enables a Composio toolkit.
 - `apps/api/app/agents/core/subagents/builtin_subagents.py` — `BUILTIN_SUBAGENTS` (currently `docgen`, `gaia_knowledge_guide`). Excluded from the marketplace.
 - `apps/api/app/agents/core/subagents/base_subagent.py` — `SubAgentFactory.create_provider_subagent()`. Wires a scoped worker graph: scoped tool dict, `SubagentMiddleware`, todo tools, MCP/Composio tools, no end-hooks (memory learning runs once per comms turn, not per subagent), checkpointer, and the three pre-model hooks. Reached at runtime only for per-user MCP integrations, spawn workers, and dev direct-invocation.
 - `apps/api/app/agents/core/subagents/provider_subagents.py` — `create_subagent()` (provider graphs; kept for dev/tests — unreachable from `handoff`, which redirects those ids) and `create_subagent_for_user()` (per-user auth MCP; rebuilt on every handoff, no memoization). `register_subagent_providers()` registers lazy loaders.
@@ -164,7 +164,7 @@ Tests: `apps/api/tests/_harness/context_chain.py` produces the *effective* array
 
 ### OAuth integration definitions (source of subagent configs)
 
-- `apps/api/app/config/oauth_config.py` — `OAUTH_INTEGRATIONS: list[OAuthIntegration]`. Each entry has `subagent_config=SubAgentConfig(has_subagent, agent_name, tool_space, domain, capabilities, use_cases, system_prompt, use_direct_tools, disable_retrieve_tools, auto_bind_tools, include_finish_task)`.
+- `apps/api/app/config/oauth_config.py` — `OAUTH_INTEGRATIONS: list[OAuthIntegration]` (the code catalog) and `all_integrations()`, the one reader: the code catalog plus the Composio toolkits a self-host admin enabled (`app/services/composio/instance_toolkits.py`, loaded at startup and on the `instance_toolkits` runtime-config scope; generic in-context config, no triggers). Each entry has `subagent_config=SubAgentConfig(has_subagent, agent_name, tool_space, domain, capabilities, use_cases, system_prompt, use_direct_tools, disable_retrieve_tools, auto_bind_tools, include_finish_task)`.
 - `apps/api/app/config/oauth_content.py` — per-integration UI content (icons, descriptions, setup screens).
 - `apps/api/app/models/oauth_models.py` — `OAuthIntegration` Pydantic model.
 - `apps/api/app/models/mcp_config.py` — `SubAgentConfig`, `MCPConfig`, `ComposioConfig`, `OAuthScope`, `ProviderMetadataConfig`, `ToolMetadataConfig`, `VariableExtraction`.
@@ -183,13 +183,12 @@ Tests: `apps/api/tests/_harness/context_chain.py` produces the *effective* array
 - **Composio integrations** — `tool_registry.register_provider_tools(toolkit_name, space_name, specific_tools)` in `provider_subagents.py` loads their tools into the registry for activation; the executor runs them via `execute`. User OAuth token attached server-side via `@composio.tools.custom_tool`.
 - **MCP subagents (auth-required)** — live tools read from `MCPClient` (source of truth), not copied into a registry. `get_mcp_client(user_id)` in `apps/api/app/services/mcp/mcp_client.py`.
 - **Custom MCP subagents** — `_create_custom_mcp_subagent` in `provider_subagents.py` reads from `integrations_collection` in MongoDB. If `1 <= tool_count <= 10`, sets `use_direct_tools=True, disable_retrieve_tools=True` for low latency.
-- **Always-on tools for every subagent** (in `base_subagent.py::_build_scoped_tool_dict`): `search_memory`, `read`, `bash`, `web_search_tool`, `fetch_webpages`, `deep_research`, `update_integration_instructions`, and optionally `finish_task`.
+- **Always-on tools for every subagent** (in `base_subagent.py::_build_scoped_tool_dict`): `search_memory`, `read`, `bash`, `web_search_tool`, `fetch_webpages`, `deep_research`, `update_integration_instructions` (its own integration's scope only, never global), and optionally `finish_task`.
 
 ### Subagent middleware
 
 - `apps/api/app/agents/middleware/subagent.py` — `SubagentMiddleware`, the executor's `spawn_subagent` tool (only the executor carries it; see §4 intro). A spawn's tool dict is the executor's **full** registry minus the orchestration tools, so it can pick up `read`, `bash`, `web_search`, etc. `bind_spawner` / `spawner_of` map a compiled executor graph to its spawner, which is how a parked spawn is rebuilt to resume.
 - `apps/api/app/agents/middleware/{__init__,factory,executor,runtime_adapter,accounting,compaction,summarization}.py` — token accounting, conversation compaction, summarization, runtime config.
-- `apps/api/app/agents/llm/retry_policies.py` — `SUBAGENT_RETRY_POLICY`, `COMMS_RETRY_POLICY`, `EXECUTOR_RETRY_POLICY`.
 
 ### Per-integration tool files (Composio-backed)
 
@@ -236,7 +235,7 @@ Bot receives message → adapter builds `CommandContext` → unified `BotCommand
 ## 6. Voice Mode
 
 - `apps/voice-agent/` — separate Python app: `pyproject.toml`, `Dockerfile`, `mise.toml`, `project.json`, `CLAUDE.md`.
-- `apps/voice-agent/src/worker.py` — LiveKit worker. Uses:
+- `apps/voice-agent/src/agent.py` — LiveKit worker. Uses:
   - **STT** — `livekit.plugins.deepgram` (Deepgram).
   - **TTS** — `livekit.plugins.elevenlabs` (ElevenLabs).
   - **VAD** — `livekit.plugins.silero` (Silero VAD).
@@ -284,7 +283,7 @@ A skill's `target:` frontmatter binds it to an integration (e.g. `target: gmail_
 
 ### Skill tools (for the skills integration)
 
-- `apps/api/app/agents/tools/skill_tools.py` — `install_skill_from_github`, `install_skill_inline`, `uninstall_skill`, `enable_skill`, `disable_skill`, `list_skills`. Run in-context via the `skills` integration (`activate_integration("skills")`; system prompt `SKILLS_AGENT_SYSTEM_PROMPT` in `subagent_prompts.py`).
+- `apps/api/app/agents/tools/skill_tools.py` — `install_skill_from_github`, `create_skill`, `save_learned_skill`, `update_skill`, `list_installed_skills`, `manage_skill` (enable / disable / uninstall). `save_learned_skill` and `update_skill` are also bound statically to the executor. Run in-context via the `skills` integration (`activate_integration("skills")`; system prompt `SKILLS_AGENT_SYSTEM_PROMPT` in `subagent_prompts.py`).
 - The skills integration is itself defined in `oauth_config.py` (`subagent_config.tool_space="skills"`, `agent_name="skills_agent"`).
 
 ### Workspace mounting
@@ -378,8 +377,7 @@ Integration tools (Composio + per-user MCP — the thousands) are **never bound*
 
 - `apps/api/app/agents/tools/core/registry.py` — `ToolRegistry`, `DynamicToolDict` (a `Mapping[str, BaseTool]` that lets tools added after graph compilation be visible to the agent), `get_tool_registry()` async singleton. `_CatalogToolMeta` — lightweight provider-tool metadata for warmup-time indexing.
 - `apps/api/app/agents/tools/core/retrieval.py` — `get_retrieve_tools_function()` factory. Supports semantic search (query mode), exact binding (exact_tool_names mode), namespace filtering by user's connected integrations, subagent filtering. `WEBPAGE_TOOLS = [web_search_tool, fetch_webpages, deep_research]`. `_user_mcp_tool_names(user_id)` reads live tools from `MCPClient._tools` (post-resilience refactor).
-- `apps/api/app/agents/tools/core/store.py` — `get_tools_store()` (ChromaDB store for tool embeddings).
-- `apps/api/app/agents/tools/core/injectors.py` — dependency injection for tools.
+- `apps/api/app/agents/tools/core/store.py` — `get_tools_store()` (ChromaDB store for tool embeddings). `init_embeddings()` uses Gemini when `GOOGLE_API_KEY` is set, else local fastembed (`local_embeddings.py`); `embedding_dims()` sizes the collections.
 - `apps/api/app/agents/tools/core/tool_runtime_config.py` — `build_child_tool_runtime_config`, `build_create_agent_tool_kwargs`, `build_provider_parent_tool_runtime_config`, `build_executor_child_tool_runtime_config`.
 
 ### 9.3 Subagent coordination
@@ -398,16 +396,15 @@ Integration tools (Composio + per-user MCP — the thousands) are **never bound*
 - `apps/api/app/agents/tools/workflow_tool.py` + `workflow_shared_tools.py` — see §10.
 - `apps/api/app/agents/tools/notification_tool.py` — see §11.
 - `apps/api/app/agents/tools/reminder_tool.py` — reminders.
-- `apps/api/app/agents/tools/goal_tool.py` — goal management.
 - `apps/api/app/agents/tools/todo_tool.py` — classic user-facing todos.
 - `apps/api/app/agents/tools/todo_tools.py` — `plan_tasks`, `update_tasks` (in-state todo channel).
 - `apps/api/app/agents/tools/tracked_todo_tools.py` — see §12.
-- `apps/api/app/agents/tools/integration_instructions_tools.py` — `update_integration_instructions` (per-integration user instructions, always-on for subagents).
+- `apps/api/app/agents/tools/instructions_tools.py` — `get_user_instructions` / `update_user_instructions` (executor: any scope) and `update_integration_instructions` (subagents: an integration scope, never global); see §16 Prompt layers.
 - `apps/api/app/agents/tools/integration_tool.py` — integration-agnostic tools.
 - `apps/api/app/agents/tools/research_tool.py` — `deep_research` (Tavily + multi-source synthesis).
 - `apps/api/app/agents/tools/webpage_tool.py` — `fetch_webpages`, `web_search_tool`.
 - `apps/api/app/agents/tools/manual_tool.py` — `read_manual` (procedural docs).
-- `apps/api/app/agents/tools/flowchart_tool.py` + `apps/api/app/templates/flowchart_template.py` — flowchart rendering.
+- `apps/api/app/agents/tools/flowchart_tool.py` + `apps/api/app/agents/templates/flowchart_template.py` — flowchart rendering.
 - `apps/api/app/agents/tools/image_tool.py` — image generation/handling.
 - `apps/api/app/agents/tools/weather_tool.py` — weather.
 - `apps/api/app/agents/tools/support_tool.py` — support ticket creation.
@@ -501,7 +498,8 @@ Integration tools (Composio + per-user MCP — the thousands) are **never bound*
   - `artifact_watcher.py` — watches sandbox for produced files; emits to SSE.
   - `__init__.py` — `acquire_sandbox(user_id)` entrypoint + `SandboxAcquisitionError`.
 - `apps/api/app/constants/sandbox.py` — `BASH_DEFAULT_TIMEOUT_SECONDS`, `BASH_MAX_COMMAND_LENGTH`, `BASH_MAX_TIMEOUT_SECONDS`, `WORKSPACE_TMP_SUFFIX`.
-- All coding tools (bash, read, edit, write) target the user's E2B sandbox + JuiceFS mount.
+- All coding tools (bash, read, edit, write) target the user's E2B sandbox + JuiceFS mount — on GAIA Cloud.
+- Self-host: `local_sandbox.py` (`LocalDockerSandbox`) runs them in local containers when `use_local_sandbox()` (`lifecycle.py`) says so (opted in with `gaia up --code-sandbox`, no E2B key saved); files live in the `local_workspace` volume; `legacy_workspace_migration.py` moves an older layout. Its image is built on the host from `local_sandbox.Dockerfile` (tagged by the file's hash) and shares E2B's `/home/user` agents' home, so coding-agent runs take one path on both backends; their hooks report to `LOCAL_SANDBOX_LAB_EVENTS_CALLBACK_URL` (the proxy via the host gateway, set by `docker-compose.sandbox.yml`).
 
 ---
 
@@ -509,16 +507,18 @@ Integration tools (Composio + per-user MCP — the thousands) are **never bound*
 
 - `apps/api/app/services/mcp/mcp_client.py` — `MCPClient` (source of truth for live per-user MCP tools; owns the warm sessions). A server tool named like a GAIA tool (Dodo Payments' `execute`) is renamed `<integration>_<name>` at connect (`_rename_shadowing_tools`), else GAIA's tool shadows it unreachably; the adapter still calls the server by its own `mcp_name`.
 - `apps/api/app/services/mcp/mcp_token_store.py` — `MCPTokenStore(user_id)` (stores OAuth tokens for auth-required MCP integrations).
-- `apps/api/app/services/mcp/mcp_tools_store.py` — `get_mcp_tools_store()` (ChromaDB for MCP tool embeddings).
 - `apps/api/app/constants/mcp.py` — `INSTACART_MCP_SERVER_URL`, `YELP_MCP_SERVER_URL`, etc.
 
 ---
 
 ## 15. LLM Layer & LangGraph Override
 
-- `apps/api/app/agents/llm/client.py` — `init_llm()`.
+- `apps/api/app/agents/llm/client.py` — `init_llm()`, `chat_routes()` / `one_shot_route()` (which configured provider serves a use), `resolve_model()`.
+- `apps/api/app/agents/llm/lane.py` — `ModelLane`, `resolve_lane()`: the model each agent role runs on; `dev_lane.py` is the development model picker.
+- `apps/api/app/agents/llm/vision/` — describing images for models without vision; `model_catalog.py` — model metadata.
+- `apps/api/app/constants/providers.py` — provider catalog: `CredentialProviderName`, `PRESETS`, `ProviderFeature` / `PROVIDER_FEATURES`.
 - `apps/api/app/agents/llm/chatbot.py` — chatbot-specific client.
-- `apps/api/app/agents/llm/retry_policies.py` — `COMMS_RETRY_POLICY`, `EXECUTOR_RETRY_POLICY`, `SUBAGENT_RETRY_POLICY`.
+- The graphs' retry policy is the `RetryPolicy()` in `apps/api/app/override/langgraph_bigtool/create_agent.py`.
 - `apps/api/app/override/langgraph_bigtool/create_agent.py` — custom `create_agent` that integrates with the tool registry.
 - `apps/api/app/override/langgraph_bigtool/hooks.py` — `HookType`.
 
@@ -536,6 +536,34 @@ Integration tools (Composio + per-user MCP — the thousands) are **never bound*
 - **Workspace path helpers** — `apps/api/app/agents/workspace/paths.py` (canonical `/workspace/...` paths, session_dir, runs_log_dir).
 - **Namespace derivation** — `apps/api/app/helpers/namespace_utils.py` (derives tool namespace from integration_id + server_url).
 - **Wide-event logging** — `libs/shared/py/wide_events.py` (used throughout for structured logging with `log.set(...)`).
+
+### Prompt layers and precedence
+
+What an agent sees, in injection order:
+
+| Layer | Source | Slot | Who edits it |
+|---|---|---|---|
+| Platform rules (safety, privacy, approvals, tool and output contracts) | static prompts (`comms_prompts.py`, `subagent_prompts.py`, `agent_template.py`) | `STATIC` | engineers |
+| Product defaults (tone, format, proactivity) | same static prompts | `STATIC` | engineers |
+| Standing instructions: `global` scope for every tier, an integration's scope for that integration's work | `user_instructions` collection via `app/services/user_instructions_service.py`, rendered by `app/agents/prompts/user_instructions_prompts.py` | `DYNAMIC_STABLE` (sections `global_instructions`, `integration_instructions`) | the user (`/api/v1/instructions/{scope}`, revision-guarded) and the agent (`update_user_instructions`) |
+| Task context (active tracked todo, workflow brief, memory recall, time) | `app/agents/context/fetchers.py` | `TODO_CONTEXT` / `MEMORY_RECALL` / `TIME` | nobody; injected per run |
+| Skill instructions | `skills` collection + builtin skills, read on demand | tool results | the user and the agent (`save_learned_skill`, `update_skill`) |
+
+Precedence (`INSTRUCTION_PRECEDENCE_RULES`, in the comms, executor and base subagent static prompts): platform rules always win; among user-level sources the more specific wins (current message, then the active task's notes, then the skill for the task, then standing instructions); memories and tracked-todo notes are facts and state, never instructions.
+
+Enforcement: the boundaries that matter are code, not prompt text (the HIL gate, tool permissions, integration scoping), so no instruction can switch them off. Standing instructions are fenced in a `<user_instructions scope="...">` block whose tags are escaped inside user text, so the content cannot close the fence. Routing: a lasting preference about how GAIA behaves is a standing instruction; a reusable procedure is a skill; ongoing work and its state is a tracked todo; facts about the user are memory.
+
+---
+
+## Self-host
+
+- **CLI and installer**: `packages/cli/` (`gaia up` and every self-host command; see `packages/cli/CLAUDE.md`), `packages/cli/install.sh` hands its screen to `gaia up`.
+- **Stack**: `infra/docker/docker-compose.selfhost.yml` + `infra/docker/selfhost/` (Caddyfile, bot override); one-click templates in `deploy/` and `render.yaml` (see `infra/docker/CLAUDE.md`).
+- **Deployment profile**: `apps/api/app/config/deployment.py` (capabilities off `ENV` / `AUTH_MODE` / `BLOB_STORE`) and `capability_requirements.py` (keys each capability needs).
+- **Instance credentials**: `apps/api/app/services/providers/` (one read path, one write path; see `apps/api/CLAUDE.md` → Providers & credentials), `services/runtime/` + `core/runtime_config_subscriber.py` (cross-pod invalidation).
+- **Endpoints**: `setup.py`, `setup_composio.py`, `setup_composio_toolkits.py` (first-run wizard, providers, Composio catalog), `auth_local.py` (local accounts), `members.py` (invites), `readiness.py`, `blob.py` (`services/blob_store.py`); `dependencies/instance_admin.py` guards admin routes.
+- **Composio on self-host**: `services/composio/toolkit_catalog.py`, `toolkit_enablement.py`, `instance_toolkits.py`, `auth_config_*.py`.
+- **Web**: `apps/web/src/features/setup-wizard/`, Settings → Providers & Tools (`features/settings/components/providers/`), Integrations setup and Members (`features/settings/components/`).
 
 ---
 
@@ -577,8 +605,9 @@ A browser task is a background job, not a tool call the turn holds open. `browse
 | Add a new tool the executor can use | `apps/api/app/agents/tools/<your_tool>.py` + register in `apps/api/app/agents/tools/core/registry.py` |
 | Change how integration tools run (the execute proxy / code mode) | `apps/api/app/agents/tools/execute/` + `apps/api/app/services/sandbox/execute_client.py` + `apps/api/app/api/v1/endpoints/sandbox_execute.py` |
 | Add a built-in skill | `apps/api/app/agents/skills/builtin/<skill_name>/SKILL.md` |
+| Change how a user's standing instructions reach the prompt | `apps/api/app/services/user_instructions_service.py` + `apps/api/app/agents/prompts/user_instructions_prompts.py` + `apps/api/app/agents/context/sections.py` |
 | Change bot command behavior | `libs/shared/ts/src/bots/commands/<command>.ts` |
-| Change voice STT/TTS/VAD | `apps/voice-agent/src/worker.py` + `apps/voice-agent/src/config.py` |
+| Change voice STT/TTS/VAD | `apps/voice-agent/src/agent.py` + `apps/voice-agent/src/config.py` |
 | Change memory projection | `apps/api/app/memory/projection.py` + `apps/api/app/services/memory_fs.py` |
 | Change workflow triggers | `apps/api/app/services/workflow/trigger_service.py` + `apps/api/app/models/trigger_config.py` |
 | Change tracked-todo notes (canvas.md / activity.md) | `apps/api/app/services/gaia_task_files.py` + `apps/api/app/services/todo_canvas_storage.py` |

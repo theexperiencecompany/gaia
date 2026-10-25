@@ -15,7 +15,7 @@ from app.agents.prompts.workflow_prompts import (
 )
 from app.agents.templates.workflow_template import WORKFLOW_GENERATION_TEMPLATE
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
-from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.config.oauth_config import all_integrations
 from app.constants.integrations import MANAGED_BY_INTERNAL
 from app.constants.log_tags import LogTag
 from app.models.workflow_models import (
@@ -65,7 +65,7 @@ def _failure_reason(error: BaseException) -> str:
 
 
 def _slug_to_friendly_name(slug: str) -> str:
-    for integration in OAUTH_INTEGRATIONS:
+    for integration in all_integrations():
         if integration.id == slug:
             return integration.name
     return slug
@@ -94,7 +94,7 @@ def _extract_explicit_mentions(prompt: str) -> set[str]:
     """
     lower_prompt = prompt.lower()
     mentioned: set[str] = set()
-    for integration in OAUTH_INTEGRATIONS:
+    for integration in all_integrations():
         # Word-boundary match so short/common names/ids (e.g. "box" in "inbox")
         # don't get flagged as explicit mentions and force-include integrations.
         for token in (integration.name.lower(), integration.id.lower()):
@@ -147,7 +147,7 @@ def _build_available_triggers(
     the user can't actually use.
     """
     lines: list[str] = []
-    for integration in OAUTH_INTEGRATIONS:
+    for integration in all_integrations():
         if (
             connected_integration_ids is not None
             and integration.id not in connected_integration_ids
@@ -210,7 +210,7 @@ def _collect_subagent_categories(active_set: set[str]) -> tuple[list[str], list[
     """
     category_names: list[str] = []
     tools_with_categories: list[str] = []
-    for integration in OAUTH_INTEGRATIONS:
+    for integration in all_integrations():
         if integration.subagent_config and integration.subagent_config.has_subagent:
             is_internal = integration.managed_by == MANAGED_BY_INTERNAL
             if not is_internal and integration.id.lower() not in active_set:
