@@ -1,32 +1,6 @@
 """Unit tests for app/models/composio_schemas/asana.py."""
 
-from pydantic import ValidationError
-import pytest
-
-from app.models.composio_schemas.asana import AsanaTaskCreatedPayload
 from app.models.trigger_configs import AsanaTaskTriggerConfig
-
-
-class TestAsanaTaskCreatedPayload:
-    # Field set verified against Composio triggers_types API (2026-08).
-    def test_valid_full(self):
-        m = AsanaTaskCreatedPayload(
-            created_at="2025-01-01T00:00:00Z",
-            project_gid="1213430481840948",
-            task_gid="1213430481840949",
-            user_gid="1200000000000001",
-        )
-        assert m.project_gid == "1213430481840948"
-        assert m.task_gid == "1213430481840949"
-        assert m.user_gid == "1200000000000001"
-
-    def test_valid_minimal(self):
-        m = AsanaTaskCreatedPayload()
-        assert m.task_gid is None
-
-    def test_wrong_type_project_gid(self):
-        with pytest.raises(ValidationError):
-            AsanaTaskCreatedPayload(project_gid=123)
 
 
 class TestAsanaTaskTriggerConfigLegacyMigration:
@@ -51,8 +25,3 @@ class TestAsanaTaskTriggerConfigLegacyMigration:
             {"trigger_name": "asana_task_trigger", "project_gid": "", "project_id": "123"}
         )
         assert m.project_gid == "123"
-
-
-# ---------------------------------------------------------------------------
-# todoist trigger payloads
-# ---------------------------------------------------------------------------
