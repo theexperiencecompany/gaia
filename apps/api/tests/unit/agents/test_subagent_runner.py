@@ -815,6 +815,30 @@ class TestProcessUpdatesPayload:
         assert run.run_messages == [ai]
 
     @pytest.mark.asyncio
+    async def test_a_tool_free_agent_message_becomes_the_final_report(self):
+        final = AIMessage(content="Today: dentist at 16:00.")
+        run = _make_run()
+
+        with patch("app.agents.core.subagents.subagent_runner.log"), self._entries([]):
+            await _process_updates_payload(run, {"agent": {"messages": [final]}})
+
+        assert run.final_message == "Today: dentist at 16:00."
+        assert run.run_messages == []
+
+    @pytest.mark.asyncio
+    async def test_a_tool_call_is_not_a_final_report(self):
+        ai = AIMessage(
+            content="Let me check.",
+            tool_calls=[{"name": "web_search", "args": {}, "id": "tc-1"}],
+        )
+        run = _make_run()
+
+        with patch("app.agents.core.subagents.subagent_runner.log"), self._entries([]):
+            await _process_updates_payload(run, {"agent": {"messages": [ai]}})
+
+        assert run.final_message == ""
+
+    @pytest.mark.asyncio
     async def test_the_extractor_receives_this_nodes_update_and_the_runs_own_state(self):
         metadata = {"icon_url": "https://icon.png"}
         run = _make_run(integration_metadata=metadata)
@@ -1011,6 +1035,17 @@ class TestFinalizeRun:
             outcome = _finalize_run(run)
 
         assert outcome.text == "The report is drafted and saved."
+
+    def test_the_executors_final_message_beats_the_accumulated_transcript(self):
+        """The stream accumulates every planning line; only the last answer is the report."""
+        run = _make_run(ctx_overrides={**self._ctx_overrides(), "integration_id": "executor"})
+        run.complete_message = "Let me fetch the mail.Let me read the threads."
+        run.final_message = "1 need you\n\nNeeds you\n- Priya · pitch deck · by Fri"
+
+        with patch("app.agents.core.subagents.subagent_runner.log"):
+            outcome = _finalize_run(run)
+
+        assert outcome.text == run.final_message
 
     def test_an_announced_tool_call_makes_the_same_text_an_ordinary_result(self):
         """A run that announced a call did the work, even if no ToolMessage came back before the stream ended."""

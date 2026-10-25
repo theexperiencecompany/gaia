@@ -49,7 +49,13 @@ from app.constants.hil import LANGGRAPH_INTERRUPT_KEY
 from app.constants.llm import EXECUTOR_RECURSION_LIMIT
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
-from app.helpers.agent_helpers import AgentIdentity, AgentLane, AgentThread, build_agent_config
+from app.helpers.agent_helpers import (
+    AgentIdentity,
+    AgentLane,
+    AgentThread,
+    build_agent_config,
+    last_ai_message,
+)
 from app.helpers.message_helpers import (
     build_current_time_message,
     create_system_message,
@@ -90,6 +96,14 @@ class _MessagesChannel(TypedDict, total=False):
     """The messages channel of a State update or snapshot; its other channels ride along unread."""
 
     messages: list[AnyMessage]
+
+
+def _final_assistant_text(messages: list[AnyMessage]) -> str:
+    """Return the text of the last assistant message when it answers without a tool call."""
+    message = last_ai_message(messages)
+    if message is None or message.tool_calls:
+        return ""
+    return message.text.strip()
 
 
 class SubagentInitialState(TypedDict, total=False):
@@ -352,6 +366,7 @@ class _StreamRun:
     integration_metadata: IntegrationMetadata | None
     subagent_id: str | None
     complete_message: str = ""
+    final_message: str = ""
     emitted_tool_calls: set[str] = field(default_factory=set)
     tool_ran: bool = False
     pending_approvals: list[HilInterruptPayload] = field(default_factory=list)
@@ -383,9 +398,9 @@ async def _process_updates_payload(run: _StreamRun, payload: dict[str, object]) 
         # streams them as partial chunks. Captured for the call record.
         if isinstance(state_update, dict):
             agent_update: _MessagesChannel = cast(_MessagesChannel, state_update)
-            run.run_messages.extend(
-                msg for msg in agent_update.get("messages", []) if getattr(msg, "tool_calls", None)
-            )
+            messages = agent_update.get("messages", [])
+            run.run_messages.extend(msg for msg in messages if getattr(msg, "tool_calls", None))
+            run.final_message = _final_assistant_text(messages) or run.final_message
         # Use shared helper to extract and format tool entries
         entries = await extract_tool_entries_from_update(
             state_update=state_update,
@@ -428,6 +443,8 @@ def _finalize_run(run: _StreamRun) -> SubagentOutcome:
             f'produced planning text: "{run.complete_message}". Re-issue the handoff with an '
             "explicit instruction to perform the action."
         )
+    elif run.ctx.integration_id == EXECUTOR_INTEGRATION_ID and run.final_message:
+        final_message = run.final_message
     else:
         final_message = run.complete_message or "Task completed"
     initial_state: SubagentInitialState = run.ctx.initial_state

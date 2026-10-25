@@ -52,7 +52,7 @@ from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
 from app.constants.todos import TodoActivityEvent
 from app.models.chat_models import ConversationSource
-from app.models.todo_models import TodoDocument
+from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services import todo_activity
@@ -80,7 +80,7 @@ EXECUTOR_REPORT = "Checked staging. The deploy failed on migration 42; needs a r
 NARRATED = f"Staging deploy failed on migration 42.{NEW_MESSAGE_BREAKER}Want me to roll it back?"
 
 
-def _todo(*, notify_on_run: bool = True) -> TodoDocument:
+def _todo(*, notify_on_run: bool = True, external_ref: ExternalRef | None = None) -> TodoDocument:
     return TodoDocument(
         id=TODO_ID,
         user_id=USER.user_id,
@@ -88,6 +88,7 @@ def _todo(*, notify_on_run: bool = True) -> TodoDocument:
         labels=["gaia-tracked"],
         notify_on_run=notify_on_run,
         canvas_content="## Standing rules\n- Tell me when a deploy fails.\n\n## Current State\n- green\n",
+        external_ref=external_ref,
     )
 
 
@@ -384,6 +385,36 @@ class TestNothingIsSentWhenNothingShouldBe:
         seams.narrate.assert_not_awaited()
         seams.send.assert_not_awaited()
         seams.activity.assert_not_awaited()
+
+
+class TestADeskBriefingIsNotHeldBackAsRoutine:
+    """The desk's Standing rule says a briefing with content is delivered whole, never held back."""
+
+    @staticmethod
+    def _desk() -> TodoDocument:
+        return _todo(
+            external_ref=ExternalRef(source=ExternalRefSource.INBOX_DESK, id="inbox-desk-1")
+        )
+
+    @pytest.mark.regression
+    async def test_comms_silence_does_not_drop_a_desk_briefing_with_content(self) -> None:
+        with _seams(todo=self._desk(), narrated="<SILENCE>nothing new</SILENCE>") as seams:
+            await run_todo_on_executor(_request())
+
+        seams.send.assert_awaited_once()
+        assert seams.send.await_args.kwargs["notification_text"] == EXECUTOR_REPORT
+        assert seams.capture.call_args.args[1].outcome == "delivered"
+
+    async def test_a_desk_report_with_nothing_new_is_still_quiet(self) -> None:
+        with _seams(
+            todo=self._desk(),
+            narrated="<SILENCE>nothing new</SILENCE>",
+            executor=_ExecutorResult("Nothing is new.", "final"),
+        ) as seams:
+            await run_todo_on_executor(_request())
+
+        seams.send.assert_not_awaited()
+        assert seams.capture.call_args.args[1].outcome == "silenced"
 
 
 class TestAFinishedRunIsNeverRunAgainForItsDelivery:

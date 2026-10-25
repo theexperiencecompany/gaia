@@ -214,13 +214,37 @@ class TestABriefingThatOwnsItsForm:
 
         assert seams.send.await_args.kwargs["notification_text"] == self.BRIEFING
 
-    async def test_comms_can_still_keep_a_desk_briefing_quiet(self) -> None:
-        with _seams(todo=self._desk(), narrated="<SILENCE>nothing new</SILENCE>") as seams:
+    @pytest.mark.regression
+    async def test_comms_cannot_hold_back_a_desk_briefing_that_has_content(self) -> None:
+        """The desk's Standing rule says a briefing with content is never held back as routine."""
+        with _seams(
+            todo=self._desk(),
+            narrated="<SILENCE>nothing new</SILENCE>",
+            sent_on=ConversationSource.TELEGRAM,
+        ) as seams:
             await deliver_todo_run_result(RUN, SCHEDULED, self.BRIEFING, "final")
+
+        assert seams.send.await_args.kwargs["notification_text"] == self.BRIEFING
+        assert seams.event().outcome == "delivered"
+
+    async def test_a_desk_report_with_nothing_new_stays_quiet(self) -> None:
+        with _seams(todo=self._desk(), narrated="<SILENCE>nothing new</SILENCE>") as seams:
+            await deliver_todo_run_result(RUN, SCHEDULED, "Nothing is new.", "final")
 
         seams.send.assert_not_awaited()
         seams.in_app.assert_not_awaited()
         assert seams.event().outcome == "silenced"
+
+    async def test_a_desk_briefing_that_opens_with_nothing_still_reaches_the_user(self) -> None:
+        briefing = "Nothing needs you today.\n\nFYI\n- 4 newsletters"
+        with _seams(
+            todo=self._desk(),
+            narrated="<SILENCE>nothing new</SILENCE>",
+            sent_on=ConversationSource.TELEGRAM,
+        ) as seams:
+            await deliver_todo_run_result(RUN, SCHEDULED, briefing, "final")
+
+        assert seams.send.await_args.kwargs["notification_text"] == briefing
 
     async def test_a_thread_todos_result_is_still_written_up_by_comms(self) -> None:
         thread = _todo(

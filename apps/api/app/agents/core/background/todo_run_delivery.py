@@ -1,10 +1,11 @@
 """Terminal delivery for a tracked todo's own background run.
 
 The run's conversation is a throwaway with no transport, so its result is never
-saved there: comms decides whether it is worth a message at all, the user's chat
-app gets it only if so, and activity.md records what happened either way. A step
-the todo store fails is finished by a durable job, keyed by the run, never by
-running the todo again.
+saved there: comms decides whether it is worth a message at all, except that a
+report whose form its todo owns is sent with its content even when comms calls it
+routine. The user's chat app gets it only if so, and activity.md records what
+happened either way. A step the todo store fails is finished by a durable job,
+keyed by the run, never by running the todo again.
 """
 
 import asyncio
@@ -59,6 +60,20 @@ from app.workers.queue import enqueue_worker_job
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.todos import TodosRunResultDelivered
 from shared.py.wide_events import log
+
+#: How a report-form owner opens a report that found nothing worth a section.
+_QUIET_REPORT_PREFIXES = ("nothing", "no new", "no mail", "all quiet")
+
+
+def _is_quiet_report(text: str) -> bool:
+    """Whether a report-form owner's report is a one-line nothing-new instead of a briefing."""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines:
+        return True
+    if len(lines) > 1:
+        return False
+    return lines[0].lower().startswith(_QUIET_REPORT_PREFIXES)
+
 
 _NOT_SENT_NOTES: dict[TodoRunDeliveryOutcome, str] = {
     TodoRunDeliveryOutcome.UNDELIVERED: "result not sent: no linked chat app accepted it",
@@ -278,8 +293,10 @@ async def _narrate_and_send(
 ) -> _Resolution:
     """Have comms write the result up (or decline to), then send it to the chat app.
 
-    A report whose form its todo's guidance sets is sent as written: comms decides only whether.
+    A report whose form its todo's guidance sets is sent as written: comms decides only whether,
+    and cannot hold back a report that has content.
     """
+    owns_form = todo.external_ref is not None and todo.external_ref.source.owns_report_form
     # Where it goes is looked up while comms writes it up: neither waits on the other.
     text, target = await asyncio.gather(
         narrate_executor_result(
@@ -302,8 +319,10 @@ async def _narrate_and_send(
 
     directive = interpret_comms_output(text)
     if directive.kind is CommsDirectiveKind.SILENCE:
-        log.set_ns("todo_delivery", silence_reason=directive.payload)
-        return _Resolution(TodoRunDeliveryOutcome.SILENCED, f"kept quiet: {directive.payload}")
+        if not owns_form or _is_quiet_report(finished.result_text):
+            log.set_ns("todo_delivery", silence_reason=directive.payload)
+            return _Resolution(TodoRunDeliveryOutcome.SILENCED, f"kept quiet: {directive.payload}")
+        log.set_ns("todo_delivery", silence_overridden="report has content")
     if directive.kind is CommsDirectiveKind.REACT:
         # There is no user message to react to; a lone emoji would arrive as noise.
         log.error(
@@ -313,8 +332,6 @@ async def _narrate_and_send(
         )
         return _not_sent(TodoRunDeliveryOutcome.INVALID_DIRECTIVE)
 
-    # comms' retelling dropped the headings a report-form owner's guidance requires.
-    owns_form = todo.external_ref is not None and todo.external_ref.source.owns_report_form
     message = finished.result_text if owns_form else directive.payload
     platform = (
         await deliver_result_to_platforms(
