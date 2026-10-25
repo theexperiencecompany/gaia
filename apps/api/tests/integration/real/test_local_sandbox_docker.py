@@ -20,6 +20,12 @@ from e2b.sandbox.filesystem.filesystem import FileType
 import pytest
 
 from app.config.settings import settings
+from app.constants.sandbox import SANDBOX_USER_HOME
+from app.services.agent_lab.agents_home import (
+    SAVE_ARCHIVE,
+    SAVE_SCRIPT,
+    build_agents_setup_command,
+)
 from app.services.sandbox import lifecycle, local_sandbox
 from app.services.sandbox.lifecycle import acquire_sandbox
 from app.services.sandbox.local_sandbox import LocalDockerSandbox, pop_local_sandbox
@@ -136,6 +142,22 @@ async def test_envs_and_user_reach_the_command(sbx: LocalDockerSandbox) -> None:
         user="root",
     )
     assert result.stdout.strip() == "v1-root"
+
+
+async def test_the_coding_agents_home_sets_up_and_saves_in_the_real_image(
+    sbx: LocalDockerSandbox,
+) -> None:
+    # The same setup an E2B agent-lab sandbox runs, with the tools its run hooks need.
+    await sbx.commands.run(build_agents_setup_command(), timeout=60)
+    probe = await sbx.commands.run(
+        'echo "$HOME"; command -v curl sqlite3 git; echo "$PATH"; '
+        f"{SAVE_SCRIPT} && test -s {SAVE_ARCHIVE} && echo saved"
+    )
+    home, curl, sqlite3, git, path, saved = probe.stdout.split()
+    assert home == SANDBOX_USER_HOME
+    assert (curl, sqlite3, git) == ("/usr/bin/curl", "/usr/bin/sqlite3", "/usr/bin/git")
+    assert f"{SANDBOX_USER_HOME}/.local/bin" in path.split(":")
+    assert saved == "saved"
 
 
 # --------------------------------------------------------------------------

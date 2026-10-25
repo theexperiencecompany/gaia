@@ -39,6 +39,8 @@
 	import gaia
 }
 
-http://localhost {
+# host.docker.internal is how a local code-sandbox container reaches GAIA
+# (docker-compose.sandbox.yml), over plain HTTP like localhost.
+http://localhost, http://host.docker.internal {
 	import gaia
 }

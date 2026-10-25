@@ -26,6 +26,7 @@ from app.models.trigger_subscription_models import (
 from app.services.agent_lab import lab_events, lab_runs, sandbox_setup
 from app.services.sandbox import execute_token
 from app.services.sandbox.execute_token import mint_execute_token
+from app.services.sandbox.local_sandbox import LocalDockerSandbox
 from app.utils.errors import AppError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.todos import TodosTriggerFired
@@ -438,7 +439,7 @@ class TestLabSeedingFailsLoud:
     def test_unconfigured_callback_url_is_503(self) -> None:
         with patch.object(sandbox_setup.settings, "SANDBOX_LAB_EVENTS_CALLBACK_URL", ""):
             with pytest.raises(AppError) as err:
-                sandbox_setup.lab_events_url()
+                sandbox_setup.lab_events_url(object())
         assert err.value == AppError(
             message="lab lifecycle pushes are not configured",
             why="SANDBOX_LAB_EVENTS_CALLBACK_URL is unset",
@@ -446,6 +447,16 @@ class TestLabSeedingFailsLoud:
             status_code=503,
             code="agent_lab_events_unconfigured",
         )
+
+    def test_a_local_sandbox_never_falls_back_to_the_public_url(self) -> None:
+        # The public URL is unreachable from a local container, so its own setting must be set.
+        with (
+            patch.object(sandbox_setup.settings, "SANDBOX_LAB_EVENTS_CALLBACK_URL", "https://x"),
+            patch.object(sandbox_setup.settings, "LOCAL_SANDBOX_LAB_EVENTS_CALLBACK_URL", None),
+            pytest.raises(AppError) as err,
+        ):
+            sandbox_setup.lab_events_url(LocalDockerSandbox("u1"))
+        assert err.value.why == "LOCAL_SANDBOX_LAB_EVENTS_CALLBACK_URL is unset"
 
     def test_seed_without_a_run_id_is_refused(self) -> None:
         with pytest.raises(AppError) as err:

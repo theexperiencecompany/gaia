@@ -14,10 +14,15 @@
 #
 # DOCKER_SOCKET_GID is the socket's group as seen in containers (`gaia up`
 # writes it to .env; 0 on Docker Desktop and OrbStack).
+#
+# A sandbox container cannot reach gaia-backend on gaia_network, so a coding
+# agent's run hooks report back through the proxy's published port on the host
+# gateway (the proxy answers host.docker.internal as it does localhost).
 services:
   gaia-backend:
     environment: &sandbox_environment
       LOCAL_CODE_SANDBOX: "true"
+      LOCAL_SANDBOX_LAB_EVENTS_CALLBACK_URL: http://host.docker.internal:${WEB_HOST_PORT:-3000}/api/v1/lab/events
     group_add: &docker_socket_group
       - "${DOCKER_SOCKET_GID:-0}"
     volumes: &docker_socket_volume

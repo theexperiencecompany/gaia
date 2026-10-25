@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
+import hashlib
 import io
 import itertools
 import os
@@ -24,7 +25,7 @@ from tests.helpers import captured_wide_event
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
-from app.constants.sandbox import SELFHOST_WORKSPACE_VOLUME
+from app.constants.sandbox import SANDBOX_USER_HOME, SELFHOST_WORKSPACE_VOLUME
 from app.services.sandbox import local_sandbox
 from app.services.sandbox.local_sandbox import (
     LocalDockerSandbox,
@@ -511,7 +512,12 @@ async def test_garbled_stat_output_is_a_loud_error_not_default_fields(
 # --------------------------------------------------------------------------
 
 
-_CURRENT_LAYOUT = f"true {local_sandbox.LOCAL_SANDBOX_LAYOUT}"
+_CURRENT_LAYOUT = f"true {local_sandbox.RUN_SPEC}"
+
+
+def _image_present() -> FakeProcess:
+    """Answer docker image inspect with the built image, so a create skips the build."""
+    return FakeProcess(stdout=b"sha256:abc\n")
 
 
 def _inspect_response(state: str = _CURRENT_LAYOUT, rc: int = 0) -> FakeProcess:
@@ -539,6 +545,7 @@ def _mount_specs(run: list[str]) -> list[dict[str, str]]:
 async def _create(recorder: SpawnRecorder, user_id: str) -> list[str]:
     recorder._responses = [
         FakeProcess(stderr=b"No such object", returncode=1),
+        _image_present(),
         FakeProcess(returncode=0),
         FakeProcess(returncode=0),
         _inspect_response(),
@@ -560,7 +567,7 @@ async def test_ensure_started_starts_an_existing_stopped_container(
     recorder: SpawnRecorder,
 ) -> None:
     recorder._responses = [
-        _inspect_response(f"false {local_sandbox.LOCAL_SANDBOX_LAYOUT}"),
+        _inspect_response(f"false {local_sandbox.RUN_SPEC}"),
         FakeProcess(returncode=0),
         _inspect_response(),
     ]
@@ -614,8 +621,8 @@ async def test_the_sandbox_runs_as_the_api_user_so_both_can_write_the_workspace(
 
     assert run[run.index("--user") + 1] == f"{os.getuid()}:{os.getgid()}"
     assert run[run.index("--label") + 1] == "gaia.sandbox.user=userB"
-    assert f"{local_sandbox.LOCAL_SANDBOX_LAYOUT_LABEL}={local_sandbox.LOCAL_SANDBOX_LAYOUT}" in run
-    assert run[-3:] == ["python:3.12-slim", "sleep", "infinity"]
+    assert f"{local_sandbox.LOCAL_SANDBOX_LAYOUT_LABEL}={local_sandbox.RUN_SPEC}" in run
+    assert run[-3:] == [local_sandbox.LOCAL_SANDBOX_IMAGE, "sleep", "infinity"]
 
 
 def _flag(run: list[str], flag: str) -> str:
@@ -653,12 +660,13 @@ async def test_an_existing_sandbox_network_is_reused(
 ) -> None:
     recorder._responses = [
         FakeProcess(stderr=b"No such object", returncode=1),
+        _image_present(),
         FakeProcess(stderr=b"Error: network with name gaia-sandbox already exists", returncode=1),
         FakeProcess(returncode=0),
         _inspect_response(),
     ]
     await _sandbox("userB").ensure_started()
-    assert recorder.argv(2)[:2] == ["docker", "run"]
+    assert recorder.argv(3)[:2] == ["docker", "run"]
 
 
 async def test_a_failed_network_create_stops_the_sandbox_from_starting(
@@ -666,6 +674,7 @@ async def test_a_failed_network_create_stops_the_sandbox_from_starting(
 ) -> None:
     recorder._responses = [
         FakeProcess(stderr=b"No such object", returncode=1),
+        _image_present(),
         FakeProcess(stderr=b"permission denied", returncode=1),
     ]
     with pytest.raises(LocalSandboxError, match="permission denied"):
@@ -679,6 +688,7 @@ async def test_a_container_from_before_the_limits_is_replaced_not_restarted(
     recorder._responses = [
         _inspect_response("true per-user-subpath-v1"),
         FakeProcess(returncode=0),
+        _image_present(),
         FakeProcess(returncode=0),
         FakeProcess(returncode=0),
         _inspect_response(),
@@ -694,6 +704,7 @@ async def test_a_container_from_the_shared_volume_era_is_replaced_not_restarted(
     recorder._responses = [
         _inspect_response("true "),
         FakeProcess(returncode=0),
+        _image_present(),
         FakeProcess(returncode=0),
         FakeProcess(returncode=0),
         _inspect_response(),
@@ -701,7 +712,7 @@ async def test_a_container_from_the_shared_volume_era_is_replaced_not_restarted(
     await _sandbox("userB").ensure_started()
 
     assert recorder.argv(1)[:3] == ["docker", "rm", "-f"]
-    assert recorder.argv(3)[:2] == ["docker", "run"]
+    assert recorder.argv(4)[:2] == ["docker", "run"]
     assert not any(argv[:2] == ["docker", "start"] for argv in recorder.argvs)
 
 
@@ -709,7 +720,7 @@ async def test_a_container_from_the_shared_volume_era_is_replaced_not_restarted(
 async def test_a_user_id_that_could_rewrite_the_mount_spec_never_reaches_docker_run(
     recorder: SpawnRecorder, workspace_root: Path, user_id: str
 ) -> None:
-    recorder._responses = [FakeProcess(stderr=b"No such object", returncode=1)]
+    recorder._responses = [FakeProcess(stderr=b"No such object", returncode=1), _image_present()]
     with pytest.raises(ValueError, match="unsafe user_id"):
         await _sandbox(user_id).ensure_started()
     assert not any(argv[:2] == ["docker", "run"] for argv in recorder.argvs)
@@ -719,7 +730,7 @@ async def test_no_sandbox_starts_without_the_workspace_volume(
     recorder: SpawnRecorder, workspace_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr("app.services.storage.juicefs._is_mounted", lambda: False)
-    recorder._responses = [FakeProcess(stderr=b"No such object", returncode=1)]
+    recorder._responses = [FakeProcess(stderr=b"No such object", returncode=1), _image_present()]
     with pytest.raises(JuiceFSUnavailable):
         await _sandbox("userB").ensure_started()
     assert not any(argv[:2] == ["docker", "run"] for argv in recorder.argvs)
@@ -730,6 +741,7 @@ async def test_ensure_started_surfaces_a_failed_create(
 ) -> None:
     recorder._responses = [
         FakeProcess(stderr=b"No such object", returncode=1),
+        _image_present(),
         FakeProcess(returncode=0),
         FakeProcess(stderr=b"daemon unreachable", returncode=125),
     ]
@@ -742,6 +754,7 @@ async def test_ensure_started_fails_if_the_container_never_runs(
 ) -> None:
     recorder._responses = [
         FakeProcess(stderr=b"No such object", returncode=1),
+        _image_present(),
         FakeProcess(returncode=0),
         FakeProcess(returncode=0),
         FakeProcess(stderr=b"No such object", returncode=1),
@@ -753,7 +766,7 @@ async def test_ensure_started_fails_if_the_container_never_runs(
 async def test_is_running_reflects_inspect(recorder: SpawnRecorder) -> None:
     recorder._responses = [_inspect_response()]
     assert await _sandbox().is_running(request_timeout=4) is True
-    recorder._responses = [_inspect_response(f"false {local_sandbox.LOCAL_SANDBOX_LAYOUT}")]
+    recorder._responses = [_inspect_response(f"false {local_sandbox.RUN_SPEC}")]
     assert await _sandbox().is_running() is False
 
 
@@ -990,10 +1003,88 @@ async def test_docker_run_names_labels_and_restarts_the_container(
     assert run[:5] == ["docker", "run", "-d", "--name", "gaia-sandbox-userB"]
     assert [value for flag, value in itertools.pairwise(run) if flag == "--label"] == [
         "gaia.sandbox.user=userB",
-        f"{local_sandbox.LOCAL_SANDBOX_LAYOUT_LABEL}={local_sandbox.LOCAL_SANDBOX_LAYOUT}",
+        f"{local_sandbox.LOCAL_SANDBOX_LAYOUT_LABEL}={local_sandbox.RUN_SPEC}",
     ]
-    assert _flag(run, "--env") == f"HOME={local_sandbox.LOCAL_SANDBOX_HOME}"
+    assert _flag(run, "--env") == f"HOME={SANDBOX_USER_HOME}"
     assert _flag(run, "--restart") == "unless-stopped"
+
+
+async def test_a_missing_image_is_built_from_the_dockerfile_before_the_container(
+    recorder: SpawnRecorder, workspace_root: Path
+) -> None:
+    recorder._responses = [
+        FakeProcess(stderr=b"No such object", returncode=1),
+        FakeProcess(stderr=b"No such image", returncode=1),
+        FakeProcess(returncode=0),
+        FakeProcess(returncode=0),
+        FakeProcess(returncode=0),
+        _inspect_response(),
+    ]
+    await _sandbox("userB").ensure_started()
+
+    image = local_sandbox.LOCAL_SANDBOX_IMAGE
+    assert recorder.argv(1) == ["docker", "image", "inspect", "--format", "{{.Id}}", image]
+    build = recorder.argv(2)
+    assert build == [
+        "docker",
+        "build",
+        "--tag",
+        image,
+        "--build-arg",
+        f"SANDBOX_USER_HOME={SANDBOX_USER_HOME}",
+        "-",
+    ]
+    dockerfile = (Path(local_sandbox.__file__).with_name("local_sandbox.Dockerfile")).read_bytes()
+    assert recorder.stdins[2] == dockerfile
+    assert recorder.argv(4)[:2] == ["docker", "run"]
+
+
+async def test_a_failed_image_build_starts_no_container(
+    recorder: SpawnRecorder, workspace_root: Path
+) -> None:
+    recorder._responses = [
+        FakeProcess(stderr=b"No such object", returncode=1),
+        FakeProcess(stderr=b"No such image", returncode=1),
+        FakeProcess(stderr=b"apt-get: network unreachable\n", returncode=1),
+    ]
+    with pytest.raises(LocalSandboxError) as raised:
+        await _sandbox("userB").ensure_started()
+    assert str(raised.value) == (
+        f"docker build failed for {local_sandbox.LOCAL_SANDBOX_IMAGE}: apt-get: network unreachable"
+    )
+    assert not any(argv[:2] == ["docker", "run"] for argv in recorder.argvs)
+
+
+def test_the_image_tag_changes_with_the_dockerfile() -> None:
+    digest = hashlib.sha256(
+        Path(local_sandbox.__file__).with_name("local_sandbox.Dockerfile").read_bytes()
+        + f"SANDBOX_USER_HOME={SANDBOX_USER_HOME}".encode()
+    ).hexdigest()
+    assert f"gaia-local-sandbox:{digest[:12]}" == local_sandbox.LOCAL_SANDBOX_IMAGE
+
+
+async def test_a_container_from_an_older_image_is_replaced_not_restarted(
+    recorder: SpawnRecorder, workspace_root: Path
+) -> None:
+    recorder._responses = [
+        _inspect_response(f"true {local_sandbox.LOCAL_SANDBOX_LAYOUT}@gaia-local-sandbox:0ld"),
+        FakeProcess(returncode=0),
+        _image_present(),
+        FakeProcess(returncode=0),
+        FakeProcess(returncode=0),
+        _inspect_response(),
+    ]
+    await _sandbox("userB").ensure_started()
+    assert recorder.argv(1)[:3] == ["docker", "rm", "-f"]
+    assert recorder.argv(4)[:2] == ["docker", "run"]
+
+
+async def test_the_sandbox_reaches_the_host_through_the_gateway_alias(
+    recorder: SpawnRecorder, workspace_root: Path
+) -> None:
+    # The run hooks report to GAIA through the proxy's port on the host.
+    run = await _create(recorder, "userB")
+    assert _flag(run, "--add-host") == "host.docker.internal:host-gateway"
 
 
 async def test_a_sandbox_whose_workspace_already_exists_is_created_again(
@@ -1009,7 +1100,7 @@ async def test_a_sandbox_whose_workspace_already_exists_is_created_again(
 
 async def test_a_stopped_container_is_started_by_name(recorder: SpawnRecorder) -> None:
     recorder._responses = [
-        _inspect_response(f"false {local_sandbox.LOCAL_SANDBOX_LAYOUT}"),
+        _inspect_response(f"false {local_sandbox.RUN_SPEC}"),
         FakeProcess(returncode=0),
         _inspect_response(),
     ]
@@ -1019,7 +1110,7 @@ async def test_a_stopped_container_is_started_by_name(recorder: SpawnRecorder) -
 
 async def test_a_failed_start_names_the_action(recorder: SpawnRecorder) -> None:
     recorder._responses = [
-        _inspect_response(f"false {local_sandbox.LOCAL_SANDBOX_LAYOUT}"),
+        _inspect_response(f"false {local_sandbox.RUN_SPEC}"),
         FakeProcess(stderr=b"boom\n", returncode=1),
     ]
     with pytest.raises(LocalSandboxError) as raised:
@@ -1030,6 +1121,7 @@ async def test_a_failed_start_names_the_action(recorder: SpawnRecorder) -> None:
 async def test_a_failed_run_names_the_action(recorder: SpawnRecorder, workspace_root: Path) -> None:
     recorder._responses = [
         FakeProcess(stderr=b"No such object", returncode=1),
+        _image_present(),
         FakeProcess(returncode=0),
         FakeProcess(stderr=b"daemon unreachable\n", returncode=125),
     ]

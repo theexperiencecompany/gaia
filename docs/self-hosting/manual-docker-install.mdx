@@ -70,6 +70,7 @@ Run GAIA with plain `docker compose`, no `gaia` CLI needed.
     BOT_SESSION_TOKEN_SECRET=$(openssl rand -hex 32)
     EMAIL_UNSUBSCRIBE_SECRET=$(openssl rand -hex 32)
     SHARE_GRANT_SECRET=$(openssl rand -hex 32)
+    SANDBOX_EXECUTE_TOKEN_SECRET=$(openssl rand -hex 32)
     INSTANCE_SECRET=$(openssl rand -hex 32)
     EOF
     ```

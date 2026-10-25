@@ -42,6 +42,8 @@ envVarGroups:
         generateValue: true
       - key: GAIA_BOT_API_KEY
         generateValue: true
+      - key: SANDBOX_EXECUTE_TOKEN_SECRET
+        generateValue: true
       - key: INSTANCE_SECRET
         generateValue: true
 

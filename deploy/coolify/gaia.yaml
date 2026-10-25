@@ -27,6 +27,7 @@ x-backend-environment: &backend_environment
   EMAIL_UNSUBSCRIBE_SECRET: ${SERVICE_PASSWORD_64_EMAILUNSUBSCRIBE}
   SHARE_GRANT_SECRET: ${SERVICE_PASSWORD_64_SHAREGRANT}
   GAIA_BOT_API_KEY: ${SERVICE_PASSWORD_64_BOTAPIKEY}
+  SANDBOX_EXECUTE_TOKEN_SECRET: ${SERVICE_PASSWORD_64_SANDBOXEXECUTETOKEN}
   INSTANCE_SECRET: ${SERVICE_PASSWORD_64_INSTANCE}
   OPENAI_API_KEY: ${OPENAI_API_KEY:-}
 
@@ -82,7 +83,9 @@ services:
               import gaia
           }
 
-          http://localhost {
+          # host.docker.internal is how a local code-sandbox container reaches GAIA
+          # (docker-compose.sandbox.yml), over plain HTTP like localhost.
+          http://localhost, http://host.docker.internal {
               import gaia
           }
     depends_on:

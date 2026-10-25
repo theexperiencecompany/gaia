@@ -211,6 +211,7 @@ OpenAI-compatible gateways (OpenCode, Nous Research, or any custom endpoint) are
 | `COMPOSIO_WEBHOOK_SECRET` | Webhook verification secret      |
 | `E2B_API_KEY`             | E2B code sandbox API key         |
 | `LOCAL_CODE_SANDBOX`      | Self-host only: run code in local Docker containers when no E2B key is set. Set by the `docker-compose.sandbox.yml` override (`gaia up --code-sandbox`), which also mounts the Docker socket; never set it by hand |
+| `LOCAL_SANDBOX_LAB_EVENTS_CALLBACK_URL` | Self-host only: where coding-agent runs in a local sandbox report back (the proxy on the host gateway). Set by the same `docker-compose.sandbox.yml` override |
 | `RESEND_API_KEY`          | Resend email API key             |
 | `RESEND_AUDIENCE_ID`      | Resend audience ID               |
 | `BLOG_BEARER_TOKEN`       | Bearer token for blog management |

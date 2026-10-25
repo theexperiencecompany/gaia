@@ -50,6 +50,7 @@ describe("collectMachineSecrets", () => {
       "EMAIL_UNSUBSCRIBE_SECRET",
       "GAIA_BOT_API_KEY",
       "INSTANCE_SECRET",
+      "SANDBOX_EXECUTE_TOKEN_SECRET",
       "SHARE_GRANT_SECRET",
     ]);
     for (const value of Object.values(secrets)) {
@@ -68,8 +69,11 @@ describe("collectMachineSecrets", () => {
 
     const secrets = collectMachineSecrets(existing);
 
-    // Only the missing one is generated.
-    expect(Object.keys(secrets)).toEqual(["EMAIL_UNSUBSCRIBE_SECRET"]);
+    // Only the missing ones are generated.
+    expect(Object.keys(secrets)).toEqual([
+      "EMAIL_UNSUBSCRIBE_SECRET",
+      "SANDBOX_EXECUTE_TOKEN_SECRET",
+    ]);
     expect(secrets.EMAIL_UNSUBSCRIBE_SECRET).toMatch(/^[0-9a-f]{64}$/);
   });
 
@@ -87,6 +91,7 @@ describe("collectMachineSecrets", () => {
       "BOT_SESSION_TOKEN_SECRET",
       "EMAIL_UNSUBSCRIBE_SECRET",
       "GAIA_BOT_API_KEY",
+      "SANDBOX_EXECUTE_TOKEN_SECRET",
       "SHARE_GRANT_SECRET",
     ]);
   });

@@ -415,6 +415,9 @@ class Settings(BrowserHostSettings):
     # from the E2B sandbox, so the public API base in prod. Unset = bash
     # run_todo_id refuses to launch, since the run could never report back.
     SANDBOX_LAB_EVENTS_CALLBACK_URL: str | None = None
+    # The same receiver as a self-host local sandbox container reaches it: the
+    # proxy's published port on the host gateway. Set by docker-compose.sandbox.yml.
+    LOCAL_SANDBOX_LAB_EVENTS_CALLBACK_URL: str | None = None
     # Template for users with the AGENT_LAB flag: the default one's 1GB OOM-kills
     # coding-agent CLIs. Built with build_e2b_template.py --memory-mb 8192.
     E2B_AGENT_LAB_TEMPLATE_ID: str | None = None

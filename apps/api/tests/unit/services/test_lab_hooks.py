@@ -583,5 +583,5 @@ class TestLabHooksToken:
     def test_unconfigured_events_url_fails_loud(self) -> None:
         with patch.object(sandbox_setup.settings, "SANDBOX_LAB_EVENTS_CALLBACK_URL", None):
             with pytest.raises(AppError) as err:
-                sandbox_setup.lab_events_url()
+                sandbox_setup.lab_events_url(object())
         assert err.value.status_code == 503

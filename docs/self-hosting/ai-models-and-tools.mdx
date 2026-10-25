@@ -100,6 +100,8 @@ With neither, coding tools say code execution is off. Everything else works. If 
   | Command time | 5 minutes by default, 30 at most |
 
   The sandbox can still reach ports your server publishes to all interfaces, like any internet client.
+
+  The first sandbox builds the `gaia-local-sandbox` image on your server, which takes about a minute. It has `curl`, `git` and `sqlite3`, so GAIA can run Claude Code and OpenCode in it (set `ENABLE_AGENT_LAB=true` in `apps/api/.env`). Those runs report back to GAIA through the port the proxy publishes (`WEB_HOST_PORT`).
 </Accordion>
 
 <Accordion title="Upgrading from a version with one shared sandbox volume">

@@ -47,8 +47,8 @@ from app.constants.sandbox import (
     LOCAL_SANDBOX_CONTAINER_PREFIX,
     LOCAL_SANDBOX_CPUS,
     LOCAL_SANDBOX_EXEC_TIMEOUT_GRACE_SECONDS,
-    LOCAL_SANDBOX_HOME,
-    LOCAL_SANDBOX_IMAGE,
+    LOCAL_SANDBOX_HOST_GATEWAY,
+    LOCAL_SANDBOX_IMAGE_REPOSITORY,
     LOCAL_SANDBOX_KILLED_EXIT_CODE,
     LOCAL_SANDBOX_LAYOUT,
     LOCAL_SANDBOX_LAYOUT_LABEL,
@@ -59,6 +59,7 @@ from app.constants.sandbox import (
     LOCAL_SANDBOX_PIDS_LIMIT,
     LOCAL_SANDBOX_START_TIMEOUT_SECONDS,
     LOCAL_SANDBOX_WORKSPACE_MOUNT,
+    SANDBOX_USER_HOME,
     SELFHOST_WORKSPACE_VOLUME,
 )
 from app.services.storage.juicefs import (
@@ -94,6 +95,14 @@ _MISSING_CONTAINER_MARKERS = ("no such object", "no such container")
 
 # Chunk size for streaming command output to on_stdout/on_stderr callbacks.
 _STREAM_CHUNK_BYTES = 65_536
+
+_DOCKERFILE = Path(__file__).with_name("local_sandbox.Dockerfile").read_bytes()
+_IMAGE_BUILD_ARGS = (f"SANDBOX_USER_HOME={SANDBOX_USER_HOME}",)
+_IMAGE_DIGEST = hashlib.sha256(_DOCKERFILE + "\n".join(_IMAGE_BUILD_ARGS).encode()).hexdigest()
+LOCAL_SANDBOX_IMAGE = f"{LOCAL_SANDBOX_IMAGE_REPOSITORY}:{_IMAGE_DIGEST[:12]}"
+
+# What a container's layout label must read to be reused rather than replaced.
+RUN_SPEC = f"{LOCAL_SANDBOX_LAYOUT}@{LOCAL_SANDBOX_IMAGE}"
 
 # stat(1) format for get_info: size|mode(hex)|permissions|owner|group|
 # mtime(epoch)|type phrase. `-L` follows symlinks so callers see the target.
@@ -236,16 +245,11 @@ class LocalDockerSandbox:
     process re-inspects and recreates containers on demand.
     """
 
-    def __init__(
-        self,
-        user_id: str,
-        *,
-        image: str = LOCAL_SANDBOX_IMAGE,
-    ) -> None:
+    def __init__(self, user_id: str) -> None:
         if not user_id:
             raise ValueError("user_id is required")
         self.user_id = user_id
-        self.image = image
+        self.image = LOCAL_SANDBOX_IMAGE
         # Guards ensure_started() against concurrent first acquires racing two
         # `docker run`s into a name clash.
         self._start_lock = asyncio.Lock()
@@ -340,7 +344,21 @@ class LocalDockerSandbox:
                 f"docker network create failed for {LOCAL_SANDBOX_NETWORK}: {stderr.strip()}"
             )
 
+    async def _ensure_image(self) -> None:
+        """Build the sandbox image on the host daemon unless an earlier create did."""
+        rc, _, _ = await self._run_docker("image", "inspect", "--format", "{{.Id}}", self.image)
+        if rc == 0:
+            return
+        build_args = [arg for value in _IMAGE_BUILD_ARGS for arg in ("--build-arg", value)]
+        rc, _, stderr = await self._run_docker(
+            "build", "--tag", self.image, *build_args, "-", stdin=_DOCKERFILE
+        )
+        if rc != 0:
+            raise LocalSandboxError(f"docker build failed for {self.image}: {stderr.strip()}")
+        log.info(f"{LogTag.SANDBOX} built the local sandbox image", image=self.image)
+
     async def _create_container(self) -> tuple[int, str]:
+        await self._ensure_image()
         await self._prepare_workspace()
         await self._ensure_network()
         mount_args = [
@@ -356,10 +374,12 @@ class LocalDockerSandbox:
             "--label",
             f"gaia.sandbox.user={self.user_id}",
             "--label",
-            f"{LOCAL_SANDBOX_LAYOUT_LABEL}={LOCAL_SANDBOX_LAYOUT}",
+            f"{LOCAL_SANDBOX_LAYOUT_LABEL}={RUN_SPEC}",
             *mount_args,
             "--network",
             LOCAL_SANDBOX_NETWORK,
+            "--add-host",
+            LOCAL_SANDBOX_HOST_GATEWAY,
             "--memory",
             LOCAL_SANDBOX_MEMORY_LIMIT,
             "--memory-swap",
@@ -376,7 +396,7 @@ class LocalDockerSandbox:
             "--user",
             f"{os.getuid()}:{os.getgid()}",
             "--env",
-            f"HOME={LOCAL_SANDBOX_HOME}",
+            f"HOME={SANDBOX_USER_HOME}",
             "--restart",
             "unless-stopped",
             self.image,
@@ -393,10 +413,10 @@ class LocalDockerSandbox:
         """
         async with self._start_lock, asyncio.timeout(LOCAL_SANDBOX_START_TIMEOUT_SECONDS):
             state = await self._container_state()
-            if state.exists and state.layout != LOCAL_SANDBOX_LAYOUT:
-                # Created before per-user isolation: it mounts every user's files.
+            if state.exists and state.layout != RUN_SPEC:
+                # An older layout or image; before per-user isolation it mounted every user's files.
                 log.info(
-                    f"{LogTag.SANDBOX} replacing local container from an older mount layout",
+                    f"{LogTag.SANDBOX} replacing local container from an older layout or image",
                     container=self.container_name,
                     layout=state.layout,
                 )

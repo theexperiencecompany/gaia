@@ -68,7 +68,6 @@ from app.services.sandbox.execute_client import (
     sandbox_execute_enabled,
     seed_execute_client,
 )
-from app.services.sandbox.local_sandbox import LocalDockerSandbox
 from app.services.storage import FsOps, fs_timer
 from app.services.storage.metrics import _register_once
 from app.services.triggers.subscription_service import unregister_subscription
@@ -300,7 +299,7 @@ async def _resolve_lab_todo(*, user_id: str, run_todo_id: str) -> TodoDocument |
 async def _seed_lab_run(*, user_id: str, sandbox_run_id: str, sbx: object) -> tuple[str, str] | str:
     """Mint the hooks token, stage the seed, run it; or the loud error. Returns (url, token)."""
     try:
-        url = lab_events_url()
+        url = lab_events_url(sbx)
         token = mint_lab_hooks_token(user_id, sandbox_run_id)
         seed = build_seed_command(url, token, sandbox_run_id)
     except Exception as e:
@@ -320,12 +319,6 @@ async def _setup_lab_run(*, user_id: str, run_todo_id: str, sbx: object) -> _Lab
     On any failure the caller runs nothing. The error is a plain string (the
     tool's contract), not a raise — the command must never execute unseeded.
     """
-    if isinstance(sbx, LocalDockerSandbox):
-        # The agents' home is E2B's /home/user and the CLI installers need curl; the local image has neither.
-        return (
-            "Error: sandbox agent runs (run_todo_id) need the hosted E2B agent-lab sandbox; "
-            "this instance runs code in local Docker containers, ran nothing"
-        )
     access = await lab_access(user_id)
     if access == LabAccess.NOT_PAID:
         return "Error: sandbox agent runs need a paid plan (run_todo_id), ran nothing"

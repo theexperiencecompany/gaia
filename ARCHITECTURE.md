@@ -499,7 +499,7 @@ Integration tools (Composio + per-user MCP — the thousands) are **never bound*
   - `__init__.py` — `acquire_sandbox(user_id)` entrypoint + `SandboxAcquisitionError`.
 - `apps/api/app/constants/sandbox.py` — `BASH_DEFAULT_TIMEOUT_SECONDS`, `BASH_MAX_COMMAND_LENGTH`, `BASH_MAX_TIMEOUT_SECONDS`, `WORKSPACE_TMP_SUFFIX`.
 - All coding tools (bash, read, edit, write) target the user's E2B sandbox + JuiceFS mount — on GAIA Cloud.
-- Self-host: `local_sandbox.py` (`LocalDockerSandbox`) runs them in local containers when `use_local_sandbox()` (`lifecycle.py`) says so (opted in with `gaia up --code-sandbox`, no E2B key saved); files live in the `local_workspace` volume; `legacy_workspace_migration.py` moves an older layout.
+- Self-host: `local_sandbox.py` (`LocalDockerSandbox`) runs them in local containers when `use_local_sandbox()` (`lifecycle.py`) says so (opted in with `gaia up --code-sandbox`, no E2B key saved); files live in the `local_workspace` volume; `legacy_workspace_migration.py` moves an older layout. Its image is built on the host from `local_sandbox.Dockerfile` (tagged by the file's hash) and shares E2B's `/home/user` agents' home, so coding-agent runs take one path on both backends; their hooks report to `LOCAL_SANDBOX_LAB_EVENTS_CALLBACK_URL` (the proxy via the host gateway, set by `docker-compose.sandbox.yml`).
 
 ---
 

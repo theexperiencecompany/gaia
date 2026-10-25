@@ -30,8 +30,8 @@ HEALTH_PROBE_WAIT_TIMEOUT_SECONDS = 5
 HEALTH_PROBE_RETRY_REQUEST_TIMEOUT_SECONDS = 14
 HEALTH_PROBE_RETRY_WAIT_TIMEOUT_SECONDS = 15
 
-# Home of the sandbox's unprivileged user (E2B's default "user"; see
-# mount_juicefs.sh SANDBOX_USER). Local root disk, unlike /workspace (JuiceFS).
+# Home of the sandbox's unprivileged user on both backends: E2B's default "user"
+# (see mount_juicefs.sh SANDBOX_USER) and the local image. Root disk, unlike /workspace.
 SANDBOX_USER_HOME = "/home/user"
 
 # E2B kill-timer lifetime (seconds) of a regular sandbox, refreshed on reuse; a lost
@@ -63,10 +63,9 @@ SANDBOX_LOCK_ACQUIRE_TIMEOUT_SECONDS = SANDBOX_LOCK_MAX_HOLD_SECONDS + 60
 # ── Local Docker-exec sandbox (ENV=selfhost without an E2B API key) ──
 # See app/services/sandbox/local_sandbox.py for the implementation.
 
-# Image for per-user local sandbox containers. A lightweight Python base covers
-# what the coding tools need (bash, coreutils, python); anything heavier is
-# installed by the agent into the workspace at runtime, like any other task.
-LOCAL_SANDBOX_IMAGE = "python:3.12-slim"
+# Repository of the per-user local sandbox image, built from local_sandbox.Dockerfile
+# on the host daemon; the tag is that file's content hash.
+LOCAL_SANDBOX_IMAGE_REPOSITORY = "gaia-local-sandbox"
 
 # Per-user containers are named ``<prefix><sanitized user_id>``.
 LOCAL_SANDBOX_CONTAINER_PREFIX = "gaia-sandbox-"
@@ -80,11 +79,11 @@ SELFHOST_WORKSPACE_VOLUME = "gaia-selfhost_workspace"
 # the one-shot legacy migration still reads it.
 LEGACY_LOCAL_SANDBOX_VOLUME = "gaia-sandbox-workspace"
 
-# Container label recording the mount layout and run spec a sandbox was created
-# with, so a container from an older one is replaced instead of restarted as-is.
-# v2: resource limits, dropped capabilities and the isolated sandbox network.
+# Label recording the layout and image a sandbox was created with; an older one is replaced.
+# v2: resource limits, dropped capabilities, isolated network.
+# v3: built image, shared agents' home, host-gateway alias.
 LOCAL_SANDBOX_LAYOUT_LABEL = "gaia.sandbox.layout"
-LOCAL_SANDBOX_LAYOUT = "per-user-subpath-v2"
+LOCAL_SANDBOX_LAYOUT = "per-user-subpath-v3"
 
 # Per-container ceilings, so one user's runaway build or fork bomb cannot starve
 # the API and datastores sharing the host. Swap equals memory: no swap at all.
@@ -98,6 +97,9 @@ LOCAL_SANDBOX_CPUS = "2"
 # one user's sandbox cannot reach another's.
 LOCAL_SANDBOX_NETWORK = "gaia-sandbox"
 LOCAL_SANDBOX_NETWORK_ICC_OPTION = "com.docker.network.bridge.enable_icc=false"
+# The host as sandbox containers see it, so a run's hooks reach GAIA through the
+# proxy's published port (LOCAL_SANDBOX_LAB_EVENTS_CALLBACK_URL).
+LOCAL_SANDBOX_HOST_GATEWAY = "host.docker.internal:host-gateway"
 
 # Extra seconds the host waits past a command's in-container `timeout` before
 # killing the docker exec client itself, covering daemon round-trip latency.
@@ -112,12 +114,8 @@ LOCAL_SANDBOX_KILLED_EXIT_CODE = 137
 # /workspace and expect the container to see them there.
 LOCAL_SANDBOX_WORKSPACE_MOUNT = "/workspace"
 
-# HOME for the unprivileged sandbox user, which has no home directory in the
-# image; pip --user and tool caches persist in the user's own workspace.
-LOCAL_SANDBOX_HOME = f"{LOCAL_SANDBOX_WORKSPACE_MOUNT}/.gaia/home"
-
-# Upper bound on one ensure_started() cycle. Covers a cold-host image pull
-# (~50 MB class) plus daemon latency; the API container itself talks to the
+# Upper bound on one ensure_started() cycle. Covers the first image build (a
+# base pull plus an apt install, ~1 min cold) plus daemon latency; the API container itself talks to the
 # host Docker daemon over its socket, so first-acquire can legitimately be slow.
 LOCAL_SANDBOX_START_TIMEOUT_SECONDS = 300
 
