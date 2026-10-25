@@ -19,7 +19,7 @@ And when something needs you, it comes to you — on iMessage, WhatsApp, Telegra
 <a href="https://heygaia.io/signup"><img src="apps/web/public/images/readme/cta-get-started.webp" alt="Get Started" height="52" /></a>
 <a href="https://docs.heygaia.io"><img src="apps/web/public/images/readme/cta-read-the-docs.webp" alt="Read the docs" height="52" /></a>
 
-Run GAIA on your own machine:
+<p align="center">Run GAIA on your own machine:</p>
 
 ```bash
 curl -fsSL https://heygaia.io/install.sh | sh
