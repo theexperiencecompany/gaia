@@ -204,6 +204,20 @@ def _bandit(lines: list[str]) -> Iterator[_Hit]:
                 break
 
 
+# ruff's default output: `F401 [*] message`, then ` --> path:line:col`.
+_RUFF_RULE = re.compile(r"^(?P<code>[A-Z]+[0-9]+) (?:\[\*\] )?(?P<message>\S.*)$")
+_RUFF_ARROW = re.compile(r"^-->\s*(?P<file>\S+?):(?P<line>\d+):\d+$")
+
+
+def _ruff(lines: list[str]) -> Iterator[_Hit]:
+    for index, raw in enumerate(lines[:-1]):
+        rule = _RUFF_RULE.match(raw.strip())
+        where = _RUFF_ARROW.match(lines[index + 1].strip()) if rule else None
+        if rule and where:
+            message = f"{rule.group('code')} {rule.group('message')}"
+            yield _Hit(index, _finding(where.group("file"), int(where.group("line")), message))
+
+
 # --- one line per finding ----------------------------------------------------------
 # (pattern, message) — the message reads the match, or None for the line itself.
 
@@ -256,12 +270,12 @@ def annotated_locations(text: str) -> set[str]:
     return {f"{h.finding['file']}:{h.finding['line']}" for h in _workflow_commands(lines)}
 
 
-_READERS = (_workflow_commands, _pytest, _vitest, _playwright, _bandit, _line_readers)
+_READERS = (_workflow_commands, _pytest, _vitest, _playwright, _bandit, _ruff, _line_readers)
 
 # --- the fallback ------------------------------------------------------------------
 
 _ERRORISH = re.compile(
-    r"(?i)(\berr(or)?\b|\bfailed\b|\bfailure\b|\bfatal\b|exception|traceback|violation|✗|×|❌|^E\s)"
+    r"(?i)(\berr(or)?s?\b|\bfailed\b|\bfailure\b|\bfatal\b|exception|traceback|violation|✗|×|❌|^E\s)"
 )
 _NOISE = re.compile(r"^(::(?!error)|##\[(?!error)|Process completed with exit code)")
 

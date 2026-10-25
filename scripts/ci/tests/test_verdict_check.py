@@ -110,6 +110,25 @@ def test_a_playwright_failure_lands_on_its_test_with_the_error_first() -> None:
     assert found["detail"].splitlines()[0] == "Error: expect(locator).toBeVisible() failed"
 
 
+def test_ruffs_default_output_is_one_finding_per_rule_at_its_arrow() -> None:
+    # Cut from run 40215362768, where the first cut of the reader knew only
+    # ruff's concise format and this read as "names no file:line".
+    text = (
+        "F401 [*] `os` imported but unused\n"
+        " --> scripts/dev/agent_bench.py:461:8\n"
+        "    |\n"
+        "461 | import os\n"
+        "E402 Module level import not at top of file\n"
+        " --> scripts/dev/agent_bench.py:461:1\n"
+        "Found 2 errors.\n"
+    )
+    found = output_findings.read(text)
+    assert [(f["file"], f["line"], f["message"]) for f in found] == [
+        ("scripts/dev/agent_bench.py", 461, "F401 `os` imported but unused"),
+        ("scripts/dev/agent_bench.py", 461, "E402 Module level import not at top of file"),
+    ]
+
+
 def test_a_bandit_issue_lands_on_its_location_line() -> None:
     text = (
         ">> Issue: [B105:hardcoded_password_string] Possible hardcoded password: 'x'\n"

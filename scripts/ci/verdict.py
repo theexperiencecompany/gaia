@@ -292,7 +292,6 @@ def report(
     findings: list[Finding] | None = None,
     advice: list[str] | None = None,
     out_dir: Path | None = None,
-    annotated: frozenset[str] = frozenset(),
 ) -> VerdictDoc:
     """Write and announce one lane's verdict. Every producer goes through here."""
     doc: VerdictDoc = {
@@ -303,7 +302,7 @@ def report(
         "advice": advice or [],
     }
     write_verdict(doc, out_dir or default_out_dir())
-    announce(doc, annotated=annotated)
+    announce(doc)
     return doc
 
 
@@ -1252,14 +1251,17 @@ def cmd_check(args: list[str]) -> int:
         if located
         else f"{check} failed (exit {rc}); its output names no file:line — its first error lines are attached"
     )
-    report(
-        opts.lane,
-        Status.FAIL,
-        summary,
-        findings=findings,
-        out_dir=opts.out,
-        annotated=frozenset(output_findings.annotated_locations(output)),
-    )
+    # Written and announced here rather than through `report`: the tool already
+    # annotated the locations it printed as `::error`, and those are not repeated.
+    doc: VerdictDoc = {
+        "lane": opts.lane,
+        "status": str(Status.FAIL),
+        "summary": summary,
+        "findings": findings,
+        "advice": [],
+    }
+    write_verdict(doc, opts.out)
+    announce(doc, annotated=frozenset(output_findings.annotated_locations(output)))
     return rc
 
 
