@@ -16,7 +16,7 @@ scheduled as tasks, since awaiting a round trip in the mux's read loop deadlocks
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Coroutine
+from collections.abc import Coroutine
 import contextlib
 from dataclasses import dataclass, field
 import json
@@ -70,8 +70,6 @@ _KEY_FIELDS = (
 _SCREENCAST_FRAME_EVENT = "Page.screencastFrame"
 _FRAME_NAVIGATED_EVENT = "Page.frameNavigated"
 _DETACHED_EVENT = "Target.detachedFromTarget"
-
-_EventHandler = Callable[[dict[str, Any]], None]
 
 
 @dataclass(slots=True)

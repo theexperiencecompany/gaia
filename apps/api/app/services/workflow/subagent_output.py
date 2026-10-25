@@ -216,5 +216,3 @@ def parse_subagent_response(response: str) -> ParseResult:
 
 
 # Legacy aliases for backwards compatibility
-WorkflowDraft = FinalizedOutput
-WorkflowSubagentOutput = ParseResult
