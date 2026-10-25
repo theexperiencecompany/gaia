@@ -77,7 +77,7 @@ Every fact declares `shelf_life`, and the value decides where the assertion is s
 
 - **durable**: identity, relationships, preferences, style, health, values, long-run goals. Never expires. Stored as a fact.
 - **state**: a value that was only true as of a moment: counts, balances, metrics, deployment state, open bugs, in-flight applications, anything you would naturally write "as of <date>". Stored as a fact that expires.
-- **task**: a commitment, deadline, or intention. NOT a fact: emit it as an agenda update instead.
+- **task**: a commitment, deadline, or intention that nothing else is tracking. NOT a fact: emit it as an agenda update instead. When GAIA arranged something to carry it, or is handing off right now to create one (a reminder, a tracked todo, a workflow, a calendar event), that system owns it and closes it; it is a **journal** line ("Sam asked for a reminder to water the plants at 20:49"), never a task.
 - **journal**: what happened today, what GAIA recommended, produced, drafted or advised, and world facts that were merely looked up. NOT a fact: emit it as an episode entry instead.
 
 When you cannot decide between durable and state, choose **state**.
@@ -125,7 +125,7 @@ Write 3-8 terse past-tense journal lines for today's diary. Write from the USER'
 
 ## Agenda updates
 
-List open loops this conversation opened or closed: new commitments, deadlines, things GAIA owes the user, or previously open items now resolved. Leave empty if nothing changed. Finishing a connection, sign-in or account setup GAIA just offered is never an open loop (rule 12).
+List open loops this conversation opened or closed: new commitments, deadlines, things GAIA owes the user, or previously open items now resolved. Leave empty if nothing changed. Finishing a connection, sign-in or account setup GAIA just offered is never an open loop (rule 12). Neither is anything a reminder, tracked todo, workflow or calendar event carries, whether GAIA already created it or is handing it off right now to create it (a call_executor task asking for a reminder or a tracked todo counts, as in "remind me at 5" or "keep an eye on X and tell me"): that system fires it, shows it and closes it, so a copy here only goes stale. Record it as a journal line instead.
 
 """
     + _FOLDER_GUIDANCE
