@@ -6,6 +6,7 @@ using ChromaDB for vector storage and retrieval.
 
 import asyncio
 from collections.abc import Coroutine, Iterable, Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime
 import pickle  # nosec B403 - Used for internal trusted data serialization only
 from typing import Any, TypedDict, cast
@@ -31,7 +32,7 @@ from langgraph.store.base import (
     tokenize_path,
 )
 
-from app.constants.chroma import MAX_CONCURRENT_CHROMA_WRITES
+from app.constants.chroma import MAX_CONCURRENT_INDEX_EMBEDDINGS
 from app.constants.log_tags import LogTag
 from app.db.chroma.noop_embedding import NoOpEmbeddingFunction
 from app.utils.concurrency import loop_bound_semaphore
@@ -46,7 +47,7 @@ class ChromaBatchWriteError(RuntimeError):
 
 
 class StoredItemMetadata(TypedDict, total=False):
-    """The Chroma metadata _upsert_item writes beside every document."""
+    """The Chroma metadata _put_row writes beside every document."""
 
     created_at: str
     updated_at: str
@@ -61,6 +62,18 @@ class _PutValueHints(TypedDict, total=False):
     embedding: object
     tool_hash: str
     trigger_hash: str
+
+
+@dataclass(slots=True)
+class _PutRow:
+    """One document a put writes, with the vector it carries or the text it still has to embed."""
+
+    doc_id: str
+    namespace: str
+    metadata: dict[str, str]
+    document: str
+    text: str | None = None
+    embedding: list[float] | None = None
 
 
 def _stored_time(value: object) -> datetime:
@@ -539,88 +552,77 @@ class ChromaStore(BaseStore):
         put_ops: dict[tuple[tuple[str, ...], str], PutOp],
         collection: AsyncCollection,
     ) -> None:
-        """Apply put operations to ChromaDB in parallel."""
-        tasks: list[Coroutine[object, object, None]] = []
-        doc_ids: list[str] = []
+        """Apply put operations in one ChromaDB request per kind of write, not one per document.
 
+        A request costs the server the same whether it carries one row or fifty
+        (125 tool rows: ~30s one by one, ~1s batched), so the deletes go in one
+        call and the upserts in one per vector shape: Chroma takes a batch with
+        vectors for every row or for none.
+        """
+        deletes: list[str] = []
+        rows: list[_PutRow] = []
         for (namespace, key), op in put_ops.items():
             doc_id = self._namespace_to_id(namespace, key)
-            doc_ids.append(doc_id)
-
             if op.value is None:
-                tasks.append(self._delete_item(doc_id, collection))
+                deletes.append(doc_id)
             else:
-                tasks.append(self._upsert_item(doc_id, op, collection))
+                rows.append(self._put_row(doc_id, op))
+        await self._embed_rows(rows)
 
-        if not tasks:
+        writes: list[tuple[list[str], Coroutine[object, object, object]]] = []
+        if deletes:
+            writes.append((deletes, collection.delete(ids=deletes)))
+        for group in (
+            [r for r in rows if r.embedding is not None],
+            [r for r in rows if r.embedding is None],
+        ):
+            if group:
+                writes.append(([r.doc_id for r in group], self._upsert_rows(group, collection)))
+        if not writes:
             return
-
-        # Process-wide: concurrent _apply_put_ops calls share this semaphore, so the
-        # fd cap holds across callers, not just within a single batch.
-        sem = loop_bound_semaphore("chroma_put_batch", MAX_CONCURRENT_CHROMA_WRITES)
-
-        async def _guarded(coro: Coroutine[object, object, None]) -> None:
-            async with sem:
-                await coro
 
         # Surface failures instead of letting return_exceptions=True swallow them —
         # an indexing pass previously "succeeded" while writing zero rows silently.
-        results: list[BaseException | None] = await asyncio.gather(
-            *[_guarded(t) for t in tasks], return_exceptions=True
+        results: list[object] = await asyncio.gather(
+            *[write for _, write in writes], return_exceptions=True
         )
-        failures: list[tuple[str, BaseException]] = [
-            (d, r) for d, r in zip(doc_ids, results) if isinstance(r, BaseException)
+        failures = [
+            (doc_ids, result)
+            for (doc_ids, _), result in zip(writes, results)
+            if isinstance(result, BaseException)
         ]
-        succeeded = len(results) - len(failures)
+        written = len(deletes) + len(rows)
+        failed = sum(len(doc_ids) for doc_ids, _ in failures)
         log.info(
             f"{LogTag.CHROMA} _apply_put_ops completed",
-            results_count=len(results),
-            succeeded=succeeded,
-            failures_count=len(failures),
+            results_count=written,
+            succeeded=written - failed,
+            failures_count=failed,
         )
         if failures:
-            # Show up to 3 distinct exception classes to make patterns obvious.
-            sample = failures[: min(3, len(failures))]
-            for d, exc in sample:
+            for doc_ids, exc in failures:
                 log.error(
                     f"{LogTag.CHROMA} _apply_put_ops failure",
-                    doc_id=d,
+                    doc_count=len(doc_ids),
+                    first_doc_id=doc_ids[0],
                     error_type=type(exc).__name__,
                 )
-            # Raise so a partially-written batch can never be recorded as a
-            # success: logging alone let index_tools_to_store cache the namespace
-            # hash after docs failed to embed, stranding tools undiscoverable forever.
+            # Raise so a failed batch can never be recorded as a success: logging alone
+            # let index_tools_to_store cache the namespace hash after docs failed to
+            # embed, stranding tools undiscoverable forever.
             raise ChromaBatchWriteError(
-                f"{len(failures)} of {len(results)} ChromaDB writes failed"
+                f"{failed} of {written} ChromaDB writes failed"
             ) from failures[0][1]
 
-    async def _delete_item(self, doc_id: str, collection: AsyncCollection) -> None:
-        """Delete a single item.
-
-        Re-raises so the caller's asyncio.gather(return_exceptions=True) can
-        count the failure. Previously this swallowed the exception and made
-        _apply_put_ops's failure tally meaningless (succeeded count == total
-        regardless of actual ChromaDB rejections).
-        """
-        try:
-            await collection.delete(ids=[doc_id])
-        except Exception as e:
-            log.error(
-                f"{LogTag.CHROMA} Error deleting item", doc_id=doc_id, error_type=type(e).__name__
-            )
-            raise
-
-    async def _upsert_item(self, doc_id: str, op: PutOp, collection: AsyncCollection) -> None:
-        """Upsert a single item."""
-        now = datetime.now(UTC)
-        # Store namespace in metadata for efficient filtering
+    def _put_row(self, doc_id: str, op: PutOp) -> _PutRow:
+        """Build the document, metadata and either the vector or the text to embed for one put."""
+        now = datetime.now(UTC).isoformat()
         namespace_str = "::".join(op.namespace) if op.namespace else "default"
         metadata: dict[str, str] = {
-            "created_at": now.isoformat(),
-            "updated_at": now.isoformat(),
+            "created_at": now,
+            "updated_at": now,
             "namespace": namespace_str,
         }
-
         hints: _PutValueHints = (
             cast(_PutValueHints, op.value) if isinstance(op.value, dict) else _PutValueHints()
         )
@@ -629,55 +631,64 @@ class ChromaStore(BaseStore):
             metadata["tool_hash"] = hints["tool_hash"]
         if "trigger_hash" in hints:
             metadata["trigger_hash"] = hints["trigger_hash"]
-
-        # Serialize value to document
-        document = pickle.dumps(op.value).decode(_DOCUMENT_ENCODING)
-
-        # Extract embedding from indexed fields
+        row = _PutRow(
+            doc_id=doc_id,
+            namespace=namespace_str,
+            metadata=metadata,
+            document=pickle.dumps(op.value).decode(_DOCUMENT_ENCODING),
+        )
         supplied = hints.get("embedding")
-        embedding = None
         if isinstance(supplied, list):
-            embedding = supplied
+            row.embedding = supplied
         elif self.embeddings and op.index is not False and isinstance(op.value, dict):
             paths = (
                 [(ix, tokenize_path(ix)) for ix in op.index]
                 if op.index
                 else self._tokenized_fields or [("$", "$")]
             )
-            texts = []
-            for _, field in paths:
-                field_texts = get_text_at_path(op.value, field)
-                if field_texts:
-                    texts.extend(field_texts)
+            texts = [text for _, field in paths for text in get_text_at_path(op.value, field)]
             if texts:
+                row.text = " ".join(texts)
+        return row
+
+    async def _embed_rows(self, rows: list[_PutRow]) -> None:
+        """Embed every row that carries text, a bounded number at a time across the process."""
+        pending = [row for row in rows if row.text is not None]
+        if not pending or self.embeddings is None:
+            return
+        embeddings = self.embeddings
+        # Process-wide, so concurrent batches share the fd cap rather than each taking it whole.
+        sem = loop_bound_semaphore("chroma_put_embeddings", MAX_CONCURRENT_INDEX_EMBEDDINGS)
+
+        async def embed(row: _PutRow) -> None:
+            async with sem:
                 try:
-                    embedding = await self.embeddings.aembed_query(" ".join(texts))
+                    row.embedding = await embeddings.aembed_query(cast(str, row.text))
                 except Exception as embed_err:
                     log.error(
-                        f"{LogTag.CHROMA} _upsert_item embedding failed",
-                        doc_id=doc_id,
-                        namespace=namespace_str,
-                        text_len=sum(len(t) for t in texts),
+                        f"{LogTag.CHROMA} _apply_put_ops embedding failed",
+                        doc_id=row.doc_id,
+                        namespace=row.namespace,
+                        text_len=len(cast(str, row.text)),
                         error_type=type(embed_err).__name__,
                     )
                     raise
 
         try:
-            await collection.upsert(
-                ids=[doc_id],
-                embeddings=[embedding] if embedding else None,  # type: ignore[arg-type]  # same stub looseness: optional single vector vs Sequence[ndarray]
-                metadatas=[metadata],
-                documents=[document],
-            )
-        except Exception as e:
-            # Re-raise so _apply_put_ops's failure count is accurate.
-            log.error(
-                f"{LogTag.CHROMA} Error upserting item",
-                doc_id=doc_id,
-                namespace=namespace_str,
-                error_type=type(e).__name__,
-            )
-            raise
+            await asyncio.gather(*(embed(row) for row in pending))
+        except Exception as exc:
+            raise ChromaBatchWriteError(f"embedding a batch of {len(pending)} failed") from exc
+
+    @staticmethod
+    async def _upsert_rows(rows: list[_PutRow], collection: AsyncCollection) -> None:
+        """Upsert rows that all carry a vector, or all carry none, in one request."""
+        vectors = [row.embedding for row in rows if row.embedding is not None]
+        await collection.upsert(
+            ids=[row.doc_id for row in rows],
+            embeddings=vectors or None,  # type: ignore[arg-type]  # same stub looseness: list[list[float]] vs Sequence[ndarray]
+            metadatas=[row.metadata for row in rows],
+            documents=[row.document for row in rows],
+        )
 
     async def _handle_list_namespaces(
         self, op: ListNamespacesOp, collection: AsyncCollection
