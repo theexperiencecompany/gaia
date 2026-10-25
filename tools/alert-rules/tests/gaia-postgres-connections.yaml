@@ -20,7 +20,7 @@ tests:
             exp_annotations:
               description: >-
                 The langgraph database is the LangGraph checkpointer — it holds conversation thread state. Once connections are exhausted new chat turns cannot check one out and fall back to in-memory state, which loses thread continuity. Check "Connections by State" for idle or idle-in-transaction connections that are not being released.
-              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-postgres-connections
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-postgres-connections
               __dashboardUid__: gaia-databases
               __panelId__: '1'
 

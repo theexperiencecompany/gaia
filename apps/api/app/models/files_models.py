@@ -7,6 +7,8 @@ from app.db.repositories.base import UserScopedDocument
 
 
 class DocumentPageModel(BaseModel):
+    """One extracted page: its 1-based number and its text."""
+
     page_number: int = Field(
         ...,
         gt=0,
@@ -16,6 +18,8 @@ class DocumentPageModel(BaseModel):
 
 
 class DocumentSummaryModel(BaseModel):
+    """A page's extracted content paired with its summary."""
+
     data: DocumentPageModel
     summary: str = Field(
         ...,
@@ -48,6 +52,19 @@ class FileDocument(UserScopedDocument):
     conversation_id: str | None = None
     created_at: datetime
     updated_at: datetime | None = None
+
+
+class FileMimetypeRow(BaseModel):
+    """One file row's mimetype fields, readable even when the row is legacy.
+
+    The migration needs rows that ``FileDocument`` rejects (no ``type``), so
+    this carries both field names without requiring either.
+    """
+
+    file_id: str
+    filename: str
+    type: str | None = None
+    content_type: str | None = None
 
 
 class FileUpdate(BaseModel):
