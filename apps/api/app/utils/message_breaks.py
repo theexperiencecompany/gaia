@@ -94,3 +94,8 @@ def split_message_bubbles(text: str) -> list[str]:
         strip_partial_message_break(part).strip() for part in MESSAGE_BREAK_SENTINEL_RE.split(text)
     )
     return [bubble for bubble in bubbles if bubble]
+
+
+def normalize_message_breaks(text: str) -> str:
+    """Rewrite text as its bubbles joined by exactly one canonical sentinel."""
+    return NEW_MESSAGE_BREAKER.join(split_message_bubbles(text))

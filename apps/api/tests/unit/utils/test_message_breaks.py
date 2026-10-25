@@ -4,6 +4,7 @@ import re
 
 import pytest
 
+from app.constants.general import NEW_MESSAGE_BREAKER
 from app.utils.message_breaks import (
     _OPEN,
     _SENTINEL_WORD_SEQUENCES,
@@ -11,9 +12,12 @@ from app.utils.message_breaks import (
     PARTIAL_MESSAGE_BREAK_RE,
     _partial_sequence,
     _word_prefixes,
+    normalize_message_breaks,
     split_message_bubbles,
     strip_partial_message_break,
 )
+
+BR = NEW_MESSAGE_BREAKER
 
 
 #: Every non-empty prefix of a spelling's underscore-joined form, e.g. for
@@ -159,3 +163,24 @@ class TestPrefixBuilders:
         ]
         for text in cases:
             assert rebuilt.sub("", text) == PARTIAL_MESSAGE_BREAK_RE.sub("", text), text
+
+
+class TestNormalizeMessageBreaks:
+    def test_break_only_text_normalizes_to_nothing(self) -> None:
+        assert normalize_message_breaks(BR * 3998 + "<NEW_MESSAGE_BREAK") == ""
+
+    def test_leading_trailing_and_repeated_breaks_collapse(self) -> None:
+        assert normalize_message_breaks(f"{BR * 3}hi{BR * 14}there{BR}") == f"hi{BR}there"
+
+    def test_near_miss_spellings_become_the_canonical_break(self) -> None:
+        assert normalize_message_breaks("hi[NEW_MESSAGE_BREAK]there") == f"hi{BR}there"
+
+    def test_text_without_breaks_is_trimmed_only(self) -> None:
+        assert normalize_message_breaks("  you have two meetings.\n") == "you have two meetings."
+
+    def test_directive_bubble_survives(self) -> None:
+        assert normalize_message_breaks(f"<EMOJI>👀</EMOJI>{BR}") == "<EMOJI>👀</EMOJI>"
+
+    def test_is_idempotent(self) -> None:
+        once = normalize_message_breaks(f"{BR}a{BR * 2}b{BR}")
+        assert normalize_message_breaks(once) == once
