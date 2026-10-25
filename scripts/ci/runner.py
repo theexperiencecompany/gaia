@@ -5,8 +5,9 @@
 """runner.py — everything about WHERE and HOW HARD a CI job runs.
 
 Subcommands:
-  select              Route each runner class to the home box, GitHub-hosted or
-                      Blacksmith. Writes light / heavy / services (runs-on JSON
+  select              Route each runner class to GitHub-hosted, overflowing to
+                      the home box once GitHub's queue is saturated and to
+                      Blacksmith once the box has no idle listener either. Writes light / heavy / services (runs-on JSON
                       arrays) plus runner / runner_label / is_self_hosted /
                       reason (the heavy class) to $GITHUB_OUTPUT (stdout when
                       unset).
@@ -43,9 +44,8 @@ Env contract:
                       gaia-home), SERVICES_RUNNER_LABEL (default gaia-home),
                       FALLBACK_RUNNER (default ["ubuntu-latest"]), FORCE_HOME,
                       FORCE_GITHUB, PR_HEAD_REPO, PR_AUTHOR_ASSOCIATION,
-                      GITHUB_ACTOR, BLACKSMITH_LABEL, BLACKSMITH_QUEUE_THRESHOLD
-                      (25), QUEUE_LANE_SECS (120), HOME_QUEUE_MAX_WAIT_SECS
-                      (420); writes $GITHUB_OUTPUT and $GITHUB_STEP_SUMMARY.
+                      GITHUB_ACTOR, BLACKSMITH_LABEL, HOSTED_QUEUE_THRESHOLD
+                      (5); writes $GITHUB_OUTPUT and $GITHUB_STEP_SUMMARY.
   watchdog            GITHUB_REPOSITORY, GITHUB_RUN_ID, WATCHDOG_JOB_NAME
                       (required), RUNNER_LABEL (gaia-home), QUEUE_LIMIT_SECS
                       (480), POLL_SECS (30), GITHUB_EVENT_NAME,
@@ -93,6 +93,12 @@ CPU_SLOTS_SH = HERE / "lib" / "cpu-slots.sh"
 DEFAULT_REPO = "theexperiencecompany/gaia"
 DEFAULT_HOME_LABEL = "gaia-home"
 DEFAULT_FALLBACK = '["ubuntu-latest"]'
+# GitHub-hosted jobs waiting for a VM at which GitHub counts as saturated. The
+# org's Free plan runs 20 hosted jobs at once and a full CI run peaks at 12
+# (run 40178782875, every job started within 6 s), so jobs only pile up queued
+# once the 20 slots are taken: 5 waiting is the cap already hit, while a lone
+# fan-out still being provisioned clears in seconds and rarely reads that high.
+HOSTED_SATURATED_QUEUE_DEPTH = 5
 REQUEUE_WORKFLOW = "ci-requeue.yml"
 SELF_HOSTED = "self-hosted"
 
@@ -169,7 +175,6 @@ class Pool:
     """One label's runner instances: the home box is a pool, never one instance."""
 
     label: str
-    pick: Json
     online: int
     idle: int
     total: int
@@ -190,7 +195,7 @@ def read_pool(gh: GitHub, repo: str, label: str) -> Pool | None:
         return None
     online = [r for r in matching if field_of(r, "status", str) == "online"]
     idle = [r for r in online if field_of(r, "busy", bool) is False]
-    return Pool(label, (idle or online or matching)[0], len(online), len(idle), len(matching))
+    return Pool(label, len(online), len(idle), len(matching))
 
 
 class HomeState(StrEnum):
@@ -242,16 +247,6 @@ def hosted_queue_depth(gh: GitHub, repo: str) -> int:
         for run in runs
         for job in _queued_jobs(gh, repo, run)
         if any(HOSTED_JOB_LABEL.match(label) for label in _job_labels(job))
-    )
-
-
-def label_queue_depth(gh: GitHub, repo: str, label: str) -> int:
-    """Jobs queued for one self-hosted label inside the runs already in flight."""
-    return sum(
-        1
-        for run in _sampled_runs(gh, repo, "in_progress", 10)
-        for job in _queued_jobs(gh, repo, run)
-        if label in _job_labels(job)
     )
 
 
@@ -309,7 +304,12 @@ def trust_gate(repo: str) -> tuple[str, str] | None:
 
 @dataclass
 class Router:
-    """One select invocation: every probe runs at most once and is shared by the classes."""
+    """One select invocation: GitHub-hosted first, the box as overflow, Blacksmith last.
+
+    Every probe runs at most once and is shared by the classes. The box is
+    reached only once GitHub's own queue is saturated: under load a box job
+    waited up to 48 min while an all-GitHub run waited at most 6 s per job.
+    """
 
     gh: GitHub
     repo: str
@@ -317,9 +317,7 @@ class Router:
     force_home: bool
     blacksmith: str
     threshold: int
-    lane_secs: int
-    max_wait: int
-    homes: dict[str, Choice] = field(default_factory=dict)
+    pools: dict[str, Pool | None | GitHubError] = field(default_factory=dict)
 
     def fallback_choice(self, reason: str, note: str) -> Choice:
         return Choice(self.fallback, self.fallback[0], reason, note)
@@ -331,86 +329,62 @@ class Router:
             depth = hosted_queue_depth(self.gh, self.repo)
         except GitHubError as err:
             warn(
-                f"hosted queue probe failed ({err}) — keeping the free GitHub fallback "
-                "rather than spending Blacksmith units blind."
+                f"hosted queue probe failed ({err}) — staying on the free GitHub-hosted "
+                "runners rather than overflowing blind."
             )
             return None
-        log(f"[select-runner] hosted queue depth: {depth} job(s) (threshold {self.threshold})")
+        log(f"[select-runner] hosted queue depth: {depth} job(s) (saturated at {self.threshold})")
         return depth
 
-    def hosted(self, why: str, note: str, starved: str = "blacksmith-starvation") -> Choice:
-        """GitHub-hosted, or Blacksmith once GitHub's own queue is starved.
+    def pool(self, label: str) -> Pool | None:
+        if label not in self.pools:
+            try:
+                self.pools[label] = read_pool(self.gh, self.repo, label)
+            except GitHubError as err:
+                warn(f"runners API unavailable ({err}) — cannot see `{label}`'s listeners")
+                self.pools[label] = err
+        reading = self.pools[label]
+        if isinstance(reading, GitHubError):
+            raise reading
+        return reading
 
-        GitHub is free and unlimited for a public repo; Blacksmith is a scarce
-        monthly grant that only buys back availability GitHub is not delivering.
-        """
-        if not self.blacksmith:
-            return self.fallback_choice(why, f"{note}; Blacksmith not configured")
-        depth = self.hosted_depth
-        if depth is not None and depth >= self.threshold:
-            return Choice(
-                (self.blacksmith,),
-                self.blacksmith,
-                starved,
-                f"{note}; GitHub queue {depth} >= {self.threshold}",
-            )
-        held = "unknown (probe failed)" if depth is None else f"{depth} < {self.threshold}"
-        return self.fallback_choice(why, f"{note}; Blacksmith held — GitHub queue {held}")
-
-    def home(self, label: str) -> Choice:
-        if label not in self.homes:
-            self.homes[label] = self._probe_home(label)
-        return self.homes[label]
-
-    def _refuse_fallback(self, message: str) -> None:
+    def route(self, label: str) -> Choice:
         if self.force_home:
-            raise Die(message)
+            return self._forced_home(label)
+        depth = self.hosted_depth
+        if depth is None:
+            return self.fallback_choice("hosted-queue-unknown", "GitHub queue unreadable")
+        if depth < self.threshold:
+            return self.fallback_choice("github-hosted", f"GitHub queue {depth} < {self.threshold}")
+        return self._overflow(label, f"GitHub queue {depth} >= {self.threshold}")
 
-    def _home_choice(self, label: str, reason: str, note: str) -> Choice:
-        return Choice((SELF_HOSTED, label), label, reason, note)
-
-    def _probe_home(self, label: str) -> Choice:
+    def _overflow(self, label: str, saturated: str) -> Choice:
         try:
-            pool = read_pool(self.gh, self.repo, label)
-        except GitHubError as err:
-            log(f"[select-runner] runners API unavailable: {err}")
-            self._refuse_fallback("HOME runner forced but API probe failed")
-            return self.hosted("api-unavailable", f"`{label}`: GitHub API unreachable")
+            pool = self.pool(label)
+        except GitHubError:
+            return self._last_resort(f"{saturated}; `{label}` unreadable")
         if pool is None:
-            self._refuse_fallback(f"No runner with label {label}")
-            return self.hosted("not-registered", f"no runner with label `{label}` registered")
-        pick = pool.pick
-        log(
-            f"[select-runner] home pool '{label}': {pool.describe()} — picked "
-            f"{pick.get('name')} (status={pick.get('status')} busy={pick.get('busy')})"
-        )
+            return self._last_resort(f"{saturated}; no runner with label `{label}` registered")
+        note = f"{saturated}; `{label}`: {pool.describe()}"
         if pool.idle:
-            return self._home_choice(label, "online-idle", f"`{label}`: {pool.describe()}")
-        if pool.online:
-            return self._busy_home(label, pool)
-        reason = f"offline ({pool.online}/{pool.total} online)"
-        self._refuse_fallback(f"Home runner {reason} but FORCE_HOME=true")
-        return self.hosted(reason, f"`{label}`: {pool.describe()}")
+            return Choice((SELF_HOSTED, label), label, "home-overflow", note)
+        return self._last_resort(note)
 
-    def _busy_home(self, label: str, pool: Pool) -> Choice:
-        """Queue on a busy box only while the wait beats a cold GitHub start (357-422 s)."""
+    def _last_resort(self, note: str) -> Choice:
+        if not self.blacksmith:
+            return self.fallback_choice("github-queued", f"{note}; Blacksmith not configured")
+        return Choice((self.blacksmith,), self.blacksmith, "blacksmith-overflow", note)
+
+    def _forced_home(self, label: str) -> Choice:
         try:
-            queued = label_queue_depth(self.gh, self.repo, label)
+            pool = self.pool(label)
         except GitHubError as err:
-            log(f"[select-runner] home pool busy; queue depth probe unavailable ({err}) — queueing")
-            return self._home_choice(
-                label, "online-busy-queued", f"`{label}`: every listener busy, queue depth unknown"
-            )
-        wait = queued * self.lane_secs // max(pool.online, 1)
-        note = f"`{label}`: {queued} job(s) queued over {pool.online} listener(s), est {wait}s"
-        log(f"[select-runner] {note} (crossover {self.max_wait}s)")
-        if wait > self.max_wait:
-            return self.hosted(
-                "home-queue-too-deep",
-                f"{note} > {self.max_wait}s crossover",
-                starved="home-queue-too-deep-github-starved",
-            )
-        return self._home_choice(label, "online-busy-queued", f"{note} <= {self.max_wait}s")
+            raise Die(f"HOME runner forced but the runners API probe failed ({err})") from err
+        if pool is None:
+            raise Die(f"HOME runner forced but no runner with label {label} is registered")
+        if not pool.online:
+            raise Die(f"HOME runner forced but `{label}` is offline ({pool.describe()})")
+        return Choice((SELF_HOSTED, label), label, "forced-home", f"`{label}`: {pool.describe()}")
 
 
 def route() -> dict[RunnerClass, Choice]:
@@ -430,14 +404,13 @@ def route() -> dict[RunnerClass, Choice]:
         fallback=fallback,
         force_home=os.environ.get("FORCE_HOME") == "true",
         blacksmith=os.environ.get("BLACKSMITH_LABEL", ""),
-        threshold=env_int("BLACKSMITH_QUEUE_THRESHOLD", 25),
-        lane_secs=env_int("QUEUE_LANE_SECS", 120),
-        max_wait=env_int("HOME_QUEUE_MAX_WAIT_SECS", 420),
+        threshold=env_int("HOSTED_QUEUE_THRESHOLD", HOSTED_SATURATED_QUEUE_DEPTH),
     )
+    home = os.environ.get("RUNNER_LABEL") or DEFAULT_HOME_LABEL
     return {
-        RunnerClass.LIGHT: router.hosted("github-hosted", "light lanes never need the box"),
-        RunnerClass.HEAVY: router.home(os.environ.get("RUNNER_LABEL") or DEFAULT_HOME_LABEL),
-        RunnerClass.SERVICES: router.home(
+        RunnerClass.LIGHT: router.route(home),
+        RunnerClass.HEAVY: router.route(home),
+        RunnerClass.SERVICES: router.route(
             os.environ.get("SERVICES_RUNNER_LABEL") or DEFAULT_HOME_LABEL
         ),
     }
