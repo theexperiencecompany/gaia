@@ -126,12 +126,16 @@ class TestGetUserContext:
 
 class TestBuildSearchTasks:
     def test_tool_space_in_namespaces(self):
-        from app.agents.tools.core.retrieval import _build_search_tasks
+        from app.agents.tools.core.retrieval import _build_search_tasks, _RetrievalScope
 
         store = MagicMock()
         store.asearch = AsyncMock(return_value=[])
         tasks = _build_search_tasks(
-            store, "email", "gmail", {"gmail", "general"}, include_subagents=False, limit=10
+            store,
+            "email",
+            _RetrievalScope(user_id="u1", tool_space="gmail", include_subagents=False),
+            {"gmail", "general"},
+            limit=10,
         )
         # gmail search + general search (limited)
         assert len(tasks) == 2
@@ -140,12 +144,16 @@ class TestBuildSearchTasks:
                 t.close()
 
     def test_general_space_no_duplicate(self):
-        from app.agents.tools.core.retrieval import _build_search_tasks
+        from app.agents.tools.core.retrieval import _build_search_tasks, _RetrievalScope
 
         store = MagicMock()
         store.asearch = AsyncMock(return_value=[])
         tasks = _build_search_tasks(
-            store, "email", "general", {"general"}, include_subagents=False, limit=10
+            store,
+            "email",
+            _RetrievalScope(user_id="u1", tool_space="general", include_subagents=False),
+            {"general"},
+            limit=10,
         )
         # Only one search for general (tool_space == general, skip second general search)
         assert len(tasks) == 1
@@ -154,12 +162,16 @@ class TestBuildSearchTasks:
                 t.close()
 
     def test_no_subagent_searches_when_disabled(self):
-        from app.agents.tools.core.retrieval import _build_search_tasks
+        from app.agents.tools.core.retrieval import _build_search_tasks, _RetrievalScope
 
         store = MagicMock()
         store.asearch = AsyncMock(return_value=[])
         tasks = _build_search_tasks(
-            store, "email", "general", {"general"}, include_subagents=False, limit=10
+            store,
+            "email",
+            _RetrievalScope(user_id="u1", tool_space="general", include_subagents=False),
+            {"general"},
+            limit=10,
         )
         # Only the general search — scoped agents never look for subagents.
         assert len(tasks) == 1
@@ -168,12 +180,16 @@ class TestBuildSearchTasks:
                 t.close()
 
     def test_subagent_and_public_searches_when_enabled(self):
-        from app.agents.tools.core.retrieval import _build_search_tasks
+        from app.agents.tools.core.retrieval import _build_search_tasks, _RetrievalScope
 
         store = MagicMock()
         store.asearch = AsyncMock(return_value=[])
         tasks = _build_search_tasks(
-            store, "email", "general", {"general"}, include_subagents=True, limit=10
+            store,
+            "email",
+            _RetrievalScope(user_id="u1", tool_space="general", include_subagents=True),
+            {"general"},
+            limit=10,
         )
         # general + subagents namespace (MCP pointers) + public integrations
         assert len(tasks) == 3
@@ -182,12 +198,16 @@ class TestBuildSearchTasks:
                 t.close()
 
     def test_tool_space_not_in_namespaces(self):
-        from app.agents.tools.core.retrieval import _build_search_tasks
+        from app.agents.tools.core.retrieval import _build_search_tasks, _RetrievalScope
 
         store = MagicMock()
         store.asearch = AsyncMock(return_value=[])
         tasks = _build_search_tasks(
-            store, "email", "slack", {"general"}, include_subagents=False, limit=10
+            store,
+            "email",
+            _RetrievalScope(user_id="u1", tool_space="slack", include_subagents=False),
+            {"general"},
+            limit=10,
         )
         # Only general search (slack not in namespaces)
         assert len(tasks) == 1
@@ -453,6 +473,7 @@ class TestRetrieveToolsBinding:
         with patch(
             "app.agents.tools.core.retrieval.get_tool_registry",
             new_callable=AsyncMock,
+            return_value=MagicMock(),
         ):
             # The real no-usable-argument call is an empty list (a plain-array schema can't send
             # null); it returns corrective guidance instead of raising, so a recoverable model
@@ -1019,9 +1040,8 @@ class TestSearchPlanForActivatedNamespaces:
         tasks = retrieval._build_search_tasks(
             store,
             "open a pr",
-            "gmail",
+            retrieval._RetrievalScope(user_id="u1", tool_space="gmail", include_subagents=False),
             {"gmail"},
-            include_subagents=False,
             limit=10,
             active_namespaces={"general", "gmail", "github"},
         )
@@ -1037,11 +1057,11 @@ class TestSearchPlanForActivatedNamespaces:
         retrieval._build_search_tasks(
             store,
             "click save",
-            "general",
+            retrieval._RetrievalScope(
+                user_id="u1", tool_space="general", include_subagents=False, include_desktop=True
+            ),
             {"general"},
-            include_subagents=False,
             limit=25,
-            include_desktop=True,
         )
         assert store.asearch.call_args_list == [
             call(("general",), query="click save", limit=25),
@@ -1132,14 +1152,14 @@ class TestChromaHitsWithRealSearchItems:
 class TestDiscoveryResponseGuidance:
     def test_pointer_entries_add_their_own_next_steps(self) -> None:
         text = retrieval._render_discovery_response(
-            ["subagent:my-mcp (My MCP)", "integration:linear (Linear)"],
+            retrieval._RankedHits(
+                ["subagent:my-mcp (My MCP)", "integration:linear (Linear)"], 2, 25
+            ),
             MagicMock(),
             {},
             "track issues",
-            2,
-            25,
-            not_connected=(),
-            background=False,
+            (),
+            False,
         )
         body = json.loads(text)
         assert body["mcp_subagents"] == [{"id": "my-mcp", "name": "My MCP"}]
@@ -1156,14 +1176,12 @@ class TestDiscoveryResponseGuidance:
 
     def test_unnamed_pointers_carry_only_their_id(self) -> None:
         text = retrieval._render_discovery_response(
-            ["subagent:my-mcp", "integration:linear"],
+            retrieval._RankedHits(["subagent:my-mcp", "integration:linear"], 2, 25),
             MagicMock(),
             {},
             None,
-            2,
-            25,
-            not_connected=(),
-            background=False,
+            (),
+            False,
         )
         body = json.loads(text)
         assert body["mcp_subagents"] == [{"id": "my-mcp"}]
@@ -1387,14 +1405,12 @@ class TestDiscoveryWithUnconnectedIntegrations:
     def test_with_no_other_match_their_lines_are_the_whole_next_step(self) -> None:
         body = json.loads(
             retrieval._render_discovery_response(
-                [],
+                retrieval._RankedHits([], 0, 25),
                 MagicMock(),
                 {},
                 "calendar and mail",
-                0,
-                25,
-                not_connected=[_calendar(), _gmail()],
-                background=False,
+                [_calendar(), _gmail()],
+                False,
             )
         )
 

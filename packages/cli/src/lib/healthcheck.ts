@@ -1,4 +1,15 @@
-import { getContainerStatuses, isDockerRunning } from "./docker.js";
+import {
+  COMPOSE_PROJECT_BY_MODE,
+  type ContainerStatus,
+  getContainerStatuses,
+} from "./docker.js";
+import {
+  type DockerAccess,
+  type DockerProblem,
+  describeDockerProblem,
+  getDockerAccess,
+} from "./docker-access.js";
+import type { SetupMode } from "./env-parser.js";
 
 export interface ServiceStatus {
   name: string;
@@ -8,7 +19,8 @@ export interface ServiceStatus {
   details?: string;
 }
 
-const SERVICES = [
+/** Every service developer mode publishes on the host. */
+const DEVELOPER_SERVICES = [
   { name: "API", port: 8000, type: "http" as const, path: "/health" },
   { name: "Web", port: 3000, type: "http" as const, path: "/" },
   { name: "PostgreSQL", port: 5432, type: "tcp" as const },
@@ -18,21 +30,18 @@ const SERVICES = [
   { name: "ChromaDB", port: 8080, type: "tcp" as const },
 ];
 
-export async function checkAllServices(
-  portOverrides?: Record<number, number>,
+/** Probe the developer stack's host ports (after infra/docker/.env overrides). */
+export async function checkDeveloperServices(
+  portOverrides: Record<number, number>,
 ): Promise<ServiceStatus[]> {
-  const services = SERVICES.map((service) => ({
-    ...service,
-    port: portOverrides?.[service.port] ?? service.port,
-  }));
-
-  const promises = services.map((service) =>
-    service.type === "http"
-      ? checkHttpService(service.name, service.port, service.path)
-      : checkTcpService(service.name, service.port),
+  return Promise.all(
+    DEVELOPER_SERVICES.map((service) => {
+      const port = portOverrides[service.port] ?? service.port;
+      return service.type === "http"
+        ? checkHttpService(service.name, port, service.path)
+        : checkTcpService(service.name, port);
+    }),
   );
-
-  return Promise.all(promises);
 }
 
 async function checkHttpService(
@@ -89,14 +98,23 @@ async function checkTcpService(
   });
 }
 
-export async function getDockerStatus(): Promise<{
-  running: boolean;
-  containers: Awaited<ReturnType<typeof getContainerStatuses>>;
-}> {
-  const running = await isDockerRunning();
-  if (!running) {
-    return { running: false, containers: [] };
+/** Docker as `gaia status` reports it: why it is unusable, or the project's containers. */
+export interface DockerStatus {
+  access: DockerAccess;
+  /** What is wrong and how to fix it; absent when access is "ready". */
+  problem?: DockerProblem;
+  containers: ContainerStatus[];
+}
+
+export async function getDockerStatus(mode: SetupMode): Promise<DockerStatus> {
+  const access = await getDockerAccess();
+  if (access !== "ready") {
+    return {
+      access,
+      problem: await describeDockerProblem(access),
+      containers: [],
+    };
   }
-  const containers = await getContainerStatuses();
-  return { running: true, containers };
+  const containers = await getContainerStatuses(COMPOSE_PROJECT_BY_MODE[mode]);
+  return { access, containers };
 }

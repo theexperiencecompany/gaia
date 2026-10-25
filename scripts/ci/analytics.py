@@ -54,6 +54,7 @@ import os
 from pathlib import Path
 import re
 import sys
+import time
 from urllib.parse import urlsplit
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -106,6 +107,12 @@ PROBE_DAYS = 7
 SUGGESTION_CUTOFF = 0.6
 PAGE_LIMIT = 100
 HTTP_TIMEOUT_S = 30
+# A PostHog read that drops mid-body (IncompleteRead), times out or 5xxs is
+# retried: one flaky response used to red the analytics check.
+HTTP_ATTEMPTS = 4
+HTTP_BACKOFF_S = 2.0
+RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
+IDEMPOTENT_METHODS = frozenset({"GET", "PATCH", "PUT", "DELETE"})
 
 JsonValue = dict[str, "JsonValue"] | list["JsonValue"] | str | int | float | bool | None
 JsonObject = dict[str, JsonValue]
@@ -754,9 +761,9 @@ class PostHog:
         self.base = f"/api/projects/{project_id}"
         self.key = key
 
-    def _request(
-        self, method: str, path: str, body: Mapping[str, JsonValue] | None = None
-    ) -> JsonObject:
+    def _send(
+        self, method: str, path: str, body: Mapping[str, JsonValue] | None
+    ) -> tuple[int, str]:
         connection = http.client.HTTPSConnection(self.netloc, timeout=HTTP_TIMEOUT_S)
         headers = {"Authorization": f"Bearer {self.key}", "Content-Type": "application/json"}
         try:
@@ -764,12 +771,45 @@ class PostHog:
                 method, path, json.dumps(body) if body is not None else None, headers
             )
             response = connection.getresponse()
-            payload = response.read().decode(errors="replace")
+            return response.status, response.read().decode(errors="replace")
         finally:
             connection.close()
-        if response.status >= HTTPStatus.BAD_REQUEST:
-            raise PostHogError(f"{method} {path}: HTTP {response.status} {payload[:500]}")
-        return _obj(json.loads(payload), f"{method} {path}")
+
+    def _request(
+        self,
+        method: str,
+        path: str,
+        body: Mapping[str, JsonValue] | None = None,
+        *,
+        idempotent: bool | None = None,
+    ) -> JsonObject:
+        """Send one call, retrying a read or idempotent write on a dropped response, timeout, 429 or 5xx.
+
+        A POST that creates is never retried: it may have landed.
+        """
+        retryable = method in IDEMPOTENT_METHODS if idempotent is None else idempotent
+        attempts = HTTP_ATTEMPTS if retryable else 1
+        for attempt in range(1, attempts + 1):
+            try:
+                status, payload = self._send(method, path, body)
+            except (http.client.HTTPException, OSError) as exc:
+                failure = f"{type(exc).__name__}: {exc}"
+            else:
+                if status < HTTPStatus.BAD_REQUEST:
+                    return _obj(json.loads(payload), f"{method} {path}")
+                failure = f"HTTP {status} {payload[:500]}"
+                if status not in RETRYABLE_STATUS:
+                    raise PostHogError(f"{method} {path}: {failure}")
+            if attempt == attempts:
+                raise PostHogError(f"{method} {path}: {failure} (after {attempt} attempt(s))")
+            delay = HTTP_BACKOFF_S * 2 ** (attempt - 1)
+            print(
+                f"[posthog] {method} {path}: {failure}; retry {attempt}/{attempts - 1} in {delay:g}s",
+                file=sys.stderr,
+                flush=True,
+            )
+            time.sleep(delay)
+        raise AssertionError("unreachable: the last attempt returns or raises")
 
     def _all(self, path: str) -> list[JsonObject]:
         """Follow the API's `next` links; each must stay on this host."""
@@ -829,7 +869,10 @@ class PostHog:
         """Run a query node and return its rows, never from PostHog's result cache."""
         # A cached read after a write (a merge, a filter change) reports the state before it.
         response = self._request(
-            "POST", f"{self.base}/query/", {"query": node, "refresh": QUERY_REFRESH}
+            "POST",
+            f"{self.base}/query/",
+            {"query": node, "refresh": QUERY_REFRESH},
+            idempotent=True,
         )
         return _list(response["results"], "query results")
 

@@ -533,6 +533,131 @@ class TestArgumentThatIsTheCalleeDefault:
         assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
 
 
+class TestTruthValueKeyword:
+    """A stdlib keyword its callee only truth-tests cannot tell one falsy value from another."""
+
+    _COPY = (
+        "    shutil.copy2(\n        source,\n        target,\n        follow_symlinks=False,\n    )"
+    )
+    _DUMPS = "    return json.dumps(payload, ensure_ascii=False)"
+
+    def _probe(self, workdir: Path, body: str, mutant: str) -> subprocess.CompletedProcess[str]:
+        (workdir / MODULE_REL).write_text(f"def probe(source, target, payload):\n{body}\n")
+        _write_mutants(workdir, body, mutant)
+        return _classify(workdir)
+
+    def test_follow_symlinks_set_to_none_is_equivalent(self, workdir: Path) -> None:
+        result = self._probe(
+            workdir, self._COPY, self._COPY.replace("follow_symlinks=False", "follow_symlinks=None")
+        )
+
+        assert result.stdout.strip() == "EQUIV", result.stdout + result.stderr
+
+    def test_ensure_ascii_set_to_none_is_equivalent(self, workdir: Path) -> None:
+        result = self._probe(
+            workdir, self._DUMPS, self._DUMPS.replace("ensure_ascii=False", "ensure_ascii=None")
+        )
+
+        assert result.stdout.strip() == "EQUIV", result.stdout + result.stderr
+
+    def test_follow_symlinks_flipped_to_true_is_still_reported(self, workdir: Path) -> None:
+        result = self._probe(
+            workdir, self._COPY, self._COPY.replace("follow_symlinks=False", "follow_symlinks=True")
+        )
+
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+
+    def test_a_dropped_follow_symlinks_is_still_reported(self, workdir: Path) -> None:
+        # The default is True, so dropping the keyword follows links.
+        result = self._probe(
+            workdir, self._COPY, self._COPY.replace("        follow_symlinks=False,\n", "")
+        )
+
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+
+    def test_a_keyword_outside_the_table_is_still_reported(self, workdir: Path) -> None:
+        body = self._COPY.replace("shutil.copy2", "shutil.copytree")
+        result = self._probe(
+            workdir, body, body.replace("follow_symlinks=False", "follow_symlinks=None")
+        )
+
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+
+
+class TestStripOfCapitals:
+    """A lowercased string holds no ASCII capital, so stripping extra capitals off it changes nothing."""
+
+    _LOWERED = '    return host.lower().rstrip(".") in NAMES'
+
+    def _probe(self, workdir: Path, body: str, mutant: str) -> subprocess.CompletedProcess[str]:
+        (workdir / MODULE_REL).write_text(f"def probe(host):\n{body}\n")
+        _write_mutants(workdir, body, mutant)
+        return _classify(workdir)
+
+    def test_the_xx_wrapped_charset_is_equivalent(self, workdir: Path) -> None:
+        result = self._probe(workdir, self._LOWERED, self._LOWERED.replace('"."', '"XX.XX"'))
+
+        assert result.stdout.strip() == "EQUIV", result.stdout + result.stderr
+
+    def test_a_charset_losing_the_dot_is_still_reported(self, workdir: Path) -> None:
+        result = self._probe(workdir, self._LOWERED, self._LOWERED.replace('"."', '"XX"'))
+
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+
+    def test_an_added_lowercase_character_is_still_reported(self, workdir: Path) -> None:
+        result = self._probe(workdir, self._LOWERED, self._LOWERED.replace('"."', '".a"'))
+
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+
+    def test_a_none_charset_is_still_reported(self, workdir: Path) -> None:
+        result = self._probe(workdir, self._LOWERED, self._LOWERED.replace('"."', "None"))
+
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+
+    def test_the_same_wrap_on_a_string_that_was_never_lowered_is_still_reported(
+        self, workdir: Path
+    ) -> None:
+        body = self._LOWERED.replace(".lower()", "")
+        result = self._probe(workdir, body, body.replace('"."', '"XX.XX"'))
+
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+
+
+class TestProjectionIncludeFlag:
+    """Mongo reads every non-zero integer in a $project as an include."""
+
+    _PROJECT = '    return [{"$project": {"_id": 0, "conversation_id": 1, "user_id": 1}}]'
+
+    def _probe(self, workdir: Path, mutant: str) -> subprocess.CompletedProcess[str]:
+        (workdir / MODULE_REL).write_text(f"def probe():\n{self._PROJECT}\n")
+        _write_mutants(workdir, self._PROJECT, mutant)
+        return _classify(workdir)
+
+    def test_an_include_raised_to_two_is_equivalent(self, workdir: Path) -> None:
+        result = self._probe(workdir, self._PROJECT.replace('"user_id": 1', '"user_id": 2'))
+
+        assert result.stdout.strip() == "EQUIV", result.stdout + result.stderr
+
+    def test_an_excluded_id_turned_into_an_include_is_still_reported(self, workdir: Path) -> None:
+        result = self._probe(workdir, self._PROJECT.replace('"_id": 0', '"_id": 1'))
+
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+
+    def test_a_renamed_projected_field_is_still_reported(self, workdir: Path) -> None:
+        result = self._probe(workdir, self._PROJECT.replace('"user_id"', '"XXuser_idXX"'))
+
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+
+    def test_the_same_increment_outside_a_projection_is_still_reported(self, workdir: Path) -> None:
+        body = '    return [{"$limit": {"n": 1}}]'
+        (workdir / MODULE_REL).write_text(f"def probe():\n{body}\n")
+        _write_mutants(workdir, body, body.replace("1", "2"))
+
+        result = _classify(workdir)
+
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+
+
 class TestUrlparseHostDefault:
     """urlparse(x).hostname is None for every non-URL.
 

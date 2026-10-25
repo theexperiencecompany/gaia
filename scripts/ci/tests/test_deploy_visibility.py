@@ -70,19 +70,28 @@ def sink() -> Iterator[Sink]:
     server.shutdown()
 
 
-def fake_docker(tmp_path: Path, envs: dict[str, list[str]]) -> Path:
-    """`docker buildx imagetools inspect <repo>:<tag>` prints that repo's image Env."""
+def image_json(
+    env: list[str], platforms: tuple[str, ...] = ("linux/amd64", "linux/arm64")
+) -> object:
+    """Build what imagetools inspect's {{json .Image}} prints: one config, or one per platform."""
+    config = {"architecture": "amd64", "os": "linux", "config": {"Env": env}}
+    return config if not platforms else dict.fromkeys(platforms, config)
+
+
+def fake_docker(tmp_path: Path, images: dict[str, object]) -> Path:
+    """`docker buildx imagetools inspect <repo>:<tag> --format '{{json .Image}}'` prints that repo's image."""
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    for repo, env in envs.items():
-        (tmp_path / f"env-{repo}.json").write_text(json.dumps(env))
+    for repo, image in images.items():
+        (tmp_path / f"image-{repo}.json").write_text(json.dumps(image))
     stub = bin_dir / "docker"
     stub.write_text(
         textwrap.dedent(
             f"""\
             #!/usr/bin/env bash
+            [[ "$6" == '{{{{json .Image}}}}' ]] || {{ echo "unexpected format: $6" >&2; exit 2; }}
             ref="$4"; repo="${{ref##*/}}"; repo="${{repo%%:*}}"
-            cat "{tmp_path}/env-$repo.json"
+            cat "{tmp_path}/image-$repo.json"
             """
         )
     )
@@ -163,9 +172,9 @@ def verify_env(sink: Sink, bots_tag: str = "") -> dict[str, str]:
 
 
 def images(tmp_path: Path) -> Path:
-    envs = {"gaia": ["PATH=/bin", f"GIT_COMMIT_SHA={APPS_SHA}"]}
-    envs |= {f"gaia-bot-{bot}": [f"GIT_COMMIT_SHA={BOTS_SHA}"] for bot in BOTS}
-    return fake_docker(tmp_path, envs)
+    found: dict[str, object] = {"gaia": image_json(["PATH=/bin", f"GIT_COMMIT_SHA={APPS_SHA}"])}
+    found |= {f"gaia-bot-{bot}": image_json([f"GIT_COMMIT_SHA={BOTS_SHA}"]) for bot in BOTS}
+    return fake_docker(tmp_path, found)
 
 
 def test_verify_commit_passes_when_prod_serves_the_deployed_image(
@@ -206,9 +215,35 @@ def test_verify_commit_checks_every_bot_when_bots_were_deployed(tmp_path: Path, 
 
 def test_verify_commit_fails_when_the_image_carries_no_commit(tmp_path: Path, sink: Sink) -> None:
     sink.bodies["/health"] = {"commit": "local"}
-    bin_dir = fake_docker(tmp_path, {"gaia": ["PATH=/bin"]})
+    bin_dir = fake_docker(tmp_path, {"gaia": image_json(["PATH=/bin"])})
 
     proc, _ = run(tmp_path, "verify-commit", verify_env(sink), bin_dir)
 
     assert proc.returncode != 0
     assert "GIT_COMMIT_SHA" in proc.stdout + proc.stderr
+
+
+def test_verify_commit_reads_a_single_platform_image(tmp_path: Path, sink: Sink) -> None:
+    sink.bodies["/health"] = {"commit": APPS_SHA[:8]}
+    bin_dir = fake_docker(tmp_path, {"gaia": image_json([f"GIT_COMMIT_SHA={APPS_SHA}"], ())})
+
+    proc, output = run(tmp_path, "verify-commit", verify_env(sink), bin_dir)
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert f"commit={APPS_SHA}" in output.splitlines()
+
+
+def test_verify_commit_fails_when_an_index_s_platforms_disagree_on_the_commit(
+    tmp_path: Path, sink: Sink
+) -> None:
+    sink.bodies["/health"] = {"commit": APPS_SHA[:8]}
+    index = {
+        "linux/amd64": {"config": {"Env": [f"GIT_COMMIT_SHA={APPS_SHA}"]}},
+        "linux/arm64": {"config": {"Env": [f"GIT_COMMIT_SHA={BOTS_SHA}"]}},
+    }
+    bin_dir = fake_docker(tmp_path, {"gaia": index})
+
+    proc, _ = run(tmp_path, "verify-commit", verify_env(sink), bin_dir)
+
+    assert proc.returncode != 0
+    assert "platforms disagree" in proc.stdout + proc.stderr

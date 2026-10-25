@@ -8,8 +8,11 @@ from fastapi import APIRouter
 
 from app.api.v1.endpoints import (
     approvals,
+    auth_local,
+    blob,
     blog,
     bot,
+    bot_delivery_failures,
     bot_links,
     browser,
     calendar,
@@ -28,6 +31,7 @@ from app.api.v1.endpoints import (
     mail,
     mcp,
     mcp_proxy,
+    members,
     memory,
     models,
     notes,
@@ -41,6 +45,9 @@ from app.api.v1.endpoints import (
     sandbox_execute,
     search,
     sessions,
+    setup,
+    setup_composio,
+    setup_composio_toolkits,
     shares,
     skills,
     support,
@@ -55,6 +62,7 @@ from app.api.v1.endpoints import (
     workflows,
 )
 from app.api.v1.endpoints.integrations import router as integrations_router
+from app.config.settings import settings
 
 router = APIRouter()
 
@@ -77,6 +85,16 @@ router.include_router(calendar.router, tags=["Calendar"])
 router.include_router(notes.router, tags=["Notes/Memories"])
 router.include_router(memory.router, tags=["Memory"], prefix="/memory")
 router.include_router(oauth.router, prefix="/oauth", tags=["OAuth"])
+# Hosted production mounts none of these: it exposes no password registration,
+# no instance membership, and no runtime credential store.
+if settings.deployment.local_auth:
+    router.include_router(auth_local.router, prefix="/auth", tags=["Auth"])
+    router.include_router(members.router, prefix="/members", tags=["Members"])
+if settings.deployment.runtime_credentials:
+    router.include_router(setup.router, prefix="/setup", tags=["Setup"])
+    router.include_router(setup_composio.router, prefix="/setup", tags=["Setup"])
+if settings.deployment.instance_toolkits:
+    router.include_router(setup_composio_toolkits.router, prefix="/setup", tags=["Setup"])
 router.include_router(integrations_router, prefix="/integrations", tags=["Integrations"])
 router.include_router(mcp.router, prefix="/mcp", tags=["MCP"])
 router.include_router(mcp_proxy.router, prefix="/mcp", tags=["MCP"])
@@ -87,6 +105,7 @@ router.include_router(features.router, prefix="/features", tags=["Features"])
 router.include_router(mail.router, tags=["Mail"])
 router.include_router(blog.router, tags=["Blog"])
 router.include_router(file.router, tags=["File"])
+router.include_router(blob.router, tags=["Blob"])
 router.include_router(notification.router, tags=["Notification"])
 router.include_router(websocket.router, tags=["WebSocket"])
 router.include_router(webhook_composio.router, tags=["Composio Webhook"])
@@ -105,5 +124,6 @@ router.include_router(bot.router, prefix="/bot", tags=["Bot"])
 # Same prefix as bot.router above: the platform-linking routes live in their
 # own module but are part of the same public /api/v1/bot surface.
 router.include_router(bot_links.router, prefix="/bot", tags=["Bot"])
+router.include_router(bot_delivery_failures.router, prefix="/bot", tags=["Bot"])
 router.include_router(platform_auth.router, prefix="/platform-auth", tags=["Platform Auth"])
 router.include_router(platform_links.router, prefix="/platform-links", tags=["Platform Links"])

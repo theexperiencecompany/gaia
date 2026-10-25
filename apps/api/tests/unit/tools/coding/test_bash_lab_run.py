@@ -46,6 +46,7 @@ from app.services.agent_lab.sandbox_setup import (
     lab_env_path,
 )
 from app.services.sandbox import execute_token
+from app.services.sandbox.local_sandbox import LocalDockerSandbox
 from app.utils.errors import AppError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.todos import TodosSubscriptionRegistered
@@ -59,6 +60,7 @@ SUBSCRIPTIONS = "app.services.triggers.subscription_service"
 CONFIG = {"configurable": {"user_id": USER_ID, "stream_id": "s1"}}
 SESSION_CONFIG = {"configurable": {"user_id": USER_ID, "conversation_id": "conv1"}}
 EVENTS_URL = "https://gaia.test/api/v1/lab/events"
+LOCAL_EVENTS_URL = "http://host.docker.internal:3000/api/v1/lab/events"
 SECRET = "unit-test-secret-0123456789abcdef0123456789abcdef"
 
 
@@ -148,6 +150,30 @@ class TestLabGate:
         assert out.startswith("Error: agent lab is disabled")
         assert sbx.commands.run.await_count == 0
         todos.get.assert_not_awaited()
+
+    async def test_a_local_docker_sandbox_seeds_then_runs_reporting_to_its_own_url(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A local container cannot reach the public callback URL an E2B sandbox dials.
+        monkeypatch.setattr(sandbox_setup.settings, "SANDBOX_LAB_EVENTS_CALLBACK_URL", EVENTS_URL)
+        monkeypatch.setattr(
+            sandbox_setup.settings, "LOCAL_SANDBOX_LAB_EVENTS_CALLBACK_URL", LOCAL_EVENTS_URL
+        )
+        sbx = MagicMock(spec=LocalDockerSandbox)
+        sbx.sandbox_id = "gaia-sandbox-u1"
+        sbx.commands = SimpleNamespace(run=AsyncMock(side_effect=[_ok("seeded"), _ok("hi")]))
+        sbx.files = AsyncMock()
+        todos = AsyncMock()
+        with (
+            _lab_stack(sbx, todos, todo=_todo()),
+            patch(f"{MODULE}.lab_events_url", new=sandbox_setup.lab_events_url),
+        ):
+            out = await bash.ainvoke({"command": "echo hi", "run_todo_id": "t1"}, config=CONFIG)
+        assert "sandbox_run_id:" in out
+        assert sbx.commands.run.await_count == 2
+        envs = sbx.commands.run.await_args_list[1].kwargs["envs"]
+        assert envs[LAB_CALLBACK_URL_VAR] == LOCAL_EVENTS_URL
+        todos.add_trigger_subscription.assert_awaited_once()
 
     async def test_a_flagged_user_off_the_paid_plan_launches_nothing(self) -> None:
         # launch checked only the flag while the event receiver also

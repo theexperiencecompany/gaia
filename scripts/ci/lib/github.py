@@ -38,7 +38,11 @@ T = TypeVar("T")
 
 
 class GitHubError(Exception):
-    """An API call that did not produce the document the caller needs."""
+    """An API call that did not produce the document the caller needs; status is its HTTP code."""
+
+    def __init__(self, message: str, status: int | None = None) -> None:
+        super().__init__(message)
+        self.status = status
 
 
 def field_of(doc: Json, key: str, kind: type[T]) -> T:
@@ -136,7 +140,7 @@ class GitHub:
         """Return the body and the Link header; raise GitHubError once retries are spent."""
         url = self._url(path)
         for attempt in range(1, self.attempts + 1):
-            failure, retry_after, retryable = "", None, True
+            failure, retry_after, retryable, status = "", None, True, None
             try:
                 req = self._request(method, url, body)
                 with urllib.request.urlopen(req, timeout=self.timeout) as resp:  # noqa: S310 — scheme checked in _url
@@ -146,10 +150,13 @@ class GitHub:
                 failure = f"HTTP {err.code}: {detail}"
                 retry_after = err.headers.get("Retry-After")
                 retryable = err.code in RETRYABLE_STATUS
+                status = err.code
             except (urllib.error.URLError, TimeoutError, ConnectionError) as err:
                 failure = f"network: {err}"
             if not retryable or attempt == self.attempts:
-                raise GitHubError(f"{method} {url} failed after {attempt} attempt(s) — {failure}")
+                raise GitHubError(
+                    f"{method} {url} failed after {attempt} attempt(s) — {failure}", status
+                )
             delay = self._delay(attempt, retry_after)
             print(
                 f"[github] {method} {url} — {failure}; retry {attempt}/{self.attempts - 1} in {delay:g}s",
@@ -175,6 +182,14 @@ class GitHub:
 
     def post(self, path: str, body: Mapping[str, object] | None = None) -> None:
         self.send("POST", path, body)
+
+    def graphql(self, query: str, variables: Mapping[str, object]) -> Json:
+        """Return a GraphQL query's data; a response carrying errors raises."""
+        raw, _ = self.send("POST", "graphql", {"query": query, "variables": variables})
+        doc = _decode_object(raw, "graphql")
+        if errors := doc.get("errors"):
+            raise GitHubError(f"graphql query failed — {json.dumps(errors)[:ERROR_BODY_CHARS]}")
+        return field_of(doc, "data", dict)
 
     def collect(self, path: str, key: str) -> list[Json]:
         """Collect every record under key across all pages."""

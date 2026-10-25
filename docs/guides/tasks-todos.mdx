@@ -6,13 +6,13 @@ icon: "list-check"
 
 import { Chat } from "/snippets/chat-bubbles.jsx";
 
-Tell GAIA what you need to do and it becomes a task, with the right priority, due date, and labels pulled from what you said. Everything lands on your **Todos** page, where you can filter, sort, search, and track it all.
+Tell GAIA what you need to do and it becomes a task on your **Todos** page.
 
 <Frame>
   <img className="rounded-lg" src="/images/guides/todos/todos-page.png" alt="Todos page showing tasks with priorities and due dates" />
 </Frame>
 
-## What to say
+## Add and finish tasks
 
 <Chat
   messages={[
@@ -23,43 +23,24 @@ Tell GAIA what you need to do and it becomes a task, with the right priority, du
   ]}
 />
 
-You can keep iterating in the same conversation:
+You can also ask about, move, or complete tasks in bulk:
 
-<Chat
-  messages={[
-    { from: "user", text: "how many tasks do I have left in the Product Launch project?" },
-    { from: "gaia", text: "You have 4 active tasks left in Product Launch." },
-    { from: "user", text: "move my marketing tasks to the Q2 Campaign project" },
-    { from: "user", text: "complete all tasks labeled 'done-review'" },
-  ]}
-/>
+- "How many tasks do I have left in the Product Launch project?"
+- "Move my marketing tasks to the Q2 Campaign project"
+- "Complete all tasks labeled 'done-review'"
 
 ## How tasks are organized
 
-**Priorities.** Every task is High (red), Medium (yellow), Low (blue), or unset. Priority controls sort order, and GAIA uses it when summarizing your workload or suggesting what to tackle next.
+| Concept      | What it does                                                      |
+| ------------ | ----------------------------------------------------------------- |
+| **Priority** | High, Medium, Low, or unset. Controls sort order.                 |
+| **Project**  | Groups related tasks. Tasks with no project go to your **Inbox**. |
+| **Label**    | A tag that cuts across projects, like "bug" or "follow-up".       |
+| **Subtask**  | A step inside a task. The list shows progress, like "2/5".        |
 
-**Projects.** Projects group related tasks, with custom colors and running task counts. Tasks without a project go to your **Inbox**. Create one from the **+** icon in the project sidebar, or in chat:
+To create a project, click **+** in the project sidebar or ask: "create a project called Product Launch".
 
-<Chat
-  messages={[
-    { from: "user", text: "create a project called Product Launch with a purple color" },
-    { from: "gaia", text: "Created, Product Launch is ready, in purple." },
-  ]}
-/>
-
-**Labels.** Labels are tags that cut across projects, a task in "Work" can share a "design" label with a task in "Side Project". Use them to filter by topic, track categories like "bug" or "follow-up", and find related tasks fast. Up to 20 labels per task.
-
-**Subtasks.** Break a task into individually completable steps. Your task list shows progress, "2/5 subtasks", without opening the task.
-
-<Tip>
-  Use subtasks for tasks with clear sequential steps. A "Publish blog post"
-  task might have "Write draft," "Add images," "Review SEO," and "Schedule
-  publish."
-</Tip>
-
-## Suggested workflows
-
-### Long-running delegated work
+## Long-running delegated work
 
 For jobs that run for hours (coding agents, monitors, migrations), GAIA hands the work to a tracked task and reports back instead of making you wait:
 
@@ -72,60 +53,33 @@ For jobs that run for hours (coding agents, monitors, migrations), GAIA hands th
 
 Ask about progress from anywhere, even a different chat or device. GAIA reads the task's log and answers in plain words. Questions, completion, and failures arrive as messages on your preferred chat app. Everything is recorded on the task, so nothing is ever lost even if you close the app.
 
-This is where GAIA goes beyond a standard task manager. For any task, GAIA can generate a **suggested workflow**, a step-by-step action plan it can execute for you. Each step has a number, a title and description, and a category (email, calendar, research) showing which tools GAIA will use.
+## Suggested workflows
 
-For a task like "Prepare for Monday's board meeting," GAIA might suggest:
+GAIA can turn a task into a step-by-step plan it can run for you. Open a task and look for the **Workflow** section.
 
-1. Pull relevant emails from the past week
-2. Summarize key metrics from your project tracker
-3. Draft an agenda document
-4. Block 2 hours of focus time on your calendar
+Click **Run Workflow** and GAIA carries out the steps in chat, using your connected apps.
 
-Click **Run Workflow** and GAIA carries out the steps in chat, using your connected integrations.
+## Find tasks
 
-<Note>
-  Suggested workflows are generated on demand. Open a task in the sidebar and
-  look for the Workflow section.
-</Note>
+Filter the Todos page by status, priority, project, label, or date. Search matches keywords and meaning.
 
-## Finding and finishing tasks
-
-The Todos page filters by **status** (active, completed, or both), **priority**, **project**, **label**, and **date** (due today, this week, or overdue). Search finds tasks by keyword, or by meaning with semantic search.
-
-Click the checkbox next to any task to complete it, it gets a strikethrough and moves to the bottom of the list.
-
-Select multiple tasks to act in bulk: complete several at once, move them to a different project, or delete them.
+Select several tasks to complete, move, or delete them together.
 
 <Warning>
-  Deleted tasks cannot be recovered. If you want a record of what you've done,
-  complete tasks instead of deleting them.
+  Deleted tasks cannot be recovered. Complete a task instead if you want a record.
 </Warning>
 
-## Creating tasks by hand
+## Add a task by hand
 
-Prefer a form? Click **Add Task** on the Todos page to set every detail yourself.
+<Steps>
+  <Step title="Click Add Task">
+    On the Todos page.
+  </Step>
+  <Step title="Fill in the details">
+    Add a title, priority, due date, project, labels, and subtasks.
+  </Step>
+</Steps>
 
 <Frame>
   <img className="rounded-lg" src="/images/guides/todos/add-task-modal.png" alt="Add task dialog with project, priority, due date, labels, and subtasks" />
 </Frame>
-
-<Steps>
-  <Step title="Enter a title">
-    Keep it specific, "Draft investor update email" beats "Email stuff."
-  </Step>
-  <Step title="Set a priority">
-    High, Medium, Low, or unset.
-  </Step>
-  <Step title="Pick a due date">
-    So GAIA knows what's overdue, due today, or coming up. Tasks without a due
-    date go to your Inbox.
-  </Step>
-  <Step title="Assign to a project, add labels and subtasks">
-    Group it, tag it, and break it into steps as needed.
-  </Step>
-</Steps>
-
-<Tip>
-  Combine both approaches, create a task quickly in chat, then open it on the
-  Todos page to add subtasks, adjust the priority, or assign a project.
-</Tip>

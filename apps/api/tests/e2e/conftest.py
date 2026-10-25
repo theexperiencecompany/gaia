@@ -2,7 +2,7 @@
 
 Uses real GAIA nodes (filter_messages_node, manage_system_prompts_node) and the
 real create_agent/State from app.override.langgraph_bigtool — only the LLM
-(BindableToolsFakeModel) is mocked. USE_REAL_SERVICES=1 (Dagger CI) backs the
+(BindableToolsFakeModel) is mocked. USE_REAL_SERVICES=1 (CI) backs the
 checkpointer/store with AsyncPostgresSaver/AsyncPostgresStore against real
 Postgres; USE_REAL_SERVICES=0 falls back to MemorySaver/InMemoryStore.
 
@@ -122,7 +122,7 @@ async def memory_saver():
     """LangGraph checkpointer.
 
     Returns AsyncPostgresSaver backed by real Postgres when USE_REAL_SERVICES=1
-    (Dagger CI), otherwise falls back to in-process MemorySaver.
+    (CI), otherwise falls back to in-process MemorySaver.
     Each test gets a fresh pool so thread-scoped state never leaks between tests.
     """
     if _USE_REAL_SERVICES:
@@ -151,7 +151,7 @@ async def in_memory_store():
     """LangGraph store.
 
     Returns AsyncPostgresStore backed by real Postgres when USE_REAL_SERVICES=1
-    (Dagger CI), otherwise falls back to in-process InMemoryStore.
+    (CI), otherwise falls back to in-process InMemoryStore.
     """
     if _USE_REAL_SERVICES:
         from langgraph.store.postgres import AsyncPostgresStore

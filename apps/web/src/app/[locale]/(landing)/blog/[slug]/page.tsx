@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import BlogPostClient from "@/app/[locale]/(landing)/blog/client";
 import type { BlogPostMeta } from "@/lib/blog";
 import { getAllBlogPosts, getAllBlogSlugs, getBlogPost } from "@/lib/blog";
+import { prerenderedMarketingParams } from "@/lib/selfhost";
 import {
   generateArticleSchema,
   generateBreadcrumbSchema,
@@ -18,11 +19,15 @@ interface PageProps {
 export const revalidate = 3600;
 export const dynamicParams = true;
 
-export async function generateStaticParams() {
+async function allStaticParams() {
   const slugs = await getAllBlogSlugs();
   return slugs.map((slug) => ({
     slug,
   }));
+}
+
+export function generateStaticParams() {
+  return prerenderedMarketingParams(allStaticParams);
 }
 
 export async function generateMetadata({

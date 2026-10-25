@@ -33,6 +33,7 @@ from app.services.onboarding.first_question import (
 from app.services.onboarding.intelligence_job import abort_active_intelligence_job
 from app.services.platform_link_service import linked_platforms_of
 from app.services.workflow.service import WorkflowService
+from app.utils.auth_utils import with_local_onboarding_completed
 from app.utils.background_tasks import spawn_background_task
 from app.utils.seeding_utils import seed_first_conversation
 from shared.py.analytics import UserId
@@ -175,6 +176,10 @@ async def get_user_onboarding_status(user_id: str) -> OnboardingStatusResponse:
             raise HTTPException(status_code=404, detail="User not found")
 
         onboarding_data = user.onboarding or OnboardingSubdocument()
+
+        # Self-host has no onboarding pipeline: force completed via the shared
+        # synthesis helper so both surfaces agree.
+        onboarding_data = with_local_onboarding_completed(onboarding_data)
 
         return OnboardingStatusResponse(
             completed=onboarding_data.completed,

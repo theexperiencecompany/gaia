@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -8,11 +8,11 @@ resolution-markers = [
 ]
 
 [options]
-exclude-newer = "0001-01-01T00:00:00Z" # This has no effect and is included for backwards compatibility when using relative exclude-newer values.
+exclude-newer = "2026-10-22T12:08:21.580945Z"
 exclude-newer-span = "P3D"
 
 [options.exclude-newer-package]
-certifi = "2026-10-21T00:00:00Z"
+certifi = false
 
 [manifest]
 members = [
@@ -33,6 +33,7 @@ constraints = [
     { name = "json-repair", specifier = ">=0.60.1" },
     { name = "multidict", specifier = ">=6.9.1" },
     { name = "nltk", specifier = ">=3.9.4" },
+    { name = "pillow", specifier = ">=13.0.0" },
     { name = "pyasn1", specifier = ">=0.6.4" },
     { name = "pygments", specifier = ">=2.20.0" },
     { name = "pyjwt", specifier = ">=2.15.1" },
@@ -50,7 +51,10 @@ overrides = [
     { name = "opentelemetry-sdk", specifier = ">=1.45.1" },
     { name = "pillow", specifier = ">=13.0.0" },
 ]
-excludes = ["unclecode-litellm"]
+excludes = [
+    "patchright",
+    "unclecode-litellm",
+]
 
 [[package]]
 name = "aenum"
@@ -1226,7 +1230,6 @@ dependencies = [
     { name = "lxml" },
     { name = "nltk" },
     { name = "numpy" },
-    { name = "patchright" },
     { name = "pillow" },
     { name = "playwright" },
     { name = "playwright-stealth" },
@@ -2044,7 +2047,6 @@ backend = [
     { name = "firecrawl" },
     { name = "firecrawl-py" },
     { name = "ftfy" },
-    { name = "google-api-python-client" },
     { name = "googleapis-common-protos" },
     { name = "hf-xet" },
     { name = "html2text" },
@@ -2075,8 +2077,6 @@ backend = [
     { name = "more-itertools" },
     { name = "motor" },
     { name = "openai" },
-    { name = "opik" },
-    { name = "pandas" },
     { name = "pillow" },
     { name = "posthog" },
     { name = "prometheus-client" },
@@ -2084,7 +2084,6 @@ backend = [
     { name = "protobuf" },
     { name = "psycopg", extra = ["binary", "pool"] },
     { name = "psycopg2-binary" },
-    { name = "pyarrow" },
     { name = "pyinstrument" },
     { name = "pyjwt" },
     { name = "pymongo" },
@@ -2092,6 +2091,7 @@ backend = [
     { name = "redis" },
     { name = "resend" },
     { name = "sentry-sdk", extra = ["langgraph"] },
+    { name = "slack-sdk" },
     { name = "standardwebhooks" },
     { name = "starlette" },
     { name = "tavily-python" },
@@ -2110,9 +2110,12 @@ dev = [
     { name = "lxml-stubs" },
     { name = "mutmut" },
     { name = "mypy" },
+    { name = "opik" },
+    { name = "pandas" },
     { name = "pandas-stubs" },
     { name = "pika" },
     { name = "pre-commit" },
+    { name = "pyarrow" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-check" },
@@ -2215,7 +2218,6 @@ backend = [
     { name = "firecrawl", specifier = ">=4.6.0" },
     { name = "firecrawl-py", specifier = ">=4.3.6" },
     { name = "ftfy", specifier = ">=6.3.0" },
-    { name = "google-api-python-client", specifier = ">=2.162.0" },
     { name = "googleapis-common-protos", specifier = "==1.66.0" },
     { name = "hf-xet", specifier = ">=1.0.3" },
     { name = "html2text", specifier = ">=2024.2.26" },
@@ -2235,7 +2237,7 @@ backend = [
     { name = "langgraph", specifier = ">=1.2.0" },
     { name = "langgraph-bigtool", specifier = ">=0.0.2" },
     { name = "langgraph-checkpoint-postgres", specifier = ">=2.0.21" },
-    { name = "litellm", specifier = ">=1.83.4,<1.90" },
+    { name = "litellm", specifier = ">=1.89.7,<1.90" },
     { name = "llama-cloud-services", specifier = ">=0.6.15" },
     { name = "lxml", specifier = ">=5.3" },
     { name = "markdown-it-py", specifier = "==3.0.0" },
@@ -2246,8 +2248,6 @@ backend = [
     { name = "more-itertools", specifier = "==10.6.0" },
     { name = "motor", specifier = "==3.6.0" },
     { name = "openai", specifier = ">=1.69.0" },
-    { name = "opik", specifier = ">=1.10.0" },
-    { name = "pandas", specifier = ">=2.3.0" },
     { name = "pillow", specifier = "==13.0.0" },
     { name = "posthog", specifier = ">=7.44.2" },
     { name = "prometheus-client", specifier = ">=0.20.0" },
@@ -2255,7 +2255,6 @@ backend = [
     { name = "protobuf", specifier = "==5.29.6" },
     { name = "psycopg", extras = ["binary", "pool"], specifier = ">=3.3.4" },
     { name = "psycopg2-binary", specifier = ">=2.9.10" },
-    { name = "pyarrow", specifier = ">=25.0.0" },
     { name = "pyinstrument", specifier = ">=5.1.1" },
     { name = "pyjwt", specifier = ">=2.15.0" },
     { name = "pymongo", specifier = "==4.9.2" },
@@ -2263,6 +2262,7 @@ backend = [
     { name = "redis", specifier = "==5.2.1" },
     { name = "resend", specifier = ">=2.10.0" },
     { name = "sentry-sdk", extras = ["langgraph"], specifier = ">=2.44.0" },
+    { name = "slack-sdk", specifier = ">=3.36.0" },
     { name = "standardwebhooks", specifier = ">=1.0.0" },
     { name = "starlette", specifier = ">=0.49.1" },
     { name = "tavily-python", specifier = ">=0.7.12" },
@@ -2281,9 +2281,12 @@ dev = [
     { name = "lxml-stubs", specifier = ">=0.5.1" },
     { name = "mutmut", specifier = ">=3.7.0" },
     { name = "mypy", specifier = ">=1.16.1" },
+    { name = "opik", specifier = ">=1.10.0" },
+    { name = "pandas", specifier = ">=2.3.0" },
     { name = "pandas-stubs", specifier = ">=2.3.0.250703" },
     { name = "pika", specifier = ">=1.4.1" },
     { name = "pre-commit", specifier = ">=4.2.0" },
+    { name = "pyarrow", specifier = ">=25.0.0" },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "pytest-asyncio", specifier = ">=1.4.0" },
     { name = "pytest-check", specifier = ">=2.6.2" },
@@ -3807,7 +3810,7 @@ wheels = [
 
 [[package]]
 name = "litellm"
-version = "1.86.2"
+version = "1.89.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -3823,9 +3826,9 @@ dependencies = [
     { name = "tiktoken" },
     { name = "tokenizers" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/01/ee/1f6f3f5d01e0910629b6af3757e82c47b8b87dca497a661a9c63280b4bd8/litellm-1.86.2.tar.gz", hash = "sha256:7d559ad48b97d796ff325af88fd7eebbdc66e58773fb5312130ab1cac968f8f3", size = 15380548, upload-time = "2026-05-27T16:19:58.45Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/07/d5/30d14b55c30b83196f03715648c995c9fe4c19e8d3bdbfa5319335c56c76/litellm-1.89.7.tar.gz", hash = "sha256:94ed81946194a032eadddf0ab9d75ad8bdcd94e7fa832dd8edb48a8712eb5b9d", size = 14063688, upload-time = "2026-08-09T00:50:04.636Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4d/37/4da1dd67157aaa11477d6c63e4725216bfc46b4661e581b490d17e5b2831/litellm-1.86.2-py3-none-any.whl", hash = "sha256:27096463be7add661513ada3d9039e8f1a6195859e604d30fde96c939efe0a03", size = 17013061, upload-time = "2026-05-27T16:19:53.219Z" },
+    { url = "https://files.pythonhosted.org/packages/f6/1a/f087e0555d91ab5f93fb8c740447423aa785468b8edca9987724815b51ec/litellm-1.89.7-py3-none-any.whl", hash = "sha256:4a11bdeaec66b3bd64f7606bf59e238875867678f320e70dd38d8767fddde11b", size = 15474149, upload-time = "2026-08-09T00:50:01.992Z" },
 ]
 
 [[package]]
@@ -5289,25 +5292,6 @@ wheels = [
 ]
 
 [[package]]
-name = "patchright"
-version = "1.57.2"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "greenlet" },
-    { name = "pyee" },
-]
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/e0/9d/2e8ab9f09bdbfd4b8b17229f92f3b2af32fd8474a19c92d94f08c7a78dd1/patchright-1.57.2-py3-none-macosx_10_13_x86_64.whl", hash = "sha256:eecd88992104156da183bf0e0144a43c278227a0eb9e538ae62c3f01448b86b8", size = 41963318, upload-time = "2025-12-30T15:33:40.533Z" },
-    { url = "https://files.pythonhosted.org/packages/df/a0/80ee346f4d22cca4d6e6112e162dad51d9702350438b4b644acfe2874ce2/patchright-1.57.2-py3-none-macosx_11_0_arm64.whl", hash = "sha256:b16d07fc454fbd7392c29663784abf9a577b2482df3479ae487ecd8bc3948b68", size = 40753852, upload-time = "2025-12-30T15:33:43.558Z" },
-    { url = "https://files.pythonhosted.org/packages/49/84/d3f53f39855288bbe26a4ee8b5af00e1aab940af7dc971be53b3209671a9/patchright-1.57.2-py3-none-macosx_11_0_universal2.whl", hash = "sha256:af8e74a16af04dda592a8f8e89e4dd041e1ffcfd90566d17577176958fe80393", size = 41963318, upload-time = "2025-12-30T15:33:46.451Z" },
-    { url = "https://files.pythonhosted.org/packages/fa/6b/214164f57f339742c3795e55cd472c7cdb82ac769d89548c6526477794f8/patchright-1.57.2-py3-none-manylinux1_x86_64.whl", hash = "sha256:5119daf606c0d21185ef4d2a6f4008db915173ed11601ebedd67abadcab0d594", size = 45953528, upload-time = "2025-12-30T15:33:49.554Z" },
-    { url = "https://files.pythonhosted.org/packages/96/5c/fb81d91376ac15d275812ab6fb8048506ee444413a97319ef640817b0984/patchright-1.57.2-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:b58d6b2122c47dc72204847eff0ec0ea67afcb1f6573fa3f357b149b389af4ff", size = 45685195, upload-time = "2025-12-30T15:33:52.576Z" },
-    { url = "https://files.pythonhosted.org/packages/c2/87/7a2e2fab5d25aa4fce59dfe9d69d3b18a437b19243fdf498697dc1fe0f98/patchright-1.57.2-py3-none-win32.whl", hash = "sha256:54f5f090ed5c9bb331c79c5546b9a43854ee87eb31072c308f45c76561e409b5", size = 36532138, upload-time = "2025-12-30T15:33:55.802Z" },
-    { url = "https://files.pythonhosted.org/packages/d1/0f/ed5262996ea573632c4c18ab72c8eafc1eb1ee2c8b3d8470cb52f7075ca1/patchright-1.57.2-py3-none-win_amd64.whl", hash = "sha256:8865dca554dbe98b585e277f3d151e0b5fccdf3765408ec0c8631093f7828eda", size = 36532143, upload-time = "2025-12-30T15:33:58.507Z" },
-    { url = "https://files.pythonhosted.org/packages/5c/31/5371fb36ec6ec3b4b1ae1784dd5254e2c7b85d0e0d34dd371933ffde2c53/patchright-1.57.2-py3-none-win_arm64.whl", hash = "sha256:830173d31c0a9eed6c03192e191dc007f30f05bc580764860cbd0001431f6f01", size = 32816218, upload-time = "2025-12-30T15:34:01.582Z" },
-]
-
-[[package]]
 name = "pathspec"
 version = "1.0.3"
 source = { registry = "https://pypi.org/simple" }
@@ -6420,7 +6404,6 @@ dependencies = [
     { name = "pyobjc-framework-photos", marker = "(platform_release >= '15.0' and sys_platform != 'darwin') or (platform_release >= '15' and sys_platform == 'darwin')" },
     { name = "pyobjc-framework-photosui", marker = "(platform_release >= '15.0' and sys_platform != 'darwin') or (platform_release >= '15' and sys_platform == 'darwin')" },
     { name = "pyobjc-framework-preferencepanes" },
-    { name = "pyobjc-framework-pubsub", marker = "platform_release >= '9' and platform_release < '18' and sys_platform == 'darwin'" },
     { name = "pyobjc-framework-pushkit", marker = "(platform_release >= '19.0' and sys_platform != 'darwin') or (platform_release >= '19' and sys_platform == 'darwin')" },
     { name = "pyobjc-framework-quartz" },
     { name = "pyobjc-framework-quicklookthumbnailing", marker = "(platform_release >= '19.0' and sys_platform != 'darwin') or (platform_release >= '19' and sys_platform == 'darwin')" },
@@ -8505,19 +8488,6 @@ wheels = [
 ]
 
 [[package]]
-name = "pyobjc-framework-pubsub"
-version = "12.2.2"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "pyobjc-core" },
-    { name = "pyobjc-framework-cocoa" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/3d/39/e1bbc399bf210046fac5d594149c067a2c3bf13f98bd8f53a5a63123e728/pyobjc_framework_pubsub-12.2.2.tar.gz", hash = "sha256:c23af3059ab7108c0173f39c994b15c79e59cdc1a62e50ba4bfbbdaf80b38a40", size = 15007, upload-time = "2026-08-11T19:45:12.515Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/f3/e7/12a8abb39dadc3ff86f5976316da44e3b770349c296b1078db84a2f851aa/pyobjc_framework_pubsub-12.2.2-py2.py3-none-any.whl", hash = "sha256:57bfdf6cc4d640cc0e8741c32e8124c613f4886fae489020a894e57b7d3abf6f", size = 4391, upload-time = "2026-08-11T19:40:13.463Z" },
-]
-
-[[package]]
 name = "pyobjc-framework-pushkit"
 version = "12.2.2"
 source = { registry = "https://pypi.org/simple" }
@@ -10371,6 +10341,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/94/e7/b2c673351809dca68a0e064b6af791aa332cf192da575fd474ed7d6f16a2/six-1.17.0.tar.gz", hash = "sha256:ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81", size = 34031, upload-time = "2024-12-04T17:35:28.174Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl", hash = "sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274", size = 11050, upload-time = "2024-12-04T17:35:26.475Z" },
+]
+
+[[package]]
+name = "slack-sdk"
+version = "3.45.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/24/74/a4b30685bc76846b70baa9edaa45ba577ce5a28fc9e474b51524bb2aa932/slack_sdk-3.45.0.tar.gz", hash = "sha256:1ab794452f238b59db0d8a4d346263d65190288add53ec67a05751d8e7402486", size = 259739, upload-time = "2026-10-01T22:24:56.998Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/af/58/d54e4564946a9a3276f3de2905d18b66977977d4ba0fd7d11164df3c73cb/slack_sdk-3.45.0-py2.py3-none-any.whl", hash = "sha256:6356d4486d1a3ad156462c5544ab1b9c076ff426a250495c08f51b7ad71eb8fb", size = 322681, upload-time = "2026-10-01T22:24:55.133Z" },
 ]
 
 [[package]]

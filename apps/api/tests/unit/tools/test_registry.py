@@ -15,6 +15,7 @@ from app.agents.tools.core.registry import (
     ToolCategory,
     ToolRegistry,
 )
+from app.config.settings import settings
 from shared.py.wide_events import log
 
 
@@ -631,6 +632,30 @@ _CORE_CATEGORY_NAMES = [
     "weather",
     "context",
 ]
+
+
+class TestSupportCategory:
+    def test_a_self_hosted_registry_has_no_support_ticket_tool(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", "selfhost")
+        registry = ToolRegistry()
+        registry._initialize_categories()
+
+        assert registry.get_category("support") is None
+        assert "create_support_ticket" not in registry.get_tool_names()
+
+
+class TestBrowserCategory:
+    def test_a_self_hosted_registry_has_no_browser_tool(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", "selfhost")
+        registry = ToolRegistry()
+        registry._initialize_categories()
+
+        assert registry.get_category("browser") is None
+        assert "browser_task" not in registry.get_tool_names()
 
 
 class TestBillingCategory:

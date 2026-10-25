@@ -18,7 +18,7 @@ tests:
             exp_annotations:
               description: >-
                 These are the jobs that make GAIA proactive — reminder delivery, workflow generation and execution, tracked-todo runs, Gmail-to-memory ingestion and the housekeeping crons. Failures here are invisible to users until something they scheduled never happens. The "Task Rate by Name" panel breaks failures down by task_name.
-              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-arq-failures
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-arq-failures
               __dashboardUid__: gaia-arq-worker
               __panelId__: '2'
 

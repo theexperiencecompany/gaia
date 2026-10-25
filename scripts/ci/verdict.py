@@ -56,7 +56,15 @@ Subcommands:
         path for a tool that names a package rather than a line (syncpack,
         manypkg, nx). Prints nothing — annotating here too would put
         every finding on the page twice.
-    step-outcomes --lane L [--findings F] [--reused JSON] [--out DIR] <name>=<outcome> [...]
+    check [--lane L] [--fallback F] [--path-prefix P] -- <command...>
+        A check step's shell: run the command, stream its output, and when it
+        fails write `<job>/<step id>`'s verdict from what it printed (every
+        file:line it names, else its first error lines) and flag the job's next
+        upload step. Exits with the command's code.
+    sarif <report.sarif> --lane L [--out DIR]
+        Write a failed scanner step's verdict (gitleaks, semgrep) from its SARIF
+        report: one finding per result, at its location.
+    step-outcomes --lane L [--reused JSON] [--out DIR] <name>=<outcome> [...]
         Fail a job when any of its `continue-on-error` steps failed, naming
         every one that did. A skipped step (nothing to check, or reused) passes.
     post-statuses --repo R --sha S --run-id N --run-attempt A [--reused JSON] <name>=<outcome> [...]
@@ -83,9 +91,11 @@ from pathlib import Path
 import re
 import subprocess
 import sys
-from typing import NamedTuple, NotRequired, TypedDict
+from typing import NamedTuple, TypedDict
 
+from lib import output_findings
 from lib.github import GitHub, GitHubError, Json, field_of, records, text_of
+from lib.output_findings import Finding
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 # Where verdicts go, most specific first. The checkout is LAST on purpose: a
@@ -146,15 +156,6 @@ ANNOTATION_LEVEL = {
 Row = tuple[str, "Status", str]
 
 
-class Finding(TypedDict):
-    """One concrete thing a reader can go fix, at the line it is on."""
-
-    file: str
-    line: int
-    message: str
-    detail: NotRequired[str]
-
-
 class VerdictDoc(TypedDict):
     """The on-disk contract: verify-logs/verdicts/<lane>.json."""
 
@@ -192,18 +193,43 @@ def lane_already_reported(lane: str, out_dir: Path) -> bool:
     return any(json.loads(p.read_text())["lane"] == lane for p in out_dir.rglob("*.json"))
 
 
+# Set in the job's environment when a failing verdict is written, and cleared by
+# the upload composite's `partial` mode: the upload step after every check runs
+# only while this is set, so a red check's verdict reaches `mise ci:remote`
+# minutes before its job ends instead of with it.
+PENDING_UPLOAD_ENV = "GAIA_VERDICT_PENDING"
+
+
+def flag_pending_upload() -> None:
+    """Ask the job's next upload step to ship the verdicts written so far."""
+    job_env = os.environ.get("GITHUB_ENV")
+    if job_env:
+        with Path(job_env).open("a") as handle:
+            handle.write(f"{PENDING_UPLOAD_ENV}=1\n")
+
+
 def write_verdict(doc: VerdictDoc, out_dir: Path) -> Path:
     path = verdict_path(doc["lane"], out_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n")
+    if Status(doc["status"]) in FAILING_STATUSES:
+        flag_pending_upload()
     return path
+
+
+def location(finding: Finding) -> str:
+    """Return `file:line`, or "" for a finding the tool gave no location."""
+    if not finding["file"]:
+        return ""
+    return f"{finding['file']}:{finding['line']}" if finding["line"] else finding["file"]
 
 
 def _summary_block(doc: VerdictDoc) -> str:
     status = doc["status"]
     lines = [f"### {doc['lane']} — {status}", "", doc["summary"], ""]
     for finding in doc["findings"]:
-        lines.append(f"- `{finding['file']}:{finding['line']}` {finding['message']}")
+        where = location(finding)
+        lines.append(f"- `{where}` {finding['message']}" if where else f"- {finding['message']}")
         detail = finding.get("detail")
         if detail:
             lines += [
@@ -221,19 +247,24 @@ def _summary_block(doc: VerdictDoc) -> str:
     return "\n".join(lines) + "\n"
 
 
-def announce(doc: VerdictDoc) -> None:
+def announce(doc: VerdictDoc, *, annotated: frozenset[str] = frozenset()) -> None:
     """Annotate every finding, append the step-summary block, print the verdict.
 
     All three, or none — forgetting one of them separately is the bug this
-    whole module exists to make impossible.
+    whole module exists to make impossible. `annotated` holds the locations the
+    tool already annotated itself; those are not annotated twice.
     """
     status = Status(doc["status"])
     level = ANNOTATION_LEVEL[status]
     for finding in doc["findings"]:
-        print(
-            f"::{level} file={finding['file']},line={finding['line']}::"
-            f"{_escape(finding['message'])}"
+        if finding["file"] and location(finding) in annotated:
+            continue
+        where = (
+            f"file={finding['file']},line={finding['line']}"
+            if finding["file"]
+            else f"title={doc['lane']}"
         )
+        print(f"::{level} {where}::{_escape(finding['message'])}")
 
     summary_file = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_file:
@@ -651,6 +682,34 @@ def cmd_check_ownership(args: list[str]) -> int:
     return 1
 
 
+GATE_LANE = "quality-gate"
+
+
+def _write_gate_verdict(rows: list[Row], out_dir: Path) -> None:
+    """Write the gate's verdict without announcing it — consolidate prints its own table.
+
+    A reader of a red gate wants which lanes, not the gate's log: each lane that
+    did not pass is one finding, named so its own verdict can be opened next.
+    """
+    bad = [(lane, status, summary) for lane, status, summary in rows if status in FAILING_STATUSES]
+    findings: list[Finding] = [
+        {"file": "", "line": 0, "message": f"{lane}: {str(status).upper()} — {summary}"}
+        for lane, status, summary in bad
+    ]
+    write_verdict(
+        {
+            "lane": GATE_LANE,
+            "status": str(Status.FAIL if bad else Status.PASS),
+            "summary": f"{len(bad)} of {len(rows)} lane(s) did not pass"
+            if bad
+            else f"{len(rows)} lane(s) reported, none failing",
+            "findings": findings,
+            "advice": ["Each lane's own verdict carries its findings at file:line."] if bad else [],
+        },
+        out_dir,
+    )
+
+
 def cmd_consolidate(args: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="verdict.py consolidate")
     parser.add_argument("directory", type=Path)
@@ -678,10 +737,20 @@ def cmd_consolidate(args: list[str]) -> int:
             "point: an undeclared lane that reports nothing still fails the gate."
         ),
     )
+    parser.add_argument(
+        "--out",
+        type=Path,
+        help="also write the gate's own verdict here: one finding per lane that did not pass",
+    )
     opts = parser.parse_args(args)
 
     found = _load_verdicts(opts.directory) if opts.directory.is_dir() else {}
+    # A re-run gate downloads the verdict an earlier attempt of itself uploaded;
+    # it is this gate's output, never one of its lanes.
+    found.pop(GATE_LANE, None)
     rows = consolidated_rows(opts.expect, found)
+    if opts.out:
+        _write_gate_verdict(rows, opts.out)
 
     print("::group::Per-lane verdicts")
     for lane, status, summary in rows:
@@ -693,7 +762,7 @@ def cmd_consolidate(args: list[str]) -> int:
         print(f"::error::{lane}: {str(status).upper()} — {_escape(summary)}")
         doc = found.get(lane)
         for finding in doc["findings"] if doc else []:
-            print(f"    {finding['file']}:{finding['line']}  {finding['message']}")
+            print(f"    {location(finding) or '-'}  {finding['message']}")
 
     summary_file = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_file:
@@ -844,6 +913,18 @@ def _location_from_traceback(text: str) -> tuple[str, int] | None:
     return file_path, int(line)
 
 
+JUNIT_ERROR_LINES = 20
+JUNIT_TAIL_LINES = 25
+
+
+def _junit_detail(text: str) -> str:
+    """Put the `E ` lines first — the assertion a reader opens it for — then the traceback's tail."""
+    lines = text.splitlines()
+    errors = [line[1:].strip() for line in lines if line.startswith("E ")][:JUNIT_ERROR_LINES]
+    tail = lines[-JUNIT_TAIL_LINES:]
+    return "\n".join([*errors, "--", *tail] if errors else tail)
+
+
 class JUnitCase(NamedTuple):
     """One `<testcase>`, flattened to what a verdict needs from it."""
 
@@ -888,10 +969,7 @@ def _read_junit(path: str, path_prefix: str = "") -> list[JUnitCase]:
                 failed=case.find("failure") is not None,
                 errored=case.find("error") is not None,
                 skipped=case.find("skipped") is not None,
-                # The tail, not the head: pytest puts the assertion and the
-                # exception at the END of the traceback, which is what a reader
-                # opens the detail for.
-                detail="\n".join(text.splitlines()[-40:]),
+                detail=_junit_detail(text),
             )
         )
     return cases
@@ -1090,25 +1168,13 @@ def cmd_regression_proof_verdict(args: list[str]) -> int:
 
 
 # ---------------------------------------------------------------------------
-# collect
+# collect / check
 #
-# Turn mypy/tsc/ruff/biome/bandit output into findings for the lane's verdict.
+# A tool's output, read back as findings (lib/output_findings.py). `collect`
+# feeds a lane that emits its own verdict; `check` is the shell every gated
+# check step runs under, so a red check writes its own verdict the moment it
+# fails, whatever the tool printed.
 # ---------------------------------------------------------------------------
-
-# How much of a line-less tool's output the one fallback finding carries. The
-# tail, not the head: nx, syncpack and manypkg all put the verdict last.
-FALLBACK_DETAIL_LINES = 40
-
-ANNOTATION_PATTERNS = [
-    # mypy: path:line: error: msg  or path:line:col: error
-    re.compile(r"^(?P<file>[^:]+):(?P<line>\d+):(?:\d+:)?\s*(?:error|warning):"),
-    # tsc: path(line,col): error TS...
-    re.compile(r"^(?P<file>[^\(]+)\((?P<line>\d+),(?P<col>\d+)\):\s*error"),
-    # ruff concise: path:line:col: CODE msg
-    re.compile(r"^(?P<file>[^:]+):(?P<line>\d+):\d+:\s*[A-Z]+\d+\s"),
-    # biome concise: path:line:col lint/category
-    re.compile(r"^(?P<file>[^:]+):(?P<line>\d+):(?P<col>\d+)\s"),
-]
 
 
 def cmd_collect(args: list[str]) -> int:
@@ -1122,41 +1188,144 @@ def cmd_collect(args: list[str]) -> int:
     parser.add_argument("--into", type=Path, required=True)
     parser.add_argument(
         "--fallback",
-        help=(
-            "repo-relative path to pin the whole output to when NO line carried a "
-            "file:line. syncpack, manypkg and nx name a package, not a line — "
-            "without this their lanes adopt the contract and lose their reason."
-        ),
+        help="repo-relative path to pin a location-less result to (a manifest for syncpack)",
     )
     opts = parser.parse_args(args)
 
     text = sys.stdin.read()
-    found: list[Finding] = []
-    for line in text.splitlines():
-        for pattern in ANNOTATION_PATTERNS:
-            match = pattern.match(line.strip())
-            if match:
-                found.append(
-                    {
-                        "file": match.group("file").strip(),
-                        "line": int(match.group("line")),
-                        "message": line.strip()[:500],
-                    }
-                )
-                break
-    if not found and opts.fallback and text.strip():
-        body = [stripped for raw in text.splitlines() if (stripped := raw.strip())]
-        found.append(
-            {
-                "file": opts.fallback,
-                "line": 1,
-                "message": body[0][:500],
-                "detail": "\n".join(body[-FALLBACK_DETAIL_LINES:]),
-            }
-        )
+    found = output_findings.read(text, fallback=opts.fallback)
+    if not opts.fallback and found and not found[0]["file"]:
+        found = []
     opts.into.parent.mkdir(parents=True, exist_ok=True)
     with opts.into.open("a") as handle:
         handle.writelines(json.dumps(f) + "\n" for f in found)
+    return 0
+
+
+def _default_check_lane() -> str:
+    """`<job>/<step id>` — what a check step's verdict is called when nothing says otherwise."""
+    job, step = os.environ.get("GITHUB_JOB", ""), os.environ.get("GITHUB_ACTION", "")
+    return f"{job}/{step}" if job and step else ""
+
+
+def _run_teeing(command: list[str]) -> tuple[int, str]:
+    """Run ``command``, streaming its merged output to ours, and return (exit code, output)."""
+    with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT) as child:
+        assert child.stdout is not None
+        captured: list[bytes] = []
+        for chunk in iter(child.stdout.readline, b""):
+            sys.stdout.buffer.write(chunk)
+            sys.stdout.buffer.flush()
+            captured.append(chunk)
+        return child.wait(), b"".join(captured).decode("utf-8", "replace")
+
+
+def cmd_check(args: list[str]) -> int:
+    """Run one check; when it fails, write its verdict from what it printed and exit with its code.
+
+    A workflow step uses this as its shell (`shell: python3 scripts/ci/verdict.py
+    check -- bash -e {0}`), so the step body is unchanged. A check that wrote its
+    own verdict keeps it; a passing check writes nothing (the job's rollup says so).
+    """
+    parser = _verdict_parser("check", default_lane=_default_check_lane())
+    parser.add_argument("--fallback", help="file to pin a location-less result to")
+    parser.add_argument("command", nargs=argparse.REMAINDER)
+    opts = parser.parse_args(args)
+    command = opts.command[1:] if opts.command[:1] == ["--"] else opts.command
+    if not command:
+        parser.error("give the check's command after --")
+    if not opts.lane:
+        parser.error("--lane is required outside a workflow step (no GITHUB_JOB/GITHUB_ACTION)")
+
+    rc, output = _run_teeing(command)
+    if rc == 0:
+        return 0
+    flag_pending_upload()
+    if lane_already_reported(opts.lane, opts.out):
+        return rc
+    findings = output_findings.read(output, fallback=opts.fallback, path_prefix=opts.path_prefix)
+    located = sum(1 for f in findings if f["file"])
+    check = opts.lane.rsplit("/", 1)[-1]
+    summary = (
+        f"{check}: {len(findings)} finding(s) (exit {rc})"
+        if located
+        else f"{check} failed (exit {rc}); its output names no file:line — its first error lines are attached"
+    )
+    # Written and announced here rather than through `report`: the tool already
+    # annotated the locations it printed as `::error`, and those are not repeated.
+    doc: VerdictDoc = {
+        "lane": opts.lane,
+        "status": str(Status.FAIL),
+        "summary": summary,
+        "findings": findings,
+        "advice": [],
+    }
+    write_verdict(doc, opts.out)
+    announce(doc, annotated=frozenset(output_findings.annotated_locations(output)))
+    return rc
+
+
+def _obj(value: object) -> Json:
+    return value if isinstance(value, dict) else {}
+
+
+def _objs(value: object) -> list[Json]:
+    return [item for item in value if isinstance(item, dict)] if isinstance(value, list) else []
+
+
+def _sarif_findings(doc: Json) -> list[Finding]:
+    """One finding per SARIF result, at its first physical location."""
+    findings: list[Finding] = []
+    for run in _objs(doc.get("runs")):
+        for result in _objs(run.get("results")):
+            locations = _objs(result.get("locations"))
+            physical = _obj(locations[0].get("physicalLocation")) if locations else {}
+            uri = str(_obj(physical.get("artifactLocation")).get("uri") or "")
+            line = _obj(physical.get("region")).get("startLine")
+            message = _obj(result.get("message")).get("text") or ""
+            findings.append(
+                {
+                    "file": uri,
+                    "line": (line if isinstance(line, int) else 1) if uri else 0,
+                    "message": f"{result.get('ruleId') or '?'}: {message}",
+                }
+            )
+    return findings
+
+
+def cmd_sarif(args: list[str]) -> int:
+    """Write a failed scanner step's verdict from the SARIF report it wrote (gitleaks, semgrep)."""
+    parser = _verdict_parser("sarif", default_lane="")
+    parser.add_argument("report", type=Path)
+    opts = parser.parse_args(args)
+    if not opts.lane:
+        parser.error("--lane is required")
+    if not opts.report.is_file():
+        report(
+            opts.lane,
+            Status.ERROR,
+            f"the scanner failed and wrote no SARIF report at {opts.report}",
+            advice=["It died before scanning — its own step output says why."],
+            out_dir=opts.out,
+        )
+        return 0
+    findings = _sarif_findings(json.loads(opts.report.read_text()))
+    if findings:
+        report(
+            opts.lane,
+            Status.FAIL,
+            f"{len(findings)} finding(s) in {opts.report.name}",
+            findings=findings,
+            out_dir=opts.out,
+        )
+    else:
+        report(
+            opts.lane,
+            Status.ERROR,
+            f"the scanner failed but {opts.report.name} lists no result",
+            advice=["Its own step output says why it exited non-zero."],
+            out_dir=opts.out,
+        )
     return 0
 
 
@@ -1184,11 +1353,6 @@ def cmd_step_outcomes(args: list[str]) -> int:
     parser = _verdict_parser("step-outcomes", default_lane="")
     parser.add_argument("outcome", nargs="+", metavar="name=outcome")
     parser.add_argument(
-        "--findings",
-        type=Path,
-        help="JSONL written by `verdict.py collect` — the tools' own file:line findings",
-    )
-    parser.add_argument(
         "--reused",
         default="{}",
         help="JSON {check: note} from `reuse-plan`: a skipped check listed here is labelled reused",
@@ -1205,18 +1369,16 @@ def cmd_step_outcomes(args: list[str]) -> int:
         if outcome not in PASSING_OUTCOMES:
             failed.append(f"{name} ({outcome or 'no outcome'})")
 
-    findings: list[Finding] = []
-    if opts.findings and opts.findings.exists():
-        findings = [json.loads(line) for line in opts.findings.read_text().splitlines() if line]
-
     if failed:
+        # The findings live in each check's own verdict (`verdict.py check`
+        # wrote `<lane>/<check>` the moment it failed); the rollup only names them.
         report(
             opts.lane,
             Status.FAIL,
             f"{len(failed)} of {len(opts.outcome)} tool(s) did not pass: {', '.join(failed)}",
-            findings=findings,
             advice=[
-                f"Expand the '{name.split(' ')[0]}' group above for its output." for name in failed
+                f"Read verdict {opts.lane}/{name.split(' ')[0]} for its findings."
+                for name in failed
             ],
             out_dir=opts.out,
         )
@@ -1300,6 +1462,8 @@ CHECK_AREAS: dict[str, Area] = {
             "api-schema",
             "api-schema-types",
             "analytics-catalog",
+            "cli-config-schema",
+            "deploy-templates",
             "analytics-sync",
             "analytics-check",
             "observability-evlog-tests",
@@ -1449,7 +1613,7 @@ LANES_FILE = REPO_ROOT / "scripts" / "dev" / "verify-lanes.json"
 # A change here can alter any check's verdict without touching its scope: the
 # workflows and composites, the CI and lint tooling, and every config manifest.
 GLOBAL_INVALIDATORS = re.compile(
-    r"^(\.github/|\.dagger/|\.config/|scripts/|tools/|config/|patches/)"
+    r"^(\.github/|\.config/|scripts/|tools/|config/|patches/)"
     r"|^[^/]+$"
     r"|(^|/)(pyproject\.toml|package\.json|project\.json|tsconfig[^/]*\.json|biome\.jsonc?|uv\.lock|pnpm-lock\.yaml)$"
 )
@@ -1688,6 +1852,8 @@ SUBCOMMANDS = {
     "regression-proof-select": cmd_regression_proof_select,
     "regression-proof-verdict": cmd_regression_proof_verdict,
     "collect": cmd_collect,
+    "check": cmd_check,
+    "sarif": cmd_sarif,
     "step-outcomes": cmd_step_outcomes,
     "post-statuses": cmd_post_statuses,
     "reuse-plan": cmd_reuse_plan,

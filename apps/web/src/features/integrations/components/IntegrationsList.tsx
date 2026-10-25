@@ -6,7 +6,7 @@ import { getCategoryLabel } from "../constants/categories";
 import { useIntegrationsList } from "../hooks/useIntegrationsList";
 import { CategoryFilter } from "./CategoryFilter";
 import { IntegrationSection } from "./IntegrationSection";
-import { MarketplaceBanner } from "./MarketplaceBanner";
+import { IntegrationsBanner } from "./IntegrationsBanner";
 
 // Distinct keys for the initial catalog placeholders (also serve as React keys).
 const INTEGRATION_SKELETON_KEYS = [
@@ -79,9 +79,8 @@ export const IntegrationsList: React.FC<IntegrationsListProps> = ({
 
   return (
     <div>
-      {/* Marketplace Banner */}
       <div className="my-8">
-        <MarketplaceBanner onCreateCustomIntegration={openIntegrationModal} />
+        <IntegrationsBanner onAddMcpServer={openIntegrationModal} />
       </div>
 
       <div className="mb-6">

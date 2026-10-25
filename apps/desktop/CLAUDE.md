@@ -31,6 +31,7 @@ nx type-check desktop
   - `ipc.ts` — All IPC handler registrations
   - `windows/` — BrowserWindow creation (main window + splash screen)
   - `auto-updater.ts`, `deep-link.ts`, `protocol.ts`, `session.ts` — Single-responsibility modules
+  - `server-address.ts`, `server-switch.ts` — Self-hosted server: validate an address, persist it as `selfHostOrigin` in desktop settings, relaunch. When set, every app route loads from that origin (its web app, its `gaia_session` cookie); the bundled app only serves the server form
 - `src/preload/` — Preload scripts (context bridge between main and renderer)
 - The renderer UI is the `apps/web` Next.js app — do not add UI code here
 

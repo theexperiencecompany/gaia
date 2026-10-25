@@ -137,9 +137,8 @@ def _ingestion_edges_stubbed(capture_metadata=None):
             return_value=user,
         ),
         patch(
-            "app.services.files.service.upload_to_cloudinary",
-            new_callable=AsyncMock,
-            return_value="https://cdn.test/file",
+            "app.services.files.service.blob_store",
+            return_value=MagicMock(put=AsyncMock(return_value="https://cdn.test/file")),
         ),
         patch(
             "app.services.files.service.insert_metadata",

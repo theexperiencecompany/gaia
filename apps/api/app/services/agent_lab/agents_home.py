@@ -29,6 +29,8 @@ _CONFIG_DIR: Final[str] = f"{AGENTS_HOME}/config"
 _STATE_DIR: Final[str] = f"{AGENTS_HOME}/state"
 SAVE_SCRIPT: Final[str] = f"{_BIN_DIR}/gaia-save"
 HOOK_SCRIPT: Final[str] = f"{_BIN_DIR}/gaia-hook"
+# What the detached save-and-relay prints; the CLI that ran the hook may be gone.
+HOOK_LOG: Final[str] = f"{AGENTS_HOME}/hook.log"
 CLAUDE_SETTINGS_PATH: Final[str] = f"{_CONFIG_DIR}/claude-settings.json"
 OPENCODE_CONFIG_DIR: Final[str] = f"{_CONFIG_DIR}/opencode"
 CLAUDE_CONFIG_DIR: Final[str] = f"{_STATE_DIR}/claude"
@@ -131,7 +133,11 @@ def _rendered_files() -> dict[str, str]:
         ),
         HOOK_SCRIPT: render_vendored(
             "gaia_hook.sh",
-            {"SAVE_SCRIPT": SAVE_SCRIPT, "SAVE_TIMEOUT_SECONDS": str(SAVE_TIMEOUT_SECONDS)},
+            {
+                "SAVE_SCRIPT": SAVE_SCRIPT,
+                "SAVE_TIMEOUT_SECONDS": str(SAVE_TIMEOUT_SECONDS),
+                "HOOK_LOG": HOOK_LOG,
+            },
         ),
         CLAUDE_SETTINGS_PATH: claude_hook_settings(),
         _PLUGIN_PATH: render_vendored("opencode_notify_plugin.js", hook_values),

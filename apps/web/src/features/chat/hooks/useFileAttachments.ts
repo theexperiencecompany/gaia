@@ -7,6 +7,7 @@ import {
   MAX_FILE_SIZE_BYTES,
   MAX_FILES,
 } from "@/features/chat/constants/files";
+import { currentConversationId } from "@/features/chat/utils/currentConversationId";
 import { toast } from "@/lib/toast";
 import { useComposerStore } from "@/stores/composerStore";
 import { useStreamStore } from "@/stores/streamStore";
@@ -85,7 +86,10 @@ export const useFileAttachments = () => {
         await Promise.allSettled(
           pending.map(async ({ file, tempId }) => {
             try {
-              const response = await chatApi.uploadFile(file);
+              const response = await chatApi.uploadFile(
+                file,
+                currentConversationId(),
+              );
               const description = response.description || `File: ${file.name}`;
               const message = response.message || "File uploaded successfully";
               const uploaded: UploadedFilePreview = {

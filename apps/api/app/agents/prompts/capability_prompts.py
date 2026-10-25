@@ -13,7 +13,7 @@ rendered prompt.
 
 from collections import Counter
 
-from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
+from app.config.oauth_config import all_integrations, get_integration_by_id
 from app.constants.todos import INBOX_DESK_RECURRENCE, INBOX_DESK_TITLE
 from app.models.chat_models import BOT_CONVERSATION_SOURCES, ConversationSource
 from app.models.trigger_configs import CalendarEventStartingSoonConfig
@@ -116,12 +116,12 @@ def _integration_name(integration_id: str) -> str:
 
 
 def _integrations_line() -> str:
-    by_category = Counter(integration.category for integration in OAUTH_INTEGRATIONS)
+    by_category = Counter(integration.category for integration in all_integrations())
     categories = ", ".join(
         f"{count} {category.replace('_', ' ')}" for category, count in by_category.most_common()
     )
     return (
-        f"INTEGRATIONS: {len(OAUTH_INTEGRATIONS)} services the user can connect ({categories}). "
+        f"INTEGRATIONS: {len(all_integrations())} services the user can connect ({categories}). "
         "GAIA can search them for what the user needs and show a connect card in chat. Nothing "
         "runs on a service before it is connected; once it is, GAIA gets that service's tools, "
         "and the built-in workflows below switch on by themselves."

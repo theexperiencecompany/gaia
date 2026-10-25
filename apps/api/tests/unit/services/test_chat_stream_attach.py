@@ -22,7 +22,7 @@ import pytest
 
 from app.agents.core.agent import AgentRunOptions, StreamMessageIds
 from app.agents.core.background.session import RunKind, create_session, get_session
-from app.models.message_models import MessageRequestWithHistory
+from app.models.message_models import FileData, MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
 from app.services.chat import stream as chat_stream
 from app.services.chat.stream import (
@@ -502,6 +502,10 @@ class TestRunChatStreamTurnDerivations:
             patch.object(chat_stream, "_finalize_description", AsyncMock()),
             patch.object(chat_stream, "capture"),
             patch.object(chat_stream, "_finalize_stream", AsyncMock()),
+            patch.object(chat_stream, "_wait_for_artifact_forwarder", AsyncMock()),
+            patch.object(
+                chat_stream.FileService, "attach_uploads", new_callable=AsyncMock
+            ) as attach_uploads,
         ):
             sm.publish_chunk = AsyncMock()
             sm.complete_stream = AsyncMock()
@@ -510,7 +514,30 @@ class TestRunChatStreamTurnDerivations:
                 "stream-1", body, AuthenticatedUser(user_id=USER_ID), "conv-1", "whatsapp"
             )
 
+        seen["attach_uploads"] = attach_uploads
         return seen
+
+    async def test_a_file_turn_on_an_existing_conversation_is_attached(self) -> None:
+        seen = await self._run(
+            MessageRequestWithHistory(
+                message="look",
+                messages=[],
+                conversation_id="conv-1",
+                fileIds=["f1"],
+                fileData=[
+                    FileData(fileId="f2", url="https://cdn.example/f2.png", filename="f2.png")
+                ],
+            )
+        )
+
+        seen["attach_uploads"].assert_awaited_once_with(["f1", "f2"], USER_ID, "conv-1")
+
+    async def test_a_turn_without_files_does_not_attach(self) -> None:
+        seen = await self._run(
+            MessageRequestWithHistory(message="hi", messages=[], conversation_id="conv-1")
+        )
+
+        seen["attach_uploads"].assert_not_awaited()
 
     async def test_the_clients_send_id_is_the_turns_user_message_id(self) -> None:
         seen = await self._run(

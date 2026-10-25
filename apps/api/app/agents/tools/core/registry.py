@@ -5,7 +5,8 @@ from typing import TYPE_CHECKING, cast
 
 from langchain_core.tools import BaseTool
 
-from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.config.oauth_config import all_integrations
+from app.config.settings import settings
 from app.constants.integrations import CONNECT_INTEGRATION_TOOL, DISCONNECT_INTEGRATION_TOOL
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
@@ -35,6 +36,10 @@ def get_composio_service() -> "ComposioService":
 # are gated to desktop-app conversations in retrieval.py.
 DESKTOP_TOOL_CATEGORY: str = "desktop"
 DESKTOP_TOOL_SPACE: str = "desktop"
+
+
+#: get_category_of_tool's answer for a tool no category holds.
+UNKNOWN_TOOL_CATEGORY = "unknown"
 
 
 class DynamicToolDict(Mapping[str, BaseTool]):
@@ -468,11 +473,12 @@ class ToolRegistry:
             options=CategoryOptions(internal=True),
             risk=CategoryRisk(destructive_tools=set()),
         )
-        self._add_category(
-            "support",
-            tools=[support_tool.create_support_ticket],
-            risk=CategoryRisk(destructive_tools=set()),
-        )
+        if settings.deployment.gaia_support:
+            self._add_category(
+                "support",
+                tools=[support_tool.create_support_ticket],
+                risk=CategoryRisk(destructive_tools=set()),
+            )
         # A checkout link is inert until the user chooses to pay it, so nothing
         # here is destructive — gating "show me how to upgrade" behind an
         # approval prompt would be absurd.
@@ -552,11 +558,12 @@ class ToolRegistry:
         )
         # browser_task is gated by HIL: the executor must get user approval before
         # spinning up a browser ("do you want me to use a browser for this?").
-        self._add_category(
-            "browser",
-            tools=[browser_tool.browser_task],
-            risk=CategoryRisk(destructive_tools={"browser_task"}),
-        )
+        if settings.deployment.browser_automation:
+            self._add_category(
+                "browser",
+                tools=[browser_tool.browser_task],
+                risk=CategoryRisk(destructive_tools={"browser_task"}),
+            )
         # Desktop-executed tools live in their own space so discovery can be
         # gated to conversations that originate from the desktop app. They act on
         # the user's own machine and are reversible, so none are destructive.
@@ -619,9 +626,14 @@ class ToolRegistry:
         )
         return self._categories[toolkit_name]
 
-    async def populate_provider_catalog(self) -> int:
+    async def populate_provider_catalog(
+        self, only: Sequence[OAuthIntegration] | None = None
+    ) -> int:
         """Index provider-tool METADATA for retrieval and the /tools catalog
         *without* materializing executable StructuredTools.
+
+        only limits the run to those integrations (one the admin just enabled);
+        None indexes the whole catalog.
 
         Replaces an eager warmup that wrapped every one of the ~1.6k catalog
         tools into a StructuredTool (a Pydantic args-model + closure per tool,
@@ -648,7 +660,7 @@ class ToolRegistry:
         # Composio round trips for tools nobody can reach.
         integrations = [
             integration
-            for integration in OAUTH_INTEGRATIONS
+            for integration in (all_integrations() if only is None else only)
             if (
                 integration.available
                 and integration.managed_by == "composio"
@@ -815,7 +827,7 @@ class ToolRegistry:
     def get_category_of_tool(self, tool_name: str) -> str:
         """Get the category of a specific tool by name."""
         entry = self._tools_by_name.get(tool_name)
-        return entry[0] if entry else "unknown"
+        return entry[0] if entry else UNKNOWN_TOOL_CATEGORY
 
     def get_tool_meta(self, tool_name: str) -> Tool | None:
         """Return the registry ``Tool`` wrapper for a tool name, or None.
@@ -902,7 +914,7 @@ def integration_destructive_tools(name: str) -> set[str] | None:
     """Curated HIL destructive tools for an integration, matched by id or (for
     Composio) toolkit. ``None`` (uncurated) leaves the tools unclassified so the
     HIL LLM classifier resolves them at gate time (fail closed)."""
-    for integration in OAUTH_INTEGRATIONS:
+    for integration in all_integrations():
         toolkit = integration.composio_config.toolkit if integration.composio_config else None
         if integration.id == name or (toolkit and toolkit.lower() == name.lower()):
             return (

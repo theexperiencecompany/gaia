@@ -120,18 +120,17 @@ class FakeGh:
         self,
         *,
         checks: list[dict[str, Any]],
-        statuses: list[dict[str, Any]] | None = None,
         pr_meta: dict[str, Any] | None = None,
         artifacts: list[dict[str, Any]] | None = None,
-        zip_blob: bytes = b"",
-        zip_blobs: dict[int, bytes] | None = None,
+        zip_blobs: dict[int | None, bytes] | None = None,
         job_log: str = REAL_JOB_LOG,
     ) -> None:
         self.checks = checks
-        self.statuses = statuses or []
+        # The legacy commit-status endpoint; only the tests that read it set it.
+        self.statuses: list[dict[str, Any]] = []
         self.pr_meta = pr_meta or PR_META
         self.artifacts = artifacts if artifacts is not None else []
-        self.zip_blob = zip_blob
+        # Keyed by artifact id; the None key is served for any artifact id.
         self.zip_blobs = zip_blobs or {}
         self.job_log = job_log
         self.calls: list[str] = []
@@ -156,7 +155,7 @@ class FakeGh:
         self.calls.append(endpoint)
         if endpoint.endswith("/zip"):
             artifact_id = int(endpoint.rsplit("/", 2)[-2])
-            return 0, self.zip_blobs.get(artifact_id, self.zip_blob), ""
+            return 0, self.zip_blobs.get(artifact_id, self.zip_blobs.get(None, b"")), ""
         if endpoint.endswith("/logs"):
             return 0, self.job_log.encode(), ""
         raise AssertionError(f"unexpected gh_bytes call: {args}")
@@ -236,7 +235,7 @@ def test_a_failing_verdict_prints_lane_summary_and_file_line_message(
         FakeGh(
             checks=[FAILED_CHECK, PASSED_CHECK],
             artifacts=[{"id": 55, "name": "verdict-mutation-shard-3", "expired": False}],
-            zip_blob=verdict_zip(VERDICT),
+            zip_blobs={None: verdict_zip(VERDICT)},
         )
     )
     assert run_cli(monkeypatch, []) == 1
@@ -255,7 +254,7 @@ def test_long_detail_is_folded_to_three_lines_until_verbose(
     args: dict[str, Any] = {
         "checks": [FAILED_CHECK],
         "artifacts": [{"id": 55, "name": "verdict-mutation-shard-3", "expired": False}],
-        "zip_blob": verdict_zip(VERDICT),
+        "zip_blobs": {None: verdict_zip(VERDICT)},
     }
     wire(FakeGh(**args))
     run_cli(monkeypatch, [])
@@ -277,7 +276,7 @@ def test_the_verdict_is_preferred_and_the_job_log_is_not_fetched(
         FakeGh(
             checks=[FAILED_CHECK],
             artifacts=[{"id": 55, "name": "verdict-mutation-shard-3", "expired": False}],
-            zip_blob=verdict_zip(VERDICT),
+            zip_blobs={None: verdict_zip(VERDICT)},
         )
     )
     run_cli(monkeypatch, ["--verbose"])
@@ -326,7 +325,7 @@ def test_a_failing_verdict_whose_lane_matches_no_check_is_still_printed(
         FakeGh(
             checks=[FAILED_CHECK],
             artifacts=[{"id": 55, "name": "verdict-dead-code", "expired": False}],
-            zip_blob=verdict_zip(orphan),
+            zip_blobs={None: verdict_zip(orphan)},
         )
     )
     run_cli(monkeypatch, [])
@@ -358,7 +357,7 @@ def test_advice_is_deduplicated_across_verdicts(
         FakeGh(
             checks=[FAILED_CHECK],
             artifacts=[{"id": 55, "name": "verdict-mutation-shard-3", "expired": False}],
-            zip_blob=verdict_zip(VERDICT, second),
+            zip_blobs={None: verdict_zip(VERDICT, second)},
         )
     )
     run_cli(monkeypatch, [])
@@ -483,7 +482,7 @@ def test_json_carries_the_pr_checks_verdicts_and_fallback_tails(
         FakeGh(
             checks=[FAILED_CHECK, PASSED_CHECK],
             artifacts=[{"id": 55, "name": "verdict-mutation-shard-3", "expired": False}],
-            zip_blob=verdict_zip(VERDICT),
+            zip_blobs={None: verdict_zip(VERDICT)},
         )
     )
     assert run_cli(monkeypatch, ["--json"]) == 1
@@ -595,7 +594,7 @@ def test_an_aggregate_gate_job_gets_its_own_log_not_another_lanes_verdict(
         FakeGh(
             checks=[gate],
             artifacts=[{"id": 55, "name": "verdict-lint-python", "expired": False}],
-            zip_blob=verdict_zip(dict(VERDICT, lane="lint-python")),
+            zip_blobs={None: verdict_zip(dict(VERDICT, lane="lint-python"))},
             job_log=gate_log,
         )
     )
@@ -634,14 +633,13 @@ LINT_NODE_VERDICTS = verdict_zip(
 def test_a_red_step_status_is_listed_under_its_red_job_not_explained_twice(
     wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    fake = wire(
-        FakeGh(
-            checks=[LINT_NODE_JOB],
-            statuses=[BIOME_STATUS, KNIP_STATUS],
-            artifacts=[{"id": 60, "name": "verdict-lint-node", "expired": False}],
-            zip_blob=LINT_NODE_VERDICTS,
-        )
+    fake = FakeGh(
+        checks=[LINT_NODE_JOB],
+        artifacts=[{"id": 60, "name": "verdict-lint-node", "expired": False}],
+        zip_blobs={None: LINT_NODE_VERDICTS},
     )
+    fake.statuses = [BIOME_STATUS, KNIP_STATUS]
+    wire(fake)
     assert run_cli(monkeypatch, []) == 1
     out = capsys.readouterr().out
     assert "checks: 1 pass / 2 fail / 0 pending / 0 skipped" in out
@@ -657,7 +655,9 @@ def test_a_red_status_with_no_red_job_is_its_own_failure(
 ) -> None:
     """A status outliving a green re-run of its job must not vanish behind the job."""
     green_job = dict(LINT_NODE_JOB, conclusion="success")
-    wire(FakeGh(checks=[green_job], statuses=[BIOME_STATUS]))
+    fake = FakeGh(checks=[green_job])
+    fake.statuses = [BIOME_STATUS]
+    wire(fake)
     assert run_cli(monkeypatch, []) == 1
     out = capsys.readouterr().out
     assert (
@@ -820,7 +820,9 @@ def wire_shard_3(wire) -> FakeGh:
         FakeGh(
             checks=[SHARD_3_CHECK],
             artifacts=[{"id": 77, "name": "verdict-test-mutation-2", "expired": False}],
-            zip_blob=verdict_zip(SHARD_2_PASS, CONVERSATION_SERVICE_VERDICT, SHARD_2_ROLLUP),
+            zip_blobs={
+                None: verdict_zip(SHARD_2_PASS, CONVERSATION_SERVICE_VERDICT, SHARD_2_ROLLUP)
+            },
         )
     )
 
@@ -1364,3 +1366,160 @@ def test_only_the_newest_upload_of_a_shard_name_is_read(
     out = capsys.readouterr().out
     assert "app/services/y.py  survivors:" in out
     assert "log tail" not in out, "the stale empty upload won and sent the reader to the log"
+
+
+# ------------------------------------------------------------------------------- watch
+
+
+class SequencedGh(FakeGh):
+    """Serves the next check set on each check-runs poll, repeating the last one."""
+
+    def __init__(self, polls: list[list[dict[str, Any]]], **kwargs: Any) -> None:
+        super().__init__(checks=polls[0], **kwargs)
+        self.polls = polls
+        self.check_polls = 0
+
+    def text(
+        self, args: list[str], timeout_s: int, stdin_text: str | None = None
+    ) -> tuple[int, str, str]:
+        if "/check-runs" in (args[1] if len(args) > 1 else ""):
+            self.checks = self.polls[min(self.check_polls, len(self.polls) - 1)]
+            self.check_polls += 1
+        return super().text(args, timeout_s, stdin_text)
+
+
+PENDING_CHECK: dict[str, Any] = dict(
+    PASSED_CHECK, name="test-python", status="in_progress", conclusion=None
+)
+
+
+@pytest.fixture
+def no_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(ci_remote.time, "sleep", lambda _s: None)
+
+
+def test_fail_fast_stops_at_the_first_red_check_and_prints_its_failure(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = wire(
+        SequencedGh(
+            [[PENDING_CHECK], [FAILED_CHECK, PENDING_CHECK], [FAILED_CHECK, PASSED_CHECK]],
+            artifacts=[{"id": 55, "name": "verdict-mutation-shard-3", "expired": False}],
+            zip_blobs={None: verdict_zip(VERDICT)},
+        )
+    )
+    assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"]) == 1
+    out = capsys.readouterr().out
+    assert fake.check_polls == 2, "kept polling after a check went red"
+    assert "stopping at the first failure" in out
+    assert "app/api/v1/endpoints/bot.py:212" in out
+
+
+def test_without_fail_fast_watch_waits_for_every_check_to_finish(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = wire(
+        SequencedGh([[PENDING_CHECK], [FAILED_CHECK, PENDING_CHECK], [FAILED_CHECK, PASSED_CHECK]])
+    )
+    assert run_cli(monkeypatch, ["--watch", "--no-stack"]) == 1
+    assert fake.check_polls == 3
+    assert "stopping at the first failure" not in capsys.readouterr().out
+
+
+def test_fail_fast_on_a_green_run_waits_for_it_to_finish_and_exits_zero(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = wire(SequencedGh([[PENDING_CHECK], [PENDING_CHECK], [PASSED_CHECK]]))
+    assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"]) == 0
+    assert fake.check_polls == 3
+
+
+def test_fail_fast_without_watch_is_a_usage_error(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    with pytest.raises(SystemExit) as exc:
+        run_cli(monkeypatch, ["--fail-fast"])
+    assert exc.value.code == 2
+    assert "only applies to --watch" in capsys.readouterr().err
+
+
+# ------------------------------------------------------------- read while the job still runs
+# A check's verdict is uploaded the moment it fails; its job (and the run whose
+# end releases the log) can go on for half an hour. The finding is the answer.
+
+RUNNING_LINT = dict(PASSED_CHECK, name="lint-python", status="in_progress", conclusion=None)
+EARLY_VERDICT: dict[str, Any] = {
+    "lane": "lint-python/tool-pins",
+    "status": "fail",
+    "summary": "tool-pins: 2 finding(s) (exit 1)",
+    "findings": [
+        {
+            "file": "apps/api/app/services/sandbox/local_sandbox.Dockerfile",
+            "line": 1,
+            "message": "hardcodes a python version: 'python:3.12'",
+        },
+        {
+            "file": "tools/lints/test_check_tool_pins.py",
+            "line": 40,
+            "message": "FAILED tools/lints/test_check_tool_pins.py::test_real_tree_is_consistent",
+            "detail": "AssertionError: 1 violation\nassert 1 == 0\n--\nthird\nfourth",
+        },
+        {"file": "", "line": 0, "message": "npm ERR! code ERESOLVE"},
+    ],
+    "advice": [],
+}
+
+
+def test_a_running_jobs_failing_verdict_is_printed_in_full_and_reds_the_exit(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    wire(
+        FakeGh(
+            checks=[RUNNING_LINT],
+            artifacts=[{"id": 70, "name": "verdict-lint-python", "expired": False}],
+            zip_blobs={70: verdict_zip(EARLY_VERDICT)},
+        )
+    )
+    assert run_cli(monkeypatch, []) == 1
+    out = capsys.readouterr().out
+    assert "FAIL  lint-python  [still running" in out
+    assert "PEND  lint-python" not in out
+    # Every finding, with its first three detail lines and no fourth.
+    assert "apps/api/app/services/sandbox/local_sandbox.Dockerfile:1 — hardcodes" in out
+    assert "tools/lints/test_check_tool_pins.py:40 — FAILED" in out
+    assert "AssertionError: 1 violation" in out
+    assert "fourth" not in out
+    # A finding the tool gave no location prints as its message, not as ":0".
+    assert "    npm ERR! code ERESOLVE" in out
+    assert ":0" not in out
+
+
+def test_a_running_job_with_no_failing_verdict_is_only_pending(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    passing = dict(EARLY_VERDICT, status="pass", findings=[])
+    wire(
+        FakeGh(
+            checks=[RUNNING_LINT],
+            artifacts=[{"id": 71, "name": "verdict-lint-python", "expired": False}],
+            zip_blobs={71: verdict_zip(passing)},
+        )
+    )
+    assert run_cli(monkeypatch, []) == 0
+    out = capsys.readouterr().out
+    assert "PEND  lint-python" in out
+    assert "FAIL" not in out
+
+
+def test_a_watch_downloads_each_uploaded_verdict_once(wire) -> None:
+    fake = wire(
+        FakeGh(
+            checks=[RUNNING_LINT],
+            artifacts=[{"id": 72, "name": "verdict-lint-python", "expired": False}],
+            zip_blobs={72: verdict_zip(EARLY_VERDICT)},
+        )
+    )
+    repo = ci_remote.Repo("o", "r", 10)
+    for _ in range(3):
+        ci_remote.snapshot_once(repo, 7, "feat/thing", with_stack=False)
+    assert sum(1 for call in fake.calls if call.endswith("/72/zip")) == 1

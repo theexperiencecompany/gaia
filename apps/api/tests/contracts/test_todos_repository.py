@@ -1416,3 +1416,24 @@ class TestOpenExternalRefIndex:
         assert found is not None and found.id == open_todo.id
         assert await repo.find_open_by_external_ref("u2", self._thread()) is None
         assert await repo.find_open_by_external_ref("u1", self._thread("thread-3")) is None
+
+
+async def test_running_tracked_todos_are_the_users_open_unpaused_tracked_ones(repo, make_doc):
+    running = await repo.create(make_doc(user_id="u1", labels=[GAIA_TRACKED_LABEL], title="run"))
+    await repo.create(make_doc(user_id="u1", title="untracked"))
+    await repo.create(
+        make_doc(user_id="u1", labels=[GAIA_TRACKED_LABEL], title="done", completed=True)
+    )
+    await repo.create(
+        make_doc(
+            user_id="u1",
+            labels=[GAIA_TRACKED_LABEL],
+            title="paused",
+            pause_reason=DeactivationReason.USER_DORMANT,
+        )
+    )
+    await repo.create(make_doc(user_id="u2", labels=[GAIA_TRACKED_LABEL], title="other"))
+
+    found = await repo.find_running_tracked_for_user("u1")
+
+    assert [todo.id for todo in found] == [running.id]

@@ -47,7 +47,7 @@ tests:
             exp_annotations:
               description: >-
                 Same signal as the warning-tier E2E rule, at the point where turns time out rather than lag. This tier also pages email. Treat it as an incident — look for a wedged executor lock (executor_queue_wait_seconds climbing), a provider outage, or a runaway tool (tool_call_seconds).
-              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-chat-e2e-p95-critical
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-chat-e2e-p95-critical
 
   - name: gaia-chat-e2e-p95-critical stays quiet when E2E p95 is under 60s
     interval: 1m

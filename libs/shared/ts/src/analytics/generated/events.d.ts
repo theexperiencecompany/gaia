@@ -65,6 +65,8 @@ export type ServerEventName =
   | "hil:revoked"
   | "image:described"
   | "image:generated"
+  | "instance:invite_created"
+  | "instance:member_joined"
   | "instructions:conflict"
   | "instructions:updated"
   | "integration:account_added"
@@ -77,7 +79,10 @@ export type ServerEventName =
   | "integration:custom_unpublished"
   | "integration:custom_updated"
   | "integration:disconnected"
+  | "integration:instance_setup_saved"
   | "integration:primary_changed"
+  | "integration:toolkit_disabled"
+  | "integration:toolkit_enabled"
   | "mcp:connection_tested"
   | "memory:cleared"
   | "memory:created"
@@ -870,6 +875,17 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
   };
+  "instance:invite_created": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+  };
+  "instance:member_joined": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "via": "invite" | "open";
+  };
   "instructions:conflict": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
@@ -964,12 +980,34 @@ export interface EventProperties {
     "status"?: number;
     "error_code"?: string;
   };
+  "integration:instance_setup_saved": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "stored_count": number;
+    "set_up_count": number;
+    "total_count": number;
+  };
   "integration:primary_changed": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "integration_id": string;
     "account_count": number;
+  };
+  "integration:toolkit_disabled": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "toolkit": string;
+  };
+  "integration:toolkit_enabled": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "toolkit": string;
+    "origin": "code" | "instance";
+    "composio_managed": boolean;
   };
   "mcp:connection_tested": {
     "actor": "user" | "agent";

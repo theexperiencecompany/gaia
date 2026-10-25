@@ -70,9 +70,9 @@ API_ROOT = REPO_ROOT / "apps" / "api"
 LIB = SCRIPT_DIR / "lib"
 
 # Bounded so the matrix stays clear of GitHub's 256-job limit (a skipped lane
-# counts as a pass), and above the workflow's max-parallel of 4: a 110-module
-# diff at 4 shards ran out of clock with every finished module clean
-# (run 34476365942), so it is the shard, not the wave, that has to fit.
+# counts as a pass), and equal to the workflow's max-parallel so every shard
+# starts at once. Six, not four: a 110-module diff at 4 shards ran out of clock
+# with every finished module clean (run 34476365942) — the shard has to fit.
 MAX_SHARDS = 6
 POOLS = ("unit", "services")
 # The one test tier that needs live Mongo and Redis: `plan` groups by it and
@@ -608,7 +608,27 @@ def cmd_shard(_args: list[str]) -> int:
     if not failed:
         print("Mutation shard OK — every module clean")
         return 0
-    print(f"::error::mutation failed for: {' '.join(run.module for run in failed)}")
+    names = " ".join(run.module for run in failed)
+    shard_lane = os.environ.get("SHARD_LANE")
+    if shard_lane:
+        # The shard's own row: its modules' verdicts carry the findings.
+        subprocess.run(
+            [
+                sys.executable,
+                str(REPO_ROOT / report.VERDICT_SCRIPT),
+                "emit",
+                "--lane",
+                shard_lane,
+                "--status",
+                "fail",
+                "--summary",
+                f"{len(failed)} of {len(runs)} module(s) did not pass: {names}",
+                "--out",
+                str(verdict_root()),
+            ],
+            check=True,
+        )
+    print(f"::error::mutation failed for: {names}")
     return failed[-1].exit_code
 
 
@@ -929,8 +949,10 @@ def failed_run_outcome(
     if failure is RunFailure.NO_COVERING_TEST:
         # "No covering test" is two facts: nothing mutatable on the changed lines
         # (silence is right), or executable lines no test reaches (the gap).
+        # mutmut resolves [tool.mutmut] from the cwd, and only the workdir copy has it.
         gap = subprocess.run(
             [str(venv), str(LIB / "mutation_gap.py"), str(API_ROOT / module), request.ranges],
+            cwd=workdir,
             stdout=subprocess.PIPE,
             text=True,
             check=True,

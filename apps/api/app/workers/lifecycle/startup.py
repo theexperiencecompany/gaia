@@ -21,6 +21,8 @@ from app.core.provider_registration import (
     setup_warnings,
     unified_startup,
 )
+from app.core.runtime_config_subscriber import start_runtime_config_subscriber
+from app.services.delivery_alerts.dead_letter_tap import start_dead_letter_tap
 from app.services.device.up_listener import start_up_listener
 from app.utils.browser_reaper import start_browser_reaper
 from app.workers.browser_worker import start_browser_worker
@@ -61,9 +63,17 @@ async def startup(ctx: MutableMapping[str, object]) -> None:
         # up-listener (distinct POD_ID) or warm-connect times out on mcp.opened.
         start_up_listener()
 
+        # Apply provider-credential updates published by the API pod (and any
+        # other worker) — the executor rebuilds LLM clients against fresh
+        # credentials instead of serving the 60s-TTL stale ones.
+        start_runtime_config_subscriber()
+
         # Reap any crawl4ai browser drivers that escape teardown (worker crawl
         # tasks are routinely cancelled; see app/utils/browser_reaper.py).
         start_browser_reaper()
+
+        # Alerts on outbound messages the broker dead-lettered with no bot involved.
+        start_dead_letter_tap(ctx)
 
         # Last: browser jobs run on the services everything above just started.
         start_browser_worker(ctx)

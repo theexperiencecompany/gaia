@@ -65,6 +65,7 @@ def test_the_scope_covers_the_sources_it_generates_from(scope: str) -> None:
     for path in (
         "apps/api/app/api/v1/endpoints/todos.py",
         "apps/api/scripts/export_openapi.py",
+        "apps/api/scripts/openapi_contract.py",
         "apps/api/openapi.json",
         "libs/shared/ts/src/api/generated/schema.d.ts",
         "scripts/ci/checks.mjs",

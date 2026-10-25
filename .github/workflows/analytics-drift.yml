@@ -21,6 +21,14 @@ jobs:
         with:
           persist-credentials: false
       - name: Check PostHog insights, settings and actions against the catalog
+        id: analytics-check
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         env:
           POSTHOG_PERSONAL_API_KEY: ${{ secrets.POSTHOG_PERSONAL_API_KEY }}
         run: python3 scripts/ci/analytics.py check
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          status: ${{ job.status }}
+          name: analytics-check

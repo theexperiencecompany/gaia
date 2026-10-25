@@ -189,8 +189,7 @@ async def _core_agent_logic(
                 selected_workflow=request.selectedWorkflow,
                 selected_calendar_event=request.selectedCalendarEvent,
                 reply_to_message=request.replyToMessage,
-                files_data=request.fileData,
-                currently_uploaded_file_ids=request.fileIds,
+                currently_uploaded_file_ids=request.uploaded_file_ids,
                 trigger_context=trigger_context,
             ),
         ),
@@ -205,7 +204,7 @@ async def _core_agent_logic(
     # plan routing inside resolve_lane. Never reached in production.
     dev_option = (
         dev_option_for(request.comms_model, request.use_default_models)
-        if settings.ENV == "development"
+        if settings.deployment.dev_tools
         else None
     )
 
@@ -257,7 +256,7 @@ async def _core_agent_logic(
     # DEV-ONLY: the executor builds its own configurable and would otherwise
     # inherit comms's lane, so the executor's own dev choice rides down here and
     # prepare_executor_execution resolves it into that run's lane.
-    if settings.ENV == "development" and (
+    if settings.deployment.dev_tools and (
         executor_dev := dev_model_id(request.executor_model, request.use_default_models)
     ):
         configurable["dev_executor_model"] = executor_dev

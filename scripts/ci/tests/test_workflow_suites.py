@@ -11,7 +11,6 @@ only stop running here by someone editing THIS file, which a reviewer sees.
 
 from __future__ import annotations
 
-import ast
 import json
 import os
 from pathlib import Path
@@ -26,7 +25,6 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 CI_YML = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 SLICES_FILE = REPO_ROOT / "scripts" / "ci" / "lib" / "test-slices.json"
 PYTEST_SH = REPO_ROOT / "scripts" / "ci" / "pytest.sh"
-DAGGER_MODULE = REPO_ROOT / ".dagger" / "src" / "gaia_ci" / "main.py"
 
 
 @pytest.fixture(scope="module")
@@ -50,8 +48,7 @@ def _step_running(job: dict[str, Any], command: str) -> dict[str, Any]:
 
 
 def test_the_matrix_is_the_shared_slice_file(workflow: dict[str, Any]) -> None:
-    # One definition, read by CI and by the Dagger harness alike: an inline
-    # matrix is a second copy, and the local run drifts from it silently.
+    # One definition: an inline matrix is a second copy, and it drifts silently.
     for job, key in (("test-python", "python_slices"), ("test-python-engines", "engine_slices")):
         matrix = workflow["jobs"][job]["strategy"]["matrix"]["slice"]
         assert matrix == f"${{{{ fromJSON(needs.detect.outputs.{key}) }}}}"
@@ -132,12 +129,6 @@ def test_the_engine_slices_wait_on_the_engine_build_and_no_other_slice_does(
     assert "obscura-bin" not in jobs["test-python"]["needs"]
     assert jobs["test-python-engines"]["steps"] is jobs["test-python"]["steps"]
     assert jobs["obscura-bin"]["timeout-minutes"] >= 60
-
-
-def test_the_dagger_harness_runs_the_same_slices_through_the_same_script() -> None:
-    module = DAGGER_MODULE.read_text()
-    assert '"scripts/ci/lib/test-slices.json"' in module
-    assert "bash /app/scripts/ci/pytest.sh {step}" in module
 
 
 def test_the_gaia_shared_suite_still_runs(
@@ -224,26 +215,3 @@ def test_the_quality_gate_requires_the_job_that_runs_them(workflow: dict[str, An
     # branch-protection target fails when test-python does.
     gate = workflow["jobs"]["quality-gate"]
     assert "test-python" in gate["needs"]
-
-
-def test_local_dagger_quality_checks_run_sequentially_with_bounded_workers() -> None:
-    """A local full gate must not fan out every heavy lane onto one developer Mac."""
-    dagger_source = DAGGER_MODULE.read_text()
-    tree = ast.parse(dagger_source)
-    gaia_ci = next(
-        node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "GaiaCi"
-    )
-    quality = next(
-        node
-        for node in gaia_ci.body
-        if isinstance(node, ast.AsyncFunctionDef) and node.name == "quality_checks"
-    )
-    source = ast.get_source_segment(DAGGER_MODULE.read_text(), quality)
-    assert source is not None
-    assert "asyncio.gather" not in source
-    assert "worker_limit=2" in source
-    assert "parallelism=1" in source
-    assert source.count('"--parallel=1"') == 3
-    assert '.with_env_variable("GAIA_BUILD_WORKERS", "2")' in source
-    next_config = (REPO_ROOT / "apps" / "web" / "next.config.mjs").read_text()
-    assert "process.env.GAIA_BUILD_WORKERS" in next_config

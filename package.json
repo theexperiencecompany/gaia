@@ -84,6 +84,9 @@
       "glob@>=10.2.0 <10.5.0": "10.5.0",
       "dompurify@<3.4.17": "3.4.17",
       "axios@<1.20.0": "1.20.0",
+      "follow-redirects@<1.16.1": "1.16.1",
+      "markdown-it@<14.3.3": "14.3.3",
+      "launch-editor@<2.14.2": "2.14.2",
       "picomatch@<2.3.2": "2.3.2",
       "picomatch@>=4.0.0 <4.0.4": "4.0.4",
       "preact@<10.28.2": "10.28.2",
@@ -131,7 +134,6 @@
       "prosemirror-model": "1.25.12",
       "markdown-it@>=14.0.0 <14.3.3": "14.3.3",
       "follow-redirects@>=1.16.0 <1.16.1": "1.16.1",
-      "launch-editor@<2.14.2": "2.14.2",
       "body-parser@>=2.0.0 <2.4.0": "2.4.0"
     },
     "peerDependencyRules": {

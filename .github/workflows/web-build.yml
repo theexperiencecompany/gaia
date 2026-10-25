@@ -84,6 +84,7 @@ jobs:
           NEXT_PUBLIC_RYBBIT_SITE_ID: ${{ vars.NEXT_PUBLIC_RYBBIT_SITE_ID }}
           NEXT_PUBLIC_FASTLANE_TRACKING_ID: ${{ vars.NEXT_PUBLIC_FASTLANE_TRACKING_ID }}
           DEPLOYS: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+        shell: bash
         run: |
           # A production bundle missing a public value ships a dead link or silent analytics.
           if [ "$DEPLOYS" = "true" ]; then

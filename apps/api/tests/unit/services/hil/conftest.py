@@ -24,6 +24,7 @@ from app.constants.execute import EXECUTE_TOOL_NAME
 from app.models.hil_models import HILApprovalRecord, HILPreferences
 from app.services.hil.gate import decide_tool_call
 from app.services.hil.intent import IntentDecision
+from app.services.providers.provider_credentials_service import ProviderConfig
 
 USER_ID = "507f1f77bcf86cd799439011"
 CONVERSATION_ID = "conv-1"
@@ -333,7 +334,9 @@ def serve_jev(answer: dict[str, Any] | Exception) -> Iterator[AsyncMock]:
         client.post.return_value = response
     with (
         patch(f"{JEV_CLIENT_MODULE}.httpx.AsyncClient", return_value=client),
-        patch(f"{JEV_CLIENT_MODULE}.settings") as settings,
+        patch(
+            f"{JEV_CLIENT_MODULE}.resolve",
+            AsyncMock(return_value=ProviderConfig(api_key="or-key")),  # pragma: allowlist secret
+        ),
     ):
-        settings.OPENROUTER_API_KEY = "or-key"  # pragma: allowlist secret
         yield client

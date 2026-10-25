@@ -9,9 +9,10 @@ import { runStartFlow } from "./flow.js";
 
 export async function runStart(options?: StartServicesOptions): Promise<void> {
   await runCommandUI({
-    command: "start",
+    command: "run",
     whenNonInteractive: "plain",
-    autoResolve: [["exit"]],
     runFlow: (store) => runStartFlow(store, options),
+    cancelHint:
+      "GAIA may be partly started. Run 'gaia start' again to finish, or 'gaia stop'.",
   });
 }

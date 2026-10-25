@@ -39,6 +39,9 @@ _CONNECTION_CLOSED = "browser session connection closed"
 # How long a close waits for the engine's half of the handshake; a dead engine never sends it.
 _CLOSE_TIMEOUT_SECONDS = 2.0
 
+# How long an engine that has published its endpoint gets to answer the websocket upgrade.
+CDP_HANDSHAKE_TIMEOUT_SECONDS = 10.0
+
 # CdpMux puts no timeout on a reply, so every host call is bounded here: a wedged
 # renderer must not freeze the caller while the process stays alive and looks healthy.
 CDP_CALL_TIMEOUT_SECONDS = 20.0
@@ -137,7 +140,11 @@ class CdpMux:
         if self._ws is not None:
             raise RuntimeError("browser session connection is already open")
         self._ws = await websockets.connect(
-            self._url, max_size=None, ping_interval=None, close_timeout=_CLOSE_TIMEOUT_SECONDS
+            self._url,
+            max_size=None,
+            ping_interval=None,
+            open_timeout=CDP_HANDSHAKE_TIMEOUT_SECONDS,
+            close_timeout=_CLOSE_TIMEOUT_SECONDS,
         )
         self._reader = asyncio.create_task(self._read_loop())
 

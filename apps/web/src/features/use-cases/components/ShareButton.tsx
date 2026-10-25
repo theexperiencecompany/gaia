@@ -3,6 +3,7 @@
 import { Button } from "@heroui/button";
 import { Copy01Icon, Tick02Icon } from "@icons";
 import { useState } from "react";
+import { copyText } from "@/lib/clipboard";
 import { siteConfig } from "@/lib/seo";
 import { toast } from "@/lib/toast";
 
@@ -21,7 +22,7 @@ export default function ShareButton({
 
   const handleCopyLink = async () => {
     try {
-      await navigator.clipboard.writeText(shareUrl);
+      await copyText(shareUrl);
       setCopied(true);
       toast.success("Link copied");
       setTimeout(() => setCopied(false), 2000);
