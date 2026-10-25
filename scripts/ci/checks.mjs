@@ -73,11 +73,18 @@
  * (default master).
  */
 import { execFileSync, execSync, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { checkDocComments } from "./lib/doc-comments.mjs";
 import { explicitFileList } from "./lib/explicit-file-list.mjs";
+import {
+  OPENAPI_JSON,
+  cmdAnalyticsCatalog,
+  cmdApiSchema,
+  cmdCliConfigSchema,
+  cmdDeployTemplates,
+} from "./lib/generated-artifacts.mjs";
 import { runEvlogMapBots } from "./lib/evlog-map-bots.mjs";
 import {
   BASELINES,
@@ -744,200 +751,6 @@ function cmdDuplication() {
   }
 }
 
-
-// ---------------------------------------------------------------------------
-// api-schema — rebuild openapi.json + generated types and diff; catches a missed `mise api:types`
-// ---------------------------------------------------------------------------
-
-const OPENAPI_JSON = "apps/api/openapi.json";
-const GENERATED_TYPES = "libs/shared/ts/src/api/generated/schema.d.ts";
-const API_SCHEMA_DRIFT_MESSAGE =
-  "API schema drifted — run `mise api:types` and commit";
-
-function regenerateApiSchema() {
-  const opts = { stdio: "inherit" };
-  execFileSync(
-    "uv",
-    [
-      "run",
-      "--frozen",
-      "--project",
-      "apps/api",
-      "--group",
-      "backend",
-      "--group",
-      "dev",
-      "python",
-      "apps/api/scripts/export_openapi.py",
-    ],
-    { ...opts, env: { ...process.env, LOG_LEVEL: "ERROR" } },
-  );
-  // tools/api-codegen is outside the workspace: it needs the JS compiler API
-  // (ts.createPrinter), which the native 7.x package does not ship.
-  const codegenDir = resolve("tools/api-codegen");
-  const codegenBin =
-    process.env.GAIA_OPENAPI_TS || join(codegenDir, "node_modules", ".bin", "openapi-typescript");
-  if (!existsSync(codegenBin)) {
-    // Never pass on the committed schema when regeneration was skipped.
-    throw new Error(
-      `${codegenBin} is missing. Run: pnpm --dir tools/api-codegen install --frozen-lockfile --ignore-workspace`,
-    );
-  }
-  execFileSync(
-    codegenBin,
-    [
-      resolve(OPENAPI_JSON),
-      "--alphabetize",
-      // A field with a default is optional on the wire for a request body; a
-      // response-only model marks it required itself (ResponseModel).
-      "--default-non-nullable=false",
-      // One exported alias per component schema, under the API's own name
-      // (`TodoResponse`, not `Schema<"TodoResponse">`): navigable, greppable,
-      // and identical to the Pydantic class it came from.
-      "--root-types",
-      "--root-types-no-schema-prefix",
-      "--root-types-keep-casing",
-      "--output",
-      resolve(GENERATED_TYPES),
-    ],
-    opts,
-  );
-}
-
-function cmdApiSchema(argv) {
-  regenerateApiSchema();
-  if (argv.includes("--write")) return;
-
-  const dirty = execFileSync(
-    "git",
-    ["status", "--porcelain", "--", OPENAPI_JSON, GENERATED_TYPES],
-    { encoding: "utf8" },
-  ).trim();
-  if (dirty) {
-    console.log(dirty);
-    console.error(`❌ ${API_SCHEMA_DRIFT_MESSAGE}`);
-    process.exit(1);
-  }
-  console.log("✅ openapi.json and the generated API types match the routes.");
-}
-
-// ---------------------------------------------------------------------------
-// analytics-catalog — regenerate the event catalog's JSON + TS and diff; catches a missed `mise analytics:types`
-// ---------------------------------------------------------------------------
-
-const ANALYTICS_GENERATED_DIR = "libs/shared/ts/src/analytics/generated";
-const ANALYTICS_CATALOG_JSON = `${ANALYTICS_GENERATED_DIR}/analytics-catalog.json`;
-
-function cmdAnalyticsCatalog(argv) {
-  const opts = { stdio: "inherit" };
-  execFileSync(
-    "uv",
-    [
-      "run",
-      "--frozen",
-      "--project",
-      "apps/api",
-      "python",
-      "-m",
-      "shared.py.analytics.codegen",
-    ],
-    { ...opts, env: { ...process.env, LOG_LEVEL: "ERROR" } },
-  );
-  execFileSync(
-    "pnpm",
-    ["exec", "biome", "format", "--write", ANALYTICS_CATALOG_JSON],
-    opts,
-  );
-  if (argv.includes("--write")) return;
-
-  const dirty = execFileSync(
-    "git",
-    ["status", "--porcelain", "--", ANALYTICS_GENERATED_DIR],
-    { encoding: "utf8" },
-  ).trim();
-  if (dirty) {
-    console.log(dirty);
-    console.error(
-      "❌ Analytics catalog drifted — run `mise analytics:types` and commit",
-    );
-    process.exit(1);
-  }
-  console.log("✅ The generated analytics event types match the catalog.");
-}
-
-// ---------------------------------------------------------------------------
-// cli-config-schema — regenerate the CLI's vendored config schema and diff; catches a missed `mise cli:schema`
-// ---------------------------------------------------------------------------
-
-const CLI_CONFIG_SCHEMA = "packages/cli/src/lib/api-config-schema.generated.json";
-
-function cmdCliConfigSchema(argv) {
-  const schema = execFileSync(
-    "uv",
-    ["run", "--frozen", "python", "-m", "scripts.dump_config_schema"],
-    {
-      cwd: "apps/api",
-      encoding: "utf8",
-      env: { ...process.env, LOG_LEVEL: "ERROR" },
-    },
-  );
-  writeFileSync(CLI_CONFIG_SCHEMA, schema);
-  if (argv.includes("--write")) return;
-
-  const dirty = execFileSync(
-    "git",
-    ["status", "--porcelain", "--", CLI_CONFIG_SCHEMA],
-    { encoding: "utf8" },
-  ).trim();
-  if (dirty) {
-    console.log(dirty);
-    console.error(
-      "❌ The CLI config schema drifted from the API settings — run `mise cli:schema` and commit",
-    );
-    process.exit(1);
-  }
-  console.log("✅ The CLI config schema matches the API settings.");
-}
-
-// ---------------------------------------------------------------------------
-// deploy-templates
-// ---------------------------------------------------------------------------
-
-const DEPLOY_TEMPLATES = [
-  "deploy/coolify/gaia.yaml",
-  "render.yaml",
-  "deploy/proxy.Dockerfile",
-];
-
-function cmdDeployTemplates(argv) {
-  execFileSync(
-    "uv",
-    [
-      "run",
-      "--frozen",
-      "--project",
-      "apps/api",
-      "python",
-      "scripts/ci/lib/deploy_templates.py",
-    ],
-    { stdio: "inherit" },
-  );
-  if (argv.includes("--write")) return;
-
-  const dirty = execFileSync(
-    "git",
-    ["status", "--porcelain", "--", ...DEPLOY_TEMPLATES],
-    { encoding: "utf8" },
-  ).trim();
-  if (dirty) {
-    console.log(dirty);
-    console.error(
-      "❌ The deploy templates drifted from the self-host compose file — run `mise deploy:templates` and commit",
-    );
-    process.exit(1);
-  }
-  console.log("✅ The deploy templates match the self-host compose file.");
-}
 
 // ---------------------------------------------------------------------------
 // api-schema-types

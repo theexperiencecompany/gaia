@@ -206,7 +206,9 @@ class TestInstallFromGithubValidation:
                 return_value=httpx.Response(403, json={"message": "API rate limit exceeded"})
             )
             with pytest.raises(ValueError) as excinfo:
-                await install_from_github(user_id="u1", repo_url="org/repo/skills/my-skill")
+                await install_from_github(
+                    user_id=_UID, repo_url="org/repo/skills/my-skill", author=SkillAuthor.USER
+                )
 
         assert str(excinfo.value) == (
             "GitHub API rate limit exceeded. Try again later, or add a GitHub token in "

@@ -8,7 +8,8 @@
 # saving OpenCode's database, git for the agents' repos. SANDBOX_USER_HOME is
 # the agents' home on both backends; any uid may write it, since the container
 # runs as the API's uid, which has no passwd entry here.
-FROM python:3.12-slim@sha256:a0f57064cbdcd6285fa45f51237ab0b35ea8ebaed06a1f5973e89e19dfb86704
+ARG PYTHON_VERSION=3.12.15
+FROM python:${PYTHON_VERSION}-slim
 
 ARG SANDBOX_USER_HOME
 

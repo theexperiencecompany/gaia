@@ -17,7 +17,7 @@ import os
 from pathlib import Path
 import re
 import shutil
-from typing import Protocol, TypedDict, cast
+from typing import Protocol, TypedDict, assert_never, cast
 
 import boto3
 from botocore.config import Config
@@ -520,6 +520,8 @@ def _served_blob_store() -> ServedBlobStore | None:
             return s3_blob_store()
         case BlobStoreKind.CLOUDINARY:
             return None
+        case unknown:
+            assert_never(unknown)
 
 
 def blob_store() -> BlobStore:
@@ -536,6 +538,8 @@ async def ensure_blob_store_ready() -> None:
             await s3_blob_store().verify_bucket()
         case BlobStoreKind.CLOUDINARY:
             return
+        case unknown:
+            assert_never(unknown)
 
 
 def _may_read(blob: ServedBlob, requester_id: str, owner_id: str) -> bool:

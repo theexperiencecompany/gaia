@@ -456,7 +456,13 @@ class TestLabSeedingFailsLoud:
             pytest.raises(AppError) as err,
         ):
             sandbox_setup.lab_events_url(LocalDockerSandbox("u1"))
-        assert err.value.why == "LOCAL_SANDBOX_LAB_EVENTS_CALLBACK_URL is unset"
+        assert err.value == AppError(
+            message="lab lifecycle pushes are not configured",
+            why="LOCAL_SANDBOX_LAB_EVENTS_CALLBACK_URL is unset",
+            fix="apply docker-compose.sandbox.yml (gaia up --code-sandbox), which sets it",
+            status_code=503,
+            code="agent_lab_events_unconfigured",
+        )
 
     def test_seed_without_a_run_id_is_refused(self) -> None:
         with pytest.raises(AppError) as err:

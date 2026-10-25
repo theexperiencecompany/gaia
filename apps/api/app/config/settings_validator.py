@@ -141,7 +141,6 @@ class SettingsValidator:
                     "File uploads, image storage, and support ticket attachments when "
                     "BLOB_STORE is s3"
                 ),
-                all_required=True,
                 docs_url="https://docs.heygaia.io/self-hosting/ai-models-and-tools#file-storage",
                 selfhost_setup=False,
             )

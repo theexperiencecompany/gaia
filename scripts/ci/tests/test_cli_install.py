@@ -73,11 +73,13 @@ NVM
 
 NODE_TARBALL_BYTES = 27_000_000
 
-# A HEAD request (-I) answers with the Node tarball's size; anything else gets the fake nvm.
+# A HEAD request (-I) answers with the Node tarball's size; anything else gets the fake nvm,
+# after FAKE_INSTALLER_SECONDS, so a test can make that download slow enough to be drawn.
 CURL_SHIM = f"""#!/bin/sh
 case " $* " in
   *" -fsSIL "*) printf 'HTTP/1.1 200 OK\\r\\ncontent-length: {NODE_TARBALL_BYTES}\\r\\n\\r\\n'; exit 0 ;;
 esac
+sleep "${{FAKE_INSTALLER_SECONDS:-0}}"
 cat <<'INSTALLER'
 {FAKE_NVM_INSTALLER}
 INSTALLER
@@ -414,6 +416,7 @@ def test_a_terminal_sees_each_slow_step_live_with_its_progress_and_time(
     fresh_server: dict[str, str], shell: str
 ) -> None:
     fresh_server["FAKE_NVM_SECONDS"] = "2"
+    fresh_server["FAKE_INSTALLER_SECONDS"] = "1"
 
     code, output = _run_on_tty(shell, fresh_server)
 

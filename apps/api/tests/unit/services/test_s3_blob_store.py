@@ -9,7 +9,13 @@ import pytest
 
 from app.config.deployment import BlobStoreKind
 from app.config.settings import settings
-from app.constants.files import S3_WRITE_PROBE_KEY, BlobKind, S3AddressingStyle
+from app.constants.files import (
+    S3_MAX_ATTEMPTS,
+    S3_TIMEOUT_SECONDS,
+    S3_WRITE_PROBE_KEY,
+    BlobKind,
+    S3AddressingStyle,
+)
 from app.services.blob_store import (
     S3BlobStore,
     blob_store,
@@ -56,6 +62,15 @@ async def _put(store: S3BlobStore, owner: str, public_id: str, kind: BlobKind) -
     )
 
 
+def _fields(error: AppError) -> tuple[str, str, str, int, str]:
+    return (error.message, error.why, error.fix, error.status_code, error.code)
+
+
+def _put_refusal(code: str) -> str:
+    """Render the ClientError the probe's write gets back for an S3 error code."""
+    return str(s3_client_error(code, "PutObject"))
+
+
 class TestStore:
     async def test_put_stores_a_private_object_and_returns_the_blob_route_url(
         self, store: S3BlobStore, bucket: FakeS3Client
@@ -87,8 +102,10 @@ class TestStore:
 
     async def test_a_missing_object_reads_as_not_found(self, store: S3BlobStore) -> None:
         assert await store.open("u1", "nope") is None
-        with pytest.raises(FileNotFoundError):
+        with pytest.raises(FileNotFoundError) as raised:
             await store.read("u1", "nope", "/api/v1/blobs/u1/nope")
+
+        assert str(raised.value) == "no S3 blob 'nope' for owner u1"
 
     async def test_an_unsafe_key_never_reaches_the_bucket(
         self, store: S3BlobStore, bucket: FakeS3Client
@@ -129,9 +146,17 @@ class TestStore:
             await store.delete("u1", "pic")
 
         [error] = event["errors"]
-        assert (error["msg"], error["key"], error["error_type"]) == (
+        assert (
+            error["msg"],
+            error["owner_id"],
+            error["key"],
+            error["error"],
+            error["error_type"],
+        ) == (
             "[blobs] s3 delete failed",
+            "u1",
             "u1/pic",
+            str(s3_client_error("AccessDenied", "DeleteObject")),
             "ClientError",
         )
 
@@ -142,16 +167,32 @@ class TestBootProbe:
     ) -> None:
         await store.verify_bucket()
 
+        assert bucket.calls == [
+            (
+                "PutObject",
+                {
+                    "Bucket": BUCKET,
+                    "Key": S3_WRITE_PROBE_KEY,
+                    "Body": b"",
+                    "ContentType": "application/octet-stream",
+                    "Metadata": {},
+                },
+            ),
+            ("DeleteObject", {"Bucket": BUCKET, "Key": S3_WRITE_PROBE_KEY}),
+        ]
         assert S3_WRITE_PROBE_KEY not in bucket.objects
 
     async def test_a_missing_bucket_names_the_bucket(self, bucket: FakeS3Client) -> None:
         with pytest.raises(AppError) as raised:
             await S3BlobStore(bucket, "no-such-bucket", ENDPOINT).verify_bucket()
 
-        assert raised.value.code == "s3_bucket_missing"
-        assert raised.value.message == (
+        assert _fields(raised.value) == (
             "File uploads are not set up: the S3 bucket 'no-such-bucket' does not exist "
-            f"at {ENDPOINT}."
+            f"at {ENDPOINT}.",
+            _put_refusal("NoSuchBucket"),
+            "Create the bucket, or set S3_BUCKET to the name of one that exists.",
+            503,
+            "s3_bucket_missing",
         )
 
     @pytest.mark.parametrize(
@@ -165,8 +206,15 @@ class TestBootProbe:
         with pytest.raises(AppError) as raised:
             await store.verify_bucket()
 
-        assert raised.value.code == "s3_credentials_rejected"
-        assert "S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY" in raised.value.fix
+        assert _fields(raised.value) == (
+            "File uploads are not set up: the S3 credentials cannot write to the bucket "
+            f"'{BUCKET}'.",
+            _put_refusal(code),
+            "Check S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY, and that the key may write and "
+            "delete objects.",
+            503,
+            "s3_credentials_rejected",
+        )
 
     async def test_any_other_refusal_names_its_code(
         self, store: S3BlobStore, bucket: FakeS3Client
@@ -176,8 +224,14 @@ class TestBootProbe:
         with pytest.raises(AppError) as raised:
             await store.verify_bucket()
 
-        assert raised.value.code == "s3_write_failed"
-        assert "(PermanentRedirect)" in raised.value.message
+        assert _fields(raised.value) == (
+            f"File uploads are not set up: the S3 bucket '{BUCKET}' refused a test write "
+            "(PermanentRedirect).",
+            _put_refusal("PermanentRedirect"),
+            "Check S3_ENDPOINT_URL, S3_REGION and S3_ADDRESSING_STYLE match the bucket service.",
+            503,
+            "s3_write_failed",
+        )
 
     async def test_an_unreachable_endpoint_names_the_endpoint(self, bucket: FakeS3Client) -> None:
         def unreachable(**_kwargs: object) -> object:
@@ -188,8 +242,13 @@ class TestBootProbe:
         with pytest.raises(AppError) as raised:
             await S3BlobStore(bucket, BUCKET, ENDPOINT).verify_bucket()
 
-        assert raised.value.code == "s3_endpoint_unreachable"
-        assert ENDPOINT in raised.value.message
+        assert _fields(raised.value) == (
+            f"File uploads are not set up: the S3 endpoint {ENDPOINT} is unreachable.",
+            str(EndpointConnectionError(endpoint_url=ENDPOINT)),
+            "Set S3_ENDPOINT_URL to the bucket service's S3 API URL, reachable from the API.",
+            503,
+            "s3_endpoint_unreachable",
+        )
 
     async def test_boot_runs_the_probe_under_blob_store_s3(
         self, s3_deployment: None, bucket: FakeS3Client, monkeypatch: pytest.MonkeyPatch
@@ -215,11 +274,24 @@ class TestSelection:
         store = blob_store()
 
         assert isinstance(store, S3BlobStore)
-        assert store.bucket == BUCKET
-        client = store.client
-        assert client.meta.endpoint_url == ENDPOINT  # type: ignore[attr-defined]  # why: boto3's generated client, outside the narrow protocol
-        assert client.meta.region_name == "auto"  # type: ignore[attr-defined]  # why: boto3's generated client, outside the narrow protocol
-        assert client.meta.config.s3 == {"addressing_style": "path"}  # type: ignore[attr-defined]  # why: boto3's generated client, outside the narrow protocol
+        assert (store.bucket, store.endpoint_url) == (BUCKET, ENDPOINT)
+        meta = store.client.meta  # type: ignore[attr-defined]  # why: boto3's generated client, outside the narrow protocol
+        config = meta.config
+        assert (meta.endpoint_url, meta.region_name) == (ENDPOINT, "auto")
+        assert (
+            config.signature_version,
+            config.s3,
+            config.connect_timeout,
+            config.read_timeout,
+            config.retries,
+        ) == (
+            "s3v4",
+            {"addressing_style": "path"},
+            S3_TIMEOUT_SECONDS,
+            S3_TIMEOUT_SECONDS,
+            # botocore counts the first try too: max_attempts retries is one more attempt
+            {"total_max_attempts": S3_MAX_ATTEMPTS + 1, "mode": "legacy"},
+        )
 
     @pytest.mark.parametrize(
         "missing", ["S3_ENDPOINT_URL", "S3_BUCKET", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"]
@@ -232,8 +304,13 @@ class TestSelection:
         with pytest.raises(AppError) as raised:
             blob_store()
 
-        assert raised.value.code == "s3_not_configured"
-        assert missing in raised.value.fix
+        assert _fields(raised.value) == (
+            "File uploads are not set up: BLOB_STORE=s3 is missing its bucket settings.",
+            "",
+            "Set S3_ENDPOINT_URL, S3_BUCKET, S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY.",
+            503,
+            "s3_not_configured",
+        )
 
     async def test_the_blob_route_serves_by_kind_from_the_bucket(
         self, s3_deployment: None, store: S3BlobStore, monkeypatch: pytest.MonkeyPatch

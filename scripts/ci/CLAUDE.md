@@ -61,7 +61,9 @@ observability scanner behind `checks.mjs evlog-map-bots`),
 api-schema-types` and `api-client-imports` — pure functions over a file's
 source text plus openapi.json, with the file list, baselines and reporting
 left in checks.mjs), `doc-comments.mjs` (the JSDoc/line-comment content gate
-behind `checks.mjs doc-comments`), `deploy_templates.py` (the Coolify and
+behind `checks.mjs doc-comments`), `generated-artifacts.mjs` (the
+regenerate-and-diff gates behind `checks.mjs api-schema`, `analytics-catalog`,
+`cli-config-schema` and `deploy-templates`), `deploy_templates.py` (the Coolify and
 Render template generator behind `checks.mjs deploy-templates`; Python for
 PyYAML, run through the apps/api environment) and
 `mutation_matrix.py` (the AST detector behind `mutation.py matrix`),
