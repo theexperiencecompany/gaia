@@ -14,6 +14,7 @@ from pathlib import Path
 import subprocess
 
 CI = Path(__file__).parent.parent
+RELEASE_SHA = "0123456789abcdef0123456789abcdef01234567"
 SCRIPT = CI / "release.sh"
 
 # Each fake answers with the next line of its plan; the last line repeats.
@@ -70,6 +71,7 @@ def _publish(tmp_path: Path, *, gh: list[str], npm: list[str]) -> subprocess.Com
             "GH_TOKEN": "t0ken",
             "TAG": "cli-v1.2.3",
             "VERSION": "1.2.3",
+            "SHA": RELEASE_SHA,
         },
         capture_output=True,
         text=True,
