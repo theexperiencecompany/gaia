@@ -26,6 +26,7 @@ from gaia_gh import eprint, gh
 BASE_BRANCH = "master"
 GH_TIMEOUT_S = 30
 PR_REF_PREFIX = "refs/pr-conflicts"
+FILES_SHOWN = 5
 
 
 @dataclass(frozen=True)
@@ -60,6 +61,12 @@ def queue_conflicts(base: str, first: str, second: str, cwd: str | None = None) 
     if landed.commit is None:
         return ()  # the first PR conflicts with base itself; reported on its own
     return merge_onto(landed.commit, second, cwd).conflicts
+
+
+def describe(files: tuple[str, ...]) -> str:
+    shown = ", ".join(files[:FILES_SHOWN])
+    hidden = len(files) - FILES_SHOWN
+    return f"{shown} and {hidden} more" if hidden > 0 else shown
 
 
 def default_prs() -> list[int]:
@@ -99,12 +106,12 @@ def main(argv: list[str] | None = None) -> int:
         files = merge_onto(base, ref[n]).conflicts
         if files:
             found = True
-            print(f"#{n} conflicts with {BASE_BRANCH}: {', '.join(files)}")
+            print(f"#{n} conflicts with {BASE_BRANCH}: {describe(files)}")
     for a, b in combinations(prs, 2):
         files = queue_conflicts(base, ref[a], ref[b])
         if files:
             found = True
-            print(f"#{a} + #{b} conflict: {', '.join(files)}")
+            print(f"#{a} + #{b} conflict: {describe(files)}")
             print(f"  queue #{a} first, then merge {BASE_BRANCH} into #{b} once it lands")
     if not found:
         listed = " ".join(f"#{n}" for n in prs)
