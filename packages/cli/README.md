@@ -1,6 +1,6 @@
 # @heygaia/cli
 
-![GAIA CLI](../../apps/web/public/images/screenshots/cli.png)
+![The GAIA installer](../../apps/web/public/images/readme/self-host-installer.webp)
 
 CLI tool for setting up and managing [GAIA](https://heygaia.io).
 
