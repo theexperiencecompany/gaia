@@ -6,9 +6,6 @@
 #   mise sync            # Install dependencies
 #   mise tasks           # List all available commands
 
-[tools]
-python = "3.12"
-
 [env]
 PROJECT_NAME = "{{ config_root | basename }}"
 

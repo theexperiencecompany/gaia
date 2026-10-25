@@ -4,6 +4,8 @@ export type {
   DesktopPermissionPane,
   DesktopPermissionStatus,
   DesktopScreenshotData,
+  DesktopServerConnectResult,
+  DesktopServerFormReason,
   DesktopSettings,
   DesktopSettingsSnapshot,
   DesktopShortcutUpdateResult,
@@ -15,6 +17,7 @@ export type {
   ProtectedFolder,
 } from "./types";
 export {
+  DESKTOP_SERVER_FORM_PARAM,
   DESKTOP_TOOL_DEFAULT_TIMEOUT_MS,
   DESKTOP_TOOL_NAMES,
   isDesktopToolName,

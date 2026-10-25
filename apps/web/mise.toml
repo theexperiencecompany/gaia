@@ -6,9 +6,6 @@
 #   mise install         # Install dependencies
 #   mise tasks               # List all available commands
 
-[tools]
-node = "22"
-
 [env]
 NEXT_PUBLIC_API_BASE_URL = "http://localhost:8000/api/v1/"
 

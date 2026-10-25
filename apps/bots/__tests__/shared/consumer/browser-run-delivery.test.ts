@@ -61,6 +61,7 @@ async function startAndCaptureHandler(
     deliver,
     deliverFile,
     "https://api.gaia.test",
+    vi.fn(),
   );
   await consumer.start();
   const calls = channel.consume.mock.calls;

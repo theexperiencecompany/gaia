@@ -143,7 +143,7 @@ def _fake_provider_registry():
     ]
     with (
         patch(
-            "app.agents.core.subagents.registry.OAUTH_INTEGRATIONS",
+            "app.config.oauth_config.OAUTH_INTEGRATIONS",
             fakes,
         ),
         patch("app.agents.core.subagents.registry.BUILTIN_SUBAGENTS", ()),
@@ -170,7 +170,7 @@ class TestAllSubagents:
         _clear_registry_cache()
         with (
             patch(
-                "app.agents.core.subagents.registry.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 FAKE_INTEGRATIONS,
             ),
             patch("app.agents.core.subagents.registry.BUILTIN_SUBAGENTS", ()),
@@ -186,7 +186,7 @@ class TestAllSubagents:
     def test_empty_integrations(self):
         _clear_registry_cache()
         with (
-            patch("app.agents.core.subagents.registry.OAUTH_INTEGRATIONS", []),
+            patch("app.config.oauth_config.OAUTH_INTEGRATIONS", []),
             patch("app.agents.core.subagents.registry.BUILTIN_SUBAGENTS", ()),
         ):
             assert all_subagents() == ()
@@ -202,7 +202,7 @@ class TestGetSubagentById:
         _clear_registry_cache()
         with (
             patch(
-                "app.agents.core.subagents.registry.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 FAKE_INTEGRATIONS,
             ),
             patch("app.agents.core.subagents.registry.BUILTIN_SUBAGENTS", ()),
@@ -215,7 +215,7 @@ class TestGetSubagentById:
         _clear_registry_cache()
         with (
             patch(
-                "app.agents.core.subagents.registry.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 FAKE_INTEGRATIONS,
             ),
             patch("app.agents.core.subagents.registry.BUILTIN_SUBAGENTS", ()),
@@ -228,7 +228,7 @@ class TestGetSubagentById:
         _clear_registry_cache()
         with (
             patch(
-                "app.agents.core.subagents.registry.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 FAKE_INTEGRATIONS,
             ),
             patch("app.agents.core.subagents.registry.BUILTIN_SUBAGENTS", ()),
@@ -240,7 +240,7 @@ class TestGetSubagentById:
         _clear_registry_cache()
         with (
             patch(
-                "app.agents.core.subagents.registry.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 FAKE_INTEGRATIONS,
             ),
             patch("app.agents.core.subagents.registry.BUILTIN_SUBAGENTS", ()),
@@ -252,7 +252,7 @@ class TestGetSubagentById:
         _clear_registry_cache()
         with (
             patch(
-                "app.agents.core.subagents.registry.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 FAKE_INTEGRATIONS,
             ),
             patch("app.agents.core.subagents.registry.BUILTIN_SUBAGENTS", ()),
@@ -264,7 +264,7 @@ class TestGetSubagentById:
         _clear_registry_cache()
         with (
             patch(
-                "app.agents.core.subagents.registry.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 FAKE_INTEGRATIONS,
             ),
             patch("app.agents.core.subagents.registry.BUILTIN_SUBAGENTS", ()),
@@ -339,7 +339,7 @@ class TestAllSubagentsCachingAndOrdering:
 
         with (
             patch(
-                "app.agents.core.subagents.registry.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 [oauth_integ, invalid_integ],
             ),
             patch(
@@ -359,7 +359,7 @@ class TestAllSubagentsCachingAndOrdering:
     def test_result_is_cached_by_identity(self) -> None:
         _clear_registry_cache()
         with (
-            patch("app.agents.core.subagents.registry.OAUTH_INTEGRATIONS", []),
+            patch("app.config.oauth_config.OAUTH_INTEGRATIONS", []),
             patch("app.agents.core.subagents.registry.BUILTIN_SUBAGENTS", ()),
         ):
             first = all_subagents()
@@ -380,7 +380,7 @@ class TestAllSubagentsCachingAndOrdering:
         _clear_registry_cache()
         with (
             patch(
-                "app.agents.core.subagents.registry.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 [_make_integration("github")],
             ),
             patch(
@@ -407,7 +407,7 @@ class TestGetSubagentByIdExtended:
     def test_finds_real_gaia_builtin(self) -> None:
         _clear_registry_cache()
         # Patch out OAuth integrations but keep the real BUILTIN_SUBAGENTS.
-        with patch("app.agents.core.subagents.registry.OAUTH_INTEGRATIONS", []):
+        with patch("app.config.oauth_config.OAUTH_INTEGRATIONS", []):
             result = get_subagent_by_id("gaia_knowledge_guide")
 
         assert result is not None
@@ -417,7 +417,7 @@ class TestGetSubagentByIdExtended:
 
     def test_finds_real_gaia_builtin_uppercase(self) -> None:
         _clear_registry_cache()
-        with patch("app.agents.core.subagents.registry.OAUTH_INTEGRATIONS", []):
+        with patch("app.config.oauth_config.OAUTH_INTEGRATIONS", []):
             result = get_subagent_by_id("GAIA_KNOWLEDGE_GUIDE")
 
         assert result is not None
@@ -425,7 +425,7 @@ class TestGetSubagentByIdExtended:
 
     def test_finds_real_gaia_builtin_with_whitespace(self) -> None:
         _clear_registry_cache()
-        with patch("app.agents.core.subagents.registry.OAUTH_INTEGRATIONS", []):
+        with patch("app.config.oauth_config.OAUTH_INTEGRATIONS", []):
             result = get_subagent_by_id("  gaia_knowledge_guide  ")
 
         assert result is not None
@@ -434,7 +434,7 @@ class TestGetSubagentByIdExtended:
     def test_unknown_id_returns_none_without_raising(self) -> None:
         _clear_registry_cache()
         with (
-            patch("app.agents.core.subagents.registry.OAUTH_INTEGRATIONS", []),
+            patch("app.config.oauth_config.OAUTH_INTEGRATIONS", []),
             patch("app.agents.core.subagents.registry.BUILTIN_SUBAGENTS", ()),
         ):
             assert get_subagent_by_id("does_not_exist") is None
@@ -445,7 +445,7 @@ class TestGetSubagentByIdExtended:
 
         with (
             patch(
-                "app.agents.core.subagents.registry.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 [oauth_integ],
             ),
             patch("app.agents.core.subagents.registry.BUILTIN_SUBAGENTS", ()),
@@ -459,7 +459,7 @@ class TestGetSubagentByIdExtended:
         # `agent_name` lives in a separate key space — it's the LangGraph
         # provider name, not a lookup key. Looking up by it must return None.
         _clear_registry_cache()
-        with patch("app.agents.core.subagents.registry.OAUTH_INTEGRATIONS", []):
+        with patch("app.config.oauth_config.OAUTH_INTEGRATIONS", []):
             assert get_subagent_by_id("gaia_knowledge_guide_agent") is None
 
 

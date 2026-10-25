@@ -1,8 +1,14 @@
 from fastapi import HTTPException
 
+from app.constants.files import BlobKind
 from app.db.repositories.users import user_repository
-from app.models.user_models import UserDocument, UserUpdate, UserUpdateResponse
-from app.utils.oauth_utils import upload_user_picture
+from app.models.user_models import (
+    ProfilePictureUpload,
+    UserDocument,
+    UserUpdate,
+    UserUpdateResponse,
+)
+from app.services.blob_store import blob_store
 from app.utils.timezone import Timezone
 from shared.py.wide_events import log
 
@@ -27,13 +33,13 @@ async def get_profile_timezone(user_id: str) -> Timezone:
 async def update_user_profile(
     user_id: str,
     name: str | None = None,
-    picture_data: bytes | None = None,
+    picture: ProfilePictureUpload | None = None,
 ) -> UserUpdateResponse:
     log.set(
         component="user_service",
         user_id=user_id,
         operation="update_profile",
-        has_picture=picture_data is not None,
+        has_picture=picture is not None,
     )
     try:
         user = await user_repository.get(user_id)
@@ -47,14 +53,18 @@ async def update_user_profile(
             update_fields["name"] = name.strip()
 
         # Update picture if provided
-        if picture_data:
+        if picture and picture.data:
             try:
-                # Generate public_id for Cloudinary
                 user_email = user.email or ""
                 public_id = f"user_{user_email.replace('@', '_at_').replace('.', '_dot_')}"
-
-                # Upload to Cloudinary
-                update_fields["picture"] = await upload_user_picture(picture_data, public_id)
+                update_fields["picture"] = await blob_store().put(
+                    user_id,
+                    public_id,
+                    picture.data,
+                    resource_type="image",
+                    kind=BlobKind.AVATAR,
+                    content_type=picture.content_type,
+                )
 
             except Exception as e:
                 log.error(

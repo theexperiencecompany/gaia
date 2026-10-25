@@ -217,6 +217,10 @@ Use `loadFeatureTranslations` to lazy-load per-feature message files rather than
 
 **Bundle analysis** — run `ANALYZE=true pnpm build` to open the bundle analyzer.
 
+**Self-host build** — `isSelfhostWeb()` (`src/lib/selfhost.ts`, reads `NEXT_PUBLIC_GAIA_SELFHOST`, baked into the self-host image) is the only build-time self-host switch. Queries on `/setup/*` stay `enabled: isSelfhostWeb()`, so a hosted build never calls them. The first-run wizard is `features/setup-wizard/` and reuses Settings → Providers & Tools (`features/settings/components/providers/`, `FeatureProviderPicker`) rather than its own pickers.
+
+**Clipboard** — copy through `src/lib/clipboard.ts` (`copyText` / `copyWithFeedback`, which falls back to selecting the text over plain HTTP, e.g. `http://gaia.local`); never call `navigator.clipboard` directly.
+
 ## Code Rules
 
 - No inline imports — all imports at the top of the file.

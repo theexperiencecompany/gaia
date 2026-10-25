@@ -1,12 +1,22 @@
-"""Unit tests for resolving a Composio tool slug to the integration that owns it."""
+"""The integration catalog's lookups: tool slug to integration, Composio providers, catalog cache."""
 
+from collections.abc import Iterator
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 
 from app.config import oauth_config
-from app.config.oauth_config import get_integration_by_tool_slug
+from app.config.oauth_config import (
+    CatalogCached,
+    get_composio_integrations_by_provider,
+    get_integration_by_tool_slug,
+    set_instance_integrations,
+)
+from app.services.composio.instance_toolkits import (
+    InstanceToolkitRecord,
+    build_instance_integration,
+)
 
 
 def _integration(integration_id: str, toolkit: str | None) -> SimpleNamespace:
@@ -49,3 +59,57 @@ class TestGetIntegrationByToolSlug:
         assert maps.id == "GOOGLE_MAPS"
         assert search is not None
         assert search.id == "google"
+
+
+_ATTIO = InstanceToolkitRecord(
+    slug="attio", name="Attio", description="CRM", category="crm", auth_scheme="OAUTH2"
+)
+
+
+@pytest.fixture
+def instance_attio() -> Iterator[None]:
+    set_instance_integrations([build_instance_integration(_ATTIO)])
+    yield
+    set_instance_integrations([])
+
+
+@pytest.mark.unit
+class TestCatalogCached:
+    def test_builds_once_until_the_instance_set_changes_or_is_cleared(self) -> None:
+        builds: list[int] = []
+
+        def build_count() -> int:
+            """Count the builds."""
+            builds.append(len(builds))
+            return len(builds)
+
+        cached = CatalogCached(build_count)
+
+        assert (cached(), cached()) == (1, 1)
+        set_instance_integrations([])
+        assert (cached(), cached()) == (2, 2)
+        cached.cache_clear()
+        assert cached() == 3
+        assert len(builds) == 3
+
+    def test_keeps_the_builders_name_and_doc(self) -> None:
+        def all_widgets() -> list[str]:
+            """Return every widget."""
+            return []
+
+        cached = CatalogCached(all_widgets)
+
+        assert cached.__name__ == "all_widgets"
+        assert cached.__doc__ == "Return every widget."
+        assert cached.__wrapped__ is all_widgets
+
+
+@pytest.mark.unit
+def test_composio_providers_cover_instance_toolkits_and_skip_mcp_integrations(
+    instance_attio: None,
+) -> None:
+    by_provider = get_composio_integrations_by_provider()
+
+    assert by_provider["attio"].origin == "instance"
+    assert by_provider["gmail"].id == "gmail"
+    assert "deepwiki" not in by_provider

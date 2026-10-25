@@ -53,7 +53,7 @@ import tests.offline_env  # isort: skip  # noqa: F401 -- imported for its side e
 
 # Imported after the env setup above: document models extend MongoDocument,
 # pulling in app.config.settings which instantiates settings at import
-# time; without ENV set first that resolves to ProductionSettings and fails.
+# time; without ENV set first it boots as production and fails.
 from app.config.posthog import init_posthog
 from app.config.settings import settings as app_settings
 from app.core.lazy_loader import MissingKeyStrategy, providers
@@ -256,7 +256,7 @@ class _FenceAsyncRedis:
 _fence_redis_client = _FenceAsyncRedis()
 
 # Only mock MongoDB/Redis when real services are NOT available. When
-# USE_REAL_SERVICES=1 the Dagger container has real MongoDB/Redis running and
+# USE_REAL_SERVICES=1 the CI service containers are running MongoDB/Redis and
 # integration/e2e/service tests should reach them.
 _infra_patches = (
     []
@@ -357,6 +357,19 @@ async def fake_redis(
     yield client
     await client.flushall()
     await client.connection_pool.disconnect()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _delivery_alert_fence() -> Iterator[None]:
+    """Keep every failed publish's alert off the real ARQ queue.
+
+    offline_env points REDIS_URL at localhost, so without this a test that hits
+    a failed outbound publish enqueued a real job into a developer's Redis (and
+    sat through connection retries in CI). Tests of the reporting path itself
+    call queue_delivery_failure directly or patch this seam.
+    """
+    with patch("app.services.delivery_alerts.reporting.queue_delivery_failure", AsyncMock()):
+        yield
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -743,6 +756,13 @@ def core_tool_registry() -> Iterator[None]:
 @pytest.fixture
 def mock_mongodb():
     return AsyncMock()
+
+
+@pytest.fixture
+def cloudinary_configured() -> Iterator[None]:
+    """Let uploads past require_cloudinary; the uploader itself stays each test's own mock."""
+    with patch("app.config.cloudinary.providers", MagicMock(get=MagicMock(return_value=True))):
+        yield
 
 
 @pytest.fixture(scope="session")

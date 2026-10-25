@@ -10,7 +10,7 @@
 import type {
   CommunityIntegrationItem,
   CommunityListResponse,
-  IntegrationInstructionsResponse,
+  MyIntegrationItem,
   PublicIntegrationDetailResponse,
 } from "@shared/api/generated";
 
@@ -40,8 +40,6 @@ export type IntegrationCategoryValue =
   | "capabilities"
   | "other";
 
-export type IntegrationInstructions = IntegrationInstructionsResponse;
-
 export interface Integration {
   id: string;
   name: string;
@@ -54,6 +52,10 @@ export interface Integration {
   isFeatured?: boolean;
   managedBy?: "self" | "composio" | "mcp" | "internal";
   available?: boolean;
+  /** Composio integration this instance has no auth config for; Connect cannot work. */
+  instanceSetupRequired?: boolean;
+  /** "instance": a Composio toolkit the admin enabled from the catalog (no triggers). */
+  origin?: MyIntegrationItem["origin"];
   authType?: "oauth" | "bearer" | "none";
   source?: "platform" | "custom";
   requiresAuth?: boolean;

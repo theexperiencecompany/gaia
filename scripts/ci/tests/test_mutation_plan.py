@@ -1,4 +1,4 @@
-"""The mutation gate's matrix planner (scripts/ci/mutation.sh plan).
+"""The mutation gate's matrix planner (scripts/ci/mutation.py plan).
 
 The planner decides how many shards the lane fans out to and what each one
 mutates. Both answers are invisible from the lane's own output: an empty
@@ -7,24 +7,25 @@ pass in the quality gate — so a regression here reads as green rather than as
 broken, the exact failure mode the gate exists to prevent.
 
 Driven as a real script against stubbed externals: the harness copies
-`mutation.sh` into a throwaway tree next to a fake ``changes.sh`` (which names
+`mutation.py` into a throwaway tree next to a fake ``changes.sh`` (which names
 the changed Python files) and a fake ``lib/mutation_matrix.py`` (which prints
 the module list). The script's own `matrix` subcommand — the diff filtering
 between those two — runs for real. Nothing here runs mutmut.
 """
 
+from collections.abc import Callable
 import json
 from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-PLAN_SCRIPT = REPO_ROOT / "scripts" / "ci" / "mutation.sh"
-LOG_LIB = REPO_ROOT / "scripts" / "ci" / "lib" / "log.sh"
-CPU_SLOTS_LIB = REPO_ROOT / "scripts" / "ci" / "lib" / "cpu-slots.sh"
+PLAN_SCRIPT = REPO_ROOT / "scripts" / "ci" / "mutation.py"
+REPORT_LIB = REPO_ROOT / "scripts" / "ci" / "lib" / "mutation_report.py"
 
 
 # Read out of the script under test rather than mirrored here. A hand-copied
@@ -34,9 +35,9 @@ CPU_SLOTS_LIB = REPO_ROOT / "scripts" / "ci" / "lib" / "cpu-slots.sh"
 # rather than blowing GitHub's 256-job hard limit and yielding none — and a lane
 # with no matrix is a lane that counts as a pass.
 def _max_shards() -> int:
-    source = (REPO_ROOT / "scripts" / "ci" / "mutation.sh").read_text()
+    source = PLAN_SCRIPT.read_text()
     match = re.search(r"^MAX_SHARDS = (\d+)$", source, re.MULTILINE)
-    assert match, "MAX_SHARDS not found in mutation.sh — did the plan script change shape?"
+    assert match, "MAX_SHARDS not found in mutation.py — did the plan script change shape?"
     return int(match.group(1))
 
 
@@ -49,11 +50,10 @@ FIRST_SHARD_SIZE = -(-HUGE_DIFF_MODULES // MAX_SHARDS)
 
 def _install(scripts: Path) -> None:
     """Copy the script under test plus the lib it sources into the sandbox."""
-    shutil.copy(PLAN_SCRIPT, scripts / "mutation.sh")
+    shutil.copy(PLAN_SCRIPT, scripts / "mutation.py")
     lib = scripts / "lib"
     lib.mkdir(exist_ok=True)
-    shutil.copy(LOG_LIB, lib / "log.sh")
-    shutil.copy(CPU_SLOTS_LIB, lib / "cpu-slots.sh")
+    shutil.copy(REPORT_LIB, lib / "mutation_report.py")
 
 
 def _stub_changes(scripts: Path, changed: list[str]) -> None:
@@ -70,9 +70,14 @@ def _stub_detector(scripts: Path, body: str) -> None:
     stub.chmod(0o755)
 
 
+PlanRun = Callable[
+    [list[dict[str, object]]], tuple[subprocess.CompletedProcess[str], dict[str, str]]
+]
+
+
 @pytest.fixture
-def harness(tmp_path: Path):
-    """Run `mutation.sh plan` against a stubbed matrix, returning its outputs."""
+def harness(tmp_path: Path) -> PlanRun:
+    """Run `mutation.py plan` against a stubbed matrix, returning its outputs."""
     scripts = tmp_path / "scripts" / "ci"
     scripts.mkdir(parents=True)
     _install(scripts)
@@ -93,7 +98,7 @@ def harness(tmp_path: Path):
             f"import sys\nsys.stdin.read()\nprint({json.dumps(json.dumps(matrix))})\n",
         )
         process = subprocess.run(
-            ["bash", str(scripts / "mutation.sh"), "plan"],
+            [sys.executable, str(scripts / "mutation.py"), "plan"],
             capture_output=True,
             text=True,
             check=False,
@@ -111,12 +116,32 @@ def _entry(module: str, testfiles: list[str], changed_lines: list[int]) -> dict[
     return {"module": module, "testfiles": testfiles, "changed_lines": changed_lines}
 
 
+def _matrix(outputs: dict[str, str]) -> list[dict[str, str]]:
+    """Return each shard as the job sees it: its label plus the group and pool shard_defs names."""
+    defs = json.loads(outputs["shard_defs"])
+    return [{"label": label, **defs[label]} for label in json.loads(outputs["shards"])]
+
+
 def _groups(outputs: dict[str, str]) -> list[list[dict[str, str]]]:
     """Return the modules each shard carries, unpacked from the matrix."""
-    return [json.loads(item["group"]) for item in json.loads(outputs["matrix"])]
+    return [json.loads(item["group"]) for item in _matrix(outputs)]
 
 
-def test_every_changed_module_gets_its_own_shard(harness) -> None:
+def test_the_matrix_value_is_the_label_alone(harness: PlanRun) -> None:
+    # Any other key would be appended to the job name, and an object value is
+    # what made a skipped job render `${{ matrix.label }}` literally.
+    _, outputs = harness(
+        [
+            _entry("app/a.py", ["tests/unit/test_a.py"], [1]),
+            _entry("app/b.py", ["tests/unit/test_b.py"], [1]),
+        ]
+    )
+
+    assert json.loads(outputs["shards"]) == ["app/a.py", "app/b.py"]
+    assert set(json.loads(outputs["shard_defs"])) == {"app/a.py", "app/b.py"}
+
+
+def test_every_changed_module_gets_its_own_shard(harness: PlanRun) -> None:
     process, outputs = harness(
         [
             _entry("app/a.py", ["tests/unit/test_a.py"], [1, 2]),
@@ -129,16 +154,16 @@ def test_every_changed_module_gets_its_own_shard(harness) -> None:
     assert [group[0]["module"] for group in _groups(outputs)] == ["app/a.py", "app/b.py"]
 
 
-def test_a_lone_module_names_its_own_check(harness) -> None:
+def test_a_lone_module_names_its_own_check(harness: PlanRun) -> None:
     # The label is the check name in the PR's list; a reader picks the failing
     # module out of it without opening anything.
     _, outputs = harness([_entry("app/a.py", ["tests/unit/test_a.py"], [1])])
 
-    assert [item["label"] for item in json.loads(outputs["matrix"])] == ["app/a.py"]
+    assert [item["label"] for item in _matrix(outputs)] == ["app/a.py"]
 
 
-def test_list_arguments_are_emitted_as_json_strings(harness) -> None:
-    # A GitHub matrix value cannot hold nested JSON, and mutation.sh parses
+def test_list_arguments_are_emitted_as_json_strings(harness: PlanRun) -> None:
+    # A GitHub matrix value cannot hold nested JSON, and mutation.py parses
     # both lists back from exactly this string form.
     _, outputs = harness([_entry("app/a.py", ["tests/unit/test_a.py"], [4, 5])])
 
@@ -147,7 +172,7 @@ def test_list_arguments_are_emitted_as_json_strings(harness) -> None:
     assert entry["ranges"] == "[4,5]"
 
 
-def test_a_module_with_several_test_files_keeps_all_of_them(harness) -> None:
+def test_a_module_with_several_test_files_keeps_all_of_them(harness: PlanRun) -> None:
     _, outputs = harness(
         [_entry("app/a.py", ["tests/unit/test_a.py", "tests/unit/test_b.py"], [1])]
     )
@@ -158,7 +183,7 @@ def test_a_module_with_several_test_files_keeps_all_of_them(harness) -> None:
     assert entry["testfiles"] == '["tests/unit/test_a.py","tests/unit/test_b.py"]'
 
 
-def test_no_changed_modules_yields_an_empty_matrix_and_a_zero_count(harness) -> None:
+def test_no_changed_modules_yields_an_empty_matrix_and_a_zero_count(harness: PlanRun) -> None:
     # count is what the lane's `if:` reads to skip the matrix job entirely —
     # an empty matrix with a non-zero count would start a shard with nothing
     # to mutate and report it as a pass.
@@ -166,7 +191,7 @@ def test_no_changed_modules_yields_an_empty_matrix_and_a_zero_count(harness) -> 
 
     assert process.returncode == 0, process.stderr
     assert outputs["count"] == "0"
-    assert json.loads(outputs["matrix"]) == []
+    assert _matrix(outputs) == []
 
 
 class TestPackingAHugeDiff:
@@ -181,13 +206,13 @@ class TestPackingAHugeDiff:
     def _many(count: int) -> list[dict[str, object]]:
         return [_entry(f"app/m{i}.py", [f"tests/unit/test_m{i}.py"], [i]) for i in range(count)]
 
-    def test_the_matrix_never_exceeds_the_job_limit(self, harness) -> None:
+    def test_the_matrix_never_exceeds_the_job_limit(self, harness: PlanRun) -> None:
         process, outputs = harness(self._many(HUGE_DIFF_MODULES))
 
         assert process.returncode == 0, process.stderr
         assert int(outputs["count"]) == MAX_SHARDS
 
-    def test_every_module_still_runs_exactly_once(self, harness) -> None:
+    def test_every_module_still_runs_exactly_once(self, harness: PlanRun) -> None:
         # Packing must not drop a module: a silently unmutated module is a
         # false green, which is worse than a lane that fails.
         _, outputs = harness(self._many(HUGE_DIFF_MODULES))
@@ -196,10 +221,10 @@ class TestPackingAHugeDiff:
         assert sorted(packed) == sorted(f"app/m{i}.py" for i in range(HUGE_DIFF_MODULES))
         assert len(packed) == len(set(packed))
 
-    def test_a_packed_shard_says_how_many_it_carries(self, harness) -> None:
+    def test_a_packed_shard_says_how_many_it_carries(self, harness: PlanRun) -> None:
         _, outputs = harness(self._many(HUGE_DIFF_MODULES))
 
-        labels = [item["label"] for item in json.loads(outputs["matrix"])]
+        labels = [item["label"] for item in _matrix(outputs)]
         # Every shard says which slice it is and how much it carries, so a red
         # check is locatable without opening it.
         assert labels[0] == f"shard 1/{MAX_SHARDS} ({FIRST_SHARD_SIZE} modules)"
@@ -207,7 +232,7 @@ class TestPackingAHugeDiff:
             re.fullmatch(rf"shard \d+/{MAX_SHARDS} \(\d+ modules\)", label) for label in labels
         )
 
-    def test_exactly_the_limit_still_gets_one_module_each(self, harness) -> None:
+    def test_exactly_the_limit_still_gets_one_module_each(self, harness: PlanRun) -> None:
         _, outputs = harness(self._many(MAX_SHARDS))
 
         assert int(outputs["count"]) == MAX_SHARDS
@@ -229,7 +254,7 @@ def test_a_failing_detector_fails_the_plan(tmp_path: Path) -> None:
     )
 
     process = subprocess.run(
-        ["bash", str(scripts / "mutation.sh"), "plan"],
+        [sys.executable, str(scripts / "mutation.py"), "plan"],
         capture_output=True,
         text=True,
         check=False,
@@ -255,7 +280,7 @@ def test_matrix_only_offers_the_detector_mutatable_app_modules(tmp_path: Path) -
             "apps/api/app/worker.py",
             "apps/api/app/services/__init__.py",
             "libs/shared/py/elsewhere.py",
-            "scripts/ci/mutation.sh",
+            "scripts/ci/mutation.py",
         ],
     )
     # Echo back exactly what the filter passed in, so the assertion is about
@@ -263,7 +288,7 @@ def test_matrix_only_offers_the_detector_mutatable_app_modules(tmp_path: Path) -
     _stub_detector(scripts, "import sys\nsys.stdout.write(sys.stdin.read())\n")
 
     process = subprocess.run(
-        ["bash", str(scripts / "mutation.sh"), "matrix"],
+        [sys.executable, str(scripts / "mutation.py"), "matrix"],
         capture_output=True,
         text=True,
         check=False,
@@ -292,13 +317,13 @@ UNIT_TEST = "tests/unit/test_thing.py"
 def _pools(outputs: dict[str, str]) -> dict[str, list[str]]:
     """Modules by the pool their shard was assigned to."""
     by_pool: dict[str, list[str]] = {}
-    for item in json.loads(outputs["matrix"]):
+    for item in _matrix(outputs):
         for entry in json.loads(item["group"]):
             by_pool.setdefault(item["pool"], []).append(entry["module"])
     return by_pool
 
 
-def test_a_contract_mapped_module_runs_in_the_services_pool(harness) -> None:
+def test_a_contract_mapped_module_runs_in_the_services_pool(harness: PlanRun) -> None:
     process, outputs = harness(
         [
             _entry("app/db/repositories/users.py", [CONTRACT_TEST], [1]),
@@ -313,7 +338,7 @@ def test_a_contract_mapped_module_runs_in_the_services_pool(harness) -> None:
     }
 
 
-def test_a_module_is_a_services_module_if_any_of_its_tests_is(harness) -> None:
+def test_a_module_is_a_services_module_if_any_of_its_tests_is(harness: PlanRun) -> None:
     # The mapping keeps every referencing file, so the common repository module
     # carries a unit file AND a contract file. One contract file is enough: the
     # shard has to run somewhere those tests can connect.
@@ -322,7 +347,7 @@ def test_a_module_is_a_services_module_if_any_of_its_tests_is(harness) -> None:
     assert _pools(outputs) == {"services": ["app/db/repositories/users.py"]}
 
 
-def test_a_unit_only_plan_stays_entirely_in_the_unit_pool(harness) -> None:
+def test_a_unit_only_plan_stays_entirely_in_the_unit_pool(harness: PlanRun) -> None:
     # The control, and the common case: nothing is routed to the scarce
     # services pool unless it genuinely needs it.
     _, outputs = harness(
@@ -332,7 +357,7 @@ def test_a_unit_only_plan_stays_entirely_in_the_unit_pool(harness) -> None:
     assert set(_pools(outputs)) == {"unit"}
 
 
-def test_no_shard_mixes_the_two_pools(harness) -> None:
+def test_no_shard_mixes_the_two_pools(harness: PlanRun) -> None:
     # A shard is one job on one runner. A mixed shard would be unrunnable in
     # either pool, which is the bug this split exists to prevent.
     _, outputs = harness(
@@ -340,7 +365,7 @@ def test_no_shard_mixes_the_two_pools(harness) -> None:
         + [_entry(f"app/unit{i}.py", [UNIT_TEST], [i]) for i in range(5)]
     )
 
-    for item in json.loads(outputs["matrix"]):
+    for item in _matrix(outputs):
         tests = {
             file for entry in json.loads(item["group"]) for file in json.loads(entry["testfiles"])
         }
@@ -350,7 +375,7 @@ def test_no_shard_mixes_the_two_pools(harness) -> None:
         )
 
 
-def test_the_two_pools_share_one_shard_budget(harness) -> None:
+def test_the_two_pools_share_one_shard_budget(harness: PlanRun) -> None:
     # MAX_SHARDS bounds the PLAN, not each pool: two pools helping themselves to
     # six each would double the wave and walk back toward GitHub's job limit.
     _, outputs = harness(
@@ -364,7 +389,7 @@ def test_the_two_pools_share_one_shard_budget(harness) -> None:
     assert set(_pools(outputs)) == {"unit", "services"}
 
 
-def test_the_heavier_pool_gets_the_spare_shards(harness) -> None:
+def test_the_heavier_pool_gets_the_spare_shards(harness: PlanRun) -> None:
     # Every live pool starts at one shard and the rest follow the diff. The
     # typical PR touches one repository and many plain modules, so the services
     # pool takes one shard and the unit pool takes the remaining five.
@@ -374,14 +399,14 @@ def test_the_heavier_pool_gets_the_spare_shards(harness) -> None:
     )
 
     shards_per_pool: dict[str, int] = {}
-    for item in json.loads(outputs["matrix"]):
+    for item in _matrix(outputs):
         shards_per_pool[item["pool"]] = shards_per_pool.get(item["pool"], 0) + 1
     assert shards_per_pool == {"services": 1, "unit": MAX_SHARDS - 1}
 
 
-def test_a_services_shard_says_so_in_its_check_name(harness) -> None:
+def test_a_services_shard_says_so_in_its_check_name(harness: PlanRun) -> None:
     # The check name is all a reviewer sees in the PR list; a red services
     # shard and a red unit shard are debugged in different places.
     _, outputs = harness([_entry("app/db/repositories/users.py", [CONTRACT_TEST], [1])])
 
-    assert json.loads(outputs["matrix"])[0]["label"] == "app/db/repositories/users.py (services)"
+    assert _matrix(outputs)[0]["label"] == "app/db/repositories/users.py (services)"

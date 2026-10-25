@@ -13,6 +13,7 @@ import base64
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 import hashlib
+import os
 from pathlib import Path
 import shutil
 import tempfile
@@ -22,9 +23,10 @@ from cryptography import x509
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from playwright.sync_api import sync_playwright
 
-from app.browser_host.cdp_mux import CdpMux, cdp_call
+from app.browser_host.cdp_mux import CDP_HANDSHAKE_TIMEOUT_SECONDS, CdpMux, cdp_call
 from app.browser_host.obscura_launch import launch_obscura
 from app.browser_host.process import (
+    EngineLaunchError,
     ProcessSampler,
     process_tree_rss_mb,
     spawn_engine,
@@ -57,6 +59,8 @@ _JS_HEAP_MB = 512
 # timer; this many unanswered asks in a row is a dead engine, not a busy one.
 _LIVENESS_PROBE_INTERVAL_SECONDS = 15.0
 _LIVENESS_STRIKES = 2
+# Production's container has no session bus; a CI box or desktop hands its own one down.
+_SESSION_BUS_VARIABLE = "DBUS_SESSION_BUS_ADDRESS"
 
 
 def _headless_shell_beside(chromium: Path) -> Path | None:
@@ -124,6 +128,15 @@ def chromium_argv(chromium_path: str, profile_dir: str, user_agent: str | None) 
     return args
 
 
+def chromium_env() -> dict[str, str]:
+    """Return the host's environment minus the desktop session bus, which a headless engine never uses.
+
+    Chromium dials that bus on its UI thread at startup, after publishing its
+    DevTools port, so a bus that is slow to answer stalls the CDP handshake.
+    """
+    return {name: value for name, value in os.environ.items() if name != _SESSION_BUS_VARIABLE}
+
+
 def _devtools_file_reader(profile_dir: str) -> Callable[[], Awaitable[str | None]]:
     """Read Chromium's root websocket URL from the DevToolsActivePort file it writes once listening.
 
@@ -170,11 +183,17 @@ class Engine:
                     raise RuntimeError("chromium_path not resolved")
                 profile_dir = tempfile.mkdtemp(prefix="gaia-browser-host-")
                 proc = await spawn_engine(
-                    chromium_argv(chromium_path, profile_dir, user_agent), None
+                    chromium_argv(chromium_path, profile_dir, user_agent), chromium_env()
                 )
                 root_ws_url = await until_published(proc, _devtools_file_reader(profile_dir))
             root_mux = CdpMux(root_ws_url)
-            await root_mux.start()
+            try:
+                await root_mux.start()
+            except TimeoutError as exc:
+                raise EngineLaunchError(
+                    f"engine published {root_ws_url} but did not finish the CDP handshake "
+                    f"within {CDP_HANDSHAKE_TIMEOUT_SECONDS:.0f}s"
+                ) from exc
         except BaseException:
             if proc is not None:
                 await stop_process(proc)

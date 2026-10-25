@@ -2,13 +2,13 @@
 
 from datetime import UTC, datetime
 import re
-import threading
 from typing import Any
-from unittest.mock import ANY, AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, call, patch
 
 from fastapi import HTTPException, UploadFile
 import pytest
 
+from app.constants.files import BlobKind
 from app.models.support_models import (
     SupportAttachment,
     SupportEmailNotification,
@@ -73,16 +73,12 @@ def mock_support_repo():
 
 
 @pytest.fixture
-def mock_cloudinary():
-    with patch("app.services.support_service.cloudinary.uploader") as mock_uploader:
-        yield mock_uploader
-
-
-@pytest.fixture
-def mock_upload_file_to_cloudinary():
-    with patch("app.services.support_service.upload_file_to_cloudinary") as mock_upload:
-        mock_upload.return_value = "https://res.cloudinary.com/demo/support/ticket_file.png"
-        yield mock_upload
+def mock_blob_store():
+    store = MagicMock()
+    store.put = AsyncMock(return_value="https://res.cloudinary.com/demo/support/ticket_file.png")
+    store.delete = AsyncMock()
+    with patch("app.services.support_service.blob_store", return_value=store):
+        yield store
 
 
 @pytest.fixture
@@ -167,91 +163,17 @@ def _make_support_doc(
 
 
 class TestDeleteUploadedFiles:
-    async def test_success_deletion(self, mock_cloudinary):
-        """Cloudinary destroy is called and succeeds for a well-formed URL."""
-        mock_cloudinary.destroy.return_value = {"result": "ok"}
+    async def test_each_attachment_is_deleted_under_its_owner(self, mock_blob_store):
+        await _delete_uploaded_files("user-1", ["support/T_a.png", "support/T_b.png"])
 
-        urls = ["https://res.cloudinary.com/demo/image/upload/support/TICKET_file.png"]
-        await _delete_uploaded_files(urls)
-
-        mock_cloudinary.destroy.assert_called_once_with("support/TICKET_file")
-
-    async def test_malformed_url_without_support_segment_is_skipped(self, mock_cloudinary):
-        """URLs that do not contain 'support/' are silently skipped."""
-        urls = ["https://example.com/other/path/file.png"]
-        await _delete_uploaded_files(urls)
-
-        mock_cloudinary.destroy.assert_not_called()
-
-    async def test_support_segment_at_end_without_filename_is_skipped(self, mock_cloudinary):
-        """URL where 'support' is the last segment (no filename after it) is skipped."""
-        urls = ["https://res.cloudinary.com/demo/image/upload/support"]
-        await _delete_uploaded_files(urls)
-
-        mock_cloudinary.destroy.assert_not_called()
-
-    async def test_cloudinary_result_not_ok_logs_warning(self, mock_cloudinary):
-        """When Cloudinary returns a result other than 'ok', a warning is logged."""
-        mock_cloudinary.destroy.return_value = {"result": "not found"}
-
-        urls = ["https://res.cloudinary.com/demo/image/upload/support/TICKET_file.png"]
-        with patch("app.services.support_service.log") as mock_log:
-            await _delete_uploaded_files(urls)
-
-            mock_log.warning.assert_called_once()
-            assert "Failed to delete" in mock_log.warning.call_args[0][0]
-
-    async def test_exception_during_destroy_is_logged(self, mock_cloudinary):
-        """Exceptions from Cloudinary are caught and logged, not re-raised."""
-        mock_cloudinary.destroy.side_effect = Exception("network error")
-
-        urls = ["https://res.cloudinary.com/demo/image/upload/support/TICKET_file.png"]
-        with patch("app.services.support_service.log") as mock_log:
-            await _delete_uploaded_files(urls)
-
-            mock_log.error.assert_called_once()
-            assert mock_log.error.call_args.kwargs["error"] == "network error"
-            assert mock_log.error.call_args.kwargs["ticket_id"] == "TICKET"
-
-    async def test_multiple_urls_processed_independently(self, mock_cloudinary):
-        """All URLs are processed even if one fails."""
-        mock_cloudinary.destroy.side_effect = [
-            {"result": "ok"},
-            Exception("fail"),
-            {"result": "ok"},
+        assert mock_blob_store.delete.await_args_list == [
+            call("user-1", "support/T_a.png"),
+            call("user-1", "support/T_b.png"),
         ]
 
-        urls = [
-            "https://res.cloudinary.com/demo/image/upload/support/TICKET_a.png",
-            "https://res.cloudinary.com/demo/image/upload/support/TICKET_b.png",
-            "https://res.cloudinary.com/demo/image/upload/support/TICKET_c.png",
-        ]
-        with patch("app.services.support_service.log"):
-            await _delete_uploaded_files(urls)
-
-        assert mock_cloudinary.destroy.call_count == 3
-
-    async def test_empty_url_list_does_nothing(self, mock_cloudinary):
-        """An empty URL list results in no Cloudinary calls."""
-        await _delete_uploaded_files([])
-        mock_cloudinary.destroy.assert_not_called()
-
-    async def test_destroy_runs_off_the_event_loop(self, mock_cloudinary):
-        """Cloudinary's SDK is blocking HTTP; called inline it would stall the whole worker for the round trip."""
-        loop_thread = threading.current_thread()
-        call_threads: list[threading.Thread] = []
-
-        def record_calling_thread(public_id: str) -> dict[str, str]:
-            call_threads.append(threading.current_thread())
-            return {"result": "ok"}
-
-        mock_cloudinary.destroy.side_effect = record_calling_thread
-
-        urls = ["https://res.cloudinary.com/demo/image/upload/support/TICKET_file.png"]
-        await _delete_uploaded_files(urls)
-
-        assert call_threads, "destroy was never called"
-        assert call_threads[0] is not loop_thread
+    async def test_empty_list_deletes_nothing(self, mock_blob_store):
+        await _delete_uploaded_files("user-1", [])
+        mock_blob_store.delete.assert_not_awaited()
 
 
 # ===========================================================================
@@ -260,7 +182,7 @@ class TestDeleteUploadedFiles:
 
 
 class TestUploadSingleAttachment:
-    async def test_success_upload(self, mock_upload_file_to_cloudinary):
+    async def test_success_upload(self, mock_blob_store):
         """Happy path: valid file is uploaded and metadata is returned."""
         upload = _make_upload_file(
             filename="screenshot.png",
@@ -269,19 +191,28 @@ class TestUploadSingleAttachment:
         )
         current_time = datetime.now(UTC)
 
-        file_url, attachment_meta = await _upload_single_attachment(
+        public_id, attachment_meta = await _upload_single_attachment(
             attachment=upload,
             ticket_id="T1",
             current_time=current_time,
             allowed_types=ALLOWED_TYPES,
             max_file_size=MAX_FILE_SIZE,
+            user_id=USER_ID,
         )
 
-        assert file_url == mock_upload_file_to_cloudinary.return_value
+        assert public_id == "support/T1_screenshot.png"
+        mock_blob_store.put.assert_awaited_once_with(
+            USER_ID,
+            public_id,
+            b"x" * 100,
+            resource_type="auto",
+            kind=BlobKind.SUPPORT_ATTACHMENT,
+            content_type="image/png",
+        )
         assert attachment_meta.filename == "screenshot.png"
         assert attachment_meta.file_size == 100
         assert attachment_meta.content_type == "image/png"
-        assert attachment_meta.file_url == file_url
+        assert attachment_meta.file_url == mock_blob_store.put.return_value
 
     async def test_wrong_content_type_raises_400(self):
         """Non-image content type raises 400."""
@@ -298,6 +229,7 @@ class TestUploadSingleAttachment:
                 current_time=current_time,
                 allowed_types=ALLOWED_TYPES,
                 max_file_size=MAX_FILE_SIZE,
+                user_id=USER_ID,
             )
 
         assert exc_info.value.status_code == 400
@@ -317,6 +249,7 @@ class TestUploadSingleAttachment:
                 current_time=current_time,
                 allowed_types=ALLOWED_TYPES,
                 max_file_size=MAX_FILE_SIZE,
+                user_id=USER_ID,
             )
 
         assert exc_info.value.status_code == 400
@@ -335,6 +268,7 @@ class TestUploadSingleAttachment:
                 current_time=current_time,
                 allowed_types=ALLOWED_TYPES,
                 max_file_size=MAX_FILE_SIZE,
+                user_id=USER_ID,
             )
 
         assert exc_info.value.status_code == 400
@@ -356,12 +290,13 @@ class TestUploadSingleAttachment:
                 current_time=current_time,
                 allowed_types=ALLOWED_TYPES,
                 max_file_size=MAX_FILE_SIZE,
+                user_id=USER_ID,
             )
 
         assert exc_info.value.status_code == 400
         assert "exceeds maximum size" in exc_info.value.detail
 
-    async def test_file_exactly_at_max_size_succeeds(self, mock_upload_file_to_cloudinary):
+    async def test_file_exactly_at_max_size_succeeds(self, mock_blob_store):
         """File exactly at max size should succeed."""
         content = b"x" * MAX_FILE_SIZE
         upload = _make_upload_file(
@@ -377,11 +312,12 @@ class TestUploadSingleAttachment:
             current_time=current_time,
             allowed_types=ALLOWED_TYPES,
             max_file_size=MAX_FILE_SIZE,
+            user_id=USER_ID,
         )
 
         assert file_url is not None
 
-    async def test_upload_failure_raises_500(self):
+    async def test_upload_failure_raises_500(self, mock_blob_store):
         """Cloudinary upload failure raises 500."""
         upload = _make_upload_file(
             filename="fail.png",
@@ -390,24 +326,22 @@ class TestUploadSingleAttachment:
         )
         current_time = datetime.now(UTC)
 
-        with patch(
-            "app.services.support_service.upload_file_to_cloudinary",
-            side_effect=Exception("Cloudinary down"),
-        ):
-            with patch("app.services.support_service.log"):
-                with pytest.raises(HTTPException) as exc_info:
-                    await _upload_single_attachment(
-                        attachment=upload,
-                        ticket_id="T1",
-                        current_time=current_time,
-                        allowed_types=ALLOWED_TYPES,
-                        max_file_size=MAX_FILE_SIZE,
-                    )
+        mock_blob_store.put.side_effect = Exception("Cloudinary down")
+        with patch("app.services.support_service.log"):
+            with pytest.raises(HTTPException) as exc_info:
+                await _upload_single_attachment(
+                    attachment=upload,
+                    ticket_id="T1",
+                    current_time=current_time,
+                    allowed_types=ALLOWED_TYPES,
+                    max_file_size=MAX_FILE_SIZE,
+                    user_id=USER_ID,
+                )
 
         assert exc_info.value.status_code == 500
         assert "Failed to upload" in exc_info.value.detail
 
-    async def test_all_allowed_types_accepted(self, mock_upload_file_to_cloudinary):
+    async def test_all_allowed_types_accepted(self, mock_blob_store):
         """Each allowed content type can be uploaded."""
         for ctype in ALLOWED_TYPES:
             upload = _make_upload_file(
@@ -423,6 +357,7 @@ class TestUploadSingleAttachment:
                 current_time=current_time,
                 allowed_types=ALLOWED_TYPES,
                 max_file_size=MAX_FILE_SIZE,
+                user_id=USER_ID,
             )
             assert file_url is not None
 
@@ -671,7 +606,7 @@ class TestCreateSupportRequestWithAttachments:
         self,
         mock_support_repo,
         mock_email_notifications,
-        mock_upload_file_to_cloudinary,
+        mock_blob_store,
         sample_request_data,
     ):
         """Happy path: files uploaded, request stored, emails sent."""
@@ -701,7 +636,7 @@ class TestCreateSupportRequestWithAttachments:
         self,
         mock_support_repo,
         mock_email_notifications,
-        mock_upload_file_to_cloudinary,
+        mock_blob_store,
         sample_request_data,
     ):
         """Ticket id is GAIA-<YYYYMMDD>-<8 uppercase hex>."""
@@ -719,7 +654,7 @@ class TestCreateSupportRequestWithAttachments:
         self,
         mock_support_repo,
         mock_email_notifications,
-        mock_upload_file_to_cloudinary,
+        mock_blob_store,
         sample_request_data,
     ):
         """The wide-event context and the success log lines carry exact values."""
@@ -761,7 +696,7 @@ class TestCreateSupportRequestWithAttachments:
         self,
         mock_support_repo,
         mock_email_notifications,
-        mock_upload_file_to_cloudinary,
+        mock_blob_store,
         sample_request_data,
     ):
         """The stored document carries the with-images source, image count, priority."""
@@ -843,7 +778,7 @@ class TestCreateSupportRequestWithAttachments:
         mock_support_repo,
         mock_send_team_notification,
         mock_send_user_email,
-        mock_upload_file_to_cloudinary,
+        mock_blob_store,
         sample_request_data,
     ):
         """Team notification receives the full payload incl. uploaded metadata."""
@@ -929,7 +864,7 @@ class TestCreateSupportRequestWithAttachments:
         self,
         mock_support_repo,
         mock_email_notifications,
-        mock_upload_file_to_cloudinary,
+        mock_blob_store,
         sample_request_data,
     ):
         """Exactly 5 attachments should be accepted."""
@@ -980,7 +915,7 @@ class TestCreateSupportRequestWithAttachments:
     async def test_db_failure_cleans_up_uploaded_files(
         self,
         mock_support_repo,
-        mock_upload_file_to_cloudinary,
+        mock_blob_store,
         sample_request_data,
     ):
         """When the repository create fails, uploaded files are cleaned up."""
@@ -990,28 +925,26 @@ class TestCreateSupportRequestWithAttachments:
             _make_upload_file("img1.png", "image/png", b"data"),
         ]
 
-        with patch(
-            "app.services.support_service._delete_uploaded_files",
-            new_callable=AsyncMock,
-        ) as mock_delete:
-            with patch("app.services.support_service.log"):
-                with pytest.raises(HTTPException) as exc_info:
-                    await create_support_request_with_attachments(
-                        request_data=sample_request_data,
-                        attachments=attachments,
-                        user_id=USER_ID,
-                        user_email=USER_EMAIL,
-                    )
+        with patch("app.services.support_service.log"):
+            with pytest.raises(HTTPException) as exc_info:
+                await create_support_request_with_attachments(
+                    request_data=sample_request_data,
+                    attachments=attachments,
+                    user_id=USER_ID,
+                    user_email=USER_EMAIL,
+                )
 
         assert exc_info.value.status_code == 500
-        mock_delete.assert_awaited_once()
+        [(uploaded_owner, uploaded_id, *_)] = [c.args for c in mock_blob_store.put.await_args_list]
+        assert mock_blob_store.delete.await_args_list == [call(uploaded_owner, uploaded_id)]
+        assert uploaded_owner == USER_ID
 
     async def test_email_failure_cleans_up_files_and_db(
         self,
         mock_support_repo,
         mock_send_team_notification,
         mock_send_user_email,
-        mock_upload_file_to_cloudinary,
+        mock_blob_store,
         sample_request_data,
     ):
         """Email failure triggers cleanup of both files and DB entry."""
@@ -1021,22 +954,20 @@ class TestCreateSupportRequestWithAttachments:
             _make_upload_file("img1.png", "image/png", b"data"),
         ]
 
-        with patch(
-            "app.services.support_service._delete_uploaded_files",
-            new_callable=AsyncMock,
-        ) as mock_delete_files:
-            with patch("app.services.support_service.log"):
-                with pytest.raises(HTTPException) as exc_info:
-                    await create_support_request_with_attachments(
-                        request_data=sample_request_data,
-                        attachments=attachments,
-                        user_id=USER_ID,
-                        user_email=USER_EMAIL,
-                    )
+        with patch("app.services.support_service.log"):
+            with pytest.raises(HTTPException) as exc_info:
+                await create_support_request_with_attachments(
+                    request_data=sample_request_data,
+                    attachments=attachments,
+                    user_id=USER_ID,
+                    user_email=USER_EMAIL,
+                )
 
         assert exc_info.value.status_code == 500
-        # Files should be cleaned up
-        mock_delete_files.assert_awaited_once()
+        # Files are deleted under the owner they were uploaded for.
+        [(uploaded_owner, uploaded_id, *_)] = [c.args for c in mock_blob_store.put.await_args_list]
+        assert mock_blob_store.delete.await_args_list == [call(uploaded_owner, uploaded_id)]
+        assert uploaded_owner == USER_ID
         # DB entry should be rolled back
         mock_support_repo.delete.assert_awaited_once()
 
@@ -1045,7 +976,7 @@ class TestCreateSupportRequestWithAttachments:
         mock_support_repo,
         mock_send_team_notification,
         mock_send_user_email,
-        mock_upload_file_to_cloudinary,
+        mock_blob_store,
         sample_request_data,
     ):
         """If file cleanup fails during email rollback, DB rollback still happens."""
@@ -1077,7 +1008,7 @@ class TestCreateSupportRequestWithAttachments:
         mock_support_repo,
         mock_send_team_notification,
         mock_send_user_email,
-        mock_upload_file_to_cloudinary,
+        mock_blob_store,
         sample_request_data,
     ):
         """When DB rollback finds nothing to delete, an error is logged."""
@@ -1107,7 +1038,7 @@ class TestCreateSupportRequestWithAttachments:
     async def test_unexpected_error_cleans_up_everything(
         self,
         mock_support_repo,
-        mock_upload_file_to_cloudinary,
+        mock_blob_store,
         sample_request_data,
     ):
         """An unexpected (non-HTTP) error triggers full cleanup of files and DB."""
@@ -1144,7 +1075,7 @@ class TestCreateSupportRequestWithAttachments:
     async def test_unexpected_error_cleanup_failures_still_raises_500(
         self,
         mock_support_repo,
-        mock_upload_file_to_cloudinary,
+        mock_blob_store,
         sample_request_data,
     ):
         """Even when both file cleanup and DB rollback fail, 500 is raised."""
@@ -1204,7 +1135,7 @@ class TestCreateSupportRequestWithAttachments:
         self,
         mock_support_repo,
         mock_email_notifications,
-        mock_upload_file_to_cloudinary,
+        mock_blob_store,
         sample_request_data,
     ):
         err = RuntimeError("smtp refused")
@@ -1558,34 +1489,33 @@ class TestRollbackCreatedRequest:
 
 class TestProcessAttachmentsPins:
     async def test_empty_attachment_list_returns_two_empty_lists(self):
-        assert await _process_attachments([], "GAIA-1", datetime.now(UTC)) == ([], [])
+        assert await _process_attachments([], "GAIA-1", datetime.now(UTC), USER_ID) == ([], [])
 
     async def test_over_limit_raises_with_exact_detail(self, sample_request_data):
         uploads = [_make_upload_file(filename=f"f{i}.png") for i in range(MAX_ATTACHMENTS + 1)]
         with pytest.raises(HTTPException) as exc:
-            await _process_attachments(uploads, "GAIA-1", datetime.now(UTC))
+            await _process_attachments(uploads, "GAIA-1", datetime.now(UTC), USER_ID)
         assert exc.value.status_code == 400
         assert exc.value.detail == f"Maximum {MAX_ATTACHMENTS} images allowed"
 
-    async def test_success_returns_urls_and_metadata_in_order(self, mock_upload_file_to_cloudinary):
-        uploads = [_make_upload_file(), _make_upload_file()]
-        urls, processed = await _process_attachments(uploads, "GAIA-9", datetime.now(UTC))
-        assert len(urls) == 2
+    async def test_success_returns_public_ids_and_metadata_in_order(self, mock_blob_store):
+        uploads = [_make_upload_file("a.png"), _make_upload_file("b.png")]
+        ids, processed = await _process_attachments(uploads, "GAIA-9", datetime.now(UTC), USER_ID)
+        assert ids == ["support/GAIA-9_a.png", "support/GAIA-9_b.png"]
         assert len(processed) == 2
-        assert urls == ["https://res.cloudinary.com/demo/support/ticket_file.png"] * 2
         for att in processed:
             assert isinstance(att, SupportAttachment)
 
     async def test_each_upload_receives_its_attachment_ticket_and_constraints(self):
-        """Every per-file task must carry the real ticket id and the module's type/size constraints, never None for either."""
+        """Every per-file task must carry the real ticket id, owner and the module's type/size constraints."""
         now = datetime.now(UTC)
         uploads = [_make_upload_file("a.png"), _make_upload_file("b.png")]
         with patch(
             "app.services.support_service._upload_single_attachment",
             new_callable=AsyncMock,
-            return_value=("url", MagicMock(spec=SupportAttachment)),
+            return_value=("id", MagicMock(spec=SupportAttachment)),
         ) as upload:
-            await _process_attachments(uploads, "GAIA-7", now)
+            await _process_attachments(uploads, "GAIA-7", now, USER_ID)
 
         assert upload.await_count == 2
         first = upload.await_args_list[0].kwargs
@@ -1594,12 +1524,13 @@ class TestProcessAttachmentsPins:
         assert first["current_time"] == now
         assert first["allowed_types"] == ALLOWED_TYPES
         assert first["max_file_size"] == MAX_FILE_SIZE
+        assert first["user_id"] == USER_ID
 
     async def test_results_after_a_failed_upload_are_still_collected_for_cleanup(
-        self, mock_upload_file_to_cloudinary
+        self, mock_blob_store
     ):
-        """Files uploaded after a failing one still reached Cloudinary and must be cleaned up too, or they're orphaned forever."""
-        mock_upload_file_to_cloudinary.side_effect = [
+        """Files uploaded after a failing one still reached the store and must be cleaned up too, or they're orphaned forever."""
+        mock_blob_store.put.side_effect = [
             "https://res.cloudinary.com/demo/support/GAIA-3_a.png",
             RuntimeError("cloudinary down"),
             "https://res.cloudinary.com/demo/support/GAIA-3_c.png",
@@ -1620,32 +1551,23 @@ class TestProcessAttachmentsPins:
                 ],
                 "GAIA-3",
                 datetime.now(UTC),
+                USER_ID,
             )
 
-        deleted_urls = delete.await_args.args[0]
-        assert deleted_urls == [
-            "https://res.cloudinary.com/demo/support/GAIA-3_a.png",
-            "https://res.cloudinary.com/demo/support/GAIA-3_c.png",
+        assert delete.await_args.args == (
+            USER_ID,
+            ["support/GAIA-3_a.png", "support/GAIA-3_c.png"],
+        )
+
+    async def test_upload_failure_cleans_up_partial_and_reraises(self, mock_blob_store):
+        mock_blob_store.put.side_effect = [
+            "https://res.cloudinary.com/demo/support/ticket_file.png",
+            RuntimeError("cloudinary down"),
         ]
-
-    async def test_upload_failure_cleans_up_partial_and_reraises(
-        self, mock_upload_file_to_cloudinary
-    ):
-        calls: list[str] = []
-
-        def flaky(*args: Any, **kwargs: Any) -> str:
-            # Must be sync: upload_file_to_cloudinary runs via loop.run_in_executor,
-            # so an async side_effect here would return an un-awaited coroutine instead of raising.
-            calls.append("upload")
-            if len(calls) == 2:
-                raise RuntimeError("cloudinary down")
-            return "https://res.cloudinary.com/demo/support/ticket_file.png"
-
-        mock_upload_file_to_cloudinary.side_effect = flaky
         deleted: list[list[str]] = []
 
-        async def fake_delete(urls: list[str]) -> None:
-            deleted.append(list(urls))
+        async def fake_delete(owner_id: str, public_ids: list[str]) -> None:
+            deleted.append(list(public_ids))
 
         # _upload_single_attachment wraps any upload failure into an
         # HTTPException (keeping the original as __cause__) before
@@ -1655,13 +1577,16 @@ class TestProcessAttachmentsPins:
             pytest.raises(HTTPException) as exc_info,
         ):
             await _process_attachments(
-                [_make_upload_file(), _make_upload_file()], "GAIA-2", datetime.now(UTC)
+                [_make_upload_file("a.png"), _make_upload_file("b.png")],
+                "GAIA-2",
+                datetime.now(UTC),
+                USER_ID,
             )
 
         assert exc_info.value.status_code == 500
         assert isinstance(exc_info.value.__cause__, RuntimeError)
         assert str(exc_info.value.__cause__) == "cloudinary down"
-        assert deleted == [["https://res.cloudinary.com/demo/support/ticket_file.png"]]
+        assert deleted == [["support/GAIA-2_a.png"]]
 
 
 class TestCreateSupportRequestLogPins:

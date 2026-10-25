@@ -11,6 +11,7 @@
  */
 
 import { isProductionServer } from "./server-config";
+import { getDesktopSettings } from "./settings";
 
 /** Local FastAPI dev server origin. */
 const DEV_API_ORIGIN = "http://localhost:8000";
@@ -21,10 +22,14 @@ const PROD_API_ORIGIN = "https://api.heygaia.io";
 /**
  * Resolve the API origin for the current environment.
  *
- * Honors `NEXT_PUBLIC_API_BASE_URL` when explicitly provided to the
- * main process; otherwise localhost in dev, production URL when packaged.
+ * A self-hosted server serves its API on its own origin. Otherwise honors
+ * `NEXT_PUBLIC_API_BASE_URL` when explicitly provided to the main process;
+ * otherwise localhost in dev, production URL when packaged.
  */
 export function getApiOrigin(): string {
+  const { selfHostOrigin } = getDesktopSettings();
+  if (selfHostOrigin) return selfHostOrigin;
+
   const fromEnv = process.env["NEXT_PUBLIC_API_BASE_URL"];
   if (fromEnv) return fromEnv.replace(/\/api\/v1\/?$/, "");
 

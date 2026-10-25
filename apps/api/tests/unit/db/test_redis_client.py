@@ -863,3 +863,35 @@ class TestCacheTTLReExport:
         from app.db.redis import CACHE_TTL
 
         assert CACHE_TTL == 3600
+
+
+class TestVerifyConnection:
+    """An unreachable Redis stops a real deployment's boot; development only logs."""
+
+    @pytest.mark.parametrize(
+        ("env", "auth_mode"), [("production", "workos"), ("selfhost", "local")]
+    )
+    async def test_unreachable_redis_stops_a_real_deployment(
+        self, monkeypatch: pytest.MonkeyPatch, env: str, auth_mode: str
+    ) -> None:
+        from app.config.settings import settings
+
+        monkeypatch.setattr(settings, "ENV", env)
+        monkeypatch.setattr(settings, "AUTH_MODE", auth_mode)
+        cache = RedisCache.__new__(RedisCache)
+        cache.redis = AsyncMock()
+        cache.redis.ping.side_effect = ConnectionRefusedError("refused")
+
+        with pytest.raises(ConnectionError, match="ping failed"):
+            await cache.verify_connection()
+
+    async def test_unreachable_redis_only_logs_in_development(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from app.config.settings import settings
+
+        monkeypatch.setattr(settings, "ENV", "development")
+        cache = RedisCache.__new__(RedisCache)
+        cache.redis = None
+
+        await cache.verify_connection()

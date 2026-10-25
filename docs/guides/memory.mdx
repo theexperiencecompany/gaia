@@ -7,101 +7,61 @@ icon: "brain"
 
 import { Chat } from "/snippets/chat-bubbles.jsx";
 
-GAIA remembers things about you across every conversation. Mention your sister once, and GAIA knows her forever. Tell it where you live, and it never asks again. The more you talk, the less you explain.
+GAIA remembers things about you across conversations, so you stop repeating yourself.
 
-It all happens automatically. You never have to say "remember this" — GAIA picks up on what matters and keeps it.
-
-<Frame>
-  <img className="rounded-lg" src="/images/guides/memory/memory-folders.png" alt="Memory settings showing folders with stored facts organized by topic" />
-</Frame>
-
-## Four kinds of memory
-
-Everything GAIA learns about you lives in one place: **Settings > Memories**. There are four tabs, each showing the same memory a different way.
-
-### Facts
-
-Individual things GAIA knows about you. Each one is a single, specific fact.
-
-- "Sam's email is sam@example.com"
-- "You prefer concise communication"
-- "Your birthday is March 14th"
-
-GAIA adds these automatically during conversations. If you mention something and it changes later ("I moved to Austin"), GAIA quietly updates the existing fact. Nothing is double-stored, and contradictions resolve to whatever you said most recently.
-
-Facts are grouped into **folders** by topic — relationships, work, preferences, and so on. GAIA creates folders on its own as it learns.
-
-### Journal
-
-A short diary entry for each day you've had a conversation. The Journal shows you what happened when — which topics came up, what GAIA helped with, what it learned.
-
-<Frame>
-  <img className="rounded-lg" src="/images/guides/memory/memory-journal.png" alt="Journal tab showing a timeline of conversation summaries grouped by day" />
-</Frame>
-
-You can browse back through time and see how GAIA's understanding of your life has built up. Each entry is created automatically at the end of a conversation.
-
-### Documents
-
-GAIA keeps a small set of auto-written documents that it reads at the start of every conversation. Think of them as living notes about you:
-
-- **user.md** — who you are, where you work, where you live, how you like to communicate
-- **memory.md** — a summary of what GAIA has learned so far
-- **people.md** — the people in your life and how they connect
-- **agenda.md** — your current priorities and what's on your plate
-
-<Frame>
-  <img className="rounded-lg" src="/images/guides/memory/memory-documents.png" alt="Documents tab showing the user.md profile document with identity, work, and location sections" />
-</Frame>
-
-GAIA keeps these documents up to date as it learns. You can also edit them directly — click **Edit** on any document to make changes yourself.
-
-### Graph
-
-A visual map of the people, places, and projects in your life, and how they connect. If GAIA knows you have a co-founder, and it knows your co-founder has an email address, those appear as connected nodes.
-
-<Frame>
-  <img className="rounded-lg" src="/images/guides/memory/memory-graph-view.png" alt="Graph tab showing a network visualization of entities and relationships" />
-</Frame>
-
-The graph is useful for getting a bird's-eye view of what GAIA knows. You can zoom, pan, fit to screen, and export it as a PNG or SVG.
-
-## How memory gets updated
+You never have to say "remember this". GAIA picks up what matters on its own.
 
 <Chat
   messages={[
     { from: "user", text: "I just moved to Austin" },
     { from: "gaia", text: "Got it, I've updated your location. Is there anything you need help with in Austin?" },
-    { from: "user", text: "my new email at work is alex@newcompany.com" },
-    { from: "gaia", text: "Noted, I've updated your work email." },
   ]}
 />
 
-You never have to ask GAIA to remember something. It captures facts from context automatically — during conversations, when you mention people, when you share preferences. If something changes, just say so. GAIA replaces the old information; it doesn't keep both.
+When something changes, just say so. GAIA replaces the old fact.
 
-<Tip>
-  The more you use GAIA across integrations, the richer its memory becomes. A
-  conversation where you message someone on Slack teaches GAIA their handle for
-  good.
-</Tip>
+## See what GAIA knows
 
-## You're in control
+Open **Settings > Memories**. It has four tabs.
 
-Everything GAIA knows about you is visible and editable in **Settings > Memories**.
+| Tab           | What it shows                                                                                       |
+| ------------- | --------------------------------------------------------------------------------------------------- |
+| **Facts**     | Single facts, grouped into topic folders. Example: "Your birthday is March 14th".                   |
+| **Journal**   | A short summary of each day you talked to GAIA.                                                     |
+| **Documents** | Living notes GAIA reads at the start of every conversation: `user.md`, `memory.md`, `people.md`, `agenda.md`. |
+| **Graph**     | A map of the people, places, and projects in your life and how they connect.                        |
 
-- **View** any fact, document, or journal entry
-- **Edit** a fact or document if something is wrong or outdated
-- **Forget** any individual memory with the delete button
-- **Clear all** memories to start fresh
+<Frame>
+  <img className="rounded-lg" src="/images/guides/memory/memory-folders.png" alt="Memory settings showing folders with stored facts organized by topic" />
+</Frame>
+
+## Fix or remove memories
+
+- **Edit** a fact or document that is wrong.
+- **Delete** any single memory.
+- **Clear all** to start fresh.
 
 <Warning>
-  Clearing all memories cannot be undone. GAIA will re-learn from future
-  conversations, but everything it knows today will be gone.
+  Clearing all memories cannot be undone.
 </Warning>
 
-Memory is per-account and private. No other user can see your memories, and nothing is shared with third-party services. Everything is stored and processed within GAIA's own infrastructure.
+Your memories are private to your account.
+
+<Accordion title="More on each tab">
+  Documents are auto-written, and you can edit them with **Edit**.
+
+  - **user.md**: who you are, where you work and live, how you like to communicate
+  - **memory.md**: a summary of what GAIA has learned
+  - **people.md**: the people in your life and how they connect
+  - **agenda.md**: your current priorities
+
+  The graph supports zoom, pan, fit to screen, and export as PNG or SVG.
+
+  <Frame>
+    <img className="rounded-lg" src="/images/guides/memory/memory-graph-view.png" alt="Graph tab showing a network visualization of entities and relationships" />
+  </Frame>
+</Accordion>
 
 ## Related resources
 
 - [Key term: Agent Memory](https://heygaia.io/learn/agent-memory)
-

@@ -60,6 +60,8 @@ function readData(file: string): Json {
 }
 
 describe("marketing price data", () => {
+  // Reads and parses every marketing data file in seven locales; on a loaded CI
+  // runner that is well past vitest's 5s default even though it takes ~1s idle.
   it("quotes no competitor $20 in base files or the English overlay", () => {
     const remaining = pricedDataFiles()
       .filter((file) => !file.startsWith("i18n/") || file.endsWith("/en.json"))
@@ -73,7 +75,7 @@ describe("marketing price data", () => {
           .filter((hit) => hit.competitor_prices > 0),
       );
     expect(remaining).toEqual([]);
-  });
+  }, 30_000);
 
   it("pins the remaining translated competitor $20 as locale debt", () => {
     const remaining = pricedDataFiles()
@@ -98,7 +100,7 @@ describe("marketing price data", () => {
     ).toEqual(
       competitorPrices.toSorted((a, b) => byKey(a).localeCompare(byKey(b))),
     );
-  });
+  }, 30_000);
 
   it("quotes GAIA's price through the token in every locale", () => {
     for (const feature of ["alternatives", "comparisons"] as const)

@@ -1,6 +1,6 @@
 """E2E: the account-center surface wired into a real compiled GAIA graph.
 
-Covers real GAIA code: the five account mutation tools as registered for the
+Covers real GAIA code: the four account mutation tools as registered for the
 executor; the real create_agent (bigtool) graph dispatching LLM tool calls
 with user_id threaded through config; the real ToolRegistry stamps (settings
 tools carry always_gate, manage_linked_account does not) and resolve_policy
@@ -51,7 +51,6 @@ def _graph_with(fake_llm, extra_tools=(), **patches):
             for name in (
                 "update_notification_settings",
                 "update_preferences",
-                "update_custom_instructions",
                 "set_selected_voice",
                 "manage_linked_account",
             )
@@ -184,30 +183,28 @@ class TestAccountToolsThroughGraph:
                     tool_calls=[
                         {
                             "id": "c3",
-                            "name": "update_custom_instructions",
-                            "args": {"instructions": "x" * 501},
+                            "name": "update_preferences",
+                            "args": {"timezone": "Mars/Olympus_Mons"},
                             "type": "tool_call",
                         }
                     ],
                 ),
-                AIMessage(content="Sorry, that was too long."),
+                AIMessage(content="That timezone does not exist."),
             ]
         )
         graph = build_gaia_test_graph(
             fake_llm=fake_llm,
-            tool_registry={
-                "update_custom_instructions": TOOLS_BY_NAME["update_custom_instructions"]
-            },
+            tool_registry={"update_preferences": TOOLS_BY_NAME["update_preferences"]},
         )
 
         result = await graph.ainvoke(
-            {"messages": [HumanMessage(content="remember this: ...")]},
+            {"messages": [HumanMessage(content="set my timezone to Mars")]},
             config=thread_config,
         )
 
         [tool_msg] = _tool_messages(result["messages"])
         assert tool_msg.content.startswith("Error:")
-        assert "500 characters" in tool_msg.content
+        assert "Invalid timezone 'Mars/Olympus_Mons'" in tool_msg.content
         _patched_seams.update_prefs.assert_not_awaited()
 
     async def test_manage_linked_account_generate_link_returns_connect_instructions(
@@ -262,7 +259,7 @@ class TestHILWiring:
         registry = asyncio.run(grab())
         meta = registry.get_tool_meta("update_notification_settings")
         assert meta is not None and meta.always_gate is True
-        for name in ("update_preferences", "update_custom_instructions", "set_selected_voice"):
+        for name in ("update_preferences", "set_selected_voice"):
             assert registry.get_tool_meta(name).always_gate is True, name
         link_meta = registry.get_tool_meta("manage_linked_account")
         assert link_meta is not None and link_meta.always_gate is False

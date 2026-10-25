@@ -17,6 +17,7 @@ import React, {
 import { getLinkByLabel } from "@/config/appConfig";
 import { prepareNewChat } from "@/features/chat/utils/newChatNavigation";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
+import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 import { usePlatform } from "@/hooks/ui/usePlatform";
 import { track } from "@/lib/analytics";
 
@@ -169,6 +170,8 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
   const router = useRouter();
   const { modifierKeyName } = usePlatform();
   const { isPaid, isUnknown } = useIsPaid();
+  // Self-host instances have no billing — the upgrade CTA makes no sense there.
+  const billingHidden = !useDeployment().bills;
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -331,6 +334,12 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
         if (item.hideWhenSubscribed && (isUnknown || isPaid)) {
           continue;
         }
+        // Self-host instances have no billing — the upgrade CTA makes no sense
+        // there, so it is hidden rather than offering a purchase that cannot
+        // happen.
+        if (item.hideWhenBillingDisabled && billingHidden) {
+          continue;
+        }
         // Filter by search
         if (
           search &&
@@ -345,7 +354,7 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
       }
     }
     return sections;
-  }, [search, isUnknown, isPaid, buildMenuItem]);
+  }, [search, isUnknown, isPaid, billingHidden, buildMenuItem]);
 
   return (
     <AnimatePresence>

@@ -67,7 +67,7 @@ const differentiators = [
   {
     title: "Self-Hostable via Docker",
     description:
-      "The GAIA CLI sets up your environment and starts the whole stack in Docker with `gaia init` and `gaia start`. Run it on a laptop, a home server or any VPS.",
+      "One command, `gaia up`, installs Docker if it is missing, writes the configuration and starts the whole stack. Run it on a laptop, a home server or any VPS.",
   },
   {
     title: "Your Data in Your Databases",
@@ -343,7 +343,7 @@ export default function OpenSourceAIClient() {
         persona="Open Source Users"
         stats={[
           { value: "Public", label: "source on GitHub" },
-          { value: "2 cmds", label: "gaia init, gaia start" },
+          { value: "1 cmd", label: "gaia up" },
           { value: "1 click", label: "OAuth integrations" },
           { value: "free", label: "to self-host" },
         ]}

@@ -77,6 +77,11 @@ def _argument_gate_hit(tool_name: str, args: Mapping[str, object] | None) -> boo
     return all(args.get(key) == value for key, value in required.items())
 
 
+async def asks_every_time(tool_name: str, args: Mapping[str, object] | None) -> bool:
+    """Whether this call asks in every mode, beyond any per-tool override's reach."""
+    return await _is_always_gated(tool_name) or _argument_gate_hit(tool_name, args)
+
+
 async def gated_tool_object(
     request: ToolCallRequest, user_id: str, tool_name: str
 ) -> BaseTool | None:
@@ -120,7 +125,7 @@ async def resolve_policy(request: ToolCallRequest, user_id: str, tool_name: str)
     calls that must never slip through).
     """
     call = unpack_tool_call(request)
-    if await _is_always_gated(tool_name) or _argument_gate_hit(tool_name, call.args):
+    if await asks_every_time(tool_name, call.args):
         return "ask"
     prefs = await _preferences(user_id)
     if prefs.mode == "always_allow":
@@ -144,9 +149,7 @@ async def is_gated(
     Otherwise the user's per-tool choice wins in both directions — even over an
     MCP destructiveHint — since it is a deliberate setting on their own account.
     """
-    if await _is_always_gated(tool_name):
-        return True
-    if _argument_gate_hit(tool_name, args):
+    if await asks_every_time(tool_name, args):
         return True
     override = prefs.tool_overrides.get(tool_name)
     if override is not None:
@@ -197,10 +200,8 @@ async def has_pausing_sibling(request: ToolCallRequest, user_id: str, tool_call_
 
     # Forced-ask siblings pause even when HIL is off, since the stamp isn't
     # preference-driven — checked before the always_allow fast path below.
-    registry = await _stamp_registry()
     for name, args in siblings:
-        meta = registry.get_tool_meta(name) if registry else None
-        if (meta is not None and meta.always_gate) or _argument_gate_hit(name, args or None):
+        if await asks_every_time(name, args or None):
             return True
 
     prefs = await get_hil_preferences(user_id)

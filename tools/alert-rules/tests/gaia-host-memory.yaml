@@ -20,7 +20,7 @@ tests:
             exp_annotations:
               description: >-
                 Sustained memory pressure on the single production node is what precedes kernel OOM kills and the Swarm restarts that follow them. The largest limits on this box are the API at 4G, the embedding sidecar at 3G, and the ARQ worker and voice agent at 2G each — check "Memory Usage per Container" to see which one is growing.
-              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-host-memory
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-host-memory
               __dashboardUid__: gaia-host
               __panelId__: '2'
 
