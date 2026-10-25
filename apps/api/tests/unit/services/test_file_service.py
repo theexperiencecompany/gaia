@@ -1002,8 +1002,12 @@ class TestFileServiceUpdate:
         assert update.filename == "new.pdf"
         assert update.model_fields_set == {"filename"}
         sidecar_kwargs = sidecar.await_args.kwargs
+        assert sidecar_kwargs["user_id"] == USER_ID
+        assert sidecar_kwargs["conversation_id"] == "conv-1"
         assert sidecar_kwargs["safe_filename"] == "f-1_old.pdf"
         assert "# Summary: new.pdf" in sidecar_kwargs["summary_md"]
+        assert "`application/pdf`" in sidecar_kwargs["summary_md"]
+        assert "desc" in sidecar_kwargs["summary_md"]
         assert "page-body" in sidecar_kwargs["summary_md"]
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)

@@ -78,10 +78,11 @@ class TestMirrorUpload:
     async def test_writes_the_bytes_and_the_sidecar(self, workspace):
         root, uploads = workspace
         timer = _timer()
+        writer = _fake_writer(root)
 
         with (
             patch.object(sandbox, "fs_timer", timer),
-            patch.object(sandbox, "write_session_file", _fake_writer(root)),
+            patch.object(sandbox, "write_session_file", writer),
             patch.object(sandbox, "chmod_path", AsyncMock()) as chmod,
             patch.object(sandbox, "publish_artifact_event", AsyncMock()) as publish,
         ):
@@ -89,6 +90,14 @@ class TestMirrorUpload:
 
         assert path == f"/workspace/sessions/{CONV}/user-uploaded/f-1_table.png"
         timer.assert_called_once_with(FsOps.UPLOAD_PERSIST_SANDBOX)
+        main_call = writer.await_args_list[0].kwargs
+        assert main_call["user_id"] == USER
+        assert main_call["conversation_id"] == CONV
+        assert main_call["relative_path"] == "user-uploaded/f-1_table.png"
+        assert main_call["content"] == b"image-bytes"
+        sidecar_call = writer.await_args_list[1].kwargs
+        assert sidecar_call["user_id"] == USER
+        assert sidecar_call["conversation_id"] == CONV
         assert (uploads / "f-1_table.png").read_bytes() == b"image-bytes"
         sidecar = (uploads / "f-1_table.png.summary.md").read_text()
         assert "# Summary: table.png" in sidecar
@@ -105,6 +114,26 @@ class TestMirrorUpload:
         assert event["path"] == "f-1_table.png"
         assert event["size_bytes"] == len(b"image-bytes")
         assert event["content_type"] == "image/png"
+
+    async def test_a_page_only_summary_reaches_the_sidecar(self, workspace):
+        root, uploads = workspace
+
+        with (
+            patch.object(sandbox, "fs_timer", _timer()),
+            patch.object(sandbox, "write_session_file", _fake_writer(root)),
+            patch.object(sandbox, "chmod_path", AsyncMock()),
+            patch.object(sandbox, "publish_artifact_event", AsyncMock()),
+        ):
+            await sandbox.mirror_upload(
+                USER,
+                CONV,
+                _mirror(
+                    description=None,
+                    page_wise_summary={"data": {"page_number": 1, "content": "page-body"}},
+                ),
+            )
+
+        assert "page-body" in (uploads / "f-1_table.png.summary.md").read_text()
 
     async def test_no_summary_means_no_sidecar(self, workspace):
         root, uploads = workspace
