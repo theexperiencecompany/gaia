@@ -308,6 +308,7 @@ async def embed_query(text: str, *, interactive: bool = False) -> list[float]:
                 EmbedQueryResponse,
                 interactive=interactive,
             ),
+            interactive=interactive,
         )
         return result.vector
     return await _observed("embed_query", "local", 1, asyncio.to_thread(_embed_query_sync, text))
@@ -359,6 +360,7 @@ async def _sidecar_rerank(
                 RerankResponse,
                 interactive=interactive,
             ),
+            interactive=interactive,
         )
         scores.extend(result.scores)
     return scores

@@ -88,7 +88,12 @@ class TestEmbedBatchSplitsRequests:
         observed: list[tuple[str, str, int]] = []
 
         async def fake_observed(
-            operation: str, backend: str, count: int, awaitable: Awaitable[Any]
+            operation: str,
+            backend: str,
+            count: int,
+            awaitable: Awaitable[Any],
+            *,
+            interactive: bool = False,
         ) -> Any:
             observed.append((operation, backend, count))
             return await awaitable
@@ -666,4 +671,27 @@ async def test_an_interactive_fail_fast_error_is_not_recorded_as_an_error(
 
     with pytest.raises(TimeoutError):
         await embeddings._observed("embed_query", "sidecar", 1, times_out())
+    assert recorded == ["error"]
+
+
+@pytest.mark.regression
+async def test_the_real_embed_query_path_does_not_log_a_handled_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The flag has to reach _observed from embed_query, not only to the transport."""
+    recorded: list[str] = []
+    monkeypatch.setattr(embeddings.log, "error", lambda *a, **k: recorded.append("error"))
+    monkeypatch.setattr(embeddings, "_sidecar_url", lambda: "http://sidecar")
+
+    async def unreachable(*args: object, **kwargs: object) -> None:
+        raise httpx.ConnectError("sidecar down")
+
+    monkeypatch.setattr(embeddings, "_sidecar_post", unreachable)
+
+    with pytest.raises(httpx.ConnectError):
+        await embeddings.embed_query("q", interactive=True)
+    assert recorded == []
+
+    with pytest.raises(httpx.ConnectError):
+        await embeddings.embed_query("q")
     assert recorded == ["error"]
