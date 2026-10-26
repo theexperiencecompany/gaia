@@ -10,10 +10,13 @@ import { AuthorTooltip } from "./AuthorTooltip";
 interface BlogCardProps {
   blog: BlogPostMeta;
   variant?: "large" | "small";
+  /** h2 where the cards sit directly under the page h1, h3 under a section heading. */
+  titleAs: "h2" | "h3";
 }
 
-export function BlogCard({ blog, variant = "large" }: BlogCardProps) {
+export function BlogCard({ blog, variant = "large", titleAs }: BlogCardProps) {
   const isLarge = variant === "large";
+  const Title = titleAs;
 
   return (
     <Link href={`/blog/${blog.slug}`} className="block">
@@ -78,11 +81,11 @@ export function BlogCard({ blog, variant = "large" }: BlogCardProps) {
               })}
             </span>
           </div>
-          <h3
+          <Title
             className={`font-medium text-white transition-colors ${isLarge ? "text-lg" : "line-clamp-2 text-sm"}`}
           >
             {blog.title}
-          </h3>
+          </Title>
         </div>
       </div>
     </Link>

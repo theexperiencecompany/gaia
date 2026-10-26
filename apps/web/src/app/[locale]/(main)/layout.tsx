@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import MainLayoutShell from "@/components/layouts/MainLayoutShell";
+import { MainLayoutShell } from "@/components/layouts/MainLayoutShell";
 
 /** The signed-in app: robots.txt keeps crawlers out, and a page reached anyway is never indexed. */
 export const dynamic = "force-dynamic";

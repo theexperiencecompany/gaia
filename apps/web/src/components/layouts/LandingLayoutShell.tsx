@@ -2,6 +2,10 @@
 import dynamic from "next/dynamic";
 import type { ReactNode } from "react";
 import Navbar from "@/components/navigation/Navbar";
+import {
+  MAIN_CONTENT_ID,
+  SkipToContentLink,
+} from "@/components/navigation/SkipToContentLink";
 import BlurStack, { type BlurLayer } from "@/components/ui/blur-stack";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
 import { usePathname } from "@/i18n/navigation";
@@ -40,6 +44,7 @@ export default function LandingLayoutShell({
   return (
     <LandingProvidersLayout>
       <div className="relative ">
+        <SkipToContentLink />
         <div
           id="navbar-backdrop"
           className="pointer-events-none fixed inset-0 z-40 bg-black/20 opacity-0 backdrop-blur-sm transition-opacity duration-300 ease-in-out"
@@ -53,7 +58,7 @@ export default function LandingLayoutShell({
         <LazyMotionProvider>
           {chrome && <Navbar />}
 
-          <main id="main-content" className="min-h-screen">
+          <main id={MAIN_CONTENT_ID} className="min-h-screen">
             {children}
           </main>
         </LazyMotionProvider>

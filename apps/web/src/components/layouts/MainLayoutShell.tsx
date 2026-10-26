@@ -9,6 +9,10 @@ import Sidebar from "@/components/layout/sidebar/MainSidebar";
 import RightSidebarSlot, {
   RightSidebarSlotProvider,
 } from "@/components/layout/sidebar/RightSidebarSlot";
+import {
+  MAIN_CONTENT_ID,
+  SkipToContentLink,
+} from "@/components/navigation/SkipToContentLink";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useOnboardingGuard } from "@/features/auth/hooks/useOnboardingGuard";
@@ -66,7 +70,7 @@ const HeaderSidebarTrigger = ({ className }: HeaderSidebarTriggerProps) => {
   );
 };
 
-export default function MainLayoutShell({ children }: { children: ReactNode }) {
+export function MainLayoutShell({ children }: { children: ReactNode }) {
   const { isOpen, isMobileOpen, setOpen, setMobileOpen } = useLayoutSidebar();
   const isMobile = useIsMobile();
   const { isElectron } = useElectron();
@@ -143,6 +147,7 @@ export default function MainLayoutShell({ children }: { children: ReactNode }) {
             defaultOpen={defaultOpen}
           >
             <div className="relative flex h-screen w-full dark" ref={dragRef}>
+              <SkipToContentLink />
               <SidebarLayout>
                 <Sidebar />
               </SidebarLayout>
@@ -182,11 +187,15 @@ export default function MainLayoutShell({ children }: { children: ReactNode }) {
                 {/* Below the title bar so a visible banner never shifts the
                   window controls out of alignment with the traffic lights. */}
                 <StatusBanner />
-                <main className="flex flex-1 flex-col overflow-hidden">
+                {/* SidebarInset is the page's one main landmark. */}
+                <div
+                  id={MAIN_CONTENT_ID}
+                  className="flex flex-1 flex-col overflow-hidden"
+                >
                   {/* <Suspense fallback={<SuspenseLoader />}> */}
                   {children}
                   {/* </Suspense> */}
-                </main>
+                </div>
               </SidebarInset>
 
               <RightSidebarSlot />
