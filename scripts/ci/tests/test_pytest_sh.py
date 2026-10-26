@@ -34,6 +34,7 @@ def _repo(tmp_path: Path) -> Path:
         "lib/output_findings.py",
         "lib/log.sh",
         "lib/cpu-slots.sh",
+        "lib/runner-host.sh",
     ):
         shutil.copy(CI / name, scripts / name)
     tests = root / "apps" / "api" / "tests"
@@ -115,7 +116,7 @@ def _run_slice(tmp_path: Path, root: Path) -> subprocess.CompletedProcess[str]:
         stub.chmod(0o755)
     runner_temp = tmp_path / "runner-temp"
     runner_temp.mkdir(exist_ok=True)
-    env = {k: v for k, v in os.environ.items() if k != "RUNNER_ENVIRONMENT"}
+    env = {k: v for k, v in os.environ.items() if k != "RUNNER_NAME"}
     env.update(
         PATH=f"{bin_dir}:{env['PATH']}",
         RUNNER_TEMP=str(runner_temp),

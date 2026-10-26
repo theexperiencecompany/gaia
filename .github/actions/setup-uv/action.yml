@@ -18,8 +18,8 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Resolve the persistent uv cache path (self-hosted)
-      if: runner.environment == 'self-hosted'
+    - name: Resolve the persistent uv cache path (the box)
+      if: startsWith(runner.name, 'gaia-home-')
       id: uvcache
       shell: bash
       run: |
@@ -28,15 +28,15 @@ runs:
         mkdir -p "$UV_DIR"
         echo "path=$UV_DIR" >> "$GITHUB_OUTPUT"
         echo "uv cache (persistent, no GH cache): $UV_DIR ($(du -sh "$UV_DIR" 2>/dev/null | cut -f1))"
-    - name: Setup uv (self-hosted — persistent local cache)
-      if: runner.environment == 'self-hosted'
+    - name: Setup uv (the box — persistent local cache)
+      if: startsWith(runner.name, 'gaia-home-')
       uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
       with:
         version: ${{ inputs.version }}
         enable-cache: false
         cache-local-path: ${{ steps.uvcache.outputs.path }}
-    - name: Setup uv (GitHub-hosted — cache via actions/cache)
-      if: runner.environment != 'self-hosted'
+    - name: Setup uv (off the box — cache via actions/cache)
+      if: ${{ !startsWith(runner.name, 'gaia-home-') }}
       uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
       with:
         version: ${{ inputs.version }}

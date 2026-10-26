@@ -55,7 +55,10 @@ Playwright, mypy, tsc, ruff, biome, the lints, workflow annotations — behind
 GitHub REST client `runner.py`, `verdict.py` and `test_impact.py` call the API
 through — retries, timeouts, and a raised `GitHubError` instead of an empty
 answer; a caller with a safe fallback catches it at the call site), `log.sh` (the log
-convention), `cpu-slots.sh` (the host CPU governor, below),
+convention), `runner-host.sh` (`ci_on_the_box`: whether this job is on the home
+box, read from the runner name `gaia-home-<n>` and never from
+`RUNNER_ENVIRONMENT`, which Blacksmith also sets to `self-hosted`),
+`cpu-slots.sh` (the host CPU governor, below),
 `service-images.sh` (the digest-pinned test-service images),
 `image-repos.sh` (the GHCR repo per image group), `explicit-file-list.mjs` (the
 `CHANGED_FILES` contract), `bots-facts.mjs` + `evlog-map-bots.mjs` (the bots
@@ -148,8 +151,8 @@ module took 138 s against 29 s unloaded. `2 * nproc` overshot: with the
 
 Two rules make it safe to have in the gate at all:
 
-- **It fails open, always.** It is a no-op off the box
-  (`RUNNER_ENVIRONMENT != self-hosted`), with no `flock`, with an uncreatable
+- **It fails open, always.** It is a no-op off the box (`ci_on_the_box`
+  false), with no `flock`, with an uncreatable
   dir, or for a non-positive N. Every acquire has a timeout
   (`GAIA_CPU_SLOTS_TIMEOUT`, 600s); on expiry it logs `::warning::` and PROCEEDS
   WITHOUT the tokens. The governor can never hang or fail a lane.
@@ -251,7 +254,7 @@ three quarters of a verdict:
 Files land in `<dir>/<lane>.json`, where `<dir>` is `$GAIA_VERDICT_DIR` if set,
 else `$RUNNER_TEMP/verdicts` on a runner, else `verify-logs/verdicts` in a
 checkout (gitignored). **Never the checkout on CI**, and that is not a
-preference: a self-hosted workspace persists between jobs (`clean:` is false
+preference: the box's workspace persists between jobs (`clean:` is false
 there), so verdicts left in the tree are uploaded by the NEXT job to land on
 that runner — stale lanes from another PR reaching a gate. A job also uploads a
 DIRECTORY, so anything else running in it that writes a verdict rides along:

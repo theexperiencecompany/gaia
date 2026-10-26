@@ -351,6 +351,7 @@ def _sandbox(tmp_path: Path, mutmut_behaviour: str) -> Path:
         (REPO_ROOT / "scripts" / "ci" / "lib" / "output_findings.py", "lib/output_findings.py"),
         (LOG_LIB, "lib/log.sh"),
         (CPU_SLOTS_LIB, "lib/cpu-slots.sh"),
+        (REPO_ROOT / "scripts" / "ci" / "lib" / "runner-host.sh", "lib/runner-host.sh"),
         (REPO_ROOT / "scripts" / "ci" / "lib" / "mutation_gap.py", "lib/mutation_gap.py"),
         (REPORT, "lib/mutation_report.py"),
     ):
@@ -617,7 +618,7 @@ def test_the_shard_takes_its_cpu_tokens_from_a_private_pool_never_the_host(
 
     # The fake mutmut yields nothing, so the module fails on the zero-output
     # guard; the tokens are taken before that and released after regardless.
-    result = _shard_with_env(root, RUNNER_ENVIRONMENT="self-hosted", RUNNER_TEMP=str(job_temp))
+    result = _shard_with_env(root, RUNNER_NAME="gaia-home-1", RUNNER_TEMP=str(job_temp))
 
     assert "cpu-slots" not in result.stdout + result.stderr, "the governor should be live and quiet"
     assert (pool / "holders").is_dir(), "the shard never touched the private pool"

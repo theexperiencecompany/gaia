@@ -113,6 +113,9 @@ TEST_SLICES_JSON = HERE / "lib" / "test-slices.json"
 MUTATION_WAVE = 6
 REQUEUE_WORKFLOW = "ci-requeue.yml"
 SELF_HOSTED = "self-hosted"
+# The box's runners are gaia-home-<n> (gaia-infra setup.sh RUNNER_NAME_PREFIX); the
+# runner kind cannot tell it from Blacksmith, which reports self-hosted too.
+BOX_RUNNER_NAME_PREFIX = "gaia-home-"
 
 
 ACTIVE_RUN_STATUSES = frozenset({"queued", "pending", "waiting", "in_progress"})
@@ -1343,7 +1346,7 @@ def cmd_health(_args: list[str]) -> int:
     report = {
         # Off the box this whole report is about a machine running no CI.
         "is_runner_host": counts["runner_listeners"] > 0
-        or os.environ.get("RUNNER_ENVIRONMENT") == SELF_HOSTED,
+        or os.environ.get("RUNNER_NAME", "").startswith(BOX_RUNNER_NAME_PREFIX),
         "listeners": _listeners(),
         "loadavg": {"1m": round(load1, 2), "5m": round(load5, 2), "15m": round(load15, 2)},
         "threads": os.cpu_count() or 0,
