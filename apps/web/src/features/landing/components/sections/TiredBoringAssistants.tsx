@@ -516,7 +516,7 @@ export default function Tired() {
                 <div className="tool-icon-btn">
                   <Image
                     src={icon.src}
-                    alt={icon.alt}
+                    alt={`${icon.alt} logo`}
                     width={displaySize}
                     height={displaySize}
                     loading="lazy"

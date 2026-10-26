@@ -99,31 +99,31 @@ export default function HeroSection({
               <SiteLink href={"/bots"}>
                 <Image
                   src="/images/icons/macos/whatsapp.webp"
-                  alt="WhatsApp"
+                  alt="WhatsApp logo"
                   className="inline-block size-7 rotate-12 hover:scale-105 transition-transform ml-2"
-                  width={100}
-                  height={100}
+                  width={28}
+                  height={28}
                 />
                 <Image
                   src="/images/icons/macos/slack.webp"
-                  alt="Slack"
+                  alt="Slack logo"
                   className="inline-block size-7 -rotate-12 hover:scale-105 transition-transform"
-                  width={100}
-                  height={100}
+                  width={28}
+                  height={28}
                 />
                 <Image
                   src="/images/icons/macos/discord.webp"
-                  alt="Discord"
+                  alt="Discord logo"
                   className="inline-block size-7 rotate-12 hover:scale-105 transition-transform"
-                  width={100}
-                  height={100}
+                  width={28}
+                  height={28}
                 />
                 <Image
                   src="/images/icons/macos/telegram.webp"
-                  alt="Telegram"
+                  alt="Telegram logo"
                   className="inline-block size-7 -rotate-12 hover:scale-105 transition-transform mr-1"
-                  width={100}
-                  height={100}
+                  width={28}
+                  height={28}
                 />
               </SiteLink>
               <span>or use the web app.</span>

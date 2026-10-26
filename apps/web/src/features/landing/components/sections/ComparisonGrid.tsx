@@ -170,13 +170,19 @@ const GRID_ROWS: GridRow[] = [
   },
 ];
 
-function BrandLogo({ competitor }: { competitor: CompetitorInfo }) {
+function BrandLogo({
+  competitor,
+  alt,
+}: {
+  competitor: CompetitorInfo;
+  alt: string;
+}) {
   if (competitor.logo.type === "image") {
     return (
       <div className="relative h-7 w-7 overflow-hidden rounded-md">
         <Image
           src={competitor.logo.src}
-          alt={competitor.name}
+          alt={alt}
           fill
           className="object-contain p-0.5"
           sizes="28px"
@@ -244,11 +250,11 @@ export default function ComparisonGrid() {
                           aria-label={`Compare with ${c.name}`}
                           className="inline-flex transition-transform hover:scale-110"
                         >
-                          <BrandLogo competitor={c} />
+                          <BrandLogo competitor={c} alt="" />
                         </SiteLink>
                       ) : (
                         <span className="inline-flex">
-                          <BrandLogo competitor={c} />
+                          <BrandLogo competitor={c} alt={c.name} />
                         </span>
                       )}
                     </Tooltip>

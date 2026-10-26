@@ -104,7 +104,7 @@ export default function MarkdownWrapper({ content }: { content: string }) {
             <Image
               width={500}
               height={500}
-              alt="image"
+              alt={props.alt ?? ""}
               className="mx-auto my-8 cursor-pointer rounded-xl bg-zinc-900 object-contain transition hover:opacity-80"
               src={props.src as string}
               onClick={() => openDialog(props.src as string)}
