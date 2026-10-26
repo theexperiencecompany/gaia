@@ -14843,6 +14843,70 @@
         "title": "PublicIntegrationDetailResponse",
         "type": "object"
       },
+      "PublicSupportRequestCreate": {
+        "description": "A contact-form request that may come from a visitor with no GAIA session.",
+        "properties": {
+          "description": {
+            "description": "Detailed description",
+            "maxLength": 5000,
+            "minLength": 10,
+            "title": "Description",
+            "type": "string"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "format": "email",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where to reply; required unless the caller is signed in with an email",
+            "title": "Email"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional name to address",
+            "title": "Name"
+          },
+          "title": {
+            "description": "Title of the request",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "turnstile_token": {
+            "description": "Cloudflare Turnstile response token",
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Turnstile Token",
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/SupportRequestType",
+            "description": "Type of request (support or feature)"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "description",
+          "turnstile_token"
+        ],
+        "title": "PublicSupportRequestCreate",
+        "type": "object"
+      },
       "PublicWorkflowCard": {
         "description": "One marketplace card, as the community, explore and related lists emit it.\n\nThe three lists share this shape; ``categories`` and ``total_executions``\nare set only where the list has them (explore, related) and are null on the\nothers, so a consumer never has to guess which list a card came from.",
         "properties": {
@@ -18152,9 +18216,16 @@
             "type": "string"
           },
           "user_id": {
-            "description": "ID of the user who created the request",
-            "title": "User Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ID of the user who created the request; null for a visitor",
+            "title": "User Id"
           },
           "user_name": {
             "anyOf": [
@@ -39850,6 +39921,68 @@
           }
         },
         "summary": "Get user's support requests",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/requests/public": {
+      "post": {
+        "description": "Create a support or feature request from the public contact form. Verifies a Cloudflare Turnstile token and is rate-limited per client IP.",
+        "operationId": "support_submit_public_support_request",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublicSupportRequestCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportRequestSubmissionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Submit a contact request without signing in",
         "tags": [
           "Support"
         ]

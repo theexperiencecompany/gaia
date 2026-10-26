@@ -155,7 +155,13 @@ def test_billing_counts_only_processed_deliveries_in_the_window(db: Database[Doc
 
 def test_signups_support_subscriptions_and_cost_count_by_created_at(db: Database[Document]) -> None:
     db.users.insert_many([{"created_at": INSIDE}, {"created_at": BEFORE}])
-    db.support_requests.insert_many([{"created_at": INSIDE}])
+    db.support_requests.insert_many(
+        [
+            {"user_id": "a", "created_at": INSIDE},
+            # A visitor's ticket: no user, so no support:form_submitted to reconcile it against.
+            {"user_id": None, "created_at": INSIDE},
+        ]
+    )
     db.subscriptions.insert_many(
         [
             {"user_id": "a", "status": "active", "created_at": INSIDE},

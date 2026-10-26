@@ -36,5 +36,11 @@ FEATURE_KILLED = "FEATURE_KILLED"
 
 # 404 — a self-hosted instance sends no support request to GAIA's support team.
 GAIA_SUPPORT_UNAVAILABLE = "gaia_support_unavailable"
+# 400 — Cloudflare Turnstile rejected the public contact form's token.
+TURNSTILE_VERIFICATION_FAILED = "turnstile_verification_failed"
+# 503 — the Turnstile token could not be checked (secret unset, siteverify down or slow).
+TURNSTILE_UNAVAILABLE = "turnstile_unavailable"
+# 422 — a public contact request with no session and no email to reply to.
+CONTACT_EMAIL_REQUIRED = "contact_email_required"
 # 404 — the conversation does not exist or belongs to another user (never told apart).
 CONVERSATION_NOT_FOUND = "CONVERSATION_NOT_FOUND"

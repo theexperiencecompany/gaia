@@ -17,6 +17,7 @@ from app.models.support_models import (
     SupportRequestPagination,
     SupportRequestPriority,
     SupportRequestResponse,
+    SupportRequestSource,
     SupportRequestStatus,
     SupportRequestSubmissionResponse,
 )
@@ -114,8 +115,8 @@ async def _upload_single_attachment(
 
 async def _rollback_created_request(
     ticket_id: str | None,
-    request_id: str | None,
-    user_id: str,
+    request_id: str,
+    user_id: str | None,
     email_error: Exception,
 ) -> None:
     """Best-effort deletion of the stored request after email sending failed.
@@ -125,7 +126,7 @@ async def _rollback_created_request(
     blind retry would duplicate it).
     """
     try:
-        if await support_request_repository.delete(request_id, user_id=user_id):
+        if await support_request_repository.delete(request_id):
             log.info(
                 "Successfully rolled back support request from database",
                 ticket_id=ticket_id,
@@ -240,13 +241,15 @@ async def _process_attachments(
 
 async def create_support_request(
     request_data: SupportRequestCreate,
-    user_id: str,
+    user_id: str | None,
     user_email: str,
     user_name: str | None = None,
+    source: SupportRequestSource = SupportRequestSource.WEB_FORM,
 ) -> SupportRequestSubmissionResponse:
     """Create a new support request and send email notifications.
 
-    Atomic: if email sending fails, the support request is deleted.
+    user_id is None for a visitor without an account. Atomic: if email
+    sending fails, the support request is deleted.
     """
     log.set(component="support_service", user_id=user_id)
     request_id = None
@@ -270,7 +273,7 @@ async def create_support_request(
             priority=SupportRequestPriority.MEDIUM,
             created_at=current_time,
             metadata={
-                "source": "web_form",
+                "source": source.value,
                 "user_agent": None,  # Could be added from request headers
             },
         )
@@ -335,7 +338,7 @@ async def create_support_request(
         # For any other unexpected errors, also try to rollback if request was created
         if request_id:
             try:
-                await support_request_repository.delete(request_id, user_id=user_id)
+                await support_request_repository.delete(request_id)
                 log.info(
                     "Rolled back support request due to unexpected error", request_id=request_id
                 )
@@ -405,7 +408,7 @@ async def create_support_request_with_attachments(
             created_at=current_time,
             attachments=processed_attachments,
             metadata={
-                "source": "web_form_with_images",
+                "source": SupportRequestSource.WEB_FORM_WITH_IMAGES.value,
                 "user_agent": None,
                 "image_count": len(processed_attachments),
             },
@@ -517,7 +520,7 @@ async def create_support_request_with_attachments(
         # Clean up database entry
         if request_id:
             try:
-                await support_request_repository.delete(request_id, user_id=user_id)
+                await support_request_repository.delete(request_id)
                 log.info(
                     "Rolled back support request due to unexpected error", request_id=request_id
                 )
