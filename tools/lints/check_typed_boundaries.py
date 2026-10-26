@@ -59,6 +59,10 @@ STRING_KEY_READ = "TB002"
 # to the repo root; every entry states why.
 BOUNDARY_MODULES: dict[str, str] = {
     "apps/api/app/db/repositories/base.py": "the Mongo document -> model boundary",
+    "apps/api/app/agents/skills/builtin/": (
+        "sandbox-executed skill assets (excluded from mypy for the same reason)"
+    ),
+    "apps/api/app/services/workflow/subagent_output.py": "the subagent JSON reply -> ParseResult boundary",
     "apps/api/app/override/": "vendored overrides of third-party library internals",
     "apps/api/app/patches/": "monkeypatches of third-party library internals",
     "apps/api/app/browser_host/cdp_mux.py": "the CDP wire: Chrome owns every command and result shape",

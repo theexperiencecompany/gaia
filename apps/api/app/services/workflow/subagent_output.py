@@ -11,7 +11,7 @@ The expected JSON block format lives in the subagent prompt
 
 import json
 import re
-from typing import Any, Literal, TypedDict, cast
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -79,7 +79,7 @@ class FinalizedOutput(BaseModel):
         """Return this draft's trigger in the vocabulary the rest of the system uses."""
         return TRIGGER_TYPE_BY_DRAFT_TYPE.get(self.trigger_type, TriggerType.MANUAL)
 
-    def to_stream_payload(self) -> dict[str, object]:
+    def to_stream_payload(self) -> dict[str, Any]:
         """Convert to the format expected by frontend stream handler."""
         return {
             "workflow_draft": {
@@ -123,20 +123,13 @@ class ParseResult:
 # =============================================================================
 
 
-class _DraftPayload(TypedDict, total=False):
-    """The JSON keys this parser reads before handing the rest to the model."""
-
-    type: object
-    message: object
-
-
-def _result_from_payload(data: _DraftPayload, response: str) -> ParseResult | None:
+def _result_from_payload(data: dict[str, Any], response: str) -> ParseResult | None:
     """Turn one decoded JSON object into a ParseResult, or None if it isn't ours."""
     output_type = data.get("type")
 
     if output_type == "finalized":
         try:
-            draft = FinalizedOutput(**cast(dict[str, Any], data))
+            draft = FinalizedOutput(**data)
         except Exception as e:
             log.warning(
                 f"{LogTag.WORKFLOW} Failed to parse finalized output",
@@ -168,13 +161,13 @@ def _result_from_payload(data: _DraftPayload, response: str) -> ParseResult | No
 
     if output_type == "clarifying":
         try:
-            clarifying = ClarifyingOutput(**cast(dict[str, Any], data))
+            clarifying = ClarifyingOutput(**data)
             log.info(f"{LogTag.WORKFLOW} Successfully parsed clarifying response")
             return ParseResult(mode="clarifying", message=clarifying.message, raw_response=response)
         except Exception:
             return ParseResult(
                 mode="clarifying",
-                message=str(data.get("message", response)),
+                message=data.get("message", response),
                 raw_response=response,
             )
 
@@ -208,7 +201,7 @@ def parse_subagent_response(response: str) -> ParseResult:
             continue
         if not isinstance(data, dict) or "type" not in data:
             continue
-        result = _result_from_payload(cast(_DraftPayload, data), response)
+        result = _result_from_payload(data, response)
         if result is not None:
             return result
 

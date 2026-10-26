@@ -25,6 +25,49 @@ def _collection(ids: list[str]) -> AsyncMock:
 
 
 @pytest.mark.unit
+class TestQueries:
+    async def test_query_similar_returns_similarity_in_order(self) -> None:
+        collection = AsyncMock()
+        collection.query.return_value = {"ids": [["m1", "m2"]], "distances": [[0.2, 0.7]]}
+        with (
+            patch.object(chroma_store, "_get_collection", AsyncMock(return_value=collection)),
+            patch.object(chroma_store, "_clamp_n_results", AsyncMock(return_value=2)),
+        ):
+            result = await chroma_store.query_similar(USER, [0.1, 0.2], 2)
+
+        assert collection.query.await_args.kwargs["query_embeddings"] == [[0.1, 0.2]]
+        assert result == [("m1", pytest.approx(0.8)), ("m2", pytest.approx(0.3))]
+
+    async def test_query_conversation_chunks_pairs_document_date_and_score(self) -> None:
+        collection = AsyncMock()
+        collection.query.return_value = {
+            "documents": [["hello"]],
+            "metadatas": [[{"date": "2026-01-01"}]],
+            "distances": [[0.25]],
+        }
+        with (
+            patch.object(chroma_store, "_get_collection", AsyncMock(return_value=collection)),
+            patch.object(chroma_store, "_clamp_n_results", AsyncMock(return_value=1)),
+        ):
+            result = await chroma_store.query_conversation_chunks(USER, [0.1], 1)
+
+        assert collection.query.await_args.kwargs["query_embeddings"] == [[0.1]]
+        assert result == [("2026-01-01", "hello", pytest.approx(0.75))]
+
+    async def test_query_episodes_returns_similarity_in_order(self) -> None:
+        collection = AsyncMock()
+        collection.query.return_value = {"ids": [["e1"]], "distances": [[0.4]]}
+        with (
+            patch.object(chroma_store, "_get_collection", AsyncMock(return_value=collection)),
+            patch.object(chroma_store, "_clamp_n_results", AsyncMock(return_value=1)),
+        ):
+            result = await chroma_store.query_episodes(USER, [0.1], 1)
+
+        assert collection.query.await_args.kwargs["query_embeddings"] == [[0.1]]
+        assert result == [("e1", pytest.approx(0.6))]
+
+
+@pytest.mark.unit
 class TestDeleteConversationChunks:
     async def test_only_the_forgotten_conversations_chunks_are_deleted(self) -> None:
         collection = _collection([f"{USER}:conv-1:0", f"{USER}:conv-1:1", f"{USER}:conv-2:0"])

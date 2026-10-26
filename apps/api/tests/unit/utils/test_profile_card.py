@@ -8,7 +8,7 @@ from bson import ObjectId
 import pytest
 
 from app.agents.prompts.onboarding_prompts import HOLO_CARD_PROMPT
-from app.constants.profession_bios import PROFESSION_BIOS
+from app.constants.profession_bios import PROFESSION_BIOS, get_random_bio_for_profession
 from app.models.onboarding_models import HoloCardLLMOutput
 from app.models.user_models import (
     BioStatus,
@@ -265,6 +265,13 @@ class TestGetUserMetadata:
 # ---------------------------------------------------------------------------
 # generate_holo_card_content — profession resolution
 # ---------------------------------------------------------------------------
+
+
+def test_an_unknown_profession_uses_the_other_bio_pool() -> None:
+    """A typo or a new job title must still get a bio, not raise."""
+    bio = get_random_bio_for_profession("Ada", "astronaut")
+
+    assert bio in [entry.format(name="Ada") for entry in PROFESSION_BIOS["other"]]
 
 
 def _bios_for(profession: str, name: str) -> list[str]:

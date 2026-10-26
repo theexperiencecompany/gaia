@@ -133,7 +133,7 @@ def compute_model() -> dict[str, object]:
     Returns a dict of label -> list-of-yearly-values plus the year labels
     and derived summary metrics. No spreadsheet math.
     """
-    a = ASSUMPTIONS
+    a: Assumptions = ASSUMPTIONS
     n = a["years"]
     years = [a["start_year"] + i for i in range(n)]
 
@@ -204,9 +204,9 @@ def compute_model() -> dict[str, object]:
 
 # --- Sheet 1: Assumptions -----------------------------------------------------
 def build_assumptions(ws: Worksheet) -> None:
-    a = ASSUMPTIONS
+    a: Assumptions = ASSUMPTIONS
     set_widths(ws, {"A": 30, "B": 18, "C": 44})
-    merge_title(ws, "A1:C1", f"{a['company']} — Model Assumptions")
+    merge_title(ws, "A1:C1", f"{ASSUMPTIONS['company']} — Model Assumptions")
 
     style_header(ws["A3"], "Parameter")
     style_header(ws["B3"], "Value")
@@ -284,7 +284,9 @@ def _style_pnl_row(ws: Worksheet, r: int, total_col: int, row: tuple) -> None:
             ws.cell(row=r, column=c).fill = PatternFill("solid", fgColor=ZEBRA)
 
 
-def _build_pnl_rows(ws: Worksheet, model: dict, total_col: int, data_start: int) -> tuple[int, int]:
+def _build_pnl_rows(
+    ws: Worksheet, model: dict[str, object], total_col: int, data_start: int
+) -> tuple[int, int]:
     """Render all P&L line items. Returns (revenue_row, next_free_row)."""
     revenue_row = 0
     r = data_start
@@ -297,7 +299,7 @@ def _build_pnl_rows(ws: Worksheet, model: dict, total_col: int, data_start: int)
 
 
 def _build_margin_table(
-    ws: Worksheet, model: dict, years: list, total_col: int, start_row: int
+    ws: Worksheet, model: dict[str, object], years: list, total_col: int, start_row: int
 ) -> tuple[int, int, int]:
     """Render the margin sub-table. Returns (margin_hdr, margin_first, margin_last)."""
     margin_hdr = start_row

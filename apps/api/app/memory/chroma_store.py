@@ -12,7 +12,7 @@ import threading
 from typing import Any, TypedDict, cast
 
 from chromadb.api.models.AsyncCollection import AsyncCollection
-from chromadb.api.types import Metadata, QueryResult
+from chromadb.api.types import GetResult, Metadata, QueryResult
 
 from app.constants.memory import (
     CHROMA_CONVERSATION_CHUNKS_COLLECTION,
@@ -185,14 +185,15 @@ async def query_similar(
         conditions.append({"is_latest": True})
 
     query_embeddings: list[Sequence[float] | Sequence[int]] = [embedding]
-    result: QueryResult = await collection.query(
+    result = await collection.query(
         query_embeddings=query_embeddings,
         n_results=n_results,
         where={"$and": conditions},
         include=["distances"],
     )
-    ids = result["ids"][0]
-    distances = (result.get("distances") or [[]])[0]
+    rows: QueryResult = cast(QueryResult, result)
+    ids = rows["ids"][0]
+    distances = (rows.get("distances") or [[]])[0]
     # Cosine distance -> similarity.
     return [(memory_id, 1.0 - distance) for memory_id, distance in zip(ids, distances)]
 
@@ -207,7 +208,9 @@ async def set_memory_flags(
     if is_latest is None and is_forgotten is None:
         return
     collection = await _get_collection(CHROMA_MEMORIES_COLLECTION)
-    existing = await collection.get(ids=[memory_id], include=["metadatas"])
+    existing: GetResult = cast(
+        GetResult, await collection.get(ids=[memory_id], include=["metadatas"])
+    )
     metadatas = existing.get("metadatas") or []
     if not existing["ids"] or not metadatas:
         return
@@ -238,7 +241,9 @@ async def delete_conversation_chunks(user_id: str, source_id: str) -> None:
     original sentence doesn't stay quotable via conversation search forever.
     """
     collection = await _get_collection(CHROMA_CONVERSATION_CHUNKS_COLLECTION)
-    result = await collection.get(where={"user_id": user_id}, include=[])
+    result: GetResult = cast(
+        GetResult, await collection.get(where={"user_id": user_id}, include=[])
+    )
     prefix = f"{user_id}:{source_id}:"
     ids = [chunk_id for chunk_id in result["ids"] if chunk_id.startswith(prefix)]
     if ids:
@@ -259,6 +264,18 @@ async def upsert_conversation_chunks(items: list[ConversationChunkItem]) -> None
     )
 
 
+class _ChunkMetadata(TypedDict, total=False):
+    date: str
+
+
+def _chunk_date(metadata: object) -> str:
+    """Return the chunk's stored date, or empty when the row carries none."""
+    if not isinstance(metadata, Mapping):
+        return ""
+    typed: _ChunkMetadata = cast(_ChunkMetadata, metadata)
+    return typed.get("date", "")
+
+
 async def query_conversation_chunks(
     user_id: str,
     embedding: list[float],
@@ -270,17 +287,20 @@ async def query_conversation_chunks(
     if n_results == 0:
         return []
     query_embeddings: list[Sequence[float] | Sequence[int]] = [embedding]
-    result: QueryResult = await collection.query(
-        query_embeddings=query_embeddings,
-        n_results=n_results,
-        where={"user_id": user_id},
-        include=["documents", "metadatas", "distances"],
+    result: QueryResult = cast(
+        QueryResult,
+        await collection.query(
+            query_embeddings=query_embeddings,
+            n_results=n_results,
+            where={"user_id": user_id},
+            include=["documents", "metadatas", "distances"],
+        ),
     )
     documents = (result.get("documents") or [[]])[0]
     metadatas = (result.get("metadatas") or [[]])[0]
     distances = (result.get("distances") or [[]])[0]
     return [
-        (str(metadata.get("date", "")), document, 1.0 - distance)
+        (_chunk_date(metadata), document, 1.0 - distance)
         for document, metadata, distance in zip(documents, metadatas, distances)
     ]
 
@@ -309,12 +329,13 @@ async def query_episodes(
         return []
 
     query_embeddings: list[Sequence[float] | Sequence[int]] = [embedding]
-    result: QueryResult = await collection.query(
+    result = await collection.query(
         query_embeddings=query_embeddings,
         n_results=n_results,
         where={"user_id": user_id},
         include=["distances"],
     )
-    ids = result["ids"][0]
-    distances = (result.get("distances") or [[]])[0]
+    rows: QueryResult = cast(QueryResult, result)
+    ids = rows["ids"][0]
+    distances = (rows.get("distances") or [[]])[0]
     return [(episode_id, 1.0 - distance) for episode_id, distance in zip(ids, distances)]
