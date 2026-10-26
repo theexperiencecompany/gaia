@@ -176,7 +176,8 @@ class SupportRequestDocument(MongoDocument):
     ``updated_at`` is stamped by the base on every write.
     """
 
-    user_id: str | None
+    # Defaulted: the base drops None fields on insert, so a visitor's row has no user_id key.
+    user_id: str | None = None
     ticket_id: str
     user_email: str
     user_name: str | None = None
