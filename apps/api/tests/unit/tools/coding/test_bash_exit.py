@@ -74,13 +74,23 @@ async def test_various_nonzero_exit_codes_surface(code: int) -> None:
     assert f"exit_code: {code}" in out
 
 
-async def test_command_timeout_propagates_as_a_command_timeout() -> None:
+async def test_command_timeout_propagates_as_a_command_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     # A command deadline must propagate (acquire_sandbox decides eviction), not be
     # swallowed as a normal result, and must carry the deadline the command missed.
+    recorded: list[tuple[int | None, bool]] = []
+    monkeypatch.setattr(
+        bash_tool,
+        "_record_bash_exit_code",
+        lambda code, *, timed_out: recorded.append((code, timed_out)),
+    )
     run = AsyncMock(side_effect=TimeoutException("exceeding 'timeout'"))
     with pytest.raises(CommandTimeoutError) as timed_out:
         await _run_foreground(_sbx_with_run(run), _invocation("sleep 999", 7))
     assert "within 7s" in str(timed_out.value)
+    # The dashboard's timeout bucket must see it, or a slow command looks clean.
+    assert recorded == [(None, True)]
 
 
 def test_metrics_failure_does_not_break_exit_code_recording(
