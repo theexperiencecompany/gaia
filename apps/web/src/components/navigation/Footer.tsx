@@ -122,7 +122,7 @@ export default function Footer() {
               href="https://twitter.com/madebyexp"
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-2 text-sm text-zinc-200 transition-colors hover:text-primary"
+              className="flex min-h-6 items-center gap-2 text-sm text-zinc-200 transition-colors hover:text-primary"
             >
               {/* Sized to the text's line box so the mark and the wordmark
                   share one height instead of the mark towering over it. */}
@@ -145,7 +145,7 @@ export default function Footer() {
                   rel={link.external ? "noopener noreferrer" : undefined}
                   title={link.description}
                   aria-label={link.label}
-                  className="text-zinc-200 transition-colors hover:text-primary"
+                  className="-m-2 p-2 text-zinc-200 transition-colors hover:text-primary"
                 >
                   {/* Drop each icon's brand color so the row reads as one set
                       and inherits the hover state. */}

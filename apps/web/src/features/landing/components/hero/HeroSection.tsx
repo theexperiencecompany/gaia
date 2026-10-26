@@ -34,7 +34,7 @@ export default function HeroSection({
               className="group inline-flex items-center gap-2 text-[13px] hover:bg-white/20 rounded-full px-1 py-1 transition hover:scale-105"
             >
               <span
-                className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+                className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold uppercase tracking-[0.12em] ${
                   isDark ? "bg-white text-black" : "bg-black text-white"
                 }`}
               >
@@ -134,11 +134,7 @@ export default function HeroSection({
           <SoftBlurInBlock immediate delay={0.55}>
             <GetStartedButton
               btnColor={isDark ? "#00bbff" : "#000000"}
-              classname={
-                isDark
-                  ? "text-black! px-1 hover:scale-105"
-                  : "text-white! px-1 hover:scale-105"
-              }
+              classname="px-1 hover:scale-105"
               text={
                 <div className="flex items-center gap-1.5">
                   Sign Up <CircleArrowRight02Icon width={20} height={20} />

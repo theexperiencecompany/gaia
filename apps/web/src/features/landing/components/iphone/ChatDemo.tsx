@@ -80,14 +80,13 @@ const REVEAL_TYPING_MESSAGE: ChatMessageItem = {
 
 const DEMO_CTA: Record<
   ChatPlatform,
-  { label: string; href: string; accent: string; darkText?: boolean }
+  { label: string; href: string; accent: string }
 > = {
   imessage: { label: "Chat with GAIA", href: "/signup", accent: "#0A84FF" },
   whatsapp: {
     label: "Chat on WhatsApp",
     href: vanityTarget("/whatsapp"),
     accent: "#25D366",
-    darkText: true,
   },
   telegram: { label: "Chat on Telegram", href: "/bots", accent: "#037EE5" },
   slack: { label: "Chat on Slack", href: "/slack-bot", accent: "#611F69" },
@@ -134,15 +133,11 @@ function DemoCtaIcon({
 
 /** Rendered OUTSIDE the message bubble, like a platform inline-keyboard button. */
 function DemoCta({ platform }: { platform: ChatPlatform }) {
-  const { label, href, accent, darkText } = DEMO_CTA[platform];
+  const { label, href, accent } = DEMO_CTA[platform];
   return (
     <SiteLink href={href} className="chat-bubble-pop mt-1 w-fit">
-      <RaisedButton
-        color={accent}
-        size="sm"
-        className={cn("px-4 text-sm", darkText && "text-black!")}
-      >
-        <DemoCtaIcon platform={platform} color={darkText ? "#000" : "#fff"} />
+      <RaisedButton color={accent} size="sm" className="px-4 text-sm">
+        <DemoCtaIcon platform={platform} color="currentColor" />
         {label}
       </RaisedButton>
     </SiteLink>
@@ -471,7 +466,7 @@ function CurvedBubble({
               marginLeft: 6,
               marginRight: -2,
               marginBottom: -1,
-              fontSize: 11,
+              fontSize: 12,
               lineHeight: "14px",
               letterSpacing: "-0.01em",
               whiteSpace: "nowrap",
@@ -628,7 +623,7 @@ function IMessageDemo({
           {subtitle && (
             <span
               style={{
-                fontSize: 11,
+                fontSize: 12,
                 color: "rgba(60,60,67,0.55)",
                 marginTop: 2,
               }}
@@ -650,7 +645,7 @@ function IMessageDemo({
                 key={`div-${gi}`}
                 className="chat-bubble-pop self-center text-center"
                 style={{
-                  fontSize: 11,
+                  fontSize: 12,
                   color: "rgba(60,60,67,0.6)",
                   fontWeight: 500,
                   letterSpacing: "-0.01em",
@@ -668,7 +663,7 @@ function IMessageDemo({
                 <div
                   className="self-center text-center"
                   style={{
-                    fontSize: 11,
+                    fontSize: 12,
                     color: "rgba(60,60,67,0.6)",
                     fontWeight: 500,
                     letterSpacing: "-0.01em",
@@ -747,7 +742,7 @@ function IMessageDemo({
             style={{
               border: "1px solid rgba(60,60,67,0.18)",
               borderRadius: 18,
-              padding: "5px 4px 5px 19px",
+              padding: "0 4px 0 19px",
               background: "#fff",
               minHeight: 32,
             }}
@@ -759,7 +754,7 @@ function IMessageDemo({
               value={composerValue}
               onChange={(e) => onComposerChange(e.target.value)}
               onKeyDown={composerKeyHandler(onComposerSend)}
-              className="chat-demo-input min-w-0 flex-1 border-0 bg-transparent p-0 outline-none placeholder:text-[rgba(60,60,67,0.5)]"
+              className="chat-demo-input min-w-0 flex-1 self-stretch border-0 bg-transparent p-0 outline-none placeholder:text-[rgba(60,60,67,0.5)]"
               style={{
                 fontSize: 15,
                 color: "#000",
@@ -771,7 +766,7 @@ function IMessageDemo({
               type="button"
               aria-label="Audio"
               className="ml-2 flex cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]"
-              style={{ color: "rgba(60,60,67,0.7)", width: 22, height: 22 }}
+              style={{ color: "rgba(60,60,67,0.7)", width: 24, height: 24 }}
             >
               <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
                 <path
@@ -878,7 +873,7 @@ function WhatsAppDemo({
               </div>
               <span
                 style={{
-                  fontSize: 10,
+                  fontSize: 12,
                   marginTop: 2,
                   color: textColor,
                   letterSpacing: "-0.01em",
@@ -1031,7 +1026,7 @@ function WhatsAppDemo({
               value={composerValue}
               onChange={(e) => onComposerChange(e.target.value)}
               onKeyDown={composerKeyHandler(onComposerSend)}
-              className="chat-demo-input min-w-0 flex-1 border-0 bg-transparent p-0 outline-none placeholder:text-[#8E8E93]"
+              className="chat-demo-input min-w-0 flex-1 self-stretch border-0 bg-transparent p-0 outline-none placeholder:text-[#8E8E93]"
               style={{
                 fontSize: 15,
                 color: "#000",
@@ -1043,7 +1038,7 @@ function WhatsAppDemo({
               type="button"
               aria-label="Emoji"
               className="flex shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]"
-              style={{ color: "#8E8E93", width: 22, height: 22 }}
+              style={{ color: "#8E8E93", width: 24, height: 24 }}
             >
               <EmojiIcon size={18} />
             </button>
@@ -1368,7 +1363,7 @@ function TelegramDemo({
               value={composerValue}
               onChange={(e) => onComposerChange(e.target.value)}
               onKeyDown={composerKeyHandler(onComposerSend)}
-              className="chat-demo-input min-w-0 flex-1 border-0 bg-transparent p-0 outline-none placeholder:text-[#858E99]"
+              className="chat-demo-input min-w-0 flex-1 self-stretch border-0 bg-transparent p-0 outline-none placeholder:text-[#858E99]"
               style={{
                 fontSize: 15,
                 color: "#000",
@@ -1380,7 +1375,7 @@ function TelegramDemo({
               type="button"
               aria-label="Emoji"
               className="flex shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]"
-              style={{ color: metaColor, width: 22, height: 22 }}
+              style={{ color: metaColor, width: 24, height: 24 }}
             >
               <EmojiIcon size={18} />
             </button>
@@ -2301,7 +2296,7 @@ function DiscordDemo({
               value={composerValue}
               onChange={(e) => onComposerChange(e.target.value)}
               onKeyDown={composerKeyHandler(onComposerSend)}
-              className="chat-demo-input min-w-0 flex-1 border-0 bg-transparent p-0 outline-none placeholder:text-[#949BA4]"
+              className="chat-demo-input min-w-0 flex-1 self-stretch border-0 bg-transparent p-0 outline-none placeholder:text-[#949BA4]"
               style={{
                 fontSize: 15,
                 color: fg,

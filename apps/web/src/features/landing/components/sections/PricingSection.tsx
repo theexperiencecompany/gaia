@@ -30,7 +30,7 @@ export default function PricingSection() {
 
         <Link
           href="/pricing"
-          className="flex items-center gap-1 text-sm text-zinc-400 transition hover:text-zinc-200"
+          className="-my-1 flex items-center gap-1 py-1 text-sm text-zinc-400 transition hover:text-zinc-200"
         >
           Compare plans in detail
           <ArrowRight02Icon width={16} height={16} />

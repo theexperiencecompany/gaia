@@ -67,7 +67,7 @@ export function FeatureDetailClient({ feature }: Props) {
         <div className="relative z-10 px-6">
           <Link
             href="/features"
-            className="text-xs text-zinc-500 hover:text-zinc-300 flex items-center gap-1 transition-colors"
+            className="flex items-center gap-1 py-1 text-xs text-zinc-500 transition-colors hover:text-zinc-300"
           >
             <CircleArrowLeft02Icon width={16} height={16} /> All features
           </Link>
@@ -108,7 +108,7 @@ export function FeatureDetailClient({ feature }: Props) {
             <GetStartedButton
               text="Get started"
               btnColor="#000000"
-              classname="text-white! text-base h-12 rounded-2xl"
+              classname="text-base h-12 rounded-2xl"
             />
           </m.div>
         </section>
