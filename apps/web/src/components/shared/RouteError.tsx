@@ -3,8 +3,8 @@
 import { Button } from "@heroui/button";
 import { Spinner } from "@heroui/spinner";
 import { Home01Icon } from "@icons";
-import { useRouter } from "next/navigation";
-import { startTransition, useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState, useTransition } from "react";
 import { track } from "@/lib/analytics";
 import {
   isChunkLoadError,
@@ -16,8 +16,20 @@ interface RouteErrorProps {
   reset: () => void;
 }
 
-// Module scope survives the boundary remounting when reset() re-throws.
-let lastResetErrorKey: string | null = null;
+// Survives the boundary remounting when reset() re-throws. The pathname is part
+// of the key so an unrelated route's error with the same message cannot inherit
+// this one's failed attempt.
+const RESET_ATTEMPT_KEY = "gaia:route-error-reset-at";
+const RESET_ATTEMPT_WINDOW_MS = 30_000;
+
+function readResetAttempt(): { key: string; at: number } | null {
+  try {
+    const raw = sessionStorage.getItem(RESET_ATTEMPT_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * App Router segment error boundary. Rendered by `error.tsx` files so a render
@@ -26,6 +38,8 @@ let lastResetErrorKey: string | null = null;
  */
 export default function RouteError({ error, reset }: RouteErrorProps) {
   const router = useRouter();
+  const pathname = usePathname();
+  const [isPending, startTransition] = useTransition();
   const isChunk = isChunkLoadError(error);
 
   // Errors whose recovery attempt already concluded without a reload. Keyed by
@@ -55,15 +69,25 @@ export default function RouteError({ error, reset }: RouteErrorProps) {
     });
   }, [error, isChunk]);
 
-  // reset() re-renders against the same client state, so when it already
-  // failed for this error, only a full document load can clear it.
+  const errorKey = `${pathname}|${error.name}:${error.digest ?? error.message}`;
+
+  // A second press for the same error means reset did not clear it, so only a
+  // full document load can; the button is disabled while the first is pending.
   const handleTryAgain = () => {
-    const key = `${error.name}:${error.digest ?? error.message}`;
-    if (key === lastResetErrorKey) {
+    const now = Date.now();
+    const previous = readResetAttempt();
+    if (
+      previous?.key === errorKey &&
+      now - previous.at < RESET_ATTEMPT_WINDOW_MS
+    ) {
+      sessionStorage.removeItem(RESET_ATTEMPT_KEY);
       window.location.reload();
       return;
     }
-    lastResetErrorKey = key;
+    sessionStorage.setItem(
+      RESET_ATTEMPT_KEY,
+      JSON.stringify({ key: errorKey, at: now }),
+    );
     // reset alone re-renders the client tree; a server component that threw
     // (e.g. an unreachable API) only re-runs after a refresh.
     startTransition(() => {
@@ -90,7 +114,7 @@ export default function RouteError({ error, reset }: RouteErrorProps) {
         An unexpected error occurred. Please try again or return home.
       </p>
       <div className="flex items-center gap-3 pt-4">
-        <Button color="primary" onPress={handleTryAgain}>
+        <Button color="primary" isDisabled={isPending} onPress={handleTryAgain}>
           Try again
         </Button>
         <Button

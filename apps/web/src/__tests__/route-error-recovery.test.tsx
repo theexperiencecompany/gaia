@@ -3,11 +3,17 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const track = vi.fn();
-const { refresh } = vi.hoisted(() => ({ refresh: vi.fn() }));
+const { refresh, pathname } = vi.hoisted(() => ({
+  refresh: vi.fn(),
+  pathname: { current: "/chat" },
+}));
 
 vi.mock("@/lib/analytics", () => ({ track }));
 // The retry path refreshes server components alongside reset().
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh }),
+  usePathname: () => pathname.current,
+}));
 
 const { default: RouteError } = await import("@/components/shared/RouteError");
 const { isChunkLoadError } = await import("@/lib/chunkErrorRecovery");
@@ -113,5 +119,27 @@ describe("RouteError", () => {
 
     expect(reset).toHaveBeenCalledTimes(1);
     expect(reload).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("RouteError retry scope", () => {
+  it("does not reload because an unrelated route's error shares the message", async () => {
+    const { default: RouteError } = await import(
+      "@/components/shared/RouteError"
+    );
+    const makeError = () => new TypeError("Load failed");
+
+    pathname.current = "/chat";
+    const { unmount } = render(
+      <RouteError error={makeError()} reset={vi.fn()} />,
+    );
+    pressTryAgain();
+    unmount();
+
+    pathname.current = "/todos";
+    render(<RouteError error={makeError()} reset={vi.fn()} />);
+    pressTryAgain();
+
+    expect(reload).not.toHaveBeenCalled();
   });
 });
