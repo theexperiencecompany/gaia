@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { ComboAppIcon } from "@/components/seo/ComboAppIcons";
-import { HubBreadcrumb } from "@/components/seo/HubBreadcrumb";
 import JsonLd from "@/components/seo/JsonLd";
+import { PageBreadcrumbs } from "@/components/seo/PageBreadcrumbs";
 import { RelatedAutomationsGrid } from "@/components/seo/RelatedAutomationsGrid";
 import { getAllCombos } from "@/features/integrations/data/combosData";
 import { getTranslatedCombos } from "@/features/integrations/data/getTranslatedCombo";
@@ -106,8 +106,9 @@ export default async function AutomateAppPage({ params }: PageProps) {
       />
 
       <div className="mx-auto max-w-5xl px-6 pt-36 pb-24">
-        <HubBreadcrumb
-          crumbs={[
+        <PageBreadcrumbs
+          className="mb-8"
+          items={[
             { label: tCommon("home"), href: "/" },
             { label: t("breadcrumb"), href: "/automate" },
             { label: app.name },
@@ -115,7 +116,7 @@ export default async function AutomateAppPage({ params }: PageProps) {
         />
 
         <header className="mb-16">
-          <h1 className="mb-4 flex items-center gap-4 font-serif text-5xl font-normal text-white md:text-6xl">
+          <h1 className="mb-4 flex flex-col items-start gap-4 font-serif text-4xl font-normal text-white sm:flex-row sm:items-center sm:text-5xl md:text-6xl">
             <ComboAppIcon app={app} size={48} />
             {title}
           </h1>

@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
-import { HubBreadcrumb } from "@/components/seo/HubBreadcrumb";
 import JsonLd from "@/components/seo/JsonLd";
+import { PageBreadcrumbs } from "@/components/seo/PageBreadcrumbs";
 import { getAllTranslatedGlossaryTerms } from "@/features/glossary/data/getTranslatedGlossary";
 import {
   glossaryCategoryGroups,
@@ -108,8 +108,9 @@ export default async function GlossaryCategoryPage({ params }: PageProps) {
       />
 
       <div className="mx-auto max-w-5xl px-6 pt-36 pb-24">
-        <HubBreadcrumb
-          crumbs={[
+        <PageBreadcrumbs
+          className="mb-8"
+          items={[
             { label: tCommon("home"), href: "/" },
             { label: t("breadcrumb"), href: "/learn" },
             { label: category.label },
