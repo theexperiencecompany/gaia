@@ -512,8 +512,26 @@ PLATFORM_DELIVERY_NOTE = wrap_agent_payload(
 )
 
 
+#: A todo that repeats or watches events reports on its own; most runs find nothing new.
+_RUNS_ON_ITS_OWN = (
+    "Nobody asked for it just now: it ran on its schedule or on an event it watches, "
+    "and its full record is already kept in the todo. "
+)
+#: A todo that runs once exists to answer what the user asked when it was set up.
+_ONE_RUN_ANSWERS = (
+    "This todo runs once, to answer what the user asked when they set it up, so its "
+    "result is that answer and they are waiting for it: always send it, even when the "
+    "answer is no or nothing to worry about. Of the rules below, only SILENCE does not "
+    "apply. "
+)
+
+
 def tracked_todo_delivery_note(
-    todo_title: str, standing_rules: str | None, key_details: str | None
+    todo_title: str,
+    standing_rules: str | None,
+    key_details: str | None,
+    *,
+    runs_once: bool,
 ) -> str:
     """Build the delivery instructions for a tracked todo's own background run.
 
@@ -537,8 +555,7 @@ def tracked_todo_delivery_note(
     return wrap_agent_payload(
         AgentTag.DELIVERY_INSTRUCTIONS,
         f'This is the result of a background run of the user\'s tracked todo "{todo_title}". '
-        "Nobody asked for it just now: it ran on its schedule or on an event it watches, "
-        "and its full record is already kept in the todo. "
+        f"{_ONE_RUN_ANSWERS if runs_once else _RUNS_ON_ITS_OWN}"
         "Message the user when the report shows something new they need to know or act on, "
         "a decision or blocker only they can settle that they have not already been asked "
         "about, or a result they asked to hear every time (always send that one). Anything "

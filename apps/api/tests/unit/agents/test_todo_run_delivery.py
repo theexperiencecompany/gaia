@@ -22,6 +22,11 @@ from app.models import todo_models
 from app.models.chat_models import ConversationSource
 from app.models.notification.notification_models import NotificationType
 from app.models.todo_models import TodoDocument
+from app.models.trigger_subscription_models import (
+    SubscriptionAction,
+    SubscriptionResolution,
+    TriggerSubscription,
+)
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services.delivery.chat_channel import InApp
@@ -210,6 +215,40 @@ class TestABriefingThatOwnsItsForm:
         assert seams.in_app.await_args.args[0].content.body == "Deploy failed."
 
 
+class TestAOneTimeTodoAlwaysAnswers:
+    """A one-time check the user asked for was silenced when its answer was 'no'."""
+
+    async def test_a_todo_with_no_schedule_or_watch_is_written_up_as_its_answer(self) -> None:
+        with _seams(todo=_todo()) as seams:
+            await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
+
+        assert "This todo runs once" in seams.narrate.await_args.kwargs["preamble"]
+
+    @pytest.mark.parametrize(
+        "fields",
+        [
+            {"recurrence": "daily"},
+            {
+                "trigger_subscriptions": [
+                    TriggerSubscription(
+                        trigger_name="gmail_new_message",
+                        action=SubscriptionAction.EXECUTE,
+                        resolution=SubscriptionResolution.ACCOUNT,
+                    )
+                ]
+            },
+        ],
+        ids=["recurring", "watching"],
+    )
+    async def test_a_todo_that_runs_again_keeps_the_silence_rule(
+        self, fields: dict[str, object]
+    ) -> None:
+        with _seams(todo=_todo(**fields)) as seams:
+            await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
+
+        assert "Nobody asked for it just now" in seams.narrate.await_args.kwargs["preamble"]
+
+
 class TestAttribution:
     async def test_the_event_names_what_woke_the_run_and_whose_it_is(self) -> None:
         triggered = TodoRun(todo_id="todo-1", trigger_type=TriggerType.TODO_TRIGGER)
@@ -304,6 +343,7 @@ class TestTheDecisionSeesTheStandingRules:
             "Watch the deploy",
             long_rules[: todo_constants.STANDING_RULES_MAX_CHARS],
             "- thread abc",
+            runs_once=True,
         )
 
     async def test_key_details_reach_the_write_up_as_details_not_rules(self) -> None:
@@ -312,7 +352,10 @@ class TestTheDecisionSeesTheStandingRules:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
-            "Watch the deploy", None, "- thread abc"
+            "Watch the deploy",
+            None,
+            "- thread abc",
+            runs_once=True,
         )
 
     @pytest.mark.regression
@@ -325,7 +368,10 @@ class TestTheDecisionSeesTheStandingRules:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
-            "Watch the deploy", None, details[: todo_constants.DELIVERY_KEY_DETAILS_MAX_CHARS]
+            "Watch the deploy",
+            None,
+            details[: todo_constants.DELIVERY_KEY_DETAILS_MAX_CHARS],
+            runs_once=True,
         )
 
     @pytest.mark.regression
@@ -335,7 +381,10 @@ class TestTheDecisionSeesTheStandingRules:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
-            "Watch the deploy", None, None
+            "Watch the deploy",
+            None,
+            None,
+            runs_once=True,
         )
 
     @pytest.mark.regression
@@ -345,7 +394,10 @@ class TestTheDecisionSeesTheStandingRules:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
-            "Watch the deploy", "- 2026-09-28: tell me every time.", None
+            "Watch the deploy",
+            "- 2026-09-28: tell me every time.",
+            None,
+            runs_once=True,
         )
 
     async def test_a_todo_without_standing_rules_gets_the_defaults_alone(self) -> None:
@@ -353,7 +405,10 @@ class TestTheDecisionSeesTheStandingRules:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
-            "Watch the deploy", None, None
+            "Watch the deploy",
+            None,
+            None,
+            runs_once=True,
         )
 
     async def test_a_todo_with_no_canvas_gets_the_defaults_alone(self) -> None:
@@ -361,5 +416,8 @@ class TestTheDecisionSeesTheStandingRules:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
-            "Watch the deploy", None, None
+            "Watch the deploy",
+            None,
+            None,
+            runs_once=True,
         )

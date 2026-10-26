@@ -271,6 +271,7 @@ async def _narrate_and_send(
                 todo.title,
                 _canvas_section(todo, CANVAS_STANDING_RULES_SECTION, STANDING_RULES_MAX_CHARS),
                 _canvas_section(todo, CANVAS_KEY_DETAILS_SECTION, DELIVERY_KEY_DETAILS_MAX_CHARS),
+                runs_once=not (todo.recurrence or todo.trigger_subscriptions),
             ),
         ),
         resolve_proactive_target(todo.user_id),
