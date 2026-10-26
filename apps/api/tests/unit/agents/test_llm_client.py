@@ -877,6 +877,32 @@ class TestAinvokeLlm:
         # The fallback path is retry-wrapped too.
         fallback.with_retry.assert_called_once()
 
+    @pytest.mark.regression
+    @patch("app.agents.llm.client.log")
+    async def test_a_malformed_structured_reply_reaches_the_fallback_lane(
+        self, mock_log: MagicMock
+    ) -> None:
+        """A prose reply must cross lanes instead of surfacing as an error.
+
+        Regression: GAIA-BACKEND-40J (EpisodeSummary) and GAIA-BACKEND-434
+        (FollowUpActions) retried on the tool-calling lane and then failed,
+        because the error was retryable but not fallback-able. The fallback's
+        native JSON mode cannot answer in prose, so crossing lanes removes the
+        class rather than resampling it.
+        """
+        primary = self._runnable(
+            side_effect=MalformedStructuredOutputError(
+                "EpisodeSummary: reply made no EpisodeSummary tool call",
+                llm_output="Routine inbox sweeps, nothing worth summarizing.",
+            )
+        )
+        fallback = self._runnable(result={"summary": "a real summary"})
+
+        result = await ainvoke_llm(primary, [HumanMessage(content="hi")], fallback=fallback)
+
+        assert result == {"summary": "a real summary"}
+        fallback.ainvoke.assert_awaited_once()
+
     @patch("app.agents.llm.client.log")
     async def test_fallback_factory_called_lazily(self, mock_log: MagicMock) -> None:
         fallback = self._runnable(result=AIMessage(content="fallback-ok"))
@@ -1487,18 +1513,6 @@ class TestConstants:
     def test_non_retryable_exception_not_in_tuple(self) -> None:
         assert not isinstance(ValueError("bad"), LLM_RETRYABLE_EXCEPTIONS)
         assert not isinstance(KeyError("missing"), LLM_RETRYABLE_EXCEPTIONS)
-
-    @pytest.mark.regression
-    def test_a_malformed_structured_reply_falls_back_instead_of_failing(self) -> None:
-        """A prose reply must reach the JSON-schema lane, which cannot answer in prose.
-
-        Regression: GAIA-BACKEND-40J (EpisodeSummary) and GAIA-BACKEND-434
-        (FollowUpActions) retried on the tool-calling lane and then surfaced as
-        errors, because only the retryable set listed this error, not the
-        fallback set. The fallback's native JSON mode makes the failure class
-        impossible rather than less likely.
-        """
-        assert issubclass(MalformedStructuredOutputError, LLM_FALLBACK_EXCEPTIONS)
 
 
 # ---------------------------------------------------------------------------
