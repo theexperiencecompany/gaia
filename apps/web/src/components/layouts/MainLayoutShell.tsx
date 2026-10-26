@@ -23,8 +23,6 @@ import { cn } from "@/lib/utils";
 import { useChatStoreSync } from "@/stores/chatStore";
 import { useLayoutSidebar } from "@/stores/layoutStore";
 
-export const dynamic = "force-dynamic";
-
 const UpgradeModal = nextDynamic(
   () =>
     import("@/features/pricing/components/UpgradeModal").then((m) => ({
@@ -68,7 +66,7 @@ const HeaderSidebarTrigger = ({ className }: HeaderSidebarTriggerProps) => {
   );
 };
 
-export default function MainLayout({ children }: { children: ReactNode }) {
+export default function MainLayoutShell({ children }: { children: ReactNode }) {
   const { isOpen, isMobileOpen, setOpen, setMobileOpen } = useLayoutSidebar();
   const isMobile = useIsMobile();
   const { isElectron } = useElectron();
