@@ -40,6 +40,9 @@
 #                        cli-v<version> GitHub Release.
 #   disable-cf-builds    Probe Cloudflare for a Git-connected Workers Build and
 #                        say how to disconnect it (dashboard-only API).
+#   sync-uv-lock         Re-lock uv.lock on the open release PR branch: the api
+#                        version bump changes the lock, which release-please
+#                        does not touch, so the release PR's uv-lock check fails.
 #
 # Env contract:
 #   resolve-image-tags    VERSION_SCHEME, APPS_RELEASE_OUTCOME,
@@ -70,6 +73,8 @@
 #                         builds and names the upload without making it.
 #   disable-cf-builds     CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID,
 #                         WORKER_NAME (all optional; no token = manual steps).
+#   sync-uv-lock          RELEASE_BRANCH (required); a checkout whose origin
+#                         push credentials can update that branch; uv on PATH.
 set -euo pipefail
 
 # shellcheck source=scripts/ci/lib/log.sh
@@ -718,6 +723,25 @@ cmd_selfhost_bundle() {
   ci_ok "selfhost-bundle: attached $asset to $RELEASE_TAG"
 }
 
+cmd_sync_uv_lock() {
+  : "${RELEASE_BRANCH:?RELEASE_BRANCH is required}"
+  if ! git ls-remote --exit-code --heads origin "$RELEASE_BRANCH" >/dev/null; then
+    ci_ok "sync-uv-lock: no $RELEASE_BRANCH branch, no release PR open"
+    return 0
+  fi
+  git fetch --quiet --depth=1 origin "$RELEASE_BRANCH"
+  git checkout --quiet -B "$RELEASE_BRANCH" FETCH_HEAD
+  uv lock
+  if git diff --quiet -- uv.lock; then
+    ci_ok "sync-uv-lock: uv.lock on $RELEASE_BRANCH already matches its pyproject versions"
+    return 0
+  fi
+  git -c user.name="github-actions[bot]" -c user.email="github-actions[bot]@users.noreply.github.com" \
+    commit --quiet -m "chore: sync uv.lock with the release versions" -- uv.lock
+  git push --quiet origin "HEAD:$RELEASE_BRANCH"
+  ci_ok "sync-uv-lock: pushed the re-locked uv.lock to $RELEASE_BRANCH"
+}
+
 usage() {
   sed -n '2,/^# Env contract/p' "$0" >&2
 }
@@ -738,6 +762,7 @@ main() {
     connect-binaries)     cmd_connect_binaries "$@" ;;
     selfhost-bundle)      cmd_selfhost_bundle "$@" ;;
     disable-cf-builds)    cmd_disable_cf_builds "$@" ;;
+    sync-uv-lock)         cmd_sync_uv_lock "$@" ;;
     *)
       echo "release.sh: unknown subcommand '${sub}'" >&2
       usage
