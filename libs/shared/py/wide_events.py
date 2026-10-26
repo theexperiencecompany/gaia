@@ -56,7 +56,7 @@ log.get() into the final emitted event. For worker tasks use wide_task().
 """
 
 import asyncio
-from collections.abc import AsyncIterator, Coroutine
+from collections.abc import AsyncIterator, Coroutine, Mapping
 import contextlib
 import contextvars
 import sys
@@ -1059,8 +1059,20 @@ def get_trace_id() -> str:
     return log.get_trace_id()
 
 
+def current_event_fields() -> Mapping[str, Any]:
+    """Return the fields accumulated on the current wide event; empty outside a boundary.
+
+    A log line binds only the kwargs of that call, so a consumer that needs the
+    request's accumulated context (the Sentry sink reads the user id) has to ask
+    the event itself.
+    """
+    state = _event_state.get()
+    return dict(state.fields) if state is not None else {}
+
+
 __all__ = [
     "log",
+    "current_event_fields",
     "wide_task",
     "log_context",
     "spawn_logged_task",

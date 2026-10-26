@@ -39,6 +39,7 @@ from shared.py.wide_events import (
     WORKER_EVENT_NAME,
     WORKER_LOGGER_NAME,
     log,
+    log_context,
 )
 from tests.helpers import pick_free_port
 
@@ -502,3 +503,15 @@ def test_the_hint_reaches_the_llm_attempt_filter(monkeypatch: pytest.MonkeyPatch
     _before_send(_event(), hint)
 
     assert seen["hint"] is hint
+
+
+@pytest.mark.regression
+async def test_an_error_without_user_kwargs_still_reaches_sentry_as_that_user(
+    sentry_events: list[Event],
+) -> None:
+    """A log line binds only its own kwargs; the request's user rides the wide event."""
+    async with log_context("test_operation"):
+        log.set(user={"id": "67bdb4367c7dd1f0ea343216"})
+        log.error("executor run failed")
+
+    assert [event["user"] for event in sentry_events] == [{"id": "67bdb4367c7dd1f0ea343216"}]

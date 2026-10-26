@@ -21,6 +21,7 @@ from shared.py.logging import ARQ_LOGGER_DISPLAY_NAME, MCP_USE_LOGGER_DISPLAY_NA
 from shared.py.wide_events import (
     BOUNDARY_FAILURE_MESSAGE,
     BOUNDARY_LOGGER_NAMES,
+    current_event_fields,
     log,
 )
 
@@ -199,6 +200,10 @@ def _attribute_user(event: Event) -> None:
     user_id = fields.extra.user.id if fields.extra.user else None
     if not user_id:
         user_id = fields.extra.user_id
+    if not user_id:
+        # A log line binds only its own kwargs; the request's user rides the event.
+        event_user = _EventExtras.model_validate(current_event_fields()).user
+        user_id = event_user.id if event_user else None
     if user_id:
         event["user"] = {"id": user_id}
 
