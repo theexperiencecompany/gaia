@@ -194,6 +194,8 @@ jobs:
       has_api_schema: ${{ steps.affected.outputs.has_api_schema }}
       has_analytics: ${{ steps.affected.outputs.has_analytics }}
       has_deploy_templates: ${{ steps.affected.outputs.has_deploy_templates }}
+      # What the web app renders, or what audits it, changed (changes.sh seo-inputs).
+      has_seo: ${{ steps.seo.outputs.build }}
       python_projects: ${{ steps.affected.outputs.python_projects }}
       typescript_projects: ${{ steps.affected.outputs.typescript_projects }}
       # The test-python matrices, from the one slice definition
@@ -246,6 +248,13 @@ jobs:
           PR_BASE: ${{ steps.base.outputs.base_ref }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: python3 scripts/ci/verdict.py reuse-plan --repo "$GITHUB_REPOSITORY" --workflow ci.yml --branch "$PR_BRANCH" --base "$PR_BASE" --head-sha "$PR_HEAD_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" --event "$GITHUB_EVENT_NAME"
+
+      - name: Decide whether the SEO audit's inputs changed
+        id: seo
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+        env:
+          BASE_BRANCH: ${{ steps.base.outputs.base_ref }}
+        run: bash scripts/ci/changes.sh seo-inputs
 
       - uses: nrwl/nx-set-shas@afb73a62d26e41464e9254689e1fd6122ee683c1 # v5.0.1
         with:
@@ -1477,10 +1486,16 @@ jobs:
   ts-build-test:
     name: ts-build-test
     needs: [select-runner, detect]
-    if: ${{ !cancelled() && needs.detect.outputs.has_typescript == 'true' }}
+    if: ${{ !cancelled() && (needs.detect.outputs.has_typescript == 'true' || needs.detect.outputs.has_seo == 'true') }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.heavy) }}
     env:
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
+      # Baked into the web build: the seo check's build must hash like the build
+      # step's, so both read them here. The bot client ids are public (every
+      # install link carries them) and are repo variables.
+      NEXT_PUBLIC_API_BASE_URL: https://api.heygaia.io/api/v1/
+      NEXT_PUBLIC_DISCORD_CLIENT_ID: ${{ vars.NEXT_PUBLIC_DISCORD_CLIENT_ID }}
+      NEXT_PUBLIC_SLACK_CLIENT_ID: ${{ vars.NEXT_PUBLIC_SLACK_CLIENT_ID }}
     # Both steps queue on the host CPU governor, which fails open only after
     # GAIA_CPU_SLOTS_TIMEOUT (600s): the cap covers that wait plus the build
     # (measured 12-16 min while four mutation shards shared the box) plus the
@@ -1506,6 +1521,7 @@ jobs:
           echo "NX parallel=$NX on $(nproc) vCPUs"
       - name: build — nx build of every affected TS project
         id: build
+        if: needs.detect.outputs.has_typescript == 'true'
         continue-on-error: true
         # Explicit shell = `bash -eo pipefail`: the default is bash -e WITHOUT
         # pipefail, so `cmd | tee` swallowed the exit code. The inner `bash -c`
@@ -1515,8 +1531,6 @@ jobs:
         env:
           AFFECTED_TS_PROJECTS: ${{ needs.detect.outputs.typescript_projects }}
           NX_PARALLEL: ${{ steps.par.outputs.nx }}
-          # next build throws without it; the value web-build.yml's PR build uses.
-          NEXT_PUBLIC_API_BASE_URL: https://api.heygaia.io/api/v1/
         run: |
           echo "::group::env"
           echo "nproc=$(nproc) NX_PARALLEL=$NX_PARALLEL"
@@ -1531,6 +1545,7 @@ jobs:
       - *upload-verdict-so-far
       - name: test-typescript — vitest across every affected TS project
         id: test-typescript
+        if: needs.detect.outputs.has_typescript == 'true'
         continue-on-error: true
         # `--output-style=stream` is load-bearing: Nx's default CI output
         # replays each task's whole output in ONE write after it exits, and
@@ -1545,6 +1560,16 @@ jobs:
           NX_PARALLEL: ${{ steps.par.outputs.nx }}
         run: python3 scripts/ci/runner.py with-slots "$NX_PARALLEL" -- /usr/bin/time -v bash -c 'pnpm exec nx run-many -t test -p "$AFFECTED_TS_PROJECTS" --parallel="$NX_PARALLEL" --output-style=stream' 2>&1 | tee "$RUNNER_TEMP/tstest.time"
       - *upload-verdict-so-far
+      # Reuses the build step's web build (an nx cache hit, not a second build):
+      # next start serves it as https://heygaia.io to the sitemap crawl and to
+      # squirrel, whose findings ratchet against their baseline.
+      - name: seo — SEO audit and squirrelscan of the production web build
+        id: seo
+        if: needs.detect.outputs.has_seo == 'true'
+        continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash --noprofile --norc -eo pipefail {0}
+        run: bash scripts/ci/smoke-web.sh audit-build
+      - *upload-verdict-so-far
       - name: Post one commit status per check
         if: ${{ always() && contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')) }}
         env: &ts-build-test-checks
@@ -1553,8 +1578,9 @@ jobs:
           CHECKS: >-
             build=${{ steps.build.outcome }}
             test-typescript=${{ steps.test-typescript.outcome }}
+            seo=${{ steps.seo.outcome }}
         run: python3 scripts/ci/verdict.py post-statuses --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" $CHECKS
-      - name: Verdict (build and tests ran; this fails if either failed)
+      - name: Verdict (build, tests and the SEO audit ran; this fails if any failed)
         if: always()
         env: *ts-build-test-checks
         run: python3 scripts/ci/verdict.py step-outcomes --lane ts-build-test $CHECKS

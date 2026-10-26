@@ -158,6 +158,11 @@ jobs:
           persist-credentials: false
       - name: Crawl the live site as a search engine would (status, canonical, hreflang, links, noindex)
         run: bash scripts/ci/smoke-web.sh audit
+      # The PR gate's squirrel ratchet, run against the live edge: a count above
+      # the baseline here and not on the PR is something only production serves.
+      - name: Audit the live site with squirrelscan against its baseline
+        if: ${{ !cancelled() }}
+        run: bash scripts/ci/smoke-web.sh squirrel
 
   indexnow:
     name: IndexNow (post-deploy)

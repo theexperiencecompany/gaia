@@ -383,6 +383,15 @@
       "timeout_s": 1800,
       "require_cmd": [],
       "command": "pnpm exec nx run-many -t test --projects=web,desktop,mobile,cli,bot-discord,bot-slack,bot-telegram,bot-whatsapp,bot-imessage --output-style=stream"
+    },
+    {
+      "name": "seo",
+      "$comment": "ts-build-test's seo check: the sitemap crawl and the squirrelscan ratchet (scripts/ci/baselines/squirrel-build.txt) against this checkout's production web build. scope mirrors changes.sh SEO_INPUTS (held equal by scripts/ci/tests/test_changes.py). Known delta: apps/web/mise.toml sets NEXT_PUBLIC_API_BASE_URL to the local API inside the build, whose prerender then cannot reach it; run it with node and pnpm on PATH ahead of mise's shims and NEXT_PUBLIC_API_BASE_URL=https://api.heygaia.io/api/v1/.",
+      "scope": "^apps/web/|^libs/shared/ts/|^\\.github/workflows/(deploy-web|web-build)\\.yml$|^scripts/ci/smoke-web\\.sh$|^scripts/ci/lib/(seo_audit|squirrel|origin_proxy)\\.py$|^scripts/ci/baselines/squirrel-build\\.txt$|^config/squirrel\\.toml$",
+      "heavy": true,
+      "timeout_s": 1800,
+      "require_cmd": ["node", "pnpm", "curl", "openssl"],
+      "command": "bash scripts/ci/smoke-web.sh audit-build"
     }
   ]
 }
