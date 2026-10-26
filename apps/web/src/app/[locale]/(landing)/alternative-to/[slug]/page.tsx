@@ -23,6 +23,7 @@ import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
 import { isRedirectedPath } from "@/lib/canonicalLinks";
 import { ALTERNATIVE_DOCS_LINKS, type DocsGuideLink } from "@/lib/docs-links";
+import { relatedInGroup } from "@/lib/relatedInGroup";
 import { prerenderedMarketingParams } from "@/lib/selfhost";
 import {
   generateBreadcrumbSchema,
@@ -415,9 +416,11 @@ export default async function AlternativePage({ params }: PageProps) {
     )
     .slice(0, 3);
 
-  const relatedAlternatives = allAlternatives
-    .filter((a) => a.slug !== slug && a.category === data.category)
-    .slice(0, 3);
+  const relatedAlternatives = relatedInGroup(
+    allAlternatives,
+    slug,
+    (alternative) => alternative.category,
+  );
 
   const docsGuides = ALTERNATIVE_DOCS_LINKS[slug] ?? [];
 

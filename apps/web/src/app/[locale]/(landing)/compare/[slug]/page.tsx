@@ -9,7 +9,7 @@ import { PageBreadcrumbs } from "@/components/seo/PageBreadcrumbs";
 import { ProseParagraphs } from "@/components/seo/ProseParagraphs";
 import { SiteLink } from "@/components/seo/SiteLink";
 import { getTranslatedAlternative } from "@/features/alternatives/data/getTranslatedAlternative";
-import { COMPARISON_CATEGORIES } from "@/features/comparisons/data/categories";
+import { comparisonCategoryOf } from "@/features/comparisons/data/comparisonCategories";
 import { getAllComparisonSlugs } from "@/features/comparisons/data/comparisonsData";
 import {
   getTranslatedComparison,
@@ -21,6 +21,7 @@ import { getTranslatedPersona } from "@/features/personas/data/getTranslatedPers
 import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
 import { isRedirectedPath } from "@/lib/canonicalLinks";
 import { COMPARE_DOCS_LINKS } from "@/lib/docs-links";
+import { relatedInGroup } from "@/lib/relatedInGroup";
 import { prerenderedMarketingParams } from "@/lib/selfhost";
 import {
   generateBreadcrumbSchema,
@@ -89,13 +90,12 @@ export default async function ComparisonPage({ params }: PageProps) {
     alternativeData !== undefined &&
     !isRedirectedPath(`/alternative-to/${slug}`);
 
-  const currentCategory = COMPARISON_CATEGORIES[slug] ?? "Other";
-  const relatedComparisons = allComparisons
-    .filter(
-      (c) =>
-        c.slug !== slug && COMPARISON_CATEGORIES[c.slug] === currentCategory,
-    )
-    .slice(0, 3);
+  const currentCategory = comparisonCategoryOf({ slug });
+  const relatedComparisons = relatedInGroup(
+    allComparisons,
+    slug,
+    comparisonCategoryOf,
+  );
 
   const relatedPersonaData = (
     await Promise.all(

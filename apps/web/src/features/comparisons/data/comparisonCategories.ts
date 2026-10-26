@@ -10,6 +10,13 @@ export interface ComparisonCategoryGroup<T> {
   readonly items: readonly T[];
 }
 
+/** The category a comparison is listed under; uncategorized ones share "Other". */
+export function comparisonCategoryOf(
+  comparison: Pick<ComparisonData, "slug">,
+): string {
+  return COMPARISON_CATEGORIES[comparison.slug] ?? OTHER_CATEGORY;
+}
+
 function categorySlug(category: string): string {
   return category.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-");
 }
@@ -25,7 +32,7 @@ export function comparisonCategoryGroups<
 >(comparisons: readonly T[]): ComparisonCategoryGroup<T>[] {
   const byCategory = new Map<string, T[]>();
   for (const comparison of comparisons) {
-    const category = COMPARISON_CATEGORIES[comparison.slug] ?? OTHER_CATEGORY;
+    const category = comparisonCategoryOf(comparison);
     byCategory.set(category, [...(byCategory.get(category) ?? []), comparison]);
   }
   const order: readonly string[] = [...CATEGORY_ORDER, OTHER_CATEGORY];

@@ -1,14 +1,18 @@
-/** Every blog post, role page and automation combo is linked from at least two of its siblings, so none is reachable only from its hub. */
+/** Every blog post, role page, comparison, alternative and automation combo is linked from at least two of its siblings, so none is reachable only from its hub. */
 import type { ReactElement } from "react";
 import { describe, expect, it } from "vitest";
 
 import BlogPostPage from "@/app/[locale]/(landing)/blog/[slug]/page";
+import { getAllAlternatives } from "@/features/alternatives/data/alternativesData";
+import { comparisonCategoryOf } from "@/features/comparisons/data/comparisonCategories";
+import { getAllComparisons } from "@/features/comparisons/data/comparisonsData";
 import { getAllCombos } from "@/features/integrations/data/combosData";
 import { comboAppsOf } from "@/features/integrations/lib/comboApps";
 import { relatedComboRows } from "@/features/integrations/lib/relatedCombos";
 import { getRelatedPersonas } from "@/features/personas/data/getTranslatedPersona";
 import { getAllPersonaSlugs } from "@/features/personas/data/personasData";
 import { getAllBlogSlugs } from "@/lib/blog";
+import { relatedInGroup } from "@/lib/relatedInGroup";
 
 const MIN_SIBLING_LINKS = 2;
 
@@ -89,4 +93,37 @@ describe("sibling links", () => {
       ),
     ).toEqual([]);
   });
+
+  it.each([
+    ["comparison", getAllComparisons, comparisonCategoryOf],
+    [
+      "alternative",
+      getAllAlternatives,
+      (alternative: { category: string }) => alternative.category,
+    ],
+  ] as const)(
+    "suggests every %s from at least two others in its category",
+    async (_kind, load, groupOf) => {
+      const items = await load();
+      const linksFrom = new Map<string, string[]>();
+      for (const item of items) {
+        linksFrom.set(
+          item.slug,
+          relatedInGroup(
+            items,
+            item.slug,
+            groupOf as (i: typeof item) => string,
+          ).map((other) => other.slug),
+        );
+      }
+      expect(
+        underLinked(
+          inboundCounts(
+            items.map((item) => item.slug),
+            linksFrom,
+          ),
+        ),
+      ).toEqual([]);
+    },
+  );
 });
