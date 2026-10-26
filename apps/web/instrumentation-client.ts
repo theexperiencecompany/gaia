@@ -118,10 +118,9 @@ if (typeof window !== "undefined") {
         before_send: filterExceptionBeforeSend,
       });
 
-      // Synchronously, before posthog's next-tick initial pageview can carry a legacy email id.
-      analytics.resetLegacyEmailIdentity();
-      // Anything captured while init was queued at idle was buffered, not dropped — replay it now, in order.
-      analytics.flushPendingAnalytics();
+      // Synchronously, before posthog's next-tick initial pageview can carry a
+      // legacy email id; then everything buffered while init waited replays in order.
+      analytics.connectPostHog(posthog);
     } catch {
       // Analytics should never break the app.
     }

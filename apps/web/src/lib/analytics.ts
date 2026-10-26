@@ -5,7 +5,7 @@ import type {
   WebEventName,
 } from "@gaia/shared/analytics/events";
 import type { UserId } from "@gaia/shared/analytics/identity";
-import posthog from "posthog-js";
+import type { PostHog } from "posthog-js";
 
 import { registerPostHogSessionId } from "@/lib/analytics-headers";
 
@@ -28,11 +28,12 @@ interface UserProperties {
 }
 
 /**
- * `posthog.init` is deferred to browser idle (`instrumentation-client.ts`), and
- * `posthog.capture` before init is silently *dropped* — `onboarding:started`
- * on mount missed the head of the funnel this way for quick users.
+ * The SDK is imported and initialised at browser idle (`instrumentation-client.ts`)
+ * and handed over through `connectPostHog`; it is never imported here, so it stays
+ * out of every page's eager bundle. A capture before init would be *dropped* —
+ * `onboarding:started` on mount missed the head of the funnel this way for quick users.
  *
- * Calls made before init are buffered here and replayed in order by
+ * Calls made before that are buffered here and replayed in order by
  * `flushPendingAnalytics`; capped, since no project token (local dev) means the queue never flushes and would grow for the tab's life.
  */
 type PendingCall =
@@ -41,11 +42,26 @@ type PendingCall =
   | { kind: "person"; properties: UserProperties }
   | { kind: "reset" };
 
+/** The SDK surface this module drives. */
+type PostHogClient = Pick<
+  PostHog,
+  | "__loaded"
+  | "identify"
+  | "capture"
+  | "captureException"
+  | "setPersonProperties"
+  | "reset"
+  | "_isIdentified"
+  | "get_distinct_id"
+  | "get_session_id"
+>;
+
 const MAX_PENDING_CALLS = 50;
 const pendingCalls: PendingCall[] = [];
+let client: PostHogClient | null = null;
 
-function isPostHogReady(): boolean {
-  return posthog.__loaded;
+function readyClient(): PostHogClient | null {
+  return client?.__loaded ? client : null;
 }
 
 function isIdentityChange(call: PendingCall): boolean {
@@ -60,7 +76,7 @@ function enqueue(call: PendingCall): void {
   pendingCalls.push(call);
 }
 
-function send(call: PendingCall): void {
+function send(posthog: PostHogClient, call: PendingCall): void {
   switch (call.kind) {
     case "identify":
       posthog.identify(call.userId, call.properties);
@@ -79,11 +95,12 @@ function send(call: PendingCall): void {
 }
 
 function dispatch(call: PendingCall): void {
-  if (!isPostHogReady()) {
+  const posthog = readyClient();
+  if (!posthog) {
     enqueue(call);
     return;
   }
-  send(call);
+  send(posthog, call);
 }
 
 /**
@@ -91,9 +108,7 @@ function dispatch(call: PendingCall): void {
  * session and replay. The header is built in `@/lib/analytics-headers`, which
  * server code can call; this client module supplies the live id.
  */
-registerPostHogSessionId(() =>
-  isPostHogReady() ? posthog.get_session_id() : undefined,
-);
+registerPostHogSessionId(() => readyClient()?.get_session_id());
 
 const EMAIL_SHAPED = /^[^@\s]+@[^@\s]+$/;
 
@@ -104,15 +119,24 @@ const EMAIL_SHAPED = /^[^@\s]+@[^@\s]+$/;
  * fresh anonymous id to the Mongo id. Afterwards the id is a uuid, so it runs once.
  */
 export function resetLegacyEmailIdentity(): void {
-  if (!isPostHogReady()) return;
+  const posthog = readyClient();
+  if (!posthog) return;
   if (EMAIL_SHAPED.test(posthog.get_distinct_id())) posthog.reset();
 }
 
 /** Replays everything captured before `posthog.init` finished, in order. */
 export function flushPendingAnalytics(): void {
-  if (!isPostHogReady()) return;
+  const posthog = readyClient();
+  if (!posthog) return;
   const queued = pendingCalls.splice(0, pendingCalls.length);
-  for (const call of queued) send(call);
+  for (const call of queued) send(posthog, call);
+}
+
+/** Hand over the initialised SDK, then drop a legacy identity and replay the queue. */
+export function connectPostHog(posthog: PostHogClient): void {
+  client = posthog;
+  resetLegacyEmailIdentity();
+  flushPendingAnalytics();
 }
 
 /**
@@ -162,4 +186,9 @@ export function track<E extends WebEventName>(
  */
 export function setUserProperties(properties: UserProperties): void {
   dispatch({ kind: "person", properties });
+}
+
+/** Report an exception to PostHog error tracking; dropped before init, like the SDK's own. */
+export function captureException(error: Error): void {
+  readyClient()?.captureException(error);
 }

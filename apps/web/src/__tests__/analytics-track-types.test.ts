@@ -3,11 +3,9 @@
  * The `@ts-expect-error` lines are the test: `pnpm type` fails if any of them
  * starts compiling, i.e. if a raw string or a foreign event gets through.
  */
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { track } from "@/lib/analytics";
-
-vi.mock("posthog-js", () => ({ default: { __loaded: false } }));
 
 describe("track", () => {
   it("accepts a web event with its catalog props", () => {
