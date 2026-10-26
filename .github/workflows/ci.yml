@@ -213,7 +213,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          clean: ${{ runner.environment != 'self-hosted' }}
+          clean: ${{ !startsWith(runner.name, 'gaia-home-') }}
           # Full history for nx-set-shas and every diff below. A depth-1
           # checkout marks the persistent workspace shallow, and the next
           # depth-0 fetch on that runner then re-unshallows from GitHub
@@ -435,7 +435,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          clean: ${{ runner.environment != 'self-hosted' }}
+          clean: ${{ !startsWith(runner.name, 'gaia-home-') }}
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
@@ -716,7 +716,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          clean: ${{ runner.environment != 'self-hosted' }}
+          clean: ${{ !startsWith(runner.name, 'gaia-home-') }}
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup-uv
@@ -875,7 +875,7 @@ jobs:
             echo "MYPY_CACHE_DIR=$GITHUB_WORKSPACE/.mypy_cache" >> "$GITHUB_ENV"
           fi
       - name: Restore mypy incremental cache
-        if: needs.detect.outputs.has_python_sources == 'true' && runner.environment != 'self-hosted'
+        if: needs.detect.outputs.has_python_sources == 'true' && !startsWith(runner.name, 'gaia-home-')
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .mypy_cache
@@ -1080,7 +1080,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          clean: ${{ runner.environment != 'self-hosted' }}
+          clean: ${{ !startsWith(runner.name, 'gaia-home-') }}
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup-uv
@@ -1422,7 +1422,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          clean: ${{ runner.environment != 'self-hosted' }}
+          clean: ${{ !startsWith(runner.name, 'gaia-home-') }}
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup-uv
@@ -1493,8 +1493,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          clean: ${{ runner.environment != 'self-hosted' }}
-          fetch-depth: ${{ runner.environment == 'self-hosted' && '0' || '1' }}
+          clean: ${{ !startsWith(runner.name, 'gaia-home-') }}
+          fetch-depth: ${{ startsWith(runner.name, 'gaia-home-') && '0' || '1' }}
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       - uses: ./.github/actions/restore-nextjs-cache
@@ -1581,8 +1581,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          clean: ${{ runner.environment != 'self-hosted' }}
-          fetch-depth: ${{ runner.environment == 'self-hosted' && '0' || '1' }}
+          clean: ${{ !startsWith(runner.name, 'gaia-home-') }}
+          fetch-depth: ${{ startsWith(runner.name, 'gaia-home-') && '0' || '1' }}
           persist-credentials: false
       # Dataflow SAST bandit cannot do. A whole-directory scan, not diff-scoped:
       # a security check that only looks at touched files stops noticing the
@@ -1600,23 +1600,24 @@ jobs:
         if: always() && steps.semgrep.outcome == 'failure'
         run: python3 scripts/ci/verdict.py sarif --lane scan/semgrep semgrep.sarif
       - *upload-verdict-so-far
-      # Self-hosted keeps the vuln DB on local disk, one dir per runner
-      # instance (trivy refuses concurrent use of one cache dir), and setup.sh
-      # installs the pinned trivy; GitHub-hosted round-trips it through the
-      # action's cache.
+      # The box keeps the vuln DB on local disk, one dir per runner instance
+      # (trivy refuses concurrent use of one cache dir), and setup.sh installs
+      # the pinned trivy; elsewhere the action installs trivy and round-trips
+      # the DB through its cache.
       - name: Pick the trivy DB location
         shell: bash
         run: |
-          if [ "$RUNNER_ENVIRONMENT" = "self-hosted" ]; then
+          source scripts/ci/lib/runner-host.sh
+          if ci_on_the_box; then
             echo "TRIVY_DB_DIR=${RUNNER_LOCAL_CACHE:-$HOME/ci-cache}/trivy/$RUNNER_NAME" >> "$GITHUB_ENV"
             echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           else
             echo "TRIVY_DB_DIR=${GITHUB_WORKSPACE}/.cache/trivy" >> "$GITHUB_ENV"
           fi
-      # Self-hosted: scan the committed tree, not the persistent workspace and
+      # The box: scan the committed tree, not the persistent workspace and
       # its 8 GB of node_modules/.venv (67 s vs 3.6 s, identical findings).
-      - name: Extract the committed tree for scanning (self-hosted)
-        if: runner.environment == 'self-hosted'
+      - name: Extract the committed tree for scanning (the box)
+        if: startsWith(runner.name, 'gaia-home-')
         shell: bash
         run: |
           rm -rf "$RUNNER_TEMP/trivy-src" && mkdir -p "$RUNNER_TEMP/trivy-src"
@@ -1626,12 +1627,12 @@ jobs:
         continue-on-error: true
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          skip-setup-trivy: ${{ runner.environment == 'self-hosted' }}
+          skip-setup-trivy: ${{ startsWith(runner.name, 'gaia-home-') }}
           scan-type: "fs"
           severity: "CRITICAL,HIGH"
           format: "table"
-          scan-ref: ${{ runner.environment == 'self-hosted' && format('{0}/trivy-src', runner.temp) || '.' }}
-          cache: ${{ runner.environment != 'self-hosted' }}
+          scan-ref: ${{ startsWith(runner.name, 'gaia-home-') && format('{0}/trivy-src', runner.temp) || '.' }}
+          cache: ${{ !startsWith(runner.name, 'gaia-home-') }}
           cache-dir: ${{ env.TRIVY_DB_DIR }}
           skip-dirs: "node_modules,.venv,.nx,apps/web/.next,.mypy_cache,.pytest_cache"
           # TODO: make blocking (exit-code:1) after chore/trivy-npm-audit lands
@@ -1735,11 +1736,11 @@ jobs:
     steps: &test-python-steps
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          clean: ${{ runner.environment != 'self-hosted' }}
+          clean: ${{ !startsWith(runner.name, 'gaia-home-') }}
           persist-credentials: false
           # PR selection diffs against the merge-base (depth 200 reaches it);
           # the merge queue's regression-proof needs the group's base commit.
-          fetch-depth: ${{ !(runner.environment == 'self-hosted' || github.event_name == 'merge_group') && (github.event_name == 'pull_request' && 200 || 1) || 0 }}
+          fetch-depth: ${{ !(startsWith(runner.name, 'gaia-home-') || github.event_name == 'merge_group') && (github.event_name == 'pull_request' && 200 || 1) || 0 }}
       - uses: ./.github/actions/setup-python-test-env
         with:
           node: ${{ env.SLICE_NODE }}
@@ -1761,7 +1762,7 @@ jobs:
       # test-slices.json are sized for the 16-thread box.
       - name: Detect parallelism
         id: par
-        if: runner.environment != 'self-hosted'
+        if: ${{ !startsWith(runner.name, 'gaia-home-') }}
         run: |
           PY=$(python3 scripts/ci/runner.py parallel --pytest-n)
           echo "py=$PY" >> "$GITHUB_OUTPUT"
@@ -1802,7 +1803,7 @@ jobs:
           # as falsy, hence the explicit flag); the box gets its static share,
           # a GitHub-hosted runner the count detected on the VM it landed on.
           # The browser slice keeps its own share everywhere.
-          XDIST_N: ${{ env.SLICE_SERIAL == 'true' && '0' || ((runner.environment == 'self-hosted' || env.SLICE_NAME == 'browser') && env.SLICE_WORKERS || steps.par.outputs.py) }}
+          XDIST_N: ${{ env.SLICE_SERIAL == 'true' && '0' || ((startsWith(runner.name, 'gaia-home-') || env.SLICE_NAME == 'browser') && env.SLICE_WORKERS || steps.par.outputs.py) }}
         run: bash scripts/ci/pytest.sh slice
       # Before the suites below and the teardown: a red slice is readable now.
       - name: Upload the verdict so far (a test failed)
@@ -1969,14 +1970,14 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          clean: ${{ runner.environment != 'self-hosted' }}
-          fetch-depth: ${{ runner.environment == 'self-hosted' && '0' || '1' }}
+          clean: ${{ !startsWith(runner.name, 'gaia-home-') }}
+          fetch-depth: ${{ startsWith(runner.name, 'gaia-home-') && '0' || '1' }}
           persist-credentials: false
-      - name: Check the persistent shared builder exists (self-hosted)
-        if: runner.environment == 'self-hosted'
+      - name: Check the persistent shared builder exists (the box)
+        if: startsWith(runner.name, 'gaia-home-')
         run: docker buildx inspect gaia-ci >/dev/null || { echo "::error::gaia-ci builder missing — run setup.sh from the private gaia-infra repo (self-hosted-runner/setup.sh)"; exit 1; }
       - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
-        if: runner.environment != 'self-hosted'
+        if: ${{ !startsWith(runner.name, 'gaia-home-') }}
       # In the merge queue, rebuild only when the image inputs changed:
       # Dockerfile, Python deps, ignore files. Code-only changes rebuild the
       # last COPY layer and prove nothing the tests do not. Master always builds.
@@ -2003,7 +2004,7 @@ jobs:
         env:
           # The box's persistent shared builder. Passed as --builder, never
           # `buildx use`: `use` rewrites the global default every instance shares.
-          BUILDX_BUILDER: ${{ runner.environment == 'self-hosted' && 'gaia-ci' || '' }}
+          BUILDX_BUILDER: ${{ startsWith(runner.name, 'gaia-home-') && 'gaia-ci' || '' }}
         run: |
           set -euo pipefail
           /usr/bin/time -v docker buildx build --progress=plain ${BUILDX_BUILDER:+--builder "$BUILDX_BUILDER"} \
@@ -2019,8 +2020,8 @@ jobs:
           echo "::endgroup::"
       # The persistent builder idles at ~1.8 GB RSS; stopping it gives the RAM
       # back to the test lanes. Only when no other instance is mid-build.
-      - name: Stop the persistent builder when idle (self-hosted)
-        if: always() && runner.environment == 'self-hosted'
+      - name: Stop the persistent builder when idle (the box)
+        if: always() && startsWith(runner.name, 'gaia-home-')
         run: pgrep -f 'docker buildx build' >/dev/null || docker buildx stop gaia-ci
       - name: Upload the verdict
         if: always()
@@ -2064,7 +2065,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          clean: ${{ runner.environment != 'self-hosted' }}
+          clean: ${{ !startsWith(runner.name, 'gaia-home-') }}
           fetch-depth: 0
           persist-credentials: false
       # A services shard installs through the composite that also brings up

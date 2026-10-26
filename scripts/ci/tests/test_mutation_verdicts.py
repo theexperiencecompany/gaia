@@ -188,6 +188,7 @@ def _sandbox(tmp_path: Path) -> Path:
         "lib/output_findings.py",
         "lib/log.sh",
         "lib/cpu-slots.sh",
+        "lib/runner-host.sh",
         "lib/mutation_gap.py",
         "lib/mutation_report.py",
     ):

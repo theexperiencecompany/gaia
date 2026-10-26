@@ -63,6 +63,23 @@ jobs:
           config-file: config/release-please-config.json
           manifest-file: config/.release-please-manifest.json
 
+  # release-please bumps apps/api/pyproject.toml but not uv.lock, which records
+  # that version, so the release PR fails CI's uv-lock check until it is re-locked.
+  sync-release-uv-lock:
+    timeout-minutes: 10
+    needs: release-please
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The release token, so the push re-runs CI on the release PR.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+      - uses: ./.github/actions/setup-uv
+      - name: Re-lock uv.lock on the release PR branch
+        env:
+          RELEASE_BRANCH: release-please--branches--master
+        run: bash scripts/ci/release.sh sync-uv-lock
+
   # After release-please publishes component releases, the most recently
   # created one becomes GitHub's "Latest" release. electron-updater relies
   # on /releases/latest to find desktop update metadata (latest-*.yml), so

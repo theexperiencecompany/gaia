@@ -24,8 +24,9 @@
 #
 # It NEVER hangs or fails a gate. It is a no-op (returns success, takes nothing)
 # when:
-#   * RUNNER_ENVIRONMENT != self-hosted  — GitHub-hosted VMs are isolated, one
-#     job per VM; there is nothing to govern and no shared box.
+#   * the job is not on the home box (ci_on_the_box, lib/runner-host.sh) —
+#     GitHub-hosted and Blacksmith VMs are isolated, one job per VM; there is
+#     nothing to govern and no shared box.
 #   * the pool directory cannot be created.
 #   * N is not a positive integer (a serial slice passes XDIST_N=0).
 #   * the acquire waits past GAIA_CPU_SLOTS_TIMEOUT (default 600s) — it logs a
@@ -55,11 +56,14 @@
 #                           throwaway path).
 #   GAIA_CPU_SLOTS_TIMEOUT  Max seconds to wait before failing open (600).
 #   GAIA_CPU_SLOTS_TTL      Seconds after which a grant is presumed leaked (3600).
-#   RUNNER_ENVIRONMENT      "self-hosted" enables the governor; anything else is
-#                           a no-op.
+#   RUNNER_NAME             a box runner name (gaia-home-<n>) enables the
+#                           governor; anything else is a no-op.
 #
 # Sourced, never executed: it defines functions and touches nothing at source
 # time (log.sh must already be sourced — it provides ci_warn).
+
+# shellcheck source=scripts/ci/lib/runner-host.sh
+source "$(dirname "${BASH_SOURCE[0]}")/runner-host.sh"
 
 # Parallel stacks of grants this shell currently holds (bash 3.2 has no
 # associative arrays, and these scripts reach a mac). Index i pairs a holder
@@ -67,12 +71,10 @@
 _CPU_SLOTS_HELD_FILES=()
 _CPU_SLOTS_HELD_N=()
 
-_cpu_slots_enabled() { [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ]; }
-
 # flock is the atomicity primitive; without it there is no safe critical section,
 # so the governor fails open rather than race. It is coreutils/util-linux and is
-# always present on the Linux box (the only place RUNNER_ENVIRONMENT is
-# self-hosted); this guard matters for a dev machine that force-enables the
+# always present on the Linux box (the only place the governor is enabled);
+# this guard matters for a dev machine that force-enables the
 # governor without it (e.g. a stock macOS running the tests).
 _cpu_slots_have_flock() { command -v flock >/dev/null 2>&1; }
 
@@ -177,7 +179,7 @@ _cpu_slots_live_locked() {
 
 cpu_slots_acquire() {
   local want="${1:-}"
-  _cpu_slots_enabled || return 0
+  ci_on_the_box || return 0
   if ! _cpu_slots_is_uint "$want" || [ "$want" -lt 1 ]; then return 0; fi
   if ! _cpu_slots_have_flock; then
     ci_warn "cpu-slots: flock not found — proceeding without the governor (fail-open)"
@@ -240,7 +242,7 @@ cpu_slots_acquire() {
 # acquire that took nothing) simply have no holder file and this is a no-op.
 cpu_slots_release() {
   local give="${1:-}"
-  _cpu_slots_enabled || return 0
+  ci_on_the_box || return 0
   if ! _cpu_slots_is_uint "$give" || [ "$give" -lt 1 ]; then return 0; fi
 
   local dir

@@ -216,10 +216,30 @@ def test_keep_warm_on_the_box_does_not_kill(tmp_path: Path, port: int) -> None:
     holder = start_listener(tmp_path, port, ours=True)
     try:
         (tmp_path / f"gaia-embedding-sidecar-{RUNNER_INDEX}.pid").write_text(f"{holder.pid}\n")
-        proc = run(tmp_path, port, "stop", RUNNER_ENVIRONMENT="self-hosted")
+        proc = run(tmp_path, port, "stop", RUNNER_NAME="gaia-home-1")
         assert proc.returncode == 0
         assert "left warm" in proc.stdout
         assert holder.poll() is None, "keep-warm killed the sidecar"
+    finally:
+        cleanup(holder)
+
+
+def test_blacksmith_stops_the_sidecar_despite_reporting_self_hosted(
+    tmp_path: Path, port: int
+) -> None:
+    holder = start_listener(tmp_path, port, ours=True)
+    try:
+        (tmp_path / f"gaia-embedding-sidecar-{RUNNER_INDEX}.pid").write_text(f"{holder.pid}\n")
+        proc = run(
+            tmp_path,
+            port,
+            "stop",
+            RUNNER_NAME="blacksmith-4vcpu-ubuntu-2404-1",
+            RUNNER_ENVIRONMENT="self-hosted",
+        )
+        assert proc.returncode == 0
+        assert "left warm" not in proc.stdout
+        assert not still_alive(holder)
     finally:
         cleanup(holder)
 
@@ -228,7 +248,7 @@ def test_stop_sidecar_env_defeats_keep_warm(tmp_path: Path, port: int) -> None:
     holder = start_listener(tmp_path, port, ours=True)
     try:
         (tmp_path / f"gaia-embedding-sidecar-{RUNNER_INDEX}.pid").write_text(f"{holder.pid}\n")
-        proc = run(tmp_path, port, "stop", RUNNER_ENVIRONMENT="self-hosted", STOP_SIDECAR="1")
+        proc = run(tmp_path, port, "stop", RUNNER_NAME="gaia-home-1", STOP_SIDECAR="1")
         assert proc.returncode == 0
         assert "left warm" not in proc.stdout
         assert not still_alive(holder)

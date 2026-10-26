@@ -117,9 +117,7 @@ def test_with_slots_holds_the_tokens_in_the_shared_pool_while_running(
         "bash",
         "-c",
         f'cat "{pool}"/holders/* > "{seen}"',
-        env=plain_env(
-            RUNNER_ENVIRONMENT="self-hosted", GAIA_CPU_SLOTS_DIR=str(pool), GAIA_CPU_TOKENS="8"
-        ),
+        env=plain_env(RUNNER_NAME="gaia-home-1", GAIA_CPU_SLOTS_DIR=str(pool), GAIA_CPU_TOKENS="8"),
     )
     assert proc.returncode == 0, proc.stderr
     assert seen.read_text() == "3"
@@ -138,7 +136,7 @@ def test_with_slots_waits_for_tokens_another_lane_holds(tmp_path: Path, flock: s
         "--",
         "true",
         env=plain_env(
-            RUNNER_ENVIRONMENT="self-hosted",
+            RUNNER_NAME="gaia-home-1",
             GAIA_CPU_SLOTS_DIR=str(pool),
             GAIA_CPU_TOKENS="8",
             GAIA_CPU_SLOTS_TIMEOUT="2",

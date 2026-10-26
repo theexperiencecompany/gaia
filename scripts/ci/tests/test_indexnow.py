@@ -186,6 +186,27 @@ def test_maps_each_changed_file_to_the_pages_it_renders(
     assert posts == []
 
 
+def test_a_changed_guide_submits_its_top_level_page_and_not_the_home_page(
+    repo: Path, site: tuple[str, Routes, list[tuple[str, bytes]]]
+) -> None:
+    base, routes, _posts = site
+    _write(
+        repo,
+        {
+            "apps/web/public/data/guides/_slugs.json": '["ai-guide"]',
+            "apps/web/public/data/guides/ai-guide.json": '{"title": "G"}',
+        },
+    )
+    previous = _git(repo, "rev-parse", "HEAD")
+    head = _write(repo, {"apps/web/public/data/guides/ai-guide.json": '{"title": "G2"}'})
+    routes.update(_sitemap(base, [*LIVE_PATHS, "/ai-guide"]))
+
+    result = _run(repo, base, "--previous", previous, "--head", head, "--dry-run")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _listed(result.stdout, "updated", base) == {"/ai-guide"}
+
+
 def test_posts_the_list_with_the_key_the_site_serves(
     repo: Path, site: tuple[str, Routes, list[tuple[str, bytes]]]
 ) -> None:

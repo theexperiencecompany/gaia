@@ -45,11 +45,11 @@ def health(tmp_path: Path, github: FakeGitHub) -> Health:
     pool = tmp_path / "pool"
     (pool / "holders").mkdir(parents=True)
 
-    def run(*, runners: Reply = RUNNERS) -> dict[str, object]:
+    def run(*, runners: Reply = RUNNERS, **env: str) -> dict[str, object]:
         github.on("GET", r"/actions/runners$", runners)
         proc = run_runner(
             "health",
-            env=github.env(GAIA_CPU_SLOTS_DIR=str(pool), GAIA_CPU_TOKENS="16"),
+            env=github.env(GAIA_CPU_SLOTS_DIR=str(pool), GAIA_CPU_TOKENS="16", **env),
             timeout=120,
         )
         assert proc.returncode == 0, proc.stderr
@@ -109,3 +109,28 @@ def test_health_never_writes_to_the_pool_it_reads(health: Health) -> None:
     (health.pool / "holders" / f"{os.getpid()}.1").write_text("3")
     health.run()
     assert [p.name for p in (health.pool / "holders").iterdir()] == [f"{os.getpid()}.1"]
+
+
+def _path_without_listeners(tmp_path: Path) -> str:
+    """Put a ps on PATH that lists no Runner.Listener, so only the runner name decides."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    ps = bin_dir / "ps"
+    ps.write_text("#!/usr/bin/env bash\necho 'python -m pytest'\n")
+    ps.chmod(0o755)
+    return f"{bin_dir}{os.pathsep}{os.environ['PATH']}"
+
+
+def test_a_box_runner_is_reported_as_the_runner_host(health: Health, tmp_path: Path) -> None:
+    report = health.run(RUNNER_NAME="gaia-home-4", PATH=_path_without_listeners(tmp_path))
+    assert report["is_runner_host"] is True
+
+
+def test_a_blacksmith_runner_is_not_the_runner_host(health: Health, tmp_path: Path) -> None:
+    """Blacksmith reports RUNNER_ENVIRONMENT=self-hosted too; only the box's name counts."""
+    report = health.run(
+        RUNNER_NAME="blacksmith-4vcpu-ubuntu-2404-1",
+        RUNNER_ENVIRONMENT="self-hosted",
+        PATH=_path_without_listeners(tmp_path),
+    )
+    assert report["is_runner_host"] is False

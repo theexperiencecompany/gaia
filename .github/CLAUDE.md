@@ -66,20 +66,29 @@ none is; `force_github` skips both probes. No job ever carries a bare
 `runs-on: [self-hosted]`. `build.yml` and the deploy workflows are deliberately
 NOT routed through it: release images and deploys stay GitHub-hosted. Every
 box-only assumption in a lane (the persistent workspace, `RUNNER_LOCAL_CACHE`,
-the cpu-slots governor) stays behind `runner.environment == 'self-hosted'`,
-because any lane can land on either.
+the cpu-slots governor, the shared test services, the `gaia-ci` builder, the
+tools `setup.sh` installs) stays behind the box check, because any lane can land
+on any of the three. **The box is identified by runner name, never by
+`runner.environment`**: Blacksmith reports `self-hosted` too, and every lane
+keyed on that broke there (`scan`: `trivy: command not found`; `docker-image`:
+"gaia-ci builder missing"). The box's runners are `gaia-home-<n>`
+(`RUNNER_NAME_PREFIX` in gaia-infra's `setup.sh`), so an expression asks
+`startsWith(runner.name, 'gaia-home-')` and shell asks `ci_on_the_box` from
+`scripts/ci/lib/runner-host.sh` (a `run:` block sources it).
+`scripts/ci/tests/test_workflow_box_signal.py` fails on any `runner.environment`
+or `RUNNER_ENVIRONMENT` in a workflow, composite or `scripts/ci` script.
 
 Consequences to keep in mind when editing a lane:
 
-- **The workspace persists.** Every self-hosted checkout uses `fetch-depth: 0`
-  (`clean:` only off self-hosted): a depth-1 checkout marks the persistent
+- **The workspace persists.** Every checkout on the box uses `fetch-depth: 0`
+  (`clean:` only off the box): a depth-1 checkout marks the persistent
   clone shallow and the next depth-0 fetch re-unshallows over a residential
   uplink (measured 21-104 s).
 - **Service containers are shared, not per job** — `scripts/ci/test-services.sh`
   namespaces one shared container set per runner instance; every lane that
   starts them must release its namespace in an `if: always()` teardown step
   (`test-services.sh down`). The script decides shared-vs-per-job itself from
-  `RUNNER_ENVIRONMENT`/`RUNNER_INDEX` — no caller branches on runner kind.
+  `ci_on_the_box`/`RUNNER_INDEX` — no caller branches on runner kind.
 - **Concurrency is per SHA** (`ci-<ref>-<sha>`), not per PR: with a per-PR
   group and cancel-in-progress the new push waits for the old run to FINISH
   cancelling, and a cancelled self-hosted pytest step wedges its worker for the

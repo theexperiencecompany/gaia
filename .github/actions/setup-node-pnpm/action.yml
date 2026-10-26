@@ -38,11 +38,12 @@ runs:
         COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
       run: |
         set -euo pipefail
+        source scripts/ci/lib/runner-host.sh
         if command -v pnpm >/dev/null 2>&1 && [ "$(pnpm --version 2>/dev/null || true)" = "$PNPM_VERSION" ]; then
           echo "pnpm $PNPM_VERSION already on PATH ($(command -v pnpm))"
           exit 0
         fi
-        if [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ]; then
+        if ci_on_the_box; then
           COREPACK_HOME="$HOME/ci-cache/corepack"
         else
           COREPACK_HOME="$RUNNER_TEMP/corepack"
@@ -67,14 +68,14 @@ runs:
     # 3,558 packages, past the 5-minute changes job). The store is
     # content-addressed and concurrency-safe, so the twenty instances dedupe
     # against each other.
-    - name: Setup Node.js (self-hosted — persistent local store)
-      if: runner.environment == 'self-hosted'
+    - name: Setup Node.js (the box — persistent local store)
+      if: startsWith(runner.name, 'gaia-home-')
       uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.1
       with:
         node-version-file: ".node-version"
 
-    - name: Setup Node.js (GitHub-hosted — cache pnpm store)
-      if: runner.environment != 'self-hosted'
+    - name: Setup Node.js (off the box — cache pnpm store)
+      if: ${{ !startsWith(runner.name, 'gaia-home-') }}
       uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.1
       with:
         node-version-file: ".node-version"
@@ -110,8 +111,9 @@ runs:
         ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
       run: |
         set -euo pipefail
+        source scripts/ci/lib/runner-host.sh
         MARK="$(python3 scripts/ci/runner.py dep-marker node)"
-        if [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ] && [ -f "$MARK" ] &&
+        if ci_on_the_box && [ -f "$MARK" ] &&
            [ -f node_modules/.modules.yaml ] && [ -f node_modules/.pnpm/lock.yaml ]; then
           echo "node_modules already installed ($MARK) — skipping pnpm install"
           exit 0
@@ -127,12 +129,12 @@ runs:
         # A settings change on a persistent workspace therefore fails with
         # ERR_PNPM_IGNORED_BUILDS (measured 2026-08-29, strictDepBuilds) unless
         # that cache goes: pnpm then rebuilds the tree from the content store.
-        if [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ] && [ -f node_modules/.modules.yaml ]; then
+        if ci_on_the_box && [ -f node_modules/.modules.yaml ]; then
           echo "install settings changed since the last install — resetting node_modules/.modules.yaml"
           rm -f node_modules/.modules.yaml
         fi
         STORE_ARGS=()
-        if [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ]; then
+        if ci_on_the_box; then
           STORE_ARGS=(--store-dir "${PNPM_STORE_DIR:-$HOME/.local/share/pnpm/store/v10}")
         fi
         echo "::group::pnpm install"
