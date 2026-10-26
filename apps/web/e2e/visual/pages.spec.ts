@@ -153,27 +153,30 @@ async function settle(page: Page): Promise<void> {
     await page.clock.runFor(SCROLL_CLOCK_STEP_MS);
   }
   await page.evaluate(() => window.scrollTo(0, 0));
+  // Whether a lazy image near the fold has started is a race; load them all so each run captures every image.
+  await page.evaluate(() => {
+    for (const image of document.querySelectorAll("img[loading=lazy]")) {
+      (image as HTMLImageElement).loading = "eager";
+    }
+  });
   // Twice: an image that lands schedules timers (fades, progressive swaps), and those timers can load more.
   for (let pass = 0; pass < 2; pass++) {
     await page.waitForLoadState("networkidle");
     await page.evaluate(() => document.fonts.ready);
-    await waitForStartedImages(page);
+    await waitForImages(page);
     await page.clock.runFor(FINAL_CLOCK_STEP_MS);
   }
 }
 
-/** Every image the browser has begun fetching has landed; lazy images never scrolled near stay unstarted. */
-async function waitForStartedImages(page: Page): Promise<void> {
+/** Every image on the page has landed (or failed). */
+async function waitForImages(page: Page): Promise<void> {
   const pending = () =>
     Array.from(document.images)
-      .filter((image) => !image.complete && image.currentSrc !== "")
+      .filter((image) => !image.complete)
       .map((image) => image.currentSrc);
   try {
     await page.waitForFunction(
-      () =>
-        Array.from(document.images).every(
-          (image) => image.complete || image.currentSrc === "",
-        ),
+      () => Array.from(document.images).every((image) => image.complete),
       undefined,
       { polling: 250, timeout: IMAGE_TIMEOUT_MS },
     );
