@@ -262,9 +262,10 @@ run_dead_references() {
   # Vulture is name-based: a same-named local hides a dead symbol, and its
   # enforced set drops "unused variable" where dead constants live. This
   # resolves imports and attribute chains to the symbol they name, and counts
-  # production references only (a test is not a consumer).
+  # production references only. A test-only symbol is reported too: tests are
+  # not a consumer, so the zero this gate reached stays enforced.
   local raw_output
-  raw_output=$(python3 "$SCRIPT_DIR/ci/dead_references.py" 2>&1 || true)
+  raw_output=$(python3 "$SCRIPT_DIR/ci/dead_references.py" --show-test-only 2>&1 || true)
 
   if [[ -z "$raw_output" ]]; then
     echo -e "  ${GREEN}No dead references found.${RESET}"
