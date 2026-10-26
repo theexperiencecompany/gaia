@@ -65,6 +65,7 @@ class RouterAwareSlowAPIMiddleware(SlowAPIMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        """Count this request against the app-wide limit, then hand it to the route."""
         app: FastAPI = request.app
         limiter_for_app: Limiter = app.state.limiter
         if not limiter_for_app.enabled:
