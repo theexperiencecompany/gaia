@@ -15,7 +15,7 @@ import {
 export const metadata: Metadata = generatePageMetadata({
   title: "Blog",
   description:
-    "Read the latest updates, insights, and stories from the GAIA team. Learn about AI, productivity, open-source development, and our journey building the future of personal AI assistants.",
+    "Product updates, guides, and engineering notes from the team building GAIA, covering AI assistants, productivity, and how the product works inside.",
   path: "/blog",
   keywords: [
     "GAIA Blog",

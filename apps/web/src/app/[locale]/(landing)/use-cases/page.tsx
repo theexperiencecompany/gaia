@@ -13,7 +13,7 @@ import {
 export const metadata: Metadata = generatePageMetadata({
   title: "Use Cases & Workflows",
   description:
-    "Explore powerful workflows and use cases for GAIA. Discover how others are using AI to automate tasks, manage emails, schedule meetings, and boost productivity with community-built workflows.",
+    "Browse workflows that automate email, meetings, and scheduling with GAIA, including ones built by the community that you can run in your own account.",
   path: "/use-cases",
   image: "/api/og/use-cases",
   keywords: [

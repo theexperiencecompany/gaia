@@ -29,10 +29,9 @@ export default defineConfig({
     },
     server: {
       deps: {
-        // Allow vite to resolve internal bare specifiers inside ESM packages
-        // that omit file extensions (e.g. @openuidev/react-lang/dist/index.js
-        // imports from "./library" without ".js")
-        inline: ["@openuidev/react-lang"],
+        // ESM packages importing extensionless specifiers ("./library",
+        // next-intl's "next/navigation") resolve only when vite inlines them
+        inline: ["@openuidev/react-lang", "next-intl"],
       },
     },
   },

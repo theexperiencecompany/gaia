@@ -13,7 +13,7 @@ import {
 export const metadata: Metadata = generatePageMetadata({
   title: "Privacy Policy",
   description:
-    "Review GAIA's Privacy Policy to learn how we collect, use, and protect your personal data while providing our AI assistant services. We prioritize your privacy and data security.",
+    "How GAIA collects, uses, stores, and protects your personal data, which third parties process it, and how to export or delete everything we hold.",
   path: "/privacy",
   keywords: [
     "Privacy Policy",

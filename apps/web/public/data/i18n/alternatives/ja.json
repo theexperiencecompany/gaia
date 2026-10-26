@@ -237,7 +237,7 @@
     "name": "ClickUp",
     "tagline": "ドキュメント、目標、タイムトラッキングも備えたオールインワンのプロジェクト管理",
     "metaTitle": "ClickUpの代替: 設定ゼロで動く先回りAI",
-    "metaDescription": "ClickUpは機能過多で導入が大変。GAIAは今のツールとすぐ連携し、対応すべきことを知らせます。ビューやチーム機能を比較。",
+    "metaDescription": "ClickUpはドキュメントや目標、タイムトラッキングまで抱え込み、導入と設定に時間がかかります。GAIAは今使っているツールとすぐ連携し、対応すべきことだけを知らせます。",
     "keywords": [
       "clickup 代替",
       "最高の clickup 代替",
@@ -303,7 +303,7 @@
     "name": "Trello",
     "tagline": "チームや個人のためのカンバン式ビジュアルタスクボード",
     "metaTitle": "Trelloの代替: ボード管理不要のAIタスク",
-    "metaDescription": "Trelloのボードは手作業の整理が欠かせません。GAIAはメールと予定からタスクを作り優先順位付け。料金と移行手順を確認。",
+    "metaDescription": "Trelloのカンバンボードは、カードの整理と優先順位付けを手作業で続ける必要があります。GAIAはメールと予定からタスクを作り、優先順位を付けます。料金と移行手順を確認。",
     "keywords": [
       "trello 代替",
       "最強 trello 代替",
@@ -601,7 +601,7 @@
     "name": "Microsoft Copilot",
     "tagline": "Microsoft 365スイート全体に統合されたMicrosoftのAIアシスタント",
     "metaTitle": "Microsoft Copilotの代替: Google Workspace向け",
-    "metaDescription": "CopilotはMicrosoft 365のライセンスが前提。GAIAはGmailとGoogleカレンダーで動くソース公開型。料金を比較。",
+    "metaDescription": "CopilotはMicrosoft 365のライセンスが前提で、OutlookやTeamsを使わない人には向きません。GAIAはGmailとGoogleカレンダーで動くソース公開型です。料金と対応ツールを比較。",
     "keywords": [
       "microsoft copilot 代替",
       "copilot 代替",
@@ -668,7 +668,7 @@
     "name": "Google Gemini",
     "tagline": "Workspace連携とウェブアクセスが可能なGoogleのAIアシスタント",
     "metaTitle": "Geminiの代替: 先回りして動くAIアシスタント",
-    "metaDescription": "Geminiは質問を待ちます。GAIAはGmailの重要事項を先に知らせ、タスクを管理し、Google以外のツールにも対応。料金を比較。",
+    "metaDescription": "GeminiはGoogle Workspaceと深く連携しますが、質問されるまで待つアシスタントです。GAIAはGmailの重要事項を先に知らせ、タスクを管理し、Google以外のツールにも対応します。",
     "keywords": [
       "google gemini 代替",
       "gemini 代替",
@@ -816,7 +816,7 @@
     "name": "Motion",
     "tagline": "タスクを空き時間に自動で配置し、予定が変わると組み直すAIカレンダーアプリ",
     "metaTitle": "自動スケジューリングツール: Motionの代替GAIA",
-    "metaDescription": "Motionはメール連携のない有料カレンダー。GAIAはGmailからタスクを作り、予定の重複を知らせます。ソース公開型。料金を比較。",
+    "metaDescription": "Motionはタスクを空き時間に自動配置する有料カレンダーですが、メールとは連携しません。GAIAはGmailからタスクを作り、予定の重複を知らせるソース公開型です。料金を比較。",
     "keywords": [
       "motion 代替",
       "ベスト motion 代替",
@@ -893,7 +893,7 @@
     "name": "Reclaim.ai",
     "tagline": "習慣・タスク・会議の希望に対応したスマートスケジューリング",
     "metaTitle": "Reclaim AIとは？できないことと代替のGAIA",
-    "metaDescription": "Reclaimは予定ブロックを最適化しますが、メールは読めません。GAIAは受信箱・予定・タスクをつなぎます。料金を比較。",
+    "metaDescription": "Reclaimはフォーカスタイムや習慣の予定ブロックを最適化しますが、メールの中身は読めません。GAIAは受信箱・予定・タスクをつなぎ、メールからタスクも作ります。料金を比較。",
     "keywords": [
       "reclaim ai 代替",
       "ベストなreclaim代替",
@@ -962,7 +962,7 @@
     "name": "Clockwise",
     "tagline": "AIによるチームのカレンダー最適化とフォーカスタイムのスケジューリング",
     "metaTitle": "Clockwiseの代替: チーム導入なしで使えるAI",
-    "metaDescription": "Clockwiseはチーム全体の導入が前提。GAIAは個人で使え、予定・メール・タスクを日次ブリーフィングで管理。料金を比較。",
+    "metaDescription": "Clockwiseはチーム全体での導入が前提で、扱えるのはカレンダーだけです。GAIAは個人で使え、予定・メール・タスクを毎日のブリーフィングでまとめて管理。料金の違いも比較します。",
     "keywords": [
       "Clockwise 代替",
       "ベスト Clockwise 代替",
@@ -1092,7 +1092,7 @@
     "name": "Calendly",
     "tagline": "他の人と予約用リンクを共有するためのスケジューリング自動化",
     "metaTitle": "Calendlyの代替: 自分の予定を管理するAI",
-    "metaDescription": "Calendlyは予約リンクの受付用。GAIAは予定全体を管理し、日程調整メールを下書きし、会議からタスクを作成。併用の目安を確認。",
+    "metaDescription": "Calendlyは予約リンクで他の人からの予約を受けるツールです。GAIAは予定全体を内側から管理し、日程調整メールを下書きし、会議からタスクを作成。併用か乗り換えかの目安も紹介します。",
     "keywords": [
       "calendly 代替",
       "best calendly 代替",
@@ -1251,7 +1251,7 @@
     "name": "SaneBox",
     "tagline": "SaneBoxの代替は目的で選ぶ：無料の標準フィルター、一括整理ツール、新しいメールアプリ、または重要なメールに対応するGAIA",
     "metaTitle": "SaneBoxの代替: 仕分けだけでなく返信もするAI",
-    "metaDescription": "SaneBoxはメールを振り分けるだけ。GAIAは仕分けに加え返信を下書きし、タスクと予定も作成。料金と移行手順を確認。",
+    "metaDescription": "SaneBoxはヘッダーを見てメールを振り分けるだけのフィルターです。GAIAは仕分けに加えて返信を下書きし、メールからタスクと予定も作成します。料金と移行手順を確認できます。",
     "keywords": [
       "sanebox 代替",
       "sanebox 最強代替",
@@ -1492,7 +1492,7 @@
     "name": "TickTick",
     "tagline": "ポモドーロタイマーと習慣トラッカーを内蔵したタスク管理アプリ",
     "metaTitle": "TickTick AIの代替: メールからタスクを作るGAIA",
-    "metaDescription": "TickTickはタスクを手入力します。GAIAはソース公開で、メールからタスクを作り、予定に合わせて期限を設定。機能と料金を比較。",
+    "metaDescription": "TickTickはポモドーロや習慣記録も備えますが、タスクは手入力です。GAIAはソース公開で、メールからタスクを作り、予定に合わせて期限を設定。機能と料金を比較します。",
     "keywords": [
       "ticktick 代替",
       "最高の ticktick 代替",
@@ -1690,7 +1690,7 @@
     "name": "Zapier",
     "tagline": "数千のアプリをZapsでつなぐノーコード自動化ツール",
     "metaTitle": "Zapierの代替: タスク数の上限がないAI自動化",
-    "metaDescription": "Zapierはタスク数で課金され、Zapごとに設定が必要。GAIAは会話でワークフローを作り、月額定額。料金を比較。",
+    "metaDescription": "ZapierはZapごとにトリガーとアクションを設定し、タスク数で課金されます。GAIAは会話でワークフローを作り、各ステップを判断しながら月額定額で動きます。料金を比較。",
     "keywords": [
       "zapier 代替",
       "最良の zapier 代替",
@@ -1788,7 +1788,7 @@
     "name": "Make",
     "tagline": "高度なシナリオ構築が可能なビジュアルワークフロー自動化プラットフォーム",
     "metaTitle": "Makeの代替: 会話で自動化するAI",
-    "metaDescription": "Makeはビジュアル編集が必要で、操作ごとに課金。GAIAは会話でワークフローを作り、各ステップで判断します。機能と料金を比較。",
+    "metaDescription": "Make（旧Integromat）はモジュールやルーターのビジュアル編集が必要で、操作ごとに課金されます。GAIAは会話でワークフローを作り、各ステップで判断。機能と料金を比較します。",
     "keywords": [
       "make.com 代替",
       "make 代替",
@@ -1985,7 +1985,7 @@
     "name": "Obsidian",
     "tagline": "ローカル重視の Markdown メモアプリ — グラフ表示とプラグイン対応",
     "metaTitle": "Obsidianの代替: 手動リンク不要で記憶するAI",
-    "metaDescription": "Obsidianはプラグインと手動リンクが必要。GAIAはメールと予定から記憶を作り、関係も自動で整理。ソース公開でセルフホスト可能。",
+    "metaDescription": "ObsidianはローカルのMarkdownメモで、プラグインと手動リンクが欠かせません。GAIAはメールと予定から記憶を作り、人や話題の関係も自動で整理。ソース公開でセルフホストも可能です。",
     "keywords": [
       "Obsidianの代替",
       "おすすめのObsidian代替ツール",
@@ -2313,7 +2313,7 @@
     "name": "Evernote",
     "tagline": "値上げと無料プランの制限が続く定番ノートアプリ。Webクリッパーとドキュメントスキャンが強み",
     "metaTitle": "Evernote値上げ{{CURRENT_YEAR}}: 料金比較と代替のGAIA",
-    "metaDescription": "Evernoteは有料プランの改定が続いています。GAIAはメールと予定から自動で知識を蓄積します。料金と移行手順を確認。",
+    "metaDescription": "Evernoteは買収後、有料プランの値上げと無料プランの制限が続いています。GAIAはメールと予定から自動で知識を蓄積し、手で整理する手間を減らします。料金と移行手順を確認。",
     "keywords": [
       "evernote 代替",
       "ベスト evernote 代替",
@@ -2454,7 +2454,7 @@
     "name": "Craft",
     "tagline": "メモ・ドキュメント・ウィキのための美しいドキュメントエディタ",
     "metaTitle": "Craft Docsの代替: 知識を自動で集めるAI",
-    "metaDescription": "Craftは手で書く美しい文書アプリ。GAIAはメールと予定から知識を蓄え、必要なときに提示します。料金と併用方法を比較。",
+    "metaDescription": "Craftは手で書き整える美しい文書アプリで、Appleデバイスで快適に動きます。GAIAはメールと予定から知識を自動で蓄え、必要なときに提示。料金と併用方法を比較します。",
     "keywords": [
       "craft docs 代替",
       "ベストCraft代替",
@@ -2518,7 +2518,7 @@
     "name": "Coda",
     "tagline": "ドキュメント、テーブル、オートメーションを統合するドック型データベース",
     "metaTitle": "Codaの代替: 数式いらずで動くAI",
-    "metaDescription": "Codaは表や数式で仕組みを作る必要があります。GAIAは今のツールとすぐ連携し、大事なことを提示。設定と料金を比較。",
+    "metaDescription": "Codaは表や数式、パックを組み合わせて自分で仕組みを作る必要があります。GAIAは今のツールとすぐ連携し、設定なしで大事なことを提示。始めるまでの手間と料金を比較します。",
     "keywords": [
       "Coda 代替",
       "Coda 最適代替",
@@ -2721,7 +2721,7 @@
     "name": "Akiflow",
     "tagline": "30 以上のアプリ統合を備えた統合タスクインボックスと時間ブロックプランナー",
     "metaTitle": "Akiflowの代替: メールから自動でタスク化",
-    "metaDescription": "Akiflowは無料プランがなく、毎日手作業で時間割り。GAIAはメールからタスクを作り、実行時間を提案。非商用ならセルフホストも無料。",
+    "metaDescription": "Akiflowは無料プランがなく、30以上のアプリのタスクを毎日手作業で時間割りします。GAIAはメールからタスクを作り、実行する時間まで提案。非商用ならセルフホストも無料です。",
     "keywords": [
       "akiflow の代替",
       "最高の akiflow の代替",
@@ -2785,7 +2785,7 @@
     "name": "Spark Email",
     "tagline": "チームコラボレーションとスマートインボックスを備えた AI 搭載のメールクライアント",
     "metaTitle": "Spark Mailの代替: メールをタスクに変えるAI",
-    "metaDescription": "Sparkは作成補助のみで、タスクと予定は手作業。GAIAはメールを見守り、重要なものを提示し、タスクと予定を作成。料金を比較。",
+    "metaDescription": "Sparkはスマートインボックスと作成補助を備えたメールアプリですが、タスクと予定は手作業です。GAIAはメールを見守り、重要なものを提示し、タスクと予定まで作成します。",
     "keywords": [
       "spark email の代替",
       "最高の spark mail の代替",
@@ -2978,7 +2978,7 @@
     "name": "Relay.app",
     "tagline": "Human-in-the-loop workflow automation with AI and approval steps",
     "metaTitle": "Relay.appの代替: 承認待ちを減らす先回りAI",
-    "metaDescription": "Relay.appは多くの自動化に手動承認が必要。GAIAはメール・予定・タスクの定型作業を自ら実行。料金を比較。",
+    "metaDescription": "Relay.appは多くの自動化で人の承認ステップを挟みます。GAIAはメール・予定・タスクの定型作業を自ら実行し、自動実行と承認待ちを操作ごとに選べます。承認の仕組みと料金を比較。",
     "keywords": [
       "relay app alternative",
       "best relay.app alternative",
@@ -3107,7 +3107,7 @@
     "name": "Tana",
     "tagline": "Outliner-database hybrid with Supertags, AI automation, and connected notes",
     "metaTitle": "Tanaの代替: Supertag不要ですぐ使えるAI",
-    "metaDescription": "TanaはSupertagやスキーマの習得が必要。GAIAはすぐに使え、メールと予定から知識を集めます。料金と移行手順を確認。",
+    "metaDescription": "TanaはSupertagやスキーマを覚えてから使うアウトライナーです。GAIAは設定なしですぐに使え、メールと予定から知識を集めて整理します。料金と移行手順も確認できます。",
     "keywords": [
       "tana alternative",
       "best tana notes alternative",
@@ -3231,7 +3231,7 @@
     "name": "Linear",
     "tagline": "Engineering issue tracking built for teams — not personal productivity",
     "metaTitle": "Linearの代替: 個人開発者向けのAIアシスタント",
-    "metaDescription": "Linearはチームのスプリント向け。GAIAは個人のタスク・メール・予定をまとめて管理し、Gmailからタスクを作成。料金を比較。",
+    "metaDescription": "Linearはエンジニアチームのスプリントと課題管理向けです。GAIAは個人のタスク・メール・予定をまとめて管理し、Gmailからタスクを作成。個人の生産性で選ぶ際の料金も比較します。",
     "keywords": [
       "linear alternative",
       "linear alternative source-available",
@@ -3409,7 +3409,7 @@
     "name": "Limitless AI",
     "tagline": "LimitlessはMetaによる買収後、終了に向かっています。録音はノートテイカーに、その後のフォローアップはGAIAに任せましょう",
     "metaTitle": "Limitless AIの代替: 会議を行動に変えるAI",
-    "metaDescription": "Limitlessは会話を記録しますが、フォローは手作業。GAIAは会議の内容からタスク、返信案、予定更新を作ります。移行手順を確認。",
+    "metaDescription": "LimitlessはMetaによる買収後に終了へ向かっており、会話を記録した後のフォローも手作業でした。GAIAは会議の内容からタスク、返信案、予定の更新を作ります。移行手順を確認できます。",
     "keywords": [
       "limitless ai alternative",
       "limitless ai alternative reddit",
@@ -3481,7 +3481,7 @@
     "name": "Lindy AI",
     "tagline": "Capable AI agent builder — but closed-source and cloud-only with usage-based pricing",
     "metaTitle": "Lindy AIの代替: セルフホスト可能で定額",
-    "metaDescription": "Lindy AIはクラウド専用の従量課金。GAIAはソース公開でセルフホスト可能、Proは月額${{PRO_MONTHLY_PRICE}}の定額です。料金を比較。",
+    "metaDescription": "Lindy AIはクラウド専用で、エージェントの実行量に応じて課金されます。GAIAはソース公開でセルフホストでき、Proは月額${{PRO_MONTHLY_PRICE}}の定額なので費用が読めます。料金と機能を比較します。",
     "keywords": [
       "lindy ai alternative",
       "lindy ai source-available alternative",
@@ -3545,7 +3545,7 @@
     "name": "Perplexity",
     "tagline": "The best AI search engine — but searching the web is very different from managing your life",
     "metaTitle": "Perplexityの代替: メールと予定を知るAI",
-    "metaDescription": "PerplexityはWeb検索が得意ですが、あなたを覚えません。GAIAはメール・タスク・会議を記憶して行動。併用か乗り換えかを比較。",
+    "metaDescription": "PerplexityはWeb検索が得意ですが、あなたのことは覚えません。GAIAはメール・タスク・会議を記憶し、その文脈で行動します。調べ物用に併用するか、乗り換えるかを比較します。",
     "keywords": [
       "perplexity alternative",
       "perplexity alternative reddit",

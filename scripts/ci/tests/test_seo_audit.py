@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from dataclasses import dataclass
+import json
 from pathlib import Path
 import subprocess
 import sys
@@ -11,27 +13,33 @@ from http_stub import Routes, serve
 import pytest
 
 AUDIT = Path(__file__).resolve().parents[1] / "lib" / "seo_audit.py"
+SNIPPET = Path(__file__).resolve().parents[3] / "apps/web/src/config/seoSnippet.json"
+NAMED = "https://heygaia.test"
 
 
-def _page(
-    base: str,
-    path: str,
-    *,
-    canonical: str | None = None,
-    body: str = "",
-    robots: str = "",
-    og_image: str = "/og.png",
-) -> str:
-    canonical_tag = (
-        f'<link rel="canonical" href="{canonical if canonical is not None else base + path}">'
-    )
-    robots_tag = f'<meta name="robots" content="{robots}">' if robots else ""
-    og_tag = f'<meta property="og:image" content="{base}{og_image}">'
+@dataclass(frozen=True)
+class Head:
+    """The head tags a test page varies; the defaults make a clean page."""
+
+    canonical: str | None = None
+    robots: str = ""
+    og_image: str = "/og.png"
+    description: str = "A description long enough to sit inside the snippet window of a result."
+
+
+CLEAN_HEAD = Head()
+
+
+def _page(base: str, path: str, head: Head = CLEAN_HEAD, body: str = "") -> str:
+    canonical = head.canonical if head.canonical is not None else base + path
+    robots_tag = f'<meta name="robots" content="{head.robots}">' if head.robots else ""
     return (
         "<html><head><svg><title>Icon</title></svg>"
         f"<title>Page {path}</title>"
-        '<meta name="description" content="A description long enough to sit inside the snippet window of a result.">'
-        f"{canonical_tag}{robots_tag}{og_tag}</head><body><h1>{path}</h1>{body}</body></html>"
+        f'<meta name="description" content="{head.description}">'
+        f'<link rel="canonical" href="{canonical}">{robots_tag}'
+        f'<meta property="og:image" content="{base}{head.og_image}">'
+        f"</head><body><h1>{path}</h1>{body}</body></html>"
     )
 
 
@@ -57,8 +65,12 @@ def _site(base: str) -> Routes:
         "/good": (200, {}, _page(base, "/good")),
         "/og.png": (200, {"Content-Type": "image/png"}, "png"),
         "/og-broken.png": (500, {"Content-Type": "text/plain"}, "Internal Server Error"),
-        "/elsewhere": (200, {}, _page(base, "/elsewhere", canonical=f"{base}/good")),
-        "/hidden": (200, {}, _page(base, "/hidden", robots="noindex", og_image="/og-broken.png")),
+        "/elsewhere": (200, {}, _page(base, "/elsewhere", Head(canonical=f"{base}/good"))),
+        "/hidden": (
+            200,
+            {},
+            _page(base, "/hidden", Head(robots="noindex", og_image="/og-broken.png")),
+        ),
         "/broken-jsonld": (
             200,
             {},
@@ -136,3 +148,41 @@ def test_audits_a_local_build_whose_pages_name_production(renamed_site: str) -> 
 
     assert result.returncode == 0, result.stdout
     assert "seo-audit: 1 sitemap URLs" in result.stdout
+
+
+def _description_range() -> tuple[int, int]:
+    limits = json.loads(SNIPPET.read_text())["descriptionLength"]
+    return limits["min"], limits["max"]
+
+
+def _snippet_site(descriptions: dict[str, str]) -> Routes:
+    sitemap = "".join(f"<url><loc>{NAMED}{p}</loc></url>" for p in descriptions)
+    pages: Routes = {
+        p: (200, {}, _page(NAMED, p, Head(description=d))) for p, d in descriptions.items()
+    }
+    return {
+        "/sitemap.xml": (200, {}, f"<urlset>{sitemap}</urlset>"),
+        "/og.png": (200, {"Content-Type": "image/png"}, "png"),
+        **pages,
+    }
+
+
+def test_a_warning_alone_fails_the_run() -> None:
+    low, _ = _description_range()
+    with serve(_snippet_site({"/thin": "x" * (low - 1)})) as base:
+        result = _audit(base, f"--site-url={NAMED}")
+
+    assert "WARN meta description length: 1" in result.stdout, result.stdout
+    assert result.returncode == 1, result.stdout
+
+
+def test_description_bounds_are_the_web_apps_snippet_config() -> None:
+    low, high = _description_range()
+    pages = {"/at-min": "a" * low, "/at-max": "b" * high, "/under": "c" * (low - 1)}
+    pages["/over"] = "d" * (high + 1)
+    with serve(_snippet_site(pages)) as base:
+        result = _audit(base, f"--site-url={NAMED}")
+
+    assert "WARN meta description length: 2" in result.stdout, result.stdout
+    assert f"{low - 1} {NAMED}/under" in result.stdout
+    assert f"{high + 1} {NAMED}/over" in result.stdout
