@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import type React from "react";
 import { useState } from "react";
 
-import CodeBlock from "@/features/chat/components/code-block/CodeBlock";
+import ChatCodeBlock from "@/features/chat/components/code-block/ChatCodeBlock";
 import { copyWithFeedback } from "@/lib/clipboard";
 import type { CodeData } from "@/types/features/toolDataTypes";
 import CodeExecutionOutput from "./CodeExecutionOutput";
@@ -66,9 +66,9 @@ const CodeExecutionSection: React.FC<CodeExecutionSectionProps> = ({
           }}
         >
           <div className="w-full max-w-[30vw] overflow-hidden rounded-[15px] rounded-b-[20px]">
-            <CodeBlock className={`language-${code_data.language}`}>
+            <ChatCodeBlock className={`language-${code_data.language}`}>
               {code_data.code}
-            </CodeBlock>
+            </ChatCodeBlock>
           </div>
         </AccordionItem>
 

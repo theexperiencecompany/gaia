@@ -22,7 +22,7 @@ import {
 } from "streamdown";
 
 import { resolveArtifactSrc } from "@/features/chat/api/sessionFilesApi";
-import CodeBlock from "@/features/chat/components/code-block/CodeBlock";
+import ChatCodeBlock from "@/features/chat/components/code-block/ChatCodeBlock";
 import CustomAnchor from "@/features/chat/components/code-block/CustomAnchor";
 import { cn } from "@/lib/utils";
 import { useImageDialog } from "@/stores/uiStore";
@@ -127,9 +127,13 @@ function buildMarkdownComponents(
 ): Components {
   return {
     code: ({ className, children, ...props }) => (
-      <CodeBlock className={className} hideToolbar={hideCodeToolbar} {...props}>
+      <ChatCodeBlock
+        className={className}
+        hideToolbar={hideCodeToolbar}
+        {...props}
+      >
         {children}
-      </CodeBlock>
+      </ChatCodeBlock>
     ),
     h1: ({ ...props }) => (
       <h1 className="mt-6 mb-4 text-3xl font-bold" {...props} />

@@ -4,7 +4,6 @@ import dynamic from "next/dynamic";
 import type React from "react";
 import { type ReactNode, useEffect, useState } from "react";
 import { copyWithFeedback } from "@/lib/clipboard";
-import { useActiveLoading } from "@/stores/streamStore";
 import CopyButton from "./CopyButton";
 import DownloadButton from "./DownloadButton";
 
@@ -32,6 +31,8 @@ interface CodeBlockProps extends React.HTMLAttributes<HTMLElement> {
   className?: string;
   children: ReactNode;
   hideToolbar?: boolean;
+  /** A chat turn is still streaming this block; mermaid stays on its code tab until it ends. */
+  isStreaming?: boolean;
 }
 
 const CodeBlock: React.FC<CodeBlockProps> = ({
@@ -39,9 +40,9 @@ const CodeBlock: React.FC<CodeBlockProps> = ({
   className,
   children,
   hideToolbar,
+  isStreaming: isLoading = false,
   ...props
 }) => {
-  const { isLoading } = useActiveLoading();
   const [activeTab, setActiveTab] = useState("code");
   const [copied, setCopied] = useState(false);
 
