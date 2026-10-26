@@ -109,19 +109,19 @@ async def test_a_missing_secret_refuses_with_503_without_calling_cloudflare(
 
 
 @pytest.mark.parametrize(
-    "outcome",
+    ("outcome", "error_type"),
     [
-        httpx.ReadTimeout("slow"),
-        httpx.ConnectError("down"),
-        httpx.Response(500, text="oops"),
-        httpx.Response(200, text="<html>not json</html>"),
-        httpx.Response(200, json={"unexpected": True}),
+        (httpx.ReadTimeout("slow"), "ReadTimeout"),
+        (httpx.ConnectError("down"), "ConnectError"),
+        (httpx.Response(500, text="oops"), "HTTPStatusError"),
+        (httpx.Response(200, text="<html>not json</html>"), "JSONDecodeError"),
+        (httpx.Response(200, json={"unexpected": True}), "ValidationError"),
     ],
     ids=["timeout", "connect-error", "5xx", "non-json", "no-success-field"],
 )
 @respx.mock
 async def test_a_siteverify_failure_refuses_with_503_never_accepts(
-    secret: str, outcome: Exception | httpx.Response
+    secret: str, outcome: Exception | httpx.Response, error_type: str
 ) -> None:
     route = respx.post(TURNSTILE_SITEVERIFY_URL)
     if isinstance(outcome, Exception):
@@ -136,12 +136,14 @@ async def test_a_siteverify_failure_refuses_with_503_never_accepts(
         await verify_turnstile_token("tok-123", None)
 
     cause = excinfo.value.meta["cause"]
-    assert cause.startswith("siteverify failed: ")
+    assert cause == f"siteverify failed: {error_type}"
     _assert_unavailable(excinfo.value, cause)
     args, kwargs = mock_log.error.call_args
     assert args == ("Turnstile siteverify call failed",)
-    assert kwargs["error"] and isinstance(kwargs["error"], str)
-    assert kwargs["error_type"] and kwargs["error_type"] != "NoneType"
+    assert kwargs["error_type"] == error_type
+    assert kwargs["error"] != "None"
+    if isinstance(outcome, Exception):
+        assert kwargs["error"] == str(outcome)
 
 
 @respx.mock
