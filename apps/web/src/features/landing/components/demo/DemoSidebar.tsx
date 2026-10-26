@@ -497,7 +497,7 @@ const DemoSidebar = memo(function DemoSidebar({
                 <Avatar className="size-7 shrink-0 rounded-full bg-black">
                   <AvatarImage
                     src="https://avatars.githubusercontent.com/u/64796509?v=3&s=56"
-                    alt="Aryan"
+                    alt=""
                   />
                   <AvatarFallback className="bg-zinc-700 text-xs text-zinc-300">
                     AR

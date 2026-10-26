@@ -24,6 +24,7 @@ export function AuthorTooltip({
             size="sm"
             className="h-8 w-8"
             name={author.name}
+            alt=""
           />
           <div className="flex flex-col">
             <span className="text-medium">{author.name}</span>
@@ -64,6 +65,7 @@ export function AuthorTooltip({
         size={avatarSize}
         className={avatarClassName}
         name={author.name}
+        alt={author.role ? `${author.name}, ${author.role}` : author.name}
       />
     </Tooltip>
   );
