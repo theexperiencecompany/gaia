@@ -25,6 +25,7 @@ import {
   TwitterIcon,
   WhatsappIcon,
 } from "@/components/shared/icons";
+import { siteConfig } from "@/lib/seo";
 import { vanityTarget } from "../../vanity-redirects.mjs";
 
 const BotPlatformIcon = ({
@@ -67,6 +68,7 @@ type NavIconComponent = ComponentType<{
   width?: number;
   height?: number;
   color?: string;
+  "aria-hidden"?: boolean;
 }>;
 
 // Factories keep the link pools declarative one-liners instead of repeating
@@ -108,7 +110,7 @@ const socialLink = (
 ): AppLink => ({
   href,
   label,
-  icon: <Icon width={size} height={size} color={color} />,
+  icon: <Icon width={size} height={size} color={color} aria-hidden />,
   external: true,
   description,
 });
@@ -302,35 +304,35 @@ export const appConfig = {
 
     connect: [
       socialLink(
-        "https://discord.heygaia.io",
+        siteConfig.links.discord,
         "Discord",
         DiscordIcon,
         "#5865f2",
         "Join Discord Community",
       ),
       socialLink(
-        "https://x.com/trygaia",
+        siteConfig.links.twitter,
         "Twitter",
         TwitterIcon,
         "#08a0e9",
         "Follow us for updates",
       ),
       socialLink(
-        "https://github.com/theexperiencecompany",
+        siteConfig.links.repo,
         "GitHub",
         Github,
         "white",
         "Check out our open source projects",
       ),
       socialLink(
-        "https://whatsapp.heygaia.io",
+        siteConfig.links.whatsapp,
         "WhatsApp",
         WhatsappIcon,
         "#25D366",
         "Join WhatsApp Community",
       ),
       socialLink(
-        "https://www.linkedin.com/company/heygaia",
+        siteConfig.links.linkedin,
         "LinkedIn",
         LinkedinIcon,
         "#0077B5",

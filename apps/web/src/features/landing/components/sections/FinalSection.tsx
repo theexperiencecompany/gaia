@@ -9,31 +9,32 @@ import {
   TwitterIcon,
   WhatsappIcon,
 } from "@/components/shared/icons";
+import { siteConfig } from "@/lib/seo";
 
 import GetStartedButton from "../shared/GetStartedButton";
 import { TextSoftBlurIn } from "../shared/TextSoftBlurIn";
 
 const SOCIAL_LINKS = [
   {
-    href: "https://twitter.com/trygaia",
+    href: siteConfig.links.twitter,
     ariaLabel: "Twitter",
     icon: <TwitterIcon width={20} height={20} aria-hidden="true" />,
     label: "Twitter",
   },
   {
-    href: "https://whatsapp.heygaia.io",
+    href: siteConfig.links.whatsapp,
     ariaLabel: "WhatsApp",
     icon: <WhatsappIcon width={20} height={20} aria-hidden="true" />,
     label: "WhatsApp",
   },
   {
-    href: "https://discord.heygaia.io",
+    href: siteConfig.links.discord,
     ariaLabel: "Discord",
     icon: <DiscordIcon width={20} height={20} aria-hidden="true" />,
     label: "Discord",
   },
   {
-    href: "https://github.com/theexperiencecompany/gaia",
+    href: siteConfig.links.repo,
     ariaLabel: "GitHub",
     icon: <Github width={20} height={20} aria-hidden="true" />,
     label: "GitHub",
@@ -74,7 +75,7 @@ export default function FinalSection({
 
           <GetStartedButton
             btnColor="#00bbff"
-            classname="w-full max-w-xs sm:w-auto text-black! text-sm sm:text-lg h-9 sm:h-12 px-6 rounded-xl hover:scale-105"
+            classname="w-full max-w-xs sm:w-auto text-sm sm:text-lg h-9 sm:h-12 px-6 rounded-xl hover:scale-105"
             text="Get Started"
           />
 

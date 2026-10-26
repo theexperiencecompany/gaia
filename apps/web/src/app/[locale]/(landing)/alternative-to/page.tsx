@@ -64,11 +64,9 @@ const CATEGORY_ORDER: AlternativeData["category"][] = [
 
 function AlternativeCard({
   alt,
-  title,
   fitLabel,
 }: {
   readonly alt: AlternativeData;
-  readonly title: string;
   readonly fitLabel: string;
 }) {
   return (
@@ -102,7 +100,7 @@ function AlternativeCard({
         </div>
       </div>
       <h3 className="text-lg font-medium text-white transition-colors group-hover:text-primary">
-        {title}
+        {alt.name}
       </h3>
       <p className="text-sm text-zinc-500">{alt.tagline}</p>
       <div className="mt-auto flex items-center gap-1.5 pt-2">
@@ -188,7 +186,6 @@ export default async function AlternativesHubPage({ params }: PageProps) {
                     <AlternativeCard
                       key={alt.slug}
                       alt={alt}
-                      title={t("best_name_alternative", { name: alt.name })}
                       fitLabel={t("fit_score")}
                     />
                   ))}
