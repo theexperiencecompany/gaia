@@ -7,7 +7,7 @@ and _should_exempt then exempted it — the default limit applied to nothing.
 
 from fastapi import APIRouter, FastAPI
 from httpx import ASGITransport, AsyncClient
-from limits.storage import MemoryStorage
+from limits.storage import RedisStorage
 from pydantic import BaseModel
 import pytest
 from slowapi import Limiter
@@ -129,7 +129,7 @@ def test_the_limiter_counts_against_the_configured_storage() -> None:
     """Every replica must share one window, so the storage is Redis, not this process's memory."""
     limiter = rate_limiter.build_limiter("redis://127.0.0.1:1")
 
-    assert not isinstance(limiter.limiter.storage, MemoryStorage)
+    assert isinstance(limiter.limiter.storage, RedisStorage)
 
 
 @pytest.mark.regression
