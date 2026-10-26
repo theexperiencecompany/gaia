@@ -13,7 +13,7 @@ export interface PageCrumb {
 }
 
 const ITEM_CLASSES = {
-  item: "text-sm text-zinc-400 underline decoration-zinc-600 underline-offset-4 hover:text-zinc-200 data-[current=true]:text-zinc-100 data-[current=true]:no-underline",
+  item: "text-sm text-zinc-400 decoration-zinc-600 hover:text-zinc-200 data-[current=true]:text-zinc-100 data-[current=true]:decoration-transparent",
   separator: "text-zinc-600",
 };
 
@@ -30,7 +30,11 @@ export function PageBreadcrumbs({
     isTranslatedPath(href) ? getPathname({ href, locale }) : href;
 
   return (
-    <Breadcrumbs className={className} itemClasses={ITEM_CLASSES}>
+    <Breadcrumbs
+      className={className}
+      itemClasses={ITEM_CLASSES}
+      underline="always"
+    >
       {items.map((crumb) => (
         <BreadcrumbItem
           key={crumb.label}

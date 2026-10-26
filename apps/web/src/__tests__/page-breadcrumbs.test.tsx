@@ -45,7 +45,9 @@ describe("PageBreadcrumbs", () => {
     const links = [...render("en").querySelectorAll("nav a")];
     expect(links.map((a) => a.getAttribute("href"))).toEqual(["/", "/compare"]);
     for (const link of links) {
-      expect(link.className).toMatch(/(^|\s)underline(\s|$)/);
+      expect(link.className).toMatch(/(^|\s|:)underline(\s|$)/);
+      // squirrel's link-in-text-block flags any class containing this substring
+      expect(link.className).not.toMatch(/no-underline/);
     }
   });
 
