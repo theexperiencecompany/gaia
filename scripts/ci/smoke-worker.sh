@@ -24,7 +24,7 @@ DEFAULT_ROUTES=(
   # A landing page the worker renders per request: the outage's first 500.
   "/login Login | GAIA"
   # A second landing page, so one page's own breakage is not the only signal.
-  "/contact Contact Us | GAIA"
+  "/contact Contact the GAIA Team: Get Help or Send Feedback"
   # Outside [locale]: the root app tree, with its own layout.
   "/connect Connect an integration"
   # The whole (main) app shell: its layout is force-dynamic and middleware does no auth redirect.
