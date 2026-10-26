@@ -47,6 +47,8 @@ FAMILIES: dict[str, tuple[str, bool]] = {
     "combos": ("/automate", True),
     "personas": ("/for", True),
     "blog": ("/blog", False),
+    # Top-level /{slug} pages, one static route each and English-only (UNTRANSLATED_STATIC_PAGES).
+    "guides": (HOME, False),
 }
 # public/data/i18n/<feature> -> the public/data feature its <locale>.json overlays, keyed by slug.
 I18N_FEATURES = {
@@ -303,6 +305,9 @@ def classify(changes: Changes, live: set[str], site: str, repo: Repo) -> tuple[s
     updated = {p.url(site) for p in changes.touched | changes.removed if p.url(site) in live}
     deleted = {p.url(site) for p in changes.removed if p.url(site) not in live}
     for page in changes.touched | changes.removed:
+        # A top-level page's "hub" is the site root, which does not list it.
+        if page.route == HOME:
+            continue
         if page.url(site) in updated | deleted and page.hub(site) in live:
             updated.add(page.hub(site))
     added_locales = set(repo.locales) - set(repo.previous_locales)
