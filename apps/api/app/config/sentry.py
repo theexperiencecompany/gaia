@@ -62,10 +62,8 @@ _PII_KEYS = frozenset({"client_ip", "email", "user_agent", "user_email"})
 # itself, with the job's own trace, so the library's line cannot be deduped and is dropped.
 _REPORTED_BY_CALLER_LOGGERS = frozenset({ARQ_LOGGER_DISPLAY_NAME})
 
-# mcp_use logs each failed connect attempt before raising to MCPClient.connect, which
-# reports it with the integration id. Only those lines are duplicates: the library also
-# logs from its own background session task ("Error in SseConnectionManager task"), and
-# nothing in app/ re-reports that, so a blanket skip would silence it.
+# Connect attempts only: MCPClient.connect re-reports them with the integration id.
+# The library's background session task has no caller in app/, so it stays.
 _MCP_USE_CONNECT_DUPLICATES = (
     "OAuth initialization failed",
     "MCP protocol error during initialization",

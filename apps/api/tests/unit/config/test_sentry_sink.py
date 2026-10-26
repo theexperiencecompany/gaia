@@ -243,13 +243,7 @@ def test_a_library_error_log_reaches_sentry_exactly_once(sentry_events: list[Eve
 async def test_an_unreachable_mcp_server_reports_once_not_per_transport(
     sentry_events: list[Event],
 ) -> None:
-    """mcp_use logs a line per transport attempt and per failed session task.
-
-    MCPClient.connect re-reports the failure with the integration id, so the
-    transport lines are duplicates and are dropped. The session-task line is
-    kept: the same message is also how a live session dies, and nothing in app/
-    reports that, so dropping it would silence a real failure.
-    """
+    """Transport lines are duplicates of GAIA's report; the session-task line is not."""
     with pytest.raises(httpx.ConnectError):
         await HttpConnector(f"http://127.0.0.1:{pick_free_port()}/mcp").connect()
 
@@ -337,12 +331,7 @@ def test_an_mcp_connect_duplicate_does_not_reach_sentry() -> None:
 
 @pytest.mark.regression
 def test_an_mcp_background_session_error_still_reaches_sentry() -> None:
-    """The library's own task failure has no caller in app/ to report it.
-
-    Regression guard for the blanket skip this sink used to have: nothing in
-    app/ catches the SseConnectionManager task, so dropping it would make a dead
-    MCP session invisible instead of noisy.
-    """
+    """The library's task failure has no caller in app/, so it must reach Sentry."""
     cap_msg, _cap_exc, _scope = _run_sink(
         _record(
             message="Error in SseConnectionManager task: unhandled errors in a TaskGroup",
