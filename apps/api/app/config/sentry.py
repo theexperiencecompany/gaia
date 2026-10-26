@@ -69,7 +69,6 @@ _MCP_USE_CONNECT_DUPLICATES = (
     "MCP protocol error during initialization",
     "Failed to connect to",
     "Both transport methods failed",
-    "Error listing tools for connector",
 )
 
 

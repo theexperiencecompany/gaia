@@ -340,3 +340,34 @@ def test_an_mcp_background_session_error_still_reaches_sentry() -> None:
     )
 
     cap_msg.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "OAuth initialization failed: no token",
+        "MCP protocol error during initialization: code=-32601 message='Method not found'",
+        "Failed to connect to stdio MCP server",
+        "Both transport methods failed. Streamable HTTP: closed, SSE: failed",
+    ],
+)
+def test_every_connect_transport_line_is_a_duplicate(message: str) -> None:
+    """Each of these is re-raised to MCPClient.connect, which reports it with the id."""
+    cap_msg, cap_exc, _scope = _run_sink(
+        _record(message=message, logger_name=MCP_USE_LOGGER_DISPLAY_NAME)
+    )
+
+    cap_msg.assert_not_called()
+    cap_exc.assert_not_called()
+
+
+def test_a_swallowed_tool_listing_failure_still_reaches_sentry() -> None:
+    """mcp_use catches this one and returns an empty list, so GAIA never re-reports it."""
+    cap_msg, _cap_exc, _scope = _run_sink(
+        _record(
+            message="Error listing tools for connector https://mcp.example: boom",
+            logger_name=MCP_USE_LOGGER_DISPLAY_NAME,
+        )
+    )
+
+    cap_msg.assert_called_once()
