@@ -51,8 +51,42 @@ class TestQueries:
         ):
             result = await chroma_store.query_conversation_chunks(USER, [0.1], 1)
 
-        assert collection.query.await_args.kwargs["query_embeddings"] == [[0.1]]
+        kwargs = collection.query.await_args.kwargs
+        assert kwargs["query_embeddings"] == [[0.1]]
+        assert kwargs["n_results"] == 1
+        assert kwargs["where"] == {"user_id": USER}
+        assert kwargs["include"] == ["documents", "metadatas", "distances"]
         assert result == [("2026-01-01", "hello", pytest.approx(0.75))]
+
+    async def test_a_chunk_with_unreadable_metadata_reads_as_empty(self) -> None:
+        collection = AsyncMock()
+        collection.query.return_value = {
+            "documents": [["hello"]],
+            "metadatas": [[None]],
+            "distances": [[0.25]],
+        }
+        with (
+            patch.object(chroma_store, "_get_collection", AsyncMock(return_value=collection)),
+            patch.object(chroma_store, "_clamp_n_results", AsyncMock(return_value=1)),
+        ):
+            result = await chroma_store.query_conversation_chunks(USER, [0.1], 1)
+
+        assert result == [("", "hello", pytest.approx(0.75))]
+
+    async def test_a_chunk_without_a_date_reads_as_empty(self) -> None:
+        collection = AsyncMock()
+        collection.query.return_value = {
+            "documents": [["hello"]],
+            "metadatas": [[{}]],
+            "distances": [[0.25]],
+        }
+        with (
+            patch.object(chroma_store, "_get_collection", AsyncMock(return_value=collection)),
+            patch.object(chroma_store, "_clamp_n_results", AsyncMock(return_value=1)),
+        ):
+            result = await chroma_store.query_conversation_chunks(USER, [0.1], 1)
+
+        assert result == [("", "hello", pytest.approx(0.75))]
 
     async def test_query_episodes_returns_similarity_in_order(self) -> None:
         collection = AsyncMock()
