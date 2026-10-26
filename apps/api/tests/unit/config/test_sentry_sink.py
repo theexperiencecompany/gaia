@@ -27,7 +27,7 @@ import pytest
 import sentry_sdk
 from sentry_sdk.consts import OP
 from sentry_sdk.integrations.langchain import LangchainIntegration
-from sentry_sdk.types import Event
+from sentry_sdk.types import Event, Hint
 
 from app.config import sentry as sentry_config
 from app.config.loggers import REQUEST_LOGGER_NAME
@@ -447,3 +447,58 @@ def test_a_retried_llm_attempt_is_dropped_before_anything_else() -> None:
         "op": OP.GEN_AI_CHAT,
     }
     assert _before_send(_event(contexts={"trace": trace}), {}) is None
+
+
+@pytest.mark.parametrize(
+    ("event", "expected"),
+    [
+        ({"logentry": {"formatted": "boom 4242"}}, ["log", "app", "boom #"]),
+        ({"logentry": {"message": "boom 4242"}}, ["log", "app", "boom #"]),
+        ({"logentry": {}, "message": "boom 4242"}, ["log", "app", "boom #"]),
+        (
+            {"logentry": {"message": "boom 4242"}, "tags": {"logger": "MCP_USE"}, "logger": "x"},
+            ["log", "MCP_USE", "boom #"],
+        ),
+        (
+            {"logentry": {"message": "boom 4242"}, "logger": "sentry.exporter"},
+            ["log", "sentry.exporter", "boom #"],
+        ),
+    ],
+)
+def test_the_fingerprint_reads_every_fallback_in_order(
+    event: dict[str, object], expected: list[str]
+) -> None:
+    """Each source is a fallback: logentry.formatted, then message, then the event's own."""
+    result = _before_send(_event(**event), {})
+
+    assert result is not None
+    assert result["fingerprint"] == expected
+
+
+def test_a_very_long_message_is_capped_for_readability() -> None:
+    result = _before_send(_event(logentry={"message": "z" * 400}), {})
+
+    assert result is not None
+    assert len(result["fingerprint"][2]) == 160
+
+
+def test_an_event_with_no_message_still_groups() -> None:
+    result = _before_send(_event(logentry={}), {})
+
+    assert result is not None
+    assert result["fingerprint"] == ["log", "app", ""]
+
+
+def test_the_hint_reaches_the_llm_attempt_filter(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, object] = {}
+
+    def record(event: Event, hint: Hint) -> Event:
+        seen["hint"] = hint
+        return event
+
+    monkeypatch.setattr(sentry_config, "_drop_llm_attempt_errors", record)
+    hint: Hint = {"exc_info": (ValueError, ValueError("x"), None)}
+
+    _before_send(_event(), hint)
+
+    assert seen["hint"] is hint
