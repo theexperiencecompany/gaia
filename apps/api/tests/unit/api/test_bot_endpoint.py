@@ -1813,10 +1813,6 @@ class TestBotTranscribeRefusals:
 # ---------------------------------------------------------------------------
 
 
-class TestBotChatRequestFiles:
-    """Pydantic validation for the new file_ids / file_data fields."""
-
-
 # ---------------------------------------------------------------------------
 # POST /bot/chat-stream — plan metering
 # ---------------------------------------------------------------------------

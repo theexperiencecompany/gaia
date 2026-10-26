@@ -2370,7 +2370,3 @@ class TestTurnLatencyHelpers:
                 None,
             )
         assert _log.get()["chat"] == {"delegated": False, "queued": False}
-
-
-class TestAFreshStreamState:
-    """A new turn starts with nothing saved and nothing attached, as real bools."""

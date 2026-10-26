@@ -357,10 +357,6 @@ class TestDecoratorRegistration:
 # ============================================================================
 
 
-class TestMasterHooks:
-    """Tests for master_before_execute_hook, master_after_execute_hook, master_schema_modifier."""
-
-
 @pytest.fixture(autouse=True)
 def scoped_account() -> Iterator[MagicMock]:
     """Pin the account the call is scoped to; its Mongo-backed lookup is not the subject here."""

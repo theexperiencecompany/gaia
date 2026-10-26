@@ -31,10 +31,6 @@ class TestCreateSubscription:
         assert resp.status_code == 401
 
 
-class TestVerifyPayment:
-    """POST /api/v1/payments/verify-payment."""
-
-
 class TestSubscriptionStatus:
     """GET /api/v1/payments/subscription-status."""
 

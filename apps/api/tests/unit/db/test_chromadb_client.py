@@ -345,10 +345,6 @@ class TestChromaClientGetLangchainClientLoaderBody:
         return mock_providers.register.call_args.kwargs["loader_func"]
 
 
-class TestChromaClientGetClientWithRequest:
-    """Additional ChromaClient.get_client tests with request parameter."""
-
-
 class TestChromaClientGetLangchainClientWithEmbedding:
     """Tests passing explicit embedding_function."""
 

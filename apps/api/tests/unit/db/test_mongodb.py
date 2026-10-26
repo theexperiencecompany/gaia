@@ -138,26 +138,14 @@ class TestMongoDBInitializeIndexes:
 # ---------------------------------------------------------------------------
 
 
-class TestMongoDBGetCollection:
-    """Tests for MongoDB.get_collection()."""
-
-
 # ---------------------------------------------------------------------------
 # init_mongodb (module-level factory)
 # ---------------------------------------------------------------------------
 
 
-class TestInitMongodb:
-    """Tests for the init_mongodb() factory function."""
-
-
 # ---------------------------------------------------------------------------
 # Collections module — lazy loading
 # ---------------------------------------------------------------------------
-
-
-class TestCollectionsLazyLoading:
-    """Tests for the collections lazy loading module."""
 
 
 # ---------------------------------------------------------------------------
