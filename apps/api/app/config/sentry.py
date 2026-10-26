@@ -5,7 +5,7 @@ import re
 from typing import Protocol, TypedDict, cast
 
 from loguru import logger as _loguru
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 import sentry_sdk
 from sentry_sdk.consts import OP
 from sentry_sdk.integrations.langchain import LangchainIntegration
@@ -132,6 +132,42 @@ _MESSAGE_VARIABLES = re.compile(
 _USER_NAMESPACE = "user"
 
 
+class _EventUser(BaseModel):
+    id: str | None = None
+
+
+class _EventExtras(BaseModel):
+    """The wide-event fields an event carries back from its log record."""
+
+    model_config = ConfigDict(extra="allow")
+
+    user: _EventUser | None = None
+    user_id: str | None = None
+
+
+class _EventTags(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    logger: str | None = None
+
+
+class _EventLogEntry(BaseModel):
+    formatted: str | None = None
+    message: str | None = None
+
+
+class _EventFields(BaseModel):
+    """The parts of a Sentry event before_send reads, as attributes."""
+
+    exception: dict[str, object] | None = None
+    extra: _EventExtras = _EventExtras()
+    tags: _EventTags = _EventTags()
+    logentry: _EventLogEntry = _EventLogEntry()
+    message: str | None = None
+    logger: str | None = None
+    user: _EventUser | None = None
+
+
 def _stable_fingerprint(event: Event) -> list[str] | None:
     """Group a log message by what it says, not by the ids it happens to contain.
 
@@ -139,11 +175,11 @@ def _stable_fingerprint(event: Event) -> list[str] | None:
     puts a URL or a user id in the sentence opens a new issue per value. An event
     carrying an exception is left alone: its stack is the better grouping key.
     """
-    if event.get("exception"):
+    fields = _EventFields.model_validate(event)
+    if fields.exception:
         return None
-    logentry = event.get("logentry") or {}
-    message = logentry.get("formatted") or logentry.get("message") or event.get("message") or ""
-    logger_name = (event.get("tags") or {}).get("logger") or event.get("logger")
+    message = fields.logentry.formatted or fields.logentry.message or fields.message or ""
+    logger_name = fields.tags.logger or fields.logger
     normalised = " ".join(_MESSAGE_VARIABLES.sub("#", str(message)).split())[
         :_FINGERPRINT_MESSAGE_CHARS
     ]
@@ -157,16 +193,13 @@ def _attribute_user(event: Event) -> None:
     stamp the user namespace. Nothing else has to call set_user, and that
     includes ARQ jobs, which have no request to set it from.
     """
-    if event.get("user"):
+    fields = _EventFields.model_validate(event)
+    if fields.user:
         return
-    extra = event.get("extra") or {}
-    user_id: object = None
-    namespace = extra.get(_USER_NAMESPACE)
-    if isinstance(namespace, Mapping):
-        user_id = namespace.get("id")
-    if not isinstance(user_id, str) or not user_id:
-        user_id = extra.get("user_id")
-    if isinstance(user_id, str) and user_id:
+    user_id = fields.extra.user.id if fields.extra.user else None
+    if not user_id:
+        user_id = fields.extra.user_id
+    if user_id:
         event["user"] = {"id": user_id}
 
 
