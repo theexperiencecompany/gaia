@@ -770,6 +770,9 @@ importers:
       '@livekit/components-react':
         specifier: ^2.9.23
         version: 2.9.23(livekit-client@2.20.1(@types/dom-mediacapture-record@1.0.22))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(tslib@2.8.1)
+      '@marsidev/react-turnstile':
+        specifier: 1.6.3
+        version: 1.6.3(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       '@mcp-ui/client':
         specifier: ^7.1.1
         version: 7.1.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -4822,6 +4825,12 @@ packages:
 
   '@maplibre/vt-pbf@4.3.2':
     resolution: {integrity: sha512-j6p0AdjvAR19Z3XaCysle7A4ZSo08tYOzxD0Y9NQylwPAkwJJeYub5b2eVucdeDh7erhv69DahoLOevDRERRUw==}
+
+  '@marsidev/react-turnstile@1.6.3':
+    resolution: {integrity: sha512-JdMMArjEVDMs5jnGMBeXl3y6dkMuIXPG4Tu88Uo2Rkf8ujEw/iJ2Yp/3n4kDF3BjJ+bJB9WC19LPWc5a7/4srA==}
+    peerDependencies:
+      react: 19.2.3
+      react-dom: 19.2.3
 
   '@mcp-ui/client@7.1.1':
     resolution: {integrity: sha512-Yy0q3YFl6WmcHRW0pRwD2F+Fs9Y/TFm1xpBpkuqvS1IRBaGGgc7PvkB0nvrKTqO6QZm+MufObfQM+oxo8mmLFw==}
@@ -23725,6 +23734,11 @@ snapshots:
       '@mapbox/point-geometry': 1.1.0
       '@types/geojson': 7946.0.16
       pbf: 5.1.2
+
+  '@marsidev/react-turnstile@1.6.3(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
+    dependencies:
+      react: 19.2.3
+      react-dom: 19.2.3(react@19.2.3)
 
   '@mcp-ui/client@7.1.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
     dependencies:

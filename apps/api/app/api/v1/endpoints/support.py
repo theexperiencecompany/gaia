@@ -11,18 +11,24 @@ from fastapi import (
     UploadFile,
 )
 
-from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
+from app.api.v1.dependencies.oauth_dependencies import (
+    get_current_user,
+    get_optional_user,
+    get_user_id,
+)
 from app.api.v1.middleware.rate_limiter import limiter
 from app.config.settings import settings
 from app.constants.email import GAIA_GITHUB_ISSUES_URL
-from app.constants.error_codes import GAIA_SUPPORT_UNAVAILABLE
+from app.constants.error_codes import CONTACT_EMAIL_REQUIRED, GAIA_SUPPORT_UNAVAILABLE
 from app.constants.general import MAX_PAGE_NUMBER
 from app.models.support_models import (
+    PublicSupportRequestCreate,
     SupportRateLimits,
     SupportRateLimitStatusResponse,
     SupportRateLimitWindow,
     SupportRequestCreate,
     SupportRequestListResponse,
+    SupportRequestSource,
     SupportRequestStatus,
     SupportRequestSubmissionResponse,
     SupportRequestType,
@@ -34,6 +40,7 @@ from app.services.support_service import (
     create_support_request_with_attachments,
     get_user_support_requests,
 )
+from app.services.turnstile_service import verify_turnstile_token
 from app.utils.errors import AppError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.support import SupportFormSubmitted
@@ -209,6 +216,63 @@ async def submit_support_request_with_attachments(
         raise HTTPException(
             status_code=500, detail=f"Failed to submit support request: {e!s}"
         ) from e
+
+
+@router.post(
+    "/support/requests/public",
+    summary="Submit a contact request without signing in",
+    description="Create a support or feature request from the public contact form. Verifies a Cloudflare Turnstile token and is rate-limited per client IP.",
+)
+@limiter.limit("5/hour")  # per client IP: the limiter keys on the remote address
+@limiter.limit("10/day")
+async def submit_public_support_request(
+    request: Request,
+    request_data: PublicSupportRequestCreate,
+    current_user: AuthenticatedUser | None = Depends(get_optional_user),
+) -> SupportRequestSubmissionResponse:
+    """Submit a contact-form request for a visitor, or for a signed-in caller who has no email on file."""
+    log.set(
+        operation="submit_public_support_request",
+        category=request_data.type,
+        signed_in=current_user is not None,
+    )
+    user_id = current_user.user_id if current_user and current_user.user_id else None
+    user_email = (current_user.email if current_user else None) or request_data.email
+    if not user_email:
+        raise AppError(
+            message="An email address is required so we can reply",
+            fix="Add your email address to the form",
+            status_code=422,
+            code=CONTACT_EMAIL_REQUIRED,
+        )
+
+    await verify_turnstile_token(
+        request_data.turnstile_token, request.client.host if request.client else None
+    )
+    result = await create_support_request(
+        request_data=SupportRequestCreate(
+            type=request_data.type,
+            title=request_data.title,
+            description=request_data.description,
+        ),
+        user_id=user_id,
+        user_email=user_email,
+        user_name=request_data.name or (current_user.name if current_user else None),
+        source=SupportRequestSource.PUBLIC_CONTACT_FORM,
+    )
+    log.set(ticket_id=result.ticket_id, outcome="success")
+    # A visitor has no analytics identity: distinct_id is only ever a GAIA user id.
+    if user_id:
+        capture(
+            UserId(user_id),
+            SupportFormSubmitted(
+                request_type=request_data.type.value,
+                title_length=len(request_data.title),
+                description_length=len(request_data.description),
+                attachment_count=0,
+            ),
+        )
+    return result
 
 
 @router.get(
