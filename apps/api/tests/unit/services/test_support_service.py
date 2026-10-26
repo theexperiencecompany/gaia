@@ -549,7 +549,8 @@ class TestCreateSupportRequest:
                         )
 
         assert exc_info.value.status_code == 500
-        mock_support_repo.delete.assert_awaited_once()
+        created = mock_support_repo.create.await_args.args[0]
+        mock_support_repo.delete.assert_awaited_once_with(created.id)
 
     async def test_unexpected_error_rollback_failure_still_raises_500(
         self,
@@ -1072,7 +1073,8 @@ class TestCreateSupportRequestWithAttachments:
 
         assert exc_info.value.status_code == 500
         mock_delete_files.assert_awaited_once()
-        mock_support_repo.delete.assert_awaited_once()
+        created = mock_support_repo.create.await_args.args[0]
+        mock_support_repo.delete.assert_awaited_once_with(created.id)
 
     async def test_unexpected_error_cleanup_failures_still_raises_500(
         self,

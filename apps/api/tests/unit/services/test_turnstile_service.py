@@ -9,7 +9,10 @@ import respx
 
 from app.config.settings import settings
 from app.constants.email import SUPPORT_EMAIL
-from app.constants.turnstile import TURNSTILE_SITEVERIFY_URL
+from app.constants.turnstile import (
+    TURNSTILE_SITEVERIFY_TIMEOUT_SECONDS,
+    TURNSTILE_SITEVERIFY_URL,
+)
 from app.services.turnstile_service import verify_turnstile_token
 from app.utils.errors import AppError
 
@@ -41,10 +44,19 @@ async def test_a_confirmed_token_passes_and_sends_the_secret_token_and_remoteip(
         return_value=httpx.Response(200, json={"success": True, "error-codes": []})
     )
 
-    await verify_turnstile_token("tok-123", "203.0.113.7")
+    with (
+        patch(
+            "app.services.turnstile_service.httpx.AsyncClient",
+            wraps=httpx.AsyncClient,
+        ) as client_cls,
+        patch("app.services.turnstile_service.log") as mock_log,
+    ):
+        await verify_turnstile_token("tok-123", "203.0.113.7")
 
     sent = parse_qs(route.calls.last.request.content.decode())
     assert sent == {"secret": [secret], "response": ["tok-123"], "remoteip": ["203.0.113.7"]}
+    assert client_cls.call_args.kwargs == {"timeout": TURNSTILE_SITEVERIFY_TIMEOUT_SECONDS}
+    mock_log.set_ns.assert_called_once_with("turnstile", success=True, error_codes=[])
 
 
 @respx.mock
@@ -55,12 +67,24 @@ async def test_a_rejected_token_is_a_400_with_the_verification_code(secret: str)
         )
     )
 
-    with pytest.raises(AppError) as excinfo:
+    with (
+        patch("app.services.turnstile_service.log") as mock_log,
+        pytest.raises(AppError) as excinfo,
+    ):
         await verify_turnstile_token("forged", "203.0.113.7")
 
     assert excinfo.value.status_code == 400
     assert excinfo.value.code == "turnstile_verification_failed"
+    assert excinfo.value.message == "We could not verify that you are human"
+    assert excinfo.value.why == "The bot check did not pass or has expired"
+    assert excinfo.value.fix == "Reload the page and submit the form again"
     assert excinfo.value.meta == {"error_codes": ["invalid-input-response"]}
+    mock_log.set_ns.assert_called_once_with(
+        "turnstile", success=False, error_codes=["invalid-input-response"]
+    )
+    mock_log.warning.assert_called_once_with(
+        "Turnstile rejected the token", error_codes=["invalid-input-response"]
+    )
 
 
 @respx.mock
@@ -77,7 +101,10 @@ async def test_a_missing_secret_refuses_with_503_without_calling_cloudflare(
         await verify_turnstile_token("tok-123", "203.0.113.7")
 
     _assert_unavailable(excinfo.value, "TURNSTILE_SECRET_KEY is unset")
-    mock_log.error.assert_called_once()
+    mock_log.error.assert_called_once_with(
+        "Turnstile secret is not configured",
+        error_type="TurnstileSecretMissing",
+    )
     assert not route.called
 
 
@@ -111,7 +138,10 @@ async def test_a_siteverify_failure_refuses_with_503_never_accepts(
     cause = excinfo.value.meta["cause"]
     assert cause.startswith("siteverify failed: ")
     _assert_unavailable(excinfo.value, cause)
-    mock_log.error.assert_called_once()
+    args, kwargs = mock_log.error.call_args
+    assert args == ("Turnstile siteverify call failed",)
+    assert kwargs["error"] and isinstance(kwargs["error"], str)
+    assert kwargs["error_type"] and kwargs["error_type"] != "NoneType"
 
 
 @respx.mock
