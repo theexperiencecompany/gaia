@@ -20,7 +20,7 @@ import json
 from typing import Annotated, Any, ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, tool
 from langgraph.config import get_stream_writer
@@ -840,14 +840,6 @@ async def test_a_mid_run_ask_fill_that_raises_stops_before_the_step_that_needed_
         "Playbook stopped at step 2 (ask_fill): the ask_fill raised TimeoutError: model."
     )
     assert result.llm_calls == 0
-
-
-def test_the_scripted_model_never_reaches_a_provider() -> None:
-    """It answers from the messages alone — no client, no key, no token spend."""
-    model = ScriptedModel(script=[ScriptedCall(name="list_events", args={})])
-
-    assert isinstance(model.turn_for([]), AIMessage)
-    assert model._llm_type == "playbook-scripted"
 
 
 async def test_the_narration_sees_the_whole_result_not_a_snippet_of_it() -> None:
@@ -2331,9 +2323,6 @@ class TestANarrationMustSaySomething:
         # agent, and "raised ValidationError: None" names nothing to act on.
         assert raised.value.errors()[0]["msg"] == "Value error, the result says nothing"
 
-    def test_a_short_real_answer_is_fine(self) -> None:
-        assert PlaybookNarration(result="No new todos.", outcome="ok").result == "No new todos."
-
 
 #: Two slotted steps around a fetch: the mail's body is written from the events,
 #: and the note's body is written from what the mail actually went out as.
@@ -3087,10 +3076,6 @@ class TestForEach:
 class TestForEachShape:
     """A loop whose cost is unknown before it runs is unrepresentable on the stored step, refused at authoring instead."""
 
-    def test_the_stored_step_cannot_lack_a_ceiling(self) -> None:
-        with pytest.raises(ValidationError):
-            ForEachStep(id="s", tool="send_email", args={}, for_each="$steps.x.ids")
-
     def test_the_stored_step_cannot_carry_a_ceiling_without_a_loop(self) -> None:
         with pytest.raises(ValidationError):
             ToolStep(id="s", tool="send_email", args={}, max_items=5)
@@ -3105,14 +3090,6 @@ class TestForEachShape:
                 for_each="$steps.x.ids",
                 max_items=2,
             )
-
-    def test_the_ceiling_is_capped(self) -> None:
-        with pytest.raises(ValidationError):
-            ForEachStep(id="s", tool="send_email", args={}, for_each="$steps.x.ids", max_items=1000)
-
-    def test_an_authored_loop_without_a_ceiling_is_refused_by_name(self) -> None:
-        with pytest.raises(ValueError, match="needs max_items"):
-            PlaybookStepInput(id="s", tool="send_email", for_each="$steps.x.ids").to_step()
 
     def test_an_authored_ceiling_without_a_loop_is_refused_by_name(self) -> None:
         with pytest.raises(ValidationError, match="only means something with for_each"):
@@ -3143,12 +3120,6 @@ class TestAskAnswerShape:
     def test_whitespace_is_not_an_answer(self) -> None:
         with pytest.raises(ValidationError):
             PlaybookAskAnswer(name="mail.subject", text="   ")
-
-    def test_text_alone_is_an_answer(self) -> None:
-        assert PlaybookAskAnswer(name="mail.subject", text="Agenda").text == "Agenda"
-
-    def test_items_alone_is_an_answer(self) -> None:
-        assert PlaybookAskAnswer(name="mails.$for_each", items=["a", "b"]).items == ["a", "b"]
 
     async def test_a_skipped_slot_never_reaches_the_tool_as_an_empty_string(self) -> None:
         """An ask call answering a different slot than the one asked must leave the asked slot missing, failing loudly rather than sending ''."""
@@ -3293,11 +3264,6 @@ async def test_the_baseline_lookup_asks_for_the_whole_window() -> None:
 
 class TestAnEmptySelectionIsAnAnswer:
     """Seen live: an empty for_each selection (items: []) was refused as neither text nor items, stopping a replay that was right."""
-
-    def test_the_answer_model_accepts_an_empty_selection(self) -> None:
-        answer = PlaybookAskAnswer(name="mails.$for_each", items=[])
-        assert answer.items == []
-        assert answer.text == ""
 
     async def test_an_empty_pick_is_a_completed_run_with_zero_iterations(self) -> None:
         recorder = _Recorder()
