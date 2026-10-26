@@ -281,6 +281,12 @@ const nextConfig = {
         source: "/sitemap.xml",
         destination: "/api/sitemap-xml",
       },
+      // Markdown variant of a page for agents (src/app/md). A separate URL,
+      // not Accept negotiation, because the edge cache does not key on Vary.
+      {
+        source: "/:path+.md",
+        destination: "/md/:path+",
+      },
       {
         source: "/ingest/static/:path*",
         destination: `${posthogAssetsHost}/static/:path*`,
