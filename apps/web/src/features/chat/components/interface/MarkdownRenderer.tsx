@@ -22,7 +22,7 @@ import {
 } from "streamdown";
 
 import { resolveArtifactSrc } from "@/features/chat/api/sessionFilesApi";
-import ChatCodeBlock from "@/features/chat/components/code-block/ChatCodeBlock";
+import { ChatCodeBlock } from "@/features/chat/components/code-block/ChatCodeBlock";
 import CustomAnchor from "@/features/chat/components/code-block/CustomAnchor";
 import { cn } from "@/lib/utils";
 import { useImageDialog } from "@/stores/uiStore";

@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import type React from "react";
 import { useState } from "react";
 
-import ChatCodeBlock from "@/features/chat/components/code-block/ChatCodeBlock";
+import { ChatCodeBlock } from "@/features/chat/components/code-block/ChatCodeBlock";
 import { copyWithFeedback } from "@/lib/clipboard";
 import type { CodeData } from "@/types/features/toolDataTypes";
 import CodeExecutionOutput from "./CodeExecutionOutput";
