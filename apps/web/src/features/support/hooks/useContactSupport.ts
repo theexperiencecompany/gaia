@@ -23,6 +23,17 @@ export interface ContactSupportInitialValues {
   description?: string;
 }
 
+function samePreset(
+  a: ContactSupportInitialValues | undefined,
+  b: ContactSupportInitialValues | undefined,
+): boolean {
+  return (
+    a?.type === b?.type &&
+    a?.title === b?.title &&
+    a?.description === b?.description
+  );
+}
+
 export function useContactSupport(initialValues?: ContactSupportInitialValues) {
   // Only the user's edits are stored. The form itself is derived during
   // render with `initialValues` as the source of truth, so a changed preset
@@ -31,11 +42,10 @@ export function useContactSupport(initialValues?: ContactSupportInitialValues) {
   const [attachments, setAttachments] = useState<File[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // A new preset (fresh initialValues object) wipes edits + attachments —
-  // master reset the whole form on preset change; ESC/backdrop closes fire
-  // onOpenChange only, so the reset lives here, not in an effect.
+  // A changed preset wipes edits; the reset lives here, not in an effect.
+  // By value: callers pass a fresh object per render (identity looped, #301).
   const [lastInitialValues, setLastInitialValues] = useState(initialValues);
-  if (initialValues !== lastInitialValues) {
+  if (!samePreset(initialValues, lastInitialValues)) {
     setLastInitialValues(initialValues);
     setTextEdits({});
     setAttachments([]);
