@@ -16,8 +16,9 @@ from app.models.scheduler_models import TaskOutcome
 from app.services.analytics_service import capture
 from app.services.delivery.chat_channel import (
     ChatChannel,
-    InApp,
     ProactiveTarget,
+    is_active_place,
+    proactive_destination,
     resolve_proactive_target,
 )
 from app.services.notification_service import notification_service
@@ -42,10 +43,11 @@ def _reminder_result_text(payload: StaticReminderPayload) -> str:
     return "\n".join(segments)
 
 
-async def _execute_static_reminder(reminder: ReminderModel) -> None:
+async def _execute_static_reminder(reminder: ReminderModel) -> ProactiveTarget | None:
     """Fire a static reminder: raise the in-app badge and deliver it to the user's platforms.
 
     Delivery is recorded into the conversation's langgraph thread so later turns can backtrack.
+    Returns where the platform delivery routed it, or None when that delivery did not happen.
     """
     if not isinstance(reminder.payload, StaticReminderPayload):
         raise ValueError("Invalid payload type for static reminder")
@@ -62,21 +64,21 @@ async def _execute_static_reminder(reminder: ReminderModel) -> None:
     )
 
     # Independent sends. The badge is pinned to in-app, so the platform send is the only one.
-    await asyncio.gather(
+    _, target = await asyncio.gather(
         notification_service.create_notification(notification),
         _deliver_reminder_to_platforms(reminder),
     )
 
     log.info("Static reminder sent notification", reminder_id=reminder.id, user_id=reminder.user_id)
+    return target
 
 
 async def _lands_in_source_chat(
     target: ProactiveTarget, conversation_id: str, user_id: str
 ) -> bool:
     """Whether the reminder goes back into the chat it was set in: yes, unless the user is active elsewhere."""
-    match target:
-        case ChatChannel(basis="priority") | InApp(reason="no_chat_app"):
-            return True
+    if not is_active_place(target):
+        return True
     source = await conversation_repository.get_source(conversation_id, user_id=user_id)
     if isinstance(target, ChatChannel):
         return source is target.source
@@ -84,15 +86,15 @@ async def _lands_in_source_chat(
     return not is_bot_platform(source)
 
 
-async def _deliver_reminder_to_platforms(reminder: ReminderModel) -> None:
+async def _deliver_reminder_to_platforms(reminder: ReminderModel) -> ProactiveTarget | None:
     """Deliver a fired reminder to the one place the user is active, else its source chat and first chat app.
 
     Side channel behind the in-app badge: swallows every failure — including
     load_user_context's HTTPException on a transient error — so it never fails the
-    reminder or skips the recurring re-arm.
+    reminder or skips the recurring re-arm. Returns the target it routed by, None when skipped or failed.
     """
     if not isinstance(reminder.payload, StaticReminderPayload) or not reminder.id:
-        return
+        return None
     try:
         # Independent reads: who the user is and where they are reachable right now.
         user, target = await asyncio.gather(
@@ -104,7 +106,7 @@ async def _deliver_reminder_to_platforms(reminder: ReminderModel) -> None:
                 reminder_id=reminder.id,
                 user_id=reminder.user_id,
             )
-            return
+            return None
         text = _reminder_result_text(reminder.payload)
         title = reminder.payload.title
         origin = (
@@ -138,6 +140,8 @@ async def _deliver_reminder_to_platforms(reminder: ReminderModel) -> None:
             error=str(e),
             error_type=type(e).__name__,
         )
+        return None
+    return target
 
 
 async def execute_reminder_by_agent(
@@ -169,14 +173,18 @@ async def execute_reminder_by_agent(
 
     try:
         if reminder.agent == AgentType.STATIC:
-            await _execute_static_reminder(reminder)
+            target = await _execute_static_reminder(reminder)
         else:
             raise ValueError(f"Unknown agent type: {reminder.agent}")
 
         log.info("Reminder executed successfully", reminder_id=reminder.id, agent=reminder.agent)
         capture(
             UserId(reminder.user_id),
-            ReminderCompleted(reminder_id=reminder.id, agent=reminder.agent.value),
+            ReminderCompleted(
+                reminder_id=reminder.id,
+                agent=reminder.agent.value,
+                **proactive_destination(target),
+            ),
         )
         return TaskOutcome.EXECUTED
     except Exception as e:

@@ -8,16 +8,22 @@ target in the GAIA app sends nothing to a chat app; and every failure path
 stays best-effort (logs, never raises).
 """
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.agents.core.background.workflow_platform_delivery import deliver_result_to_platforms
+from app.agents.core.background.workflow_platform_delivery import (
+    deliver_result_to_platforms,
+    deliver_workflow_result,
+)
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
 from app.models.chat_models import ConversationSource
+from app.models.user_models import AuthenticatedUser
 from app.services.delivery.chat_channel import ChatChannel, InApp, InAppReason
 from app.services.outbound_delivery import OutboundResult
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.workflows import WorkflowResultDelivered
 from tests.helpers import captured_wide_event
 
 MODULE = "app.agents.core.background.workflow_platform_delivery"
@@ -35,6 +41,101 @@ WHATSAPP = ChatChannel(
 IMESSAGE = ChatChannel(
     source=ConversationSource.IMESSAGE, platform_user_id="im-1", basis="priority"
 )
+
+
+class TestAWorkflowResultSaysWhereItWent:
+    """Both workflow paths deliver through deliver_workflow_result, which records the routing once."""
+
+    OWNER_ID = "6812f0b3c9a14e2b7d5a91cc"
+    ORIGIN = 'workflow "Morning digest" (id wf-1)'
+
+    async def _deliver(self, *, target: object, sent_on: ConversationSource | None) -> MagicMock:
+        with (
+            patch(f"{MODULE}.resolve_proactive_target", AsyncMock(return_value=target)),
+            patch(f"{MODULE}.deliver_result_to_platforms", AsyncMock(return_value=sent_on)),
+            patch(f"{MODULE}.capture") as capture,
+        ):
+            await deliver_workflow_result(
+                user=AuthenticatedUser(user_id=self.OWNER_ID),
+                workflow_id="wf-1",
+                notification_text=TEXT,
+                origin=self.ORIGIN,
+            )
+        return capture
+
+    async def test_a_result_sent_where_the_user_is_active_names_that_chat_app(self) -> None:
+        active = ChatChannel(
+            source=ConversationSource.TELEGRAM, platform_user_id="tg-1", basis="recent_activity"
+        )
+        capture = await self._deliver(target=active, sent_on=ConversationSource.TELEGRAM)
+
+        capture.assert_called_once_with(
+            UserId(self.OWNER_ID),
+            WorkflowResultDelivered(
+                workflow_id="wf-1",
+                outcome="delivered",
+                platform="telegram",
+                destination="chat_app",
+                destination_basis="recent_activity",
+            ),
+        )
+
+    async def test_a_result_kept_in_the_app_for_an_active_user_says_so(self) -> None:
+        capture = await self._deliver(target=InApp(reason="active_in_app"), sent_on=None)
+
+        capture.assert_called_once_with(
+            UserId(self.OWNER_ID),
+            WorkflowResultDelivered(
+                workflow_id="wf-1",
+                outcome="delivered",
+                destination="in_app",
+                destination_basis="active_in_app",
+            ),
+        )
+
+    async def test_a_chat_app_that_did_not_take_it_is_recorded_undelivered(self) -> None:
+        capture = await self._deliver(target=TELEGRAM, sent_on=None)
+
+        capture.assert_called_once_with(
+            UserId(self.OWNER_ID),
+            WorkflowResultDelivered(
+                workflow_id="wf-1",
+                outcome="undelivered",
+                destination="chat_app",
+                destination_basis="priority",
+            ),
+        )
+
+    async def test_a_failed_lookup_sends_nothing_and_is_recorded_as_lookup_failed(self) -> None:
+        with (
+            patch(
+                f"{MODULE}.resolve_proactive_target",
+                AsyncMock(side_effect=ConnectionError("mongo down")),
+            ),
+            patch(f"{MODULE}.deliver_result_to_platforms", AsyncMock()) as deliver,
+            patch(f"{MODULE}.capture") as capture,
+        ):
+            async with captured_wide_event() as event:
+                await deliver_workflow_result(
+                    user=AuthenticatedUser(user_id=self.OWNER_ID),
+                    workflow_id="wf-1",
+                    notification_text=TEXT,
+                    origin=self.ORIGIN,
+                )
+
+        deliver.assert_not_awaited()
+        capture.assert_called_once_with(
+            UserId(self.OWNER_ID),
+            WorkflowResultDelivered(workflow_id="wf-1", outcome="lookup_failed"),
+        )
+        assert event["errors"] == [
+            {
+                "msg": f"{LogTag.AGENT} workflow result: chat app lookup failed, not sent to the chat app",
+                "workflow_id": "wf-1",
+                "error": "mongo down",
+                "error_type": "ConnectionError",
+            }
+        ]
 
 
 class TestDeliverWorkflowResultToPlatforms:

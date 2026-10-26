@@ -32,7 +32,7 @@ export function ChatChannelSettings({
       description={
         linkedOrder.length < 2
           ? "Link another platform to choose where GAIA texts you first."
-          : "GAIA texts you where you last messaged it. If you haven't in a while, it uses this order."
+          : "GAIA texts you on the chat app you've used in the last few hours, or in this order if you haven't. While you're active in the GAIA app, it messages you there instead."
       }
     >
       {linkedOrder.map((platform, index) => {

@@ -31,7 +31,7 @@ from app.agents.core.background.comms_narrator import (
 from app.agents.core.background.session import ExecutorRun
 from app.agents.core.background.todo_run_delivery import deliver_todo_run_result
 from app.agents.core.background.workflow_platform_delivery import (
-    deliver_result_to_platforms,
+    deliver_workflow_result,
 )
 from app.agents.core.comms_directive import interpret_comms_output
 from app.agents.core.nodes.follow_up_actions_node import generate_follow_up_actions
@@ -63,7 +63,6 @@ from app.models.message_models import ReplyToMessageData
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
 from app.services.conversation_service import update_messages
-from app.services.delivery.chat_channel import resolve_proactive_target
 from app.services.hil.approvals_store import get_approval
 from app.services.latency_metrics import observe_delivery_narration, observe_delivery_persist
 from app.services.platform_message_service import (
@@ -407,27 +406,6 @@ def _react_delivery(transport: str) -> Literal["reaction", "badge", "fallback_te
     return "badge" if transport == "websocket" else "fallback_text"
 
 
-async def _send_to_chat_app(run: ExecutorRun, notification_text: str) -> None:
-    """Send a workflow result to the user's chat app; a failed lookup costs only this copy."""
-    try:
-        proactive_target = await resolve_proactive_target(run.user.user_id)
-    except Exception as e:  # best-effort: the result is already saved
-        log.error(
-            f"{LogTag.AGENT} workflow result: chat app lookup failed, not sent to the chat app",
-            workflow_id=run.workflow_id,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        return
-    await deliver_result_to_platforms(
-        user=run.user,
-        user_id=run.user.user_id,
-        notification_text=notification_text,
-        origin=_delivery_origin(run),
-        target=proactive_target,
-    )
-
-
 async def _deliver_workflow_result(
     run: ExecutorRun,
     *,
@@ -458,7 +436,15 @@ async def _deliver_workflow_result(
         await in_app
         return
     # The chat-app message and the in-app badge are independent sends.
-    await asyncio.gather(_send_to_chat_app(run, notification_text), in_app)
+    await asyncio.gather(
+        deliver_workflow_result(
+            user=run.user,
+            workflow_id=run.workflow_id,
+            notification_text=notification_text,
+            origin=_delivery_origin(run),
+        ),
+        in_app,
+    )
 
 
 async def _deliver_to_platform(

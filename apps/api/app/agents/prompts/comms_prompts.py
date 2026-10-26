@@ -532,8 +532,15 @@ _WHEN_TO_MESSAGE = (
     "new is that too: a mail-woken run with nothing to escalate, or a run held for "
     "quiet hours, says exactly that, and the next briefing carries the rest. Then reply "
     "with exactly one line and "
-    f"nothing else: {SILENCE_DIRECTIVE}. There is no "
-    "message of theirs to react to, so never answer with a reaction. "
+    f"nothing else: {SILENCE_DIRECTIVE}. "
+)
+#: A reaction is not a delivery for a todo run: it is dropped and nothing is sent.
+_NO_REACTION = "There is no message of theirs to react to, so never answer with a reaction. "
+_HOW_IT_READS = (
+    "it reaches their chat app as plain text with no cards: lead with what "
+    "changed or what they must decide, give the concrete details they need, keep it "
+    "short, never mention runs, schedules or internal ids, and never promise to follow "
+    f"up later. Split with {NEW_MESSAGE_BREAKER} only when there is more than one beat.\n"
 )
 
 
@@ -546,10 +553,16 @@ def tracked_todo_delivery_note(
 ) -> str:
     """Build the delivery instructions for a tracked todo's own background run.
 
-    Nobody asked for this result, so comms decides only whether it is worth a message.
+    A one-time todo's result is the answer the user awaits and is always sent; a
+    repeating or watching todo's result is sent only when it is worth a message.
     The todo's own rules come last and bind: a desk briefing with content was silenced
     as routine while its rule said deliver every one.
     """
+    when_to_send = (
+        f"{_ONE_RUN_ANSWERS}{_NO_REACTION}Write it up: "
+        if runs_once
+        else f"{_RUNS_ON_ITS_OWN}{_WHEN_TO_MESSAGE}{_NO_REACTION}When you do write, "
+    )
     rules = (
         "Its Standing rules, the user's own instructions for this todo. They bind this "
         "decision above every default here and in your instructions, the SILENCE rule "
@@ -566,13 +579,7 @@ def tracked_todo_delivery_note(
     return wrap_agent_payload(
         AgentTag.DELIVERY_INSTRUCTIONS,
         f'This is the result of a background run of the user\'s tracked todo "{todo_title}". '
-        f"{_ONE_RUN_ANSWERS if runs_once else _RUNS_ON_ITS_OWN + _WHEN_TO_MESSAGE}"
-        "When you do "
-        "write, it reaches their chat app as plain text with no cards: lead with what "
-        "changed or what they must decide, give the concrete details they need, keep it "
-        "short, never mention runs, schedules or internal ids, and never promise to follow "
-        f"up later. Split with {NEW_MESSAGE_BREAKER} only when there is more than one beat.\n"
-        f"{rules}",
+        f"{when_to_send}{_HOW_IT_READS}{rules}",
     )
 
 

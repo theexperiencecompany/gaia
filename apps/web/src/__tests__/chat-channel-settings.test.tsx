@@ -52,4 +52,13 @@ describe("ChatChannelSettings", () => {
       ),
     );
   });
+
+  it("says GAIA stays in the app while you are using it", async () => {
+    render(<ChatChannelSettings linkedPlatforms={linked} />);
+
+    // Activity in the GAIA app routes messages to the app, never to a chat app.
+    expect(
+      await screen.findByText(/active in the GAIA app, it messages you there/),
+    ).toBeDefined();
+  });
 });

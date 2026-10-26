@@ -21,7 +21,13 @@ from app.models.notification.notification_models import (
     NotificationType,
     NotificationView,
 )
-from app.services.delivery.chat_channel import InApp, resolve_proactive_target
+from app.services.analytics_service import capture
+from app.services.delivery.chat_channel import (
+    InApp,
+    ProactiveTarget,
+    proactive_destination,
+    resolve_proactive_target,
+)
 from app.services.notification_service import notification_service
 from app.templates.docstrings.notification_tool_docs import (
     GET_NOTIFICATION_COUNT,
@@ -32,6 +38,8 @@ from app.templates.docstrings.notification_tool_docs import (
     SEND_NOTIFICATION,
 )
 from app.utils.notification.channel_preferences import fetch_channel_preferences
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.notifications import NotificationAgentSent
 from shared.py.wide_events import log
 
 # NotificationView.model_dump(mode="json") — json mode matters: python mode
@@ -275,14 +283,16 @@ def reply_channel_of_run(configurable: AgentConfigurableView) -> ReplyChannel | 
     return None
 
 
-async def result_is_delivered_automatically(configurable: AgentConfigurableView) -> bool:
+async def result_is_delivered_automatically(
+    configurable: AgentConfigurableView, user_id: str
+) -> bool:
     """True for a background workflow or tracked-todo run whose own result is sent to the user."""
     if configurable.execution_mode != "background":
         return False
     if configurable.workflow_id:
         return configurable.workflow_notify_on_completion
     if configurable.active_todo_id:
-        todo = await todo_repository.get_by_id(configurable.active_todo_id)
+        todo = await todo_repository.get(configurable.active_todo_id, user_id=user_id)
         return todo is not None and todo.notify_on_run
     return False
 
@@ -331,11 +341,14 @@ async def send_notification(
         # the fold below still keeps it out of the chat they are already reading.
         configurable = read_agent_configurable(config)
         reply_channel = reply_channel_of_run(configurable)
+        target: ProactiveTarget | None = None
         if not channels:
             target = await resolve_proactive_target(user_id)
             channels = [CHANNEL_TYPE_INAPP] if isinstance(target, InApp) else [target.source.value]
             # A workflow or tracked-todo run's result goes to this same place on its own.
-            if reply_channel is None and await result_is_delivered_automatically(configurable):
+            if reply_channel is None and await result_is_delivered_automatically(
+                configurable, user_id
+            ):
                 reply_channel = CHANNEL_TYPE_INAPP if isinstance(target, InApp) else target.source
 
         # Unknown channel names would otherwise be accepted and silently skipped
@@ -357,6 +370,12 @@ async def send_notification(
             channels = [ch for ch in channels if ch != reply_channel]
             log.set_ns("tool", folded_into_reply=reply_channel)
             if not channels:
+                capture(
+                    UserId(user_id),
+                    NotificationAgentSent(
+                        outcome="folded_into_reply", **proactive_destination(target)
+                    ),
+                )
                 place = (
                     f"on {reply_channel.display_name}"
                     if isinstance(reply_channel, ConversationSource)
@@ -384,6 +403,10 @@ async def send_notification(
         record = await notification_service.create_notification(request)
         if not record:
             return {"error": "Failed to create notification", "success": False}
+        capture(
+            UserId(user_id),
+            NotificationAgentSent(outcome="sent", **proactive_destination(target)),
+        )
 
         delivered_channels = [
             ch.channel_type

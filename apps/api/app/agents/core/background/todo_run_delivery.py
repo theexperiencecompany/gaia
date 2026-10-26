@@ -46,7 +46,11 @@ from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services.analytics_service import capture
 from app.services.canvas_markdown import section_body
-from app.services.delivery.chat_channel import ProactiveTarget, resolve_proactive_target
+from app.services.delivery.chat_channel import (
+    ProactiveTarget,
+    proactive_destination,
+    resolve_proactive_target,
+)
 from app.services.notification_service import notification_service
 from app.services.todo_activity import record_run_finished, run_finished_marker
 from app.utils.message_breaks import split_message_bubbles
@@ -65,11 +69,12 @@ _NOT_SENT_NOTES: dict[TodoRunDeliveryOutcome, str] = {
 
 
 class _Resolution(NamedTuple):
-    """What became of one run's result: the outcome, its activity note, and the platform."""
+    """What became of one run's result: outcome, activity note, platform, and the target a sent result was routed by."""
 
     outcome: TodoRunDeliveryOutcome
     note: str
     platform: ConversationSource | None = None
+    target: ProactiveTarget | None = None
 
 
 def _not_sent(outcome: TodoRunDeliveryOutcome) -> _Resolution:
@@ -217,6 +222,7 @@ async def _send_once(finished: FinishedTodoRun, user: AuthenticatedUser) -> tupl
             platform=resolution.platform.value if resolution.platform else None,
             trigger_type=finished.trigger_type.value,
             recurring=bool(todo.recurrence),
+            **proactive_destination(resolution.target),
         ),
     )
     summary = finished.result_text.strip().replace("\n", " ")[:RUN_SUMMARY_ACTIVITY_CHARS]
@@ -322,7 +328,7 @@ async def _narrate_and_send(
         else None
     )
     if platform is None:
-        return await _send_in_app(todo, message)
+        return (await _send_in_app(todo, message))._replace(target=target)
     return _Resolution(
-        TodoRunDeliveryOutcome.DELIVERED, f"result sent on {platform.value}", platform
+        TodoRunDeliveryOutcome.DELIVERED, f"result sent on {platform.value}", platform, target
     )

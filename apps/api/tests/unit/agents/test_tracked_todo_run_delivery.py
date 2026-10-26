@@ -283,7 +283,8 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
 
         (note,) = [m for m in messages if is_gaia_authored_note(m)]
         assert str(note.content).startswith(
-            "[User presence: not in a chat with you right now. Last seen: Telegram at "
+            "[User presence: this is a background run, so the user sees only what it sends them. "
+            "Last seen: Telegram at "
         )
         assert messages[messages.index(note) + 1].content == task
 
@@ -329,7 +330,7 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
 
         entry = _activity(seams)
         assert entry.startswith("result sent on telegram (summary='Checked staging.")
-        assert seams.capture.call_args.args == (
+        seams.capture.assert_called_once_with(
             UserId(USER.user_id),
             TodosRunResultDelivered(
                 outcome="delivered",
@@ -337,6 +338,8 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
                 platform="telegram",
                 trigger_type=TriggerType.SCHEDULED_TODO.value,
                 recurring=False,
+                destination="chat_app",
+                destination_basis="recent_activity",
             ),
         )
 

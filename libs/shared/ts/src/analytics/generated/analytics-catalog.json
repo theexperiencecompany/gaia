@@ -4970,6 +4970,62 @@
       }
     },
     {
+      "event": "notification:agent_sent",
+      "class": "NotificationAgentSent",
+      "owner": "server",
+      "domain": "notification",
+      "description": "The agent's send_notification sent one, or folded it into the reply already reaching the user.\n\n    destination is set only when the agent named no channel and GAIA chose where it goes.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "The agent's send_notification sent one, or folded it into the reply already reaching the user.\n\ndestination is set only when the agent named no channel and GAIA chose where it goes.",
+        "properties": {
+          "outcome": {
+            "enum": ["sent", "folded_into_reply"],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "destination": {
+            "anyOf": [
+              {
+                "enum": ["chat_app", "in_app"],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Destination"
+          },
+          "destination_basis": {
+            "anyOf": [
+              {
+                "enum": [
+                  "recent_activity",
+                  "priority",
+                  "active_in_app",
+                  "no_chat_app"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Destination Basis"
+          }
+        },
+        "required": ["outcome"],
+        "title": "NotificationAgentSent",
+        "type": "object"
+      }
+    },
+    {
       "event": "notification:bulk_action",
       "class": "NotificationBulkAction",
       "owner": "server",
@@ -5925,14 +5981,14 @@
       "class": "ReminderCompleted",
       "owner": "server",
       "domain": "reminder",
-      "description": "The worker executed a reminder.",
+      "description": "The worker executed a reminder; destination is where it was routed, absent when that routing never ran.",
       "previous_names": [],
       "budget_per_user_day": 50,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "The worker executed a reminder.",
+        "description": "The worker executed a reminder; destination is where it was routed, absent when that routing never ran.",
         "properties": {
           "reminder_id": {
             "pattern": "^[0-9a-fA-F]{24}$",
@@ -5943,6 +5999,37 @@
             "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
             "title": "Agent",
             "type": "string"
+          },
+          "destination": {
+            "anyOf": [
+              {
+                "enum": ["chat_app", "in_app"],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Destination"
+          },
+          "destination_basis": {
+            "anyOf": [
+              {
+                "enum": [
+                  "recent_activity",
+                  "priority",
+                  "active_in_app",
+                  "no_chat_app"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Destination Basis"
           }
         },
         "required": ["reminder_id", "agent"],
@@ -7081,14 +7168,14 @@
       "class": "TodosRunResultDelivered",
       "owner": "server",
       "domain": "todos",
-      "description": "A tracked todo's run result reached, or failed to reach, the user's chat app.",
+      "description": "A tracked todo's run result reached, or failed to reach, the user; destination is where it was routed.",
       "previous_names": [],
       "budget_per_user_day": 50,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "A tracked todo's run result reached, or failed to reach, the user's chat app.",
+        "description": "A tracked todo's run result reached, or failed to reach, the user; destination is where it was routed.",
         "properties": {
           "outcome": {
             "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
@@ -7120,6 +7207,37 @@
             ],
             "default": null,
             "title": "Platform"
+          },
+          "destination": {
+            "anyOf": [
+              {
+                "enum": ["chat_app", "in_app"],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Destination"
+          },
+          "destination_basis": {
+            "anyOf": [
+              {
+                "enum": [
+                  "recent_activity",
+                  "priority",
+                  "active_in_app",
+                  "no_chat_app"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Destination Basis"
           }
         },
         "required": ["outcome", "delivered", "trigger_type", "recurring"],
@@ -8448,6 +8566,88 @@
         "description": "A user published a workflow to the community.",
         "properties": {},
         "title": "WorkflowPublished",
+        "type": "object"
+      }
+    },
+    {
+      "event": "workflow:result_delivered",
+      "class": "WorkflowResultDelivered",
+      "owner": "server",
+      "domain": "workflow",
+      "description": "A workflow run's result was routed to the user's one proactive place; platform is the chat app that got it.",
+      "previous_names": [],
+      "budget_per_user_day": 200,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A workflow run's result was routed to the user's one proactive place; platform is the chat app that got it.",
+        "properties": {
+          "workflow_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Workflow Id"
+          },
+          "outcome": {
+            "enum": ["delivered", "undelivered", "lookup_failed"],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "destination": {
+            "anyOf": [
+              {
+                "enum": ["chat_app", "in_app"],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Destination"
+          },
+          "destination_basis": {
+            "anyOf": [
+              {
+                "enum": [
+                  "recent_activity",
+                  "priority",
+                  "active_in_app",
+                  "no_chat_app"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Destination Basis"
+          },
+          "platform": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Platform"
+          }
+        },
+        "required": ["outcome"],
+        "title": "WorkflowResultDelivered",
         "type": "object"
       }
     },

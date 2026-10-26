@@ -17,10 +17,21 @@ from app.agents.core import messages as messages_module
 from app.models.agent_models import AgentConfigurable
 from app.models.chat_models import ConversationSource
 from app.models.presence_models import PresenceSnapshot
+from app.services.chat import stream as stream_module
 from app.services.delivery.chat_channel import ChatChannel, InApp
+from app.services.delivery.presence import read_presence, record_turn_presence
 from app.utils import presence_utils
+from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
+from shared.py.analytics.context import AnalyticsContext, analytics_context
 
 pytestmark = pytest.mark.unit
+
+#: How every background run's note opens: nobody reads the run as it happens.
+BACKGROUND_OPENING = (
+    "[User presence: this is a background run, so the user sees only what it sends them."
+)
+
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
 
 def _epoch(month: int, day: int, hour: int, minute: int) -> int:
@@ -94,14 +105,14 @@ class TestTheNote:
 
         assert note is not None
         assert note.endswith(
-            "They are on Telegram right now, which you cannot message on your own: reminders "
+            "They are on Telegram right now, which you cannot message on your own. Reminders "
             "land back in the chat they were set in and on WhatsApp too when that chat is not "
             "WhatsApp; tracked todo updates and workflow results go to WhatsApp, first in "
             "their chat order.]"
         )
         assert only_app is not None
         assert only_app.endswith(
-            "They are on Telegram right now, which you cannot message on your own: reminders "
+            "They are on Telegram right now, which you cannot message on your own. Reminders "
             "land back in the chat they were set in; tracked todo updates and workflow results "
             "only show in the GAIA app.]"
         )
@@ -129,7 +140,7 @@ class TestTheNote:
         )
 
         assert note == (
-            "[User presence: not in a chat with you right now. Last seen: Telegram at "
+            f"{BACKGROUND_OPENING} Last seen: Telegram at "
             "2026-10-24 17:02 UTC, Web at 2026-10-23 11:40 UTC. If this run messages the user, "
             "it goes to Telegram, where they are active (they wrote there within the past 3 "
             "hours).]"
@@ -139,14 +150,14 @@ class TestTheNote:
         note = presence_note(STAYED_ON_TELEGRAM, "telegram", "background", TELEGRAM_RECENT)
 
         assert note is not None
-        assert note.startswith("[User presence: not in a chat with you right now.")
+        assert note.startswith(BACKGROUND_OPENING)
 
     def test_a_target_picked_by_order_says_so(self) -> None:
         note = presence_note(CAME_FROM_WEB, "telegram", "interactive", WHATSAPP_BY_ORDER)
 
         assert note is not None
         assert note.endswith(
-            "They are not active anywhere right now: reminders land back in the chat they were "
+            "They are not active anywhere right now. Reminders land back in the chat they were "
             "set in and on WhatsApp too when that chat is not WhatsApp; tracked todo updates and "
             "workflow results go to WhatsApp, first in their chat order.]"
         )
@@ -264,13 +275,48 @@ class TestWhereTheNoteSits:
         assert _notes(messages) == []
 
 
+#: A spoken turn: the voice worker's request, which reaches comms as a web turn.
+VOICE_CALL = AnalyticsContext(
+    attribution=Attribution(
+        actor=Actor.USER, trigger=Trigger.INTERACTIVE, surface=EntrySurface.VOICE
+    )
+)
+
+
+class TestAVoiceCall:
+    """A call is not a surface the user can be messaged on: it is never stamped and never noted."""
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("tier", [AgentTier.COMMS, AgentTier.EXECUTOR])
+    async def test_consecutive_voice_turns_get_no_note(
+        self, tier: AgentTier, fake_redis: object
+    ) -> None:
+        """Each spoken turn was told the user had just switched to Web, one note per turn."""
+        await record_turn_presence(USER_ID, ConversationSource.TELEGRAM)
+
+        with analytics_context(VOICE_CALL):
+            for _ in range(2):
+                assert await stream_module._capture_presence(USER_ID, "web") is None
+                presence = await read_presence(USER_ID)
+                messages = await effective_context(tier, _seed(presence, "web"))
+
+                assert _notes(messages) == []
+
+        assert set((await read_presence(USER_ID))["last_seen"]) == {"telegram"}
+
+
 class TestTheTargetLookup:
     """The delivery target is a user read: only a run that gets a note may pay for it."""
 
     async def test_a_same_surface_turn_never_reads_the_target(self) -> None:
         with patch.object(presence_note_module, "resolve_proactive_target") as lookup:
             message = await presence_note_module.presence_note_message(
-                "user-1", STAYED_ON_TELEGRAM, "telegram", "interactive", opens_thread=False
+                "user-1",
+                STAYED_ON_TELEGRAM,
+                "telegram",
+                "interactive",
+                opens_thread=False,
+                entry_surface=EntrySurface.WEB,
             )
 
         assert message is None
@@ -282,20 +328,45 @@ class TestTheTargetLookup:
     ) -> None:
         with patch.object(presence_note_module, "resolve_proactive_target") as lookup:
             live = await presence_note_module.presence_note_message(
-                "user-1", presence, "telegram", "interactive", opens_thread=True
-            )
-            background = await presence_note_module.presence_note_message(
-                "user-1", presence, None, "background", opens_thread=False
+                "user-1",
+                presence,
+                "telegram",
+                "interactive",
+                opens_thread=True,
+                entry_surface=EntrySurface.WEB,
             )
 
         assert live is None
-        assert background is None
         lookup.assert_not_called()
+
+    async def test_a_background_run_for_a_user_never_seen_gets_no_note(self) -> None:
+        """The live read decides: an inherited snapshot with history does not make a note due."""
+        with (
+            patch.object(presence_note_module, "read_presence", AsyncMock(return_value=_seen())),
+            patch.object(
+                presence_note_module, "resolve_proactive_target", return_value=TELEGRAM_RECENT
+            ),
+        ):
+            background = await presence_note_module.presence_note_message(
+                "user-1",
+                STAYED_ON_TELEGRAM,
+                None,
+                "background",
+                opens_thread=False,
+                entry_surface=EntrySurface.WEB,
+            )
+
+        assert background is None
 
     async def test_no_user_never_reads_the_target(self) -> None:
         with patch.object(presence_note_module, "resolve_proactive_target") as lookup:
             message = await presence_note_module.presence_note_message(
-                "", CAME_FROM_WEB, "telegram", "interactive", opens_thread=False
+                "",
+                CAME_FROM_WEB,
+                "telegram",
+                "interactive",
+                opens_thread=False,
+                entry_surface=EntrySurface.WEB,
             )
 
         assert message is None
@@ -304,7 +375,12 @@ class TestTheTargetLookup:
     async def test_a_known_user_without_a_snapshot_never_reads_the_target(self) -> None:
         with patch.object(presence_note_module, "resolve_proactive_target") as lookup:
             message = await presence_note_module.presence_note_message(
-                "user-1", None, "telegram", "interactive", opens_thread=False
+                "user-1",
+                None,
+                "telegram",
+                "interactive",
+                opens_thread=False,
+                entry_surface=EntrySurface.WEB,
             )
 
         assert message is None
@@ -312,26 +388,76 @@ class TestTheTargetLookup:
 
     async def test_a_background_run_is_noted_and_worded_as_background(self) -> None:
         """Same surface, same snapshot: only the run's mode makes it due and picks the wording."""
-        with patch.object(
-            presence_note_module, "resolve_proactive_target", return_value=TELEGRAM_RECENT
+        with (
+            patch.object(
+                presence_note_module, "read_presence", AsyncMock(return_value=STAYED_ON_TELEGRAM)
+            ),
+            patch.object(
+                presence_note_module, "resolve_proactive_target", return_value=TELEGRAM_RECENT
+            ),
         ):
             background = await presence_note_module.presence_note_message(
-                "user-1", STAYED_ON_TELEGRAM, "telegram", "background", opens_thread=False
+                "user-1",
+                STAYED_ON_TELEGRAM,
+                "telegram",
+                "background",
+                opens_thread=False,
+                entry_surface=EntrySurface.WEB,
             )
             interactive = await presence_note_module.presence_note_message(
-                "user-1", STAYED_ON_TELEGRAM, "telegram", "interactive", opens_thread=False
+                "user-1",
+                STAYED_ON_TELEGRAM,
+                "telegram",
+                "interactive",
+                opens_thread=False,
+                entry_surface=EntrySurface.WEB,
             )
 
         assert interactive is None
         assert background is not None
-        assert text_of(background).startswith("[User presence: not in a chat with you right now.")
+        assert text_of(background).startswith(BACKGROUND_OPENING)
+
+    @pytest.mark.regression
+    async def test_a_background_note_tells_one_moment_read_live(self) -> None:
+        """Last seen came from the pre-turn snapshot while the target was read live, so the two disagreed."""
+        live = _seen(web=_epoch(10, 24, 17, 20), telegram=TELEGRAM_AT)
+        with (
+            patch.object(
+                presence_note_module, "read_presence", AsyncMock(return_value=live)
+            ) as read,
+            patch.object(
+                presence_note_module, "resolve_proactive_target", return_value=ACTIVE_IN_APP
+            ) as lookup,
+        ):
+            message = await presence_note_module.presence_note_message(
+                "user-1",
+                STAYED_ON_TELEGRAM,
+                "web",
+                "background",
+                opens_thread=False,
+                entry_surface=EntrySurface.WEB,
+            )
+
+        assert message is not None
+        assert text_of(message) == (
+            f"{BACKGROUND_OPENING} Last seen: Web at 2026-10-24 17:20 UTC, Telegram at "
+            "2026-10-24 17:02 UTC. If this run messages the user, it stays in the GAIA app, "
+            "where they are active.]"
+        )
+        read.assert_awaited_once_with("user-1")
+        lookup.assert_awaited_once_with("user-1")
 
     async def test_a_switch_turn_reads_it_once(self) -> None:
         with patch.object(
             presence_note_module, "resolve_proactive_target", return_value=TELEGRAM_RECENT
         ) as lookup:
             message = await presence_note_module.presence_note_message(
-                "user-1", CAME_FROM_WEB, "telegram", "interactive", opens_thread=False
+                "user-1",
+                CAME_FROM_WEB,
+                "telegram",
+                "interactive",
+                opens_thread=False,
+                entry_surface=EntrySurface.WEB,
             )
 
         assert message is not None
@@ -366,7 +492,12 @@ class TestComms:
             )
 
         note.assert_awaited_once_with(
-            "user-1", STAYED_ON_TELEGRAM, "telegram", "background", opens_thread=False
+            "user-1",
+            STAYED_ON_TELEGRAM,
+            "telegram",
+            "background",
+            opens_thread=False,
+            entry_surface=EntrySurface.WEB,
         )
 
 

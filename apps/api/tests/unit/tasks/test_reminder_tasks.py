@@ -93,7 +93,7 @@ async def test_static_reminder_sends_notification() -> None:
             "app.tasks.reminder_tasks.notification_service.create_notification",
             new_callable=AsyncMock,
         ) as create,
-        patch(f"{MODULE}._deliver_reminder_to_platforms", new_callable=AsyncMock),
+        patch(f"{MODULE}._deliver_reminder_to_platforms", AsyncMock(return_value=None)),
         patch("app.tasks.reminder_tasks.log.info") as log_info,
     ):
         await _execute_static_reminder(reminder)
@@ -108,24 +108,41 @@ async def test_static_reminder_sends_notification() -> None:
     log_info.assert_called_once()
 
 
-async def test_reminder_execution_captures_completed() -> None:
-    reminder = _reminder()
+@pytest.mark.parametrize(
+    ("routed_to", "destination", "basis"),
+    [
+        (TELEGRAM_BY_ORDER, "chat_app", "priority"),
+        (TELEGRAM_ACTIVE, "chat_app", "recent_activity"),
+        (InApp(reason="active_in_app"), "in_app", "active_in_app"),
+        (InApp(reason="no_chat_app"), "in_app", "no_chat_app"),
+    ],
+)
+async def test_reminder_completion_names_where_it_was_routed(
+    target: AsyncMock, routed_to: ProactiveTarget, destination: str, basis: str
+) -> None:
+    """A reminder kept in the app for a recently active web user is measurable, not silent."""
+    target.return_value = routed_to
 
     with (
         patch(
             "app.tasks.reminder_tasks.notification_service.create_notification",
             new_callable=AsyncMock,
         ),
-        patch(f"{MODULE}._deliver_reminder_to_platforms", new_callable=AsyncMock),
+        patch(f"{MODULE}.load_user_context", new_callable=AsyncMock, side_effect=_user_context()),
+        patch(f"{MODULE}.deliver_result_to_platforms", new_callable=AsyncMock),
         patch("app.tasks.reminder_tasks.capture") as mock_capture,
         patch("app.tasks.reminder_tasks.log.info"),
     ):
-        await execute_reminder_by_agent(reminder)
+        await execute_reminder_by_agent(_reminder())
 
-    mock_capture.assert_called_once()
-    assert mock_capture.call_args.args == (
+    mock_capture.assert_called_once_with(
         UserId(USER_ID),
-        ReminderCompleted(reminder_id=REMINDER_ID, agent="static"),
+        ReminderCompleted(
+            reminder_id=REMINDER_ID,
+            agent="static",
+            destination=destination,
+            destination_basis=basis,
+        ),
     )
 
 
@@ -138,7 +155,7 @@ async def test_reminder_failure_does_not_capture() -> None:
             new_callable=AsyncMock,
             side_effect=RuntimeError("notify down"),
         ),
-        patch(f"{MODULE}._deliver_reminder_to_platforms", new_callable=AsyncMock),
+        patch(f"{MODULE}._deliver_reminder_to_platforms", AsyncMock(return_value=None)),
         patch("app.tasks.reminder_tasks.capture") as mock_capture,
         patch("app.tasks.reminder_tasks.log.info"),
     ):
@@ -157,7 +174,7 @@ async def test_a_failed_reminder_names_the_user_it_failed_for() -> None:
             new_callable=AsyncMock,
             side_effect=RuntimeError("notify down"),
         ),
-        patch(f"{MODULE}._deliver_reminder_to_platforms", new_callable=AsyncMock),
+        patch(f"{MODULE}._deliver_reminder_to_platforms", AsyncMock(return_value=None)),
         patch(f"{MODULE}.capture"),
     ):
         with pytest.raises(RuntimeError, match="notify down"):
@@ -186,7 +203,7 @@ async def test_a_reminder_with_no_id_is_refused_and_named_in_the_wide_event() ->
             "app.tasks.reminder_tasks.notification_service.create_notification",
             new_callable=AsyncMock,
         ) as create,
-        patch(f"{MODULE}._deliver_reminder_to_platforms", new_callable=AsyncMock),
+        patch(f"{MODULE}._deliver_reminder_to_platforms", AsyncMock(return_value=None)),
         patch(f"{MODULE}.capture") as mock_capture,
     ):
         with pytest.raises(ValueError, match="has no ID, skipping execution"):
@@ -284,9 +301,11 @@ class TestReminderReachesChatPlatforms:
 
         create.assert_awaited_once()
         # The reminder is treated as successfully executed — the side channel's
-        # failure did not mark it failed or skip the completion capture.
-        mock_capture.assert_called_once()
-        assert isinstance(mock_capture.call_args.args[1], ReminderCompleted)
+        # failure did not mark it failed or skip the completion capture. Nothing
+        # reached a chat app, so no destination is claimed.
+        mock_capture.assert_called_once_with(
+            UserId(USER_ID), ReminderCompleted(reminder_id=REMINDER_ID, agent="static")
+        )
 
 
 class TestReminderResultText:

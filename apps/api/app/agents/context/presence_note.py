@@ -8,6 +8,8 @@ it, and it carries PRESENCE_NOTE_MARKER so readers of the user's words skip it.
 Times are absolute UTC; the model already gets the current time every turn.
 """
 
+import asyncio
+
 from langchain_core.messages import HumanMessage
 
 from app.agents.context.section_context import ExecutionMode
@@ -15,7 +17,7 @@ from app.agents.context.slots import PRESENCE_NOTE_MARKER, mark
 from app.models.chat_models import ConversationSource
 from app.models.presence_models import PresenceSnapshot
 from app.services.delivery.chat_channel import ProactiveTarget, resolve_proactive_target
-from app.services.delivery.presence import previous_surface, surfaces_by_recency
+from app.services.delivery.presence import previous_surface, read_presence, surfaces_by_recency
 from app.utils.presence_utils import (
     describe_last_seen,
     destination_phrase,
@@ -24,6 +26,7 @@ from app.utils.presence_utils import (
     note_is_due,
     own_messages_phrase,
 )
+from shared.py.analytics.catalog.attribution import EntrySurface
 
 
 def presence_note(
@@ -37,7 +40,7 @@ def presence_note(
     surface = ConversationSource.coerce(source)
     if surface is None or not is_live_chat(source, execution_mode):
         return (
-            "[User presence: not in a chat with you right now. "
+            "[User presence: this is a background run, so the user sees only what it sends them. "
             f"Last seen: {describe_last_seen(ranked)}. "
             f"If this run messages the user, it {destination_phrase(target)}.]"
         )
@@ -64,15 +67,27 @@ async def presence_note_message(
     execution_mode: ExecutionMode,
     *,
     opens_thread: bool,
+    entry_surface: EntrySurface,
 ) -> HumanMessage | None:
     """Return the marked note message a run's thread gets, or None when nothing changed."""
-    # The target lookup is a user read; only a run that gets a note pays for it.
-    if (
-        not user_id
-        or presence is None
-        or not note_is_due(presence, source, execution_mode, opens_thread)
-    ):
+    if not user_id or presence is None:
         return None
-    target = await resolve_proactive_target(user_id)
+    if is_live_chat(source, execution_mode):
+        # The target lookup is a user read; only a turn that gets a note pays for it.
+        if not note_is_due(
+            presence, source, execution_mode, opens_thread, entry_surface=entry_surface
+        ):
+            return None
+        target = await resolve_proactive_target(user_id)
+    else:
+        # Read live with the target, not the inherited pre-turn snapshot, so the
+        # note's last seen and its destination describe one moment.
+        presence, target = await asyncio.gather(
+            read_presence(user_id), resolve_proactive_target(user_id)
+        )
+        if not note_is_due(
+            presence, source, execution_mode, opens_thread, entry_surface=entry_surface
+        ):
+            return None
     text = presence_note(presence, source, execution_mode, target)
     return mark(HumanMessage(content=text), PRESENCE_NOTE_MARKER)

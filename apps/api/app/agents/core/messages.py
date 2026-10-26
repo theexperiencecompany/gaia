@@ -29,6 +29,7 @@ from app.models.presence_models import PresenceSnapshot
 from app.models.user_models import AuthenticatedUser
 from app.services.files import FileService
 from app.utils.user_preferences_utils import onboarding_preferences
+from shared.py.analytics.context import current_analytics_context
 
 
 @dataclass(frozen=True)
@@ -118,6 +119,8 @@ async def construct_langchain_messages(
             source,
             scope.execution_mode,
             opens_thread=scope.opens_thread,
+            # The entry point the turn is bound to; build_agent_config stamps the same on the tree.
+            entry_surface=current_analytics_context().attribution.surface,
         ),
     )
 

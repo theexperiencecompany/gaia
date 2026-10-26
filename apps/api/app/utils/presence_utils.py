@@ -6,8 +6,9 @@ from app.constants.notifications import PRESENCE_ACTIVE_WINDOW_SECONDS
 from app.models.agent_config import ExecutionMode
 from app.models.chat_models import ConversationSource, SourceCategory
 from app.models.presence_models import PresenceSnapshot
-from app.services.delivery.chat_channel import ChatChannel, InApp, ProactiveTarget
+from app.services.delivery.chat_channel import ChatChannel, InApp, ProactiveTarget, is_active_place
 from app.services.delivery.presence import previous_surface, surfaces_by_recency
+from shared.py.analytics.catalog.attribution import EntrySurface
 
 
 def format_utc(epoch: int) -> str:
@@ -55,38 +56,37 @@ def destination_phrase(target: ProactiveTarget) -> str:
     return "only shows in the GAIA app (no chat app linked)"
 
 
+#: The messages GAIA sends with nobody asking, as one subject.
+_OWN_MESSAGES = "Messages you send on your own (reminders, tracked todo updates, workflow results)"
+
+
 def own_messages_phrase(target: ProactiveTarget) -> str:
-    """Where each kind of message GAIA sends on its own lands, as reminder_tasks and todo delivery route them."""
-    kinds = "Messages you send on your own (reminders, tracked todo updates, workflow results)"
-    # The user is on a chat app that cannot be messaged: say so, then route as for nobody active.
-    idle = (
-        f"They are on {target.unreachable_active.display_name} right now, which you cannot "
-        "message on your own: "
-        if target.unreachable_active is not None
-        else "They are not active anywhere right now: "
-    )
-    match target:
-        case ChatChannel(basis="recent_activity"):
+    """Where each kind of message GAIA sends on its own lands, forked as reminder delivery forks on is_active_place."""
+    if is_active_place(target):
+        if isinstance(target, ChatChannel):
             return (
-                f"{kinds} go to {target.source.display_name}, where they are active "
+                f"{_OWN_MESSAGES} go to {target.source.display_name}, where they are active "
                 f"(they wrote there within {active_window_phrase()})."
             )
-        case ChatChannel():
-            name = target.source.display_name
-            return (
-                f"{idle}reminders land back in the chat they were set in and on {name} too "
-                f"when that chat is not {name}; tracked todo updates and workflow results go "
-                f"to {name}, first in their chat order."
-            )
-        case InApp(reason="active_in_app"):
-            return (
-                f"{kinds} stay in the GAIA app, where they are active; nothing goes to a chat app."
-            )
-    linked = "" if target.unreachable_active is not None else " (no chat app linked)"
-    lead = idle if target.unreachable_active is not None else ""
+        return f"{_OWN_MESSAGES} stay in the GAIA app, where they are active; nothing goes to a chat app."
+    # Nobody reachable is active: reminders return to the chat they were set in.
+    unreachable = (
+        f"They are on {target.unreachable_active.display_name} right now, which you cannot "
+        "message on your own. "
+        if target.unreachable_active is not None
+        else None
+    )
+    if isinstance(target, ChatChannel):
+        name = target.source.display_name
+        return (
+            f"{unreachable or 'They are not active anywhere right now. '}Reminders land back in "
+            f"the chat they were set in and on {name} too when that chat is not {name}; tracked "
+            f"todo updates and workflow results go to {name}, first in their chat order."
+        )
+    linked = "" if unreachable else " (no chat app linked)"
     return (
-        f"{lead}{'r' if lead else 'R'}eminders land back in the chat they were set in; tracked "
-        f"todo updates and workflow results only show in the GAIA app{linked}."
+        f"{unreachable or ''}Reminders land back in the chat they were set in; tracked todo "
+        f"updates and workflow results only show in the GAIA app{linked}."
     )
 
 
@@ -100,14 +100,24 @@ def is_live_chat(source: str | None, execution_mode: ExecutionMode) -> bool:
     )
 
 
+def is_presence_surface(entry_surface: EntrySurface) -> bool:
+    """Whether a turn entering here counts as presence; a call cannot be messaged, so it never does."""
+    return entry_surface is not EntrySurface.VOICE
+
+
 def note_is_due(
     presence: PresenceSnapshot | None,
     source: str | None,
     execution_mode: ExecutionMode,
     opens_thread: bool,
+    *,
+    entry_surface: EntrySurface,
 ) -> bool:
     """Whether a run gets a presence note: a background run, a live surface switch, or a thread's first turn."""
     if not presence or not surfaces_by_recency(presence):
+        return False
+    # A voice call reaches comms as a web turn; it is not one, so it switched nowhere.
+    if execution_mode != "background" and not is_presence_surface(entry_surface):
         return False
     if not is_live_chat(source, execution_mode) or opens_thread:
         return True

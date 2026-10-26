@@ -24,11 +24,20 @@ from app.models.chat_models import (
     UpdateMessagesRequest,
 )
 from app.models.user_models import AuthenticatedUser
+from app.services.analytics_service import capture
 from app.services.bot_service import BotService
 from app.services.conversation_service import update_messages
-from app.services.delivery.chat_channel import ChatChannel, ProactiveTarget
+from app.services.delivery.chat_channel import (
+    ChatChannel,
+    InApp,
+    ProactiveTarget,
+    proactive_destination,
+    resolve_proactive_target,
+)
 from app.services.outbound_delivery import OutboundResult, publish_outbound_message
 from app.utils.message_breaks import split_message_bubbles
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.workflows import WorkflowResultDelivered
 from shared.py.wide_events import log
 
 
@@ -61,6 +70,50 @@ async def deliver_result_to_platforms(
         channel=target,
         response=notification_text,
         origin=origin,
+    )
+
+
+async def deliver_workflow_result(
+    *, user: AuthenticatedUser, workflow_id: str | None, notification_text: str, origin: str
+) -> None:
+    """Send a workflow run's result to the user's one proactive place and record where it went.
+
+    Both workflow paths (an agent run and a replayed playbook) deliver here. A
+    failed lookup costs only the chat-app copy: the result is already saved.
+    """
+    try:
+        target = await resolve_proactive_target(user.user_id)
+    except Exception as e:  # best-effort: the result is already saved
+        log.error(
+            f"{LogTag.AGENT} workflow result: chat app lookup failed, not sent to the chat app",
+            workflow_id=workflow_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        capture(
+            UserId(user.user_id),
+            WorkflowResultDelivered(
+                workflow_id=workflow_id, outcome="lookup_failed", **proactive_destination(None)
+            ),
+        )
+        return
+    platform = await deliver_result_to_platforms(
+        user=user,
+        user_id=user.user_id,
+        notification_text=notification_text,
+        origin=origin,
+        target=target,
+    )
+    # In the GAIA app the saved result is the delivery; a chat app must have taken the send.
+    delivered = isinstance(target, InApp) or platform is not None
+    capture(
+        UserId(user.user_id),
+        WorkflowResultDelivered(
+            workflow_id=workflow_id,
+            outcome="delivered" if delivered else "undelivered",
+            platform=platform.value if platform else None,
+            **proactive_destination(target),
+        ),
     )
 
 

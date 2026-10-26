@@ -30,6 +30,7 @@ from app.agents.core.background import (
     executor_runner as er,
     result_delivery as rd,
     running_registry,
+    workflow_platform_delivery as wpd,
 )
 from app.agents.core.background.executor_capture import (
     await_executor_done,
@@ -292,10 +293,12 @@ class TestBackgroundRunCardsSurviveTheCommsDrain:
         stack.enter_context(
             patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None)
         )
-        stack.enter_context(patch.object(rd, "deliver_result_to_platforms", new_callable=AsyncMock))
+        stack.enter_context(
+            patch.object(wpd, "deliver_result_to_platforms", AsyncMock(return_value=None))
+        )
         stack.enter_context(
             patch.object(
-                rd,
+                wpd,
                 "resolve_proactive_target",
                 AsyncMock(return_value=InApp(reason="no_chat_app")),
             )

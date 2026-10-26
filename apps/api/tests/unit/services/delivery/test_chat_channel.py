@@ -22,7 +22,10 @@ from app.services.delivery import chat_channel
 from app.services.delivery.chat_channel import (
     ChatChannel,
     InApp,
+    ProactiveTarget,
+    is_active_place,
     pick_chat_channel,
+    proactive_destination,
     resolve_channel_priority,
     resolve_proactive_target,
 )
@@ -51,6 +54,78 @@ def _two_linked_user() -> UserDocument:
             "notification_channel_prefs": {},
         }
     )
+
+
+class TestIsActivePlace:
+    """The one fork reminder delivery and the agent's presence note both follow."""
+
+    @pytest.mark.parametrize(
+        ("target", "active"),
+        [
+            (ChatChannel(ConversationSource.TELEGRAM, "tg-1", "recent_activity"), True),
+            (InApp(reason="active_in_app"), True),
+            (ChatChannel(ConversationSource.TELEGRAM, "tg-1", "priority"), False),
+            (
+                ChatChannel(
+                    ConversationSource.SLACK,
+                    "sl-1",
+                    "priority",
+                    unreachable_active=ConversationSource.TELEGRAM,
+                ),
+                False,
+            ),
+            (InApp(reason="no_chat_app"), False),
+            (InApp(reason="no_chat_app", unreachable_active=ConversationSource.TELEGRAM), False),
+        ],
+        ids=[
+            "chat_app_active",
+            "app_active",
+            "by_order",
+            "by_order_unreachable_active",
+            "no_chat_app",
+            "no_chat_app_unreachable_active",
+        ],
+    )
+    def test_only_a_target_chosen_by_activity_is_the_active_place(
+        self, target: ProactiveTarget, active: bool
+    ) -> None:
+        assert is_active_place(target) is active
+
+
+class TestProactiveDestination:
+    """The one mapping from a routing decision to the analytics properties every delivery event carries."""
+
+    @pytest.mark.parametrize(
+        ("target", "destination", "basis"),
+        [
+            (
+                ChatChannel(ConversationSource.TELEGRAM, "tg-1", "recent_activity"),
+                "chat_app",
+                "recent_activity",
+            ),
+            (ChatChannel(ConversationSource.SLACK, "sl-1", "priority"), "chat_app", "priority"),
+            (
+                ChatChannel(
+                    ConversationSource.SLACK,
+                    "sl-1",
+                    "priority",
+                    unreachable_active=ConversationSource.TELEGRAM,
+                ),
+                "chat_app",
+                "priority",
+            ),
+            (InApp("active_in_app"), "in_app", "active_in_app"),
+            (InApp("no_chat_app"), "in_app", "no_chat_app"),
+            (None, None, None),
+        ],
+    )
+    def test_names_the_kind_and_the_rule_that_chose_it(
+        self, target: ProactiveTarget | None, destination: str | None, basis: str | None
+    ) -> None:
+        assert proactive_destination(target) == {
+            "destination": destination,
+            "destination_basis": basis,
+        }
 
 
 class TestResolveChannelPriority:

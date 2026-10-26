@@ -92,6 +92,7 @@ from app.services.storage import flush_fs_metrics
 from app.utils.agent_utils import format_sse_data, format_sse_response
 from app.utils.chat_utils import generate_and_update_description
 from app.utils.message_breaks import strip_partial_message_break
+from app.utils.presence_utils import is_presence_surface
 from app.utils.stream_utils import (
     REASONING_STEP,
     ReasoningEvent,
@@ -99,7 +100,7 @@ from app.utils.stream_utils import (
     reconstruct_subagent_groups,
 )
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.attribution import Actor, EntrySurface, Trigger
+from shared.py.analytics.catalog.attribution import Actor, Trigger
 from shared.py.analytics.catalog.chat import (
     ChatMessageCancelled,
     ChatMessageCompleted,
@@ -147,8 +148,7 @@ async def _capture_presence(user_id: str, source: str | None) -> PresenceSnapsho
     attribution = current_analytics_context().attribution
     if attribution.actor is not Actor.USER or attribution.trigger is not Trigger.INTERACTIVE:
         return None
-    # A call is not a surface the user can be messaged on, so it never counts as typing in the app.
-    if attribution.surface is EntrySurface.VOICE:
+    if not is_presence_surface(attribution.surface):
         return None
     surface = ConversationSource.coerce(source)
     if surface is None or SourceCategory.from_source(surface) is SourceCategory.BG:

@@ -61,6 +61,7 @@ from app.models.agent_models import (
     AgentUserContext,
     StreamChunkMetadata,
     agent_configurable,
+    run_analytics_context,
 )
 from app.models.hil_models import HilInterruptPayload, HilResumeDecision
 from app.models.stream_events import ReasoningPayload, ToolOutputPayload
@@ -264,6 +265,7 @@ async def _executor_presence_note(
         ctx.execution_mode,
         # Comms voices the result and gets the first-turn note itself.
         opens_thread=False,
+        entry_surface=run_analytics_context(configurable).attribution.surface,
     )
 
 

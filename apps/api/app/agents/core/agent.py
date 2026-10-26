@@ -165,7 +165,8 @@ async def _core_agent_logic(
             execution_mode = "background"
 
     # Read once here, not left to build_agent_config: the comms context below
-    # renders it too, and a workflow fire arrives without one.
+    # renders it too, and a workflow fire arrives without one. A voice call
+    # captures none either; note_is_due keeps its turns noteless by entry surface.
     presence = options.presence or (await read_presence(user_id) if user_id else None)
 
     # Build langchain messages and get graph concurrently

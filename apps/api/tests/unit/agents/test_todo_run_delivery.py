@@ -29,7 +29,7 @@ from app.models.trigger_subscription_models import (
 )
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
-from app.services.delivery.chat_channel import InApp
+from app.services.delivery.chat_channel import ChatChannel, InApp
 from app.services.tracked_todo_service import CANVAS_TEMPLATE
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.todos import TodosRunResultDelivered
@@ -287,6 +287,63 @@ class TestAttribution:
         todo_id, user_id, run_id, detail = seams.activity.await_args.args
         assert (todo_id, user_id, run_id) == ("todo-1", OWNER_ID, RUN.stream_id)
         assert "(summary='a long report')" in detail
+
+
+class TestTheEventSaysWhereTheResultWasRouted:
+    """Routing is measurable: the event names the destination kind and the rule that chose it."""
+
+    async def test_a_result_sent_where_the_user_is_active_names_that_chat_app(self) -> None:
+        active = ChatChannel(
+            source=ConversationSource.TELEGRAM, platform_user_id="tg-1", basis="recent_activity"
+        )
+        with _seams(todo=_todo(), sent_on=ConversationSource.TELEGRAM) as seams:
+            seams.target.return_value = active
+            await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
+
+        seams.capture.assert_called_once_with(
+            UserId(USER_ID),
+            TodosRunResultDelivered(
+                outcome="delivered",
+                delivered=True,
+                trigger_type=TriggerType.SCHEDULED_TODO.value,
+                recurring=False,
+                platform="telegram",
+                destination="chat_app",
+                destination_basis="recent_activity",
+            ),
+        )
+
+    async def test_a_result_kept_in_the_app_for_an_active_user_says_so(self) -> None:
+        with _seams(todo=_todo()) as seams:
+            seams.target.return_value = InApp(reason="active_in_app")
+            await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
+
+        seams.capture.assert_called_once_with(
+            UserId(USER_ID),
+            TodosRunResultDelivered(
+                outcome="delivered",
+                delivered=True,
+                trigger_type=TriggerType.SCHEDULED_TODO.value,
+                recurring=False,
+                destination="in_app",
+                destination_basis="active_in_app",
+            ),
+        )
+
+    async def test_a_failed_lookup_names_no_destination(self) -> None:
+        with _seams(todo=_todo()) as seams:
+            seams.target.side_effect = ConnectionError("mongo down")
+            await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
+
+        seams.capture.assert_called_once_with(
+            UserId(USER_ID),
+            TodosRunResultDelivered(
+                outcome="delivered",
+                delivered=True,
+                trigger_type=TriggerType.SCHEDULED_TODO.value,
+                recurring=False,
+            ),
+        )
 
 
 class TestTheWideEventSaysWhatHappened:

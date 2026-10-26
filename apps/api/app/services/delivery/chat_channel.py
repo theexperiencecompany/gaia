@@ -27,6 +27,7 @@ from app.services.delivery.presence import active_surface, read_presence
 from app.services.platform_link_service import linked_platforms_of
 from app.utils.notification.channel_preferences import normalize_channel_preferences
 from shared.py.analytics import UserId
+from shared.py.analytics.catalog.delivery import ProactiveDestination
 from shared.py.analytics.catalog.settings import SettingsChatChannelPriorityUpdated
 from shared.py.wide_events import log
 
@@ -94,6 +95,26 @@ class InApp:
 
 
 ProactiveTarget = ChatChannel | InApp
+
+
+def is_active_place(target: ProactiveTarget) -> bool:
+    """Whether target is where the user is active now, not a fallback chosen with nobody reachable active.
+
+    A reminder follows this fork: to the active place only, else back to the chat it was set in.
+    """
+    match target:
+        case ChatChannel(basis="recent_activity") | InApp(reason="active_in_app"):
+            return True
+    return False
+
+
+def proactive_destination(target: ProactiveTarget | None) -> ProactiveDestination:
+    """Return the analytics properties naming where target sends a proactive message; None is unresolved."""
+    if target is None:
+        return {"destination": None, "destination_basis": None}
+    if isinstance(target, ChatChannel):
+        return {"destination": "chat_app", "destination_basis": target.basis}
+    return {"destination": "in_app", "destination_basis": target.reason}
 
 
 def pick_chat_channel(
