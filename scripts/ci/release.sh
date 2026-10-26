@@ -725,10 +725,14 @@ cmd_selfhost_bundle() {
 
 cmd_sync_uv_lock() {
   : "${RELEASE_BRANCH:?RELEASE_BRANCH is required}"
-  if ! git ls-remote --exit-code --heads origin "$RELEASE_BRANCH" >/dev/null; then
+  # --exit-code exits 2 only for "no such ref"; anything else (auth, network) is a failure.
+  local status=0
+  git ls-remote --exit-code --heads origin "$RELEASE_BRANCH" >/dev/null || status=$?
+  if ((status == 2)); then
     ci_ok "sync-uv-lock: no $RELEASE_BRANCH branch, no release PR open"
     return 0
   fi
+  ((status == 0)) || ci_die "sync-uv-lock: git ls-remote origin failed (exit $status)"
   git fetch --quiet --depth=1 origin "$RELEASE_BRANCH"
   git checkout --quiet -B "$RELEASE_BRANCH" FETCH_HEAD
   uv lock

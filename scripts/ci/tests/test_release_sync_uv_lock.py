@@ -103,3 +103,10 @@ def test_no_release_branch_is_a_no_op(tmp_path: Path) -> None:
 
     assert proc.returncode == 0, proc.stderr
     assert _git(remote, "branch", "--list") == f"* {BRANCH}"
+
+
+def test_an_unreachable_remote_fails_instead_of_passing_as_no_release(tmp_path: Path) -> None:
+    proc = _sync(tmp_path, tmp_path / "missing.git")
+
+    assert proc.returncode != 0
+    assert "ls-remote origin failed" in proc.stdout + proc.stderr
