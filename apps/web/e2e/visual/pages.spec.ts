@@ -1,4 +1,3 @@
-import path from "node:path";
 import { expect, type Page, test } from "@playwright/test";
 
 /**
@@ -85,12 +84,7 @@ for (const route of PAGES) {
     if (!baseURL) throw new Error("run through playwright.visual.config.ts");
     const origin = new URL(baseURL).origin;
     const name = snapshotName(route);
-    const har = path.join(
-      __dirname,
-      ".baseline",
-      test.info().project.name,
-      `${name}.har`,
-    );
+    const har = test.info().snapshotPath(`${name}.har`);
 
     await context.routeFromHAR(har, {
       url: offOrigin(origin),
