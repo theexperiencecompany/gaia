@@ -90,7 +90,7 @@ def test_passing_checks_and_hidden_pages_count_as_squirrel_reports_them(tmp_path
 
 
 def test_a_site_wide_check_counts_its_items(tmp_path: Path) -> None:
-    check = {"status": "warn", "items": [{"id": "x"}, {"id": "y"}]}
+    check: dict[str, object] = {"status": "warn", "items": [{"id": "x"}, {"id": "y"}]}
     assert _ratchet(tmp_path, [_issue("security/hsts", check)], "security/hsts=1\n").returncode == 1
 
 
