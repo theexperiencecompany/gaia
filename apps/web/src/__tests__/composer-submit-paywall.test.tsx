@@ -2,7 +2,9 @@
 import { renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { sendMessage } = vi.hoisted(() => ({ sendMessage: vi.fn() }));
+const { sendMessage } = vi.hoisted(() => ({
+  sendMessage: vi.fn(() => Promise.resolve()),
+}));
 const clearInputText = vi.fn();
 const clearAllFiles = vi.fn();
 const clearToolSelection = vi.fn();
