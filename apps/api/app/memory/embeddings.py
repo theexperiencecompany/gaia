@@ -95,13 +95,10 @@ async def _observed(
     *,
     interactive: bool = False,
 ) -> _T:
-    """Await an embed/rerank call; on an unhandled failure emit a structured error and re-raise.
+    """Await an embed/rerank call; record an unhandled failure at error level and re-raise.
 
-    The embedding sidecar (HTTP) and the local ONNX model are the most
-    failure-prone parts of the memory path (timeouts, 5xx, OOM, dimension
-    mismatch). An interactive fail-fast error is recall's to report: it
-    degrades and logs a warning, so recording an error here would page Sentry
-    for a handled timeout.
+    An interactive fail-fast error is recall's to report: it degrades and logs a
+    warning, so recording an error here would page Sentry for a handled timeout.
     """
     started = time.perf_counter()
     try:
