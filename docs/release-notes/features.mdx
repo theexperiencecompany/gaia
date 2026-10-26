@@ -4,6 +4,83 @@ description: "A consolidated list of new features shipped across all GAIA releas
 icon: "sparkles"
 ---
 
+<Update label="Oct 26, 2026" description="API, Web, Desktop, Mobile, Bots, CLI">
+
+## [API v0.25.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.25.0)
+- **One-Command Self-Hosting**: `gaia up` installs Docker if it's missing, pulls the published images and serves GAIA on one port, with automatic HTTPS when you pass a domain. Every AI feature runs on the single provider you configure (OpenAI, OpenRouter, Gemini, Ollama, or any OpenAI-compatible URL), uploads and the code sandbox need no cloud accounts, and a self-hosted instance has no paywalls.
+- **Invite Your Household or Team**: On a self-hosted instance the first account is the admin, who can create single-use invite links. Each person gets their own private GAIA, and you can bring your own Composio key for integrations.
+- **Paid-Only GAIA**: Hosted GAIA no longer has a free plan. Without an active subscription you can't chat on any surface, run or enable workflows, or link a bot. New users answer two questions, pick a plan and pay, choose where GAIA texts them, and land in a "Getting started" conversation.
+- **Agentic Web Browsing**: GAIA can do tasks in a real web browser, from the web app or a bot. Each step shows as a card with a photo, the run works in the background while the chat keeps going, and at a login, CAPTCHA or payment you get a live view and the run waits until you say you're done. Stop works from every surface.
+- **The Inbox Desk**: Once you connect Gmail, a tracked todo triages your mail every morning: it opens a sub-todo for each thread that needs you, saves reply drafts and sends you a briefing. It replaces Inbox Triage, and feedback like "stop showing me newsletters" becomes a standing rule it follows from then on.
+- **Standing Instructions**: Give GAIA instructions for every conversation or for one app, like "for Gmail, draft replies formally and never archive". GAIA can save one when you state a lasting preference, but nothing it writes is kept until you approve the exact text.
+- **A Texting Voice**: Replies are short and matched to how you write, and GAIA can answer with a reaction or stay quiet when an update isn't worth a message. Charts, tables and steps render as real components again. The chat agent now runs on OpenAI's gpt-5.6-luna on every plan.
+- **Several Accounts per Integration**: Connect up to five accounts per integration, such as two Gmail inboxes. One is the primary, you can say "send it from work@acme.com" to pick another, and triggers fire for every account.
+- **Five New Integrations**: Cal.com, Calendly, Outlook, Jira and Dropbox.
+- **Tracked Todos Report Back**: When a scheduled or triggered tracked todo finishes, its result goes to your chat app once, and only when it found something you need to know or decide. Every run is a full agent run that works from the todo's notes, and a todo can now watch a specific resource, such as one GitHub repo's pull requests.
+- **Claude Code and OpenCode in Your Sandbox**: In early access, GAIA can hand long coding work to Claude Code or OpenCode in your own sandbox and gets woken when the run finishes, asks a question, needs a permission or fails. It needs a paid plan.
+- **First-Steps Checklist**: Four starter steps (say hi, connect an integration, link Telegram or WhatsApp, create a workflow) that tick off from what you've actually done.
+- **WhatsApp Messages After 24 Hours**: Proactive messages sent more than 24 hours after you last wrote now go out as an approved template instead of being lost.
+
+## [Web v0.26.0](https://github.com/theexperiencecompany/gaia/releases/tag/web-v0.26.0)
+- **Pay-First Onboarding**: Onboarding is a short chat: your role, what you want off your plate, a plan, then where GAIA should text you. A receipt printer prints your itemized receipt once the payment is confirmed.
+- **Where GAIA Texts You**: A new setting orders your linked platforms; proactive messages go to the first one instead of every platform at once.
+- **Browser Tasks in Chat**: A browser card shows each step's photo, the live view and any handoff, and Browser settings hold your task history and saved logins.
+- **Standing Instructions in Settings**: Edit your instructions directly; if GAIA changed them while you were editing, you get a conflict prompt instead of a silent overwrite.
+- **Manage Several Accounts**: The integration sidebar has an Accounts section to add another account, set the primary, rename one or disconnect just that one.
+- **Tapback Reactions**: GAIA's reactions to your messages appear as an iMessage-style badge on your bubble.
+- **First-Steps Checklist**: A card on your dashboard and a small widget elsewhere track your first four steps.
+- **Self-Host Admin Settings**: On a self-hosted instance the admin sees Members, AI Providers and Integrations setup.
+- **Several Approvals at Once**: Three or more pending approvals open in one review sheet.
+
+## [Desktop v0.8.0](https://github.com/theexperiencecompany/gaia/releases/tag/desktop-v0.8.0)
+- **Everything From This Web Release**: The desktop app ships the new onboarding, browser tasks, standing instructions, multiple accounts and the first-steps checklist.
+
+## [Mobile v0.9.0](https://github.com/theexperiencecompany/gaia/releases/tag/mobile-v0.9.0)
+- **Standing Instructions**: Edit your global instructions in Settings, and approve the ones GAIA proposes from the chat.
+- **Paid-Only Access**: The app shows a paywall notice above the composer when you don't have an active subscription.
+- **Approvals Update**: Approval cards follow the new flow, where approving the card is the confirmation.
+
+## [Bots v1.8.0](https://github.com/theexperiencecompany/gaia/releases/tag/bots-v1.8.0)
+- **Native Reactions**: On Telegram, WhatsApp, Discord, Slack and iMessage, GAIA's reaction attaches to your message instead of arriving as a separate emoji.
+- **One-Tap Linking**: Linking a bot is one tap from onboarding, and GAIA replies to your first message right away.
+- **Browser Tasks From Chat Apps**: Ask for a browser task from a bot and open a live view link, with Done and Stop, when the site needs you.
+- **WhatsApp After 24 Hours**: Messages GAIA sends you after a quiet day now arrive as an approved template instead of being dropped.
+
+## [CLI v0.7.0](https://github.com/theexperiencecompany/gaia/releases/tag/cli-v0.7.0)
+- **`gaia up`**: Starts a full self-hosted GAIA, installs Docker when you allow it, and prints the address to open. `--domain` turns on automatic HTTPS and `--code-sandbox` enables the local code sandbox.
+- **`gaia status` and `gaia doctor`**: Both check the running install's real health.
+- **A Clearer Installer**: `curl -fsSL https://heygaia.io/install.sh | sh` shows each slow step live with its progress and time, ends with the one command to run next, and offers to start GAIA if you're at the terminal.
+- **Beta Channel**: Add `GAIA_CHANNEL=beta` to the install command to get the pre-release CLI.
+
+</Update>
+
+<Update label="Sep 13, 2026" description="API, Web, Desktop, Mobile, Bots, CLI">
+
+## [API v0.23.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.23.0)
+- **Todos That Watch for Events**: A tracked todo waiting on something outside GAIA, such as an email reply, a calendar event, a Linear issue change or a new sheet row, subscribes to it and runs the moment it happens. GAIA sets these watches on its own.
+- **Google Drive and Gmail Attachments**: Connect Google Drive, and ask GAIA to "draft an email to Priya with the Q4 deck from my Drive attached". It can attach a Drive file, a file from the chat, or any downloadable URL to a real Gmail draft.
+- **Reminders Come Back to Their Chat**: A reminder or tracked todo is delivered into the chat that created it, on that chat's own platform, and GAIA remembers it fired when you reply.
+- **Quick Web Answers**: GAIA searches the web and reads a page itself for quick questions like weather, prices or "summarize this link", so they're answered faster.
+- **Your Own MCP Servers From Chat**: Ask GAIA to add a remote MCP server by URL. After you approve, the connect card takes the server's token and connects on the spot, and MCP servers on your paired machine become available to the agent.
+- **Workflows That Remember What Worked**: A workflow starts each run with a short record of the last one, and when a run's steps would work the same way tomorrow, later runs replay them in one model call.
+- **Tracked Todo Notes as Files**: A tracked todo's notes are two files, canvas.md and activity.md, that GAIA edits directly.
+
+## [Web v0.24.0](https://github.com/theexperiencecompany/gaia/releases/tag/web-v0.24.0)
+- **Google Drive**: Connect Google Drive from the integrations page.
+- **Both Todo Notes in the Sidebar**: The todo sidebar shows canvas.md and activity.md.
+- **Connect MCP Servers Inline**: The connect card in chat collects a server's token and shows it going from connecting to connected, with a live tool count.
+
+## [Desktop v0.7.0](https://github.com/theexperiencecompany/gaia/releases/tag/desktop-v0.7.0)
+- **Your Own MCP Servers From Chat**: Add and connect custom MCP servers from a chat, like on the web.
+
+## [Bots v1.7.0](https://github.com/theexperiencecompany/gaia/releases/tag/bots-v1.7.0)
+- **Reminders in the Right Chat**: A reminder or tracked todo set from a bot is delivered back into that bot chat.
+
+## [CLI v0.6.0](https://github.com/theexperiencecompany/gaia/releases/tag/cli-v0.6.0)
+- **MCP Servers on Your Machine**: MCP servers your paired machine exposes through the bridge connect in the background, so GAIA can find and use their tools.
+
+</Update>
+
 <Update label="Aug 26, 2026" description="API, Web, Desktop, Mobile, Bots, CLI">
 
 ## [API v0.22.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.22.0)
