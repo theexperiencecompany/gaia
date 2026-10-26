@@ -4,7 +4,9 @@ Every sitemap URL must answer 200 without a redirect, canonicalize to itself, be
 indexable, carry one H1, a title and a description, and parse its JSON-LD. Every
 internal link on those pages must reach a 200 directly, every og:image must
 answer an image, and every hreflang alternate must be a page in the sitemap. Titles and descriptions shared by
-different pages are reported per locale. Exit 1 on any error-class finding.
+different pages are reported per locale. The description bounds are the web app's
+apps/web/src/config/seoSnippet.json, which its metadata test enforces before deploy.
+Exit 1 on any finding, warning or error.
 """
 
 from __future__ import annotations
@@ -29,7 +31,9 @@ RETRIES = 2
 LOC = re.compile(r"<loc>\s*([^<\s]+)\s*</loc>")
 LOCALE_PREFIX = re.compile(r"^/(de|es|fr|ja|ko|pt-BR)(?=/|$)")
 TITLE_MAX = 65
-DESCRIPTION_RANGE = (70, 165)
+SNIPPET_CONFIG = Path(__file__).resolve().parents[3] / "apps/web/src/config/seoSnippet.json"
+_DESCRIPTION_LENGTH = json.loads(SNIPPET_CONFIG.read_text())["descriptionLength"]
+DESCRIPTION_RANGE = (_DESCRIPTION_LENGTH["min"], _DESCRIPTION_LENGTH["max"])
 EXAMPLES = 8
 
 
@@ -317,8 +321,9 @@ def run(
         )
     errors = sum(len(v) for v in findings.errors.values())
     warnings = sum(len(v) for v in findings.warnings.values())
-    print(f"seo-audit: {'FAIL' if errors else 'OK'} ({errors} errors, {warnings} warnings)")
-    return 1 if errors else 0
+    failed = bool(errors or warnings)
+    print(f"seo-audit: {'FAIL' if failed else 'OK'} ({errors} errors, {warnings} warnings)")
+    return 1 if failed else 0
 
 
 def main() -> int:

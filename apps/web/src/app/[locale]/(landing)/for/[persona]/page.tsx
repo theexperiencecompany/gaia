@@ -53,7 +53,7 @@ const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
   "startup-founders": {
     metaTitle: "GAIA for Startup Founders: Your AI Chief of Staff",
     metaDescription:
-      "GAIA connects to your email, Slack, calendar, CRM, GitHub, and the rest of your tools, then handles the operational work so you can focus on building. Save 8 to 12 hours every week.",
+      "GAIA connects to your email, Slack, calendar, CRM, and GitHub, then handles the operational work so you can focus on building. Save 8 to 12 hours a week.",
     schemaDescription:
       "GAIA connects to your email, Slack, calendar, CRM, GitHub, and the rest of your tools, then handles the operational work so you can focus on building.",
     keywords: [

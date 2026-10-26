@@ -13,7 +13,7 @@ import {
 export const metadata: Metadata = generatePageMetadata({
   title: "Manifesto",
   description:
-    "Read why we're building GAIA differently. Unlike Siri, Alexa, or ChatGPT, GAIA is designed to be a real assistant that remembers you, handles your work, and makes your life easier. Learn about our commitment to privacy, open source, and building AI that actually helps.",
+    "Why we are building GAIA: an assistant that remembers you, does the work instead of only answering, and keeps your data private. Read the manifesto.",
   path: "/manifesto",
   keywords: [
     "GAIA manifesto",

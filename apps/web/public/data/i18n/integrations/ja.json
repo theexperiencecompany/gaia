@@ -7449,7 +7449,7 @@
     "toolB": "Google Drive",
     "tagline": "Attach Drive docs to calendar events and create event notes in Drive automatically",
     "metaTitle": "Google カレンダーとドライブの連携: 会議ごとに資料を添付",
-    "metaDescription": "準備万端で会議へ。GAIAが予定ごとに関連するドライブ資料を添付し、議事録を参加者全員と共有します。設定手順をご覧ください。",
+    "metaDescription": "準備万端で会議へ。GAIAが予定ごとに関連するGoogleドライブの資料を添付し、ドライブに作成した議事録を参加者全員と共有します。資料探しの手間を減らす設定手順をご覧ください。",
     "keywords": [
       "Google Calendar Google Drive integration",
       "Google Drive calendar automation",

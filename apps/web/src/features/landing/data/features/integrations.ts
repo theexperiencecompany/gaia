@@ -464,7 +464,7 @@ export const INTEGRATIONS_FEATURES: FeatureData[] = [
     tagline: "Deep expertise for every integration",
     headline: "Every integration, deeply understood.",
     subheadline:
-      "GAIA carries specialized prompts, workflows, and standing instructions for each integration, and loads the right one in-context the moment a task needs it — no handoffs, no cold starts.",
+      "GAIA keeps specialized prompts, workflows, and instructions for each integration and loads the right one the moment a task needs it, with no handoffs.",
     benefits: [
       {
         icon: "RouteIcon",
