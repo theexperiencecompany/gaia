@@ -11,7 +11,7 @@ export function oneLine(value: string): string {
 }
 
 /** Escape square brackets so titles can't break the `[title](url)` syntax. */
-export function escapeTitle(value: string): string {
+function escapeTitle(value: string): string {
   return oneLine(value).replaceAll("[", "(").replaceAll("]", ")");
 }
 

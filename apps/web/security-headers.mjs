@@ -21,7 +21,7 @@ const cspReportUrl = posthogProjectToken
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
 // Artifact previews iframe the API origin; a relative base is already 'self'.
-const apiOrigin = apiBaseUrl && URL.canParse(apiBaseUrl) ? new URL(apiBaseUrl).origin : undefined;
+const apiOrigin = apiBaseUrl ? URL.parse(apiBaseUrl)?.origin : undefined;
 
 // React needs eval in development for its debugging features (Next.js CSP guide).
 const devScriptSources = process.env.NODE_ENV === "development" ? ["'unsafe-eval'"] : [];
