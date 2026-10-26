@@ -68,7 +68,7 @@ export function BestHubAlternativeLinks({
               href={`/alternative-to/${alternative.slug}`}
               className="hover:text-zinc-200 hover:underline hover:underline-offset-2"
             >
-              {alternative.name}
+              {alternative.name} alternatives
             </Link>
           </li>
         ))}
