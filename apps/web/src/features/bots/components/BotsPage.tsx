@@ -11,31 +11,31 @@ import { useBotCards } from "../hooks/useBotCards";
 const stackedIcons = [
   {
     src: BOT_PLATFORM_ICONS.discord,
-    alt: BOT_PLATFORM_LABELS.discord,
+    name: BOT_PLATFORM_LABELS.discord,
     rotate: "-rotate-12",
     z: "z-[1]",
   },
   {
     src: BOT_PLATFORM_ICONS.slack,
-    alt: BOT_PLATFORM_LABELS.slack,
+    name: BOT_PLATFORM_LABELS.slack,
     rotate: "-rotate-6",
     z: "z-[2]",
   },
   {
     src: BOT_PLATFORM_ICONS.imessage,
-    alt: BOT_PLATFORM_LABELS.imessage,
+    name: BOT_PLATFORM_LABELS.imessage,
     rotate: "rotate-0",
     z: "z-[3]",
   },
   {
     src: BOT_PLATFORM_ICONS.telegram,
-    alt: BOT_PLATFORM_LABELS.telegram,
+    name: BOT_PLATFORM_LABELS.telegram,
     rotate: "rotate-6",
     z: "z-[4]",
   },
   {
     src: BOT_PLATFORM_ICONS.whatsapp,
-    alt: BOT_PLATFORM_LABELS.whatsapp,
+    name: BOT_PLATFORM_LABELS.whatsapp,
     rotate: "rotate-12",
     z: "z-[5]",
   },
@@ -55,9 +55,9 @@ function BotCard({
         <div className="relative h-15 w-15 shrink-0 group-hover:scale-110 group-hover:-rotate-10 transition duration-100">
           <Image
             src={icon}
-            alt={name}
-            fill
-            sizes="60px"
+            alt=""
+            width={60}
+            height={60}
             className="object-contain"
           />
         </div>
@@ -116,14 +116,14 @@ export default function BotsPage() {
         <div className="flex -space-x-4">
           {stackedIcons.map((icon) => (
             <div
-              key={icon.alt}
+              key={icon.name}
               className={`relative h-20 w-20 ${icon.rotate} ${icon.z}`}
             >
               <Image
                 src={icon.src}
-                alt={icon.alt}
-                fill
-                sizes="80px"
+                alt=""
+                width={80}
+                height={80}
                 className="object-contain hover:scale-110 hover:-translate-y-4 transition"
               />
             </div>

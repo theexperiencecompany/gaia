@@ -38,7 +38,7 @@ export default function Thanks({ toolsMetadata }: ThanksProps) {
       <div className="fixed top-0 left-0 z-0 flex h-screen w-full items-center justify-center opacity-5">
         <Image
           src="/images/logos/logo.webp"
-          alt="GAIA Logo"
+          alt=""
           className="scale-110 object-contain grayscale"
           sizes="100vw"
           fill

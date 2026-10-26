@@ -161,7 +161,6 @@
     "dompurify": "^3.4.17",
     "emblor": "^1.4.8",
     "fuse.js": "^7.4.2",
-    "glob": "^13.0.6",
     "gray-matter": "^4.0.3",
     "he": "^1.2.0",
     "html-to-image": "^1.11.13",

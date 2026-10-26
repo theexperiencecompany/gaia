@@ -1004,9 +1004,6 @@ importers:
       fuse.js:
         specifier: ^7.4.2
         version: 7.4.2
-      glob:
-        specifier: ^13.0.6
-        version: 13.0.6
       gray-matter:
         specifier: ^4.0.3
         version: 4.0.3
