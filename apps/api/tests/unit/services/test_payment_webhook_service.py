@@ -571,8 +571,8 @@ class TestHandlePaymentSucceeded:
         """Regression: a renewal with these fields null was abandoned and its payment event lost."""
         payload = {
             **PAYMENT_DATA_PAYLOAD,
-            "total_amount": 0,
-            "settlement_amount": 0,
+            "total_amount": 1000,
+            "settlement_amount": 1000,
             "tax": None,
             "settlement_tax": None,
             "status": None,
@@ -587,11 +587,12 @@ class TestHandlePaymentSucceeded:
             UserId(FAKE_USER_ID),
             PaymentSucceeded(
                 payment_id="pay_001",
-                amount=0,
+                amount=10.0,
                 currency="USD",
-                amount_charged_pre_tax=0,
+                # A null tax is Dodo collecting none, so the charge is pre-tax in full.
+                amount_charged_pre_tax=10.0,
                 currency_charged="USD",
-                amount_usd_pre_tax=0,
+                amount_usd_pre_tax=10.0,
             ),
         )
 
