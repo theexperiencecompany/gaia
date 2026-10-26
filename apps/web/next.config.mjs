@@ -6,6 +6,8 @@ import createNextIntlPlugin from "next-intl/plugin";
 import path from "path";
 import { fileURLToPath } from "url";
 import { expandCanonicalRedirects } from "./canonical-redirects.mjs";
+import { NEXT_SECURITY_HEADER_RULES } from "./security-headers.mjs";
+import { POSTHOG_HOST } from "./third-party-origins.mjs";
 import { vanityRedirects } from "./vanity-redirects.mjs";
 
 const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
@@ -36,10 +38,7 @@ const useCloudflareImageLoader = process.env.IMAGE_LOADER === "cloudflare";
 // PostHog proxies through /ingest to stay first-party and survive ad blockers,
 // following NEXT_PUBLIC_POSTHOG_HOST for region-correct ingestion. PostHog Cloud
 // serves SDK bundles from a sibling <region>-assets host; self-hosted uses the same origin (the unmatched fallback).
-const posthogHost = (
-  process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com"
-).replace(/\/+$/, "");
-const posthogAssetsHost = posthogHost.replace(
+const posthogAssetsHost = POSTHOG_HOST.replace(
   /^(https?:\/\/)(us|eu)\.i\.posthog\.com$/,
   "$1$2-assets.i.posthog.com",
 );
@@ -252,20 +251,7 @@ const nextConfig = {
   ],
   async headers() {
     return [
-      // Baseline security headers on every route. A full Content-Security-Policy
-      // is intentionally deferred — a wrong CSP silently breaks the app and can't
-      // be verified by a build alone, so it needs its own scoped rollout.
-      {
-        source: "/:path*",
-        headers: [
-          { key: "X-Frame-Options", value: "DENY" },
-          { key: "X-Content-Type-Options", value: "nosniff" },
-          {
-            key: "Referrer-Policy",
-            value: "strict-origin-when-cross-origin",
-          },
-        ],
-      },
+      ...NEXT_SECURITY_HEADER_RULES,
       // /_next/static/*: intentionally NOT setting a custom Cache-Control here.
       // Next content-hashes chunk filenames in prod, so its default immutable
       // headers are correct; in dev, Turbopack reuses filenames across rebuilds, so a custom long-cache header would pin a stale bundle and break hot reloads.
@@ -305,11 +291,11 @@ const nextConfig = {
       },
       {
         source: "/ingest/:path*",
-        destination: `${posthogHost}/:path*`,
+        destination: `${POSTHOG_HOST}/:path*`,
       },
       {
         source: "/ingest/flags",
-        destination: `${posthogHost}/flags`,
+        destination: `${POSTHOG_HOST}/flags`,
       },
     ];
   },
