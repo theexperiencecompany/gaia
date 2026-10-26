@@ -4,7 +4,11 @@ import { useState } from "react";
 import { apiErrorMessage } from "@/lib/api/errorMessage";
 import { toast } from "@/lib/toast";
 
-import { type SupportRequestCreate, supportApi } from "../api/supportApi";
+import {
+  type PublicSupportRequestCreate,
+  type SupportRequestCreate,
+  supportApi,
+} from "../api/supportApi";
 import {
   ALLOWED_FILE_TYPES,
   FORM_VALIDATION,
@@ -19,11 +23,10 @@ export interface ContactFormData {
 }
 
 /** Who to reply to when the sender has no session email, plus their Turnstile proof. */
-export interface VisitorContact {
-  email: string;
-  name?: string;
-  turnstileToken: string;
-}
+export type VisitorContact = Pick<
+  PublicSupportRequestCreate,
+  "email" | "name" | "turnstile_token"
+>;
 
 export interface ContactSupportInitialValues {
   type?: string;
@@ -157,7 +160,7 @@ export function useContactSupport(initialValues?: ContactSupportInitialValues) {
             ...requestData,
             email: visitor.email,
             name: visitor.name || null,
-            turnstile_token: visitor.turnstileToken,
+            turnstile_token: visitor.turnstile_token,
           })
         : await supportApi.submitRequest(requestData, formData.attachments);
 

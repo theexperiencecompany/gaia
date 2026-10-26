@@ -8,12 +8,23 @@ import pytest
 import respx
 
 from app.config.settings import settings
+from app.constants.email import SUPPORT_EMAIL
 from app.constants.turnstile import TURNSTILE_SITEVERIFY_URL
 from app.services.turnstile_service import verify_turnstile_token
 from app.utils.errors import AppError
 
 # Cloudflare's documented always-pass test secret; the response itself is mocked.
 TEST_SECRET = "1x0000000000000000000000000000000AA"
+
+
+def _assert_unavailable(err: AppError, cause: str) -> None:
+    """Assert the 503 a visitor sees is fixed text, not the failure message."""
+    assert err.status_code == 503
+    assert err.code == "turnstile_unavailable"
+    assert err.message == "We could not check that you are human right now"
+    assert err.why == "The verification service is unavailable"
+    assert err.fix == f"Try again in a minute, or email {SUPPORT_EMAIL}"
+    assert err.meta == {"cause": cause}
 
 
 @pytest.fixture
@@ -65,8 +76,7 @@ async def test_a_missing_secret_refuses_with_503_without_calling_cloudflare(
     ):
         await verify_turnstile_token("tok-123", "203.0.113.7")
 
-    assert excinfo.value.status_code == 503
-    assert excinfo.value.code == "turnstile_unavailable"
+    _assert_unavailable(excinfo.value, "TURNSTILE_SECRET_KEY is unset")
     mock_log.error.assert_called_once()
     assert not route.called
 
@@ -98,8 +108,9 @@ async def test_a_siteverify_failure_refuses_with_503_never_accepts(
     ):
         await verify_turnstile_token("tok-123", None)
 
-    assert excinfo.value.status_code == 503
-    assert excinfo.value.code == "turnstile_unavailable"
+    cause = excinfo.value.meta["cause"]
+    assert cause.startswith("siteverify failed: ")
+    _assert_unavailable(excinfo.value, cause)
     mock_log.error.assert_called_once()
 
 

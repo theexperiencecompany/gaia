@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 import re
 from typing import Any
-from unittest.mock import ANY, AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from fastapi import HTTPException, UploadFile
 import pytest
@@ -477,7 +477,9 @@ class TestCreateSupportRequest:
 
         assert exc_info.value.status_code == 500
         assert "email" in exc_info.value.detail.lower()
-        mock_support_repo.delete.assert_awaited_once_with(ANY)
+        created = mock_support_repo.create.await_args.args[0]
+        assert created.id is not None
+        mock_support_repo.delete.assert_awaited_once_with(created.id)
 
     async def test_email_failure_rollback_fails_still_raises_500(
         self,

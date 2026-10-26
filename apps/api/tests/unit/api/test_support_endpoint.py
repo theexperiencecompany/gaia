@@ -408,8 +408,9 @@ class TestSubmitPublicSupportRequest:
     ) -> None:
         siteverify = _siteverify(True)
 
-        async with _visitor_client(test_app) as client:
-            resp = await client.post(PUBLIC_ENDPOINT, json=_public_body())
+        with patch(f"{SUPPORT_ENDPOINT}.log") as event_log:
+            async with _visitor_client(test_app) as client:
+                resp = await client.post(PUBLIC_ENDPOINT, json=_public_body())
 
         assert resp.status_code == 200, resp.text
         assert resp.json()["success"] is True
@@ -422,10 +423,17 @@ class TestSubmitPublicSupportRequest:
         assert stored.user_email == "visitor@example.com"
         assert stored.user_name == "Vis Itor"
         assert stored.metadata["source"] == "public_contact_form"
+        assert stored.id is not None and len(stored.id) == 36
         notification = pipeline.user.await_args.args[0]
         assert notification.user_email == "visitor@example.com"
         pipeline.team.assert_awaited_once()
         pipeline.capture.assert_not_called()
+        event_log.set.assert_any_call(
+            operation="submit_public_support_request",
+            category=SupportRequestType.SUPPORT,
+            signed_in=False,
+        )
+        event_log.set.assert_any_call(ticket_id=resp.json()["ticket_id"], outcome="success")
 
     @respx.mock
     async def test_a_rejected_token_files_nothing(
@@ -495,6 +503,8 @@ class TestSubmitPublicSupportRequest:
 
         assert resp.status_code == 422
         assert resp.json()["code"] == "contact_email_required"
+        assert resp.json()["message"] == "An email address is required so we can reply"
+        assert resp.json()["fix"] == "Add your email address to the form"
         assert not siteverify.called
         pipeline.repo.create.assert_not_awaited()
 
@@ -506,8 +516,9 @@ class TestSubmitPublicSupportRequest:
         no_email = AuthenticatedUser(user_id=FAKE_USER.user_id, name="Signed In")
         test_app.dependency_overrides[get_optional_user] = lambda: no_email
         try:
-            async with _visitor_client(test_app) as client:
-                resp = await client.post(PUBLIC_ENDPOINT, json=_public_body(name=_OMIT))
+            with patch(f"{SUPPORT_ENDPOINT}.log") as event_log:
+                async with _visitor_client(test_app) as client:
+                    resp = await client.post(PUBLIC_ENDPOINT, json=_public_body(name=_OMIT))
         finally:
             test_app.dependency_overrides.pop(get_optional_user, None)
 
@@ -516,6 +527,11 @@ class TestSubmitPublicSupportRequest:
         assert stored.user_id == FAKE_USER.user_id
         assert stored.user_email == "visitor@example.com"
         assert stored.user_name == "Signed In"
+        event_log.set.assert_any_call(
+            operation="submit_public_support_request",
+            category=SupportRequestType.SUPPORT,
+            signed_in=True,
+        )
         pipeline.capture.assert_called_once_with(
             UserId(FAKE_USER.user_id),
             SupportFormSubmitted(

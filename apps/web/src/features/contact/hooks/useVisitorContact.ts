@@ -42,7 +42,11 @@ export function useVisitorContact() {
     try {
       const turnstileToken = await turnstile.getResponsePromise();
       setVerificationError(null);
-      return { email: email.trim(), name: name.trim(), turnstileToken };
+      return {
+        email: email.trim(),
+        name: name.trim(),
+        turnstile_token: turnstileToken,
+      };
     } catch (error) {
       console.error("Turnstile did not produce a token:", error);
       setVerificationError(CONTACT_FORM_MESSAGES.VERIFICATION_FAILED);

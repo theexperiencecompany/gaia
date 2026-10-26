@@ -129,7 +129,6 @@ apps/web/src/lib/blog.types.ts:Author=AuthorDetails
 apps/web/src/lib/db/chatDb.ts:IConversation=ConversationDocument
 apps/web/src/lib/db/chatDb.ts:IMessage=ReplyToMessageData
 apps/web/src/lib/seo.ts:PageMetadataOptions=SupportRequestCreate
-apps/web/src/lib/sitemapData.ts:ExploreWorkflow=PublicWorkflowCard
 apps/web/src/stores/chatStore.ts:OptimisticMessage=ReplyToMessageData
 apps/web/src/types/api/aboutApiTypes.ts:Author=AuthorDetails
 apps/web/src/types/api/calendarApiTypes.ts:CalendarItem=GoogleCalendarListEntry
