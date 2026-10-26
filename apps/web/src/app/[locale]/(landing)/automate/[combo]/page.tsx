@@ -131,10 +131,11 @@ export default async function AutomateComboPage({ params }: PageProps) {
     getMarketplacePath(data.toolASlug),
     getMarketplacePath(data.toolBSlug),
   ]);
-  const toolAHref =
-    toolAPath ?? `/marketplace?search=${encodeURIComponent(data.toolA)}`;
-  const toolBHref =
-    toolBPath ?? `/marketplace?search=${encodeURIComponent(data.toolB)}`;
+  // URLSearchParams spells a space "+", the form the marketplace URL settles on, so the link never hops.
+  const marketplaceSearch = (tool: string) =>
+    `/marketplace?${new URLSearchParams({ search: tool })}`;
+  const toolAHref = toolAPath ?? marketplaceSearch(data.toolA);
+  const toolBHref = toolBPath ?? marketplaceSearch(data.toolB);
 
   // Head-to-head and alternative guides keyed by the same tool slugs the
   // combo datasets use; only link pages that verifiably exist (never a 404).

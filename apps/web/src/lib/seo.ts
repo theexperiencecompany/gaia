@@ -26,8 +26,10 @@ import {
   ADVERTISED_PRO_MONTHLY,
   ADVERTISED_PRO_MONTHLY_PRICE,
 } from "@/features/pricing/advertisedPrice";
+import { localizePath } from "@/i18n/config";
 
 const SITE_URL = "https://heygaia.io";
+const GLOSSARY_PATH = "/learn";
 
 export function getSiteUrl(): string {
   return SITE_URL;
@@ -85,7 +87,7 @@ export interface PersonProfile {
 }
 
 /** A person with a stable @id on the about page, so the same author on several pages is one entity. */
-function generatePersonSchema({
+export function generatePersonSchema({
   name,
   jobTitle,
   url,
@@ -378,15 +380,19 @@ export function generateWebSiteSchema(): WithContext<WebSite> {
   };
 }
 
-/**
- * Generate WebPage structured data (JSON-LD)
- */
+/** When the content a page shows was published and last changed; the sitemap lastmod reads the same date. */
+export interface ContentDates {
+  readonly published: string;
+  readonly modified: string;
+}
+
+/** WebPage JSON-LD; dates only when the content has them, never the render time. */
 export function generateWebPageSchema(
   title: string,
   description: string,
   url: string,
   breadcrumbs?: Array<{ name: string; url: string }>,
-  publishedDate?: string,
+  dates?: ContentDates,
 ): WithContext<WebPage> {
   const schema: WithContext<WebPage> = {
     "@context": "https://schema.org",
@@ -395,8 +401,10 @@ export function generateWebPageSchema(
     description,
     url,
     author: organizationRef,
-    datePublished: publishedDate ?? "2025-01-01",
-    dateModified: new Date().toISOString().split("T")[0],
+    ...(dates && {
+      datePublished: dates.published,
+      dateModified: dates.modified,
+    }),
     isPartOf: websiteRef,
   };
 
@@ -618,24 +626,33 @@ export function generateAboutPageSchema(): WithContext<AboutPage> {
   };
 }
 
-/**
- * Generate DefinedTerm structured data for glossary entries (JSON-LD)
- */
-export function generateDefinedTermSchema(
-  term: string,
-  definition: string,
-  url: string,
-): WithContext<DefinedTerm> {
+/** A glossary term in one locale: each translation is its own entity, identified by its own page. */
+export function generateDefinedTermSchema({
+  term,
+  definition,
+  path,
+  locale,
+}: {
+  readonly term: string;
+  readonly definition: string;
+  readonly path: string;
+  readonly locale: string;
+}): WithContext<DefinedTerm> {
+  const url = `${SITE_URL}${localizePath(path, locale)}`;
+  const glossaryUrl = `${SITE_URL}${localizePath(GLOSSARY_PATH, locale)}`;
   return {
     "@context": "https://schema.org",
     "@type": "DefinedTerm",
+    "@id": `${url}#term`,
     name: term,
     description: definition,
     url,
     inDefinedTermSet: {
       "@type": "DefinedTermSet",
+      "@id": `${glossaryUrl}#glossary`,
       name: "GAIA AI Glossary",
-      url: `${siteConfig.url}/learn`,
+      url: glossaryUrl,
+      inLanguage: locale,
     },
   };
 }

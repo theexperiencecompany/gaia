@@ -12,6 +12,7 @@ import { getTranslatedGlossaryTerm } from "@/features/glossary/data/getTranslate
 import { getAllGlossaryTermSlugs } from "@/features/glossary/data/glossaryData";
 import { getTranslatedCombo } from "@/features/integrations/data/getTranslatedCombo";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
+import { localizePath } from "@/i18n/config";
 import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
 import { LEARN_DOCS_LINKS } from "@/lib/docs-links";
 import { prerenderedMarketingParams } from "@/lib/selfhost";
@@ -72,39 +73,30 @@ export default async function GlossaryTermPage({ params }: PageProps) {
     notFound();
   }
 
+  const termPath = `/learn/${term}`;
+  const breadcrumbs = [
+    { name: "Home", url: siteConfig.url },
+    { name: "Glossary", url: localizePath("/learn", locale) },
+    { name: data.term, url: localizePath(termPath, locale) },
+  ];
+
   const webPageSchema = generateWebPageSchema(
     data.metaTitle,
     data.metaDescription,
-    `${siteConfig.url}/learn/${term}`,
-    [
-      { name: "Home", url: siteConfig.url },
-      {
-        name: "Glossary",
-        url: `${siteConfig.url}/learn`,
-      },
-      {
-        name: data.term,
-        url: `${siteConfig.url}/learn/${term}`,
-      },
-    ],
+    `${siteConfig.url}${localizePath(termPath, locale)}`,
+    breadcrumbs,
   );
 
-  const breadcrumbSchema = generateBreadcrumbSchema([
-    { name: "Home", url: siteConfig.url },
-    { name: "Glossary", url: `${siteConfig.url}/learn` },
-    {
-      name: data.term,
-      url: `${siteConfig.url}/learn/${term}`,
-    },
-  ]);
+  const breadcrumbSchema = generateBreadcrumbSchema(breadcrumbs);
 
   const faqSchema = generateFAQSchema(data.faqs);
 
-  const definedTermSchema = generateDefinedTermSchema(
-    data.term,
-    data.definition,
-    `${siteConfig.url}/learn/${term}`,
-  );
+  const definedTermSchema = generateDefinedTermSchema({
+    term: data.term,
+    definition: data.definition,
+    path: termPath,
+    locale,
+  });
 
   const docsGuides = LEARN_DOCS_LINKS[term] ?? [];
 
