@@ -14284,5 +14284,227 @@
         "answer": "Solo el sentido de calendario a Airtable arranca en cuanto se crea un evento nuevo. Los cambios de Airtable llegan al calendario según el horario que fijes, por ejemplo cada hora, porque Airtable no envía cambios a GAIA. Elige un intervalo más corto si tus fechas cambian a menudo."
       }
     ]
+  },
+  "airtable-google-sheets": {
+    "toolA": "Airtable",
+    "toolB": "Google Sheets",
+    "tagline": "Sincroniza registros de Airtable con Google Sheets y devuelve las filas de la hoja a tu base",
+    "metaTitle": "Integración de Airtable y Google Sheets: registros a filas",
+    "metaDescription": "Añade los nuevos registros de Airtable a Google Sheets y sincroniza los cambios en las filas existentes. GAIA también guarda las respuestas de formularios.",
+    "keywords": [
+      "integración airtable google sheets",
+      "conectar airtable con google sheets",
+      "sincronizar airtable con google sheets",
+      "automatización de airtable a google sheets",
+      "exportar registros de airtable a sheets",
+      "sincronizar registros de airtable y sheets en ambos sentidos"
+    ],
+    "intro": "Airtable es donde vive el trabajo estructurado: pipelines, inventarios, calendarios de contenido, seguimiento de candidatos. Pero los directivos, los clientes y los equipos de finanzas viven en Google Sheets. Hoy el puente entre ambos es una exportación manual a CSV que se queda obsoleta en cuanto se descarga, además del caos de versiones cuando cinco personas anotan cinco copias distintas.\n\nGAIA mantiene Airtable y Google Sheets sincronizados sin exportaciones. Los registros nuevos o modificados en Airtable aparecen automáticamente como filas en la hoja correcta, con las columnas asignadas a tus campos. Los cambios también pueden ir en sentido contrario: las ediciones en Sheets se escriben de vuelta en los registros de Airtable, de modo que la hoja se convierte en un espacio de edición seguro para quienes nunca abren Airtable.\n\nLos informes se simplifican de paso. Crea tablas dinámicas, gráficos y paneles en Sheets sobre datos que se actualizan solos, mientras Airtable sigue siendo el sistema de referencia con sus vistas, permisos y registros vinculados intactos.",
+    "howItWorks": [
+      {
+        "step": "Conecta Airtable y Google Sheets a GAIA",
+        "description": "Autoriza a GAIA con tu cuenta de Airtable y tu cuenta de Google. Elige las bases que GAIA puede leer y las hojas de cálculo en las que puede escribir."
+      },
+      {
+        "step": "Asigna bases, vistas y campos a hojas",
+        "description": "Elige qué vista de Airtable se sincroniza con qué pestaña de la hoja y empareja campos con columnas. GAIA escribe los registros vinculados como nombres legibles, no como ID de registro."
+      },
+      {
+        "step": "GAIA sincroniza filas y registros de forma continua",
+        "description": "Las altas, las actualizaciones y las instantáneas programadas se ejecutan solas. GAIA empareja filas y registros mediante un campo clave para que las actualizaciones nunca creen duplicados."
+      }
+    ],
+    "useCases": [
+      {
+        "title": "Añade los nuevos registros de Airtable como filas",
+        "description": "Cuando se crea un registro en Airtable, ya sea por un formulario, una automatización o un compañero, GAIA lo añade como fila en la hoja de Google asignada, con cada campo en su columna. Los flujos de entrada siguen visibles para quienes solo usan hojas."
+      },
+      {
+        "title": "Sincroniza los cambios en las filas existentes",
+        "description": "Cuando cambia un campo de estado, responsable o fecha en Airtable, GAIA actualiza la fila correspondiente en lugar de duplicarla. Las hojas reflejan siempre el estado actual de la base."
+      },
+      {
+        "title": "Registra respuestas de formularios para revisarlas",
+        "description": "Los envíos de formularios de Airtable llegan a una hoja de revisión donde los compañeros sin licencia de Airtable pueden clasificar, comentar y aprobar. Las filas aprobadas se escriben de vuelta en Airtable con una sola confirmación."
+      },
+      {
+        "title": "Instantáneas programadas para informes",
+        "description": "GAIA exporta una instantánea con fecha y hora de una vista según tu calendario: pipeline diario, inventario semanal, candidatos mensuales. Cada instantánea llega como una pestaña fechada, así que representar tendencias es trivial."
+      },
+      {
+        "title": "Crea paneles en vivo con datos sincronizados",
+        "description": "Apunta los gráficos y tablas dinámicas de Sheets a la pestaña sincronizada y se actualizarán a medida que cambie Airtable. La dirección tiene sus paneles sin licencias extra, inicios de sesión ni exportaciones obsoletas."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "¿Cómo sincronizo Airtable con Google Sheets automáticamente?",
+        "answer": "Conecta ambas herramientas a GAIA, elige la vista de Airtable y la pestaña de destino, y asigna los campos a las columnas una sola vez. Los registros nuevos se añaden como filas y los cambios en los campos actualizan la fila correspondiente, sin más exportaciones."
+      },
+      {
+        "question": "¿GAIA actualiza las filas existentes o solo añade nuevas?",
+        "answer": "Ambas cosas. GAIA empareja las filas con los registros de Airtable mediante un campo clave que eliges, como el ID del registro o el correo. Los registros nuevos añaden filas nuevas, y los cambios en registros existentes actualizan la fila emparejada en su sitio."
+      },
+      {
+        "question": "¿Puedo sincronizar solo una vista filtrada de Airtable en lugar de toda la base?",
+        "answer": "Sí. Indica a GAIA una vista concreta y solo se sincronizarán con Sheets los registros que cumplan sus filtros. Distintas vistas pueden alimentar distintas pestañas para públicos diferentes."
+      },
+      {
+        "question": "¿Las ediciones en Google Sheets pueden actualizar registros de Airtable?",
+        "answer": "Sí. Con la sincronización bidireccional activada mediante disparadores, las ediciones en las columnas asignadas se escriben de vuelta en el registro de Airtable correspondiente. Tú decides qué columnas son editables para proteger las fórmulas y los rollups."
+      },
+      {
+        "question": "¿Cómo aparecen en Sheets los registros vinculados y los adjuntos?",
+        "answer": "Los registros vinculados se sincronizan como nombres legibles, no como crípticos ID de registro, y GAIA puede incluir las URL de los adjuntos en una columna dedicada. Los rollups y las fórmulas se sincronizan con su valor calculado en el momento de la sincronización."
+      }
+    ]
+  },
+  "google-docs-slack": {
+    "toolA": "Google Docs",
+    "toolB": "Slack",
+    "tagline": "Comparte documentos de Google Docs en Slack con los permisos correctos y sigue cada comentario",
+    "metaTitle": "Integración de Google Docs y Slack: avisos de comentarios",
+    "metaDescription": "Revisa documentos de Google Docs sin salir de Slack. GAIA avisa en Slack de comentarios y sugerencias y comparte documentos con los permisos adecuados.",
+    "keywords": [
+      "integración google docs slack",
+      "compartir documento de google en slack",
+      "notificaciones de google docs en slack",
+      "conectar google docs con slack",
+      "avisos de comentarios de google docs en slack",
+      "crear documento de google desde slack"
+    ],
+    "intro": "Los borradores viven en Google Docs, las decisiones se toman en Slack y los dos rara vez se encuentran bien. Los enlaces pegados en el chat chocan con muros de solicitud de acceso, los comentarios se dispersan en hilos que nunca llegan al documento y las fechas de revisión se retrasan porque nadie sabe que el documento ha cambiado.\n\nGAIA conecta Google Docs y Slack para que los documentos se muevan a la velocidad del chat. Pide a GAIA que comparta un documento y comprobará que los miembros del canal tienen acceso antes de publicarlo, corrigiendo primero los permisos. Los comentarios, las sugerencias y las ediciones llegan como avisos de Slack en el canal adecuado, y los hilos de Slack pueden convertirse en documentos con un solo comando.\n\nEstá pensado para equipos que revisan juntos especificaciones, propuestas y publicaciones: quienes escriben siguen trabajando en Docs mientras los demás implicados siguen el proceso, aprueban y comentan desde Slack sin aprender una herramienta nueva.",
+    "howItWorks": [
+      {
+        "step": "Conecta Google Docs y Slack a GAIA",
+        "description": "Autoriza a GAIA con tu cuenta de Google y tu espacio de trabajo de Slack. GAIA obtiene permisos de lectura, escritura y uso compartido en Docs, además de permiso para publicar en Slack."
+      },
+      {
+        "step": "Elige los documentos vigilados y los canales de aviso",
+        "description": "Indica a GAIA qué documentos o carpetas de Drive debe vigilar y qué canales reciben los avisos. Define quién puede conceder acceso cuando GAIA comparte."
+      },
+      {
+        "step": "GAIA comparte, vigila y redacta por ti",
+        "description": "Los documentos se comparten con los permisos comprobados, los comentarios llegan como avisos y se crean documentos nuevos desde el chat cuando lo pides. Documentos y conversación siguen vinculados."
+      }
+    ],
+    "useCases": [
+      {
+        "title": "Comparte documentos con los permisos resueltos",
+        "description": "Cuando pides a GAIA que publique un documento en un canal, verifica que todos los miembros pueden abrirlo y les concede antes acceso de lectura o de comentario. Se acabaron los callejones sin salida de solicitar acceso."
+      },
+      {
+        "title": "Avisos de comentarios y sugerencias en Slack",
+        "description": "Los comentarios nuevos, las respuestas y los hilos resueltos de los documentos vigilados se publican en el canal responsable con un enlace directo. Los revisores responden en horas, no en días."
+      },
+      {
+        "title": "Crea documentos a partir de hilos de Slack",
+        "description": "Una decisión tomada en un hilo largo se convierte en un resumen, una especificación o un acta de reunión en Drive con un solo comando. GAIA redacta a partir del hilo y publica el enlace de vuelta."
+      },
+      {
+        "title": "Recordatorios de fechas de revisión",
+        "description": "Los documentos pendientes de revisión reciben recordatorios amables y programados en Slack hasta que llegan los comentarios o el responsable da el visto bueno. Nada se queda esperando en silencio."
+      },
+      {
+        "title": "Encuentra cualquier documento sin salir de Slack",
+        "description": "Pide a GAIA un documento por nombre, cliente o tema y recibe al momento un enlace con los permisos comprobados. El conocimiento del equipo queda a un mensaje de distancia."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "¿Todos los miembros del canal podrán abrir un documento compartido?",
+        "answer": "Sí. GAIA comprueba el acceso de los miembros del canal antes de publicar y concede el permiso de lectura o de comentario que hayas configurado. Si tu política bloquea el uso compartido externo, GAIA te dice quién queda excluido en lugar de publicar un enlace roto."
+      },
+      {
+        "question": "¿Puedo recibir avisos en Slack de los comentarios de Google Docs?",
+        "answer": "Sí. GAIA vigila los documentos que elijas y publica los comentarios nuevos, las respuestas y la actividad de sugerencias en el canal asignado, con un enlace directo al hilo."
+      },
+      {
+        "question": "¿Puede GAIA crear un documento de Google a partir de una conversación de Slack?",
+        "answer": "Sí. Indica a GAIA un hilo y redactará un documento a partir de la conversación, lo guardará en la carpeta de Drive que elijas y publicará el enlace de vuelta en el canal."
+      },
+      {
+        "question": "¿Funciona con documentos en unidades compartidas?",
+        "answer": "Sí. GAIA admite documentos en unidades compartidas y en Mi unidad, respetando los mismos permisos de carpeta que ya aplica tu espacio de trabajo."
+      },
+      {
+        "question": "¿Puede GAIA limitar quién recibe los avisos de documentos?",
+        "answer": "Sí. Los avisos se dirigen por documento o por carpeta al canal que elijas, y puedes limitar los avisos de comentarios a menciones de personas concretas o solo a hilos sin resolver."
+      }
+    ]
+  },
+  "todoist-google-sheets": {
+    "toolA": "Todoist",
+    "toolB": "Google Sheets",
+    "tagline": "Registra en Google Sheets las tareas completadas de Todoist y convierte filas de la hoja en tareas",
+    "metaTitle": "Integración de Todoist y Google Sheets: tareas completadas",
+    "metaDescription": "Registra en Google Sheets las tareas completadas de Todoist y recibe resúmenes semanales de productividad. GAIA también crea tareas a partir de filas.",
+    "keywords": [
+      "integración todoist google sheets",
+      "exportar tareas de todoist a google sheets",
+      "hoja de cálculo de tareas completadas de todoist",
+      "conectar todoist con google sheets",
+      "automatización de todoist y sheets",
+      "informe de productividad de todoist en sheets"
+    ],
+    "intro": "Todoist sabe lo que has terminado, pero demostrarlo implica capturas de pantalla o registros manuales. Los responsables piden resúmenes semanales, los freelancers necesitan registros de tareas facturables y los equipos quieren datos de tiempo de ciclo, todo encerrado en la lista de tareas.\n\nGAIA lleva Todoist a Google Sheets automáticamente. Las tareas completadas se añaden a una hoja de registro con los campos de proyecto, etiquetas, fechas y prioridad, listas para tablas dinámicas. También funciona al revés: las filas añadidas a una hoja, como nuevos leads, ideas de contenido o informes de errores, se convierten en tareas de Todoist con los campos asignados a títulos, proyectos y fechas de vencimiento.\n\nEl resultado es una capa de análisis personal sobre Todoist y una vía de carga masiva para el trabajo capturado en cualquier otro lugar. Tu lista de tareas sigue siendo donde ocurre el trabajo, y Sheets pasa a ser donde se mide.",
+    "howItWorks": [
+      {
+        "step": "Conecta Todoist y Google Sheets a GAIA",
+        "description": "Autoriza a GAIA con tu cuenta de Todoist y tu cuenta de Google. Elige qué proyectos se registran en Sheets y qué pestañas crean tareas."
+      },
+      {
+        "step": "Asigna los campos a las columnas una sola vez",
+        "description": "Empareja campos de Todoist como proyecto, etiquetas, prioridad y fecha de vencimiento con columnas de la hoja. GAIA recuerda la asignación en cada sincronización futura."
+      },
+      {
+        "step": "GAIA registra las tareas completadas y crea tareas",
+        "description": "Las tareas terminadas se añaden solas al registro, mientras las nuevas filas de la hoja llegan a Todoist como tareas. Ambos sentidos funcionan sin que tengas que vigilarlos."
+      }
+    ],
+    "useCases": [
+      {
+        "title": "Registra automáticamente las tareas completadas en Sheets",
+        "description": "Cada tarea completada llega a una hoja de registro con su proyecto, etiquetas, fecha de vencimiento y hora de finalización. Las hojas de horas y los informes semanales se escriben solos."
+      },
+      {
+        "title": "Resúmenes semanales de productividad",
+        "description": "GAIA agrupa el registro en una pestaña semanal: tareas completadas por proyecto, pendientes vencidos que se arrastran y rachas actuales. Compártelo con tu responsable o guárdalo para ti."
+      },
+      {
+        "title": "Crea tareas a partir de filas de la hoja",
+        "description": "Las nuevas filas de una pestaña vigilada se convierten en tareas de Todoist con las columnas asignadas a título, proyecto, prioridad y fecha de vencimiento. Los calendarios de contenido y las listas de leads se convierten directamente en acción."
+      },
+      {
+        "title": "Compara estimaciones con el tiempo real",
+        "description": "Registra por tarea los datos estimados frente a los reales y representa en Sheets la precisión a lo largo del tiempo. La planificación mejora de forma medible cada trimestre."
+      },
+      {
+        "title": "Importa backlogs en bloque desde hojas de cálculo",
+        "description": "¿Vienes de otra herramienta o planificas un proyecto en Sheets? GAIA convierte cada fila en una tarea en el proyecto correcto, conservando el orden, las etiquetas y las fechas."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "¿Puede GAIA registrar automáticamente mis tareas completadas de Todoist?",
+        "answer": "Sí. Conecta Todoist y elige una hoja de cálculo de registro. Cada tarea completada añade una fila con proyecto, etiquetas, fechas y prioridad, para que tu historial se construya solo."
+      },
+      {
+        "question": "¿Qué campos de Todoist aparecen en la hoja?",
+        "answer": "Título de la tarea, proyecto, sección, etiquetas, prioridad, fecha de vencimiento, fecha de creación y hora de finalización. Eliges el orden de las columnas una vez y GAIA lo mantiene en cada fila."
+      },
+      {
+        "question": "¿Las nuevas filas de Google Sheets pueden convertirse en tareas de Todoist?",
+        "answer": "Sí. Asigna las columnas a los campos de la tarea y cada fila nueva crea una tarea en el proyecto que elijas, con la prioridad y la fecha de vencimiento tomadas de los valores de la hoja."
+      },
+      {
+        "question": "¿Puedo registrar solo algunos proyectos y no todo?",
+        "answer": "Sí. Selecciona exactamente qué proyectos de Todoist alimentan el registro. Las tareas personales se quedan privadas mientras los proyectos de trabajo se sincronizan para los informes."
+      },
+      {
+        "question": "¿GAIA gestiona las tareas recurrentes en el registro?",
+        "answer": "Sí. Cada vez que completas una tarea recurrente se registra una fila propia con sus fechas, así que las rachas y el análisis de frecuencia siguen siendo precisos."
+      }
+    ]
   }
 }

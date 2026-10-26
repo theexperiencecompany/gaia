@@ -9,7 +9,7 @@ import {
 import { InstallPageClient } from "./InstallPageClient";
 
 export const metadata: Metadata = generatePageMetadata({
-  title: "Install GAIA",
+  title: "Install GAIA: Self-Host It With One Command",
   description:
     "Self-host GAIA with one command: the installer sets up the GAIA CLI, then downloads GAIA and starts it. Keep it running with gaia status, doctor, update and backup.",
   path: "/cli",

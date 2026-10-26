@@ -11,7 +11,7 @@ import {
 } from "@/lib/seo";
 
 export const metadata: Metadata = generatePageMetadata({
-  title: "Privacy Policy",
+  title: "Privacy Policy: How GAIA Handles Your Data",
   description:
     "How GAIA collects, uses, stores, and protects your personal data, which third parties process it, and how to export or delete everything we hold.",
   path: "/privacy",

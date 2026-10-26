@@ -37,7 +37,7 @@
     "gaia_vs_name": "GAIA vs {name}",
     "hub_title": "GAIAを代替として",
     "hub_subtitle": "GAIAが30の人気生産性・AI・自動化ツールをどのように置き換えるかの正直な分析 — フィットスコアと移行手順付き。",
-    "hub_meta_title": "人気生産性ツールの最良の代替 | GAIA",
+    "hub_meta_title": "人気の生産性ツールに代わる最適な選択肢",
     "hub_meta_description": "GAIAがNotion、ChatGPT、Todoist、Zapier、Superhuman、Obsidianなど24以上のツールをどう置き換えるかをご覧ください。正直なフィットスコアと移行手順。",
     "best_name_alternative": "{name}の最良の代替",
     "category_productivity_suite": "生産性スイート",
@@ -136,11 +136,12 @@
     "learn_ai_concepts_desc": "GAIAと最新の生産性ツールを支えるAI技術とコンセプトを探索",
     "hub_title": "すべての役割のためのGAIA",
     "hub_subtitle": "すべてのプロフェッショナルには独自のワークフローと課題があります。GAIAはあなたの役割に合わせて適応し、既に使っているツールを接続し、時間を消耗するタスクを自動化します。",
-    "hub_meta_title": "すべての役割のためのGAIA - プロフェッショナル向けAIアシスタント",
+    "hub_meta_title": "職種別AIアシスタント：GAIAがあなたの仕事にどう役立つか",
     "hub_meta_description": "GAIAがソフトウェア開発者、プロダクトマネージャー、創業者、マーケターなど20以上の役割のワークフロー自動化と生産性向上をどう支援するかをご覧ください。",
     "featured_experiences": "注目のエクスペリエンス",
     "see_full_experience": "完全なエクスペリエンスを見る",
     "all_roles": "すべての役割",
-    "read_more": "もっと読む"
+    "read_more": "もっと読む",
+    "related_roles": "GAIAが支援するほかの職種"
   }
 }

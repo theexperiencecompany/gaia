@@ -39,8 +39,9 @@ This applies to both static `export const metadata` objects and dynamic `generat
 **Title formatting:**
 - Lead with the most descriptive keyword, not the brand name
 - Use a colon (not a pipe `|`, never an em dash) to separate primary topic from subtitle: `AI Chief of Staff: Your Proactive AI That Runs Your Day`
-- Keep under 60 characters where possible
+- 30–60 characters as rendered (CJK characters count double toward the 30): the `titleLength` range in `src/config/seoSnippet.json`, which `generatePageMetadata` fits to and `marketing-meta-length.test.ts` enforces
 - No trailing punctuation
+- A translated page has its own title and description in every locale; the same test fails when two locales of one page share either
 
 ---
 
@@ -92,6 +93,8 @@ Never construct `openGraph` or `twitter` metadata blocks manually — `generateP
 
 Render schemas with `<JsonLd>` from `components/seo/JsonLd.tsx`. Every programmatic page should have at minimum a `WebPageSchema` and a `BreadcrumbSchema`.
 
+The layout declares the GAIA Organization and WebSite once per page, each with an `@id`. Everywhere else (publisher, author, mainEntity) refer to GAIA with `organizationRef` from `lib/seo.ts`, never a second inline `{"@type": "Organization", name: "GAIA"}`; people (founders, `generateArticleSchema` authors) go through `generatePersonSchema`, which gives each a stable `@id`. `seo-schema.test.ts` fails on any Organization, WebSite or Person without one.
+
 ```typescript
 import JsonLd from "@/components/seo/JsonLd";
 import { generateBreadcrumbSchema, generateWebPageSchema } from "@/lib/seo";
@@ -141,7 +144,7 @@ export async function generateMetadata({ params }): Promise<Metadata> {
 
 **Canonical URLs:**
 - For untranslated pages, `generatePageMetadata({ path })` emits the canonical automatically — never construct URLs manually
-- For translated pages, the canonical MUST be locale-aware (self-referential): use `getLocalizedAlternates(path, locale)` (see Hreflang below). A locale variant must canonical to itself (`/es/my-page`), never to the default-locale URL — otherwise the sitemap lists URLs that disavow themselves ("non-canonical page in sitemap")
+- For translated pages, the canonical MUST be locale-aware (self-referential): use `generateLocalizedPageMetadata({ ..., locale })` (see Hreflang below). A locale variant must canonical to itself (`/es/my-page`), never to the default-locale URL — otherwise the sitemap lists URLs that disavow themselves ("non-canonical page in sitemap")
 - For near-duplicate pages (reverse-order combos, synonym slugs, compare/alternative-to same-tool pairs): do NOT use canonical-tag consolidation. Remove the loser's slug from its family `_slugs.json` (the live page set) and add a victim→winner row in `apps/web/canonical-redirects.mjs` — the loser 308-redirects (locale-preserving) before it ever renders, so every rendered page self-canonicalizes. Build internal links to pages that may be consolidated with `canonicalHref()` / `isRedirectedPath()` from `src/lib/canonicalLinks.ts`, never by reading flags off the JSON.
 - Link with `SiteLink` (`src/components/seo/SiteLink.tsx`), not `next/link`: inside the translated families it keeps the visitor's locale (`/es/learn/x` links `/es/compare/y`), everywhere else it stays English.
 
@@ -150,21 +153,25 @@ export async function generateMetadata({ params }): Promise<Metadata> {
 ## Hreflang / Internationalization
 
 Translated pages (the route families served with a locale prefix) must emit a
-locale-aware self-canonical **and** the hreflang map. Use `getLocalizedAlternates`
-— it returns both, so a `/es/...` page canonicals to itself and cross-references
-its siblings (do NOT hand-roll `alternates.canonical` — that reintroduces the
-"non-canonical page in sitemap" bug):
+locale-aware self-canonical **and** the hreflang map, with og:url on that same
+canonical. Use `generateLocalizedPageMetadata` — it returns all three, so a
+`/es/...` page canonicals to itself and cross-references its siblings (do NOT
+spread `generatePageMetadata` and override `alternates` — og:url then still
+points at the English page):
 
 ```typescript
-import { getLocalizedAlternates } from "@/i18n/getAlternates";
+import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
 
 export async function generateMetadata({ params }) {
   const { locale } = await params;
-  return {
-    ...generatePageMetadata({ title, description, path }),
-    // canonical -> /es/my-page (self), languages -> all locale variants + x-default
-    alternates: getLocalizedAlternates("/my-page", locale),
-  };
+  const t = await getTranslations({ locale, namespace: "my-family" });
+  // canonical and og:url -> /es/my-page (self), languages -> all locale variants + x-default
+  return generateLocalizedPageMetadata({
+    title: t("hub_meta_title"),
+    description: t("hub_meta_description"),
+    path: "/my-page",
+    locale,
+  });
 }
 
 // Near-duplicate pages consolidate at the router, not in metadata:

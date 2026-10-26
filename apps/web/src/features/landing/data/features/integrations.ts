@@ -6,6 +6,7 @@ export const INTEGRATIONS_FEATURES: FeatureData[] = [
     category: "Integrations",
     icon: "ConnectIcon",
     title: "Integrations",
+    metaTitle: "AI Integrations for Gmail, Slack, GitHub and Notion",
     tagline: "Connect Gmail, Slack, GitHub, Notion, and more",
     headline: "All your tools. One assistant.",
     subheadline:
@@ -97,6 +98,7 @@ export const INTEGRATIONS_FEATURES: FeatureData[] = [
     category: "Integrations",
     icon: "Store01Icon",
     title: "Integration Marketplace",
+    metaTitle: "Integration Marketplace: Community-Built AI Tools",
     tagline: "Discover and install community-built integrations",
     headline: "Thousands of integrations, not just fifty.",
     subheadline:
@@ -188,6 +190,7 @@ export const INTEGRATIONS_FEATURES: FeatureData[] = [
     category: "Integrations",
     icon: "ServerIcon",
     title: "MCP Support",
+    metaTitle: "MCP Support: Connect Any Model Context Protocol Server",
     tagline: "Connect any Model Context Protocol server",
     headline: "Connect any AI tool, not just GAIA's list.",
     subheadline:
@@ -279,6 +282,7 @@ export const INTEGRATIONS_FEATURES: FeatureData[] = [
     category: "Integrations",
     icon: "PlusSignIcon",
     title: "Custom Integrations",
+    metaTitle: "Custom Integrations: Build and Share Your Own",
     tagline: "Build, publish, and share your own integrations",
     headline: "Build the integration that doesn't exist yet.",
     subheadline:
@@ -370,6 +374,7 @@ export const INTEGRATIONS_FEATURES: FeatureData[] = [
     category: "Integrations",
     icon: "UserCircleIcon",
     title: "Contacts",
+    metaTitle: "AI Contact Lookup Across Gmail, HubSpot and More",
     tagline: "Unified contact lookup across Gmail, HubSpot, and more",
     headline: "Find anyone, across every tool.",
     subheadline:
@@ -461,6 +466,7 @@ export const INTEGRATIONS_FEATURES: FeatureData[] = [
     category: "Integrations",
     icon: "BotIcon",
     title: "Specialized Agents",
+    metaTitle: "Specialized AI Agents for Every Integration",
     tagline: "Deep expertise for every integration",
     headline: "Every integration, deeply understood.",
     subheadline:

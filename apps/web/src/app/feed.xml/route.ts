@@ -240,15 +240,15 @@ export async function GET() {
      xmlns:atom="http://www.w3.org/2005/Atom"
      xmlns:content="http://purl.org/rss/1.0/modules/content/">
   <channel>
-    <title>GAIA - Your Personal AI Assistant</title>
+    <title>${escapeXml(siteConfig.name)}</title>
     <link>${baseUrl}</link>
     <description>${escapeXml(siteConfig.description)}</description>
     <language>en-us</language>
     <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
     <atom:link href="${baseUrl}/feed.xml" rel="self" type="application/rss+xml"/>
     <image>
-      <url>${baseUrl}/images/logos/logo.webp</url>
-      <title>GAIA</title>
+      <url>${baseUrl}/brand/gaia_logo.png</url>
+      <title>${escapeXml(siteConfig.name)}</title>
       <link>${baseUrl}</link>
     </image>
     ${rssItems}

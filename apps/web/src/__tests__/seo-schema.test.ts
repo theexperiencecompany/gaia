@@ -1,7 +1,9 @@
 /**
  * Structured-data parity tests: every FAQPage schema emitted must match
- * visible FAQs, and every Article dateModified must reflect reality.
+ * visible FAQs, every Article dateModified must reflect reality, and every
+ * entity is one node with a stable @id.
  */
+import type { HowTo } from "schema-dts";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -17,12 +19,20 @@ import {
   ADVERTISED_PRO_MONTHLY_PRICE,
 } from "@/features/pricing/advertisedPrice";
 import {
+  generateAboutPageSchema,
   generateArticleSchema,
   generateBreadcrumbSchema,
+  generateContactPageSchema,
   generateFAQSchema,
   generateItemListSchema,
+  generateOrganizationSchema,
   generateProductSchema,
+  generateWebPageSchema,
+  generateWebSiteSchema,
+  organizationRef,
 } from "@/lib/seo";
+import type { UseCase } from "@/types/features/workflowTypes";
+import { generateUseCaseStructuredData } from "@/utils/seoUtils";
 
 const ROLE_FAQ_SETS = {
   AGENCY_FAQS,
@@ -161,5 +171,69 @@ describe("generateProductSchema", () => {
         unitCode: "MON",
       },
     });
+  });
+});
+
+/** Every schema.org node a page can emit, from each generator a landing page renders. */
+function everySchemaNode(): unknown[] {
+  return [
+    generateOrganizationSchema(),
+    generateWebSiteSchema(),
+    generateWebPageSchema("Title", "Description", "https://heygaia.io/x"),
+    generateProductSchema(),
+    generateArticleSchema(
+      "Title",
+      "Description",
+      "https://heygaia.io/blog/slug",
+      "https://heygaia.io/images/blog/x.webp",
+      "2025-12-04",
+      "2025-12-04",
+      [{ name: "Aryan Randeriya", url: "https://linkedin.com/in/x" }],
+    ),
+    generateContactPageSchema(),
+    generateAboutPageSchema(),
+    generateUseCaseStructuredData({
+      title: "Inbox Triage",
+      description: "Daily digest of the inbox.",
+      action_type: "workflow",
+      integrations: [],
+      categories: ["featured"],
+      published_id: "wf_1",
+      slug: "inbox-triage",
+      creator: { id: "system", name: "GAIA Team", avatar: null },
+    } as UseCase),
+  ];
+}
+
+/** Every object inside a JSON-LD tree that declares a schema.org type. */
+function typedNodes(value: unknown): Record<string, unknown>[] {
+  if (Array.isArray(value)) return value.flatMap(typedNodes);
+  if (!value || typeof value !== "object") return [];
+  const node = value as Record<string, unknown>;
+  const children = Object.values(node).flatMap(typedNodes);
+  return "@type" in node ? [node, ...children] : children;
+}
+
+describe("schema entity identity", () => {
+  it("gives every Organization, WebSite and Person a stable @id", () => {
+    const anonymous = typedNodes(everySchemaNode())
+      .filter((node) =>
+        ["Organization", "WebSite", "Person"].includes(String(node["@type"])),
+      )
+      .filter((node) => !node["@id"])
+      .map((node) => `${node["@type"]} ${node.name}`);
+    expect(anonymous).toEqual([]);
+  });
+
+  it("declares GAIA once and refers to it by @id everywhere else", () => {
+    const declared = typedNodes(everySchemaNode()).filter(
+      (node) => node["@id"] === organizationRef["@id"],
+    );
+    expect(declared).toHaveLength(1);
+  });
+
+  it("credits GAIA's own workflows to the organization, not a person", () => {
+    const [useCase] = everySchemaNode().slice(-1) as HowTo[];
+    expect(useCase.author).toEqual(organizationRef);
   });
 });

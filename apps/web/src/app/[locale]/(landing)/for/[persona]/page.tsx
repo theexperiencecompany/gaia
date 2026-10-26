@@ -18,15 +18,18 @@ import {
   SALES_FAQS,
   SOFTWARE_DEV_FAQS,
 } from "@/features/landing/data/personaFaqs";
-import { getTranslatedPersona } from "@/features/personas/data/getTranslatedPersona";
+import {
+  getRelatedPersonas,
+  getTranslatedPersona,
+} from "@/features/personas/data/getTranslatedPersona";
 import { resolvePersonaIntegrations } from "@/features/personas/data/personaIntegrations";
 import { getAllPersonaSlugs } from "@/features/personas/data/personasData";
-import { getLocalizedAlternates } from "@/i18n/getAlternates";
+import { defaultLocale } from "@/i18n/config";
+import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
 import { prerenderedMarketingParams } from "@/lib/selfhost";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
-  generatePageMetadata,
   generateProductSchema,
   generateWebPageSchema,
   siteConfig,
@@ -232,6 +235,16 @@ const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
   },
 };
 
+/** The bespoke English page for a featured role; other locales render the translated persona data instead. */
+function specialPersonaConfig(
+  persona: string,
+  locale: string,
+): PersonaConfig | undefined {
+  return locale === defaultLocale
+    ? SPECIAL_PERSONA_CONFIGS[persona]
+    : undefined;
+}
+
 async function allStaticParams() {
   const slugs = await getAllPersonaSlugs();
   return slugs.map((persona) => ({ persona }));
@@ -246,18 +259,15 @@ export async function generateMetadata({
 }: PageProps): Promise<Metadata> {
   const { locale, persona } = await params;
 
-  const config = SPECIAL_PERSONA_CONFIGS[persona];
+  const config = specialPersonaConfig(persona, locale);
   if (config) {
-    const metadata = generatePageMetadata({
+    return generateLocalizedPageMetadata({
       title: config.metaTitle,
       description: config.metaDescription,
       path: `/for/${persona}`,
       keywords: config.keywords,
+      locale,
     });
-    return {
-      ...metadata,
-      alternates: getLocalizedAlternates(`/for/${persona}`, locale),
-    };
   }
 
   const data = await getTranslatedPersona(persona);
@@ -266,16 +276,13 @@ export async function generateMetadata({
     return { title: "Role Not Found" };
   }
 
-  const metadata = generatePageMetadata({
+  return generateLocalizedPageMetadata({
     title: data.metaTitle,
     description: data.metaDescription,
     path: `/for/${persona}`,
     keywords: data.keywords,
+    locale,
   });
-  return {
-    ...metadata,
-    alternates: getLocalizedAlternates(`/for/${persona}`, locale),
-  };
 }
 
 function IntegrationBadge({
@@ -301,11 +308,44 @@ function IntegrationBadge({
   );
 }
 
+async function RelatedRoles({
+  persona,
+  locale,
+}: {
+  readonly persona: string;
+  readonly locale: string;
+}) {
+  const [t, roles] = await Promise.all([
+    getTranslations("personas"),
+    getRelatedPersonas(persona, locale),
+  ]);
+  return (
+    <section className="mb-16">
+      <h2 className="mb-6 text-3xl font-semibold text-white">
+        {t("related_roles")}
+      </h2>
+      <div className="grid gap-4 sm:grid-cols-2">
+        {roles.map((role) => (
+          <SiteLink
+            key={role.slug}
+            href={`/for/${role.slug}`}
+            className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
+          >
+            <h3 className="text-lg font-medium text-white transition-colors group-hover:text-primary">
+              {t("ai_assistant_for", { role: role.role })}
+            </h3>
+          </SiteLink>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export default async function PersonaPage({ params }: PageProps) {
   const { locale, persona } = await params;
   setRequestLocale(locale);
 
-  const config = SPECIAL_PERSONA_CONFIGS[persona];
+  const config = specialPersonaConfig(persona, locale);
   if (config) {
     const breadcrumbs = [
       { name: "Home", url: siteConfig.url },
@@ -348,6 +388,7 @@ export default async function PersonaPage({ params }: PageProps) {
             })}
             slugs={personaData?.relatedComparisons ?? []}
           />
+          <RelatedRoles persona={persona} locale={locale} />
         </div>
       </>
     );
@@ -493,6 +534,8 @@ export default async function PersonaPage({ params }: PageProps) {
           heading={t("personas.tools_compare", { role: data.role })}
           slugs={data.relatedComparisons ?? []}
         />
+
+        <RelatedRoles persona={persona} locale={locale} />
 
         {/* Explore More */}
         <section className="mb-16">

@@ -37,7 +37,7 @@
     "gaia_vs_name": "GAIA vs {name}",
     "hub_title": "GAIA als Ihre Alternative",
     "hub_subtitle": "Ehrliche Vergleiche, wie GAIA beliebte Produktivitäts-, KI- und Automatisierungstools ersetzt — mit Fit-Bewertungen und Migrationsschritten für jedes.",
-    "hub_meta_title": "Beste Alternativen zu beliebten Produktivitätstools | GAIA",
+    "hub_meta_title": "Beste Alternativen zu beliebten Produktivitätstools",
     "hub_meta_description": "So ersetzt GAIA Notion, ChatGPT, Todoist, Zapier, Superhuman, Obsidian und weitere Tools, mit ehrlichen Fit-Bewertungen und Migrationsschritten.",
     "best_name_alternative": "Beste {name}-Alternative",
     "category_productivity_suite": "Produktivitäts-Suiten",
@@ -136,11 +136,12 @@
     "learn_ai_concepts_desc": "Entdecken Sie die KI-Technologie und Konzepte hinter GAIA und modernen Produktivitätstools",
     "hub_title": "GAIA für jede Rolle",
     "hub_subtitle": "Jeder Fachmann hat einzigartige Workflows und Schmerzpunkte. GAIA passt sich Ihrer Rolle an, verbindet die Tools, die Sie bereits nutzen, und automatisiert die Aufgaben, die Ihre Zeit rauben.",
-    "hub_meta_title": "GAIA für jede Rolle - KI-Assistent für Fachleute",
+    "hub_meta_title": "KI-Assistent nach Rolle: So passt GAIA zu Ihrem Job",
     "hub_meta_description": "So hilft GAIA Entwicklern, Produktmanagern, Gründern, Marketern und vielen weiteren Rollen, Workflows zu automatisieren und mehr zu schaffen.",
     "featured_experiences": "Empfohlene Erlebnisse",
     "see_full_experience": "Das vollständige Erlebnis ansehen",
     "all_roles": "Alle Rollen",
-    "read_more": "Mehr lesen"
+    "read_more": "Mehr lesen",
+    "related_roles": "Weitere Rollen, denen GAIA hilft"
   }
 }

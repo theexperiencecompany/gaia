@@ -11614,5 +11614,84 @@
         "answer": "O Morgen oferece um período de teste e, depois, planos mensais ou anuais para pessoas físicas e planos de equipe cobrados por usuário. O serviço hospedado do GAIA é uma assinatura paga por pessoa, com o Pro a ${{PRO_MONTHLY_PRICE}}/mês, e o GAIA Enterprise tem preço sob consulta. O código é source-available sob a licença PolyForm Noncommercial, então a auto-hospedagem é gratuita apenas para uso pessoal e não comercial. Empresas com fins lucrativos fazem a auto-hospedagem com uma licença empresarial (fale com a equipe do GAIA)."
       }
     ]
+  },
+  "bee": {
+    "name": "Bee",
+    "tagline": "IA vestível que lembra do seu dia",
+    "description": "O Bee é a IA vestível da Amazon: uma pulseira ou clipe Frontier, pago, que escuta ao longo do seu dia e transforma conversas em pontos principais pesquisáveis, resumos, tarefas e rascunhos de e-mail. O GAIA é um sistema operacional de produtividade proativo que gerencia de forma autônoma seu e-mail, agenda, tarefas e o restante das suas ferramentas, sem precisar de wearable.",
+    "metaTitle": "GAIA vs Bee: memória vestível ou um assistente que age",
+    "metaDescription": "O Bee captura conversas em um wearable pago e as transforma em pontos principais pesquisáveis. O GAIA age sobre e-mail, agenda e tarefas nas suas ferramentas.",
+    "keywords": [
+      "GAIA vs Bee",
+      "Bee vs GAIA",
+      "comparação Bee Frontier",
+      "análise do wearable Bee AI",
+      "Amazon Bee vs GAIA"
+    ],
+    "intro": "O Bee merece crédito por aprender a lição que seus antecessores ignoraram: o Frontier custa menos que um jantar fora, dura 7 dias e some no seu pulso ou na gola. Ele escuta e transforma o dia em pontos principais pesquisáveis, resumos, sugestões de tarefas e até rascunhos de e-mails e eventos de agenda. Mas a captura continua sendo o ciclo central. Ninguém nunca zerou a caixa de entrada só por lembrar melhor dela. O GAIA começa onde o Bee para: pega o contexto e age sobre ele, fazendo a triagem dos e-mails, redigindo o acompanhamento, criando a tarefa e remarcando a reunião, em todas as suas ferramentas, sem nenhum hardware. Um wearable que lembra versus um software que faz.",
+    "rows": [
+      {
+        "feature": "Abordagem principal",
+        "gaia": "Sistema operacional de produtividade que lembra e depois age sobre o contexto",
+        "competitor": "Pulseira ou clipe wearable que captura e recupera conversas"
+      },
+      {
+        "feature": "Memória",
+        "gaia": "Memória em grafo ligada a tarefas, e-mails e eventos",
+        "competitor": "Pontos principais pesquisáveis, resumos e linha do tempo de cada dia"
+      },
+      {
+        "feature": "O que faz",
+        "gaia": "Redige, agenda, cria tarefas e executa fluxos de várias etapas nas suas ferramentas",
+        "competitor": "Sugestões de tarefas, além de rascunhos de e-mails e eventos de agenda"
+      },
+      {
+        "feature": "Hardware",
+        "gaia": "Sem hardware: web, desktop, celular e apps de mensagens",
+        "competitor": "Exige usar e carregar o hardware Frontier, que é pago"
+      },
+      {
+        "feature": "Integrações",
+        "gaia": "Integrações nativas com e-mail, agenda, tarefas, chat e ferramentas de código",
+        "competitor": "Integrações com e-mail, agenda e Alexa; alguns recursos exigem o Bee Pro"
+      },
+      {
+        "feature": "Privacidade",
+        "gaia": "Source-available e auto-hospedável, para que você controle toda a stack",
+        "competitor": "Áudio processado na hora e depois apagado; criptografia controlada por você"
+      }
+    ],
+    "gaiaAdvantages": [
+      "Transforma o contexto capturado em rascunhos de e-mail, tarefas e eventos agendados",
+      "Automação profunda de e-mail e agenda em todas as suas integrações",
+      "Proativo: mostra o que importa e age sem que você precise perguntar",
+      "Nenhum hardware para comprar, usar ou carregar: roda nos dispositivos que você já tem",
+      "Source-available e auto-hospedável para uso não comercial"
+    ],
+    "competitorAdvantages": [
+      "Sem tela e sem digitação: a captura acontece de forma passiva enquanto você vive o seu dia",
+      "Bateria de 7 dias, então você quase nunca pensa em carregar",
+      "Dispositivo fechado e de função única, sem nada para configurar",
+      "Proposta focada em privacidade: áudio processado na hora e apagado, com criptografia controlada pelo usuário"
+    ],
+    "verdict": "Escolha o Bee se você quer um registro passivo e vestível das suas conversas por um preço baixo de hardware. Escolha o GAIA se você quer que esse contexto vire trabalho concluído: e-mails triados, respostas redigidas, reuniões agendadas e fluxos executados em toda a sua stack, sem hardware para usar.",
+    "faqs": [
+      {
+        "question": "Preciso do hardware do Bee para usar o GAIA?",
+        "answer": "Não. O Bee escuta por meio de um wearable pago que você usa no pulso ou na roupa, com 7 dias de bateria. O GAIA é puro software: funciona com o celular e o notebook que você já tem, na web, no desktop, no celular e em apps de mensagens."
+      },
+      {
+        "question": "O que o Bee realmente faz?",
+        "answer": "O Bee transforma conversas em pontos principais pesquisáveis, resumos, sugestões de tarefas e rascunhos de e-mails e eventos de agenda, com integrações de e-mail, agenda e Alexa no plano Pro. Ele captura e recupera. O GAIA faz a triagem da sua caixa de entrada, redige respostas, agenda reuniões, cria tarefas e executa fluxos de várias etapas nas suas ferramentas. O Bee lembra da conversa; o GAIA faz o acompanhamento."
+      },
+      {
+        "question": "O Bee e o GAIA têm memória?",
+        "answer": "Os dois lembram, mas de jeitos diferentes. O Bee recupera o que foi dito ao seu redor por meio do wearable. O GAIA mantém uma memória em grafo ligada às suas tarefas, e-mails e eventos, e depois age sobre ela. Se você quer um registro das conversas, o wearable do Bee faz isso. Se você quer que essas conversas virem trabalho concluído, isso é o GAIA."
+      },
+      {
+        "question": "O GAIA é source-available, e quanto custa o Bee?",
+        "answer": "Sim. O GAIA é source-available e roda inteiramente nos dispositivos que você já tem: o plano hospedado custa US$ {{PRO_MONTHLY_PRICE}}/mês, e a auto-hospedagem via Docker é gratuita para uso não comercial (mais seus próprios custos de API de modelos). O Frontier do Bee é um hardware pago, e o Bee Pro, necessário para alguns recursos, é um plano pago com período de teste."
+      }
+    ]
   }
 }

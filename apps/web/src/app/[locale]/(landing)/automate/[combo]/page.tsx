@@ -14,14 +14,13 @@ import {
 } from "@/features/integrations/data/getTranslatedCombo";
 import { getMarketplacePath } from "@/features/integrations/lib/serverMarketplaceApi";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
-import { getLocalizedAlternates } from "@/i18n/getAlternates";
+import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
 import { getAutomateDocsLinks } from "@/lib/docs-links";
 import { prerenderedMarketingParams } from "@/lib/selfhost";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
   generateHowToSchema,
-  generatePageMetadata,
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
@@ -59,16 +58,13 @@ export async function generateMetadata({
     return { title: "Integration Not Found" };
   }
 
-  const metadata = generatePageMetadata({
+  return generateLocalizedPageMetadata({
     title: data.metaTitle,
     description: data.metaDescription,
     path: `/automate/${combo}`,
     keywords: data.keywords,
+    locale,
   });
-  return {
-    ...metadata,
-    alternates: getLocalizedAlternates(`/automate/${combo}`, locale),
-  };
 }
 
 export default async function AutomateComboPage({ params }: PageProps) {

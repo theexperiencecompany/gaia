@@ -7862,7 +7862,7 @@
       },
       {
         "question": "Gibt es eine Source-available-Alternative zu Poke?",
-        "answer": "GAIA ist eine. Der Code ist unter der PolyForm-Noncommercial-Lizenz öffentlich, Sie können ihn also lesen und für den privaten, nicht kommerziellen Gebrauch selbst hosten. Der gehostete Dienst ist ein kostenpflichtiges Abo."
+        "answer": "GAIA ist eine. Der Code ist unter der PolyForm-Noncommercial-Lizenz öffentlich, Sie können ihn also lesen und für den privaten, nicht-kommerziellen Gebrauch selbst hosten. Der gehostete Dienst ist ein kostenpflichtiges Abo."
       }
     ]
   },
@@ -11330,7 +11330,7 @@
       },
       {
         "question": "Was kostet GAIA im Vergleich zu Saner.AI?",
-        "answer": "Saner.AI hat einen kostenlosen Plan mit monatlichen KI-Limits sowie kostenpflichtige Starter- und Standard-Pläne. Der gehostete Dienst von GAIA ist ein kostenpflichtiges Abo pro Person, Pro kostet ${{PRO_MONTHLY_PRICE}}/Monat, und GAIA Enterprise gibt es auf Anfrage. Der Code ist source-available unter der PolyForm-Noncommercial-Lizenz, daher ist Self-Hosting für die private, nicht kommerzielle Nutzung kostenlos, und gewinnorientierte Unternehmen hosten GAIA mit einer Enterprise-Lizenz selbst (wenden Sie sich an das GAIA-Team)."
+        "answer": "Saner.AI hat einen kostenlosen Plan mit monatlichen KI-Limits sowie kostenpflichtige Starter- und Standard-Pläne. Der gehostete Dienst von GAIA ist ein kostenpflichtiges Abo pro Person, Pro kostet ${{PRO_MONTHLY_PRICE}}/Monat, und GAIA Enterprise gibt es auf Anfrage. Der Code ist source-available unter der PolyForm-Noncommercial-Lizenz, daher ist Self-Hosting für die private, nicht-kommerzielle Nutzung kostenlos, und gewinnorientierte Unternehmen hosten GAIA mit einer Enterprise-Lizenz selbst (wenden Sie sich an das GAIA-Team)."
       }
     ]
   },
@@ -11424,7 +11424,7 @@
       },
       {
         "question": "Was kostet GAIA im Vergleich zu Carly?",
-        "answer": "Carly hat eine kostenlose Stufe, einen Personal-Plan und Organization-Pläne pro Nutzer, wobei die KI-Nutzung in Credits abgerechnet wird. Der gehostete Dienst von GAIA ist ein kostenpflichtiges Abo pro Person, Pro kostet ${{PRO_MONTHLY_PRICE}}/Monat, und GAIA Enterprise gibt es auf Anfrage. Der Code ist source-available unter der PolyForm-Noncommercial-Lizenz, daher ist Self-Hosting für die private, nicht kommerzielle Nutzung kostenlos, und gewinnorientierte Unternehmen hosten GAIA mit einer Enterprise-Lizenz selbst (wenden Sie sich an das GAIA-Team)."
+        "answer": "Carly hat eine kostenlose Stufe, einen Personal-Plan und Organization-Pläne pro Nutzer, wobei die KI-Nutzung in Credits abgerechnet wird. Der gehostete Dienst von GAIA ist ein kostenpflichtiges Abo pro Person, Pro kostet ${{PRO_MONTHLY_PRICE}}/Monat, und GAIA Enterprise gibt es auf Anfrage. Der Code ist source-available unter der PolyForm-Noncommercial-Lizenz, daher ist Self-Hosting für die private, nicht-kommerzielle Nutzung kostenlos, und gewinnorientierte Unternehmen hosten GAIA mit einer Enterprise-Lizenz selbst (wenden Sie sich an das GAIA-Team)."
       }
     ]
   },
@@ -11518,7 +11518,7 @@
       },
       {
         "question": "Was kostet GAIA im Vergleich zu Lifestack?",
-        "answer": "Lifestack verkauft Monats- und Jahresmitgliedschaften und einen einmaligen Lifetime-Plan. Der gehostete Dienst von GAIA ist ein kostenpflichtiges Abo pro Person, Pro kostet ${{PRO_MONTHLY_PRICE}}/Monat, und GAIA Enterprise gibt es auf Anfrage. Der Code ist source-available unter der PolyForm-Noncommercial-Lizenz, daher ist Self-Hosting für die private, nicht kommerzielle Nutzung kostenlos, und gewinnorientierte Unternehmen hosten GAIA mit einer Enterprise-Lizenz selbst (wenden Sie sich an das GAIA-Team)."
+        "answer": "Lifestack verkauft Monats- und Jahresmitgliedschaften und einen einmaligen Lifetime-Plan. Der gehostete Dienst von GAIA ist ein kostenpflichtiges Abo pro Person, Pro kostet ${{PRO_MONTHLY_PRICE}}/Monat, und GAIA Enterprise gibt es auf Anfrage. Der Code ist source-available unter der PolyForm-Noncommercial-Lizenz, daher ist Self-Hosting für die private, nicht-kommerzielle Nutzung kostenlos, und gewinnorientierte Unternehmen hosten GAIA mit einer Enterprise-Lizenz selbst (wenden Sie sich an das GAIA-Team)."
       }
     ]
   },
@@ -11612,7 +11612,86 @@
       },
       {
         "question": "Was kostet GAIA im Vergleich zu Morgen?",
-        "answer": "Morgen bietet eine Testphase, danach Monats- oder Jahrespläne für Einzelpersonen und Team-Pläne pro Nutzer. Der gehostete Dienst von GAIA ist ein kostenpflichtiges Abo pro Person, Pro kostet ${{PRO_MONTHLY_PRICE}}/Monat, und GAIA Enterprise gibt es auf Anfrage. Der Code ist source-available unter der PolyForm-Noncommercial-Lizenz, daher ist Self-Hosting für die private, nicht kommerzielle Nutzung kostenlos, und gewinnorientierte Unternehmen hosten GAIA mit einer Enterprise-Lizenz selbst (wenden Sie sich an das GAIA-Team)."
+        "answer": "Morgen bietet eine Testphase, danach Monats- oder Jahrespläne für Einzelpersonen und Team-Pläne pro Nutzer. Der gehostete Dienst von GAIA ist ein kostenpflichtiges Abo pro Person, Pro kostet ${{PRO_MONTHLY_PRICE}}/Monat, und GAIA Enterprise gibt es auf Anfrage. Der Code ist source-available unter der PolyForm-Noncommercial-Lizenz, daher ist Self-Hosting für die private, nicht-kommerzielle Nutzung kostenlos, und gewinnorientierte Unternehmen hosten GAIA mit einer Enterprise-Lizenz selbst (wenden Sie sich an das GAIA-Team)."
+      }
+    ]
+  },
+  "bee": {
+    "name": "Bee",
+    "tagline": "Tragbare KI, die sich an Ihren Tag erinnert",
+    "description": "Bee ist Amazons tragbare KI: ein kostenpflichtiges Frontier-Armband oder ein Clip, der Ihnen den ganzen Tag zuhört und Gespräche in durchsuchbare Kernaussagen, Zusammenfassungen, To-dos und E-Mail-Entwürfe verwandelt. GAIA ist ein proaktives Produktivitäts-OS, das Ihre E-Mails, Ihren Kalender, Ihre Aufgaben und Ihre übrigen Tools autonom verwaltet, ganz ohne Wearable.",
+    "metaTitle": "GAIA vs Bee: Wearable-Erinnerung oder Assistent, der handelt",
+    "metaDescription": "Bee erfasst Gespräche mit einem kostenpflichtigen Wearable und macht durchsuchbare Kernaussagen daraus. GAIA handelt in E-Mail, Kalender und Aufgaben.",
+    "keywords": [
+      "GAIA vs Bee",
+      "Bee vs GAIA",
+      "Bee Frontier Vergleich",
+      "Bee AI Wearable Test",
+      "Amazon Bee vs GAIA"
+    ],
+    "intro": "Bee verdient Anerkennung dafür, die Lektion gelernt zu haben, die seine Vorgänger verpasst haben: Der Frontier kostet weniger als ein Abendessen im Restaurant, hält 7 Tage durch und verschwindet unauffällig an Handgelenk oder Kragen. Er hört zu und macht aus dem Tag durchsuchbare Kernaussagen, Zusammenfassungen, vorgeschlagene To-dos und sogar Entwürfe für E-Mails und Kalendertermine. Doch im Kern bleibt es beim Erfassen. Noch nie hat jemand seinen Posteingang geleert, indem er sich besser an ihn erinnert hat. GAIA beginnt dort, wo Bee aufhört: Es nimmt den Kontext und handelt danach, sortiert E-Mails, entwirft das Follow-up, legt die Aufgabe an und verschiebt das Meeting, über all Ihre Tools hinweg und ganz ohne Hardware. Ein Wearable, das sich erinnert, gegen Software, die erledigt.",
+    "rows": [
+      {
+        "feature": "Kernansatz",
+        "gaia": "Produktivitäts-OS, das sich erinnert und dann auf Basis des Kontexts handelt",
+        "competitor": "Wearable-Armband oder -Clip, das Gespräche erfasst und wieder abrufbar macht"
+      },
+      {
+        "feature": "Gedächtnis",
+        "gaia": "Graphbasiertes Gedächtnis, verknüpft mit Aufgaben, E-Mails und Terminen",
+        "competitor": "Durchsuchbare Kernaussagen, Zusammenfassungen und eine Zeitleiste jedes Tages"
+      },
+      {
+        "feature": "Was es tut",
+        "gaia": "Entwirft, plant, legt Aufgaben an und führt mehrstufige Workflows über Ihre Tools aus",
+        "competitor": "Vorgeschlagene To-dos sowie Entwürfe für E-Mails und Kalendertermine"
+      },
+      {
+        "feature": "Hardware",
+        "gaia": "Keine Hardware: Web, Desktop, Smartphone und Messaging-Apps",
+        "competitor": "Erfordert das Tragen und Aufladen der kostenpflichtigen Frontier-Hardware"
+      },
+      {
+        "feature": "Integrationen",
+        "gaia": "Native Integrationen mit E-Mail, Kalender, Aufgaben, Chat und Code-Tools",
+        "competitor": "Integrationen für E-Mail, Kalender und Alexa; ausgewählte Funktionen erfordern Bee Pro"
+      },
+      {
+        "feature": "Datenschutz",
+        "gaia": "Source-available und selbst hostbar, sodass Sie den gesamten Stack kontrollieren",
+        "competitor": "Audio wird sofort verarbeitet und dann gelöscht; Verschlüsselung unter Ihrer Kontrolle"
+      }
+    ],
+    "gaiaAdvantages": [
+      "Macht aus erfasstem Kontext E-Mail-Entwürfe, Aufgaben und geplante Termine",
+      "Tiefe E-Mail- und Kalender-Automatisierung über all Ihre Integrationen",
+      "Proaktiv: zeigt Wichtiges an und handelt, ohne dass Sie fragen müssen",
+      "Keine Hardware zum Kaufen, Tragen oder Aufladen: läuft auf Ihren eigenen Geräten",
+      "Source-available und für die nicht-kommerzielle Nutzung selbst hostbar"
+    ],
+    "competitorAdvantages": [
+      "Kein Bildschirm, kein Tippen: Die Erfassung geschieht passiv, während Sie Ihren Tag leben",
+      "Mit 7 Tagen Akkulaufzeit denken Sie selten ans Aufladen",
+      "Geschlossenes Gerät für einen einzigen Zweck, ohne etwas zu konfigurieren",
+      "Datenschutz im Mittelpunkt: Audio wird sofort verarbeitet und gelöscht, mit nutzerkontrollierter Verschlüsselung"
+    ],
+    "verdict": "Wählen Sie Bee, wenn Sie eine passive, tragbare Aufzeichnung Ihrer Gespräche zu einem niedrigen Hardwarepreis möchten. Wählen Sie GAIA, wenn aus diesem Kontext erledigte Arbeit werden soll: E-Mails sortiert, Antworten entworfen, Meetings geplant und Workflows über Ihren gesamten Stack ausgeführt, ohne Hardware am Körper.",
+    "faqs": [
+      {
+        "question": "Brauche ich Bee-Hardware, um GAIA zu nutzen?",
+        "answer": "Nein. Bee hört über ein kostenpflichtiges Wearable zu, das Sie am Handgelenk oder an der Kleidung tragen und das 7 Tage Akkulaufzeit hat. GAIA ist reine Software: Es funktioniert mit dem Telefon und Laptop, die Sie bereits besitzen, im Web, auf dem Desktop, auf dem Smartphone und in Messaging-Apps."
+      },
+      {
+        "question": "Was kann Bee eigentlich?",
+        "answer": "Bee macht aus Gesprächen durchsuchbare Kernaussagen, Zusammenfassungen, vorgeschlagene To-dos sowie Entwürfe für E-Mails und Kalendertermine, mit Integrationen für E-Mail, Kalender und Alexa im Pro-Tarif. Es erfasst und ruft ab. GAIA sortiert Ihren Posteingang, entwirft Antworten, plant Meetings, legt Aufgaben an und führt mehrstufige Workflows über Ihre Tools aus. Bee merkt sich das Gespräch; GAIA erledigt das Follow-up."
+      },
+      {
+        "question": "Haben Bee und GAIA beide ein Gedächtnis?",
+        "answer": "Beide erinnern sich, aber auf unterschiedliche Weise. Bee ruft über sein Wearable ab, was um Sie herum gesagt wurde. GAIA führt ein graphbasiertes Gedächtnis, das mit Ihren Aufgaben, E-Mails und Terminen verknüpft ist, und handelt dann danach. Wenn Sie eine Aufzeichnung Ihrer Gespräche wollen, leistet das Wearable von Bee genau das. Wenn aus diesen Gesprächen erledigte Arbeit werden soll, ist das GAIA."
+      },
+      {
+        "question": "Ist GAIA source-available, und was kostet Bee?",
+        "answer": "Ja. GAIA ist source-available und läuft vollständig auf Ihren vorhandenen Geräten: Der gehostete Tarif kostet ${{PRO_MONTHLY_PRICE}}/Monat, und Self-Hosting per Docker ist für die nicht-kommerzielle Nutzung kostenlos (zuzüglich Ihrer eigenen Modell-API-Kosten). Der Frontier von Bee ist kostenpflichtige Hardware, und Bee Pro, das für ausgewählte Funktionen nötig ist, ist ein kostenpflichtiger Tarif mit Testphase."
       }
     ]
   }

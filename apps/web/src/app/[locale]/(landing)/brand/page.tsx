@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import JsonLd from "@/components/seo/JsonLd";
-import { generatePageMetadata, siteConfig } from "@/lib/seo";
+import { generatePageMetadata, organizationRef, siteConfig } from "@/lib/seo";
 
 import { BrandAssets } from "./components/BrandAssets";
 import { BrandColors } from "./components/BrandColors";
@@ -51,12 +51,7 @@ const BRAND_SCHEMA = {
       name: "The Experience Company",
       url: siteConfig.url,
     },
-    {
-      "@type": "Organization" as const,
-      name: "GAIA",
-      alternateName: "General-purpose AI Assistant",
-      url: siteConfig.url,
-    },
+    organizationRef,
   ],
 };
 

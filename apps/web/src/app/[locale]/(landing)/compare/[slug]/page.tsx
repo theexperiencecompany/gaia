@@ -17,14 +17,13 @@ import {
 import { getMarketplacePath } from "@/features/integrations/lib/serverMarketplaceApi";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { getTranslatedPersona } from "@/features/personas/data/getTranslatedPersona";
-import { getLocalizedAlternates } from "@/i18n/getAlternates";
+import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
 import { isRedirectedPath } from "@/lib/canonicalLinks";
 import { COMPARE_DOCS_LINKS } from "@/lib/docs-links";
 import { prerenderedMarketingParams } from "@/lib/selfhost";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
-  generatePageMetadata,
   generateProductSchema,
   generateWebPageSchema,
   siteConfig,
@@ -62,17 +61,13 @@ export async function generateMetadata({
     return { title: "Comparison Not Found" };
   }
 
-  const metadata = generatePageMetadata({
+  return generateLocalizedPageMetadata({
     title: data.metaTitle,
     description: data.metaDescription,
     path: `/compare/${slug}`,
     keywords: data.keywords,
+    locale,
   });
-
-  return {
-    ...metadata,
-    alternates: getLocalizedAlternates(`/compare/${slug}`, locale),
-  };
 }
 
 export default async function ComparisonPage({ params }: PageProps) {

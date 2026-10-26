@@ -136,11 +136,12 @@
     "learn_ai_concepts_desc": "Explorez la technologie et les concepts d'IA derrière GAIA et les outils de productivité modernes",
     "hub_title": "GAIA pour chaque rôle",
     "hub_subtitle": "Chaque professionnel a des workflows et des points de douleur uniques. GAIA s'adapte à votre rôle, connectant les outils que vous utilisez déjà et automatisant les tâches qui drainent votre temps.",
-    "hub_meta_title": "GAIA pour chaque rôle - Assistant IA pour professionnels",
+    "hub_meta_title": "Assistant IA par métier : GAIA adapté à votre poste",
     "hub_meta_description": "Découvrez comment GAIA aide développeurs, product managers, fondateurs, marketeurs et bien d'autres à automatiser leur travail avec l'IA.",
     "featured_experiences": "Expériences en Vedette",
     "see_full_experience": "Voir l'expérience complète",
     "all_roles": "Tous les Rôles",
-    "read_more": "En savoir plus"
+    "read_more": "En savoir plus",
+    "related_roles": "D'autres métiers que GAIA aide"
   }
 }

@@ -11,7 +11,7 @@ import {
 } from "@/lib/seo";
 
 export const metadata: Metadata = generatePageMetadata({
-  title: "Use Cases & Workflows",
+  title: "AI Workflow Use Cases: Automate Email and Meetings",
   description:
     "Browse workflows that automate email, meetings, and scheduling with GAIA, including ones built by the community that you can run in your own account.",
   path: "/use-cases",

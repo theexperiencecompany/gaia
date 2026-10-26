@@ -3,7 +3,13 @@ import { notFound } from "next/navigation";
 
 import BlogPostClient from "@/app/[locale]/(landing)/blog/client";
 import type { BlogPostMeta } from "@/lib/blog";
-import { getAllBlogPosts, getAllBlogSlugs, getBlogPost } from "@/lib/blog";
+import {
+  blogLastModified,
+  getAllBlogPosts,
+  getAllBlogSlugs,
+  getBlogPost,
+} from "@/lib/blog";
+import { circularNeighbours } from "@/lib/circularNeighbours";
 import { prerenderedMarketingParams } from "@/lib/selfhost";
 import {
   generateArticleSchema,
@@ -17,6 +23,10 @@ interface PageProps {
 }
 
 export const revalidate = 3600;
+
+/** The next three posts in listing order, wrapping: every post is suggested by three others, the oldest included. */
+const SUGGESTED_POST_OFFSETS = [1, 2, 3] as const;
+
 export const dynamicParams = true;
 
 async function allStaticParams() {
@@ -67,12 +77,12 @@ export default async function BlogPostPage({ params }: PageProps) {
     notFound();
   }
 
-  // Get suggested posts (excluding current post), stripping content before
-  // crossing the RSC→client boundary — BlogCard only needs metadata fields.
-  const suggestedPosts: BlogPostMeta[] = allBlogs
-    .filter((post) => post.slug !== slug)
-    .slice(0, 3)
-    .map(({ content: _content, ...meta }) => meta);
+  // Content is stripped before the RSC→client boundary: BlogCard only needs metadata.
+  const suggestedPosts: BlogPostMeta[] = circularNeighbours(
+    allBlogs,
+    allBlogs.findIndex((post) => post.slug === slug),
+    SUGGESTED_POST_OFFSETS,
+  ).map(({ content: _content, ...meta }) => meta);
 
   // Generate structured data for SEO
   const articleSchema = generateArticleSchema(
@@ -81,12 +91,12 @@ export default async function BlogPostPage({ params }: PageProps) {
     `${siteConfig.url}/blog/${slug}`,
     blog.image,
     blog.date,
-    // No frontmatter `updated:` anywhere yet => falls back to publish date
-    // ("never revised"), never a hardcoded false date.
-    blog.updated ?? blog.date,
+    blogLastModified(blog),
     blog.authors.map((author) => ({
       name: author.name,
-      url: author.twitter,
+      jobTitle: author.role,
+      url: author.linkedin,
+      sameAs: [author.linkedin, author.twitter, author.github],
     })),
     blog.category,
   );

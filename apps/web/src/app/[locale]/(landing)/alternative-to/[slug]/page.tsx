@@ -19,7 +19,7 @@ import {
 } from "@/features/comparisons/data/getTranslatedComparison";
 import { getMarketplacePath } from "@/features/integrations/lib/serverMarketplaceApi";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
-import { getLocalizedAlternates } from "@/i18n/getAlternates";
+import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
 import { isRedirectedPath } from "@/lib/canonicalLinks";
 import { ALTERNATIVE_DOCS_LINKS, type DocsGuideLink } from "@/lib/docs-links";
 import { prerenderedMarketingParams } from "@/lib/selfhost";
@@ -27,7 +27,6 @@ import {
   generateBreadcrumbSchema,
   generateFAQSchema,
   generateHowToSchema,
-  generatePageMetadata,
   generateProductSchema,
   generateWebPageSchema,
   siteConfig,
@@ -59,16 +58,13 @@ export async function generateMetadata({
     return { title: "Alternative Not Found" };
   }
 
-  const metadata = generatePageMetadata({
+  return generateLocalizedPageMetadata({
     title: data.metaTitle,
     description: data.metaDescription,
     path: `/alternative-to/${slug}`,
     keywords: data.keywords,
+    locale,
   });
-  return {
-    ...metadata,
-    alternates: getLocalizedAlternates(`/alternative-to/${slug}`, locale),
-  };
 }
 
 function FitScorePip({ filled }: { readonly filled: boolean }) {

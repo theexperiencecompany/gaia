@@ -11,7 +11,7 @@ import {
 } from "@/lib/seo";
 
 export const metadata: Metadata = generatePageMetadata({
-  title: "Manifesto",
+  title: "The GAIA Manifesto: Why We Build a Proactive AI",
   description:
     "Why we are building GAIA: an assistant that remembers you, does the work instead of only answering, and keeps your data private. Read the manifesto.",
   path: "/manifesto",

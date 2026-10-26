@@ -1,24 +1,18 @@
 import type { Metadata } from "next";
-import type {
-  HowTo,
-  HowToStep,
-  ImageObject,
-  Organization,
-  Person,
-  WithContext,
-} from "schema-dts";
-import type { BlogContentPost } from "@/lib/blog";
-import { brandedTitle, siteConfig } from "@/lib/seo";
+import type { HowTo, HowToStep, Person, WithContext } from "schema-dts";
+import { isSystemCreator } from "@/features/workflows/utils/creator";
+import { type BlogContentPost, blogLastModified } from "@/lib/blog";
+import {
+  brandedTitle,
+  generatePageMetadata,
+  organizationRef,
+  siteConfig,
+} from "@/lib/seo";
 import type { UseCase } from "@/types/features/workflowTypes";
 import {
   generateUseCaseDescription,
   generateUseCaseTitle,
 } from "@/utils/useCaseMeta";
-
-function toAbsoluteUrl(url: string): string {
-  if (/^https?:\/\//i.test(url)) return url;
-  return `${siteConfig.url}${url.startsWith("/") ? url : `/${url}`}`;
-}
 
 /**
  * Extracts description from markdown content for meta descriptions
@@ -49,54 +43,19 @@ function extractDescription(markdown: string, maxLength: number = 160): string {
  * Generates metadata for a blog post
  */
 export function generateBlogMetadata(blog: BlogContentPost): Metadata {
-  const description = extractDescription(blog.content);
-  const canonicalUrl = `/blog/${blog.slug}`;
-  const imageUrl = blog.image || "/og-image.webp";
-
   return {
-    title: blog.title,
-    description,
-    authors: blog.authors.map((author) => ({ name: author.name })),
-
-    openGraph: {
-      title: blog.title,
-      description,
-      url: canonicalUrl,
-      siteName: siteConfig.name,
-      images: [
-        {
-          url: imageUrl,
-          width: 1200,
-          height: 630,
-          alt: blog.title,
-          type: "image/webp",
-        },
-      ],
+    ...generatePageMetadata({
+      title: blog.metaTitle ?? blog.title,
+      description: extractDescription(blog.content),
+      path: `/blog/${blog.slug}`,
+      image: blog.image || siteConfig.ogImage,
       type: "article",
       publishedTime: blog.date,
-      modifiedTime: blog.updated ?? blog.date,
+      modifiedTime: blogLastModified(blog),
       authors: blog.authors.map((author) => author.name),
       section: blog.category,
-    },
-
-    twitter: {
-      card: "summary_large_image",
-      title: blog.title,
-      description,
-      images: [
-        {
-          url: imageUrl,
-          width: 1200,
-          height: 630,
-          alt: blog.title,
-        },
-      ],
-      site: "@trygaia",
-      creator: "@trygaia",
-    },
-
-    alternates: { canonical: canonicalUrl },
-    robots: { index: true, follow: true },
+    }),
+    authors: blog.authors.map((author) => ({ name: author.name })),
   };
 }
 
@@ -120,7 +79,7 @@ export function generateUseCaseMetadata(
   ].join(", ");
 
   return {
-    // Absolute: the /use-cases layout sets its own title, so the root " | GAIA" template never reaches here.
+    // Absolute: brandedTitle has already decided whether " | GAIA" fits.
     title: { absolute: title },
     description,
     keywords,
@@ -177,23 +136,16 @@ export function generateUseCaseStructuredData(
     name: useCase.title,
     description: useCase.detailed_description || useCase.description,
     image: ogImageUrl,
-    publisher: {
-      "@type": "Organization",
-      name: siteConfig.short_name,
-      logo: {
-        "@type": "ImageObject",
-        url: toAbsoluteUrl("/images/logos/logo.webp"),
-      } as ImageObject,
-    } as Organization,
+    publisher: organizationRef,
     url: `${siteConfig.url}/use-cases/${useCase.slug}`,
     inLanguage: "en-US",
   };
 
   if (useCase.creator) {
-    structuredData.author = {
-      "@type": "Person",
-      name: useCase.creator.name,
-    } as Person;
+    // GAIA's own workflows are authored by the organization, not a person called "GAIA Team".
+    structuredData.author = isSystemCreator(useCase.creator)
+      ? organizationRef
+      : ({ "@type": "Person", name: useCase.creator.name } as Person);
   }
 
   if (useCase.steps && useCase.steps.length > 0) {

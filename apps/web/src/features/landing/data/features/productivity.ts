@@ -6,6 +6,7 @@ export const PRODUCTIVITY_FEATURES: FeatureData[] = [
     category: "Productivity",
     icon: "CheckListIcon",
     title: "Tasks & Todos",
+    metaTitle: "AI Task Manager: Add Todos in Plain Language",
     tagline: "Smart task management that understands natural language",
     headline: "Tasks that understand plain English.",
     subheadline:
@@ -97,6 +98,7 @@ export const PRODUCTIVITY_FEATURES: FeatureData[] = [
     category: "Productivity",
     icon: "Calendar02Icon",
     title: "Calendar",
+    metaTitle: "AI Calendar Assistant: Schedule and Prep Meetings",
     tagline: "Schedule, reschedule, and prep for meetings with AI",
     headline: "Schedule anything without opening your calendar.",
     subheadline:
@@ -189,6 +191,7 @@ export const PRODUCTIVITY_FEATURES: FeatureData[] = [
     category: "Productivity",
     icon: "Mail01Icon",
     title: "Email",
+    metaTitle: "AI Email Assistant: Triage, Summarize and Reply",
     tagline: "Triage, summarize, and compose email through AI",
     headline: "Inbox zero, with AI doing the work.",
     subheadline:
@@ -280,6 +283,7 @@ export const PRODUCTIVITY_FEATURES: FeatureData[] = [
     category: "Productivity",
     icon: "Target02Icon",
     title: "Goals",
+    metaTitle: "AI Goal Planner: A Step-by-Step Roadmap for Any Goal",
     tagline: "Set a goal, get an AI-generated roadmap to achieve it",
     headline: "Turn ambitions into step-by-step roadmaps.",
     subheadline:
@@ -371,6 +375,7 @@ export const PRODUCTIVITY_FEATURES: FeatureData[] = [
     category: "Productivity",
     icon: "AlarmClockIcon",
     title: "Reminders",
+    metaTitle: "AI Reminders: Set Them in Plain Language",
     tagline: "Set recurring or one-time reminders in plain language",
     headline: "Reminders that speak your language.",
     subheadline:
@@ -463,6 +468,7 @@ export const PRODUCTIVITY_FEATURES: FeatureData[] = [
     category: "Productivity",
     icon: "Pin02Icon",
     title: "Pins",
+    metaTitle: "Pinned Messages: Save Any AI Answer for Later",
     tagline: "Save and bookmark any message for later reference",
     headline: "Never lose an important insight again.",
     subheadline:
@@ -554,6 +560,7 @@ export const PRODUCTIVITY_FEATURES: FeatureData[] = [
     category: "Productivity",
     icon: "DashboardSquare03Icon",
     title: "Dashboard",
+    metaTitle: "AI Dashboard: Todos, Email and Calendar in One View",
     tagline: "Unified view of todos, emails, calendar, and workflows",
     headline: "Your entire work context in one view.",
     subheadline:

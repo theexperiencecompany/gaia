@@ -5,12 +5,10 @@ import type {
   Article,
   BreadcrumbList,
   ContactPage,
-  ContactPoint,
   DefinedTerm,
   FAQPage,
   HowTo,
   HowToStep,
-  ImageObject,
   ItemList,
   ListItem,
   Offer,
@@ -23,6 +21,7 @@ import type {
   WithContext,
 } from "schema-dts";
 
+import SEO_SNIPPET from "@/config/seoSnippet.json";
 import {
   ADVERTISED_PRO_MONTHLY,
   ADVERTISED_PRO_MONTHLY_PRICE,
@@ -51,7 +50,6 @@ export const siteConfig = {
     repo: "https://github.com/theexperiencecompany/gaia",
     discord: "https://discord.heygaia.io",
     linkedin: "https://www.linkedin.com/company/heygaia",
-    youtube: "https://youtube.com/@theexperiencecompany",
     whatsapp: "https://whatsapp.heygaia.io",
   },
   founders: [
@@ -69,6 +67,49 @@ export const siteConfig = {
     },
   ],
 } as const;
+
+/** One node per entity: every page declares the Organization and WebSite in full once and refers to them by these ids. */
+const ORGANIZATION_ID = `${SITE_URL}/#organization`;
+const WEBSITE_ID = `${SITE_URL}/#website`;
+const PRODUCT_ID = `${SITE_URL}/#product`;
+
+/** The GAIA Organization by reference, for every publisher, author and mainEntity that names it. */
+export const organizationRef = { "@id": ORGANIZATION_ID } as const;
+const websiteRef = { "@id": WEBSITE_ID } as const;
+
+export interface PersonProfile {
+  readonly name: string;
+  readonly jobTitle?: string;
+  readonly url?: string;
+  readonly sameAs?: readonly (string | undefined)[];
+}
+
+/** A person with a stable @id on the about page, so the same author on several pages is one entity. */
+function generatePersonSchema({
+  name,
+  jobTitle,
+  url,
+  sameAs = [],
+}: PersonProfile): Person {
+  const profiles = sameAs.filter((link): link is string => Boolean(link));
+  return {
+    "@type": "Person",
+    "@id": `${SITE_URL}/about#${name.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-")}`,
+    name,
+    ...(jobTitle && { jobTitle }),
+    ...(url && { url }),
+    ...(profiles.length > 0 && { sameAs: profiles }),
+  };
+}
+
+function founderSchema(founder: (typeof siteConfig.founders)[number]): Person {
+  return generatePersonSchema({
+    name: founder.name,
+    jobTitle: founder.role,
+    url: founder.linkedin,
+    sameAs: [founder.twitter, founder.linkedin],
+  });
+}
 
 // Common keywords for all pages
 const commonKeywords = [
@@ -113,7 +154,9 @@ export interface PageMetadataOptions {
 }
 
 /** Longest title a result snippet shows without truncating it. */
-const TITLE_MAX_LENGTH = 60;
+const TITLE_MAX_LENGTH = SEO_SNIPPET.titleLength.max;
+/** Shortest title that still says what the page is about. */
+const TITLE_MIN_LENGTH = SEO_SNIPPET.titleLength.min;
 /** Longest meta description a result snippet shows without truncating it. */
 const DESCRIPTION_MAX_LENGTH = 160;
 const BRAND_SUFFIX = ` | ${siteConfig.short_name}`;
@@ -138,9 +181,14 @@ function trimAtWord(text: string, max: number): string {
   return cut.slice(0, cut.lastIndexOf(" ")).trimEnd();
 }
 
-/** The most descriptive candidate that still takes the brand suffix, else the first that fits bare. */
+/** The most descriptive candidate that still takes the brand suffix and is not too short to describe the page, else the first that fits bare. */
 export function fitTitle(candidates: readonly string[]): string {
-  const branded = candidates.find(takesBrandSuffix);
+  const branded =
+    candidates.find(
+      (title) =>
+        takesBrandSuffix(title) &&
+        brandedTitle(title).length >= TITLE_MIN_LENGTH,
+    ) ?? candidates.find(takesBrandSuffix);
   if (branded) return branded;
   const bare = candidates.find((title) => title.length <= TITLE_MAX_LENGTH);
   return bare ?? trimAtWord(candidates.at(-1) ?? "", TITLE_MAX_LENGTH);
@@ -276,7 +324,7 @@ export function generateOrganizationSchema(): WithContext<Organization> {
   return {
     "@context": "https://schema.org",
     "@type": "Organization",
-    "@id": `${siteConfig.url}/#organization`,
+    "@id": ORGANIZATION_ID,
     name: siteConfig.short_name,
     alternateName: [
       "GAIA AI",
@@ -295,21 +343,13 @@ export function generateOrganizationSchema(): WithContext<Organization> {
       "@type": "Place",
       name: "India",
     },
-    founders: siteConfig.founders.map(
-      (founder): Person => ({
-        "@type": "Person",
-        name: founder.name,
-        jobTitle: founder.role,
-        sameAs: [founder.twitter, founder.linkedin].filter(Boolean),
-      }),
-    ),
+    founders: siteConfig.founders.map(founderSchema),
     // Profiles of this organization on other sites; its own domains and invite links are not sameAs.
     sameAs: [
       siteConfig.links.twitter,
       siteConfig.links.github,
       siteConfig.links.repo,
       siteConfig.links.linkedin,
-      siteConfig.links.youtube,
     ],
     contactPoint: {
       "@type": "ContactPoint",
@@ -329,12 +369,12 @@ export function generateWebSiteSchema(): WithContext<WebSite> {
   return {
     "@context": "https://schema.org",
     "@type": "WebSite",
-    "@id": `${siteConfig.url}/#website`,
+    "@id": WEBSITE_ID,
     name: siteConfig.short_name,
     alternateName: ["GAIA AI", "heygaia"],
     url: siteConfig.url,
     description: siteConfig.description,
-    publisher: { "@id": `${siteConfig.url}/#organization` },
+    publisher: organizationRef,
   };
 }
 
@@ -354,18 +394,10 @@ export function generateWebPageSchema(
     name: title,
     description,
     url,
-    author: {
-      "@type": "Organization",
-      name: siteConfig.short_name,
-      url: siteConfig.url,
-    },
+    author: organizationRef,
     datePublished: publishedDate ?? "2025-01-01",
     dateModified: new Date().toISOString().split("T")[0],
-    isPartOf: {
-      "@type": "WebSite",
-      url: siteConfig.url,
-      name: siteConfig.short_name,
-    },
+    isPartOf: websiteRef,
   };
 
   if (breadcrumbs && breadcrumbs.length > 0) {
@@ -459,7 +491,7 @@ export function generateProductSchema(): WithContext<SoftwareApplication> {
   return {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
-    "@id": `${siteConfig.url}/#product`,
+    "@id": PRODUCT_ID,
     name: siteConfig.short_name,
     applicationCategory: "ProductivityApplication",
     applicationSubCategory: "AI Assistant",
@@ -472,11 +504,7 @@ export function generateProductSchema(): WithContext<SoftwareApplication> {
       "Email management, Calendar automation, Task management, AI workflows, Integrations, Open source, Self-hostable",
     sameAs: [siteConfig.links.repo],
     offers: generateProOffer(),
-    author: {
-      "@type": "Organization",
-      name: siteConfig.short_name,
-      url: siteConfig.url,
-    } as Organization,
+    author: organizationRef,
   };
 }
 
@@ -490,7 +518,7 @@ export function generateArticleSchema(
   image: string,
   publishedDate: string,
   modifiedDate: string,
-  authors: Array<{ name: string; url?: string }>,
+  authors: readonly PersonProfile[],
   category?: string,
 ): WithContext<Article> {
   return {
@@ -502,21 +530,8 @@ export function generateArticleSchema(
     url,
     datePublished: publishedDate,
     dateModified: modifiedDate,
-    author: authors.map(
-      (author): Person => ({
-        "@type": "Person",
-        name: author.name,
-        url: author.url,
-      }),
-    ),
-    publisher: {
-      "@type": "Organization",
-      name: siteConfig.short_name,
-      logo: {
-        "@type": "ImageObject",
-        url: `${siteConfig.url}/images/logos/logo.webp`,
-      } as ImageObject,
-    } as Organization,
+    author: authors.map(generatePersonSchema),
+    publisher: organizationRef,
     mainEntityOfPage: {
       "@type": "WebPage",
       "@id": url,
@@ -585,17 +600,7 @@ export function generateContactPageSchema(): WithContext<ContactPage> {
     name: "Contact GAIA",
     description: "Get in touch with the GAIA team",
     url: `${siteConfig.url}/contact`,
-    mainEntity: {
-      "@type": "Organization",
-      name: siteConfig.short_name,
-      url: siteConfig.url,
-      contactPoint: {
-        "@type": "ContactPoint",
-        contactType: "Customer Support",
-        url: `${siteConfig.url}/contact`,
-        availableLanguage: ["English"],
-      } as ContactPoint,
-    } as Organization,
+    mainEntity: organizationRef,
   };
 }
 
@@ -609,19 +614,7 @@ export function generateAboutPageSchema(): WithContext<AboutPage> {
     name: "About GAIA",
     description: "Learn about GAIA's mission and the team behind it",
     url: `${siteConfig.url}/about`,
-    mainEntity: {
-      "@type": "Organization",
-      name: siteConfig.short_name,
-      description: siteConfig.description,
-      url: siteConfig.url,
-      founders: siteConfig.founders.map(
-        (founder): Person => ({
-          "@type": "Person",
-          name: founder.name,
-          jobTitle: founder.role,
-        }),
-      ),
-    } as Organization,
+    mainEntity: organizationRef,
   };
 }
 

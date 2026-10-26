@@ -7,6 +7,7 @@ import { getAllFAQs, getFAQSchema } from "@/lib/faq";
 import {
   generateBreadcrumbSchema,
   generatePageMetadata,
+  generateProductSchema,
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
@@ -47,7 +48,14 @@ export default function FAQPage() {
 
   return (
     <>
-      <JsonLd data={[faqSchema, webPageSchema, breadcrumbSchema]} />
+      <JsonLd
+        data={[
+          faqSchema,
+          webPageSchema,
+          breadcrumbSchema,
+          generateProductSchema(),
+        ]}
+      />
       <FAQPageClient faqs={faqs} />
       <FinalSection />
     </>

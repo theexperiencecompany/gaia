@@ -36,9 +36,9 @@
     "gaia_for_role_desc": "See how GAIA helps professionals in different roles",
     "gaia_vs_name": "GAIA vs {name}",
     "hub_title": "GAIA as Your Alternative",
-    "hub_subtitle": "Honest breakdowns of how GAIA replaces popular productivity, AI, and automation tools — with fit scores and migration steps for each.",
-    "hub_meta_title": "Best Alternatives to Popular Productivity Tools | GAIA",
-    "hub_meta_description": "See how GAIA replaces Notion, ChatGPT, Todoist, Zapier, Superhuman, Obsidian and more, with honest fit scores and migration steps for each.",
+    "hub_subtitle": "Honest breakdowns of how GAIA replaces popular productivity, AI, and automation tools, with fit scores and migration steps for each.",
+    "hub_meta_title": "Best Alternatives to Popular Productivity Tools",
+    "hub_meta_description": "See how GAIA replaces Notion, ChatGPT, Todoist, Zapier, Superhuman, Obsidian, and more, with honest fit scores and migration steps for each tool.",
     "best_name_alternative": "Best {name} Alternative",
     "category_productivity_suite": "Productivity Suites",
     "category_ai_assistant": "AI Assistants",
@@ -136,11 +136,12 @@
     "learn_ai_concepts_desc": "Explore the AI technology and concepts that power GAIA and modern productivity tools",
     "hub_title": "GAIA for Every Role",
     "hub_subtitle": "Every professional has unique workflows and pain points. GAIA adapts to your role, connecting the tools you already use and automating the tasks that drain your time.",
-    "hub_meta_title": "GAIA for Every Role - AI Assistant for Professionals",
-    "hub_meta_description": "See how GAIA helps developers, product managers, founders, marketers and more automate their workflows and get more done with AI.",
+    "hub_meta_title": "AI Assistant by Role: How GAIA Fits Your Job",
+    "hub_meta_description": "See how GAIA helps software developers, product managers, founders, marketers, and many other roles automate their workflows. Find the guide for your role.",
     "featured_experiences": "Featured Experiences",
     "see_full_experience": "See the full experience",
     "all_roles": "All Roles",
-    "read_more": "Read more"
+    "read_more": "Read more",
+    "related_roles": "Other Roles GAIA Helps"
   }
 }

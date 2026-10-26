@@ -24,7 +24,6 @@ import {
   LinkedinIcon,
   TwitterIcon,
   WhatsappIcon,
-  YoutubeIcon,
 } from "@/components/shared/icons";
 import { vanityTarget } from "../../vanity-redirects.mjs";
 
@@ -331,14 +330,6 @@ export const appConfig = {
         "Join WhatsApp Community",
       ),
       socialLink(
-        "https://youtube.com/@theexperiencecompany",
-        "YouTube",
-        YoutubeIcon,
-        "#FF0000",
-        "Subscribe to our YouTube Channel",
-        25,
-      ),
-      socialLink(
         "https://www.linkedin.com/company/heygaia",
         "LinkedIn",
         LinkedinIcon,
@@ -453,6 +444,7 @@ export const footerSections: LinkSection[] = [
         external: true,
       },
       { label: "Blog", href: "/blog" },
+      { label: "FAQ", href: "/faq" },
       {
         label: "Release Notes",
         href: "https://docs.heygaia.io/release-notes",

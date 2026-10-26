@@ -11,7 +11,7 @@ import {
 } from "@/lib/seo";
 
 export const metadata: Metadata = generatePageMetadata({
-  title: "About",
+  title: "About GAIA: The Team Building Your Proactive AI",
   description:
     "Meet the founders behind GAIA and why they are building a personal AI assistant that does the work: email, meetings, and scheduling. Read the story and vision.",
   path: "/about",

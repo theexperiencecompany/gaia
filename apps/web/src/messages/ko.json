@@ -37,7 +37,7 @@
     "gaia_vs_name": "GAIA vs {name}",
     "hub_title": "GAIA를 대안으로",
     "hub_subtitle": "GAIA가 30개의 인기 생산성, AI, 자동화 도구를 어떻게 대체하는지에 대한 정직한 분석 — 적합도 점수와 마이그레이션 단계 포함.",
-    "hub_meta_title": "인기 생산성 도구의 최고의 대안 | GAIA",
+    "hub_meta_title": "인기 생산성 도구를 대체할 최고의 대안",
     "hub_meta_description": "GAIA가 Notion, ChatGPT, Todoist, Zapier, Superhuman, Obsidian 등 24개 이상의 도구를 어떻게 대체하는지 확인하세요. 정직한 적합도 점수와 마이그레이션 단계.",
     "best_name_alternative": "최고의 {name} 대안",
     "category_productivity_suite": "생산성 스위트",
@@ -136,11 +136,12 @@
     "learn_ai_concepts_desc": "GAIA와 현대 생산성 도구를 구동하는 AI 기술과 개념 탐색",
     "hub_title": "모든 역할을 위한 GAIA",
     "hub_subtitle": "모든 전문가에게는 고유한 워크플로우와 어려움이 있습니다. GAIA는 이미 사용 중인 도구를 연결하고 시간을 소모하는 작업을 자동화하여 역할에 맞게 적응합니다.",
-    "hub_meta_title": "모든 역할을 위한 GAIA - 전문가를 위한 AI 어시스턴트",
+    "hub_meta_title": "직무별 AI 어시스턴트: GAIA가 당신의 업무에 맞는 방법",
     "hub_meta_description": "GAIA가 소프트웨어 개발자, 제품 관리자, 창업자, 마케터 등 20개 이상의 역할의 워크플로우 자동화와 생산성 향상을 어떻게 돕는지 알아보세요.",
     "featured_experiences": "추천 경험",
     "see_full_experience": "전체 경험 보기",
     "all_roles": "모든 역할",
-    "read_more": "더 읽기"
+    "read_more": "더 읽기",
+    "related_roles": "GAIA가 돕는 다른 직무"
   }
 }

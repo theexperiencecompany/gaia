@@ -4954,5 +4954,337 @@
         "competitor": "Un essai, puis des offres mensuelles ou annuelles pour les particuliers et des offres équipe par utilisateur"
       }
     ]
+  },
+  "bee": {
+    "name": "Bee",
+    "tagline": "Se souvenir grâce à un wearable, c'est la moitié du travail. GAIA fait le reste.",
+    "metaTitle": "Alternative à Bee : une IA qui passe à l'action",
+    "metaDescription": "Vous aimez la mémoire du wearable Bee mais il vous faut de l'action ? GAIA, l'alternative source-available à Bee, transforme le contexte en travail accompli.",
+    "keywords": [
+      "alternative à bee",
+      "alternative à bee ai",
+      "alternative à bee frontier",
+      "remplacer le wearable bee",
+      "meilleure alternative à bee"
+    ],
+    "painPoints": [
+      "Une mémoire sans action : Bee se souvient, mais c'est toujours vous qui faites tout",
+      "Aucun tri de la boîte de réception au-delà de quelques suivis suggérés",
+      "Il faut porter un appareil dédié tous les jours",
+      "Certaines fonctions sont réservées à l'abonnement Bee Pro",
+      "Appareil fermé, lié à la feuille de route d'une seule entreprise"
+    ],
+    "whyPeopleLook": "Bee attire exactement le bon public : des personnes qui veulent une technologie capable de se souvenir à leur place, pour un prix matériel honnête. Le manque se situe après la mémoire. Un historique consultable de la conversation de mardi ne rédige pas le suivi de mercredi. Ceux qui cherchent une alternative à Bee veulent la moitié manquante : de l'action sur les e-mails, l'agenda et les tâches, sans porter de matériel.",
+    "gaiaReplaces": [
+      "Agir à la main sur les conversations dont Bee se souvient",
+      "Recopier à la main les points clés dans vos tâches",
+      "Changer d'application pour donner suite au contexte mémorisé",
+      "Porter du matériel pour obtenir ce qu'un logiciel sait faire"
+    ],
+    "gaiaAdvantages": [
+      "Transforme le contexte mémorisé en e-mails rédigés et en tâches créées",
+      "Automatisation poussée de Gmail et de l'agenda, que Bee ne tente même pas",
+      "Intégrations profondes avec les outils que vous utilisez déjà",
+      "Fait remonter l'essentiel de façon proactive, sans attendre vos questions",
+      "Aucun matériel à acheter"
+    ],
+    "migrationSteps": [
+      "Gardez Bee pour la capture si vous adorez le wearable",
+      "Connectez Gmail, votre agenda et votre outil de tâches à GAIA",
+      "Orientez GAIA vers les réunions que Bee enregistre",
+      "Laissez GAIA rédiger les suivis et créer les tâches à partir de ce contexte"
+    ],
+    "faqs": [
+      {
+        "question": "En quoi GAIA est-il différent de Bee ?",
+        "answer": "Bee se souvient de ce qui a été dit autour de vous grâce à son wearable. GAIA se souvient puis agit : il rédige des e-mails, crée des tâches et planifie des événements à partir de ce contexte, dans tous vos outils."
+      },
+      {
+        "question": "Dois-je acheter du matériel pour utiliser GAIA ?",
+        "answer": "Aucun matériel n'est nécessaire. GAIA fonctionne sur le web, sur ordinateur, sur mobile et dans les messageries, avec le téléphone et l'ordinateur portable que vous possédez déjà. Bee impose de porter le bracelet ou le clip Frontier, qui sont payants."
+      },
+      {
+        "question": "Combien coûte Bee, et combien coûte GAIA ?",
+        "answer": "Le Frontier est un matériel payant, et Bee Pro, requis pour certaines fonctions, est une offre payante avec période d'essai. GAIA hébergé est une offre payante à ${{PRO_MONTHLY_PRICE}}/mois, sans matériel à acheter. Il est source-available et peut être auto-hébergé via Docker, gratuitement pour un usage non commercial : aucune fermeture ni aucun abonnement ne peut vous le retirer."
+      }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "Approche principale",
+        "gaia": "La mémoire passe aux résultats : le contexte mémorisé devient du travail accompli",
+        "competitor": "Bracelet ou clip wearable qui capte et restitue les conversations"
+      },
+      {
+        "feature": "Mémoire",
+        "gaia": "Mémoire liée aux tâches, e-mails et événements, pour que les points clés deviennent des actions",
+        "competitor": "Points clés consultables, résumés et chronologie de chaque journée"
+      },
+      {
+        "feature": "Ce qu'il fait",
+        "gaia": "E-mails rédigés, événements planifiés, tâches créées et workflows exécutés dans tous vos outils",
+        "competitor": "Tâches suggérées, plus brouillons d'e-mails et d'événements d'agenda"
+      },
+      {
+        "feature": "Matériel",
+        "gaia": "Aucun bracelet à acheter, porter ou recharger : toute la valeur vient du logiciel sur vos propres appareils",
+        "competitor": "Oblige à porter et recharger le matériel Frontier, qui est payant"
+      },
+      {
+        "feature": "Intégrations",
+        "gaia": "Intégrations natives de messagerie, agenda, tâches, chat et code, sans fonctions essentielles réservées à une offre Pro",
+        "competitor": "Intégrations messagerie, agenda et Alexa ; certaines fonctions exigent Bee Pro"
+      },
+      {
+        "feature": "Confidentialité",
+        "gaia": "Toute la pile sous votre contrôle grâce au code source-available et à l'auto-hébergement",
+        "competitor": "Audio traité instantanément puis supprimé ; chiffrement que vous contrôlez"
+      }
+    ]
+  },
+  "granola": {
+    "name": "Granola",
+    "tagline": "Des notes de réunion qui restent des notes tant que vous n'agissez pas",
+    "metaTitle": "Alternative à Granola : des notes à l'action",
+    "metaDescription": "Vous cherchez une alternative à Granola ? GAIA est une IA source-available qui transforme vos réunions en tâches, e-mails et workflows. Auto-hébergeable.",
+    "keywords": [
+      "alternative à granola",
+      "meilleure alternative à granola",
+      "remplacer granola",
+      "alternative à granola pour les notes de réunion",
+      "alternative ia à granola",
+      "alternative source-available à granola",
+      "alternative auto-hébergée à granola",
+      "alternative à granola {{CURRENT_YEAR}}"
+    ],
+    "painPoints": [
+      "Mac uniquement : aucune solution Windows, web ou mobile pour les équipes mixtes",
+      "Les notes contiennent les actions à mener, mais ne les envoient pas d'elles-mêmes vers vos outils de tâches",
+      "Aucun briefing avant réunion à partir du contexte de la boîte mail et de l'agenda",
+      "Aucun tri des e-mails, aucune rédaction ni automatisation des suivis",
+      "Application propriétaire sans option d'auto-hébergement pour les équipes réglementées"
+    ],
+    "whyPeopleLook": "Granola améliore la note de réunion. Vous prenez toujours les notes, Granola les structure, puis le travail s'arrête à la note. Les actions à mener restent dans la note jusqu'à ce que vous les recopiiez, les suivis attendent que vous les écriviez et l'agenda n'en entend jamais parler. Ceux qui cherchent une alternative à Granola veulent que la réunion déclenche le travail : tâches enregistrées, e-mails rédigés et briefings prêts avant le prochain appel.",
+    "gaiaReplaces": [
+      "Transformer les conclusions des réunions en tâches dans Todoist, Linear ou Jira",
+      "Briefings avant réunion à partir de l'historique de la boîte mail et de l'agenda",
+      "E-mails de suivi après réunion rédigés à partir du contexte",
+      "Recopie manuelle des actions à mener depuis les notes vers vos outils"
+    ],
+    "gaiaAdvantages": [
+      "Transforme automatiquement les conclusions des réunions en tâches, e-mails et documents",
+      "Fonctionne sur le web, sur ordinateur et sur mobile, pas seulement sur Mac",
+      "Source-available et auto-hébergeable pour un contrôle total des données",
+      "Relie les réunions à Gmail, à l'agenda et au reste de vos outils",
+      "L'auto-hébergement est gratuit pour un usage non commercial (hors coûts d'API de votre propre modèle)"
+    ],
+    "migrationSteps": [
+      "Gardez Granola pour les notes en réunion pendant votre évaluation",
+      "Connectez Google Calendar et Gmail pour que GAIA voie le contexte de vos réunions",
+      "Envoyez à GAIA une note de réunion récente et demandez-lui les tâches et les suivis",
+      "Envoyez automatiquement les nouvelles conclusions de réunion vers votre outil de tâches"
+    ],
+    "faqs": [
+      {
+        "question": "GAIA enrichit-il les notes comme Granola ?",
+        "answer": "GAIA suit une autre voie. Au lieu de peaufiner les notes prises pendant l'appel, il prépare des briefings avant l'appel, puis enregistre les tâches et les e-mails de suivi après. Vous pouvez coller des notes Granola dans GAIA et il agira sur leur contenu."
+      },
+      {
+        "question": "GAIA est-il aussi confidentiel que le traitement local de Granola ?",
+        "answer": "Granola traite l'audio sur votre Mac par défaut. GAIA auto-hébergé conserve toutes les données sur votre propre infrastructure, ce qui offre une garantie de confidentialité comparable avec une automatisation bien plus large. GAIA hébergé traite les données dans le cloud, comme les autres outils SaaS."
+      },
+      {
+        "question": "GAIA fonctionne-t-il sous Windows ?",
+        "answer": "Oui. GAIA fonctionne sur le web, sur ordinateur pour Mac et Windows, et sur mobile. Granola est réservé au Mac, ce qui bloque les équipes qui utilisent plusieurs systèmes d'exploitation."
+      },
+      {
+        "question": "Combien coûte GAIA ?",
+        "answer": "GAIA hébergé est une offre payante à ${{PRO_MONTHLY_PRICE}}/mois, et l'auto-hébergement est gratuit pour un usage non commercial (hors coûts d'API de votre propre modèle). Vous payez pour une automatisation qui couvre tous vos outils, pas seulement pour l'amélioration de notes."
+      }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "Approche principale",
+        "gaia": "Passez à un assistant qui transforme les réunions en travail accompli : tâches enregistrées, e-mails rédigés, agenda mis à jour",
+        "competitor": "Bloc-notes local sur Mac qui enrichit vos propres notes de réunion avec l'IA, traitées sur l'appareil pour la confidentialité"
+      },
+      {
+        "feature": "Modèle de confidentialité",
+        "gaia": "Auto-hébergez toute la pile sur votre infrastructure quand le traitement local ne suffit pas",
+        "competitor": "Traitement sur l'appareil, sur Mac ; l'audio et le contenu des réunions restent en local par défaut"
+      },
+      {
+        "feature": "Approche des notes de réunion",
+        "gaia": "Les conclusions des réunions sont extraites automatiquement vers des workflows : les notes deviennent des actions sans copier-coller",
+        "competitor": "Enrichit vos notes personnelles pendant la réunion en les structurant et en comblant les manques grâce à l'IA"
+      },
+      {
+        "feature": "Plateformes disponibles",
+        "gaia": "Travaillez depuis le web, l'ordinateur et le mobile sur n'importe quel système, pas seulement sur le Mac de votre bureau",
+        "competitor": "Mac uniquement ; aucune application Windows, iOS ou Android"
+      },
+      {
+        "feature": "Création de tâches à partir des réunions",
+        "gaia": "Les conclusions arrivent d'elles-mêmes dans Todoist, Linear, Asana, Jira ou ClickUp après chaque réunion",
+        "competitor": "Les notes contiennent les actions à mener ; aucun envoi automatique vers des gestionnaires de tâches externes"
+      },
+      {
+        "feature": "Briefings avant réunion",
+        "gaia": "Arrivez préparé : un briefing généré automatiquement à partir de l'historique de la boîte mail et des outils connectés avant chaque appel",
+        "competitor": "Aucune fonction de préparation avant réunion"
+      },
+      {
+        "feature": "Automatisation des e-mails de suivi",
+        "gaia": "Suivis rédigés et envoyés depuis Gmail avec le contexte de la réunion joint",
+        "competitor": "Aucune automatisation des e-mails"
+      },
+      {
+        "feature": "Gestion des e-mails",
+        "gaia": "La boîte de réception est gérée elle aussi : tri, brouillons et e-mail vers tâche au même endroit que le travail issu des réunions",
+        "competitor": "Aucune gestion des e-mails"
+      },
+      {
+        "feature": "Automatisation des workflows",
+        "gaia": "Les réunions déclenchent des workflows en plusieurs étapes dans vos outils, décrits en langage courant",
+        "competitor": "Aucun moteur d'automatisation des workflows"
+      },
+      {
+        "feature": "Intégration de l'agenda",
+        "gaia": "Agenda entièrement géré : événements, créneaux, briefings et déclencheurs, pas seulement une liste de réunions",
+        "competitor": "Se synchronise avec l'agenda pour afficher les réunions à venir ; aucune gestion autonome de l'agenda"
+      },
+      {
+        "feature": "Source-available",
+        "gaia": "Inspectez, forkez et auto-hébergez le code sur GitHub au lieu de faire confiance à un binaire fermé",
+        "competitor": "Application propriétaire au code fermé"
+      },
+      {
+        "feature": "Tarifs",
+        "gaia": "Hébergé : offre payante à ${{PRO_MONTHLY_PRICE}}/mois ; auto-hébergement gratuit pour un usage non commercial (hors coûts d'API de votre propre modèle)",
+        "competitor": "Offre gratuite et offres payantes disponibles."
+      }
+    ]
+  },
+  "lark": {
+    "name": "Lark",
+    "tagline": "Une suite pour le chat, les documents et la vidéo qui attend toujours que vous la pilotiez",
+    "metaTitle": "Alternative à Lark : un assistant IA source-available",
+    "metaDescription": "Vous cherchez une alternative à Lark ? GAIA est une IA source-available qui trie vos e-mails, gère vos tâches et exécute vos workflows. Auto-hébergeable.",
+    "keywords": [
+      "alternative à lark",
+      "meilleure alternative à lark",
+      "alternative à larksuite",
+      "remplacer lark",
+      "alternative ia à lark",
+      "alternative source-available à lark",
+      "alternative auto-hébergée à lark",
+      "alternative à lark {{CURRENT_YEAR}}"
+    ],
+    "painPoints": [
+      "Sa valeur dépend de l'adoption par toute l'équipe : si seule une partie utilise Lark, les liens entre les produits ne tiennent plus",
+      "Les automatisations exigent de configurer des règles à la main et de les entretenir : rien ne se passe tant que vous n'avez pas défini de déclencheurs",
+      "Aucune gestion de la boîte Gmail : les e-mails externes restent hors de la messagerie Lark",
+      "La propriété de ByteDance soulève des questions de résidence des données pour les équipes réglementées",
+      "Consolider implique de migrer : chat, documents, agenda et vidéo doivent tous passer sur Lark pour en tirer le bénéfice"
+    ],
+    "whyPeopleLook": "Lark promet une seule suite pour le chat, les documents, l'agenda et la vidéo. Cela fonctionne quand toute l'équipe migre. La plupart des équipes ne migrent pas. Elles gardent Gmail, Slack, GitHub et Notion, et Lark devient une plateforme de plus à consulter. Ceux qui cherchent une alternative à Lark veulent une IA qui travaille avec les outils qu'ils utilisent déjà, sans migration et sans configuration manuelle de règles.",
+    "gaiaReplaces": [
+      "Préparation des réunions à partir du contexte de l'agenda et de la boîte mail",
+      "Création de tâches à partir des e-mails sans configurer de règles",
+      "Suivis qui couvrent Gmail, Slack et les documents",
+      "Automatisation des workflows décrite en langage courant"
+    ],
+    "gaiaAdvantages": [
+      "Fonctionne avec vos outils actuels, sans migration vers une suite",
+      "Agit de façon proactive sur les e-mails et l'agenda sans configuration manuelle de déclencheurs",
+      "Source-available et auto-hébergeable pour un contrôle total des données",
+      "Workflows en langage naturel sur toutes vos intégrations",
+      "L'auto-hébergement est gratuit pour un usage non commercial (hors coûts d'API de votre propre modèle), sans coût par utilisateur"
+    ],
+    "migrationSteps": [
+      "Gardez Lark pour le chat et la vidéo de l'équipe pendant votre évaluation",
+      "Connectez Gmail et Google Calendar à GAIA pour lui donner le contexte de votre boîte mail et de votre planning",
+      "Confiez à GAIA un workflow récurrent, comme la préparation des réunions ou le tri des e-mails",
+      "Étendez à Slack, Notion ou votre outil de tâches une fois le premier workflow adopté"
+    ],
+    "faqs": [
+      {
+        "question": "GAIA peut-il remplacer le chat, les documents et la vidéo de Lark ?",
+        "answer": "Non. GAIA ne fournit ni chat d'équipe, ni visioconférence, ni coédition de documents. Il se connecte aux outils que vous utilisez déjà, comme Gmail, Slack et Google Calendar, et automatise le travail entre eux. Les équipes qui ont besoin d'une suite tout-en-un ont toujours besoin d'outils de chat et de vidéo dédiés en plus de GAIA."
+      },
+      {
+        "question": "Comment l'automatisation de GAIA se compare-t-elle aux règles de workflow de Lark ?",
+        "answer": "Lark exécute les automatisations que vous configurez avec des déclencheurs et des conditions au sein de sa plateforme. GAIA reçoit des instructions en langage courant et orchestre les actions entre les outils connectés. GAIA surveille aussi le contexte de la boîte mail et de l'agenda et propose les prochaines étapes sans déclencheur prédéfini."
+      },
+      {
+        "question": "GAIA est-il une bonne alternative à Lark pour les équipes attentives à la confidentialité ?",
+        "answer": "GAIA est source-available et auto-hébergeable : les données restent sur votre propre infrastructure. Lark appartient à ByteDance, ce qui soulève des questions de résidence des données pour certaines équipes réglementées. Les entreprises réglementées peuvent auto-héberger GAIA sous licence entreprise (contactez l'équipe GAIA) pour contrôler entièrement l'emplacement des données."
+      },
+      {
+        "question": "Combien coûte GAIA par rapport à Lark ?",
+        "answer": "GAIA hébergé est une offre payante à ${{PRO_MONTHLY_PRICE}}/mois, et l'auto-hébergement est gratuit pour un usage non commercial (hors coûts d'API de votre propre modèle). Les offres payantes de Lark sont facturées par utilisateur, et chaque utilisateur de GAIA a aussi besoin de sa propre offre ; GAIA ajoute l'automatisation par l'IA sans migrer toute la suite."
+      }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "Approche principale",
+        "gaia": "Pas de migration vers une suite : GAIA travaille avec les outils que vous utilisez déjà et agit sur eux",
+        "competitor": "Suite collaborative unifiée qui réunit chat, documents, tableurs, agenda, vidéo et gestion de projet"
+      },
+      {
+        "feature": "Capacités d'IA",
+        "gaia": "Briefings, brouillons, tâches et exécution entre outils sans configurer la moindre règle",
+        "competitor": "Lark AI aide à rédiger, résumer des documents et générer du contenu dans la plateforme ; l'automatisation des workflows exige de configurer des règles explicites"
+      },
+      {
+        "feature": "Intégration des e-mails",
+        "gaia": "Gardez votre Gmail : gestion complète de votre vraie boîte de réception, avec tâches et notes créées automatiquement",
+        "competitor": "Aucune gestion de la boîte pour les e-mails externes ; la messagerie interne passe par la messagerie propre à Lark"
+      },
+      {
+        "feature": "Gestion des tâches",
+        "gaia": "Tâches avec priorités et échéances créées à partir des e-mails et des conversations, hors de tout module particulier",
+        "competitor": "Gestion des tâches intégrée au module projet de Lark ; tâches liées aux documents et messages au sein de la plateforme"
+      },
+      {
+        "feature": "Intégration de l'agenda",
+        "gaia": "Google Calendar lu, mis à jour et résumé automatiquement, en même temps que les e-mails et les tâches",
+        "competitor": "Agenda intégré avec planification des réunions, partage des disponibilités et visioconférence intégrée dans Lark"
+      },
+      {
+        "feature": "Comportement proactif",
+        "gaia": "Informations et actions arrivent avant que vous ne demandiez, grâce à une surveillance qui n'a jamais besoin de déclencheur",
+        "competitor": "Plateforme réactive : les automatisations s'exécutent sur les déclencheurs que vous configurez ; aucune surveillance continue du contexte de travail externe"
+      },
+      {
+        "feature": "Intégrations",
+        "gaia": "Gmail, Slack, GitHub, Notion, Todoist, Linear, Jira et d'autres via MCP, bidirectionnelles et approfondies",
+        "competitor": "Plus de 250 intégrations dans l'écosystème Lark ; solide au sein de sa propre suite, mais les intégrations externes demandent de la configuration"
+      },
+      {
+        "feature": "Automatisation des workflows",
+        "gaia": "Workflows en langage courant avec n'importe quel outil connecté, sans outil de chaînes d'approbation à apprendre",
+        "competitor": "Automatisation à base de règles pour les chaînes d'approbation, les notifications et les mises à jour de données dans la plateforme Lark"
+      },
+      {
+        "feature": "Source-available",
+        "gaia": "Auditez le code et auto-hébergez-le via Docker, en gardant les données sur votre propre infrastructure",
+        "competitor": "SaaS propriétaire au code fermé, détenu par ByteDance ; aucune option d'auto-hébergement ; données soumises aux pratiques de ByteDance"
+      },
+      {
+        "feature": "Résidence des données",
+        "gaia": "Choisissez précisément où vivent les données en auto-hébergeant, sans aucune exposition à des tiers",
+        "competitor": "Centres de données aux États-Unis, en Europe et en Asie ; la propriété de ByteDance soulève des inquiétudes de souveraineté des données pour certaines organisations"
+      },
+      {
+        "feature": "Tarifs",
+        "gaia": "Hébergé : offre payante à ${{PRO_MONTHLY_PRICE}}/mois ; auto-hébergement gratuit pour un usage non commercial (hors coûts d'API de votre propre modèle)",
+        "competitor": "Offre gratuite et offres payantes disponibles ; tarif par utilisateur ; offres entreprise disponibles."
+      },
+      {
+        "feature": "Plateformes disponibles",
+        "gaia": "Windows, macOS, Linux, iOS et Android couverts depuis le web, l'ordinateur et le mobile",
+        "competitor": "Web, applications de bureau pour macOS et Windows, et applications mobiles pour iOS et Android"
+      }
+    ]
   }
 }

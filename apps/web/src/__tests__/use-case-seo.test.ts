@@ -107,6 +107,17 @@ describe("generateUseCaseTitle", () => {
     );
   });
 
+  it("picks a longer candidate over one too short to describe the page", () => {
+    const shortTitle = makeUseCase({
+      title: "Plan",
+      integrations: ["general"],
+      steps: stepsFor(["general"]),
+    });
+    const rendered = renderedTitle(generateUseCaseMetadata(shortTitle).title);
+    expect(rendered.length, rendered).toBeGreaterThanOrEqual(30);
+    expect(rendered.length, rendered).toBeLessThanOrEqual(60);
+  });
+
   it("trims a title too long for the snippet at a word, without the suffix", () => {
     const rendered = renderedTitle(generateUseCaseMetadata(LONG_TITLE).title);
     expect(rendered.length).toBeLessThanOrEqual(60);

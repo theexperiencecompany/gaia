@@ -5243,5 +5243,30 @@
         "answer": "Sie sind KI-Assistenten, genauer sprachorientierte digitale Assistenten: Sie handeln (Timer stellen, Smart-Home-Geräte steuern, Kalendertermine eintragen), statt nur zu plaudern. Für die Arbeit, etwa E-Mails sortieren oder mehrstufige Workflows ausführen, reichen sie nur begrenzt, und genau diese Lücke schließen Produktivitätsassistenten wie GAIA."
       }
     ]
+  },
+  "bee": {
+    "term": "Bee",
+    "metaTitle": "Was ist Bee? Amazons KI-Wearable: vom Erinnern zum Handeln",
+    "metaDescription": "Bee ist Amazons kostenpflichtige tragbare KI, die Gespräche in durchsuchbare Kernaussagen verwandelt. Erfahren Sie, was sie kann und was zum Handeln nötig ist.",
+    "definition": "Bee ist Amazons tragbare KI: ein kostenpflichtiges Frontier-Armband oder ein Clip, der Ihnen den ganzen Tag zuhört und Gespräche in durchsuchbare Kernaussagen, Zusammenfassungen und To-dos verwandelt.",
+    "extendedDescription": "Das Versprechen von Bee ist einfach: ein Wearable, das sich erinnert, damit Sie es nicht müssen. Der Frontier wird an die Kleidung geklemmt oder am Handgelenk getragen, hält 7 Tage pro Ladung und macht aus den Gesprächen des Tages eine durchsuchbare Zeitleiste mit Kernaussagen, Zusammenfassungen, vorgeschlagenen To-dos sowie Entwürfen für E-Mails und Kalendertermine.\n\nErinnerung ist wirklich nützlich, aber sie ist nur die Hälfte des Kreislaufs. Ein durchsuchbares Protokoll eines Gesprächs verschickt kein Follow-up, verschiebt kein Meeting und legt keine Aufgabe an. Genau bei dieser zweiten Hälfte setzen Assistenten wie GAIA an: Sie nehmen den erfassten Kontext und handeln danach, in E-Mail, Kalender und Aufgaben.\n\nDie Positionierung zählt mehr als die Hardware. Wearables kommen und gehen, doch das Muster wiederholt sich: Erfassen ohne Handeln lässt die Arbeit bei Ihnen. Wer am meisten aus Bee herausholt, kombiniert das Gedächtnis mit etwas, das die Arbeit tatsächlich erledigt.",
+    "howGaiaUsesIt": "GAIA ist die handelnde Hälfte des Bee-Kreislaufs: source-available und für die nicht-kommerzielle Nutzung per Docker selbst hostbar. Verbinden Sie Gmail und Ihren Kalender, und GAIA macht aus demselben täglichen Kontext, den Bee aufzeichnet, entworfene Follow-ups, geplante Meetings und erledigte Aufgaben, auf einer Infrastruktur, die Sie kontrollieren.",
+    "keywords": [
+      "Bee AI",
+      "was ist Bee AI",
+      "Bee Frontier",
+      "Bee Wearable",
+      "Amazon Bee"
+    ],
+    "faqs": [
+      {
+        "question": "Was ist Bee?",
+        "answer": "Bee ist Amazons tragbare KI. Das kostenpflichtige Frontier-Armband oder der Clip erfasst Gespräche und macht daraus durchsuchbare Kernaussagen, Zusammenfassungen, To-dos sowie Entwürfe für E-Mails und Termine."
+      },
+      {
+        "question": "Was macht aus der Erinnerung von Bee echtes Handeln?",
+        "answer": "Ein Wearable erinnert sich. GAIA erinnert sich und handelt dann: Es sortiert E-Mails, entwirft Antworten, plant Meetings und führt Workflows über Ihre Tools aus, ganz ohne Hardware."
+      }
+    ]
   }
 }

@@ -8,6 +8,7 @@ import {
   generateBreadcrumbSchema,
   generateFAQSchema,
   generatePageMetadata,
+  generateProductSchema,
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
@@ -56,7 +57,14 @@ export default function LandingPage() {
           rel="preload"> is needed — a manual one points at the raw asset URL,
           not the optimized /_next/image URL the component actually fetches, so
           it just wastes bandwidth on the LCP path. */}
-      <JsonLd data={[webPageSchema, breadcrumbSchema, faqSchema]} />
+      <JsonLd
+        data={[
+          webPageSchema,
+          breadcrumbSchema,
+          faqSchema,
+          generateProductSchema(),
+        ]}
+      />
       <LandingPageClient latestRelease={latestRelease} />
     </>
   );

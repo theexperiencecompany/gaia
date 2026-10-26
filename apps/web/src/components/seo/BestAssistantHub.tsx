@@ -17,6 +17,7 @@ import {
 import { BestHubRunnersUp } from "./BestHubRankedSections";
 import { BestHubIntro, BestHubTable } from "./BestHubRanking";
 import { BestHubBreadcrumb, BestHubHeader } from "./BestHubSections";
+import { BestHubSiblingLinks } from "./BestHubSiblingLinks";
 import { BestHubUseCases } from "./BestHubUseCases";
 import type { BestHubConfig } from "./bestAssistantHubConfig";
 import { loadBestHubData } from "./bestAssistantHubData";
@@ -86,6 +87,7 @@ export default async function BestAssistantHub({
           title={config.alternativesTitle}
           alternatives={listedAlternatives}
         />
+        <BestHubSiblingLinks currentPath={config.pagePath} />
       </article>
       <FinalSection />
     </>

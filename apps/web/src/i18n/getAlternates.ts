@@ -51,7 +51,7 @@ export function getAlternates(path: string): Record<string, string> {
  * (308s in `canonical-redirects.mjs`), so every rendered page canonicalizes
  * to itself — no override parameter.
  */
-export function getLocalizedAlternates(
+function getLocalizedAlternates(
   path: string,
   locale: string,
 ): { canonical: string; languages: Record<string, string> } {
@@ -63,15 +63,19 @@ export function getLocalizedAlternates(
 
 /**
  * Page metadata for a translated route: `generatePageMetadata` plus the
- * locale-aware self-canonical + hreflang block, in one call. Use on every page
- * under a translated route family instead of repeating the spread-and-override.
+ * locale-aware self-canonical + hreflang block, with og:url on that canonical,
+ * in one call. Use on every page under a translated route family instead of
+ * repeating the spread-and-override.
  */
 export function generateLocalizedPageMetadata(
   options: PageMetadataOptions & { locale: string },
 ): Metadata {
   const { locale, ...pageOptions } = options;
+  const metadata = generatePageMetadata(pageOptions);
+  const alternates = getLocalizedAlternates(pageOptions.path, locale);
   return {
-    ...generatePageMetadata(pageOptions),
-    alternates: getLocalizedAlternates(pageOptions.path, locale),
+    ...metadata,
+    alternates,
+    openGraph: { ...metadata.openGraph, url: alternates.canonical },
   };
 }

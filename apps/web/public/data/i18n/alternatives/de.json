@@ -4395,7 +4395,7 @@
       },
       {
         "question": "Was kostet GAIA?",
-        "answer": "Der gehostete Dienst von GAIA ist ein kostenpflichtiges Abo, Pro kostet ${{PRO_MONTHLY_PRICE}}/Monat. Self-Hosting ist für den privaten, nicht kommerziellen Gebrauch unter der PolyForm-Noncommercial-Lizenz kostenlos."
+        "answer": "Der gehostete Dienst von GAIA ist ein kostenpflichtiges Abo, Pro kostet ${{PRO_MONTHLY_PRICE}}/Monat. Self-Hosting ist für den privaten, nicht-kommerziellen Gebrauch unter der PolyForm-Noncommercial-Lizenz kostenlos."
       },
       {
         "question": "Wie wechsle ich von Poke zu GAIA?",
@@ -4582,7 +4582,7 @@
       },
       {
         "question": "Was kostet GAIA?",
-        "answer": "Der gehostete Dienst von GAIA ist ein kostenpflichtiges Abo pro Person, Pro kostet ${{PRO_MONTHLY_PRICE}}/Monat, und GAIA Enterprise gibt es auf Anfrage. Der Code ist source-available unter der PolyForm-Noncommercial-Lizenz, daher ist Self-Hosting für die private, nicht kommerzielle Nutzung kostenlos, und gewinnorientierte Unternehmen hosten GAIA mit einer Enterprise-Lizenz selbst (wenden Sie sich an das GAIA-Team)."
+        "answer": "Der gehostete Dienst von GAIA ist ein kostenpflichtiges Abo pro Person, Pro kostet ${{PRO_MONTHLY_PRICE}}/Monat, und GAIA Enterprise gibt es auf Anfrage. Der Code ist source-available unter der PolyForm-Noncommercial-Lizenz, daher ist Self-Hosting für die private, nicht-kommerzielle Nutzung kostenlos, und gewinnorientierte Unternehmen hosten GAIA mit einer Enterprise-Lizenz selbst (wenden Sie sich an das GAIA-Team)."
       },
       {
         "question": "Wie wechsle ich von Saner.AI zu GAIA?",
@@ -4688,7 +4688,7 @@
       },
       {
         "question": "Was kostet GAIA?",
-        "answer": "Der gehostete Dienst von GAIA ist ein kostenpflichtiges Abo pro Person, Pro kostet ${{PRO_MONTHLY_PRICE}}/Monat, und GAIA Enterprise gibt es auf Anfrage. Der Code ist source-available unter der PolyForm-Noncommercial-Lizenz, daher ist Self-Hosting für die private, nicht kommerzielle Nutzung kostenlos, und gewinnorientierte Unternehmen hosten GAIA mit einer Enterprise-Lizenz selbst (wenden Sie sich an das GAIA-Team)."
+        "answer": "Der gehostete Dienst von GAIA ist ein kostenpflichtiges Abo pro Person, Pro kostet ${{PRO_MONTHLY_PRICE}}/Monat, und GAIA Enterprise gibt es auf Anfrage. Der Code ist source-available unter der PolyForm-Noncommercial-Lizenz, daher ist Self-Hosting für die private, nicht-kommerzielle Nutzung kostenlos, und gewinnorientierte Unternehmen hosten GAIA mit einer Enterprise-Lizenz selbst (wenden Sie sich an das GAIA-Team)."
       },
       {
         "question": "Wie wechsle ich von Carly zu GAIA?",
@@ -4794,7 +4794,7 @@
       },
       {
         "question": "Was kostet GAIA?",
-        "answer": "Der gehostete Dienst von GAIA ist ein kostenpflichtiges Abo pro Person, Pro kostet ${{PRO_MONTHLY_PRICE}}/Monat, und GAIA Enterprise gibt es auf Anfrage. Der Code ist source-available unter der PolyForm-Noncommercial-Lizenz, daher ist Self-Hosting für die private, nicht kommerzielle Nutzung kostenlos, und gewinnorientierte Unternehmen hosten GAIA mit einer Enterprise-Lizenz selbst (wenden Sie sich an das GAIA-Team)."
+        "answer": "Der gehostete Dienst von GAIA ist ein kostenpflichtiges Abo pro Person, Pro kostet ${{PRO_MONTHLY_PRICE}}/Monat, und GAIA Enterprise gibt es auf Anfrage. Der Code ist source-available unter der PolyForm-Noncommercial-Lizenz, daher ist Self-Hosting für die private, nicht-kommerzielle Nutzung kostenlos, und gewinnorientierte Unternehmen hosten GAIA mit einer Enterprise-Lizenz selbst (wenden Sie sich an das GAIA-Team)."
       },
       {
         "question": "Wie wechsle ich von Lifestack zu GAIA?",
@@ -4900,7 +4900,7 @@
       },
       {
         "question": "Was kostet GAIA?",
-        "answer": "Der gehostete Dienst von GAIA ist ein kostenpflichtiges Abo pro Person, Pro kostet ${{PRO_MONTHLY_PRICE}}/Monat, und GAIA Enterprise gibt es auf Anfrage. Der Code ist source-available unter der PolyForm-Noncommercial-Lizenz, daher ist Self-Hosting für die private, nicht kommerzielle Nutzung kostenlos, und gewinnorientierte Unternehmen hosten GAIA mit einer Enterprise-Lizenz selbst (wenden Sie sich an das GAIA-Team)."
+        "answer": "Der gehostete Dienst von GAIA ist ein kostenpflichtiges Abo pro Person, Pro kostet ${{PRO_MONTHLY_PRICE}}/Monat, und GAIA Enterprise gibt es auf Anfrage. Der Code ist source-available unter der PolyForm-Noncommercial-Lizenz, daher ist Self-Hosting für die private, nicht-kommerzielle Nutzung kostenlos, und gewinnorientierte Unternehmen hosten GAIA mit einer Enterprise-Lizenz selbst (wenden Sie sich an das GAIA-Team)."
       },
       {
         "question": "Wie wechsle ich von Morgen zu GAIA?",
@@ -4952,6 +4952,338 @@
         "feature": "Preise",
         "gaia": "Gehostetes Pro für ${{PRO_MONTHLY_PRICE}}/Monat pro Person; GAIA Enterprise auf Anfrage",
         "competitor": "Eine Testphase, danach Monats- oder Jahrespläne für Einzelpersonen und Team-Pläne pro Nutzer"
+      }
+    ]
+  },
+  "bee": {
+    "name": "Bee",
+    "tagline": "Erinnern per Wearable ist nur die halbe Arbeit. GAIA erledigt den Rest.",
+    "metaTitle": "Bee-Alternative: KI, die nicht nur erinnert, sondern handelt",
+    "metaDescription": "Sie mögen, wie sich Bee erinnert, brauchen aber Taten? GAIA ist die source-available Bee-Alternative, die erfassten Kontext in erledigte Arbeit verwandelt.",
+    "keywords": [
+      "Bee-Alternative",
+      "Bee AI Alternative",
+      "Bee Frontier Alternative",
+      "Bee-Wearable-Ersatz",
+      "beste Bee-Alternative"
+    ],
+    "painPoints": [
+      "Erinnerung ohne Handlung: Bee merkt sich alles, aber erledigen müssen Sie es weiterhin selbst",
+      "Keine Posteingangs-Sortierung über vorgeschlagene Follow-ups hinaus",
+      "Sie müssen jeden Tag ein eigenes Gerät tragen",
+      "Ausgewählte Funktionen sind an das Bee-Pro-Abo gebunden",
+      "Geschlossenes Gerät, abhängig von der Roadmap eines einzigen Unternehmens"
+    ],
+    "whyPeopleLook": "Bee spricht genau die richtigen Menschen an: alle, die eine Technik wollen, die sich für sie erinnert, zu einem fairen Hardwarepreis. Die Lücke liegt in dem, was nach dem Erinnern passiert. Ein durchsuchbares Protokoll des Gesprächs vom Dienstag schreibt nicht das Follow-up vom Mittwoch. Wer nach einer Bee-Alternative sucht, will die fehlende Hälfte: Handeln in E-Mail, Kalender und Aufgaben, ohne Hardware am Körper.",
+    "gaiaReplaces": [
+      "Manuelles Nacharbeiten der Gespräche, an die Bee sich erinnert",
+      "Kernaussagen von Hand in Aufgaben übertragen",
+      "App-Wechsel, um erinnerten Kontext weiterzuverfolgen",
+      "Hardware tragen, um zu bekommen, was Software leisten kann"
+    ],
+    "gaiaAdvantages": [
+      "Macht aus erinnertem Kontext fertige E-Mail-Entwürfe und angelegte Aufgaben",
+      "Tiefe Gmail- und Kalender-Automatisierung, die Bee gar nicht erst versucht",
+      "Tiefe Integrationen mit Ihren bestehenden Tools",
+      "Zeigt Wichtiges proaktiv an, ohne dass Sie erst fragen müssen",
+      "Kein Hardwarekauf nötig"
+    ],
+    "migrationSteps": [
+      "Behalten Sie Bee für die Erfassung, wenn Sie das Wearable lieben",
+      "Verbinden Sie Gmail, Kalender und Ihr Aufgaben-Tool mit GAIA",
+      "Richten Sie GAIA auf dieselben Meetings aus, die Bee aufzeichnet",
+      "Lassen Sie GAIA aus diesem Kontext Follow-ups und Aufgaben entwerfen"
+    ],
+    "faqs": [
+      {
+        "question": "Wie unterscheidet sich GAIA von Bee?",
+        "answer": "Bee merkt sich über sein Wearable, was um Sie herum gesagt wurde. GAIA merkt es sich und handelt dann: Es entwirft E-Mails, legt Aufgaben an und plant Termine auf Basis dieses Kontexts, über all Ihre Tools hinweg."
+      },
+      {
+        "question": "Muss ich für GAIA Hardware kaufen?",
+        "answer": "Sie brauchen keine Hardware. GAIA läuft im Web, auf dem Desktop, auf dem Smartphone und in Messaging-Apps, mit dem Telefon und Laptop, die Sie bereits besitzen. Bee setzt voraus, dass Sie das kostenpflichtige Frontier-Armband oder den Clip tragen."
+      },
+      {
+        "question": "Was kostet Bee und was kostet GAIA?",
+        "answer": "Der Frontier ist kostenpflichtige Hardware, und Bee Pro, das für ausgewählte Funktionen nötig ist, ist ein kostenpflichtiger Tarif mit Testphase. Das gehostete GAIA ist ein kostenpflichtiger Tarif für ${{PRO_MONTHLY_PRICE}}/Monat, ohne Hardware, die Sie kaufen müssen. Es ist source-available und lässt sich per Docker selbst hosten, kostenlos für die nicht-kommerzielle Nutzung. So kann Ihnen keine Einstellung des Dienstes und kein Abo es wegnehmen."
+      }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "Kernansatz",
+        "gaia": "Vom Erinnern zum Ergebnis: Erinnerter Kontext wird zu erledigter Arbeit",
+        "competitor": "Wearable-Armband oder -Clip, das Gespräche erfasst und wieder abrufbar macht"
+      },
+      {
+        "feature": "Gedächtnis",
+        "gaia": "Gedächtnis, das mit Aufgaben, E-Mails und Terminen verknüpft ist, damit aus Erkenntnissen Taten werden",
+        "competitor": "Durchsuchbare Kernaussagen, Zusammenfassungen und eine Zeitleiste jedes Tages"
+      },
+      {
+        "feature": "Was es tut",
+        "gaia": "E-Mails entworfen, Termine geplant, Aufgaben angelegt und Workflows ausgeführt, über alle Ihre Tools hinweg",
+        "competitor": "Vorgeschlagene To-dos sowie Entwürfe für E-Mails und Kalendertermine"
+      },
+      {
+        "feature": "Hardware",
+        "gaia": "Kein Armband zum Kaufen, Tragen oder Aufladen: der volle Nutzen kommt aus Software auf Ihren eigenen Geräten",
+        "competitor": "Erfordert das Tragen und Aufladen der kostenpflichtigen Frontier-Hardware"
+      },
+      {
+        "feature": "Integrationen",
+        "gaia": "Native Integrationen für E-Mail, Kalender, Aufgaben, Chat und Code, ohne dass Grundfunktionen hinter einem Pro-Tarif stecken",
+        "competitor": "Integrationen für E-Mail, Kalender und Alexa; ausgewählte Funktionen erfordern Bee Pro"
+      },
+      {
+        "feature": "Datenschutz",
+        "gaia": "Der gesamte Stack unter Ihrer Kontrolle, dank source-available Code und Self-Hosting",
+        "competitor": "Audio wird sofort verarbeitet und dann gelöscht; Verschlüsselung unter Ihrer Kontrolle"
+      }
+    ]
+  },
+  "granola": {
+    "name": "Granola",
+    "tagline": "Meeting-Notizen, die Notizen bleiben, solange Sie nicht handeln",
+    "metaTitle": "Granola-Alternative: Von Notizen zu erledigter Arbeit",
+    "metaDescription": "Sie suchen eine Granola-Alternative? GAIA ist source-available KI, die Meetings in Aufgaben, E-Mails und Workflows über Ihre Tools verwandelt. Selbst hostbar.",
+    "keywords": [
+      "Granola-Alternative",
+      "beste Granola-Alternative",
+      "Granola-Ersatz",
+      "Alternative zu Granola für Meeting-Notizen",
+      "KI-Alternative zu Granola",
+      "source-available Granola-Alternative",
+      "selbstgehostete Granola-Alternative",
+      "Granola-Alternative {{CURRENT_YEAR}}"
+    ],
+    "painPoints": [
+      "Nur für Mac: kein Weg über Windows, Web oder Smartphone für gemischte Teams",
+      "Notizen enthalten To-dos, schieben sie aber nicht von selbst in Aufgaben-Tools",
+      "Keine Briefings vor dem Meeting aus Posteingang und Kalender",
+      "Keine E-Mail-Sortierung, keine Entwürfe und keine Follow-up-Automatisierung",
+      "Proprietäre App ohne Self-Hosting-Option für regulierte Teams"
+    ],
+    "whyPeopleLook": "Granola macht die Meeting-Notiz besser. Sie schreiben weiterhin mit, Granola strukturiert das Ganze, und dann endet die Arbeit bei der Notiz. To-dos bleiben in der Notiz, bis Sie sie herauskopieren, Follow-ups warten darauf, dass Sie sie schreiben, und der Kalender erfährt von alldem nichts. Wer eine Granola-Alternative sucht, möchte, dass das Meeting die Arbeit anstößt: Aufgaben angelegt, E-Mails entworfen und Briefings bereit vor dem nächsten Call.",
+    "gaiaReplaces": [
+      "Meeting-Ergebnisse in Aufgaben in Todoist, Linear oder Jira umwandeln",
+      "Briefings vor dem Meeting aus Posteingang und Kalenderverlauf",
+      "Follow-up-E-Mails nach dem Meeting, aus dem Kontext entworfen",
+      "Manuelles Kopieren von To-dos aus Notizen in Tools"
+    ],
+    "gaiaAdvantages": [
+      "Wandelt Meeting-Ergebnisse automatisch in Aufgaben, E-Mails und Dokumente um",
+      "Läuft im Web, auf dem Desktop und auf dem Smartphone, nicht nur auf dem Mac",
+      "Source-available und selbst hostbar für volle Datenkontrolle",
+      "Verbindet Meetings mit Gmail, Kalender und Ihren übrigen Tools",
+      "Self-Hosting ist für die nicht-kommerzielle Nutzung kostenlos (zuzüglich Ihrer eigenen Modell-API-Kosten)"
+    ],
+    "migrationSteps": [
+      "Behalten Sie Granola während der Testphase für Notizen im Meeting",
+      "Verbinden Sie Google Calendar und Gmail, damit GAIA den Meeting-Kontext sieht",
+      "Schicken Sie GAIA eine aktuelle Meeting-Notiz und lassen Sie sich Aufgaben und Follow-ups erstellen",
+      "Leiten Sie neue Meeting-Ergebnisse automatisch an Ihr Aufgaben-Tool weiter"
+    ],
+    "faqs": [
+      {
+        "question": "Verbessert GAIA Notizen wie Granola?",
+        "answer": "GAIA geht einen anderen Weg. Statt die während des Calls gemachten Notizen aufzupolieren, bereitet GAIA vor dem Call Briefings vor und legt danach Aufgaben und Follow-up-E-Mails an. Sie können Granola-Notizen in GAIA einfügen, und GAIA handelt auf Basis ihres Inhalts."
+      },
+      {
+        "question": "Ist GAIA so privat wie die lokale Verarbeitung von Granola?",
+        "answer": "Granola verarbeitet Audio standardmäßig auf Ihrem Mac. Selbst gehostet behält GAIA alle Daten auf Ihrer eigenen Infrastruktur, was einen vergleichbaren Datenschutz bei deutlich breiterer Automatisierung bietet. Das gehostete GAIA verarbeitet Daten wie andere SaaS-Tools in der Cloud."
+      },
+      {
+        "question": "Funktioniert GAIA unter Windows?",
+        "answer": "Ja. GAIA läuft im Web, als Desktop-App für Mac und Windows und auf dem Smartphone. Granola gibt es nur für Mac, was Teams mit gemischten Betriebssystemen ausbremst."
+      },
+      {
+        "question": "Was kostet GAIA?",
+        "answer": "Das gehostete GAIA ist ein kostenpflichtiger Tarif für ${{PRO_MONTHLY_PRICE}}/Monat, Self-Hosting ist für die nicht-kommerzielle Nutzung kostenlos (zuzüglich Ihrer eigenen Modell-API-Kosten). Sie zahlen für Automatisierung über all Ihre Tools hinweg, nicht nur für bessere Notizen."
+      }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "Kernansatz",
+        "gaia": "Wechseln Sie zu einem Assistenten, der Meetings in erledigte Arbeit verwandelt: Aufgaben angelegt, E-Mails entworfen, Kalender aktualisiert",
+        "competitor": "Lokaler Mac-Notizblock, der Ihre eigenen Meeting-Notizen mit KI aufwertet und aus Datenschutzgründen auf dem Gerät läuft"
+      },
+      {
+        "feature": "Datenschutzmodell",
+        "gaia": "Hosten Sie den gesamten Stack auf Ihrer Infrastruktur, wenn rein lokale Verarbeitung nicht genug Kontrolle bietet",
+        "competitor": "Verarbeitung auf dem Mac; Audio und Meeting-Inhalte bleiben standardmäßig lokal"
+      },
+      {
+        "feature": "Umgang mit Meeting-Notizen",
+        "gaia": "Meeting-Ergebnisse fließen automatisch in Workflows, sodass aus Notizen ohne Kopieren Taten werden",
+        "competitor": "Ergänzt Ihre persönlichen Notizen während des Meetings mit KI-Struktur und füllt Lücken"
+      },
+      {
+        "feature": "Verfügbare Plattformen",
+        "gaia": "Arbeiten Sie im Web, auf dem Desktop und auf dem Smartphone mit jedem Betriebssystem, nicht nur auf dem Mac am Schreibtisch",
+        "competitor": "Nur Mac; keine App für Windows, iOS oder Android"
+      },
+      {
+        "feature": "Aufgaben aus Meetings",
+        "gaia": "Ergebnisse landen nach jedem Meeting von selbst in Todoist, Linear, Asana, Jira oder ClickUp",
+        "competitor": "Notizen enthalten To-dos; keine automatische Übergabe an externe Aufgabenmanager"
+      },
+      {
+        "feature": "Briefings vor dem Meeting",
+        "gaia": "Gut vorbereitet in jeden Call: automatisch erstellte Vorbereitung aus Posteingang und verbundenen Tools",
+        "competitor": "Keine Funktionen zur Meeting-Vorbereitung"
+      },
+      {
+        "feature": "Follow-up-Automatisierung per E-Mail",
+        "gaia": "Follow-ups werden mit dem Meeting-Kontext in Gmail entworfen und versendet",
+        "competitor": "Keine E-Mail-Automatisierung"
+      },
+      {
+        "feature": "E-Mail-Management",
+        "gaia": "Auch der Posteingang wird erledigt: Sortierung, Entwürfe und E-Mail-zu-Aufgabe am selben Ort wie die Meeting-Arbeit",
+        "competitor": "Kein E-Mail-Management"
+      },
+      {
+        "feature": "Workflow-Automatisierung",
+        "gaia": "Meetings lösen mehrstufige Workflows über Ihre Tools aus, beschrieben in einfachen Worten",
+        "competitor": "Keine Workflow-Automatisierung"
+      },
+      {
+        "feature": "Kalenderintegration",
+        "gaia": "Kalender vollständig verwaltet: Termine, freie Zeitfenster, Briefings und Trigger, nicht nur eine Meeting-Liste",
+        "competitor": "Synchronisiert sich mit dem Kalender, um anstehende Meetings anzuzeigen; keine autonome Kalenderverwaltung"
+      },
+      {
+        "feature": "Source-available",
+        "gaia": "Prüfen, forken und hosten Sie den Code von GitHub selbst, statt einer geschlossenen Binärdatei zu vertrauen",
+        "competitor": "Proprietäre Closed-Source-Anwendung"
+      },
+      {
+        "feature": "Preise",
+        "gaia": "Gehostet: kostenpflichtiger Tarif für ${{PRO_MONTHLY_PRICE}}/Monat; Self-Hosting für die nicht-kommerzielle Nutzung kostenlos (zuzüglich Ihrer eigenen Modell-API-Kosten)",
+        "competitor": "Kostenloser Tarif und kostenpflichtige Tarife verfügbar."
+      }
+    ]
+  },
+  "lark": {
+    "name": "Lark",
+    "tagline": "Eine Suite für Chat, Dokumente und Video, die immer noch darauf wartet, dass Sie sie bedienen",
+    "metaTitle": "Lark-Alternative: Source-available KI-Assistent",
+    "metaDescription": "Sie suchen eine Lark-Alternative? GAIA ist source-available KI, die E-Mails sortiert, Aufgaben verwaltet und Workflows über Ihre Tools steuert. Selbst hostbar.",
+    "keywords": [
+      "Lark-Alternative",
+      "beste Lark-Alternative",
+      "Larksuite-Alternative",
+      "Lark-Ersatz",
+      "KI-Alternative zu Lark",
+      "source-available Lark-Alternative",
+      "selbstgehostete Lark-Alternative",
+      "Lark-Alternative {{CURRENT_YEAR}}"
+    ],
+    "painPoints": [
+      "Der Nutzen hängt davon ab, dass das ganze Team mitzieht: Nutzt nur ein Teil Lark, bricht die Verknüpfung zwischen den Produkten weg",
+      "Automatisierungen erfordern manuell eingerichtete Regeln und laufende Pflege: Nichts passiert, bevor Sie Trigger definieren",
+      "Keine Verwaltung des Gmail-Posteingangs: Externe E-Mails bleiben außerhalb des Lark Messengers",
+      "Die Eigentümerschaft von ByteDance wirft für regulierte Teams Fragen zur Datenresidenz auf",
+      "Konsolidierung bedeutet Migration: Chat, Dokumente, Kalender und Video müssen alle zu Lark umziehen, damit es sich lohnt"
+    ],
+    "whyPeopleLook": "Lark verspricht eine einzige Suite für Chat, Dokumente, Kalender und Video. Das funktioniert, wenn das ganze Team umzieht. Die meisten Teams ziehen nicht um. Sie behalten Gmail, Slack, GitHub und Notion, und Lark wird zu einer weiteren Plattform, die man im Blick behalten muss. Wer eine Lark-Alternative sucht, möchte eine KI, die mit den bereits genutzten Tools arbeitet, ohne Migration und ohne manuelles Einrichten von Regeln.",
+    "gaiaReplaces": [
+      "Meeting-Vorbereitung aus Kalender- und Posteingangskontext",
+      "Aufgaben aus E-Mails ohne Regel-Setup",
+      "Follow-ups über Gmail, Slack und Dokumente hinweg",
+      "Workflow-Automatisierung, beschrieben in natürlicher Sprache"
+    ],
+    "gaiaAdvantages": [
+      "Funktioniert mit Ihren bestehenden Tools, ganz ohne Umzug in eine Suite",
+      "Handelt proaktiv bei E-Mail und Kalender, ohne manuell konfigurierte Trigger",
+      "Source-available und selbst hostbar für volle Datenkontrolle",
+      "Workflows in natürlicher Sprache über all Ihre Integrationen",
+      "Self-Hosting ist für die nicht-kommerzielle Nutzung kostenlos (zuzüglich Ihrer eigenen Modell-API-Kosten), ohne Kosten pro Nutzer"
+    ],
+    "migrationSteps": [
+      "Behalten Sie Lark während der Testphase für Team-Chat und Video",
+      "Verbinden Sie Gmail und Google Calendar mit GAIA, damit es Posteingang und Terminplan kennt",
+      "Übergeben Sie GAIA einen wiederkehrenden Workflow, etwa Meeting-Vorbereitung oder E-Mail-Sortierung",
+      "Erweitern Sie auf Slack, Notion oder Ihr Aufgaben-Tool, sobald der erste Workflow sitzt"
+    ],
+    "faqs": [
+      {
+        "question": "Kann GAIA Chat, Dokumente und Video von Lark ersetzen?",
+        "answer": "Nein. GAIA bietet keinen Team-Chat, keine Videomeetings und keine gemeinsame Dokumentbearbeitung. Es verbindet sich mit den Tools, die Sie bereits nutzen, etwa Gmail, Slack und Google Calendar, und automatisiert die Arbeit zwischen ihnen. Teams, die eine All-in-One-Suite brauchen, benötigen neben GAIA weiterhin eigene Chat- und Video-Tools."
+      },
+      {
+        "question": "Wie schneidet die Automatisierung von GAIA im Vergleich zu den Workflow-Regeln von Lark ab?",
+        "answer": "Lark führt Automatisierungen aus, die Sie innerhalb der Plattform mit Triggern und Bedingungen konfigurieren. GAIA nimmt Anweisungen in natürlicher Sprache entgegen und koordiniert Aktionen über verbundene Tools hinweg. Außerdem behält GAIA den Kontext von Posteingang und Kalender im Blick und schlägt nächste Schritte ohne vordefinierten Trigger vor."
+      },
+      {
+        "question": "Ist GAIA eine gute Lark-Alternative für datenschutzbewusste Teams?",
+        "answer": "GAIA ist source-available und selbst hostbar, sodass Ihre Daten auf Ihrer eigenen Infrastruktur bleiben. Lark gehört zu ByteDance, was für manche regulierten Teams Fragen zur Datenresidenz aufwirft. Regulierte Unternehmen können GAIA unter einer Enterprise-Lizenz selbst hosten (wenden Sie sich an das GAIA-Team) und so vollständig kontrollieren, wo ihre Daten liegen."
+      },
+      {
+        "question": "Was kostet GAIA im Vergleich zu Lark?",
+        "answer": "Das gehostete GAIA ist ein kostenpflichtiger Tarif für ${{PRO_MONTHLY_PRICE}}/Monat, Self-Hosting ist für die nicht-kommerzielle Nutzung kostenlos (zuzüglich Ihrer eigenen Modell-API-Kosten). Die kostenpflichtigen Tarife von Lark skalieren pro Nutzer, und auch bei GAIA braucht jeder Nutzer einen eigenen Tarif; GAIA ergänzt KI-Automatisierung, ohne dass Sie die ganze Suite migrieren müssen."
+      }
+    ],
+    "comparisonRows": [
+      {
+        "feature": "Kernansatz",
+        "gaia": "Keine Suite-Migration: GAIA arbeitet mit den Tools, die Sie bereits nutzen, und handelt in ihnen",
+        "competitor": "Einheitliche Kollaborations-Suite aus Chat, Dokumenten, Tabellen, Kalender, Video und Projektmanagement"
+      },
+      {
+        "feature": "KI-Funktionen",
+        "gaia": "Briefings, Entwürfe, Aufgaben und toolübergreifende Ausführung, ohne eine einzige Regel zu konfigurieren",
+        "competitor": "Lark AI hilft beim Schreiben, Zusammenfassen von Dokumenten und Erstellen von Inhalten innerhalb der Plattform; Workflow-Automatisierung erfordert explizit konfigurierte Regeln"
+      },
+      {
+        "feature": "E-Mail-Integration",
+        "gaia": "Behalten Sie Gmail: vollständige Verwaltung Ihres echten Posteingangs, mit automatisch erstellten Aufgaben und Notizen",
+        "competitor": "Keine Posteingangsverwaltung für externe E-Mails; interne Kommunikation läuft über den eigenen Lark Messenger"
+      },
+      {
+        "feature": "Aufgabenverwaltung",
+        "gaia": "Aufgaben mit Prioritäten und Fristen, erstellt aus E-Mails und Gesprächen, unabhängig von einem bestimmten Modul",
+        "competitor": "Integrierte Aufgabenverwaltung im Projektmodul von Lark; Aufgaben sind innerhalb der Plattform mit Dokumenten und Nachrichten verknüpft"
+      },
+      {
+        "feature": "Kalenderintegration",
+        "gaia": "Google Calendar wird automatisch gelesen, beschrieben und zusammengefasst, zusammen mit E-Mail und Aufgaben",
+        "competitor": "Integrierter Kalender mit Meeting-Planung, Freigabe der Verfügbarkeit und Videomeeting-Integration innerhalb von Lark"
+      },
+      {
+        "feature": "Proaktives Verhalten",
+        "gaia": "Erkenntnisse und Aktionen kommen, bevor Sie fragen, dank einer Überwachung, die nie einen Trigger braucht",
+        "competitor": "Reaktive Plattform: Automatisierungen laufen auf von Ihnen konfigurierte Trigger; keine kontinuierliche Überwachung des externen Arbeitskontexts"
+      },
+      {
+        "feature": "Integrationen",
+        "gaia": "Gmail, Slack, GitHub, Notion, Todoist, Linear, Jira und mehr über MCP, bidirektional und tiefgehend",
+        "competitor": "Über 250 App-Integrationen im Lark-Ökosystem; stark innerhalb der eigenen Suite, externe Integrationen erfordern jedoch Konfiguration"
+      },
+      {
+        "feature": "Workflow-Automatisierung",
+        "gaia": "Workflows in natürlicher Sprache über jedes verbundene Tool, ohne Genehmigungsketten-Builder, den Sie erst lernen müssen",
+        "competitor": "Regelbasierte Workflow-Automatisierung für Genehmigungsketten, Benachrichtigungen und Datenaktualisierungen innerhalb der Lark-Plattform"
+      },
+      {
+        "feature": "Source-available",
+        "gaia": "Prüfen Sie den Code und hosten Sie ihn per Docker selbst, sodass die Daten auf Ihrer eigenen Infrastruktur bleiben",
+        "competitor": "Proprietäres Closed-Source-SaaS im Besitz von ByteDance; keine Self-Hosting-Option; Daten unterliegen den Datenpraktiken von ByteDance"
+      },
+      {
+        "feature": "Datenresidenz",
+        "gaia": "Bestimmen Sie durch Self-Hosting genau, wo Ihre Daten liegen, ganz ohne Zugriff durch Dritte",
+        "competitor": "Rechenzentren in den USA, Europa und Asien; die Eigentümerschaft von ByteDance weckt bei manchen Organisationen Bedenken zur Datensouveränität"
+      },
+      {
+        "feature": "Preise",
+        "gaia": "Gehostet: kostenpflichtiger Tarif für ${{PRO_MONTHLY_PRICE}}/Monat; Self-Hosting für die nicht-kommerzielle Nutzung kostenlos (zuzüglich Ihrer eigenen Modell-API-Kosten)",
+        "competitor": "Kostenloser Tarif und kostenpflichtige Tarife verfügbar; Preise pro Nutzer; Enterprise-Tarife verfügbar."
+      },
+      {
+        "feature": "Verfügbare Plattformen",
+        "gaia": "Windows, macOS, Linux, iOS und Android, abgedeckt über Web, Desktop und Smartphone",
+        "competitor": "Web, Desktop-Apps für macOS und Windows sowie mobile Apps für iOS und Android"
       }
     ]
   }

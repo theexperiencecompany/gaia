@@ -12,14 +12,13 @@ import { getTranslatedGlossaryTerm } from "@/features/glossary/data/getTranslate
 import { getAllGlossaryTermSlugs } from "@/features/glossary/data/glossaryData";
 import { getTranslatedCombo } from "@/features/integrations/data/getTranslatedCombo";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
-import { getLocalizedAlternates } from "@/i18n/getAlternates";
+import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
 import { LEARN_DOCS_LINKS } from "@/lib/docs-links";
 import { prerenderedMarketingParams } from "@/lib/selfhost";
 import {
   generateBreadcrumbSchema,
   generateDefinedTermSchema,
   generateFAQSchema,
-  generatePageMetadata,
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
@@ -52,17 +51,13 @@ export async function generateMetadata({
     return { title: "Term Not Found" };
   }
 
-  const metadata = generatePageMetadata({
+  return generateLocalizedPageMetadata({
     title: data.metaTitle,
     description: data.metaDescription,
     path: `/learn/${term}`,
     keywords: data.keywords,
+    locale,
   });
-
-  return {
-    ...metadata,
-    alternates: getLocalizedAlternates(`/learn/${term}`, locale),
-  };
 }
 
 export default async function GlossaryTermPage({ params }: PageProps) {

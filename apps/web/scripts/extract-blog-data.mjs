@@ -40,6 +40,7 @@ for (const file of files) {
   const post = {
     slug,
     title: data.title,
+    ...(data.metaTitle ? { metaTitle: data.metaTitle } : {}),
     date: data.date,
     // Optional: when a post is revised, set `updated:` in frontmatter so
     // Article dateModified (and the visible "Updated" label) reflect reality.

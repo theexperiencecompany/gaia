@@ -35,7 +35,7 @@ def _page(base: str, path: str, head: Head = CLEAN_HEAD, body: str = "") -> str:
     robots_tag = f'<meta name="robots" content="{head.robots}">' if head.robots else ""
     return (
         "<html><head><svg><title>Icon</title></svg>"
-        f"<title>Page {path}</title>"
+        f"<title>A page whose title names {path}</title>"
         f'<meta name="description" content="{head.description}">'
         f'<link rel="canonical" href="{canonical}">{robots_tag}'
         f'<meta property="og:image" content="{base}{head.og_image}">'

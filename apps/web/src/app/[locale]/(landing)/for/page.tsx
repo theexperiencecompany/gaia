@@ -1,9 +1,10 @@
 import { CircleArrowRight02Icon } from "@icons";
 import type { Metadata } from "next";
+import { getTranslations, setRequestLocale } from "next-intl/server";
 import JsonLd from "@/components/seo/JsonLd";
 import { SiteLink } from "@/components/seo/SiteLink";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
-import { getAllPersonas } from "@/features/personas/data/personasData";
+import { getTranslatedPersonas } from "@/features/personas/data/getTranslatedPersona";
 import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
 import {
   generateBreadcrumbSchema,
@@ -29,10 +30,10 @@ export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
   const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: "personas" });
   return generateLocalizedPageMetadata({
-    title: "AI Assistant by Role: How GAIA Fits Your Job",
-    description:
-      "See how GAIA helps software developers, product managers, founders, marketers, and many other roles automate their workflows. Find the guide for your role.",
+    title: t("hub_meta_title"),
+    description: t("hub_meta_description"),
     path: "/for",
     keywords: [
       "AI assistant for professionals",
@@ -46,22 +47,27 @@ export async function generateMetadata({
   });
 }
 
-export default async function PersonasHubPage() {
-  const personas = await getAllPersonas();
+export default async function PersonasHubPage({ params }: PageProps) {
+  const { locale } = await params;
+  setRequestLocale(locale);
+  const [t, personas] = await Promise.all([
+    getTranslations({ locale, namespace: "personas" }),
+    getTranslatedPersonas(locale),
+  ]);
 
   const webPageSchema = generateWebPageSchema(
-    "GAIA for Every Role",
-    "Discover how GAIA helps professionals across every role automate their workflows and boost productivity.",
+    t("hub_title"),
+    t("hub_subtitle"),
     `${siteConfig.url}/for`,
     [
       { name: "Home", url: siteConfig.url },
-      { name: "GAIA for Every Role", url: `${siteConfig.url}/for` },
+      { name: t("hub_title"), url: `${siteConfig.url}/for` },
     ],
   );
 
   const breadcrumbSchema = generateBreadcrumbSchema([
     { name: "Home", url: siteConfig.url },
-    { name: "GAIA for Every Role", url: `${siteConfig.url}/for` },
+    { name: t("hub_title"), url: `${siteConfig.url}/for` },
   ]);
 
   const itemListSchema = generateItemListSchema(
@@ -84,19 +90,17 @@ export default async function PersonasHubPage() {
       <div className="mx-auto max-w-5xl px-6 pt-36 pb-24">
         <header className="mb-16 text-center">
           <h1 className="mb-4 font-serif text-5xl font-normal text-white md:text-6xl">
-            GAIA for Every Role
+            {t("hub_title")}
           </h1>
           <p className="mx-auto max-w-2xl text-xl text-zinc-400">
-            Every professional has unique workflows and pain points. GAIA adapts
-            to your role, connecting the tools you already use and automating
-            the tasks that drain your time.
+            {t("hub_subtitle")}
           </p>
         </header>
 
         {/* Featured Experiences */}
         <section className="mb-16">
           <p className="mb-4 text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
-            Featured Experiences
+            {t("featured_experiences")}
           </p>
 
           {/* Hero card */}
@@ -114,7 +118,7 @@ export default async function PersonasHubPage() {
                 {heroPersona.metaDescription}
               </p>
               <span className="flex items-center gap-1.5 text-sm font-medium text-primary">
-                See the full experience
+                {t("see_full_experience")}
                 <CircleArrowRight02Icon width={17} height={17} />
               </span>
             </SiteLink>
@@ -135,7 +139,7 @@ export default async function PersonasHubPage() {
                   {persona.metaDescription}
                 </p>
                 <span className="mt-1 flex items-center gap-1.5 text-sm font-medium text-primary">
-                  See the full experience
+                  {t("see_full_experience")}
                   <CircleArrowRight02Icon width={17} height={17} />
                 </span>
               </SiteLink>
@@ -147,7 +151,7 @@ export default async function PersonasHubPage() {
         {otherPersonas.length > 0 && (
           <section>
             <p className="mb-4 text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
-              All Roles
+              {t("all_roles")}
             </p>
             <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
               {otherPersonas.map((persona) => (
@@ -163,7 +167,7 @@ export default async function PersonasHubPage() {
                     {persona.metaDescription}
                   </p>
                   <span className="mt-1 flex items-center gap-1 text-xs text-zinc-500 transition-colors group-hover:text-zinc-300">
-                    Read more
+                    {t("read_more")}
                     <CircleArrowRight02Icon width={14} height={14} />
                   </span>
                 </SiteLink>

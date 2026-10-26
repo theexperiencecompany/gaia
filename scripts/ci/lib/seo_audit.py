@@ -4,7 +4,7 @@ Every sitemap URL must answer 200 without a redirect, canonicalize to itself, be
 indexable, carry one H1, a title and a description, and parse its JSON-LD. Every
 internal link on those pages must reach a 200 directly, every og:image must
 answer an image, and every hreflang alternate must be a page in the sitemap. Titles and descriptions shared by
-different pages are reported per locale. The description bounds are the web app's
+different pages are reported per locale. The title and description bounds are the web app's
 apps/web/src/config/seoSnippet.json, which its metadata test enforces before deploy.
 Exit 1 on any finding, warning or error.
 """
@@ -30,10 +30,14 @@ TIMEOUT_S = 30
 RETRIES = 2
 LOC = re.compile(r"<loc>\s*([^<\s]+)\s*</loc>")
 LOCALE_PREFIX = re.compile(r"^/(de|es|fr|ja|ko|pt-BR)(?=/|$)")
-TITLE_MAX = 65
 SNIPPET_CONFIG = Path(__file__).resolve().parents[3] / "apps/web/src/config/seoSnippet.json"
-_DESCRIPTION_LENGTH = json.loads(SNIPPET_CONFIG.read_text())["descriptionLength"]
-DESCRIPTION_RANGE = (_DESCRIPTION_LENGTH["min"], _DESCRIPTION_LENGTH["max"])
+_SNIPPET = json.loads(SNIPPET_CONFIG.read_text())
+TITLE_RANGE = (_SNIPPET["titleLength"]["min"], _SNIPPET["titleLength"]["max"])
+DESCRIPTION_RANGE = (_SNIPPET["descriptionLength"]["min"], _SNIPPET["descriptionLength"]["max"])
+# Full-width CJK and Hangul, each as wide in a snippet as two Latin characters.
+WIDE_CHARACTER = re.compile(
+    "[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6]"
+)
 EXAMPLES = 8
 
 
@@ -186,8 +190,10 @@ def _check_indexing(url: str, page: _PageParser, robots_header: str, findings: F
 def _check_snippet(url: str, page: _PageParser, findings: Findings) -> None:
     if not page.title.strip():
         findings.error("missing title", url)
-    elif len(page.title) > TITLE_MAX:
-        findings.warn(f"title over {TITLE_MAX} chars", f"{len(page.title)} {url}")
+    elif len(page.title) > TITLE_RANGE[1]:
+        findings.warn(f"title over {TITLE_RANGE[1]} chars", f"{len(page.title)} {url}")
+    elif len(page.title) + len(WIDE_CHARACTER.findall(page.title)) < TITLE_RANGE[0]:
+        findings.warn(f"title under {TITLE_RANGE[0]} chars", f"{len(page.title)} {url}")
     if not page.description:
         findings.error("missing meta description", url)
     elif not DESCRIPTION_RANGE[0] <= len(page.description) <= DESCRIPTION_RANGE[1]:

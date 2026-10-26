@@ -8,6 +8,7 @@ import {
   generatePageMetadata,
   generateProOffer,
   generateWebPageSchema,
+  organizationRef,
   siteConfig,
 } from "@/lib/seo";
 
@@ -49,11 +50,7 @@ function generateDownloadSchema(): WithContext<SoftwareApplication> {
     downloadUrl: GITHUB_RELEASES_BASE,
     softwareVersion: "Latest",
     releaseNotes: `${siteConfig.url}/download`,
-    author: {
-      "@type": "Organization",
-      name: siteConfig.short_name,
-      url: siteConfig.url,
-    },
+    author: organizationRef,
     screenshot: `${siteConfig.url}/images/screenshots/desktop_dock.png`,
   };
 }

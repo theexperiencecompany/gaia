@@ -6,6 +6,7 @@ export const AUTOMATION_FEATURES: FeatureData[] = [
     category: "Automation",
     icon: "WorkflowSquare10Icon",
     title: "Workflows",
+    metaTitle: "AI Workflows: Describe an Automation, GAIA Builds It",
     tagline: "Describe an automation in plain language, and GAIA builds it",
     headline: "Describe the automation. GAIA builds it.",
     subheadline:
@@ -96,6 +97,7 @@ export const AUTOMATION_FEATURES: FeatureData[] = [
     category: "Automation",
     icon: "Clock01Icon",
     title: "Scheduled Automation",
+    metaTitle: "Scheduled Automation: Run AI Tasks on Any Schedule",
     tagline: "Run any task daily, weekly, or on any custom schedule",
     headline: "Set it once. Run it forever.",
     subheadline:
@@ -187,6 +189,7 @@ export const AUTOMATION_FEATURES: FeatureData[] = [
     category: "Automation",
     icon: "FlashIcon",
     title: "Event Triggers",
+    metaTitle: "Event Triggers: AI That Reacts When Your Tools Change",
     tagline: "React instantly when something happens across your tools",
     headline: "When X happens, GAIA handles it.",
     subheadline:
@@ -280,6 +283,7 @@ export const AUTOMATION_FEATURES: FeatureData[] = [
     category: "Automation",
     icon: "FileEditIcon",
     title: "Document Generation",
+    metaTitle: "AI Document Generation: PDF, DOCX and HTML",
     tagline: "Generate PDFs, DOCX, and HTML from any conversation",
     headline: "Any conversation becomes a document.",
     subheadline:
@@ -372,6 +376,7 @@ export const AUTOMATION_FEATURES: FeatureData[] = [
     category: "Automation",
     icon: "PackageIcon",
     title: "Skills",
+    metaTitle: "AI Agent Skills: Install or Build Custom Abilities",
     tagline: "Install or create custom skills to extend GAIA's capabilities",
     headline: "Teach GAIA new tricks.",
     subheadline:

@@ -35,7 +35,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!feature) return {};
 
   return generatePageMetadata({
-    title: `${feature.title}`,
+    title: feature.metaTitle,
     description: feature.subheadline,
     path: `/features/${slug}`,
     keywords: [

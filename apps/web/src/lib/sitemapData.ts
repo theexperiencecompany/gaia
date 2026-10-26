@@ -17,7 +17,7 @@ import {
 import { findCopiedTemplate } from "@/features/workflows/lib/templateCopies";
 import { defaultLocale, locales } from "@/i18n/config";
 import { getAlternates } from "@/i18n/getAlternates";
-import { getAllBlogPosts } from "@/lib/blog";
+import { blogLastModified, getAllBlogPosts } from "@/lib/blog";
 import { getSiteUrl } from "@/lib/seo";
 
 /**
@@ -141,7 +141,7 @@ async function getBlogPages(baseUrl: string): Promise<MetadataRoute.Sitemap> {
   const blogs = await getAllBlogPosts(false);
   return blogs.map((blog) => ({
     url: `${baseUrl}/blog/${blog.slug}`,
-    lastModified: new Date(blog.date),
+    lastModified: new Date(blogLastModified(blog)),
     changeFrequency: "weekly" as const,
     priority: 0.8,
   }));

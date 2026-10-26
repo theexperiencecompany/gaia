@@ -13,7 +13,7 @@ import {
 } from "@/lib/seo";
 
 export const metadata: Metadata = generatePageMetadata({
-  title: "Blog",
+  title: "GAIA Blog: Product Updates and Engineering Notes",
   description:
     "Product updates, guides, and engineering notes from the team building GAIA, covering AI assistants, productivity, and how the product works inside.",
   path: "/blog",

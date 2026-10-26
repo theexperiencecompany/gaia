@@ -5369,5 +5369,30 @@
         "answer": "Son asistentes de IA, en concreto asistentes digitales pensados para la voz: actúan (ponen temporizadores, controlan el hogar inteligente, añaden eventos al calendario) en lugar de solo conversar. Su alcance en el trabajo, como clasificar el correo o ejecutar flujos de varios pasos, es limitado, y ese es el hueco que cubren asistentes de productividad como GAIA."
       }
     ]
+  },
+  "bee": {
+    "term": "Bee",
+    "metaTitle": "¿Qué es Bee? El wearable de IA de Amazon: recordar y actuar",
+    "metaDescription": "Bee es la IA wearable de pago de Amazon que convierte las conversaciones en conclusiones con búsqueda. Descubre qué hace y qué usan quienes quieren actuar.",
+    "definition": "Bee es la IA wearable de Amazon: una pulsera o clip Frontier de pago que escucha a lo largo del día y convierte las conversaciones en conclusiones con búsqueda, resúmenes y tareas pendientes.",
+    "extendedDescription": "La propuesta de Bee es sencilla: un wearable que recuerda para que tú no tengas que hacerlo. El Frontier se engancha a la ropa o se lleva en la muñeca, dura 7 días por carga y convierte las conversaciones del día en una línea de tiempo con búsqueda de conclusiones, resúmenes, tareas sugeridas y borradores de correos y eventos de calendario.\n\nRecordar es realmente útil, pero es solo la mitad del ciclo. Un registro con búsqueda de una conversación no envía el seguimiento, no mueve la reunión ni registra la tarea. Esa segunda mitad es donde empiezan asistentes como GAIA: toman el contexto capturado y actúan sobre él en el correo, el calendario y las tareas.\n\nEl posicionamiento importa más que el hardware. Los wearables van y vienen, pero el patrón se repite: capturar sin actuar deja el trabajo en tus manos. Los usuarios que más partido sacan a Bee combinan esa memoria con algo que se encargue de hacer.",
+    "howGaiaUsesIt": "GAIA es la mitad del ciclo de Bee que actúa: source-available y autoalojable con Docker para uso no comercial. Conecta tu Gmail y tu Calendar, y GAIA convierte el mismo contexto diario que Bee registra en seguimientos redactados, reuniones programadas y tareas completadas, en una infraestructura que controlas tú.",
+    "keywords": [
+      "bee ai",
+      "qué es bee ai",
+      "bee frontier",
+      "wearable bee",
+      "amazon bee"
+    ],
+    "faqs": [
+      {
+        "question": "¿Qué es Bee?",
+        "answer": "Bee es la IA wearable de Amazon. La pulsera o el clip Frontier, de pago, captura conversaciones y las convierte en conclusiones con búsqueda, resúmenes, tareas pendientes y borradores de correos y eventos."
+      },
+      {
+        "question": "¿Qué sustituye el recuerdo de Bee por acción?",
+        "answer": "Un wearable recuerda. GAIA recuerda y después actúa: clasifica el correo, redacta respuestas, programa reuniones y ejecuta flujos de trabajo en tus herramientas, sin necesidad de hardware."
+      }
+    ]
   }
 }
