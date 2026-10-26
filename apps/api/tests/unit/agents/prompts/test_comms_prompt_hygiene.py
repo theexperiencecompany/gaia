@@ -13,7 +13,6 @@ without naming it. Everything outside that line is prose the model imitates.
 
 import pytest
 
-from app.agents.prompts.comms_prompts import BANNED_LITERALS_LINE_PREFIX
 from app.agents.templates.agent_template import (
     COMMS_PROMPT_BY_SOURCE,
     EXECUTOR_PROMPT_TEMPLATE,
@@ -46,9 +45,7 @@ ALL_PROMPTS = {**COMMS_PROMPT_BY_SOURCE, "executor": EXECUTOR_PROMPT_TEMPLATE}
 def prose_of(prompt: str) -> str:
     """Return the prompt minus the one line allowed to quote the literals it bans."""
     return "\n".join(
-        line
-        for line in prompt.splitlines()
-        if not line.lstrip().startswith(BANNED_LITERALS_LINE_PREFIX)
+        line for line in prompt.splitlines() if not line.lstrip().startswith("- Banned literals")
     )
 
 

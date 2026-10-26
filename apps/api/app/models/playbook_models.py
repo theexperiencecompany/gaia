@@ -552,15 +552,6 @@ PlaybookStep = Annotated[
 ]
 
 
-def ask_slots(steps: Sequence[ToolStep | ForEachStep | HandoffStep]) -> list[LocatedAsk]:
-    """Every ask slot in a playbook, in execution order, handoff children included.
-
-    Keys are unique: step ids are unique (the validator refuses a repeat) and
-    two slots in one step sit at two different argument paths.
-    """
-    return [slot for step in steps for slot in step.ask_slots(step.label)]
-
-
 def walk_ask_slots(
     value: object, path: tuple[str | int, ...] = ()
 ) -> Iterator[tuple[tuple[str | int, ...], Mapping[str, Any]]]:

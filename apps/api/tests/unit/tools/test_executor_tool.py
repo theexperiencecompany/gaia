@@ -23,7 +23,7 @@ from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.running_registry import RunningSubagents
 from app.agents.core.background.session import get_session, teardown_session
 from app.agents.tools import executor_tool
-from app.agents.tools.executor_tool import call_executor, cancel_executor, tools
+from app.agents.tools.executor_tool import call_executor, cancel_executor
 from app.constants.agents import DONE_EVIDENCE_RULE, AgentTag
 from app.constants.browser import BrowserSessionStatus
 from app.constants.cache import (
@@ -1215,7 +1215,10 @@ class TestCancelBroadcast:
 
 
 def test_both_executor_tools_are_exported_for_the_comms_agent() -> None:
-    assert [tool.name for tool in tools] == ["call_executor", "cancel_executor"]
+    assert [tool.name for tool in [call_executor, cancel_executor]] == [
+        "call_executor",
+        "cancel_executor",
+    ]
 
 
 @pytest.mark.unit

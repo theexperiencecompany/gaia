@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.models.notes_models import NoteDocument, NoteModel
-from app.utils.notes_utils import insert_note, reindex_note
+from app.utils.notes_utils import insert_note
 
 USER_ID = "user-notes-1"
 NOTE_ID = "note-1"
@@ -72,26 +72,3 @@ class TestInsertNoteIndexingFailure:
             )
 
         update.assert_not_awaited()
-
-    async def test_reindex_clears_the_flag(self):
-        update = AsyncMock()
-        with (
-            patch("app.utils.notes_utils.note_repository.update", update),
-            patch("app.utils.notes_utils.index_note", AsyncMock()) as index,
-        ):
-            await reindex_note(NOTE_ID, USER_ID, "buy oat milk")
-
-        index.assert_awaited_once_with(NOTE_ID, USER_ID, "buy oat milk")
-        assert update.await_args.kwargs["update"].needs_reindex is False
-
-    async def test_reindex_propagates_a_still_broken_vector_store(self):
-        """A repair pass must see which notes are still broken, not swallow them."""
-        with (
-            patch("app.utils.notes_utils.note_repository.update", AsyncMock()),
-            patch(
-                "app.utils.notes_utils.index_note",
-                AsyncMock(side_effect=RuntimeError("still down")),
-            ),
-            pytest.raises(RuntimeError, match="still down"),
-        ):
-            await reindex_note(NOTE_ID, USER_ID, "buy oat milk")

@@ -20,12 +20,25 @@ from hypothesis import example, given, settings, strategies as st
 import pytest
 
 from app.utils.cron_utils import (
-    COMMON_CRON_EXPRESSIONS,
     CronError,
     calculate_next_occurrences,
     get_next_run_time,
 )
 from app.utils.schedule import schedule_rejection
+
+COMMON_CRON_EXPRESSIONS = (
+    "* * * * *",
+    "*/5 * * * *",
+    "*/15 * * * *",
+    "*/30 * * * *",
+    "0 * * * *",
+    "0 8 * * *",
+    "0 12 * * *",
+    "0 18 * * *",
+    "0 9 * * 1",
+    "0 9 1 * *",
+    "0 9 1 1 *",
+)
 from app.utils.timezone import Timezone
 
 ZONE_NAMES = ["UTC", "Asia/Kolkata", "America/New_York", "Europe/London", "+05:30"]
@@ -139,7 +152,7 @@ class TestScheduleRejection:
 class TestCalculateNextOccurrences:
     @settings(deadline=None)
     @given(
-        cron_expr=st.sampled_from(list(COMMON_CRON_EXPRESSIONS.values())),
+        cron_expr=st.sampled_from(list(COMMON_CRON_EXPRESSIONS)),
         count=st.integers(1, 12),
         base_time=AWARE_UTC_DATETIMES,
     )
@@ -155,7 +168,7 @@ class TestCalculateNextOccurrences:
                 assert occurrences[i - 1] < occurrence
 
     @settings(deadline=None)
-    @given(cron_expr=st.sampled_from(list(COMMON_CRON_EXPRESSIONS.values())))
+    @given(cron_expr=st.sampled_from(list(COMMON_CRON_EXPRESSIONS)))
     def test_non_positive_count_returns_empty(self, cron_expr: str) -> None:
         assert calculate_next_occurrences(cron_expr, 0, datetime(2026, 1, 1, tzinfo=UTC)) == []
         assert calculate_next_occurrences(cron_expr, -3, datetime(2026, 1, 1, tzinfo=UTC)) == []

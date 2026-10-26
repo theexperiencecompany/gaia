@@ -64,7 +64,7 @@ from app.models.payment_models import (
     UserSubscriptionStatus,
 )
 from app.models.user_models import AuthenticatedUser
-from app.utils.concurrency import reset_captured_loop
+from app.utils import concurrency
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.context import AnalyticsContext, analytics_context
 
@@ -344,7 +344,7 @@ _HERMETIC_FAKE_KEYS = {
 def _no_captured_loop_carryover() -> Iterator[None]:
     """Forget a server loop a test captured (unified_startup does); the next test's loop is new, that one closed."""
     yield
-    reset_captured_loop()
+    concurrency._captured_loop = None
 
 
 @pytest.fixture

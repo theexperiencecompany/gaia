@@ -519,19 +519,3 @@ def contract_criteria(refs: list[str]) -> list[str]:
             f"unknown prompt contract(s) {unknown}; registered: {', '.join(sorted(_BY_REF))}"
         )
     return [quote(ref) for ref in refs]
-
-
-def contract_failures() -> list[str]:
-    """Every clause that no longer resolves, as ready-to-read failure messages.
-
-    Collects instead of raising on the first break so one prompt edit surfaces
-    all of its damage in a single CI run. :func:resolve is still the loud path
-    for anything that runs during an eval.
-    """
-    failures: list[str] = []
-    for clause_obj in CLAUSES:
-        try:
-            resolve(clause_obj.ref)
-        except ClauseResolutionError as e:
-            failures.append(str(e))
-    return failures

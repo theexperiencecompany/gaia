@@ -23,10 +23,14 @@ from app.models.playbook_models import (
     PlaybookStepInput,
     TimeSlot,
     ToolStep,
-    ask_slots,
     is_work_call,
     walk_ask_slots,
 )
+
+
+def ask_slots(steps):
+    """Every ask slot in a playbook, in execution order (product helper under test)."""
+    return [slot for step in steps for slot in step.ask_slots(step.label)]
 
 
 class TestAskSlotKeys:

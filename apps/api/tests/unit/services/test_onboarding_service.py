@@ -26,7 +26,6 @@ import pytest
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.constants.onboarding import (
-    FIRST_CONVERSATION_ID_FIELD,
     GETTING_STARTED_CONVERSATION_ID_FIELD,
     GMAIL_PERSONALIZATION_MARKER,
     HOLO_CONVERSATION_ID_FIELD,
@@ -291,7 +290,7 @@ class TestCompleteOnboarding:
         # The legacy holo-card field is a different conversation; the seed must
         # not squat on it. It is now a declared field on OnboardingSubdocument,
         # so it serializes as null rather than being absent.
-        assert result["onboarding"][FIRST_CONVERSATION_ID_FIELD] is None
+        assert result["onboarding"]["first_message_conversation_id"] is None
 
     async def test_the_closing_question_is_resolved_for_this_user_and_these_answers(
         self,

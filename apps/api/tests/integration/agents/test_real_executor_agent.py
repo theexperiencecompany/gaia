@@ -41,11 +41,10 @@ def _make_mock_tool_registry():
     added or removed) without hard-coding specific tool names.
     """
     from app.agents.core.graph_builder.build_graph import EXECUTOR_INITIAL_TOOL_IDS
-    from app.agents.tools.todo_tools import TODO_TOOL_NAMES
 
     # Tools that build_executor_graph injects separately (handoff + todo tools)
     # and therefore do NOT need to come from the ToolRegistry mock.
-    injected_by_graph = {"handoff"} | TODO_TOOL_NAMES
+    injected_by_graph = {"handoff", "plan_tasks", "update_tasks"}
 
     tool_dict = {
         tid: _make_stub_tool(tid)
@@ -426,15 +425,13 @@ class TestTodoPremModelHook:
         assert callable(hook), "todo pre-model hook must be callable"
 
     def test_todo_tools_are_created_with_correct_names(self):
-        """create_todo_tools must produce tools whose names match TODO_TOOL_NAMES."""
-        from app.agents.tools.todo_tools import TODO_TOOL_NAMES, create_todo_tools
+        """create_todo_tools must produce exactly the plan/update tools."""
+        from app.agents.tools.todo_tools import create_todo_tools
 
         tools = create_todo_tools(source="executor")
         tool_names = {t.name for t in tools}
 
-        assert tool_names == TODO_TOOL_NAMES, (
-            f"Expected todo tools {TODO_TOOL_NAMES}, got {tool_names}"
-        )
+        assert tool_names == {"plan_tasks", "update_tasks"}
 
     def test_todo_hook_injects_system_message(self):
         """The todo pre-model hook must inject a system message when todos are present."""
@@ -482,19 +479,6 @@ class TestTodoPremModelHook:
             "todo pre-model hook must inject the formatted todo item content into "
             "the SystemMessage so the LLM sees the current task list"
         )
-
-    def test_todo_tool_names_constant_is_correct(self):
-        """TODO_TOOL_NAMES must match the actual tools returned by create_todo_tools."""
-        from app.agents.tools.todo_tools import TODO_TOOL_NAMES, create_todo_tools
-
-        tools = create_todo_tools(source="executor")
-        actual_names = {t.name for t in tools}
-        assert actual_names == TODO_TOOL_NAMES, (
-            f"TODO_TOOL_NAMES {TODO_TOOL_NAMES} does not match "
-            f"tools from create_todo_tools: {actual_names}"
-        )
-        # plan_tasks must always be present
-        assert "plan_tasks" in TODO_TOOL_NAMES
 
 
 # ---------------------------------------------------------------------------

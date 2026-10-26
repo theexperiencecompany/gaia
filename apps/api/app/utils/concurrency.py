@@ -48,12 +48,6 @@ def capture_running_loop() -> None:
     _captured_loop = asyncio.get_running_loop()
 
 
-def reset_captured_loop() -> None:
-    """Clear the captured server loop. For tests, which own their loop lifecycle."""
-    global _captured_loop
-    _captured_loop = None
-
-
 def run_on_captured_loop(coro: Coroutine[object, None, _T], *, timeout: float | None = None) -> _T:
     """Run coro to completion from a worker thread that has no running loop.
 

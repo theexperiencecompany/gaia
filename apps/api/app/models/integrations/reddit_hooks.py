@@ -89,8 +89,6 @@ class RedditKindedListing(BaseModel, Generic[ThingT]):
     data: RedditKindedListingData[ThingT] = Field(default_factory=RedditKindedListingData)
 
 
-RedditPostThing = RedditKindedThing[RedditPost]
-RedditCommentThing = RedditKindedThing[RedditComment]
 RedditPostListing = RedditKindedListing[RedditPost]
 RedditCommentListing = RedditKindedListing[RedditComment]
 

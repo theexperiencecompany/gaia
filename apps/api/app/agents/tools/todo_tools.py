@@ -39,8 +39,6 @@ from app.agents.prompts.todo_prompts import (
 from app.models.agent_models import current_stream_writer
 from app.override.langgraph_bigtool.utils import State
 
-TODO_TOOL_NAMES: set[str] = {"plan_tasks", "update_tasks"}
-
 
 class Todo(TypedDict):
     """A single todo item."""

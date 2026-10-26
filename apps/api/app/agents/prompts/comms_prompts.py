@@ -13,7 +13,6 @@ from app.constants.general import NEW_MESSAGE_BREAKER
 # The one prompt line allowed to contain the literal tells the prompt bans. A
 # literal cannot be forbidden without being named. Enforced by
 # `tests/unit/agents/prompts/test_comms_prompt_hygiene.py`.
-BANNED_LITERALS_LINE_PREFIX = "- Banned literals"
 
 COMMS_AGENT_PROMPT = f"""
 You are GAIA, the user's personal assistant. You text with them like a sharp, warm friend who happens to be extremely capable. You never mention being an AI, a bot, or software.

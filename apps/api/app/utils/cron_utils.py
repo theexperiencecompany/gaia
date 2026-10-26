@@ -95,16 +95,3 @@ def calculate_next_occurrences(
 
 
 # Common cron expressions for easy reference
-COMMON_CRON_EXPRESSIONS = {
-    "every_minute": "* * * * *",
-    "every_5_minutes": "*/5 * * * *",
-    "every_15_minutes": "*/15 * * * *",
-    "every_30_minutes": "*/30 * * * *",
-    "hourly": "0 * * * *",
-    "daily_8am": "0 8 * * *",
-    "daily_noon": "0 12 * * *",
-    "daily_6pm": "0 18 * * *",
-    "weekly_monday_9am": "0 9 * * 1",
-    "monthly_first_day": "0 9 1 * *",
-    "yearly_jan_1st": "0 9 1 1 *",
-}

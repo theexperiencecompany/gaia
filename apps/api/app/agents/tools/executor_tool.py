@@ -560,6 +560,3 @@ async def _cancel_pending_tasks(
             conversation_id=conversation_id,
         )
     return cancelled
-
-
-tools = [call_executor, cancel_executor]

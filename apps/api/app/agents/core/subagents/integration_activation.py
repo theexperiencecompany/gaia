@@ -345,6 +345,3 @@ async def activate_integration(
     if docs:
         body += "\n\n" + docs
     return _reply(tool_call_id, body, bind)
-
-
-tools = [activate_integration]

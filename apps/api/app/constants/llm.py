@@ -297,12 +297,6 @@ UNKNOWN_MODEL_NAME = "unknown"
 # sticky sessions ("-aux") — a separate model id here couldn't cache TOOL requests.
 AUX_MODEL_NAME = DEFAULT_MODEL_NAME
 
-# The OpenRouter chat models GAIA runs, mapped to whether images survive in their
-# TOOL results (vetted live by tests/model_onboarding). Add a model here (with its
-# MODEL_PRICING entry) and nowhere else; False routes tool media through the caption fallback.
-OPENROUTER_MODEL_TOOL_IMAGE_SUPPORT: dict[str, bool] = {
-    DEFAULT_MODEL_NAME: False,
-}
 # Retained for the direct-Gemini lane, which is still selectable as a provider
 # alternative and in the dev model menu — it is no longer the default.
 DEFAULT_GEMINI_MODEL_NAME = "gemini-3.1-flash-lite"

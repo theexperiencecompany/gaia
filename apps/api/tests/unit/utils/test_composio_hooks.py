@@ -21,11 +21,14 @@ from pydantic import ValidationError
 import pytest
 
 from app.models.integrations.reddit_hooks import (
-    RedditCommentThing,
+    RedditComment,
+    RedditKindedThing,
     RedditPost,
-    RedditPostThing,
     RedditSearchData,
 )
+
+RedditPostThing = RedditKindedThing[RedditPost]
+RedditCommentThing = RedditKindedThing[RedditComment]
 from app.utils.composio_hooks.gmail_hooks import gmail_compose_require_subject_schema_modifier
 from app.utils.composio_hooks.reddit_hooks import (
     process_reddit_comment,

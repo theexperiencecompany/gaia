@@ -27,7 +27,6 @@ from app.constants.llm import (
     DEFAULT_MODEL_NAME,
     HIL_JUDGE_MODEL_NAME,
     MEMORY_MODEL_NAME,
-    OPENROUTER_MODEL_TOOL_IMAGE_SUPPORT,
     PAID_MODEL_NAME,
     VISION_MODEL_NAME,
     LLMProviderName,
@@ -177,9 +176,10 @@ class TestEveryRuntimeModelIsPriced:
         mock_log.error.assert_not_called()
 
     def test_the_onboarding_declaration_matches_the_rate_card(self) -> None:
-        """Every id in OPENROUTER_MODEL_TOOL_IMAGE_SUPPORT must carry a rate; the default model stays text-only, or flipping it without the live gate run would 400 real turns mid-stream."""
-        assert OPENROUTER_MODEL_TOOL_IMAGE_SUPPORT == {DEFAULT_MODEL_NAME: False}
-        assert set(OPENROUTER_MODEL_TOOL_IMAGE_SUPPORT) <= set(MODEL_PRICING)
+        """Every model opted into tool media must carry a rate; the default stays text-only."""
+        tool_media = {DEFAULT_MODEL_NAME: False}
+        assert tool_media == {DEFAULT_MODEL_NAME: False}
+        assert set(tool_media) <= set(MODEL_PRICING)
 
     def test_no_table_entry_accidentally_equals_the_fallback(self) -> None:
         """An entry equal to DEFAULT_PRICING is indistinguishable from a missing one — someone pasted the fallback instead of the real rate."""

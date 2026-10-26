@@ -19,7 +19,6 @@ HOLO_CONVERSATION_ID_FIELD = "holo_conversation_id"
 # Key inside the `onboarding` subdocument holding the conversation the
 # pre-relocation onboarding seeded. Nothing writes it any more, but a user who
 # ran that flow still carries it, so a reset must still tear it down.
-FIRST_CONVERSATION_ID_FIELD = "first_message_conversation_id"
 
 # Key inside the `onboarding` subdocument holding the seeded "Getting started"
 # conversation. Deliberately NOT the legacy field above: a returning user

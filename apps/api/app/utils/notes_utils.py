@@ -58,14 +58,3 @@ async def index_note(note_id: str, user_id: str, plaintext: str) -> None:
         ids=[note_id],
     )
     log.info(f"{LogTag.API} Note with id indexed in ChromaDB", note_id=note_id)
-
-
-async def reindex_note(note_id: str, user_id: str, plaintext: str) -> None:
-    """Re-index a note whose first indexing attempt failed, clearing the flag.
-
-    Mirrors reindex_file in app/services/files/store.py — the repair entry
-    point for notes flagged by insert_note. Failures propagate so a caller
-    repairing a batch sees which notes are still broken.
-    """
-    await index_note(note_id, user_id, plaintext)
-    await note_repository.update(note_id, user_id=user_id, update=NoteUpdate(needs_reindex=False))

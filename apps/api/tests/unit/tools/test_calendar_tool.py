@@ -55,8 +55,9 @@ from app.models.integrations.composio import CustomToolAuthCredentials
 from app.models.user_models import UserDocument
 from app.services.composio.account_scope import account_scope, current_selection
 from app.services.composio.proxy_client import ProxyRequest
+from app.utils import concurrency
 from app.utils.calendar_utils import CALENDAR_API_BASE
-from app.utils.concurrency import reset_captured_loop, run_on_captured_loop
+from app.utils.concurrency import run_on_captured_loop
 from app.utils.errors import AppError
 from tests.helpers import captured_wide_event
 
@@ -115,9 +116,9 @@ def _no_captured_server_loop() -> Iterator[None]:
     leaking in from another test, which would make _run_sync dispatch onto a
     closed loop.
     """
-    reset_captured_loop()
+    concurrency._captured_loop = None
     yield
-    reset_captured_loop()
+    concurrency._captured_loop = None
 
 
 @pytest.fixture

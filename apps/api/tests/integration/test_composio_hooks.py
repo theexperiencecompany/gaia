@@ -15,7 +15,14 @@ from composio.types import Tool, ToolExecuteParams, ToolExecutionResponse
 import pytest
 
 from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
-from app.models.integrations.reddit_hooks import RedditCommentThing, RedditPostThing
+from app.models.integrations.reddit_hooks import (
+    RedditComment,
+    RedditKindedThing,
+    RedditPost,
+)
+
+RedditPostThing = RedditKindedThing[RedditPost]
+RedditCommentThing = RedditKindedThing[RedditComment]
 from app.services.composio.custom_tools.context_tool import (
     PROVIDER_TOOLS,
     tool_namespace,

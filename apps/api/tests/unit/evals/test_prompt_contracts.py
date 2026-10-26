@@ -28,7 +28,6 @@ from scripts.evals.core.prompt_contracts import (
     ClauseResolutionError,
     clause,
     contract_criteria,
-    contract_failures,
     resolve,
 )
 
@@ -59,6 +58,16 @@ def _edit(monkeypatch: pytest.MonkeyPatch, edit: Callable[[str], str]) -> None:
 # ---------------------------------------------------------------------------
 # The CI gate
 # ---------------------------------------------------------------------------
+
+
+def contract_failures() -> list[str]:
+    failures: list[str] = []
+    for clause_obj in CLAUSES:
+        try:
+            resolve(clause_obj.ref)
+        except ClauseResolutionError as exc:
+            failures.append(str(exc))
+    return failures
 
 
 def test_every_registered_clause_resolves() -> None:

@@ -12,8 +12,6 @@ from app.services.voice_service import list_voices, set_user_voice
 from app.utils.errors import AppError
 from app.utils.timezone import is_valid_timezone
 
-CHANNEL_FLAGS = ("telegram", "discord", "whatsapp", "slack", "email")
-
 
 async def set_notification_channels(
     user_id: str,

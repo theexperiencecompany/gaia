@@ -208,7 +208,7 @@ class TestSetPreferencesEdges:
 
 class TestChannelFlagSemantics:
     async def test_all_five_flags_write_in_one_call(self, repo) -> None:
-        flags = dict.fromkeys(account_settings.CHANNEL_FLAGS, True)
+        flags = dict.fromkeys(("telegram", "discord", "whatsapp", "slack", "email"), True)
         await account_settings.set_notification_channels(USER_ID, **flags)
         repo.set_channels.assert_awaited_once_with(USER_ID, **flags)
 
@@ -218,7 +218,7 @@ class TestChannelFlagSemantics:
         await account_settings.set_notification_channels(USER_ID, email=False)
         kwargs = repo.set_channels.await_args.kwargs
         assert kwargs == {"email": False}
-        assert set(kwargs) != set(account_settings.CHANNEL_FLAGS)
+        assert set(kwargs) != {"telegram", "discord", "whatsapp", "slack", "email"}
 
 
 class TestVoiceSelectionAttacks:

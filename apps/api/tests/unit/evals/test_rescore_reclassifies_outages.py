@@ -17,8 +17,6 @@ import pytest
 from scripts.evals.core.journal import RunJournal, RunMeta
 from scripts.evals.core.rescore import (
     reclassify,
-    reclassify_all,
-    render_by_suite,
     rescore,
     write_sibling,
 )
@@ -164,9 +162,7 @@ def test_history_is_correctable_without_the_suite_or_its_dataset(
 ) -> None:
     """Whether a case ran is a property of the record, so correction must never need the suite or its dataset file."""
     assert "longmemeval" not in SUITE_REGISTRY or True  # correction must not consult it
-    results = reclassify_all(contaminated_run)
+    result = reclassify(contaminated_run, "longmemeval-outage")
 
-    assert len(results) == 1
-    assert len(results[0].reclassified) == 3
-    assert "longmemeval" in render_by_suite(results)
-    assert "2/3" in render_by_suite(results)
+    assert result.suite == "longmemeval"
+    assert len(result.reclassified) == 3

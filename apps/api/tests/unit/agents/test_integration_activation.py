@@ -8,7 +8,6 @@ from langgraph.types import Command
 import pytest
 
 from app.agents.context.text import ACTIVATION_MULTI_ACCOUNT_POINTER
-from app.agents.core.subagents import integration_activation
 from app.agents.core.subagents.handoff_tools import CustomMcpSubagent
 from app.agents.core.subagents.integration_activation import (
     _activate_tools,
@@ -739,7 +738,3 @@ class TestActivateIntegrationTool:
         text = self._text(result)
         assert "0 tools" in text
         assert "Use retrieve_tools to bind" not in text
-
-
-def test_tool_exports() -> None:
-    assert integration_activation.tools == [integration_activation.activate_integration]
