@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import JsonLd from "@/components/seo/JsonLd";
 import BotsPage from "@/features/bots/components/BotsPage";
+import { BOTS_FAQS } from "@/features/bots/pageContent";
 import {
   generateBreadcrumbSchema,
+  generateFAQSchema,
   generatePageMetadata,
   generateWebPageSchema,
   siteConfig,
@@ -45,7 +47,9 @@ export default function Bots() {
 
   return (
     <>
-      <JsonLd data={[webPageSchema, breadcrumbSchema]} />
+      <JsonLd
+        data={[webPageSchema, breadcrumbSchema, generateFAQSchema(BOTS_FAQS)]}
+      />
       <BotsPage />
     </>
   );

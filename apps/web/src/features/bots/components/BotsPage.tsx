@@ -7,6 +7,8 @@ import Link from "next/link";
 import { BOT_PLATFORM_ICONS, BOT_PLATFORM_LABELS } from "@/config/botPlatforms";
 import type { BotConfig } from "../constants";
 import { useBotCards } from "../hooks/useBotCards";
+import { BOT_PLATFORM_REACH } from "../pageContent";
+import BotsGuide from "./BotsGuide";
 
 const stackedIcons = [
   {
@@ -42,6 +44,7 @@ const stackedIcons = [
 ];
 
 function BotCard({
+  id,
   icon,
   name,
   description,
@@ -63,6 +66,7 @@ function BotCard({
         </div>
         <h2 className="font-medium text-white text-xl">{name}</h2>
         <p className="text-sm text-zinc-400">{description}</p>
+        <p className="text-sm text-zinc-500">{BOT_PLATFORM_REACH[id]}</p>
       </div>
       {setupCommand && (
         <div className="flex w-full flex-col gap-2">
@@ -146,12 +150,13 @@ export default function BotsPage() {
         </div>
       </section>
 
-      <section className="relative z-10 mx-auto w-full max-w-3xl px-6 pb-16 gap-5 pt-4">
+      <section className="relative z-10 mx-auto flex w-full max-w-4xl flex-col gap-10 px-6 pb-16 pt-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-2">
           {bots.map((bot) => (
             <BotCard key={bot.id} {...bot} />
           ))}
         </div>
+        <BotsGuide />
       </section>
     </div>
   );

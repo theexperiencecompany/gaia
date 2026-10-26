@@ -2,10 +2,12 @@ import type { Metadata } from "next";
 import JsonLd from "@/components/seo/JsonLd";
 import {
   generateBreadcrumbSchema,
+  generateFAQSchema,
   generatePageMetadata,
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
+import { CLI_FAQS } from "./cliContent";
 import { InstallPageClient } from "./InstallPageClient";
 
 export const metadata: Metadata = generatePageMetadata({
@@ -42,7 +44,9 @@ export default function InstallPage() {
 
   return (
     <>
-      <JsonLd data={[webPageSchema, breadcrumbSchema]} />
+      <JsonLd
+        data={[webPageSchema, breadcrumbSchema, generateFAQSchema(CLI_FAQS)]}
+      />
       <InstallPageClient />
     </>
   );
