@@ -37,6 +37,7 @@
     "promote-static": "node scripts/promote-static-landing.mjs",
     "prune-desktop-assets": "node scripts/prune-desktop-assets.mjs",
     "verify-prerender": "node scripts/verify-prerender-cache.mjs",
+    "verify-landing-bundle": "node scripts/verify-landing-bundle.mjs",
     "cf:build": "npm run type-check && IMAGE_LOADER=cloudflare opennextjs-cloudflare build && npm run promote-static && npm run prune-desktop-assets",
     "deploy": "npm run cf:build && opennextjs-cloudflare deploy",
     "preview": "npm run cf:build && opennextjs-cloudflare preview",

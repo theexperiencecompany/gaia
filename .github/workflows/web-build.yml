@@ -109,6 +109,12 @@ jobs:
         # would then upload to R2 as the canonical response. Fail here instead.
         run: pnpm --filter ./apps/web verify-prerender
 
+      - name: Verify landing pages load no app-only code
+        if: steps.inputs.outputs.build != 'false'
+        # The chat stack, the PostHog SDK and the OpenUI stylesheet slow every
+        # marketing page without failing anything; the eager bundle is checked here.
+        run: pnpm --filter ./apps/web verify-landing-bundle
+
       # The build only proves the bundle assembles. Boot it in workerd and hit
       # real routes: a Next minor can change a manifest OpenNext cannot load and
       # every dynamic route 500s with a green build (2026-10-23). Here, not in
