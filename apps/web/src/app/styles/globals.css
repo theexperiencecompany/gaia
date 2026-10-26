@@ -1239,6 +1239,20 @@
   transform-origin: bottom;
 }
 
+/* Landing chat-demo controls draw at 20-36px like the real apps; an invisible 44px square keeps each a full-size tap target. */
+.chat-demo-tap {
+  position: relative;
+}
+.chat-demo-tap::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+}
+
 /* Landing bots-showcase typing-indicator dots */
 @keyframes chat-demo-typing {
   0%,
