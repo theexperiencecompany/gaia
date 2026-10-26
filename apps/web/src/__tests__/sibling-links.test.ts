@@ -1,8 +1,11 @@
-/** Every blog post and role page is linked from at least two of its siblings, so none is reachable only from its hub. */
+/** Every blog post, role page and automation combo is linked from at least two of its siblings, so none is reachable only from its hub. */
 import type { ReactElement } from "react";
 import { describe, expect, it } from "vitest";
 
 import BlogPostPage from "@/app/[locale]/(landing)/blog/[slug]/page";
+import { getAllCombos } from "@/features/integrations/data/combosData";
+import { comboAppsOf } from "@/features/integrations/lib/comboApps";
+import { relatedComboRows } from "@/features/integrations/lib/relatedCombos";
 import { getRelatedPersonas } from "@/features/personas/data/getTranslatedPersona";
 import { getAllPersonaSlugs } from "@/features/personas/data/personasData";
 import { getAllBlogSlugs } from "@/lib/blog";
@@ -57,5 +60,33 @@ describe("sibling links", () => {
       );
     }
     expect(underLinked(inboundCounts(slugs, linksFrom))).toEqual([]);
+  });
+
+  it("links every automation combo from at least two combos that share an app", async () => {
+    const combos = await getAllCombos();
+    const linksFrom = new Map<string, string[]>();
+    for (const combo of combos) {
+      const rows = relatedComboRows(combo, combos);
+      const related = rows.flatMap((row) => row.combos);
+      for (const row of rows) {
+        for (const other of row.combos) {
+          expect(comboAppsOf(other).map((app) => app.slug)).toContain(
+            row.app.slug,
+          );
+        }
+      }
+      linksFrom.set(
+        combo.slug,
+        related.map((other) => other.slug),
+      );
+    }
+    expect(
+      underLinked(
+        inboundCounts(
+          combos.map((combo) => combo.slug),
+          linksFrom,
+        ),
+      ),
+    ).toEqual([]);
   });
 });

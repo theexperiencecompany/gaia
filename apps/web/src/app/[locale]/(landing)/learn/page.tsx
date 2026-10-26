@@ -1,8 +1,13 @@
 import type { Metadata } from "next";
 import { getTranslations, setRequestLocale } from "next-intl/server";
+import { HubGroupSection } from "@/components/seo/HubGroupSection";
+import { HubIndex } from "@/components/seo/HubPageNav";
 import JsonLd from "@/components/seo/JsonLd";
-import { SiteLink } from "@/components/seo/SiteLink";
 import { getAllTranslatedGlossaryTerms } from "@/features/glossary/data/getTranslatedGlossary";
+import {
+  glossaryCategoryGroups,
+  glossaryCategoryPath,
+} from "@/features/glossary/data/glossaryCategories";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
 import {
@@ -11,6 +16,10 @@ import {
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
+import { GlossaryTermGrid } from "./GlossaryTermGrid";
+
+/** Terms each category's section previews: two rows of three, the rest one click away on its category page. */
+const TERMS_PER_CATEGORY = 6;
 
 interface PageProps {
   readonly params: Promise<{
@@ -43,35 +52,15 @@ export async function generateMetadata({
   });
 }
 
-const CATEGORY_KEYS: Record<string, string> = {
-  "ai-concepts": "category_ai_concepts",
-  productivity: "category_productivity",
-  automation: "category_automation",
-  email: "category_email",
-  calendar: "category_calendar",
-  "task-management": "category_task_management",
-  "knowledge-management": "category_knowledge_management",
-  development: "category_development",
-};
-
-const CATEGORY_ORDER = [
-  "ai-concepts",
-  "productivity",
-  "automation",
-  "email",
-  "calendar",
-  "task-management",
-  "knowledge-management",
-  "development",
-];
-
 export default async function LearnHubPage({ params }: PageProps) {
   const { locale } = await params;
   setRequestLocale(locale);
-  const [t, allTerms] = await Promise.all([
+  const [t, tCommon, allTerms] = await Promise.all([
     getTranslations({ locale, namespace: "glossary" }),
+    getTranslations({ locale, namespace: "common" }),
     getAllTranslatedGlossaryTerms(locale),
   ]);
+  const categories = glossaryCategoryGroups(allTerms, t);
 
   const webPageSchema = generateWebPageSchema(
     t("hub_title"),
@@ -92,9 +81,9 @@ export default async function LearnHubPage({ params }: PageProps) {
   ]);
 
   const itemListSchema = generateItemListSchema(
-    allTerms.map((term) => ({
-      name: term.term,
-      url: `${siteConfig.url}/learn/${term.slug}`,
+    categories.map((category) => ({
+      name: category.label,
+      url: `${siteConfig.url}${glossaryCategoryPath(category.slug)}`,
     })),
   );
 
@@ -112,37 +101,34 @@ export default async function LearnHubPage({ params }: PageProps) {
           </p>
         </header>
 
-        {CATEGORY_ORDER.map((categoryKey) => {
-          const terms = allTerms.filter(
-            (term) => term.category === categoryKey,
-          );
-          if (terms.length === 0) return null;
+        <HubIndex
+          label={tCommon("section_nav_label")}
+          entries={categories.map((category) => ({
+            id: `category-${category.slug}`,
+            label: category.label,
+            count: category.items.length,
+          }))}
+        />
 
-          return (
-            <section key={categoryKey} className="mb-14">
-              <h2 className="mb-6 text-2xl font-semibold text-white">
-                {t(CATEGORY_KEYS[categoryKey] as Parameters<typeof t>[0])}
-              </h2>
-
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {terms.map((term) => (
-                  <SiteLink
-                    key={term.slug}
-                    href={`/learn/${term.slug}`}
-                    className="group flex flex-col gap-2 rounded-3xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
-                  >
-                    <h3 className="mb-2 text-lg font-semibold text-white transition-colors group-hover:text-primary">
-                      {term.term}
-                    </h3>
-                    <p className="line-clamp-3 text-sm leading-relaxed text-zinc-400">
-                      {term.definition}
-                    </p>
-                  </SiteLink>
-                ))}
-              </div>
-            </section>
-          );
-        })}
+        {categories.map((category) => (
+          <HubGroupSection
+            key={category.slug}
+            id={`category-${category.slug}`}
+            heading={category.label}
+            headingClassName="text-2xl font-semibold text-white"
+            allLink={{
+              href: glossaryCategoryPath(category.slug),
+              label: t("all_category_terms", {
+                count: category.items.length,
+                category: category.label,
+              }),
+            }}
+          >
+            <GlossaryTermGrid
+              terms={category.items.slice(0, TERMS_PER_CATEGORY)}
+            />
+          </HubGroupSection>
+        ))}
       </div>
 
       <FinalSection />

@@ -1,9 +1,25 @@
 import type { MetadataRoute } from "next";
 
 import { getAllAlternativeSlugs } from "@/features/alternatives/data/alternativesData";
-import { getAllComparisonSlugs } from "@/features/comparisons/data/comparisonsData";
+import {
+  comparisonCategoryGroups,
+  comparisonCategoryPath,
+} from "@/features/comparisons/data/comparisonCategories";
+import { getAllComparisons } from "@/features/comparisons/data/comparisonsData";
+import {
+  glossaryCategoryGroups,
+  glossaryCategoryPath,
+} from "@/features/glossary/data/glossaryCategories";
 import { getAllGlossaryTerms } from "@/features/glossary/data/glossaryData";
 import { getAllCombos } from "@/features/integrations/data/combosData";
+import {
+  appPagePath,
+  comboAppGroups,
+} from "@/features/integrations/lib/comboApps";
+import {
+  MARKETPLACE_PATH,
+  marketplaceDirectoryPages,
+} from "@/features/integrations/lib/marketplaceDirectoryPages";
 import {
   getAllCommunityIntegrations,
   getNativeIntegrations,
@@ -18,6 +34,7 @@ import { findCopiedTemplate } from "@/features/workflows/lib/templateCopies";
 import { defaultLocale, locales } from "@/i18n/config";
 import { getAlternates } from "@/i18n/getAlternates";
 import { blogLastModified, getAllBlogPosts } from "@/lib/blog";
+import { hubPagePath, laterHubPageParams } from "@/lib/hubPagination";
 import { getSiteUrl } from "@/lib/seo";
 
 /**
@@ -199,15 +216,28 @@ async function getCommunityWorkflowPages(
 async function getIntegrationPages(
   baseUrl: string,
 ): Promise<MetadataRoute.Sitemap> {
-  const integrations = await getAllCommunityIntegrations();
-  return integrations.map((integration) => ({
-    url: `${baseUrl}/marketplace/${integration.slug}`,
-    ...(integration.publishedAt
-      ? { lastModified: new Date(integration.publishedAt) }
-      : {}),
+  const [integrations, native] = await Promise.all([
+    getAllCommunityIntegrations(),
+    getNativeIntegrations(),
+  ]);
+  const directoryPages = laterHubPageParams(
+    marketplaceDirectoryPages(native, integrations),
+  ).map(({ page }) => ({
+    url: `${baseUrl}${hubPagePath(MARKETPLACE_PATH, Number(page))}`,
     changeFrequency: "weekly" as const,
-    priority: 0.7,
+    priority: 0.6,
   }));
+  return [
+    ...integrations.map((integration) => ({
+      url: `${baseUrl}/marketplace/${integration.slug}`,
+      ...(integration.publishedAt
+        ? { lastModified: new Date(integration.publishedAt) }
+        : {}),
+      changeFrequency: "weekly" as const,
+      priority: 0.7,
+    })),
+    ...directoryPages,
+  ];
 }
 
 /**
@@ -216,12 +246,19 @@ async function getIntegrationPages(
 async function getComparisonPages(
   baseUrl: string,
 ): Promise<MetadataRoute.Sitemap> {
-  const slugs = await getAllComparisonSlugs();
-  return slugs.map((slug) => ({
-    url: `${baseUrl}/compare/${slug}`,
-    changeFrequency: "monthly" as const,
-    priority: 0.8,
-  }));
+  const comparisons = await getAllComparisons();
+  return [
+    ...comparisons.map(({ slug }) => ({
+      url: `${baseUrl}/compare/${slug}`,
+      changeFrequency: "monthly" as const,
+      priority: 0.8,
+    })),
+    ...comparisonCategoryGroups(comparisons).map((category) => ({
+      url: `${baseUrl}${comparisonCategoryPath(category.slug)}`,
+      changeFrequency: "weekly" as const,
+      priority: 0.7,
+    })),
+  ];
 }
 
 const FEATURED_PERSONA_SLUGS = new Set([
@@ -266,6 +303,14 @@ async function getGlossaryPages(
       priority: 0.7,
     });
   }
+  // Category labels do not decide which categories exist, so the message key stands in for them.
+  for (const category of glossaryCategoryGroups(terms, (key) => key)) {
+    pages.push({
+      url: `${baseUrl}${glossaryCategoryPath(category.slug)}`,
+      changeFrequency: "weekly",
+      priority: 0.7,
+    });
+  }
   return pages;
 }
 
@@ -295,6 +340,13 @@ async function getIntegrationComboPages(
     pages.push({
       url: `${baseUrl}/automate/${combo.slug}`,
       changeFrequency: "monthly",
+      priority: 0.7,
+    });
+  }
+  for (const app of comboAppGroups(allCombos)) {
+    pages.push({
+      url: `${baseUrl}${appPagePath(app.slug)}`,
+      changeFrequency: "weekly",
       priority: 0.7,
     });
   }

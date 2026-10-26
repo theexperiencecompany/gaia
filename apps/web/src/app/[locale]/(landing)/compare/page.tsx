@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
-import Image from "next/image";
 import { getTranslations, setRequestLocale } from "next-intl/server";
+import { HubGroupSection } from "@/components/seo/HubGroupSection";
+import { HubIndex } from "@/components/seo/HubPageNav";
 import JsonLd from "@/components/seo/JsonLd";
-import { SiteLink } from "@/components/seo/SiteLink";
 import {
-  CATEGORY_ORDER,
-  COMPARISON_CATEGORIES,
-} from "@/features/comparisons/data/categories";
+  comparisonCategoryGroups,
+  comparisonCategoryPath,
+} from "@/features/comparisons/data/comparisonCategories";
 import { getTranslatedComparisons } from "@/features/comparisons/data/getTranslatedComparison";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
@@ -16,6 +16,10 @@ import {
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
+import { ComparisonCardGrid } from "./ComparisonCardGrid";
+
+/** Comparisons each category's section previews: two rows of three, the rest one click away on its category page. */
+const COMPARISONS_PER_CATEGORY = 6;
 
 interface PageProps {
   readonly params: Promise<{
@@ -50,10 +54,12 @@ export async function generateMetadata({
 export default async function ComparisonsHubPage({ params }: PageProps) {
   const { locale } = await params;
   setRequestLocale(locale);
-  const [t, comparisons] = await Promise.all([
+  const [t, tCommon, comparisons] = await Promise.all([
     getTranslations({ locale, namespace: "comparisons" }),
+    getTranslations({ locale, namespace: "common" }),
     getTranslatedComparisons(locale),
   ]);
+  const categories = comparisonCategoryGroups(comparisons);
 
   const webPageSchema = generateWebPageSchema(
     t("hub_title"),
@@ -71,26 +77,11 @@ export default async function ComparisonsHubPage({ params }: PageProps) {
   ]);
 
   const itemListSchema = generateItemListSchema(
-    comparisons.map((c) => ({
-      name: `${t("gaia_vs", { name: c.name })}`,
-      url: `${siteConfig.url}/compare/${c.slug}`,
+    categories.map((category) => ({
+      name: t("category_page_title", { category: category.label }),
+      url: `${siteConfig.url}${comparisonCategoryPath(category.slug)}`,
     })),
   );
-
-  // Group comparisons by category
-  const grouped: Record<string, typeof comparisons> = {};
-  for (const comparison of comparisons) {
-    const category = COMPARISON_CATEGORIES[comparison.slug] ?? "Other";
-    if (!grouped[category]) {
-      grouped[category] = [];
-    }
-    grouped[category].push(comparison);
-  }
-
-  const orderedCategories = [
-    ...CATEGORY_ORDER.filter((cat) => grouped[cat]),
-    ...(grouped["Other"] ? ["Other"] : []),
-  ];
 
   return (
     <>
@@ -106,54 +97,34 @@ export default async function ComparisonsHubPage({ params }: PageProps) {
           </p>
         </header>
 
-        {orderedCategories.map((category) => (
-          <div key={category} className="mb-14">
-            <h2 className="mb-6 border-b border-zinc-700 pb-3 text-xl font-semibold text-zinc-300">
-              {category}
-            </h2>
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {grouped[category].map((comparison) => (
-                <SiteLink
-                  key={comparison.slug}
-                  href={`/compare/${comparison.slug}`}
-                  className="group flex flex-col gap-3 rounded-3xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
-                >
-                  <div className="flex items-center -space-x-2">
-                    <div
-                      className="relative flex h-9 w-9 items-center justify-center p-0"
-                      style={{ rotate: "-9deg", zIndex: 1 }}
-                    >
-                      <Image
-                        src="/images/logos/macos.webp"
-                        alt="GAIA"
-                        width={50}
-                        height={50}
-                      />
-                    </div>
-                    <div
-                      className="relative flex h-8 w-8 items-center justify-center rounded-md overflow-hidden p-0"
-                      style={{ rotate: "9deg", zIndex: 0 }}
-                    >
-                      <Image
-                        src={`https://www.google.com/s2/favicons?domain=${comparison.domain}&sz=128`}
-                        alt={comparison.name}
-                        width={40}
-                        height={40}
-                        unoptimized
-                      />
-                    </div>
-                  </div>
-                  <h3 className="text-lg font-medium text-white transition-colors group-hover:text-primary">
-                    {t("gaia_vs", { name: comparison.name })}
-                  </h3>
-                  <p className="text-sm text-zinc-500">{comparison.tagline}</p>
-                  <p className="line-clamp-2 text-sm leading-relaxed text-zinc-400">
-                    {comparison.description}
-                  </p>
-                </SiteLink>
-              ))}
-            </div>
-          </div>
+        <HubIndex
+          label={tCommon("section_nav_label")}
+          entries={categories.map((category) => ({
+            id: `category-${category.slug}`,
+            label: category.label,
+            count: category.items.length,
+          }))}
+        />
+
+        {categories.map((category) => (
+          <HubGroupSection
+            key={category.slug}
+            id={`category-${category.slug}`}
+            heading={category.label}
+            headingClassName="text-2xl font-semibold text-white"
+            allLink={{
+              href: comparisonCategoryPath(category.slug),
+              label: t("all_category_comparisons", {
+                count: category.items.length,
+                category: category.label,
+              }),
+            }}
+          >
+            <ComparisonCardGrid
+              comparisons={category.items.slice(0, COMPARISONS_PER_CATEGORY)}
+              vsLabel={(name) => t("gaia_vs", { name })}
+            />
+          </HubGroupSection>
         ))}
       </div>
 

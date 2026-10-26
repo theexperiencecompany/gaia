@@ -10,7 +10,8 @@
     "dont_see_your_tool": "Não encontrou sua ferramenta?",
     "view_comparisons": "Ver comparações",
     "get_started": "Começar",
-    "docs_guides": "Guias na documentação"
+    "docs_guides": "Guias na documentação",
+    "section_nav_label": "Ir para uma seção"
   },
   "alternatives": {
     "breadcrumb": "Alternativas",
@@ -71,7 +72,12 @@
     "hub_title": "Como o GAIA se compara",
     "hub_subtitle": "Comparações honestas e detalhadas para ajudá-lo a escolher a ferramenta de produtividade IA certa. Veja onde o GAIA se destaca e onde outras podem se encaixar melhor.",
     "hub_meta_title": "Comparativos de assistentes de IA: GAIA vs ChatGPT e mais",
-    "hub_meta_description": "Comparações honestas e detalhadas do GAIA com ChatGPT, Gemini, Claude, Motion, Zapier, Reclaim e mais, para escolher a ferramenta de IA certa."
+    "hub_meta_description": "Comparações honestas e detalhadas do GAIA com ChatGPT, Gemini, Claude, Motion, Zapier, Reclaim e mais, para escolher a ferramenta de IA certa.",
+    "all_category_comparisons": "Os {count} comparativos de {category}",
+    "category_page_title": "Comparativos de {category}",
+    "category_page_subtitle": "Como o GAIA se compara a {count} ferramentas de {category}, lado a lado, para você ver onde cada uma se encaixa.",
+    "category_meta_title": "{category}: GAIA contra {count} ferramentas",
+    "category_meta_description": "O GAIA lado a lado com {count} ferramentas de {category}: recursos, preços e onde cada uma se encaixa, para você escolher a certa."
   },
   "automate": {
     "breadcrumb": "Automatizar",
@@ -92,7 +98,13 @@
     "hub_meta_description": "Conecte Gmail + Slack, Notion + Todoist, GitHub + Linear e mais. O GAIA cuida automaticamente dos fluxos entre suas ferramentas.",
     "combos_count": "{count} combos de automação",
     "dont_see_your_combo": "Não encontrou seu combo?",
-    "dont_see_your_combo_desc": "Explore o marketplace de integrações completo ou conecte qualquer ferramenta via MCP."
+    "dont_see_your_combo_desc": "Explore o marketplace de integrações completo ou conecte qualquer ferramenta via MCP.",
+    "more_automations_with": "Mais automações com <app>{name}</app>",
+    "all_app_automations": "{count, plural, one {A # automação de {app}} other {As # automações de {app}}}",
+    "app_page_title": "Automações de {app}",
+    "app_page_subtitle": "Todas as formas como o GAIA conecta o {app} às suas outras ferramentas, e o trabalho que ele faz por você entre elas.",
+    "app_meta_title": "Automações de {app}: {count, plural, one {# fluxo} other {# fluxos}} com o GAIA",
+    "app_meta_description": "Todas as formas como o GAIA conecta o {app} às suas outras ferramentas: {count, plural, one {# automação} other {# automações}}, sem escrever código."
   },
   "glossary": {
     "breadcrumb": "Glossário",
@@ -116,7 +128,11 @@
     "category_calendar": "Calendário & Gestão de Tempo",
     "category_task_management": "Gerenciamento de Tarefas",
     "category_knowledge_management": "Conhecimento & Notas",
-    "category_development": "Desenvolvimento & Integrações"
+    "category_development": "Desenvolvimento & Integrações",
+    "all_category_terms": "Os {count} termos de {category}",
+    "category_page_subtitle": "{count} termos de {category} explicados com clareza, e como o GAIA coloca cada um para trabalhar.",
+    "category_meta_title": "{category}: {count} termos explicados",
+    "category_meta_description": "{count} termos de {category} explicados com clareza, e como cada um move um assistente de IA proativo como o GAIA."
   },
   "marketplace": {
     "breadcrumb": "Marketplace"

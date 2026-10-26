@@ -63,7 +63,7 @@ export async function loadBestHubData(config: BestHubConfig) {
 
   const poolSlugs = new Set(config.rankedSlugs);
   const inPool = <T extends { readonly slug: string }>(item: T) =>
-    config.listAll || poolSlugs.has(item.slug);
+    poolSlugs.has(item.slug);
 
   return {
     ranked,

@@ -3,6 +3,7 @@ import { Suspense } from "react";
 
 import JsonLd from "@/components/seo/JsonLd";
 import { MarketplaceDirectory } from "@/features/integrations/components/MarketplaceDirectory";
+import { marketplaceDirectoryPages } from "@/features/integrations/lib/marketplaceDirectoryPages";
 import {
   getAllCommunityIntegrations,
   getNativeIntegrations,
@@ -52,6 +53,7 @@ export default async function MarketplacePage() {
     getNativeIntegrations(),
     getAllCommunityIntegrations(),
   ]);
+  const directoryPages = marketplaceDirectoryPages(native, community);
   const webPageSchema = generateWebPageSchema(
     PAGE_TITLE,
     PAGE_DESCRIPTION,
@@ -105,7 +107,12 @@ export default async function MarketplacePage() {
           <Suspense>
             <IntegrationsPageClient />
           </Suspense>
-          <MarketplaceDirectory native={native} community={community} />
+          {directoryPages[0] && (
+            <MarketplaceDirectory
+              hubPage={directoryPages[0]}
+              totalPages={directoryPages.length}
+            />
+          )}
         </div>
         <FinalSection />
       </div>

@@ -1,10 +1,14 @@
 import { Button } from "@heroui/button";
 import type { Metadata } from "next";
-import Image from "next/image";
 import { getTranslations, setRequestLocale } from "next-intl/server";
+import { HubIndex } from "@/components/seo/HubPageNav";
 import JsonLd from "@/components/seo/JsonLd";
-import { SiteLink } from "@/components/seo/SiteLink";
+import { RelatedAutomationsGrid } from "@/components/seo/RelatedAutomationsGrid";
 import { getTranslatedCombos } from "@/features/integrations/data/getTranslatedCombo";
+import {
+  appPagePath,
+  comboAppGroups,
+} from "@/features/integrations/lib/comboApps";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
 import {
@@ -13,6 +17,9 @@ import {
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
+
+/** Combos each app's section previews: 24 apps at 2 each plus their "all" links keep the hub under 100 links. */
+const COMBOS_PER_APP = 2;
 
 interface PageProps {
   readonly params: Promise<{
@@ -44,58 +51,8 @@ export async function generateMetadata({
   });
 }
 
-const TOOL_DOMAINS: Record<string, string> = {
-  airtable: "airtable.com",
-  asana: "asana.com",
-  clickup: "clickup.com",
-  discord: "discord.com",
-  figma: "figma.com",
-  github: "github.com",
-  gmail: "gmail.com",
-  "google-calendar": "calendar.google.com",
-  "google-drive": "drive.google.com",
-  hubspot: "hubspot.com",
-  jira: "atlassian.com",
-  linear: "linear.app",
-  loom: "loom.com",
-  "microsoft-teams": "teams.microsoft.com",
-  notion: "notion.so",
-  salesforce: "salesforce.com",
-  slack: "slack.com",
-  stripe: "stripe.com",
-  teams: "teams.microsoft.com",
-  todoist: "todoist.com",
-  trello: "trello.com",
-  zoom: "zoom.us",
-};
-
-function ToolFavicon({
-  slug,
-  name,
-  rotate,
-  zIndex,
-}: {
-  readonly slug: string;
-  readonly name: string;
-  readonly rotate: string;
-  readonly zIndex: number;
-}) {
-  const domain = TOOL_DOMAINS[slug];
-  if (!domain) return null;
-  return (
-    <div
-      className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-md"
-      style={{ rotate, zIndex }}
-    >
-      <Image
-        src={`https://www.google.com/s2/favicons?domain=${domain}&sz=128`}
-        alt={name}
-        width={32}
-        height={32}
-        unoptimized
-      />
-    </div>
-  );
+function appSectionId(appSlug: string): string {
+  return `app-${appSlug}`;
 }
 
 export default async function AutomateHubPage({ params }: PageProps) {
@@ -108,6 +65,7 @@ export default async function AutomateHubPage({ params }: PageProps) {
   ]);
   // getTranslatedCombos is _slugs-driven: consolidated victims (which 308 via
   // canonical-redirects.mjs) are already excluded — no marker filter needed.
+  const apps = comboAppGroups(allCombos);
 
   const webPageSchema = generateWebPageSchema(
     t("hub_title"),
@@ -125,20 +83,11 @@ export default async function AutomateHubPage({ params }: PageProps) {
   ]);
 
   const itemListSchema = generateItemListSchema(
-    allCombos.slice(0, 50).map((c) => ({
-      name: `${t("automate_with_gaia", { toolA: c.toolA, toolB: c.toolB })}`,
-      url: `${siteConfig.url}/automate/${c.slug}`,
+    apps.map((app) => ({
+      name: t("app_page_title", { app: app.name }),
+      url: `${siteConfig.url}${appPagePath(app.slug)}`,
     })),
   );
-
-  // Group by first letter of toolA
-  const grouped: Record<string, typeof allCombos> = {};
-  for (const combo of allCombos) {
-    const letter = combo.toolA[0].toUpperCase();
-    if (!grouped[letter]) grouped[letter] = [];
-    grouped[letter].push(combo);
-  }
-  const letters = Object.keys(grouped).sort((a, b) => a.localeCompare(b));
 
   return (
     <>
@@ -157,56 +106,30 @@ export default async function AutomateHubPage({ params }: PageProps) {
           </p>
         </header>
 
-        {/* Letter jump nav */}
-        <div className="mb-12 flex flex-wrap gap-2">
-          {letters.map((letter) => (
-            <a
-              key={letter}
-              href={`#letter-${letter}`}
-              className="flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-800 text-sm font-medium text-zinc-400 transition hover:bg-zinc-700 hover:text-white"
-            >
-              {letter}
-            </a>
-          ))}
-        </div>
+        <HubIndex
+          label={tCommon("section_nav_label")}
+          entries={apps.map((app) => ({
+            id: appSectionId(app.slug),
+            label: app.name,
+            count: app.combos.length,
+          }))}
+        />
 
-        {/* Grouped combos */}
-        {letters.map((letter) => (
-          <div key={letter} id={`letter-${letter}`} className="mb-12">
-            <h2 className="mb-4 border-b border-zinc-700 pb-2 text-xl font-semibold text-zinc-300">
-              {letter}
-            </h2>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {grouped[letter].map((combo) => (
-                <SiteLink
-                  key={combo.slug}
-                  href={`/automate/${combo.slug}`}
-                  className="group flex flex-col gap-3 rounded-3xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
-                >
-                  <div className="flex items-center -space-x-2">
-                    <ToolFavicon
-                      slug={combo.toolASlug}
-                      name={combo.toolA}
-                      rotate="-9deg"
-                      zIndex={1}
-                    />
-                    <ToolFavicon
-                      slug={combo.toolBSlug}
-                      name={combo.toolB}
-                      rotate="9deg"
-                      zIndex={0}
-                    />
-                  </div>
-                  <h3 className="text-base font-medium text-white transition-colors group-hover:text-primary">
-                    {combo.toolA} + {combo.toolB}
-                  </h3>
-                  <p className="line-clamp-2 text-sm leading-relaxed text-zinc-500">
-                    {combo.tagline}
-                  </p>
-                </SiteLink>
-              ))}
-            </div>
-          </div>
+        {apps.map((app) => (
+          <RelatedAutomationsGrid
+            key={app.slug}
+            id={appSectionId(app.slug)}
+            heading={app.name}
+            headingClassName="text-2xl font-semibold text-white"
+            combos={app.combos.slice(0, COMBOS_PER_APP)}
+            allLink={{
+              href: appPagePath(app.slug),
+              label: t("all_app_automations", {
+                count: app.combos.length,
+                app: app.name,
+              }),
+            }}
+          />
         ))}
 
         {/* CTA */}
