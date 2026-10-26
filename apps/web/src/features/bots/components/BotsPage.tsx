@@ -53,7 +53,7 @@ function BotCard({
   setupCommand,
 }: BotConfig) {
   return (
-    <div className="flex flex-col items-start gap-5 rounded-3xl bg-zinc-900/50 p-4 text-left group hover:bg-zinc-900 transition">
+    <div className="@container flex flex-col items-start gap-5 rounded-3xl bg-zinc-900/50 p-4 text-left group hover:bg-zinc-900 transition">
       <div className="flex w-full items-start gap-2 flex-col">
         <div className="relative h-15 w-15 shrink-0 group-hover:scale-110 group-hover:-rotate-10 transition duration-100">
           <Image
@@ -84,7 +84,7 @@ function BotCard({
           </Snippet>
         </div>
       )}
-      <div className="flex flex-wrap items-center justify-end gap-2 w-full">
+      <div className="flex w-full flex-col gap-2 @min-[22rem]:flex-row @min-[22rem]:justify-end">
         {primaryAction && (
           <Button
             as={Link}
@@ -92,6 +92,7 @@ function BotCard({
             target={primaryAction.external ? "_blank" : "_self"}
             rel={primaryAction.external ? "noopener noreferrer" : undefined}
             color="primary"
+            className="w-full @min-[22rem]:w-auto"
           >
             {primaryAction.label}
           </Button>
@@ -103,6 +104,7 @@ function BotCard({
             target={secondaryAction.external ? "_blank" : "_self"}
             rel={secondaryAction.external ? "noopener noreferrer" : undefined}
             variant="flat"
+            className="w-full @min-[22rem]:w-auto"
           >
             {secondaryAction.label}
           </Button>
