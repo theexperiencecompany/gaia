@@ -12,7 +12,7 @@ import threading
 from typing import Any, TypedDict, cast
 
 from chromadb.api.models.AsyncCollection import AsyncCollection
-from chromadb.api.types import Metadata
+from chromadb.api.types import Metadata, QueryResult
 
 from app.constants.memory import (
     CHROMA_CONVERSATION_CHUNKS_COLLECTION,
@@ -185,7 +185,7 @@ async def query_similar(
         conditions.append({"is_latest": True})
 
     query_embeddings: list[Sequence[float] | Sequence[int]] = [embedding]
-    result = await collection.query(
+    result: QueryResult = await collection.query(
         query_embeddings=query_embeddings,
         n_results=n_results,
         where={"$and": conditions},
@@ -218,14 +218,6 @@ async def set_memory_flags(
     if is_forgotten is not None:
         metadata["is_forgotten"] = is_forgotten
     await collection.update(ids=[memory_id], metadatas=[metadata])
-
-
-async def delete_ids(ids: list[str]) -> None:
-    """Hard-delete memory vectors by id."""
-    if not ids:
-        return
-    collection = await _get_collection(CHROMA_MEMORIES_COLLECTION)
-    await collection.delete(ids=ids)
 
 
 async def delete_user(user_id: str) -> None:
@@ -278,7 +270,7 @@ async def query_conversation_chunks(
     if n_results == 0:
         return []
     query_embeddings: list[Sequence[float] | Sequence[int]] = [embedding]
-    result = await collection.query(
+    result: QueryResult = await collection.query(
         query_embeddings=query_embeddings,
         n_results=n_results,
         where={"user_id": user_id},
@@ -317,7 +309,7 @@ async def query_episodes(
         return []
 
     query_embeddings: list[Sequence[float] | Sequence[int]] = [embedding]
-    result = await collection.query(
+    result: QueryResult = await collection.query(
         query_embeddings=query_embeddings,
         n_results=n_results,
         where={"user_id": user_id},

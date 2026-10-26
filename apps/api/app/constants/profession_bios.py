@@ -1,34 +1,38 @@
 """Profession-based bio templates for users without Gmail integration."""
 
+from collections.abc import Mapping
 import random
+from typing import TypedDict, cast
 
 # Profession enum matching frontend options
-PROFESSIONS = (
-    "student",
-    "teacher",
-    "engineer",
-    "developer",
-    "designer",
-    "manager",
-    "consultant",
-    "entrepreneur",
-    "researcher",
-    "writer",
-    "artist",
-    "doctor",
-    "lawyer",
-    "accountant",
-    "sales",
-    "marketing",
-    "analyst",
-    "freelancer",
-    "retired",
-    "other",
-)
+
 
 # Creative bio templates per profession
 # {name} will be replaced with user's name
-PROFESSION_BIOS: dict[str, list[str]] = {
+class ProfessionBios(TypedDict):
+    student: list[str]
+    teacher: list[str]
+    engineer: list[str]
+    developer: list[str]
+    designer: list[str]
+    manager: list[str]
+    consultant: list[str]
+    entrepreneur: list[str]
+    researcher: list[str]
+    writer: list[str]
+    artist: list[str]
+    doctor: list[str]
+    lawyer: list[str]
+    accountant: list[str]
+    sales: list[str]
+    marketing: list[str]
+    analyst: list[str]
+    freelancer: list[str]
+    retired: list[str]
+    other: list[str]
+
+
+PROFESSION_BIOS: ProfessionBios = {
     "student": [
         "{name} is a ambitious student harnessing GAIA's intelligent automation to ace deadlines, manage study schedules, and turn chaos into straight A's. Currently mastering the art of productivity, one automated workflow at a time.",
         "Meet {name}, a student who discovered that GAIA is basically the study buddy who never sleeps, never judges your 3am panic sessions, and always remembers when assignments are due. Transforming academic stress into organized success.",
@@ -204,7 +208,7 @@ def get_random_bio_for_profession(name: str, profession: str) -> str:
     profession = profession.lower().strip()
 
     # Get bios for the profession, or use 'other' as fallback
-    bios = PROFESSION_BIOS.get(profession, PROFESSION_BIOS["other"])
+    bios = cast(Mapping[str, list[str]], PROFESSION_BIOS).get(profession, PROFESSION_BIOS["other"])
 
     # Select a random bio and format with the name
     selected_bio = random.choice(bios)  # nosec: B311

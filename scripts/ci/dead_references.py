@@ -71,31 +71,6 @@ DYNAMIC_SYMBOLS: dict[tuple[str, str], str] = {
     ("app.main", "app"): "uvicorn target app.main:app (infra/docker/docker-compose.yml)",
 }
 
-# Known dead, deferred: each file is grandfathered for typed-boundaries, so
-# deleting the symbol would force an unrelated typing rewrite in this PR.
-# Remove these when the dedicated typing cleanup lands.
-KNOWN_DEAD: dict[tuple[str, str], str] = {
-    ("app.agents.skills.builtin.create-spreadsheet.templates.report", "FMT_CURRENCY_K"): (
-        "typed-boundaries grandfathered template"
-    ),
-    ("app.agents.skills.builtin.create-spreadsheet.templates.report", "FMT_MULTIPLE"): (
-        "typed-boundaries grandfathered template"
-    ),
-    ("app.constants.profession_bios", "PROFESSIONS"): "typed-boundaries grandfathered file",
-    ("app.memory.chroma_store", "delete_ids"): "typed-boundaries grandfathered file",
-    (
-        "app.models.playbook_models",
-        "UNCOUNTED_DECLINE_KINDS",
-    ): "typed-boundaries grandfathered file",
-    (
-        "app.services.workflow.subagent_output",
-        "WorkflowDraft",
-    ): "typed-boundaries grandfathered file",
-    ("app.services.workflow.subagent_output", "WorkflowSubagentOutput"): (
-        "typed-boundaries grandfathered file"
-    ),
-}
-
 SKIP_PARTS = {
     ".venv",
     "venv",
@@ -404,8 +379,6 @@ def audit(app_dir: Path = APP_DIR, root: Path = REPO_ROOT) -> list[tuple[Definit
     findings: list[tuple[Definition, str]] = []
     for definition in _definitions(app_dir, root):
         if (definition.module, definition.name) in DYNAMIC_SYMBOLS:
-            continue
-        if (definition.module, definition.name) in KNOWN_DEAD:
             continue
         if definition.name.startswith("__"):
             continue

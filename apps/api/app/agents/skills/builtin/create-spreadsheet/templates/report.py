@@ -13,6 +13,7 @@ Run via: bash scripts/build.sh report.py out.xlsx
 """
 
 import sys
+from typing import TypedDict
 
 from openpyxl import Workbook
 from openpyxl.cell.cell import Cell
@@ -32,9 +33,7 @@ WHITE = "FFFFFF"
 GREY = "808080"
 
 FMT_CURRENCY = '"$"#,##0'  # $1,234  (no decimals — clean for a P&L)
-FMT_CURRENCY_K = '"$"#,##0,"k"'  # $1,234k (scaled thousands)
 FMT_PERCENT = "0.0%"  # 12.3%
-FMT_MULTIPLE = '0.00"x"'  # 1.45x  (e.g. for ratios)
 
 THIN = Side(style="thin", color="C8D2E0")
 BORDER_ALL = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
@@ -42,7 +41,22 @@ BORDER_ALL = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
 
 # --- Assumptions (the only inputs a user edits) -------------------------------
 # A single dict drives the whole model. Change these numbers and rerun.
-ASSUMPTIONS = {
+class Assumptions(TypedDict):
+    company: str
+    start_year: int
+    years: int
+    starting_revenue: float
+    revenue_growth: float
+    cogs_pct: float
+    tax_rate: float
+    starting_headcount: int
+    headcount_growth: float
+    cost_per_head: float
+    opex_pct: dict[str, float]
+    depreciation: float
+
+
+ASSUMPTIONS: Assumptions = {
     "company": "Acme Robotics, Inc.",
     "start_year": 2025,
     "years": 5,
@@ -113,7 +127,7 @@ def merge_title(ws: Worksheet, span: str, text: str) -> None:
 
 
 # --- Core computation (pure Python — produces every authoritative number) -----
-def compute_model() -> dict:
+def compute_model() -> dict[str, object]:
     """Build the 5-year P&L.
 
     Returns a dict of label -> list-of-yearly-values plus the year labels

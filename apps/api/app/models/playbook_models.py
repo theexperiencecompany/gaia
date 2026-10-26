@@ -153,7 +153,6 @@ def is_work_call(tool_name: str) -> bool:
 #: Kinds that don't count toward the limit: the blocked ones, and a quiet day.
 #: A playbook only freezes calls that ran, so a seasonal workflow would
 #: otherwise spend its chances on empty days and lock out on a busy one.
-UNCOUNTED_DECLINE_KINDS = BLOCKED_DECLINE_KINDS | {DeclineKind.NO_WORK_TODAY}
 
 #: Blocked kinds that name integrations and can therefore pause the workflow.
 INTEGRATION_DECLINE_KINDS = frozenset(
@@ -396,8 +395,8 @@ class _CallStep(BaseModel):
             for path, value in walk_ask_slots(self.args)
         ]
 
-    def _document_head(self) -> dict[str, Any]:
-        node: dict[str, Any] = {}
+    def _document_head(self) -> dict[str, object]:
+        node: dict[str, object] = {}
         if self.id:
             node["id"] = self.id
         node["tool"] = self.tool
@@ -412,7 +411,7 @@ class ToolStep(_CallStep):
     def ask_slots(self, prefix: str) -> list[LocatedAsk]:
         return self.arg_ask_slots(prefix)
 
-    def to_document(self) -> dict[str, Any]:
+    def to_document(self) -> dict[str, object]:
         """The step as the YAML the agent reads and edits."""
         return self._document_head()
 
@@ -462,7 +461,7 @@ class ForEachStep(_CallStep):
         located.extend(self.arg_ask_slots(prefix))
         return located
 
-    def to_document(self) -> dict[str, Any]:
+    def to_document(self) -> dict[str, object]:
         node = self._document_head()
         node["for_each"] = (
             self.for_each.model_dump(exclude_defaults=True)
@@ -528,13 +527,19 @@ class HandoffStep(BaseModel):
         del prefix  # a handoff has no slots of its own; its children key themselves
         return [slot for child in self.steps for slot in child.ask_slots(child.label)]
 
-    def to_document(self) -> dict[str, Any]:
+    def to_document(self) -> dict[str, object]:
         node: dict[str, Any] = {}
         if self.id:
             node["id"] = self.id
         node["handoff"] = self.handoff
         node["steps"] = [child.to_document() for child in self.steps]
         return node
+
+
+class _HandoffMarker(TypedDict):
+    """The one key that makes a raw step a handoff."""
+
+    handoff: object
 
 
 def _step_shape(value: object) -> str:
@@ -547,8 +552,10 @@ def _step_shape(value: object) -> str:
     """
     if isinstance(value, HandoffStep):
         return "handoff"
-    if isinstance(value, Mapping) and value.get("handoff") is not None:
-        return "handoff"
+    if isinstance(value, Mapping):
+        marker: _HandoffMarker = cast(_HandoffMarker, value)
+        if "handoff" in marker and marker["handoff"] is not None:
+            return "handoff"
     return _call_shape(value)
 
 
@@ -562,7 +569,7 @@ PlaybookStep = Annotated[
 
 def walk_ask_slots(
     value: object, path: tuple[str | int, ...] = ()
-) -> Iterator[tuple[tuple[str | int, ...], Mapping[str, Any]]]:
+) -> Iterator[tuple[tuple[str | int, ...], Mapping[str, object]]]:
     """Every ask slot inside one value, with the argument path that addresses it.
 
     A slot is a leaf: nothing inside one is walked, so a prompt that happens to
@@ -616,7 +623,7 @@ _ARGS_DESCRIPTION = (
 _ARGS_NEAR_MISSES = ("arguments", "input", "inputs", "params", "parameters", "kwargs")
 
 
-def _refuse_args_near_miss(data: Mapping[str, Any]) -> None:
+def _refuse_args_near_miss(data: Mapping[str, object]) -> None:
     if "args" in data:
         return
     for key in _ARGS_NEAR_MISSES:
