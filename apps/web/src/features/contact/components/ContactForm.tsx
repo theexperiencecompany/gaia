@@ -71,8 +71,7 @@ function ContactRequestForm({
             placeholder="Where we should reply"
             value={visitor.email}
             onValueChange={visitor.setEmail}
-            isInvalid={Boolean(visitor.emailError)}
-            errorMessage={visitor.emailError}
+            validate={visitor.validateEmail}
             autoComplete="email"
             isRequired
           />

@@ -10,23 +10,27 @@ import { CONTACT_FORM_MESSAGES } from "../constants";
 
 const emailSchema = z.email();
 
+/** The inline error for an email field value, or null when it is a valid address. */
+function validateEmail(value: string): string | null {
+  return emailSchema.safeParse(value.trim()).success
+    ? null
+    : CONTACT_FORM_MESSAGES.INVALID_EMAIL;
+}
+
 /** The reply address, optional name and Turnstile proof a sender without a session email supplies. */
 export function useVisitorContact() {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
-  const [emailTouched, setEmailTouched] = useState(false);
   const [verificationError, setVerificationError] = useState<string | null>(
     null,
   );
   const [isVerifying, setIsVerifying] = useState(false);
   const turnstileRef = useRef<TurnstileInstance>(null);
 
-  const emailIsValid = emailSchema.safeParse(email.trim()).success;
-
   /** Validate the email and wait for a Turnstile token; null (with the reason shown) when either fails. */
   const verify = async (): Promise<VisitorContact | null> => {
-    setEmailTouched(true);
-    if (!emailIsValid) return null;
+    // The field's own validation blocks the submit first; this guards a programmatic one.
+    if (validateEmail(email)) return null;
 
     const turnstile = turnstileRef.current;
     if (!turnstile) {
@@ -54,7 +58,6 @@ export function useVisitorContact() {
     if (!submitted) return;
     setEmail("");
     setName("");
-    setEmailTouched(false);
   };
 
   return {
@@ -62,10 +65,7 @@ export function useVisitorContact() {
     setEmail,
     name,
     setName,
-    emailError:
-      emailTouched && !emailIsValid
-        ? CONTACT_FORM_MESSAGES.INVALID_EMAIL
-        : undefined,
+    validateEmail,
     verificationError,
     onVerificationError: () =>
       setVerificationError(CONTACT_FORM_MESSAGES.VERIFICATION_FAILED),

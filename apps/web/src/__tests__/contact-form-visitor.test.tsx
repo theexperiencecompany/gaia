@@ -3,6 +3,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -68,7 +69,11 @@ function renderForm() {
   return render(node);
 }
 
-const submit = () => fireEvent.submit(screen.getByTestId("contact-form"));
+// requestSubmit, not a bare submit event: it runs the browser's constraint validation like a real click.
+const submit = () =>
+  act(() =>
+    (screen.getByTestId("contact-form") as HTMLFormElement).requestSubmit(),
+  );
 const emailInput = () => screen.getByLabelText(/email/i);
 
 beforeEach(() => {
