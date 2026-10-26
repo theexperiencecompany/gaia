@@ -1600,23 +1600,27 @@ jobs:
         if: always() && steps.semgrep.outcome == 'failure'
         run: python3 scripts/ci/verdict.py sarif --lane scan/semgrep semgrep.sarif
       - *upload-verdict-so-far
-      # Self-hosted keeps the vuln DB on local disk, one dir per runner
-      # instance (trivy refuses concurrent use of one cache dir), and setup.sh
-      # installs the pinned trivy; GitHub-hosted round-trips it through the
-      # action's cache.
-      - name: Pick the trivy DB location
+      # The box (where setup.sh installs the pinned trivy) keeps the vuln DB on
+      # local disk, one dir per runner instance (trivy refuses concurrent use of
+      # one cache dir). Keyed on the binary, not runner.environment: Blacksmith
+      # also reports self-hosted but has no trivy. Elsewhere the action installs
+      # trivy and round-trips the DB through its cache.
+      - name: Pick the trivy install and DB location
+        id: trivy-host
         shell: bash
         run: |
-          if [ "$RUNNER_ENVIRONMENT" = "self-hosted" ]; then
+          if [ "$RUNNER_ENVIRONMENT" = "self-hosted" ] && [ -x "$HOME/.local/bin/trivy" ]; then
             echo "TRIVY_DB_DIR=${RUNNER_LOCAL_CACHE:-$HOME/ci-cache}/trivy/$RUNNER_NAME" >> "$GITHUB_ENV"
             echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+            echo "preinstalled=true" >> "$GITHUB_OUTPUT"
           else
             echo "TRIVY_DB_DIR=${GITHUB_WORKSPACE}/.cache/trivy" >> "$GITHUB_ENV"
+            echo "preinstalled=false" >> "$GITHUB_OUTPUT"
           fi
-      # Self-hosted: scan the committed tree, not the persistent workspace and
+      # The box: scan the committed tree, not the persistent workspace and
       # its 8 GB of node_modules/.venv (67 s vs 3.6 s, identical findings).
-      - name: Extract the committed tree for scanning (self-hosted)
-        if: runner.environment == 'self-hosted'
+      - name: Extract the committed tree for scanning (the box)
+        if: steps.trivy-host.outputs.preinstalled == 'true'
         shell: bash
         run: |
           rm -rf "$RUNNER_TEMP/trivy-src" && mkdir -p "$RUNNER_TEMP/trivy-src"
@@ -1626,12 +1630,12 @@ jobs:
         continue-on-error: true
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          skip-setup-trivy: ${{ runner.environment == 'self-hosted' }}
+          skip-setup-trivy: ${{ steps.trivy-host.outputs.preinstalled == 'true' }}
           scan-type: "fs"
           severity: "CRITICAL,HIGH"
           format: "table"
-          scan-ref: ${{ runner.environment == 'self-hosted' && format('{0}/trivy-src', runner.temp) || '.' }}
-          cache: ${{ runner.environment != 'self-hosted' }}
+          scan-ref: ${{ steps.trivy-host.outputs.preinstalled == 'true' && format('{0}/trivy-src', runner.temp) || '.' }}
+          cache: ${{ steps.trivy-host.outputs.preinstalled != 'true' }}
           cache-dir: ${{ env.TRIVY_DB_DIR }}
           skip-dirs: "node_modules,.venv,.nx,apps/web/.next,.mypy_cache,.pytest_cache"
           # TODO: make blocking (exit-code:1) after chore/trivy-npm-audit lands

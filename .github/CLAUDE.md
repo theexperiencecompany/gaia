@@ -67,7 +67,9 @@ none is; `force_github` skips both probes. No job ever carries a bare
 NOT routed through it: release images and deploys stay GitHub-hosted. Every
 box-only assumption in a lane (the persistent workspace, `RUNNER_LOCAL_CACHE`,
 the cpu-slots governor) stays behind `runner.environment == 'self-hosted'`,
-because any lane can land on either.
+because any lane can land on either. Blacksmith also reports `self-hosted`, so a
+tool only the box's `setup.sh` installs is checked for directly (trivy's
+`preinstalled` output in `ci.yml`), never inferred from the runner kind.
 
 Consequences to keep in mind when editing a lane:
 
