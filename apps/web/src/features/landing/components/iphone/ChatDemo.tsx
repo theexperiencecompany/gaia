@@ -765,7 +765,7 @@ function IMessageDemo({
             <button
               type="button"
               aria-label="Audio"
-              className="ml-2 flex cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]"
+              className="relative ml-2 flex cursor-pointer after:absolute after:-inset-2 after:content-[''] items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]"
               style={{ color: "rgba(60,60,67,0.7)", width: 24, height: 24 }}
             >
               <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
@@ -1037,7 +1037,7 @@ function WhatsAppDemo({
             <button
               type="button"
               aria-label="Emoji"
-              className="flex shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]"
+              className="relative flex shrink-0 cursor-pointer after:absolute after:-inset-2 after:content-[''] items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]"
               style={{ color: "#8E8E93", width: 24, height: 24 }}
             >
               <EmojiIcon size={18} />
@@ -1374,7 +1374,7 @@ function TelegramDemo({
             <button
               type="button"
               aria-label="Emoji"
-              className="flex shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]"
+              className="relative flex shrink-0 cursor-pointer after:absolute after:-inset-2 after:content-[''] items-center justify-center rounded-full transition-colors hover:bg-black/[0.06]"
               style={{ color: metaColor, width: 24, height: 24 }}
             >
               <EmojiIcon size={18} />

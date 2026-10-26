@@ -124,7 +124,7 @@ const ChatsSidebarContent = memo(function ChatsSidebarContent() {
           value={group}
           className="my-1 flex min-h-fit w-full flex-col items-start justify-start overflow-hidden border-none py-1"
         >
-          <AccordionTrigger className="min-h-6 w-full px-2 pb-1 pt-0 text-xs font-normal text-zinc-600 hover:text-zinc-600 hover:no-underline">
+          <AccordionTrigger className="min-h-7 w-full px-2 pb-1 pt-0 text-xs font-normal text-zinc-600 hover:text-zinc-600 hover:no-underline">
             {group}
           </AccordionTrigger>
           <AccordionContent className="w-full p-0!">
