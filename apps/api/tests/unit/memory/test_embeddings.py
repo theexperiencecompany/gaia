@@ -647,3 +647,28 @@ class TestBakedModels:
 
         (call,) = loader_kwargs
         assert call["specific_model_path"] is None
+
+
+@pytest.mark.regression
+async def test_an_interactive_fail_fast_error_is_not_recorded_as_an_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Recall degrades on a sidecar timeout and reports it as a warning.
+
+    Regression: GAIA-BACKEND-2Y5 paged for a timeout recall handles. An error
+    record here makes a handled degradation look like a lost memory; a save that
+    fails to embed still records one, which is the distinction this pins.
+    """
+    recorded: list[str] = []
+    monkeypatch.setattr(embeddings.log, "error", lambda *a, **k: recorded.append("error"))
+
+    async def times_out() -> list[float]:
+        raise TimeoutError("sidecar busy")
+
+    with pytest.raises(TimeoutError):
+        await embeddings._observed("embed_query", "sidecar", 1, times_out(), interactive=True)
+    assert recorded == []
+
+    with pytest.raises(TimeoutError):
+        await embeddings._observed("embed_query", "sidecar", 1, times_out())
+    assert recorded == ["error"]

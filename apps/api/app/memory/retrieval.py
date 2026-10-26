@@ -20,8 +20,6 @@ import math
 import re
 import time
 
-import httpx
-
 from app.constants.memory import (
     ANN_CANDIDATES,
     CONFIDENT_COSINE,
@@ -52,7 +50,7 @@ from app.constants.memory import (
 from app.db.redis import delete_cache
 from app.decorators.caching import Cacheable
 from app.memory import chroma_store, pg_store
-from app.memory.embeddings import embed_query, rerank
+from app.memory.embeddings import FAIL_FAST_ERRORS, embed_query, rerank
 from app.memory.mappers import row_to_entry
 from app.memory.pg_store.episodes import entry_text
 from app.memory.user_time import local_today
@@ -237,7 +235,7 @@ async def _embed_query_interactive(query: str) -> list[float] | None:
     """
     try:
         return await embed_query(query, interactive=True)
-    except (httpx.HTTPError, TimeoutError) as exc:
+    except FAIL_FAST_ERRORS as exc:
         log.warning(
             "memory_embed_query_skipped",
             error=str(exc),
@@ -412,7 +410,7 @@ async def _rerank_scores(query: str, documents: list[str]) -> list[float] | None
     """
     try:
         return await rerank(query, documents, interactive=True)
-    except (httpx.HTTPError, TimeoutError) as exc:
+    except FAIL_FAST_ERRORS as exc:
         log.warning(
             "memory_rerank_skipped",
             error=str(exc),

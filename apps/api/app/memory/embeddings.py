@@ -67,6 +67,9 @@ _http_client_lock = threading.Lock()
 _T = TypeVar("_T")
 _ResponseT = TypeVar("_ResponseT", bound=BaseModel)
 
+# What an interactive sidecar call raises when it fails fast; recall degrades on exactly these.
+FAIL_FAST_ERRORS: tuple[type[Exception], ...] = (httpx.HTTPError, TimeoutError)
+
 
 def chunk_texts(texts: list[str], max_texts: int, max_chars: int) -> list[list[str]]:
     """Greedy split under both caps; an oversized single text keeps its own chunk."""
@@ -84,18 +87,28 @@ def chunk_texts(texts: list[str], max_texts: int, max_chars: int) -> list[list[s
     return chunks
 
 
-async def _observed(operation: str, backend: str, count: int, awaitable: Awaitable[_T]) -> _T:
-    """Await an embed/rerank call; on failure emit a structured error and re-raise.
+async def _observed(
+    operation: str,
+    backend: str,
+    count: int,
+    awaitable: Awaitable[_T],
+    *,
+    interactive: bool = False,
+) -> _T:
+    """Await an embed/rerank call; on an unhandled failure emit a structured error and re-raise.
 
     The embedding sidecar (HTTP) and the local ONNX model are the most
     failure-prone parts of the memory path (timeouts, 5xx, OOM, dimension
-    mismatch). This makes those failures queryable by backend/error_type
-    instead of propagating as an opaque exception with no memory context.
+    mismatch). An interactive fail-fast error is recall's to report: it
+    degrades and logs a warning, so recording an error here would page Sentry
+    for a handled timeout.
     """
     started = time.perf_counter()
     try:
         return await awaitable
     except Exception as exc:
+        if interactive and isinstance(exc, FAIL_FAST_ERRORS):
+            raise
         log.error(
             "memory_embedding_failed",
             operation=operation,
