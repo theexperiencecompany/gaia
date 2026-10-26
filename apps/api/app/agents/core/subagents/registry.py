@@ -31,6 +31,7 @@ def _from_oauth(integ: OAuthIntegration) -> Subagent:
         config=integ.subagent_config,
         short_name=integ.short_name,
         mcp_config=integ.mcp_config,
+        available=integ.available,
     )
 
 

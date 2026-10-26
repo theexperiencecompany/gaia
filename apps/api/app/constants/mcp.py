@@ -9,7 +9,9 @@ Centralized constants for MCP services.
 # OAuth/bearer, so requests without that header are rejected with a bare 401.
 COMPOSIO_MCP_HOST = "backend.composio.dev"
 
-YELP_MCP_SERVER_URL = "https://backend.composio.dev/v3/mcp/8e1efded-6b08-4346-a657-92d0b94399e5/mcp?user_id=pg-test-15a6d21a-2a4b-4be5-98c9-d92f55b3ccc3"
+# GAIA-owned Composio MCP server; the previous id was another account's
+# playground server that answered 401 with our key.
+YELP_MCP_SERVER_URL = "https://backend.composio.dev/v3/mcp/b4d96e89-0956-47f5-87f8-7b9be7a7e32b/mcp"
 
 # Max distinct scopes to drop across re-authorization retries when an auth
 # server rejects scopes with `invalid_scope`. Bounds the retry loop for servers
