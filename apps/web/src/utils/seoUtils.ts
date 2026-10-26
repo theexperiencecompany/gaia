@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
-import type { HowTo, HowToStep, Person, WithContext } from "schema-dts";
+import type { HowTo, HowToStep, WithContext } from "schema-dts";
 import { isSystemCreator } from "@/features/workflows/utils/creator";
 import { type BlogContentPost, blogLastModified } from "@/lib/blog";
 import {
   brandedTitle,
   generatePageMetadata,
+  generatePersonSchema,
   organizationRef,
   siteConfig,
 } from "@/lib/seo";
@@ -145,7 +146,7 @@ export function generateUseCaseStructuredData(
     // GAIA's own workflows are authored by the organization, not a person called "GAIA Team".
     structuredData.author = isSystemCreator(useCase.creator)
       ? organizationRef
-      : ({ "@type": "Person", name: useCase.creator.name } as Person);
+      : generatePersonSchema({ name: useCase.creator.name });
   }
 
   if (useCase.steps && useCase.steps.length > 0) {

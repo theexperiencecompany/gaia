@@ -3,7 +3,6 @@
  * visible FAQs, every Article dateModified must reflect reality, and every
  * entity is one node with a stable @id.
  */
-import type { HowTo } from "schema-dts";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -23,6 +22,7 @@ import {
   generateArticleSchema,
   generateBreadcrumbSchema,
   generateContactPageSchema,
+  generateDefinedTermSchema,
   generateFAQSchema,
   generateItemListSchema,
   generateOrganizationSchema,
@@ -202,6 +202,22 @@ function everySchemaNode(): unknown[] {
       slug: "inbox-triage",
       creator: { id: "system", name: "GAIA Team", avatar: null },
     } as UseCase),
+    generateUseCaseStructuredData({
+      title: "Job Scraper",
+      description: "Scrape new engineering job postings.",
+      action_type: "workflow",
+      integrations: [],
+      categories: ["community"],
+      published_id: "wf_2",
+      slug: "job-scraper-1b2627",
+      creator: { id: "user_1", name: "Anurag Bansal", avatar: null },
+    } as UseCase),
+    generateDefinedTermSchema({
+      term: "Agent Loop",
+      definition: "An agent loop is the iterative execution cycle.",
+      path: "/learn/agent-loop",
+      locale: "en",
+    }),
   ];
 }
 
@@ -215,10 +231,16 @@ function typedNodes(value: unknown): Record<string, unknown>[] {
 }
 
 describe("schema entity identity", () => {
-  it("gives every Organization, WebSite and Person a stable @id", () => {
+  it("gives every entity that recurs across pages a stable @id", () => {
     const anonymous = typedNodes(everySchemaNode())
       .filter((node) =>
-        ["Organization", "WebSite", "Person"].includes(String(node["@type"])),
+        [
+          "Organization",
+          "WebSite",
+          "Person",
+          "DefinedTerm",
+          "DefinedTermSet",
+        ].includes(String(node["@type"])),
       )
       .filter((node) => !node["@id"])
       .map((node) => `${node["@type"]} ${node.name}`);
@@ -233,7 +255,64 @@ describe("schema entity identity", () => {
   });
 
   it("credits GAIA's own workflows to the organization, not a person", () => {
-    const [useCase] = everySchemaNode().slice(-1) as HowTo[];
+    const useCase = generateUseCaseStructuredData({
+      title: "Inbox Triage",
+      slug: "inbox-triage",
+      creator: { id: "system", name: "GAIA Team", avatar: null },
+    } as UseCase);
     expect(useCase.author).toEqual(organizationRef);
+  });
+});
+
+describe("generateDefinedTermSchema", () => {
+  const termIn = (locale: string) =>
+    generateDefinedTermSchema({
+      term: "Agent Loop",
+      definition: `Definition in ${locale}.`,
+      path: "/learn/agent-loop",
+      locale,
+    });
+
+  it("makes each translation its own entity, on its own page", () => {
+    const english = termIn("en");
+    const portuguese = termIn("pt-BR");
+
+    expect(english).toMatchObject({
+      "@id": "https://heygaia.io/learn/agent-loop#term",
+      url: "https://heygaia.io/learn/agent-loop",
+    });
+    expect(portuguese).toMatchObject({
+      "@id": "https://heygaia.io/pt-BR/learn/agent-loop#term",
+      url: "https://heygaia.io/pt-BR/learn/agent-loop",
+    });
+    expect(portuguese.inDefinedTermSet).toMatchObject({
+      "@id": "https://heygaia.io/pt-BR/learn#glossary",
+      url: "https://heygaia.io/pt-BR/learn",
+      inLanguage: "pt-BR",
+    });
+  });
+});
+
+describe("generateWebPageSchema", () => {
+  it("states no publish or modification date it was not given", () => {
+    const schema = generateWebPageSchema(
+      "Title",
+      "Description",
+      "https://heygaia.io/x",
+    );
+    expect(schema).not.toHaveProperty("datePublished");
+    expect(schema).not.toHaveProperty("dateModified");
+  });
+
+  it("carries the content dates it is given", () => {
+    const schema = generateWebPageSchema(
+      "Title",
+      "Description",
+      "https://heygaia.io/x",
+      undefined,
+      { published: "2025-11-02", modified: "2026-01-15" },
+    );
+    expect(schema.datePublished).toBe("2025-11-02");
+    expect(schema.dateModified).toBe("2026-01-15");
   });
 });
