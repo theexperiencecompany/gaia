@@ -56,7 +56,7 @@ export function NavbarActions({
       <Link href={isAuthenticated ? "/c" : "/signup"}>
         <RaisedButton
           size={"sm"}
-          className="rounded-xl text-black!"
+          className="rounded-xl"
           color="#00bbff"
           onClick={() => {
             track("navigation:cta_clicked", {

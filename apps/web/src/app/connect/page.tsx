@@ -47,7 +47,7 @@ export default async function ConnectLinkPage() {
               type="submit"
               size="lg"
               color="#00bbff"
-              className="w-full font-medium text-black!"
+              className="w-full font-medium"
             >
               Continue
             </RaisedButton>

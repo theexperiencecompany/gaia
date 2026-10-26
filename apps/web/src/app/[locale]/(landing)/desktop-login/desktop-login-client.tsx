@@ -179,7 +179,7 @@ export function DesktopLoginClient({
               {status === "ready" && (
                 <RaisedButton
                   color="#00bbff"
-                  className="w-fit gap-3 text-black!"
+                  className="w-fit gap-3"
                   onClick={handleOpenLogin}
                 >
                   <ArrowUpRight className="h-5 w-5" />

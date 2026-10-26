@@ -536,7 +536,7 @@ export default function Tired() {
 
       {/* CTA */}
       <SiteLink href="/integrations" className="mt-6 sm:mt-8">
-        <RaisedButton color="#00bbff" className="text-black!">
+        <RaisedButton color="#00bbff">
           See All Integrations
           <CircleArrowRight02Icon width={20} height={20} />
         </RaisedButton>

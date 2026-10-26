@@ -41,11 +41,7 @@ function AddButton({
 }: AddButtonProps) {
   if (alreadyHasIntegration) {
     return (
-      <RaisedButton
-        color="#00bbff"
-        className="shrink-0 text-black!"
-        onClick={onView}
-      >
+      <RaisedButton color="#00bbff" className="shrink-0" onClick={onView}>
         View Integration
       </RaisedButton>
     );
@@ -53,7 +49,7 @@ function AddButton({
   return (
     <RaisedButton
       color="#00bbff"
-      className="shrink-0 text-black!"
+      className="shrink-0"
       onClick={onAdd}
       disabled={isAdding || isAdded}
     >

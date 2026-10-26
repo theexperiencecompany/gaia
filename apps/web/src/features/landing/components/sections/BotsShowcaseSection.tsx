@@ -638,7 +638,7 @@ function PrimaryCTA({
     return (
       <RaisedButton
         color="#00bbff"
-        className="text-black! h-10 rounded-full pr-4 pl-1.5 before:rounded-full"
+        className="h-10 rounded-full pr-4 pl-1.5 before:rounded-full"
         onClick={() =>
           window.open(action.href, "_blank", "noopener,noreferrer")
         }
@@ -652,7 +652,7 @@ function PrimaryCTA({
     <SiteLink href={action.href}>
       <RaisedButton
         color="#00bbff"
-        className="text-black! h-10 rounded-full pr-4 pl-1.5 before:rounded-full"
+        className="h-10 rounded-full pr-4 pl-1.5 before:rounded-full"
       >
         {buttonContent}
       </RaisedButton>

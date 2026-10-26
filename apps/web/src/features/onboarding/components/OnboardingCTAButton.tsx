@@ -12,7 +12,6 @@ import { CircleArrowRight02Icon } from "@icons";
 import { useRouter } from "next/navigation";
 import type { ComponentProps, MouseEventHandler, ReactNode } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";
-import { cn } from "@/lib/utils";
 
 interface OnboardingCTAButtonProps
   extends Omit<ComponentProps<typeof RaisedButton>, "children"> {
@@ -34,7 +33,6 @@ export function OnboardingCTAButton({
   ...props
 }: OnboardingCTAButtonProps) {
   const router = useRouter();
-  const mergedClassName = cn("text-black!", className);
   const content = (
     <>
       {children}
@@ -54,7 +52,7 @@ export function OnboardingCTAButton({
   return (
     <RaisedButton
       color={color}
-      className={mergedClassName}
+      className={className}
       type={href ? "button" : type}
       onClick={handleClick}
       {...props}

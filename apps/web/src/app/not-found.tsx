@@ -28,7 +28,7 @@ export default function PageNotFound() {
         </Link>
 
         <RaisedButton
-          className="mt-3 text-black!"
+          className="mt-3"
           color="#00bbff"
           onClick={() => router.back()}
         >

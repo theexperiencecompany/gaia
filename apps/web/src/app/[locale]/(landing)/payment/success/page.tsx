@@ -160,7 +160,7 @@ export default function PaymentSuccessPage() {
                 </p>
                 <RaisedButton
                   color="#00bbff"
-                  className="w-full text-black!"
+                  className="w-full"
                   onClick={() => router.push(continueDestination)}
                 >
                   Continue to chat
@@ -207,7 +207,7 @@ export default function PaymentSuccessPage() {
           <div className="flex flex-col gap-2">
             <RaisedButton
               color="#00bbff"
-              className="w-full text-black!"
+              className="w-full"
               onClick={handleTryAgain}
               disabled={isRestarting}
             >
