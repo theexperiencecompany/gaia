@@ -129,9 +129,6 @@ _MESSAGE_VARIABLES = re.compile(
     r"|\d+"
 )
 
-# The wide event's user namespace, which every route and worker task sets.
-_USER_NAMESPACE = "user"
-
 
 class _EventUser(BaseModel):
     id: str | None = None
@@ -184,6 +181,9 @@ def _stable_fingerprint(event: Event) -> list[str] | None:
     normalised = " ".join(_MESSAGE_VARIABLES.sub("#", str(message)).split())[
         :_FINGERPRINT_MESSAGE_CHARS
     ]
+    if not normalised:
+        # A blank key would merge every message-less event into one issue.
+        return None
     return ["log", str(logger_name or "app"), normalised]
 
 

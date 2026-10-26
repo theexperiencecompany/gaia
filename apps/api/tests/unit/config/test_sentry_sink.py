@@ -483,11 +483,12 @@ def test_a_very_long_message_is_capped_for_readability() -> None:
     assert len(result["fingerprint"][2]) == 160
 
 
-def test_an_event_with_no_message_still_groups() -> None:
+def test_an_event_with_no_message_keeps_sentry_s_own_grouping() -> None:
+    """A blank fingerprint would merge every message-less event into one issue."""
     result = _before_send(_event(logentry={}), {})
 
     assert result is not None
-    assert result["fingerprint"] == ["log", "app", ""]
+    assert "fingerprint" not in result
 
 
 def test_the_hint_reaches_the_llm_attempt_filter(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -517,9 +518,15 @@ async def test_an_error_without_user_kwargs_still_reaches_sentry_as_that_user(
     assert [event["user"] for event in sentry_events] == [{"id": "67bdb4367c7dd1f0ea343216"}]
 
 
-def test_an_unvalidatable_event_still_reaches_sentry() -> None:
+def test_an_unvalidatable_event_still_reaches_sentry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """A raising before_send makes the SDK drop the event, so it ships ungrouped instead."""
+    warning = MagicMock()
+    monkeypatch.setattr(sentry_config.log, "warning", warning)
+
     event = _before_send(_event(tags={"logger": 5}), {})
 
     assert event is not None
     assert "fingerprint" not in event
+    warning.assert_called_once_with("sentry_event_shaping_failed", error_type="ValidationError")
