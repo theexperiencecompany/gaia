@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { apiErrorMessage } from "@/lib/api/errorMessage";
 import { toast } from "@/lib/toast";
 
 import { type SupportRequestCreate, supportApi } from "../api/supportApi";
@@ -15,6 +16,13 @@ export interface ContactFormData {
   title: string;
   description: string;
   attachments: File[];
+}
+
+/** Who to reply to when the sender has no session email, plus their Turnstile proof. */
+export interface VisitorContact {
+  email: string;
+  name?: string;
+  turnstileToken: string;
 }
 
 export interface ContactSupportInitialValues {
@@ -129,7 +137,8 @@ export function useContactSupport(initialValues?: ContactSupportInitialValues) {
     return true;
   };
 
-  const submitRequest = async (): Promise<boolean> => {
+  /** Submit through the session route, or the public Turnstile-gated one when a visitor contact is given. */
+  const submitRequest = async (visitor?: VisitorContact): Promise<boolean> => {
     if (!validateForm()) {
       return false;
     }
@@ -143,10 +152,14 @@ export function useContactSupport(initialValues?: ContactSupportInitialValues) {
         description: formData.description.trim(),
       };
 
-      const response = await supportApi.submitRequest(
-        requestData,
-        formData.attachments,
-      );
+      const response = visitor
+        ? await supportApi.submitPublicRequest({
+            ...requestData,
+            email: visitor.email,
+            name: visitor.name || null,
+            turnstile_token: visitor.turnstileToken,
+          })
+        : await supportApi.submitRequest(requestData, formData.attachments);
 
       if (response.success) {
         const successMessage = response.ticket_id
@@ -161,7 +174,10 @@ export function useContactSupport(initialValues?: ContactSupportInitialValues) {
       }
     } catch (error) {
       console.error("Error submitting support request:", error);
-      toast.error(TOAST_MESSAGES.GENERIC_ERROR);
+      // The public route is silent, so its own message (a failed bot check, a rate limit) is shown here.
+      toast.error(
+        (visitor && apiErrorMessage(error)) || TOAST_MESSAGES.GENERIC_ERROR,
+      );
       return false;
     } finally {
       setIsSubmitting(false);
