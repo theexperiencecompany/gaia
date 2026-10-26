@@ -613,9 +613,9 @@ function YourRightsAndRetention() {
           To exercise any of the rights described above, email us at{" "}
           <a
             className="text-blue-500 underline"
-            href="mailto:support@heygaia.so"
+            href="mailto:support@heygaia.io"
           >
-            support@heygaia.so
+            support@heygaia.io
           </a>{" "}
           from the email address associated with your account, or submit a
           request through our{" "}
@@ -713,9 +713,9 @@ function PrivacyClosingSections() {
           provided us with personal information, please contact us at{" "}
           <a
             className="text-blue-500 underline"
-            href="mailto:support@heygaia.so"
+            href="mailto:support@heygaia.io"
           >
-            support@heygaia.so
+            support@heygaia.io
           </a>{" "}
           and we will act promptly.
         </p>
@@ -796,9 +796,9 @@ function PrivacyClosingSections() {
           Email:{" "}
           <a
             className="text-blue-500 underline"
-            href="mailto:support@heygaia.so"
+            href="mailto:support@heygaia.io"
           >
-            support@heygaia.so
+            support@heygaia.io
           </a>
         </p>
       </div>

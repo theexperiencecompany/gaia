@@ -240,7 +240,7 @@ function TermsPayments() {
             </li>
             <li>
               <strong>Refund Requests:</strong> Refund requests should be
-              submitted to support@heygaia.so within thirty (30) days of the
+              submitted to support@heygaia.io within thirty (30) days of the
               original charge and will be reviewed on a case-by-case basis.
             </li>
           </ul>
@@ -259,7 +259,7 @@ function TermsPayments() {
             </li>
             <li>
               <strong>Support Cancellation:</strong> Alternatively, contact our
-              support team at support@heygaia.so with your cancellation request;
+              support team at support@heygaia.io with your cancellation request;
             </li>
             <li>
               <strong>Cancellation Timing:</strong> Cancellations are effective
@@ -586,7 +586,7 @@ function TermsDisputeResolution() {
         <p className="mb-4">
           Before initiating arbitration, you and Company agree to try to resolve
           the dispute informally. Send a written notice describing the dispute
-          and the relief sought to support@heygaia.so. If the dispute is not
+          and the relief sought to support@heygaia.io. If the dispute is not
           resolved within sixty (60) days, either party may begin arbitration.
         </p>
 
@@ -627,7 +627,7 @@ function TermsDisputeResolution() {
         </h3>
         <p className="mb-4">
           You may opt out of the arbitration agreement in Section 18.3 and the
-          class action waiver in Section 18.6 by emailing support@heygaia.so
+          class action waiver in Section 18.6 by emailing support@heygaia.io
           with the subject line "Arbitration Opt-Out" within thirty (30) days of
           first accepting this Agreement, stating your name and the email
           address on your account. Opting out will not affect any other part of
@@ -691,8 +691,8 @@ function TermsClosing() {
         The Experience Company, Inc.
         <br />
         Email:{" "}
-        <a className="text-blue-500 underline" href="mailto:support@heygaia.so">
-          support@heygaia.so
+        <a className="text-blue-500 underline" href="mailto:support@heygaia.io">
+          support@heygaia.io
         </a>
       </p>
     </>
