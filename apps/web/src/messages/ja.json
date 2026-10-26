@@ -10,7 +10,10 @@
     "dont_see_your_tool": "お探しのツールが見つかりませんか？",
     "view_comparisons": "比較を見る",
     "get_started": "始める",
-    "docs_guides": "ドキュメントのガイド"
+    "docs_guides": "ドキュメントのガイド",
+    "section_nav_label": "セクションへ移動",
+    "pagination_label": "ページ",
+    "page_label": "{page}ページ目"
   },
   "alternatives": {
     "breadcrumb": "代替",
@@ -71,7 +74,9 @@
     "hub_title": "GAIAの比較",
     "hub_subtitle": "正直で詳細な比較で、適切なAI生産性ツールを選ぶお手伝いをします。GAIAが優れている点と、他のツールが適している場合を確認しましょう。",
     "hub_meta_title": "AIアシスタント比較：GAIA vs ChatGPT・Motionほか",
-    "hub_meta_description": "GAIAとChatGPT、Gemini、Claude、Motion、n8n、Zapier、Reclaimなどの比較をご覧ください。正直で詳細な比較で適切なAI生産性ツールを選びましょう。"
+    "hub_meta_description": "GAIAとChatGPT、Gemini、Claude、Motion、n8n、Zapier、Reclaimなどの比較をご覧ください。正直で詳細な比較で適切なAI生産性ツールを選びましょう。",
+    "hub_page_meta_title": "AIアシスタント比較一覧（{page}/{total}ページ）",
+    "hub_page_meta_description": "GAIAの比較ガイド{page}/{total}ページ目。AIアシスタントや自動化、タスク管理、カレンダー、メールのツールとGAIAを項目ごとに比べ、最適な選択を手助けします。"
   },
   "automate": {
     "breadcrumb": "自動化",
@@ -92,7 +97,10 @@
     "hub_meta_description": "240以上の自動化コンボを検索しましょう。Gmail + Slack、Notion + Todoist、GitHub + Linearなどを接続 — GAIAがツール間のワークフローを自動的に処理します。",
     "combos_count": "{count}件の自動化コンボ",
     "dont_see_your_combo": "コンボが見つかりませんか？",
-    "dont_see_your_combo_desc": "完全なインテグレーションマーケットプレイスを閲覧するか、MCPを通じて任意のツールを接続してください。"
+    "dont_see_your_combo_desc": "完全なインテグレーションマーケットプレイスを閲覧するか、MCPを通じて任意のツールを接続してください。",
+    "more_automations_with": "{toolA}と{toolB}のその他の自動化",
+    "hub_page_meta_title": "アプリ自動化の組み合わせ一覧（{page}/{total}ページ）",
+    "hub_page_meta_description": "GAIAの自動化ディレクトリ{page}/{total}ページ目。GmailとSlackのように、GAIAがつなぐアプリの組み合わせと、その間で自動実行されるワークフローを紹介します。"
   },
   "glossary": {
     "breadcrumb": "用語集",
@@ -116,7 +124,9 @@
     "category_calendar": "カレンダー & 時間管理",
     "category_task_management": "タスク管理",
     "category_knowledge_management": "ナレッジ & ノート",
-    "category_development": "開発 & インテグレーション"
+    "category_development": "開発 & インテグレーション",
+    "hub_page_meta_title": "AI・生産性用語集（{page}/{total}ページ）",
+    "hub_page_meta_description": "GAIAの用語集{page}/{total}ページ目。AIエージェント、自動化、メール、カレンダー、生産性に関する用語を、専門知識がなくてもわかる言葉でやさしく解説します。"
   },
   "marketplace": {
     "breadcrumb": "マーケットプレイス"

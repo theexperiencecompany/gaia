@@ -12,6 +12,7 @@ import {
   getTranslatedCombo,
   getTranslatedCombos,
 } from "@/features/integrations/data/getTranslatedCombo";
+import { relatedCombos } from "@/features/integrations/lib/relatedCombos";
 import { getMarketplacePath } from "@/features/integrations/lib/serverMarketplaceApi";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
@@ -84,16 +85,7 @@ export default async function AutomateComboPage({ params }: PageProps) {
   }
   // getTranslatedCombos is _slugs-driven (victims excluded), so every entry
   // here links a live page.
-  const relatedCombos = allCombos
-    .filter(
-      (c) =>
-        c.slug !== combo &&
-        (c.toolASlug === data.toolASlug ||
-          c.toolBSlug === data.toolBSlug ||
-          c.toolASlug === data.toolBSlug ||
-          c.toolBSlug === data.toolASlug),
-    )
-    .slice(0, 3);
+  const moreCombos = relatedCombos(data, allCombos);
 
   const docsGuides = getAutomateDocsLinks(data.toolASlug, data.toolBSlug);
 
@@ -178,8 +170,11 @@ export default async function AutomateComboPage({ params }: PageProps) {
           toolBCompareHref={toolBCompareHref}
         />
         <RelatedAutomationsGrid
-          heading={t("common.related_automations")}
-          combos={relatedCombos}
+          heading={t("automate.more_automations_with", {
+            toolA: data.toolA,
+            toolB: data.toolB,
+          })}
+          combos={moreCombos}
           headingClassName="mb-6 text-2xl font-semibold text-white"
         />
         <DocsGuidesSection

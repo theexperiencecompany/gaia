@@ -10,7 +10,10 @@
     "dont_see_your_tool": "원하는 도구가 없나요?",
     "view_comparisons": "비교 보기",
     "get_started": "시작하기",
-    "docs_guides": "문서의 가이드"
+    "docs_guides": "문서의 가이드",
+    "section_nav_label": "섹션으로 이동",
+    "pagination_label": "페이지",
+    "page_label": "{page}페이지"
   },
   "alternatives": {
     "breadcrumb": "대안",
@@ -71,7 +74,9 @@
     "hub_title": "GAIA 비교",
     "hub_subtitle": "올바른 AI 생산성 도구를 선택하는 데 도움이 되는 정직하고 상세한 비교. GAIA가 뛰어난 점과 다른 도구가 더 적합한 부분을 확인하세요.",
     "hub_meta_title": "AI 어시스턴트 비교: GAIA vs ChatGPT, Motion 외",
-    "hub_meta_description": "GAIA와 ChatGPT, Gemini, Claude, Motion, n8n, Zapier, Reclaim 등의 비교를 확인하세요. 정직하고 상세한 비교로 올바른 AI 생산성 도구를 선택하세요."
+    "hub_meta_description": "GAIA와 ChatGPT, Gemini, Claude, Motion, n8n, Zapier, Reclaim 등의 비교를 확인하세요. 정직하고 상세한 비교로 올바른 AI 생산성 도구를 선택하세요.",
+    "hub_page_meta_title": "AI 어시스턴트 비교 모음: {total}페이지 중 {page}페이지",
+    "hub_page_meta_description": "GAIA 비교 가이드 {total}페이지 중 {page}페이지입니다. AI 어시스턴트와 자동화, 할 일, 캘린더, 이메일 도구를 GAIA와 항목별로 비교해 알맞은 도구를 고르도록 돕습니다."
   },
   "automate": {
     "breadcrumb": "자동화",
@@ -92,7 +97,10 @@
     "hub_meta_description": "240개 이상의 자동화 콤보를 탐색하세요. Gmail + Slack, Notion + Todoist, GitHub + Linear 등 연결 — GAIA가 도구 간 워크플로우를 자동으로 처리합니다.",
     "combos_count": "{count}개의 자동화 콤보",
     "dont_see_your_combo": "원하는 콤보가 없나요?",
-    "dont_see_your_combo_desc": "전체 통합 마켓플레이스를 탐색하거나 MCP를 통해 모든 도구를 연결하세요."
+    "dont_see_your_combo_desc": "전체 통합 마켓플레이스를 탐색하거나 MCP를 통해 모든 도구를 연결하세요.",
+    "more_automations_with": "{toolA} 및 {toolB}의 더 많은 자동화",
+    "hub_page_meta_title": "앱 자동화 조합 모음: {total}페이지 중 {page}페이지",
+    "hub_page_meta_description": "GAIA 자동화 디렉터리 {total}페이지 중 {page}페이지입니다. Gmail과 Slack처럼 GAIA가 연결하는 앱 조합과 그 사이에서 자동으로 실행되는 워크플로를 소개합니다."
   },
   "glossary": {
     "breadcrumb": "용어집",
@@ -116,7 +124,9 @@
     "category_calendar": "캘린더 & 시간 관리",
     "category_task_management": "작업 관리",
     "category_knowledge_management": "지식 & 노트",
-    "category_development": "개발 & 통합"
+    "category_development": "개발 & 통합",
+    "hub_page_meta_title": "AI·생산성 용어집: {total}페이지 중 {page}페이지",
+    "hub_page_meta_description": "GAIA 용어집 {total}페이지 중 {page}페이지입니다. AI 에이전트, 자동화, 이메일, 캘린더, 생산성 관련 용어를 누구나 이해할 수 있는 쉬운 말로 풀어 설명합니다."
   },
   "marketplace": {
     "breadcrumb": "마켓플레이스"

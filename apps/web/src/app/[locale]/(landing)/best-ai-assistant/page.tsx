@@ -259,9 +259,8 @@ const CONFIG: BestHubConfig = {
       ),
     },
   ],
-  comparisonsTitle: "Every GAIA comparison",
-  alternativesTitle: "Every alternative guide",
-  listAll: true,
+  comparisonsTitle: "Compare GAIA with each assistant",
+  alternativesTitle: "Alternative guides for each assistant",
 };
 
 export function generateMetadata(): Metadata {

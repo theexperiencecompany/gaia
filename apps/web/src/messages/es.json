@@ -10,7 +10,10 @@
     "dont_see_your_tool": "¿No ves tu herramienta?",
     "view_comparisons": "Ver comparaciones",
     "get_started": "Comenzar",
-    "docs_guides": "Guías en la documentación"
+    "docs_guides": "Guías en la documentación",
+    "section_nav_label": "Ir a una sección",
+    "pagination_label": "Páginas",
+    "page_label": "Página {page}"
   },
   "alternatives": {
     "breadcrumb": "Alternativas",
@@ -71,7 +74,9 @@
     "hub_title": "Cómo se compara GAIA",
     "hub_subtitle": "Comparaciones honestas y detalladas para ayudarte a elegir la herramienta de productividad IA adecuada. Descubre dónde destaca GAIA y dónde otras podrían encajar mejor.",
     "hub_meta_title": "Comparativas de asistentes de IA: GAIA vs ChatGPT y más",
-    "hub_meta_description": "Comparaciones honestas y detalladas de GAIA con ChatGPT, Gemini, Claude, Motion, Zapier, Reclaim y más, para elegir la herramienta de IA adecuada."
+    "hub_meta_description": "Comparaciones honestas y detalladas de GAIA con ChatGPT, Gemini, Claude, Motion, Zapier, Reclaim y más, para elegir la herramienta de IA adecuada.",
+    "hub_page_meta_title": "Comparativas de asistentes de IA: página {page} de {total}",
+    "hub_page_meta_description": "Página {page} de {total} de las comparativas de GAIA con asistentes de IA y herramientas de automatización, tareas, calendario y correo para elegir bien."
   },
   "automate": {
     "breadcrumb": "Automatizar",
@@ -92,7 +97,10 @@
     "hub_meta_description": "Conecta Gmail + Slack, Notion + Todoist, GitHub + Linear y más. GAIA gestiona automáticamente los flujos de trabajo entre tus herramientas.",
     "combos_count": "{count} combos de automatización",
     "dont_see_your_combo": "¿No ves tu combo?",
-    "dont_see_your_combo_desc": "Explora el mercado de integraciones completo o conecta cualquier herramienta vía MCP."
+    "dont_see_your_combo_desc": "Explora el mercado de integraciones completo o conecta cualquier herramienta vía MCP.",
+    "more_automations_with": "Más automatizaciones con {toolA} y {toolB}",
+    "hub_page_meta_title": "Combinaciones de automatización: página {page} de {total}",
+    "hub_page_meta_description": "Página {page} de {total} del directorio de automatizaciones de GAIA: pares de apps como Gmail y Slack que GAIA conecta y los flujos que ejecuta entre ellas."
   },
   "glossary": {
     "breadcrumb": "Glosario",
@@ -116,7 +124,9 @@
     "category_calendar": "Calendario y Gestión del Tiempo",
     "category_task_management": "Gestión de Tareas",
     "category_knowledge_management": "Conocimiento y Notas",
-    "category_development": "Desarrollo e Integraciones"
+    "category_development": "Desarrollo e Integraciones",
+    "hub_page_meta_title": "Glosario de IA y productividad: página {page} de {total}",
+    "hub_page_meta_description": "Página {page} de {total} del glosario de GAIA: definiciones claras de agentes de IA, automatización, correo, calendario y productividad."
   },
   "marketplace": {
     "breadcrumb": "Marketplace"
