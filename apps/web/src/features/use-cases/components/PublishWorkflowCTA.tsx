@@ -17,9 +17,9 @@ export default function PublishWorkflowCTA() {
         className="object-cover  z-0 opacity-50 blur-[3px]"
       />
       <div className="mx-auto space-y-1">
-        <h3 className="font-serif text-6xl font-normal text-foreground relative z-[1]">
+        <h2 className="font-serif text-6xl font-normal text-foreground relative z-[1]">
           Publish Your Own Workflow
-        </h3>
+        </h2>
         <p className="text-zinc-400 relative z-[1]">
           Build and share your automation ideas with the GAIA community
         </p>

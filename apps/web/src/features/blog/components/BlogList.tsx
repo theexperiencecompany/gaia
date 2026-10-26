@@ -29,7 +29,12 @@ export function BlogList({ blogs }: BlogListProps) {
           {featured.length > 0 && (
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
               {featured.map((blog) => (
-                <BlogCard key={blog.slug} blog={blog} variant="large" />
+                <BlogCard
+                  key={blog.slug}
+                  blog={blog}
+                  variant="large"
+                  titleAs="h2"
+                />
               ))}
             </div>
           )}
@@ -37,7 +42,12 @@ export function BlogList({ blogs }: BlogListProps) {
           {rest.length > 0 && (
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {rest.map((blog) => (
-                <BlogCard key={blog.slug} blog={blog} variant="small" />
+                <BlogCard
+                  key={blog.slug}
+                  blog={blog}
+                  variant="small"
+                  titleAs="h2"
+                />
               ))}
             </div>
           )}
