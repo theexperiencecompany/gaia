@@ -165,7 +165,13 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         if not summarized:
             return None
 
-        summary_text = await self._asummarize(summarized)
+        # Notes are folded away with the history but never summarized: a stale
+        # "the user is on X" line restated as summary text would read as current.
+        to_summarize = [m for m in summarized if not is_gaia_authored_note(m)]
+        if not to_summarize:
+            return None
+
+        summary_text = await self._asummarize(to_summarize)
         if summary_text is None:
             return None
         summary_message = self._build_new_messages(summary_text)[0]
@@ -274,7 +280,7 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         return self._should_summarize(filtered, self.token_counter(filtered))
 
     async def _archive(self, state: AgentState[object]) -> str:
-        messages = state.get("messages", [])
+        messages = [m for m in state.get("messages", []) if not is_gaia_authored_note(m)]
         # `runtime` carries no config (LangGraph's `Runtime` deliberately omits
         # it) — reading it from there once raised "requires 'user_id'" silently.
         # `get_config()` is the supported accessor, as LLMAccountingMiddleware uses.

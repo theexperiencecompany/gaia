@@ -397,3 +397,65 @@ class TestResolveProactiveTarget:
         assert picked == ChatChannel(
             source=ConversationSource.TELEGRAM, platform_user_id="tg-1", basis="recent_activity"
         )
+
+    @staticmethod
+    def _typing_on_telegram() -> PresenceSnapshot:
+        return {"captured_at": _now(), "last_seen": {CHANNEL_TYPE_TELEGRAM: _now() - 30}}
+
+    async def test_a_live_muted_telegram_is_named_on_the_fallback_chat_app(
+        self, no_recent_activity: AsyncMock
+    ) -> None:
+        no_recent_activity.return_value = self._typing_on_telegram()
+        user = _two_linked_user().model_copy(
+            update={"notification_channel_prefs": {CHANNEL_TYPE_TELEGRAM: False}}
+        )
+        with patch.object(chat_channel.user_repository, "get", AsyncMock(return_value=user)):
+            picked = await resolve_proactive_target(USER_ID)
+
+        assert picked == ChatChannel(
+            source=ConversationSource.SLACK,
+            platform_user_id="sl-1",
+            basis="priority",
+            unreachable_active=ConversationSource.TELEGRAM,
+        )
+
+    async def test_a_live_muted_telegram_with_no_other_chat_app_stays_in_the_app(
+        self, no_recent_activity: AsyncMock
+    ) -> None:
+        no_recent_activity.return_value = self._typing_on_telegram()
+        user = UserDocument.model_validate(
+            {
+                "id": USER_ID,
+                "platform_links": {
+                    "telegram": {"id": "tg-1", "username": "a", "display_name": "A"}
+                },
+                "notification_channel_prefs": {CHANNEL_TYPE_TELEGRAM: False},
+            }
+        )
+        with patch.object(chat_channel.user_repository, "get", AsyncMock(return_value=user)):
+            picked = await resolve_proactive_target(USER_ID)
+
+        assert picked == InApp(reason="no_chat_app", unreachable_active=ConversationSource.TELEGRAM)
+
+    async def test_a_live_telegram_linked_without_an_account_id_is_named_unreachable(
+        self, no_recent_activity: AsyncMock
+    ) -> None:
+        no_recent_activity.return_value = self._typing_on_telegram()
+        user = UserDocument.model_validate(
+            {
+                "id": USER_ID,
+                "platform_links": {"telegram": {"id": "", "username": "a", "display_name": "A"}},
+            }
+        )
+        with patch.object(chat_channel.user_repository, "get", AsyncMock(return_value=user)):
+            picked = await resolve_proactive_target(USER_ID)
+
+        assert picked == InApp(reason="no_chat_app", unreachable_active=ConversationSource.TELEGRAM)
+
+    async def test_an_idle_user_has_no_unreachable_active_surface(self) -> None:
+        with patch.object(
+            chat_channel.user_repository, "get", AsyncMock(return_value=_two_linked_user())
+        ):
+            picked = await resolve_proactive_target(USER_ID)
+
+        assert picked.unreachable_active is None

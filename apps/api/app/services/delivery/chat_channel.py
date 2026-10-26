@@ -12,7 +12,7 @@ its target here and nowhere else.
 
 import asyncio
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal
 
 from app.constants.log_tags import LogTag
@@ -75,6 +75,8 @@ class ChatChannel:
     source: ConversationSource
     platform_user_id: str
     basis: ChatChannelBasis
+    #: The chat app the user is active on but that cannot be messaged (muted or no account id).
+    unreachable_active: ConversationSource | None = None
 
 
 #: Why nothing goes to a chat app: the user is active in the GAIA app, or no chat app is usable.
@@ -86,6 +88,8 @@ class InApp:
     """A proactive message that stays in the GAIA app, and why."""
 
     reason: InAppReason
+    #: The chat app the user is active on but that cannot be messaged (muted or no account id).
+    unreachable_active: ConversationSource | None = None
 
 
 ProactiveTarget = ChatChannel | InApp
@@ -149,4 +153,8 @@ async def resolve_proactive_target(user_id: str) -> ProactiveTarget:
         normalize_channel_preferences(user.notification_channel_prefs),
         active=active,
     )
-    return channel or InApp(reason="no_chat_app")
+    if channel is None:
+        return InApp(reason="no_chat_app", unreachable_active=active)
+    if channel.basis == "priority":
+        return replace(channel, unreachable_active=active)
+    return channel

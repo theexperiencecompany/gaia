@@ -40,6 +40,15 @@ WHATSAPP_BY_ORDER = ChatChannel(
 )
 ACTIVE_IN_APP = InApp(reason="active_in_app")
 NO_CHAT_APP = InApp(reason="no_chat_app")
+TELEGRAM_UNREACHABLE_TO_WHATSAPP = ChatChannel(
+    source=ConversationSource.WHATSAPP,
+    platform_user_id="wa-1",
+    basis="priority",
+    unreachable_active=ConversationSource.TELEGRAM,
+)
+TELEGRAM_UNREACHABLE_ONLY = InApp(
+    reason="no_chat_app", unreachable_active=ConversationSource.TELEGRAM
+)
 
 
 def _seen(**last_seen: int) -> PresenceSnapshot:
@@ -54,9 +63,7 @@ STAYED_ON_TELEGRAM = _seen(telegram=TELEGRAM_AT, web=WEB_EARLIER_AT)
 
 class TestTheNote:
     def test_a_switch_names_where_they_came_from_with_absolute_times(self) -> None:
-        note = presence_note(
-            CAME_FROM_WEB, "telegram", "interactive", TELEGRAM_RECENT, opens_thread=False
-        )
+        note = presence_note(CAME_FROM_WEB, "telegram", "interactive", TELEGRAM_RECENT)
 
         assert note == (
             "[Surface change: the user is now writing from Telegram. Their previous message "
@@ -66,19 +73,9 @@ class TestTheNote:
             "3 hours).]"
         )
 
-    def test_staying_on_the_same_surface_says_nothing(self) -> None:
-        assert (
-            presence_note(
-                STAYED_ON_TELEGRAM, "telegram", "interactive", TELEGRAM_RECENT, opens_thread=False
-            )
-            is None
-        )
-
     def test_a_conversations_first_turn_says_where_they_are_without_a_switch(self) -> None:
         """A new chat is a fresh thread: it has never been told where its messages land."""
-        note = presence_note(
-            STAYED_ON_TELEGRAM, "telegram", "interactive", TELEGRAM_RECENT, opens_thread=True
-        )
+        note = presence_note(STAYED_ON_TELEGRAM, "telegram", "interactive", TELEGRAM_RECENT)
 
         assert note == (
             "[User presence: the user is writing from Telegram. Also last seen: Web at "
@@ -87,25 +84,48 @@ class TestTheNote:
             "within the past 3 hours).]"
         )
 
-    @pytest.mark.parametrize(
-        "presence", [None, _seen()], ids=["no_snapshot", "never_seen_anywhere"]
-    )
-    def test_no_history_says_nothing(self, presence: PresenceSnapshot | None) -> None:
-        assert (
-            presence_note(presence, "telegram", "interactive", TELEGRAM_RECENT, opens_thread=False)
-            is None
+    def test_a_live_turn_on_a_chat_app_that_cannot_be_messaged_says_where_messages_go(self) -> None:
+        note = presence_note(
+            CAME_FROM_WEB, "telegram", "interactive", TELEGRAM_UNREACHABLE_TO_WHATSAPP
         )
-        assert (
-            presence_note(presence, None, "background", TELEGRAM_RECENT, opens_thread=False) is None
+        only_app = presence_note(
+            CAME_FROM_WEB, "telegram", "interactive", TELEGRAM_UNREACHABLE_ONLY
+        )
+
+        assert note is not None
+        assert note.endswith(
+            "They are on Telegram right now, which you cannot message on your own: reminders "
+            "land back in the chat they were set in and on WhatsApp too when that chat is not "
+            "WhatsApp; tracked todo updates and workflow results go to WhatsApp, first in "
+            "their chat order.]"
+        )
+        assert only_app is not None
+        assert only_app.endswith(
+            "They are on Telegram right now, which you cannot message on your own: reminders "
+            "land back in the chat they were set in; tracked todo updates and workflow results "
+            "only show in the GAIA app.]"
+        )
+
+    def test_a_background_run_for_a_user_on_a_chat_app_that_cannot_be_messaged(self) -> None:
+        note = presence_note(
+            STAYED_ON_TELEGRAM, None, "background", TELEGRAM_UNREACHABLE_TO_WHATSAPP
+        )
+        only_app = presence_note(STAYED_ON_TELEGRAM, None, "background", TELEGRAM_UNREACHABLE_ONLY)
+
+        assert note is not None
+        assert note.endswith(
+            "If this run messages the user, it goes to WhatsApp: they are on Telegram right "
+            "now, which you cannot message on your own.]"
+        )
+        assert only_app is not None
+        assert only_app.endswith(
+            "If this run messages the user, it goes to the GAIA app only: they are on Telegram "
+            "right now, which you cannot message on your own.]"
         )
 
     def test_a_background_run_lists_last_seen_and_where_its_message_goes(self) -> None:
         note = presence_note(
-            _seen(telegram=TELEGRAM_AT, web=WEB_EARLIER_AT),
-            None,
-            "background",
-            TELEGRAM_RECENT,
-            opens_thread=False,
+            _seen(telegram=TELEGRAM_AT, web=WEB_EARLIER_AT), None, "background", TELEGRAM_RECENT
         )
 
         assert note == (
@@ -116,17 +136,13 @@ class TestTheNote:
         )
 
     def test_a_chat_source_on_a_background_run_is_still_background(self) -> None:
-        note = presence_note(
-            STAYED_ON_TELEGRAM, "telegram", "background", TELEGRAM_RECENT, opens_thread=False
-        )
+        note = presence_note(STAYED_ON_TELEGRAM, "telegram", "background", TELEGRAM_RECENT)
 
         assert note is not None
         assert note.startswith("[User presence: not in a chat with you right now.")
 
     def test_a_target_picked_by_order_says_so(self) -> None:
-        note = presence_note(
-            CAME_FROM_WEB, "telegram", "interactive", WHATSAPP_BY_ORDER, opens_thread=False
-        )
+        note = presence_note(CAME_FROM_WEB, "telegram", "interactive", WHATSAPP_BY_ORDER)
 
         assert note is not None
         assert note.endswith(
@@ -136,9 +152,7 @@ class TestTheNote:
         )
 
     def test_a_background_run_with_nobody_active_names_the_first_chat_app(self) -> None:
-        note = presence_note(
-            STAYED_ON_TELEGRAM, None, "background", WHATSAPP_BY_ORDER, opens_thread=False
-        )
+        note = presence_note(STAYED_ON_TELEGRAM, None, "background", WHATSAPP_BY_ORDER)
 
         assert note is not None
         assert note.endswith(
@@ -147,12 +161,8 @@ class TestTheNote:
         )
 
     def test_a_user_active_in_the_app_hears_from_gaia_only_in_the_app(self) -> None:
-        live = presence_note(
-            _seen(telegram=TELEGRAM_AT), "web", "interactive", ACTIVE_IN_APP, opens_thread=False
-        )
-        background = presence_note(
-            _seen(web=WEB_AT), None, "background", ACTIVE_IN_APP, opens_thread=False
-        )
+        live = presence_note(_seen(telegram=TELEGRAM_AT), "web", "interactive", ACTIVE_IN_APP)
+        background = presence_note(_seen(web=WEB_AT), None, "background", ACTIVE_IN_APP)
 
         assert live == (
             "[Surface change: the user is now writing from Web. Their previous message was on "
@@ -166,12 +176,8 @@ class TestTheNote:
         )
 
     def test_no_chat_app_means_only_the_app(self) -> None:
-        switch = presence_note(
-            CAME_FROM_WEB, "telegram", "interactive", NO_CHAT_APP, opens_thread=False
-        )
-        background = presence_note(
-            STAYED_ON_TELEGRAM, None, "background", NO_CHAT_APP, opens_thread=False
-        )
+        switch = presence_note(CAME_FROM_WEB, "telegram", "interactive", NO_CHAT_APP)
+        background = presence_note(STAYED_ON_TELEGRAM, None, "background", NO_CHAT_APP)
 
         assert switch is not None
         assert switch.endswith(
@@ -185,17 +191,22 @@ class TestTheNote:
 
     def test_the_window_comes_from_the_presence_constant(self) -> None:
         with patch.object(presence_utils, "PRESENCE_ACTIVE_WINDOW_SECONDS", 2 * 60 * 60):
-            note = presence_note(
-                CAME_FROM_WEB, "telegram", "interactive", TELEGRAM_RECENT, opens_thread=False
-            )
+            note = presence_note(CAME_FROM_WEB, "telegram", "interactive", TELEGRAM_RECENT)
 
         assert note is not None
         assert note.endswith("(they wrote there within the past 2 hours).]")
 
     def test_the_note_never_carries_an_em_or_en_dash(self) -> None:
-        targets = (TELEGRAM_RECENT, WHATSAPP_BY_ORDER, ACTIVE_IN_APP, NO_CHAT_APP)
+        targets = (
+            TELEGRAM_RECENT,
+            WHATSAPP_BY_ORDER,
+            ACTIVE_IN_APP,
+            NO_CHAT_APP,
+            TELEGRAM_UNREACHABLE_TO_WHATSAPP,
+            TELEGRAM_UNREACHABLE_ONLY,
+        )
         for note in [
-            presence_note(CAME_FROM_WEB, source, mode, target, opens_thread=False)
+            presence_note(CAME_FROM_WEB, source, mode, target)
             for target in targets
             for source, mode in (("telegram", "interactive"), (None, "background"))
         ]:
@@ -263,6 +274,22 @@ class TestTheTargetLookup:
             )
 
         assert message is None
+        lookup.assert_not_called()
+
+    @pytest.mark.parametrize("presence", [None, _seen()], ids=["no_snapshot", "never_seen"])
+    async def test_no_history_never_reads_the_target(
+        self, presence: PresenceSnapshot | None
+    ) -> None:
+        with patch.object(presence_note_module, "resolve_proactive_target") as lookup:
+            live = await presence_note_module.presence_note_message(
+                "user-1", presence, "telegram", "interactive", opens_thread=True
+            )
+            background = await presence_note_module.presence_note_message(
+                "user-1", presence, None, "background", opens_thread=False
+            )
+
+        assert live is None
+        assert background is None
         lookup.assert_not_called()
 
     async def test_a_switch_turn_reads_it_once(self) -> None:

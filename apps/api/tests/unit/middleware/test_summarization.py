@@ -793,6 +793,56 @@ async def test_a_presence_note_ahead_of_the_task_is_not_history_that_stops_the_s
     assert "the task" not in model.prompts[0]
 
 
+async def test_a_presence_note_among_old_history_is_removed_but_never_summarized() -> None:
+    # A stale "the user is on X" line restated in the summary would read as current.
+    model = _recording_model()
+    mw = _middleware(model=model, trigger=("messages", 4), keep=("messages", 2), archive=None)
+    history: list[AnyMessage] = [
+        HumanMessage("old question", id="q1"),
+        HumanMessage(
+            "[Surface change: the user is now writing from Telegram.]",
+            additional_kwargs={PRESENCE_NOTE_MARKER: True},
+            id="note",
+        ),
+        AIMessage("old answer", id="a1"),
+        HumanMessage("recent", id="q2"),
+        AIMessage("recent answer", id="a2"),
+    ]
+
+    result = await mw.abefore_model({"messages": history}, _runtime())
+
+    assert result is not None
+    assert "Telegram" not in model.prompts[0]
+    assert "old question" in model.prompts[0]
+    summary, *removals = result["messages"]
+    assert summary.id == "q1"
+    assert {r.id for r in removals} == {"note", "a1"}
+
+
+async def test_the_archive_leaves_out_presence_notes() -> None:
+    mw = _middleware(archive="read_tool")
+    note = HumanMessage(
+        "[Surface change: the user is now writing from Telegram.]",
+        additional_kwargs={PRESENCE_NOTE_MARKER: True},
+        id="note",
+    )
+    written: list[str] = []
+
+    async def capture(**kwargs: Any) -> tuple[str, str]:
+        written.append(kwargs["content"])
+        return "host", "/workspace/archive.json"
+
+    config = {"configurable": {"user_id": "u", "thread_id": "t"}}
+    with (
+        patch("app.agents.middleware.summarization.get_config", return_value=config),
+        patch("app.agents.middleware.summarization.write_session_file", capture),
+    ):
+        await mw._archive({"messages": [HumanMessage("kept", id="q"), note]})
+
+    assert "kept" in written[0]
+    assert "Telegram" not in written[0]
+
+
 async def test_a_result_narration_turn_is_not_the_running_turn() -> None:
     # Live: the narration HumanMessage (delivery instructions + executor result)
     # was taken as the turn boundary, so the fold dropped the user's request and

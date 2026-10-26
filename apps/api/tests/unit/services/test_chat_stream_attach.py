@@ -488,6 +488,7 @@ class TestRunChatStreamTurnDerivations:
             patch.object(chat_stream, "stream_manager") as sm,
             patch.object(chat_stream, "register_executor_capture"),
             patch.object(chat_stream, "_set_stream_log_context"),
+            patch.object(chat_stream, "_capture_presence", AsyncMock(return_value=None)),
             patch.object(chat_stream, "_publish_init_chunk", fake_publish_init),
             patch.object(
                 chat_stream, "_resolve_pending_approval_turn", AsyncMock(return_value=False)

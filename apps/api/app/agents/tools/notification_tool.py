@@ -6,6 +6,7 @@ from langchain_core.tools import tool
 from app.constants.chat import ConversationSource, SourceCategory
 from app.constants.log_tags import LogTag
 from app.constants.notifications import CHANNEL_TYPE_INAPP, NOTIFICATION_CHANNEL_TYPES
+from app.db.repositories.todos import todo_repository
 from app.decorators import with_doc, with_rate_limiting
 from app.models.agent_config import AgentConfigurableView, read_agent_configurable
 from app.models.agent_models import current_stream_writer, get_user_id
@@ -82,7 +83,7 @@ ReplyChannel: TypeAlias = ConversationSource | Literal["inapp"]
 
 
 class NotificationFoldedIntoReply(TypedDict):
-    """``send_notification`` naming only the chat the run already replies into: nothing is sent."""
+    """``send_notification`` landing where the run's own result is delivered: nothing is sent."""
 
     success: Literal[True]
     delivered_channels: list[str]
@@ -274,6 +275,18 @@ def reply_channel_of_run(configurable: AgentConfigurableView) -> ReplyChannel | 
     return None
 
 
+async def result_is_delivered_automatically(configurable: AgentConfigurableView) -> bool:
+    """True for a background workflow or tracked-todo run whose own result is sent to the user."""
+    if configurable.execution_mode != "background":
+        return False
+    if configurable.workflow_id:
+        return configurable.workflow_notify_on_completion
+    if configurable.active_todo_id:
+        todo = await todo_repository.get_by_id(configurable.active_todo_id)
+        return todo is not None and todo.notify_on_run
+    return False
+
+
 @tool
 @with_rate_limiting("notification_operations")
 @with_doc(SEND_NOTIFICATION)
@@ -316,9 +329,14 @@ async def send_notification(
         # Never an empty list: the orchestrator would auto-inject every user-enabled
         # channel and over-notify. Unnamed means where the user is reachable now, so
         # the fold below still keeps it out of the chat they are already reading.
+        configurable = read_agent_configurable(config)
+        reply_channel = reply_channel_of_run(configurable)
         if not channels:
             target = await resolve_proactive_target(user_id)
             channels = [CHANNEL_TYPE_INAPP] if isinstance(target, InApp) else [target.source.value]
+            # A workflow or tracked-todo run's result goes to this same place on its own.
+            if reply_channel is None and await result_is_delivered_automatically(configurable):
+                reply_channel = CHANNEL_TYPE_INAPP if isinstance(target, InApp) else target.source
 
         # Unknown channel names would otherwise be accepted and silently skipped
         # at delivery, so reject them here where the LLM can read the error and
@@ -335,7 +353,6 @@ async def send_notification(
         # The run's result already lands in the chat the user is in; a notification
         # there would be the same update a second time, in notification chrome.
         # A reply into the web, mobile or desktop app is the in-app copy of the update.
-        reply_channel = reply_channel_of_run(read_agent_configurable(config))
         if reply_channel is not None and reply_channel in channels:
             channels = [ch for ch in channels if ch != reply_channel]
             log.set_ns("tool", folded_into_reply=reply_channel)
@@ -350,9 +367,8 @@ async def send_notification(
                     "delivered_channels": [],
                     "delivered_via_conversation": reply_channel,
                     "note": (
-                        f"The user is reading this conversation {place}; your result is "
-                        "delivered here automatically. Put the update in your result instead "
-                        "of notifying."
+                        f"Your result is delivered {place} automatically. Put the update "
+                        "in your result instead of notifying."
                     ),
                 }
         channel_configs = [ChannelConfig(channel_type=ch) for ch in channels]

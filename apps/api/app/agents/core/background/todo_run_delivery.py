@@ -46,7 +46,7 @@ from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services.analytics_service import capture
 from app.services.canvas_markdown import section_body
-from app.services.delivery.chat_channel import resolve_proactive_target
+from app.services.delivery.chat_channel import ProactiveTarget, resolve_proactive_target
 from app.services.notification_service import notification_service
 from app.services.todo_activity import record_run_finished, run_finished_marker
 from app.utils.message_breaks import split_message_bubbles
@@ -230,7 +230,7 @@ def _canvas_section(todo: TodoDocument, heading: str, max_chars: int) -> str | N
 
 
 async def _send_in_app(todo: TodoDocument, text: str) -> _Resolution:
-    """Deliver a result as an in-app notification, for a user with no chat app linked."""
+    """Deliver a result as an in-app notification: the fallback, or the target for an in-app user."""
     try:
         await notification_service.create_notification(
             NotificationRequest(
@@ -251,6 +251,20 @@ async def _send_in_app(todo: TodoDocument, text: str) -> _Resolution:
         )
         return _not_sent(TodoRunDeliveryOutcome.UNDELIVERED)
     return _Resolution(TodoRunDeliveryOutcome.DELIVERED, "result sent as an in-app notification")
+
+
+async def _lookup_target(todo: TodoDocument) -> ProactiveTarget | None:
+    """Resolve where the result goes; None (logged) when the lookup fails, so it falls back in-app."""
+    try:
+        return await resolve_proactive_target(todo.user_id)
+    except Exception as e:
+        log.error(
+            f"{LogTag.AGENT} todo run target lookup failed, falling back to in-app",
+            todo_id=todo.id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return None
 
 
 async def _narrate_and_send(
@@ -274,7 +288,7 @@ async def _narrate_and_send(
                 runs_once=not (todo.recurrence or todo.trigger_subscriptions),
             ),
         ),
-        resolve_proactive_target(todo.user_id),
+        _lookup_target(todo),
     )
     if not text:
         log.error(f"{LogTag.AGENT} todo run result narration failed", todo_id=todo.id)
@@ -296,12 +310,16 @@ async def _narrate_and_send(
     # comms' retelling dropped the headings a report-form owner's guidance requires.
     owns_form = todo.external_ref is not None and todo.external_ref.source.owns_report_form
     message = finished.result_text if owns_form else directive.payload
-    platform = await deliver_result_to_platforms(
-        user=user,
-        user_id=todo.user_id,
-        notification_text=message,
-        origin=f'tracked todo "{todo.title}" (id {todo.id})',
-        target=target,
+    platform = (
+        await deliver_result_to_platforms(
+            user=user,
+            user_id=todo.user_id,
+            notification_text=message,
+            origin=f'tracked todo "{todo.title}" (id {todo.id})',
+            target=target,
+        )
+        if target is not None
+        else None
     )
     if platform is None:
         return await _send_in_app(todo, message)

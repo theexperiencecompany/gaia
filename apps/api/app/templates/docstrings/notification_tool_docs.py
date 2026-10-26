@@ -97,11 +97,14 @@ completed, especially when they are away from the app or the event is time-sensi
 - Use get_notification_preferences first if you need to know what channels are available
 - When the user is chatting with you on a messaging platform, your result is already delivered into that chat: do not notify that same channel for "keep me posted" or "let me know when done", and never add "inapp" as a filler channel.
 
-## WORKFLOW RUNS
-- When you are executing a saved workflow, the run instructions state whether GAIA already
-  sends an automatic completion notification. If it does, do NOT call this tool to announce
-  the result: that double-notifies the user. Only call it when the workflow's own
-  instructions explicitly ask for an alert (e.g. "ping me on WhatsApp if an email is urgent").
+## WORKFLOW AND TRACKED-TODO RUNS
+- When you are executing a saved workflow or a tracked todo, the run instructions state whether GAIA
+  already delivers the run's result to the user. If it does, do NOT call this tool to announce
+  the result: that double-notifies the user. Without `channels`, such a call sends nothing and
+  tells you to put the update in your result. Only name a channel when the run's own
+  instructions explicitly ask for an alert there (e.g. "ping me on WhatsApp if an email is urgent").
+- When the run's result is not delivered (a silent todo, a workflow with no completion
+  notification), an unnamed call reaches the user as usual.
 
 ## NOTIFICATION TYPE
 - "info" (default): general update

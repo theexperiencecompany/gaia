@@ -99,7 +99,7 @@ from app.utils.stream_utils import (
     reconstruct_subagent_groups,
 )
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.attribution import Actor, Trigger
+from shared.py.analytics.catalog.attribution import Actor, EntrySurface, Trigger
 from shared.py.analytics.catalog.chat import (
     ChatMessageCancelled,
     ChatMessageCompleted,
@@ -139,7 +139,6 @@ async def run_chat_stream_background(
             conversation_id=conversation_id,
             source=source,
             t0_perf=t0_perf,
-            presence=await _capture_presence(user.user_id, source),
         )
 
 
@@ -147,6 +146,9 @@ async def _capture_presence(user_id: str, source: str | None) -> PresenceSnapsho
     """Stamp a turn the user sent on its surface and return where they were before it; agent-driven turns record nothing."""
     attribution = current_analytics_context().attribution
     if attribution.actor is not Actor.USER or attribution.trigger is not Trigger.INTERACTIVE:
+        return None
+    # A call is not a surface the user can be messaged on, so it never counts as typing in the app.
+    if attribution.surface is EntrySurface.VOICE:
         return None
     surface = ConversationSource.coerce(source)
     if surface is None or SourceCategory.from_source(surface) is SourceCategory.BG:
@@ -302,7 +304,6 @@ async def _run_chat_stream(
     conversation_id: str,
     source: str | None = None,
     t0_perf: float | None = None,
-    presence: PresenceSnapshot | None = None,
 ) -> None:
     state = _StreamState(turn_id=body.turn_id)
     state.t0_perf = t0_perf if t0_perf is not None else time.perf_counter()
@@ -318,6 +319,7 @@ async def _run_chat_stream(
 
     try:
         _set_stream_log_context(body, user_id, conversation_id, stream_id, is_new_conversation)
+        presence = await _capture_presence(user_id, source)
 
         await _publish_init_chunk(
             body,

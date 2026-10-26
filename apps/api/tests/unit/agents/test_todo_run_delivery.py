@@ -156,6 +156,25 @@ class TestResultsThatReachNobody:
             }
         ]
 
+    async def test_a_failed_target_lookup_still_reaches_the_user_in_the_app(self) -> None:
+        """Regression: the lookup raised out of the send, so the result went to the retry instead of the app."""
+        with _seams(todo=_todo()) as seams:
+            seams.target.side_effect = ConnectionError("mongo down")
+            async with captured_wide_event() as event:
+                await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
+
+        seams.send.assert_not_awaited()
+        assert seams.in_app.await_args.args[0].content.body == "Deploy failed."
+        assert seams.event().outcome == "delivered"
+        assert event["errors"] == [
+            {
+                "msg": f"{LogTag.AGENT} todo run target lookup failed, falling back to in-app",
+                "todo_id": "todo-1",
+                "error": "mongo down",
+                "error_type": "ConnectionError",
+            }
+        ]
+
     async def test_a_todo_deleted_mid_run_gets_nothing(self) -> None:
         with _seams(todo=None) as seams:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")

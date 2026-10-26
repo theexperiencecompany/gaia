@@ -25,8 +25,20 @@ def active_window_phrase() -> str:
     return f"the past {PRESENCE_ACTIVE_WINDOW_SECONDS // 3600} hours"
 
 
+def landing_place(target: ProactiveTarget) -> str:
+    """Name the one place a target sends to: a chat app, or only the GAIA app."""
+    if isinstance(target, ChatChannel):
+        return target.source.display_name
+    return "the GAIA app only"
+
+
 def destination_phrase(target: ProactiveTarget) -> str:
     """Where a background run's message lands and the rule that picked it."""
+    if target.unreachable_active is not None:
+        return (
+            f"goes to {landing_place(target)}: they are on {target.unreachable_active.display_name} "
+            "right now, which you cannot message on your own"
+        )
     match target:
         case ChatChannel(basis="recent_activity"):
             return (
@@ -46,6 +58,13 @@ def destination_phrase(target: ProactiveTarget) -> str:
 def own_messages_phrase(target: ProactiveTarget) -> str:
     """Where each kind of message GAIA sends on its own lands, as reminder_tasks and todo delivery route them."""
     kinds = "Messages you send on your own (reminders, tracked todo updates, workflow results)"
+    # The user is on a chat app that cannot be messaged: say so, then route as for nobody active.
+    idle = (
+        f"They are on {target.unreachable_active.display_name} right now, which you cannot "
+        "message on your own: "
+        if target.unreachable_active is not None
+        else "They are not active anywhere right now: "
+    )
     match target:
         case ChatChannel(basis="recent_activity"):
             return (
@@ -55,17 +74,19 @@ def own_messages_phrase(target: ProactiveTarget) -> str:
         case ChatChannel():
             name = target.source.display_name
             return (
-                "They are not active anywhere right now: reminders land back in the chat they "
-                f"were set in and on {name} too when that chat is not {name}; tracked todo "
-                f"updates and workflow results go to {name}, first in their chat order."
+                f"{idle}reminders land back in the chat they were set in and on {name} too "
+                f"when that chat is not {name}; tracked todo updates and workflow results go "
+                f"to {name}, first in their chat order."
             )
         case InApp(reason="active_in_app"):
             return (
                 f"{kinds} stay in the GAIA app, where they are active; nothing goes to a chat app."
             )
+    linked = "" if target.unreachable_active is not None else " (no chat app linked)"
+    lead = idle if target.unreachable_active is not None else ""
     return (
-        "Reminders land back in the chat they were set in; tracked todo updates and "
-        "workflow results only show in the GAIA app (no chat app linked)."
+        f"{lead}{'r' if lead else 'R'}eminders land back in the chat they were set in; tracked "
+        f"todo updates and workflow results only show in the GAIA app{linked}."
     )
 
 

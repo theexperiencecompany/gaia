@@ -366,6 +366,39 @@ class TestWorkflowResultReachesThePlatformDelivery:
         assert kwargs["target"] is NO_CHAT_APP
         notify.assert_awaited_once()  # the in-app badge still fires alongside
 
+    async def test_a_failed_target_lookup_loses_only_the_chat_app_copy(self) -> None:
+        """Regression: the lookup ran before the save, so its failure dropped the saved result and the badge."""
+        with (
+            patch.object(
+                rd, "narrate_executor_result", new_callable=AsyncMock, return_value="done"
+            ),
+            patch.object(rd, "_safe_inline_follow_ups", new_callable=AsyncMock, return_value=[]),
+            patch.object(rd, "update_messages", new_callable=AsyncMock) as save,
+            patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
+            patch.object(
+                rd, "resolve_proactive_target", AsyncMock(side_effect=ConnectionError("mongo down"))
+            ),
+            patch.object(rd, "deliver_result_to_platforms", new_callable=AsyncMock) as deliver,
+            patch.object(rd, "_dispatch_workflow_notification", new_callable=AsyncMock) as notify,
+        ):
+            async with captured_wide_event() as event:
+                narrated, message_id = await rd.deliver_result(
+                    _run(workflow=True), result_text="done", result_type="final", tool_data=None
+                )
+
+        save.assert_awaited_once()
+        notify.assert_awaited_once()
+        deliver.assert_not_awaited()
+        assert (narrated, message_id is not None) == ("done", True)
+        assert event["errors"] == [
+            {
+                "msg": f"{LogTag.AGENT} workflow result: chat app lookup failed, not sent to the chat app",
+                "workflow_id": "wf-1",
+                "error": "mongo down",
+                "error_type": "ConnectionError",
+            }
+        ]
+
 
 class TestGetConversationSource:
     """The authoritative routing key: the conversation's persisted source.

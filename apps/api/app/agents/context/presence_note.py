@@ -27,16 +27,12 @@ from app.utils.presence_utils import (
 
 
 def presence_note(
-    presence: PresenceSnapshot | None,
+    presence: PresenceSnapshot,
     source: str | None,
     execution_mode: ExecutionMode,
     target: ProactiveTarget,
-    *,
-    opens_thread: bool,
-) -> str | None:
-    """Return the note for a run, or None when nothing changed for this thread."""
-    if presence is None or not note_is_due(presence, source, execution_mode, opens_thread):
-        return None
+) -> str:
+    """Return the note text for a run whose gate (note_is_due) has already passed."""
     ranked = surfaces_by_recency(presence)
     surface = ConversationSource.coerce(source)
     if surface is None or not is_live_chat(source, execution_mode):
@@ -71,8 +67,12 @@ async def presence_note_message(
 ) -> HumanMessage | None:
     """Return the marked note message a run's thread gets, or None when nothing changed."""
     # The target lookup is a user read; only a run that gets a note pays for it.
-    if not user_id or not note_is_due(presence, source, execution_mode, opens_thread):
+    if (
+        not user_id
+        or presence is None
+        or not note_is_due(presence, source, execution_mode, opens_thread)
+    ):
         return None
     target = await resolve_proactive_target(user_id)
-    text = presence_note(presence, source, execution_mode, target, opens_thread=opens_thread)
-    return mark(HumanMessage(content=text), PRESENCE_NOTE_MARKER) if text else None
+    text = presence_note(presence, source, execution_mode, target)
+    return mark(HumanMessage(content=text), PRESENCE_NOTE_MARKER)
