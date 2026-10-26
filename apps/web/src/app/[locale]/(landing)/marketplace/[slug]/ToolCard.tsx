@@ -3,6 +3,7 @@
 import { Button } from "@heroui/button";
 import { useEffect, useRef, useState } from "react";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
+import { ToolDescription } from "./ToolDescription";
 
 interface ToolCardProps {
   readonly name: string;
@@ -12,7 +13,7 @@ interface ToolCardProps {
 export function ToolCard({ name, description }: ToolCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [isClamped, setIsClamped] = useState(false);
-  const descriptionRef = useRef<HTMLParagraphElement>(null);
+  const descriptionRef = useRef<HTMLDivElement>(null);
 
   // Detect whether the 2-line clamp actually truncates the description, so the
   // toggle only renders when there is hidden content to reveal.
@@ -27,12 +28,12 @@ export function ToolCard({ name, description }: ToolCardProps) {
       <p className="font-medium text-zinc-200">{formatToolName(name)}</p>
       {description && (
         <>
-          <p
+          <div
             ref={descriptionRef}
             className={`text-sm text-zinc-400 ${expanded ? "" : "line-clamp-2"}`}
           >
-            {description}
-          </p>
+            <ToolDescription markdown={description} />
+          </div>
           {(isClamped || expanded) && (
             <Button
               variant="light"
