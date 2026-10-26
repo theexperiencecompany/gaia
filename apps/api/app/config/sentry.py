@@ -5,7 +5,7 @@ import re
 from typing import Protocol, TypedDict, cast
 
 from loguru import logger as _loguru
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 import sentry_sdk
 from sentry_sdk.consts import OP
 from sentry_sdk.integrations.langchain import LangchainIntegration
@@ -213,8 +213,13 @@ def _before_send(event: Event, hint: Hint) -> Event | None:
     event = _drop_llm_attempt_errors(event, hint)
     if event is None:
         return None
-    _attribute_user(event)
-    fingerprint = _stable_fingerprint(event)
+    try:
+        _attribute_user(event)
+        fingerprint = _stable_fingerprint(event)
+    except (ValidationError, TypeError, AttributeError) as exc:
+        # A hook that raises makes the SDK drop the event: ship it ungrouped instead.
+        log.warning("sentry_event_shaping_failed", error_type=type(exc).__name__)
+        return event
     if fingerprint is not None:
         event["fingerprint"] = fingerprint
     return event

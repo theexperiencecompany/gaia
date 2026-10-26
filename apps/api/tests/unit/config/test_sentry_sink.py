@@ -515,3 +515,11 @@ async def test_an_error_without_user_kwargs_still_reaches_sentry_as_that_user(
         log.error("executor run failed")
 
     assert [event["user"] for event in sentry_events] == [{"id": "67bdb4367c7dd1f0ea343216"}]
+
+
+def test_an_unvalidatable_event_still_reaches_sentry() -> None:
+    """A raising before_send makes the SDK drop the event, so it ships ungrouped instead."""
+    event = _before_send(_event(tags={"logger": 5}), {})
+
+    assert event is not None
+    assert "fingerprint" not in event
