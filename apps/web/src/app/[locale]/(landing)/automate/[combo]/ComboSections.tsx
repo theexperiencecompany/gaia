@@ -1,5 +1,5 @@
 import type { getTranslations } from "next-intl/server";
-import { SiteLink } from "@/components/seo/SiteLink";
+import { PageBreadcrumbs } from "@/components/seo/PageBreadcrumbs";
 import type { IntegrationCombo } from "@/features/integrations/data/combosData";
 
 export type Translator = Awaited<ReturnType<typeof getTranslations>>;
@@ -11,19 +11,14 @@ export interface ComboSectionProps {
 
 export function ComboBreadcrumb({ data, t }: ComboSectionProps) {
   return (
-    <nav className="mb-8 text-sm text-zinc-500">
-      <SiteLink href="/" className="hover:text-zinc-300">
-        {t("common.home")}
-      </SiteLink>
-      <span className="mx-2">/</span>
-      <SiteLink href="/marketplace" className="hover:text-zinc-300">
-        {t("marketplace.breadcrumb")}
-      </SiteLink>
-      <span className="mx-2">/</span>
-      <span className="text-zinc-300">
-        {data.toolA} + {data.toolB}
-      </span>
-    </nav>
+    <PageBreadcrumbs
+      className="mb-8"
+      items={[
+        { label: t("common.home"), href: "/" },
+        { label: t("automate.breadcrumb"), href: "/automate" },
+        { label: `${data.toolA} + ${data.toolB}` },
+      ]}
+    />
   );
 }
 

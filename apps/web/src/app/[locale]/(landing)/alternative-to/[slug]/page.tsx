@@ -5,6 +5,7 @@ import ComparisonTable from "@/components/seo/ComparisonTable";
 import DocsGuidesSection from "@/components/seo/DocsGuidesSection";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
+import { PageBreadcrumbs } from "@/components/seo/PageBreadcrumbs";
 import { ProseParagraphs } from "@/components/seo/ProseParagraphs";
 import { SiteLink } from "@/components/seo/SiteLink";
 import { getAllAlternativeSlugs } from "@/features/alternatives/data/alternativesData";
@@ -117,20 +118,14 @@ function AlternativeArticle({
 }: AlternativeArticleProps) {
   return (
     <article className="mx-auto max-w-4xl px-6 pt-36 pb-24">
-      {/* Breadcrumb */}
-      <nav className="mb-8 text-sm text-zinc-500">
-        <SiteLink href="/" className="hover:text-zinc-300">
-          {t("common.home")}
-        </SiteLink>
-        <span className="mx-2">/</span>
-        <SiteLink href="/alternative-to" className="hover:text-zinc-300">
-          {t("alternatives.breadcrumb")}
-        </SiteLink>
-        <span className="mx-2">/</span>
-        <span className="text-zinc-300">
-          {t("alternatives.best_alternative", { name: data.name })}
-        </span>
-      </nav>
+      <PageBreadcrumbs
+        className="mb-8"
+        items={[
+          { label: t("common.home"), href: "/" },
+          { label: t("alternatives.breadcrumb"), href: "/alternative-to" },
+          { label: t("alternatives.best_alternative", { name: data.name }) },
+        ]}
+      />
 
       {/* Hero */}
       <header className="mb-16">

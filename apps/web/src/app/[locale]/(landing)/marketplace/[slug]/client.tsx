@@ -1,7 +1,7 @@
 "use client";
 
-import { BreadcrumbItem, Breadcrumbs } from "@heroui/react";
 import DocsGuidesSection from "@/components/seo/DocsGuidesSection";
+import { PageBreadcrumbs } from "@/components/seo/PageBreadcrumbs";
 import { BearerTokenModal } from "@/features/integrations/components/BearerTokenModal";
 import { IntegrationRelatedIntegrations } from "@/features/integrations/components/IntegrationRelatedIntegrations";
 import { IntegrationRelatedWorkflows } from "@/features/integrations/components/IntegrationRelatedWorkflows";
@@ -62,15 +62,7 @@ export function IntegrationDetailClient({
     <div className="relative">
       <div className="flex min-h-screen w-screen justify-center overflow-y-auto pt-34 pb-20 relative z-1">
         <div className="container mx-auto w-full max-w-5xl space-y-5">
-          <div className="mb-3 text-sm text-zinc-500">
-            <Breadcrumbs>
-              {breadcrumbs.map((crumb) => (
-                <BreadcrumbItem key={crumb.label} href={crumb.href}>
-                  {crumb.label}
-                </BreadcrumbItem>
-              ))}
-            </Breadcrumbs>
-          </div>
+          <PageBreadcrumbs className="mb-3" items={breadcrumbs} />
 
           <IntegrationHeader
             integration={integration}

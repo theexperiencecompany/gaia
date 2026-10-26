@@ -4,6 +4,7 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import DocsGuidesSection from "@/components/seo/DocsGuidesSection";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
+import { PageBreadcrumbs } from "@/components/seo/PageBreadcrumbs";
 import { ProseParagraphs } from "@/components/seo/ProseParagraphs";
 import { RelatedAutomationsGrid } from "@/components/seo/RelatedAutomationsGrid";
 import { RelatedComparisonsGrid } from "@/components/seo/RelatedComparisonsGrid";
@@ -133,18 +134,14 @@ export default async function GlossaryTermPage({ params }: PageProps) {
       />
 
       <article className="mx-auto max-w-4xl px-6 pt-36 pb-24">
-        {/* Breadcrumb */}
-        <nav className="mb-8 text-sm text-zinc-500">
-          <SiteLink href="/" className="hover:text-zinc-300">
-            {t("common.home")}
-          </SiteLink>
-          <span className="mx-2">/</span>
-          <SiteLink href="/learn" className="hover:text-zinc-300">
-            {t("glossary.breadcrumb")}
-          </SiteLink>
-          <span className="mx-2">/</span>
-          <span className="text-zinc-300">{data.term}</span>
-        </nav>
+        <PageBreadcrumbs
+          className="mb-8"
+          items={[
+            { label: t("common.home"), href: "/" },
+            { label: t("glossary.breadcrumb"), href: "/learn" },
+            { label: data.term },
+          ]}
+        />
 
         {/* Definition Hero */}
         <header className="mb-16">

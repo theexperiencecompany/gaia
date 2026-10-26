@@ -101,7 +101,7 @@ export default async function AutomateComboPage({ params }: PageProps) {
 
   const breadcrumbItems = [
     { name: "Home", url: siteConfig.url },
-    { name: "Marketplace", url: `${siteConfig.url}/marketplace` },
+    { name: "Automate", url: `${siteConfig.url}/automate` },
     {
       name: `${data.toolA} + ${data.toolB}`,
       url: pageUrl,
