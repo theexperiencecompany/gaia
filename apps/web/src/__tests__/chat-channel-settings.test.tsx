@@ -37,7 +37,7 @@ describe("ChatChannelSettings", () => {
   it("promotes the second platform and saves the new order", async () => {
     render(<ChatChannelSettings linkedPlatforms={linked} />);
     await waitFor(() =>
-      expect(screen.getByText("Texts you here first")).toBeDefined(),
+      expect(screen.getByText("First in line")).toBeDefined(),
     );
 
     fireEvent.click(screen.getByLabelText("Move WhatsApp up"));

@@ -1,5 +1,6 @@
 """Comprehensive tests for app/helpers/agent_helpers.py."""
 
+from collections.abc import Iterator
 import inspect
 import json
 from typing import ClassVar
@@ -92,6 +93,15 @@ USER_ID = "507f1f77bcf86cd799439011"
 _TODO_A = {"id": "t1", "content": "draft", "status": "in_progress"}
 _TODO_B = {"id": "t1", "content": "draft", "status": "completed"}
 CONV_ID = "conv-001"
+
+
+@pytest.fixture(autouse=True)
+def _no_real_presence_read() -> Iterator[AsyncMock]:
+    """Keep a root run from reading presence off Redis unless a test patches it itself."""
+    with patch("app.helpers.agent_helpers.read_presence", new_callable=AsyncMock) as mock_read:
+        mock_read.return_value = {"captured_at": 0, "last_seen": {}}
+        yield mock_read
+
 
 FAKE_USER = {
     "user_id": USER_ID,
