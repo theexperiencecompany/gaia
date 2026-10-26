@@ -92,9 +92,7 @@ async def deliver_workflow_result(
         )
         capture(
             UserId(user.user_id),
-            WorkflowResultDelivered(
-                workflow_id=workflow_id, outcome="lookup_failed", **proactive_destination(None)
-            ),
+            WorkflowResultDelivered(workflow_id=workflow_id, outcome="lookup_failed"),
         )
         return
     platform = await deliver_result_to_platforms(

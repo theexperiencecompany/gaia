@@ -72,22 +72,17 @@ async def presence_note_message(
     """Return the marked note message a run's thread gets, or None when nothing changed."""
     if not user_id or presence is None:
         return None
-    if is_live_chat(source, execution_mode):
-        # The target lookup is a user read; only a turn that gets a note pays for it.
-        if not note_is_due(
-            presence, source, execution_mode, opens_thread, entry_surface=entry_surface
-        ):
-            return None
-        target = await resolve_proactive_target(user_id)
-    else:
+    target: ProactiveTarget | None = None
+    if not is_live_chat(source, execution_mode):
         # Read live with the target, not the inherited pre-turn snapshot, so the
         # note's last seen and its destination describe one moment.
         presence, target = await asyncio.gather(
             read_presence(user_id), resolve_proactive_target(user_id)
         )
-        if not note_is_due(
-            presence, source, execution_mode, opens_thread, entry_surface=entry_surface
-        ):
-            return None
+    if not note_is_due(presence, source, execution_mode, opens_thread, entry_surface=entry_surface):
+        return None
+    if target is None:
+        # The target lookup is a user read; only a live turn that gets a note pays for it.
+        target = await resolve_proactive_target(user_id)
     text = presence_note(presence, source, execution_mode, target)
     return mark(HumanMessage(content=text), PRESENCE_NOTE_MARKER)

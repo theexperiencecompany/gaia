@@ -74,7 +74,7 @@ def own_messages_phrase(target: ProactiveTarget) -> str:
         f"They are on {target.unreachable_active.display_name} right now, which you cannot "
         "message on your own. "
         if target.unreachable_active is not None
-        else None
+        else ""
     )
     if isinstance(target, ChatChannel):
         name = target.source.display_name
@@ -85,7 +85,7 @@ def own_messages_phrase(target: ProactiveTarget) -> str:
         )
     linked = "" if unreachable else " (no chat app linked)"
     return (
-        f"{unreachable or ''}Reminders land back in the chat they were set in; tracked todo "
+        f"{unreachable}Reminders land back in the chat they were set in; tracked todo "
         f"updates and workflow results only show in the GAIA app{linked}."
     )
 
