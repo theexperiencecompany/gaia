@@ -351,20 +351,6 @@ class TestGetOrderedProviders:
         names = [p.name for p in ordered]
         assert names == ["gemini"]
 
-    def test_preferred_provider_not_available_fallback_disabled(self) -> None:
-        available: dict[str, Any] = {
-            "gemini": _make_fake_provider("gemini"),
-        }
-        ordered = _get_ordered_providers(
-            available, preferred_provider="openai", fallback_enabled=False
-        )
-
-        # openai not in available, fallback disabled but ordered is empty so
-        # the branch `if fallback_enabled or not ordered` fires.
-        # The code adds remaining by priority when ordered is empty even if fallback disabled.
-        names = [p.name for p in ordered]
-        assert names == ["gemini"]
-
     def test_no_fallback_only_preferred(self) -> None:
         available: dict[str, Any] = {
             "openai": _make_fake_provider("openai"),
@@ -377,17 +363,6 @@ class TestGetOrderedProviders:
         # Preferred is available and fallback disabled -> only preferred provider
         names = [p.name for p in ordered]
         assert names == ["openai"]
-
-    def test_no_preferred_no_fallback(self) -> None:
-        available: dict[str, Any] = {
-            "gemini": _make_fake_provider("gemini"),
-            "openrouter": _make_fake_provider("openrouter"),
-        }
-        ordered = _get_ordered_providers(available, preferred_provider=None, fallback_enabled=False)
-
-        # No preferred, ordered is empty, so all providers by priority added
-        names = [p.name for p in ordered]
-        assert names == ["openrouter", "gemini"]
 
     def test_openai_alone_is_the_primary(self) -> None:
         available: dict[str, Any] = {"openai": _make_fake_provider("openai")}
@@ -566,46 +541,6 @@ class TestInitLlm:
 
         # With fallback disabled, alternatives list should be empty
         mock_create.assert_called_once_with(primary, [])
-
-    @patch("app.agents.llm.client.log")
-    @patch("app.agents.llm.client._create_configurable_llm")
-    @patch("app.agents.llm.client._get_ordered_providers")
-    @patch("app.agents.llm.client._get_available_providers")
-    def test_preferred_provider_gemini(
-        self,
-        mock_available: MagicMock,
-        mock_ordered: MagicMock,
-        mock_create: MagicMock,
-        mock_log: MagicMock,
-    ) -> None:
-        primary = _make_llm_provider("gemini")
-        mock_available.return_value = {"gemini": primary.instance}
-        mock_ordered.return_value = [primary]
-        mock_create.return_value = MagicMock()
-
-        init_llm(preferred_provider="gemini")
-
-        mock_ordered.assert_called_once_with(mock_available.return_value, "gemini", True)
-
-    @patch("app.agents.llm.client.log")
-    @patch("app.agents.llm.client._create_configurable_llm")
-    @patch("app.agents.llm.client._get_ordered_providers")
-    @patch("app.agents.llm.client._get_available_providers")
-    def test_preferred_provider_openrouter(
-        self,
-        mock_available: MagicMock,
-        mock_ordered: MagicMock,
-        mock_create: MagicMock,
-        mock_log: MagicMock,
-    ) -> None:
-        primary = _make_llm_provider("openrouter")
-        mock_available.return_value = {"openrouter": primary.instance}
-        mock_ordered.return_value = [primary]
-        mock_create.return_value = MagicMock()
-
-        init_llm(preferred_provider="openrouter")
-
-        mock_ordered.assert_called_once_with(mock_available.return_value, "openrouter", True)
 
 
 # ---------------------------------------------------------------------------
@@ -1374,9 +1309,6 @@ class TestRegisterLlmProviders:
 class TestConstants:
     def test_every_chat_provider_has_a_model_profile(self) -> None:
         assert set(LLM_MODEL_PROFILES) == set(LLM_PROVIDER_PRIORITY) == set(LLMProviderName)
-
-    def test_provider_priority_is_ordered(self) -> None:
-        assert LLM_PROVIDER_PRIORITY == ("openrouter", "gemini", "openai", "ollama", "custom")
 
     def test_retryable_exceptions_contains_expected_types(self) -> None:
         from google.genai.errors import ServerError

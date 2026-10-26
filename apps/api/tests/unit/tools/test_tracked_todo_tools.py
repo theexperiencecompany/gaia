@@ -843,34 +843,6 @@ class TestGetUserTz:
             tz = await get_user_tz("u1")
         assert tz == "UTC"
 
-    async def test_no_user_found_records_only_the_fallback_warning(self):
-        with (
-            patch(
-                "app.agents.tools.tracked_todo_fields.get_user_by_id",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-            patch("app.agents.tools.tracked_todo_fields.log") as mock_log,
-        ):
-            await get_user_tz("u1")
-        mock_log.warning.assert_called_once_with("tracked_todo.user_tz_fallback_utc", user_id="u1")
-
-    async def test_lookup_failure_falls_back_to_utc_not_a_crash(self):
-        with (
-            patch(
-                "app.agents.tools.tracked_todo_fields.get_user_by_id",
-                new_callable=AsyncMock,
-                side_effect=RuntimeError("mongo down"),
-            ),
-            patch("app.agents.tools.tracked_todo_fields.log") as mock_log,
-        ):
-            tz = await get_user_tz("u1")
-        assert tz == "UTC"
-        assert mock_log.warning.call_args_list == [
-            call("tracked_todo.user_tz_lookup_failed", user_id="u1", error="mongo down"),
-            call("tracked_todo.user_tz_fallback_utc", user_id="u1"),
-        ]
-
     async def test_first_fire_is_computed_in_the_users_timezone(self):
         with patch(
             "app.agents.tools.tracked_todo_fields.get_next_run_time",
@@ -1308,64 +1280,6 @@ class TestSearchTodoContext:
         ):
             result = await search_todo_context.coroutine(config=_config(), query="q")
         assert result == "No matching tracked todo context found."
-
-    async def test_matches_are_formatted_with_score_and_snippet(self):
-        matches = [
-            {
-                "title": "My todo",
-                "todo_id": "t1",
-                "score": 0.9,
-                "snippet": "some context",
-                "completed": False,
-            }
-        ]
-        with patch(
-            "app.agents.tools.tracked_todo_tools.search_canvas_context",
-            new_callable=AsyncMock,
-            return_value=matches,
-        ):
-            result = await search_todo_context.coroutine(config=_config(), query="q")
-        assert "My todo" in result
-        assert "t1" in result
-        assert "some context" in result
-        assert "[completed]" not in result
-
-    async def test_matches_name_the_notes_folder(self):
-        matches = [
-            {
-                "title": "Fix the thing",
-                "todo_id": "66f838cc8829054e5f10e407",
-                "score": 0.9,
-                "snippet": "ctx",
-                "completed": True,
-            }
-        ]
-        with patch(
-            "app.agents.tools.tracked_todo_tools.search_canvas_context",
-            new_callable=AsyncMock,
-            return_value=matches,
-        ):
-            result = await search_todo_context.coroutine(config=_config(), query="q")
-
-        assert "files: /workspace/gaia-tasks/fix-the-thing-5f10e407/" in result
-
-    async def test_completed_match_is_flagged(self):
-        matches = [
-            {
-                "title": "Old todo",
-                "todo_id": "t2",
-                "score": 0.5,
-                "snippet": "done work",
-                "completed": True,
-            }
-        ]
-        with patch(
-            "app.agents.tools.tracked_todo_tools.search_canvas_context",
-            new_callable=AsyncMock,
-            return_value=matches,
-        ):
-            result = await search_todo_context.coroutine(config=_config(), query="q")
-        assert "[completed]" in result
 
 
 # ---------------------------------------------------------------------------

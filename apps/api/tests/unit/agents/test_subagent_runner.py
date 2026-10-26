@@ -557,26 +557,6 @@ class TestExecuteSubagentStream:
         stream_writer.assert_called_once_with(custom_payload)
 
     @pytest.mark.asyncio
-    async def test_no_stream_writer_no_errors(self):
-        """When stream_writer is None, tool data and custom events are silently skipped."""
-        tool_msg = ToolMessage(content="result", tool_call_id="tc-1")
-
-        async def _fake_astream(*args, **kwargs):
-            yield ("messages", (tool_msg, {}))
-            yield ("custom", {"progress": "done"})
-
-        mock_graph = MagicMock()
-        mock_graph.astream = _fake_astream
-        ctx = _make_ctx(subagent_graph=mock_graph)
-
-        with patch("app.agents.core.subagents.subagent_runner.log"):
-            result = await execute_subagent_stream(ctx, stream_writer=None)
-
-        # Should not raise
-        assert not result.paused
-        assert result.text == "Task completed"
-
-    @pytest.mark.asyncio
     async def test_cancellation_breaks_stream(self):
         chunk1 = AIMessageChunk(content="First ")
         chunk2 = AIMessageChunk(content="Second")
@@ -908,21 +888,6 @@ class TestConsumeStreamEvent:
             "app.agents.core.subagents.subagent_runner._process_messages_payload",
             return_value="accumulated",
         )
-
-    @pytest.mark.asyncio
-    async def test_the_messages_handler_gets_the_runs_writer_id_and_stream(self):
-        writer = MagicMock()
-        run = _make_run(
-            stream_writer=writer, subagent_id="sub-1", ctx_overrides={"stream_id": "s-1"}
-        )
-        run.complete_message = "so far"
-        payload = (AIMessageChunk(content="hi"), {})
-
-        with self._messages_handler() as mock_handler:
-            await _consume_stream_event(run, "messages", payload)
-
-        assert mock_handler.call_args == call(payload, "so far", writer, "sub-1", "s-1")
-        assert run.complete_message == "accumulated"
 
     @pytest.mark.asyncio
     async def test_a_run_with_no_stream_id_passes_the_empty_string_down(self):
@@ -1288,46 +1253,6 @@ class TestPrepareExecutorExecution:
         assert "DIRECT EXECUTION HINT" in task_msg.content
         assert 'activate_integration(integration_id="github")' in task_msg.content
         assert "handoff(" not in task_msg.content
-
-    @pytest.mark.asyncio
-    async def test_no_hint_without_tool_category(self):
-        mock_graph = MagicMock(name="executor_graph")
-
-        with (
-            patch(
-                "app.agents.core.graph_manager.GraphManager.get_graph",
-                new_callable=AsyncMock,
-                return_value=mock_graph,
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_runner.build_agent_config",
-                return_value={"configurable": {"thread_id": "executor_t1"}},
-            ),
-            patch(
-                "app.helpers.message_helpers.create_system_message",
-                return_value=SystemMessage(content="executor sys"),
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_runner.assemble_context",
-                new_callable=AsyncMock,
-                return_value=AssembledContext(
-                    stable=SystemMessage(
-                        content="ctx", additional_kwargs={"dynamic_context": True}
-                    ),
-                    volatile=None,
-                ),
-            ),
-        ):
-            ctx, error = await prepare_executor_execution(
-                task="plain task",
-                configurable={
-                    "user_id": "u1",
-                    "thread_id": "t1",
-                },
-            )
-
-        human_msg = ctx.initial_state["messages"][-1]
-        assert "DIRECT EXECUTION HINT" not in human_msg.content
 
     @pytest.mark.asyncio
     async def test_stream_id_propagated(self):

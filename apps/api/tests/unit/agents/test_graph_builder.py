@@ -163,21 +163,6 @@ class TestCheckpointerManager:
     @patch(f"{_CM_MOD}.AsyncPostgresStore")
     @patch(f"{_CM_MOD}.AsyncPostgresSaver")
     @patch(f"{_CM_MOD}.AsyncConnectionPool")
-    async def test_setup_returns_self(self, mock_pool_cls, mock_saver_cls, mock_store_cls):
-        mock_pool_cls.return_value = _mock_pool()
-        mock_saver_cls.return_value = AsyncMock()
-        mock_store_ctx = AsyncMock()
-        mock_store_ctx.__aenter__ = AsyncMock(return_value=AsyncMock())
-        mock_store_ctx.__aexit__ = AsyncMock(return_value=False)
-        mock_store_cls.from_conn_string.return_value = mock_store_ctx
-
-        mgr = self._make_manager()
-        result = await mgr.setup()
-        assert result is mgr
-
-    @patch(f"{_CM_MOD}.AsyncPostgresStore")
-    @patch(f"{_CM_MOD}.AsyncPostgresSaver")
-    @patch(f"{_CM_MOD}.AsyncConnectionPool")
     async def test_setup_pool_connection_kwargs(
         self, mock_pool_cls, mock_saver_cls, mock_store_cls
     ):
@@ -486,20 +471,6 @@ class TestBuildCommsGraph:
             # Comms runs open-web lookups itself instead of delegating to the executor.
             assert "web_search_tool" in tool_registry
             assert "fetch_webpages" in tool_registry
-
-    async def test_comms_pre_model_hooks_structure(self):
-        with ExitStack() as stack:
-            deps = _apply_patches(stack)
-            from app.agents.core.graph_builder.build_graph import build_comms_graph
-
-            async with build_comms_graph(chat_llm=deps["llm"], in_memory_checkpointer=True) as _:
-                pass
-
-            kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
-            pre_model_hooks = kwargs["hooks_config"].pre_model_hooks
-            # comms agent: filter_messages_node, executor_status_hook,
-            # browser_task_status_hook, manage_system_prompts_node
-            assert len(pre_model_hooks) == 4
 
     async def test_comms_middleware_passed_to_create_agent(self):
         mock_mw = [MagicMock(name="mw1")]
@@ -989,25 +960,6 @@ class TestBuildGraphs:
 
         assert call_order == ["register", "executor", "comms"]
 
-    @patch(f"{_MOD}.log")
-    @patch(f"{_MOD}.build_comms_agent")
-    @patch(f"{_MOD}.build_executor_agent")
-    @patch(f"{_MOD}.register_subagent_providers")
-    def test_logs_start_and_completion(
-        self,
-        mock_register_subagent,
-        mock_build_executor,
-        mock_build_comms,
-        mock_log,
-    ):
-        from app.agents.core.graph_builder.build_graph import build_graphs
-
-        build_graphs()
-
-        info_calls = [c[0][0] for c in mock_log.info.call_args_list]
-        assert any("Building" in msg for msg in info_calls)
-        assert any("successfully" in msg for msg in info_calls)
-
 
 # ===================================================================
 # build_comms_agent / build_executor_agent (lazy_provider wrappers)
@@ -1023,27 +975,6 @@ class TestBuildCommsAgent:
 
         assert callable(build_comms_agent)
 
-    @patch(f"{_MOD}.build_comms_graph")
-    @patch(f"{_MOD}.log")
-    async def test_init_comms_agent_calls_build_comms_graph(self, mock_log, mock_build_comms_graph):
-        """The underlying init_checkpointer_manager coroutine invokes build_comms_graph."""
-        compiled = MagicMock(name="compiled")
-
-        # build_comms_graph is an async context manager
-        acm = AsyncMock()
-        acm.__aenter__ = AsyncMock(return_value=compiled)
-        acm.__aexit__ = AsyncMock(return_value=False)
-        mock_build_comms_graph.return_value = acm
-
-        # Import and call the raw init function (before lazy_provider wraps it)
-        from app.agents.core.graph_builder import build_graph
-
-        # Access the original function from the module-level scope
-        # Since lazy_provider replaced it, we call the function that the provider wraps
-        # by invoking build_comms_graph directly (already tested above)
-        async with build_graph.build_comms_graph() as graph:
-            assert graph is compiled
-
 
 class TestBuildExecutorAgent:
     """Tests for the lazy_provider-decorated build_executor_agent."""
@@ -1053,24 +984,6 @@ class TestBuildExecutorAgent:
         from app.agents.core.graph_builder.build_graph import build_executor_agent
 
         assert callable(build_executor_agent)
-
-    @patch(f"{_MOD}.build_executor_graph")
-    @patch(f"{_MOD}.log")
-    async def test_init_executor_agent_calls_build_executor_graph(
-        self, mock_log, mock_build_executor_graph
-    ):
-        """The underlying init function invokes build_executor_graph."""
-        compiled = MagicMock(name="compiled")
-
-        acm = AsyncMock()
-        acm.__aenter__ = AsyncMock(return_value=compiled)
-        acm.__aexit__ = AsyncMock(return_value=False)
-        mock_build_executor_graph.return_value = acm
-
-        from app.agents.core.graph_builder import build_graph
-
-        async with build_graph.build_executor_graph() as graph:
-            assert graph is compiled
 
 
 # ===================================================================

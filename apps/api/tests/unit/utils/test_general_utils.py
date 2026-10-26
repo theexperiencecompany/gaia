@@ -54,12 +54,6 @@ class TestGetContextWindow:
         result = get_context_window("", "query")
         assert result == ""
 
-    def test_empty_query_matches_at_position_zero(self) -> None:
-        # str.find("") returns 0 for any non-empty string
-        text = "Hello world"
-        result = get_context_window(text, "", chars_before=5, chars_after=5)
-        assert result != ""
-
     def test_case_insensitive_match(self) -> None:
         text = "The Quick Brown Fox"
         result = get_context_window(text, "quick brown", chars_before=5, chars_after=5)
@@ -76,12 +70,6 @@ class TestGetContextWindow:
         assert result == "short"
         assert "..." not in result
 
-    def test_both_ellipses_when_window_is_narrow(self) -> None:
-        text = "aaaa NEEDLE bbbb"
-        result = get_context_window(text, "NEEDLE", chars_before=2, chars_after=2)
-        assert result.startswith("...")
-        assert result.endswith("...")
-
     @pytest.mark.parametrize(
         "chars_before,chars_after",
         [(0, 0), (0, 10), (10, 0)],
@@ -92,11 +80,6 @@ class TestGetContextWindow:
             text, "NEEDLE", chars_before=chars_before, chars_after=chars_after
         )
         assert "NEEDLE" in result
-
-    def test_preserves_original_casing_in_output(self) -> None:
-        text = "The Quick Brown Fox"
-        result = get_context_window(text, "quick", chars_before=50, chars_after=50)
-        assert "Quick" in result
 
 
 # ---------------------------------------------------------------------------

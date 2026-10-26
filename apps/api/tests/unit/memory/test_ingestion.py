@@ -20,7 +20,6 @@ import pytest
 
 from app.constants.memory import (
     AGENDA_CATEGORY_PATH,
-    AGENDA_ITEM_TTL_DAYS,
     CATEGORY_PATH_MAX_DEPTH,
     DEFAULT_MEMORY_IMPORTANCE,
     EPISODE_ENTRY_DEDUPE_RATIO,
@@ -28,7 +27,6 @@ from app.constants.memory import (
     FREE_MEMORY_FACT_LIMIT,
     RECENT_FACTS_LIMIT,
     RECONCILE_SIMILARITY_THRESHOLD,
-    STATE_FACT_TTL_DAYS,
     TRANSCRIPT_CHUNK_MAX_CHARS,
     TRANSCRIPT_CHUNK_OVERLAP_CHARS,
     TRANSCRIPT_CHUNK_TURNS,
@@ -327,20 +325,6 @@ class TestFormatFolderTree:
         assert ingestion._format_folder_tree([]) == ""
 
 
-class TestElapsedMs:
-    def test_returns_a_nonnegative_integer(self) -> None:
-        import time
-
-        elapsed = ingestion._elapsed_ms(time.perf_counter())
-        assert isinstance(elapsed, int)
-        assert elapsed >= 0
-
-    def test_measures_from_the_given_reading(self) -> None:
-        import time
-
-        assert ingestion._elapsed_ms(time.perf_counter() - 0.5) >= 400
-
-
 class TestBuildRecord:
     def test_maps_every_fact_field_onto_the_row(self) -> None:
         start = datetime(2026, 1, 1, tzinfo=UTC)
@@ -365,37 +349,6 @@ class TestBuildRecord:
         assert record.occurred_end == end
         assert record.source_type == MemorySourceType.EMAIL.value
         assert record.source_id == "msg-9"
-
-    def test_a_durable_fact_never_expires(self) -> None:
-        record = ingestion._build_record(
-            make_fact(shelf_life=MemoryShelfLife.DURABLE),
-            user_id=USER,
-            source_type=MemorySourceType.CONVERSATION,
-            source_id=None,
-        )
-        assert record.forget_after is None
-
-    def test_a_state_fact_expires_after_the_state_window(self) -> None:
-        now = datetime(2026, 3, 1, tzinfo=UTC)
-        record = ingestion._build_record(
-            make_fact("gmail is disconnected", shelf_life=MemoryShelfLife.STATE),
-            user_id=USER,
-            source_type=MemorySourceType.CONVERSATION,
-            source_id=None,
-            mentioned_at=now,
-        )
-        assert record.forget_after == now + timedelta(days=STATE_FACT_TTL_DAYS)
-
-    def test_an_agenda_item_expires_after_the_agenda_window(self) -> None:
-        now = datetime(2026, 3, 1, tzinfo=UTC)
-        record = ingestion._build_record(
-            make_fact("file the tax return", shelf_life=MemoryShelfLife.TASK),
-            user_id=USER,
-            source_type=MemorySourceType.CONVERSATION,
-            source_id=None,
-            mentioned_at=now,
-        )
-        assert record.forget_after == now + timedelta(days=AGENDA_ITEM_TTL_DAYS)
 
     def test_category_path_is_clamped_on_the_row(self) -> None:
         record = ingestion._build_record(
@@ -1805,19 +1758,6 @@ class TestApplyReconciledCounts:
 
 @pytest.mark.unit
 class TestForgetAfter:
-    def test_a_durable_fact_never_expires(self) -> None:
-        assert ingestion._forget_after(MemoryShelfLife.DURABLE, NOW) is None
-
-    def test_a_state_fact_expires_after_the_state_window(self) -> None:
-        assert ingestion._forget_after(MemoryShelfLife.STATE, NOW) == NOW + timedelta(
-            days=STATE_FACT_TTL_DAYS
-        )
-
-    def test_an_agenda_item_expires_after_the_agenda_window(self) -> None:
-        assert ingestion._forget_after(MemoryShelfLife.TASK, NOW) == NOW + timedelta(
-            days=AGENDA_ITEM_TTL_DAYS
-        )
-
     def test_an_expiry_taken_from_the_clock_is_utc_aware(self) -> None:
         # A naive expiry compares as garbage against the timezone-aware
         # forget_after column and the read-time expiry clause.

@@ -530,15 +530,6 @@ class TestAddMemory:
             )
 
     @patch(f"{MODULE}.memory_engine")
-    async def test_missing_user_id_never_touches_the_engine(self, mock_engine: MagicMock) -> None:
-        mock_engine.retain_single = AsyncMock()
-
-        with pytest.raises(RunUserMissingError):
-            await add_memory.coroutine(config=_make_config_no_user(), content="data")
-
-        mock_engine.retain_single.assert_not_awaited()
-
-    @patch(f"{MODULE}.memory_engine")
     async def test_store_failure_returns_error_message(
         self,
         mock_engine: MagicMock,

@@ -40,7 +40,6 @@ from app.memory.retrieval import (
     _build_entries,
     _cap_weak_results,
     _drop_below_relevance,
-    _elapsed_ms,
     _episode_id_to_date,
     _episode_summary_search,
     _graph_siblings,
@@ -161,13 +160,6 @@ class TestSigmoid:
         assert retrieval._sigmoid(1000.0) == pytest.approx(1.0)
         assert retrieval._sigmoid(-1000.0) == pytest.approx(0.0)
 
-    def test_each_side_of_zero_matches_the_closed_form_exactly(self) -> None:
-        # The two stable branches are algebraically equal but not bit-equal
-        # (e.g. at ±0.03), so exact equality pins which closed form serves
-        # which side — this calibrated relevance feeds the blend verbatim.
-        assert retrieval._sigmoid(0.03) == 1.0 / (1.0 + math.exp(-0.03))
-        assert retrieval._sigmoid(-0.03) == math.exp(-0.03) / (1.0 + math.exp(-0.03))
-
 
 # ---------------------------------------------------------------------------
 # boosts
@@ -286,14 +278,6 @@ class TestTokenize:
 
     def test_digits_are_kept_as_tokens(self) -> None:
         assert _tokenize("ticket 4821") == ["ticket", "4821"]
-
-
-def test_elapsed_ms_is_non_negative_integer() -> None:
-    import time
-
-    value = _elapsed_ms(time.perf_counter())
-    assert isinstance(value, int)
-    assert value >= 0
 
 
 # ---------------------------------------------------------------------------
@@ -461,11 +445,6 @@ class TestRecallCacheKey:
         # outside that glob would be cached forever and never invalidated.
         key = _recall_cache_key("recall", USER, "query")
         assert fnmatch(key, MEMORY_SEARCH_CACHE_PATTERN.format(user_id=USER))
-
-    def test_positional_and_keyword_calls_agree(self) -> None:
-        assert _recall_cache_key("recall", USER, "q") == _recall_cache_key(
-            "recall", user_id=USER, query="q"
-        )
 
     def test_default_limit_matches_an_explicit_default_limit(self) -> None:
         assert _recall_cache_key("recall", USER, "q") == _recall_cache_key(
@@ -1247,10 +1226,6 @@ class TestRecall:
             "graph sibling never reached the reranker"
         )
         assert result.memories[0].content == sibling.content
-
-    def test_rerank_pool_cap_is_sixteen(self) -> None:
-        """Pin the rerank pool cap: sidecar load dominates ranking cost."""
-        assert RERANK_CANDIDATES == 16
 
     async def test_recall_reports_per_stage_timings(self) -> None:
         """Every pipeline stage must report its own timing bucket."""

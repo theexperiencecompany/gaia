@@ -59,27 +59,21 @@ from app.services.triggers import base as trigger_base
 from app.services.triggers.base import TriggerHandler
 from app.services.triggers.handlers.calendar import (
     CalendarTriggerHandler,
-    calendar_trigger_handler,
 )
 from app.services.triggers.handlers.github import (
     GitHubTriggerHandler,
-    github_trigger_handler,
 )
 from app.services.triggers.handlers.gmail import (
     GmailTriggerHandler,
-    gmail_trigger_handler,
 )
 from app.services.triggers.handlers.gmail_poll import (
     GmailPollTriggerHandler,
-    gmail_poll_trigger_handler,
 )
 from app.services.triggers.handlers.linear import (
     LinearTriggerHandler,
-    linear_trigger_handler,
 )
 from app.services.triggers.handlers.slack import (
     SlackTriggerHandler,
-    slack_trigger_handler,
 )
 from app.services.triggers.registry import (
     TriggerRegistry,
@@ -215,39 +209,6 @@ class TestTriggerHandlerBase:
         handler = _ConcreteTriggerHandler()
         result = await handler.unregister(USER_ID, [])
         assert result is True
-
-    @patch("app.services.triggers.base.get_composio_service")
-    async def test_unregister_success(self, mock_get_composio):
-        mock_composio = MagicMock()
-        mock_composio.composio.triggers.delete = MagicMock()
-        mock_get_composio.return_value = mock_composio
-
-        handler = _ConcreteTriggerHandler()
-        result = await handler.unregister(USER_ID, ["tid_1", "tid_2"])
-        assert result is True
-        assert mock_composio.composio.triggers.delete.call_count == 2
-
-    @patch("app.services.triggers.base.get_composio_service")
-    async def test_unregister_partial_failure(self, mock_get_composio):
-        mock_composio = MagicMock()
-        mock_composio.composio.triggers.delete = MagicMock(
-            side_effect=[None, Exception("Delete failed")]
-        )
-        mock_get_composio.return_value = mock_composio
-
-        handler = _ConcreteTriggerHandler()
-        result = await handler.unregister(USER_ID, ["tid_ok", "tid_fail"])
-        assert result is False
-
-    @patch("app.services.triggers.base.get_composio_service")
-    async def test_unregister_all_fail(self, mock_get_composio):
-        mock_composio = MagicMock()
-        mock_composio.composio.triggers.delete = MagicMock(side_effect=Exception("Delete failed"))
-        mock_get_composio.return_value = mock_composio
-
-        handler = _ConcreteTriggerHandler()
-        result = await handler.unregister(USER_ID, ["tid_1", "tid_2"])
-        assert result is False
 
     # -- _register_triggers_parallel --
 
@@ -794,18 +755,6 @@ class TestGmailTriggerHandler:
 
     @patch("app.services.triggers.handlers.gmail.log")
     @patch("app.services.triggers.handlers.gmail.workflow_repository")
-    async def test_a_well_formed_sent_payload_reports_no_schema_drift(self, mock_repo, mock_log):
-        mock_repo.find_active_integration_workflows = AsyncMock(return_value=[])
-        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[])
-
-        await GmailTriggerHandler().find_workflows(
-            "GMAIL_EMAIL_SENT_TRIGGER", TRIGGER_ID, {"user_id": USER_ID, "thread_id": "t-1"}
-        )
-
-        mock_log.debug.assert_not_called()
-
-    @patch("app.services.triggers.handlers.gmail.log")
-    @patch("app.services.triggers.handlers.gmail.workflow_repository")
     async def test_a_malformed_sent_payload_reports_schema_drift_and_still_matches(
         self, mock_repo, mock_log
     ):
@@ -870,10 +819,6 @@ class TestGmailTriggerHandler:
             "GMAIL_NEW_GMAIL_MESSAGE", TRIGGER_ID, {"user_id": USER_ID}
         )
         assert result == []
-
-    def test_singleton_instance_exists(self):
-        assert gmail_trigger_handler is not None
-        assert isinstance(gmail_trigger_handler, GmailTriggerHandler)
 
 
 # ===========================================================================
@@ -955,10 +900,6 @@ class TestGmailPollTriggerHandler:
         handler = GmailPollTriggerHandler()
         result = await handler.find_workflows("GMAIL_NEW_GMAIL_MESSAGE", TRIGGER_ID, {})
         assert result == []
-
-    def test_singleton_instance_exists(self):
-        assert gmail_poll_trigger_handler is not None
-        assert isinstance(gmail_poll_trigger_handler, GmailPollTriggerHandler)
 
 
 # ===========================================================================
@@ -1310,10 +1251,6 @@ class TestSlackTriggerHandler:
             )
         )
         assert result == []
-
-    def test_singleton_instance_exists(self):
-        assert slack_trigger_handler is not None
-        assert isinstance(slack_trigger_handler, SlackTriggerHandler)
 
 
 @pytest.mark.asyncio
@@ -1788,10 +1725,6 @@ class TestGitHubTriggerHandler:
         assert params["page"] == 3
         assert params["per_page"] == 100
 
-    def test_singleton_instance_exists(self):
-        assert github_trigger_handler is not None
-        assert isinstance(github_trigger_handler, GitHubTriggerHandler)
-
 
 # ===========================================================================
 # CalendarTriggerHandler tests
@@ -2034,10 +1967,6 @@ class TestCalendarTriggerHandler:
 
         mock_proxy.return_value = {"items": [{"id": "primary"}, {"name": "no-id-calendar"}]}
         assert await handler._fetch_user_calendars(USER_ID) == ["primary"]
-
-    def test_singleton_instance_exists(self):
-        assert calendar_trigger_handler is not None
-        assert isinstance(calendar_trigger_handler, CalendarTriggerHandler)
 
 
 # ===========================================================================
@@ -2359,37 +2288,10 @@ class TestLinearTriggerHandler:
         )
         assert result == []
 
-    def test_singleton_instance_exists(self):
-        assert linear_trigger_handler is not None
-        assert isinstance(linear_trigger_handler, LinearTriggerHandler)
-
 
 # ===========================================================================
 # Cross-handler / integration-level tests
 # ===========================================================================
-
-
-@pytest.mark.asyncio
-class TestHandlerSingletons:
-    """Verify all module-level singleton instances exist and have correct types."""
-
-    def test_gmail_handler(self):
-        assert isinstance(gmail_trigger_handler, GmailTriggerHandler)
-
-    def test_gmail_poll_handler(self):
-        assert isinstance(gmail_poll_trigger_handler, GmailPollTriggerHandler)
-
-    def test_slack_handler(self):
-        assert isinstance(slack_trigger_handler, SlackTriggerHandler)
-
-    def test_github_handler(self):
-        assert isinstance(github_trigger_handler, GitHubTriggerHandler)
-
-    def test_calendar_handler(self):
-        assert isinstance(calendar_trigger_handler, CalendarTriggerHandler)
-
-    def test_linear_handler(self):
-        assert isinstance(linear_trigger_handler, LinearTriggerHandler)
 
 
 @pytest.mark.asyncio

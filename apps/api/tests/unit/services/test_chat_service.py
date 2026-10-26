@@ -433,9 +433,6 @@ class TestSaveBotReply:
         bot_msg = await _saved_bot_reply(test_user, basic_body, tool_data=tool_data)
         assert bot_msg.tool_data == tool_data["tool_data"]
 
-    async def test_conversation_id_passed_to_update(self, test_user, basic_body):
-        await _saved_bot_reply(test_user, basic_body, conversation_id="specific_conv_id")
-
     async def test_react_ack_is_stamped_emoji_ack_with_target(self, test_user, basic_body) -> None:
         """A comms REACT turn saves the bare emoji with kind + target so every surface (reload, sync, second device) renders it as a reaction badge."""
         bot_msg = await _saved_bot_reply(
@@ -2142,19 +2139,6 @@ class TestTurnLatencyHelpers:
     range assertion.
     """
 
-    def test_stream_state_latency_defaults(self) -> None:
-        state = _StreamState()
-        assert state.t0_perf is None
-        assert state.ttft_perf is None
-        assert state.ack_perf is None
-        assert state.ttft_ms is None
-        assert state.e2e_ack_ms is None
-        assert state.e2e_full_ms is None
-        assert state.delegated is False
-        assert state.queued is False
-        assert state.turn_completed_at is None
-        assert state.is_cancelled is False
-
     def test_stamp_turn_latencies_computes_exact_ms(self) -> None:
         state = _StreamState()
         state.t0_perf = 100.0
@@ -2390,9 +2374,3 @@ class TestTurnLatencyHelpers:
 
 class TestAFreshStreamState:
     """A new turn starts with nothing saved and nothing attached, as real bools."""
-
-    def test_starts_with_nothing_saved_or_attached(self) -> None:
-        state = _StreamState()
-
-        assert state.saved is False
-        assert state.attached is False

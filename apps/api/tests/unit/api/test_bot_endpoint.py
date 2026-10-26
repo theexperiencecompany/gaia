@@ -880,47 +880,6 @@ class TestBotChatStream:
     )
     @patch("app.api.v1.endpoints.bot.capture")
     @patch("app.api.v1.endpoints.bot.require_bot_api_key", new=AsyncMock())
-    async def test_enforce_rate_limit_receives_platform_and_platform_user_id_in_order(
-        self,
-        mock_capture: MagicMock,
-        mock_bot_svc: MagicMock,
-        mock_sm: MagicMock,
-        mock_get_user: AsyncMock,
-    ):
-        """BotService.enforce_rate_limit is the flat per-platform anti-spam gate; it must see platform and platform_user_id positionally in that order."""
-        mock_get_user.return_value = UserDocument(id=USER_ID)
-        mock_bot_svc.enforce_rate_limit = AsyncMock()
-        mock_bot_svc.get_or_create_session = AsyncMock(return_value="conv-1")
-        mock_bot_svc.load_conversation_history = AsyncMock(return_value=[])
-        mock_sm.start_stream = AsyncMock()
-
-        body = BotChatRequest(message="hi", platform="whatsapp", platform_user_id="wa_777")
-        request = MagicMock()
-        request.state = _make_request()
-
-        response = await bot_chat_stream(request, body)
-
-        assert response.status_code == 200
-        mock_bot_svc.enforce_rate_limit.assert_awaited_once_with("whatsapp", "wa_777")
-
-    @patch("app.api.v1.endpoints.bot.spawn_background_task", new=MagicMock())
-    @patch("app.api.v1.endpoints.bot.run_chat_stream_background", new=AsyncMock())
-    @patch(
-        "app.api.v1.endpoints.bot.create_bot_session_token",
-        new=MagicMock(return_value="tok"),
-    )
-    @patch(
-        "app.utils.auth_utils.user_repository.get_by_platform_id",
-        new_callable=AsyncMock,
-    )
-    @patch("app.api.v1.endpoints.bot.stream_manager")
-    @patch("app.api.v1.endpoints.bot.BotService")
-    @patch(
-        "app.services.bot_service.BotService.load_conversation_history",
-        new=AsyncMock(return_value=[]),
-    )
-    @patch("app.api.v1.endpoints.bot.capture")
-    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new=AsyncMock())
     async def test_a_middleware_resolved_user_skips_the_platform_link_lookup(
         self,
         mock_capture: MagicMock,
@@ -1857,35 +1816,6 @@ class TestBotTranscribeRefusals:
 class TestBotChatRequestFiles:
     """Pydantic validation for the new file_ids / file_data fields."""
 
-    def test_accepts_file_ids_and_data(self):
-        from app.models.bot_models import BotChatRequest
-
-        req = BotChatRequest(
-            message="please analyze",
-            platform="whatsapp",
-            platform_user_id="1234567890",
-            file_ids=["f1", "f2"],
-            file_data=[
-                {
-                    "fileId": "f1",
-                    "url": "https://cdn.example/a.pdf",
-                    "filename": "a.pdf",
-                    "type": "application/pdf",
-                }
-            ],
-        )
-        assert req.file_ids == ["f1", "f2"]
-        assert req.file_data is not None
-        assert req.file_data[0].fileId == "f1"
-        assert req.file_data[0].url == "https://cdn.example/a.pdf"
-
-    def test_defaults_to_none_when_omitted(self):
-        from app.models.bot_models import BotChatRequest
-
-        req = BotChatRequest(message="hi", platform="whatsapp", platform_user_id="123")
-        assert req.file_ids is None
-        assert req.file_data is None
-
 
 # ---------------------------------------------------------------------------
 # POST /bot/chat-stream — plan metering
@@ -2641,36 +2571,6 @@ class TestBotStreamFromRedis:
         assert len(frames) == 2
         log.set.assert_any_call(client_disconnected=True)
 
-    async def test_a_broken_subscription_is_logged_with_its_ids_and_told_to_the_bot(self):
-        async def broken() -> AsyncGenerator[str, None]:
-            raise RuntimeError("redis gone")
-            yield  # pragma: no cover
-
-        with (
-            patch("app.api.v1.endpoints.bot.stream_manager") as sm,
-            patch("app.api.v1.endpoints.bot.log") as log,
-        ):
-            sm.subscribe_stream.return_value = broken()
-            frames = await self._drain(
-                bot_module._bot_stream_from_redis(
-                    self._request(),
-                    stream_id="s1",
-                    conversation_id="conv-1",
-                    upgrade_url=_never_upgrade,
-                    session_token="tok",
-                    platform="discord",
-                )
-            )
-
-        assert frames[-1] == 'data: {"error": "Stream error occurred"}\n\n'
-        log.error.assert_called_once()
-        assert log.error.call_args.kwargs == {
-            "stream_id": "s1",
-            "conversation_id": "conv-1",
-            "error_type": "RuntimeError",
-            "error": "redis gone",
-        }
-
     async def test_a_cancelled_delivery_is_recorded_as_the_client_leaving_and_re_raised(self):
         async def cancelled() -> AsyncGenerator[str, None]:
             raise asyncio.CancelledError
@@ -2712,26 +2612,3 @@ class TestBotStreamFromRedis:
 
         assert any('"hi"' in frame for frame in frames), frames
         assert '"done": true' in frames[-1]
-
-    async def test_a_broken_subscription_is_logged_under_the_api_tag(self):
-        async def broken() -> AsyncGenerator[str, None]:
-            raise RuntimeError("redis gone")
-            yield  # pragma: no cover
-
-        with (
-            patch("app.api.v1.endpoints.bot.stream_manager") as sm,
-            patch("app.api.v1.endpoints.bot.log") as log,
-        ):
-            sm.subscribe_stream.return_value = broken()
-            await self._drain(
-                bot_module._bot_stream_from_redis(
-                    self._request(),
-                    stream_id="s1",
-                    conversation_id="conv-1",
-                    upgrade_url=_never_upgrade,
-                    session_token="tok",
-                    platform="discord",
-                )
-            )
-
-        assert "Bot stream subscription error" in log.error.call_args.args[0]

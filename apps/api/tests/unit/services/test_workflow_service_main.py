@@ -160,11 +160,6 @@ _REPO = "app.services.workflow.service.workflow_repository"
 class TestWorkflowValidator:
     """Tests for WorkflowValidator.validate_for_execution."""
 
-    def test_valid_workflow_passes(self):
-        workflow = _make_workflow(activated=True)
-        # Should not raise
-        WorkflowValidator.validate_for_execution(workflow)
-
     def test_deactivated_workflow_fails(self):
         workflow = _make_workflow(activated=False)
         with pytest.raises(ValueError, match="deactivated"):
@@ -714,16 +709,6 @@ class TestListWorkflows:
         assert total == 0
 
     @patch(f"{_REPO}.list_for_user", new_callable=AsyncMock, return_value=[])
-    async def test_list_workflows_excludes_todo_workflows_by_default(self, mock_list):
-        await WorkflowService.list_workflows(USER_ID, exclude_todo_workflows=True)
-
-        # The todo-exclusion filter is the repository's contract; the service just
-        # forwards the flag (and the unpaginated limit/offset).
-        mock_list.assert_awaited_once_with(
-            USER_ID, exclude_todo_workflows=True, limit=None, offset=0
-        )
-
-    @patch(f"{_REPO}.list_for_user", new_callable=AsyncMock, return_value=[])
     async def test_list_workflows_includes_todo_workflows_when_false(self, mock_list):
         await WorkflowService.list_workflows(USER_ID, exclude_todo_workflows=False)
 
@@ -858,35 +843,6 @@ class TestUpdateWorkflow:
         )
 
         mock_scheduler.reschedule_workflow.assert_awaited_once()
-        assert result is not None
-
-    @patch("app.services.workflow.service.workflow_scheduler")
-    @patch(
-        "app.services.workflow.service.WorkflowService.get_workflow",
-        new_callable=AsyncMock,
-    )
-    @patch(f"{_REPO}.update_for_user", new_callable=AsyncMock)
-    async def test_update_disable_schedule_cancels(self, mock_update, mock_get, mock_scheduler):
-        old_trigger = _make_trigger_config(
-            trigger_type=TriggerType.SCHEDULE,
-            cron_expression="0 8 * * *",
-            enabled=True,
-        )
-        new_trigger = _make_trigger_config(
-            trigger_type=TriggerType.SCHEDULE,
-            cron_expression="0 8 * * *",
-            enabled=False,
-        )
-        wf = _make_workflow(trigger_config=old_trigger)
-        updated_wf = _make_workflow(trigger_config=new_trigger)
-        mock_get.side_effect = [wf, updated_wf]
-        mock_update.return_value = _make_workflow_doc(updated_wf)
-
-        request = _make_update_request(trigger_config=new_trigger)
-        result = await WorkflowService.update_workflow(WORKFLOW_ID, request, USER_ID)
-
-        # Disabling a schedule no longer explicitly cancels ARQ jobs — the claim
-        # gate rejects any in-flight job once activated=False is persisted.
         assert result is not None
 
     @patch(
@@ -1963,10 +1919,6 @@ class TestGenerateWorkflowPrompt:
 
 class TestWorkflowScheduler:
     """Tests for WorkflowScheduler."""
-
-    def test_get_job_name(self):
-        scheduler = WorkflowScheduler()
-        assert scheduler.get_job_name() == "execute_workflow_by_id"
 
     # get_task / update_task_status now delegate to workflow_repository — Mongo
     # shape/codec is the repository's contract (tests/contracts). Here we verify

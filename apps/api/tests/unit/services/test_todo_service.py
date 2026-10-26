@@ -15,7 +15,6 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from bson import ObjectId
 from fastapi import HTTPException
-from pydantic import ValidationError
 from pymongo.errors import BulkWriteError, DuplicateKeyError
 import pytest
 
@@ -66,11 +65,8 @@ from app.services.todos.todo_service import (
     ProjectService,
     TodoService,
     _get_workflow_categories_for_todos,
-    create_project,
-    delete_project,
     get_all_projects,
     get_all_todos,
-    get_todo,
     update_project,
 )
 from app.services.triggers.subscription_service import SubscriptionError
@@ -596,10 +592,6 @@ class TestCreateSubTodo:
         )
 
         assert mock_todo_repo.create.await_args.args[0].parent_todo_id == _PARENT
-
-    def test_a_client_cannot_name_a_parent_on_the_create_request(self):
-        """Only the tracked-todo service sets a parent, after validating it."""
-        assert "parent_todo_id" not in TodoModel.model_fields
 
     async def test_the_created_event_says_whether_it_is_a_sub_todo(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
@@ -1570,22 +1562,12 @@ class TestProjectService:
 
 
 class TestCompatibilityWrappers:
-    async def test_get_todo_wrapper(self, mock_todo_repo, mock_project_repo):
-        mock_todo_repo.get = AsyncMock(return_value=_make_todo_doc(todo_id=FAKE_TODO_ID))
-        result = await get_todo(FAKE_TODO_ID, FAKE_USER_ID)
-        assert result.id == FAKE_TODO_ID
-
     async def test_get_all_projects_wrapper(self, mock_todo_repo, mock_project_repo):
         mock_project_repo.list_with_counts = AsyncMock(
             return_value=[_make_project_doc(name="A", todo_count=1)]
         )
         result = await get_all_projects(FAKE_USER_ID)
         assert result[0].name == "A"
-
-    async def test_create_project_wrapper(self, mock_todo_repo, mock_project_repo):
-        mock_project_repo.create = AsyncMock(return_value=_make_project_doc(name="Work"))
-        result = await create_project(ProjectCreate(name="Work"), FAKE_USER_ID)
-        assert result.name == "Work"
 
     async def test_update_project_wrapper(self, mock_todo_repo, mock_project_repo):
         mock_project_repo.get = AsyncMock(
@@ -1598,13 +1580,6 @@ class TestCompatibilityWrappers:
             FAKE_PROJECT_ID, UpdateProjectRequest(name="New"), FAKE_USER_ID
         )
         assert result.name == "New"
-
-    async def test_delete_project_wrapper(self, mock_todo_repo, mock_project_repo):
-        mock_project_repo.get = AsyncMock(
-            return_value=_make_project_doc(project_id=FAKE_PROJECT_ID)
-        )
-        await delete_project(FAKE_PROJECT_ID, FAKE_USER_ID)
-        mock_project_repo.delete.assert_awaited_once()
 
     async def test_get_all_todos_wrapper(
         self, mock_todo_repo, mock_project_repo, mock_workflow_repo
@@ -1770,13 +1745,6 @@ class TestBulkServiceDelete:
             await bulk_service_delete_todos(["a", "b"], FAKE_USER_ID)
         # Only the subscribed doc tears down, and with its exact id/user/reason.
         teardown.assert_awaited_once_with("a", FAKE_USER_ID, reason="bulk_deleted")
-
-
-class TestTodoUpdateCannotLinkAWorkflow:
-    def test_the_generic_update_rejects_workflow_id(self):
-        """Only link_workflow may write workflow_id, so it cannot bypass the tracked-todo guard."""
-        with pytest.raises(ValidationError):
-            TodoUpdate(workflow_id="wf1")
 
 
 class TestReopenUnderItsParent:

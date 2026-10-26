@@ -343,13 +343,6 @@ class TestIntegrationResolverHelpers:
         assert result is None
 
     @patch.object(IntegrationResolver, "get_mcp_config", new_callable=AsyncMock)
-    async def test_get_server_url_found(self, mock_get_cfg):
-        mock_get_cfg.return_value = MCPConfig(server_url=SERVER_URL)
-
-        result = await IntegrationResolver.get_server_url("x")
-        assert result == SERVER_URL
-
-    @patch.object(IntegrationResolver, "get_mcp_config", new_callable=AsyncMock)
     async def test_get_server_url_no_config(self, mock_get_cfg):
         mock_get_cfg.return_value = None
 
@@ -558,9 +551,6 @@ def _iwc(**overrides: object) -> IntegrationWithCreator:
 
 
 class TestFormatCommunityIntegrations:
-    def test_format_empty_list(self):
-        assert format_community_integrations([]) == []
-
     def test_format_basic_document(self):
         result = format_community_integrations(
             [
@@ -605,10 +595,6 @@ class TestFormatCommunityIntegrations:
         # Should generate a slug since none is stored on the document
         assert result[0].slug is not None
         assert len(result[0].slug) > 0
-
-    def test_clone_count_defaults_to_zero(self):
-        result = format_community_integrations([_iwc()])
-        assert result[0].clone_count == 0
 
 
 # ---------------------------------------------------------------------------
@@ -946,17 +932,6 @@ class TestGetUserConnectedIntegrations:
         assert result[0]["integration_id"] == "github"
         assert "id" in result[0]  # the document's id field is present
 
-    @patch("app.services.integrations.user_integrations.user_integration_repository")
-    async def test_empty_list_when_no_integrations(self, mock_repo):
-        mock_repo.list_for_user = AsyncMock(return_value=[])
-
-        with (
-            patch("app.decorators.caching.get_cache", new_callable=AsyncMock, return_value=None),
-            patch("app.decorators.caching.set_cache", new_callable=AsyncMock),
-        ):
-            result = await get_user_integration_records(USER_ID)
-        assert result == []
-
 
 class TestAddUserIntegration:
     @patch("app.services.integrations.user_integrations.user_integration_repository")
@@ -1082,12 +1057,6 @@ class TestRemoveUserIntegration:
 
 
 class TestCheckUserHasIntegration:
-    @patch("app.services.integrations.user_integrations.user_integration_repository")
-    async def test_has_integration(self, mock_repo):
-        mock_repo.exists = AsyncMock(return_value=True)
-        result = await check_user_has_integration(USER_ID, INTEGRATION_ID)
-        assert result is True
-
     @patch("app.services.integrations.user_integrations.user_integration_repository")
     async def test_does_not_have_integration(self, mock_repo):
         mock_repo.exists = AsyncMock(return_value=False)

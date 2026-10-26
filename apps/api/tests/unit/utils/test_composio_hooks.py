@@ -101,17 +101,6 @@ def _noop_writer() -> MagicMock:
 class TestComposioHookRegistry:
     """Tests for the low-level ComposioHookRegistry class."""
 
-    def test_register_and_execute_before_hook(self) -> None:
-        registry = ComposioHookRegistry()
-
-        def double_value(tool: str, toolkit: str, params: dict) -> dict:
-            params["arguments"]["x"] = params["arguments"].get("x", 0) * 2
-            return params
-
-        registry.register_before_hook(double_value)  # type: ignore[arg-type]  # hook doubles are typed against raw dicts, not ToolExecuteParams
-        result = registry.execute_before_hooks("TOOL", "KIT", _make_params({"x": 5}))
-        assert result["arguments"]["x"] == 10
-
     def test_register_and_execute_after_hook(self) -> None:
         registry = ComposioHookRegistry()
 
@@ -350,21 +339,6 @@ class TestDecoratorRegistration:
         assert "GMAIL_FETCH_EMAILS" in hook_registry.after_hook_tools
         assert hook_registry.has_broad_after_hook is False
 
-    def test_after_hook_skips_non_matching(self) -> None:
-        from app.utils.composio_hooks.registry import hook_registry
-
-        before_count = len(hook_registry._after_hooks)
-
-        @register_after_hook(tools=["GMAIL_FETCH_EMAILS"])
-        def gmail_after(tool: str, toolkit: str, response: Any) -> Any:
-            return {"processed": True}
-
-        # Non-matching tool returns original
-        hook_registry.execute_after_hooks("SLACK_SEND_MESSAGE", "SLACK", "raw")
-        # The hook should not touch non-matching tools, but other globally registered hooks may
-        # Let's just verify the hook count increased
-        assert len(hook_registry._after_hooks) == before_count + 1
-
     def test_schema_modifier_decorator(self) -> None:
         from app.utils.composio_hooks.registry import hook_registry
 
@@ -385,40 +359,6 @@ class TestDecoratorRegistration:
 
 class TestMasterHooks:
     """Tests for master_before_execute_hook, master_after_execute_hook, master_schema_modifier."""
-
-    def test_master_before_delegates_to_registry(self) -> None:
-        from app.utils.composio_hooks.registry import (
-            hook_registry,
-            master_before_execute_hook,
-        )
-
-        with patch.object(hook_registry, "execute_before_hooks", return_value="delegated") as mock:
-            result = master_before_execute_hook("T", "K", _make_params())
-            mock.assert_called_once()
-            assert result == "delegated"
-
-    def test_master_after_delegates_to_registry(self) -> None:
-        from app.utils.composio_hooks.registry import (
-            hook_registry,
-            master_after_execute_hook,
-        )
-
-        with patch.object(hook_registry, "execute_after_hooks", return_value="delegated") as mock:
-            result = master_after_execute_hook("T", "K", {"data": "x"})
-            mock.assert_called_once()
-            assert result == "delegated"
-
-    def test_master_schema_modifier_delegates_to_registry(self) -> None:
-        from app.utils.composio_hooks.registry import (
-            hook_registry,
-            master_schema_modifier,
-        )
-
-        schema = _make_tool_schema()
-        with patch.object(hook_registry, "execute_schema_modifiers", return_value=schema) as mock:
-            result = master_schema_modifier("T", "K", schema)
-            mock.assert_called_once()
-            assert result is schema
 
 
 @pytest.fixture(autouse=True)

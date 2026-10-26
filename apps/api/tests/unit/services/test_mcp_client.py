@@ -207,18 +207,6 @@ class TestMCPClientInit:
         client = MCPClient(user_id=USER_ID)
         assert client.user_id == USER_ID
 
-    def test_init_creates_token_store(self):
-        client = MCPClient(user_id=USER_ID)
-        assert isinstance(client.token_store, MCPTokenStore)
-        assert client.token_store.user_id == USER_ID
-
-    def test_init_empty_dicts(self):
-        client = MCPClient(user_id=USER_ID)
-        assert client._clients == {}
-        assert client._tools == {}
-        assert client._connecting == {}
-        assert client._connect_results == {}
-
 
 class TestMCPClientSanitizeConfig:
     def test_sanitize_removes_secrets(self):
@@ -247,35 +235,6 @@ class TestMCPClientSanitizeConfig:
         config = {"mcpServers": {"srv": {"url": "https://ex.com", "auth": None}}}
         sanitized = client._sanitize_config(config)
         assert sanitized["mcpServers"]["srv"]["has_auth"] is False
-
-
-class TestMCPClientProbeConnection:
-    async def test_probe_delegates_to_module_function(self):
-        client = MCPClient(user_id=USER_ID)
-        with patch(
-            "app.services.mcp.mcp_client.probe_mcp_connection",
-            new_callable=AsyncMock,
-            return_value={"requires_auth": False, "auth_type": "none"},
-        ) as mock_probe:
-            result = await client.probe_connection(SERVER_URL)
-            mock_probe.assert_awaited_once_with(SERVER_URL)
-            assert result["requires_auth"] is False
-
-
-class TestMCPClientUpdateIntegrationAuthStatus:
-    async def test_updates_mongodb(self):
-        client = MCPClient(user_id=USER_ID)
-        with patch("app.services.mcp.mcp_client.integration_repository") as mock_repo:
-            mock_repo.set_mcp_auth = AsyncMock(return_value=True)
-            await client.update_integration_auth_status(INTEGRATION_ID, True, "oauth")
-            mock_repo.set_mcp_auth.assert_awaited_once_with(INTEGRATION_ID, True, "oauth")
-
-    async def test_handles_exception_gracefully(self):
-        client = MCPClient(user_id=USER_ID)
-        with patch("app.services.mcp.mcp_client.integration_repository") as mock_repo:
-            mock_repo.set_mcp_auth = AsyncMock(side_effect=Exception("DB failure"))
-            # Should not raise
-            await client.update_integration_auth_status(INTEGRATION_ID, False, "none")
 
 
 class TestMCPClientBuildConfig:

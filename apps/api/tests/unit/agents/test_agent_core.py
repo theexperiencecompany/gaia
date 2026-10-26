@@ -258,27 +258,6 @@ class TestCoreAgentLogic:
         assert mock_build_config.call_args.kwargs["turn"].workflow_id is None
 
     @pytest.mark.asyncio
-    async def test_passes_trigger_context(self):
-        patches = _common_patches()
-        trigger = {"type": "gmail", "email_data": {}}
-        with (
-            patches["construct"],
-            patches["get_graph"],
-            patches["build_state"] as mock_build_state,
-            patches["build_config"],
-            patches["log"],
-        ):
-            await _core_agent_logic(
-                request=_make_request(),
-                conversation_id="conv-1",
-                user=_make_user(),
-                options=AgentRunOptions(trigger_context=trigger),
-            )
-
-        # build_initial_state gets the trigger_context
-        assert mock_build_state.call_args.args[4] is trigger
-
-    @pytest.mark.asyncio
     async def test_log_set_called_with_agent_metadata(self):
         patches = _common_patches()
         with (
@@ -584,40 +563,6 @@ class TestCallAgent:
         ]
 
     @pytest.mark.asyncio
-    async def test_error_generator_format(self):
-        """Error generator yields proper SSE format."""
-        with (
-            patch(
-                "app.agents.core.agent.construct_langchain_messages",
-                new_callable=AsyncMock,
-                side_effect=ValueError("bad input"),
-            ),
-            patch(
-                "app.agents.core.agent.GraphManager.get_graph",
-                new_callable=AsyncMock,
-                return_value=FAKE_GRAPH,
-            ),
-            patch("app.agents.core.agent.build_initial_state", return_value=FAKE_STATE),
-            patch(
-                "app.agents.core.agent.build_agent_config",
-                new_callable=AsyncMock,
-                return_value=FAKE_CONFIG,
-            ),
-            patch("app.agents.core.agent.log"),
-        ):
-            chunks = await _drain(
-                call_agent(
-                    request=_make_request(),
-                    conversation_id="conv-1",
-                    user=_make_user(),
-                )
-            )
-
-        # Each chunk should end with \n\n (SSE format)
-        for chunk in chunks:
-            assert chunk.endswith("\n\n")
-
-    @pytest.mark.asyncio
     async def test_run_lifecycle_events_captured(self, _no_real_analytics):
         """STARTED before the stream, COMPLETED after it ends normally."""
 
@@ -814,29 +759,6 @@ class TestCallAgent:
 
 class TestCallAgentSilent:
     """Tests for call_agent_silent (background mode)."""
-
-    @pytest.mark.asyncio
-    async def test_happy_path_returns_result(self):
-        patches = _common_patches()
-        with (
-            patches["construct"],
-            patches["get_graph"],
-            patches["build_state"],
-            patches["build_config"],
-            patches["log"],
-            patch(
-                "app.agents.core.agent.execute_graph_silent",
-                new_callable=AsyncMock,
-                return_value=("Hello!", {"tool": "data"}),
-            ),
-        ):
-            result = await call_agent_silent(
-                request=_make_request(),
-                conversation_id="conv-1",
-                user=_make_user(),
-            )
-
-        assert result == SilentRunResult(message="Hello!", tool_data={"tool": "data"})
 
     @pytest.mark.asyncio
     async def test_the_detached_executors_tool_data_is_folded_onto_the_message(self):

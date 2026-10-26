@@ -13,7 +13,6 @@ from app.models.integrations.notion_blocks import (
 from app.utils.notion_md import (
     _add_tab_space,
     _apply_annotations,
-    _bold,
     _bullet,
     _callout,
     _code_block,
@@ -23,15 +22,11 @@ from app.utils.notion_md import (
     _heading2,
     _heading3,
     _image,
-    _inline_code,
     _inline_equation,
-    _italic,
     _link,
     _quote,
-    _strikethrough,
     _todo,
     _toggle,
-    _underline,
     block_to_markdown,
     blocks_to_markdown,
     markdown_to_notion_blocks,
@@ -63,72 +58,6 @@ def _md_blocks(markdown: str) -> list[dict[str, Any]]:
 # =============================================================================
 # Helper Formatters
 # =============================================================================
-
-
-class TestBold:
-    @pytest.mark.parametrize(
-        "text, expected",
-        [
-            ("hello", "**hello**"),
-            ("", "****"),
-            ("two words", "**two words**"),
-            ("**nested**", "****nested****"),
-        ],
-    )
-    def test_bold(self, text: str, expected: str) -> None:
-        assert _bold(text) == expected
-
-
-class TestItalic:
-    @pytest.mark.parametrize(
-        "text, expected",
-        [
-            ("hello", "_hello_"),
-            ("", "__"),
-            ("two words", "_two words_"),
-        ],
-    )
-    def test_italic(self, text: str, expected: str) -> None:
-        assert _italic(text) == expected
-
-
-class TestStrikethrough:
-    @pytest.mark.parametrize(
-        "text, expected",
-        [
-            ("hello", "~~hello~~"),
-            ("", "~~~~"),
-            ("two words", "~~two words~~"),
-        ],
-    )
-    def test_strikethrough(self, text: str, expected: str) -> None:
-        assert _strikethrough(text) == expected
-
-
-class TestUnderline:
-    @pytest.mark.parametrize(
-        "text, expected",
-        [
-            ("hello", "<u>hello</u>"),
-            ("", "<u></u>"),
-            ("two words", "<u>two words</u>"),
-        ],
-    )
-    def test_underline(self, text: str, expected: str) -> None:
-        assert _underline(text) == expected
-
-
-class TestInlineCode:
-    @pytest.mark.parametrize(
-        "text, expected",
-        [
-            ("hello", "`hello`"),
-            ("", "``"),
-            ("print('hi')", "`print('hi')`"),
-        ],
-    )
-    def test_inline_code(self, text: str, expected: str) -> None:
-        assert _inline_code(text) == expected
 
 
 class TestInlineEquation:

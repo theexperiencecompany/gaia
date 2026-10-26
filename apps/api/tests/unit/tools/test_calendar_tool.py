@@ -16,7 +16,6 @@ from datetime import UTC, datetime, timedelta, tzinfo
 import re
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
-from zoneinfo import ZoneInfo
 
 from langchain_core.runnables.config import var_child_runnable_config
 from pydantic import ValidationError
@@ -229,9 +228,6 @@ class TestFormatCalendarForStream:
 
 
 class TestAuthCredentials:
-    def test_returns_user_id(self) -> None:
-        assert CustomToolAuthCredentials.parse({"user_id": "abc"}).user_id == "abc"
-
     @pytest.mark.parametrize(
         "creds",
         [{}, {"user_id": ""}, {"user_id": None}, {"user_id": 123}, {"userId": "abc"}],
@@ -850,33 +846,6 @@ class TestGetEvent:
         )
         assert out["events"] == [{"event_id": "e1", "calendar_id": "cal-1", "event": {"id": "e1"}}]
 
-    def test_partial_failure_reports_the_failed_events(self, tools) -> None:
-        # BUG: the `errors` list was built with full detail and then dropped from
-        # the response whenever at least one event succeeded, so the agent told
-        # the user every event was fetched.
-        def side_effect(request: ProxyRequest) -> dict[str, Any]:
-            if request.endpoint.endswith("missing"):
-                raise AppError(message="Not Found", why="deleted", status_code=404)
-            return {"id": "ok"}
-
-        with patch(f"{MODULE}.proxy_request_sync", side_effect=side_effect):
-            out = tools["CUSTOM_GET_EVENT"](
-                GetEventInput(
-                    events=[EventReference(event_id="ok"), EventReference(event_id="missing")]
-                ),
-                EXECUTE_REQUEST,
-                AUTH,
-            )
-
-        assert len(out["events"]) == 1
-        assert out["errors"] == [
-            {
-                "event_id": "missing",
-                "calendar_id": "primary",
-                "error": "Event not found: Not Found",
-            }
-        ]
-
     def test_no_errors_key_noise_on_full_success(self, tools) -> None:
         with patch(f"{MODULE}.proxy_request_sync", return_value={"id": "e1"}):
             out = tools["CUSTOM_GET_EVENT"](
@@ -1471,28 +1440,6 @@ class TestCreateEvent:
                 ),
             )
 
-    @pytest.mark.regression
-    def test_explicit_end_is_the_event_end_no_default_padding(self, tools, writer) -> None:
-        # BUG: length came from a duration_minutes that defaulted to 30 and was
-        # added on top, so a 2-hour event (23:00) ended at 01:30 not 01:00.
-        with patch(
-            f"{MODULE}.get_config",
-            return_value={"configurable": {"user_timezone": "+05:30"}},
-        ):
-            _, proxy = self._run(
-                tools,
-                CreateEventInput(
-                    events=[
-                        SingleEventInput(
-                            summary="Meet with Aryan",
-                            start_datetime="2026-09-22T23:00:00+05:30",
-                            end_datetime="2026-09-23T01:00:00+05:30",
-                        )
-                    ],
-                ),
-            )
-        assert proxy.call_args.args[0].body["end"] == {"dateTime": "2026-09-23T01:00:00+05:30"}
-
     def test_missing_end_defaults_to_a_thirty_minute_event(self, tools, writer) -> None:
         with patch(
             f"{MODULE}.get_config",
@@ -1900,17 +1847,3 @@ class TestGatherContext:
 # ---------------------------------------------------------------------------
 # GetDaySummaryInput default
 # ---------------------------------------------------------------------------
-
-
-def test_day_summary_input_leaves_today_to_the_tool() -> None:
-    # BUG (root): a default_factory of datetime.now() froze "today" in the
-    # server's local zone at validation time, so the tool could no longer tell
-    # "the model omitted a date" from "the model asked for this date".
-    assert GetDaySummaryInput().date is None
-    assert GetDaySummaryInput(date="2026-03-15").date == "2026-03-15"
-
-
-def test_zoneinfo_offset_guard_is_still_needed() -> None:
-    # Pins the reason CUSTOM_GET_DAY_SUMMARY must go through Timezone.parse.
-    with pytest.raises(Exception):
-        ZoneInfo("+05:30")

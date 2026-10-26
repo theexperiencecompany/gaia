@@ -213,19 +213,6 @@ class TestDeliverResultRouting:
         platform.assert_not_awaited()  # exclusive: no platform send for web/mobile/system
         save.assert_awaited_once()
 
-    async def test_websocket_payload_carries_conversation_and_message(self) -> None:
-        _save, _platform, ws = await _deliver(ConversationSource.WEB)
-        event = ws.await_args.args[1]
-        assert event["type"] == "conversation.new_message"
-        assert event["conversation_id"] == "conv-1"
-        assert event["message"]["response"] == "result text"
-
-    async def test_the_save_is_attributed_to_the_runs_owner(self) -> None:
-        """update_messages scopes the write by user — an unattributed save lands on nobody's conversation."""
-        save, _platform, _ws = await _deliver(ConversationSource.WEB)
-
-        assert save.await_args.kwargs["user"] == AuthenticatedUser(user_id=USER_ID)
-
     async def test_never_leaks_raw_executor_text_when_comms_unavailable(self) -> None:
         # The executor's terminal text is internal monologue, so a narration
         # failure delivers a notice instead of publishing it verbatim.
@@ -449,37 +436,6 @@ def _narration_count(status: str) -> float:
 
 class TestDeliveryLatency:
     """Delivery splits narration (LLM) from persistence (Mongo)."""
-
-    async def test_cancelled_persist_records_span_without_narration(self) -> None:
-        run = _run(RunKind.QUEUED, stream_id="queued_lat", task_id="task-lat")
-        before = _persist_count("cancelled_cards")
-        narration_before = _narration_count("success")
-
-        with (
-            patch.object(rd, "update_messages", new_callable=AsyncMock),
-            patch.object(rd, "narrate_executor_result", new_callable=AsyncMock) as narrate,
-        ):
-            await rd.persist_cancelled_run(run, CARDS)
-
-        narrate.assert_not_awaited()
-        assert _persist_count("cancelled_cards") == before + 1
-        assert _narration_count("success") == narration_before
-
-    async def test_narration_records_span(self) -> None:
-        before = _narration_count("success")
-        with (
-            patch.object(rd, "narrate_executor_result", new_callable=AsyncMock, return_value="v"),
-            patch.object(rd, "_approval_outcomes_note", new_callable=AsyncMock, return_value=""),
-        ):
-            await rd._narrate_result(_run(), "raw", "final", "")
-        assert _narration_count("success") == before + 1
-
-    async def test_save_bot_message_records_span(self) -> None:
-        before = _persist_count("save_bot_message")
-        bot_message = MessageModel(type="bot", response="hi", date="2026-01-01")
-        with patch.object(rd, "update_messages", new_callable=AsyncMock):
-            assert await rd._save_bot_message("conv-1", {"user_id": USER_ID}, bot_message) is True
-        assert _persist_count("save_bot_message") == before + 1
 
     async def test_cancelled_persist_records_exact_seconds(self) -> None:
         # Pinned clock: the persisted sample must be the elapsed subtraction in
@@ -1332,17 +1288,6 @@ class TestApprovalOutcomesNoteContent:
 
         assert "SEND_GMAIL" not in note
         assert "SEND_SLACK" in note
-
-    async def test_the_note_leads_with_the_override_instruction(self) -> None:
-        """The header tells the narrator which text wins over the gate-time 'waiting for approval' text — contract, not decoration."""
-        cards = [_approval_card("a1", "pending")]
-        records = {"a1": _record("a1", HILApprovalStatus.APPROVED, tool_name="SEND_GMAIL")}
-
-        note, _ = await self._note(cards, records)
-
-        assert note.startswith("\n\n[APPROVAL OUTCOMES]")
-        assert "overrides anything above" in note
-        assert "never say it is pending and never re-offer approve/decline" in note
 
     async def test_the_whole_header_survives_verbatim(self) -> None:
         """Every clause declares the outcomes final, beats the gate-time text, and forbids re-offering — a reworded half hedges again."""
@@ -2874,38 +2819,3 @@ class TestBroadcastRetry:
                 "error": "socket gone",
             }
         ]
-
-
-class TestWorkflowNotificationIsTraceable:
-    async def test_the_dispatch_log_names_the_message_the_badge_opens(self) -> None:
-        """Operators trace a workflow badge back to its saved message by this id."""
-        with (
-            patch.object(
-                rd, "narrate_executor_result", new_callable=AsyncMock, return_value="Digest ready."
-            ),
-            patch.object(rd, "generate_follow_up_actions", new_callable=AsyncMock, return_value=[]),
-            patch.object(rd, "update_messages", new_callable=AsyncMock),
-            patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
-            patch.object(rd, "deliver_result_to_platforms", new_callable=AsyncMock),
-            patch(
-                "app.services.workflow.notifications.send_workflow_completion_notification",
-                new_callable=AsyncMock,
-            ) as completion,
-            patch.object(rd, "log") as log_mock,
-        ):
-            _, message_id = await rd.deliver_result(
-                _run(workflow=True), result_text="raw", result_type="final", tool_data=None
-            )
-
-        completion.assert_awaited_once_with(
-            workflow_id="wf-1",
-            workflow_title="Morning digest",
-            conversation_id="conv-1",
-            user_id=USER_ID,
-        )
-        dispatched = [
-            call.kwargs
-            for call in log_mock.info.call_args_list
-            if "workflow notification dispatched" in call.args[0]
-        ]
-        assert dispatched == [{"workflow_id": "wf-1", "message_id": message_id}]

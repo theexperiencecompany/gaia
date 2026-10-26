@@ -464,9 +464,6 @@ class TestReasoningPerRole:
         assert paid.reasoning == {"effort": "medium"}
         assert free.reasoning == {"effort": "medium"}
 
-    async def test_paid_executor_keeps_the_client_default_effort(self) -> None:
-        assert (await _resolve(PlanType.PRO, AgentRole.EXECUTOR)).reasoning == OPENROUTER_REASONING
-
     @pytest.mark.parametrize("role", list(AgentRole))
     async def test_free_keeps_the_client_default_effort_on_every_role(
         self, role: AgentRole

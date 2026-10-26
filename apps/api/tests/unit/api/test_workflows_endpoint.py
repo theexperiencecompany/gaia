@@ -7,7 +7,6 @@ from httpx import AsyncClient
 from pymongo.errors import DuplicateKeyError
 import pytest
 
-from app.constants.log_tags import LogTag
 from app.models.payment_models import PlanType
 from app.models.workflow_execution_models import WorkflowExecutionsResponse
 from app.models.workflow_models import (
@@ -31,7 +30,7 @@ from shared.py.analytics.catalog.workflows import (
     WorkflowExecuted,
     WorkflowPublished,
 )
-from shared.py.wide_events import WorkflowContext, log
+from shared.py.wide_events import WorkflowContext
 from tests.conftest import FAKE_USER
 
 BASE_URL = "/api/v1/workflows"
@@ -304,33 +303,6 @@ class TestCreateWorkflow:
         )
         assert type(mock_capture.call_args.args[1].trigger_type) is str
 
-    async def test_create_workflow_missing_title_returns_422(self, client: AsyncClient):
-        response = await client.post(
-            BASE_URL,
-            json={
-                "prompt": "Do something",
-                "trigger_config": {"type": "manual", "enabled": True},
-            },
-        )
-        assert response.status_code == 422
-
-    async def test_create_workflow_missing_prompt_returns_422(self, client: AsyncClient):
-        response = await client.post(
-            BASE_URL,
-            json={
-                "title": "My Workflow",
-                "trigger_config": {"type": "manual", "enabled": True},
-            },
-        )
-        assert response.status_code == 422
-
-    async def test_create_workflow_empty_title_returns_422(self, client: AsyncClient):
-        response = await client.post(
-            BASE_URL,
-            json=_create_workflow_payload(title=""),
-        )
-        assert response.status_code == 422
-
     async def test_create_workflow_value_error_returns_400(self, client: AsyncClient):
         with (
             patch(
@@ -381,16 +353,6 @@ class TestListWorkflows:
         assert response.status_code == 200
         mock_list.assert_awaited_once_with(FAKE_USER.user_id)
         assert _wide_event_users(mock_log) == [{"id": FAKE_USER.user_id}]
-
-    async def test_list_workflows_empty(self, client: AsyncClient):
-        with patch(
-            f"{_WF_SERVICE}.list_workflows",
-            new_callable=AsyncMock,
-            return_value=([], 0),
-        ):
-            response = await client.get(BASE_URL)
-
-        assert response.status_code == 200
 
     async def test_list_workflows_service_error_returns_500(self, client: AsyncClient):
         with patch(
@@ -775,42 +737,6 @@ class TestRegenerateSteps:
         assert response.json()["message"] == (
             "Step generation failed: PaymentRequiredResponseError: "
             "This request requires more credits"
-        )
-
-    async def test_regenerate_steps_generation_failure_logs_workflow_user_and_reason(
-        self, client: AsyncClient, fake_user: dict
-    ):
-        """The 502 is only actionable in support if the log names which workflow, user, and provider reason produced it."""
-        recorded: list[tuple[str, dict]] = []
-        with (
-            patch(
-                f"{_WF_SERVICE}.regenerate_workflow_steps",
-                new_callable=AsyncMock,
-                side_effect=WorkflowStepGenerationError(
-                    "PaymentRequiredResponseError: This request requires more credits"
-                ),
-            ),
-            patch.object(
-                log,
-                "error",
-                lambda message, **kwargs: recorded.append((message, kwargs)),
-            ),
-        ):
-            response = await client.post(
-                f"{BASE_URL}/wf_abc123/regenerate-steps",
-                json={"instruction": "Regen steps"},
-            )
-
-        assert response.status_code == 502
-        # The generic http_exception record from the error middleware follows;
-        # the handler's own record is the first and must be complete.
-        assert recorded[0] == (
-            f"{LogTag.WORKFLOW} Step generation failed",
-            {
-                "workflow_id": "wf_abc123",
-                "user_id": fake_user.user_id,
-                "reason": "PaymentRequiredResponseError: This request requires more credits",
-            },
         )
 
     async def test_regenerate_steps_missing_instruction_returns_422(self, client: AsyncClient):

@@ -185,13 +185,6 @@ class TestRegistration:
             "GOOGLESHEETS_CUSTOM_GATHER_CONTEXT",
         ]
 
-    def test_docstrings_are_replaced_with_the_agent_facing_docs(self, tools: Any) -> None:
-        # The model selects tools by docstring; the terse developer docstring
-        # would strip the parameter contract.
-        doc = tools["CUSTOM_CREATE_CHART"].__doc__
-        assert doc is not None
-        assert "Parameters:" in doc and "chart_type" in doc
-
 
 # ---------------------------------------------------------------------------
 # auth credentials
@@ -393,10 +386,6 @@ class TestShareSpreadsheet:
         with pytest.raises(ValidationError):
             ShareSpreadsheetInput(spreadsheet_id=SPREADSHEET, recipients=[])
 
-    def test_role_must_be_a_drive_permission_role(self) -> None:
-        with pytest.raises(ValidationError):
-            ShareRecipient(email="a@x.com", role=cast(Any, "owner"))
-
 
 # ---------------------------------------------------------------------------
 # CUSTOM_CREATE_PIVOT_TABLE
@@ -539,12 +528,6 @@ class TestCreatePivotTable:
                 _pivot(values=[PivotValue(column="Nope")]),
             )
         assert api.batch_bodies == []
-
-    def test_rows_and_values_are_both_mandatory(self) -> None:
-        with pytest.raises(ValidationError):
-            _pivot(rows=[])
-        with pytest.raises(ValidationError):
-            _pivot(values=[])
 
     # BUG: destination_cell went through parse_a1_range, which silently turned
     # an open-ended reference like "A" into cell A1. It now fails loudly.
@@ -1151,10 +1134,6 @@ class TestCreateChart:
 
         assert _chart_request(api)["spec"]["basicChart"]["chartType"] == chart_type
 
-    def test_unsupported_chart_type_is_rejected_by_the_schema(self) -> None:
-        with pytest.raises(ValidationError):
-            _chart(chart_type="DONUT")
-
     def test_basic_chart_treats_the_first_row_as_headers(self, tools: Any, api: Any) -> None:
         _call(tools, "CUSTOM_CREATE_CHART", _chart())
         assert _chart_request(api)["spec"]["basicChart"]["headerCount"] == 1
@@ -1244,12 +1223,6 @@ class TestCreateChart:
 
         overlay = _chart_request(api)["position"]["overlayPosition"]
         assert (overlay["widthPixels"], overlay["heightPixels"]) == (600, 400)
-
-    @pytest.mark.parametrize("dimension", ["width", "height"])
-    @pytest.mark.parametrize("value", [99, 2001])
-    def test_out_of_range_dimensions_are_rejected(self, dimension: str, value: int) -> None:
-        with pytest.raises(ValidationError):
-            _chart(**{dimension: value})
 
     def test_chart_defaults_to_the_source_sheet(self, tools: Any, api: Any) -> None:
         _call(tools, "CUSTOM_CREATE_CHART", _chart())

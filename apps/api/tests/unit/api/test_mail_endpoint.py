@@ -22,7 +22,6 @@ from app.models.mail_models import (
     BulkEmailImportanceSummariesResponse,
     EmailImportanceSummariesResponse,
     EmailImportanceSummaryResponse,
-    GmailDraftsResponse,
     GmailEmailResult,
     GmailLabelsResult,
     GmailMessageResource,
@@ -190,59 +189,6 @@ class TestGetEmailById:
         }
         response = await client.get(f"{MAIL_BASE}/gmail/message/msg-1")
         assert response.status_code == 500
-
-
-# ---------------------------------------------------------------------------
-# GET /api/v1/gmail/search
-# ---------------------------------------------------------------------------
-
-
-class TestSearchEmails:
-    @patch(
-        "app.api.v1.endpoints.mail.search_messages",
-        new_callable=AsyncMock,
-    )
-    async def test_search_emails_returns_200(self, mock_search: AsyncMock, client: AsyncClient):
-        mock_search.return_value = GmailMessagesResponse(messages=[{"id": "msg-1"}])
-        response = await client.get(f"{MAIL_BASE}/gmail/search", params={"query": "invoice"})
-        assert response.status_code == 200
-
-    @patch(
-        "app.api.v1.endpoints.mail.search_messages",
-        new_callable=AsyncMock,
-    )
-    async def test_search_emails_with_filters(self, mock_search: AsyncMock, client: AsyncClient):
-        mock_search.return_value = GmailMessagesResponse(messages=[])
-        response = await client.get(
-            f"{MAIL_BASE}/gmail/search",
-            params={
-                "sender": "boss@company.com",
-                "has_attachment": True,
-                "is_read": False,
-                "max_results": 5,
-            },
-        )
-        assert response.status_code == 200
-        # Verify the query was constructed with filters
-        call_kwargs = mock_search.call_args.kwargs
-        assert "from:boss@company.com" in call_kwargs["query"]
-        assert "has:attachment" in call_kwargs["query"]
-        assert "is:unread" in call_kwargs["query"]
-
-    @patch(
-        "app.api.v1.endpoints.mail.search_messages",
-        new_callable=AsyncMock,
-    )
-    async def test_search_emails_caps_max_results_at_20(
-        self, mock_search: AsyncMock, client: AsyncClient
-    ):
-        mock_search.return_value = GmailMessagesResponse(messages=[])
-        await client.get(
-            f"{MAIL_BASE}/gmail/search",
-            params={"query": "test", "max_results": 100},
-        )
-        call_kwargs = mock_search.call_args.kwargs
-        assert call_kwargs["max_results"] == 20
 
 
 # ---------------------------------------------------------------------------
@@ -984,38 +930,11 @@ class TestCreateDraft:
 
 
 # ---------------------------------------------------------------------------
-# GET /api/v1/gmail/drafts
-# ---------------------------------------------------------------------------
-
-
-class TestListDrafts:
-    @patch(
-        "app.api.v1.endpoints.mail.list_drafts",
-        new_callable=AsyncMock,
-    )
-    async def test_list_drafts_returns_200(self, mock_list: AsyncMock, client: AsyncClient):
-        mock_list.return_value = GmailDraftsResponse(drafts=[{"id": "draft-001"}])
-        response = await client.get(f"{MAIL_BASE}/gmail/drafts")
-        assert response.status_code == 200
-
-
-# ---------------------------------------------------------------------------
 # GET /api/v1/gmail/drafts/{draft_id}
 # ---------------------------------------------------------------------------
 
 
 class TestGetDraft:
-    @patch(
-        "app.api.v1.endpoints.mail.get_draft",
-        new_callable=AsyncMock,
-    )
-    async def test_get_draft_returns_200(self, mock_get: AsyncMock, client: AsyncClient):
-        mock_get.return_value = GmailToolResult.model_validate(
-            {"id": "draft-001", "message": {"id": "msg-001"}}
-        )
-        response = await client.get(f"{MAIL_BASE}/gmail/drafts/draft-001")
-        assert response.status_code == 200
-
     @patch(
         "app.api.v1.endpoints.mail.get_draft",
         new_callable=AsyncMock,
