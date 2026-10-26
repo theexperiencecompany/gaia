@@ -33,6 +33,9 @@ export default function Footer() {
   return (
     <>
       <JsonLd data={navigationSchema} />
+      <h1>SEO gate probe</h1>
+      <img src="/images/logos/logo.webp" />
+      <a href="javascript:void(0)">probe</a>
       {/* z above the fixed bottom BlurStack (z-10) so the wordmark is never
           blurred by the viewport-edge blur — but below the fixed navbar
           (z-50) so the footer can never paint over navigation. The footer's
