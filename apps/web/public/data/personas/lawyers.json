@@ -38,15 +38,15 @@
   ],
   "relevantIntegrations": [
     "gmail",
-    "google-calendar",
-    "google-docs",
+    "googlecalendar",
+    "googledocs",
     "notion",
     "todoist",
-    "google-sheets",
+    "googlesheets",
     "perplexity",
-    "google-meet",
+    "googlemeet",
     "slack",
-    "google-tasks"
+    "googletasks"
   ],
   "faqs": [
     {

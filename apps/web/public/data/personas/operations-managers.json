@@ -45,14 +45,14 @@
   "relevantIntegrations": [
     "gmail",
     "slack",
-    "google-sheets",
+    "googlesheets",
     "airtable",
-    "google-calendar",
+    "googlecalendar",
     "notion",
     "todoist",
-    "microsoft-teams",
+    "microsoft_teams",
     "asana",
-    "google-docs"
+    "googledocs"
   ],
   "faqs": [
     {

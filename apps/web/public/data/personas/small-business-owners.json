@@ -50,8 +50,8 @@
   "relevantIntegrations": [
     "gmail",
     "outlook",
-    "google-calendar",
-    "google-sheets",
+    "googlecalendar",
+    "googlesheets",
     "hubspot",
     "trello"
   ],

@@ -46,11 +46,11 @@
     "gmail",
     "hubspot",
     "slack",
-    "google-calendar",
+    "googlecalendar",
     "notion",
-    "google-meet",
-    "google-sheets",
-    "google-docs",
+    "googlemeet",
+    "googlesheets",
+    "googledocs",
     "todoist"
   ],
   "faqs": [

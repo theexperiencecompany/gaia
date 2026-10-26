@@ -52,13 +52,13 @@
     "clickup",
     "asana",
     "trello",
-    "google-calendar",
+    "googlecalendar",
     "notion",
-    "google-sheets",
+    "googlesheets",
     "linkedin",
     "perplexity",
     "hubspot",
-    "google-meet"
+    "googlemeet"
   ],
   "faqs": [
     {

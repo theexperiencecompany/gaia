@@ -68,8 +68,6 @@ const CONFIG: BestHubConfig = {
     "GAIA is a proactive productivity OS that manages your inbox autonomously. It triages messages by urgency, drafts context-aware replies, converts threads into tasks and calendar events, and chains those actions into cross-tool workflows spanning Gmail, Slack, Notion, and the rest of your tools. Its code is source-available under the PolyForm Noncommercial license, so you can inspect exactly how your data is handled.",
   pickCompareHref: "/compare/superhuman",
   pickCompareLabel: "See GAIA vs Superhuman head-to-head",
-  // The /alternative-to/superhuman guide consolidated into /compare/superhuman
-  // (308) — point at the canonical so the link never chains through a redirect.
   pickAlternativeHref: "/compare/superhuman",
   pickAlternativeLabel: "Best Superhuman alternative guide",
   rankedSlugs: RANKED_SLUGS,

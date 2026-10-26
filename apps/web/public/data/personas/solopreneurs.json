@@ -44,15 +44,15 @@
   ],
   "relevantIntegrations": [
     "gmail",
-    "google-calendar",
+    "googlecalendar",
     "todoist",
     "notion",
-    "google-sheets",
-    "google-docs",
+    "googlesheets",
+    "googledocs",
     "slack",
-    "google-meet",
+    "googlemeet",
     "hubspot",
-    "google-tasks"
+    "googletasks"
   ],
   "faqs": [
     {

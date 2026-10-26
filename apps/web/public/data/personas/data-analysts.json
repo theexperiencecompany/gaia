@@ -46,13 +46,13 @@
   ],
   "relevantIntegrations": [
     "gmail",
-    "google-calendar",
+    "googlecalendar",
     "slack",
-    "google-sheets",
+    "googlesheets",
     "notion",
     "todoist",
-    "google-docs",
-    "google-meet"
+    "googledocs",
+    "googlemeet"
   ],
   "faqs": [
     {

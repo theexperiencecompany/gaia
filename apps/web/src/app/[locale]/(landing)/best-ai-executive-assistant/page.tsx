@@ -91,7 +91,7 @@ const CONFIG: BestHubConfig = {
     "GAIA works across Gmail or Outlook, Google Calendar, Slack, Notion, Linear, Todoist and the rest of your stack. It drafts and sends replies, schedules and moves meetings, turns commitments in email into todos, and runs workflows on a schedule or when something happens in a connected tool. You choose whether it asks before it sends, deletes or posts, and you can reach it from the web, the desktop app or WhatsApp, Telegram and iMessage. It is source-available under the PolyForm Noncommercial license.",
   pickCompareHref: "/compare/copilot",
   pickCompareLabel: "See GAIA vs Microsoft Copilot head-to-head",
-  pickAlternativeHref: "/alternative-to/superhuman",
+  pickAlternativeHref: "/compare/superhuman",
   pickAlternativeLabel: "Best Superhuman alternative guide",
   rankedSlugs: RANKED_SLUGS,
   bestFor: {

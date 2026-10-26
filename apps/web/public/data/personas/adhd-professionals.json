@@ -52,7 +52,7 @@
   "relevantIntegrations": [
     "gmail",
     "todoist",
-    "google-calendar",
+    "googlecalendar",
     "slack"
   ],
   "faqs": [

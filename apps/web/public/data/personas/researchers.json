@@ -34,15 +34,15 @@
   ],
   "relevantIntegrations": [
     "gmail",
-    "google-calendar",
+    "googlecalendar",
     "notion",
-    "google-docs",
+    "googledocs",
     "perplexity",
     "deepwiki",
     "todoist",
     "slack",
-    "google-sheets",
-    "google-meet"
+    "googlesheets",
+    "googlemeet"
   ],
   "faqs": [
     {

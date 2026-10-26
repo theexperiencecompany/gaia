@@ -1,0 +1,374 @@
+{
+  "integrations": [
+    {
+      "id": "googlecalendar",
+      "slug": "googlecalendar",
+      "name": "Google Calendar",
+      "description": "Schedule meetings and manage your calendar events",
+      "category": "productivity",
+      "source": "platform",
+      "available": true,
+      "displayPriority": 0
+    },
+    {
+      "id": "googledocs",
+      "slug": "googledocs",
+      "name": "Google Docs",
+      "description": "Create, edit, and share documents in your workspace",
+      "category": "productivity",
+      "source": "platform",
+      "available": true,
+      "displayPriority": 0
+    },
+    {
+      "id": "googledrive",
+      "slug": "googledrive",
+      "name": "Google Drive",
+      "description": "Search, organize, share, and retrieve your files in Google Drive",
+      "category": "productivity",
+      "source": "platform",
+      "available": true,
+      "displayPriority": 0
+    },
+    {
+      "id": "gmail",
+      "slug": "gmail",
+      "name": "Gmail",
+      "description": "Manage emails, compose messages, and organize your inbox",
+      "category": "communication",
+      "source": "platform",
+      "available": true,
+      "displayPriority": 0
+    },
+    {
+      "id": "notion",
+      "slug": "notion",
+      "name": "Notion",
+      "description": "Manage pages, databases, and workspace content",
+      "category": "productivity",
+      "source": "platform",
+      "available": true,
+      "displayPriority": 0
+    },
+    {
+      "id": "twitter",
+      "slug": "twitter",
+      "name": "Twitter",
+      "description": "Post tweets, read timelines, and manage your account",
+      "category": "social_media",
+      "source": "platform",
+      "available": true,
+      "displayPriority": 0
+    },
+    {
+      "id": "googlesheets",
+      "slug": "googlesheets",
+      "name": "Google Sheets",
+      "description": "Create, read, and update spreadsheets",
+      "category": "productivity",
+      "source": "platform",
+      "available": true,
+      "displayPriority": 0
+    },
+    {
+      "id": "linkedin",
+      "slug": "linkedin",
+      "name": "LinkedIn",
+      "description": "Share posts and engage with your professional network",
+      "category": "social_media",
+      "source": "platform",
+      "available": true,
+      "displayPriority": 0
+    },
+    {
+      "id": "github",
+      "slug": "github",
+      "name": "GitHub",
+      "description": "Manage repositories, issues, pull requests, and automate your development workflow",
+      "category": "developer",
+      "source": "platform",
+      "available": true,
+      "displayPriority": 0
+    },
+    {
+      "id": "reddit",
+      "slug": "reddit",
+      "name": "Reddit",
+      "description": "Post content, manage comments, and engage with communities on Reddit",
+      "category": "social_media",
+      "source": "platform",
+      "available": true,
+      "displayPriority": 0
+    },
+    {
+      "id": "airtable",
+      "slug": "airtable",
+      "name": "Airtable",
+      "description": "Create and manage bases, tables, and records with AI-powered automation",
+      "category": "business",
+      "source": "platform",
+      "available": true,
+      "displayPriority": 0
+    },
+    {
+      "id": "linear",
+      "slug": "linear",
+      "name": "Linear",
+      "description": "Manage issues, projects, and track development progress with AI assistance",
+      "category": "developer",
+      "source": "platform",
+      "available": true,
+      "displayPriority": 0
+    },
+    {
+      "id": "slack",
+      "slug": "slack",
+      "name": "Slack",
+      "description": "Send messages, manage channels, and automate team communication",
+      "category": "communication",
+      "source": "platform",
+      "available": true,
+      "displayPriority": 0
+    },
+    {
+      "id": "hubspot",
+      "slug": "hubspot",
+      "name": "HubSpot",
+      "description": "Manage CRM contacts, deals, and automate sales and marketing workflows",
+      "category": "business",
+      "source": "platform",
+      "available": true,
+      "displayPriority": 0
+    },
+    {
+      "id": "googletasks",
+      "slug": "googletasks",
+      "name": "Google Tasks",
+      "description": "Create, manage, and organize your tasks and to-do lists",
+      "category": "productivity",
+      "source": "platform",
+      "available": true,
+      "displayPriority": 0
+    },
+    {
+      "id": "todoist",
+      "slug": "todoist",
+      "name": "Todoist",
+      "description": "Manage tasks, projects, and productivity workflows with advanced task management",
+      "category": "productivity",
+      "source": "platform",
+      "available": true,
+      "displayPriority": 0
+    },
+    {
+      "id": "microsoft_teams",
+      "slug": "microsoft_teams",
+      "name": "Microsoft Teams",
+      "description": "Collaborate with teams, send messages, manage channels, and automate team workflows",
+      "category": "communication",
+      "source": "platform",
+      "available": true,
+      "displayPriority": 0
+    },
+    {
+      "id": "zoom",
+      "slug": "zoom",
+      "name": "Zoom",
+      "description": "Create and manage Zoom meetings, webinars, and video conferencing",
+      "category": "communication",
+      "source": "platform",
+      "available": true,
+      "displayPriority": 0
+    },
+    {
+      "id": "googlemeet",
+      "slug": "googlemeet",
+      "name": "Google Meet",
+      "description": "Schedule and manage video meetings with Google Meet",
+      "category": "communication",
+      "source": "platform",
+      "available": true,
+      "displayPriority": 0
+    },
+    {
+      "id": "google_maps",
+      "slug": "google_maps",
+      "name": "Google Maps",
+      "description": "Search locations, get directions, and manage place information",
+      "category": "productivity",
+      "source": "platform",
+      "available": true,
+      "displayPriority": 0
+    },
+    {
+      "id": "asana",
+      "slug": "asana",
+      "name": "Asana",
+      "description": "Manage projects, tasks, and team workflows with comprehensive project management",
+      "category": "business",
+      "source": "platform",
+      "available": true,
+      "displayPriority": 0
+    },
+    {
+      "id": "trello",
+      "slug": "trello",
+      "name": "Trello",
+      "description": "Organize projects with boards, lists, and cards for visual task management",
+      "category": "productivity",
+      "source": "platform",
+      "available": true,
+      "displayPriority": 0
+    },
+    {
+      "id": "instagram",
+      "slug": "instagram",
+      "name": "Instagram",
+      "description": "Manage your Instagram account, post content, and engage with your audience",
+      "category": "social_media",
+      "source": "platform",
+      "available": true,
+      "displayPriority": 0
+    },
+    {
+      "id": "clickup",
+      "slug": "clickup",
+      "name": "ClickUp",
+      "description": "Manage tasks, projects, and workflows with comprehensive project management",
+      "category": "productivity",
+      "source": "platform",
+      "available": true,
+      "displayPriority": 0
+    },
+    {
+      "id": "calcom",
+      "slug": "calcom",
+      "name": "Cal.com",
+      "description": "Manage bookings, availability, and booking links on Cal.com",
+      "category": "productivity",
+      "source": "platform",
+      "available": true,
+      "displayPriority": 0
+    },
+    {
+      "id": "calendly",
+      "slug": "calendly",
+      "name": "Calendly",
+      "description": "View scheduled meetings, share scheduling links, and manage Calendly events",
+      "category": "productivity",
+      "source": "platform",
+      "available": true,
+      "displayPriority": 0
+    },
+    {
+      "id": "outlook",
+      "slug": "outlook",
+      "name": "Outlook",
+      "description": "Read and draft email, manage your calendar, and schedule meetings in Microsoft Outlook",
+      "category": "communication",
+      "source": "platform",
+      "available": true,
+      "displayPriority": 0
+    },
+    {
+      "id": "jira",
+      "slug": "jira",
+      "name": "Jira",
+      "description": "Track issues, manage sprints, and move work through your Jira workflow",
+      "category": "developer",
+      "source": "platform",
+      "available": true,
+      "displayPriority": 0
+    },
+    {
+      "id": "dropbox",
+      "slug": "dropbox",
+      "name": "Dropbox",
+      "description": "Search, read, organize, and share files in your Dropbox",
+      "category": "productivity",
+      "source": "platform",
+      "available": true,
+      "displayPriority": 0
+    },
+    {
+      "id": "deepwiki",
+      "slug": "deepwiki",
+      "name": "DeepWiki",
+      "description": "AI-powered documentation for any GitHub repository. Ask questions and explore codebases.",
+      "category": "developer",
+      "source": "platform",
+      "available": true,
+      "displayPriority": 0
+    },
+    {
+      "id": "hackernews",
+      "slug": "hackernews",
+      "name": "Hacker News",
+      "description": "Browse and search Hacker News stories, comments, and discussions.",
+      "category": "news",
+      "source": "platform",
+      "available": true,
+      "displayPriority": 0
+    },
+    {
+      "id": "instacart",
+      "slug": "instacart",
+      "name": "Instacart",
+      "description": "Search and browse grocery products, recipes, and shopping options.",
+      "category": "lifestyle",
+      "source": "platform",
+      "available": true,
+      "displayPriority": 0
+    },
+    {
+      "id": "yelp",
+      "slug": "yelp",
+      "name": "Yelp",
+      "description": "Search for local businesses, restaurants, and read reviews.",
+      "category": "lifestyle",
+      "source": "platform",
+      "available": true,
+      "displayPriority": 0
+    },
+    {
+      "id": "context7",
+      "slug": "context7",
+      "name": "Context7",
+      "description": "Fetch up-to-date, version-specific documentation and code examples for any library or framework.",
+      "category": "developer",
+      "source": "platform",
+      "available": true,
+      "displayPriority": 0
+    },
+    {
+      "id": "perplexity",
+      "slug": "perplexity",
+      "name": "Perplexity",
+      "description": "AI-powered web search with detailed, contextually relevant results and citations.",
+      "category": "productivity",
+      "source": "platform",
+      "available": true,
+      "displayPriority": 0
+    },
+    {
+      "id": "agentmail",
+      "slug": "agentmail",
+      "name": "AgentMail",
+      "description": "AgentMail is the email inbox API for AI agents. It gives agents their own email inboxes, like Gmail does for humans.",
+      "category": "communication",
+      "source": "platform",
+      "available": true,
+      "displayPriority": 0
+    },
+    {
+      "id": "posthog",
+      "slug": "posthog",
+      "name": "PostHog",
+      "description": "Product analytics and experimentation platform - track events, analyze user funnels, run A/B tests, manage feature flags, and query session recordings.",
+      "category": "business",
+      "source": "platform",
+      "available": true,
+      "displayPriority": 0
+    }
+  ]
+}

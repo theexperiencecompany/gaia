@@ -48,14 +48,14 @@
   ],
   "relevantIntegrations": [
     "gmail",
-    "google-calendar",
+    "googlecalendar",
     "slack",
     "todoist",
     "asana",
     "notion",
-    "google-sheets",
-    "google-docs",
-    "google-meet",
+    "googlesheets",
+    "googledocs",
+    "googlemeet",
     "trello"
   ],
   "faqs": [

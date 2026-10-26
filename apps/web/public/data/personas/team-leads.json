@@ -46,10 +46,10 @@
     "slack",
     "linear",
     "github",
-    "google-calendar",
+    "googlecalendar",
     "gmail",
     "notion",
-    "google-meet",
+    "googlemeet",
     "todoist",
     "asana",
     "clickup"

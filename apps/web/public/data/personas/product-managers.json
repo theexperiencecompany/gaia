@@ -51,10 +51,10 @@
     "slack",
     "gmail",
     "notion",
-    "google-calendar",
-    "google-docs",
+    "googlecalendar",
+    "googledocs",
     "todoist",
-    "google-meet",
+    "googlemeet",
     "github",
     "asana"
   ],

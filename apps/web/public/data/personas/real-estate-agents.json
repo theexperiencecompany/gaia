@@ -44,15 +44,15 @@
   ],
   "relevantIntegrations": [
     "gmail",
-    "google-calendar",
-    "google-maps",
+    "googlecalendar",
+    "google_maps",
     "yelp",
-    "google-docs",
-    "google-sheets",
+    "googledocs",
+    "googlesheets",
     "todoist",
     "hubspot",
     "slack",
-    "google-meet"
+    "googlemeet"
   ],
   "faqs": [
     {

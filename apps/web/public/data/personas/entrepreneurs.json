@@ -45,12 +45,12 @@
   "relevantIntegrations": [
     "gmail",
     "slack",
-    "google-calendar",
+    "googlecalendar",
     "hubspot",
     "notion",
     "linear",
-    "google-sheets",
-    "google-docs",
+    "googlesheets",
+    "googledocs",
     "todoist",
     "twitter"
   ],

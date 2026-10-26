@@ -51,9 +51,9 @@
     "posthog",
     "todoist",
     "notion",
-    "google-calendar",
+    "googlecalendar",
     "slack",
-    "google-sheets"
+    "googlesheets"
   ],
   "faqs": [
     {

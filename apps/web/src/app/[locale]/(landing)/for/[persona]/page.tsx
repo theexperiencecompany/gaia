@@ -1,6 +1,5 @@
 import { Chip } from "@heroui/chip";
 import type { Metadata } from "next";
-import Image from "next/image";
 import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import type { ComponentType } from "react";
@@ -8,6 +7,8 @@ import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
 import { RelatedComparisonsGrid } from "@/components/seo/RelatedComparisonsGrid";
 import { SiteLink } from "@/components/seo/SiteLink";
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import type { CommunityIntegration } from "@/features/integrations/types";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import {
   AGENCY_FAQS,
@@ -18,6 +19,7 @@ import {
   SOFTWARE_DEV_FAQS,
 } from "@/features/landing/data/personaFaqs";
 import { getTranslatedPersona } from "@/features/personas/data/getTranslatedPersona";
+import { resolvePersonaIntegrations } from "@/features/personas/data/personaIntegrations";
 import { getAllPersonaSlugs } from "@/features/personas/data/personasData";
 import { getLocalizedAlternates } from "@/i18n/getAlternates";
 import { prerenderedMarketingParams } from "@/lib/selfhost";
@@ -276,85 +278,24 @@ export async function generateMetadata({
   };
 }
 
-const INTEGRATION_DOMAINS: Record<string, string> = {
-  github: "github.com",
-  linear: "linear.app",
-  slack: "slack.com",
-  "google-calendar": "calendar.google.com",
-  gmail: "gmail.com",
-  notion: "notion.so",
-  todoist: "todoist.com",
-  perplexity: "perplexity.ai",
-  deepwiki: "deepwiki.com",
-  context7: "context7.com",
-  figma: "figma.com",
-  jira: "jira.atlassian.com",
-  asana: "asana.com",
-  trello: "trello.com",
-  hubspot: "hubspot.com",
-  salesforce: "salesforce.com",
-  intercom: "intercom.com",
-  zendesk: "zendesk.com",
-  stripe: "stripe.com",
-  quickbooks: "quickbooks.intuit.com",
-  "google-docs": "docs.google.com",
-  "google-sheets": "sheets.google.com",
-  "google-drive": "drive.google.com",
-  dropbox: "dropbox.com",
-  airtable: "airtable.com",
-  monday: "monday.com",
-  clickup: "clickup.com",
-  discord: "discord.com",
-  zoom: "zoom.us",
-  teams: "teams.microsoft.com",
-  outlook: "outlook.com",
-  twitter: "x.com",
-  linkedin: "linkedin.com",
-  mailchimp: "mailchimp.com",
-  "google-analytics": "analytics.google.com",
-  semrush: "semrush.com",
-  canva: "canva.com",
-  wordpress: "wordpress.com",
-  shopify: "shopify.com",
-  amplitude: "amplitude.com",
-  mixpanel: "mixpanel.com",
-  datadog: "datadoghq.com",
-  sentry: "sentry.io",
-  vercel: "vercel.com",
-  netlify: "netlify.com",
-  aws: "aws.amazon.com",
-  "google-cloud": "cloud.google.com",
-  confluence: "confluence.atlassian.com",
-};
-
-function IntegrationBadge({ name }: { name: string }) {
-  const displayName = name
-    .split("-")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
-
-  const domain = INTEGRATION_DOMAINS[name];
-
+function IntegrationBadge({
+  integration,
+}: {
+  readonly integration: CommunityIntegration;
+}) {
   return (
-    <SiteLink href={`/marketplace/${name}`}>
+    <SiteLink href={`/marketplace/${integration.slug}`}>
       <Chip
         variant="flat"
         size="md"
         className="bg-zinc-800 text-zinc-300"
-        startContent={
-          domain ? (
-            <Image
-              src={`https://www.google.com/s2/favicons?domain=${domain}&sz=128`}
-              alt={displayName}
-              width={16}
-              height={16}
-              className="ml-1 rounded-sm"
-              unoptimized
-            />
-          ) : undefined
-        }
+        startContent={getToolCategoryIcon(
+          integration.integrationId,
+          { size: 16, width: 16, height: 16, showBackground: false },
+          integration.iconUrl,
+        )}
       >
-        {displayName}
+        {integration.name}
       </Chip>
     </SiteLink>
   );
@@ -420,6 +361,8 @@ export default async function PersonaPage({ params }: PageProps) {
   if (!data) {
     notFound();
   }
+
+  const integrations = await resolvePersonaIntegrations(data);
 
   const breadcrumbs = [
     { name: "Home", url: siteConfig.url },
@@ -528,8 +471,11 @@ export default async function PersonaPage({ params }: PageProps) {
             {t("personas.integrations_desc", { role: data.role })}
           </p>
           <div className="flex flex-wrap gap-3">
-            {data.relevantIntegrations.map((integration) => (
-              <IntegrationBadge key={integration} name={integration} />
+            {integrations.map((integration) => (
+              <IntegrationBadge
+                key={integration.slug}
+                integration={integration}
+              />
             ))}
           </div>
         </section>

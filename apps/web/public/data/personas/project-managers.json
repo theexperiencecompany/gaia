@@ -52,12 +52,12 @@
     "clickup",
     "slack",
     "gmail",
-    "google-calendar",
-    "google-meet",
+    "googlecalendar",
+    "googlemeet",
     "notion",
     "todoist",
     "trello",
-    "microsoft-teams"
+    "microsoft_teams"
   ],
   "faqs": [
     {

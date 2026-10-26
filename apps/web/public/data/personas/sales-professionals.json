@@ -49,14 +49,14 @@
   "relevantIntegrations": [
     "gmail",
     "hubspot",
-    "google-calendar",
+    "googlecalendar",
     "slack",
     "linkedin",
-    "google-meet",
+    "googlemeet",
     "perplexity",
-    "google-docs",
+    "googledocs",
     "todoist",
-    "google-sheets"
+    "googlesheets"
   ],
   "faqs": [
     {

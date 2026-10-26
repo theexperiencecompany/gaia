@@ -128,12 +128,14 @@ function normalizeToolSlug(slug: string): string {
 let slugIndexCache:
   | {
       readonly builtAt: number;
-      readonly index: Promise<ReadonlyMap<string, string>>;
+      readonly index: Promise<ReadonlyMap<string, CommunityIntegration>>;
     }
   | undefined;
 
-/** Normalized tool slug to live marketplace slug, rebuilt hourly rather than fetched once per page. */
-function getMarketplaceSlugIndex(): Promise<ReadonlyMap<string, string>> {
+/** Normalized tool slug to live marketplace integration, rebuilt hourly rather than fetched once per page. */
+function getMarketplaceSlugIndex(): Promise<
+  ReadonlyMap<string, CommunityIntegration>
+> {
   const now = Date.now();
   if (slugIndexCache && now - slugIndexCache.builtAt < SLUG_INDEX_TTL_MS) {
     return slugIndexCache.index;
@@ -146,7 +148,7 @@ function getMarketplaceSlugIndex(): Promise<ReadonlyMap<string, string>> {
       new Map(
         [...native, ...community].map((item) => [
           normalizeToolSlug(item.slug),
-          item.slug,
+          item,
         ]),
       ),
   );
@@ -162,6 +164,15 @@ export async function getMarketplacePath(
   toolSlug: string,
 ): Promise<string | null> {
   const index = await getMarketplaceSlugIndex();
-  const slug = index.get(normalizeToolSlug(toolSlug));
-  return slug === undefined ? null : `/marketplace/${slug}`;
+  const integration = index.get(normalizeToolSlug(toolSlug));
+  return integration === undefined ? null : `/marketplace/${integration.slug}`;
+}
+
+/** The live marketplace integration with exactly this slug, or null when the marketplace has none. */
+export async function getMarketplaceIntegration(
+  slug: string,
+): Promise<CommunityIntegration | null> {
+  const index = await getMarketplaceSlugIndex();
+  const integration = index.get(normalizeToolSlug(slug));
+  return integration?.slug === slug ? integration : null;
 }
