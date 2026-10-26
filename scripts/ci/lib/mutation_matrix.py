@@ -410,6 +410,19 @@ def main() -> int:
     failures: list[str] = []
     for module in changed:
         rel = module.removeprefix("apps/api/")
+        if not Path(module).exists():
+            print(
+                f"::notice::mutation gate: {rel} was deleted — nothing to mutate",
+                file=sys.stderr,
+            )
+            continue
+        if "/skills/builtin/" in module and "/templates/" in module:
+            print(
+                f"::notice::mutation gate: {rel} is a sandbox-executed skill asset "
+                "(excluded from mypy for the same reason) — skipping",
+                file=sys.stderr,
+            )
+            continue
         # A comment-only diff has zero possible mutants — checked before the
         # test-file lookup, and regardless of whether a test file exists.
         # This isn't just about the "no test file" failure: even a module
