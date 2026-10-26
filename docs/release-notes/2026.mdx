@@ -6,17 +6,17 @@ icon: "calendar"
 
 <Update label="Oct 26, 2026" description="API, Web, Desktop, Mobile, Bots, CLI">
 
-# Run GAIA on Your Own Machine
+# Simpler Self-Hosting & a Rebuilt Browser
 
-You can now run your own GAIA with one command and one AI key: install the CLI with `curl -fsSL https://heygaia.io/install.sh | sh`, run `gaia up`, and open the address it prints. The [walkthrough](https://docs.heygaia.io/self-hosting/walkthrough) covers it step by step. The hosted app is now paid-only: there is no free plan, and new accounts subscribe before they reach chat. GAIA also learned to do tasks in a real web browser, triage your Gmail every morning, follow standing instructions you give it, and react to your messages like a friend texting back.
+Self-hosting GAIA is now one command and one AI key: install the CLI with `curl -fsSL https://heygaia.io/install.sh | sh`, run `gaia up`, and open the address it prints. The [walkthrough](https://docs.heygaia.io/self-hosting/walkthrough) covers it step by step. The hosted app is now paid-only: there is no free plan, and new accounts subscribe before they reach chat. GAIA's web browsing was rebuilt to work in the background with live handoffs, and GAIA also learned to triage your Gmail every morning, follow standing instructions you give it, and react to your messages like a friend texting back.
 
 ## [API v0.25.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.25.0)
 
 ### Features
-- **One-Command Self-Hosting**: `gaia up` installs Docker if it's missing, pulls the published images and serves GAIA on one port, with automatic HTTPS when you pass a domain. Every AI feature runs on the single provider you configure (OpenAI, OpenRouter, Gemini, Ollama, or any OpenAI-compatible URL), uploads and the code sandbox need no cloud accounts, and a self-hosted instance has no paywalls.
+- **Simpler Self-Hosting**: `gaia up` replaces the old setup wizard. It installs Docker if it's missing, pulls the published images and serves GAIA on one port, with automatic HTTPS when you pass a domain. Every AI feature runs on the single provider you configure (OpenAI, OpenRouter, Gemini, Ollama, or any OpenAI-compatible URL), uploads and the code sandbox need no cloud accounts, and a self-hosted instance has no paywalls.
 - **Invite Your Household or Team**: On a self-hosted instance the first account is the admin, who can create single-use invite links. Each person gets their own private GAIA, and you can bring your own Composio key for integrations.
 - **Paid-Only GAIA**: Hosted GAIA no longer has a free plan. Without an active subscription you can't chat on any surface, run or enable workflows, or link a bot. New users answer two questions, pick a plan and pay, choose where GAIA texts them, and land in a "Getting started" conversation.
-- **Agentic Web Browsing**: GAIA can do tasks in a real web browser, from the web app or a bot. Each step shows as a card with a photo, the run works in the background while the chat keeps going, and at a login, CAPTCHA or payment you get a live view and the run waits until you say you're done. Stop works from every surface.
+- **A Rebuilt Browser Agent**: Browser tasks were rebuilt and work from the web app or a bot. Each step shows as a card with a photo, the run works in the background while the chat keeps going, and at a login, CAPTCHA or payment you get a live view and the run waits until you say you're done. Stop works from every surface.
 - **The Inbox Desk**: Once you connect Gmail, a tracked todo triages your mail every morning: it opens a sub-todo for each thread that needs you, saves reply drafts and sends you a briefing. It replaces Inbox Triage, and feedback like "stop showing me newsletters" becomes a standing rule it follows from then on.
 - **Standing Instructions**: Give GAIA instructions for every conversation or for one app, like "for Gmail, draft replies formally and never archive". GAIA can save one when you state a lasting preference, but nothing it writes is kept until you approve the exact text.
 - **A Texting Voice**: Replies are short and matched to how you write, and GAIA can answer with a reaction or stay quiet when an update isn't worth a message. Charts, tables and steps render as real components again. The chat agent now runs on OpenAI's gpt-5.6-luna on every plan.
