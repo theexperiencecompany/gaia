@@ -882,14 +882,7 @@ class TestAinvokeLlm:
     async def test_a_malformed_structured_reply_reaches_the_fallback_lane(
         self, mock_log: MagicMock
     ) -> None:
-        """A prose reply must cross lanes instead of surfacing as an error.
-
-        Regression: GAIA-BACKEND-40J (EpisodeSummary) and GAIA-BACKEND-434
-        (FollowUpActions) retried on the tool-calling lane and then failed,
-        because the error was retryable but not fallback-able. The fallback's
-        native JSON mode cannot answer in prose, so crossing lanes removes the
-        class rather than resampling it.
-        """
+        """A prose reply crosses lanes: the fallback's JSON mode cannot answer in prose."""
         primary = self._runnable(
             side_effect=MalformedStructuredOutputError(
                 "EpisodeSummary: reply made no EpisodeSummary tool call",
