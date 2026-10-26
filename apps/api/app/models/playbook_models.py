@@ -30,7 +30,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Annotated, Any, Self, TypeGuard, cast
+from typing import Annotated, Any, Self, TypedDict, TypeGuard, cast
 import uuid
 
 from pydantic import (
@@ -250,12 +250,12 @@ class TimeSlot(BaseModel):
         return value
 
 
-def is_time_slot(value: object) -> TypeGuard[Mapping[str, Any]]:
+def is_time_slot(value: object) -> TypeGuard[Mapping[str, object]]:
     """Whether a value is a time placeholder with its layout."""
     return isinstance(value, Mapping) and TIME_KEY in value
 
 
-def is_ask_slot(value: object) -> TypeGuard[Mapping[str, Any]]:
+def is_ask_slot(value: object) -> TypeGuard[Mapping[str, object]]:
     """Whether a value stands for text a model writes, rather than being data.
 
     A ``TypeGuard`` rather than a plain ``bool`` so the callers that go on to
@@ -473,14 +473,22 @@ class ForEachStep(_CallStep):
         return node
 
 
+class _ForEachMarker(TypedDict):
+    """The one key that makes a raw call a repeating one."""
+
+    for_each: object
+
+
 def _call_shape(value: object) -> str:
     """Which call variant a value is: the one that carries ``for_each``."""
     if isinstance(value, ForEachStep):
         return "for_each"
     if isinstance(value, ToolStep):
         return "tool"
-    if isinstance(value, Mapping) and value.get("for_each") is not None:
-        return "for_each"
+    if isinstance(value, Mapping):
+        marker: _ForEachMarker = cast(_ForEachMarker, value)
+        if "for_each" in marker and marker["for_each"] is not None:
+            return "for_each"
     return "tool"
 
 

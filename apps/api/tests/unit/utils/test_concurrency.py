@@ -13,10 +13,10 @@ from contextvars import ContextVar
 
 import pytest
 
+from app.utils import concurrency
 from app.utils.concurrency import (
     ContextThreadPoolExecutor,
     capture_running_loop,
-    reset_captured_loop,
     run_on_captured_loop,
 )
 
@@ -24,9 +24,9 @@ from app.utils.concurrency import (
 @pytest.fixture(autouse=True)
 def _isolate_captured_loop():
     """Capture is process-global; clear it around every test so none leaks."""
-    reset_captured_loop()
+    concurrency._captured_loop = None
     yield
-    reset_captured_loop()
+    concurrency._captured_loop = None
 
 
 async def _echo(value: str) -> str:
