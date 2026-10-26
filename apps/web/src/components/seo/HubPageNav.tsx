@@ -1,27 +1,35 @@
 import Link from "next/link";
 import { SiteLink } from "@/components/seo/SiteLink";
-import { type HubSection, hubPagePath } from "@/lib/hubPagination";
+import { hubPagePath } from "@/lib/hubPagination";
 
 const NAV_ITEM_CLASS =
-  "flex h-8 min-w-8 items-center justify-center rounded-lg px-3 text-sm font-medium transition";
+  "flex h-8 min-w-8 items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-medium transition";
 
-/** Jump links to the sections rendered on this hub page. */
-export function HubSectionNav<T>({
+export interface HubIndexEntry {
+  /** Fragment id of the group's section on the hub. */
+  readonly id: string;
+  readonly label: string;
+  readonly count: number;
+}
+
+/** Jump links to a hub's groups, each with how many pages it holds. */
+export function HubIndex({
   label,
-  sections,
+  entries,
 }: {
   readonly label: string;
-  readonly sections: readonly HubSection<T>[];
+  readonly entries: readonly HubIndexEntry[];
 }) {
   return (
     <nav aria-label={label} className="mb-12 flex flex-wrap gap-2">
-      {sections.map((section) => (
+      {entries.map((entry) => (
         <Link
-          key={section.id}
-          href={`#${section.id}`}
-          className={`${NAV_ITEM_CLASS} bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-white`}
+          key={entry.id}
+          href={`#${entry.id}`}
+          className={`${NAV_ITEM_CLASS} rounded-full bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white`}
         >
-          {section.label}
+          {entry.label}
+          <span className="text-zinc-500">{entry.count}</span>
         </Link>
       ))}
     </nav>

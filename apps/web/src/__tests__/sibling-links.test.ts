@@ -4,7 +4,8 @@ import { describe, expect, it } from "vitest";
 
 import BlogPostPage from "@/app/[locale]/(landing)/blog/[slug]/page";
 import { getAllCombos } from "@/features/integrations/data/combosData";
-import { relatedCombos } from "@/features/integrations/lib/relatedCombos";
+import { comboAppsOf } from "@/features/integrations/lib/comboApps";
+import { relatedComboRows } from "@/features/integrations/lib/relatedCombos";
 import { getRelatedPersonas } from "@/features/personas/data/getTranslatedPersona";
 import { getAllPersonaSlugs } from "@/features/personas/data/personasData";
 import { getAllBlogSlugs } from "@/lib/blog";
@@ -65,12 +66,14 @@ describe("sibling links", () => {
     const combos = await getAllCombos();
     const linksFrom = new Map<string, string[]>();
     for (const combo of combos) {
-      const related = relatedCombos(combo, combos);
-      const apps = [combo.toolASlug, combo.toolBSlug];
-      for (const other of related) {
-        expect(
-          apps.includes(other.toolASlug) || apps.includes(other.toolBSlug),
-        ).toBe(true);
+      const rows = relatedComboRows(combo, combos);
+      const related = rows.flatMap((row) => row.combos);
+      for (const row of rows) {
+        for (const other of row.combos) {
+          expect(comboAppsOf(other).map((app) => app.slug)).toContain(
+            row.app.slug,
+          );
+        }
       }
       linksFrom.set(
         combo.slug,

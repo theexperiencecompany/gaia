@@ -11,9 +11,7 @@
     "view_comparisons": "View head-to-head comparisons",
     "get_started": "Get started",
     "docs_guides": "Guides in the Docs",
-    "section_nav_label": "Jump to a section",
-    "pagination_label": "Pages",
-    "page_label": "Page {page}"
+    "section_nav_label": "Jump to a section"
   },
   "alternatives": {
     "breadcrumb": "Alternatives",
@@ -75,8 +73,11 @@
     "hub_subtitle": "Honest, detailed comparisons to help you choose the right AI productivity tool. See where GAIA excels and where others might fit better.",
     "hub_meta_title": "AI Assistant Comparisons: GAIA vs ChatGPT, Motion, and More",
     "hub_meta_description": "Honest, detailed comparisons of GAIA with ChatGPT, Gemini, Claude, Motion, Zapier, Reclaim and more, so you can pick the right AI productivity tool.",
-    "hub_page_meta_title": "AI Assistant Comparisons: Page {page} of {total}",
-    "hub_page_meta_description": "Page {page} of {total} of GAIA's head-to-head comparisons with AI assistants and automation, task, calendar and email tools, so you can pick the right one."
+    "all_category_comparisons": "All {count} {category} comparisons",
+    "category_page_title": "{category} Comparisons",
+    "category_page_subtitle": "How GAIA compares with {count} {category} tools, head to head, so you can see where each one fits.",
+    "category_meta_title": "{category} Comparisons: GAIA vs {count} Tools",
+    "category_meta_description": "GAIA compared head to head with {count} {category} tools: features, pricing and where each one fits, so you can pick the right one."
   },
   "automate": {
     "breadcrumb": "Automate",
@@ -98,9 +99,12 @@
     "combos_count": "{count} automation combos",
     "dont_see_your_combo": "Don't see your combo?",
     "dont_see_your_combo_desc": "Browse the full integration marketplace or connect any tool via MCP.",
-    "more_automations_with": "More automations with {toolA} and {toolB}",
-    "hub_page_meta_title": "App Automation Combos: Page {page} of {total}",
-    "hub_page_meta_description": "Page {page} of {total} of GAIA's automation directory: pairs of apps like Gmail and Slack that GAIA connects, with the workflows it runs between them."
+    "more_automations_with": "More automations with <app>{name}</app>",
+    "all_app_automations": "{count, plural, one {The # {app} automation} other {All # {app} automations}}",
+    "app_page_title": "{app} Automations",
+    "app_page_subtitle": "Every way GAIA connects {app} with your other tools, and the work it runs between them for you.",
+    "app_meta_title": "{app} Automations: {count, plural, one {# Workflow} other {# Workflows}} with GAIA",
+    "app_meta_description": "Every way GAIA connects {app} to your other tools: {count, plural, one {# automation} other {# automations}}, each with the work it runs for you and no code to write."
   },
   "glossary": {
     "breadcrumb": "Glossary",
@@ -125,8 +129,10 @@
     "category_task_management": "Task Management",
     "category_knowledge_management": "Knowledge & Notes",
     "category_development": "Development & Integrations",
-    "hub_page_meta_title": "AI and Productivity Glossary: Page {page} of {total}",
-    "hub_page_meta_description": "Page {page} of {total} of GAIA's glossary: plain-English definitions of AI agents, automation, email, calendar and productivity terms."
+    "all_category_terms": "All {count} {category} terms",
+    "category_page_subtitle": "{count} {category} terms explained in plain English, and how GAIA puts each one to work.",
+    "category_meta_title": "{category} Glossary: {count} Terms Explained",
+    "category_meta_description": "{count} {category} terms explained in plain English, with how each one powers a proactive AI assistant like GAIA."
   },
   "marketplace": {
     "breadcrumb": "Marketplace"

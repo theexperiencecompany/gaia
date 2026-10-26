@@ -1,4 +1,4 @@
-/** No landing hub page renders more than 100 internal links counting the navbar and footer, and every child stays linked from some page of its hub. */
+/** No landing hub or group page renders more than 100 internal links counting the navbar and footer, and every child stays linked from a page of its hub. */
 
 import { NextIntlClientProvider } from "next-intl";
 import type * as NextIntlServer from "next-intl/server";
@@ -40,11 +40,14 @@ const MARKETPLACE = vi.hoisted(() => {
     publishedAt: null,
     creator: null,
   });
+  const native = Array.from({ length: 40 }, (_, i) => integration("native", i));
   return {
-    native: Array.from({ length: 40 }, (_, i) => integration("native", i)),
-    community: Array.from({ length: 300 }, (_, i) =>
-      integration("community", i),
-    ),
+    native,
+    community: [
+      ...Array.from({ length: 300 }, (_, i) => integration("community", i)),
+      // A community MCP server named like a native integration, as Dropbox is.
+      { ...integration("native-mcp", 0), name: native[0].name },
+    ],
   };
 });
 
@@ -81,34 +84,46 @@ interface HubPageModule {
 const FIRST_PAGES = import.meta.glob<HubPageModule>(
   "../app/\\[locale\\]/\\(landing\\)/*/page.tsx",
 );
-const LATER_PAGES = import.meta.glob<HubPageModule>(
-  "../app/\\[locale\\]/\\(landing\\)/*/page/\\[page\\]/page.tsx",
+const GROUP_PAGES = import.meta.glob<HubPageModule>(
+  "../app/\\[locale\\]/\\(landing\\)/*/*/\\[*\\]/page.tsx",
 );
 
 interface Hub {
   readonly path: string;
+  /** The route, under the hub, of the pages holding each of its groups in full. */
+  readonly groupRoute?: string;
   /** Every page the hub owns linking to; absent for hubs that only curate. */
   readonly children?: () => Promise<string[]>;
+  /** How many distinct group pages must link each child. */
+  readonly minGroupLinks?: number;
 }
 
 const HUBS: readonly Hub[] = [
   {
     path: "/automate",
+    groupRoute: "with/[app]",
+    // A combo belongs to both its apps' pages.
+    minGroupLinks: 2,
     children: async () =>
       (await getAllComboSlugs()).map((slug) => `/automate/${slug}`),
   },
   {
     path: "/compare",
+    groupRoute: "category/[category]",
+    minGroupLinks: 1,
     children: async () =>
       (await getAllComparisonSlugs()).map((slug) => `/compare/${slug}`),
   },
   {
     path: "/learn",
+    groupRoute: "category/[category]",
+    minGroupLinks: 1,
     children: async () =>
       (await getAllGlossaryTermSlugs()).map((slug) => `/learn/${slug}`),
   },
   {
     path: "/marketplace",
+    groupRoute: "page/[page]",
     children: async () =>
       [...MARKETPLACE.native, ...MARKETPLACE.community].map(
         (integration) => `/marketplace/${integration.slug}`,
@@ -143,15 +158,22 @@ function renderHtml(tree: ReactNode, locale: string): string {
   );
 }
 
+/** Links to other pages of the site, repeats included; a same-page #fragment links no other page, and the audit skips it too. */
 function internalHrefs(html: string): string[] {
   return [...html.matchAll(/<a\b[^>]*?\shref="([^"]+)"/g)]
     .map((match) => match[1])
     .filter(
       (href) =>
-        href.startsWith("#") ||
         (href.startsWith("/") && !href.startsWith("//")) ||
         href.startsWith(siteConfig.url),
     );
+}
+
+/** Each plain-text link's visible text with where it goes. */
+function linkTexts(html: string): { text: string; href: string }[] {
+  return [
+    ...html.matchAll(/<a\b[^>]*?\shref="([^"]+)"[^>]*>([^<]*)<\/a>/g),
+  ].map((match) => ({ href: match[1], text: match[2] }));
 }
 
 /** The landing layout's navbar and footer as they prerender for a signed-out visitor. */
@@ -177,7 +199,9 @@ function chromeLinkCount(locale: string): number {
 
 interface RenderedHubPage {
   readonly label: string;
+  readonly html: string;
   readonly hrefs: readonly string[];
+  readonly isGroupPage: boolean;
 }
 
 async function renderHubPages(
@@ -185,30 +209,36 @@ async function renderHubPages(
   locale: string,
 ): Promise<RenderedHubPage[]> {
   intlRequest.locale = locale;
-  const renderPage = async (module: HubPageModule, params: Params) =>
-    internalHrefs(
-      renderHtml(
-        await resolveAsyncRoot(
-          await module.default({ params: Promise.resolve(params) }),
-        ),
-        locale,
+  const renderPage = async (
+    module: HubPageModule,
+    params: Params,
+    label: string,
+    isGroupPage: boolean,
+  ): Promise<RenderedHubPage> => {
+    const html = renderHtml(
+      await resolveAsyncRoot(
+        await module.default({ params: Promise.resolve(params) }),
       ),
+      locale,
     );
+    return { label, html, hrefs: internalHrefs(html), isGroupPage };
+  };
   const first = await FIRST_PAGES[moduleKey(hub.path, "page.tsx")]();
   const pages = [
-    {
-      label: `${locale} ${hub.path}`,
-      hrefs: await renderPage(first, { locale }),
-    },
+    await renderPage(first, { locale }, `${locale} ${hub.path}`, false),
   ];
-  const loadLater = LATER_PAGES[moduleKey(hub.path, "page/[page]/page.tsx")];
-  if (!loadLater) return pages;
-  const later = await loadLater();
-  for (const params of (await later.generateStaticParams?.()) ?? []) {
-    pages.push({
-      label: `${locale} ${hub.path} page ${params.page}`,
-      hrefs: await renderPage(later, { locale, ...params }),
-    });
+  if (!hub.groupRoute) return pages;
+  const group =
+    await GROUP_PAGES[moduleKey(hub.path, `${hub.groupRoute}/page.tsx`)]();
+  for (const params of (await group.generateStaticParams?.()) ?? []) {
+    pages.push(
+      await renderPage(
+        group,
+        { locale, ...params },
+        `${locale} ${hub.path}/${hub.groupRoute} ${Object.values(params).join("/")}`,
+        true,
+      ),
+    );
   }
   return pages;
 }
@@ -218,7 +248,7 @@ function localesOf(hub: Hub): readonly string[] {
 }
 
 describe("hub link budget", () => {
-  it(`renders at most ${MAX_INTERNAL_LINKS} internal links on every hub page, navbar and footer included`, async () => {
+  it(`renders at most ${MAX_INTERNAL_LINKS} internal links on every hub and group page, navbar and footer included`, async () => {
     const overBudget: string[] = [];
     for (const hub of HUBS) {
       for (const locale of localesOf(hub)) {
@@ -234,23 +264,45 @@ describe("hub link budget", () => {
     expect(overBudget).toEqual([]);
   }, 120_000);
 
-  it("links every child from some page of its hub", async () => {
+  it("links every child from its hub's pages, and from enough of its group pages", async () => {
     const unlinked: string[] = [];
     for (const hub of HUBS) {
       if (!hub.children) continue;
       const children = await hub.children();
       for (const locale of localesOf(hub)) {
-        const linked = new Set(
-          (await renderHubPages(hub, locale)).flatMap((page) =>
-            page.hrefs.map(stripLocalePrefix),
-          ),
-        );
-        const missing = children.filter((child) => !linked.has(child));
+        const groupPagesLinking = new Map<string, Set<string>>();
+        for (const page of await renderHubPages(hub, locale)) {
+          for (const href of page.hrefs.map(stripLocalePrefix)) {
+            const from = groupPagesLinking.get(href) ?? new Set<string>();
+            if (page.isGroupPage) from.add(page.label);
+            groupPagesLinking.set(href, from);
+          }
+        }
+        const missing = children.filter((child) => {
+          const from = groupPagesLinking.get(child);
+          return !from || from.size < (hub.minGroupLinks ?? 0);
+        });
         if (missing.length > 0) {
-          unlinked.push(`${locale} ${hub.path}: ${missing.length} unlinked`);
+          unlinked.push(`${locale} ${hub.path}: ${missing.join(", ")}`);
         }
       }
     }
     expect(unlinked).toEqual([]);
+  }, 120_000);
+
+  it("never gives two marketplace directory links the same text for different pages", async () => {
+    const hub = HUBS.find((candidate) => candidate.path === "/marketplace");
+    if (!hub) throw new Error("the marketplace hub is missing from HUBS");
+    const hrefsByText = new Map<string, Set<string>>();
+    for (const page of await renderHubPages(hub, "en")) {
+      for (const { text, href } of linkTexts(page.html)) {
+        if (!href.startsWith("/marketplace/")) continue;
+        hrefsByText.set(text, (hrefsByText.get(text) ?? new Set()).add(href));
+      }
+    }
+    const ambiguous = [...hrefsByText]
+      .filter(([, hrefs]) => hrefs.size > 1)
+      .map(([text, hrefs]) => `${text}: ${[...hrefs].join(", ")}`);
+    expect(ambiguous).toEqual([]);
   }, 120_000);
 });
