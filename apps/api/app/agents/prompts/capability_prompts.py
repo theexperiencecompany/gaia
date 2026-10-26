@@ -136,7 +136,7 @@ def _channels_line() -> str:
     return (
         f"CHANNELS: the user can text GAIA on {names} as well as the web app. Workflow results, "
         "reminders and briefs go to the one place the user is active (a linked chat app or the "
-        "GAIA app), so nothing waits for them to open a tab."
+        "GAIA app). With no chat app to reach, they wait in the GAIA app until it is opened."
     )
 
 

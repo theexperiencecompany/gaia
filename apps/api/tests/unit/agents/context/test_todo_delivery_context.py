@@ -18,7 +18,7 @@ from app.agents.context.tiers import AgentTier
 from app.agents.core.background import comms_narrator, todo_run_delivery
 from app.agents.core.background.session import ExecutorRun, RunKind, TodoRun
 from app.agents.prompts.todo_prompts import INBOX_DESK_DELIVERY_RULE
-from app.constants.todos import INBOX_DESK_TITLE
+from app.constants.todos import INBOX_DESK_RECURRENCE, INBOX_DESK_TITLE
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
@@ -33,6 +33,7 @@ DESK = TodoDocument(
     user_id=USER.user_id,
     title=INBOX_DESK_TITLE,
     notify_on_run=True,
+    recurrence=INBOX_DESK_RECURRENCE,
     canvas_content=starting_canvas(INBOX_DESK_TITLE, [INBOX_DESK_DELIVERY_RULE]),
 )
 BRIEFING = "FYI: HDFC statement for September.\nToday: dentist at 16:00."

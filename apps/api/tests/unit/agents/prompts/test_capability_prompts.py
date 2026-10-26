@@ -240,8 +240,8 @@ class TestGeneratedLines:
         assert _channels_line() == (
             "CHANNELS: the user can text GAIA on Discord, Slack, Telegram, WhatsApp, iMessage as "
             "well as the web app. Workflow results, reminders and briefs go to the one place the "
-            "user is active (a linked chat app or the GAIA app), so nothing waits for them to open "
-            "a tab."
+            "user is active (a linked chat app or the GAIA app). With no chat app to reach, they "
+            "wait in the GAIA app until it is opened."
         )
 
     def test_sections_are_separated_by_one_blank_line_under_the_header(self) -> None:

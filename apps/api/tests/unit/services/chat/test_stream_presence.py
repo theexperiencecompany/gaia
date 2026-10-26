@@ -131,8 +131,17 @@ class TestPresenceIsNotRecordedForAgentWork:
             (_context(Actor.AGENT, Trigger.SCHEDULE, EntrySurface.WORKER), "telegram"),
             (USER_TURN_ON_WEB, ConversationSource.BACKGROUND.value),
             (USER_TURN_ON_WEB, None),
+            (_context(Actor.USER, Trigger.SCHEDULE, EntrySurface.WEB), "web"),
+            (_context(Actor.AGENT, Trigger.INTERACTIVE, EntrySurface.WEB), "web"),
         ],
-        ids=["automatic_client_request", "scheduled_turn", "background_source", "unknown_source"],
+        ids=[
+            "automatic_client_request",
+            "scheduled_turn",
+            "background_source",
+            "unknown_source",
+            "user_actor_on_a_schedule",
+            "agent_actor_on_an_interactive_trigger",
+        ],
     )
     async def test_records_nothing_and_passes_no_presence(
         self, seams: _Seams, context: AnalyticsContext, source: str | None

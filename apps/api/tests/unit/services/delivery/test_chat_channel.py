@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.constants.log_tags import LogTag
 from app.constants.notifications import (
     CHANNEL_TYPE_DISCORD,
     CHANNEL_TYPE_SLACK,
@@ -321,8 +322,19 @@ class TestResolveProactiveTarget:
         assert picked == ChatChannel(
             source=ConversationSource.SLACK, platform_user_id="sl-1", basis="priority"
         )
-        warning.assert_called_once()
-        assert warning.call_args.kwargs["error_type"] == "ConnectionError"
+        warning.assert_called_once_with(
+            f"{LogTag.NOTIFICATION} Chat channel presence read failed; using priority order",
+            user_id=USER_ID,
+            error_type="ConnectionError",
+            error="redis down",
+        )
+
+    async def test_an_unreadable_presence_signal_names_no_active_surface(self) -> None:
+        with (
+            patch.object(chat_channel, "read_presence", AsyncMock(side_effect=OSError("boom"))),
+            patch.object(chat_channel.log, "warning"),
+        ):
+            assert await chat_channel._active_surface_of(USER_ID) is None
 
     async def test_reads_order_links_and_preferences_off_one_document(self) -> None:
         user = UserDocument.model_validate(

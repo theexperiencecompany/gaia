@@ -521,8 +521,19 @@ _RUNS_ON_ITS_OWN = (
 _ONE_RUN_ANSWERS = (
     "This todo runs once, to answer what the user asked when they set it up, so its "
     "result is that answer and they are waiting for it: always send it, even when the "
-    "answer is no or nothing to worry about. Of the rules below, only SILENCE does not "
-    "apply. "
+    "answer is no or nothing to worry about. "
+)
+_WHEN_TO_MESSAGE = (
+    "Message the user when the report shows something new they need to know or act on, "
+    "a decision or blocker only they can settle that they have not already been asked "
+    "about, or a result they asked to hear every time (always send that one). Anything "
+    "else is not worth a message: a routine check, a no-op, nothing new, a question they "
+    "already have, a run that only kept notes. A report that says only that nothing is "
+    "new is that too: a mail-woken run with nothing to escalate, or a run held for "
+    "quiet hours, says exactly that, and the next briefing carries the rest. Then reply "
+    "with exactly one line and "
+    f"nothing else: {SILENCE_DIRECTIVE}. There is no "
+    "message of theirs to react to, so never answer with a reaction. "
 )
 
 
@@ -555,17 +566,8 @@ def tracked_todo_delivery_note(
     return wrap_agent_payload(
         AgentTag.DELIVERY_INSTRUCTIONS,
         f'This is the result of a background run of the user\'s tracked todo "{todo_title}". '
-        f"{_ONE_RUN_ANSWERS if runs_once else _RUNS_ON_ITS_OWN}"
-        "Message the user when the report shows something new they need to know or act on, "
-        "a decision or blocker only they can settle that they have not already been asked "
-        "about, or a result they asked to hear every time (always send that one). Anything "
-        "else is not worth a message: a routine check, a no-op, nothing new, a question they "
-        "already have, a run that only kept notes. A report that says only that nothing is "
-        "new is that too: a mail-woken run with nothing to escalate, or a run held for "
-        "quiet hours, says exactly that, and the next briefing carries the rest. Then reply "
-        "with exactly one line and "
-        f"nothing else: {SILENCE_DIRECTIVE}. There is no "
-        "message of theirs to react to, so never answer with a reaction. When you do "
+        f"{_ONE_RUN_ANSWERS if runs_once else _RUNS_ON_ITS_OWN + _WHEN_TO_MESSAGE}"
+        "When you do "
         "write, it reaches their chat app as plain text with no cards: lead with what "
         "changed or what they must decide, give the concrete details they need, keep it "
         "short, never mention runs, schedules or internal ids, and never promise to follow "

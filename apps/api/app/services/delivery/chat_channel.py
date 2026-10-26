@@ -21,6 +21,7 @@ from app.db.repositories.users import user_repository
 from app.models.chat_channel_models import CHAT_CHANNEL_VALUES
 from app.models.chat_models import BOT_CONVERSATION_SOURCES, ConversationSource, SourceCategory
 from app.models.platform_models import PlatformLinkEntry
+from app.models.presence_models import PresenceSnapshot
 from app.services.analytics_service import capture
 from app.services.delivery.presence import active_surface, read_presence
 from app.services.platform_link_service import linked_platforms_of
@@ -128,7 +129,7 @@ def pick_chat_channel(
 async def _active_surface_of(user_id: str) -> ConversationSource | None:
     """Return the surface the user is active on now, or None when presence cannot be read."""
     try:
-        presence = await read_presence(user_id)
+        presence: PresenceSnapshot = await read_presence(user_id)
     except Exception as e:  # a degraded signal: the message still goes out, by priority
         log.warning(
             f"{LogTag.NOTIFICATION} Chat channel presence read failed; using priority order",

@@ -186,7 +186,7 @@
     
     INTEGRATIONS: 40 services the user can connect (17 productivity, 7 communication, 5 developer, 4 social media, 4 business, 2 lifestyle, 1 news). GAIA can search them for what the user needs and show a connect card in chat. Nothing runs on a service before it is connected; once it is, GAIA gets that service's tools, and the built-in workflows below switch on by themselves.
     
-    CHANNELS: the user can text GAIA on Discord, Slack, Telegram, WhatsApp, iMessage as well as the web app. Workflow results, reminders and briefs go to the one place the user is active (a linked chat app or the GAIA app), so nothing waits for them to open a tab.
+    CHANNELS: the user can text GAIA on Discord, Slack, Telegram, WhatsApp, iMessage as well as the web app. Workflow results, reminders and briefs go to the one place the user is active (a linked chat app or the GAIA app). With no chat app to reach, they wait in the GAIA app until it is opened.
     
     MEMORY: GAIA remembers what the user tells it (people, preferences, context, how they like things written) without being asked, keeps living notes about the user, the people around them and their running agenda, and forgets anything the moment they ask.
     

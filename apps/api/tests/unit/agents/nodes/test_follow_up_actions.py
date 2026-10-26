@@ -133,6 +133,21 @@ class TestFollowUpActionsNode:
         assert {"follow_up_actions": []} in written_values
 
     @pytest.mark.asyncio
+    async def test_a_state_without_messages_writes_empty_actions(self):
+        state = {"selected_tool_ids": [], "todos": []}
+        written_values = []
+        mock_writer = MagicMock(side_effect=written_values.append)
+
+        with patch(
+            "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
+            return_value=mock_writer,
+        ):
+            result = await follow_up_actions_node(state, _make_config(), _make_store())
+
+        assert result is state
+        assert {"follow_up_actions": []} in written_values
+
+    @pytest.mark.asyncio
     async def test_node_emits_latency_span(self):
         state = _make_state([HumanMessage(content="hi")])
         config = {

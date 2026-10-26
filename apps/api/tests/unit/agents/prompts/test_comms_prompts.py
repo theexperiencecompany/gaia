@@ -23,10 +23,11 @@ class TestTrackedTodoDeliveryNote:
         assert (
             "This todo runs once, to answer what the user asked when they set it up, so its "
             "result is that answer and they are waiting for it: always send it, even when the "
-            "answer is no or nothing to worry about. Of the rules below, only SILENCE does not "
-            "apply."
+            "answer is no or nothing to worry about. When you do write, it reaches their chat app"
         ) in once
         assert "Nobody asked for it just now" not in once
+        assert SILENCE_DIRECTIVE not in once
+        assert "not worth a message" not in once
 
     def test_the_whole_instruction_is_pinned(self) -> None:
         """Every sentence is a rule comms follows; an edit here changes what users are sent."""

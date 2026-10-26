@@ -907,6 +907,21 @@ class TestOpensThread:
 
         assert not opens_thread(history, "thanks")
 
+    def test_a_blank_turn_alone_in_history_is_the_current_blank_turn(self):
+        assert opens_thread([{"role": "user", "content": ""}], "")
+        assert opens_thread([{"role": "user", "content": None}], "")
+
+    def test_a_single_different_turn_in_history_means_the_thread_is_open(self):
+        assert not opens_thread([{"role": "user", "content": "earlier"}], "hi")
+
+    def test_two_turns_in_history_mean_the_thread_is_open_even_if_the_last_is_current(self):
+        history = [
+            {"role": "user", "content": "hi"},
+            {"role": "user", "content": "hi"},
+        ]
+
+        assert not opens_thread(history, "hi")
+
 
 class TestRecentUserMessages:
     def test_only_non_blank_user_turns_are_kept_and_the_current_turn_ends_the_list(self):

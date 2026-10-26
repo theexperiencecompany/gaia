@@ -292,6 +292,40 @@ class TestTheTargetLookup:
         assert background is None
         lookup.assert_not_called()
 
+    async def test_no_user_never_reads_the_target(self) -> None:
+        with patch.object(presence_note_module, "resolve_proactive_target") as lookup:
+            message = await presence_note_module.presence_note_message(
+                "", CAME_FROM_WEB, "telegram", "interactive", opens_thread=False
+            )
+
+        assert message is None
+        lookup.assert_not_called()
+
+    async def test_a_known_user_without_a_snapshot_never_reads_the_target(self) -> None:
+        with patch.object(presence_note_module, "resolve_proactive_target") as lookup:
+            message = await presence_note_module.presence_note_message(
+                "user-1", None, "telegram", "interactive", opens_thread=False
+            )
+
+        assert message is None
+        lookup.assert_not_called()
+
+    async def test_a_background_run_is_noted_and_worded_as_background(self) -> None:
+        """Same surface, same snapshot: only the run's mode makes it due and picks the wording."""
+        with patch.object(
+            presence_note_module, "resolve_proactive_target", return_value=TELEGRAM_RECENT
+        ):
+            background = await presence_note_module.presence_note_message(
+                "user-1", STAYED_ON_TELEGRAM, "telegram", "background", opens_thread=False
+            )
+            interactive = await presence_note_module.presence_note_message(
+                "user-1", STAYED_ON_TELEGRAM, "telegram", "interactive", opens_thread=False
+            )
+
+        assert interactive is None
+        assert background is not None
+        assert text_of(background).startswith("[User presence: not in a chat with you right now.")
+
     async def test_a_switch_turn_reads_it_once(self) -> None:
         with patch.object(
             presence_note_module, "resolve_proactive_target", return_value=TELEGRAM_RECENT
@@ -302,6 +336,38 @@ class TestTheTargetLookup:
 
         assert message is not None
         lookup.assert_awaited_once_with("user-1")
+
+
+class TestComms:
+    async def test_the_scopes_execution_mode_reaches_the_note(self) -> None:
+        with (
+            patch.object(
+                messages_module,
+                "assemble_context",
+                AsyncMock(
+                    return_value=AssembledContext(
+                        stable=SystemMessage(content="ctx"), volatile=None
+                    )
+                ),
+            ),
+            patch.object(
+                messages_module, "presence_note_message", AsyncMock(return_value=None)
+            ) as note,
+        ):
+            await messages_module.construct_langchain_messages(
+                query="hi",
+                scope=messages_module.MessageScope(
+                    user_id="user-1",
+                    source="telegram",
+                    presence=STAYED_ON_TELEGRAM,
+                    opens_thread=False,
+                    execution_mode="background",
+                ),
+            )
+
+        note.assert_awaited_once_with(
+            "user-1", STAYED_ON_TELEGRAM, "telegram", "background", opens_thread=False
+        )
 
 
 class TestAConversationsFirstTurn:

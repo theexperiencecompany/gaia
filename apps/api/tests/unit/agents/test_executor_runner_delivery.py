@@ -349,8 +349,12 @@ class TestWorkflowResultReachesThePlatformDelivery:
             ),
             patch.object(rd, "_safe_inline_follow_ups", new_callable=AsyncMock, return_value=[]),
             patch.object(rd, "update_messages", new_callable=AsyncMock),
-            patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
-            patch.object(rd, "resolve_proactive_target", AsyncMock(return_value=NO_CHAT_APP)),
+            patch.object(
+                rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None
+            ) as conversation_source,
+            patch.object(
+                rd, "resolve_proactive_target", AsyncMock(return_value=NO_CHAT_APP)
+            ) as resolve_target,
             patch.object(rd, "deliver_result_to_platforms", new_callable=AsyncMock) as deliver,
             patch.object(rd, "_dispatch_workflow_notification", new_callable=AsyncMock) as notify,
         ):
@@ -358,6 +362,8 @@ class TestWorkflowResultReachesThePlatformDelivery:
                 _run(workflow=True), result_text="done", result_type="final", tool_data=None
             )
 
+        conversation_source.assert_awaited_once_with("conv-1", USER_ID)
+        resolve_target.assert_awaited_once_with(USER_ID)
         deliver.assert_awaited_once()
         kwargs = deliver.await_args.kwargs
         assert kwargs["user"] == AuthenticatedUser(user_id=USER_ID)

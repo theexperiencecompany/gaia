@@ -1,6 +1,7 @@
 """Where the user is: their inbound stamps per surface, and what each run reads off them."""
 
 from datetime import UTC, datetime
+from unittest.mock import MagicMock, patch
 
 import fakeredis.aioredis
 
@@ -10,6 +11,7 @@ from app.constants.notifications import (
 )
 from app.models.chat_models import ConversationSource
 from app.models.presence_models import PresenceSnapshot
+from app.services.delivery import presence as presence_module
 from app.services.delivery.presence import (
     active_surface,
     previous_surface,
@@ -81,6 +83,50 @@ class TestRecordTurnPresence:
         assert before["last_seen"] == {"discord": NOW - 30}
 
 
+class TestRecordTurnPresenceStorage:
+    async def test_the_reads_and_writes_run_in_one_transaction(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        with patch.object(fake_redis, "pipeline", wraps=fake_redis.pipeline) as pipeline:
+            await record_turn_presence(USER_ID, ConversationSource.TELEGRAM)
+
+        pipeline.assert_called_once_with(transaction=True)
+
+    async def test_the_snapshot_is_captured_at_the_stamped_now(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        with patch.object(presence_module, "_now_epoch", return_value=NOW):
+            before = await record_turn_presence(USER_ID, ConversationSource.TELEGRAM)
+
+        assert before["captured_at"] == NOW
+        assert await fake_redis.hgetall(KEY) == {"telegram": str(NOW)}
+
+    async def test_the_key_is_kept_for_exactly_thirty_days(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        await record_turn_presence(USER_ID, ConversationSource.WEB)
+
+        assert 2_592_000 - 5 <= await fake_redis.ttl(KEY) <= 2_592_000
+
+    async def test_the_active_window_is_exactly_three_hours(self) -> None:
+        assert WINDOW == 10_800
+
+
+class TestNow:
+    def test_now_is_read_in_utc(self) -> None:
+        clock = MagicMock()
+        clock.now.return_value = datetime(2026, 10, 24, 17, 2, tzinfo=UTC)
+
+        with patch.object(presence_module, "datetime", clock):
+            assert presence_module._now_epoch() == _epoch_of(2026, 10, 24, 17, 2)
+
+        clock.now.assert_called_once_with(UTC)
+
+
+def _epoch_of(year: int, month: int, day: int, hour: int, minute: int) -> int:
+    return int(datetime(year, month, day, hour, minute, tzinfo=UTC).timestamp())
+
+
 class TestReadPresence:
     async def test_reads_the_users_stamps(self, fake_redis: fakeredis.aioredis.FakeRedis) -> None:
         await fake_redis.hset(KEY, mapping={"whatsapp": str(NOW - 30), "web": str(NOW - 60)})
@@ -88,6 +134,14 @@ class TestReadPresence:
         snapshot = await read_presence(USER_ID)
 
         assert snapshot["last_seen"] == {"whatsapp": NOW - 30, "web": NOW - 60}
+
+    async def test_the_snapshot_is_captured_at_now(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        with patch.object(presence_module, "_now_epoch", return_value=NOW):
+            snapshot = await read_presence(USER_ID)
+
+        assert snapshot["captured_at"] == NOW
 
     async def test_an_unknown_user_reads_empty(
         self, fake_redis: fakeredis.aioredis.FakeRedis

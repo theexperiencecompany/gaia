@@ -442,12 +442,10 @@ def _inherit_from_parent_configurable(
 def opens_thread(history: list[MessageDict], current: str) -> bool:
     """Whether this turn starts its conversation: no turn precedes it in the history."""
     # Clients usually append the current turn to history already; it is not a prior one.
-    prior = (
-        history[:-1]
-        if history and (history[-1]["content"] or "").strip() == current.strip()
-        else history
-    )
-    return not prior
+    if not history:
+        return True
+    latest: MessageDict = history[-1]
+    return len(history) == 1 and (latest["content"] or "").strip() == current.strip()
 
 
 def recent_user_messages(history: list[MessageDict], current: str) -> list[str]:

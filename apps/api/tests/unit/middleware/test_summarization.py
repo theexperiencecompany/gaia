@@ -248,6 +248,24 @@ async def test_archive_writes_the_history_and_returns_the_sandbox_path(
     assert [entry["content"] for entry in json.loads(captured["content"])] == ["m0", "m1", "m2"]
 
 
+async def test_archive_of_a_state_without_messages_archives_an_empty_history(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    async def fake_write(
+        *, user_id: str, conversation_id: str, relative_path: str, content: str
+    ) -> tuple[str, str]:
+        captured["content"] = content
+        return "/mnt/jfs/x", f"/workspace/sessions/{conversation_id}/{relative_path}"
+
+    monkeypatch.setattr(summarization_module, "write_session_file", fake_write)
+    with _graph_config(user_id="u1", thread_id="c1"):
+        await _middleware()._archive({})
+
+    assert json.loads(captured["content"]) == []
+
+
 async def test_archive_prefers_the_vfs_session_over_the_thread(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -20,6 +20,7 @@ from app.services.delivery.chat_channel import ChatChannel, InApp, ProactiveTarg
 from app.tasks.reminder_tasks import (
     _deliver_reminder_to_platforms,
     _execute_static_reminder,
+    _lands_in_source_chat,
     _reminder_result_text,
     execute_reminder_by_agent,
 )
@@ -608,3 +609,67 @@ class TestAReminderGoesToTheOnePlaceTheUserIsActive:
 
         into_chat.assert_awaited_once()
         dm.assert_not_awaited()
+
+    async def test_no_chat_app_lands_in_a_chat_app_source_chat_without_reading_its_source(
+        self, target: AsyncMock
+    ) -> None:
+        """No chat app is linked, so the source chat is the only chat there is, whatever it was."""
+        into_chat, dm = await self._fire(
+            target, InApp(reason="no_chat_app"), set_in=ConversationSource.TELEGRAM
+        )
+
+        into_chat.assert_awaited_once()
+        dm.assert_not_awaited()
+
+
+class TestLandsInSourceChat:
+    async def test_the_source_is_read_for_the_conversation_and_its_owner(self) -> None:
+        with patch(
+            f"{MODULE}.conversation_repository.get_source",
+            AsyncMock(return_value=ConversationSource.TELEGRAM),
+        ) as get_source:
+            lands = await _lands_in_source_chat(TELEGRAM_ACTIVE, "conv-42", USER_ID)
+
+        assert lands is True
+        get_source.assert_awaited_once_with("conv-42", user_id=USER_ID)
+
+    @pytest.mark.parametrize(
+        "target", [TELEGRAM_BY_ORDER, InApp(reason="no_chat_app")], ids=["priority", "no_chat_app"]
+    )
+    async def test_a_target_not_chosen_by_activity_lands_without_reading_the_source(
+        self, target: ProactiveTarget
+    ) -> None:
+        with patch(f"{MODULE}.conversation_repository.get_source", AsyncMock()) as get_source:
+            lands = await _lands_in_source_chat(target, "conv-42", USER_ID)
+
+        assert lands is True
+        get_source.assert_not_awaited()
+
+    async def test_active_in_the_app_does_not_land_in_a_chat_app_source_chat(self) -> None:
+        with patch(
+            f"{MODULE}.conversation_repository.get_source",
+            AsyncMock(return_value=ConversationSource.TELEGRAM),
+        ):
+            lands = await _lands_in_source_chat(InApp(reason="active_in_app"), "conv-42", USER_ID)
+
+        assert lands is False
+
+    async def test_the_delivery_asks_about_the_reminders_own_chat_and_user(
+        self, target: AsyncMock
+    ) -> None:
+        target.return_value = TELEGRAM_ACTIVE
+        with (
+            patch(
+                f"{MODULE}.load_user_context",
+                new_callable=AsyncMock,
+                side_effect=_user_context(),
+            ),
+            patch(
+                f"{MODULE}._lands_in_source_chat", AsyncMock(return_value=False)
+            ) as lands_in_source,
+            patch(f"{MODULE}.deliver_message_to_conversation", AsyncMock()),
+            patch(f"{MODULE}.deliver_result_to_platforms", AsyncMock()),
+        ):
+            await _deliver_reminder_to_platforms(_reminder(source_conversation_id="conv-42"))
+
+        lands_in_source.assert_awaited_once_with(TELEGRAM_ACTIVE, "conv-42", USER_ID)

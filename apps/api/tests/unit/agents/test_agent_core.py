@@ -213,6 +213,38 @@ class TestCoreAgentLogic:
         assert kwargs["scope"].user_name == "Alice"
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("history", "expected"),
+        [
+            ([{"role": "user", "content": "Hello agent"}], True),
+            (
+                [
+                    {"role": "assistant", "content": "Your reminder: stretch"},
+                    {"role": "user", "content": "Hello agent"},
+                ],
+                False,
+            ),
+        ],
+        ids=["first_turn", "later_turn"],
+    )
+    async def test_scope_marks_whether_the_turn_opens_the_thread(self, history, expected):
+        patches = _common_patches()
+        with (
+            patches["construct"] as mock_construct,
+            patches["get_graph"],
+            patches["build_state"],
+            patches["build_config"],
+            patches["log"],
+        ):
+            await _core_agent_logic(
+                request=_make_request(messages=history),
+                conversation_id="conv-1",
+                user=_make_user(),
+            )
+
+        assert mock_construct.call_args.kwargs["scope"].opens_thread is expected
+
+    @pytest.mark.asyncio
     async def test_the_users_onboarding_data_reaches_build_agent_config(self):
         """Onboarding_preferences(user.get("onboarding")) is real, unmocked code in _core_agent_logic — this proves the pair it derives actually lands on the build_agent_config call (so the executor and every subagent it hands off to can inherit it), not just that extraction doesn't crash."""
         user = _make_user(

@@ -237,6 +237,7 @@ class TestABriefingThatOwnsItsForm:
 class TestAOneTimeTodoAlwaysAnswers:
     """A one-time check the user asked for was silenced when its answer was 'no'."""
 
+    @pytest.mark.regression
     async def test_a_todo_with_no_schedule_or_watch_is_written_up_as_its_answer(self) -> None:
         with _seams(todo=_todo()) as seams:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")

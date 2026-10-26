@@ -12,6 +12,7 @@ from app.agents.tools.notification_tool import (
     get_notification_preferences,
     get_notifications,
     mark_notifications_read,
+    result_is_delivered_automatically,
     search_notifications,
     send_notification,
 )
@@ -31,6 +32,7 @@ from app.models.notification.notification_models import (
     NotificationView,
 )
 from app.services.delivery.chat_channel import ChatChannel, InApp
+from tests.helpers import captured_wide_event
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -759,6 +761,60 @@ class TestSendNotificationNeverDuplicatesTheReply:
         assert result["success"] is True
         assert result["delivered_channels"] == ["whatsapp"]
 
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.notification_service")
+    async def test_a_fold_into_a_bot_chat_is_logged_with_that_chat(
+        self, mock_service: MagicMock, mock_writer_factory: MagicMock
+    ) -> None:
+        mock_writer_factory.return_value = _writer_mock()
+        mock_service.create_notification = AsyncMock(side_effect=_delivered_on_every_channel)
+
+        async with captured_wide_event() as event:
+            await send_notification.coroutine(
+                config=_chat_run_config("telegram"),
+                message="Your flight is booked",
+                title="Flight",
+                channels=["telegram", "whatsapp"],
+            )
+
+        assert event["tool"]["folded_into_reply"] == "telegram"
+
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.notification_service")
+    async def test_a_fold_into_the_app_is_logged_as_inapp(
+        self, mock_service: MagicMock, mock_writer_factory: MagicMock
+    ) -> None:
+        mock_writer_factory.return_value = _writer_mock()
+
+        async with captured_wide_event() as event:
+            await send_notification.coroutine(
+                config=_chat_run_config("web"),
+                message="Your flight is booked",
+                title="Flight",
+                channels=["inapp"],
+            )
+
+        assert event["tool"]["folded_into_reply"] == "inapp"
+
+    @pytest.mark.parametrize("source", ["telegram", "web"])
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.notification_service")
+    async def test_nothing_is_logged_as_folded_when_the_reply_channel_was_not_asked_for(
+        self, mock_service: MagicMock, mock_writer_factory: MagicMock, source: str
+    ) -> None:
+        mock_writer_factory.return_value = _writer_mock()
+        mock_service.create_notification = AsyncMock(side_effect=_delivered_on_every_channel)
+
+        async with captured_wide_event() as event:
+            await send_notification.coroutine(
+                config=_chat_run_config(source),
+                message="Your flight is booked",
+                title="Flight",
+                channels=["slack"],
+            )
+
+        assert "folded_into_reply" not in event.get("tool", {})
+
     @pytest.mark.parametrize("source", ["web", "mobile", "desktop"])
     @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.notification_service")
@@ -903,3 +959,19 @@ def _required_args(tool: Any) -> dict[str, None]:
 async def test_a_run_with_no_user_raises_instead_of_returning_a_tool_error(tool: Any) -> None:
     with pytest.raises(RunUserMissingError):
         await tool.coroutine(config={"configurable": {}}, **_required_args(tool))
+
+
+class TestResultIsDeliveredAutomatically:
+    async def test_a_background_run_bound_to_neither_workflow_nor_todo_is_not(self) -> None:
+        configurable = notification_tool_module.read_agent_configurable(
+            _chat_run_config(None, execution_mode="background")
+        )
+
+        assert await result_is_delivered_automatically(configurable) is False
+
+    async def test_an_interactive_run_is_not(self) -> None:
+        configurable = notification_tool_module.read_agent_configurable(
+            _chat_run_config(None, workflow_id="wf-1", workflow_notify_on_completion=True)
+        )
+
+        assert await result_is_delivered_automatically(configurable) is False
