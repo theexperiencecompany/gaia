@@ -24,7 +24,6 @@
     "prebuild": "npm run extract-icons && npm run extract-blog && npm run sync-wake-word-runtime",
     "predev": "npm run sync-wake-word-runtime && node scripts/clean-corrupt-dev-manifest.mjs",
     "dev": "nx next:dev --turbopack --port=${WEB_PORT:-3000}",
-    "dev:webpack": "nx next:dev",
     "build": "npm run type-check && nx next:build",
     "start": "nx next:start",
     "type": "next typegen && node ../../scripts/ts/type-check.mjs --noEmit",
