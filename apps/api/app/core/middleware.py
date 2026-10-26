@@ -164,8 +164,6 @@ def get_allowed_origins() -> list[str]:
                 "https://heygaia.io",
                 "https://www.heygaia.io",
                 "https://heygaia.app",
-                # Cloudflare/OpenNext deployment of the web app (migration target).
-                "https://cf.heygaia.io",
                 *desktop_origins,
             ]
         )

@@ -17,7 +17,7 @@ function isTranslatedRoute(pathname: string): boolean {
   return isTranslatedPath(stripLocalePrefix(pathname));
 }
 
-/** Only the production hosts are indexable; previews, workers.dev aliases and mirror domains (cf.heygaia.io) are not. */
+/** Only the production hosts are indexable; any other host the Worker is reached on (previews, aliases) is not. */
 const INDEXABLE_HOSTS = new Set(["heygaia.io", "www.heygaia.io"]);
 
 function isIndexableHost(host: string | null): boolean {

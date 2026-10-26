@@ -715,7 +715,6 @@ def test_production_cors_trusts_exactly_gaias_origins(production_profile: None) 
         "https://heygaia.io",
         "https://www.heygaia.io",
         "https://heygaia.app",
-        "https://cf.heygaia.io",
         *_DESKTOP_ORIGINS,
     ]
     assert get_allowed_origin_regex() is None
