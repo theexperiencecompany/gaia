@@ -32,7 +32,7 @@ from sentry_sdk.types import Event
 from app.config import sentry as sentry_config
 from app.config.loggers import REQUEST_LOGGER_NAME
 from app.config.sentry import _make_sentry_loguru_sink
-from shared.py.logging import _InterceptHandler, env_context
+from shared.py.logging import MCP_USE_LOGGER_DISPLAY_NAME, _InterceptHandler, env_context
 from shared.py.wide_events import (
     BACKGROUND_LOGGER_NAME,
     BOUNDARY_FAILURE_MESSAGE,
@@ -240,14 +240,26 @@ def test_a_library_error_log_reaches_sentry_exactly_once(sentry_events: list[Eve
 
 
 @pytest.mark.regression
-async def test_an_unreachable_mcp_server_leaves_the_report_to_gaia(
+async def test_an_unreachable_mcp_server_reports_once_not_per_transport(
     sentry_events: list[Event],
 ) -> None:
-    """mcp_use logs each failed transport attempt, then raises to MCPClient.connect, which reports it."""
+    """mcp_use logs a line per transport attempt and per failed session task.
+
+    MCPClient.connect re-reports the failure with the integration id, so the
+    transport lines are duplicates and are dropped. The session-task line is
+    kept: the same message is also how a live session dies, and nothing in app/
+    reports that, so dropping it would silence a real failure.
+    """
     with pytest.raises(httpx.ConnectError):
         await HttpConnector(f"http://127.0.0.1:{pick_free_port()}/mcp").connect()
 
-    assert sentry_events == []
+    messages = [
+        str(event.get("message") or event.get("logentry", {}).get("message", ""))
+        for event in sentry_events
+    ]
+    assert len(sentry_events) == 1, messages
+    assert "transport" not in messages[0].lower()
+    assert "SseConnectionManager" in messages[0]
 
 
 @pytest.mark.regression
@@ -307,3 +319,35 @@ def test_only_production_samples_traces_and_profiles(
     global_scope.set_client(None)
 
     assert (options["traces_sample_rate"], options["profiles_sample_rate"]) == (rate, rate)
+
+
+@pytest.mark.regression
+def test_an_mcp_connect_duplicate_does_not_reach_sentry() -> None:
+    """MCPClient.connect reports the same failure with the integration id."""
+    cap_msg, cap_exc, _scope = _run_sink(
+        _record(
+            message="MCP protocol error during initialization: code=-32601 message='Method not found'",
+            logger_name=MCP_USE_LOGGER_DISPLAY_NAME,
+        )
+    )
+
+    cap_msg.assert_not_called()
+    cap_exc.assert_not_called()
+
+
+@pytest.mark.regression
+def test_an_mcp_background_session_error_still_reaches_sentry() -> None:
+    """The library's own task failure has no caller in app/ to report it.
+
+    Regression guard for the blanket skip this sink used to have: nothing in
+    app/ catches the SseConnectionManager task, so dropping it would make a dead
+    MCP session invisible instead of noisy.
+    """
+    cap_msg, _cap_exc, _scope = _run_sink(
+        _record(
+            message="Error in SseConnectionManager task: unhandled errors in a TaskGroup",
+            logger_name=MCP_USE_LOGGER_DISPLAY_NAME,
+        )
+    )
+
+    cap_msg.assert_called_once()

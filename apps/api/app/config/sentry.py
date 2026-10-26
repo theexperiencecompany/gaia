@@ -58,9 +58,21 @@ class _Message(Protocol):
 # full wide event in Loki via trace_id when the identifying detail is needed.
 _PII_KEYS = frozenset({"client_ip", "email", "user_agent", "user_email"})
 
-# Libraries that log an error, then raise it to a caller that reports it with context:
-# ArqIntegration reports arq job failures, MCPClient.connect reports mcp_use connect failures.
-_REPORTED_BY_CALLER_LOGGERS = frozenset({ARQ_LOGGER_DISPLAY_NAME, MCP_USE_LOGGER_DISPLAY_NAME})
+# ARQ logs a job failure from outside the job's context; ArqIntegration reports it
+# itself, with the job's own trace, so the library's line cannot be deduped and is dropped.
+_REPORTED_BY_CALLER_LOGGERS = frozenset({ARQ_LOGGER_DISPLAY_NAME})
+
+# mcp_use logs each failed connect attempt before raising to MCPClient.connect, which
+# reports it with the integration id. Only those lines are duplicates: the library also
+# logs from its own background session task ("Error in SseConnectionManager task"), and
+# nothing in app/ re-reports that, so a blanket skip would silence it.
+_MCP_USE_CONNECT_DUPLICATES = (
+    "OAuth initialization failed",
+    "MCP protocol error during initialization",
+    "Failed to connect to",
+    "Both transport methods failed",
+    "Error listing tools for connector",
+)
 
 
 def _scrub_pii(extra: Mapping[str, object]) -> dict[str, object]:
@@ -137,6 +149,10 @@ def _make_sentry_loguru_sink() -> Callable[[object], None]:
 
         # The library's own line is logged outside the caller's context, so Sentry cannot dedupe it.
         if logger_name in _REPORTED_BY_CALLER_LOGGERS:
+            return
+        if logger_name == MCP_USE_LOGGER_DISPLAY_NAME and str(record["message"]).startswith(
+            _MCP_USE_CONNECT_DUPLICATES
+        ):
             return
 
         # The constant "task failed" line is skipped only when it carries no
