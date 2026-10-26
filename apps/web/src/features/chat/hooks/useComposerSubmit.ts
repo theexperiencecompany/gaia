@@ -90,8 +90,9 @@ export function useComposerSubmit({
       selectedWorkflow,
       selectedCalendarEvent,
       replyToMessage,
+    }).catch((error) => {
+      console.error("Chat send failed", error);
     });
-
     clearInputText();
     clearAllFiles();
     clearToolSelection();

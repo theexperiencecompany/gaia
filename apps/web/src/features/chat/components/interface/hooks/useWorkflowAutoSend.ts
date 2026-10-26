@@ -50,6 +50,8 @@ export const useWorkflowAutoSend = (): void => {
         selectedTool: null,
         selectedToolCategory: null,
         conversationId: null,
+      }).catch((error) => {
+        console.error("Workflow auto-send failed", error);
       });
     }, 0);
 
