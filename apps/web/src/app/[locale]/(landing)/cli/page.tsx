@@ -4,6 +4,7 @@ import {
   generateBreadcrumbSchema,
   generateFAQSchema,
   generatePageMetadata,
+  generateProductSchema,
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
@@ -45,7 +46,12 @@ export default function InstallPage() {
   return (
     <>
       <JsonLd
-        data={[webPageSchema, breadcrumbSchema, generateFAQSchema(CLI_FAQS)]}
+        data={[
+          webPageSchema,
+          breadcrumbSchema,
+          generateFAQSchema(CLI_FAQS),
+          generateProductSchema(),
+        ]}
       />
       <InstallPageClient />
     </>

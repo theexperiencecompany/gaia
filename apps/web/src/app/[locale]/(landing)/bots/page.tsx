@@ -6,6 +6,7 @@ import {
   generateBreadcrumbSchema,
   generateFAQSchema,
   generatePageMetadata,
+  generateProductSchema,
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
@@ -48,7 +49,12 @@ export default function Bots() {
   return (
     <>
       <JsonLd
-        data={[webPageSchema, breadcrumbSchema, generateFAQSchema(BOTS_FAQS)]}
+        data={[
+          webPageSchema,
+          breadcrumbSchema,
+          generateFAQSchema(BOTS_FAQS),
+          generateProductSchema(),
+        ]}
       />
       <BotsPage />
     </>
