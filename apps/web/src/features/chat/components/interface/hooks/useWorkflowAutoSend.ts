@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-
+import { sendMessage } from "@/features/chat/stream/sendMessage";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
-import { useSendMessage } from "@/hooks/useSendMessage";
 import { useComposerStore } from "@/stores/composerStore";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 
@@ -16,7 +15,6 @@ import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
  * ChatWithMessages switch (hasMessages flipping true), which would reset the once-only guard (autoSendFiredRef) and fire twice.
  */
 export const useWorkflowAutoSend = (): void => {
-  const sendMessage = useSendMessage();
   const selectedWorkflow = useComposerStore((s) => s.selectedWorkflow);
   const autoSend = useComposerStore((s) => s.workflowAutoSend);
   const { isPaid, isUnknown: isSubscriptionStatusUnknown } = useIsPaid();
@@ -61,7 +59,6 @@ export const useWorkflowAutoSend = (): void => {
   }, [
     selectedWorkflow,
     autoSend,
-    sendMessage,
     isPaid,
     isSubscriptionStatusUnknown,
     openUpgradeModal,

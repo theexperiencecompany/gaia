@@ -1,4 +1,3 @@
-import { useCallback } from "react";
 import { v4 as uuidv4 } from "uuid";
 
 import { turnManager } from "@/features/chat/stream/turnManager";
@@ -160,64 +159,59 @@ const placeOptimisticMessage = async (
   try {
     await db.putMessage(optimisticMessage);
   } catch (error) {
-    console.error(
-      "[useSendMessage] Failed to persist optimistic message:",
-      error,
-    );
+    console.error("[sendMessage] Failed to persist optimistic message:", error);
   }
 };
 
-export const useSendMessage = () => {
-  return useCallback(
-    async (content: string, overrides?: SendMessageOverrides) => {
-      const ctx = resolveSendContext(content, overrides);
-      if (!ctx) return;
+/** Send a user message: place it optimistically, then start or steer the turn. */
+export async function sendMessage(
+  content: string,
+  overrides?: SendMessageOverrides,
+): Promise<void> {
+  const ctx = resolveSendContext(content, overrides);
+  if (!ctx) return;
 
-      trackFirstMessageMilestone();
+  trackFirstMessageMilestone();
 
-      const isoTimestamp = fetchDate();
-      const createdAt = new Date(isoTimestamp);
-      const optimisticId = uuidv4();
+  const isoTimestamp = fetchDate();
+  const createdAt = new Date(isoTimestamp);
+  const optimisticId = uuidv4();
 
-      const userMessage: MessageType = {
-        type: "user",
-        response: ctx.content,
-        date: isoTimestamp,
-        message_id: optimisticId, // Temporary ID for optimistic UI
-        fileIds: ctx.files.map((file) => file.fileId),
-        fileData: ctx.files,
-        selectedTool: ctx.selectedTool ?? undefined,
-        toolCategory: ctx.selectedToolCategory ?? undefined,
-        selectedWorkflow: ctx.selectedWorkflow ?? undefined,
-        selectedCalendarEvent: ctx.selectedCalendarEvent ?? undefined,
-        replyToMessage: ctx.replyToMessage ?? undefined,
-      };
+  const userMessage: MessageType = {
+    type: "user",
+    response: ctx.content,
+    date: isoTimestamp,
+    message_id: optimisticId, // Temporary ID for optimistic UI
+    fileIds: ctx.files.map((file) => file.fileId),
+    fileData: ctx.files,
+    selectedTool: ctx.selectedTool ?? undefined,
+    toolCategory: ctx.selectedToolCategory ?? undefined,
+    selectedWorkflow: ctx.selectedWorkflow ?? undefined,
+    selectedCalendarEvent: ctx.selectedCalendarEvent ?? undefined,
+    replyToMessage: ctx.replyToMessage ?? undefined,
+  };
 
-      // A mid-turn send steers the live run (its bubble sends immediately);
-      // only a not-yet-created conversation still queues.
-      const canSteer =
-        ctx.conversationId != null &&
-        ctx.conversationId !== "new" &&
-        turnManager.isTurnActive(ctx.conversationId);
-      const willQueue =
-        !canSteer && turnManager.isTurnActive(ctx.conversationId);
-      await placeOptimisticMessage(ctx, optimisticId, createdAt, willQueue);
+  // A mid-turn send steers the live run (its bubble sends immediately);
+  // only a not-yet-created conversation still queues.
+  const canSteer =
+    ctx.conversationId != null &&
+    ctx.conversationId !== "new" &&
+    turnManager.isTurnActive(ctx.conversationId);
+  const willQueue = !canSteer && turnManager.isTurnActive(ctx.conversationId);
+  await placeOptimisticMessage(ctx, optimisticId, createdAt, willQueue);
 
-      const options: TurnOptions = {
-        fileData: ctx.files,
-        selectedTool: ctx.selectedTool,
-        toolCategory: ctx.selectedToolCategory,
-        selectedWorkflow: ctx.selectedWorkflow,
-        selectedCalendarEvent: ctx.selectedCalendarEvent,
-        optimisticUserId: optimisticId,
-        replyToMessage: ctx.replyToMessage,
-        conversationId: ctx.conversationId,
-        isOnboardingDemo: false,
-        isRetry: overrides?.isRetry ?? false,
-      };
+  const options: TurnOptions = {
+    fileData: ctx.files,
+    selectedTool: ctx.selectedTool,
+    toolCategory: ctx.selectedToolCategory,
+    selectedWorkflow: ctx.selectedWorkflow,
+    selectedCalendarEvent: ctx.selectedCalendarEvent,
+    optimisticUserId: optimisticId,
+    replyToMessage: ctx.replyToMessage,
+    conversationId: ctx.conversationId,
+    isOnboardingDemo: false,
+    isRetry: overrides?.isRetry ?? false,
+  };
 
-      turnManager.send({ inputText: ctx.content, userMessage, options });
-    },
-    [],
-  );
-};
+  turnManager.send({ inputText: ctx.content, userMessage, options });
+}

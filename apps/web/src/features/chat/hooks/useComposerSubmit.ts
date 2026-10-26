@@ -4,8 +4,8 @@ import type React from "react";
 
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
+import { sendMessage } from "@/features/chat/stream/sendMessage";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
-import { useSendMessage } from "@/hooks/useSendMessage";
 import {
   useComposerFiles,
   useComposerIsUploading,
@@ -52,8 +52,6 @@ export function useComposerSubmit({
   const { isPaid, isUnknown: isSubscriptionStatusUnknown } = useIsPaid();
   const openUpgradeModal = useUpgradeModalStore((s) => s.openModal);
 
-  const sendMessage = useSendMessage();
-
   const handleFormSubmit = (e?: React.FormEvent<HTMLFormElement>) => {
     if (e) e.preventDefault();
 
@@ -82,7 +80,7 @@ export function useComposerSubmit({
       openUpgradeModal(undefined, { source: "composer_submit" });
       return;
     }
-    // Note: Loading state is now set in useSendMessage AFTER user message is persisted
+    // Note: Loading state is now set in sendMessage AFTER user message is persisted
     // This ensures the loading indicator appears AFTER the user message in the UI
 
     sendMessage(inputText, {
