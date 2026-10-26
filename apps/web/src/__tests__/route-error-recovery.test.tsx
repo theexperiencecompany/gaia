@@ -3,8 +3,11 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const track = vi.fn();
+const { refresh } = vi.hoisted(() => ({ refresh: vi.fn() }));
 
 vi.mock("@/lib/analytics", () => ({ track }));
+// The retry path refreshes server components alongside reset().
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
 
 const { default: RouteError } = await import("@/components/shared/RouteError");
 const { isChunkLoadError } = await import("@/lib/chunkErrorRecovery");
