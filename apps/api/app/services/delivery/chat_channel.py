@@ -10,6 +10,7 @@ notification settings, else the GAIA app. Every proactive send path resolves
 its target here and nowhere else.
 """
 
+import asyncio
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal
@@ -120,11 +121,8 @@ def pick_chat_channel(
     return None
 
 
-async def resolve_proactive_target(user_id: str) -> ProactiveTarget:
-    """Return the one place a proactive message for user_id goes, from a single read of their document."""
-    user = await user_repository.get(user_id)
-    if user is None:
-        return InApp(reason="no_chat_app")
+async def _active_surface_of(user_id: str) -> ConversationSource | None:
+    """Return the surface the user is active on now, or None when presence cannot be read."""
     try:
         presence = await read_presence(user_id)
     except Exception as e:  # a degraded signal: the message still goes out, by priority
@@ -134,9 +132,15 @@ async def resolve_proactive_target(user_id: str) -> ProactiveTarget:
             error_type=type(e).__name__,
             error=str(e),
         )
-        active = None
-    else:
-        active = active_surface(presence, presence["captured_at"])
+        return None
+    return active_surface(presence, presence["captured_at"])
+
+
+async def resolve_proactive_target(user_id: str) -> ProactiveTarget:
+    """Return the one place a proactive message for user_id goes; the user and presence reads run together."""
+    user, active = await asyncio.gather(user_repository.get(user_id), _active_surface_of(user_id))
+    if user is None:
+        return InApp(reason="no_chat_app")
     if SourceCategory.from_source(active) is SourceCategory.UI:
         return InApp(reason="active_in_app")
     channel = pick_chat_channel(

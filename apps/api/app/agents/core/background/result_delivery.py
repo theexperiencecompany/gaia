@@ -63,7 +63,7 @@ from app.models.message_models import ReplyToMessageData
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
 from app.services.conversation_service import update_messages
-from app.services.delivery.chat_channel import resolve_proactive_target
+from app.services.delivery.chat_channel import ProactiveTarget, resolve_proactive_target
 from app.services.hil.approvals_store import get_approval
 from app.services.latency_metrics import observe_delivery_narration, observe_delivery_persist
 from app.services.platform_message_service import (
@@ -271,7 +271,12 @@ async def _narrate_and_deliver(
     """
     user_id = run.user.user_id
 
-    notification_text = await _narrate_result(run, result_text, result_type, returned_note)
+    # Narration is the slow LLM call; the routing reads, which do not depend on it, run alongside.
+    notification_text, conversation_source, proactive_target = await asyncio.gather(
+        _narrate_result(run, result_text, result_type, returned_note),
+        _get_conversation_source(run.conversation_id, user_id),
+        _workflow_proactive_target(run),
+    )
 
     # Comms may answer with a control tag instead of a message: SILENCE (deliver
     # nothing) or REACT (one-emoji ack). One event records the outcome and the
@@ -320,8 +325,6 @@ async def _narrate_and_deliver(
 
     # Follow-ups are a second LLM call: web/mobile get them after the answer, a
     # workflow run attaches them inline, and a bot reply gets none (no bot renders them).
-    conversation_source = await _get_conversation_source(run.conversation_id, user_id)
-
     if run.workflow_id and not is_react:
         follow_up_actions = await _safe_inline_follow_ups(
             result_type=result_type,
@@ -343,6 +346,7 @@ async def _narrate_and_deliver(
         await _deliver_workflow_result(
             run,
             target=target,
+            proactive_target=proactive_target,
             message_id=bot_message.message_id,
             notification_text=notification_text,
             result_type=result_type,
@@ -405,10 +409,18 @@ def _react_delivery(transport: str) -> Literal["reaction", "badge", "fallback_te
     return "badge" if transport == "websocket" else "fallback_text"
 
 
+async def _workflow_proactive_target(run: ExecutorRun) -> ProactiveTarget | None:
+    """Return where a notifying workflow run's result goes, or None for any other run."""
+    if not (run.workflow_id and run.workflow_notify_on_completion):
+        return None
+    return await resolve_proactive_target(run.user.user_id)
+
+
 async def _deliver_workflow_result(
     run: ExecutorRun,
     *,
     target: _DeliveryTarget,
+    proactive_target: ProactiveTarget | None,
     message_id: str,
     notification_text: str,
     result_type: str,
@@ -421,15 +433,7 @@ async def _deliver_workflow_result(
     # Successful, non-silent runs land in the user's real messaging-platform
     # conversations as normal bot messages (GAIA's voice, no notification
     # chrome). The badge below is a web-only heads-up.
-    if result_type != "error" and run.workflow_notify_on_completion:
-        await deliver_result_to_platforms(
-            user=run.user,
-            user_id=run.user.user_id,
-            notification_text=notification_text,
-            origin=_delivery_origin(run),
-            target=await resolve_proactive_target(run.user.user_id),
-        )
-    await _dispatch_workflow_notification(
+    in_app = _dispatch_workflow_notification(
         msg_type=result_type,
         workflow=_WorkflowRef(
             workflow_id=run.workflow_id,
@@ -438,6 +442,20 @@ async def _deliver_workflow_result(
         ),
         target=target,
         message_id=message_id,
+    )
+    if result_type == "error" or proactive_target is None:
+        await in_app
+        return
+    # The chat-app message and the in-app badge are independent sends.
+    await asyncio.gather(
+        deliver_result_to_platforms(
+            user=run.user,
+            user_id=run.user.user_id,
+            notification_text=notification_text,
+            origin=_delivery_origin(run),
+            target=proactive_target,
+        ),
+        in_app,
     )
 
 

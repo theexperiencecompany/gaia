@@ -7,6 +7,7 @@ the todo store fails is finished by a durable job, keyed by the run, never by
 running the todo again.
 """
 
+import asyncio
 from typing import NamedTuple
 
 from pydantic import BaseModel, ConfigDict
@@ -259,16 +260,20 @@ async def _narrate_and_send(
 
     A report whose form its todo's guidance sets is sent as written: comms decides only whether.
     """
-    text = await narrate_executor_result(
-        finished.result_text,
-        "result",
-        finished.conversation_id,
-        user,
-        preamble=tracked_todo_delivery_note(
-            todo.title,
-            _canvas_section(todo, CANVAS_STANDING_RULES_SECTION, STANDING_RULES_MAX_CHARS),
-            _canvas_section(todo, CANVAS_KEY_DETAILS_SECTION, DELIVERY_KEY_DETAILS_MAX_CHARS),
+    # Where it goes is looked up while comms writes it up: neither waits on the other.
+    text, target = await asyncio.gather(
+        narrate_executor_result(
+            finished.result_text,
+            "result",
+            finished.conversation_id,
+            user,
+            preamble=tracked_todo_delivery_note(
+                todo.title,
+                _canvas_section(todo, CANVAS_STANDING_RULES_SECTION, STANDING_RULES_MAX_CHARS),
+                _canvas_section(todo, CANVAS_KEY_DETAILS_SECTION, DELIVERY_KEY_DETAILS_MAX_CHARS),
+            ),
         ),
+        resolve_proactive_target(todo.user_id),
     )
     if not text:
         log.error(f"{LogTag.AGENT} todo run result narration failed", todo_id=todo.id)
@@ -295,7 +300,7 @@ async def _narrate_and_send(
         user_id=todo.user_id,
         notification_text=message,
         origin=f'tracked todo "{todo.title}" (id {todo.id})',
-        target=await resolve_proactive_target(todo.user_id),
+        target=target,
     )
     if platform is None:
         return await _send_in_app(todo, message)

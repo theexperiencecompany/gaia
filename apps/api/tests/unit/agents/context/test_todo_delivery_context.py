@@ -22,6 +22,7 @@ from app.constants.todos import INBOX_DESK_TITLE
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
+from app.services.delivery.chat_channel import InApp
 from app.services.tracked_todo_service import starting_canvas
 
 pytestmark = pytest.mark.unit
@@ -56,6 +57,12 @@ async def _delivered_request() -> HumanMessage:
         patch.object(todo_run_delivery, "todo_repository", repo),
         patch.object(todo_run_delivery, "record_run_finished", AsyncMock(return_value=True)),
         patch.object(todo_run_delivery, "capture", MagicMock()),
+        # Resolved alongside the narration: a real lookup would reach Mongo.
+        patch.object(
+            todo_run_delivery,
+            "resolve_proactive_target",
+            AsyncMock(return_value=InApp(reason="no_chat_app")),
+        ),
         patch.object(comms_narrator.GraphManager, "get_graph", AsyncMock()),
         patch.object(
             comms_narrator, "build_agent_config", AsyncMock(return_value={"configurable": {}})

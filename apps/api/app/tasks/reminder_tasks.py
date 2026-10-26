@@ -1,5 +1,7 @@
 """Reminder task handlers for static reminders only."""
 
+import asyncio
+
 from app.agents.core.background.result_delivery import deliver_message_to_conversation
 from app.agents.core.background.workflow_platform_delivery import deliver_result_to_platforms
 from app.db.repositories.conversations import conversation_repository
@@ -59,12 +61,11 @@ async def _execute_static_reminder(reminder: ReminderModel) -> None:
         actions=[],
     )
 
-    await notification_service.create_notification(notification)
-
-    # Same delivery path a finished workflow uses, framed with the reminder id so a
-    # later turn can backtrack. Best-effort — the notification above is pinned to
-    # in-app, so this is the only platform send (no double delivery).
-    await _deliver_reminder_to_platforms(reminder)
+    # Independent sends. The badge is pinned to in-app, so the platform send is the only one.
+    await asyncio.gather(
+        notification_service.create_notification(notification),
+        _deliver_reminder_to_platforms(reminder),
+    )
 
     log.info("Static reminder sent notification", reminder_id=reminder.id, user_id=reminder.user_id)
 
@@ -93,7 +94,10 @@ async def _deliver_reminder_to_platforms(reminder: ReminderModel) -> None:
     if not isinstance(reminder.payload, StaticReminderPayload) or not reminder.id:
         return
     try:
-        user = await load_user_context(reminder.user_id)
+        # Independent reads: who the user is and where they are reachable right now.
+        user, target = await asyncio.gather(
+            load_user_context(reminder.user_id), resolve_proactive_target(reminder.user_id)
+        )
         if user is None:
             log.warning(
                 "Reminder platform delivery skipped: user not found",
@@ -107,7 +111,6 @@ async def _deliver_reminder_to_platforms(reminder: ReminderModel) -> None:
             f'reminder "{title}" (id {reminder.id})' if title else f"reminder (id {reminder.id})"
         )
 
-        target = await resolve_proactive_target(reminder.user_id)
         delivered_source: ConversationSource | None = None
         if reminder.source_conversation_id and await _lands_in_source_chat(
             target, reminder.source_conversation_id, reminder.user_id

@@ -899,18 +899,22 @@ async def _notify_replay_finished(
         )
         return
     try:
+        # The in-app badge does not depend on where the chat message goes.
+        target, _ = await asyncio.gather(
+            resolve_proactive_target(workflow.user_id),
+            send_workflow_completion_notification(
+                workflow_id=workflow.id or "",
+                workflow_title=workflow.title,
+                conversation_id=conversation_id,
+                user_id=workflow.user_id,
+            ),
+        )
         await deliver_result_to_platforms(
             user=user,
             user_id=workflow.user_id,
             notification_text=text,
             origin=f'workflow "{workflow.title}" (id {workflow.id})',
-            target=await resolve_proactive_target(workflow.user_id),
-        )
-        await send_workflow_completion_notification(
-            workflow_id=workflow.id or "",
-            workflow_title=workflow.title,
-            conversation_id=conversation_id,
-            user_id=workflow.user_id,
+            target=target,
         )
     except Exception as e:
         log.warning(

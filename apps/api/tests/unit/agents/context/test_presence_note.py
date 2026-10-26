@@ -18,6 +18,7 @@ from app.models.agent_models import AgentConfigurable
 from app.models.chat_models import ConversationSource
 from app.models.presence_models import PresenceSnapshot
 from app.services.delivery.chat_channel import ChatChannel, InApp
+from app.utils import presence_utils
 
 pytestmark = pytest.mark.unit
 
@@ -183,7 +184,7 @@ class TestTheNote:
         )
 
     def test_the_window_comes_from_the_presence_constant(self) -> None:
-        with patch.object(presence_note_module, "PRESENCE_ACTIVE_WINDOW_SECONDS", 2 * 60 * 60):
+        with patch.object(presence_utils, "PRESENCE_ACTIVE_WINDOW_SECONDS", 2 * 60 * 60):
             note = presence_note(
                 CAME_FROM_WEB, "telegram", "interactive", TELEGRAM_RECENT, opens_thread=False
             )

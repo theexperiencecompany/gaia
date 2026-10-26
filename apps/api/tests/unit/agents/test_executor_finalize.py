@@ -65,6 +65,7 @@ from app.constants.log_tags import LogTag
 from app.models.agent_models import InboxEntry
 from app.models.chat_models import SourceCategory
 from app.models.user_models import AuthenticatedUser
+from app.services.delivery.chat_channel import InApp
 from app.services.hil import bridge
 from shared.py.wide_events import log, log_context
 from tests.helpers import WideEventRecorder, captured_wide_event
@@ -292,6 +293,13 @@ class TestBackgroundRunCardsSurviveTheCommsDrain:
             patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None)
         )
         stack.enter_context(patch.object(rd, "deliver_result_to_platforms", new_callable=AsyncMock))
+        stack.enter_context(
+            patch.object(
+                rd,
+                "resolve_proactive_target",
+                AsyncMock(return_value=InApp(reason="no_chat_app")),
+            )
+        )
         stack.enter_context(
             patch.object(rd, "_dispatch_workflow_notification", new_callable=AsyncMock)
         )

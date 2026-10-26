@@ -1,5 +1,6 @@
 """Picking the ONE chat platform a proactive message lands on."""
 
+import asyncio
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
@@ -250,6 +251,27 @@ class TestResolveProactiveTarget:
         empty: PresenceSnapshot = {"captured_at": _now(), "last_seen": {}}
         with patch.object(chat_channel, "read_presence", AsyncMock(return_value=empty)) as read:
             yield read
+
+    async def test_the_user_and_presence_reads_run_together(
+        self, no_recent_activity: AsyncMock
+    ) -> None:
+        """Neither read waits on the other: each completes only once both have started."""
+        both_started = asyncio.Barrier(2)
+        empty: PresenceSnapshot = {"captured_at": _now(), "last_seen": {}}
+
+        async def read_user(_user_id: str) -> UserDocument:
+            await asyncio.wait_for(both_started.wait(), timeout=1)
+            return _two_linked_user()
+
+        async def read_presence(_user_id: str) -> PresenceSnapshot:
+            await asyncio.wait_for(both_started.wait(), timeout=1)
+            return empty
+
+        no_recent_activity.side_effect = read_presence
+        with patch.object(chat_channel.user_repository, "get", side_effect=read_user):
+            target = await chat_channel.resolve_proactive_target(USER_ID)
+
+        assert isinstance(target, ChatChannel)
 
     async def test_the_platform_the_user_last_wrote_on_outranks_the_stored_order(
         self, no_recent_activity: AsyncMock
