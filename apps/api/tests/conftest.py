@@ -937,7 +937,7 @@ def _isolate_wide_event_state() -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True)
-def _fresh_redis_client() -> Iterator[None]:
+def _fresh_redis_client() -> None:
     """Give every test its own Redis client.
 
     redis-py pools connections on the loop that first uses them, and every
