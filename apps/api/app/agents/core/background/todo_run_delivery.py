@@ -1,10 +1,10 @@
 """Terminal delivery for a tracked todo's own background run.
 
-The run's conversation is a throwaway with no transport, so its result is never
-saved there: comms decides whether it is worth a message at all, the user's chat
-app gets it only if so, and activity.md records what happened either way. A step
-the todo store fails is finished by a durable job, keyed by the run, never by
-running the todo again.
+The run executes in its todo's chat, which result_delivery has already given the
+executor's report. What reaches the user's chat app is decided here: comms decides
+whether it is worth a message at all, and the chat app gets it only if so.
+activity.md records what happened either way. A step the todo store fails is
+finished by a durable job, keyed by the run, never by running the todo again.
 """
 
 import asyncio

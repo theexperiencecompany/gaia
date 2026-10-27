@@ -1431,6 +1431,33 @@ class TestTheLaneTheRunResolves:
         assert build_config.call_args.kwargs["turn"].execution_mode == "background"
         assert build_config.call_args.kwargs["turn"].active_todo_id == "todo-9"
 
+    @pytest.mark.asyncio
+    async def test_a_turn_in_a_tracked_todos_chat_is_bound_to_that_todo(self):
+        """The user is talking about this todo, live: bound to it, still interactive."""
+        patches = _common_patches()
+        with (
+            patches["construct"] as construct,
+            patches["get_graph"],
+            patches["build_state"],
+            patch(
+                "app.agents.core.agent.build_agent_config",
+                new_callable=AsyncMock,
+                return_value=_fresh_config(),
+            ) as build_config,
+            patches["log"],
+        ):
+            await _core_agent_logic(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+                options=AgentRunOptions(active_todo_id="todo-7"),
+            )
+
+        turn = build_config.call_args.kwargs["turn"]
+        assert (turn.active_todo_id, turn.execution_mode) == ("todo-7", "interactive")
+        # The comms context names the todo too, not just the config the executor inherits.
+        assert construct.call_args.kwargs["scope"].active_todo_id == "todo-7"
+
 
 class TestTheBackgroundRunsStandingAuthorization:
     """A scheduled run's human-written workflow and todo text reach the HIL judge as the turn's own words."""

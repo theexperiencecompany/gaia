@@ -43,6 +43,7 @@ from app.models.todo_models import (
 )
 from app.models.trigger_subscription_models import TriggerSubscription
 from app.services.analytics_service import capture
+from app.services.conversation_service import delete_todo_conversations
 from app.services.todos.errors import (
     ExternalRefReopenedTwiceError,
     ExternalRefTakenError,
@@ -74,6 +75,19 @@ from shared.py.analytics.catalog.todos import (
     TodosUpdated,
 )
 from shared.py.wide_events import log, spawn_logged_task
+
+
+async def _delete_todo_chats(user_id: str, todo_ids: list[str]) -> None:
+    """Delete the chats of todos just deleted; a failure leaves only unreachable chats, so it is reported, not raised."""
+    try:
+        await delete_todo_conversations(user_id, todo_ids)
+    except Exception as e:
+        log.warning(
+            "todo.chat_delete_failed",
+            todo_ids=todo_ids,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
 
 async def _get_workflow_categories_for_todos(
@@ -704,6 +718,8 @@ class TodoService:
         except Exception as e:
             log.warning("todo.index_remove_failed", todo_id=todo_id, error=str(e))
 
+        await _delete_todo_chats(user_id, [todo_id])
+
         schedule_user_todos_sync(user_id)
         capture(UserId(user_id), TodosDeleted(todo_id=todo_id))
 
@@ -783,6 +799,7 @@ class TodoService:
                     await delete_todo_embedding(todo.id)
                 except Exception as e:
                     log.warning("todo.index_remove_failed", todo_id=todo.id, error=str(e))
+            await _delete_todo_chats(user_id, [todo.id for todo in todos_to_delete])
             schedule_user_todos_sync(user_id)
             capture(UserId(user_id), TodosDeleted(count=deleted))
 

@@ -134,6 +134,7 @@ def _user_context(**fields: object) -> Callable[[str], AuthenticatedUser]:
 
 
 MODULE = "app.workers.tasks.tracked_todo_tasks"
+TODO_CHAT_ID = "todo-chat-1"
 LOAD_USER = "app.utils.auth_utils.load_user_context"
 KOLKATA = ZoneInfo("Asia/Kolkata")
 # A daytime clock: quiet hours are pinned by their own tests.
@@ -190,6 +191,15 @@ def _schedule_writes(repo: MagicMock) -> list[tuple[datetime | None, dict]]:
         (c.kwargs["expected"], c.kwargs["update"].model_dump(exclude_unset=True))
         for c in repo.update_if_scheduled_at.call_args_list
     ]
+
+
+@pytest.fixture(autouse=True)
+def todo_chat() -> Iterator[AsyncMock]:
+    """Give every run its todo's chat without Mongo; the chat's own get-or-create is tested elsewhere."""
+    with patch(
+        f"{MODULE}.get_or_create_todo_conversation", AsyncMock(return_value=TODO_CHAT_ID)
+    ) as chat:
+        yield chat
 
 
 @pytest.fixture(autouse=True)
@@ -2849,12 +2859,32 @@ class TestExecuteOnExecutor:
         task = run.await_args.args[0].task
         assert todo_prompts.INBOX_DESK_QUIET_HOURS_NOTE.format(local_time="23:00") in task
 
-    async def test_each_run_gets_a_fresh_conversation(self):
+    async def test_every_run_executes_in_the_todos_own_chat_on_a_fresh_thread(
+        self, todo_chat: AsyncMock
+    ) -> None:
+        """Regression: each run got a throwaway conversation, so nothing it did stayed for the user to open."""
         await self._execute()
-        first = self._request().conversation_id
         await self._execute()
 
-        assert self._request().conversation_id != first
+        assert [c.args for c in todo_chat.await_args_list] == [
+            (OWNER_ID, "todo-1", "Check the deploy"),
+            (OWNER_ID, "todo-1", "Check the deploy"),
+        ]
+        request = self._request()
+        assert request.conversation_id == TODO_CHAT_ID
+        # The chat is reused; the execution under it is not.
+        assert request.fresh_thread is True
+
+    async def test_a_chat_that_cannot_be_had_fails_the_run_before_it_starts(
+        self, todo_chat: AsyncMock
+    ) -> None:
+        todo_chat.side_effect = RuntimeError("mongo is down")
+
+        with pytest.raises(RuntimeError, match="mongo is down"):
+            await self._execute()
+
+        self.run.assert_not_awaited()
+        assert self._entries() == []
 
     async def test_a_failed_run_leaves_a_failure_entry_and_propagates(self):
         with pytest.raises(TimeoutError):
@@ -3186,6 +3216,8 @@ class TestResumeTrackedTodo:
         assert run.result == "resumed:todo-1"
         request = run.agent.await_args.args[0]
         assert request.conversation_id == "conv-parked"
+        # Its own thread too: a reset would drop the very thread it continues.
+        assert request.fresh_thread is False
         assert request.user is run.user
         assert request.todo_run == TodoRun(
             todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO

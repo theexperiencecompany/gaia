@@ -20,6 +20,7 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime
 
 from bson import ObjectId
+from pymongo.errors import DuplicateKeyError
 
 from app.constants.chat import (
     FOLDED_CARDS_FIELD,
@@ -49,6 +50,7 @@ from app.models.conversation_models import (
     _MessageProjectionRow,
     _SourceRow,
     _SystemGeneratedRow,
+    _TodoBindingRow,
 )
 
 _BOT_SOURCE_VALUES: list[str] = [s.value for s in BOT_CONVERSATION_SOURCES]
@@ -87,7 +89,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         """Return the user's starred conversations (projected summaries, newest first)."""
         return await self._aggregate(
             [
-                {"$match": {"user_id": user_id, "starred": True, **self._non_bot()}},
+                {"$match": {"user_id": user_id, "starred": True, **self._listed()}},
                 {"$sort": {"createdAt": -1}},
                 {"$project": _SUMMARY_PROJECTION},
             ],
@@ -628,6 +630,47 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         """Return the user's most recent conversations."""
         return await self._find({"user_id": user_id}, sort=[("createdAt", -1)], limit=limit)
 
+    async def find_todo_conversation_id(self, user_id: str, todo_id: str) -> str | None:
+        """Return the id of the chat bound to a tracked todo, or None before its first open or run."""
+        row = await self._find_one_projected(
+            {"user_id": user_id, **_todo_binding(todo_id)},
+            {"_id": 0, "conversation_id": 1},
+            _ConversationIdRow,
+        )
+        return None if row is None else row.conversation_id
+
+    async def get_todo_id(self, conversation_id: str, *, user_id: str) -> str | None:
+        """Return the tracked todo this conversation belongs to, or None for any other chat."""
+        row = await self._find_one_projected(
+            {"conversation_id": conversation_id, "user_id": user_id},
+            {"_id": 0, "todo_id": 1},
+            _TodoBindingRow,
+        )
+        return None if row is None else row.todo_id
+
+    async def try_create(self, doc: ConversationDocument) -> bool:
+        """Insert the conversation; False when a unique index already holds its key.
+
+        The partial unique index on (user_id, todo_id) admits one chat per tracked
+        todo, so the loser of a creation race learns it here instead of duplicating it.
+        """
+        try:
+            await self.create(doc)
+        except DuplicateKeyError:
+            return False
+        return True
+
+    async def delete_for_todos(self, user_id: str, todo_ids: Sequence[str]) -> list[str]:
+        """Delete the chats bound to these todos, returning their ids for checkpoint cleanup."""
+        query: dict[str, object] = {
+            "user_id": user_id,
+            "todo_id": {"$in": list(todo_ids), "$type": "string"},
+        }
+        ids = await self._distinct("conversation_id", query)
+        if ids:
+            await self._delete_many(query, scope=user_id)
+        return ids
+
     async def find_updated_since(
         self, user_id: str, items: list[ConversationSyncItem]
     ) -> list[ConversationDocument]:
@@ -676,7 +719,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         """
         rows = await self._aggregate(
             [
-                {"$match": {"user_id": user_id}},
+                # A tracked todo's chat is reached from its todo, never from search.
+                {"$match": {"user_id": user_id, "todo_id": None}},
                 {
                     "$facet": {
                         "messages": [
@@ -742,8 +786,10 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
 
     # ---- internal helpers ----
 
-    def _non_bot(self) -> dict[str, object]:
-        return {"source": {"$nin": _BOT_SOURCE_VALUES}}
+    def _listed(self) -> dict[str, object]:
+        # Bot conversations live on their platform and a tracked todo's chat on its
+        # todo: neither is listed. {todo_id: None} matches a null AND a missing field.
+        return {"source": {"$nin": _BOT_SOURCE_VALUES}, "todo_id": None}
 
     def _active_filter(self, user_id: str) -> dict[str, object]:
         # Background runs stay out of the sidebar unless one holds a live approval
@@ -765,7 +811,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                     ]
                 },
             ],
-            **self._non_bot(),
+            **self._listed(),
         }
 
     async def _set_fields(
@@ -782,6 +828,11 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
 
 
 conversation_repository = ConversationRepository()
+
+
+def _todo_binding(todo_id: str) -> dict[str, object]:
+    # $type keeps the query inside the binding index's partial filter; a bare equality is not, and scans.
+    return {"todo_id": {"$eq": todo_id, "$type": "string"}}
 
 
 def _waiting_for(message_id: str) -> dict[str, object]:

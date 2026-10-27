@@ -7,7 +7,7 @@ queueing, search indexing, tracked-todo completion routing, response mapping,
 and the ProjectService guards.
 """
 
-from collections.abc import Coroutine
+from collections.abc import Coroutine, Iterator
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
@@ -108,6 +108,15 @@ def _no_analytics():
         patch("app.services.todos.todo_bulk_service.capture"),
     ):
         yield
+
+
+@pytest.fixture(autouse=True)
+def todo_chats() -> Iterator[AsyncMock]:
+    """Record the deletes of deleted todos' chats instead of reaching Mongo for them."""
+    with patch(
+        "app.services.todos.todo_service.delete_todo_conversations", new=AsyncMock()
+    ) as deleted:
+        yield deleted
 
 
 @pytest.fixture(autouse=True)
@@ -1127,6 +1136,37 @@ class TestDeleteTodo:
 
         teardown.assert_not_awaited()
 
+    async def test_the_todos_chat_goes_with_it(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, todo_chats
+    ):
+        """Its chat is reachable only from the todo, so once the todo goes it can never be opened again."""
+        mock_todo_repo.get = AsyncMock(return_value=_make_todo_doc(todo_id=FAKE_TODO_ID))
+        mock_todo_repo.delete = AsyncMock(return_value=True)
+
+        await TodoService.delete_todo(FAKE_TODO_ID, FAKE_USER_ID)
+
+        todo_chats.assert_awaited_once_with(FAKE_USER_ID, [FAKE_TODO_ID])
+
+    async def test_a_chat_that_cannot_be_deleted_does_not_undo_the_todos_delete(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, todo_chats
+    ):
+        mock_todo_repo.get = AsyncMock(return_value=_make_todo_doc(todo_id=FAKE_TODO_ID))
+        mock_todo_repo.delete = AsyncMock(return_value=True)
+        todo_chats.side_effect = RuntimeError("mongo is down")
+
+        async with captured_wide_event() as event:
+            await TodoService.delete_todo(FAKE_TODO_ID, FAKE_USER_ID)
+
+        mock_todo_repo.delete.assert_awaited_once()
+        assert event["warnings"] == [
+            {
+                "msg": "todo.chat_delete_failed",
+                "todo_ids": [FAKE_TODO_ID],
+                "error": "mongo is down",
+                "error_type": "RuntimeError",
+            }
+        ]
+
 
 class TestDeletingAParentDeletesItsSubTodos:
     async def test_each_sub_todo_goes_through_the_single_delete_first(
@@ -1310,6 +1350,18 @@ class TestBulkDeleteClosesTriggers:
         assert order == ["teardown", "delete"]
         teardown.assert_awaited_once_with("a", FAKE_USER_ID, reason="bulk_deleted")
         canvas.assert_awaited_once_with("a")
+
+    async def test_every_deleted_todos_chat_goes_with_it(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, todo_chats
+    ):
+        mock_todo_repo.find_by_ids = AsyncMock(
+            return_value=[_make_todo_doc(todo_id="a"), _make_todo_doc(todo_id="b")]
+        )
+        mock_todo_repo.bulk_delete = AsyncMock(return_value=2)
+
+        await TodoService.bulk_delete_todos(["a", "b"], FAKE_USER_ID)
+
+        todo_chats.assert_awaited_once_with(FAKE_USER_ID, ["a", "b"])
 
     async def test_a_canvas_index_that_cannot_be_dropped_does_not_stop_the_delete(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync

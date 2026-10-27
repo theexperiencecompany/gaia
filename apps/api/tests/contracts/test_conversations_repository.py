@@ -13,6 +13,8 @@ import uuid
 
 import pytest
 
+from app.db.mongodb import indexes
+from app.db.repositories import conversations as conversations_module
 from app.db.repositories.cache import CachePolicy
 from app.db.repositories.conversations import ConversationRepository
 from app.models.chat_models import (
@@ -21,7 +23,7 @@ from app.models.chat_models import (
     SavedSubagentGroup,
     SystemPurpose,
 )
-from app.models.conversation_models import ConversationDocument
+from app.models.conversation_models import ConversationDocument, ConversationSearchResults
 
 
 def _uid() -> str:
@@ -881,6 +883,91 @@ class TestLegacyReadTolerance:
         assert fetched is not None
         tool_names = {e["tool_name"] for e in (fetched.messages[0].tool_data or [])}
         assert "old" in tool_names and "weather_data" in tool_names  # legacy field folded in
+
+
+class TestTrackedTodoChats:
+    """A tracked todo's chat: one per todo, reached only from it, never listed anywhere."""
+
+    @pytest.fixture(autouse=True)
+    async def _shipped_index(self, raw_collection) -> None:
+        await raw_collection.create_index(
+            indexes.CONVERSATION_TODO_BINDING_KEYS, **indexes.CONVERSATION_TODO_BINDING_OPTIONS
+        )
+
+    async def test_a_todos_chat_is_never_listed_starred_counted_or_searched(self, repo):
+        user = _uid()
+        chat = _doc(user_id=user, source=ConversationSource.WEB, description="normal")
+        todo_chat = _doc(user_id=user, todo_id="todo-1", description="Watch the deploy")
+        # Starring or an approval card must not pull it into the sidebar either.
+        starred_todo_chat = _doc(user_id=user, todo_id="todo-2", starred=True)
+        approval_todo_chat = _doc(
+            user_id=user,
+            todo_id="todo-3",
+            source=ConversationSource.BACKGROUND,
+            has_live_approval=True,
+        )
+        for doc in (chat, todo_chat, starred_todo_chat, approval_todo_chat):
+            await repo.create(doc)
+        await repo.append_messages(
+            todo_chat.conversation_id,
+            user_id=user,
+            messages=[MessageModel(type="bot", response="the deploy is green")],
+        )
+
+        active = await repo.list_active_summaries(user, skip=0, limit=10)
+        assert [s.conversation_id for s in active] == [chat.conversation_id]
+        assert await repo.count_active(user) == 1
+        assert await repo.list_starred_summaries(user) == []
+        assert await repo.search(user, pattern="deploy") == ConversationSearchResults()
+
+    async def test_the_chat_is_found_by_its_todo_and_the_todo_by_its_chat(self, repo):
+        user = _uid()
+        todo_chat = _doc(user_id=user, todo_id="todo-1")
+        chat = _doc(user_id=user)
+        await repo.create(todo_chat)
+        await repo.create(chat)
+
+        assert await repo.find_todo_conversation_id(user, "todo-1") == todo_chat.conversation_id
+        assert await repo.find_todo_conversation_id(user, "todo-2") is None
+        # Another user's todo of the same id is not theirs.
+        assert await repo.find_todo_conversation_id(_uid(), "todo-1") is None
+        assert await repo.get_todo_id(todo_chat.conversation_id, user_id=user) == "todo-1"
+        assert await repo.get_todo_id(chat.conversation_id, user_id=user) is None
+        assert await repo.get_todo_id(todo_chat.conversation_id, user_id=_uid()) is None
+
+    async def test_a_second_chat_for_the_same_todo_loses_the_create(self, repo):
+        user = _uid()
+        assert await repo.try_create(_doc(user_id=user, todo_id="todo-1")) is True
+        assert await repo.try_create(_doc(user_id=user, todo_id="todo-1")) is False
+        # Unbound chats and another user's chat for that todo id never collide.
+        assert await repo.try_create(_doc(user_id=user)) is True
+        assert await repo.try_create(_doc(user_id=user)) is True
+        assert await repo.try_create(_doc(user_id=_uid(), todo_id="todo-1")) is True
+
+    async def test_a_lookup_by_todo_is_served_by_the_binding_index(self, raw_collection):
+        query = {"user_id": "u1", **conversations_module._todo_binding("todo-1")}
+
+        plan = (await raw_collection.find(query).explain())["queryPlanner"]["winningPlan"]
+
+        assert indexes.CONVERSATION_TODO_BINDING_OPTIONS["name"] in str(plan)
+
+    async def test_deleting_todos_deletes_only_their_chats(self, repo):
+        user = _uid()
+        first = _doc(user_id=user, todo_id="todo-1")
+        second = _doc(user_id=user, todo_id="todo-2")
+        kept = _doc(user_id=user, todo_id="todo-3")
+        chat = _doc(user_id=user)
+        foreign = _doc(user_id=_uid(), todo_id="todo-1")
+        for doc in (first, second, kept, chat, foreign):
+            await repo.create(doc)
+
+        deleted = await repo.delete_for_todos(user, ["todo-1", "todo-2"])
+
+        assert sorted(deleted) == sorted([first.conversation_id, second.conversation_id])
+        assert await repo.exists(kept.conversation_id, user_id=user)
+        assert await repo.exists(chat.conversation_id, user_id=user)
+        assert await repo.exists(foreign.conversation_id, user_id=foreign.user_id)
+        assert await repo.delete_for_todos(user, ["todo-9"]) == []
 
 
 class TestWorkflowAndOnboarding:

@@ -340,6 +340,12 @@ class TodoCanvasResponse(BaseModel):
     activity: str
 
 
+class TodoConversationResponse(BaseModel):
+    """The tracked todo's own chat, where its runs execute; kept out of the chat list."""
+
+    conversation_id: str
+
+
 # Search
 class SearchMode(str, Enum):
     TEXT = "text"

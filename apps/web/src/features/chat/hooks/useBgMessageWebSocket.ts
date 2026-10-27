@@ -27,6 +27,8 @@ interface BgMessageEvent {
     kind?: string;
     reacts_to_message_id?: string;
     task_id?: string;
+    /** Why a run that produced no reply failed — rendered instead of an empty bubble. */
+    error?: string;
     tool_data?: TypedToolDataEntry[];
     follow_up_actions?: string[];
     replyToMessage?: {
@@ -78,6 +80,7 @@ export function useBgMessageWebSocket() {
       kind: message.kind ?? null,
       reacts_to_message_id: message.reacts_to_message_id ?? null,
       tool_data: message.tool_data ?? null,
+      error: message.error ?? null,
       follow_up_actions: message.follow_up_actions ?? null,
       replyToMessageData: message.replyToMessage ?? null,
     };

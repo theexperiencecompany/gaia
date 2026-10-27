@@ -2,7 +2,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useMemo, useRef } from "react";
 
 import { useConversation } from "@/features/chat/hooks/useConversation";
-import { useConversationList } from "@/features/chat/hooks/useConversationList";
+import { useConversationRow } from "@/features/chat/hooks/useConversationList";
 import { filterEmptyMessagePairs } from "@/features/chat/utils/messageContentUtils";
 
 interface UseChatLayoutReturn {
@@ -20,8 +20,8 @@ interface UseChatLayoutReturn {
 export const useChatLayout = (): UseChatLayoutReturn => {
   const router = useRouter();
   const { convoMessages } = useConversation();
-  const { conversations } = useConversationList();
   const { id: convoIdParam } = useParams<{ id: string }>();
+  const conversation = useConversationRow(convoIdParam);
 
   const chatRef = useRef<HTMLDivElement>(null);
   const dummySectionRef = useRef<HTMLDivElement>(null);
@@ -29,12 +29,6 @@ export const useChatLayout = (): UseChatLayoutReturn => {
   const fileUploadRef = useRef<{
     attachFiles: (files: File[]) => Promise<void>;
   } | null>(null);
-  // Find the current conversation
-  const conversation = useMemo(() => {
-    return conversations.find(
-      (convo) => convo.conversation_id === convoIdParam,
-    );
-  }, [conversations, convoIdParam]);
 
   // Check if there are any messages to determine layout
   const hasMessages = useMemo(() => {

@@ -81,6 +81,10 @@ PAUSED_TRIGGER_HOLD_TTL: Final[timedelta] = timedelta(days=30)
 # How much of a run's final report is kept in its activity.md entry.
 RUN_SUMMARY_ACTIVITY_CHARS: Final[int] = 200
 
+# A tracked todo's chat gains a message every run, so a run's report caps it at its
+# newest messages, keeping the document under MongoDB's 16MB limit.
+TODO_CONVERSATION_MAX_MESSAGES: Final[int] = 100
+
 # The durable job that finishes a run's delivery when the todo store failed it
 # in-process; keyed by the run and its undone step, so each has one job at a time.
 TODO_RUN_FINISH_TASK: Final[str] = "finish_tracked_todo_run"

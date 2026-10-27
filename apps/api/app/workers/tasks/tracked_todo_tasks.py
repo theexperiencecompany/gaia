@@ -13,7 +13,6 @@ from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 import random
 from typing import cast
-from uuid import uuid4
 
 from arq import Retry
 from arq.connections import ArqRedis
@@ -58,6 +57,7 @@ from app.models.todo_models import ExternalRefSource, TodoDocument, TodoUpdate
 from app.models.trigger_subscription_models import TriggerOrigin
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
+from app.services.conversation_service import get_or_create_todo_conversation
 from app.services.integrations.user_integrations import get_connected_integration_ids
 from app.services.notification_service import notification_service
 from app.services.todo_activity import record_activity
@@ -616,9 +616,9 @@ async def _execute_on_executor(
         local_now=datetime.now(user_tz.tzinfo),
     )
 
-    # A fresh conversation per run: runs are independent, and history must not
-    # accumulate in the checkpointer.
-    conversation_id = str(uuid4())
+    # The todo's own chat, reused by every run so the user can follow them in one
+    # place; run_todo_on_executor starts each run on an empty executor thread.
+    conversation_id = await get_or_create_todo_conversation(doc.user_id, todo_id, doc.title)
     woken_by = _woken_by(origin, coalesced)
     await record_activity(
         todo_id,
@@ -634,6 +634,7 @@ async def _execute_on_executor(
                 todo_title=doc.title,
                 task=prompt,
                 conversation_id=conversation_id,
+                fresh_thread=True,
             )
         )
     except Exception as exc:
@@ -658,8 +659,9 @@ async def resume_tracked_todo(
     """Continue a parked execution in its OWN conversation after an approval.
 
     A resume must inherit the parked run's thread — its reasoning, partial tool
-    results, and checkpoint live there. Reusing the conversation is the deliberate
-    exception to the fresh-uuid rule: resumes are human-gated and rare.
+    results, and checkpoint live there — so unlike a new run it does not reset the
+    todo chat's executor thread. If a newer run has reset it since, the resume
+    reads that run's thread instead; the receipt it carries still says what ran.
     """
     log.set(todo_id=todo_id, approval_id=approval_id)
     pool = await RedisPoolManager.get_pool()
@@ -730,6 +732,7 @@ async def _resume_holding_lock(
                 todo_title=doc.title,
                 task=message,
                 conversation_id=conversation_id,
+                fresh_thread=False,
             )
         )
         return f"resumed:{todo_id}"

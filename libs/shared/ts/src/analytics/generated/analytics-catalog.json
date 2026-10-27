@@ -7070,6 +7070,31 @@
       }
     },
     {
+      "event": "todos:chat_opened",
+      "class": "TodosChatOpened",
+      "owner": "server",
+      "domain": "todos",
+      "description": "A user opened a tracked todo's chat from the todo.",
+      "previous_names": [],
+      "budget_per_user_day": 100,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A user opened a tracked todo's chat from the todo.",
+        "properties": {
+          "todo_id": {
+            "pattern": "^[0-9a-fA-F]{24}$",
+            "title": "Todo Id",
+            "type": "string"
+          }
+        },
+        "required": ["todo_id"],
+        "title": "TodosChatOpened",
+        "type": "object"
+      }
+    },
+    {
       "event": "todos:created",
       "class": "TodosCreated",
       "owner": "server",

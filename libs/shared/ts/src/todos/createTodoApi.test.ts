@@ -50,3 +50,30 @@ describe("getAllTodos paging", () => {
     });
   });
 });
+
+describe("openTodoConversation", () => {
+  it("asks the todo's own chat endpoint and hands back its conversation", async () => {
+    const calls: Array<{ method: string; url: string }> = [];
+    async function answer<T>(url: string): Promise<T> {
+      calls.push({ method: "post", url });
+      return { conversation_id: "conv-todo" } as T;
+    }
+    const unexpected = async <T>(url: string): Promise<T> => {
+      throw new Error(`unexpected request to ${url}`);
+    };
+
+    const result = await createTodoApi({
+      get: unexpected,
+      post: answer,
+      put: unexpected,
+      patch: unexpected,
+      delete: unexpected,
+    }).openTodoConversation("todo-1");
+
+    // POST, not GET: the first open creates the chat.
+    expect(calls).toEqual([
+      { method: "post", url: "/todos/todo-1/conversation" },
+    ]);
+    expect(result).toEqual({ conversation_id: "conv-todo" });
+  });
+});

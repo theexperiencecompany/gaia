@@ -1,3 +1,4 @@
+import type { TodoConversationResponse } from "../api/generated";
 import type {
   BulkMoveRequest,
   Priority,
@@ -96,4 +97,7 @@ export interface TodoApiClient {
   // Workflow
   generateWorkflow: (todoId: string) => Promise<WorkflowGenerateResult>;
   getWorkflowStatus: (todoId: string) => Promise<WorkflowStatusResult>;
+
+  /** A tracked todo's own chat, where its runs execute — created on first open, never listed. */
+  openTodoConversation: (todoId: string) => Promise<TodoConversationResponse>;
 }

@@ -47,6 +47,7 @@ from app.constants.executor import (
 )
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.log_tags import LogTag
+from app.constants.todos import TODO_CONVERSATION_MAX_MESSAGES
 from app.constants.websocket import WEBSOCKET_BROADCAST_RETRY_DELAY_SECONDS
 from app.core.websocket_manager import websocket_manager
 from app.db.repositories.conversations import conversation_repository
@@ -115,18 +116,60 @@ async def deliver_result(
     """Narrate a finished executor run through comms, persist it, and deliver it.
 
     Returns (narrated_text, message_id); (None, None) on failure or for a tracked
-    todo's own run, which has no conversation and goes to todo delivery. A REACT
-    gives (None, message_id). The message routes over EXACTLY ONE transport
-    chosen by the conversation's source (workflow notification, bot API, or WS).
+    todo's own run, whose report stays in its todo's chat and whose message goes
+    through todo delivery. A REACT gives (None, message_id). The message routes over
+    EXACTLY ONE transport chosen by the conversation's source.
     """
     try:
         if run.todo_run is not None:
+            await _record_todo_run_report(run, result_text, result_type, tool_data)
             await deliver_todo_run_result(run, run.todo_run, result_text, result_type)
             return None, None
         return await _narrate_and_deliver(run, result_text, result_type, tool_data, returned_note)
     except Exception as e:  # delivery is best-effort, never propagates
         log.error(f"{LogTag.AGENT} Background notification delivery failed", error=str(e))
         return None, None
+
+
+async def _record_todo_run_report(
+    run: ExecutorRun,
+    result_text: str,
+    result_type: str,
+    tool_data: list[ToolDataEntry] | None,
+) -> None:
+    """Keep a tracked todo's run in its chat: the executor's own report and cards, not a retelling.
+
+    Saved under the placeholder id the live stream rendered into, then pushed so an
+    open chat swaps the placeholder for it. A failed save leaves the delivery to go
+    ahead: the user's message does not depend on the record.
+    """
+    failed = result_type == "error"
+    bot_message = MessageModel(
+        type="bot",
+        response="" if failed else result_text,
+        error=result_text if failed else None,
+        date=datetime.now(UTC).isoformat(),
+        message_id=run.render_message_id,
+        tool_data=tool_data or None,
+    )
+    if not await _save_bot_message(
+        run.conversation_id, run.user, bot_message, max_messages=TODO_CONVERSATION_MAX_MESSAGES
+    ):
+        return
+    await _broadcast_bot_message(
+        target=_DeliveryTarget(
+            user_id=run.user.user_id,
+            conversation_id=run.conversation_id,
+            task_id=run.task_id,
+            emit_task_id=True,
+            show_reply_quote=False,
+            user_message_id=None,
+            user_msg_content="",
+        ),
+        bot_message=bot_message,
+        notification_text=bot_message.response,
+        tool_data=bot_message.tool_data,
+    )
 
 
 async def persist_cancelled_run(run: ExecutorRun, tool_data: list[ToolDataEntry]) -> None:
@@ -652,9 +695,16 @@ async def _resolve_append_mode(
 
 
 async def _save_bot_message(
-    conversation_id: str, user: AuthenticatedUser, bot_message: MessageModel
+    conversation_id: str,
+    user: AuthenticatedUser,
+    bot_message: MessageModel,
+    *,
+    max_messages: int | None = None,
 ) -> bool:
-    """Append the bot message to the conversation; False when it wasn't saved."""
+    """Append the bot message to the conversation; False when it wasn't saved.
+
+    max_messages caps a conversation reused by every run at its newest messages.
+    """
     persist_start = time.perf_counter()
     try:
         await update_messages(
@@ -663,6 +713,7 @@ async def _save_bot_message(
                 messages=[bot_message],
             ),
             user=user,
+            max_messages=max_messages,
         )
     except HTTPException as e:
         if e.status_code == 404:  # conversation deleted mid-run — expected, not an error
@@ -1146,6 +1197,8 @@ async def _broadcast_bot_message(
         "date": bot_message.date,
         "kind": bot_message.kind.value,
     }
+    if bot_message.error:
+        ws_payload["error"] = bot_message.error
     # An emoji-ack renders as a reaction badge on the message it answers,
     # not a new bubble — the client needs the target GAIA message id.
     if bot_message.kind is MessageKind.EMOJI_ACK and bot_message.reacts_to_message_id:

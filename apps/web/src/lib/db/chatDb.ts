@@ -26,6 +26,8 @@ export interface IConversation {
   // Set while a background run holds a live approval here: the sidebar shows
   // the conversation for its card, and the row lights the approval dot.
   hasLiveApproval?: boolean;
+  // The tracked todo this is the chat of: opened from that todo, never listed.
+  todoId?: string | null;
   // Conversation-level artifact registry: the single source of truth for this
   // conversation's agent-written files. Messages store path references that
   // resolve against this (see FileArtifactSection / chatStore).

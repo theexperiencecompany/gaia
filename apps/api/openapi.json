@@ -3790,6 +3790,17 @@
               }
             ]
           },
+          "todo_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Todo Id"
+          },
           "updatedAt": {
             "anyOf": [
               {
@@ -4207,6 +4218,17 @@
               }
             ]
           },
+          "todo_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Todo Id"
+          },
           "updatedAt": {
             "anyOf": [
               {
@@ -4232,7 +4254,8 @@
           "messages",
           "artifacts",
           "active_stream_id",
-          "has_live_approval"
+          "has_live_approval",
+          "todo_id"
         ],
         "title": "ConversationSyncRow",
         "type": "object"
@@ -18276,6 +18299,20 @@
           "activity"
         ],
         "title": "TodoCanvasResponse",
+        "type": "object"
+      },
+      "TodoConversationResponse": {
+        "description": "The tracked todo's own chat, where its runs execute; kept out of the chat list.",
+        "properties": {
+          "conversation_id": {
+            "title": "Conversation Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation_id"
+        ],
+        "title": "TodoConversationResponse",
         "type": "object"
       },
       "TodoCounts": {
@@ -40884,6 +40921,69 @@
           }
         },
         "summary": "Get Todo Canvas",
+        "tags": [
+          "Todos"
+        ]
+      }
+    },
+    "/api/v1/todos/{todo_id}/conversation": {
+      "post": {
+        "description": "Return a tracked todo's own chat, creating it before its first run; it is never listed.",
+        "operationId": "todos_open_todo_conversation_endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "todo_id",
+            "required": true,
+            "schema": {
+              "title": "Todo Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TodoConversationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Open Todo Conversation Endpoint",
         "tags": [
           "Todos"
         ]

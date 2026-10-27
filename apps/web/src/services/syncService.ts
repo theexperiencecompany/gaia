@@ -140,6 +140,26 @@ const toTimestamp = (timestamp?: string): number => {
   return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
 };
 
+const toStoredConversation = (
+  conversation: SyncedConversation,
+  artifacts: IConversation["artifacts"],
+): IConversation => ({
+  id: conversation.conversation_id,
+  title: conversation.description || "Untitled conversation",
+  description: conversation.description ?? "",
+  starred: conversation.starred ?? false,
+  isSystemGenerated: conversation.is_system_generated ?? false,
+  systemPurpose: conversation.system_purpose ?? null,
+  isUnread: conversation.is_unread ?? false,
+  hasLiveApproval: apiRowHasLiveApproval(conversation),
+  todoId: conversation.todo_id ?? null,
+  artifacts,
+  createdAt: new Date(conversation.createdAt ?? 0),
+  updatedAt: conversation.updatedAt
+    ? new Date(conversation.updatedAt)
+    : new Date(conversation.createdAt ?? 0),
+});
+
 const identifyStaleConversations = (
   localConversations: IConversation[],
   remoteConversations: Conversation[],
@@ -220,6 +240,9 @@ const identifyDeletedConversations = (
   for (const local of localConversations) {
     // Skip if conversation exists on remote
     if (remoteIds.has(local.id)) continue;
+
+    // A tracked todo's chat is never in the remote list, by design: absent there is not deleted.
+    if (local.todoId) continue;
 
     // Skip if conversation is currently being streamed
     if (isConversationStreamingNow(local.id)) continue;
@@ -341,21 +364,10 @@ export const batchSyncConversations = async (
         // Skip syncing if streaming or pending save (e.g., after abort)
         if (shouldBlockSyncForConversation(conversationId)) return;
 
-        const mappedConversation: IConversation = {
-          id: conversationId,
-          title: conversation.description || "Untitled conversation",
-          description: conversation.description ?? "",
-          starred: conversation.starred ?? false,
-          isSystemGenerated: conversation.is_system_generated ?? false,
-          systemPurpose: conversation.system_purpose ?? null,
-          isUnread: conversation.is_unread ?? false,
-          hasLiveApproval: apiRowHasLiveApproval(conversation),
+        const mappedConversation = toStoredConversation(
+          conversation,
           artifacts,
-          createdAt: new Date(conversation.createdAt ?? 0),
-          updatedAt: conversation.updatedAt
-            ? new Date(conversation.updatedAt)
-            : new Date(conversation.createdAt ?? 0),
-        };
+        );
 
         // Refresh the runtime lookup map from the server-authoritative registry.
         // Safe from clobbering a live turn: streaming conversations are filtered
@@ -399,23 +411,7 @@ export const applySyncedConversation = async (
 
   const messages = toClientMessages(conversation.messages);
   const artifacts = fromRegistryEntries(conversation.artifacts, conversationId);
-
-  // Map conversation to IndexedDB format
-  const mappedConversation: IConversation = {
-    id: conversationId,
-    title: conversation.description || "Untitled conversation",
-    description: conversation.description ?? "",
-    starred: conversation.starred ?? false,
-    isSystemGenerated: conversation.is_system_generated ?? false,
-    systemPurpose: conversation.system_purpose ?? null,
-    isUnread: conversation.is_unread ?? false,
-    hasLiveApproval: apiRowHasLiveApproval(conversation),
-    artifacts,
-    createdAt: new Date(conversation.createdAt ?? 0),
-    updatedAt: conversation.updatedAt
-      ? new Date(conversation.updatedAt)
-      : new Date(conversation.createdAt ?? 0),
-  };
+  const mappedConversation = toStoredConversation(conversation, artifacts);
 
   // Refresh the runtime lookup map from the server-authoritative registry. The
   // store stamps session_id onto each entry so artifact fetch URLs resolve.

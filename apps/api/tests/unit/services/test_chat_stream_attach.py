@@ -375,6 +375,7 @@ class TestConsumeAgentStreamCallsTheAgent:
             source="whatsapp",
             presence={"captured_at": 1_800_000_000, "last_seen": {"web": 1}},
             usage_callback=usage_callback,
+            todo_id="todo-1",
         )
 
         with patch.object(chat_stream, "call_agent", fake_call_agent):
@@ -390,6 +391,8 @@ class TestConsumeAgentStreamCallsTheAgent:
         assert options.usage_metadata_callback is usage_callback
         assert options.source == "whatsapp"
         assert options.presence == {"captured_at": 1_800_000_000, "last_seen": {"web": 1}}
+        # Inside a tracked todo's chat the turn is bound to that todo.
+        assert options.active_todo_id == "todo-1"
 
         assert captured["ids"] == StreamMessageIds(
             stream_id="stream-1",
@@ -416,6 +419,7 @@ class TestConsumeAgentStreamAccumulatesAcrossChunks:
             source=None,
             presence=None,
             usage_callback=UsageMetadataCallbackHandler(),
+            todo_id=None,
         )
         sm = AsyncMock()
         sm.is_cancelled = AsyncMock(return_value=False)
@@ -461,8 +465,11 @@ class TestConsumeAgentStreamAccumulatesAcrossChunks:
 class TestRunChatStreamTurnDerivations:
     """_run_chat_stream derives turn state and the new-conversation flag before any collaborator runs; a wrong derivation misattributes the saved reply or picks the wrong branch."""
 
-    async def _run(self, body: MessageRequestWithHistory) -> dict[str, Any]:
+    async def _run(
+        self, body: MessageRequestWithHistory, *, todo_id: str | None = None
+    ) -> dict[str, Any]:
         seen: dict[str, Any] = {}
+        get_todo_id = AsyncMock(return_value=todo_id)
 
         async def fake_publish_init(
             body_: MessageRequestWithHistory,
@@ -504,6 +511,7 @@ class TestRunChatStreamTurnDerivations:
             patch.object(chat_stream, "capture"),
             patch.object(chat_stream, "_finalize_stream", AsyncMock()),
             patch.object(chat_stream, "_wait_for_artifact_forwarder", AsyncMock()),
+            patch.object(chat_stream.conversation_repository, "get_todo_id", get_todo_id),
             patch.object(
                 chat_stream.FileService, "attach_uploads", new_callable=AsyncMock
             ) as attach_uploads,
@@ -516,6 +524,7 @@ class TestRunChatStreamTurnDerivations:
             )
 
         seen["attach_uploads"] = attach_uploads
+        seen["get_todo_id"] = get_todo_id
         return seen
 
     async def test_a_file_turn_on_an_existing_conversation_is_attached(self) -> None:
@@ -569,3 +578,19 @@ class TestRunChatStreamTurnDerivations:
         )
 
         assert seen["is_new_conversation"] is False
+
+    async def test_a_turn_in_a_tracked_todos_chat_is_bound_to_that_todo(self) -> None:
+        """Without it a follow-up in the todo's chat had no idea which todo "this" was."""
+        seen = await self._run(
+            MessageRequestWithHistory(message="status?", messages=[], conversation_id="conv-1"),
+            todo_id="todo-1",
+        )
+
+        seen["get_todo_id"].assert_awaited_once_with("conv-1", user_id=USER_ID)
+        assert seen["turn"].todo_id == "todo-1"
+
+    async def test_a_new_conversation_is_never_looked_up_as_a_todos_chat(self) -> None:
+        seen = await self._run(MessageRequestWithHistory(message="hi", messages=[]))
+
+        seen["get_todo_id"].assert_not_awaited()
+        assert seen["turn"].todo_id is None

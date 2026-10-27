@@ -163,33 +163,37 @@ export const createExecutorStreamHandler =
       : executorProjection(existing);
     let acc = initial;
 
-    // Coalesced IndexedDB persistence: the store update renders live, the
-    // throttled DB write is only a refresh-survival snapshot.
+    // Coalesced refresh-survival snapshot. It writes the record as the store
+    // holds it when it fires: the run's final message can replace the
+    // placeholder under the same id inside the throttle window.
     let writeTimer: ReturnType<typeof setTimeout> | null = null;
-    let pendingWrite: IMessage | null = null;
+    let writePending = false;
+    const currentTarget = () =>
+      (
+        useChatStore.getState().messagesByConversation[conversation_id] ?? []
+      ).find((m) => m.id === targetId);
     const flushWrite = () => {
       writeTimer = null;
-      if (pendingWrite) {
-        void db.putMessage(pendingWrite);
-        pendingWrite = null;
-      }
+      if (!writePending) return;
+      writePending = false;
+      const current = currentTarget();
+      if (current) void db.putMessage(current);
     };
-    const scheduleWrite = (msg: IMessage) => {
-      pendingWrite = msg;
+    const scheduleWrite = () => {
+      writePending = true;
       if (writeTimer === null) {
         writeTimer = setTimeout(flushWrite, DB_WRITE_THROTTLE_MS);
       }
     };
 
     const flushToStore = () => {
-      const state = useChatStore.getState();
-      const msgs = state.messagesByConversation[conversation_id] ?? [];
-      const current = msgs.find((m) => m.id === targetId);
+      const current = currentTarget();
       // Target momentarily absent — skip this frame, keep the stream alive.
       if (!current) return;
-      const updated = projection.project(current, acc);
-      state.updateMessageInPlace(updated);
-      scheduleWrite(updated);
+      useChatStore
+        .getState()
+        .updateMessageInPlace(projection.project(current, acc));
+      scheduleWrite();
     };
 
     // Mark the placeholder sent so the loading indicator clears. Runs on every
@@ -201,14 +205,12 @@ export const createExecutorStreamHandler =
         writeTimer = null;
       }
       clearTimeout(backgroundTimeout);
-      pendingWrite = null;
+      writePending = false;
       useStreamStore.getState().clearBackgroundLoading(conversation_id);
-      const state = useChatStore.getState();
-      const msgs = state.messagesByConversation[conversation_id] ?? [];
-      const current = msgs.find((m) => m.id === targetId);
+      const current = currentTarget();
       if (current) {
         const finalized = projection.finalize(current, acc, error);
-        state.updateMessageInPlace(finalized);
+        useChatStore.getState().updateMessageInPlace(finalized);
         void db.putMessage(finalized);
       }
       streamLog("lifecycle", "executor-stream:end", {
