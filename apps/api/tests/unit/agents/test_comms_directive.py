@@ -184,6 +184,9 @@ class TestADirectiveBesideAReplyIsNeverDelivered:
             (f"{PASSPORT}\n< SILENCE >threshold</ SILENCE >\nBook it.", f"{PASSPORT}\nBook it."),
             ("Done <EMOJI>👍</EMOJI> and filed.", "Done and filed."),
             ("Done. <EMOJI>👍</EMOJI>", "Done. "),
+            # A tag ending its line keeps the line break, so the next line stays its own.
+            (f"{PASSPORT} <SILENCE>threshold</SILENCE>\nBook it.", f"{PASSPORT} \nBook it."),
+            (f"{PASSPORT} <SILENCE>never closed\nBook it.", f"{PASSPORT} \nBook it."),
             # Not a directive, so it is the model's text and stays.
             ("Say <EMOJI>ok</EMOJI> back.", "Say <EMOJI>ok</EMOJI> back."),
             ("Use <b>bold</b> here.", "Use <b>bold</b> here."),
