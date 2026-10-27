@@ -56,6 +56,12 @@ def find_route_handler(app: FastAPI, scope: Scope) -> Callable[..., object] | No
     return handler
 
 
+# Operational probes: a Prometheus scrape and an orchestrator's liveness check
+# are not user traffic, and counting them means a dead counter storage takes
+# monitoring down exactly when it is needed. Matched before the limiter runs.
+_PROBE_PATHS = frozenset({"/health", "/metrics"})
+
+
 class RouterAwareSlowAPIMiddleware(SlowAPIMiddleware):
     """SlowAPIMiddleware with handler lookup that sees through lazy routers.
 
@@ -66,6 +72,9 @@ class RouterAwareSlowAPIMiddleware(SlowAPIMiddleware):
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         """Count this request against the app-wide limit, then hand it to the route."""
+        if request.url.path in _PROBE_PATHS:
+            return await call_next(request)
+
         app: FastAPI = request.app
         limiter_for_app: Limiter = app.state.limiter
         if not limiter_for_app.enabled:

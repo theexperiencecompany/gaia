@@ -146,3 +146,23 @@ async def test_a_redis_outage_keeps_counting_in_memory_instead_of_crashing() -> 
 
     assert refused.status_code == 429
     assert refused.json()["code"] == "rate_limit_exceeded"
+
+
+@pytest.mark.regression
+async def test_a_probe_is_never_counted(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A dead counter storage must not be able to take /health or /metrics down."""
+    counted: list[str] = []
+
+    def record(*args: object, **kwargs: object) -> tuple[None, bool]:
+        counted.append("called")
+        return None, False
+
+    monkeypatch.setattr(rate_limiter, "sync_check_limits", record)
+    app = _app()
+    app.add_api_route("/health", lambda: {"ok": True}, methods=["GET"])
+
+    async with _client(app) as client:
+        for _ in range(3):
+            assert (await client.get("/health")).status_code == 200
+
+    assert counted == []
