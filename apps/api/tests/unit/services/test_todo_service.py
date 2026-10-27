@@ -1743,13 +1743,16 @@ class TestBulkServiceDelete:
             await bulk_service_delete_todos(["a", "b"], FAKE_USER_ID)
         mock_capture.assert_called_once_with(UserId(FAKE_USER_ID), TodosDeleted(count=2))
 
-    async def test_no_todos_raises_404(self, mock_bulk_repos):
+    async def test_no_matching_todo_is_reported_as_failed(self, mock_bulk_repos):
+        """Unknown ids come back named in failed for the agent to correct, not as an HTTP 404."""
         todo_repo, _ = mock_bulk_repos
         todo_repo.find_by_ids = AsyncMock(return_value=[])
         todo_repo.bulk_delete = AsyncMock(return_value=0)
-        with pytest.raises(HTTPException) as exc:
-            await bulk_service_delete_todos(["a"], FAKE_USER_ID)
-        assert exc.value.status_code == 404
+
+        result = await bulk_service_delete_todos(["a"], FAKE_USER_ID)
+
+        assert result.success == []
+        assert result.failed == ["a"]
 
     async def test_subscribed_todo_tears_down_before_delete(self, mock_bulk_repos):
         """Teardown must use the deleted doc's own id/user and the bulk-delete reason — once gone, a wrong id or reason leaks the trigger."""
@@ -2193,3 +2196,24 @@ class TestReopenWatchesTheRefAgain:
         )
         mock_todo_repo.bulk_update.assert_not_awaited()
         register.assert_not_awaited()
+
+
+_REAL = "6ae10080d5575101b9f90861"
+# The id gpt-5.6-luna actually sent for _REAL in the ownership eval: the 8th
+# hex character copied from a sibling todo created a second later.
+_MISCOPIED = "6ae10081d5575101b9f90861"
+
+
+@pytest.mark.unit
+class TestBulkDeleteReportsWhatItDeleted:
+    """A bulk delete reports the ids it deleted and the ids that matched nothing, never a guess."""
+
+    async def test_an_id_that_matches_no_todo_is_failed_not_success(self, mock_bulk_repos):
+        todo_repo, _ = mock_bulk_repos
+        todo_repo.find_by_ids = AsyncMock(return_value=[_make_todo_doc(todo_id=_REAL)])
+        todo_repo.bulk_delete = AsyncMock(return_value=1)
+
+        result = await TodoService.bulk_delete_todos([_MISCOPIED, _REAL], FAKE_USER_ID)
+
+        assert result.success == [_REAL]
+        assert result.failed == [_MISCOPIED]

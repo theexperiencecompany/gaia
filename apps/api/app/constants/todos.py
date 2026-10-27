@@ -20,6 +20,10 @@ ONBOARDING_LABEL: Final[str] = "onboarding"
 # without creating a circular dependency.
 GAIA_TRACKED_LABEL: Final[str] = "gaia-tracked"
 
+# How many characters an unknown todo id may differ from a real one and still be
+# offered as the one meant: a model copying sibling ObjectIds swaps one or two.
+MAX_MISCOPIED_ID_CHARS: Final[int] = 4
+
 # Label added by the worker when a tracked todo exhausts its retry budget — the
 # execution path skips todos carrying it until the user manually resets.
 FAILED_LABEL: Final[str] = "failed"

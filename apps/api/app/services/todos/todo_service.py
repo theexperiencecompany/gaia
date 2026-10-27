@@ -47,6 +47,7 @@ from app.services.todos.errors import (
     ExternalRefReopenedTwiceError,
     ExternalRefTakenError,
     SubTodoParentError,
+    TodoNotFoundError,
     TrackedLabelChangeError,
     TrackedTodoScheduleError,
     TrackedTodoWorkflowError,
@@ -178,7 +179,7 @@ async def _refuse_what_a_tracked_todo_cannot_take(
         return
     existing = await todo_repository.get(todo_id, user_id=user_id)
     if existing is None:
-        raise ValueError(f"Todo {todo_id} not found")
+        raise TodoNotFoundError(todo_id)
     tracked = GAIA_TRACKED_LABEL in existing.labels
     if updates.labels is not None and (GAIA_TRACKED_LABEL in updates.labels) != tracked:
         raise TrackedLabelChangeError()
@@ -549,7 +550,7 @@ class TodoService:
         log.set(component="todo_service", operation="get_todo", user_id=user_id, todo_id=todo_id)
         todo = await todo_repository.get(todo_id, user_id=user_id)
         if not todo:
-            raise ValueError(f"Todo {todo_id} not found")
+            raise TodoNotFoundError(todo_id)
 
         (response,) = await todo_responses(user_id, [todo])
         return response
@@ -637,7 +638,7 @@ class TodoService:
             updated = await _persist_update(todo_id, user_id, updates.workflow_id, update)
 
         if not updated:
-            raise ValueError(f"Todo {todo_id} not found")
+            raise TodoNotFoundError(todo_id)
 
         try:
             await update_todo_embedding(todo_id, updated, user_id)
@@ -677,7 +678,7 @@ class TodoService:
         log.set(component="todo_service", operation="delete_todo", user_id=user_id, todo_id=todo_id)
         doc = await todo_repository.get(todo_id, user_id=user_id)
         if not doc:
-            raise ValueError(f"Todo {todo_id} not found")
+            raise TodoNotFoundError(todo_id)
 
         # A sub-todo does not outlive its parent; each goes through this same path.
         for child in await todo_repository.find_sub_todos(user_id, [todo_id]):
@@ -697,7 +698,7 @@ class TodoService:
                 log.warning("todo.canvas_embedding_delete_failed", todo_id=todo_id, error=str(e))
 
         if not await todo_repository.delete(todo_id, user_id=user_id):
-            raise ValueError(f"Todo {todo_id} not found")
+            raise TodoNotFoundError(todo_id)
 
         try:
             await delete_todo_embedding(todo_id)
@@ -762,6 +763,7 @@ class TodoService:
     @classmethod
     async def bulk_delete_todos(cls, todo_ids: list[str], user_id: str) -> BulkOperationResponse:
         """Bulk delete multiple todos, and the sub-todos of any parent among them."""
+        requested = list(todo_ids)
         todo_ids = await with_sub_todos(user_id, todo_ids)
         todos_to_delete = await todo_repository.find_by_ids(user_id, todo_ids)
 
@@ -786,10 +788,14 @@ class TodoService:
             schedule_user_todos_sync(user_id)
             capture(UserId(user_id), TodosDeleted(count=deleted))
 
+        # What was found is what was deleted: the delete is scoped to the same
+        # user's ids. A requested id that matched nothing is a failure to report,
+        # never folded into success (it once was, so a miscopied id read as deleted).
+        found = {doc.id for doc in todos_to_delete}
         return BulkOperationResponse(
-            success=todo_ids[:deleted],
-            failed=[],
-            total=len(todo_ids),
+            success=[todo_id for todo_id in todo_ids if todo_id in found],
+            failed=[todo_id for todo_id in requested if todo_id not in found],
+            total=len(requested),
             message=f"Deleted {deleted} todos",
         )
 

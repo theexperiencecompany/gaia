@@ -16,6 +16,7 @@ from app.agents.tools.todo_tool import (
 )
 from app.models.agent_models import RunUserMissingError
 from app.models.todo_models import (
+    BulkOperationResponse,
     Priority,
     SubTask,
     TodoLabelCount,
@@ -23,6 +24,7 @@ from app.models.todo_models import (
     TodoUpdateRequest,
 )
 from app.services.todos.todo_bulk_service import BulkCompletion
+from app.services.todos.todo_service import TodoNotFoundError
 from tests.helpers import captured_wide_event
 
 # Module-level patch: check_and_increment must return a plain dict, not an AsyncMock, so
@@ -946,6 +948,9 @@ class TestBulkDeleteTodos:
         mock_writer_factory: MagicMock,
     ) -> None:
         mock_writer_factory.return_value = _writer_mock()
+        mock_service.return_value = BulkOperationResponse(
+            success=["t1", "t2"], failed=[], total=2, message="Deleted 2 todos"
+        )
 
         from app.agents.tools.todo_tool import bulk_delete_todos
 
@@ -1315,3 +1320,62 @@ def _required_args(tool: Any) -> dict[str, None]:
 async def test_a_run_with_no_user_raises_instead_of_returning_a_tool_error(tool: Any) -> None:
     with pytest.raises(RunUserMissingError):
         await tool.coroutine(config={"configurable": {}}, **_required_args(tool))
+
+
+_REAL = "6ae10080d5575101b9f90861"
+_SIBLING = "6ae10081d5575101b9f90862"
+# What gpt-5.6-luna sent for _REAL: the sibling's timestamp with _REAL's counter.
+_MISCOPIED = "6ae10081d5575101b9f90861"
+
+
+class TestAnIdThatMatchesNoTodoNamesTheOneMeant:
+    """Seen live: delete_todo said only "not found", so the run retried the same miscopied id and told the user the system lost the todo."""
+
+    @patch(f"{MODULE}.get_all_todos_service", new_callable=AsyncMock)
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.get_todo_service", new_callable=AsyncMock)
+    async def test_delete_todo_points_to_the_closest_real_todo(
+        self,
+        mock_get_todo: AsyncMock,
+        mock_writer_factory: MagicMock,
+        mock_list: AsyncMock,
+    ) -> None:
+        mock_get_todo.side_effect = TodoNotFoundError(_MISCOPIED)
+        mock_list.return_value = [
+            _make_todo_response(id=_SIBLING, title="call the bank"),
+            _make_todo_response(id=_REAL, title="renew car insurance"),
+        ]
+
+        result = await todo_tool_module.delete_todo.coroutine(
+            config=_make_config(), todo_id=_MISCOPIED
+        )
+
+        # The miscopy is one character from both real ids, so both are named
+        # with their titles; picking one would risk deleting the wrong todo.
+        assert result["success"] is False
+        assert f'{_REAL} ("renew car insurance")' in str(result["error"])
+        assert f'{_SIBLING} ("call the bank")' in str(result["error"])
+
+    @patch(f"{MODULE}.get_all_todos_service", new_callable=AsyncMock)
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.bulk_delete_service", new_callable=AsyncMock)
+    async def test_bulk_delete_never_reports_an_unmatched_id_as_deleted(
+        self,
+        mock_bulk: AsyncMock,
+        mock_writer_factory: MagicMock,
+        mock_list: AsyncMock,
+    ) -> None:
+        writer = _writer_mock()
+        mock_writer_factory.return_value = writer
+        mock_bulk.return_value = BulkOperationResponse(
+            success=[_SIBLING], failed=[_MISCOPIED], total=2, message="Deleted 1 todos"
+        )
+        mock_list.return_value = [_make_todo_response(id=_REAL, title="renew car insurance")]
+
+        result = await todo_tool_module.bulk_delete_todos.coroutine(
+            config=_make_config(), todo_ids=[_SIBLING, _MISCOPIED]
+        )
+
+        assert result["success"] is False
+        assert _REAL in str(result["error"])
+        assert "Deleted 1 task" in str(writer.call_args)

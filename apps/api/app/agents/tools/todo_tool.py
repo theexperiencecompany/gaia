@@ -7,6 +7,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
 from app.constants.log_tags import LogTag
+from app.constants.todos import MAX_MISCOPIED_ID_CHARS
 from app.decorators import with_doc, with_rate_limiting
 from app.models.agent_models import current_stream_writer, get_user_id
 from app.models.todo_models import (
@@ -19,6 +20,7 @@ from app.models.todo_models import (
     TodoUpdateRequest,
     UpdateProjectRequest,
 )
+from app.services.todos.errors import TodoNotFoundError
 from app.services.todos.todo_bulk_service import (
     bulk_complete_todos as bulk_complete_service,
     bulk_delete_todos as bulk_delete_service,
@@ -309,6 +311,36 @@ async def list_todos(
         return {"error": error_msg, "todos": []}
 
 
+def _near_todos(todos: list[TodoResponse], todo_id: str) -> list[TodoResponse]:
+    """Return the user's todos whose ids are within a few characters of todo_id, nearest first."""
+    near: list[tuple[int, TodoResponse]] = []
+    for todo in todos:
+        if len(todo.id) != len(todo_id):
+            continue
+        diff = sum(a != b for a, b in zip(todo.id, todo_id, strict=True))
+        if diff <= MAX_MISCOPIED_ID_CHARS:
+            near.append((diff, todo))
+    return [todo for _, todo in sorted(near, key=lambda pair: pair[0])]
+
+
+async def _unknown_todos_note(user_id: str, todo_ids: list[str]) -> str:
+    """Say which ids matched no todo, and which real todo each was most likely meant to be.
+
+    Todos created seconds apart have ObjectIds that differ in one or two hex
+    characters, and a model copying them mixes the two up. A bare "not found"
+    made it retry the same wrong id and tell the user the todo had vanished.
+    """
+    todos = await get_all_todos_service(user_id, limit=100)
+    parts: list[str] = []
+    for todo_id in todo_ids:
+        # Every near id, never just the nearest: one miscopy is often equally
+        # close to two real todos, and only the title tells which was meant.
+        near = ", ".join(f'{t.id} ("{t.title}")' for t in _near_todos(todos, todo_id))
+        hint = f" Closest real ids: {near}; pick by title." if near else ""
+        parts.append(f"{todo_id} matches none of the user's todos.{hint}")
+    return " ".join([*parts, "Copy todo ids exactly as list_todos returns them."])
+
+
 @tool
 @with_doc(UPDATE_TODO)
 async def update_todo(
@@ -357,6 +389,9 @@ async def update_todo(
 
         return {"todo": todo_dict, "error": None}
 
+    except TodoNotFoundError as e:
+        log.warning(f"{LogTag.TOOL} update_todo got an unknown todo id", todo_id=todo_id)
+        return {"error": await _unknown_todos_note(user_id, [e.todo_id]), "todo": None}
     except Exception as e:
         error_msg = f"Error updating todo: {e!s}"
         log.error(
@@ -399,6 +434,9 @@ async def delete_todo(
 
         return {"success": True, "error": None}
 
+    except TodoNotFoundError as e:
+        log.warning(f"{LogTag.TOOL} delete_todo got an unknown todo id", todo_id=todo_id)
+        return {"error": await _unknown_todos_note(user_id, [e.todo_id]), "success": False}
     except Exception as e:
         error_msg = f"Error deleting todo: {e!s}"
         log.error(
@@ -981,7 +1019,8 @@ async def bulk_delete_todos(
         log.set(tool={"name": "bulk_delete_todos", "action": "bulk_delete"})
         log.info(f"{LogTag.TOOL} Todo Tool: Bulk deleting todos", todo_count=len(todo_ids))
 
-        await bulk_delete_service(todo_ids, user_id)
+        result = await bulk_delete_service(todo_ids, user_id)
+        deleted = len(result.success)
 
         # Stream the bulk deletion confirmation to frontend
         writer = current_stream_writer()
@@ -989,11 +1028,19 @@ async def bulk_delete_todos(
             {
                 "todo_data": {
                     "action": "delete",
-                    "message": f"Deleted {len(todo_ids)} task{'s' if len(todo_ids) != 1 else ''}",
+                    "message": f"Deleted {deleted} task{'s' if deleted != 1 else ''}",
                 }
             }
         )
 
+        if result.failed:
+            log.warning(
+                f"{LogTag.TOOL} bulk_delete_todos got unknown todo ids",
+                todo_count=len(todo_ids),
+                unknown_count=len(result.failed),
+            )
+            note = await _unknown_todos_note(user_id, result.failed)
+            return {"success": False, "error": f"Deleted {deleted} of {len(todo_ids)}. {note}"}
         return {"success": True, "error": None}
 
     except Exception as e:
