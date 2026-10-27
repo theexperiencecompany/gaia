@@ -154,6 +154,14 @@ class TestRegistryAndCache:
         with patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry_with(False))):
             assert await is_tool_destructive("list_files", "Lists.") is False
 
+    async def test_a_registry_flag_outranks_the_integration_review(self) -> None:
+        # The review only covers tools the registry holds no flag for.
+        with patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry_with(True))):
+            assert (
+                await is_tool_destructive("GMAIL_FETCH_EMAILS", "Fetch.", integration_id="gmail")
+                is True
+            )
+
     async def test_a_cached_classification_is_reused_without_calling_the_llm(self) -> None:
         registry = registry_with(None)
         with (
