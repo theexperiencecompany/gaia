@@ -6441,7 +6441,7 @@
     ]
   },
   "todoist-trello": {
-    "toolA": "Linear",
+    "toolA": "Todoist",
     "toolB": "Trello",
     "tagline": "Vincula tarjetas de roadmap de Trello con incidencias de ingeniería de Linear sin problemas",
     "metaTitle": "Trello y Todoist: tarjetas y tareas sincronizadas",
@@ -7233,68 +7233,68 @@
     ]
   },
   "google-calendar-teams": {
-    "toolA": "Google Calendar",
-    "toolB": "Microsoft Teams",
-    "tagline": "Sincroniza reuniones de Microsoft Teams con Google Calendar para que tu horario esté siempre completo",
-    "metaTitle": "Google Calendar y Microsoft Teams: una sola agenda",
-    "metaDescription": "Sincroniza invitaciones de Teams con Google Calendar y crea reuniones de Teams desde tus eventos. GAIA detecta duplicados. Mira los pasos.",
-    "keywords": [
-      "Integración Google Calendar Microsoft Teams",
-      "Sincronización Teams Google Calendar",
-      "Sincronización de calendario Microsoft Teams",
-      "Reunión de Google Calendar Teams",
-      "Reunión de Teams Google Calendar",
-      "Calendario unificado Teams Google"
-    ],
-    "intro": "Muchas organizaciones operan tanto en Google Workspace como en Microsoft 365, con algunos equipos usando Google Calendar mientras que otros programan a través de Microsoft Teams. El resultado es un panorama de programación fragmentado: las invitaciones a reuniones de Teams no aparecen en Google Calendar y viceversa. Los empleados que trabajan en ambos ecosistemas mantienen dos calendarios separados, pierden invitaciones multiplataforma y pierden visibilidad de su horario completo.\n\nGAIA une Google Calendar y Microsoft Teams para que cada reunión aparezca en una única vista unificada. Las invitaciones a reuniones de Teams se sincronizan en Google Calendar con el enlace de la reunión intacto. Los eventos de Google Calendar pueden generar reuniones de Teams automáticamente para que los organizadores no necesiten administrar ambas herramientas. Los bloques de disponibilidad en un calendario se respetan en el otro para eliminar conflictos de programación entre plataformas.\n\nEsta integración es esencial para organizaciones híbridas que utilizan tanto Google Workspace como Microsoft 365, para consultores y contratistas que trabajan en entornos de clientes utilizando diferentes sistemas de calendario, y para equipos empresariales que atraviesan una migración entre plataformas y necesitan que ambos sistemas operen juntos durante la transición.",
-    "useCases": [
+    "faqs": [
       {
-        "title": "Sincronizar invitaciones de Teams en Google Calendar",
-        "description": "GAIA importa automáticamente las invitaciones a reuniones de Microsoft Teams en Google Calendar con el enlace de unión de la reunión, la lista de asistentes y la agenda para que tu Google Calendar muestre tu horario completo, incluidas todas las reuniones de Teams."
+        "answer": "GAIA usa identificadores de reunión y coincidencia de asistentes para detectar eventos que ya existen en ambos calendarios antes de crear una copia. Los duplicados detectados se marcan para revisión en lugar de duplicarse sin control.",
+        "question": "¿Duplica GAIA eventos que ya están en ambos calendarios?"
       },
       {
-        "title": "Crear reuniones de Teams a partir de eventos de Google Calendar",
-        "description": "Cuando agregas una reunión a Google Calendar, GAIA puede generar un enlace de reunión de Microsoft Teams y agregarlo a la descripción del evento, para que los asistentes que usan Teams como su herramienta principal reciban una invitación de Teams adecuada."
+        "answer": "Sí. Las series recurrentes se importan como eventos recurrentes. Cuando la serie se actualiza o cancela en Teams, GAIA actualiza toda la serie correspondiente en Google Calendar.",
+        "question": "¿Admite reuniones recurrentes sincronizadas con Google Calendar?"
       },
       {
-        "title": "Mantener la disponibilidad consistente en ambas plataformas",
-        "description": "GAIA garantiza que los bloques ocupados de las reuniones de Teams aparezcan en Google Calendar y viceversa, para que tu disponibilidad sea siempre precisa independientemente de la herramienta de programación que utilice el organizador de la reunión."
-      },
-      {
-        "title": "Agenda diaria unificada en ambos calendarios",
-        "description": "Cada mañana, GAIA entrega una agenda diaria consolidada que combina tus eventos de Google Calendar y reuniones de Teams en una sola lista ordenada, para que siempre conozcas tu horario completo sin consultar dos plataformas."
-      },
-      {
-        "title": "Enlaces de grabación de reuniones en Google Calendar",
-        "description": "Después de que finaliza una reunión de Teams, GAIA actualiza el evento correspondiente de Google Calendar con el enlace de grabación de la reunión de Teams para que los participantes que usan Google Calendar puedan acceder a la grabación directamente desde su evento de calendario."
+        "answer": "Sí. Es el caso principal para el que está diseñada. GAIA actúa como puente neutral entre plataformas sin exigir federación de TI ni sincronización de directorios entre tus cuentas de Google y Microsoft.",
+        "question": "¿Funciona si mi organización usa Google Workspace y Microsoft 365?"
       }
     ],
     "howItWorks": [
       {
-        "step": "Conectar Google Calendar y Microsoft Teams a GAIA",
-        "description": "Autoriza Google Calendar a través de Google OAuth y Microsoft Teams a través de Microsoft OAuth en la configuración de integración de GAIA. GAIA accede a tus datos de calendario y al horario de reuniones de Teams con permisos de lectura y escritura limitados."
+        "description": "Autoriza Google Calendar con OAuth de Google y Microsoft Teams con OAuth de Microsoft en los ajustes de integración de GAIA. GAIA accede a tus calendarios y agenda de reuniones con permisos de lectura y escritura limitada.",
+        "step": "Conecta Google Calendar y Microsoft Teams con GAIA"
       },
       {
-        "step": "Configure sync direction and meeting creation preferences",
-        "description": "Choose whether sync is bidirectional or one-way, which event types generate Teams meetings from Google Calendar, and how far in advance future events should be imported."
+        "description": "Elige si la sincronización es bidireccional o unidireccional, qué tipos de eventos generan reuniones de Teams desde Google Calendar y con cuánta antelación importar eventos futuros.",
+        "step": "Configura dirección y preferencias de creación"
       },
       {
-        "step": "GAIA maintains a unified schedule across both platforms",
-        "description": "GAIA monitors both calendars for new and updated events and propagates changes in near real-time, ensuring your schedule is always complete and consistent in whichever calendar tool you prefer."
+        "description": "GAIA supervisa ambos calendarios ante eventos nuevos y actualizados y propaga cambios casi en tiempo real, para tener siempre una agenda completa y coherente en la herramienta que prefieras.",
+        "step": "GAIA mantiene una agenda unificada en ambas plataformas"
       }
     ],
-    "faqs": [
+    "intro": "Muchas organizaciones operan tanto en Google Workspace como en Microsoft 365, con algunos equipos usando Google Calendar mientras otros programan en Microsoft Teams. El resultado es una agenda fragmentada: las invitaciones de Teams no aparecen en Google Calendar, y viceversa. Quienes trabajan en ambos ecosistemas mantienen dos calendarios separados, pierden invitaciones cruzadas y pierden visibilidad de su agenda completa.\n\nGAIA une Google Calendar y Microsoft Teams para ver cada reunión en una sola vista unificada. Las invitaciones de Teams se sincronizan con el enlace intacto. Los eventos de Google Calendar pueden generar reuniones de Teams automáticamente para no gestionar ambas herramientas. Los bloques de disponibilidad de un calendario se respetan en el otro para eliminar conflictos entre plataformas.\n\nEsta integración es esencial para organizaciones híbridas con ambos ecosistemas, para consultores y contratistas que trabajan en entornos de clientes con sistemas distintos, y para equipos en migración que necesitan que ambos sistemas funcionen juntos durante la transición.",
+    "keywords": [
+      "integración de Google Calendar y Microsoft Teams",
+      "sincronización de Teams y Google Calendar",
+      "sincronizar calendario de Microsoft Teams",
+      "reunión de Teams en Google Calendar",
+      "reunión de Teams en Google Calendar",
+      "calendario unificado de Teams y Google"
+    ],
+    "metaDescription": "Conecta Google Calendar y Microsoft Teams con GAIA. Sincroniza invitaciones de Teams con Google Calendar, crea reuniones de Teams desde tus eventos y mantén una sola agenda unificada.",
+    "metaTitle": "Integración de Google Calendar + Microsoft Teams: una sola agenda completa",
+    "tagline": "Sincroniza reuniones de Microsoft Teams con Google Calendar para una agenda completa",
+    "toolA": "Google Calendar",
+    "toolB": "Microsoft Teams",
+    "useCases": [
       {
-        "question": "Will GAIA duplicate events that are already in both calendars?",
-        "answer": "GAIA uses meeting ID and attendee matching to detect events that already exist in both calendars before creating a sync copy. Detected duplicates are flagged for review rather than blindly duplicated."
+        "description": "GAIA importa automáticamente las invitaciones de Teams a Google Calendar con el enlace de acceso, la lista de asistentes y la agenda para mostrar tu agenda completa incluidas todas las reuniones de Teams.",
+        "title": "Sincronizar invitaciones de Teams con Google Calendar"
       },
       {
-        "question": "Can GAIA handle recurring Teams meetings synced to Google Calendar?",
-        "answer": "Yes. Recurring Teams meeting series are imported as recurring Google Calendar events. When the Teams series is updated or cancelled, GAIA updates the entire Google Calendar series accordingly."
+        "description": "Cuando añades una reunión en Google Calendar, GAIA puede generar un enlace de Teams y añadirlo a la descripción del evento, para que los asistentes que usan Teams reciban una invitación adecuada.",
+        "title": "Crear reuniones de Teams desde eventos"
       },
       {
-        "question": "Does GAIA work if my organization uses both Google Workspace and Microsoft 365?",
-        "answer": "Yes. This is the primary use case GAIA is designed for. GAIA acts as the neutral bridge between both platforms without requiring IT-level federation or directory sync between your Google and Microsoft tenants."
+        "description": "GAIA mantiene los bloques de ocupado de Teams visibles en Google Calendar y viceversa, para una disponibilidad siempre fiel uses la herramienta que uses para programar.",
+        "title": "Mantener coherente la disponibilidad"
+      },
+      {
+        "description": "Cada mañana GAIA entrega una agenda diaria consolidada que combina tus eventos de Google Calendar y tus reuniones de Teams en una sola lista ordenada, sin revisar dos plataformas.",
+        "title": "Agenda diaria unificada de ambos calendarios"
+      },
+      {
+        "description": "Tras terminar una reunión de Teams, GAIA actualiza el evento correspondiente con el enlace de la grabación para acceder directamente desde el evento quienes usan Google Calendar.",
+        "title": "Enlaces de grabación en Google Calendar"
       }
     ]
   },
@@ -10444,68 +10444,68 @@
     ]
   },
   "asana-clickup": {
-    "toolA": "Asana",
-    "toolB": "ClickUp",
-    "tagline": "Bridge Asana and ClickUp when teams use both platforms",
-    "metaTitle": "Integración de Asana y ClickUp: tareas en ambas plataformas",
-    "metaDescription": "Asana + ClickUp con GAIA: GAIA mantiene sincronizadas tareas, estados y plazos entre Asana y ClickUp, para que todos vean datos de proyecto actualizados.",
-    "keywords": [
-      "Asana ClickUp integration",
-      "Asana ClickUp sync",
-      "connect Asana and ClickUp",
-      "Asana ClickUp automation",
-      "cross-platform project management",
-      "task sync Asana ClickUp"
-    ],
-    "intro": "Many growing organizations run Asana and ClickUp simultaneously — one team adopted Asana early, another migrated to ClickUp, and now both coexist without talking to each other. The result is duplicated task entry, mismatched statuses, and project leads who spend hours reconciling two separate sources of truth.\n\nGAIA eliminates the manual overhead of managing projects across both platforms. When a task is created or updated in Asana, GAIA mirrors the change in ClickUp and vice versa, keeping assignees, due dates, and completion statuses consistent. Teams can continue using their preferred tool while leadership gets a consolidated view of project health.\n\nThis integration is especially valuable during platform migrations, when departments have different tool preferences, or when client-facing projects need to live in one system while internal execution happens in another.",
-    "useCases": [
+    "faqs": [
       {
-        "title": "Mirror task creation across platforms",
-        "description": "When a new task is created in Asana with an assigned team member and due date, GAIA automatically creates a corresponding task in ClickUp so both platforms reflect the same work without manual duplication."
+        "answer": "Sí. GAIA puede leer en bloque todas las tareas de un proyecto de Asana y crear las tareas correspondientes en una lista de ClickUp, conservando títulos, descripciones, responsables y fechas. Tras migrar puedes desactivar la sincronización o mantenerla activa durante la transición.",
+        "question": "¿Admite una migración puntual de Asana a ClickUp?"
       },
       {
-        "title": "Sync task completion status bidirectionally",
-        "description": "When a task is marked complete in either Asana or ClickUp, GAIA updates the counterpart record immediately, preventing stale open items from cluttering project views in either tool."
+        "answer": "GAIA aplica por defecto la regla de que gana la última escritura y señala el conflicto en un canal designado o en un resumen por correo para revisión humana. También puedes configurar una plataforma como sistema de referencia permanente.",
+        "question": "¿Qué pasa si una tarea se edita en ambas plataformas a la vez?"
       },
       {
-        "title": "Unified cross-team reporting",
-        "description": "GAIA aggregates task data from both Asana and ClickUp to generate a single weekly status report, giving leadership consistent project visibility without requiring everyone to switch tools."
-      },
-      {
-        "title": "Escalate blockers between systems",
-        "description": "When a task in ClickUp is flagged as blocked, GAIA creates a dependency flag on the linked Asana task so project managers in both systems are aware and can intervene quickly."
-      },
-      {
-        "title": "Deadline drift alerts",
-        "description": "GAIA monitors due dates across both platforms and alerts the team when a task's deadline in one system does not match the other, preventing schedule confusion before it becomes a delivery issue."
+        "answer": "GAIA admite asignar campos personalizados por nombre o tipo. Si los nombres difieren, defines asignaciones explícitas durante la configuración. Los campos sin equivalente se registran pero no se descartan.",
+        "question": "¿Se sincronizan los campos personalizados entre plataformas?"
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect both workspaces to GAIA",
-        "description": "Authorize GAIA to access your Asana workspace and your ClickUp workspace. GAIA maps projects and lists between the two platforms so it knows which items correspond to each other."
+        "description": "Autoriza a GAIA en tu espacio de Asana y en tu espacio de ClickUp. GAIA asigna proyectos y listas entre plataformas para saber qué elementos corresponden entre sí.",
+        "step": "Conecta ambos espacios con GAIA"
       },
       {
-        "step": "Define sync rules and field mappings",
-        "description": "Tell GAIA which Asana projects should sync with which ClickUp lists, and configure how fields map between them — assignees, priorities, due dates, and custom fields."
+        "description": "Indica a GAIA qué proyectos deben sincronizarse con qué listas, y configura cómo se asignan los campos: responsables, prioridades, fechas y campos personalizados.",
+        "step": "Define reglas y correspondencia de campos"
       },
       {
-        "step": "GAIA keeps both platforms current",
-        "description": "GAIA monitors both systems for changes and propagates updates bidirectionally so teams in each platform always see current, accurate task data."
+        "description": "GAIA supervisa ambos sistemas ante cambios y propaga actualizaciones en ambos sentidos para ver siempre datos fieles y actuales en cada plataforma.",
+        "step": "GAIA mantiene ambas plataformas al día"
       }
     ],
-    "faqs": [
+    "intro": "Muchas organizaciones en crecimiento usan Asana y ClickUp a la vez: un equipo adoptó Asana pronto, otro migró a ClickUp, y ahora ambas conviven sin hablarse. El resultado es doble entrada de tareas, estados incoherentes y responsables que dedican horas a conciliar dos fuentes de verdad.\n\nGAIA elimina el trabajo manual de gestionar proyectos en ambas plataformas. Cuando una tarea se crea o actualiza en Asana, GAIA refleja el cambio en ClickUp y viceversa, manteniendo coherentes responsables, fechas y estados. Cada equipo sigue en su herramienta favorita mientras la dirección obtiene una visión consolidada de la salud del proyecto.\n\nEsta integración es valiosa durante migraciones, cuando los departamentos prefieren herramientas distintas, o cuando los proyectos de cara al cliente deben vivir en un sistema mientras la ejecución interna ocurre en otro.",
+    "keywords": [
+      "integración de Asana y ClickUp",
+      "sincronización de Asana y ClickUp",
+      "conectar Asana y ClickUp",
+      "automatización de Asana y ClickUp",
+      "gestión multiplataforma de proyectos",
+      "sincronizar tareas entre Asana y ClickUp"
+    ],
+    "metaDescription": "Deja de duplicar trabajo entre Asana y ClickUp. GAIA mantiene tareas, estados y plazos sincronizados para ver datos fieles del proyecto uses la herramienta que uses.",
+    "metaTitle": "Automatización de Asana + ClickUp: sincroniza tareas en ambas plataformas",
+    "tagline": "Une Asana y ClickUp cuando los equipos usan ambas plataformas",
+    "toolA": "Asana",
+    "toolB": "ClickUp",
+    "useCases": [
       {
-        "question": "Can GAIA handle a one-time migration from Asana to ClickUp?",
-        "answer": "Yes. GAIA can bulk-read all tasks from an Asana project and create corresponding tasks in a ClickUp list, preserving titles, descriptions, assignees, and due dates. After migration you can turn off the sync or keep it active for a transition period."
+        "description": "Cuando se crea una tarea en Asana con responsable y fecha, GAIA crea automáticamente la tarea correspondiente en ClickUp para reflejar el mismo trabajo sin duplicar a mano.",
+        "title": "Reflejar tareas en ambas plataformas"
       },
       {
-        "question": "What happens if a task is edited in both platforms simultaneously?",
-        "answer": "GAIA applies a last-write-wins rule by default and flags the conflict in a designated Slack channel or email digest so a human can review. You can also configure one platform to always be the system of record."
+        "description": "Cuando una tarea se marca como completada en Asana o en ClickUp, GAIA actualiza de inmediato el registro equivalente, evitando pendientes obsoletos en las vistas de cada herramienta.",
+        "title": "Sincronizar finalizaciones en ambos sentidos"
       },
       {
-        "question": "Do custom fields in ClickUp sync with custom fields in Asana?",
-        "answer": "GAIA supports mapping custom fields by name or type. If field names differ between platforms, you can define explicit mappings during setup. Fields without a counterpart are logged but not discarded."
+        "description": "GAIA agrega datos de tareas de ambas plataformas para generar un único informe semanal, dando a la dirección visibilidad coherente sin obligar a nadie a cambiar de herramienta.",
+        "title": "Informes unificados entre equipos"
+      },
+      {
+        "description": "Cuando una tarea en ClickUp se marca como bloqueada, GAIA crea una marca de dependencia en la tarea vinculada de Asana para avisar a los gestores de ambos sistemas e intervenir rápido.",
+        "title": "Escalar bloqueos entre sistemas"
+      },
+      {
+        "description": "GAIA vigila fechas en ambas plataformas y avisa cuando el plazo de una tarea no coincide entre sistemas, evitando confusiones de agenda antes de que afecten a la entrega.",
+        "title": "Alertas de desfase de plazos"
       }
     ]
   },
