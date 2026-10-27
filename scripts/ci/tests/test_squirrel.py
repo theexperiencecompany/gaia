@@ -97,7 +97,6 @@ def test_a_site_wide_check_counts_its_items(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("rule", "path"),
     [
-        ("crawl/sitemap-valid", "/feed.xml"),
         ("url/lowercase", "/pt-BR/compare"),
         ("url/lowercase", "/pt-BR"),
     ],

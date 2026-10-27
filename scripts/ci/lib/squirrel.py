@@ -42,11 +42,6 @@ BASELINE_HEADER = """\
 """
 
 
-def _feed_is_not_a_sitemap(rule: str, page: str) -> bool:
-    """Google reads the RSS feed robots.txt lists as a sitemap; squirrel only parses sitemap XML."""
-    return rule == "crawl/sitemap-valid" and urllib.parse.urlparse(page).path == "/feed.xml"
-
-
 def _locale_casing(rule: str, page: str) -> bool:
     """Ignore pt-BR's capitals when they are the only capitals in the path."""
     path = urllib.parse.urlparse(page).path
@@ -54,7 +49,7 @@ def _locale_casing(rule: str, page: str) -> bool:
     return rule == "url/lowercase" and rest != path and rest == rest.lower()
 
 
-FALSE_POSITIVES = (_feed_is_not_a_sitemap, _locale_casing)
+FALSE_POSITIVES = (_locale_casing,)
 
 
 def _false_positive(rule: str, page: str) -> bool:

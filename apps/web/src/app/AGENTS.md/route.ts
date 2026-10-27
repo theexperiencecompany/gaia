@@ -33,7 +33,7 @@ function buildBody(): string {
       `${link("llms.txt", `${BASE_URL}/llms.txt`)}: index of every public page with a one-line summary.`,
       `Markdown variants: append \`.md\` to a page URL. The homepage is ${link("index.md", `${BASE_URL}/${HOMEPAGE_MARKDOWN_SEGMENT}.md`)}; per-page variants exist for ${familyPatterns}. Other pages have no variant and return 404.`,
       `${link("Sitemap", `${BASE_URL}/sitemap.xml`)}: every indexable URL, in every locale.`,
-      `Feeds: ${link("site feed", `${BASE_URL}/feed.xml`)} and ${link("blog RSS", `${BASE_URL}/blog/rss.xml`)}.`,
+      `Feeds: ${link("site feed", `${BASE_URL}/feed`)} and ${link("blog RSS", `${BASE_URL}/blog/rss.xml`)}.`,
     ]),
     "## Documentation",
     bulletList([

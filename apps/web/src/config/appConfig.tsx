@@ -268,7 +268,7 @@ export const appConfig = {
         { hideNavbar: true },
       ),
       navLink(
-        "/feed.xml",
+        "/feed",
         "RSS Feed",
         GlobalIcon,
         "Subscribe to all GAIA pages and updates via RSS",

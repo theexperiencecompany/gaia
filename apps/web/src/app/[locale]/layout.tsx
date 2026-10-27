@@ -173,7 +173,7 @@ export default async function LocaleLayout({ children, params }: Props) {
           rel="alternate"
           type="application/rss+xml"
           title="GAIA RSS Feed"
-          href="/feed.xml"
+          href="/feed"
         />
         <link
           rel="alternate"
