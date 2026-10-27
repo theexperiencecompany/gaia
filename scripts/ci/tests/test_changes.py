@@ -16,7 +16,9 @@ green PR on a broken tree:
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+import re
 import subprocess
 
 import pytest
@@ -453,6 +455,59 @@ def test_web_inputs_match_the_deploy_trigger() -> None:
     listed = [line.strip() for line in body[: body.index(")")].splitlines()[1:] if line.strip()]
     expected = [p if p.endswith(".yml") else f"{p}/**" for p in listed]
     assert triggers["push"]["paths"] == expected
+
+
+# ---------------------------------------------------------------------------
+# seo-inputs: the SEO audit of the production build runs when what it renders,
+# or what judges it, changed.
+# ---------------------------------------------------------------------------
+
+
+def _seo_inputs(repo: Path, tmp_path: Path) -> str:
+    out = tmp_path / "seo_output"
+    out.write_text("")
+    proc = _run(repo, "seo-inputs", BASE_BRANCH="master", GITHUB_OUTPUT=str(out))
+    assert proc.returncode == 0, proc.stderr
+    return out.read_text()
+
+
+@pytest.mark.parametrize(
+    "rel",
+    [
+        "apps/web/src/app/page.tsx",
+        "libs/shared/ts/src/seo.ts",
+        "config/squirrel.toml",
+        "scripts/ci/baselines/squirrel-build.txt",
+        "scripts/ci/lib/squirrel.py",
+        "scripts/ci/lib/seo_audit.py",
+    ],
+)
+def test_a_rendered_output_or_audit_change_runs_the_seo_audit(
+    repo: Path, tmp_path: Path, rel: str
+) -> None:
+    _commit(repo, rel)
+    assert "build=true" in _seo_inputs(repo, tmp_path)
+
+
+def test_a_change_the_site_cannot_render_skips_the_seo_audit(repo: Path, tmp_path: Path) -> None:
+    _commit(repo, "apps/api/app/main.py")
+    assert "build=false" in _seo_inputs(repo, tmp_path)
+
+
+def test_seo_inputs_match_the_local_lane_scope() -> None:
+    # `mise ci:local` picks the seo lane by its scope; it must see what CI sees.
+    lanes = json.loads((CI.parent.parent / "scripts/dev/verify-lanes.json").read_text())["lanes"]
+    scope = re.compile(next(lane for lane in lanes if lane["name"] == "seo")["scope"])
+    script = SCRIPT.read_text()
+    body = script[script.index("SEO_INPUTS=(") :]
+    listed = [line.strip() for line in body[: body.index("\n)")].splitlines()[1:] if line.strip()]
+    web = script[script.index("WEB_INPUTS=(") :]
+    paths = [p for p in listed if not p.startswith('"$')]
+    paths += [line.strip() for line in web[: web.index(")")].splitlines()[1:] if line.strip()]
+    for path in paths:
+        probe = f"{path}/x" if not Path(path).suffix else path
+        assert scope.search(probe), f"the seo lane's scope misses {path}"
+    assert not scope.search("apps/api/app/main.py")
 
 
 # ---------------------------------------------------------------------------
