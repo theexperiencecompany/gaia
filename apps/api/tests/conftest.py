@@ -934,3 +934,22 @@ def _isolate_wide_event_state() -> Iterator[None]:
     yield
     wide_events._event_state.set(None)
     wide_events._trace_id.set("")
+
+
+@pytest.fixture(autouse=True)
+def _fresh_redis_client() -> Iterator[None]:
+    """Give every test its own Redis client.
+
+    redis-py binds pooled connections to the event loop that first uses them,
+    and pytest-asyncio gives every test a new loop. The process-wide client in
+    ``redis_cache`` therefore raised "Future attached to a different loop"
+    whenever a test reused a connection opened by an earlier test's loop.
+    Rebuilding before each test keeps production behavior (one client, one
+    process-wide loop) and makes the suite deterministic.
+    """
+    from app.db.redis import _new_client, redis_cache
+
+    redis_cache.redis = (
+        _new_client(redis_cache.redis_url) if redis_cache.redis_url else None
+    )
+    return
