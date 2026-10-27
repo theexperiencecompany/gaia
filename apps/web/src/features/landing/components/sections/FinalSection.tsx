@@ -15,7 +15,7 @@ import { TextSoftBlurIn } from "../shared/TextSoftBlurIn";
 
 const SOCIAL_LINKS = [
   {
-    href: "https://twitter.com/trygaia",
+    href: "https://x.com/trygaia",
     ariaLabel: "Twitter",
     icon: <TwitterIcon width={20} height={20} aria-hidden="true" />,
     label: "Twitter",

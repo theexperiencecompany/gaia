@@ -31,7 +31,7 @@ OpenAI caps tools at around 128 per request. We weren't even close to that numbe
 
 ---
 
-### The Naive Approach: Manual Tool Search
+## The Naive Approach: Manual Tool Search
 
 Our first attempt was tool search. We'd list every available tool name in the system prompt, then give the model a `search_tool` function. When it needed something, it would call `search_tool("gmail send email")`, we'd look it up, bind it dynamically, and return it.
 

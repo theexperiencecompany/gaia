@@ -228,7 +228,11 @@ const CONFIG: BestHubConfig = {
           or through the web app in Safari, and it can message you first when a
           workflow finishes. If you want an assistant built into iOS for timers,
           calls and device settings, that is still{" "}
-          <Link href="/compare/siri" className={LINK_CLASS}>
+          <Link
+            href="/compare/siri"
+            aria-label="Siri comparison"
+            className={LINK_CLASS}
+          >
             Siri
           </Link>
           ; GAIA is for the work Siri does not do.
@@ -246,7 +250,11 @@ const CONFIG: BestHubConfig = {
             Gemini
           </Link>{" "}
           and{" "}
-          <Link href="/compare/google-assistant" className={LINK_CLASS}>
+          <Link
+            href="/compare/google-assistant"
+            aria-label="Google Assistant comparison"
+            className={LINK_CLASS}
+          >
             Google Assistant
           </Link>{" "}
           are built in. GAIA handles your email, calendar and tasks from the

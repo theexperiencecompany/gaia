@@ -60,12 +60,14 @@ export const siteConfig = {
       role: "Founder & CEO",
       twitter: "https://twitter.com/aryanranderiya",
       linkedin: "https://www.linkedin.com/in/aryanranderiya/",
+      github: "https://github.com/aryanranderiya",
     },
     {
       name: "Dhruv Maradiya",
       role: "Founder & CTO",
       twitter: "https://twitter.com/dhruvmaradiya",
       linkedin: "https://www.linkedin.com/in/dhruvmaradiya/",
+      github: "https://github.com/dhruv-maradiya",
     },
   ],
 } as const;
@@ -86,17 +88,46 @@ export interface PersonProfile {
   readonly sameAs?: readonly (string | undefined)[];
 }
 
-/** A person with a stable @id on the about page, so the same author on several pages is one entity. */
-export function generatePersonSchema({
-  name,
-  jobTitle,
-  url,
-  sameAs = [],
-}: PersonProfile): Person {
+function personSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .replaceAll(/[^a-z0-9]+/g, "-")
+    .replaceAll(/^-|-$/g, "");
+}
+
+/**
+ * The canonical profile for a known person. Every page names the founders, so
+ * the founder data is the single source: a blog byline cannot drift to a
+ * different `url` or `sameAs` set than the Organization's founders array.
+ */
+function canonicalPersonProfile(profile: PersonProfile): PersonProfile {
+  const slug = personSlug(profile.name);
+  const founder = siteConfig.founders.find(
+    (candidate) => personSlug(candidate.name) === slug,
+  );
+  if (founder) {
+    return {
+      name: founder.name,
+      jobTitle: founder.role,
+      url: founder.linkedin,
+      sameAs: [founder.twitter, founder.linkedin, founder.github],
+    };
+  }
+  return {
+    name: profile.name,
+    jobTitle: profile.jobTitle,
+    url: profile.url,
+    sameAs: profile.sameAs ?? [],
+  };
+}
+
+/** A person with a stable site-level @id, so the same author on several pages is one entity. */
+export function generatePersonSchema(profile: PersonProfile): Person {
+  const { name, jobTitle, url, sameAs = [] } = canonicalPersonProfile(profile);
   const profiles = sameAs.filter((link): link is string => Boolean(link));
   return {
     "@type": "Person",
-    "@id": `${SITE_URL}/about#${name.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-")}`,
+    "@id": `${SITE_URL}/#person-${personSlug(name)}`,
     name,
     ...(jobTitle && { jobTitle }),
     ...(url && { url }),
@@ -109,7 +140,7 @@ function founderSchema(founder: (typeof siteConfig.founders)[number]): Person {
     name: founder.name,
     jobTitle: founder.role,
     url: founder.linkedin,
-    sameAs: [founder.twitter, founder.linkedin],
+    sameAs: [founder.twitter, founder.linkedin, founder.github],
   });
 }
 

@@ -26,6 +26,7 @@ import {
   generateFAQSchema,
   generateItemListSchema,
   generateOrganizationSchema,
+  generatePersonSchema,
   generateProductSchema,
   generateWebPageSchema,
   generateWebSiteSchema,
@@ -261,6 +262,26 @@ describe("schema entity identity", () => {
       creator: { id: "system", name: "GAIA Team", avatar: null },
     } as UseCase);
     expect(useCase.author).toEqual(organizationRef);
+  });
+
+  it("describes a founder the same way in every node that names them", () => {
+    const organization = generateOrganizationSchema() as unknown as Record<
+      string,
+      unknown
+    >;
+    const founders = organization.founders as Record<string, unknown>[];
+    const aryan = founders.find((node) => node.name === "Aryan Randeriya");
+
+    // A byline only knows the post's copy of the profile; the canonical
+    // founder links must win, or the same @id disagrees with itself.
+    const byline = generatePersonSchema({
+      name: "Aryan Randeriya",
+      url: "https://linkedin.com/in/someone-else",
+      sameAs: ["https://example.com/not-aryan"],
+    }) as unknown as Record<string, unknown>;
+
+    expect(byline).toEqual(aryan);
+    expect(byline["@id"]).toBe("https://heygaia.io/#person-aryan-randeriya");
   });
 });
 
