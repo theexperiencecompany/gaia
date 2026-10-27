@@ -1477,7 +1477,7 @@ CHECK_AREAS: dict[str, Area] = {
     ),
     **dict.fromkeys(("test-typescript", "harness-tests", "go-connect"), Area.TESTS),
     **dict.fromkeys(("gitleaks", "semgrep", "trivy", "pip-audit"), Area.SECURITY),
-    "build": Area.BUILD,
+    **dict.fromkeys(("build", "seo"), Area.BUILD),
 }
 
 

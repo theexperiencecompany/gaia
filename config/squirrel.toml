@@ -1,0 +1,37 @@
+# squirrelscan's config for the SEO lane: `scripts/ci/smoke-web.sh squirrel`.
+#
+# Every rule category runs. Each rule's finding count ratchets against
+# scripts/ci/baselines/squirrel-build.txt (the PR gate) or squirrel-live.txt
+# (post-deploy) rather than having to be zero, so a baseline is the list of what
+# is still to fix. The title and description windows
+# are appended at run time from apps/web/src/config/seoSnippet.json, the one
+# source of those numbers (scripts/ci/lib/squirrel.py config). Two narrow false
+# positives are dropped in scripts/ci/lib/squirrel.py, not here, because squirrel
+# can only disable a rule as a whole: crawl/sitemap-valid on /feed.xml and
+# url/lowercase on the pt-BR locale prefix.
+
+[project]
+name = "gaia"
+
+[crawler]
+# The same user agent every run, so a count never moves because the crawler
+# drew a different browser fingerprint.
+user_agent = "gaia-seo-audit/1.0 (+https://heygaia.io)"
+concurrency = 16
+per_host_concurrency = 16
+# A crawl answers what the site serves now, never what an earlier run cached.
+incremental = false
+
+[rules]
+enable = ["*"]
+# Response time measures how loaded the machine serving the crawl is, not the
+# site: on one build it flagged 0 of 100 pages on one run and 7 on the next.
+disable = ["perf/ttfb"]
+
+# Other sites' uptime is not this site's regression.
+[external_links]
+enabled = false
+
+[cloud]
+enabled = false
+publish = false

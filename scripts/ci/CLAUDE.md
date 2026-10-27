@@ -18,7 +18,7 @@ lane without grepping the workflow first.
 | Running the Python suite | `pytest.sh` | `slices`, `slice`, `flake-gate`, `regression-proof` |
 | Is the suite strong enough | `mutation.py` | `matrix`, `plan`, `shard`, `module`, `local`, `replay` |
 | Which tests a diff can reach | `test_impact.py` | `record`, `select`, `fetch`, `selection-path` |
-| What this PR changed | `changes.sh` | `base`, `base-rev`, `files`, `py-source`, `docker-inputs`, `selfhost-inputs`, `web-inputs`, `desktop-inputs` |
+| What this PR changed | `changes.sh` | `base`, `base-rev`, `files`, `py-source`, `docker-inputs`, `selfhost-inputs`, `web-inputs`, `seo-inputs`, `desktop-inputs` |
 | The self-host stack an end-to-end lane boots and drives | `selfhost.sh` | `prepare`, `stub`, `up`, `mongo`, `logs` |
 | Standing dependency + pin gates | `audit.sh` | `pnpm`, `pip`, `playwright-pin`, `model-pin`, `alert-rule-tools`, `evlog` |
 | Static hygiene over the TS/JS surface | `checks.mjs` | `file-sizes`, `components-per-file`, `types-location`, `duplication`, `evlog-map-bots`, `api-schema`, `analytics-catalog`, `api-schema-types`, `api-client-imports`, `cli-config-schema`, `deploy-templates`, `doc-comments` |
@@ -27,7 +27,7 @@ lane without grepping the workflow first.
 | Publishing what a green master produced | `release.sh` | `resolve-image-tags`, `promote-latest`, `dispatch-cli-publish`, `cli-release-images`, `pin-selfhost-release`, `cli-beta-release`, `selfhost-bots-arm64`, `selfhost-bots-manifest`, `connect-cross-check`, `connect-binaries`, `selfhost-bundle`, `disable-cf-builds` |
 | The release-metadata guards | `release.mjs` | `validate-manifest`, `verify-cli` |
 | Shipping to production | `deploy.sh` | `plan`, `stack`, `verify`, `retag`, `notify`, `served-commit`, `verify-commit`, `changelog`, `unwedge` |
-| What search engines see of, and are told about, the live marketing site | `smoke-web.sh` | `audit`, `indexnow` |
+| What search engines see of, and are told about, the live marketing site | `smoke-web.sh` | `audit`, `squirrel`, `audit-build`, `indexnow` |
 
 `.py` concepts decide (parse API results, route, pack, classify); `.sh`
 concepts orchestrate (containers, polling, ordered commands) — "Bash for glue,
@@ -42,9 +42,9 @@ count, who holds CPU slots, and how many mutmut/pytest processes are running.
 Release and deploy are two concepts, not one: `release.sh` publishes artifacts
 (image tags, `:latest`, the CLI on npm); `deploy.sh` puts them on the Swarm.
 
-`baselines/` holds the ratchet files for the two gates that landed on a tree
+`baselines/` holds the ratchet files for the gates that landed on a tree
 that already violated them (`checks.mjs api-schema-types`,
-`api-client-imports`). Each line is one known violation, each file has a header
+`api-client-imports`, and `smoke-web.sh squirrel`'s per-rule finding counts). Each line is one known violation, each file has a header
 saying what would remove it, and the gate fails on anything NOT listed while
 reporting a line that no longer matches as merely removable — so a baseline can
 be emptied without reddening the PR that empties it.
@@ -73,7 +73,12 @@ regenerate-and-diff gates behind `checks.mjs api-schema`, `analytics-catalog`,
 `cli-config-schema` and `deploy-templates`), `deploy_templates.py` (the Coolify and
 Render template generator behind `checks.mjs deploy-templates`; Python for
 PyYAML, run through the apps/api environment), `seo_audit.py` (the sitemap
-crawler behind `smoke-web.sh audit`), `indexnow.py` (the changed-page submitter behind
+crawler behind `smoke-web.sh audit`), `squirrel.py` (squirrelscan's effective
+config and the per-rule ratchet against `baselines/squirrel-build.txt` and
+`squirrel-live.txt` behind
+`smoke-web.sh squirrel`), `origin_proxy.py` (the HTTPS proxy that serves a local
+build to squirrel as https://heygaia.io, since squirrel cannot remap a host),
+`indexnow.py` (the changed-page submitter behind
 `smoke-web.sh indexnow`, which reuses `seo_audit.py`'s sitemap reader) and
 `mutation_matrix.py` (the AST detector behind `mutation.py matrix`),
 `mutation_gap.py` (the executable-line detector behind the no-covering-test

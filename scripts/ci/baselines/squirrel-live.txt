@@ -1,0 +1,64 @@
+# squirrelscan at --level surface, which `scripts/ci/smoke-web.sh` holds to this
+# file. `<rule id>=<count>` is the most pages (or, for a site-wide check, items)
+# the rule may flag; `score:<category>=<score>` the lowest score a category below
+# 100 may fall to. squirrel-build.txt is the PR gate's, on the production build
+# served locally (`audit-build`); squirrel-live.txt is the post-deploy run's, on
+# https://heygaia.io (`squirrel`). They differ where Cloudflare's edge does:
+# image resizing, caching and response headers.
+#
+# This file only tightens. The PR that fixes a finding rewrites it
+# (SMOKE_SQUIRREL_UPDATE=1 on the subcommand above), and the PR gate fails until
+# it does; a rule or category worse than its line fails every run.
+
+a11y/color-contrast=100
+a11y/duplicate-id-aria=3
+a11y/heading-order=6
+a11y/identical-links-same-purpose=92
+a11y/image-redundant-alt=17
+a11y/label-content-name-mismatch=100
+a11y/landmark-one-main=1
+a11y/landmark-regions=1
+a11y/link-in-text-block=6
+a11y/list-structure=1
+a11y/skip-link=46
+a11y/touch-targets=1
+ax/agents-md=1
+ax/markdown-response=1
+ax/token-weight=108
+content/heading-hierarchy=3
+content/keyword-stuffing=37
+content/word-count=16
+core/meta-title=2
+images/dimensions=100
+images/image-file-size=6
+images/offscreen-lazy=8
+links/internal-links=11
+links/orphan-pages=9
+links/weak-internal-links=6
+mobile/font-size=1
+mobile/tap-targets=1
+perf/bad-caching=5
+perf/cache-headers=73
+perf/cls-hints=7
+perf/critical-request-chains=100
+perf/css-file-size=100
+perf/dom-size=5
+perf/js-file-size=100
+perf/source-maps=100
+perf/total-byte-weight=1
+score:Accessibility=51
+score:Agent Experience=49
+score:Content=85
+score:Crawlability=95
+score:Images=53
+score:Links=85
+score:Mobile=80
+score:Performance=47
+score:Security=50
+score:URL Structure=99
+security/cookie-flags=108
+security/csp=1
+security/form-captcha=1
+security/hsts=1
+security/security-txt=1
+security/x-frame-options=1
