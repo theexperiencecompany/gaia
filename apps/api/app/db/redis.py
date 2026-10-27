@@ -4,8 +4,7 @@ Supports generic JSON caching, TTL, pattern-based invalidation, and graceful fal
 Redis is unavailable.
 """
 
-import asyncio
-from collections.abc import Mapping, Set as AbstractSet
+from collections.abc import AsyncIterator, Mapping, Set as AbstractSet
 from typing import Any, Literal, Protocol, TypeVar, cast, overload
 
 from pydantic import JsonValue, TypeAdapter
@@ -16,12 +15,14 @@ from redis.asyncio.lock import Lock
 
 from app.config.settings import settings
 from app.constants.cache import (
+    DEFAULT_CACHE_TTL,
     ONE_YEAR_TTL,
 )
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 # Re-export for backwards compatibility
+CACHE_TTL = DEFAULT_CACHE_TTL
 
 # Carries the ``model=`` argument through to the return type: ``get_cache(key, model=User)``
 # is ``User | None``, not ``Any`` — without it a mismatched model goes unnoticed.
@@ -118,6 +119,10 @@ class AsyncRedisCommands(Protocol):
 
     async def keys(self, pattern: str = "*") -> list[str]:
         """KEYS — full scan; only for small, bounded keyspaces."""
+        ...
+
+    def scan_iter(self, match: str | None = None, count: int | None = None) -> AsyncIterator[str]:
+        """SCAN — iterate matching keys in batches without blocking the server."""
         ...
 
     async def incr(self, name: str, amount: int = 1) -> int:
@@ -256,42 +261,26 @@ class RedisCache:
     def __init__(self, redis_url: str = "redis://localhost:6379", default_ttl: int = 3600) -> None:
         self.redis_url = settings.REDIS_URL or redis_url
         self.default_ttl = default_ttl
-        self._redis: AsyncRedisCommands | None = None
-        self._redis_loop: asyncio.AbstractEventLoop | None = None
+        self.redis: AsyncRedisCommands | None = None
 
         if self.redis_url:
-            log.set(db={"connection_status": "configured", "backend": "redis"})
-            log.info(
-                f"{LogTag.STORAGE} Redis client configured (connection verified at startup)."
-            )
+            try:
+                # NB: from_url is lazy — it does NOT connect here. Real
+                # connectivity is asserted by verify_connection() at startup.
+                self.redis = _new_client(self.redis_url)
+                log.set(db={"connection_status": "configured", "backend": "redis"})
+                log.info(
+                    f"{LogTag.STORAGE} Redis client configured (connection verified at startup)."
+                )
+            except Exception as e:
+                log.set(db={"connection_status": "error", "backend": "redis"})
+                log.error(
+                    f"{LogTag.STORAGE} Failed to create Redis client",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
         else:
             log.warning(f"{LogTag.STORAGE} REDIS_URL is not set. Caching will be disabled.")
-
-    @property
-    def redis(self) -> AsyncRedisCommands | None:
-        """The client bound to the running event loop.
-
-        redis-py pools connections on the loop that first uses them. A client
-        created at import time breaks any later loop ("Future attached to a
-        different loop") — pytest-asyncio gives every test its own loop. Rebuild
-        when the loop changes; in production the loop never does.
-        """
-        if not self.redis_url:
-            return None
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-        if self._redis is None or (loop is not None and loop is not self._redis_loop):
-            # NB: from_url is lazy — it does NOT connect here. Real
-            # connectivity is asserted by verify_connection() at startup.
-            self._redis = _new_client(self.redis_url)
-            self._redis_loop = loop
-        return self._redis
-
-    @redis.setter
-    def redis(self, value: AsyncRedisCommands | None) -> None:
-        self._redis = value
 
     async def verify_connection(self) -> None:
         """Assert Redis is reachable, failing fast unless the deployment tolerates it (development).
