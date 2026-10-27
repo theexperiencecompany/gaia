@@ -407,9 +407,11 @@ class TestInterceptHandler:
         """The exporter's failure says tracing is down, so it stays visible in Loki."""
         configure_loguru()
 
-        logging.getLogger("opentelemetry.exporter.otlp.proto.http.trace_exporter").error(
-            "Failed to export span batch code: %s, reason: %s", 502, "Bad Gateway"
-        )
+        exporter = logging.getLogger("opentelemetry.exporter.otlp.proto.http.trace_exporter")
+        # Only terminal failures: the per-retry warnings would flood Loki.
+        assert not exporter.isEnabledFor(logging.WARNING)
+
+        exporter.error("Failed to export span batch code: %s, reason: %s", 502, "Bad Gateway")
         mock_logger.bind.assert_called_once_with(logger_name="OTEL")
 
 

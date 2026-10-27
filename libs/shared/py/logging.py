@@ -760,6 +760,11 @@ def configure_loguru() -> Logger:
     for logger_name in _OWNED_LOG_NAMESPACES:
         _route_through_root(logger_name, LOG_CONFIG["level"])
 
+    # One line per failed batch, not two per retry: the exporter warns before each
+    # of its six attempts, which floods Loki during a collector outage. Failures
+    # still log at ERROR and still become the alert.
+    logging.getLogger(_OTLP_TRACE_EXPORTER_LOGGER).setLevel(logging.ERROR)
+
     # uvicorn decides whether an access log exists at all, and re-checks that
     # decision per connection with `uvicorn.access`.hasHandlers(): --no-access-log
     # clears the handlers and stops propagation. Unconditionally re-attaching a
