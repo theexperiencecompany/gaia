@@ -78,6 +78,7 @@ jobs:
           NEXT_PUBLIC_API_BASE_URL: https://api.heygaia.io/api/v1/
           NEXT_PUBLIC_DISCORD_CLIENT_ID: ${{ vars.NEXT_PUBLIC_DISCORD_CLIENT_ID }}
           NEXT_PUBLIC_SLACK_CLIENT_ID: ${{ vars.NEXT_PUBLIC_SLACK_CLIENT_ID }}
+          NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${{ vars.NEXT_PUBLIC_TURNSTILE_SITE_KEY }}
           NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN: ${{ vars.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN }}
           NEXT_PUBLIC_SENTRY_DSN: ${{ vars.NEXT_PUBLIC_SENTRY_DSN }}
           # Build-time only: uploads source maps and lets the build delete them.
@@ -113,6 +114,12 @@ jobs:
         # for a fallback:false page (learn/compare/automate) that populateCache
         # would then upload to R2 as the canonical response. Fail here instead.
         run: pnpm --filter ./apps/web verify-prerender
+
+      - name: Verify landing pages load no app-only code
+        if: steps.inputs.outputs.build != 'false'
+        # The chat stack, the PostHog SDK and the OpenUI stylesheet slow every
+        # marketing page without failing anything; the eager bundle is checked here.
+        run: pnpm --filter ./apps/web verify-landing-bundle
 
       # The build only proves the bundle assembles. Boot it in workerd and hit
       # real routes: a Next minor can change a manifest OpenNext cannot load and

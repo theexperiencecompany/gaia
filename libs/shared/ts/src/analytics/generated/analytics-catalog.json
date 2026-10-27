@@ -3306,6 +3306,31 @@
             ],
             "default": null,
             "title": "Error Digest"
+          },
+          "error_name": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Error Name"
+          },
+          "is_chunk_error": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Is Chunk Error"
           }
         },
         "required": ["error_type"],

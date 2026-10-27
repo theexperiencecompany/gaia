@@ -16,7 +16,6 @@ import posixpath
 import time
 
 from e2b import AsyncSandbox
-from langchain_core.runnables import RunnableConfig
 
 from app.agents.workspace.paths import (
     WORKSPACE_ROOT,
@@ -29,32 +28,12 @@ from app.agents.workspace.paths import (
 from app.constants.sandbox import WORKSPACE_TMP_SUFFIX
 from app.models.agent_models import (
     current_stream_writer,
+    get_session_id,
     get_user_id,
-    read_agent_configurable,
-    read_run_metadata,
 )
 from shared.py.wide_events import log
 
 _SESSION_EVENT_KEYS = ("bash_data", "file_data", "artifact_data")
-
-
-def get_session_id(config: RunnableConfig) -> str | None:
-    """Resolve the workspace session id from RunnableConfig.
-
-    Prefer `vfs_session_id`: subagent_runner pins it to the *parent*
-    conversation thread so artifacts written by one executor call are visible
-    to the next (`thread_id` is the `executor_<conv>` wrapper and differs from
-    the conversation_id that `ensure_session_dirs` and the
-    chat artifact forwarder key on — using it would split the session dir and
-    drop every artifact event). May be None for non-chat invocations
-    (workflows, background tasks)."""
-    configurable = read_agent_configurable(config)
-    return (
-        configurable.vfs_session_id
-        or configurable.conversation_id
-        or read_run_metadata(config).conversation_id
-        or configurable.thread_id
-    )
 
 
 def canonical_path(path: str, *, session_id: str | None) -> tuple[str, MountRole, str | None]:

@@ -165,6 +165,11 @@ export default async function LocaleLayout({ children, params }: Props) {
           crossOrigin="anonymous"
         />
         <link rel="dns-prefetch" href="https://uptime.betterstackcdn.com" />
+        <link
+          rel="preconnect"
+          href="https://cdn.jsdelivr.net"
+          crossOrigin="anonymous"
+        />
         {/* The header/footer logo is rendered via next/image (which emits its
             own preload where appropriate) and sits below the fold, so a manual
             high-priority preload here only competed with the hero LCP image and

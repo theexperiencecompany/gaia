@@ -105,3 +105,8 @@ ISO_4217_EXPONENTS: dict[str, int] = {
 DEV_SUBSCRIPTION_PREFIX = "dev_"
 DEV_PRO_PRODUCT_ID = "dev_pro_product"
 DEV_PRO_TERM_DAYS = 365
+
+
+# The state a delivery's idempotency record carries between "claimed" and an
+# outcome. A record left in it means the handler died mid-flight.
+CLAIMED_STATUS = "processing"

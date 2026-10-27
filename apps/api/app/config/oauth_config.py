@@ -30,7 +30,6 @@ from app.agents.prompts.memory_prompts import (
     GOOGLE_TASKS_MEMORY_PROMPT,
     HACKERNEWS_MEMORY_PROMPT,
     HUBSPOT_MEMORY_PROMPT,
-    INSTACART_MEMORY_PROMPT,
     INSTAGRAM_MEMORY_PROMPT,
     JIRA_MEMORY_PROMPT,
     LINEAR_MEMORY_PROMPT,
@@ -71,7 +70,6 @@ from app.agents.prompts.subagent_prompts import (
     GOOGLE_TASKS_AGENT_SYSTEM_PROMPT,
     HACKERNEWS_AGENT_SYSTEM_PROMPT,
     HUBSPOT_AGENT_SYSTEM_PROMPT,
-    INSTACART_AGENT_SYSTEM_PROMPT,
     INSTAGRAM_AGENT_SYSTEM_PROMPT,
     JIRA_AGENT_SYSTEM_PROMPT,
     LINEAR_AGENT_SYSTEM_PROMPT,
@@ -113,7 +111,6 @@ from app.config.oauth_content import (
     GOOGLETASKS_CONTENT,
     HACKERNEWS_CONTENT,
     HUBSPOT_CONTENT,
-    INSTACART_CONTENT,
     INSTAGRAM_CONTENT,
     JIRA_CONTENT,
     LINEAR_CONTENT,
@@ -166,7 +163,7 @@ from app.constants.hil_destructive_tools import (
     TWITTER_DESTRUCTIVE_TOOLS,
     ZOOM_DESTRUCTIVE_TOOLS,
 )
-from app.constants.mcp import INSTACART_MCP_SERVER_URL, YELP_MCP_SERVER_URL
+from app.constants.mcp import YELP_MCP_SERVER_URL
 from app.constants.triggers import (
     GMAIL_EMAIL_SENT_COMPOSIO_SLUG,
     GMAIL_EMAIL_SENT_TRIGGER_NAME,
@@ -2048,34 +2045,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             memory_prompt=HACKERNEWS_MEMORY_PROMPT,
         ),
         content=HACKERNEWS_CONTENT,
-    ),
-    # Instacart MCP (unauthenticated, Composio hosted)
-    OAuthIntegration(
-        id="instacart",
-        name="Instacart",
-        description="Search and browse grocery products, recipes, and shopping options.",
-        category="lifestyle",
-        provider="instacart",
-        scopes=[],
-        available=True,
-        short_name="instacart",
-        managed_by="mcp",
-        mcp_config=MCPConfig(
-            server_url=INSTACART_MCP_SERVER_URL,
-        ),
-        subagent_config=SubAgentConfig(
-            has_subagent=True,
-            agent_name="instacart_agent",
-            tool_space="instacart",
-            domain="grocery shopping and recipes",
-            capabilities="searching grocery products, finding recipes, browsing shopping options",
-            use_cases="finding groceries, searching recipes, planning meals",
-            system_prompt=INSTACART_AGENT_SYSTEM_PROMPT,
-            use_direct_tools=True,
-            disable_retrieve_tools=True,
-            memory_prompt=INSTACART_MEMORY_PROMPT,
-        ),
-        content=INSTACART_CONTENT,
     ),
     # Yelp MCP (unauthenticated, Composio hosted)
     OAuthIntegration(

@@ -15,14 +15,26 @@ from starlette.types import Scope
 
 from app.db.redis import redis_cache
 
+DEFAULT_LIMIT_PER_MINUTE = 120
+
+
+def build_limiter(storage_uri: str) -> Limiter:
+    """Build the app-wide limiter against the given counter storage."""
+    # Without the fallback, slowapi hands a storage ConnectionError to its 429
+    # handler, which crashes on exc.detail; with it, each replica counts in
+    # memory until the storage answers a ping again.
+    return Limiter(
+        key_func=get_remote_address,
+        default_limits=[f"{DEFAULT_LIMIT_PER_MINUTE}/minute"],
+        storage_uri=storage_uri,
+        in_memory_fallback_enabled=True,
+    )
+
+
 # Redis-backed, not slowapi's in-memory default: every replica has to count
 # against the same window, or an N-replica deployment silently allows N x the
 # limit and the ceiling stops meaning anything.
-limiter = Limiter(
-    key_func=get_remote_address,
-    default_limits=["120/minute"],
-    storage_uri=redis_cache.redis_url,
-)
+limiter = build_limiter(redis_cache.redis_url)
 
 
 def find_route_handler(app: FastAPI, scope: Scope) -> Callable[..., object] | None:
@@ -44,6 +56,12 @@ def find_route_handler(app: FastAPI, scope: Scope) -> Callable[..., object] | No
     return handler
 
 
+# Operational probes: a Prometheus scrape and an orchestrator's liveness check
+# are not user traffic, and counting them means a dead counter storage takes
+# monitoring down exactly when it is needed. Matched before the limiter runs.
+_PROBE_PATHS = frozenset({"/health", "/metrics"})
+
+
 class RouterAwareSlowAPIMiddleware(SlowAPIMiddleware):
     """SlowAPIMiddleware with handler lookup that sees through lazy routers.
 
@@ -53,6 +71,10 @@ class RouterAwareSlowAPIMiddleware(SlowAPIMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        """Count this request against the app-wide limit, then hand it to the route."""
+        if request.url.path in _PROBE_PATHS:
+            return await call_next(request)
+
         app: FastAPI = request.app
         limiter_for_app: Limiter = app.state.limiter
         if not limiter_for_app.enabled:
