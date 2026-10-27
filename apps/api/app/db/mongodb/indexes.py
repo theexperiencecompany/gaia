@@ -756,11 +756,8 @@ async def create_processed_webhook_indexes() -> None:
                 "processed_at",
                 expireAfterSeconds=2592000,  # 30 days
             ),
-            # A claim whose handler died mid-flight never gets an outcome, and a
-            # 30-day tombstone makes Dodo's retry answer "already processed" for
-            # the whole window: the delivery is lost. Dodo's eight attempts span
-            # ~27.5h, so a stuck claim expires just past the last one while a
-            # finished record keeps its 30 days.
+            # A claim with no outcome blocks Dodo's retry for its whole 30-day TTL;
+            # the eight attempts span ~27.5h, so stuck ones expire at 48h.
             processed_webhooks_collection.create_index(
                 "processed_at",
                 expireAfterSeconds=172800,  # 48h
