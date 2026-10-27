@@ -5296,132 +5296,132 @@
   "notion-teams": {
     "toolA": "Notion",
     "toolB": "Microsoft Teams",
-    "tagline": "Partagez du contenu Notion dans Teams et recopiez les notes de réunion dans Notion",
-    "metaTitle": "Notion Teams : mises à jour et notes de réunion",
-    "metaDescription": "Teams reste à jour avec vos docs Notion. GAIA publie les mises à jour Notion dans vos canaux et capture les notes de réunion Teams. Voir les étapes.",
+    "tagline": "Partagez du contenu Notion dans Teams et rapportez les notes de réunion dans la base de connaissances",
+    "metaTitle": "Intégration Notion Microsoft Teams : pages et notes de réunion",
+    "metaDescription": "Gardez Microsoft Teams aligné sur vos documents Notion. GAIA publie les mises à jour de pages Notion dans Teams et enregistre les notes de réunion Teams dans Notion. Voir les étapes de configuration.",
     "keywords": [
       "intégration Notion Microsoft Teams",
       "automatisation Notion Teams",
       "partager Notion dans Microsoft Teams",
-      "capturer les notes de réunion Teams dans Notion",
+      "rapporter les notes de réunion Teams dans Notion",
       "connecter Notion et Teams",
       "gestion des connaissances en entreprise"
     ],
-    "intro": "Les équipes d'entreprise qui s'appuient sur Microsoft Teams pour la communication et sur Notion pour la gestion des connaissances perdent constamment des informations dans l'écart entre les deux outils. Un document Notion publié avec des mises à jour importantes de politique interne n’atteint jamais la plupart des membres car ils travaillent dans Teams. Les décisions prises lors d'une réunion Teams ne sont jamais retranscrites dans Notion, car il faut que quelqu’un prenne le temps de les écrire après coup. La base de connaissances et la plateforme de conversation fonctionnent comme deux mondes séparés, et le savoir institutionnel ne s’accumule nulle part.\n\nGAIA connecte Notion et Microsoft Teams pour garantir que l’information circule sans friction entre les deux. Lorsqu’une page Notion importante est publiée, GAIA envoie un résumé enrichi dans le canal Teams concerné. Quand une réunion Teams se termine, GAIA génère des comptes-rendus structurés et les sauvegarde directement sur une page Notion liée à l’ordre du jour de la réunion. Les messages essentiels sur Teams peuvent être épinglés dans Notion en une simple réaction, et les pages Notion peuvent être référencées dans Teams avec des aperçus automatiques.\n\nCette intégration est particulièrement précieuse pour les grandes organisations standardisées sur Microsoft 365 mais utilisant Notion comme wiki interne, pour les équipes de conseil qui documentent le travail client dans Notion tout en se coordonnant dans Teams, et pour toute équipe d’entreprise souhaitant réduire la perte d’information entre leur communication et leur documentation.",
+    "intro": "Les équipes d'entreprise qui s'appuient sur Microsoft Teams pour communiquer et sur Notion pour gérer leurs connaissances perdent constamment de l'information dans l'écart entre les deux. Un document publié avec des mises à jour de politique importantes n'atteint jamais la majeure partie de l'équipe, parce que celle-ci vit dans le chat. Les décisions prises lors d'un appel ne sont jamais consignées, car quelqu'un doit les transcrire manuellement après coup. La base de connaissances et la plateforme de conversation fonctionnent comme deux mondes séparés, et le savoir institutionnel ne s'accumule nulle part.\n\nGAIA relie les deux pour que l'information circule entre eux. Quand une page importante est publiée, GAIA en publie un résumé enrichi dans le canal concerné. Quand une réunion se termine, GAIA génère des notes de réunion structurées et les enregistre directement dans une page liée à l'ordre du jour de la réunion. Les messages importants peuvent être épinglés dans la base de connaissances d'une simple réaction, et les pages peuvent être citées dans le chat avec des aperçus automatiques.\n\nCette intégration est particulièrement utile aux grandes organisations standardisées sur Microsoft 365 qui utilisent la base de connaissances comme wiki interne, aux équipes de conseil qui documentent leurs missions clients dans Notion mais coordonnent leurs travaux dans Teams, et à toute équipe d'entreprise qui veut limiter la perte de connaissances entre ses outils de communication et de documentation.",
     "useCases": [
       {
         "title": "Publier les mises à jour de pages Notion dans les canaux Teams",
-        "description": "Lorsqu'une page Notion dans un espace de travail ou une base de données configurée est publiée ou mise à jour de manière significative, GAIA envoie un message formaté dans Teams au canal concerné, comprenant le titre de la page, l'auteur, un résumé des changements et un lien direct vers le document complet."
+        "description": "Quand une page d'un espace de travail ou d'une base de données configurés est publiée ou sensiblement mise à jour, GAIA envoie un message mis en forme dans le canal concerné, avec le titre de la page, l'auteur, un résumé des changements et un lien direct vers le document complet."
       },
       {
         "title": "Capturer automatiquement les notes de réunion Teams dans Notion",
-        "description": "Après la fin d'une réunion Teams, GAIA génère des notes structurées à partir de la transcription de la réunion ou des messages clés et crée une page Notion dans une base de données dédiée aux comptes rendus de réunion, avec la liste des participants, la date, les points à l'ordre du jour, les décisions prises et les actions à suivre."
+        "description": "À la fin d'une réunion, GAIA génère des notes structurées à partir de la transcription ou des messages clés et crée une page dans une base de données de notes de réunion dédiée, avec les participants, la date, les points à l'ordre du jour, les décisions et les actions à mener."
       },
       {
-        "title": "Enregistrer les messages Teams importants dans Notion avec une réaction",
-        "description": "Les membres de l'équipe peuvent réagir à un message Teams avec un emoji configuré pour déclencher l'enregistrement de ce message par GAIA dans une base de données Notion « Messages importants », créant ainsi une trace de connaissances accessible à partir des échanges Teams au fil de l'eau."
+        "title": "Enregistrer les messages importants dans la base de connaissances avec une réaction",
+        "description": "Les membres de l'équipe peuvent réagir à un message avec un emoji configuré pour déclencher l'enregistrement par GAIA dans une base de données « Messages importants », créant ainsi une trace de connaissance accessible à partir de conversations spontanées."
       },
       {
-        "title": "Récapitulatif Teams quotidien du nouveau contenu Notion",
-        "description": "Chaque matin, GAIA publie un message structuré dans Teams listant toutes les pages Notion créées ou mises à jour au cours des dernières 24 heures, classées par section d'espace de travail, afin que l'équipe commence la journée informée des nouveautés de la base de connaissances sans devoir consulter Notion séparément."
+        "title": "Résumé quotidien des nouveaux contenus",
+        "description": "Chaque matin, GAIA publie un message structuré listant toutes les pages créées ou mises à jour au cours des dernières 24 heures, organisé par section de l'espace de travail, pour que l'équipe commence la journée en sachant ce qui est nouveau dans la base de connaissances sans avoir à l'ouvrir séparément."
       },
       {
-        "title": "Relier les discussions de canal Teams aux pages de projet Notion",
-        "description": "GAIA peut associer un canal Microsoft Teams à une page projet Notion, en partageant une fiche de contexte projet aux nouveaux membres du canal et en veillant à ce que les principales mises à jour du projet sur Notion soient toujours mises en avant dans le fil de discussion Teams."
+        "title": "Relier les conversations de canal aux pages de projet",
+        "description": "GAIA peut associer un canal Microsoft Teams à une page de projet Notion, en publiant une carte de contexte de projet pour les nouveaux membres du canal et en veillant à ce que les mises à jour majeures du projet remontent toujours dans le fil de discussion."
       }
     ],
     "howItWorks": [
       {
         "step": "Connecter Notion et Microsoft Teams à GAIA",
-        "description": "Authentifiez votre espace de travail Notion et votre organisation Microsoft Teams via les paramètres d’intégration de GAIA. GAIA utilise OAuth pour les deux plateformes et ne demande que les permissions minimales nécessaires : envoi de messages pour Teams et lecture/écriture de pages pour Notion."
+        "description": "Authentifiez votre espace de travail Notion et votre organisation Microsoft Teams dans les réglages d'intégration de GAIA. GAIA utilise OAuth pour les deux et ne demande que les permissions minimales nécessaires : envoi de messages pour le chat et lecture/écriture de pages pour la base de connaissances."
       },
       {
-        "step": "Configurez vos règles de flux d’informations",
-        "description": "Indiquez quelles bases de données Notion déclenchent des notifications Teams, quels canaux Teams sont reliés à quelles sections Notion, comment les notes de réunion doivent être formatées et classées, et quelles réactions Teams doivent déclencher des sauvegardes dans Notion."
+        "step": "Configurer vos règles de circulation de l'information",
+        "description": "Indiquez quelles bases de données déclenchent des notifications de canal, quels canaux sont liés à quelles sections, comment les notes de réunion doivent être mises en forme et classées, et quelles réactions doivent déclencher un enregistrement."
       },
       {
-        "step": "GAIA relie automatiquement votre wiki et vos discussions",
-        "description": "GAIA surveille à la fois Notion et Teams pour repérer les déclencheurs configurés et exécute les flux d’information en temps réel. Vos canaux Teams restent informés des mises à jour Notion et les discussions importantes de Teams sont archivées dans votre base de connaissances permanente."
+        "step": "GAIA fait le pont entre votre wiki et votre chat, automatiquement",
+        "description": "GAIA surveille les deux côtés pour les déclencheurs configurés et exécute les flux d'information en temps réel. Vos canaux restent informés des mises à jour de pages, et les discussions importantes rejoignent votre base de connaissances permanente."
       }
     ],
     "faqs": [
       {
-        "question": "GAIA fonctionne-t-il avec les canaux privés Microsoft Teams ?",
-        "answer": "Oui. GAIA peut être configuré pour publier et lire dans les canaux Teams standards et privés, à condition que le bot GAIA soit ajouté au canal privé et dispose des autorisations appropriées. Le contenu des canaux privés est géré de façon sécurisée et n’est jamais envoyé vers des destinations non prévues."
+        "question": "GAIA fonctionne-t-il avec les canaux privés de Microsoft Teams ?",
+        "answer": "Oui. GAIA peut être configuré pour publier dans des canaux standard et privés et pour les lire, à condition que le bot GAIA soit ajouté au canal privé et dispose des permissions adéquates. Le contenu des canaux privés est traité de façon sécurisée et n'est jamais envoyé vers des destinations non prévues."
       },
       {
-        "question": "GAIA peut-il capturer les notes de réunion depuis Teams sans utiliser la transcription ?",
-        "answer": "Si la transcription Teams n’est pas disponible ou activée, GAIA crée dans Notion un modèle structuré de notes de réunion pré-rempli avec les noms des participants, le titre de la réunion, la date et la durée. Un membre de l’équipe peut alors y ajouter les décisions clés et actions, et GAIA l’archive au bon endroit dans Notion."
+        "question": "GAIA peut-il capturer des notes de réunion sans utiliser la fonction de transcription ?",
+        "answer": "Si la transcription n'est pas disponible ou n'est pas activée, GAIA crée une page modèle de notes de réunion structurée, préremplie avec les noms des participants, le titre de la réunion, la date et la durée. Un membre de l'équipe peut ensuite renseigner les décisions clés et les actions, et GAIA classe la page au bon endroit."
       },
       {
-        "question": "Cette intégration est-elle compatible avec Microsoft 365 GCC ou les environnements cloud gouvernementaux ?",
-        "answer": "L’intégration Teams de GAIA est conçue pour les environnements Microsoft 365 commerciaux standards. La compatibilité avec le cloud gouvernemental (GCC) dépend des points de terminaison API disponibles dans cet environnement. Contactez l’équipe GAIA pour obtenir des conseils sur les déploiements GCC."
+        "question": "Cette intégration est-elle compatible avec Microsoft 365 GCC ou les environnements cloud gouvernementaux ?",
+        "answer": "L'intégration de chat de GAIA est conçue pour les environnements commerciaux Microsoft 365 standard. La compatibilité avec le cloud gouvernemental (GCC) dépend des points de terminaison API disponibles dans cet environnement. Contactez l'équipe GAIA pour obtenir des conseils sur les déploiements GCC."
       }
     ]
   },
   "notion-stripe": {
     "toolA": "Notion",
     "toolB": "Stripe",
-    "tagline": "Suivez le chiffre d’affaires Stripe dans les bases de données Notion et redirigez les alertes de paiement vers les pages",
-    "metaTitle": "Intégration Notion + Stripe : chiffres Stripe dans Notion",
-    "metaDescription": "Notion + Stripe avec GAIA : Consignez vos métriques de revenus Stripe dans des bases Notion, pour voir vos chiffres à côté de vos projets.",
+    "tagline": "Suivez les revenus Stripe dans les bases Notion et acheminez les alertes de paiement vers vos pages",
+    "metaTitle": "Intégration Notion + Stripe : les revenus Stripe dans Notion",
+    "metaDescription": "Suivez les revenus Stripe quotidiens dans une base Notion et consignez-y les nouveaux abonnements et les échecs de paiement. GAIA maintient votre page de métriques à jour. Voir les étapes.",
     "keywords": [
       "intégration Notion Stripe",
       "automatisation Notion Stripe",
-      "suivi des revenus Stripe dans Notion",
+      "suivre les revenus Stripe dans Notion",
       "alertes de paiement Stripe Notion",
       "connecter Notion et Stripe",
-      "indicateurs business base de données Notion"
+      "base de données de métriques métier Notion"
     ],
-    "intro": "Les fondateurs, chefs de produit et équipes business utilisent Notion pour gérer leurs opérations et Stripe pour encaisser leurs paiements, mais les données de revenus restent isolées dans le tableau de bord Stripe. Les indicateurs clés comme le MRR, le taux de désabonnement et les nouveaux abonnements ne sont pas visibles dans l’espace de travail Notion où la stratégie est planifiée et les OKR sont suivis. Les échecs de paiement nécessitent une recherche manuelle sur Stripe au lieu d’apparaître automatiquement dans le contexte opérationnel où sont gérées les actions. L’intelligence business présente dans Stripe n’atteint jamais l’espace Notion où les décisions sont prises.\n\nGAIA connecte Stripe et Notion pour intégrer vos données de revenus à votre hub opérationnel. Les indicateurs clés de Stripe peuvent être synchronisés régulièrement avec une base de données Notion, vous donnant une vue financière toujours à jour à côté de vos plans produits et OKR d’équipe. Les événements de paiement — paiements réussis, débuts d’abonnement, annulations, et paiements échoués — peuvent être routés vers des pages Notion sous forme de notifications afin que les bonnes personnes puissent agir sans avoir besoin d’accéder au tableau de bord Stripe.\n\nCette intégration est particulièrement utile pour les fondateurs SaaS qui utilisent Notion comme système d’exploitation de leur entreprise, pour les équipes financières souhaitant retrouver les métriques de revenus dans le même espace que leurs documents de planification, et pour les équipes customer success qui ont besoin de visualiser paiements et abonnements aux côtés des notes clients dans Notion.",
+    "intro": "Les fondateurs, les chefs de produit et les équipes métier utilisent Notion pour piloter leurs opérations et Stripe pour traiter les paiements, mais les données de revenus restent cloisonnées dans le tableau de bord des paiements. Les indicateurs clés comme le MRR, le taux d'attrition et les nouveaux abonnements ne sont pas visibles dans l'espace de travail où la stratégie se planifie et où les OKR se suivent. Les échecs de paiement demandent une investigation manuelle au lieu d'apparaître automatiquement dans le contexte opérationnel où les actions sont gérées. L'intelligence économique qui vit avec les paiements ne rejoint jamais l'endroit où les décisions se prennent.\n\nGAIA relie les deux pour faire entrer les données de revenus dans votre hub opérationnel. Les indicateurs clés peuvent être synchronisés vers une base de données selon un calendrier régulier, ce qui vous donne un instantané financier toujours à jour, aux côtés de vos plans produit et des OKR de l'équipe. Les événements de paiement — débits réussis, débuts d'abonnement, résiliations et échecs de paiement — peuvent être aiguillés vers des pages sous forme de notifications, afin que les bonnes personnes puissent agir sans avoir accès au tableau de bord Stripe.\n\nCette intégration est particulièrement utile aux fondateurs de SaaS qui utilisent Notion comme système d'exploitation de leur entreprise, aux équipes financières qui veulent les indicateurs de revenus dans le même espace de travail que leurs documents de planification, et aux équipes de succès client qui ont besoin de voir le statut des paiements et des abonnements à côté de leurs notes clients.",
     "useCases": [
       {
-        "title": "Métriques quotidiennes de revenus dans une base de données Notion",
-        "description": "GAIA extrait chaque jour les principaux indicateurs Stripe — MRR, ARR, nouveaux abonnements, revenus perdus, clients actifs — et les écrit dans une base de données Notion structurée, afin que votre tableau de bord financier se trouve dans le même espace de travail que les objectifs et plans de votre entreprise."
+        "title": "Indicateurs de revenus Stripe quotidiens dans une base Notion",
+        "description": "GAIA récupère les indicateurs de revenus clés — MRR, ARR, nouveaux abonnements, revenus perdus, clients actifs — selon un calendrier quotidien et les écrit dans une base de données structurée, pour que votre tableau de bord de revenus vive dans le même espace de travail que vos objectifs et vos plans."
       },
       {
-        "title": "Alertes de nouveaux abonnements dans Notion",
-        "description": "Lorsqu’un nouveau client s’abonne via Stripe, GAIA crée une entrée dans une base clients Notion avec le forfait, la date de début, l’email du client et la valeur de l’abonnement, pour que votre équipe dispose automatiquement d’une fiche client type CRM, enrichie à partir de Stripe."
+        "title": "Alertes de nouvel abonnement dans Notion",
+        "description": "Quand un nouveau client s'abonne, GAIA crée une entrée Notion dans une base de données clients avec l'offre, la date de début, l'e-mail du client et la valeur de l'abonnement, pour que votre équipe dispose d'un enregistrement de type CRM de chaque client, alimenté automatiquement depuis l'abonnement."
       },
       {
-        "title": "Notifications d’échec de paiement sur Notion",
-        "description": "Lorsqu’un paiement Stripe échoue, GAIA crée une tâche dans une base Notion « Opérations de revenus » avec le nom du client, le montant, la raison de l’échec et un lien vers la fiche client Stripe afin que l’équipe puisse relancer sans avoir accès au tableau de bord Stripe."
+        "title": "Notifications d'échec de paiement",
+        "description": "Quand un paiement échoue, GAIA crée une tâche dans une base de données « Opérations revenus » avec le nom du client, le montant, le motif de l'échec et un lien vers la fiche client Stripe, afin que l'équipe puisse relancer le recouvrement sans accéder au tableau de bord."
       },
       {
-        "title": "Suivi des annulations d’abonnement dans Notion",
-        "description": "GAIA enregistre chaque annulation d’abonnement Stripe dans une base Notion dédiée au churn, avec les informations du client, le forfait, le motif d’annulation (si renseigné) et la valeur vie client, afin d’analyser les motifs de départ et piloter les campagnes de reconquête."
+        "title": "Suivi des résiliations d'abonnement",
+        "description": "GAIA consigne chaque résiliation d'abonnement dans une base de données d'attrition avec les détails du client, l'offre, le motif de résiliation (s'il est fourni) et la valeur vie client, pour que l'équipe puisse analyser les tendances d'attrition et prioriser les campagnes de reconquête."
       },
       {
-        "title": "Génération de rapports financiers mensuels dans Notion",
-        "description": "À la fin de chaque mois, GAIA interroge Stripe pour le résumé financier de la période et génère un rapport Notion structuré avec la croissance du MRR, les nouveaux clients, le churn et la rétention nette des revenus, rapport automatiquement partagé avec l’équipe de direction."
+        "title": "Génération d'un rapport financier mensuel",
+        "description": "À la fin de chaque mois, GAIA interroge le compte de paiement pour obtenir le résumé financier de la période et génère un rapport structuré avec la croissance du MRR, les nouveaux clients, l'attrition et la rétention nette des revenus, partagé automatiquement avec l'équipe de direction."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connectez Notion et Stripe à GAIA",
-        "description": "Authentifiez votre espace de travail Notion et connectez votre compte Stripe à l’aide d’une clé API Stripe à droits limités (lecture seule). GAIA n’écrit jamais sur Stripe : il se contente de lire les données de revenus et les webhooks d’événements pour alimenter votre espace de travail Notion."
+        "step": "Connecter Notion et Stripe à GAIA",
+        "description": "Authentifiez votre espace de travail Notion et connectez votre compte Stripe à l'aide d'une clé API restreinte en lecture seule. GAIA n'écrit jamais en retour : il ne fait que lire les données de revenus et les webhooks d'événements pour alimenter votre espace de travail."
       },
       {
-        "step": "Configurez vos indicateurs et préférences d’alerte",
-        "description": "Sélectionnez quels événements et indicateurs Stripe doivent être transférés dans Notion, quelles bases de données Notion recevront chaque type de donnée, et la fréquence des synchronisations programmées. Vous pouvez aussi définir des alertes de seuil de chiffre d’affaires pour ne créer des entrées Notion qu’au-delà d’un certain montant."
+        "step": "Configurer vos indicateurs et préférences d'alerte",
+        "description": "Choisissez les événements et indicateurs qui doivent remonter dans l'espace de travail, les bases de données qui reçoivent chaque type de donnée et la fréquence des synchronisations planifiées. Vous pouvez aussi définir des alertes de seuil de revenus pour ne déclencher des entrées qu'au-delà d'un certain montant."
       },
       {
-        "step": "GAIA maintient votre espace de travail Notion à jour avec les données Stripe",
-        "description": "GAIA écoute les événements Stripe via les webhooks et effectue des synchronisations régulières des indicateurs, en écrivant automatiquement les données dans vos bases Notion. Votre espace de travail opérationnel devient ainsi un véritable hub d’intelligence d’affaires, sans aucun travail de reporting manuel."
+        "step": "GAIA tient votre espace de travail à jour avec les données de revenus",
+        "description": "GAIA écoute les événements webhook et exécute les synchronisations planifiées, en écrivant automatiquement les données dans vos bases. Votre espace de travail opérationnel devient un hub d'intelligence économique vivant, sans aucun effort de reporting manuel."
       }
     ],
     "faqs": [
       {
-        "question": "GAIA a-t-il accès à l’écriture sur mon compte Stripe ?",
-        "answer": "Non. GAIA utilise une clé API Stripe en lecture seule avec des permissions restreintes. Il peut lire les données des clients, abonnements, paiements et indicateurs, mais ne peut pas créer de paiements, modifier d’abonnements, ni accéder à vos paramètres Stripe. Cela garantit que les données de chiffre d’affaires s’intègrent en toute sécurité dans Notion, sans aucun risque pour votre compte Stripe."
+        "question": "GAIA peut-il écrire dans mon compte Stripe ?",
+        "answer": "Non. GAIA utilise une clé API en lecture seule aux permissions restreintes. Il peut lire les données de clients, d'abonnements, de paiements et d'indicateurs, mais ne peut pas créer de débits, modifier des abonnements ni accéder aux réglages du compte. Les données de revenus remontent donc vers l'espace de travail sans aucun risque pour le compte de paiement."
       },
       {
-        "question": "GAIA peut-il synchroniser les données Stripe de plusieurs comptes Stripe dans un seul espace de travail Notion ?",
-        "answer": "Oui. Si vous gérez plusieurs entreprises ou marques avec des comptes Stripe séparés, GAIA peut synchroniser les données de chaque compte dans le même espace de travail Notion, en utilisant une propriété de source dans la base de données pour distinguer à quel compte appartient chaque entrée."
+        "question": "GAIA peut-il synchroniser les données de plusieurs comptes dans un même espace de travail Notion ?",
+        "answer": "Oui. Si vous exploitez plusieurs entreprises ou marques avec des comptes distincts, GAIA peut synchroniser les données de chacun dans le même espace de travail, en utilisant une propriété de source dans la base de données pour distinguer le compte auquel chaque entrée appartient."
       },
       {
-        "question": "À quel point les données Stripe sont-elles à jour dans Notion — est-ce en temps réel ?",
-        "answer": "Les données basées sur les événements, comme les nouveaux abonnements, les annulations ou les échecs de paiement, sont synchronisées quasi en temps réel via les webhooks Stripe. Les métriques agrégées (comme le MRR ou l’ARR) sont synchronisées selon la fréquence que vous choisissez — quotidiennement par défaut, mais une synchronisation horaire est disponible pour les équipes ayant besoin de mises à jour plus fréquentes."
+        "question": "Les données sont-elles à jour en temps réel ?",
+        "answer": "Les données événementielles comme les nouveaux abonnements, les résiliations et les échecs de paiement sont synchronisées quasi en temps réel via webhooks. Les indicateurs agrégés comme le MRR et l'ARR sont synchronisés selon le calendrier que vous configurez — quotidien par défaut, mais horaire possible pour les équipes qui ont besoin de mises à jour plus fréquentes."
       }
     ]
   },
@@ -5692,280 +5692,280 @@
   "github-jira": {
     "toolA": "GitHub",
     "toolB": "Jira",
-    "tagline": "Synchronisez vos PR GitHub et les tickets Jira pour que votre tableau de sprint reflète toujours fidèlement l’état réel de votre code",
-    "metaTitle": "Intégration GitHub + Jira : code et tableau de sprint",
-    "metaDescription": "GitHub + Jira avec GAIA : Synchronisez le statut des PR avec les tickets Jira et faites avancer les tâches au merge, pour un tableau toujours exact.",
+    "tagline": "Gardez PR et tickets Jira synchronisés pour que votre tableau de sprint reflète toujours l'état réel du code",
+    "metaTitle": "Intégration GitHub + Jira : des tickets Jira qui suivent les PR",
+    "metaDescription": "Faites avancer les tickets Jira sur les événements de PR et publiez le statut des revues en commentaire dans Jira. GAIA garde votre tableau de sprint exact. Voir les étapes.",
     "keywords": [
       "intégration GitHub Jira",
       "automatisation GitHub Jira",
-      "synchroniser PR GitHub avec Jira",
-      "transition automatique de Jira lors de la fusion PR",
+      "synchroniser une PR GitHub avec Jira",
+      "changer automatiquement le statut Jira à la fusion d'une PR",
       "synchronisation de sprint GitHub Jira",
       "workflow GitHub Jira"
     ],
-    "intro": "La plupart des équipes techniques utilisent à la fois GitHub pour le code et Jira pour le suivi de projet, mais leur synchronisation reste souvent une corvée manuelle. Un développeur fusionne une PR et oublie de passer le ticket Jira en « Terminé ». Un chef de produit ferme un ticket Jira avant même que le code n’ait été relu. Le tableau de sprint finit par ne plus correspondre à l’état réel du code, faussant les rapports de vélocité.\n\nGAIA automatise la coordination entre GitHub et Jira pour garantir la cohérence des deux systèmes, sans que personne n’ait à penser à tout mettre à jour. Lorsqu’une PR est ouverte, GAIA fait passer le ticket Jira lié en « En revue ». Une fois la PR fusionnée, le ticket passe automatiquement en « Terminé ». Quand un ticket Jira est créé et ajouté à un sprint, GAIA peut ouvrir une issue GitHub correspondante ou une branche liée.\n\nPour les managers techniques, cela signifie des tableaux de sprint qui reflètent réellement l’état du codebase. Pour les développeurs, c’est un changement de contexte en moins : il suffit d’écrire le code, de fusionner la PR, et de laisser le suivi de projet se mettre à jour automatiquement.",
+    "intro": "La plupart des équipes d'ingénierie suivent le code dans GitHub et travaillent dans Jira, mais garder les deux alignés est une corvée manuelle permanente. Un développeur fusionne une PR et oublie de passer le ticket en Done. Un chef de produit ferme un ticket avant même que le code soit relu. Le tableau de sprint dérive par rapport à l'état réel de la base de code, et les rapports de vélocité deviennent peu fiables.\n\nGAIA automatise la transmission pour qu'aucun des deux côtés ne dépende de la mémoire de quelqu'un. Quand une PR est ouverte, GAIA fait passer le ticket lié en In Review. Quand la PR est fusionnée, le ticket passe automatiquement en Done. Quand un ticket est créé et ajouté à un sprint, GAIA peut ouvrir le ticket GitHub ou la branche correspondante.\n\nPour les responsables d'ingénierie, cela signifie des tableaux de sprint qui reflètent fidèlement la réalité du code. Pour les développeurs, c'est un changement de contexte de moins : écrivez le code, fusionnez la PR, et faites confiance à l'outil de suivi pour se mettre à jour tout seul.",
     "useCases": [
       {
-        "title": "Transition automatique des tickets Jira lors des événements PR",
-        "description": "Lorsqu'une pull request est ouverte, GAIA déplace le ticket Jira lié vers En révision. Quand la PR est fusionnée, le ticket passe à Terminé. Si la PR est fermée sans fusion, GAIA ramène le ticket à En cours."
+        "title": "Faire avancer les tickets Jira sur les événements de PR",
+        "description": "Quand une pull request est ouverte, GAIA déplace le ticket lié en In Review. Quand la PR est fusionnée, le ticket passe en Done. Quand une PR est fermée sans fusion, GAIA remet le ticket en In Progress."
       },
       {
-        "title": "Créer des tickets GitHub à partir des nouveaux tickets de sprint Jira",
-        "description": "Lorsqu'un nouveau ticket Jira est ajouté à un sprint, GAIA crée un ticket GitHub lié dans le dépôt approprié afin que les développeurs puissent suivre le travail de code directement depuis GitHub sans quitter leur flux de travail."
+        "title": "Créer des tickets GitHub à partir des nouveaux tickets de sprint",
+        "description": "Quand un nouveau ticket est ajouté à un sprint, GAIA crée un ticket lié dans le dépôt approprié, pour que les développeurs puissent suivre le travail au niveau du code directement depuis le dépôt, sans quitter leur flux de travail."
       },
       {
-        "title": "Publier le statut de revue de PR dans les commentaires du ticket Jira",
-        "description": "GAIA publie un commentaire sur le ticket Jira chaque fois que la PR associée reçoit une revue—approuvée, modifications demandées ou commentaire—pour que les responsables produits suivent la progression de la revue sans avoir à accéder à GitHub."
+        "title": "Publier le statut des revues de PR en commentaire sur le ticket",
+        "description": "GAIA publie un commentaire sur le ticket chaque fois que la PR liée reçoit une revue (approuvée, modifications demandées ou commentée), afin que les chefs de produit puissent suivre l'avancement de la revue de code sans accès au dépôt."
       },
       {
-        "title": "Notification d’échec de CI sur les tickets Jira",
-        "description": "Lorsqu'une exécution CI GitHub Actions échoue sur une PR, GAIA ajoute un indicateur ou un commentaire au ticket Jira lié pour alerter l'équipe que la build a échoué et éviter que le ticket ne soit marqué comme Terminé prématurément."
+        "title": "Notification d'échec de CI sur les tickets Jira",
+        "description": "Quand une exécution CI GitHub Actions échoue sur une PR, GAIA ajoute un indicateur ou un commentaire au ticket lié pour alerter l'équipe que le build est cassé, ce qui évite de marquer le ticket Done trop tôt."
       },
       {
         "title": "Rapport de fin de sprint à partir des PR fusionnées",
-        "description": "À la fin du sprint, GAIA compile toutes les PR fusionnées et leurs tickets Jira associés dans un résumé structuré, offrant ainsi aux responsables techniques une vue claire de ce qui a été livré sans avoir à faire de croisements manuels entre deux outils."
+        "description": "À la fin d'un sprint, GAIA rassemble toutes les PR fusionnées et leurs tickets liés dans un résumé structuré, ce qui donne aux responsables d'ingénierie une image exacte de ce qui a été livré sans recouper manuellement deux outils."
       }
     ],
     "howItWorks": [
       {
         "step": "Connecter GitHub et Jira à GAIA",
-        "description": "Authentifiez vos dépôts GitHub et votre projet Jira dans les paramètres d'intégration de GAIA. GAIA utilise OAuth pour les deux connexions et ne demande que les autorisations nécessaires à la synchronisation des tickets et des PR."
+        "description": "Authentifiez vos dépôts et votre projet dans les réglages d'intégration de GAIA. GAIA utilise OAuth pour les deux connexions et ne demande que les permissions nécessaires à la synchronisation des tickets et des PR."
       },
       {
-        "step": "Associer les événements GitHub aux transitions Jira",
-        "description": "Configurez quels événements PR de GitHub déclenchent quelles transitions Jira, comment associer les PR aux tickets Jira (par nom de branche, titre de PR ou message de commit) et quel projet Jira cibler pour les nouveaux tickets."
+        "step": "Associer les événements de PR aux changements de statut",
+        "description": "Configurez quels événements de PR déclenchent quels changements de statut, comment relier les PR aux tickets (par nom de branche, titre de PR ou message de commit) et quel projet Jira cibler pour les nouveaux tickets."
       },
       {
-        "step": "GAIA synchronise automatiquement GitHub et Jira",
-        "description": "GAIA surveille à la fois GitHub et Jira pour détecter les changements et les maintenir synchronisés automatiquement. Vous pouvez outrepasser toute action automatisée en en informant directement GAIA, et tout l’historique des synchronisations est enregistré à des fins d’audit."
+        "step": "GAIA maintient les deux côtés synchronisés automatiquement",
+        "description": "GAIA surveille les deux côtés et les garde synchronisés automatiquement. Vous pouvez annuler toute action automatisée en le demandant directement à GAIA, et tout l'historique de synchronisation est journalisé à des fins d'audit."
       }
     ],
     "faqs": [
       {
-        "question": "Comment GAIA associe-t-il une PR GitHub au bon ticket Jira ?",
-        "answer": "GAIA recherche les clés d’incident Jira (par exemple, PROJ-123) dans le titre de la PR, le nom de la branche ou les messages de commit. Si elle trouve une correspondance, la PR est automatiquement liée à ce ticket Jira. Vous pouvez également lier manuellement une PR à un ticket via une commande GAIA."
+        "question": "Comment GAIA relie-t-il une PR au bon ticket ?",
+        "answer": "GAIA recherche les clés de ticket (par exemple PROJ-123) dans le titre de la PR, le nom de branche ou les messages de commit. S'il trouve une correspondance, il relie automatiquement la PR à ce ticket. Vous pouvez aussi relier manuellement une PR à un ticket via une commande GAIA."
       },
       {
-        "question": "GAIA peut-il gérer les workflows et statuts personnalisés de Jira ?",
-        "answer": "Oui. Lors de l’installation, GAIA lit la configuration de workflow de votre projet Jira et vous permet de faire correspondre les événements GitHub à vos statuts personnalisés, au lieu de supposer une structure générique À faire / En cours / Terminé."
+        "question": "GAIA fonctionne-t-il avec des workflows et statuts personnalisés ?",
+        "answer": "Oui. Lors de la configuration, GAIA lit la configuration du workflow du projet et vous permet d'associer les événements de PR à vos statuts personnalisés plutôt que de supposer une structure générique To Do / In Progress / Done."
       },
       {
-        "question": "Cela fonctionne-t-il avec Jira Cloud et Jira Server ?",
-        "answer": "GAIA supporte Jira Cloud nativement. Les intégrations avec Jira Server et Jira Data Center sont disponibles avec une configuration supplémentaire et nécessitent un accès réseau à votre instance hébergée."
+        "question": "Est-ce compatible avec Jira Cloud et Jira Server ?",
+        "answer": "GAIA prend en charge l'édition cloud nativement. Les éditions Server et Data Center sont disponibles avec une configuration supplémentaire et nécessitent un accès réseau à votre instance auto-hébergée."
       },
       {
-        "question": "GAIA va-t-il créer des tickets Jira en double si la même issue apparaît dans plusieurs PR ?",
-        "answer": "Non. GAIA suit la relation entre les PR GitHub et les tickets Jira, et met à jour le ticket existant au lieu de créer des doublons. Plusieurs PR peuvent être liées au même ticket Jira avec une mise à jour de statut distincte pour chaque PR."
+        "question": "GAIA crée-t-il des tickets en double si le même ticket apparaît dans plusieurs PR ?",
+        "answer": "Non. GAIA suit la relation entre les PR et les tickets et met à jour le ticket existant au lieu de créer des doublons. Plusieurs PR peuvent être liées au même ticket, avec des mises à jour de statut individuelles par PR."
       }
     ]
   },
   "github-hubspot": {
     "toolA": "GitHub",
     "toolB": "HubSpot",
-    "tagline": "Consignez l’activité de déploiement sur les affaires HubSpot et informez les commerciaux du lancement de fonctionnalités destinées aux clients",
-    "metaTitle": "Intégration GitHub + HubSpot : releases dans le CRM",
-    "metaDescription": "GitHub + HubSpot avec GAIA : Consignez les releases dans les deals HubSpot et prévenez les ventes à la livraison, pour relier développement et revenus.",
+    "tagline": "Consignez l'activité de déploiement sur les opportunités HubSpot et prévenez les commerciaux quand une fonctionnalité client est livrée",
+    "metaTitle": "Intégration GitHub + HubSpot : les releases consignées dans HubSpot",
+    "metaDescription": "Prévenez les commerciaux quand les fonctionnalités demandées sont livrées et consignez les releases dans les timelines HubSpot. GAIA relie code et CRM. Voir les étapes.",
     "keywords": [
       "intégration GitHub HubSpot",
       "automatisation GitHub HubSpot",
-      "journaliser les versions GitHub sur HubSpot",
-      "intégration CRM ingénierie",
-      "notification de sortie de fonctionnalité dans le CRM",
+      "consigner les releases GitHub dans HubSpot",
+      "intégration ingénierie CRM",
+      "notification de livraison de fonctionnalité au CRM",
       "workflow GitHub HubSpot"
     ],
-    "intro": "Les équipes commerciales et techniques évoluent dans des univers distincts — l’une se concentre sur les transactions et la relation client dans HubSpot, l’autre suit le code et les versions sur GitHub. Quand une fonctionnalité promise à un client est enfin mise en production, le commercial qui l’a annoncée l’apprend souvent avec plusieurs jours de retard, ratant ainsi le meilleur moment pour relancer le prospect.\n\nGAIA crée un lien direct entre GitHub et HubSpot, permettant aux livraisons techniques d’apparaître automatiquement dans votre CRM. Lorsqu’une version est publiée sur GitHub, GAIA l’enregistre comme activité sur les transactions et comptes HubSpot concernés, notifie le responsable, et peut même générer une tâche de suivi pour recontacter les clients à l’origine de la demande.\n\nPour les entreprises orientées produit, cette intégration permet également de relier les signaux d’engagement issus de GitHub — comme la première utilisation par un client entreprise d’un nouvel endpoint API — à la fiche contact sur HubSpot, offrant ainsi à l’équipe commerciale un contexte plus riche pour ses échanges.",
+    "intro": "Les équipes commerciales et d'ingénierie évoluent dans des mondes séparés — l'une suit les opportunités et les relations clients dans HubSpot, l'autre suit le code et les releases dans GitHub. Quand la fonctionnalité demandée par un client est enfin livrée, le commercial qui l'avait promise l'apprend souvent plusieurs jours plus tard, et rate l'occasion de relancer le prospect au bon moment.\n\nGAIA crée une connexion vivante entre les deux pour que les releases d'ingénierie remontent automatiquement dans votre CRM. Quand une release est publiée, GAIA la consigne comme activité sur les opportunités et comptes HubSpot concernés, prévient le chargé de compte responsable et peut même déclencher une tâche de relance vers les clients qui avaient demandé cette fonctionnalité.\n\nPour les entreprises en croissance tirée par le produit, cette intégration permet aussi de rattacher au contact les signaux d'engagement issus de GitHub, par exemple quand un client grand compte utilise pour la première fois un nouveau point de terminaison d'API, ce qui donne à vos commerciaux un contexte plus riche pour leurs échanges.",
     "useCases": [
       {
-        "title": "Alerter les commerciaux lors de la livraison de fonctionnalités demandées",
-        "description": "Lorsqu’une version GitHub inclut une fonctionnalité associée à une transaction HubSpot, GAIA avertit le responsable du dossier avec un résumé des livraisons, lui permettant de recontacter immédiatement le client au moment idéal."
+        "title": "Prévenir les commerciaux quand les fonctionnalités demandées sont livrées",
+        "description": "Quand une release contient une fonctionnalité liée à une opportunité, GAIA prévient le responsable de l'opportunité avec un résumé de ce qui a été livré, pour qu'il puisse relancer le client immédiatement, au meilleur moment."
       },
       {
-        "title": "Enregistrer les versions comme activités dans la timeline CRM",
-        "description": "Chaque version GitHub est automatiquement consignée comme activité chronologique sur les fiches entreprise ou transaction pertinentes dans HubSpot, offrant aux équipes commerciales et au support une vue complète des livraisons effectuées à chaque client."
+        "title": "Consigner les releases comme activités dans la timeline du CRM",
+        "description": "Chaque release est automatiquement consignée comme activité dans la timeline des fiches entreprise ou opportunité concernées, ce qui donne aux équipes commerciales et de succès client une vue complète de ce qui a été livré à chaque client."
       },
       {
-        "title": "Créer des tâches HubSpot pour les bugs ayant un impact client",
-        "description": "Lorsqu'un ticket GitHub est marqué comme bug impactant un client, GAIA crée une tâche HubSpot pour le responsable succès client assigné au compte concerné afin d'assurer une prise de contact proactive avant toute remontée du client."
+        "title": "Créer des tâches HubSpot pour les bugs qui touchent les clients",
+        "description": "Quand un ticket est étiqueté comme bug affectant un client, GAIA crée une tâche pour le responsable du succès client du compte concerné, afin d'organiser une prise de contact proactive avant que le client ne s'en plaigne."
       },
       {
-        "title": "Faire avancer les stades de transaction selon les étapes techniques clés",
-        "description": "Pour les opportunités avec une phase d'évaluation technique, GAIA fait passer automatiquement le stade du deal HubSpot dès qu'un jalon clé GitHub est atteint, comme la validation d'une intégration de preuve de concept."
+        "title": "Faire avancer les étapes d'opportunité selon les jalons techniques",
+        "description": "Pour les opportunités grand compte avec une phase d'évaluation technique, GAIA fait avancer l'étape de l'opportunité automatiquement lorsque des jalons clés sont atteints, par exemple la fusion d'une intégration de proof of concept."
       },
       {
-        "title": "Suivre les signaux d'engagement GitHub dans les contacts HubSpot",
-        "description": "Lorsque l'organisation GitHub d'un client fait un fork de votre dépôt public ou crée un premier ticket, GAIA enregistre ce signal d'engagement dans la fiche contact HubSpot pour permettre à l'équipe commerciale de contacter le client au meilleur moment."
+        "title": "Suivre les signaux d'engagement GitHub dans les fiches HubSpot",
+        "description": "Quand l'organisation d'un client forke votre dépôt public ou ouvre son premier ticket, GAIA consigne ce signal d'engagement dans sa fiche contact, pour que les commerciaux puissent le contacter au meilleur moment."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connectez GitHub et HubSpot à GAIA",
-        "description": "Authentifiez votre organisation GitHub et votre portail HubSpot dans les paramètres d'intégration de GAIA. GAIA demande un accès en lecture aux versions et tickets GitHub, ainsi qu'un accès en écriture aux activités et tâches HubSpot."
+        "step": "Connecter GitHub et HubSpot à GAIA",
+        "description": "Authentifiez votre organisation GitHub et votre portail CRM dans les réglages d'intégration de GAIA. GAIA demande un accès en lecture aux releases et aux tickets, et un accès en écriture aux activités et aux tâches."
       },
       {
-        "step": "Faites correspondre les événements GitHub à des enregistrements HubSpot",
-        "description": "Définissez comment les versions GitHub sont associées aux deals HubSpot — selon le label client, le nom de jalon ou le dépôt. Configurez quels événements créent des tâches, enregistrent une activité ou envoient une notification au responsable du deal."
+        "step": "Associer les événements de release aux fiches CRM",
+        "description": "Définissez comment les releases se rattachent aux opportunités : par étiquette client, nom de jalon ou dépôt. Configurez quels événements créent des tâches, consignent des activités ou envoient des notifications aux responsables d'opportunité."
       },
       {
-        "step": "GAIA informe les commerciaux au fur et à mesure des livraisons",
-        "description": "Chaque fois qu'un événement GitHub pertinent se produit, GAIA met à jour en temps réel les enregistrements HubSpot concernés. Votre équipe commerciale sait toujours ce qui a été livré récemment et quels clients sont concernés."
+        "step": "GAIA tient le commercial informé au fil des livraisons",
+        "description": "Chaque fois qu'un événement pertinent se produit, GAIA met à jour les fiches CRM concernées en temps réel. Votre équipe commerciale sait toujours ce qui vient d'être livré et quels clients sont concernés."
       }
     ],
     "faqs": [
       {
-        "question": "Comment GAIA associe-t-elle une version GitHub au bon deal HubSpot ?",
-        "answer": "GAIA réalise l’association via des labels client ou entreprise sur les tickets GitHub, des notes de version mentionnant les comptes, ou un tableau de correspondance que vous configurez dans les paramètres de GAIA reliant des dépôts à des entreprises HubSpot spécifiques."
+        "question": "Comment GAIA associe-t-il une release à la bonne opportunité ?",
+        "answer": "GAIA s'appuie sur les étiquettes client ou entreprise des tickets, sur les notes de release mentionnant des noms de comptes, ou sur une table de correspondance que vous définissez dans les réglages de GAIA et qui associe des dépôts à des entreprises précises du CRM."
       },
       {
-        "question": "GAIA peut-il importer les données des transactions HubSpot dans GitHub pour donner du contexte aux ingénieurs ?",
-        "answer": "Oui. GAIA peut ajouter un commentaire à une issue GitHub avec le stade de transaction HubSpot et les coordonnées associées, afin de donner aux ingénieurs le contexte sur les clients en attente d’une correction ou fonctionnalité."
+        "question": "GAIA peut-il remonter les données d'opportunité HubSpot dans GitHub pour donner du contexte aux ingénieurs ?",
+        "answer": "Oui. GAIA peut ajouter un commentaire à un ticket avec l'étape de l'opportunité et les informations de contact pertinentes, ce qui donne aux ingénieurs le contexte des clients qui attendent un correctif ou une fonctionnalité."
       },
       {
-        "question": "Est-ce que cela fonctionne avec l’offre gratuite de HubSpot ?",
-        "answer": "L’intégration GitHub-HubSpot de GAIA fonctionne avec HubSpot Starter et versions supérieures. Certaines fonctionnalités comme les propriétés personnalisées de transaction et les activités avancées du fil temporel nécessitent HubSpot Professional ou Enterprise."
+        "question": "Cela fonctionne-t-il avec l'offre gratuite ?",
+        "answer": "L'intégration fonctionne à partir de l'offre Starter. Certaines fonctionnalités, comme les propriétés d'opportunité personnalisées et les activités avancées de timeline, nécessitent Professional ou Enterprise."
       },
       {
-        "question": "GAIA peut-il déclencher des séquences HubSpot lorsqu’une fonctionnalité est livrée ?",
-        "answer": "Oui. Lorsqu’une version GitHub est taguée, GAIA peut automatiquement inscrire des contacts spécifiés dans une séquence HubSpot, permettant ainsi des campagnes de ré-engagement entièrement automatisées lors des sorties de fonctionnalités."
+        "question": "GAIA peut-il déclencher des séquences quand une fonctionnalité est livrée ?",
+        "answer": "Oui. Quand une release est étiquetée, GAIA peut inscrire automatiquement des contacts choisis dans une séquence, ce qui permet des campagnes de relance entièrement automatisées, calées sur les livraisons de fonctionnalités."
       }
     ]
   },
   "github-salesforce": {
     "toolA": "GitHub",
     "toolB": "Salesforce",
-    "tagline": "Connectez les sorties GitHub aux opportunités Salesforce pour que les équipes commerciales sachent toujours ce que l’ingénierie vient de livrer",
-    "metaTitle": "Intégration GitHub + Salesforce : développement et CRM",
-    "metaDescription": "GitHub + Salesforce avec GAIA : Consignez les releases dans Salesforce et prévenez les responsables de compte, pour relier code et pipeline.",
+    "tagline": "Reliez les releases GitHub aux opportunités Salesforce pour que les commerciaux sachent toujours ce que l'ingénierie vient de livrer",
+    "metaTitle": "Intégration GitHub + Salesforce : les releases dans Salesforce",
+    "metaDescription": "Prévenez les chargés de compte dès qu'une fonctionnalité promise est livrée. GAIA consigne chaque release GitHub sur l'opportunité Salesforce correspondante. Voir les étapes.",
     "keywords": [
-      "Intégration GitHub Salesforce",
-      "Automatisation GitHub Salesforce",
-      "enregistrer les sorties GitHub sur Salesforce",
-      "synchronisation ingénierie Salesforce CRM",
-      "notification de sortie Salesforce",
+      "intégration GitHub Salesforce",
+      "automatisation GitHub Salesforce",
+      "consigner les releases GitHub dans Salesforce",
+      "synchronisation ingénierie CRM Salesforce",
+      "notification de release Salesforce",
       "workflow GitHub Salesforce"
     ],
-    "intro": "Les cycles de vente en entreprise dépendent souvent des engagements d’ingénierie : un prospect attend une fonctionnalité précise avant de signer, ou un renouvellement repose sur la résolution d’un bug. Pourtant, dans la plupart des organisations, l’opportunité Salesforce et le jalon GitHub suivent leurs propres chemins. Les account executives découvrent les mises à jour par Slack ou dans les couloirs au lieu de recevoir des notifications fiables et automatisées.\n\nGAIA crée une connexion active entre GitHub et Salesforce pour que la production de l’ingénierie soit automatiquement visible dans votre CRM. Lorsqu’une version est publiée sur GitHub, GAIA enregistre l’événement sur les opportunités et comptes Salesforce concernés, notifie l’AE responsable, et peut faire avancer le stade de l’opportunité si la livraison respecte un engagement pris.\n\nPour les équipes d’ingénierie en entreprise, cette intégration fonctionne aussi dans l’autre sens : lorsqu’une opportunité à fort potentiel est gagnée sur Salesforce, GAIA peut créer un jalon GitHub pour le projet d’onboarding, garantissant que la mise en œuvre démarre immédiatement avec toutes les informations promises.",
+    "intro": "Les cycles de vente grands comptes reposent souvent sur des engagements d'ingénierie — un prospect attend une fonctionnalité précise avant de signer, ou un renouvellement dépend de la résolution d'un bug. Pourtant, dans la plupart des organisations, l'opportunité Salesforce et le jalon GitHub qui suit ce travail existent en isolation complète. Les chargés de compte apprennent les releases par des messages Slack ou des conversations de couloir, plutôt que par des notifications automatisées et fiables.\n\nGAIA crée une connexion vivante entre GitHub et Salesforce pour que le travail d'ingénierie remonte automatiquement dans votre CRM. Quand une release est publiée, GAIA consigne l'événement sur les opportunités et comptes concernés, prévient le chargé de compte responsable et peut faire avancer l'étape de l'opportunité si la release satisfait un livrable promis.\n\nPour les équipes d'ingénierie grands comptes, l'intégration fonctionne aussi dans l'autre sens : quand une opportunité à forte valeur passe en Closed Won, GAIA peut créer un jalon pour le travail d'onboarding, afin que la mise en œuvre démarre immédiatement avec tout le contexte de ce qui a été promis.",
     "useCases": [
       {
-        "title": "Consignez les versions GitHub dans les chronologies des opportunités Salesforce",
-        "description": "Lorsqu'une version GitHub est publiée, GAIA crée une activité Salesforce sur chaque opportunité concernée, offrant aux responsables de compte un journal en temps réel des livraisons effectuées."
+        "title": "Consigner les releases GitHub dans la timeline des opportunités Salesforce",
+        "description": "Quand une release est publiée, GAIA crée une activité sur chaque opportunité concernée, ce qui donne aux chargés de compte un journal en temps réel de ce qui a été livré."
       },
       {
-        "title": "Alertez les responsables de compte lorsque les fonctionnalités promises sont livrées",
-        "description": "Lorsqu'un jalon GitHub est clôturé et qu'il était lié à une opportunité Salesforce, GAIA envoie une notification dans l'application ainsi qu'un e-mail au responsable de compte pour qu'il puisse immédiatement relancer le prospect."
+        "title": "Alerter les chargés de compte quand les fonctionnalités promises sont livrées",
+        "description": "Quand un jalon se clôt et qu'il était lié à une opportunité, GAIA envoie une notification dans l'application et un e-mail au chargé de compte, pour qu'il puisse relancer le prospect immédiatement."
       },
       {
-        "title": "Avancez l'étape de l'opportunité lors de jalons techniques",
-        "description": "Pour les ventes avec une phase de preuve de concept technique, GAIA fait automatiquement progresser l'étape de l'opportunité Salesforce dès que le jalon GitHub correspondant est marqué comme terminé, garantissant ainsi des données de pipeline précises."
+        "title": "Faire avancer l'étape de l'opportunité selon les jalons techniques",
+        "description": "Pour les opportunités avec une phase de proof of concept technique, GAIA fait avancer l'étape automatiquement lorsque le jalon correspondant est marqué comme terminé, ce qui garde vos données de pipeline exactes."
       },
       {
-        "title": "Créez des jalons GitHub à partir des affaires gagnées",
-        "description": "Lorsqu'une opportunité Salesforce est marquée \"Affaire gagnée\", GAIA crée un jalon GitHub pour le travail de mise en œuvre avec les livrables clés du projet sous forme de tickets, afin que l'équipe d'ingénierie démarre avec tout le contexte nécessaire."
+        "title": "Créer des jalons GitHub à partir des opportunités Closed Won",
+        "description": "Quand une opportunité passe en Closed Won, GAIA crée un jalon pour le travail de mise en œuvre, avec les livrables clés de l'opportunité sous forme de tickets, afin que l'équipe d'ingénierie démarre avec tout le contexte."
       },
       {
-        "title": "Priorisez les bugs clients selon la valeur de l'opportunité",
-        "description": "Lorsqu'un ticket GitHub est associé à un compte client, GAIA vérifie la valeur de l'opportunité Salesforce pour ce compte et augmente la priorité de l'incident dans GitHub en conséquence, afin que les bugs des clients les plus importants soient traités en priorité."
+        "title": "Prioriser les bugs clients selon la valeur de l'opportunité",
+        "description": "Quand un ticket est associé à un compte client, GAIA vérifie la valeur de l'opportunité de ce compte et ajuste la priorité du ticket dans GitHub en conséquence, pour que les bugs des clients à forte valeur soient traités en premier."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connectez GitHub et Salesforce à GAIA",
-        "description": "Authentifiez l'organisation GitHub et l'organisation Salesforce dans les paramètres de GAIA. GAIA utilise OAuth pour les deux connexions et ne demande que les niveaux d'accès nécessaires à la consignation des versions et à la mise à jour des opportunités."
+        "step": "Connecter GitHub et Salesforce à GAIA",
+        "description": "Authentifiez votre organisation GitHub et votre org Salesforce dans les réglages de GAIA. GAIA utilise OAuth pour les deux connexions et ne demande que les niveaux d'accès nécessaires à la consignation des releases et à la mise à jour des opportunités."
       },
       {
-        "step": "Mappez les dépôts et jalons aux objets Salesforce",
-        "description": "Définissez comment les dépôts et les jalons GitHub correspondent aux comptes, opportunités ou objets personnalisés Salesforce. Vous pouvez utiliser des conventions de nommage, des étiquettes ou un tableau de correspondance manuel."
+        "step": "Associer dépôts et jalons aux objets du CRM",
+        "description": "Définissez comment les dépôts et les jalons correspondent aux comptes, aux opportunités ou à des objets personnalisés. Vous pouvez utiliser des conventions de nommage, des étiquettes ou une table de correspondance manuelle."
       },
       {
-        "step": "GAIA automatise le transfert de l’ingénierie vers les ventes",
-        "description": "Une fois configuré, GAIA surveille GitHub pour les événements de publication et de jalon et met à jour Salesforce en temps réel, garantissant que votre CRM reflète toujours l’état actuel des livrables d’ingénierie."
+        "step": "GAIA automatise la transmission de l'ingénierie vers le commercial",
+        "description": "Une fois configuré, GAIA surveille les événements de release et de jalon et met à jour le CRM en temps réel, pour qu'il reflète toujours l'état courant des livrables d'ingénierie."
       }
     ],
     "faqs": [
       {
-        "question": "GAIA fonctionne-t-elle avec des objets et champs personnalisés Salesforce ?",
-        "answer": "Oui. GAIA peut lire et écrire sur les objets standard de Salesforce ainsi que sur les objets et champs personnalisés. Lors de la configuration, vous pouvez faire correspondre les données d’événements GitHub à n’importe quel champ Salesforce dans votre organisation."
+        "question": "GAIA fonctionne-t-il avec les objets et champs personnalisés Salesforce ?",
+        "answer": "Oui. GAIA peut lire et écrire dans les objets standard comme dans les objets et champs personnalisés. Lors de la configuration, vous pouvez associer les données d'événement du dépôt à n'importe quel champ de votre org."
       },
       {
-        "question": "Comment GAIA sait-elle quel compte Salesforce est concerné par une publication GitHub ?",
-        "answer": "GAIA fait la correspondance à partir des étiquettes dans les dépôts ou issues GitHub, du contenu des notes de publication, ou d’une table de correspondance que vous définissez dans les paramètres GAIA pour associer des dépôts à des comptes Salesforce spécifiques."
+        "question": "Comment GAIA sait-il quel compte une release concerne ?",
+        "answer": "GAIA s'appuie sur les étiquettes présentes dans les dépôts ou les tickets, sur le contenu des notes de release, ou sur une table de correspondance que vous définissez dans les réglages de GAIA et qui associe des dépôts à des comptes précis."
       },
       {
-        "question": "GAIA peut-elle déclencher des flows ou des règles de process builder Salesforce ?",
-        "answer": "GAIA met à jour les enregistrements Salesforce via l’API standard, ce qui peut déclencher n’importe quelle règle d’automatisation Salesforce, flow ou processus du process builder que vous avez configurés sur ces objets."
+        "question": "GAIA peut-il déclencher des flows ou des règles Process Builder ?",
+        "answer": "GAIA met à jour les enregistrements via l'API standard, ce qui peut déclencher les règles d'automatisation, les flows ou les processus Process Builder que vous avez configurés sur ces objets."
       },
       {
-        "question": "Est-ce sécurisé pour les organisations Salesforce d’entreprise avec des politiques strictes de gestion des données ?",
-        "answer": "Oui. GAIA utilise OAuth 2.0 avec le mécanisme standard d’application connectée de Salesforce. Aucun code GitHub ni donnée sensible n’est stocké dans Salesforce—seules des métadonnées comme le nom, la date et les liens des publications."
+        "question": "Est-ce sécurisé pour les orgs d'entreprise avec des politiques de données strictes ?",
+        "answer": "Oui. GAIA utilise OAuth 2.0 avec le mécanisme standard d'application connectée. Aucun code source ni donnée sensible n'est stocké dans le CRM — uniquement des métadonnées comme les noms de release, les dates et les liens."
       }
     ]
   },
   "github-teams": {
     "toolA": "GitHub",
     "toolB": "Microsoft Teams",
-    "tagline": "Envoyez des mises à jour de PR GitHub et des notifications de publication directement dans les canaux Microsoft Teams",
-    "metaTitle": "Intégration GitHub + Microsoft Teams : code dans Teams",
-    "metaDescription": "GitHub + Microsoft Teams avec GAIA : Diffusez revues de PR, alertes d'issues et annonces de release dans Teams, pour tenir votre équipe dev informée.",
+    "tagline": "Publiez les mises à jour de PR et les notifications de release GitHub directement dans les canaux Microsoft Teams",
+    "metaTitle": "Intégration GitHub + Microsoft Teams : alertes PR et releases",
+    "metaDescription": "Publiez les demandes de revue de PR, les notes de release et les alertes d'incident de GitHub dans les canaux Teams. GAIA tient les développeurs informés. Voir les étapes.",
     "keywords": [
       "intégration GitHub Microsoft Teams",
       "automatisation GitHub Teams",
-      "notifications GitHub canal Teams",
-      "publier les versions GitHub sur Teams",
-      "Workflow GitHub Teams",
-      "Notifications Teams pour développeurs"
+      "notifications GitHub dans un canal Teams",
+      "publier les releases GitHub dans Teams",
+      "workflow GitHub Teams",
+      "notifications Teams pour développeurs"
     ],
-    "intro": "Microsoft Teams est la plateforme de communication centrale pour de nombreuses équipes d’ingénierie en entreprise, mais l’activité sur GitHub — comme les revues de pull requests, les remontées d’incidents ou les annonces de nouvelles versions — y apparaît rarement sans intervention manuelle. Les développeurs doivent surveiller séparément les notifications GitHub, copier-coller manuellement les mises à jour importantes dans Teams, et rappeler aux collègues de relire du code via des messages improvisés.\n\nGAIA automatise le flux d’événements GitHub vers Microsoft Teams pour que toute votre organisation reste informée de l’activité du code dans ses outils habituels. Les demandes de relecture de PR apparaissent directement dans le canal Teams concerné. Les notes de version sont publiées lors d’une nouvelle livraison. Les bugs critiques déclenchent des notifications adaptatives sur lesquelles l’équipe peut agir sans quitter Teams.\n\nPour les entreprises où Teams est la norme, cette intégration est essentielle pour connecter le flux de travail GitHub côté développeurs à la communication plus large de l’entreprise dans Teams, assurant la visibilité sans obliger les non-développeurs à surveiller directement GitHub.",
+    "intro": "Microsoft Teams est le hub de communication de nombreuses équipes d'ingénierie d'entreprise, mais l'activité GitHub — revues de PR, escalades de tickets, annonces de release — y remonte rarement sans effort manuel. Les développeurs doivent surveiller les notifications séparément, copier-coller à la main les mises à jour importantes dans les canaux et rappeler les revues en attente à leurs collègues par des messages ponctuels.\n\nGAIA automatise la circulation des événements GitHub vers Teams pour que toute votre organisation reste informée de l'activité du code, dans les outils qu'elle utilise déjà. Les demandes de revue de PR apparaissent dans le canal concerné. Les notes de release sont publiées quand une nouvelle version sort. Les bugs critiques déclenchent des notifications en carte adaptative sur lesquelles l'équipe peut agir sans quitter le canal.\n\nPour les organisations d'entreprise construites autour de ce hub, cette intégration comble l'écart entre le flux de travail des développeurs et la communication métier plus large qui se déroule dans les canaux, en assurant la visibilité sans obliger les non-développeurs à surveiller les dépôts.",
     "useCases": [
       {
-        "title": "Demandes de relecture de PR publiées dans Teams",
-        "description": "Lorsqu’une pull request est créée ou mise à jour sur GitHub, GAIA publie une carte adaptative dans le canal Teams désigné ou en message direct au relecteur, comprenant le titre de la PR, sa description et un lien direct pour la relecture en un clic."
+        "title": "Demandes de revue de PR publiées dans Teams",
+        "description": "Quand une pull request est ouverte ou mise à jour, GAIA publie une carte adaptative dans le canal désigné ou en message privé au relecteur, avec le titre de la PR, sa description et un lien de revue en un clic."
       },
       {
-        "title": "Annonces de publication avec changelog",
-        "description": "Lorsqu’une version GitHub est publiée, GAIA envoie une carte d’annonce formatée sur le canal Teams #engineering avec le numéro de version, les principaux changements et un lien vers le détail des notes de version."
+        "title": "Annonces de release avec changelog",
+        "description": "Quand une release est publiée, GAIA publie une carte d'annonce mise en forme dans le canal #engineering avec le numéro de version, les changements clés et un lien vers les notes de release complètes."
       },
       {
-        "title": "Alertes d’incident depuis les issues GitHub",
-        "description": "Les issues étiquetées comme incidents de production déclenchent une alerte Teams immédiate sur le canal d’astreinte, mentionnant la sévérité, la description, et un lien direct, afin que les bonnes personnes soient contactées via Teams au lieu d’un autre outil."
+        "title": "Alertes d'incident issues des tickets GitHub",
+        "description": "Les tickets étiquetés comme incidents de production déclenchent une alerte immédiate dans le canal d'astreinte, avec la gravité, la description et un lien direct, pour que les bonnes personnes soient alertées via Teams plutôt que par un outil séparé."
       },
       {
-        "title": "Synthèse quotidienne de l’état des PR",
-        "description": "GAIA compile chaque jour un résumé des PR ouvertes, classées par ancienneté et par assignation des relecteurs, et le publie chaque matin dans le canal Teams de l’ingénierie afin que l’équipe sache exactement ce qui nécessite de l’attention ce jour-là."
+        "title": "Résumé quotidien du statut des PR",
+        "description": "GAIA compile un résumé quotidien des PR ouvertes, triées par ancienneté et par relecteur assigné, et le publie chaque matin dans le canal d'ingénierie, pour que l'équipe sache exactement ce qui demande son attention ce jour-là."
       },
       {
         "title": "Visibilité inter-équipes sur les dépôts partagés",
-        "description": "Pour les dépôts maintenus par plusieurs équipes, GAIA redirige les notifications GitHub vers les bons canaux Teams en fonction des fichiers modifiés ou des libellés appliqués, garantissant que chaque équipe ne voit que les activités qui la concernent."
+        "description": "Pour les dépôts maintenus par plusieurs équipes, GAIA achemine les notifications vers les canaux appropriés selon les fichiers modifiés ou les étiquettes appliquées, pour que chaque équipe ne voie que l'activité qui la concerne."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connectez GitHub et Microsoft Teams à GAIA",
-        "description": "Autorisez votre organisation GitHub et votre tenant Microsoft Teams dans les paramètres d’intégration de GAIA. GAIA utilise l’OAuth Azure AD pour Teams et l’OAuth GitHub pour l’accès aux dépôts."
+        "step": "Connecter GitHub et Microsoft Teams à GAIA",
+        "description": "Autorisez votre organisation GitHub et votre tenant Microsoft Teams dans les réglages d'intégration de GAIA. L'accès au tenant passe par OAuth Azure AD, et l'accès aux dépôts par OAuth."
       },
       {
-        "step": "Configurez le routage des événements vers les canaux Teams",
-        "description": "Associez les dépôts GitHub et les types d’événements à des canaux Teams spécifiques ou à des utilisateurs individuels. Définissez des filtres pour réduire les notifications indésirables et configurez des modèles de cartes adaptatives selon la catégorie d’événement."
+        "step": "Configurer l'acheminement des événements vers les canaux",
+        "description": "Associez les dépôts et les types d'événements à des canaux ou à des utilisateurs précis. Définissez des filtres pour réduire le bruit et configurez des modèles de carte adaptative selon les catégories d'événements."
       },
       {
-        "step": "GAIA transmet automatiquement l’intelligence GitHub à Teams",
-        "description": "GAIA surveille GitHub en continu et publie des notifications formatées dans Teams au fur et à mesure que les événements surviennent. Les membres de l’équipe peuvent répondre ou agir sur les notifications directement depuis Teams."
+        "step": "GAIA apporte l'intelligence du code dans les canaux, automatiquement",
+        "description": "GAIA surveille les dépôts en continu et publie des notifications mises en forme au fil des événements. Les membres de l'équipe peuvent répondre ou agir directement depuis le canal."
       }
     ],
     "faqs": [
       {
-        "question": "GAIA peut-elle envoyer des cartes adaptatives au lieu de simples messages texte dans Teams ?",
-        "answer": "Oui. GAIA utilise le format de carte adaptative de Microsoft pour poster des notifications GitHub structurées dans Teams, avec des boutons d’action pour approuver des PR, fermer des tickets ou naviguer vers GitHub directement depuis la carte."
+        "question": "GAIA peut-il envoyer des cartes adaptatives plutôt que de simples messages texte ?",
+        "answer": "Oui. GAIA utilise le format de carte adaptative pour publier des notifications richement structurées dans les canaux, avec des boutons d'action pour approuver des PR, fermer des tickets ou ouvrir le dépôt directement depuis la carte."
       },
       {
-        "question": "GAIA fonctionne-t-elle avec les canaux privés Teams et l’accès invité ?",
-        "answer": "GAIA peut publier dans les canaux publics et privés de Teams auxquels le bot GAIA a été ajouté. Les droits d’accès pour les invités sont respectés : GAIA ne publiera que dans les canaux où elle a reçu une autorisation explicite."
+        "question": "GAIA fonctionne-t-il avec les canaux privés et l'accès invité ?",
+        "answer": "GAIA peut publier dans les canaux publics et privés auxquels le bot GAIA a été ajouté. Les permissions d'accès invité sont respectées — GAIA ne publie que dans les canaux où il a été explicitement autorisé."
       },
       {
-        "question": "Les membres de l'équipe peuvent-ils interagir avec GitHub via Teams en utilisant GAIA ?",
-        "answer": "Oui. Le bot Teams de GAIA comprend les commandes en langage naturel, donc un membre de l'équipe peut taper « @GAIA close issue #42 in repo frontend » directement dans Teams et GAIA exécutera l'action dans GitHub."
+        "question": "Les membres de l'équipe peuvent-ils interagir avec les dépôts depuis un canal via GAIA ?",
+        "answer": "Oui. Le bot GAIA comprend les commandes en langage naturel : un membre peut taper « @GAIA ferme le ticket #42 dans le dépôt frontend » directement dans un canal, et GAIA exécute l'action dans le dépôt."
       },
       {
-        "question": "En quoi cela diffère-t-il de l'application GitHub native pour Teams ?",
-        "answer": "L'application GitHub native pour Teams offre des notifications basiques. GAIA ajoute un filtrage basé sur l'IA, une automatisation entre outils, des commandes en langage naturel, et des formats de synthèse personnalisables que l'application native ne prend pas en charge."
+        "question": "En quoi est-ce différent de l'application GitHub native pour Teams ?",
+        "answer": "L'application native fournit des notifications de base. GAIA ajoute le filtrage assisté par IA, l'automatisation entre outils, les commandes en langage naturel et des formats de résumé personnalisables que l'application native ne propose pas."
       }
     ]
   },
