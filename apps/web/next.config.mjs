@@ -345,9 +345,11 @@ export default withSentryConfig(
   // Upload a larger set of source maps for prettier stack traces (increases build time)
   widenClientFileUpload: true,
 
-  // Delete the maps from the deployed output only once Sentry can accept them;
-  // without a token nothing uploads, so hiding them would lose symbolication.
-  hideSourceMaps: Boolean(process.env.SENTRY_AUTH_TOKEN),
+  // Delete the maps only after Sentry accepts them. v10 renamed this from
+  // hideSourceMaps (a no-op): without a token nothing uploads, so they stay.
+  sourcemaps: {
+    deleteSourcemapsAfterUpload: Boolean(process.env.SENTRY_AUTH_TOKEN),
+  },
 
   // Uncomment to route Sentry requests through a Next.js rewrite to bypass
   // ad-blockers (raises server load/hosting cost); ensure the route doesn't collide with Next.js middleware or client-side error reporting fails.
