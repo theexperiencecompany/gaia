@@ -144,7 +144,7 @@ export default function Footer() {
                   target={link.external ? "_blank" : undefined}
                   rel={link.external ? "noopener noreferrer" : undefined}
                   title={link.description}
-                  aria-label={link.label}
+                  aria-label={`${link.label}: ${link.description}`}
                   className="-m-2 p-2 text-zinc-200 transition-colors hover:text-primary"
                 >
                   {/* Drop each icon's brand color so the row reads as one set
