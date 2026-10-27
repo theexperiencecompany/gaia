@@ -37,6 +37,9 @@ LANGFUSE_FLUSH_AT = 128
 # and falls back to 512 spans, so the variable is the only knob that works.
 LANGFUSE_FLUSH_AT_ENV = "LANGFUSE_FLUSH_AT"
 
+# The lazy-provider key this module registers; the key is part of the contract.
+LANGFUSE_PROVIDER_NAME = "langfuse"
+
 
 def _langfuse_configured() -> bool:
     """Return True only when all three Langfuse env vars are non-blank.
@@ -60,7 +63,7 @@ def _configure_export_env() -> None:
 
 
 @lazy_provider(
-    name="langfuse",
+    name=LANGFUSE_PROVIDER_NAME,
     required_keys=[
         settings.LANGFUSE_PUBLIC_KEY,
         settings.LANGFUSE_SECRET_KEY,
@@ -144,7 +147,7 @@ def build_langfuse_callback() -> CallbackHandler | None:
     # The handler resolves the process-wide client by public key. Initialize it
     # first, or the SDK creates one with its own defaults and our export budget
     # (timeout, batch size) never applies.
-    providers.get("langfuse")
+    providers.get(LANGFUSE_PROVIDER_NAME)
     return CallbackHandler()
 
 
