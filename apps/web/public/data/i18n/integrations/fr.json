@@ -145,139 +145,139 @@
   "gmail-todoist": {
     "toolA": "Gmail",
     "toolB": "Todoist",
-    "tagline": "Transformez automatiquement vos emails en tâches : une boîte de réception vide, c'est zéro tâche oubliée",
-    "metaTitle": "Intégration Gmail + Todoist : e-mails en tâches",
-    "metaDescription": "Gmail + Todoist avec GAIA : Transformez vos e-mails en tâches Todoist avec échéances selon le contexte, pour une liste toujours à jour.",
+    "tagline": "Transformez vos e-mails en tâches automatiquement : boîte vide, zéro tâche oubliée",
+    "metaTitle": "Intégration Gmail + Todoist : des e-mails aux tâches",
+    "metaDescription": "Transformez les e-mails à traiter en tâches Todoist, avec l'échéance extraite du message. GAIA planifie les relances pour que rien ne vous échappe. Voir les étapes.",
     "keywords": [
-      "Intégration Gmail Todoist",
-      "automatisation email en tâche",
+      "intégration Gmail Todoist",
+      "automatisation e-mail vers tâche",
       "workflow Gmail Todoist",
-      "créer une tâche Todoist à partir d'un email",
-      "automatisation boîte de réception vers liste de tâches"
+      "créer une tâche Todoist depuis un e-mail",
+      "automatiser la boîte de réception vers la liste de tâches"
     ],
-    "intro": "Chaque email nécessitant une action devient une tâche potentielle : transférer manuellement les éléments à faire de Gmail vers Todoist prend du temps et conduit facilement à des oublis. Les emails s'accumulent, la charge mentale liée à la gestion des tâches augmente et les engagements importants se perdent dans les fils de discussion.\n\nGAIA automatise le flux Gmail vers Todoist. Elle lit vos emails, identifie les éléments d'action et les engagements, puis crée les tâches associées dans Todoist avec des dates d'échéance, des priorités et des projets adaptés. Votre boîte de réception devient une source de tâches et non plus une deuxième liste à gérer à part.",
+    "intro": "Chaque e-mail qui demande une action est une tâche potentielle. Mais transférer à la main les actions de Gmail vers Todoist prend du temps et s'oublie facilement. Les e-mails s'accumulent, la charge mentale pour décider ce qui doit figurer sur votre liste de tâches augmente, et les engagements importants s'enterrent dans les fils de discussion.\n\nGAIA automatise ce circuit. Il lit vos e-mails, identifie les actions et les engagements, puis crée les tâches correspondantes avec les bonnes échéances, priorités et affectations de projet. Votre boîte de réception devient une source de tâches plutôt qu'une deuxième liste de choses à faire à gérer séparément.",
     "useCases": [
       {
-        "title": "Créer automatiquement des tâches à partir des e-mails d'action",
-        "description": "GAIA identifie les e-mails qui nécessitent une réponse ou une action et crée une tâche Todoist pour chacun, en incluant le nom de l'expéditeur, l'objet et un résumé des besoins."
+        "title": "Créer des tâches depuis les e-mails à traiter",
+        "description": "GAIA repère les e-mails qui exigent une réponse ou une action et crée une tâche pour chacun, avec le nom de l'expéditeur, l'objet et un résumé de ce qui est attendu."
       },
       {
         "title": "Extraire les échéances du contenu des e-mails",
-        "description": "Lorsqu'un e-mail mentionne une date limite (« merci d'envoyer avant vendredi » ou « à rendre pour le 15 mars »), GAIA définit automatiquement la date d'échéance de la tâche Todoist pour que la deadline soit prise en compte sans saisie manuelle."
+        "description": "Quand un e-mail mentionne une échéance (« à envoyer avant vendredi » ou « pour le 15 mars »), GAIA fixe automatiquement la date de la tâche, sans saisie manuelle."
       },
       {
-        "title": "Planification automatique des relances",
-        "description": "Après l'envoi d'un e-mail important, GAIA crée une tâche de relance dans Todoist pour trois jours plus tard afin que vous n'oubliiez jamais de demander une réponse."
+        "title": "Programmer les relances",
+        "description": "Après l'envoi d'un e-mail important, GAIA crée une tâche de relance dans Todoist trois jours plus tard pour que vous n'oubliiez jamais de revenir vers votre interlocuteur."
       },
       {
-        "title": "Affectation de projet depuis le contexte de l'e-mail",
-        "description": "GAIA analyse le contenu de l'e-mail et affecte les nouvelles tâches au bon projet Todoist, en fonction des mots-clés, de l'expéditeur ou du label de l'e-mail, ce qui permet de garder vos tâches organisées automatiquement."
+        "title": "Affecter les projets selon le contexte",
+        "description": "GAIA lit le contenu de l'e-mail et rattache les nouvelles tâches au bon projet selon les mots-clés, l'expéditeur ou le libellé, pour garder votre liste organisée sans effort."
       },
       {
-        "title": "Créer des tâches d'apprentissage à partir des newsletters",
-        "description": "Lorsqu'une newsletter professionnelle arrive avec un article à lire, GAIA ajoute une tâche « À lire plus tard » à Todoist avec le lien et une brève description, pour que les contenus intéressants ne se perdent pas dans votre boîte de réception."
+        "title": "Des tâches de lecture depuis les newsletters",
+        "description": "Quand une newsletter sectorielle contient un article à lire, GAIA ajoute une tâche « À lire plus tard » avec le lien et une courte description, pour que le contenu utile ne se perde pas dans la boîte de réception."
       }
     ],
     "howItWorks": [
       {
         "step": "Connectez Gmail et Todoist à GAIA",
-        "description": "Autorisez GAIA à accéder à votre boîte Gmail et à votre compte Todoist. La configuration prend moins de deux minutes grâce à l'authentification OAuth."
+        "description": "Autorisez GAIA à accéder à votre boîte de réception et à votre liste de tâches. La configuration prend moins de deux minutes grâce à l'authentification OAuth."
       },
       {
-        "step": "Indiquez à GAIA vos préférences de création de tâches",
-        "description": "Spécifiez quels types d'e-mails doivent devenir des tâches, quels projets Todoist utiliser selon la catégorie d'e-mails, et comment nommer et prioriser les tâches."
+        "step": "Indiquez vos préférences de création de tâches",
+        "description": "Précisez quels types d'e-mails doivent devenir des tâches, quels projets utiliser selon les catégories, et comment nommer et prioriser les tâches."
       },
       {
-        "step": "GAIA gère automatiquement le traitement des e-mails",
-        "description": "À chaque nouvel e-mail reçu, GAIA l'évalue et crée les tâches Todoist selon vos paramètres. Vous bénéficiez d'une liste de tâches complète, fidèle à votre boîte de réception, sans effort manuel."
+        "step": "GAIA gère le flux en continu",
+        "description": "À chaque nouvel e-mail, GAIA l'évalue et crée les tâches selon vos règles. Vous obtenez une liste de tâches propre, à l'image de votre boîte de réception, sans aucun travail manuel."
       }
     ],
     "faqs": [
       {
-        "question": "Comment GAIA décide-t-elle quels emails nécessitent une tâche ?",
-        "answer": "GAIA utilise l’IA pour classer les emails selon leur intention. Les messages contenant des demandes, des délais, des engagements ou des besoins de suivi sont signalés comme éléments d’action. Vous pouvez aussi définir des règles explicites comme « tous les emails de mon responsable deviennent des tâches »."
+        "question": "Comment GAIA décide-t-il quels e-mails méritent une tâche ?",
+        "answer": "Il s'appuie sur l'IA pour classer les e-mails selon leur intention. Ceux qui contiennent des demandes, des échéances, des engagements ou des relances sont signalés comme actions à mener. Vous pouvez aussi poser des règles explicites, du type « tous les e-mails de mon manager deviennent des tâches »."
       },
       {
-        "question": "GAIA peut-elle compléter des tâches Todoist lorsque je réponds à un email ?",
-        "answer": "Oui. GAIA peut surveiller vos messages envoyés et marquer la tâche correspondante dans Todoist comme terminée dès qu’elle détecte que vous avez répondu à l’email déclencheur, gardant ainsi votre liste de tâches à jour automatiquement."
+        "question": "GAIA peut-il clôturer des tâches Todoist quand je réponds à un e-mail ?",
+        "answer": "Oui. Il peut surveiller vos messages envoyés et marquer la tâche correspondante comme terminée dès qu'il détecte votre réponse à l'e-mail déclencheur, ce qui garde votre liste à jour automatiquement."
       },
       {
-        "question": "Les tâches créées par GAIA vont-elles encombrer ma boîte de réception Todoist ?",
-        "answer": "GAIA oriente les tâches vers les projets Todoist appropriés au lieu de tout placer dans la boîte de réception. Vous gérez l’affectation des projets, donc les tâches atterrissent directement là où elles doivent aller."
+        "question": "Les tâches créées par GAIA vont-elles encombrer ma boîte de réception de tâches ?",
+        "answer": "Non : GAIA les range dans les projets appropriés au lieu de tout déverser dans la boîte de réception. C'est vous qui définissez l'affectation aux projets, donc les tâches arrivent directement au bon endroit."
       }
     ]
   },
   "gmail-linear": {
     "toolA": "Gmail",
     "toolB": "Linear",
-    "tagline": "Reliez automatiquement les emails clients aux incidents techniques",
-    "metaTitle": "Linear e-mail : transformer vos e-mails Gmail en tickets",
-    "metaDescription": "Aucun bug signalé par e-mail ne se perd. GAIA crée des tickets Linear depuis Gmail, liés au fil d'origine et sans doublons. Voir les étapes.",
+    "tagline": "Reliez automatiquement les e-mails clients et les tickets d'ingénierie",
+    "metaTitle": "Intégration Linear Gmail : transformer les e-mails en tickets",
+    "metaDescription": "Transformez les e-mails de signalement de bugs en tickets Linear reliés au fil d'origine, doublons fusionnés. GAIA rédige les réponses clients. Voir les étapes.",
     "keywords": [
       "intégration Gmail Linear",
-      "email vers incident Linear",
-      "rapport de bug par email vers Linear",
+      "e-mail vers ticket Linear",
+      "signaler un bug depuis un e-mail",
       "automatisation Gmail Linear",
-      "email client vers ticket technique"
+      "e-mail client vers ticket d'ingénierie"
     ],
-    "intro": "Les rapports de bugs des clients et les demandes de fonctionnalités arrivent par email. Les équipes techniques suivent leur travail dans Linear. Faire manuellement le lien entre ces deux univers crée des délais, fait perdre du contexte, et peut frustrer aussi bien les clients que les ingénieurs.\n\nGAIA connecte Gmail et Linear pour que les emails à destination des clients s’intègrent directement dans votre flux de travail technique. Les bugs deviennent des incidents Linear structurés et prioritaires. Les demandes de fonctionnalités sont ajoutées au backlog. Lorsqu’un problème est résolu dans Linear, GAIA prépare automatiquement la réponse à envoyer au client depuis Gmail. La boucle se ferme ainsi automatiquement.",
+    "intro": "Les signalements de bugs et les demandes de fonctionnalités des clients arrivent par e-mail. Les équipes d'ingénierie suivent leur travail dans Linear. Traduire à la main entre ces deux mondes crée des retards, perd le contexte et frustre autant les clients que les développeurs.\n\nGAIA relie Gmail et Linear pour que les e-mails côté client alimentent directement votre flux d'ingénierie. Les signalements de bugs deviennent des tickets correctement formatés et priorisés. Les demandes de fonctionnalités rejoignent le backlog. Et quand un ticket est résolu, GAIA rédige la réponse au client dans Gmail. La boucle se referme automatiquement.",
     "useCases": [
       {
-        "title": "Convertir les emails de signalement de bugs en tickets Linear",
-        "description": "GAIA lit les emails clients signalant des bugs, extrait les informations pertinentes et crée un ticket Linear correctement formaté avec un titre, une description et la priorité suggérée en fonction de l'urgence de l'email."
+        "title": "Des e-mails de bug aux tickets Linear",
+        "description": "GAIA lit les e-mails de signalement, en extrait les détails utiles et crée un ticket bien formaté avec titre, description et priorité suggérée selon l'urgence exprimée dans le message."
       },
       {
-        "title": "Enregistrement des demandes de fonctionnalités",
-        "description": "Les demandes de fonctionnalités reçues par email sont converties en tickets du backlog Linear, en préservant les termes exacts du client afin que les équipes produit disposent d’une voix utilisateur authentique pour chaque requête."
+        "title": "Enregistrer les demandes de fonctionnalités",
+        "description": "Les demandes arrivées par e-mail sont converties en éléments de backlog en conservant les mots exacts du client, pour que les équipes produit gardent la voix réelle de l'utilisateur attachée à chaque demande."
       },
       {
-        "title": "Brouillons de mise à jour du statut client",
-        "description": "Lorsqu’un ticket Linear passe en statut « Terminé », GAIA prépare une réponse à l’email client original expliquant la résolution, prête à être relue et envoyée par un agent support."
+        "title": "Rédiger les points d'avancement client",
+        "description": "Quand un ticket passe à « Terminé », GAIA rédige une réponse à l'e-mail client d'origine expliquant la résolution, prête à être relue et envoyée par un agent du support."
       },
       {
-        "title": "Triage des tickets depuis le volume d’emails",
-        "description": "Quand plusieurs clients envoient un email concernant le même problème, GAIA détecte le motif et crée un seul ticket Linear prioritaire au lieu de dupliquer la demande pour chaque email."
+        "title": "Trier les tickets selon le volume d'e-mails",
+        "description": "Quand plusieurs clients écrivent pour le même problème, GAIA détecte le schéma et crée un seul ticket prioritaire au lieu de dupliquer le sujet à chaque e-mail."
       },
       {
-        "title": "Transformation des emails internes en tickets pour l’équipe",
-        "description": "Les emails internes envoyés par des parties prenantes non techniques pour demander des modifications ou des corrections sont transformés en tickets Linear structurés, permettant aux équipes techniques de traiter des requêtes claires plutôt que des échanges d’emails vagues."
+        "title": "Des e-mails internes aux tickets d'équipe",
+        "description": "Les e-mails de collègues non techniques demandant des changements ou des correctifs sont convertis en tickets bien structurés, pour que l'ingénierie reçoive des demandes claires plutôt que de vagues fils de discussion."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connecter Gmail et Linear à GAIA",
-        "description": "Autorisez GAIA à accéder à vos comptes Gmail et Linear. Indiquez à quelle équipe et quel projet Linear les tickets issus des emails entrants doivent être affectés."
+        "step": "Connectez Gmail et Linear à GAIA",
+        "description": "Autorisez GAIA avec vos comptes Gmail et Linear. Précisez à quelle équipe et à quel projet les tickets issus des e-mails doivent être affectés."
       },
       {
-        "step": "Configurer les règles de création de ticket",
-        "description": "Indiquez à GAIA quels emails doivent devenir des tickets Linear — selon le domaine de l’expéditeur, le libellé Gmail, les mots-clés de l’objet ou grâce à la classification IA. Définissez les règles de priorité et d’assignation par défaut."
+        "step": "Configurez les règles de création de tickets",
+        "description": "Indiquez quels e-mails doivent devenir des tickets : par domaine d'expéditeur, libellé, mots-clés de l'objet ou classification par IA. Définissez la priorité et l'assignation par défaut."
       },
       {
-        "step": "Boucler la boucle avec des réponses automatiques",
-        "description": "Configurez GAIA pour rédiger des réponses Gmail lorsque les tickets Linear atteignent certains statuts. Vous relisez les brouillons avant envoi, garantissant une communication client de qualité."
+        "step": "Refermez la boucle avec des réponses automatiques",
+        "description": "Configurez GAIA pour rédiger des réponses quand un ticket atteint certains statuts. Vous relisez les brouillons avant l'envoi, pour garantir la qualité de la communication client."
       }
     ],
     "faqs": [
       {
-        "question": "GAIA peut-elle relier les tickets Linear au fil Gmail d’origine ?",
-        "answer": "Oui. GAIA ajoute l’URL du fil de discussion Gmail à la description du ticket Linear afin que les ingénieurs aient toujours un lien vers la communication client d’origine pour un contexte complet."
+        "question": "GAIA peut-il relier un ticket au fil Gmail d'origine ?",
+        "answer": "Oui. GAIA ajoute l'URL du fil dans la description du ticket, pour que les développeurs aient toujours un lien vers l'échange client d'origine et tout le contexte."
       },
       {
-        "question": "GAIA déduplique-t-il les tickets lorsque plusieurs clients signalent le même bug ?",
-        "answer": "GAIA utilise la similarité sémantique pour détecter quand de nouveaux e-mails décrivent des tickets Linear déjà existants et peut ajouter un commentaire au ticket existant au lieu d’en créer un doublon."
+        "question": "GAIA dédoublonne-t-il les tickets quand plusieurs clients signalent le même bug ?",
+        "answer": "GAIA compare le sens des messages pour détecter qu'un nouvel e-mail décrit un ticket déjà existant, et peut ajouter un commentaire au ticket existant plutôt que d'en créer un doublon."
       },
       {
-        "question": "Les équipes non techniques peuvent-elles utiliser cela pour leurs propres espaces de travail Linear ?",
-        "answer": "Absolument. Toute équipe utilisant Linear pour le suivi de projet peut profiter de cette automatisation. Les équipes marketing peuvent enregistrer des demandes de campagnes depuis leurs e-mails, les équipes opérationnelles peuvent suivre les demandes fournisseurs, et les équipes design peuvent recueillir des retours."
+        "question": "Des équipes non techniques peuvent-elles l'utiliser avec leur propre espace Linear ?",
+        "answer": "Tout à fait. Toute équipe qui suit ses projets dans un espace de travail peut utiliser cette automatisation. Le marketing peut enregistrer les demandes de campagne reçues par e-mail, les opérations les demandes fournisseurs, et le design les retours utilisateurs."
       }
     ]
   },
   "gmail-asana": {
     "toolA": "Gmail",
     "toolB": "Asana",
-    "tagline": "Transformez vos e-mails en tâches Asana sans quitter votre boîte de réception",
-    "metaTitle": "Intégration Gmail + Asana : e-mail vers tâches projet",
-    "metaDescription": "Gmail + Asana avec GAIA : Créez des tâches Asana depuis vos e-mails, assignez-les et fixez les échéances, pour tenir le cap de vos projets.",
+    "tagline": "Transformez vos e-mails en tâches Asana sans quitter votre boîte",
+    "metaTitle": "Intégration Gmail + Asana : des e-mails aux tâches",
+    "metaDescription": "Transformez les demandes clients et les e-mails des parties prenantes en tâches Asana avec responsables et échéances. GAIA suit les livrables et les décisions. Voir les étapes.",
     "keywords": [
       "intégration Gmail Asana",
       "e-mail vers tâche Asana",
@@ -285,55 +285,55 @@
       "créer une tâche Asana depuis un e-mail",
       "boîte de réception vers gestion de projet"
     ],
-    "intro": "Les chefs de projet et responsables d’équipe passent beaucoup de temps à trier les e-mails et créer manuellement des tâches Asana. Les e-mails clients contiennent des livrables, les e-mails internes des actions à suivre, et les mises à jour des parties prenantes des décisions à suivre — tout cela nécessitant une saisie manuelle dans Asana.\n\nGAIA élimine ce travail manuel en convertissant automatiquement les e-mails en tâches Asana avec le contexte, les affectations et les échéances appropriés. Votre boîte de réception devient alors une source d’entrée de gestion de projet, et non plus un système à gérer en parallèle.",
+    "intro": "Les chefs de projet et les responsables d'équipe passent un temps considérable à trier Gmail et à créer des tâches Asana à la main. Les e-mails clients contiennent des livrables, les e-mails internes des actions à mener, et les messages des parties prenantes des décisions à suivre : autant de saisies manuelles.\n\nGAIA supprime ce travail en convertissant automatiquement les e-mails en tâches avec le bon contexte, les bonnes affectations et les bonnes échéances. Votre boîte de réception devient une source pour la gestion de projet, et non plus un système à gérer en parallèle.",
     "useCases": [
       {
-        "title": "Suivi des livrables clients",
-        "description": "Lorsqu’un client envoie un e-mail pour demander un livrable, GAIA crée une tâche Asana dans le projet client avec les détails de la demande, la date d’échéance extraite de l’e-mail et l’assignation au membre d’équipe approprié."
+        "title": "Suivre les livrables clients",
+        "description": "Quand un client demande un livrable par e-mail, GAIA crée une tâche dans le projet du client avec les détails de la demande, l'échéance extraite du message et l'affectation au bon membre de l'équipe."
       },
       {
-        "title": "Gestion des demandes des parties prenantes",
-        "description": "Les demandes internes reçues par e-mail sont transformées en tâches Asana assignées à la bonne équipe, garantissant qu’aucune demande ne se perde dans les boîtes de réception et que le suivi soit assuré jusqu’à la réalisation."
+        "title": "Gérer les demandes des parties prenantes",
+        "description": "Les demandes internes reçues par e-mail deviennent des tâches confiées à la bonne équipe, pour qu'elles ne se perdent pas dans les boîtes et soient suivies jusqu'au bout."
       },
       {
-        "title": "Suivi des décisions de réunion",
-        "description": "Après les réunions dont les décisions sont communiquées par e-mail, GAIA extrait les actions à effectuer et crée des tâches Asana avec des responsables et des échéances pour assurer leur suivi."
+        "title": "Suivre les décisions de réunion",
+        "description": "Après les réunions dont les décisions sont transmises par e-mail, GAIA extrait les actions et crée des tâches avec responsables et échéances, pour que l'exécution soit suivie."
       },
       {
-        "title": "Suivi des échanges avec les fournisseurs",
-        "description": "Les e-mails des fournisseurs deviennent des tâches Asana permettant de suivre les livraisons attendues, les réponses aux devis et les jalons contractuels pour que les achats respectent le calendrier prévu."
+        "title": "Suivre les échanges fournisseurs",
+        "description": "Les e-mails des fournisseurs et prestataires deviennent des tâches qui suivent les livraisons attendues, les réponses aux devis et les jalons contractuels, pour que les achats restent dans les temps."
       },
       {
-        "title": "Confirmation d’achèvement de tâche",
-        "description": "Lorsqu’une tâche Asana est marquée comme terminée, GAIA prépare un e-mail de confirmation à l’initiateur de la demande afin que clients et parties prenantes soient informés sans efforts supplémentaires."
+        "title": "Confirmer la clôture des tâches",
+        "description": "Quand une tâche est terminée, GAIA rédige un e-mail de confirmation au demandeur d'origine, pour que clients et parties prenantes restent informés sans effort supplémentaire."
       }
     ],
     "howItWorks": [
       {
         "step": "Connectez Gmail et Asana à GAIA",
-        "description": "Autorisez GAIA à accéder à vos comptes Gmail et Asana. Donnez accès aux espaces de travail et projets Asana dans lesquels vous souhaitez router les tâches e-mail."
+        "description": "Autorisez GAIA avec vos comptes Gmail et Asana. Accordez l'accès aux espaces de travail et aux projets vers lesquels router les tâches issues des e-mails."
       },
       {
-        "step": "Définissez vos règles de routage des tâches",
-        "description": "Configurez la correspondance entre les e-mails et les projets Asana, la façon de nommer les tâches et les membres de l’équipe à assigner selon le contenu ou l’expéditeur de l’e-mail."
+        "step": "Définissez vos règles de routage",
+        "description": "Configurez quels e-mails correspondent à quels projets, comment nommer les tâches, et quels membres de l'équipe assigner selon le contenu du message ou l'expéditeur."
       },
       {
-        "step": "Surveillez et ajustez",
-        "description": "GAIA crée automatiquement des tâches à partir des e-mails entrants. Passez en revue les tâches générées et donnez votre retour pour affiner l’automatisation au fil du temps."
+        "step": "Suivez et ajustez",
+        "description": "GAIA crée les tâches à partir des e-mails entrants, automatiquement. Relisez les tâches produites et faites vos retours pour affiner l'automatisation au fil du temps."
       }
     ],
     "faqs": [
       {
-        "question": "GAIA peut-il assigner des tâches Asana à des membres spécifiques selon le contenu de l’e-mail ?",
-        "answer": "Oui. Vous pouvez configurer des règles telles que « les e-mails concernant le design vont à l’équipe design » ou « les e-mails du client X sont affectés au gestionnaire de compte Y ». GAIA utilise le contenu de l’e-mail et des règles d’expéditeur pour déterminer l’assignation."
+        "question": "GAIA peut-il assigner des tâches à des membres précis selon le contenu de l'e-mail ?",
+        "answer": "Oui. Vous pouvez définir des règles comme « les e-mails sur le design vont à l'équipe design » ou « les e-mails du client X vont au chargé de compte Y ». GAIA s'appuie sur le contenu et l'expéditeur pour décider."
       },
       {
-        "question": "GAIA fonctionne-t-il avec les sous-tâches et les sections Asana ?",
-        "answer": "Oui. GAIA peut créer des tâches dans des sections spécifiques et ajouter des sous-tâches si l’email contient plusieurs éléments d’action. Vous définissez la structure souhaitée dans votre configuration."
+        "question": "GAIA fonctionne-t-il avec les sous-tâches et les sections Asana ?",
+        "answer": "Oui. GAIA peut créer des tâches dans des sections précises et ajouter des sous-tâches si l'e-mail contient plusieurs actions. Vous définissez la structure souhaitée dans la configuration."
       },
       {
-        "question": "Que se passe-t-il si un email ne contient aucune action claire ?",
-        "answer": "GAIA ne crée des tâches que lorsqu’il détecte du contenu exploitable. Les emails d’information, newsletters et notifications automatiques sont filtrés. Vous pouvez toujours déclencher manuellement la création d’une tâche pour n’importe quel email en le demandant directement à GAIA."
+        "question": "Que se passe-t-il si un e-mail ne contient aucune action claire ?",
+        "answer": "GAIA ne crée une tâche que lorsqu'il détecte un contenu actionnable. Les e-mails d'information, les newsletters et les notifications automatiques sont filtrés. Vous pouvez toujours déclencher la création manuellement en le demandant à GAIA."
       }
     ]
   },
@@ -341,129 +341,129 @@
     "toolA": "Slack",
     "toolB": "Notion",
     "tagline": "Enregistrez automatiquement les conversations et décisions Slack dans Notion",
-    "metaTitle": "Intégration Slack + Notion : conversations dans Notion",
-    "metaDescription": "Slack + Notion avec GAIA : Enregistrez les fils Slack dans Notion et générez des notes de réunion, pour un wiki d'équipe qui se construit seul.",
+    "metaTitle": "Intégration Slack + Notion : les fils vers un journal de décisions",
+    "metaDescription": "Enregistrez les décisions des fils Slack et les notes de réunion directement dans Notion. GAIA capture le savoir partagé avant qu'il ne défile. Voir les étapes.",
     "keywords": [
-      "Intégration Slack Notion",
+      "intégration Slack Notion",
       "enregistrer Slack dans Notion",
       "automatisation Slack Notion",
-      "transférer un fil Slack en page Notion",
-      "base de connaissances d’équipe depuis Slack"
+      "fil Slack vers page Notion",
+      "base de connaissances depuis Slack"
     ],
-    "intro": "Slack est l’endroit où les décisions sont prises et où la connaissance circule – puis elle est aussitôt ensevelie sous la prochaine conversation. Un contexte important, des choix d’architecture et des accords d’équipe disparaissent dans un historique de discussions sans fin, devenu impossible à explorer efficacement après quelques mois.\n\nGAIA préserve automatiquement la connaissance de Slack dans Notion. Lorsqu’une décision est prise dans un fil de discussion Slack, GAIA la capture comme journal décisionnel dans Notion. Quand un tutoriel utile est partagé sur un canal, GAIA le transforme en page Notion. Le savoir institutionnel que votre équipe produit sur Slack reste ainsi consultable en permanence dans votre base de connaissances.",
+    "intro": "Slack est l'endroit où les décisions se prennent et où le savoir circule — avant d'être aussitôt enseveli sous la conversation suivante. Le contexte important, les décisions d'architecture et les accords d'équipe disparaissent dans un historique qui défile sans fin et devient impossible à fouiller sérieusement au bout de quelques mois.\n\nGAIA préserve ce savoir dans Notion, automatiquement. Quand une décision est prise dans un fil, GAIA l'enregistre comme entrée de journal de décisions. Quand une astuce utile est partagée dans un canal, GAIA la transforme en page. La connaissance institutionnelle que votre équipe produit dans le chat devient accessible en permanence dans votre base de connaissances.",
     "useCases": [
       {
-        "title": "Journal des décisions à partir des fils Slack",
-        "description": "GAIA surveille les canaux Slack pour repérer les discussions de décision et crée automatiquement des entrées structurées dans Notion, capturant la décision, la logique et les participants afin que tout soit documenté sans effort supplémentaire."
+        "title": "Journal de décisions depuis les fils Slack",
+        "description": "GAIA surveille les canaux où se prennent les décisions et crée automatiquement des entrées Notion structurées qui consignent la décision, sa justification et les participants, sans effort supplémentaire."
       },
       {
         "title": "Notes de réunion issues des huddles Slack",
-        "description": "Après un huddle Slack ou une synchronisation rapide, GAIA compile un résumé du fil de discussion Slack post-réunion et crée une page de notes de réunion formatée dans Notion avec les actions à mener et leurs responsables."
+        "description": "Après un huddle ou un point rapide, GAIA compile un résumé à partir du fil qui suit et crée une page de notes formatée, avec les actions et leurs responsables."
       },
       {
-        "title": "Capture de partage de connaissances",
-        "description": "Lorsqu’un membre de l’équipe partage un conseil, un guide ou une explication de processus utile sur Slack, GAIA peut l’enregistrer dans la section Notion appropriée afin qu’il ne disparaisse pas du canal."
+        "title": "Capturer le partage de connaissances",
+        "description": "Quand un membre de l'équipe partage une astuce, un guide ou l'explication d'un processus dans un canal, GAIA peut l'enregistrer dans la section adéquate de la base de connaissances pour qu'elle ne se perde pas."
       },
       {
-        "title": "Documentation des mises à jour de projet",
-        "description": "Les mises à jour régulières postées dans les canaux Slack de projet sont automatiquement ajoutées à la page Notion correspondante, créant ainsi un historique dynamique du projet."
+        "title": "Documenter les points d'avancement projet",
+        "description": "Les points d'avancement réguliers publiés dans les canaux projet sont ajoutés automatiquement à la page du projet correspondant, ce qui crée un historique vivant."
       },
       {
-        "title": "Création de contenu d’intégration",
-        "description": "Les questions fréquemment posées sur les canaux Slack sont identifiées et converties en entrées FAQ sur Notion, étoffant votre documentation d’onboarding à partir des préoccupations réelles des nouvelles recrues."
+        "title": "Alimenter le contenu d'onboarding",
+        "description": "Les questions récurrentes des canaux sont signalées et transformées en entrées de FAQ : votre documentation d'intégration se construit à partir des vraies questions des nouvelles recrues."
       }
     ],
     "howItWorks": [
       {
         "step": "Connectez Slack et Notion à GAIA",
-        "description": "Autorisez GAIA dans votre espace de travail Slack et sur votre compte Notion. Sélectionnez les canaux Slack que GAIA doit surveiller et l’espace de travail Notion où elle doit écrire."
+        "description": "Autorisez GAIA dans votre espace Slack et votre compte Notion. Choisissez les canaux que GAIA doit surveiller et l'espace de travail dans lequel il doit écrire."
       },
       {
-        "step": "Définir les règles de capture",
-        "description": "Précisez ce que GAIA doit capturer — fils de discussion avec une réaction emoji spécifique, messages dans des canaux désignés ou contenus correspondant à certains mots-clés. Définissez la destination Notion pour chaque règle."
+        "step": "Définissez les règles de capture",
+        "description": "Précisez ce que GAIA doit capturer : les fils avec une réaction emoji précise, les messages de certains canaux, ou le contenu contenant certains mots-clés. Indiquez la destination de chaque règle."
       },
       {
-        "step": "Construisez automatiquement votre base de connaissances",
-        "description": "GAIA fonctionne en continu en arrière-plan. Les membres de l’équipe peuvent aussi déclencher la capture manuellement en réagissant à un message Slack avec un emoji spécifique pour demander à GAIA de l’enregistrer."
+        "step": "Construisez votre base de connaissances automatiquement",
+        "description": "GAIA tourne en continu en arrière-plan. Les membres de l'équipe peuvent aussi déclencher une capture manuellement en réagissant à un message avec un emoji dédié qui demande à GAIA de l'enregistrer."
       }
     ],
     "faqs": [
       {
-        "question": "Les membres de l’équipe peuvent-ils enregistrer des contenus dans Notion via Slack sans l’intervention de GAIA ?",
-        "answer": "Oui. Vous pouvez configurer une réaction emoji spécifique (comme un emoji marque-page) que tout membre de l’équipe peut ajouter à un message Slack pour demander à GAIA de l’enregistrer dans Notion. Cela donne le contrôle à l’équipe tout en automatisant la capture."
+        "question": "Les membres de l'équipe peuvent-ils déclencher un enregistrement Notion depuis Slack sans passer par GAIA ?",
+        "answer": "Oui. Vous pouvez configurer une réaction emoji spécifique (un marque-page, par exemple) que chacun peut ajouter à un message pour que GAIA l'enregistre en page. L'équipe garde la main, la capture reste automatique."
       },
       {
-        "question": "GAIA capture-t-il l'ensemble des fils de discussion ou seulement des messages individuels ?",
-        "answer": "Par défaut, GAIA capture l'intégralité des fils de discussion lorsqu'une capture est déclenchée, préservant ainsi tout le contexte de conversation. Vous pouvez configurer le système pour ne capturer que le message parent ou une version résumée du fil."
+        "question": "GAIA capture-t-il des fils entiers ou seulement des messages isolés ?",
+        "answer": "Par défaut, GAIA capture le fil entier lorsqu'une capture est déclenchée, pour préserver tout le contexte de la conversation. Vous pouvez aussi configurer une capture du seul message initial ou d'une version résumée du fil."
       },
       {
-        "question": "GAIA va-t-il créer de nouvelles pages Notion ou ajouter aux pages existantes ?",
-        "answer": "Les deux comportements sont configurables. Les mises à jour de projet peuvent être ajoutées aux pages de projet existantes, tandis que les extraits de connaissances indépendants créent de nouvelles pages. Vous définissez la logique en fonction de la structure de votre espace Notion."
+        "question": "GAIA crée-t-il de nouvelles pages ou complète-t-il l'existant ?",
+        "answer": "Les deux comportements sont configurables. Les points d'avancement projet peuvent s'ajouter aux pages existantes, tandis que les connaissances isolées créent de nouvelles pages. C'est vous qui définissez la logique selon la structure de vos pages."
       }
     ]
   },
   "slack-linear": {
     "toolA": "Slack",
     "toolB": "Linear",
-    "tagline": "Créez et mettez à jour des tickets Linear directement depuis vos conversations Slack",
-    "metaTitle": "Intégration Slack + Linear : messages Slack en tickets",
-    "metaDescription": "Slack + Linear avec GAIA : Créez des tickets Linear depuis Slack et recevez les mises à jour dans le chat, sans changer d'outil.",
+    "tagline": "Créez et mettez à jour des tickets Linear directement depuis Slack",
+    "metaTitle": "Intégration Slack + Linear : des messages aux tickets",
+    "metaDescription": "Transformez les messages Slack en tickets Linear, suivez les incidents depuis un canal et recevez les mises à jour de statut dans Slack avec GAIA. Voir les étapes.",
     "keywords": [
       "intégration Slack Linear",
       "créer un ticket Linear depuis Slack",
       "automatisation Slack Linear",
-      "notifications Linear Slack",
-      "automatisation des workflows ingénierie"
+      "notifications Linear dans Slack",
+      "automatisation du workflow d'ingénierie"
     ],
-    "intro": "Les équipes d’ingénierie vivent sur Slack. Les bugs y sont signalés, les fonctionnalités y sont discutées et les incidents y sont triés. Mais le suivi du travail se fait sur Linear. Passer de l’un à l’autre et créer manuellement des tickets fait que certaines tâches ne sont jamais suivies correctement.\n\nGAIA fait de Slack une interface de premier ordre pour Linear. Les membres de l’équipe peuvent créer des tickets, mettre à jour les statuts et suivre l’avancement sans quitter Slack. GAIA ramène aussi les mises à jour Linear dans Slack pour que les bons canaux soient toujours informés quand des tickets sont résolus ou que le statut évolue.",
+    "intro": "Les équipes d'ingénierie vivent dans Slack. Les bugs s'y signalent, les fonctionnalités s'y discutent et les incidents s'y trient. Mais le suivi du travail se fait dans Linear. Cette friction entre les deux outils, avec la création manuelle des tickets, fait que certains travaux ne sont jamais vraiment suivis.\n\nGAIA fait de Slack une interface à part entière pour Linear. Chacun peut créer des tickets, changer un statut et suivre l'avancement sans quitter la conversation. GAIA ramène aussi les mises à jour dans le chat, pour que les bons canaux soient toujours informés quand un ticket avance ou se clôture.",
     "useCases": [
       {
-        "title": "Créez des tickets Linear à partir de messages Slack",
-        "description": "N’importe quel message Slack peut se transformer en ticket Linear avec une simple réaction emoji ou une commande GAIA. GAIA extrait le contenu du message et le formate en ticket avec titre, description et priorité suggérée."
+        "title": "Créer des tickets Linear depuis les messages Slack",
+        "description": "N'importe quel message peut devenir un ticket Linear par une simple réaction emoji ou une commande à GAIA. GAIA reprend le contenu et le formate en ticket avec titre, description et priorité suggérée."
       },
       {
-        "title": "Suivi des incidents depuis Slack",
-        "description": "Lorsqu'un incident est discuté dans un canal Slack, GAIA crée automatiquement un ticket de suivi dans Linear, le lie au fil de discussion Slack et met à jour le ticket au fur et à mesure de l'évolution de l'incident."
+        "title": "Suivre les incidents depuis un canal",
+        "description": "Quand un incident se discute dans un canal Slack, GAIA crée automatiquement un ticket de suivi, le relie au fil et le met à jour au fil de l'incident."
       },
       {
-        "title": "Mises à jour du statut Linear vers Slack",
-        "description": "Quand le statut d'un ticket Linear change, GAIA publie une mise à jour dans le canal Slack concerné ou envoie un message direct au créateur du ticket afin que l'équipe soit informée des progrès sans devoir vérifier Linear manuellement."
+        "title": "Remonter les statuts Linear dans Slack",
+        "description": "Quand un ticket change de statut, GAIA publie une mise à jour dans le canal concerné ou écrit au créateur du ticket, pour que l'équipe suive l'avancement sans aller vérifier manuellement."
       },
       {
-        "title": "Planification de sprint depuis Slack",
-        "description": "Lors des discussions de planification de sprint sur Slack, GAIA peut créer plusieurs tickets Linear à partir d'une liste structurée partagée dans le canal, évitant ainsi la saisie manuelle."
+        "title": "Préparer le sprint depuis le chat",
+        "description": "Pendant les discussions de planification de sprint, GAIA peut créer plusieurs tickets d'un coup à partir d'une liste structurée partagée dans le canal, ce qui évite la saisie manuelle."
       },
       {
-        "title": "Comptes-rendus de standup de Linear à Slack",
-        "description": "GAIA compile l'activité Linear de chaque ingénieur (tickets terminés, travail en cours, blocages) et publie chaque matin des résumés de standup personnalisés sur Slack."
+        "title": "Des standups générés depuis l'activité des tickets",
+        "description": "GAIA compile l'activité de chaque développeur (tickets terminés, travail en cours, blocages) et publie chaque matin un résumé de standup personnalisé dans le canal."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connecter Slack et Linear à GAIA",
-        "description": "Ajoutez GAIA à votre espace de travail Slack et connectez votre compte Linear. Indiquez quels canaux Slack correspondent à quelles équipes et projets Linear."
+        "step": "Connectez Slack et Linear à GAIA",
+        "description": "Ajoutez GAIA à votre espace Slack et connectez votre compte Linear. Précisez quels canaux correspondent à quelles équipes et à quels projets."
       },
       {
-        "step": "Configurer les déclencheurs de création de tickets",
-        "description": "Choisissez comment les tickets sont créés : via des réactions emoji, des commandes slash ou lorsque GAIA surveille certains canaux pour signaler des bugs. Configurez les responsables et étiquettes par défaut pour chaque canal."
+        "step": "Définissez les déclencheurs de création",
+        "description": "Choisissez le mode de création des tickets : réactions emoji, commandes slash, ou surveillance de certains canaux par GAIA pour les signalements de bugs. Configurez les assignations et libellés par défaut."
       },
       {
-        "step": "Configurer les notifications Slack pour les événements Linear",
-        "description": "Indiquez quels changements de statut Linear doivent notifier quels canaux Slack ou quels utilisateurs. Réglez vos préférences de notification pour éviter la surcharge tout en restant informé."
+        "step": "Configurez les notifications d'événements",
+        "description": "Indiquez quels changements de statut doivent prévenir quels canaux ou quels utilisateurs. Réglez vos préférences pour rester informé sans surcharge d'alertes."
       }
     ],
     "faqs": [
       {
-        "question": "Puis-je mettre à jour le statut d'un ticket Linear depuis Slack sans ouvrir Linear ?",
-        "answer": "Oui. Vous pouvez demander à GAIA sur Slack de mettre à jour le statut d'un ticket, de changer l'attributaire, d'ajouter un commentaire ou de clôturer un ticket. GAIA gère l'appel à l'API Linear et vous confirme la mise à jour dans Slack."
+        "question": "Puis-je changer le statut d'un ticket depuis Slack sans ouvrir Linear ?",
+        "answer": "Oui. Vous pouvez demander à GAIA dans le chat de modifier le statut d'un ticket, d'en changer l'assignation, d'ajouter un commentaire ou de le clôturer. GAIA fait l'appel API et confirme la mise à jour dans la même conversation."
       },
       {
-        "question": "Comment GAIA gère-t-il le lien des tickets Linear vers les fils Slack ?",
-        "answer": "GAIA ajoute automatiquement le permalien du fil Slack dans la description du ticket Linear et peut aussi publier l’URL du ticket Linear dans Slack, afin que les deux côtés soient liés pour une navigation facile."
+        "question": "Comment GAIA relie-t-il un ticket à son fil d'origine ?",
+        "answer": "GAIA ajoute automatiquement le lien permanent du fil dans la description du ticket, et peut aussi publier l'URL du ticket dans le fil pour que les deux côtés soient reliés et faciles à retrouver."
       },
       {
-        "question": "Les non-ingénieurs peuvent-ils utiliser cette intégration ?",
-        "answer": "Oui. Les chefs de produit, designers et équipes de support peuvent utiliser Slack pour créer et consulter des tickets Linear sans accès ou formation spécifique à Linear. GAIA agit comme couche de traduction."
+        "question": "Des profils non techniques peuvent-ils utiliser cette intégration ?",
+        "answer": "Oui. Les chefs de produit, les designers et le support peuvent créer et consulter des tickets depuis le chat, sans accès direct ni formation. GAIA fait office de couche de traduction."
       }
     ]
   },
@@ -471,271 +471,271 @@
     "toolA": "Slack",
     "toolB": "GitHub",
     "tagline": "Recevez les notifications GitHub dans Slack et gérez vos PR depuis le chat",
-    "metaTitle": "Intégration Slack + GitHub : GitHub dans Slack",
-    "metaDescription": "Slack + GitHub avec GAIA : Recevez les alertes de PR et d'issues dans Slack et gérez les revues depuis le chat, pour garder l'équipe informée.",
+    "metaTitle": "Intégration Slack + GitHub : revues de PR et alertes CI",
+    "metaDescription": "Recevez des demandes de revue ciblées, des alertes d'échec CI/CD et les annonces de merge dans Slack. GAIA route chaque événement GitHub vers le bon canal. Voir les étapes.",
     "keywords": [
-      "Intégration Slack GitHub",
-      "Notifications GitHub Slack",
-      "Automatisation Slack GitHub",
-      "Notifications de revue PR Slack",
-      "Bot GitHub Slack"
+      "intégration Slack GitHub",
+      "notifications GitHub dans Slack",
+      "automatisation Slack GitHub",
+      "demandes de revue de PR dans Slack",
+      "bot GitHub pour Slack"
     ],
-    "intro": "GitHub génère un flot de notifications : revues de pull request, commentaires sur les tickets, échecs CI et statuts de déploiement. La plupart des ingénieurs coupent les emails GitHub et ratent des événements importants. L’intégration officielle GitHub pour Slack crée trop de bruit et n’est pas assez intelligente.\n\nGAIA apporte des activités GitHub intelligentes sur Slack avec filtrage et contexte. Les demandes de revue PR arrivent en message privé chez le bon ingénieur. Les échecs CI sont postés dans le canal d’équipe avec un résumé du problème. Les PR fusionnées déclenchent des brouillons de notes de version. Votre équipe reçoit le signal GitHub nécessaire dans Slack, sans tout le bruit.",
+    "intro": "GitHub génère un torrent de notifications : revues de pull requests, commentaires sur les tickets, échecs de CI et statuts de déploiement. La plupart des développeurs coupent les e-mails et ratent les événements importants. L'intégration Slack officielle, elle, envoie trop de bruit sans assez d'intelligence.\n\nGAIA apporte l'activité GitHub dans Slack avec filtrage et contexte. Les demandes de revue arrivent en message privé au bon développeur. Les échecs de CI sont publiés dans le canal de l'équipe avec un résumé de ce qui a cassé. Les PR fusionnées déclenchent la rédaction de notes de version. Votre équipe reçoit le signal utile, sans le bruit.",
     "useCases": [
       {
-        "title": "Notifications intelligentes de revue PR",
-        "description": "Quand on vous demande une revue de code, GAIA vous envoie un DM Slack avec le titre de la PR, sa description, la taille du diff et un lien direct — vous donnant assez de contexte pour prioriser vos revues sans ouvrir GitHub."
+        "title": "Des demandes de revue ciblées",
+        "description": "Quand une revue de code vous est demandée, GAIA vous envoie un message privé Slack avec le titre de la PR, sa description, la taille du diff et un lien direct : assez de contexte pour prioriser sans ouvrir la PR."
       },
       {
-        "title": "Alertes de défaillance CI/CD",
-        "description": "Lorsqu'un workflow GitHub Actions échoue, GAIA publie un résumé structuré de l'échec sur le canal Slack de l'équipe technique, incluant l'étape en erreur, le message d'erreur et un lien vers l'exécution."
+        "title": "Alertes d'échec CI/CD",
+        "description": "Quand un workflow GitHub Actions échoue, GAIA publie dans le canal d'ingénierie un résumé structuré de l'échec : l'étape fautive, le message d'erreur et un lien vers l'exécution."
       },
       {
         "title": "Annonces de fusion de PR",
-        "description": "Lorsqu'une pull request importante est fusionnée, GAIA publie un compte rendu des changements sur le canal de l'équipe, récapitulant les modifications, les contributeurs et les tickets associés qui ont été clos."
+        "description": "Quand une PR importante est fusionnée, GAIA publie dans le canal de l'équipe une entrée de changelog résumant ce qui a changé, qui y a contribué et les tickets liés qui ont été fermés."
       },
       {
-        "title": "Triage des tickets sur Slack",
-        "description": "Les nouveaux tickets GitHub qui répondent aux critères de priorité déclenchent des notifications Slack vers le canal d'équipe concerné, avec les détails du ticket et un appel à assignation et labellisation."
+        "title": "Triage des tickets dans Slack",
+        "description": "Les nouveaux tickets qui remplissent vos critères de priorité déclenchent une notification dans le canal de l'équipe, avec les détails et un rappel pour assigner et étiqueter."
       },
       {
-        "title": "Mises à jour du statut des déploiements",
-        "description": "Les événements de déploiement depuis GitHub déclenchent des notifications Slack qui confirment le succès d’un déploiement ou signalent un échec avec des instructions de retour arrière."
+        "title": "Suivi des déploiements",
+        "description": "Les événements de déploiement déclenchent une notification confirmant la réussite, ou une alerte en cas d'échec avec les instructions de retour arrière."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connecter GitHub et Slack à GAIA",
-        "description": "Autorisez GAIA auprès de votre organisation GitHub et de votre espace de travail Slack. Configurez les dépôts et branches que GAIA doit surveiller."
+        "step": "Connectez GitHub et Slack à GAIA",
+        "description": "Autorisez GAIA avec votre organisation GitHub et votre espace Slack. Configurez les dépôts et les branches que GAIA doit surveiller."
       },
       {
-        "step": "Configurer les règles de notification",
-        "description": "Définissez quels événements GitHub doivent générer des messages dans quels canaux Slack ou auprès de quels utilisateurs. Appliquez des filtres pour que seules les activités pertinentes génèrent des notifications, afin de réduire le bruit sans rater l’essentiel."
+        "step": "Configurez les règles de notification",
+        "description": "Définissez quels événements publier dans quels canaux ou vers quels utilisateurs. Posez des filtres pour que seule l'activité pertinente génère une notification : moins de bruit, autant de signal."
       },
       {
-        "step": "Interagir avec GitHub depuis Slack",
-        "description": "Une fois connecté, vous pouvez demander à GAIA de vérifier le statut d’une PR, de lister les tickets ouverts, ou de lancer des actions directement depuis Slack sans avoir à ouvrir GitHub."
+        "step": "Agissez sur vos dépôts depuis le chat",
+        "description": "Une fois connecté, vous pouvez demander à GAIA de vérifier le statut d'une PR, de lister les tickets ouverts ou de déclencher des actions directement depuis le chat, sans passer par la page du dépôt."
       }
     ],
     "faqs": [
       {
-        "question": "GAIA peut-elle filtrer les notifications GitHub pour que je voie seulement ce qui m'intéresse ?",
-        "answer": "Oui. GAIA applique des filtres intelligents selon votre rôle, les dépôts auxquels vous êtes assigné et la priorité que vous définissez pour chaque type d’événement. Vous contrôlez le rapport signal/bruit."
+        "question": "GAIA peut-il filtrer les notifications pour que je ne voie que l'essentiel ?",
+        "answer": "Oui. GAIA applique un filtrage intelligent selon votre rôle, les dépôts auxquels vous êtes rattaché et la priorité que vous avez définie par type d'événement. C'est vous qui réglez le rapport signal/bruit."
       },
       {
-        "question": "GAIA remplace-t-elle l’application officielle GitHub pour Slack ?",
-        "answer": "GAIA propose des notifications plus intelligentes et configurables que l’application GitHub officielle. Vous pouvez utiliser les deux, ou remplacer l’application officielle par GAIA pour une expérience de notifications plus claire."
+        "question": "GAIA remplace-t-il l'application GitHub officielle pour Slack ?",
+        "answer": "GAIA propose des notifications plus intelligentes et plus configurables que l'application officielle. Vous pouvez utiliser les deux, ou remplacer l'officielle par GAIA pour une expérience plus propre."
       },
       {
-        "question": "GAIA peut-elle gérer les notifications GitHub pour plusieurs dépôts ?",
-        "answer": "Oui. GAIA prend en charge la surveillance de plusieurs dépôts et peut acheminer les notifications de différents dépôts vers différents canaux Slack, selon la structure de votre équipe."
+        "question": "GAIA gère-t-il les notifications de plusieurs dépôts ?",
+        "answer": "Oui. GAIA peut surveiller plusieurs dépôts et router les notifications de chacun vers des canaux différents, selon l'organisation de votre équipe."
       }
     ]
   },
   "slack-asana": {
     "toolA": "Slack",
     "toolB": "Asana",
-    "tagline": "Créez des tâches Asana depuis Slack et suivez leur avancement dans le chat",
-    "metaTitle": "Intégration Slack + Asana : tâches depuis Slack",
-    "metaDescription": "Slack + Asana avec GAIA : Créez des tâches Asana depuis vos messages Slack et recevez les mises à jour, sans jongler entre les applications.",
+    "tagline": "Créez des tâches Asana depuis Slack et suivez l'avancement dans le chat",
+    "metaTitle": "Intégration Slack + Asana : des tâches Asana depuis Slack",
+    "metaDescription": "Transformez les demandes Slack en travail suivi. GAIA crée des tâches Asana depuis vos messages et envoie un point quotidien dans le canal. Voir les étapes.",
     "keywords": [
       "intégration Slack Asana",
       "créer une tâche Asana depuis Slack",
       "automatisation Slack Asana",
-      "notifications Asana Slack",
-      "automatisation gestion de projet Slack"
+      "notifications Asana dans Slack",
+      "automatisation de la gestion de projet dans Slack"
     ],
-    "intro": "Les équipes projet se coordonnent dans Slack, mais suivent leur travail dans Asana. Ce fossé signifie que les tâches sont décidées dans Slack sans jamais être créées officiellement dans Asana, et que les mises à jour Asana n’atteignent pas l’équipe dans Slack. GAIA ferme cette boucle pour permettre à votre équipe de s’organiser sur Slack tout en assurant un suivi rigoureux dans Asana.",
+    "intro": "Les équipes projet se coordonnent dans Slack mais suivent leur travail dans Asana. Cet écart fait que des tâches sont décidées en conversation sans jamais être créées, et que les points d'avancement n'atteignent pas l'équipe dans le chat. GAIA referme cette boucle : votre équipe continue de se coordonner dans le chat tout en gardant un suivi de projet rigoureux.",
     "useCases": [
       {
-        "title": "Créer des tâches à partir de messages Slack",
-        "description": "Réagissez à n’importe quel message Slack avec un emoji de tâche ou une commande GAIA pour créer immédiatement une tâche Asana. GAIA utilise le contenu du message comme description de la tâche et demande la date d’échéance ainsi que l’attribution."
+        "title": "Créer des tâches depuis les messages Slack",
+        "description": "Réagissez à n'importe quel message avec l'emoji dédié ou une commande GAIA pour créer une tâche Asana sans quitter la conversation. GAIA reprend le message comme description et vous demande l'échéance et le responsable."
       },
       {
-        "title": "Notifications d’achèvement des tâches",
-        "description": "Lorsqu’une tâche Asana est terminée, GAIA avertit le canal ou le fil Slack concerné pour que les collègues sachent que le travail est fait sans devoir vérifier manuellement Asana."
+        "title": "Notifications de clôture de tâche",
+        "description": "Quand une tâche est terminée, GAIA prévient le canal ou le fil concerné, pour que l'équipe sache que le travail est fait sans aller vérifier le projet."
       },
       {
-        "title": "Résumé quotidien du projet",
-        "description": "GAIA compile chaque matin un résumé des tâches Asana attendues pour la journée et des tâches en retard, puis le publie dans le canal Slack de l’équipe pour mobiliser tout le monde sur les priorités du jour."
+        "title": "Point projet quotidien",
+        "description": "GAIA compile chaque matin un résumé des tâches à rendre aujourd'hui et des tâches en retard, et le publie dans le canal de l'équipe pour aligner tout le monde sur les priorités du jour."
       },
       {
-        "title": "Alertes sur les tâches bloquées",
-        "description": "Lorsqu'une tâche est marquée comme bloquée dans Asana, GAIA envoie une alerte Slack au responsable de la tâche et au chef de projet afin que les blocages soient pris en charge rapidement."
+        "title": "Alertes de tâches bloquées",
+        "description": "Quand une tâche est marquée comme bloquée, GAIA alerte le responsable de la tâche et le chef de projet pour que les blocages soient traités vite."
       },
       {
-        "title": "Posts de célébration des jalons",
-        "description": "Lorsqu'un jalon de projet est atteint dans Asana, GAIA publie une mise à jour célébrant l'événement dans le canal Slack de l'équipe pour remercier les contributeurs et annoncer la réussite."
+        "title": "Célébrer les jalons",
+        "description": "Quand un jalon de projet est atteint, GAIA publie un message de félicitations dans le canal de l'équipe, en remerciant les contributeurs et en annonçant l'accomplissement."
       }
     ],
     "howItWorks": [
       {
         "step": "Connectez Slack et Asana à GAIA",
-        "description": "Ajoutez GAIA à votre espace de travail Slack et connectez votre compte Asana avec accès aux espaces de travail et projets concernés."
+        "description": "Ajoutez GAIA à votre espace Slack et connectez votre compte Asana avec accès aux espaces de travail et aux projets concernés."
       },
       {
-        "step": "Associez les canaux Slack aux projets Asana",
-        "description": "Indiquez à GAIA quels canaux Slack correspondent à quels projets Asana afin que les tâches créées depuis Slack aillent automatiquement au bon projet."
+        "step": "Associez chaque canal à un projet",
+        "description": "Indiquez à GAIA quels canaux correspondent à quels projets, pour que les tâches créées depuis les messages arrivent directement au bon endroit."
       },
       {
-        "step": "Configurez les notifications bidirectionnelles",
-        "description": "Définissez quels événements Asana doivent notifier quels canaux Slack. Commencez par l'achèvement des tâches et les rappels d'échéance, puis ajoutez d'autres événements selon vos besoins."
+        "step": "Configurez les notifications dans les deux sens",
+        "description": "Choisissez quels événements de tâche doivent prévenir quels canaux. Commencez par les clôtures et les rappels d'échéance, puis ajoutez d'autres événements selon vos besoins."
       }
     ],
     "faqs": [
       {
-        "question": "Puis-je mettre à jour les détails d'une tâche Asana depuis Slack ?",
-        "answer": "Oui. Vous pouvez demander à GAIA dans Slack de modifier la date d'échéance, l'attributaire, la description ou le statut d'une tâche. GAIA confirme la modification et met Asana à jour en temps réel."
+        "question": "Puis-je modifier les détails d'une tâche Asana depuis Slack ?",
+        "answer": "Oui. Vous pouvez demander à GAIA dans le chat de changer l'échéance, le responsable, la description ou le statut d'une tâche. GAIA confirme la modification et met la tâche à jour en temps réel."
       },
       {
-        "question": "GAIA fonctionne-t-il avec les modèles et champs personnalisés Asana ?",
-        "answer": "GAIA peut créer des tâches à partir de modèles et remplir des champs personnalisés si vous les indiquez dans vos instructions. Une automatisation complexe des champs personnalisés peut nécessiter une configuration initiale."
+        "question": "GAIA fonctionne-t-il avec les modèles et les champs personnalisés ?",
+        "answer": "GAIA peut créer des tâches à partir de modèles et remplir des champs personnalisés si vous le précisez dans vos instructions. L'automatisation avancée des champs personnalisés peut demander une configuration initiale."
       },
       {
-        "question": "Plusieurs canaux Slack peuvent-ils être associés au même projet Asana ?",
-        "answer": "Oui. Plusieurs canaux Slack peuvent alimenter un même projet Asana, ce qui est utile lorsque différentes équipes contribuent au même projet depuis leurs propres canaux."
+        "question": "Plusieurs canaux peuvent-ils alimenter le même projet ?",
+        "answer": "Oui. Plusieurs canaux peuvent alimenter un même projet, ce qui est utile quand différentes équipes contribuent au même projet depuis leurs propres canaux."
       }
     ]
   },
   "slack-todoist": {
     "toolA": "Slack",
     "toolB": "Todoist",
-    "tagline": "Capturez des tâches depuis Slack dans Todoist sans interrompre votre flux",
-    "metaTitle": "Todoist + Slack : créer une tâche d'une simple réaction",
-    "metaDescription": "Créez des tâches sans quitter la conversation. GAIA fait d'un message Slack une tâche Todoist d'une réaction et envoie un point le matin. Voir les étapes.",
+    "tagline": "Capturez vos tâches depuis Slack vers Todoist sans casser votre élan",
+    "metaTitle": "Intégration Todoist Slack : enregistrer une tâche d'une réaction",
+    "metaDescription": "Réagissez à un message Slack pour l'enregistrer comme tâche Todoist et recevez un point tâches le matin. GAIA suit les engagements de l'équipe. Voir les étapes.",
     "keywords": [
       "intégration Slack Todoist",
       "créer une tâche Todoist depuis Slack",
       "automatisation Slack Todoist",
       "actions Slack vers Todoist",
-      "gestion de tâches personnelles Slack"
+      "gestion de tâches personnelle dans Slack"
     ],
-    "intro": "Toute la journée, on vous attribue des tâches dans Slack. Des messages comme « Peux-tu gérer X ? » ou « N'oublie pas Y » défilent et se perdent facilement. Sans système pour les enregistrer, des tâches importantes passent à la trappe. GAIA capture instantanément les actions à réaliser depuis Slack et les ajoute à Todoist, afin que votre liste personnelle reflète tous vos engagements.",
+    "intro": "On vous confie des choses dans Slack toute la journée. Les « tu peux t'occuper de ça ? » et les « n'oublie pas de… » s'accumulent puis défilent hors de vue. Sans système pour les capturer, des tâches importantes passent à la trappe. GAIA récupère les actions de Slack et les ajoute immédiatement à Todoist, pour que votre liste personnelle reflète tout ce que vous avez accepté de faire.",
     "useCases": [
       {
-        "title": "Sauvegardez des actions avec une réaction",
-        "description": "Réagissez à n'importe quel message Slack avec un emoji spécifique et GAIA crée automatiquement une tâche correspondante dans Todoist. Le contenu du message devient la description de la tâche, horodatée et reliée au fil Slack d'origine."
+        "title": "Enregistrer une action d'une simple réaction",
+        "description": "Réagissez à n'importe quel message Slack avec l'emoji prévu et GAIA crée la tâche correspondante. Le contenu du message devient la description, avec l'horodatage et un lien vers le fil."
       },
       {
-        "title": "Brief matinal Todoist dans Slack",
-        "description": "GAIA vous envoie chaque matin un message privé Slack résumant vos tâches Todoist à échéance aujourd'hui et demain, pour planifier votre journée sans ouvrir une autre application."
+        "title": "Point Todoist du matin dans Slack",
+        "description": "GAIA vous envoie chaque matin un message privé récapitulant vos tâches du jour et du lendemain, pour organiser votre journée sans ouvrir une autre application."
       },
       {
         "title": "Rappels de tâches dans Slack",
-        "description": "Plutôt que de dépendre des notifications push de Todoist, GAIA vous envoie dans Slack des rappels de tâches en retard, lorsque vous êtes actif, pour être certain de les recevoir là où vous travaillez déjà."
+        "description": "Plutôt que de compter sur les notifications de Todoist, GAIA envoie les rappels de retard en message privé quand vous êtes actif dans le chat : le rappel arrive là où vous travaillez déjà."
       },
       {
-        "title": "Suivi des engagements d'équipe",
-        "description": "Lorsque vous prenez un engagement dans un fil Slack (par exemple « Je l'aurai terminé d'ici jeudi »), GAIA le détecte et ajoute automatiquement une tâche Todoist avec la bonne date d'échéance."
+        "title": "Suivre les engagements de l'équipe",
+        "description": "Quand vous vous engagez sur quelque chose dans un fil, GAIA détecte la promesse (« je te livre ça jeudi ») et ajoute automatiquement une tâche avec l'échéance correspondante."
       },
       {
         "title": "Capture de tâches par canal",
-        "description": "Paramétrez GAIA pour surveiller certains canaux Slack et ajouter automatiquement les actions mentionnées à ces endroits dans le projet Todoist correspondant, afin de garder le travail du canal et vos tâches personnelles synchronisés."
+        "description": "Configurez GAIA pour surveiller certains canaux et ajouter automatiquement les actions qui y sont mentionnées au projet correspondant, pour garder le travail du canal et vos tâches personnelles synchronisés."
       }
     ],
     "howItWorks": [
       {
         "step": "Connectez Slack et Todoist à GAIA",
-        "description": "Ajoutez GAIA à votre espace de travail Slack et autorisez votre compte Todoist. Cela prend moins de deux minutes."
+        "description": "Ajoutez GAIA à votre espace Slack et autorisez votre compte Todoist. Cela prend moins de deux minutes."
       },
       {
-        "step": "Choisissez votre méthode de capture",
-        "description": "Choisissez comment vous souhaitez enregistrer les tâches : réactions emoji, mentions de GAIA ou détection automatique du langage d’affectation. Configurez le projet Todoist par défaut pour les tâches créées depuis Slack."
+        "step": "Choisissez votre mode de capture",
+        "description": "Déterminez comment enregistrer les tâches : réactions emoji, mentions de GAIA ou détection automatique des formulations d'assignation. Configurez le projet par défaut des tâches créées depuis le chat."
       },
       {
-        "step": "GAIA maintient votre liste de tâches à jour",
-        "description": "GAIA surveille Slack pour détecter les tâches et engagements, puis les ajoute à Todoist. Vous pouvez aussi demander à GAIA à tout moment « ajoute ceci à mes tâches » directement dans Slack."
+        "step": "GAIA garde votre liste à jour",
+        "description": "GAIA surveille les tâches et les engagements et les ajoute à votre liste. Vous pouvez aussi demander à tout moment à GAIA d'« ajouter ça à mes tâches » directement dans le chat."
       }
     ],
     "faqs": [
       {
-        "question": "Quel emoji dois-je utiliser pour déclencher la création d'une tâche ?",
-        "answer": "Vous pouvez configurer n’importe quel emoji comme déclencheur de tâche dans les paramètres de GAIA. Les choix courants sont la coche blanche, le presse-papiers ou le signet. GAIA confirmera la création de la tâche par une réaction sur le message."
+        "question": "Quel emoji dois-je utiliser pour déclencher la création d'une tâche ?",
+        "answer": "Vous pouvez configurer n'importe quel emoji comme déclencheur dans les paramètres de GAIA. Les choix les plus courants sont la coche blanche, le presse-papiers ou le marque-page. GAIA confirme la création en réagissant au message."
       },
       {
-        "question": "GAIA peut-il détecter quand des tâches sont terminées dans Todoist et réagir dans Slack ?",
-        "answer": "Oui. Lorsque vous terminez une tâche Todoist créée à partir d’un message Slack, GAIA peut publier une confirmation d’achèvement dans le fil Slack d’origine afin que les collaborateurs sachent que le travail est terminé."
+        "question": "GAIA peut-il détecter les tâches terminées dans Todoist et réagir dans Slack ?",
+        "answer": "Oui. Quand vous terminez une tâche créée depuis un message, GAIA peut publier une confirmation dans le fil d'origine pour que vos collègues sachent que le travail est fait."
       },
       {
-        "question": "Cette intégration fonctionne-t-elle pour les comptes Todoist personnels ou seulement pour les équipes ?",
-        "answer": "Elle fonctionne aussi bien pour les comptes personnels que pour les équipes sur Todoist. Les utilisateurs individuels peuvent l’utiliser pour enregistrer des tâches personnelles depuis Slack, tandis que les équipes peuvent l’utiliser pour gérer les tâches de projet partagées."
+        "question": "Cette intégration vaut-elle pour les comptes personnels ou seulement pour les équipes ?",
+        "answer": "Elle fonctionne pour les deux. Un utilisateur seul peut y capturer ses tâches personnelles depuis le chat, et une équipe peut gérer des tâches de projet partagées."
       }
     ]
   },
   "github-linear": {
     "toolA": "GitHub",
     "toolB": "Linear",
-    "tagline": "Synchronisez automatiquement les pull requests et issues GitHub avec les tickets Linear",
-    "metaTitle": "Linear GitHub : statut des tickets mis à jour par les PR",
-    "metaDescription": "Mettez à jour les tickets Linear quand une pull request s'ouvre ou est fusionnée. GAIA suit le temps de cycle des PR. Voir les étapes.",
+    "tagline": "Synchronisez automatiquement vos PR et tickets avec Linear",
+    "metaTitle": "Intégration Linear GitHub : statut mis à jour à chaque merge",
+    "metaDescription": "Arrêtez de déplacer les tickets Linear à la main après chaque merge. GAIA met à jour leur statut à l'ouverture et à la fusion des PR et suit le temps de cycle. Voir les étapes.",
     "keywords": [
-      "Intégration GitHub Linear",
-      "Synchronisation GitHub Linear",
+      "intégration GitHub Linear",
+      "synchronisation GitHub Linear",
       "PR vers ticket Linear",
-      "Automatisation GitHub Linear",
-      "synchronisation gestion de projet revue de code"
+      "automatisation GitHub Linear",
+      "synchronisation revue de code et gestion de projet"
     ],
-    "intro": "L'intégration GitHub native de Linear relie les pull requests, branches et commits aux tickets Linear et change leur statut pour vous, sans outil supplémentaire. Activez-la dans Linear via Settings > Integrations > GitHub, puis mettez l'identifiant du ticket (par exemple ENG-123) dans le nom de la branche, le titre ou la description de la PR ; copier le nom de branche depuis un ticket Linear le fait pour vous. Dans les réglages de workflow de chaque équipe, choisissez le statut que prend un ticket quand vous copiez son nom de branche ou ouvrez une PR en brouillon, quand une PR est ouverte ou qu'une revue est demandée, et quand la PR est fusionnée (généralement Done). Vous pouvez ajouter des règles par branche cible, par exemple In QA lors d'une fusion dans staging et Done lors d'une fusion dans main. Un mot de clôture comme « Fixes ENG-123 » dans la description de la PR ferme aussi le ticket à la fusion.\n\nSi cela suffit à votre équipe, vous n'avez pas besoin de GAIA pour les changements de statut. GAIA sert à ce que l'intégration native ne fait pas : des étapes qui touchent d'autres outils ou demandent du jugement. Les déclencheurs GitHub de GAIA réagissent aux événements de pull request, aux nouvelles issues et aux commits poussés dans les dépôts choisis, et ses déclencheurs Linear à la création ou la mise à jour d'un ticket et aux nouveaux commentaires dans l'équipe choisie. Un workflow rédigé en langage courant agit ensuite avec les outils GitHub, Linear, Slack et Gmail de GAIA : publier sur Slack un résumé de ce qui a été fusionné aujourd'hui, rédiger des notes de version à partir des tickets fermés cette semaine, ou transformer des e-mails d'alerte en tickets Linear déjà triés.\n\nExemple de workflow : « Quand une pull request est fusionnée dans acme/api, trouve les identifiants de tickets Linear dans le nom de la branche et le titre, ajoute un commentaire avec le lien de la PR sur chaque ticket et publie un résumé d'une ligne dans #releases sur Slack. »",
+    "intro": "L'intégration GitHub native de Linear relie les pull requests, les branches et les commits aux tickets, et fait avancer le statut des tickets pour vous, sans outil supplémentaire. Activez-la dans Réglages > Intégrations > GitHub, puis placez l'identifiant du ticket (par exemple ENG-123) dans le nom de branche, le titre ou la description de la PR ; copier le nom de branche depuis un ticket le fait automatiquement. Dans les réglages de workflow de chaque équipe, choisissez le statut vers lequel un ticket passe quand vous copiez son nom de branche ou ouvrez une PR en brouillon, quand une PR est ouverte ou qu'une revue est demandée, et quand la PR est fusionnée (généralement Done). Vous pouvez définir des règles par branche cible : par exemple In QA à la fusion vers staging et Done à la fusion vers main. Un mot de clôture comme « Fixes ENG-123 » dans la description de la PR ferme aussi le ticket à la fusion.\n\nSi cela suffit à votre équipe, vous n'avez pas besoin de GAIA pour les changements de statut. GAIA prend le relais là où l'intégration native ne va pas : les étapes qui traversent plusieurs outils ou demandent du jugement. Ses déclencheurs se lancent sur les événements de pull request, les nouveaux tickets et les commits poussés dans les dépôts que vous choisissez, ainsi que sur la création ou la mise à jour d'un ticket ou l'ajout d'un commentaire dans une équipe que vous choisissez. Un workflow décrit en langage naturel agit ensuite avec les outils de GAIA pour les dépôts, les tickets, Slack et Gmail : publier un résumé Slack de ce qui a été fusionné aujourd'hui, rédiger des notes de version à partir des tickets fermés cette semaine, ou transformer des e-mails d'alerte en tickets Linear triés.\n\nExemple de workflow : « Quand une pull request est fusionnée dans acme/api, trouve les identifiants de ticket dans son nom de branche et son titre, commente chaque ticket avec le lien de la PR, et publie un résumé d'une ligne dans #releases sur Slack. »",
     "useCases": [
       {
-        "title": "Mettre à jour automatiquement le statut Linear selon les événements PR",
-        "description": "Lorsqu’un PR est ouvert en référence à un ticket Linear, GAIA déplace le ticket sur « À réviser ». Quand le PR est fusionné, GAIA marque le ticket comme « Terminé ». Le tableau Linear reflète ainsi toujours l’état réel du code."
+        "title": "Mettre à jour le statut Linear selon les événements de PR",
+        "description": "Quand une PR référençant un ticket est ouverte, GAIA passe le ticket en « In Review ». Quand la PR est fusionnée, GAIA le passe en « Done ». Le tableau reflète toujours l'état réel du code."
       },
       {
-        "title": "Créer des tickets Linear à partir des issues GitHub",
-        "description": "Les rapports de bugs et demandes de fonctionnalités déposés sur GitHub peuvent automatiquement créer des tickets Linear correspondants, assurant ainsi la synchronisation du backlog d’ingénierie et du suivi des issues GitHub."
+        "title": "Créer des tickets Linear depuis les tickets GitHub",
+        "description": "Les signalements de bugs et les demandes de fonctionnalités déposés dans GitHub peuvent créer automatiquement les tickets correspondants, pour que le backlog d'ingénierie et la liste des tickets du dépôt restent alignés."
       },
       {
-        "title": "Reporting du temps de cycle PR",
-        "description": "GAIA suit le temps entre la création d’un ticket Linear et la fusion du PR GitHub, et génère des rapports hebdomadaires montrant le temps de cycle par membre de l’équipe et par type de ticket, pour identifier les goulets d’étranglement."
+        "title": "Rapport sur le temps de cycle des PR",
+        "description": "GAIA mesure le temps entre la création d'un ticket et la fusion de la PR, puis produit des rapports hebdomadaires par membre de l'équipe et par type de ticket pour repérer les goulots d'étranglement."
       },
       {
-        "title": "Contrôle de la convention de nommage des branches",
-        "description": "À la fréquence que vous fixez, GAIA liste les pull requests ouvertes dans les dépôts choisis et signale celles dont le nom de branche ou le titre ne contient aucun identifiant de ticket Linear, pour que le travail non suivi apparaisse avant la revue."
+        "title": "Contrôle des conventions de nommage de branche",
+        "description": "À la fréquence que vous définissez, GAIA liste les pull requests ouvertes des dépôts choisis et signale celles dont le nom de branche ou le titre ne contient aucun identifiant Linear, pour que le travail non suivi apparaisse avant la revue."
       },
       {
-        "title": "Génération de notes de version",
-        "description": "Lorsque des PR sont fusionnés dans main, GAIA compile les tickets Linear liés en notes de version structurées par domaine fonctionnel, prêtes pour le changelog ou l’annonce produit."
+        "title": "Génération des notes de version",
+        "description": "Quand des PR sont fusionnées dans main, GAIA rassemble les tickets liés en notes de version structurées par domaine fonctionnel, prêtes pour le changelog ou l'annonce produit."
       }
     ],
     "howItWorks": [
       {
         "step": "Connectez GitHub et Linear à GAIA",
-        "description": "Autorisez GAIA auprès de votre organisation GitHub et de votre espace de travail Linear. Sélectionnez les dépôts et les équipes Linear à synchroniser."
+        "description": "Autorisez GAIA avec votre organisation et votre espace de travail. Choisissez les dépôts et les équipes à synchroniser."
       },
       {
-        "step": "Décrivez le workflow en langage courant",
-        "description": "Choisissez un déclencheur GitHub (événement de pull request, nouvelle issue ou commit poussé) ou Linear (ticket créé, ticket mis à jour ou commentaire ajouté), puis écrivez ce que GAIA doit faire, par exemple « quand une PR vers main mentionne un ticket Linear, ajoute le lien de la PR en commentaire sur le ticket ». GAIA exécute chaque étape avec ses outils GitHub et Linear."
+        "step": "Décrivez le workflow en langage naturel",
+        "description": "Choisissez un déclencheur GitHub (événement de pull request, nouveau ticket ou commit poussé) ou un déclencheur côté Linear (ticket créé, ticket mis à jour ou commentaire ajouté), puis décrivez ce que GAIA doit faire, par exemple « quand une PR vers main référence un ticket Linear, commente le lien de la PR sur le ticket ». GAIA exécute chaque étape avec les outils correspondants."
       },
       {
-        "step": "Vérifiez ce qui a été exécuté",
-        "description": "Chaque exécution du workflow est enregistrée, et GAIA peut vous prévenir quand elle agit. Vous pouvez aussi demander à GAIA à tout moment de comparer les PR ouvertes aux statuts des tickets Linear et de lister les écarts."
+        "step": "Vérifiez ce qui a tourné",
+        "description": "Chaque exécution de workflow est enregistrée, et GAIA peut vous prévenir lorsqu'il agit. Vous pouvez aussi lui demander à tout moment de comparer les PR ouvertes avec l'état des tickets et de lister les incohérences."
       }
     ],
     "faqs": [
       {
-        "question": "Comment GAIA relie-t-elle un PR GitHub à un ticket Linear ?",
-        "answer": "GAIA recherche les identifiants de tickets Linear dans les titres des PR et les noms des branches (comme \"ENG-123\" ou \"feature/ENG-123-user-auth\"). Elle peut aussi analyser les descriptions de PR à la recherche d’URL de tickets Linear. La plupart des équipes techniques utilisent déjà ces conventions."
+        "question": "Comment GAIA relie-t-il une PR à un ticket ?",
+        "answer": "GAIA cherche les identifiants de ticket dans les titres de PR et les noms de branche (comme « ENG-123 » ou « feature/ENG-123-user-auth »). Il peut aussi lire les descriptions de PR pour y trouver des URL de tickets. La plupart des équipes d'ingénierie appliquent déjà ces conventions."
       },
       {
-        "question": "Que se passe-t-il si une PR référence plusieurs tickets Linear ?",
-        "answer": "GAIA met à jour tous les tickets Linear référencés lors du changement de statut de la PR. C’est courant pour les grosses PR qui résolvent plusieurs tickets en même temps."
+        "question": "Que se passe-t-il si une PR référence plusieurs tickets ?",
+        "answer": "GAIA met à jour tous les tickets référencés quand le statut de la PR change. C'est courant pour les grosses PR qui résolvent plusieurs tickets liés en même temps."
       },
       {
-        "question": "GAIA peut-elle synchroniser les champs Linear avec les labels PR GitHub ?",
-        "answer": "Pas sous forme de miroir en temps réel. Un workflow sur le déclencheur « ticket mis à jour » de Linear peut ajouter ou modifier des labels sur la PR GitHub liée quand le ticket change, grâce aux outils GitHub de GAIA. Il s'exécute une fois par événement et dans un seul sens : c'est une automatisation, pas une synchronisation bidirectionnelle."
+        "question": "GAIA peut-il synchroniser les champs d'un ticket avec les libellés de PR ?",
+        "answer": "Pas comme un miroir en temps réel. Un workflow sur le déclencheur « ticket mis à jour » de GAIA peut ajouter ou modifier des libellés sur la PR liée quand un ticket change, via les outils de dépôt de GAIA. Il s'exécute une fois par événement et dans un seul sens : c'est de l'automatisation, pas une synchronisation bidirectionnelle."
       },
       {
-        "question": "Comment faire passer un ticket Linear à Done quand la PR GitHub est fusionnée ?",
-        "answer": "Utilisez l'intégration native de Linear ; GAIA n'est pas nécessaire ici. Connectez GitHub dans Linear via Settings > Integrations > GitHub, ouvrez les réglages de workflow de votre équipe et associez Done à l'automatisation de fusion de PR. Mettez l'identifiant du ticket dans le nom de la branche, le titre ou la description de la PR pour que Linear fasse le lien."
+        "question": "Comment faire passer un ticket Linear en Done quand la PR GitHub est fusionnée ?",
+        "answer": "Utilisez l'intégration native, GAIA n'est pas nécessaire pour cela. Connectez votre hébergeur de code dans Réglages > Intégrations, ouvrez les réglages de workflow de votre équipe et réglez l'automatisation de fusion de PR sur Done. Placez l'identifiant du ticket dans le nom de branche, le titre ou la description de la PR pour que la PR soit reliée au ticket."
       },
       {
-        "question": "Linear peut-il changer le statut d'un ticket à la mise en production plutôt qu'à la fusion ?",
-        "answer": "Les règles par branche de Linear permettent un statut différent selon la branche cible : une fusion dans staging peut passer les tickets en In QA, et une fusion dans votre branche de release ou main en Done. Si une version correspond à un tag ou un déploiement plutôt qu'à une fusion, GAIA peut lancer un workflow sur les commits poussés ou selon un planning, retrouver les tickets livrés et les mettre à jour."
+        "question": "Le statut d'un ticket peut-il changer à la mise en production plutôt qu'à la fusion ?",
+        "answer": "Les règles par branche de l'intégration native permettent de définir un statut différent par branche cible : une fusion vers staging peut passer les tickets en In QA, une fusion vers votre branche de release ou main en Done. Si une mise en production correspond à un tag ou à un déploiement plutôt qu'à une fusion, GAIA peut lancer un workflow sur les commits poussés ou selon une planification, retrouver les tickets livrés et les mettre à jour."
       },
       {
-        "question": "Comment créer automatiquement des tickets Linear ou GitHub à partir des alertes de monitoring ?",
-        "answer": "Commencez par les intégrations natives de votre outil de monitoring : les outils de suivi d'erreurs comme Sentry savent créer des tickets Linear et GitHub à partir d'alertes. Si vos alertes arrivent par e-mail, le déclencheur Gmail de GAIA peut lancer un workflow à chaque e-mail d'alerte qui vérifie s'il existe déjà un ticket ouvert et, sinon, crée un ticket Linear ou GitHub avec l'erreur, le service et le lien."
+        "question": "Comment faire remonter automatiquement les alertes de supervision en tickets ?",
+        "answer": "Commencez par les intégrations natives de votre outil de supervision : les outils de suivi d'erreurs comme Sentry peuvent créer des tickets dans l'un ou l'autre outil à partir des alertes. Si vos alertes arrivent par e-mail, le déclencheur Gmail de GAIA peut lancer un workflow sur chaque e-mail d'alerte, vérifier s'il existe déjà un ticket ouvert et, sinon, en créer un dans l'outil de suivi que vous utilisez, avec l'erreur, le service et le lien."
       }
     ]
   },
@@ -743,64 +743,64 @@
     "toolA": "GitHub",
     "toolB": "Notion",
     "tagline": "Documentez automatiquement vos projets et décisions GitHub dans Notion",
-    "metaTitle": "GitHub + Notion : wiki technique et notes de version",
-    "metaDescription": "Que toute l'équipe sache ce qui est livré. GAIA rédige des ADR à partir des discussions de PR et publie les notes de version dans Notion. Voir les étapes.",
+    "metaTitle": "Intégration GitHub Notion : notes de version et ADR dans Notion",
+    "metaDescription": "Rédigez des ADR à partir des discussions de PR et publiez les notes de version dans Notion. GAIA tient les non-développeurs informés du travail GitHub. Voir les étapes.",
     "keywords": [
       "intégration GitHub Notion",
       "automatisation GitHub Notion",
-      "documentation du code Notion",
+      "documentation du code dans Notion",
       "synchronisation GitHub vers Notion",
       "automatisation du wiki d'ingénierie"
     ],
-    "intro": "La documentation est souvent la première victime des équipes d’ingénierie en mouvement rapide. Les dépôts GitHub accumulent du contexte — dans les messages de commit, les descriptions de PR et les discussions sur les issues — qui n’est jamais retranscrit dans le wiki d’ingénierie de Notion. GAIA comble ce fossé en intégrant automatiquement l’intelligence de GitHub dans la documentation Notion.",
+    "intro": "La documentation est la première victime des équipes d'ingénierie qui vont vite. Les dépôts GitHub accumulent du contexte — dans les messages de commit, les descriptions de PR et les discussions de tickets — qui n'arrive jamais dans le wiki d'ingénierie sur Notion. GAIA comble cet écart en faisant remonter automatiquement cette matière dans le wiki.",
     "useCases": [
       {
-        "title": "Documentation ADR à partir des discussions de PR",
-        "description": "Lorsque d’importantes décisions d’architecture sont prises lors des revues de PR sur GitHub, GAIA extrait la décision et crée un Architecture Decision Record (ADR) dans Notion pour une référence permanente."
+        "title": "Documenter les ADR depuis les revues de PR",
+        "description": "Quand des décisions d'architecture importantes se prennent en revue de PR, GAIA extrait la décision et crée un Architecture Decision Record (ADR) dans Notion, pour une référence durable."
       },
       {
         "title": "Notes de version dans Notion",
-        "description": "Chaque version dispose d’une page Notion automatiquement remplie avec les PR fusionnées, les problèmes résolus et la liste des contributeurs, offrant ainsi un historique des modifications pérenne dans votre base de connaissances."
+        "description": "Chaque version obtient une page remplie automatiquement avec les PR fusionnées, les tickets résolus et la liste des contributeurs : un changelog permanent dans votre base de connaissances."
       },
       {
-        "title": "Synchronisation du README du dépôt",
-        "description": "GAIA surveille les mises à jour du README GitHub et les répercute sur la page projet correspondante dans Notion, assurant ainsi la cohérence de la documentation sur les deux plateformes."
+        "title": "Synchronisation des README",
+        "description": "GAIA surveille les mises à jour de README et propage les changements sur la page projet correspondante, pour que la documentation reste cohérente entre le dépôt et le wiki."
       },
       {
-        "title": "Données de rétrospective de sprint",
-        "description": "GAIA compile les données d’activité GitHub (PR fusionnés, problèmes clôturés, délais de revue) dans un modèle de rétrospective Notion avant chaque revue de sprint."
+        "title": "Données pour les rétrospectives",
+        "description": "GAIA compile les données d'activité du dépôt (PR fusionnées, tickets fermés, délais de revue) dans un modèle de rétrospective avant chaque revue de sprint."
       },
       {
-        "title": "Tableau de bord des issues ouvertes",
-        "description": "GAIA maintient une base de données Notion en temps réel des issues GitHub ouvertes sur différents dépôts, classées par priorité et par équipe, offrant ainsi aux responsables produit et ingénierie une vue d’ensemble centralisée."
+        "title": "Tableau de bord des tickets ouverts",
+        "description": "GAIA maintient une base à jour des tickets GitHub ouverts sur l'ensemble des dépôts, organisée par priorité et par équipe, pour donner à la direction produit et technique une vue unique."
       }
     ],
     "howItWorks": [
       {
         "step": "Connectez GitHub et Notion à GAIA",
-        "description": "Autorisez GAIA auprès de votre organisation GitHub et de votre espace de travail Notion. Définissez les dépôts à surveiller et les sections Notion à utiliser."
+        "description": "Autorisez GAIA avec votre organisation GitHub et votre espace Notion. Définissez les dépôts à surveiller et les sections dans lesquelles écrire."
       },
       {
-        "step": "Configurez les flux de documentation",
-        "description": "Définissez quels événements GitHub génèrent du contenu Notion. Commencez avec les notes de version et étendez progressivement à la gestion des issues, aux ADR et aux données de rétrospective."
+        "step": "Mettez en place les workflows de documentation",
+        "description": "Configurez quels événements de dépôt génèrent de la documentation. Commencez par les notes de version, puis ajoutez le suivi des tickets, les ADR et les données de rétrospective."
       },
       {
         "step": "GAIA garde la documentation à jour",
-        "description": "La documentation reste automatiquement à jour au fur et à mesure de l’activité sur GitHub, mettant ainsi fin au cycle des wikis obsolètes qui ne sont plus consultés."
+        "description": "La documentation se met à jour automatiquement au fil de l'activité du dépôt, ce qui met fin aux wikis obsolètes auxquels plus personne ne se fie."
       }
     ],
     "faqs": [
       {
         "question": "GAIA peut-il lire les pages Notion existantes pour éviter les doublons ?",
-        "answer": "Oui. Avant de créer un nouveau contenu dans Notion, GAIA vérifie si une page existe déjà pour le même dépôt, la même version ou le même sujet et l’actualise au lieu d’en créer un doublon."
+        "answer": "Oui. Avant de créer du contenu, GAIA vérifie si une page existe déjà pour le même dépôt, la même version ou le même sujet, et la complète au lieu de la dupliquer."
       },
       {
-        "question": "GAIA fonctionne-t-il avec des dépôts GitHub privés ?",
-        "answer": "Oui. GAIA utilise vos identifiants GitHub autorisés et peut accéder aux dépôts privés auxquels vous avez accès, dans la limite des autorisations de votre organisation."
+        "question": "GAIA fonctionne-t-il avec les dépôts GitHub privés ?",
+        "answer": "Oui. GAIA utilise vos identifiants autorisés et peut accéder aux dépôts privés auxquels vous avez droit, dans la limite des permissions de votre organisation."
       },
       {
-        "question": "Les non-ingénieurs peuvent-ils utiliser cet outil pour se tenir informés de l’activité sur GitHub ?",
-        "answer": "C’est l’un des principaux cas d’usage. Les chefs de produit et parties prenantes peuvent recevoir des résumés de projets GitHub dans Notion sans avoir besoin d’accéder à GitHub ni de connaître le fonctionnement des revues de code."
+        "question": "Des profils non techniques peuvent-ils suivre l'activité du dépôt grâce à cette intégration ?",
+        "answer": "C'est l'un des usages principaux. Les chefs de produit et les parties prenantes obtiennent des résumés de projet dans le wiki, sans accès au dépôt ni connaissance du workflow de revue de code."
       }
     ]
   },
@@ -872,325 +872,325 @@
   "notion-todoist": {
     "toolA": "Notion",
     "toolB": "Todoist",
-    "tagline": "Transformez vos pages Notion en tâches Todoist et gardez-les synchronisées",
-    "metaTitle": "Synchroniser Notion avec Todoist : tâches depuis vos pages",
-    "metaDescription": "Extrayez les tâches de vos pages projet et notes de réunion Notion vers Todoist. GAIA coche Notion à chaque tâche finie. Voir les étapes.",
+    "tagline": "Transformez vos pages Notion en tâches Todoist et gardez les deux synchronisés",
+    "metaTitle": "Synchroniser Notion et Todoist : des tâches depuis vos pages",
+    "metaDescription": "Arrêtez de recopier les actions de Notion dans Todoist. GAIA extrait les tâches des pages projet et comptes rendus, puis les coche dans Notion. Voir les étapes.",
     "keywords": [
       "intégration Notion Todoist",
       "Notion vers tâches Todoist",
       "automatisation Notion Todoist",
       "synchroniser Notion et Todoist",
-      "automatisation du planning vers la liste de tâches"
+      "planification vers liste de tâches"
     ],
-    "intro": "Notion est l’endroit où vivent les plans. Todoist est l’endroit où les tâches sont réalisées. Le fossé entre les documents de planification et les listes d’actions fait que des tâches se perdent dans les pages Notion tandis que votre boîte de réception Todoist ne reflète pas vos besoins selon vos plans. GAIA connecte les deux pour que les plans se traduisent automatiquement en tâches.",
+    "intro": "Notion, c'est là où vivent les plans. Todoist, c'est là où les tâches se font. Ce fossé entre documents de planification et listes d'actions fait que les actions s'enterrent dans les pages tandis que votre boîte Todoist ne reflète pas ce que vos plans exigent. GAIA relie les deux pour que les plans se traduisent automatiquement en tâches.",
     "useCases": [
       {
         "title": "Extraire les tâches des pages projet Notion",
-        "description": "GAIA analyse les pages projet Notion, identifie les actions et les éléments à cocher, puis crée les tâches Todoist correspondantes avec les dates d’échéance trouvées dans le contenu Notion."
+        "description": "GAIA lit les pages projet, repère les actions et les cases à cocher, puis crée les tâches Todoist correspondantes avec les échéances tirées des dates mentionnées dans la page."
       },
       {
-        "title": "Synchronisation de la revue hebdomadaire",
-        "description": "Lors des revues hebdomadaires dans Notion, les actions que vous notez sur votre page de revue sont automatiquement transférées dans Todoist comme tâches pour la semaine à venir, fermant ainsi la boucle entre réflexion et action."
+        "title": "Synchroniser la revue hebdomadaire",
+        "description": "Pendant vos revues hebdomadaires dans Notion, les actions notées sur votre page de revue deviennent automatiquement des tâches pour la semaine à venir : la réflexion se transforme en exécution."
       },
       {
-        "title": "Des comptes-rendus de réunion aux tâches",
-        "description": "Les actions notées dans les comptes-rendus de réunion Notion deviennent des tâches Todoist affectées au bon projet. Vos engagements de prochaine étape issus des réunions ne restent plus uniquement dans les documents."
+        "title": "Des comptes rendus aux tâches",
+        "description": "Les actions consignées dans les comptes rendus de réunion deviennent des tâches affectées au bon projet, pour que les engagements pris en réunion ne restent pas dans un document."
       },
       {
-        "title": "Finalisation des tâches Todoist synchronisée avec Notion",
-        "description": "Quand vous terminez une tâche Todoist, GAIA coche automatiquement la case correspondante dans Notion, gardant vos pages projet Notion à jour avec l’état réel d’avancement des tâches."
+        "title": "Clôture Todoist répercutée dans Notion",
+        "description": "Quand vous terminez une tâche, GAIA coche la case correspondante sur la page projet, pour que vos pages reflètent l'état réel d'avancement."
       },
       {
-        "title": "Suivi des objectifs sur les deux outils",
-        "description": "Les objectifs trimestriels définis dans Notion génèrent des tâches dans Todoist qui décomposent chaque objectif en étapes concrètes, pour que vos grands projets se traduisent en actions quotidiennes."
+        "title": "Suivre les objectifs dans les deux outils",
+        "description": "Les objectifs trimestriels génèrent des tâches qui découpent chaque objectif en étapes concrètes, pour que vos grands plans aient toujours des actions quotidiennes associées."
       }
     ],
     "howItWorks": [
       {
         "step": "Connectez Notion et Todoist à GAIA",
-        "description": "Autorisez GAIA à accéder à votre espace de travail Notion (en sélectionnant les pages/bases de données concernées) ainsi qu'à votre compte Todoist."
+        "description": "Autorisez GAIA avec votre espace Notion (en sélectionnant les pages et bases concernées) et votre compte Todoist."
       },
       {
-        "step": "Configurez la direction et la fréquence de synchronisation",
-        "description": "Choisissez si la synchronisation doit être à sens unique (de Notion vers Todoist), dans l’autre sens, ou bidirectionnelle. Définissez la fréquence à laquelle GAIA doit rechercher de nouveaux éléments à synchroniser."
+        "step": "Configurez le sens et la fréquence de synchronisation",
+        "description": "Choisissez une synchronisation des pages vers les tâches, l'inverse, ou dans les deux sens. Définissez la fréquence à laquelle GAIA doit chercher de nouveaux éléments à synchroniser."
       },
       {
         "step": "GAIA relie planification et exécution",
-        "description": "Les plans dans Notion se transforment automatiquement en tâches dans Todoist. Les tâches terminées sont renvoyées dans Notion. Vos systèmes de planification et d’exécution fusionnent dans un flux de travail cohérent."
+        "description": "Les plans deviennent des tâches automatiquement. Les tâches terminées remontent dans les pages de planification. Vos systèmes de planification et d'exécution forment un seul flux cohérent."
       }
     ],
     "faqs": [
       {
-        "question": "GAIA peut-il synchroniser les éléments de base de données Notion (et pas seulement le contenu des pages) avec Todoist ?",
-        "answer": "Oui. GAIA peut lire les bases de données Notion et créer des tâches Todoist à partir des entrées, en associant les propriétés de la base de données Notion (comme date d’échéance, responsable, priorité) aux attributs des tâches Todoist."
+        "question": "GAIA peut-il synchroniser des entrées de base Notion (et pas seulement le contenu des pages) vers Todoist ?",
+        "answer": "Oui. GAIA peut lire les bases et créer des tâches à partir des entrées, en faisant correspondre les propriétés (échéance, responsable, priorité) aux attributs des tâches."
       },
       {
-        "question": "Que se passe-t-il si je modifie une tâche dans Todoist après que GAIA l’a synchronisée depuis Notion ?",
-        "answer": "Par défaut, les modifications faites dans Todoist n’écrasent pas la source Notion. GAIA considère Todoist comme le volet exécution et Notion comme le volet planification. Vous pouvez activer la synchronisation bidirectionnelle si vous souhaitez que chaque outil mette à jour l’autre."
+        "question": "Que se passe-t-il si je modifie une tâche après sa synchronisation depuis sa page source ?",
+        "answer": "Par défaut, modifier la tâche n'écrase pas la page source. GAIA considère la liste de tâches comme la couche d'exécution et les pages comme la couche de planification. Vous pouvez activer une synchronisation bidirectionnelle si vous voulez que les changements se répercutent dans les deux sens."
       },
       {
-        "question": "GAIA gère-t-il spécifiquement les cases à cocher de Notion ?",
-        "answer": "Oui. GAIA reconnaît les blocs cases à cocher de Notion comme des tâches et peut les cocher automatiquement quand la tâche correspondante dans Todoist est terminée, afin de garder vos pages Notion à jour."
+        "question": "GAIA gère-t-il spécifiquement les blocs de cases à cocher ?",
+        "answer": "Oui. GAIA reconnaît les blocs de cases à cocher comme des tâches et peut les cocher quand la tâche correspondante est terminée, pour que vos pages restent exactes."
       }
     ]
   },
   "notion-linear": {
     "toolA": "Notion",
     "toolB": "Linear",
-    "tagline": "Reliez les specs produit dans Notion aux tickets d’ingénierie dans Linear",
-    "metaTitle": "Intégration Notion + Linear : spécifications en tickets",
-    "metaDescription": "Notion + Linear avec GAIA : Transformez vos spécifications produit en tickets Linear liés à Notion, pour aligner produit et ingénierie.",
+    "tagline": "Reliez les specs produit de Notion aux tickets d'ingénierie de Linear",
+    "metaTitle": "Intégration Notion + Linear : des specs aux tickets",
+    "metaDescription": "Transformez les specs Notion en tickets Linear avec critères d'acceptation et prévenez les développeurs quand une spec change. GAIA aligne docs et tickets. Voir les étapes.",
     "keywords": [
       "intégration Notion Linear",
-      "tickets Linear depuis Notion",
-      "spécification produit vers Linear",
+      "Notion vers tickets Linear",
+      "spec produit vers Linear",
       "automatisation Notion Linear",
-      "alignement produit ingénierie"
+      "alignement produit et ingénierie"
     ],
-    "intro": "Les équipes produit rédigent leurs spécifications dans Notion. Les ingénieurs travaillent à partir des tickets Linear. Le passage de l’un à l’autre est souvent un processus manuel qui fait perdre du contexte, fait dériver le périmètre et fait disparaître l’intention initiale de la spécification lors de l’implémentation. GAIA automatise la liaison entre spécifications et tickets afin que l’ingénierie travaille toujours à partir des intentions produit les plus à jour.",
+    "intro": "Les équipes produit rédigent leurs specs dans Notion. Les développeurs travaillent à partir des tickets Linear. Le passage de l'un à l'autre est souvent un processus manuel avec perte d'information : le contexte se perd, le périmètre bouge et l'intention de la spec n'arrive pas dans l'implémentation. GAIA automatise le circuit spec-ticket pour que l'ingénierie travaille toujours à partir de l'intention produit actuelle.",
     "useCases": [
       {
-        "title": "Transformer les spécifications Notion en tickets Linear",
-        "description": "GAIA analyse les pages de spécifications produit dans Notion et génère un ensemble de tickets Linear structurés couvrant chaque besoin, en préservant le contexte et en créant un lien vers la spécification d’origine."
+        "title": "Convertir les specs Notion en tickets Linear",
+        "description": "GAIA lit les pages de spécifications produit dans Notion et génère un ensemble de tickets structurés couvrant chaque exigence, en préservant le contexte et en renvoyant vers la spec d'origine."
       },
       {
-        "title": "Notification des changements de spécification à l’ingénierie",
-        "description": "Lorsqu’une page de spécification Notion est modifiée, GAIA détecte le changement et commente les tickets Linear liés afin d’alerter les ingénieurs que des exigences ont évolué, en les orientant vers la section mise à jour."
+        "title": "Prévenir l'ingénierie des changements de spec",
+        "description": "Quand une page de spec est mise à jour, GAIA détecte le changement et commente les tickets concernés pour prévenir les développeurs, avec un lien vers la section modifiée."
       },
       {
-        "title": "Critères d’acceptation dans Linear issus de Notion",
-        "description": "GAIA extrait les critères d’acceptation définis dans les pages de spécification Notion et les ajoute à la description des tickets Linear concernés, afin que les ingénieurs disposent de critères de validation clairs."
+        "title": "Reprendre les critères d'acceptation dans les tickets",
+        "description": "GAIA extrait les critères d'acceptation définis dans les specs et les ajoute à la description des tickets correspondants, pour que les développeurs sachent précisément quand le travail est fini."
       },
       {
-        "title": "Suivi de l’avancement Linear dans Notion",
-        "description": "GAIA met à jour les pages de spécification Notion avec le statut actuel des tickets Linear, pour que les équipes produit puissent suivre la progression dans leur outil, sans avoir à consulter Linear."
+        "title": "L'avancement Linear visible dans Notion",
+        "description": "GAIA met à jour les pages de spec avec le statut des tickets, pour que les équipes produit suivent l'avancement du développement dans leur outil habituel sans ouvrir Linear."
       },
       {
-        "title": "Planification de sprint à partir de la roadmap produit",
-        "description": "Lors de la planification de sprint, GAIA lit la roadmap produit présente dans Notion et crée un sprint Linear avec les tickets pré-remplis en fonction des éléments prévus sur la période du sprint."
+        "title": "Planifier le sprint depuis la roadmap produit",
+        "description": "Pendant la planification de sprint, GAIA lit la roadmap produit et crée un sprint prérempli avec les tickets issus des éléments prévus pour la période."
       }
     ],
     "howItWorks": [
       {
         "step": "Connectez Notion et Linear à GAIA",
-        "description": "Autorisez GAIA à accéder à votre espace de travail Notion et à votre compte Linear. Indiquez quelles bases de données Notion contiennent les spécifications, ainsi que les équipes et projets Linear qui reçoivent les tickets."
+        "description": "Autorisez GAIA avec votre espace Notion et votre compte Linear. Précisez quelles bases contiennent les specs et quelles équipes et quels projets reçoivent les tickets."
       },
       {
         "step": "Définissez la correspondance spec-ticket",
-        "description": "Indiquez à GAIA comment interpréter la structure de vos specs Notion : quelles sections deviendront des titres de tickets, lesquelles seront utilisées pour les descriptions, et comment inférer la priorité et les étiquettes à partir du contenu des specs."
+        "description": "Expliquez à GAIA comment lire la structure de vos specs : quelles sections deviennent le titre du ticket, lesquelles deviennent la description, et comment déduire la priorité et les libellés du contenu."
       },
       {
-        "step": "Créez des tickets et gardez la synchronisation",
-        "description": "GAIA crée les tickets Linear initiaux à partir des specs Notion et surveille les mises à jour des deux côtés, maintenant ainsi une parfaite synchronisation pendant tout le cycle de développement."
+        "step": "Créez les tickets et maintenez la synchronisation",
+        "description": "GAIA crée les tickets initiaux à partir des specs et surveille les mises à jour des deux côtés, pour que tout reste aligné pendant le cycle de développement."
       }
     ],
     "faqs": [
       {
-        "question": "GAIA peut-il gérer des bases Notion avec plusieurs formats de specs ?",
-        "answer": "Oui. GAIA s'adapte à la structure de votre base Notion. Vous décrivez comment vos spécifications sont organisées et GAIA apprend à extraire les bonnes informations selon chaque type de page."
+        "question": "GAIA peut-il gérer des bases Notion avec plusieurs formats de spec ?",
+        "answer": "Oui. GAIA s'adapte à la structure de votre base. Vous décrivez l'organisation de vos specs et GAIA apprend à extraire la bonne information de chaque type de page."
       },
       {
-        "question": "Les ingénieurs peuvent-ils modifier des tickets Linear sans changer les specs Notion ?",
-        "answer": "Les modifications faites dans Linear ne sont répercutées dans Notion qu'à l'endroit où vous l’avez configuré (comme mettre à jour un champ de statut). Les ingénieurs peuvent travailler librement dans Linear sans risque de modifier le contenu des specs."
+        "question": "Les développeurs peuvent-ils mettre à jour des tickets Linear sans toucher aux specs ?",
+        "answer": "Les changements apportés aux tickets ne remontent dans les specs que là où vous l'avez configuré (par exemple la mise à jour d'un champ de statut). Les développeurs travaillent librement, sans risque de modifier le contenu des specs."
       },
       {
-        "question": "Est-ce compatible avec les modèles Notion ?",
-        "answer": "Oui. Si votre équipe utilise un modèle de spec Notion, GAIA peut être configuré pour reconnaître la structure du modèle et créer des tickets Linear cohérents à partir de chaque spec basée dessus."
+        "question": "Cela fonctionne-t-il avec les modèles de page ?",
+        "answer": "Oui. Si votre équipe utilise un modèle de spec, GAIA peut être configuré pour en reconnaître la structure et créer des tickets cohérents à partir de chaque spec qui l'utilise."
       }
     ]
   },
   "calendar-slack": {
-    "toolA": "Google Agenda",
+    "toolA": "Google Calendar",
     "toolB": "Slack",
-    "tagline": "Recevez des mises à jour d’agenda dans Slack et gérez vos réunions depuis le chat",
-    "metaTitle": "Google Agenda + Slack : rappels de réunion et agenda du jour",
-    "metaDescription": "Recevez des rappels de réunion et un résumé quotidien de votre agenda dans Slack, avec un statut à jour. GAIA assure aussi le suivi des notes. Voir les étapes.",
+    "tagline": "Recevez les mises à jour de votre agenda dans Slack et gérez vos réunions depuis le chat",
+    "metaTitle": "Intégration Google Calendar + Slack : rappels de réunion",
+    "metaDescription": "Recevez les rappels de réunion et le programme du jour dans Slack, avec votre statut mis à jour depuis l'agenda. GAIA relance aussi les comptes rendus. Voir les étapes.",
     "keywords": [
-      "Intégration Google Agenda Slack",
-      "automatisation Slack calendrier",
-      "rappel de réunion Slack",
-      "statut Slack depuis le calendrier",
-      "bot calendrier Slack"
+      "intégration Google Calendar Slack",
+      "automatisation agenda Slack",
+      "rappel de réunion dans Slack",
+      "statut Slack depuis l'agenda",
+      "bot agenda pour Slack"
     ],
-    "intro": "Votre calendrier et votre messagerie d’équipe devraient fonctionner main dans la main, mais ils restent souvent indépendants. Les réunions commencent et personne n’a reçu de rappel sur Slack. Votre statut indique « Disponible » alors que vous enchaînez les appels. Vos collègues ne savent pas quand vous contacter ou quand vous êtes concentré. GAIA synchronise Google Agenda avec Slack afin que votre équipe dispose toujours d’informations fiables sur votre disponibilité.",
+    "intro": "Votre agenda et le chat de votre équipe devraient fonctionner ensemble, mais ils vivent chacun de leur côté. Les réunions commencent sans que personne n'ait été prévenu dans Slack. Votre statut affiche « Disponible » alors que vous enchaînez les appels. Vos collègues ne savent pas quand vous joindre ni quand vous êtes concentré. GAIA synchronise Google Calendar avec Slack pour que votre équipe ait toujours une vision juste de votre disponibilité.",
     "useCases": [
       {
-        "title": "Statut Slack automatique depuis le calendrier",
-        "description": "GAIA définit votre statut Slack sur « En réunion » avec le nom de la réunion pendant les événements de votre agenda, puis le remet à jour à la fin de l’événement, pour que votre équipe soit informée sans mises à jour manuelles."
+        "title": "Statut Slack automatique depuis l'agenda",
+        "description": "GAIA passe votre statut en « En réunion » avec le nom de la réunion pendant les événements de l'agenda, puis le retire à la fin, pour tenir l'équipe informée sans mise à jour manuelle."
       },
       {
         "title": "Rappels de réunion dans Slack",
-        "description": "GAIA envoie un message privé Slack cinq minutes avant chaque réunion avec le lien de participation, l’ordre du jour et la liste des participants, pour que vous soyez toujours prêt(e) et ne cherchiez plus le lien vidéo à la dernière minute."
+        "description": "GAIA vous envoie un message privé cinq minutes avant chaque réunion avec le lien de connexion, l'ordre du jour et la liste des participants : vous êtes prêt, sans courir après le lien visio."
       },
       {
-        "title": "Résumé quotidien du planning",
-        "description": "GAIA publie chaque matin votre planning du jour dans vos messages privés Slack, pour vous permettre d’organiser votre temps de concentration et anticiper les réunions successives."
+        "title": "Programme du jour",
+        "description": "GAIA publie chaque matin votre programme en message privé, pour planifier vos plages de concentration et savoir quand les réunions s'enchaînent."
       },
       {
-        "title": "Suivi des notes de réunion",
-        "description": "À la fin de la réunion, GAIA vous envoie un message Slack pour vous inviter à saisir les notes et les actions à venir tant que le contexte est encore frais, avec un lien rapide vers votre application de prise de notes préférée."
+        "title": "Relance des comptes rendus",
+        "description": "À la fin d'une réunion, GAIA vous invite à noter vos remarques et les actions pendant que le contexte est frais, avec un lien direct vers votre outil de prise de notes."
       },
       {
-        "title": "Partage de la disponibilité de l’équipe",
-        "description": "GAIA peut publier la disponibilité collective d’une équipe à partir de Google Agenda sur un canal Slack, ce qui facilite la planification des réunions de groupe sans avoir à consulter tous les agendas."
+        "title": "Partage des disponibilités de l'équipe",
+        "description": "GAIA peut publier dans un canal les disponibilités cumulées de l'équipe issues de Google Calendar, pour organiser une réunion de groupe sans faire le tour des agendas."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connectez Google Agenda et Slack à GAIA",
-        "description": "Autorisez GAIA à accéder à votre Google Agenda et à votre espace de travail Slack. Si vous gérez la disponibilité de l’équipe, chaque membre connecte son propre agenda."
+        "step": "Connectez Google Calendar et Slack à GAIA",
+        "description": "Autorisez GAIA avec votre agenda et votre espace de travail. Pour gérer les disponibilités de l'équipe, chaque membre connecte son propre agenda."
       },
       {
-        "step": "Configurez les statuts et les règles de notification",
-        "description": "Choisissez quels types d'événements du calendrier déclenchent des modifications de statut Slack, les rappels à recevoir et quelles informations inclure dans les notifications de préparation de réunion."
+        "step": "Configurez les règles de statut et de notification",
+        "description": "Choisissez les types d'événements qui déclenchent un changement de statut, les rappels à recevoir et les informations à inclure dans la préparation de réunion."
       },
       {
-        "step": "GAIA gère automatiquement la synchronisation calendrier-Slack",
-        "description": "Dès que vous connectez les deux, GAIA maintient votre statut Slack à jour et informe votre équipe de vos disponibilités, sans effort manuel continu."
+        "step": "GAIA garde statut et agenda alignés",
+        "description": "Dès la connexion, GAIA maintient votre statut à jour et tient votre équipe informée de vos disponibilités, sans aucun entretien manuel."
       }
     ],
     "faqs": [
       {
-        "question": "GAIA peut-elle différencier les réunions importantes des réunions de routine pour le statut Slack ?",
-        "answer": "Oui. Vous pouvez configurer quels types d'événements du calendrier déclenchent les changements de statut. Par exemple, vous pouvez définir les plages \"Temps de concentration\" en \"Ne pas déranger\", tandis que les réunions facultatives ne modifient pas du tout votre statut."
+        "question": "GAIA peut-il distinguer les réunions importantes des réunions routinières pour le changement de statut ?",
+        "answer": "Oui. Vous choisissez les types d'événements qui déclenchent un changement de statut. Vous pouvez par exemple afficher les plages « Temps de concentration » en « Ne pas déranger », tandis que les réunions facultatives ne changent rien à votre statut."
       },
       {
-        "question": "GAIA partage-t-elle les détails des réunions publiquement sur Slack ou uniquement en messages privés ?",
-        "answer": "Par défaut, les détails des réunions sont envoyés uniquement dans vos messages privés Slack. Vous pouvez activer le partage de vos disponibilités d'équipe dans certains canaux, mais le contenu individuel des réunions reste privé."
+        "question": "GAIA partage-t-il les détails des réunions publiquement ou seulement en message privé ?",
+        "answer": "Par défaut, les détails ne partent qu'en message privé. Vous pouvez activer le partage des disponibilités de l'équipe dans certains canaux, mais le contenu d'une réunion donnée reste privé."
       },
       {
-        "question": "GAIA peut-elle aider à programmer des réunions depuis Slack ?",
-        "answer": "Oui. Vous pouvez demander à GAIA sur Slack de trouver un créneau pour une réunion avec des personnes spécifiques ; GAIA vérifiera les disponibilités Google Calendar de chaque participant et proposera des horaires."
+        "question": "GAIA peut-il aider à planifier une réunion depuis Slack ?",
+        "answer": "Oui. Vous pouvez demander à GAIA de trouver un créneau avec certaines personnes : il consulte les agendas de tous les participants et propose des horaires."
       }
     ]
   },
   "calendar-notion": {
-    "toolA": "Google Agenda",
+    "toolA": "Google Calendar",
     "toolB": "Notion",
-    "tagline": "Synchronisez les événements du calendrier vers Notion et préparez vos réunions automatiquement",
-    "metaTitle": "Intégration Google Calendar + Notion : réunions dans Notion",
-    "metaDescription": "Google Calendar + Notion avec GAIA : Créez des notes de réunion Notion depuis vos événements, pour aborder chaque réunion bien préparé.",
+    "tagline": "Synchronisez vos événements d'agenda avec Notion et préparez vos réunions automatiquement",
+    "metaTitle": "Intégration Google Calendar + Notion : pages de comptes rendus",
+    "metaDescription": "Obtenez une page de notes Notion pour chaque réunion de l'agenda, avec le contexte rassemblé avant d'y entrer. GAIA tient aussi une base d'agenda dans Notion. Voir les étapes.",
     "keywords": [
-      "intégration Google Agenda Notion",
-      "automatisation calendrier Notion",
-      "automatisation notes de réunion Notion",
-      "synchroniser le calendrier dans Notion",
+      "intégration Google Calendar Notion",
+      "automatisation agenda Notion",
+      "comptes rendus de réunion automatiques",
+      "synchroniser l'agenda avec Notion",
       "automatisation de la préparation de réunion"
     ],
-    "intro": "La préparation des réunions et la prise de notes sont des fondamentaux de la productivité que la plupart des professionnels effectuent de manière irrégulière. Notion est l’espace idéal pour consigner les notes et le contexte des réunions, mais créer une page pour chaque meeting et la remplir avec les participants et l'ordre du jour est tellement fastidieux qu’on y renonce vite. GAIA automatise toute la chaîne calendrier-Notion, depuis la préparation de la réunion jusqu’à l’archivage des notes.",
+    "intro": "Préparer ses réunions et en capturer les notes sont des bases de productivité que la plupart des professionnels appliquent de façon irrégulière. Notion est l'endroit idéal pour les comptes rendus et le contexte, mais créer une page par réunion et la remplir avec les participants et l'ordre du jour est assez fastidieux pour qu'on y renonce. GAIA automatise tout le circuit entre Google Calendar et Notion, de la préparation à l'archivage des notes.",
     "useCases": [
       {
-        "title": "Créer automatiquement des pages de notes de réunion dans Notion",
-        "description": "GAIA crée une page Notion pour chaque réunion à venir, préremplie avec la date, l'heure, les participants, l'ordre du jour de l'invitation du calendrier, ainsi que des sections pour les notes et les actions à mener."
+        "title": "Création automatique des pages de notes",
+        "description": "GAIA crée une page pour chaque réunion à venir, préremplie avec la date, l'heure, les participants, l'ordre du jour de l'invitation, et des sections pour les notes et les actions."
       },
       {
-        "title": "Compilation du contexte de la réunion",
-        "description": "Avant chaque réunion, GAIA recherche des informations sur les participants, rassemble les pages Notion liées et ajoute du contexte à la page de notes afin que vous arriviez préparé·e avec toutes les informations pertinentes."
+        "title": "Rassembler le contexte de la réunion",
+        "description": "Avant chaque réunion, GAIA se renseigne sur les participants, remonte les pages liées de l'espace de travail et ajoute ce contexte à la page de notes, pour que vous arriviez préparé."
       },
       {
-        "title": "Base de données calendrier dans Notion",
-        "description": "GAIA maintient une base de données Notion de tous vos événements de calendrier avec des propriétés telles que les participants, le type de réunion et le résultat, créant ainsi un journal consultable de vos réunions."
+        "title": "Une base d'agenda dans Notion",
+        "description": "GAIA tient une base de tous vos événements avec des propriétés comme les participants, le type de réunion et le résultat : un journal de vos réunions consultable et fouillable."
       },
       {
-        "title": "Capture des actions suite à la réunion",
-        "description": "Après la fin d'une réunion, GAIA vous invite à relire la page de notes et peut extraire les actions à transférer vers le gestionnaire de tâches de votre choix, comblant ainsi l'écart entre les réunions et l'exécution."
+        "title": "Capturer les actions après la réunion",
+        "description": "À la fin d'une réunion, GAIA vous invite à relire la page de notes et peut extraire les actions vers votre gestionnaire de tâches, pour combler l'écart entre la réunion et l'exécution."
       },
       {
-        "title": "Planification hebdomadaire à partir du calendrier",
-        "description": "GAIA lit le calendrier de votre semaine à venir et crée une page de planification hebdomadaire dans Notion avec votre emploi du temps, des notes préparatoires pour chaque réunion et des créneaux réservés au travail concentré."
+        "title": "Planification hebdomadaire depuis l'agenda",
+        "description": "GAIA lit la semaine à venir et crée une page de planification avec votre programme, des notes de préparation pour chaque réunion et des plages réservées au travail de fond."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connectez Google Agenda et Notion à GAIA",
-        "description": "Autorisez les deux comptes et précisez quelle section ou base de données Notion doit recevoir les notes de réunion."
+        "step": "Connectez Google Calendar et Notion à GAIA",
+        "description": "Autorisez les deux comptes et précisez quelle section ou quelle base de l'espace de travail doit recevoir les comptes rendus."
       },
       {
-        "step": "Configurer les modèles de notes de réunion",
-        "description": "Choisissez pour quels types d'événements du calendrier des pages Notion sont créées, le modèle de page souhaité et les correspondances entre les champs du calendrier et ceux de Notion."
+        "step": "Configurez le modèle de notes de réunion",
+        "description": "Choisissez les types d'événements qui génèrent une page, l'allure du modèle de page, et les propriétés de l'événement à reporter dans les champs de la page."
       },
       {
-        "step": "Préparez-vous et saisissez vos notes",
-        "description": "Les pages de notes de réunion apparaissent automatiquement dans Notion avant chaque réunion. Vous pouvez ajouter vos notes pendant et après la réunion, et GAIA s'occupe de la configuration administrative."
+        "step": "Préparez et prenez vos notes",
+        "description": "Les pages de notes apparaissent automatiquement avant chaque réunion. Vous ajoutez vos notes pendant et après, et GAIA se charge de la mise en place administrative."
       }
     ],
     "faqs": [
       {
-        "question": "GAIA peut-il créer des notes pour tous les événements du calendrier ou uniquement certains ?",
-        "answer": "Vous pouvez configurer GAIA pour créer des notes pour tous les événements, uniquement ceux avec des participants (hors plages de concentration en solo), seulement les événements de plus longue durée, ou selon des balises de calendrier. Flexibilité totale."
+        "question": "GAIA crée-t-il des notes pour tous les événements de l'agenda ou seulement pour certains ?",
+        "answer": "Vous pouvez configurer GAIA pour créer des notes pour tous les événements, uniquement ceux avec des participants (en excluant vos plages de concentration), uniquement ceux d'une certaine durée, ou selon les étiquettes de l'agenda. La flexibilité est totale."
       },
       {
-        "question": "GAIA met-il à jour Notion lorsqu'un événement du calendrier est replanifié ?",
-        "answer": "Oui. Lorsqu'un horaire d'événement du calendrier change, GAIA met à jour les propriétés de date et d'heure de la page Notion correspondante pour assurer leur exactitude."
+        "question": "GAIA met-il à jour Notion quand un événement est déplacé ?",
+        "answer": "Oui. Quand l'horaire change, GAIA met à jour la date et l'heure sur la page correspondante pour qu'elle reste exacte."
       },
       {
-        "question": "Plusieurs membres de l'équipe peuvent-ils partager les mêmes notes de réunion sur Notion ?",
-        "answer": "Oui. GAIA peut créer des notes de réunion partagées accessibles à tous les participants dans un espace de travail Notion partagé, afin que tout le monde dispose de la même page de notes, évitant ainsi des copies individuelles dispersées."
+        "question": "Plusieurs membres de l'équipe peuvent-ils partager les mêmes notes de réunion ?",
+        "answer": "Oui. GAIA peut créer des notes partagées accessibles à tous les participants dans un espace commun, pour que chacun ait la même page plutôt que des copies dispersées."
       }
     ]
   },
   "calendar-todoist": {
-    "toolA": "Google Agenda",
+    "toolA": "Google Calendar",
     "toolB": "Todoist",
-    "tagline": "Transformez vos événements de calendrier en tâches et préparez vos todos automatiquement",
-    "metaTitle": "Intégration Google Calendar + Todoist : réunions en tâches",
-    "metaDescription": "Google Calendar + Todoist avec GAIA : Créez des tâches de préparation Todoist depuis vos événements et bloquez du temps, pour aligner agenda et liste.",
+    "tagline": "Transformez vos événements d'agenda en tâches et en préparations automatiques",
+    "metaTitle": "Intégration Google Calendar + Todoist : tâches de réunion",
+    "metaDescription": "Transformez vos événements d'agenda en tâches de préparation, d'échéance et de suivi dans Todoist. GAIA construit votre liste à partir de votre programme. Voir les étapes.",
     "keywords": [
-      "intégration Google Agenda Todoist",
-      "automatisation calendrier Todoist",
-      "tâches de préparation réunion Todoist",
+      "intégration Google Calendar Todoist",
+      "automatisation agenda Todoist",
+      "tâches de préparation de réunion",
       "synchroniser agenda et liste de tâches",
-      "automatisation calendrier vers Todoist"
+      "automatisation programme vers Todoist"
     ],
-    "intro": "Votre agenda vous indique quand les choses se passent. Votre liste de tâches Todoist vous dit quoi faire. Mais ces deux outils communiquent rarement : les réunions surviennent sans tâches de préparation, les échéances Todoist n’ont pas forcément de créneaux réservés dans l’agenda — le résultat est une vision fragmentée de votre journée. GAIA connecte votre calendrier et Todoist pour que les deux reflètent la même réalité.",
+    "intro": "Votre Google Calendar vous dit quand les choses arrivent. Votre liste Todoist vous dit quoi faire. Mais les deux s'informent rarement : les réunions arrivent sans tâche de préparation, les échéances existent sans plage réservée dans l'agenda, et votre journée finit en pièces détachées. GAIA relie votre agenda et Todoist pour que les deux reflètent la même réalité.",
     "useCases": [
       {
-        "title": "Créer automatiquement les tâches de préparation de réunion",
-        "description": "Pour chaque événement du calendrier avec des participants externes, GAIA crée une tâche Todoist visant à relire l’ordre du jour et préparer les points à aborder, à réaliser le matin avant la réunion."
+        "title": "Créer automatiquement les tâches de préparation",
+        "description": "Pour chaque événement avec des participants externes, GAIA crée une tâche pour relire l'ordre du jour et préparer les points à aborder, à rendre la veille au matin."
       },
       {
-        "title": "Créer des tâches avec échéance à partir d'événements du calendrier",
-        "description": "Lorsqu’un événement du calendrier correspond à une échéance (livrable projet, date de présentation...), GAIA crée des tâches Todoist rétro-planifiées à partir de l’échéance, comprenant des étapes intermédiaires."
+        "title": "Des tâches d'échéance depuis l'agenda",
+        "description": "Quand un événement correspond à une échéance (fin de projet, date de présentation), GAIA crée des tâches en partant de l'échéance et en remontant, avec des jalons intermédiaires."
       },
       {
         "title": "Tâches de suivi après réunion",
-        "description": "Après la fin des réunions, GAIA crée une tâche Todoist pour rassembler et envoyer le compte rendu, à effectuer dans l’heure suivant la fin de la réunion afin de garantir un suivi rapide."
+        "description": "À la fin d'une réunion, GAIA crée une tâche pour rédiger et envoyer le compte rendu, à rendre dans l'heure qui suit, pour que le suivi se fasse sans traîner."
       },
       {
-        "title": "Création de blocs de temps dans le calendrier pour les tâches Todoist",
-        "description": "Lorsqu’une tâche Todoist a une date d’échéance, GAIA peut suggérer, ou automatiquement créer, un bloc de temps dans Google Agenda pour travailler sur cette tâche, afin de vous assurer un créneau dédié à sa réalisation."
+        "title": "Réserver des plages pour les tâches Todoist",
+        "description": "Quand une tâche a une échéance, GAIA peut proposer ou créer automatiquement une plage dans Google Calendar pour la traiter, afin que vous ayez du temps prévu pour la terminer."
       },
       {
-        "title": "Alertes de surcharge de journée",
-        "description": "Quand GAIA détecte une journée très chargée en réunions dans le Calendrier, avec de nombreuses tâches Todoist à terminer en plus, il vous prévient à l’avance pour que vous puissiez reprogrammer vos tâches ou réunions de manière proactive."
+        "title": "Alertes de journée surchargée",
+        "description": "Quand GAIA voit une journée chargée en réunions avec beaucoup de tâches à rendre le même jour, il vous prévient à l'avance pour que vous décaliez tâches ou réunions."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connectez Google Agenda et Todoist à GAIA",
-        "description": "Autorisez les deux comptes et configurez les préférences de synchronisation bidirectionnelle."
+        "step": "Connectez Google Calendar et Todoist à GAIA",
+        "description": "Autorisez les deux comptes et configurez vos préférences de synchronisation bidirectionnelle."
       },
       {
-        "step": "Définissez les règles pour les tâches préparatoires et les blocs de temps",
-        "description": "Indiquez quels types de réunions génèrent des tâches préparatoires, à quel moment ces tâches doivent apparaître, et si GAIA doit créer des blocs dans le calendrier pour les tâches Todoist importantes."
+        "step": "Définissez les règles de préparation et de plages de travail",
+        "description": "Précisez quels types de réunions génèrent une tâche de préparation, combien de temps à l'avance elle doit apparaître, et si GAIA doit réserver des plages pour les tâches importantes."
       },
       {
-        "step": "GAIA synchronise l’agenda et les tâches",
-        "description": "Les nouveaux événements du calendrier génèrent automatiquement des tâches préparatoires. Les nouvelles tâches Todoist avec échéances peuvent se voir attribuer un créneau dans l’agenda. Les deux systèmes sont synchronisés."
+        "step": "GAIA aligne programme et tâches",
+        "description": "Les nouveaux événements génèrent automatiquement les tâches de préparation. Les nouvelles tâches avec échéance peuvent obtenir une plage dans l'agenda. Programme et liste de tâches ne font plus qu'un."
       }
     ],
     "faqs": [
       {
-        "question": "GAIA va-t-il créer des tâches préparatoires pour tous les événements du calendrier, y compris les synchronisations internes ?",
-        "answer": "Vous choisissez quels types d’événements génèrent des tâches préparatoires. Vous pouvez exclure les synchronisations internes récurrentes, les événements personnels et ceux sans ordre du jour. Seules les réunions importantes nécessitant une préparation donneront lieu à ces tâches."
+        "question": "GAIA crée-t-il des tâches de préparation pour tous les événements, y compris les points internes ?",
+        "answer": "Vous décidez quels types d'événements génèrent une tâche. Vous pouvez exclure les points internes récurrents, les événements personnels et ceux sans ordre du jour. Seules les réunions qui gagnent vraiment à être préparées génèrent une tâche."
       },
       {
-        "question": "GAIA peut-il replanifier des tâches Todoist en cas de conflit avec une réunion dans l’Agenda ?",
-        "answer": "Oui. GAIA peut détecter lorsqu’un nouvel événement du calendrier crée un conflit avec le temps bloqué pour une tâche Todoist, et proposer de reprogrammer la tâche ou le bloc horaire."
+        "question": "GAIA peut-il replanifier une tâche Todoist en cas de conflit de réunion ?",
+        "answer": "Oui. GAIA détecte quand un nouvel événement entre en conflit avec une plage que vous aviez réservée à une tâche et propose de décaler la tâche ou la plage."
       },
       {
-        "question": "Est-ce que cela fonctionne avec des événements récurrents du calendrier ?",
-        "answer": "Oui. GAIA crée des tâches de préparation pour chaque occurrence des événements récurrents individuellement, ainsi votre réunion hebdomadaire reçoit une nouvelle tâche de préparation chaque semaine au lieu d'une tâche unique pour toutes les occurrences."
+        "question": "Cela fonctionne-t-il avec les événements récurrents ?",
+        "answer": "Oui. GAIA crée une tâche de préparation pour chaque occurrence, individuellement : votre point hebdomadaire reçoit une nouvelle tâche chaque semaine, et non une tâche unique pour toutes les occurrences."
       }
     ]
   },
@@ -1262,65 +1262,65 @@
   "asana-notion": {
     "toolA": "Asana",
     "toolB": "Notion",
-    "tagline": "Connectez la gestion de projets Asana avec la documentation Notion",
-    "metaTitle": "Intégration Asana + Notion : projets et connaissances",
-    "metaDescription": "Asana + Notion avec GAIA : Synchronisez vos projets Asana avec les wikis Notion et documentez les décisions, pour un savoir toujours à jour.",
+    "tagline": "Reliez la gestion de projet Asana à votre documentation Notion",
+    "metaTitle": "Intégration Asana + Notion : les briefs projet dans Notion",
+    "metaDescription": "Envoyez les briefs et jalons Asana dans Notion et affichez l'état des tâches en direct. GAIA réunit plans et documentation au même endroit. Voir les étapes.",
     "keywords": [
       "intégration Asana Notion",
       "automatisation Asana Notion",
       "synchroniser Asana avec Notion",
-      "base de connaissances pour la gestion de projet",
+      "base de connaissances gestion de projet",
       "workflow Asana Notion"
     ],
-    "intro": "Asana suit l’avancement du travail. Notion enregistre le contexte. La plupart des équipes utilisent ces outils séparément, ce qui conduit à une documentation projet qui ne reflète pas l’état actuel des tâches, et à des listes de tâches qui manquent du contexte stratégique nécessaire pour correctement prioriser. GAIA crée une connexion en temps réel entre les deux.",
+    "intro": "Asana suit le travail. Notion porte le contexte. La plupart des équipes utilisent les deux séparément, ce qui donne une documentation projet qui ne reflète pas l'état réel des tâches et des listes de tâches sans le contexte stratégique nécessaire pour bien prioriser. GAIA crée une connexion vivante entre les deux.",
     "useCases": [
       {
-        "title": "Briefs de projet d’Asana vers Notion",
-        "description": "Lorsqu’un nouveau projet Asana est créé, GAIA génère une page de brief projet correspondante dans Notion, avec les objectifs, les parties prenantes et le calendrier extraits de la description du projet Asana."
+        "title": "Des briefs projet d'Asana vers Notion",
+        "description": "Quand un projet est créé, GAIA génère une page de brief avec les objectifs, les parties prenantes et le calendrier extraits de la description du projet."
       },
       {
-        "title": "Documentation des jalons",
-        "description": "Lorsque des jalons Asana sont atteints, GAIA crée des entrées de documentation dans Notion, retraçant ce qui a été livré, les décisions prises et les leçons retenues."
+        "title": "Documenter les jalons",
+        "description": "Quand un jalon est atteint, GAIA crée une entrée de documentation qui consigne ce qui a été livré, les décisions prises et les enseignements tirés."
       },
       {
-        "title": "Statut des tâches Asana dans Notion",
-        "description": "Les pages projet dans Notion affichent en temps réel les pourcentages d’achèvement des tâches Asana, offrant ainsi aux parties prenantes une visibilité sur la santé du projet dans l’outil qu’elles utilisent déjà."
+        "title": "L'état des tâches Asana dans Notion",
+        "description": "Les pages projet affichent en direct le pourcentage de tâches terminées, pour que les parties prenantes voient la santé du projet dans l'outil qu'elles utilisent déjà."
       },
       {
-        "title": "Génération de rétrospective de projet",
-        "description": "À la fin d’un projet, GAIA compile l’historique des tâches Asana dans un modèle structuré de rétrospective Notion, couvrant ce qui a bien fonctionné, les difficultés rencontrées et les principaux enseignements."
+        "title": "Générer la rétrospective de projet",
+        "description": "À la clôture d'un projet, GAIA rassemble l'historique des tâches dans un modèle de rétrospective structuré : ce qui a bien marché, ce qui a moins bien marché, et les enseignements clés."
       },
       {
-        "title": "Synchronisation de la documentation des ressources",
-        "description": "Les fichiers et documents liés dans les tâches Asana sont automatiquement référencés sur la page projet correspondante dans Notion, créant ainsi un centre de ressources unifié."
+        "title": "Synchroniser la documentation des ressources",
+        "description": "Les fichiers et documents liés aux tâches sont automatiquement référencés sur la page du projet correspondant, ce qui crée un point d'accès unique aux ressources."
       }
     ],
     "howItWorks": [
       {
         "step": "Connectez Asana et Notion à GAIA",
-        "description": "Autorisez GAIA à accéder à votre espace Asana et à votre compte Notion. Sélectionnez les projets à synchroniser."
+        "description": "Autorisez GAIA avec votre espace de travail et votre compte. Choisissez les projets à synchroniser."
       },
       {
-        "step": "Associez les projets Asana aux sections Notion",
-        "description": "Définissez quelle section Notion recevra la documentation pour chaque projet ou type de projet Asana. GAIA gère la création et la mise à jour de tous les contenus."
+        "step": "Associez les projets aux sections de documentation",
+        "description": "Définissez quelle section Notion reçoit la documentation de chaque projet ou type de projet Asana. GAIA se charge de créer et de mettre à jour tout le contenu."
       },
       {
-        "step": "Maintenez une documentation projet à jour",
-        "description": "À mesure que le statut du projet Asana évolue, la documentation Notion reste synchronisée automatiquement. Votre base de connaissances reflète la réalité du projet sans maintenance manuelle."
+        "step": "Maintenez une documentation vivante",
+        "description": "À mesure que le projet évolue, la documentation reste à jour automatiquement. Votre base de connaissances reflète la réalité du projet sans entretien manuel."
       }
     ],
     "faqs": [
       {
-        "question": "GAIA peut-il synchroniser les champs personnalisés d’Asana avec les propriétés de bases de données Notion ?",
-        "answer": "Oui. Les champs personnalisés d’Asana (comme le budget, le nom du client ou l’étape) correspondent aux propriétés de bases de données Notion, préservant ainsi toutes les métadonnées du projet dans votre base de connaissances."
+        "question": "GAIA peut-il synchroniser les champs personnalisés avec les propriétés de base ?",
+        "answer": "Oui. Les champs personnalisés (budget, nom du client, phase…) sont reportés dans les propriétés de la base, ce qui préserve toutes les métadonnées du projet dans votre base de connaissances."
       },
       {
-        "question": "GAIA fonctionne-t-il avec les portefeuilles Asana ?",
-        "answer": "Oui. GAIA peut créer des pages Notion pour les portefeuilles Asana qui regroupent le statut de tous les projets concernés, permettant à la direction d’avoir une vue d’ensemble dans Notion."
+        "question": "GAIA fonctionne-t-il avec les portefeuilles Asana ?",
+        "answer": "Oui. GAIA peut créer des pages de portefeuille qui agrègent l'état de tous les projets qu'ils contiennent, pour donner à la direction une vue consolidée dans l'espace de documentation."
       },
       {
-        "question": "Les documents Notion peuvent-ils renvoyer aux tâches Asana sources ?",
-        "answer": "Oui. GAIA inclut l’URL de la tâche ou du projet Asana dans chaque entrée Notion créée, afin que les lecteurs puissent accéder directement à la source pour consulter l’historique complet de la tâche."
+        "question": "Les documents Notion peuvent-ils renvoyer vers les tâches d'origine ?",
+        "answer": "Oui. GAIA inclut l'URL de la tâche ou du projet dans chaque entrée qu'il crée, pour que le lecteur accède directement à la source et à l'historique complet."
       }
     ]
   },
@@ -1328,64 +1328,64 @@
     "toolA": "Asana",
     "toolB": "GitHub",
     "tagline": "Reliez les tâches projet Asana au travail de développement GitHub",
-    "metaTitle": "Intégration Asana + GitHub : tâches produit et code",
-    "metaDescription": "Asana + GitHub avec GAIA : Liez les tâches Asana aux PR GitHub et mettez à jour le statut à la livraison, pour aligner produit et technique.",
+    "metaTitle": "Intégration Asana + GitHub : les PR reliées aux tâches Asana",
+    "metaDescription": "Reliez les pull requests GitHub aux tâches Asana et clôturez-les à la fusion. GAIA montre l'avancement du développement dans Asana à toute l'équipe. Voir les étapes.",
     "keywords": [
-      "Intégration Asana GitHub",
-      "Automatisation Asana GitHub",
-      "lier Asana à GitHub",
-      "synchronisation produit-ingénierie",
+      "intégration Asana GitHub",
+      "automatisation Asana GitHub",
+      "relier Asana à GitHub",
+      "synchronisation produit ingénierie",
       "workflow Asana GitHub"
     ],
-    "intro": "Le travail produit vit dans Asana. Le développement vit dans GitHub. C’est lors du transfert entre les deux que le contexte se perd et la communication se complique. GAIA automatise la liaison entre les tâches Asana et le développement GitHub pour que les deux outils restent à jour et les deux équipes coordonnées.",
+    "intro": "Le travail produit vit dans Asana. Le travail d'ingénierie vit dans GitHub. C'est dans le passage de l'un à l'autre que le contexte se perd et que la communication se casse. GAIA automatise le lien entre les tâches et le travail de développement, pour que les deux outils restent exacts et les deux équipes alignées.",
     "useCases": [
       {
-        "title": "Lie les PR GitHub aux tâches Asana",
-        "description": "GAIA détecte lorsqu’une PR GitHub fait référence à une tâche Asana et crée un lien bidirectionnel, pour que les ingénieurs voient le contexte produit dans GitHub, et que les chefs de produit suivent l’avancement du code dans Asana."
+        "title": "Relier les PR GitHub aux tâches Asana",
+        "description": "GAIA détecte quand une PR référence une tâche et crée un lien dans les deux sens : les développeurs voient le contexte produit sur la pull request, les chefs de produit voient l'avancement du code sur la tâche."
       },
       {
-        "title": "Finalisation d'une tâche Asana lors de la fusion d'une PR",
-        "description": "Lorsqu'une pull request (PR) GitHub liée à une tâche Asana est fusionnée, GAIA marque automatiquement la tâche comme terminée, évitant aux ingénieurs de devoir actualiser les outils de gestion de projet."
+        "title": "Clôturer la tâche à la fusion de la PR",
+        "description": "Quand une PR qui implémente une tâche est fusionnée, GAIA marque la tâche comme terminée automatiquement, sans que les développeurs aient à mettre à jour l'outil de gestion de projet."
       },
       {
-        "title": "Suivi de l'avancement du développement dans Asana",
-        "description": "Les tâches Asana liées au travail GitHub affichent le statut des PR (ouverte, en revue, fusionnée) pour que les chefs de produit aient une visibilité en temps réel sur le développement sans demander d'actualisations aux ingénieurs."
+        "title": "L'avancement du développement dans Asana",
+        "description": "Les tâches liées au développement affichent l'état de la PR (ouverte, en revue, fusionnée), pour que les chefs de produit suivent le développement en temps réel sans solliciter les développeurs."
       },
       {
-        "title": "Création de tâche bug depuis une issue GitHub",
-        "description": "Les issues GitHub prioritaires créent automatiquement des tâches correspondantes Asana dans le projet QA ou bugs, garantissant que tous les bugs signalés intègrent le flux de gestion produit."
+        "title": "Une tâche de bug depuis un ticket GitHub",
+        "description": "Les tickets prioritaires créent automatiquement une tâche correspondante dans le projet QA ou bugs, pour que tout bug signalé entre dans le circuit de gestion produit."
       },
       {
-        "title": "Coordination de la mise en production",
-        "description": "Lorsqu'une release GitHub est publiée, GAIA met à jour toutes les tâches Asana associées en \"Publié\" et notifie les parties prenantes, bouclant ainsi le cycle de livraison produit."
+        "title": "Coordonner les versions",
+        "description": "Quand une version est publiée, GAIA passe toutes les tâches liées en « Livré » et prévient les parties prenantes : la boucle de livraison produit est bouclée."
       }
     ],
     "howItWorks": [
       {
         "step": "Connectez Asana et GitHub à GAIA",
-        "description": "Autorisez GAIA avec votre espace de travail Asana et votre organisation GitHub. Associez les dépôts aux projets Asana."
+        "description": "Autorisez GAIA avec votre espace Asana et votre organisation GitHub. Associez les dépôts aux projets."
       },
       {
         "step": "Configurez la convention de liaison",
-        "description": "Décidez comment les PR doivent référencer les tâches Asana : via l'URL de la tâche dans la description de la PR, l'ID de la tâche dans le nom de branche, ou grâce à la correspondance intelligente de GAIA basée sur le contenu."
+        "description": "Décidez comment les PR référencent les tâches : URL de la tâche dans la description de la PR, identifiant de tâche dans le nom de branche, ou rapprochement intelligent par GAIA selon le contenu."
       },
       {
-        "step": "Laissez GAIA garantir la synchronisation entre les outils",
-        "description": "Une fois configuré, GAIA gère automatiquement la synchronisation des statuts. Les deux équipes utilisent leurs outils préférés, GAIA assurant la cohérence."
+        "step": "Laissez GAIA maintenir la cohérence entre outils",
+        "description": "Une fois configuré, GAIA gère toute la synchronisation des statuts. Chaque équipe travaille dans son outil préféré et GAIA les garde alignées."
       }
     ],
     "faqs": [
       {
-        "question": "Comment les ingénieurs doivent-ils référencer les tâches Asana dans leurs PR GitHub ?",
-        "answer": "GAIA prend en charge plusieurs conventions : inclure l'URL de la tâche Asana dans la description de la PR, ajouter l'ID de la tâche au nom de la branche, ou utiliser un format de description de PR spécifique que vous définissez. GAIA s'adapte à votre processus existant."
+        "question": "Comment les développeurs doivent-ils référencer les tâches dans leurs PR ?",
+        "answer": "GAIA accepte plusieurs conventions : l'URL de la tâche dans la description de la PR, l'identifiant de tâche dans le nom de branche, ou un format de description de PR que vous définissez. GAIA s'adapte à votre workflow existant."
       },
       {
         "question": "Les chefs de produit peuvent-ils déclencher des actions GitHub depuis Asana ?",
-        "answer": "Certaines actions GitHub peuvent être déclenchées depuis Asana via GAIA, comme créer une issue ou demander une revue. L'accès complet au dépôt reste réservé aux ingénieurs pour des raisons de sécurité."
+        "answer": "Certaines actions peuvent être déclenchées depuis la tâche via GAIA, comme créer un ticket ou demander une revue. L'accès complet au dépôt reste réservé aux développeurs, pour des raisons de sécurité."
       },
       {
-        "question": "Est-ce que cela fonctionne avec les tâches d'approbation Asana pour la validation QA ?",
-        "answer": "Oui. GAIA peut être configuré pour créer une tâche d'approbation Asana lorsqu'une PR est fusionnée, permettant à une étape de validation QA d'être assignée au membre d'équipe concerné avant de marquer la fonctionnalité comme terminée."
+        "question": "Cela fonctionne-t-il avec des tâches de validation pour la recette QA ?",
+        "answer": "Oui. GAIA peut créer une tâche de validation à la fusion d'une PR, en confiant la recette au bon membre de l'équipe avant de marquer la fonctionnalité comme terminée."
       }
     ]
   },
@@ -1458,64 +1458,64 @@
     "toolA": "Zoom",
     "toolB": "Notion",
     "tagline": "Transformez vos réunions Zoom en documentation Notion consultable",
-    "metaTitle": "Notion + Zoom : notes de réunion automatiques",
-    "metaDescription": "Créez une page de notes Notion pour chaque appel Zoom et transformez les actions en tâches. GAIA ignore les réunions privées. Voir les étapes.",
+    "metaTitle": "Intégration Notion Zoom : pages de comptes rendus automatiques",
+    "metaDescription": "Créez une page de notes Notion pour chaque appel Zoom et transformez les actions en tâches. GAIA ignore les réunions que vous marquez comme privées. Voir les étapes.",
     "keywords": [
-      "Intégration Zoom Notion",
-      "Notes de réunion Zoom dans Notion",
-      "Automatisation Zoom Notion",
-      "Transcription de réunion vers Notion",
-      "Automatisation des notes Zoom"
+      "intégration Zoom Notion",
+      "comptes rendus Zoom dans Notion",
+      "automatisation Zoom Notion",
+      "transcription de réunion vers Notion",
+      "automatisation des notes Zoom"
     ],
-    "intro": "Les appels Zoom génèrent des informations précieuses — décisions, actions à mener, idées et engagements — qui restent souvent dans les notes personnelles de quelqu'un ou se perdent totalement. GAIA capture l'intelligence générée lors des réunions Zoom et l'organise automatiquement dans Notion, transformant chaque appel en une ressource de connaissance permanente et consultable.",
+    "intro": "Les appels Zoom produisent des informations précieuses — décisions, actions, idées, engagements — qui finissent généralement dans les notes personnelles de quelqu'un ou disparaissent complètement. GAIA capture cette matière et l'organise automatiquement dans Notion, pour transformer chaque appel en ressource de connaissance durable et consultable.",
     "useCases": [
       {
-        "title": "Pages de notes de réunion automatiques",
-        "description": "Après chaque appel Zoom, GAIA crée une page Notion avec la date de la réunion, les participants, la durée, et des sections structurées pour les points clés discutés, les décisions prises et les actions à effectuer."
+        "title": "Pages de comptes rendus automatiques",
+        "description": "Après chaque appel Zoom, GAIA crée une page avec la date, les participants, la durée, et des sections structurées pour les points clés, les décisions prises et les actions."
       },
       {
-        "title": "Extraction des actions et création de tâches",
-        "description": "GAIA identifie les engagements et actions à mener à partir du contexte des réunions Zoom et crée des tâches dans Notion (ou votre gestionnaire de tâches connecté) en assignant des responsables et des dates d'échéance."
+        "title": "Extraire les actions et créer les tâches",
+        "description": "GAIA identifie les engagements et les actions à partir du contexte de la réunion et crée les tâches dans Notion (ou votre gestionnaire de tâches connecté) avec responsable et échéance."
       },
       {
-        "title": "Documentation de séries de réunions",
-        "description": "Pour des réunions Zoom récurrentes comme les points hebdomadaires ou les revues mensuelles, GAIA tient à jour une page Notion continue en y ajoutant les notes de chaque réunion, créant ainsi un historique sur la durée."
+        "title": "Documenter les réunions récurrentes",
+        "description": "Pour les réunions récurrentes, comme les points hebdomadaires ou les revues mensuelles, GAIA tient une page qui s'enrichit des notes de chaque séance et constitue un historique suivi."
       },
       {
-        "title": "Synthèses d'appels clients",
-        "description": "Après les appels Zoom avec des clients, GAIA génère dans Notion un compte rendu professionnel, à partager avec le client ou à conserver en interne comme registre d'appels de type CRM."
+        "title": "Résumés d'appels clients",
+        "description": "Après un appel client, GAIA génère un résumé professionnel, à partager avec le client ou à conserver en interne comme journal d'appel façon CRM."
       },
       {
-        "title": "Base de connaissances d'équipe à partir des réunions",
-        "description": "Les insights, décisions et savoirs partagés lors des appels Zoom sont enregistrés dans les sections pertinentes de Notion, préservant ainsi les connaissances de l'entreprise qui risqueraient autrement d'être perdues."
+        "title": "La connaissance de l'équipe issue des appels",
+        "description": "Les idées, décisions et savoirs partagés en appel sont consignés dans les sections adéquates de la base de connaissances, ce qui préserve une mémoire collective qui serait sinon perdue."
       }
     ],
     "howItWorks": [
       {
         "step": "Connectez Zoom et Notion à GAIA",
-        "description": "Autorisez GAIA à accéder à votre compte Zoom et à votre espace de travail Notion. GAIA surveillera votre activité Zoom et générera du contenu dans Notion après chaque appel."
+        "description": "Autorisez GAIA avec votre compte Zoom et votre espace Notion. GAIA suit votre activité de réunion et crée une page après chaque appel."
       },
       {
         "step": "Configurez la structure des notes et les destinations",
-        "description": "Choisissez votre modèle de notes de réunion Notion préféré ainsi que les sections Notion recevant les notes pour différents types d'appels Zoom (équipe, client, individuel, etc.)."
+        "description": "Choisissez votre modèle de comptes rendus et la section qui reçoit les notes selon le type d'appel (équipe, client, entretien individuel, etc.)."
       },
       {
-        "step": "Passez en revue et améliorez les notes générées automatiquement",
-        "description": "GAIA crée une page de notes préliminaire après chaque appel. Vous relisez, ajoutez du contexte, puis la note rejoint définitivement votre base de connaissances Notion."
+        "step": "Relisez et affinez les notes générées",
+        "description": "GAIA crée un brouillon de notes après chaque appel. Vous relisez, ajoutez le contexte manquant, et la note rejoint votre base de connaissances."
       }
     ],
     "faqs": [
       {
-        "question": "GAIA nécessite-t-il la fonctionnalité d’enregistrement Cloud de Zoom ?",
-        "answer": "GAIA fonctionne avec le contexte du calendrier et les métadonnées des réunions Zoom sans avoir besoin d’enregistrement. Cependant, pour des notes plus riches incluant l’extraction des tâches à effectuer, l’enregistrement Cloud Zoom avec retranscription automatique améliore considérablement la précision."
+        "question": "GAIA a-t-il besoin de l'enregistrement cloud de Zoom ?",
+        "answer": "GAIA peut fonctionner avec le contexte de l'agenda et les métadonnées de la réunion, sans enregistrement. Pour des notes plus riches, avec extraction des actions, l'enregistrement cloud et la transcription automatique améliorent nettement la précision."
       },
       {
-        "question": "Comment GAIA gère-t-il les réunions sensibles qui ne doivent pas être documentées ?",
-        "answer": "Vous pouvez configurer GAIA pour exclure certains types de réunions, les noms de réunions contenant des mots-clés spécifiques, ou les événements de calendrier marqués comme confidentiels de la documentation automatique."
+        "question": "Comment GAIA traite-t-il les réunions sensibles qui ne doivent pas être documentées ?",
+        "answer": "Vous pouvez configurer GAIA pour exclure certains types de réunions, les réunions dont le nom contient certains mots-clés, ou les événements marqués comme confidentiels dans l'agenda."
       },
       {
-        "question": "Les notes peuvent-elles être partagées automatiquement avec les participants des réunions Zoom ?",
-        "answer": "Oui. GAIA peut être configuré pour partager le lien de la page de notes Notion à tous les participants par email ou via Slack une fois les notes créées, afin que tout le monde reste aligné."
+        "question": "Les notes peuvent-elles être partagées automatiquement avec les participants ?",
+        "answer": "Oui. GAIA peut partager le lien de la page de notes avec tous les participants par e-mail ou Slack une fois les notes créées, pour que chacun ait la même information."
       }
     ]
   },
