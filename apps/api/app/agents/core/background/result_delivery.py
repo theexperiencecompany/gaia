@@ -31,7 +31,7 @@ from app.agents.core.background.comms_narrator import (
 from app.agents.core.background.session import ExecutorRun
 from app.agents.core.background.todo_run_delivery import deliver_todo_run_result
 from app.agents.core.background.workflow_platform_delivery import (
-    deliver_result_to_platforms,
+    deliver_workflow_result,
 )
 from app.agents.core.comms_directive import interpret_comms_output
 from app.agents.core.nodes.follow_up_actions_node import generate_follow_up_actions
@@ -270,7 +270,11 @@ async def _narrate_and_deliver(
     """
     user_id = run.user.user_id
 
-    notification_text = await _narrate_result(run, result_text, result_type, returned_note)
+    # Narration is the slow LLM call; the routing read, which does not depend on it, runs alongside.
+    notification_text, conversation_source = await asyncio.gather(
+        _narrate_result(run, result_text, result_type, returned_note),
+        _get_conversation_source(run.conversation_id, user_id),
+    )
 
     # Comms may answer with a control tag instead of a message: SILENCE (deliver
     # nothing) or REACT (one-emoji ack). One event records the outcome and the
@@ -319,8 +323,6 @@ async def _narrate_and_deliver(
 
     # Follow-ups are a second LLM call: web/mobile get them after the answer, a
     # workflow run attaches them inline, and a bot reply gets none (no bot renders them).
-    conversation_source = await _get_conversation_source(run.conversation_id, user_id)
-
     if run.workflow_id and not is_react:
         follow_up_actions = await _safe_inline_follow_ups(
             result_type=result_type,
@@ -419,15 +421,8 @@ async def _deliver_workflow_result(
     """
     # Successful, non-silent runs land in the user's real messaging-platform
     # conversations as normal bot messages (GAIA's voice, no notification
-    # chrome). The badge below is a web-only heads-up.
-    if result_type != "error" and run.workflow_notify_on_completion:
-        await deliver_result_to_platforms(
-            user=run.user,
-            user_id=run.user.user_id,
-            notification_text=notification_text,
-            origin=_delivery_origin(run),
-        )
-    await _dispatch_workflow_notification(
+    # chrome). The badge is a web-only heads-up, dispatched alongside.
+    in_app = _dispatch_workflow_notification(
         msg_type=result_type,
         workflow=_WorkflowRef(
             workflow_id=run.workflow_id,
@@ -436,6 +431,19 @@ async def _deliver_workflow_result(
         ),
         target=target,
         message_id=message_id,
+    )
+    if result_type == "error" or not run.workflow_notify_on_completion:
+        await in_app
+        return
+    # The chat-app message and the in-app badge are independent sends.
+    await asyncio.gather(
+        deliver_workflow_result(
+            user=run.user,
+            workflow_id=run.workflow_id,
+            notification_text=notification_text,
+            origin=_delivery_origin(run),
+        ),
+        in_app,
     )
 
 

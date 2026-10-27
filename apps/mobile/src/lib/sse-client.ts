@@ -2,7 +2,7 @@ import type { SubscriptionRequiredDetail } from "@gaia/shared";
 import { parseSubscriptionRequiredBody } from "@gaia/shared";
 import EventSource from "react-native-sse";
 import { getAuthToken } from "@/features/auth/utils/auth-storage";
-import { API_BASE_URL } from "./constants";
+import { API_BASE_URL, CLIENT_TYPE_HEADERS } from "./constants";
 
 export interface SSEEvent {
   id?: string;
@@ -135,6 +135,7 @@ export async function createSSEConnection(
         Accept: "text/event-stream",
         "Content-Type": "application/json",
         "x-timezone": getTimezone(),
+        ...CLIENT_TYPE_HEADERS,
         ...options.headers,
       },
       body: options.body ? JSON.stringify(options.body) : undefined,

@@ -7,6 +7,8 @@ test worker at collection time, pulls in — can read a run's home timezone
 without dragging langchain's agent middleware (and the ~1.5 s ``transformers``
 import behind it) along. ``app.models.agent_models`` re-exports everything here
 under the same names, so consumers keep importing from there.
+
+The one ``app.models`` import, ``presence_models``, is itself an import-free leaf.
 """
 
 from collections.abc import Mapping
@@ -17,6 +19,7 @@ from pydantic import BaseModel, ConfigDict
 from typing_extensions import TypedDict
 
 from app.constants.llm import LaneConfig, OpenRouterModelKwargs, OpenRouterReasoning
+from app.models.presence_models import PresenceSnapshot
 from shared.py.analytics.catalog.attribution import Actor
 from shared.py.analytics.context import AnalyticsContext, current_analytics_context
 
@@ -125,6 +128,9 @@ class AgentConfigurable(TypedDict, total=False):
     #: root from what started the turn and inherited whole, so a queued or
     #: resumed run is still attributed to it. Read via run_analytics_context.
     analytics_context: dict[str, object]
+    #: Where the user is: their per-surface last-seen stamps, captured once at the
+    #: run tree's root (before this turn's own stamp) and inherited by every child.
+    presence: PresenceSnapshot | None
 
     # --- model selection ----------------------------------------------------
     #: THE model selection, resolved once per turn and inherited verbatim.
@@ -244,6 +250,7 @@ class AgentConfigurableView(BaseModel):
     writing_style: dict[str, object] | None = None
     root_request_id: str | None = None
     analytics_context: AnalyticsContext | None = None
+    presence: PresenceSnapshot | None = None
     lane: LaneConfig | None = None
     #: LangChain's binding key — logged, never used to pick a model (read ``lane``).
     model: str | None = None

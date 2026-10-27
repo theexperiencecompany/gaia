@@ -77,7 +77,7 @@ Every fact declares `shelf_life`, and the value decides where the assertion is s
 
 - **durable**: identity, relationships, preferences, style, health, values, long-run goals. Never expires. Stored as a fact.
 - **state**: a value that was only true as of a moment: counts, balances, metrics, deployment state, open bugs, in-flight applications, anything you would naturally write "as of <date>". Stored as a fact that expires.
-- **task**: a commitment, deadline, or intention. NOT a fact: emit it as an agenda update instead.
+- **task**: a commitment, deadline, or intention that nothing else is tracking. NOT a fact: emit it as an agenda update instead. When GAIA arranged something to carry it, or is handing off right now to create one (a reminder, a tracked todo, a workflow, a calendar event), that system owns it and closes it; it is a **journal** line ("Sam asked for a reminder to water the plants at 20:49"), never a task.
 - **journal**: what happened today, what GAIA recommended, produced, drafted or advised, and world facts that were merely looked up. NOT a fact: emit it as an episode entry instead.
 
 When you cannot decide between durable and state, choose **state**.
@@ -95,7 +95,7 @@ When you cannot decide between durable and state, choose **state**.
 - Specifics the user mentions using, owning, buying, or doing: product and service names, brands, models, stores, amounts, locations visited. If the user says they made a playlist on a streaming service, the SERVICE NAME is a fact worth keeping: "which X did I use/buy/visit" must be answerable weeks later.
 - What the user CHOSE when GAIA offered options: the choice is about the user ("Sam picked Roscioli for the anniversary dinner", "Sam decided to use Whoop over Oura"). The list GAIA offered, the draft GAIA wrote, and the advice GAIA gave are NOT facts about the user: they are journal lines (shelf_life 'journal'), and the transcript itself stays searchable for the verbatim detail.
 - Quantities, durations, and times attached to events, even small or incidental ones: prices, discounts, counts, how long something took or lasted, the time of day it happened, and when something started ("Sam spent $800 on the leather jacket", "did 0.5 hours of yoga", "reached the clinic at 9:15am", "started the Book Lovers club on March 2"). These look minor but power later "how many / how long / what time / how long ago" questions, so keep each concrete number, duration, and clock/start time tied to its event.
-- Interaction preferences the user expresses about HOW they want suggestions or help ("I prefer recommendations that build on my existing recipe", "stick to Sony products when suggesting accessories"). A request is itself a preference: if the user asks for Netflix stand-up specials, store that they like stand-up specials on Netflix.
+- Interaction preferences the user expresses about HOW they want suggestions or help ("I prefer recommendations that build on my existing recipe", "stick to Sony products when suggesting accessories"). A request is itself a preference: if the user asks for Netflix stand-up specials, store that they like stand-up specials on Netflix. That covers what they want; how one task should be carried out is not a preference (rule 13).
 
 ## Rules for facts
 
@@ -111,6 +111,7 @@ When you cannot decide between durable and state, choose **state**.
 10. Folders: choose category_path by the fact's SUBJECT using the taxonomy below, not by who the fact mentions.
 11. Importance: 0.9+ life-defining, 0.6-0.8 stable preferences and recurring context, 0.3-0.5 incidental.
 12. Never store the state of the user's GAIA integrations or connected accounts: connected, disconnected, expired, lost, needing reconnection, or a connect, add-account or sign-in flow still in progress. GAIA reads that live every turn, and a remembered copy outlives it and contradicts it. Keep only the durable thing the conversation reveals (which account is for work, where a client's mail arrives), and at most a journal line for what happened.
+13. One-off instructions are not standing preferences. How the user asks GAIA to handle a single task (where to send it, when, through which account or channel, in what format: "remind me on WhatsApp", "send this one to my work email", "ping me here") applies to that task only, so it is at most a journal line. It becomes a durable preference only when the user makes it standing in their own words ("from now on", "always", "every time", "by default"). GAIA saying where or how it will do something is never a fact about the user.
 
 ## Entities and edges
 
@@ -124,7 +125,7 @@ Write 3-8 terse past-tense journal lines for today's diary. Write from the USER'
 
 ## Agenda updates
 
-List open loops this conversation opened or closed: new commitments, deadlines, things GAIA owes the user, or previously open items now resolved. Leave empty if nothing changed. Finishing a connection, sign-in or account setup GAIA just offered is never an open loop (rule 12).
+List open loops this conversation opened or closed: new commitments, deadlines, things GAIA owes the user, or previously open items now resolved. Leave empty if nothing changed. Finishing a connection, sign-in or account setup GAIA just offered is never an open loop (rule 12). Neither is anything a reminder, tracked todo, workflow or calendar event carries, whether GAIA already created it or is handing it off right now to create it (a call_executor task asking for a reminder or a tracked todo counts, as in "remind me at 5" or "keep an eye on X and tell me"): that system fires it, shows it and closes it, so a copy here only goes stale. Record it as a journal line instead.
 
 """
     + _FOLDER_GUIDANCE

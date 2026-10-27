@@ -44,8 +44,15 @@ from shared.py.analytics.catalog.chat import (
     ChatMessageCompleted,
     ChatMessageSubmitted,
 )
+from shared.py.analytics.catalog.notifications import NotificationAgentSent
 from shared.py.analytics.catalog.onboarding import OnboardingCompleted, OnboardingPhaseCompleted
-from shared.py.analytics.catalog.workflows import WorkflowCreated, WorkflowExecuted
+from shared.py.analytics.catalog.reminders import ReminderCompleted
+from shared.py.analytics.catalog.todos import TodosRunResultDelivered
+from shared.py.analytics.catalog.workflows import (
+    WorkflowCreated,
+    WorkflowExecuted,
+    WorkflowResultDelivered,
+)
 from shared.py.analytics.context import POSTHOG_SESSION_PROPERTY
 
 from . import e2e_journeys as journeys
@@ -102,6 +109,11 @@ NOT_DRIVABLE = (
     f"{UserLoggedOut.event}: POST /user/logout needs a sealed WorkOS session cookie",
     "ai:llm_call_completed: the sim stub reports zero tokens, and one-shot calls skip zero usage; "
     "the ledger row is asserted in Mongo instead",
+    f"{WorkflowResultDelivered.event} (destination, destination_basis): the workflow journey's "
+    "sim comms replies itself, so the run never reaches the executor's result delivery",
+    f"{ReminderCompleted.event}, {TodosRunResultDelivered.event} (destination, destination_basis): "
+    "no journey fires a reminder or a tracked todo run",
+    f"{NotificationAgentSent.event}: no journey's sim script calls send_notification",
 )
 
 

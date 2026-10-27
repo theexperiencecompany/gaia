@@ -4,7 +4,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage, ToolMessage
 import pytest
 
-from app.agents.context.slots import TIME_CONTEXT_MARKER, mark as mark_message
+from app.agents.context.slots import (
+    PRESENCE_NOTE_MARKER,
+    TIME_CONTEXT_MARKER,
+    mark as mark_message,
+)
 from app.agents.core.nodes.memory_node import (
     MAX_TOOL_OUTPUT_SIZE,
     _check_worth_learning,
@@ -153,6 +157,37 @@ class TestFormatMessagesForUserMemory:
         ]
         formatted = _format_messages_for_user_memory(msgs)
         assert formatted == [{"role": "user", "content": "my anniversary is October 19"}]
+
+
+def _surface_change_note() -> HumanMessage:
+    return mark_message(
+        HumanMessage(
+            content=(
+                "[Surface change: the user is now writing from Telegram. Their previous message "
+                "was on Web at 2026-10-24 16:55 UTC.]"
+            )
+        ),
+        PRESENCE_NOTE_MARKER,
+    )
+
+
+class TestThePresenceNoteIsNotTheUserSpeaking:
+    """GAIA's surface-change note rides the thread as a HumanMessage; memory must never learn from it."""
+
+    def test_the_note_never_reaches_the_extractor(self) -> None:
+        msgs = [_surface_change_note(), HumanMessage(content="my anniversary is October 19")]
+
+        formatted = _format_messages_for_user_memory(msgs)
+
+        assert formatted == [{"role": "user", "content": "my anniversary is October 19"}]
+
+    def test_a_trivial_turn_with_a_note_is_not_worth_learning(self) -> None:
+        worth, reason = _check_worth_learning(
+            [_surface_change_note(), HumanMessage(content="hi"), AIMessage(content="hello")]
+        )
+
+        assert worth is False
+        assert reason == "No substantive user message"
 
 
 class TestExtractTextContent:

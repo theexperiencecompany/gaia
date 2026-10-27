@@ -4,7 +4,7 @@ import {
   clearAuthData,
   getAuthToken,
 } from "@/features/auth/utils/auth-storage";
-import { API_BASE_URL } from "./constants";
+import { API_BASE_URL, CLIENT_TYPE_HEADERS } from "./constants";
 
 // Callback for any 401 Unauthorized response, wired up by AuthProvider via
 // setOnUnauthorized() so the auth layer can clear credentials and redirect to
@@ -40,6 +40,7 @@ async function request<T = unknown>(config: RequestConfig): Promise<T> {
     Authorization: `Bearer ${token}`,
     Accept: "application/json",
     "x-timezone": getUserTimezone(),
+    ...CLIENT_TYPE_HEADERS,
   };
 
   if (data && !(data instanceof FormData)) {

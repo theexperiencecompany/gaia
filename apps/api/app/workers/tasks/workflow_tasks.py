@@ -16,7 +16,7 @@ from app.agents.core.background.executor_queue import (
     try_acquire_lock,
 )
 from app.agents.core.background.workflow_platform_delivery import (
-    deliver_result_to_platforms,
+    deliver_workflow_result,
 )
 from app.agents.prompts.playbook_prompts import (
     PLAYBOOK_FALLBACK_TEMPLATE,
@@ -898,17 +898,20 @@ async def _notify_replay_finished(
         )
         return
     try:
-        await deliver_result_to_platforms(
-            user=user,
-            user_id=workflow.user_id,
-            notification_text=text,
-            origin=f'workflow "{workflow.title}" (id {workflow.id})',
-        )
-        await send_workflow_completion_notification(
-            workflow_id=workflow.id or "",
-            workflow_title=workflow.title,
-            conversation_id=conversation_id,
-            user_id=workflow.user_id,
+        # The in-app badge does not depend on where the chat message goes.
+        await asyncio.gather(
+            deliver_workflow_result(
+                user=user,
+                workflow_id=workflow.id,
+                notification_text=text,
+                origin=f'workflow "{workflow.title}" (id {workflow.id})',
+            ),
+            send_workflow_completion_notification(
+                workflow_id=workflow.id or "",
+                workflow_title=workflow.title,
+                conversation_id=conversation_id,
+                user_id=workflow.user_id,
+            ),
         )
     except Exception as e:
         log.warning(

@@ -45,8 +45,14 @@ from app.constants.hil import HIL_ACK_APPROVED, HIL_ACK_DENIED, HIL_CLASSIFIER_H
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.db.repositories.conversations import conversation_repository
-from app.models.chat_models import MessageKind, ToolDataEntry
+from app.models.chat_models import (
+    ConversationSource,
+    MessageKind,
+    SourceCategory,
+    ToolDataEntry,
+)
 from app.models.message_models import MessageDict, MessageRequestWithHistory
+from app.models.presence_models import PresenceSnapshot
 from app.models.stream_events import (
     ConversationDescriptionFrame,
     ConversationInitializedFrame,
@@ -72,6 +78,7 @@ from app.services.chat.state import (
     recover_stream_state,
 )
 from app.services.chat.workspace import schedule_last_active_touch
+from app.services.delivery.presence import record_turn_presence
 from app.services.files import FileService
 from app.services.hil.conversational import resolve_pending_from_message
 from app.services.latency_metrics import (
@@ -85,6 +92,7 @@ from app.services.storage import flush_fs_metrics
 from app.utils.agent_utils import format_sse_data, format_sse_response
 from app.utils.chat_utils import generate_and_update_description
 from app.utils.message_breaks import strip_partial_message_break
+from app.utils.presence_utils import is_presence_surface
 from app.utils.stream_utils import (
     REASONING_STEP,
     ReasoningEvent,
@@ -92,7 +100,7 @@ from app.utils.stream_utils import (
     reconstruct_subagent_groups,
 )
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.attribution import Actor
+from shared.py.analytics.catalog.attribution import Actor, Trigger
 from shared.py.analytics.catalog.chat import (
     ChatMessageCancelled,
     ChatMessageCompleted,
@@ -133,6 +141,19 @@ async def run_chat_stream_background(
             source=source,
             t0_perf=t0_perf,
         )
+
+
+async def _capture_presence(user_id: str, source: str | None) -> PresenceSnapshot | None:
+    """Stamp a turn the user sent on its surface and return where they were before it; agent-driven turns record nothing."""
+    attribution = current_analytics_context().attribution
+    if attribution.actor is not Actor.USER or attribution.trigger is not Trigger.INTERACTIVE:
+        return None
+    if not is_presence_surface(attribution.surface):
+        return None
+    surface = ConversationSource.coerce(source)
+    if surface is None or SourceCategory.from_source(surface) is SourceCategory.BG:
+        return None
+    return await record_turn_presence(user_id, surface)
 
 
 class _ErrorOrReasoningChunk(BaseModel):
@@ -189,6 +210,7 @@ class _TurnContext:
     conversation_id: str
     stream_id: str
     source: str | None
+    presence: PresenceSnapshot | None
     usage_callback: UsageMetadataCallbackHandler
 
 
@@ -297,6 +319,7 @@ async def _run_chat_stream(
 
     try:
         _set_stream_log_context(body, user_id, conversation_id, stream_id, is_new_conversation)
+        presence = await _capture_presence(user_id, source)
 
         await _publish_init_chunk(
             body,
@@ -351,6 +374,7 @@ async def _run_chat_stream(
                 conversation_id=conversation_id,
                 stream_id=stream_id,
                 source=source,
+                presence=presence,
                 usage_callback=usage_callback,
             ),
             description_task,
@@ -688,7 +712,11 @@ async def _consume_agent_stream(
         request=body,
         user=user,
         conversation_id=turn.conversation_id,
-        options=AgentRunOptions(usage_metadata_callback=turn.usage_callback, source=turn.source),
+        options=AgentRunOptions(
+            usage_metadata_callback=turn.usage_callback,
+            source=turn.source,
+            presence=turn.presence,
+        ),
         ids=StreamMessageIds(
             stream_id=stream_id,
             user_message_id=state.user_message_id,
