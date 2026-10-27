@@ -205,8 +205,8 @@ COMPLETION_NUDGE_MESSAGE = (
     "that more results are coming ('hang tight', 'still digging'): either do the "
     "work now with tools, or state plainly what you got and what failed. Then "
     "finish with finish_task: your complete final result and its outcome, backed "
-    "by this run's tool calls (done: the work ran; schedule: the reminder or "
-    "scheduled tracked todo was created; subscribe: the trigger watch was set). "
+    "by this run's tool calls (done: the work ran; schedule: a tracked todo "
+    "with a schedule or recurrence was set; subscribe: the trigger watch was set). "
     "Anything else is ask or blocked.]"
 )
 # A plain-text stop that PROMISES future work is never valid: the run is over the

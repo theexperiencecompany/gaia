@@ -13,7 +13,6 @@ from langchain_core.messages import AIMessage, AnyMessage, ToolCall, ToolMessage
 
 from app.agents.core.delegation_window import current_delegation
 from app.constants.agents import (
-    OUTCOME_REMINDER_TOOL,
     OUTCOME_SCHEDULE_ARGS,
     OUTCOME_SUBSCRIBE_TOOL,
     OUTCOME_TRACKED_TODO_TOOLS,
@@ -58,10 +57,8 @@ def _effective_call(call: ToolCall) -> tuple[str, Mapping[str, object]]:
 
 
 def _wakes_later(call: ToolCall) -> bool:
-    """Return whether this successful call leaves something that fires on its own."""
+    """Return whether this successful call leaves something that wakes GAIA again."""
     name, args = _effective_call(call)
-    if name == OUTCOME_REMINDER_TOOL:
-        return True
     if name in OUTCOME_TRACKED_TODO_TOOLS:
         return any(args.get(key) for key in OUTCOME_SCHEDULE_ARGS)
     return False
@@ -105,7 +102,7 @@ def review_outcome(delegation: Sequence[AnyMessage]) -> OutcomeReview:
         return OutcomeReview(declared, "done was declared but no work call succeeded")
     if declared is OutcomeState.SCHEDULE and not any(_wakes_later(c) for c in calls):
         return OutcomeReview(
-            declared, "schedule was declared but no reminder or scheduled tracked todo was created"
+            declared, "schedule was declared but no tracked todo was scheduled to wake GAIA"
         )
     if declared is OutcomeState.SUBSCRIBE and not any(
         _effective_call(c)[0] == OUTCOME_SUBSCRIBE_TOOL for c in calls

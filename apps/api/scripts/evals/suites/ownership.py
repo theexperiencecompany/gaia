@@ -159,7 +159,11 @@ def reply_brevity_gate(case: Case, run: CaseRun) -> float:
 
 
 def followup_gate(case: Case, run: CaseRun) -> float:
-    """required: a new follow-up with a wake source exists; forbidden: none was created."""
+    """required: a new follow-up with a wake source exists; forbidden: none was created.
+
+    followup_kind: todo demands a tracked todo, the one follow-up GAIA itself wakes on; a reminder only
+    pings the user, so it satisfies a plain "remind me" and never a "check back".
+    """
     followups = (run.end_state or {}).get("followups")
     if not isinstance(followups, list) or produced_nothing(run.messages, run.tool_calls, run.text):
         return 0.0
@@ -167,7 +171,15 @@ def followup_gate(case: Case, run: CaseRun) -> float:
     if spec["followup"] == "forbidden":
         return 1.0 if not followups else 0.0
     term = str(spec.get("followup_contains") or "").lower()
-    return 1.0 if any(f["wake"] and term in str(f["title"]).lower() for f in followups) else 0.0
+    prefix = f"{spec['followup_kind']}:" if spec.get("followup_kind") else ""
+    return (
+        1.0
+        if any(
+            f["wake"] and f["id"].startswith(prefix) and term in str(f["title"]).lower()
+            for f in followups
+        )
+        else 0.0
+    )
 
 
 class OwnershipTransport(ChatStreamTransport):

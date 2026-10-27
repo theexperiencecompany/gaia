@@ -156,9 +156,9 @@ class OutcomeState(StrEnum):
     BLOCKED = "blocked"
 
 
-#: The calls whose success backs a declared outcome (completion.review_outcome).
-#: A tracked todo wakes on its own only with a schedule or a recurrence set.
-OUTCOME_REMINDER_TOOL = "create_reminder_tool"
+#: The calls whose success backs a declared outcome (outcome_review.review_outcome).
+#: Only a tracked todo with a schedule or a recurrence wakes GAIA again; a
+#: reminder just notifies the user, so it backs done, never schedule.
 OUTCOME_TRACKED_TODO_TOOLS = frozenset({"create_tracked_todo", "update_tracked_todo"})
 OUTCOME_SCHEDULE_ARGS = ("scheduled_at", "recurrence")
 OUTCOME_SUBSCRIBE_TOOL = "subscribe_todo_to_trigger"
@@ -168,8 +168,8 @@ OUTCOME_SUBSCRIBE_TOOL = "subscribe_todo_to_trigger"
 TIME_HORIZON_BRIEF: dict[TimeHorizon, str] = {
     TimeHorizon.ONE_SHOT: "one_shot: finish it in this run.",
     TimeHorizon.DEADLINE: (
-        "deadline: unless it is fully done in this run, leave a reminder or a scheduled "
-        "tracked todo that fires before the date."
+        "deadline: unless it is fully done in this run, leave a tracked todo scheduled "
+        "to wake you before the date."
     ),
     TimeHorizon.ONGOING: (
         "ongoing: it needs attention after this run. Leave a tracked todo with a schedule, "

@@ -64,9 +64,17 @@ class TestReviewOutcome:
 
         assert review.problem is not None
 
-    def test_schedule_backed_by_a_reminder_is_verified(self) -> None:
+    def test_a_reminder_does_not_back_schedule(self) -> None:
+        """A reminder pings the user and never wakes GAIA, so it cannot be GAIA's follow-up."""
         review = review_outcome(
             [_task(), *_call("create_reminder_tool", {"payload": {}}, "c1"), *_finish("schedule")]
+        )
+
+        assert review.problem is not None
+
+    def test_a_reminder_backs_done_for_a_plain_remind_me(self) -> None:
+        review = review_outcome(
+            [_task(), *_call("create_reminder_tool", {"payload": {}}, "c1"), *_finish("done")]
         )
 
         assert review.verified
@@ -134,7 +142,7 @@ class TestReviewRun:
     def test_a_previous_delegation_s_work_does_not_back_this_one(self) -> None:
         thread: list[AnyMessage] = [
             HumanMessage(content="first task"),
-            *_call("create_reminder_tool", {}, "c1"),
+            *_call("create_tracked_todo", {"scheduled_at": "2026-10-30"}, "c1"),
             AIMessage(content="first done"),
             HumanMessage(content="second task"),
             *_finish("schedule"),

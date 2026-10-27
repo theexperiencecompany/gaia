@@ -27,8 +27,8 @@ async def finish_task(
     outcome: Annotated[
         OutcomeState | None,
         "Where the request stands. done: the outcome is met by tool calls in this run. "
-        "schedule: a reminder or scheduled tracked todo created in this run will pick it "
-        "up later. subscribe: a trigger watch set in this run will. ask: it needs the "
+        "schedule: a tracked todo with a schedule or recurrence set in this run will wake "
+        "GAIA to pick it up later (a reminder only pings the user and does not count). subscribe: a trigger watch set in this run will. ask: it needs the "
         "user's decision or approval (put the one question in result). blocked: it "
         "cannot proceed (put the reason and what would unblock it in result). The "
         "executor always sets it.",
