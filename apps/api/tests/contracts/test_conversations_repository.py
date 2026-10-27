@@ -1078,3 +1078,55 @@ async def test_owners_of_maps_each_existing_conversation_to_its_owner(repo):
     owners = await repo.owners_of([a_conv.conversation_id, b_conv.conversation_id, _cid()])
 
     assert owners == {a_conv.conversation_id: alice, b_conv.conversation_id: bob}
+
+
+class TestHistoryTrimming:
+    """A conversation is one Mongo document, so history is trimmed — never silently losing what the user kept."""
+
+    async def _seed(
+        self, repo: ConversationRepository, count: int
+    ) -> tuple[ConversationDocument, list[str]]:
+        doc = _doc()
+        await repo.create(doc)
+        ids: list[str] = []
+        for index in range(count):
+            added = await repo.append_messages(
+                doc.conversation_id,
+                user_id=doc.user_id,
+                messages=[MessageModel(type="user", response=f"m{index}")],
+            )
+            assert added is not None
+            ids.extend(added)
+        return doc, ids
+
+    async def test_trimming_keeps_the_newest_messages(self, repo):
+        doc, _ids = await self._seed(repo, 5)
+
+        await repo.append_messages(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            messages=[MessageModel(type="user", response="m5")],
+            max_messages=3,
+        )
+
+        stored = await repo.get(doc.conversation_id, user_id=doc.user_id)
+        assert stored is not None
+        assert [message.response for message in stored.messages] == ["m3", "m4", "m5"]
+
+    async def test_trimming_keeps_a_pinned_message_outside_the_window(self, repo):
+        doc, ids = await self._seed(repo, 5)
+        await repo.set_message_pinned(
+            doc.conversation_id, user_id=doc.user_id, message_id=ids[0], pinned=True
+        )
+
+        await repo.append_messages(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            messages=[MessageModel(type="user", response="m5")],
+            max_messages=3,
+        )
+
+        stored = await repo.get(doc.conversation_id, user_id=doc.user_id)
+        assert stored is not None
+        assert [message.response for message in stored.messages] == ["m0", "m3", "m4", "m5"]
+        assert stored.messages[0].pinned is True

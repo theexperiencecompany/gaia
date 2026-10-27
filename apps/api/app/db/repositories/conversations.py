@@ -270,7 +270,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
 
         One atomic update: each message takes the folded cards waiting for its id
         into its tool_data, and those (and any a day stale) leave the waiting room.
-        max_messages caps stored history so per-workflow threads stay under 16MB.
+        max_messages caps stored history so per-workflow threads stay under 16MB,
+        keeping every pinned message ahead of the cap.
         """
         stored: list[dict[str, object]] = []
         message_ids: list[str] = []
@@ -281,9 +282,41 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             message_ids.append(message_id)
             stored.append(_absorbing(message_id, data))
 
-        history: dict[str, object] = {"$concatArrays": [{"$ifNull": ["$messages", []]}, stored]}
+        appended: dict[str, object] = {"$concatArrays": [{"$ifNull": ["$messages", []]}, stored]}
+        history = appended
         if max_messages is not None:
-            history = {"$slice": [history, -max_messages]}
+            # A pinned message is context the user chose to keep: trimming past
+            # it would delete the pin as a side effect of a length cap.
+            history = {
+                "$let": {
+                    "vars": {
+                        "cut": {
+                            "$max": [
+                                0,
+                                {"$subtract": [{"$size": appended}, max_messages]},
+                            ]
+                        }
+                    },
+                    "in": {
+                        "$cond": [
+                            {"$eq": ["$$cut", 0]},
+                            appended,
+                            {
+                                "$concatArrays": [
+                                    {
+                                        "$filter": {
+                                            "input": {"$slice": [appended, 0, "$$cut"]},
+                                            "as": "message",
+                                            "cond": {"$eq": ["$$message.pinned", True]},
+                                        }
+                                    },
+                                    {"$slice": [appended, -max_messages]},
+                                ]
+                            },
+                        ]
+                    },
+                }
+            }
         matched = await self._apply_pipeline_update_unfetched(
             {"conversation_id": conversation_id},
             [
