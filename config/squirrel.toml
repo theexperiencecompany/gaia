@@ -35,3 +35,10 @@ enabled = false
 [cloud]
 enabled = false
 publish = false
+
+# The rule's 3% default flags ordinary product and localised prose: a marketplace
+# page naming its own subject, or Spanish "con"/Portuguese "com" in translated
+# copy. 4% still catches real stuffing (the worst page before the copy rewrite was
+# 7.2%) without treating a product's own name as spam.
+[rule_options."content/keyword-stuffing"]
+density_threshold = 4
