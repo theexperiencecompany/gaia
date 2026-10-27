@@ -243,9 +243,13 @@ class RecordingFakeModel(BindableToolsFakeModel):
         return self._generate(messages, *args, **kwargs)
 
 
-#: What a scripted hand-off sends for call_executor's required
-#: acceptance_criteria, filled here so one schema change doesn't rewrite fifty scripts by hand.
+#: What a scripted hand-off sends for call_executor's required args, filled
+#: here so one schema change doesn't rewrite fifty scripts by hand.
 SCRIPTED_ACCEPTANCE_CRITERIA = ["scripted e2e hand-off"]
+SCRIPTED_HANDOFF_DEFAULTS: dict[str, Any] = {
+    "desired_outcome": "scripted e2e outcome",
+    "time_horizon": "one_shot",
+}
 
 
 #: One scripted tool-call payload, shared by every helper that models the
@@ -263,8 +267,10 @@ def call(name: str, args: dict[str, Any] | None = None, call_id: str = "c1") -> 
     became required and every one of them broke at once.
     """
     call_args = dict(args or {})
-    if name == "call_executor" and "acceptance_criteria" not in call_args:
-        call_args["acceptance_criteria"] = list(SCRIPTED_ACCEPTANCE_CRITERIA)
+    if name == "call_executor":
+        call_args.setdefault("acceptance_criteria", list(SCRIPTED_ACCEPTANCE_CRITERIA))
+        for key, value in SCRIPTED_HANDOFF_DEFAULTS.items():
+            call_args.setdefault(key, value)
     return {"name": name, "args": call_args, "id": call_id}
 
 

@@ -225,6 +225,7 @@ async def run_chain(
         _note: str,
         *,
         tool_data: list[ToolDataEntry] | None,
+        outcome_note: str = "",
     ) -> tuple[str, str]:
         run.delivered.append((text, result_type))
         return text, "executor-message-1"

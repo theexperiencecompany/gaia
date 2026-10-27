@@ -20,9 +20,9 @@ from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMes
 import pytest
 
 from app.agents.context.slots import BACKGROUND_EXECUTOR_NAME
+from app.agents.core.delegation_window import current_delegation
 from app.agents.middleware.completion import (
     completion_nudges_spent,
-    current_delegation,
     playbook_decision_pending,
     playbook_nudges_spent,
     reply_promises_future_work,

@@ -22,9 +22,10 @@ import pytest
 from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.running_registry import RunningSubagents
 from app.agents.core.background.session import get_session, teardown_session
+from app.agents.core.subagents.subagent_runner import compose_executor_brief
 from app.agents.tools import executor_tool
 from app.agents.tools.executor_tool import call_executor, cancel_executor, tools
-from app.constants.agents import DONE_EVIDENCE_RULE, AgentTag
+from app.constants.agents import AgentTag, TimeHorizon
 from app.constants.browser import BrowserSessionStatus
 from app.constants.cache import (
     EXECUTOR_BUSY_PREFIX,
@@ -39,6 +40,7 @@ from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
 from app.db.repositories.playbooks import playbook_repository
 from app.models.agent_models import InboxEntry, RunningSubagent
+from app.models.ownership_models import ExecutorIntent
 from app.models.playbook_models import PlaybookDocument, PlaybookRunStatus, ToolStep
 from app.schemas.browser import BrowserResultSnapshot
 from app.schemas.browser_job import BrowserJobFinished, BrowserJobState, BrowserJobStatus
@@ -71,20 +73,27 @@ run_call_executor = tool_function(call_executor)
 run_cancel_executor = tool_function(cancel_executor)
 
 
+#: What call_executor_with sends for the intent fields a test does not care about.
+DEFAULT_TEST_INTENT = ExecutorIntent(
+    desired_outcome="the task is done", time_horizon=TimeHorizon.ONE_SHOT
+)
+
+
 async def call_executor_with(
     config: RunnableConfig,
     task: str,
     acceptance_criteria: list[str] | None = None,
     **kwargs: Any,
 ) -> str:
-    """Call call_executor with the now-required acceptance_criteria provided.
+    """Call call_executor with its required brief fields provided.
 
-    The tool schema requires acceptance_criteria (never omit); tests that don't
-    care about it pass a generic checklist so they exercise the dispatch path,
-    not the schema default.
+    Tests that don't care about them pass generic values so they exercise the
+    dispatch path, not the schema.
     """
     if acceptance_criteria is None:
         acceptance_criteria = []
+    kwargs.setdefault("desired_outcome", DEFAULT_TEST_INTENT.desired_outcome)
+    kwargs.setdefault("time_horizon", DEFAULT_TEST_INTENT.time_horizon)
     return await run_call_executor(
         config=config,
         task=task,
@@ -227,7 +236,9 @@ class TestCallExecutorDispatch:
 
         assert len(spawned_runs) == 1
         run = spawned_runs[0]["run"]
-        assert spawned_runs[0]["task"] == "check my calendar"
+        assert spawned_runs[0]["task"] == compose_executor_brief(
+            "check my calendar", [], intent=DEFAULT_TEST_INTENT
+        )
         assert run.task_id == task_id_from(response)
         assert run.stream_id == "stream-1"
         assert run.conversation_id == CONVERSATION_ID
@@ -365,9 +376,8 @@ class TestCallExecutorLockContention:
         assert entries == [
             InboxEntry(
                 id=handed_id,
-                text=(
-                    "second\n\nDefinition of done (every item must be true before you "
-                    f"finish):\n- the draft is saved\n{DONE_EVIDENCE_RULE}"
+                text=compose_executor_brief(
+                    "second", ["the draft is saved"], intent=DEFAULT_TEST_INTENT
                 ),
                 tag=AgentTag.USER_INTERJECTION,
             )

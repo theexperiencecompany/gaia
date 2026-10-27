@@ -38,6 +38,7 @@ from langgraph.store.base import BaseStore
 from langgraph.types import RetryPolicy, Send
 from langgraph_bigtool.tools import get_default_retrieval_tool, get_store_arg
 
+from app.agents.core.outcome_review import outcome_unbacked
 from app.agents.llm.client import (
     LLMInvokeOptions,
     _is_openai_wire,
@@ -680,6 +681,12 @@ async def afinish_task_node(tool_calls: list[ToolCall], *, store: BaseStore) -> 
     return finish_task_node(tool_calls, store=store)
 
 
+def _owes_backed_outcome(state: State) -> bool:
+    # A finish_task whose declared outcome this run's tool calls do not back,
+    # while the completion nudge budget lasts. ask and blocked need no work.
+    return completion_nudges_spent(state) < MAX_COMPLETION_NUDGES and outcome_unbacked(state)
+
+
 def _owes_playbook_decision(state: State) -> bool:
     # A briefed workflow run that stops without deciding about its playbook.
     # Checked before the general completion nudge: it is the more specific
@@ -700,6 +707,9 @@ def _after_finish_task(exit_node: str) -> Callable[[State], str]:
     def route(state: State) -> str:
         if _owes_playbook_decision(state):
             log.info(f"{LogTag.AGENT} finish_task without a playbook decision; nudging once")
+            return "nudge_continue"
+        if _owes_backed_outcome(state):
+            log.info(f"{LogTag.AGENT} finish_task outcome not backed by this run; nudging once")
             return "nudge_continue"
         return exit_node
 

@@ -43,6 +43,7 @@ from app.agents.tools.core.tool_runtime_config import (
 )
 from app.agents.tools.discovery_tools import find_integration, search_public_workflows
 from app.agents.tools.executor_tool import call_executor, cancel_executor
+from app.agents.tools.finish_task_tool import finish_task
 from app.agents.tools.subagent_control_tool import (
     cancel_subagent,
     list_running_subagents,
@@ -50,6 +51,7 @@ from app.agents.tools.subagent_control_tool import (
 )
 from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
 from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
+from app.constants.general import FINISH_TASK_NAME
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
 from app.override.langgraph_bigtool.agent_config import (
@@ -134,6 +136,9 @@ async def build_executor_graph(
     # handoff rather than dead-ending them.
     tool_dict.update({"handoff": handoff_tool})
     tool_dict.update({"activate_integration": activate_integration})
+    # The executor ends through finish_task too: its outcome is what the run's
+    # review checks against the tool calls that actually ran.
+    tool_dict.update({FINISH_TASK_NAME: finish_task})
     # Executor-only tools to steer or cancel a specific running subagent by id.
     tool_dict.update(
         {t.name: t for t in (list_running_subagents, message_subagent, cancel_subagent)}
@@ -183,7 +188,7 @@ async def build_executor_graph(
 
     # activate_integration leads; handoff stays for the per-user MCP
     # integrations activation cannot bind in-context (routed there).
-    initial_tools = ["activate_integration", *EXECUTOR_INITIAL_TOOL_IDS]
+    initial_tools = ["activate_integration", FINISH_TASK_NAME, *EXECUTOR_INITIAL_TOOL_IDS]
 
     builder = create_agent(
         chat_llm,

@@ -51,6 +51,7 @@ from app.agents.core.background.session import (
     get_session,
     signal_executor_done,
 )
+from app.agents.core.outcome_review import review_run
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
     execute_subagent_stream,
@@ -58,6 +59,7 @@ from app.agents.core.subagents.subagent_runner import (
     prepare_executor_execution,
     thread_messages,
 )
+from app.agents.prompts.comms_prompts import outcome_delivery_note
 from app.constants.agents import NON_WAKING_TAGS, AgentTag
 from app.constants.executor import (
     EXECUTOR_APPROVAL_LOST_MESSAGE,
@@ -524,6 +526,11 @@ async def _finalize_executor_run(
     # its TTL. The lock lifecycle is the load-bearing step — always run it.
     try:
         if not abandoned:
+            outcome_note = (
+                await _review_outcome_note(ctx)
+                if ctx is not None and result_type == "final"
+                else ""
+            )
             await _deliver_terminal_outcome(
                 run,
                 task,
@@ -533,6 +540,7 @@ async def _finalize_executor_run(
                     was_cancelled=was_cancelled,
                     returned_note=returned_note,
                     tool_data=tool_data,
+                    outcome_note=outcome_note,
                 ),
             )
     except Exception as e:  # never let delivery failure strand the queue
@@ -580,6 +588,20 @@ async def _finalize_executor_run(
         )
         return
     await _carry_pending_into_new_run(run, ctx)
+
+
+async def _review_outcome_note(ctx: SubagentExecutionContext) -> str:
+    """Check the run's declared outcome against its own tool calls; the note comms delivers under."""
+    review = review_run(await thread_messages(ctx))
+    log.set(
+        executor={
+            "outcome": review.declared.value if review.declared else None,
+            "outcome_verified": review.verified,
+        }
+    )
+    if review.problem:
+        log.warning(f"{LogTag.AGENT} Executor outcome not verified", problem=review.problem)
+    return outcome_delivery_note(review.declared, review.problem)
 
 
 async def _finalize_paused_run(run: ExecutorRun) -> None:
@@ -632,6 +654,7 @@ class TerminalOutcome:
     was_cancelled: bool
     returned_note: str
     tool_data: list[ToolDataEntry] | None
+    outcome_note: str = ""
 
 
 async def _deliver_terminal_outcome(
@@ -665,6 +688,7 @@ async def _deliver_terminal_outcome(
             outcome.result_type,
             outcome.returned_note,
             tool_data=outcome.tool_data,
+            outcome_note=outcome.outcome_note,
         )
         await _publish_voice_tts(run.stream_id, notification_text, message_id)
 

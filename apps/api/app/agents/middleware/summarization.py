@@ -39,8 +39,8 @@ from app.agents.context.slots import (
     is_conversation_summary,
     slot_of,
 )
+from app.agents.core.delegation_window import running_turn_start
 from app.agents.llm.client import SILENT_LLM_CONFIG
-from app.agents.middleware.completion import running_turn_start
 from app.constants.log_tags import LogTag
 from app.constants.summarization import SUMMARY_INPUT_BUDGET_FRACTION
 from app.models.agent_models import AgentConfigurable, agent_configurable

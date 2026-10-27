@@ -137,6 +137,55 @@ DONE_EVIDENCE_RULE = (
     "only by a tool call in this run. A memory, or an earlier run of the same task, never meets it."
 )
 
+
+class TimeHorizon(StrEnum):
+    """How long a delegated request needs attention; comms sets it on call_executor."""
+
+    ONE_SHOT = "one_shot"
+    DEADLINE = "deadline"
+    ONGOING = "ongoing"
+
+
+class OutcomeState(StrEnum):
+    """How an executor run left the user's request, declared on finish_task."""
+
+    DONE = "done"
+    SCHEDULE = "schedule"
+    SUBSCRIBE = "subscribe"
+    ASK = "ask"
+    BLOCKED = "blocked"
+
+
+#: The calls whose success backs a declared outcome (completion.review_outcome).
+#: A tracked todo wakes on its own only with a schedule or a recurrence set.
+OUTCOME_REMINDER_TOOL = "create_reminder_tool"
+OUTCOME_TRACKED_TODO_TOOLS = frozenset({"create_tracked_todo", "update_tracked_todo"})
+OUTCOME_SCHEDULE_ARGS = ("scheduled_at", "recurrence")
+OUTCOME_SUBSCRIBE_TOOL = "subscribe_todo_to_trigger"
+
+
+#: What the executor brief tells the run each horizon demands before it may finish.
+TIME_HORIZON_BRIEF: dict[TimeHorizon, str] = {
+    TimeHorizon.ONE_SHOT: "one_shot: finish it in this run.",
+    TimeHorizon.DEADLINE: (
+        "deadline: unless it is fully done in this run, leave a reminder or a scheduled "
+        "tracked todo that fires before the date."
+    ),
+    TimeHorizon.ONGOING: (
+        "ongoing: it needs attention after this run. Leave a tracked todo with a schedule, "
+        "recurrence or trigger watch before you finish."
+    ),
+}
+
+IRREVERSIBLE_APPROVED_BRIEF = (
+    "Irreversible actions: the user approved them for this request. Do exactly what was "
+    "approved, nothing broader."
+)
+IRREVERSIBLE_UNAPPROVED_BRIEF = (
+    "Irreversible actions: NOT approved. Deleting, bulk-changing, sending or posting needs the "
+    "user's yes first: prepare it (the draft, the exact items) and finish with outcome ask."
+)
+
 #: The tag both playbook briefs open with. The executor's graph loop reads it
 #: off the task turn to know the run owes a decision, so the briefs and the
 #: gate cannot drift apart on a string.
