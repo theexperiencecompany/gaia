@@ -5287,132 +5287,132 @@
   "notion-teams": {
     "toolA": "Notion",
     "toolB": "Microsoft Teams",
-    "tagline": "Share Notion content in Teams and capture meeting notes back to Notion",
-    "metaTitle": "Notion Teams 연동: 페이지 알림과 회의 메모",
-    "metaDescription": "Teams를 Notion 최신 소식과 맞추세요. GAIA가 Notion 업데이트를 Teams 채널에 올리고 Teams 회의 메모를 Notion에 저장합니다. 설정 단계를 확인하세요.",
+    "tagline": "Teams에서 Notion 콘텐츠를 공유하고 회의 노트를 지식 베이스에 다시 기록하세요",
+    "metaTitle": "Notion Teams 연동: 페이지 업데이트와 회의 노트",
+    "metaDescription": "Microsoft Teams와 Notion 문서를 함께 최신으로 유지하세요. GAIA가 Notion 페이지 업데이트를 Teams에 게시하고 Teams 회의 노트를 Notion에 저장합니다.",
     "keywords": [
-      "Notion Microsoft Teams integration",
-      "Notion Teams automation",
-      "share Notion in Microsoft Teams",
-      "capture Teams meeting notes to Notion",
-      "connect Notion and Teams",
-      "enterprise knowledge management"
+      "Notion Microsoft Teams 연동",
+      "Notion Teams 자동화",
+      "Microsoft Teams에서 Notion 공유",
+      "Teams 회의 노트를 Notion에 기록",
+      "Notion과 Teams 연결",
+      "엔터프라이즈 지식 관리"
     ],
-    "intro": "Enterprise teams that rely on Microsoft Teams for communication and Notion for knowledge management constantly lose information in the gap between the two. A Notion document published with important policy updates never reaches most of the team because they are living in Teams. Meeting decisions made in a Teams call are never written up in Notion because someone has to manually transcribe them after the fact. The knowledge base and the conversation platform operate as separate worlds, and institutional knowledge accumulates nowhere.\n\nGAIA connects Notion and Microsoft Teams to ensure that information flows seamlessly between the two. When an important Notion page is published, GAIA posts a rich summary to the relevant Teams channel. When a Teams meeting concludes, GAIA generates structured meeting notes and saves them directly to a Notion page linked to the meeting's agenda. Important Teams messages can be pinned to Notion with a single reaction, and Notion pages can be referenced in Teams with automatic previews.\n\nThis integration is particularly valuable for large organizations standardized on Microsoft 365 but using Notion as an internal wiki, for consulting teams that document client work in Notion but coordinate in Teams, and for any enterprise team that wants to reduce knowledge loss between their communication and documentation platforms.",
+    "intro": "소통은 Microsoft Teams, 지식 관리는 Notion을 쓰는 엔터프라이즈 팀은 두 도구 사이의 간극에서 정보를 계속 잃습니다. 중요한 정책 업데이트가 담긴 문서가 게시되어도 팀 대부분은 채팅에 머무르기 때문에 보지 못합니다. 통화에서 내린 회의 결정은 누군가 나중에 직접 옮겨 적어야 하므로 문서로 남지 않습니다. 지식 베이스와 대화 플랫폼이 별개의 세계로 작동하면서 조직의 지식은 어디에도 쌓이지 않습니다.\n\nGAIA는 두 도구를 연결해 정보가 오가게 합니다. 중요한 페이지가 게시되면 GAIA가 관련 채널에 풍부한 요약을 게시합니다. 회의가 끝나면 구조화된 회의 노트를 만들어 회의 안건과 연결된 페이지에 바로 저장합니다. 중요한 메시지는 반응 하나로 지식 베이스에 고정할 수 있고, 페이지는 채팅에서 자동 미리보기와 함께 참조할 수 있습니다.\n\n이 연동은 Microsoft 365를 표준으로 쓰며 지식 베이스를 사내 위키로 활용하는 대규모 조직, 고객 업무는 Notion에 문서화하고 협업은 Teams에서 하는 컨설팅 팀, 소통과 문서 플랫폼 사이의 지식 유실을 줄이고 싶은 모든 엔터프라이즈 팀에 특히 유용합니다.",
     "useCases": [
       {
-        "title": "Post Notion page updates to Teams channels",
-        "description": "When a Notion page in a configured workspace or database is published or significantly updated, GAIA sends a formatted Teams message to the relevant channel with the page title, author, a summary of changes, and a direct link for the full document."
+        "title": "Notion 페이지 업데이트를 Teams 채널에 게시",
+        "description": "설정된 워크스페이스나 데이터베이스의 페이지가 게시되거나 크게 업데이트되면 GAIA가 페이지 제목, 작성자, 변경 요약, 전체 문서 링크를 담은 형식화된 메시지를 관련 채널에 보냅니다."
       },
       {
-        "title": "Capture Teams meeting notes automatically in Notion",
-        "description": "After a Teams meeting ends, GAIA generates structured meeting notes using the meeting transcript or key messages and creates a Notion page in a designated meeting notes database, complete with attendees, date, agenda items, decisions, and action items."
+        "title": "Teams 회의 노트를 Notion에 자동 기록",
+        "description": "회의가 끝나면 GAIA가 회의 스크립트나 핵심 메시지로 구조화된 회의 노트를 만들어 지정된 회의 노트 데이터베이스에 페이지로 생성합니다. 참석자, 날짜, 안건, 결정, 실행 항목이 모두 포함됩니다."
       },
       {
-        "title": "Save important Teams messages to Notion with a reaction",
-        "description": "Team members can react to a Teams message with a configured emoji to trigger GAIA to save that message to a Notion 'Important Messages' database, creating an accessible knowledge record from in-the-moment Teams conversations."
+        "title": "반응으로 중요한 메시지를 지식 베이스에 저장",
+        "description": "팀원이 지정된 이모지로 메시지에 반응하면 GAIA가 그 메시지를 '중요 메시지' 데이터베이스에 저장합니다. 순간적인 대화에서 접근 가능한 지식 기록이 만들어집니다."
       },
       {
-        "title": "Daily Teams digest of new Notion content",
-        "description": "Each morning GAIA posts a structured Teams message listing all Notion pages created or updated in the past 24 hours, organized by workspace section, so the team starts the day knowing what is new in the knowledge base without having to check Notion separately."
+        "title": "새 콘텐츠 일일 요약",
+        "description": "GAIA가 매일 아침 지난 24시간 동안 생성되거나 업데이트된 모든 페이지를 워크스페이스 섹션별로 정리한 메시지를 게시합니다. 워크스페이스를 따로 열지 않아도 지식 베이스의 새 소식을 알고 하루를 시작할 수 있습니다."
       },
       {
-        "title": "Link Teams channel conversations to Notion project pages",
-        "description": "GAIA can associate a Microsoft Teams channel with a Notion project page, posting a project context card to new channel members and ensuring that major project updates in Notion are always surfaced in the Teams discussion thread."
+        "title": "채널 대화를 프로젝트 페이지에 연결",
+        "description": "GAIA가 Microsoft Teams 채널을 Notion 프로젝트 페이지와 연결해 새 채널 멤버에게 프로젝트 맥락 카드를 게시하고, 주요 프로젝트 업데이트가 항상 논의 스레드에 드러나게 합니다."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Notion and Microsoft Teams to GAIA",
-        "description": "Authenticate your Notion workspace and Microsoft Teams organization through GAIA's integration settings. GAIA uses OAuth for both platforms and only requests the minimum permissions needed — message send for Teams and page read/write for Notion."
+        "step": "Notion과 Microsoft Teams를 GAIA에 연결",
+        "description": "GAIA 연동 설정에서 Notion 워크스페이스와 Microsoft Teams 조직을 인증합니다. 두 연결 모두 OAuth를 사용하며 채팅 메시지 전송과 지식 베이스 페이지 읽기·쓰기에 필요한 최소 권한만 요청합니다."
       },
       {
-        "step": "Configure your information flow rules",
-        "description": "Specify which Notion databases trigger Teams notifications, which Teams channels are linked to which Notion sections, how meeting notes should be formatted and filed, and which Teams reactions should trigger Notion saves."
+        "step": "정보 흐름 규칙 설정",
+        "description": "어떤 데이터베이스가 채널 알림을 트리거할지, 어떤 채널이 어떤 섹션과 연결되는지, 회의 노트는 어떤 형식으로 어디에 저장할지, 어떤 반응이 저장을 트리거할지 지정하세요."
       },
       {
-        "step": "GAIA bridges your wiki and your chat automatically",
-        "description": "GAIA monitors both Notion and Teams for configured triggers and executes information flows in real time. Your Teams channels stay informed about Notion updates, and important Teams discussions find their way into your permanent knowledge base."
+        "step": "GAIA가 위키와 채팅을 자동으로 연결",
+        "description": "GAIA가 양쪽에서 설정된 트리거를 모니터링하며 정보 흐름을 실시간으로 실행합니다. 채널은 페이지 업데이트를 계속 받고, 중요한 논의는 영구 지식 베이스에 기록됩니다."
       }
     ],
     "faqs": [
       {
-        "question": "Does GAIA work with Microsoft Teams private channels?",
-        "answer": "Yes. GAIA can be configured to post to and read from both standard and private Teams channels, provided the GAIA bot is added to the private channel and granted appropriate permissions. Private channel content is handled securely and never routed to unintended destinations."
+        "question": "Microsoft Teams 비공개 채널에서도 작동하나요?",
+        "answer": "네. GAIA 봇이 비공개 채널에 추가되고 적절한 권한을 받으면 표준 채널과 비공개 채널 모두에 게시하고 읽을 수 있습니다. 비공개 채널 콘텐츠는 안전하게 처리되며 의도하지 않은 곳으로 전달되지 않습니다."
       },
       {
-        "question": "Can GAIA capture meeting notes from Teams without using the transcript feature?",
-        "answer": "If Teams transcription is not available or enabled, GAIA creates a structured meeting notes template in Notion pre-populated with attendee names, meeting title, date, and duration. A team member can then fill in key decisions and action items, and GAIA files it in the right Notion location."
+        "question": "스크립트 기능 없이도 회의 노트를 만들 수 있나요?",
+        "answer": "스크립트를 사용할 수 없거나 활성화되지 않은 경우 GAIA는 참석자 이름, 회의 제목, 날짜, 길이가 미리 채워진 회의 노트 템플릿 페이지를 만듭니다. 팀원이 핵심 결정과 실행 항목을 채우면 GAIA가 올바른 위치에 저장합니다."
       },
       {
-        "question": "Is this integration compatible with Microsoft 365 GCC or government cloud environments?",
-        "answer": "GAIA's Teams integration is designed for standard Microsoft 365 commercial environments. Government cloud (GCC) compatibility depends on the specific API endpoints available in that environment. Contact the GAIA team for guidance on GCC deployments."
+        "question": "Microsoft 365 GCC나 정부 클라우드 환경과 호환되나요?",
+        "answer": "GAIA의 채팅 연동은 표준 Microsoft 365 상용 환경을 위해 설계되었습니다. 정부 클라우드(GCC) 호환성은 해당 환경에서 사용할 수 있는 API 엔드포인트에 따라 달라집니다. GCC 배포에 대해서는 GAIA 팀에 문의해 주세요."
       }
     ]
   },
   "notion-stripe": {
     "toolA": "Notion",
     "toolB": "Stripe",
-    "tagline": "Track Stripe revenue in Notion databases and route payment alerts to pages",
-    "metaTitle": "Notion + Stripe 연동: Notion에서 매출 추적",
-    "metaDescription": "GAIA로 Notion + Stripe 연동. Stripe 매출 지표를 Notion 데이터베이스에 자동 집계하고 결제와 구독 알림을 받습니다. 사업 지표를 프로젝트 문서 옆에서 확인하세요.",
+    "tagline": "Stripe 매출을 Notion 데이터베이스에서 추적하고 결제 알림을 페이지로 전달하세요",
+    "metaTitle": "Notion + Stripe 연동: 매출을 Notion에서",
+    "metaDescription": "일일 Stripe 매출을 Notion 데이터베이스에 추적하고 새 구독과 결제 실패를 기록합니다. GAIA가 지표 페이지를 최신으로 유지합니다.",
     "keywords": [
-      "Notion Stripe integration",
-      "Notion Stripe automation",
-      "track Stripe revenue in Notion",
-      "Stripe payment alerts Notion",
-      "connect Notion and Stripe",
-      "business metrics Notion database"
+      "Notion Stripe 연동",
+      "Notion Stripe 자동화",
+      "Notion에서 Stripe 매출 추적",
+      "Stripe 결제 알림 Notion",
+      "Notion과 Stripe 연결",
+      "비즈니스 지표 Notion 데이터베이스"
     ],
-    "intro": "Founders, product managers, and business teams use Notion to run their operations and Stripe to process payments, but revenue data stays siloed inside Stripe's dashboard. Key metrics like MRR, churn rate, and new subscriptions are not visible in the Notion workspace where strategy is planned and OKRs are tracked. Payment failures require manual investigation in Stripe rather than appearing automatically in the operational context where action items are managed. The business intelligence that lives in Stripe never finds its way into the Notion workspace where decisions are made.\n\nGAIA connects Stripe and Notion to bring revenue data into your operational hub. Key Stripe metrics can be synced to a Notion database on a regular schedule, giving you an always-current financial snapshot alongside your product plans and team OKRs. Payment events — successful charges, subscription starts, cancellations, and failed payments — can be routed to Notion pages as notifications so the right people can act on them without needing Stripe dashboard access.\n\nThis integration is especially valuable for SaaS founders using Notion as their company operating system, for finance teams that want revenue metrics in the same workspace as their planning documents, and for customer success teams that need to see payment and subscription status alongside their customer notes in Notion.",
+    "intro": "창업자, 제품 관리자, 비즈니스 팀은 운영은 Notion으로, 결제는 Stripe로 처리하지만 매출 데이터는 결제 대시보드에 갇혀 있습니다. MRR, 이탈률, 신규 구독 같은 핵심 지표가 전략을 세우고 OKR을 추적하는 워크스페이스에는 보이지 않습니다. 결제 실패는 실행 항목을 관리하는 운영 맥락에 자동으로 나타나지 않고 직접 조사해야 합니다. 결제와 함께 있는 비즈니스 인텔리전스가 의사결정이 이루어지는 곳에 도달하지 못합니다.\n\nGAIA는 두 도구를 연결해 매출 데이터를 운영 허브로 가져옵니다. 핵심 지표를 정기 일정에 맞춰 데이터베이스로 동기화해 제품 계획, 팀 OKR과 나란히 항상 최신 재무 현황을 볼 수 있습니다. 결제 이벤트(성공한 청구, 구독 시작, 해지, 결제 실패)는 페이지에 알림으로 전달되어 담당자가 Stripe 대시보드 접근 없이 대응할 수 있습니다.\n\n이 연동은 Notion을 회사 운영 체제로 쓰는 SaaS 창업자, 매출 지표를 계획 문서와 같은 워크스페이스에서 보고 싶은 재무 팀, 고객 노트와 함께 결제 및 구독 상태를 확인해야 하는 고객 성공팀에 특히 유용합니다.",
     "useCases": [
       {
-        "title": "Daily revenue metrics in a Notion database",
-        "description": "GAIA pulls key Stripe metrics — MRR, ARR, new subscriptions, churned revenue, active customers — on a daily schedule and writes them to a structured Notion database so your revenue dashboard lives in the same workspace as your company goals and plans."
+        "title": "Notion 데이터베이스에 일일 Stripe 매출 지표",
+        "description": "GAIA가 MRR, ARR, 신규 구독, 이탈 매출, 활성 고객 같은 핵심 매출 지표를 매일 정해진 시간에 가져와 구조화된 데이터베이스에 기록합니다. 매출 대시보드가 회사 목표와 계획이 있는 같은 워크스페이스에 자리합니다."
       },
       {
-        "title": "New subscription alerts in Notion",
-        "description": "When a new customer subscribes in Stripe, GAIA creates a Notion entry in a customer database with the plan, start date, customer email, and subscription value so your team has a CRM-like record of every customer automatically populated from Stripe."
+        "title": "Notion에서 새 구독 알림",
+        "description": "새 고객이 구독하면 GAIA가 요금제, 시작일, 고객 이메일, 구독 금액을 담아 고객 데이터베이스에 Notion 항목을 만듭니다. 구독 정보로 자동 채워진 CRM 유사 기록을 팀이 갖게 됩니다."
       },
       {
-        "title": "Payment failure notifications to Notion",
-        "description": "When a Stripe payment fails, GAIA creates a task in a Notion 'Revenue Operations' database with the customer name, amount, failure reason, and a link to the Stripe customer record so the team can follow up on dunning without Stripe dashboard access."
+        "title": "결제 실패 알림",
+        "description": "결제가 실패하면 GAIA가 고객명, 금액, 실패 사유, Stripe 고객 레코드 링크를 담아 '매출 운영' 데이터베이스에 작업을 만듭니다. 대시보드 접근 없이 팀이 독촉 절차를 진행할 수 있습니다."
       },
       {
-        "title": "Subscription cancellation tracking in Notion",
-        "description": "GAIA logs every Stripe subscription cancellation to a Notion churn database with the customer details, plan, cancellation reason (if provided), and lifetime value so the team can analyze churn patterns and prioritize win-back campaigns."
+        "title": "구독 해지 추적",
+        "description": "GAIA가 모든 구독 해지를 고객 정보, 요금제, 해지 사유(제공된 경우), 고객 생애 가치와 함께 이탈 데이터베이스에 기록합니다. 팀이 이탈 패턴을 분석하고 재유입 캠페인 우선순위를 정할 수 있습니다."
       },
       {
-        "title": "Monthly financial report generation in Notion",
-        "description": "At the end of each month, GAIA queries Stripe for the period's financial summary and generates a structured Notion report with MRR growth, new customers, churn, and net revenue retention that is shared automatically with the leadership team."
+        "title": "월간 재무 보고서 생성",
+        "description": "매월 말 GAIA가 해당 기간의 재무 요약을 결제 계정에서 조회해 MRR 성장, 신규 고객, 이탈, 순매출 유지율이 담긴 구조화된 보고서를 만들고 리더십 팀과 자동으로 공유합니다."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Notion and Stripe to GAIA",
-        "description": "Authenticate your Notion workspace and connect your Stripe account using a restricted Stripe API key with read-only access. GAIA never writes to Stripe — it only reads revenue data and event webhooks to populate your Notion workspace."
+        "step": "Notion과 Stripe를 GAIA에 연결",
+        "description": "Notion 워크스페이스를 인증하고 읽기 전용 권한을 가진 제한된 API 키로 Stripe 계정을 연결합니다. GAIA는 다시 쓰지 않으며, 워크스페이스를 채우기 위해 매출 데이터와 이벤트 웹훅만 읽습니다."
       },
       {
-        "step": "Configure your metrics and alert preferences",
-        "description": "Select which Stripe events and metrics should flow into Notion, which Notion databases should receive each type of data, and how often scheduled syncs should run. You can also set revenue threshold alerts to trigger Notion entries only above a certain amount."
+        "step": "지표 및 알림 설정",
+        "description": "어떤 이벤트와 지표를 워크스페이스로 가져올지, 각 유형의 데이터를 어느 데이터베이스가 받을지, 예약 동기화 주기는 얼마로 할지 선택하세요. 특정 금액 이상일 때만 항목을 만들도록 매출 기준 알림도 설정할 수 있습니다."
       },
       {
-        "step": "GAIA keeps your Notion workspace updated with Stripe data",
-        "description": "GAIA listens to Stripe webhook events and runs scheduled metric syncs, writing data to your Notion databases automatically. Your operational workspace becomes a live business intelligence hub without any manual reporting effort."
+        "step": "GAIA가 워크스페이스를 매출 데이터로 업데이트",
+        "description": "GAIA가 웹훅 이벤트를 수신하고 예약된 지표 동기화를 실행해 데이터베이스에 자동으로 기록합니다. 수동 보고 없이 운영 워크스페이스가 실시간 비즈니스 인텔리전스 허브가 됩니다."
       }
     ],
     "faqs": [
       {
-        "question": "Does GAIA have access to write to my Stripe account?",
-        "answer": "No. GAIA uses a read-only Stripe API key with restricted permissions. It can read customer, subscription, payment, and metric data but cannot create charges, modify subscriptions, or access your Stripe settings. This ensures revenue data flows safely to Notion without any risk to your Stripe account."
+        "question": "GAIA가 제 Stripe 계정에 쓸 권한을 갖나요?",
+        "answer": "아니요. GAIA는 제한된 권한의 읽기 전용 API 키를 사용합니다. 고객, 구독, 결제, 지표 데이터를 읽을 수 있지만 청구를 생성하거나 구독을 변경하거나 계정 설정에 접근할 수 없습니다. 매출 데이터가 결제 계정 위험 없이 안전하게 워크스페이스로 흐릅니다."
       },
       {
-        "question": "Can GAIA sync Stripe data for multiple Stripe accounts into one Notion workspace?",
-        "answer": "Yes. If you operate multiple businesses or brands with separate Stripe accounts, GAIA can sync data from each account into the same Notion workspace, using a source property in the database to distinguish which account each entry belongs to."
+        "question": "여러 계정의 데이터를 하나의 Notion 워크스페이스로 동기화할 수 있나요?",
+        "answer": "네. 별도 계정으로 여러 사업이나 브랜드를 운영한다면 GAIA가 각 계정의 데이터를 같은 워크스페이스로 동기화할 수 있습니다. 데이터베이스의 소스 속성으로 각 항목이 어느 계정에 속하는지 구분합니다."
       },
       {
-        "question": "How current is the Stripe data in Notion — is it real-time?",
-        "answer": "Event-based data like new subscriptions, cancellations, and payment failures is synced in near real-time via Stripe webhooks. Aggregate metrics like MRR and ARR are synced on the schedule you configure — daily is the default, but hourly is available for teams that need more frequent updates."
+        "question": "데이터는 얼마나 최신인가요? 실시간인가요?",
+        "answer": "신규 구독, 해지, 결제 실패 같은 이벤트 기반 데이터는 웹훅으로 거의 실시간 동기화됩니다. MRR과 ARR 같은 집계 지표는 설정한 일정에 맞춰 동기화되며 기본값은 일간이지만 더 자주 업데이트가 필요한 팀은 시간 단위로도 설정할 수 있습니다."
       }
     ]
   },
@@ -5823,70 +5823,70 @@
   "github-salesforce": {
     "toolA": "GitHub",
     "toolB": "Salesforce",
-    "tagline": "Connect GitHub releases to Salesforce opportunities so sales always knows what engineering just shipped",
-    "metaTitle": "GitHub + Salesforce 연동: 개발과 CRM 자동 연결",
-    "metaDescription": "약속한 기능이 나오면 바로 영업팀에 알리세요. GAIA가 GitHub 릴리스를 Salesforce 영업 기회에 기록합니다. 설정 단계를 확인하세요.",
+    "tagline": "GitHub 릴리스를 Salesforce 기회와 연결해 영업이 엔지니어링의 출시 내용을 항상 알게 하세요",
+    "metaTitle": "GitHub + Salesforce 연동: 릴리스를 Salesforce로",
+    "metaDescription": "약속한 기능이 출시되는 순간 계정 담당자가 알 수 있게 하세요. GAIA가 각 GitHub 릴리스를 해당 Salesforce 기회에 기록합니다.",
     "keywords": [
-      "GitHub Salesforce integration",
-      "GitHub Salesforce automation",
-      "log GitHub releases to Salesforce",
-      "engineering Salesforce CRM sync",
-      "release notification Salesforce",
-      "GitHub Salesforce workflow"
+      "GitHub Salesforce 연동",
+      "GitHub Salesforce 자동화",
+      "GitHub 릴리스를 Salesforce에 기록",
+      "엔지니어링 Salesforce CRM 동기화",
+      "릴리스 알림 Salesforce",
+      "GitHub Salesforce 워크플로우"
     ],
-    "intro": "Enterprise sales cycles often hinge on engineering commitments—a prospect is waiting for a specific feature before signing, or a renewal is contingent on a bug fix being resolved. Yet in most organizations, the Salesforce opportunity and the GitHub milestone tracking that work exist in complete isolation. Account executives learn about releases through Slack messages or hallway conversations rather than automated, reliable notifications.\n\nGAIA creates a live connection between GitHub and Salesforce so engineering output automatically surfaces in your CRM. When a release is published in GitHub, GAIA logs the event against the relevant Salesforce opportunities and accounts, notifies the owning AE, and can advance the opportunity stage if the release satisfies a committed deliverable.\n\nFor enterprise engineering teams, this integration also works in reverse: when a high-value Salesforce opportunity is marked Closed Won, GAIA can create a GitHub milestone for the onboarding work, ensuring implementation starts immediately with full context about what was promised.",
+    "intro": "엔터프라이즈 영업 주기는 엔지니어링 약속에 달려 있는 경우가 많습니다. 잠재 고객이 계약 전에 특정 기능을 기다리거나, 갱신이 버그 수정 완료에 조건부로 걸려 있기도 합니다. 그러나 대부분의 조직에서 Salesforce 기회와 해당 업무를 추적하는 GitHub 마일스톤은 완전히 분리되어 있습니다. 계정 담당자는 자동화된 신뢰할 수 있는 알림 대신 Slack 메시지나 복도 대화로 릴리스를 알게 됩니다.\n\nGAIA는 GitHub과 Salesforce 사이에 실시간 연결을 만들어 엔지니어링 결과물이 CRM에 자동으로 나타나게 합니다. 릴리스가 게시되면 GAIA가 관련 기회와 계정에 이벤트를 기록하고 담당 계정 담당자에게 알리며, 릴리스가 약속한 산출물을 충족하면 기회 단계를 진전시킬 수 있습니다.\n\n엔터프라이즈 엔지니어링 팀에게 이 연동은 반대 방향으로도 작동합니다. 고액 기회가 수주 성공으로 표시되면 GAIA가 온보딩 업무를 위한 마일스톤을 만들어, 무엇을 약속했는지에 대한 전체 맥락과 함께 구현이 즉시 시작되게 합니다.",
     "useCases": [
       {
-        "title": "Log GitHub releases to Salesforce opportunity timelines",
-        "description": "When a GitHub release is published, GAIA creates a Salesforce activity on every opportunity where the release is relevant, giving account executives a real-time log of what has been delivered."
+        "title": "GitHub 릴리스를 Salesforce 기회 타임라인에 기록",
+        "description": "릴리스가 게시되면 GAIA가 해당 릴리스가 관련된 모든 기회에 활동을 만들어 계정 담당자가 무엇이 제공되었는지 실시간 기록을 확인할 수 있게 합니다."
       },
       {
-        "title": "Alert AEs when committed features ship",
-        "description": "When a GitHub milestone closes and it was linked to a Salesforce opportunity, GAIA sends an in-app notification and email to the account executive so they can immediately follow up with the prospect."
+        "title": "약속한 기능 출시 시 계정 담당자에게 알림",
+        "description": "기회와 연결된 마일스톤이 완료되면 GAIA가 앱 내 알림과 이메일을 계정 담당자에게 보내 잠재 고객에게 바로 후속 연락할 수 있게 합니다."
       },
       {
-        "title": "Advance opportunity stage on technical milestones",
-        "description": "For deals with a technical proof-of-concept phase, GAIA advances the Salesforce opportunity stage automatically when the corresponding GitHub milestone is marked complete, keeping your pipeline data accurate."
+        "title": "기술 마일스톤에 따른 기회 단계 진전",
+        "description": "기술적 개념 검증 단계가 있는 딜의 경우 해당 마일스톤이 완료로 표시되면 GAIA가 기회 단계를 자동으로 올려 파이프라인 데이터를 정확하게 유지합니다."
       },
       {
-        "title": "Create GitHub milestones from Closed Won deals",
-        "description": "When a Salesforce opportunity is marked Closed Won, GAIA creates a GitHub milestone for implementation work with the deal's key deliverables as issues, ensuring the engineering team starts with full context."
+        "title": "수주 성공 딜에서 GitHub 마일스톤 생성",
+        "description": "기회가 수주 성공으로 표시되면 GAIA가 딜의 핵심 산출물을 이슈로 담은 구현 업무 마일스톤을 만들어 엔지니어링 팀이 전체 맥락과 함께 시작하게 합니다."
       },
       {
-        "title": "Escalate customer bugs by opportunity value",
-        "description": "When a GitHub issue is tagged with a customer account, GAIA checks the Salesforce opportunity value for that account and escalates the issue's priority in GitHub accordingly, ensuring high-value customer bugs get fastest attention."
+        "title": "기회 가치에 따라 고객 버그 에스컬레이션",
+        "description": "이슈에 고객 계정이 태그되면 GAIA가 해당 계정의 기회 가치를 확인해 GitHub에서 이슈 우선순위를 그에 맞게 올립니다. 고액 고객의 버그가 가장 빠르게 처리됩니다."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect GitHub and Salesforce to GAIA",
-        "description": "Authenticate your GitHub organization and Salesforce org in GAIA's settings. GAIA uses OAuth for both connections and only requests the access levels needed for release logging and opportunity updates."
+        "step": "GitHub과 Salesforce를 GAIA에 연결",
+        "description": "GAIA 설정에서 GitHub 조직과 Salesforce 조직을 인증합니다. 두 연결 모두 OAuth를 사용하며 릴리스 기록과 기회 업데이트에 필요한 접근 수준만 요청합니다."
       },
       {
-        "step": "Map repositories and milestones to Salesforce objects",
-        "description": "Define how GitHub repositories and milestones correspond to Salesforce accounts, opportunities, or custom objects. You can use naming conventions, labels, or a manual mapping table."
+        "step": "저장소와 마일스톤을 CRM 객체에 매핑",
+        "description": "저장소와 마일스톤이 계정, 기회, 사용자 정의 객체에 어떻게 대응하는지 정의하세요. 명명 규칙, 라벨, 수동 매핑 표를 활용할 수 있습니다."
       },
       {
-        "step": "GAIA automates the engineering-to-sales handoff",
-        "description": "Once configured, GAIA monitors GitHub for release and milestone events and updates Salesforce in real time, ensuring your CRM always reflects the current state of engineering deliverables."
+        "step": "GAIA가 엔지니어링-영업 인계를 자동화",
+        "description": "설정이 끝나면 GAIA가 릴리스와 마일스톤 이벤트를 모니터링하며 CRM을 실시간으로 업데이트해, 항상 현재 엔지니어링 산출물 상태를 반영하게 합니다."
       }
     ],
     "faqs": [
       {
-        "question": "Does GAIA work with Salesforce custom objects and fields?",
-        "answer": "Yes. GAIA can read and write to standard Salesforce objects as well as custom objects and fields. During setup you can map GitHub event data to any Salesforce field in your org."
+        "question": "Salesforce 사용자 정의 객체와 필드도 지원하나요?",
+        "answer": "네. 표준 객체는 물론 사용자 정의 객체와 필드도 읽고 쓸 수 있습니다. 설정 시 저장소의 이벤트 데이터를 조직의 어떤 필드에도 매핑할 수 있습니다."
       },
       {
-        "question": "How does GAIA know which Salesforce account a GitHub release affects?",
-        "answer": "GAIA matches based on labels in GitHub repositories or issues, release note content, or a mapping table you define in GAIA's settings that associates repositories with specific Salesforce accounts."
+        "question": "GAIA는 릴리스가 어느 계정에 영향을 주는지 어떻게 아나요?",
+        "answer": "GAIA는 저장소나 이슈의 라벨, 릴리스 노트 내용, 또는 GAIA 설정에서 저장소를 특정 계정과 연결한 매핑 표를 기준으로 매칭합니다."
       },
       {
-        "question": "Can GAIA trigger Salesforce flows or process builder rules?",
-        "answer": "GAIA updates Salesforce records via the standard API, which can trigger any Salesforce automation rules, flows, or process builder processes you have configured on those objects."
+        "question": "플로우나 프로세스 빌더 규칙을 트리거할 수 있나요?",
+        "answer": "GAIA는 표준 API로 레코드를 업데이트하며, 이 과정에서 해당 객체에 설정된 자동화 규칙, 플로우, 프로세스 빌더 프로세스가 실행될 수 있습니다."
       },
       {
-        "question": "Is this secure for enterprise Salesforce orgs with strict data policies?",
-        "answer": "Yes. GAIA uses OAuth 2.0 with Salesforce's standard connected app mechanism. No GitHub code or sensitive data is stored in Salesforce—only metadata like release names, dates, and links."
+        "question": "엄격한 데이터 정책을 쓰는 엔터프라이즈 조직에서도 안전한가요?",
+        "answer": "네. GAIA는 표준 연결 앱 방식의 OAuth 2.0을 사용합니다. CRM에는 소스 코드나 민감한 데이터가 저장되지 않으며 릴리스 이름, 날짜, 링크 같은 메타데이터만 기록됩니다."
       }
     ]
   },
@@ -6243,140 +6243,140 @@
   "notion-salesforce": {
     "toolA": "Notion",
     "toolB": "Salesforce",
-    "tagline": "Sync Salesforce account data to Notion wikis so your team always has current customer context",
-    "metaTitle": "Notion Salesforce 연동: 고객 위키와 회의 준비",
-    "metaDescription": "CRM을 뒤지지 않고 고객을 파악하세요. GAIA가 성사된 딜로 Notion 고객 위키를 만들고 회의 메모를 Salesforce에 남깁니다. 설정 단계를 확인하세요.",
+    "tagline": "Salesforce 계정 데이터를 Notion 위키로 동기화해 팀이 항상 최신 고객 맥락을 갖게 하세요",
+    "metaTitle": "Salesforce Notion 연동: 딜에서 고객 위키로",
+    "metaDescription": "수주 성공 딜에서 Notion 고객 위키를 만들고 회의 노트를 Salesforce에 기록합니다. GAIA가 계정 데이터를 동기화합니다.",
     "keywords": [
-      "Notion Salesforce integration",
-      "Notion Salesforce automation",
-      "sync Salesforce to Notion",
-      "Salesforce customer wiki Notion",
-      "CRM knowledge base automation",
-      "Notion Salesforce workflow"
+      "Notion Salesforce 연동",
+      "Notion Salesforce 자동화",
+      "Salesforce를 Notion으로 동기화",
+      "Salesforce 고객 위키 Notion",
+      "CRM 지식 베이스 자동화",
+      "Notion Salesforce 워크플로우"
     ],
-    "intro": "Salesforce holds your company's most valuable customer data, but it's structured for CRM workflows rather than human reading. Account managers who need to understand a customer's history, product teams who need to know what features were promised in a deal, and onboarding teams who need to brief themselves on a new account all struggle to extract the knowledge they need from Salesforce's field-heavy interface.\n\nGAIA bridges Salesforce and Notion by automatically generating readable, organized knowledge in Notion from the structured data in Salesforce. When an opportunity closes, GAIA creates a customer wiki in Notion with the deal details, key contacts, and committed deliverables. When Salesforce account data changes, the corresponding Notion page updates automatically.\n\nFor customer success, solutions engineering, and product teams, this integration turns Salesforce from a system of record into a source of readable, actionable knowledge that everyone can access in the tool they use every day.",
+    "intro": "Salesforce에는 회사의 가장 값진 고객 데이터가 있지만, 사람이 읽기 좋게가 아니라 CRM 워크플로우에 맞춰 구조화되어 있습니다. 고객 이력을 파악해야 하는 계정 관리자, 딜에서 어떤 기능을 약속했는지 알아야 하는 제품팀, 새 계정을 브리핑해야 하는 온보딩 팀 모두 필드가 많은 인터페이스에서 필요한 지식을 끌어내는 데 어려움을 겪습니다.\n\nGAIA는 정형 계정 데이터에서 읽기 쉽고 정리된 지식을 자동 생성해 CRM과 Notion을 연결합니다. 기회가 성사되면 딜 세부 정보, 핵심 연락처, 약속한 산출물을 담은 고객 위키를 만듭니다. 계정 데이터가 바뀌면 해당 페이지가 자동으로 업데이트됩니다.\n\n고객 성공, 솔루션 엔지니어링, 제품팀에게 이 연동은 Salesforce를 기록 시스템에서 모두가 매일 쓰는 도구에서 접근할 수 있는 읽기 쉽고 실행 가능한 지식의 원천으로 바꿔 줍니다.",
     "useCases": [
       {
-        "title": "Auto-generate customer wikis from Closed Won deals",
-        "description": "When a Salesforce opportunity is marked Closed Won, GAIA creates a structured Notion page for the new customer including account details, key contacts, deal terms, and a blank onboarding checklist."
+        "title": "수주 성공 딜에서 고객 위키 자동 생성",
+        "description": "기회가 수주 성공으로 표시되면 GAIA가 계정 세부 정보, 핵심 연락처, 딜 조건, 빈 온보딩 체크리스트를 담은 새 고객용 구조화 페이지를 만듭니다."
       },
       {
-        "title": "Sync account health data to Notion dashboards",
-        "description": "GAIA pulls Salesforce account health indicators—renewal date, ARR, product tier, support tier—into a Notion database so your customer success team has a live dashboard without toggling between tools."
+        "title": "계정 상태 데이터를 Notion 대시보드로 동기화",
+        "description": "GAIA가 갱신일, ARR, 제품 등급, 지원 등급 같은 Salesforce 계정 상태 지표를 데이터베이스로 가져옵니다. 고객 성공팀이 도구를 오가지 않고 실시간 대시보드를 볼 수 있습니다."
       },
       {
-        "title": "Create Notion meeting prep pages from Salesforce opportunities",
-        "description": "Before a Salesforce opportunity reaches a key stage, GAIA creates a Notion meeting prep page with the opportunity history, contact information, and previous meeting notes, so your AE walks in fully briefed."
+        "title": "Salesforce 기회에서 회의 준비 페이지 생성",
+        "description": "기회가 핵심 단계에 이르기 전 GAIA가 기회 이력, 연락처 정보, 이전 회의 노트를 담은 회의 준비 페이지를 만들어 계정 담당자가 충분히 브리핑된 상태로 임하게 합니다."
       },
       {
-        "title": "Log Notion meeting notes back to Salesforce activities",
-        "description": "When a meeting note is finalized in Notion, GAIA creates a corresponding Salesforce activity log on the relevant opportunity or account record, keeping the CRM up to date without requiring the AE to double-enter information."
+        "title": "회의 노트를 Salesforce 활동에 기록",
+        "description": "Notion에서 회의 노트가 완성되면 GAIA가 관련 기회나 계정 레코드에 대응하는 활동 로그를 만들어, 계정 담당자가 같은 내용을 두 번 입력하지 않아도 CRM이 최신으로 유지됩니다."
       },
       {
-        "title": "Update Notion product feedback database from Salesforce notes",
-        "description": "GAIA scans Salesforce opportunity notes and call logs for product feedback mentions and adds them to a Notion product feedback database, giving product teams a structured view of what customers are requesting."
+        "title": "기회 노트로 Notion 제품 피드백 데이터베이스 업데이트",
+        "description": "GAIA가 기회 노트와 통화 기록에서 제품 피드백 언급을 찾아 제품 피드백 데이터베이스에 추가합니다. 제품팀이 고객이 요청하는 내용을 구조화된 형태로 볼 수 있습니다."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Notion and Salesforce to GAIA",
-        "description": "Authenticate your Notion workspace and Salesforce org in GAIA's settings. Specify which Salesforce objects (Accounts, Opportunities, Contacts) should sync to which Notion databases."
+        "step": "Notion과 Salesforce를 GAIA에 연결",
+        "description": "GAIA 설정에서 Notion 워크스페이스와 Salesforce 조직을 인증합니다. 어떤 객체(계정, 기회, 연락처)를 어떤 데이터베이스와 동기화할지 지정하세요."
       },
       {
-        "step": "Configure sync triggers and field mappings",
-        "description": "Define which Salesforce events create or update Notion pages, how Salesforce fields map to Notion properties, and which Notion database changes should write back to Salesforce activities."
+        "step": "동기화 트리거와 필드 매핑 설정",
+        "description": "어떤 CRM 이벤트가 페이지를 만들거나 업데이트할지, CRM 필드가 페이지 속성에 어떻게 매핑되는지, 어떤 데이터베이스 변경이 활동에 다시 기록되어야 하는지 정의하세요."
       },
       {
-        "step": "GAIA turns CRM data into accessible knowledge",
-        "description": "GAIA monitors Salesforce for the triggers you've configured and automatically creates or updates the corresponding Notion pages, ensuring your team always has current customer context in a readable format."
+        "step": "GAIA가 CRM 데이터를 접근 가능한 지식으로 변환",
+        "description": "GAIA가 설정한 트리거를 CRM에서 모니터링하며 해당 페이지를 자동으로 만들거나 업데이트합니다. 팀이 항상 읽기 쉬운 형식으로 최신 고객 맥락을 갖게 됩니다."
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA pull custom Salesforce fields into Notion?",
-        "answer": "Yes. During setup GAIA reads your Salesforce object schema including custom fields and objects, allowing you to map any Salesforce data to Notion properties in your database."
+        "question": "Salesforce 사용자 정의 필드를 Notion으로 가져올 수 있나요?",
+        "answer": "네. 설정 시 GAIA가 사용자 정의 필드와 객체를 포함한 객체 스키마를 읽으므로 CRM 데이터를 데이터베이스의 페이지 속성에 자유롭게 매핑할 수 있습니다."
       },
       {
-        "question": "Is the Notion-to-Salesforce sync real-time or periodic?",
-        "answer": "Salesforce-to-Notion sync is event-driven and near real-time. Notion-to-Salesforce sync (e.g., logging meeting notes) can be triggered manually by the user or automatically when a Notion page reaches a specified status."
+        "question": "CRM으로의 동기화는 실시간인가요, 주기적인가요?",
+        "answer": "CRM에서 페이지로의 동기화는 이벤트 기반으로 거의 실시간입니다. 페이지에서 CRM으로의 동기화(예: 회의 노트 기록)는 사용자가 직접 트리거하거나 페이지가 지정된 상태에 도달하면 자동으로 실행할 수 있습니다."
       },
       {
-        "question": "Does GAIA expose sensitive CRM data to unauthorized Notion users?",
-        "answer": "GAIA writes to the Notion pages and databases you designate and respects Notion's existing permission model. If a Notion page is restricted to specific members, only those members can view the Salesforce-derived content."
+        "question": "GAIA가 민감한 CRM 데이터를 권한 없는 워크스페이스 멤버에게 노출하나요?",
+        "answer": "GAIA는 지정한 페이지와 데이터베이스에만 기록하며 기존 권한 모델을 따릅니다. 페이지가 특정 멤버로 제한되어 있으면 그 멤버만 CRM에서 가져온 콘텐츠를 볼 수 있습니다."
       },
       {
-        "question": "Can multiple Salesforce accounts map to a single Notion page?",
-        "answer": "Yes. For customers with multiple Salesforce account records (e.g., parent and child accounts), GAIA can consolidate the relevant data into a single Notion page or create linked child pages, depending on your configured structure."
+        "question": "여러 계정 레코드를 하나의 페이지에 매핑할 수 있나요?",
+        "answer": "네. 상위·하위 계정처럼 여러 계정 레코드가 있는 고객의 경우 설정한 구조에 따라 관련 데이터를 하나의 페이지로 통합하거나 연결된 하위 페이지를 만들 수 있습니다."
       }
     ]
   },
   "notion-loom": {
     "toolA": "Notion",
     "toolB": "Loom",
-    "tagline": "Embed Loom videos into Notion pages automatically and create docs from video transcripts",
-    "metaTitle": "Notion + Loom 연동: 영상 지식 베이스 자동화",
-    "metaDescription": "Loom 녹화를 주제별로 Notion 페이지에 넣고, 녹취록으로 문서를 만듭니다. GAIA가 검색 가능한 영상 지식 베이스를 만듭니다. 설정 단계를 확인하세요.",
+    "tagline": "Loom 영상을 Notion 페이지에 자동 삽입하고 영상 스크립트로 문서를 만드세요",
+    "metaTitle": "Notion + Loom 연동: 검색 가능한 영상 지식 베이스",
+    "metaDescription": "Loom 녹화를 주제별 Notion 페이지에 삽입하고 스크립트를 문서로 바꿉니다. GAIA가 검색 가능한 영상 라이브러리를 만듭니다.",
     "keywords": [
-      "Notion Loom integration",
-      "Notion Loom automation",
-      "embed Loom in Notion",
-      "Loom transcript to Notion",
-      "video knowledge base Notion",
-      "Notion Loom workflow"
+      "Notion Loom 연동",
+      "Notion Loom 자동화",
+      "Notion에 Loom 삽입",
+      "Loom 스크립트를 Notion으로",
+      "영상 지식 베이스 Notion",
+      "Notion Loom 워크플로우"
     ],
-    "intro": "Loom videos capture knowledge in a way that written documentation can't—a product walkthrough, a design critique, a process explanation—but video content is notoriously hard to search and organize. Recordings pile up in Loom without being linked to the relevant Notion pages where they would provide the most context. Knowledge shared in a video gets lost when someone new joins the team because no one connected it to the written documentation.\n\nGAIA bridges Notion and Loom so that video and written knowledge reinforce each other. When a Loom is recorded and shared with GAIA, it is automatically embedded in the relevant Notion page based on the video's title and content. GAIA can also extract the Loom transcript and generate a structured Notion document from it, making video knowledge searchable and scannable.\n\nFor teams that rely heavily on async video communication, this integration transforms a scattered Loom library into a structured, searchable knowledge base anchored in Notion, ensuring that important knowledge shared in video format is never lost.",
+    "intro": "Loom 영상은 제품 안내, 디자인 리뷰, 프로세스 설명처럼 글로는 담기 어려운 지식을 기록합니다. 하지만 영상 콘텐츠는 검색하고 정리하기가 매우 어렵습니다. 녹화는 가장 많은 맥락을 제공할 관련 Notion 페이지와 연결되지 않은 채 쌓입니다. 영상으로 공유된 지식은 누구도 문서와 연결하지 않아 새 팀원이 합류하면 사라집니다.\n\nGAIA는 두 도구를 연결해 영상 지식과 문서 지식이 서로를 보강하게 합니다. Loom을 녹화해 GAIA에 공유하면 영상 제목과 내용에 따라 관련 페이지에 자동 삽입됩니다. 스크립트를 추출해 구조화된 문서를 생성할 수도 있어 영상 지식을 검색하고 훑어볼 수 있습니다.\n\n비동기 영상 소통에 크게 의존하는 팀에게 이 연동은 흩어진 녹화 모음을 Notion에 기반한 구조화되고 검색 가능한 지식 베이스로 바꿔, 영상으로 공유된 중요한 지식이 사라지지 않게 합니다.",
     "useCases": [
       {
-        "title": "Auto-embed Loom recordings in Notion pages by topic",
-        "description": "When a Loom video is recorded and tagged with a project name or topic, GAIA finds the relevant Notion page and embeds the video in a dedicated Recordings section, keeping video content organized with its written context."
+        "title": "주제별로 Loom 녹화를 Notion 페이지에 자동 삽입",
+        "description": "영상이 녹화되고 프로젝트명이나 주제 태그가 붙으면 GAIA가 관련 Notion 페이지를 찾아 전용 녹화 섹션에 삽입합니다. 영상 콘텐츠가 문서 맥락과 함께 정리됩니다."
       },
       {
-        "title": "Generate Notion docs from Loom transcripts",
-        "description": "GAIA extracts the auto-generated Loom transcript, structures it into a Notion page with headings, bullet points, and action items, making the video's content searchable and scannable for those who prefer reading over watching."
+        "title": "Loom 스크립트로 문서 생성",
+        "description": "GAIA가 Loom의 자동 스크립트를 추출해 제목, 글머리 기호, 실행 항목이 있는 페이지로 구조화합니다. 보는 것보다 읽는 것을 선호하는 사람도 영상 내용을 검색하고 훑어볼 수 있습니다."
       },
       {
-        "title": "Create Notion action item pages from meeting Looms",
-        "description": "When a Loom is recorded as a meeting update or project review, GAIA identifies the action items mentioned in the transcript and creates a Notion task page with the items listed, assignees suggested, and the original video embedded."
+        "title": "회의 영상에서 Notion 실행 항목 페이지 생성",
+        "description": "회의 업데이트나 프로젝트 리뷰 영상이 녹화되면 GAIA가 스크립트에서 언급된 실행 항목을 찾아 항목 목록, 제안 담당자, 원본 영상이 포함된 작업 페이지를 만듭니다."
       },
       {
-        "title": "Build a searchable onboarding video library in Notion",
-        "description": "GAIA automatically catalogs Loom recordings tagged as onboarding content into a dedicated Notion database with title, description, speaker, duration, and a direct embed, creating a self-updating new hire resource library."
+        "title": "검색 가능한 온보딩 영상 라이브러리 구축",
+        "description": "GAIA가 온보딩 콘텐츠로 태그된 녹화를 제목, 설명, 발표자, 길이, 직접 삽입과 함께 전용 데이터베이스에 자동 분류합니다. 스스로 갱신되는 신입 사원 자료 라이브러리가 만들어집니다."
       },
       {
-        "title": "Link Loom design walkthroughs to Notion specs",
-        "description": "When a designer records a Loom walking through a new design, GAIA links the video to the corresponding Notion spec page and adds a summary of the walkthrough as a page comment, keeping design decisions documented alongside specs."
+        "title": "디자인 안내 영상을 기획서에 연결",
+        "description": "디자이너가 새 디자인 안내 영상을 녹화하면 GAIA가 영상을 해당 기획서 페이지에 연결하고 안내 내용 요약을 페이지 댓글로 추가합니다. 디자인 결정이 기획서와 함께 문서화됩니다."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Notion and Loom to GAIA",
-        "description": "Authorize your Notion workspace and Loom account in GAIA's integration settings. Specify which Notion databases should receive embedded Loom videos and transcripts."
+        "step": "Notion과 Loom을 GAIA에 연결",
+        "description": "GAIA 연동 설정에서 Notion 워크스페이스와 Loom 계정을 승인합니다. 영상과 스크립트를 받을 데이터베이스를 지정하세요."
       },
       {
-        "step": "Configure video routing and transcript rules",
-        "description": "Define how Loom videos are matched to Notion pages—by video title, tags, or workspace folder—and configure whether GAIA should embed the video, generate a transcript document, extract action items, or all three."
+        "step": "영상 라우팅 및 스크립트 규칙 설정",
+        "description": "영상 제목, 태그, 워크스페이스 폴더를 기준으로 영상을 페이지에 어떻게 매칭할지 정의하고, GAIA가 영상을 삽입할지, 스크립트 문서를 만들지, 실행 항목을 추출할지, 세 가지를 모두 할지 설정하세요."
       },
       {
-        "step": "GAIA builds your video knowledge base automatically",
-        "description": "When a Loom is recorded and processed, GAIA routes it to the appropriate Notion pages and generates any configured documents. Your knowledge base grows automatically as your team continues to record."
+        "step": "GAIA가 영상 지식 베이스를 자동 구축",
+        "description": "영상이 녹화되고 처리되면 GAIA가 적절한 페이지로 전달하고 설정된 문서를 생성합니다. 팀이 계속 녹화하는 만큼 지식 베이스가 자동으로 성장합니다."
       }
     ],
     "faqs": [
       {
-        "question": "Does GAIA embed Loom videos directly in Notion or just link to them?",
-        "answer": "GAIA uses Notion's embed block to insert Loom videos directly into pages so they can be watched without leaving Notion. The video appears as an inline playable embed rather than an external link."
+        "question": "GAIA가 Loom 영상을 페이지에 직접 삽입하나요, 아니면 링크만 넣나요?",
+        "answer": "GAIA는 삽입 블록으로 영상을 페이지에 직접 넣어 페이지를 떠나지 않고 시청할 수 있게 합니다. 외부 링크가 아니라 페이지 안에서 재생되는 인라인 임베드로 표시됩니다."
       },
       {
-        "question": "How accurate are Loom's auto-generated transcripts for GAIA to work with?",
-        "answer": "Loom's transcripts are generally accurate for clear speech but may need light editing for technical terms or heavy accents. GAIA's transcript-to-Notion feature works well for structured content and clearly stated action items."
+        "question": "GAIA가 활용하는 자동 스크립트는 얼마나 정확한가요?",
+        "answer": "스크립트는 일반적으로 명확한 발음에서 정확하지만 기술 용어나 강한 억양은 약간 수정이 필요할 수 있습니다. GAIA의 스크립트-페이지 변환 기능은 구조화된 콘텐츠와 명확히 언급된 실행 항목에서 잘 작동합니다."
       },
       {
-        "question": "Can GAIA handle a large backlog of existing Loom videos?",
-        "answer": "Yes. GAIA can run an initial batch import of your existing Loom library, creating Notion pages or database entries for each video. You can filter which videos to import by date range, workspace folder, or creator."
+        "question": "기존 영상이 많이 쌓여 있어도 처리할 수 있나요?",
+        "answer": "네. GAIA가 기존 라이브러리를 초기 일괄 가져오기로 처리해 각 영상의 페이지나 데이터베이스 항목을 만들 수 있습니다. 날짜 범위, 워크스페이스 폴더, 제작자로 가져올 영상을 필터링할 수 있습니다."
       },
       {
-        "question": "What if I record a Loom that belongs to multiple Notion pages?",
-        "answer": "GAIA can embed the same Loom video in multiple Notion pages if the video's tags or content match multiple pages. You can also manually specify multiple destination pages when sharing the Loom via GAIA."
+        "question": "하나의 영상이 여러 Notion 페이지에 속하면 어떻게 되나요?",
+        "answer": "영상 태그나 내용이 여러 페이지와 일치하면 GAIA가 같은 영상을 여러 페이지에 삽입할 수 있습니다. GAIA로 영상을 공유할 때 여러 대상 페이지를 직접 지정할 수도 있습니다."
       }
     ]
   },
@@ -6449,132 +6449,132 @@
   "todoist-clickup": {
     "toolA": "Todoist",
     "toolB": "ClickUp",
-    "tagline": "Bridge personal Todoist task capture with ClickUp team project management",
-    "metaTitle": "Todoist + ClickUp 연동: 개인 업무와 팀 프로젝트 연결",
-    "metaDescription": "GAIA로 Todoist + ClickUp 연동. 개인 업무를 ClickUp 스페이스에 동기화하고 Todoist 항목에서 ClickUp 업무를 만듭니다. 개인과 팀의 흐름이 맞춰집니다.",
+    "tagline": "Todoist의 개인 작업 포착과 ClickUp의 팀 프로젝트 관리를 연결하세요",
+    "metaTitle": "Todoist + ClickUp 연동: 개인 작업과 팀 작업",
+    "metaDescription": "Todoist에서 작업을 포착하고 ClickUp에서 실행하며, 완료 상태를 양방향으로 동기화합니다. GAIA가 배정된 업무까지 가져옵니다.",
     "keywords": [
-      "Todoist ClickUp integration",
-      "Todoist ClickUp sync",
-      "ClickUp Todoist automation",
-      "personal task manager ClickUp",
-      "sync Todoist to ClickUp",
-      "ClickUp Todoist workflow"
+      "Todoist ClickUp 연동",
+      "Todoist ClickUp 동기화",
+      "ClickUp Todoist 자동화",
+      "개인 작업 관리자 ClickUp",
+      "Todoist를 ClickUp으로 동기화",
+      "ClickUp Todoist 워크플로우"
     ],
-    "intro": "ClickUp is a powerful team project management platform with rich hierarchy, custom fields, and reporting capabilities. Todoist is the personal task manager that individuals reach for when they need fast, frictionless capture. Many professionals who work inside ClickUp for team collaboration still rely on Todoist for their own GTD-style inbox, creating a persistent gap between personal intentions and team-visible commitments.\n\nGAIA bridges this gap by acting as an intelligent relay between Todoist and ClickUp. Personal action items captured in Todoist can be promoted to ClickUp tasks in the right list and with the right metadata when they need team visibility. ClickUp tasks assigned to you flow into Todoist so your personal review happens in one place. Status updates propagate in both directions so neither system falls behind.\n\nThis integration is ideal for individual contributors who want to use Todoist as their personal capture tool without abandoning the ClickUp workflows their team depends on, and for managers who track their own actions in Todoist but need those actions visible in ClickUp for accountability.",
+    "intro": "ClickUp은 풍부한 계층 구조, 사용자 정의 필드, 보고 기능을 갖춘 팀 프로젝트 관리를 제공합니다. Todoist는 빠르고 마찰 없는 포착이 필요할 때 개인이 찾는 작업 관리자입니다. 많은 전문가가 팀과는 프로젝트 관리 도구에서 협업하면서도 자신의 GTD 스타일 인박스는 개인 도구로 운영해, 개인의 의도와 팀에 보이는 약속 사이에 간극이 생깁니다.\n\nGAIA는 두 도구 사이의 지능형 중계 역할을 합니다. Todoist에 포착한 개인 실행 항목은 팀에 공개해야 할 때 올바른 리스트와 메타데이터를 갖춰 ClickUp 작업으로 승격될 수 있습니다. 나에게 배정된 작업은 개인 인박스로 흘러들어 검토를 한곳에서 할 수 있습니다. 상태 업데이트가 양방향으로 전파되어 어느 쪽도 뒤처지지 않습니다.\n\n이 기능은 팀이 의존하는 워크플로우를 버리지 않고 개인 포착 도구를 쓰고 싶은 개인 기여자, 자신의 업무를 비공개로 추적하면서도 팀에 책임 있게 공개해야 하는 관리자에게 적합합니다.",
     "useCases": [
       {
-        "title": "Capture in Todoist, execute in ClickUp",
-        "description": "Use Todoist's fast-capture interface during meetings or on the go, then let GAIA automatically promote relevant tasks to ClickUp with the correct space, folder, list, and assignee pre-filled based on project context."
+        "title": "Todoist에서 포착하고 ClickUp에서 실행",
+        "description": "회의 중이나 이동 중에 빠른 포착 화면을 쓰고, GAIA가 프로젝트 맥락에 따라 올바른 스페이스, 폴더, 리스트, 담당자를 미리 채워 관련 작업을 팀 워크스페이스로 자동 승격하게 하세요."
       },
       {
-        "title": "Pull assigned ClickUp tasks into Todoist",
-        "description": "GAIA monitors ClickUp for tasks assigned to you and mirrors them into your Todoist inbox with due dates and priorities so your daily review can happen entirely within Todoist without switching to ClickUp."
+        "title": "배정된 ClickUp 작업을 Todoist로 가져오기",
+        "description": "GAIA가 나에게 배정된 작업을 모니터링해 마감일과 우선순위와 함께 개인 인박스로 복제합니다. 팀 워크스페이스로 전환하지 않고 한 앱에서 일일 검토를 마칠 수 있습니다."
       },
       {
-        "title": "Sync task completion across both tools",
-        "description": "When you check off a task in Todoist, GAIA marks the linked ClickUp task complete and vice versa, ensuring your team's project views always reflect your actual progress without manual double-entry."
+        "title": "작업 완료 상태 양방향 동기화",
+        "description": "한쪽에서 작업을 체크하면 GAIA가 연결된 작업을 다른 쪽에서도 완료로 표시하고, 반대도 마찬가지입니다. 수동 이중 입력 없이 팀 프로젝트 화면이 실제 진행을 반영합니다."
       },
       {
-        "title": "Weekly workload overview",
-        "description": "Each week GAIA generates a combined view of your Todoist personal tasks and ClickUp assignments grouped by project, helping you spot overload and balance commitments before deadlines arrive."
+        "title": "주간 업무량 개요",
+        "description": "GAIA가 매주 개인 작업과 팀 배정 업무를 프로젝트별로 묶은 통합 화면을 만들어 줍니다. 마감이 닥치기 전에 과부하를 발견하고 약속을 조정할 수 있습니다."
       },
       {
-        "title": "Meeting action item distribution",
-        "description": "After a meeting where actions are captured in Todoist, GAIA distributes the relevant items to the appropriate ClickUp lists for each team member, turning meeting notes into trackable team tasks automatically."
+        "title": "회의 실행 항목 배분",
+        "description": "회의에서 실행 항목을 개인적으로 포착했다면 GAIA가 관련 항목을 각 팀원의 적절한 리스트로 배분합니다. 회의 노트가 자동으로 추적 가능한 팀 작업이 됩니다."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Todoist and ClickUp to GAIA",
-        "description": "Authenticate both Todoist and ClickUp in GAIA's integration settings. GAIA uses OAuth for secure access and only requests permissions for the workspaces and projects you specify."
+        "step": "Todoist와 ClickUp을 GAIA에 연결",
+        "description": "GAIA 연동 설정에서 두 계정을 인증합니다. GAIA는 안전한 접근을 위해 OAuth를 사용하며 지정한 워크스페이스와 프로젝트의 권한만 요청합니다."
       },
       {
-        "step": "Map projects and define promotion rules",
-        "description": "Define which Todoist projects correspond to ClickUp spaces and lists. Set rules for when GAIA should automatically promote a Todoist task to ClickUp — for example, tasks tagged with a specific label or assigned a certain priority."
+        "step": "프로젝트 매핑과 승격 규칙 정의",
+        "description": "어떤 개인 프로젝트가 팀 스페이스와 리스트에 대응하는지 정의하세요. 특정 라벨이 붙거나 우선순위가 지정된 작업처럼 언제 GAIA가 작업을 팀 워크스페이스로 자동 승격할지 규칙을 설정합니다."
       },
       {
-        "step": "GAIA syncs tasks in both directions continuously",
-        "description": "GAIA monitors both platforms for new tasks, assignments, and status changes, propagating updates automatically so your personal and team views always reflect the same reality."
+        "step": "GAIA가 양방향으로 작업을 계속 동기화",
+        "description": "GAIA가 양쪽의 새 작업, 배정, 상태 변경을 모니터링하며 업데이트를 자동으로 전파합니다. 개인 화면과 팀 화면이 항상 같은 현실을 반영합니다."
       }
     ],
     "faqs": [
       {
-        "question": "Does GAIA support ClickUp's custom task statuses?",
-        "answer": "Yes. During setup you can map Todoist's completion states to any custom status in your ClickUp workspace. This means tasks can progress through your team's specific workflow stages as they move between tools."
+        "question": "ClickUp의 사용자 정의 작업 상태를 지원하나요?",
+        "answer": "네. 설정 시 개인 앱의 완료 상태를 팀 워크스페이스의 어떤 사용자 정의 상태로든 매핑할 수 있습니다. 도구 사이를 이동하면서 팀의 고유한 워크플로우 단계를 따라 작업이 진행됩니다."
       },
       {
-        "question": "Can I sync only specific Todoist projects to ClickUp?",
-        "answer": "Absolutely. You choose exactly which Todoist projects participate in the sync. Personal projects like shopping lists or private goals stay in Todoist only, while work projects are bridged to the relevant ClickUp spaces."
+        "question": "특정 Todoist 프로젝트만 동기화할 수 있나요?",
+        "answer": "물론입니다. 어떤 프로젝트가 동기화에 참여할지 직접 선택합니다. 장보기 목록이나 개인 목표 같은 프로젝트는 개인 앱에만 남고, 업무 프로젝트만 해당 팀 스페이스와 연결됩니다."
       },
       {
-        "question": "Will GAIA create duplicate tasks if both tools update at the same time?",
-        "answer": "GAIA uses unique link identifiers to track the relationship between paired tasks. It applies last-write-wins logic with a short debounce window to resolve simultaneous edits, and alerts you when a conflict cannot be resolved automatically."
+        "question": "두 도구가 동시에 업데이트되면 중복 작업이 생기지 않나요?",
+        "answer": "GAIA는 고유 링크 식별자로 연결된 작업의 관계를 추적합니다. 짧은 지연 시간을 둔 마지막 쓰기 우선 방식으로 동시 수정을 처리하며, 자동으로 해결할 수 없는 충돌이 생기면 알려줍니다."
       }
     ]
   },
   "todoist-trello": {
     "toolA": "Todoist",
     "toolB": "Trello",
-    "tagline": "Sync personal Todoist tasks to team Trello boards without manual copying",
-    "metaTitle": "Todoist Trello 연동: 카드와 할 일 양방향 동기화",
-    "metaDescription": "Todoist 할 일을 Trello 카드로 올리고, 배정된 카드를 Todoist로 가져오며, 완료 상태를 맞춥니다. GAIA가 클라이언트 보드도 갱신합니다. 설정 단계를 확인하세요.",
+    "tagline": "개인 Todoist 작업을 수동 복사 없이 팀 Trello 보드로 동기화하세요",
+    "metaTitle": "Trello Todoist 연동: 카드와 작업 양방향 동기화",
+    "metaDescription": "Todoist 작업을 Trello 카드로 게시하고 배정된 카드를 Todoist로 가져오며 완료 상태를 동기화합니다. GAIA가 고객 보드도 업데이트합니다.",
     "keywords": [
-      "Todoist Trello integration",
-      "Todoist Trello sync",
-      "create Trello card from Todoist",
-      "sync Todoist to Trello",
-      "Todoist Trello automation",
-      "personal task Trello board"
+      "Todoist Trello 연동",
+      "Todoist Trello 동기화",
+      "Todoist에서 Trello 카드 생성",
+      "Todoist를 Trello로 동기화",
+      "Todoist Trello 자동화",
+      "개인 작업 Trello 보드"
     ],
-    "intro": "Trello's visual Kanban boards are a team staple for tracking shared work, but many individuals prefer Todoist's list-based interface for their own task management. The problem is that work captured privately in Todoist rarely makes it onto the team Trello board in a timely way, creating gaps between what you've committed to and what your team can see.\n\nGAIA connects the two so that tasks flow between them automatically. When a Todoist task is ready to share with the team, GAIA can create a Trello card in the right board and list, complete with description, due date, and labels. When a Trello card is assigned to you, GAIA can pull it into your Todoist inbox for personal tracking. Completions and archive actions propagate both ways so neither board falls out of date.\n\nThis integration suits small teams who use Trello as their shared project view but allow individuals to use their preferred personal tools, and freelancers who manage their own work in Todoist but share progress with clients on a Trello board.",
+    "intro": "Trello의 시각적 칸반 보드는 공유 업무를 추적하는 팀의 필수 도구지만, 많은 개인은 자신의 작업 관리에 Todoist의 목록형 인터페이스를 선호합니다. 문제는 비공개로 포착한 업무가 팀 보드에 제때 올라가지 않아, 내가 약속한 일과 팀이 볼 수 있는 일 사이에 간극이 생긴다는 점입니다.\n\nGAIA는 두 도구를 연결해 작업이 자동으로 오가게 합니다. Todoist 작업을 팀과 공유할 준비가 되면 GAIA가 설명, 마감일, 라벨을 갖춘 Trello 카드를 올바른 보드와 리스트에 만들 수 있습니다. 카드가 나에게 배정되면 GAIA가 개인 인박스로 가져와 추적합니다. 완료와 보관 작업이 양방향으로 전파되어 어느 쪽도 낡지 않습니다.\n\n이 기능은 공유 보드를 프로젝트 화면으로 쓰면서 개인은 선호하는 도구를 쓰도록 허용하는 소규모 팀, 자신의 업무는 비공개로 관리하되 고객과는 보드에서 진행 상황을 공유하는 프리랜서에게 적합합니다.",
     "useCases": [
       {
-        "title": "Publish Todoist tasks as Trello cards",
-        "description": "When a task in Todoist is ready for team visibility, GAIA creates a corresponding Trello card on the designated board and list, carrying across the title, description, due date, and any relevant labels."
+        "title": "Todoist 작업을 Trello 카드로 게시",
+        "description": "작업을 팀에 공개할 준비가 되면 GAIA가 지정된 보드와 리스트에 대응하는 카드를 만들고 제목, 설명, 마감일, 관련 라벨을 그대로 옮깁니다."
       },
       {
-        "title": "Pull assigned Trello cards into Todoist",
-        "description": "GAIA watches for Trello cards assigned to you and adds them to your Todoist inbox with due dates and priority so your daily review stays centralized in your preferred tool."
+        "title": "배정된 Trello 카드를 Todoist로 가져오기",
+        "description": "GAIA가 나에게 배정된 카드를 지켜보다 마감일과 우선순위와 함께 인박스에 추가합니다. 일일 검토가 선호하는 앱 한곳에 모입니다."
       },
       {
-        "title": "Keep completion status synchronized",
-        "description": "Checking off a Todoist task archives the linked Trello card, and moving a Trello card to Done marks the Todoist task complete, so both views stay accurate without manual housekeeping."
+        "title": "완료 상태 동기화 유지",
+        "description": "작업을 체크하면 연결된 카드가 보관되고, 카드를 완료로 옮기면 작업이 완료 처리됩니다. 수동 정리 없이 양쪽 화면이 정확하게 유지됩니다."
       },
       {
-        "title": "Client project board updates",
-        "description": "Freelancers can capture work in Todoist during the day and let GAIA push completed items to a client-facing Trello board each evening, giving clients visibility without requiring a change in personal workflow."
+        "title": "고객 프로젝트 보드 업데이트",
+        "description": "프리랜서는 낮 동안 업무를 포착하고 GAIA가 저녁마다 완료 항목을 고객용 보드로 밀어 넣게 할 수 있습니다. 개인 워크플로우를 바꾸지 않고도 고객이 진행 상황을 볼 수 있습니다."
       },
       {
-        "title": "Meeting action items to Trello",
-        "description": "Action items captured in Todoist during a meeting are automatically distributed to the right Trello boards and assigned to the right team members, turning meeting notes into trackable Kanban cards."
+        "title": "회의 실행 항목을 칸반 카드로",
+        "description": "회의 중 포착한 실행 항목이 올바른 보드로 자동 배분되고 적절한 팀원에게 배정됩니다. 회의 노트가 추적 가능한 칸반 카드가 됩니다."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Todoist and Trello to GAIA",
-        "description": "Authenticate Todoist and Trello in GAIA's integration settings using OAuth. GAIA only requests access to the boards and projects you specify, keeping unrelated data private."
+        "step": "Todoist와 Trello를 GAIA에 연결",
+        "description": "GAIA 연동 설정에서 두 계정을 OAuth로 인증합니다. GAIA는 지정한 보드와 프로젝트의 접근 권한만 요청해 관련 없는 데이터를 비공개로 유지합니다."
       },
       {
-        "step": "Map Todoist projects to Trello boards and lists",
-        "description": "Tell GAIA which Todoist projects should sync to which Trello boards, and which Trello list newly promoted tasks should land in. You can define different mappings for different teams or clients."
+        "step": "프로젝트를 보드와 리스트에 매핑",
+        "description": "어떤 프로젝트가 어느 보드와 동기화되는지, 새로 승격된 작업이 어느 리스트에 들어갈지 GAIA에 알려주세요. 팀이나 고객별로 다른 매핑을 정의할 수 있습니다."
       },
       {
-        "step": "GAIA handles card creation and status sync automatically",
-        "description": "GAIA monitors both platforms continuously, creating and updating cards and tasks as changes occur. You can also trigger one-off syncs or ask GAIA to report on items that exist in one tool but not the other."
+        "step": "GAIA가 카드 생성과 상태 동기화를 자동 처리",
+        "description": "GAIA가 양쪽을 계속 모니터링하며 변경이 생길 때마다 카드와 작업을 만들고 업데이트합니다. 일회성 동기화를 실행하거나 한쪽에만 있는 항목을 보고해 달라고 요청할 수도 있습니다."
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA sync Trello checklist items to Todoist sub-tasks?",
-        "answer": "Yes. GAIA can map Trello checklist items to Todoist sub-tasks when creating linked records. Changes to checklist completion status in Trello propagate to the corresponding Todoist sub-tasks and vice versa."
+        "question": "Trello 체크리스트 항목을 Todoist 하위 작업으로 동기화할 수 있나요?",
+        "answer": "네. GAIA는 연결된 레코드를 만들 때 체크리스트 항목을 하위 작업에 매핑할 수 있습니다. 카드의 체크리스트 완료 상태 변경이 해당 하위 작업에 전파되고 반대도 마찬가지입니다."
       },
       {
-        "question": "What happens to attachments on Trello cards?",
-        "answer": "GAIA includes links to Trello card attachments in the corresponding Todoist task description. Uploading files directly to Todoist tasks and pushing them to Trello as attachments is also supported for common file types."
+        "question": "카드의 첨부파일은 어떻게 되나요?",
+        "answer": "GAIA가 카드 첨부파일 링크를 해당 작업 설명에 포함합니다. 일반적인 파일 형식은 작업에 파일을 직접 업로드하고 카드에 첨부파일로 밀어 넣는 것도 지원합니다."
       },
       {
-        "question": "Can I share a Trello board with a client without giving them access to my Todoist?",
-        "answer": "Yes. GAIA acts as the bridge between your private Todoist and the shared Trello board. Clients only see the Trello board you've shared with them; your Todoist remains entirely private."
+        "question": "개인 작업 목록 접근 권한을 주지 않고 고객과 보드를 공유할 수 있나요?",
+        "answer": "네. GAIA가 비공개 작업 목록과 공유 보드 사이의 다리 역할을 합니다. 고객은 공유한 보드만 보고, 개인 작업 목록은 완전히 비공개로 유지됩니다."
       }
     ]
   },
@@ -6779,66 +6779,66 @@
   "todoist-drive": {
     "toolA": "Todoist",
     "toolB": "Google Drive",
-    "tagline": "Attach Drive files to Todoist tasks and create tasks from Drive activity automatically",
-    "metaTitle": "Todoist Google Drive 연동: 공유 파일을 할 일로",
-    "metaDescription": "공유된 문서를 놓치지 마세요. GAIA가 Docs, Sheets, PDF가 공유되면 파일이 첨부된 Todoist 할 일을 만듭니다. 설정 단계를 확인하세요.",
+    "tagline": "Todoist 작업에 파일을 첨부하고 Drive 활동으로 작업을 자동 생성하세요",
+    "metaTitle": "Todoist Google Drive 연동: 문서와 시트에서 작업 생성",
+    "metaDescription": "Docs, Sheets, Slides, PDF를 공유받으면 파일이 첨부된 Todoist 작업을 만듭니다. GAIA가 검토 기한을 추적합니다.",
     "keywords": [
-      "Todoist Google Drive integration",
-      "Todoist Drive automation",
-      "attach Drive file to Todoist task",
-      "Google Drive task creation",
-      "Todoist Drive sync",
-      "document task management Todoist"
+      "Todoist Google Drive 연동",
+      "Todoist Drive 자동화",
+      "Drive 파일을 Todoist 작업에 첨부",
+      "Google Drive 작업 생성",
+      "Todoist Drive 동기화",
+      "문서 작업 관리 Todoist"
     ],
-    "intro": "Google Drive holds your documents, spreadsheets, and presentations, but knowing which files need attention and by when is a constant challenge. Todoist holds your tasks, but tasks without document context require you to hunt down the right file every time you sit down to work. The result is wasted time re-locating files and a disconnect between what you need to do and the materials you need to do it with.\n\nGAIA bridges Todoist and Google Drive so file-related work stays connected to your task list. When a Google Doc is shared with you for review, GAIA can create a Todoist task with a direct link to the document and a suggested due date. When you create a Todoist task that references a file, GAIA can search Drive and attach the relevant document automatically. You can also ask GAIA to create a new Drive document and link it to an existing task in one command.\n\nThis integration is invaluable for knowledge workers who frequently review, edit, or produce documents as part of their workflow, and for anyone who wants their task list to serve as the single entry point for all work, including document-centric tasks.",
+    "intro": "Google Drive에는 문서, 스프레드시트, 프레젠테이션이 있지만 어떤 파일을 언제까지 처리해야 하는지 파악하는 일은 늘 어렵습니다. Todoist에는 작업이 있지만 문서 맥락이 없으면 일을 시작할 때마다 맞는 파일을 찾아야 합니다. 그 결과 파일을 다시 찾느라 시간을 쓰고, 해야 할 일과 그 일에 필요한 자료가 분리됩니다.\n\nGAIA는 두 도구를 연결해 파일 관련 업무가 작업 목록과 이어지게 합니다. 검토를 위해 Google Doc을 공유받으면 GAIA가 문서 링크와 제안 마감일이 담긴 작업을 만들 수 있습니다. 파일을 참조하는 작업을 만들면 GAIA가 Drive를 검색해 관련 문서를 자동 첨부합니다. 한 번의 명령으로 새 문서를 만들고 기존 작업에 연결하도록 요청할 수도 있습니다.\n\n이 기능은 업무의 일부로 문서를 자주 검토·편집·작성하는 지식 노동자, 문서 중심 작업을 포함해 모든 업무의 단일 진입점으로 작업 목록을 쓰고 싶은 모든 사람에게 적합합니다.",
     "useCases": [
       {
-        "title": "Create Todoist tasks when Drive files are shared with you",
-        "description": "When a Google Doc, Sheet, or Slide is shared with you in Drive, GAIA automatically creates a Todoist task with the document title, sharer's name, and a direct link so review items always surface in your task inbox."
+        "title": "Drive 파일을 공유받으면 Todoist 작업 생성",
+        "description": "Google Doc, Sheet, Slide을 공유받으면 GAIA가 문서 제목, 공유한 사람, 바로 가는 링크를 담은 작업을 자동 생성합니다. 검토할 항목이 항상 작업 인박스에 나타납니다."
       },
       {
-        "title": "Attach Drive files to existing Todoist tasks",
-        "description": "Tell GAIA to find and attach a Drive document to a Todoist task by name or keyword. GAIA searches your Drive, confirms the match, and appends the link to the task description so the file is always one click away."
+        "title": "기존 Todoist 작업에 Drive 파일 첨부",
+        "description": "이름이나 키워드로 작업에 문서를 찾아 첨부하도록 GAIA에 요청하세요. GAIA가 파일을 검색하고 일치 여부를 확인한 뒤 작업 설명에 링크를 추가합니다. 파일이 항상 클릭 한 번 거리에 있습니다."
       },
       {
-        "title": "Create Drive docs from Todoist tasks",
-        "description": "When a Todoist task involves creating a new document, GAIA can generate a blank Google Doc or from a template in the appropriate Drive folder and link it back to the Todoist task, giving you a head start without leaving your task manager."
+        "title": "작업에서 문서 생성",
+        "description": "새 문서 작성이 필요한 작업이라면 GAIA가 적절한 폴더에 빈 Google Doc이나 템플릿 기반 문서를 만들고 작업에 다시 연결합니다. 작업 관리자를 떠나지 않고 시작할 수 있습니다."
       },
       {
-        "title": "Review deadline reminders for shared documents",
-        "description": "If a shared Drive document includes a comment asking for feedback by a specific date, GAIA extracts that deadline and sets the due date on the linked Todoist task so you never miss a document review request."
+        "title": "공유 문서의 검토 기한 알림",
+        "description": "공유 문서에 특정 날짜까지 피드백을 요청하는 댓글이 있으면 GAIA가 그 기한을 추출해 연결된 작업의 마감일로 설정합니다. 문서 검토 요청이 기한과 함께 관리됩니다."
       },
       {
-        "title": "Archive Drive-linked tasks on document completion",
-        "description": "When you mark a Todoist task done that is linked to a Drive document, GAIA can move the document to an archive folder in Drive, keeping your working Drive clean and aligned with your task completion status."
+        "title": "문서 완료 시 연결된 작업 보관",
+        "description": "문서와 연결된 작업을 완료 처리하면 GAIA가 그 문서를 보관 폴더로 옮길 수 있습니다. 작업 완료 상태와 업무 폴더가 깔끔하게 일치합니다."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Todoist and Google Drive to GAIA",
-        "description": "Authorize Todoist and Google Drive in GAIA's integration settings via OAuth. GAIA only accesses files shared with you or in folders you explicitly grant access to."
+        "step": "Todoist와 Google Drive를 GAIA에 연결",
+        "description": "GAIA 연동 설정에서 두 계정을 OAuth로 승인합니다. GAIA는 공유받은 파일이나 명시적으로 권한을 부여한 폴더에만 접근합니다."
       },
       {
-        "step": "Set up Drive activity triggers and attachment preferences",
-        "description": "Tell GAIA which Drive events should create Todoist tasks — new shares, comments requesting review, or file edits — and which Todoist project those tasks should land in."
+        "step": "활동 트리거와 첨부 설정",
+        "description": "어떤 파일 이벤트가 작업을 만들어야 하는지(새 공유, 검토 요청 댓글, 파일 편집), 그 작업이 어느 프로젝트에 들어가야 하는지 GAIA에 알려주세요."
       },
       {
-        "step": "GAIA creates tasks, attaches files, and keeps both in sync",
-        "description": "GAIA monitors Drive activity and Todoist task changes, creating tasks from Drive events and attaching Drive links to tasks on demand. You can also ask GAIA to audit which tasks are missing document links."
+        "step": "GAIA가 작업을 만들고 파일을 첨부하며 둘을 동기화",
+        "description": "GAIA가 파일 활동과 작업 변경을 모니터링하며 파일 이벤트로 작업을 만들고 요청 시 작업에 링크를 첨부합니다. 어떤 작업에 문서 링크가 빠졌는지 점검해 달라고 요청할 수도 있습니다."
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA search all of my Google Drive or only specific folders?",
-        "answer": "You can grant GAIA access to your full Drive or restrict it to specific folders during setup. Restricting to work folders is recommended to keep personal Drive content out of the integration."
+        "question": "GAIA가 모든 파일을 검색하나요, 아니면 특정 폴더만 검색하나요?",
+        "answer": "설정 시 모든 파일에 접근을 허용하거나 특정 폴더로 제한할 수 있습니다. 개인 콘텐츠가 연동에 포함되지 않도록 업무 폴더로 제한하는 것을 권장합니다."
       },
       {
-        "question": "Does GAIA support Shared Drives in addition to My Drive?",
-        "answer": "Yes. GAIA can monitor Shared Drives that you have access to, creating Todoist tasks from file shares and comment requests within those shared workspaces."
+        "question": "개인 파일 외에 공유 드라이브도 지원하나요?",
+        "answer": "네. GAIA는 접근 권한이 있는 공유 팀 공간을 모니터링해 그 안의 파일 공유와 댓글 요청으로 작업을 만들 수 있습니다."
       },
       {
-        "question": "What types of Drive files trigger task creation?",
-        "answer": "By default GAIA creates tasks for Google Docs, Sheets, Slides, and PDFs shared with you. You can expand or restrict this to specific file types and MIME types in your integration settings."
+        "question": "어떤 파일 형식이 작업 생성을 트리거하나요?",
+        "answer": "기본적으로 GAIA는 공유받은 Google Docs, Sheets, Slides, PDF에 대해 작업을 만듭니다. 연동 설정에서 특정 파일 형식과 MIME 유형으로 범위를 넓히거나 제한할 수 있습니다."
       }
     ]
   },
@@ -6911,404 +6911,404 @@
   "todoist-hubspot": {
     "toolA": "Todoist",
     "toolB": "HubSpot",
-    "tagline": "Create Todoist follow-up tasks from HubSpot CRM activities and sync deal tasks automatically",
-    "metaTitle": "HubSpot Todoist 연동: 딜 후속 작업을 할 일로",
-    "metaDescription": "딜 후속 조치를 빠뜨리지 마세요. GAIA가 HubSpot 단계가 바뀌면 Todoist 할 일을 만들고 완료를 HubSpot에 남깁니다. 설정 단계를 확인하세요.",
+    "tagline": "HubSpot CRM 활동으로 Todoist 후속 작업을 만들고 딜 작업을 자동 동기화하세요",
+    "metaTitle": "HubSpot Todoist 연동: 딜 후속 조치를 작업으로",
+    "metaDescription": "HubSpot 딜 단계가 바뀌면 Todoist 후속 작업을 만들고 완료한 작업을 HubSpot에 기록합니다. GAIA가 회의 준비도 돕습니다.",
     "keywords": [
-      "Todoist HubSpot integration",
-      "HubSpot Todoist automation",
-      "CRM tasks Todoist",
-      "HubSpot follow-up tasks",
-      "Todoist HubSpot sync",
-      "sales task management Todoist"
+      "Todoist HubSpot 연동",
+      "HubSpot Todoist 자동화",
+      "CRM 작업 Todoist",
+      "HubSpot 후속 작업",
+      "Todoist HubSpot 동기화",
+      "영업 작업 관리 Todoist"
     ],
-    "intro": "HubSpot tracks every deal, contact interaction, and pipeline stage, but turning those CRM events into personal action items requires constant manual translation. Sales reps and account managers often rely on a personal task manager like Todoist to stay on top of their follow-ups, but keeping Todoist in sync with what's happening in HubSpot is a full-time job in itself.\n\nGAIA automates this translation layer. When a deal moves to a new stage in HubSpot that requires a follow-up, GAIA creates a Todoist task with the deal name, company, stage, and due date pre-filled. When a contact opens a proposal or a meeting is logged, GAIA can trigger a follow-up task in Todoist automatically. Completed Todoist tasks are logged back to HubSpot as activities so your CRM stays accurate without double entry.\n\nThis integration is built for sales reps, account executives, and customer success managers who want to use Todoist for their personal workflow discipline while keeping HubSpot as the authoritative system of record for all customer interactions.",
+    "intro": "HubSpot은 모든 딜, 연락처 상호작용, 파이프라인 단계를 추적하지만, 이런 CRM 이벤트를 개인 실행 항목으로 바꾸려면 늘 수동 변환이 필요합니다. 영업 담당자와 계정 관리자는 후속 조치를 놓치지 않기 위해 Todoist 같은 개인 작업 관리자에 의존하지만, 이를 CRM 상황과 동기화하는 일 자체가 전업 업무가 됩니다.\n\nGAIA는 이 변환 단계를 자동화합니다. 후속 조치가 필요한 새 단계로 딜이 이동하면 GAIA가 딜 이름, 회사, 단계, 마감일이 미리 채워진 Todoist 작업을 만듭니다. 연락처가 제안서를 열거나 회의가 기록되면 후속 작업을 자동으로 트리거할 수 있습니다. 완료한 작업은 CRM에 활동으로 기록되어 이중 입력 없이 기록이 정확하게 유지됩니다.\n\n이 기능은 업무 규율을 위해 개인 작업 관리자를 쓰면서 모든 고객 상호작용의 기준 시스템으로 CRM을 유지하려는 영업 담당자, 계정 담당자, 고객 성공 매니저를 위해 만들어졌습니다.",
     "useCases": [
       {
-        "title": "Create follow-up tasks from deal stage changes",
-        "description": "When a HubSpot deal advances to a new pipeline stage, GAIA creates a Todoist follow-up task with the deal name, contact, company, and a suggested follow-up due date so no deal progresses without a next action."
+        "title": "딜 단계 변경으로 후속 작업 생성",
+        "description": "딜이 새 파이프라인 단계로 진전하면 GAIA가 딜 이름, 연락처, 회사, 제안 후속 마감일을 담은 작업을 만듭니다. 다음 행동 없이 진전되는 딜이 없습니다."
       },
       {
-        "title": "Task creation from contact activity",
-        "description": "When a HubSpot contact opens an email, visits a key page, or submits a form, GAIA creates a timely Todoist follow-up task so you can strike while engagement is highest without manually monitoring HubSpot activity feeds."
+        "title": "연락처 활동에서 작업 생성",
+        "description": "연락처가 이메일을 열거나 핵심 페이지를 방문하거나 양식을 제출하면 GAIA가 시의적절한 후속 작업을 만듭니다. 활동 피드를 직접 모니터링하지 않아도 관심이 가장 높을 때 대응할 수 있습니다."
       },
       {
-        "title": "Log completed Todoist tasks back to HubSpot",
-        "description": "When you complete a Todoist task linked to a HubSpot deal or contact, GAIA logs the activity back to HubSpot with a timestamp and note, keeping your CRM records accurate without requiring you to open HubSpot."
+        "title": "완료한 Todoist 작업을 HubSpot에 기록",
+        "description": "딜이나 연락처와 연결된 작업을 완료하면 GAIA가 타임스탬프와 메모를 담아 활동을 CRM에 기록합니다. CRM을 열지 않아도 기록이 정확하게 유지됩니다."
       },
       {
-        "title": "Meeting prep task generation",
-        "description": "The day before a scheduled HubSpot meeting, GAIA creates a Todoist preparation task with the contact name, company, deal stage, and recent activity summary so you're always ready without last-minute scrambling."
+        "title": "회의 준비 작업 생성",
+        "description": "예정된 회의 전날 GAIA가 연락처 이름, 회사, 딜 단계, 최근 활동 요약을 담은 준비 작업을 만듭니다. 마지막 순간에 허둥대지 않고 준비할 수 있습니다."
       },
       {
-        "title": "Overdue deal follow-up alerts",
-        "description": "GAIA monitors HubSpot for deals that haven't had activity in a defined period and creates urgent Todoist tasks for the responsible rep, ensuring stalled deals get proactive attention before they go cold."
+        "title": "기한이 지난 딜 후속 알림",
+        "description": "GAIA가 정한 기간 동안 활동이 없는 딜을 모니터링해 담당 영업사원에게 긴급 작업을 만듭니다. 멈춰 있는 딜이 식기 전에 능동적으로 대응하게 합니다."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Todoist and HubSpot to GAIA",
-        "description": "Authorize Todoist and your HubSpot portal in GAIA's integration settings. GAIA uses HubSpot's private app tokens and Todoist's OAuth to access only the pipelines, deals, and contacts you specify."
+        "step": "Todoist와 HubSpot을 GAIA에 연결",
+        "description": "GAIA 연동 설정에서 작업 계정과 CRM 포털을 승인합니다. GAIA는 포털에는 비공개 앱 토큰을, 작업 계정에는 OAuth를 사용해 지정한 파이프라인, 딜, 연락처에만 접근합니다."
       },
       {
-        "step": "Define HubSpot triggers and task templates",
-        "description": "Choose which HubSpot events create Todoist tasks — deal stage changes, email opens, meeting completions, or form submissions — and define the task template including due date rules and Todoist project destination."
+        "step": "트리거와 작업 템플릿 정의",
+        "description": "어떤 CRM 이벤트(딜 단계 변경, 이메일 열람, 회의 완료, 양식 제출)가 작업을 만들지 선택하고, 마감일 규칙과 프로젝트 목적지를 포함한 작업 템플릿을 정의하세요."
       },
       {
-        "step": "GAIA automates the CRM-to-task and task-to-CRM loop",
-        "description": "GAIA monitors HubSpot in real time for trigger events and creates Todoist tasks automatically. When those tasks are completed, GAIA logs the activity back to HubSpot so both systems stay current."
+        "step": "GAIA가 CRM-작업, 작업-CRM 순환을 자동화",
+        "description": "GAIA가 포털에서 트리거 이벤트를 실시간으로 모니터링해 작업을 자동 생성합니다. 작업이 완료되면 활동을 다시 CRM에 기록해 양쪽이 최신으로 유지됩니다."
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA work with custom HubSpot pipelines and deal stages?",
-        "answer": "Yes. During setup GAIA reads your HubSpot portal's custom pipelines and deal stages so you can configure triggers and task templates for any stage in any pipeline, not just the default ones."
+        "question": "HubSpot 사용자 정의 파이프라인과 딜 단계에서도 작동하나요?",
+        "answer": "네. 설정 시 GAIA가 포털의 사용자 정의 파이프라인과 딜 단계를 읽으므로 기본 단계뿐 아니라 모든 파이프라인의 어떤 단계에든 트리거와 작업 템플릿을 설정할 수 있습니다."
       },
       {
-        "question": "Does GAIA support HubSpot contacts and companies in addition to deals?",
-        "answer": "Yes. GAIA can create Todoist tasks from contact activity events such as email opens, form submissions, and lifecycle stage changes, in addition to deal-based triggers."
+        "question": "딜 외에 연락처와 회사도 지원하나요?",
+        "answer": "네. GAIA는 딜 기반 트리거 외에 이메일 열람, 양식 제출, 라이프사이클 단계 변경 같은 연락처 활동 이벤트로도 작업을 만들 수 있습니다."
       },
       {
-        "question": "How does GAIA log completed tasks back to HubSpot?",
-        "answer": "GAIA creates a HubSpot activity note associated with the relevant deal or contact when a linked Todoist task is marked complete. The note includes the task title, completion timestamp, and any notes you added to the Todoist task."
+        "question": "완료한 작업을 CRM에 어떻게 기록하나요?",
+        "answer": "연결된 작업이 완료로 표시되면 GAIA가 관련 딜이나 연락처에 활동 노트를 만듭니다. 노트에는 작업 제목, 완료 타임스탬프, 작업에 추가한 메모가 포함됩니다."
       }
     ]
   },
   "google-calendar-jira": {
     "toolA": "Google Calendar",
     "toolB": "Jira",
-    "tagline": "Schedule sprint ceremonies from Jira milestones and add events from Jira directly to your calendar",
-    "metaTitle": "Google Calendar + Jira 연동: 마일스톤을 일정에",
-    "metaDescription": "GAIA로 Google Calendar + Jira 연동. Jira에서 스프린트 일정을 자동으로 잡고 마일스톤 마감일을 캘린더에 추가합니다. 개발 일정이 Jira 프로젝트 계획과 일치합니다.",
+    "tagline": "Jira 마일스톤으로 스프린트 행사를 예약하고 해당 이벤트를 캘린더에 바로 추가하세요",
+    "metaTitle": "Google Calendar + Jira 연동: 마일스톤을 일정으로",
+    "metaDescription": "Jira에서 스프린트 행사를 예약하고 마일스톤 마감일을 Google Calendar에 추가합니다. 날짜가 바뀌면 GAIA가 이벤트를 업데이트합니다.",
     "keywords": [
-      "Google Calendar Jira integration",
-      "Jira Google Calendar sync",
-      "Jira sprint calendar",
-      "Jira milestone calendar event",
-      "Google Calendar Jira automation",
-      "engineering schedule Jira calendar"
+      "Google Calendar Jira 연동",
+      "Jira Google Calendar 동기화",
+      "Jira 스프린트 캘린더",
+      "Jira 마일스톤 캘린더 일정",
+      "Google Calendar Jira 자동화",
+      "엔지니어링 일정 Jira 캘린더"
     ],
-    "intro": "Jira holds your team's sprint plans, milestones, and release dates, but those dates rarely appear automatically in the calendar tool your entire organization uses to schedule meetings and block time. Engineers and project managers end up manually creating calendar events for sprint ceremonies, release dates, and milestone reviews — work that is error-prone and quickly goes stale when Jira dates change.\n\nGAIA connects Google Calendar and Jira so your project timeline is always reflected in your calendar. Sprint start and end dates become calendar events automatically. Milestone due dates appear as all-day events with the right context. Release dates block time in the relevant engineers' calendars. When a sprint date changes in Jira, GAIA updates the corresponding calendar event so everyone stays aligned without manual re-entry.\n\nThis integration is essential for engineering teams who use Google Calendar as their primary scheduling tool and Jira as their project management source of truth, particularly where coordination with non-engineering stakeholders requires calendar visibility of development milestones.",
+    "intro": "스프린트 계획, 마일스톤, 릴리스 날짜는 Jira에 있지만, 그 날짜가 조직 전체가 회의를 잡고 시간을 확보하는 데 쓰는 캘린더 도구에 자동으로 나타나는 일은 드뭅니다. 엔지니어와 프로젝트 관리자는 스프린트 행사, 릴리스 날짜, 마일스톤 리뷰를 위해 캘린더 이벤트를 직접 만들게 되고, 이 작업은 오류가 나기 쉽고 날짜가 바뀌면 금세 낡습니다.\n\nGAIA는 Google Calendar와 Jira를 연결해 프로젝트 타임라인이 항상 캘린더에 반영되게 합니다. 스프린트 시작일과 종료일이 자동으로 캘린더 이벤트가 됩니다. 마일스톤 마감일은 적절한 맥락과 함께 종일 이벤트로 표시됩니다. 릴리스 날짜는 관련 엔지니어의 캘린더에 시간을 확보합니다. 스프린트 날짜가 바뀌면 GAIA가 해당 캘린더 이벤트를 업데이트해 수동 재입력 없이 모두가 같은 일정을 보게 합니다.\n\n이 연동은 Google Calendar를 주 일정 도구로 쓰고 이슈 트래커를 프로젝트 관리의 기준으로 삼는 엔지니어링 팀, 특히 비엔지니어링 이해관계자와의 조율을 위해 개발 마일스톤의 캘린더 가시성이 필요한 팀에 꼭 필요합니다.",
     "useCases": [
       {
-        "title": "Auto-schedule sprint ceremonies from Jira",
-        "description": "GAIA reads your Jira sprint dates and automatically creates Google Calendar events for sprint planning, daily standups, sprint review, and retrospective on the correct days with the right attendees."
+        "title": "Jira에서 스프린트 행사 자동 예약",
+        "description": "GAIA가 스프린트 날짜를 읽어 스프린트 계획, 데일리 스탠드업, 스프린트 리뷰, 회고를 올바른 날짜에 적절한 참석자와 함께 캘린더 이벤트로 자동 생성합니다."
       },
       {
-        "title": "Add Jira milestone due dates to Google Calendar",
-        "description": "When a Jira milestone or version release date is set, GAIA creates an all-day calendar event so the milestone is visible to everyone in the organization who relies on Google Calendar for scheduling."
+        "title": "마일스톤 마감일을 Google Calendar에 추가",
+        "description": "마일스톤이나 버전 릴리스 날짜가 설정되면 GAIA가 종일 캘린더 이벤트를 만들어, 일정 관리를 위해 캘린더를 보는 조직의 모든 사람이 마일스톤을 확인할 수 있게 합니다."
       },
       {
-        "title": "Update calendar events when Jira dates change",
-        "description": "If a sprint is extended or a milestone is rescheduled in Jira, GAIA automatically updates the corresponding Google Calendar events and notifies attendees so your calendar stays accurate without manual correction."
+        "title": "Jira 날짜 변경 시 캘린더 이벤트 업데이트",
+        "description": "스프린트가 연장되거나 마일스톤 일정이 바뀌면 GAIA가 해당 이벤트를 자동으로 업데이트하고 참석자에게 알립니다. 수동 수정 없이 캘린더가 정확하게 유지됩니다."
       },
       {
-        "title": "Block focus time around release dates",
-        "description": "GAIA detects upcoming Jira release dates and blocks focus time in engineers' Google Calendars in the days before the release, protecting time for final testing and bug fixes without requiring a manual calendar update."
+        "title": "릴리스 날짜 전후 집중 업무 시간 확보",
+        "description": "GAIA가 다가오는 릴리스 날짜를 감지해 릴리스 전 며칠 동안 엔지니어 캘린더에 집중 업무 시간을 확보합니다. 캘린더를 직접 수정하지 않아도 최종 테스트와 버그 수정 시간이 보호됩니다."
       },
       {
-        "title": "Create Jira issues from calendar events",
-        "description": "When a planning meeting or design review is added to Google Calendar, GAIA can create a linked Jira epic or story to capture the deliverables discussed, connecting your scheduling tool to your project tracking system."
+        "title": "캘린더 이벤트에서 이슈 생성",
+        "description": "계획 회의나 디자인 리뷰가 캘린더에 추가되면 GAIA가 논의된 산출물을 담을 연결된 에픽이나 스토리를 만들 수 있습니다. 일정 관리와 프로젝트 추적이 연결됩니다."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Google Calendar and Jira to GAIA",
-        "description": "Authorize Google Calendar and your Jira workspace in GAIA's integration settings. GAIA uses OAuth for Calendar and Jira's REST API to access the projects and calendars you specify."
+        "step": "Google Calendar와 Jira를 GAIA에 연결",
+        "description": "GAIA 연동 설정에서 두 계정을 승인합니다. GAIA는 Calendar에는 OAuth를, Jira에는 REST API를 사용해 지정한 프로젝트와 캘린더에 접근합니다."
       },
       {
-        "step": "Choose which Jira projects and event types to sync",
-        "description": "Select the Jira projects whose sprint dates and milestones should appear on Google Calendar. Configure which Google Calendar to use for each project and how far in advance events should be created."
+        "step": "동기화할 프로젝트와 이벤트 유형 선택",
+        "description": "스프린트 날짜와 마일스톤을 캘린더에 표시할 프로젝트를 선택하세요. 각 프로젝트에 사용할 캘린더와 이벤트를 얼마나 미리 만들지 설정할 수 있습니다."
       },
       {
-        "step": "GAIA creates and maintains calendar events from Jira data",
-        "description": "GAIA monitors Jira for sprint and milestone date changes and keeps the corresponding Google Calendar events in sync automatically. You can also query GAIA to generate a calendar view of any Jira project's upcoming dates."
+        "step": "GAIA가 캘린더 이벤트를 자동 생성하고 유지",
+        "description": "GAIA가 스프린트와 마일스톤 날짜 변경을 모니터링하며 해당 이벤트를 자동으로 동기화합니다. 특정 프로젝트의 예정된 날짜를 캘린더 형태로 보여 달라고 요청할 수도 있습니다."
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA sync Jira's two-week sprint cycle to repeating Google Calendar events?",
-        "answer": "Yes. GAIA can create recurring Google Calendar events that match your Jira sprint cadence. When a sprint's actual dates deviate from the recurrence, GAIA updates the specific instance without affecting the broader series."
+        "question": "2주 스프린트 주기를 반복 Google Calendar 이벤트로 동기화할 수 있나요?",
+        "answer": "네. GAIA는 스프린트 주기에 맞는 반복 이벤트를 만들 수 있습니다. 스프린트의 실제 날짜가 반복 주기와 달라지면 GAIA가 전체 시리즈에 영향을 주지 않고 해당 회차만 업데이트합니다."
       },
       {
-        "question": "Does GAIA support Jira Software and Jira Service Management?",
-        "answer": "GAIA supports Jira Software's sprint and milestone syncing natively. Jira Service Management SLA-based calendar events are also supported, creating calendar reminders for key SLA milestones."
+        "question": "Jira Software와 Service Management를 지원하나요?",
+        "answer": "GAIA는 Software 에디션의 스프린트 및 마일스톤 동기화를 기본 지원합니다. Service Management 에디션의 SLA 기반 캘린더 이벤트도 지원해 주요 SLA 마일스톤에 대한 캘린더 알림을 만듭니다."
       },
       {
-        "question": "Can I sync Jira dates to a shared team calendar instead of personal calendars?",
-        "answer": "Yes. You can configure GAIA to write Jira-sourced events to a shared Google Calendar that the whole team has access to, providing a single team calendar that always reflects the current Jira project timeline."
+        "question": "개인 캘린더 대신 공유 팀 캘린더로 프로젝트 날짜를 동기화할 수 있나요?",
+        "answer": "네. 프로젝트에서 가져온 이벤트를 팀 전체가 접근하는 공유 캘린더에 기록하도록 GAIA를 설정할 수 있습니다. 현재 프로젝트 타임라인을 항상 반영하는 단일 팀 캘린더가 만들어집니다."
       }
     ]
   },
   "google-calendar-clickup": {
     "toolA": "Google Calendar",
     "toolB": "ClickUp",
-    "tagline": "Sync ClickUp task deadlines to Google Calendar and create tasks from calendar events",
-    "metaTitle": "Google Calendar + ClickUp 연동: 마감일 표시",
-    "metaDescription": "GAIA로 Google Calendar + ClickUp 연동. 업무 마감일을 캘린더에 동기화하고 일정에서 ClickUp 업무를 만듭니다. 일정과 프로젝트 관리가 맞춰집니다.",
+    "tagline": "ClickUp 작업 마감일을 Google Calendar와 동기화하고 캘린더 일정으로 작업을 만드세요",
+    "metaTitle": "Google Calendar + ClickUp 연동: 마감일을 일정으로",
+    "metaDescription": "ClickUp 마감일을 Google Calendar와 동기화하고 일정으로 작업을 만듭니다. 마감이 바뀌면 GAIA가 일정을 옮깁니다.",
     "keywords": [
-      "Google Calendar ClickUp integration",
-      "ClickUp Google Calendar sync",
-      "ClickUp deadlines calendar",
-      "Google Calendar ClickUp automation",
-      "ClickUp task due date calendar",
-      "ClickUp schedule Google Calendar"
+      "Google Calendar ClickUp 연동",
+      "ClickUp Google Calendar 동기화",
+      "ClickUp 마감일 캘린더",
+      "Google Calendar ClickUp 자동화",
+      "ClickUp 작업 마감일 캘린더",
+      "ClickUp 일정 Google Calendar"
     ],
-    "intro": "ClickUp is your team's project hub, packed with tasks, deadlines, and dependencies across multiple spaces and lists. Google Calendar is where you and your stakeholders manage time. The problem is that ClickUp task deadlines rarely make it onto anyone's calendar unless someone manually creates an event — which means important deadlines are invisible to anyone not actively checking ClickUp.\n\nGAIA bridges Google Calendar and ClickUp so deadlines are always calendar-visible. Task due dates from the ClickUp lists you care about appear automatically as Google Calendar events, giving you and your team a deadline view alongside your meetings and appointments. When a calendar event represents a deliverable, GAIA can create the corresponding ClickUp task so your project management stays in sync with your schedule.\n\nThis integration helps project managers who review schedules in Google Calendar but manage work in ClickUp, and individual contributors who want their ClickUp task deadlines surfaced in the calendar tool they already live in.",
+    "intro": "ClickUp은 여러 스페이스와 리스트에 걸친 작업, 마감일, 의존성으로 가득한 팀의 프로젝트 허브입니다. 한편 나와 이해관계자는 시간을 캘린더로 관리합니다. 문제는 누군가 직접 일정을 만들지 않으면 작업 마감일이 캘린더에 거의 나타나지 않는다는 것입니다. 프로젝트 허브를 수시로 확인하지 않는 사람에게 중요한 마감일은 보이지 않습니다.\n\nGAIA는 Google Calendar와 ClickUp을 연결해 마감일이 항상 캘린더에 보이게 합니다. 관심 있는 리스트의 작업 마감일이 캘린더 일정으로 자동 표시되어 회의와 약속 옆에서 마감일을 볼 수 있습니다. 캘린더 일정이 산출물을 뜻하면 GAIA가 대응하는 작업을 만들어 프로젝트 관리가 일정과 동기화됩니다.\n\n이 연동은 일정은 캘린더에서 검토하지만 업무는 스페이스와 리스트에서 관리하는 프로젝트 관리자, 이미 매일 쓰는 캘린더에서 작업 마감일을 보고 싶은 개인 기여자에게 도움이 됩니다.",
     "useCases": [
       {
-        "title": "Sync ClickUp task due dates to Google Calendar",
-        "description": "GAIA monitors ClickUp for tasks assigned to you and creates corresponding Google Calendar events at the due date, giving you a timeline view of upcoming deadlines alongside your meetings."
+        "title": "ClickUp 작업 마감일을 Google Calendar로 동기화",
+        "description": "GAIA가 나에게 배정된 작업을 모니터링해 마감일에 맞는 캘린더 일정을 만듭니다. 회의와 함께 다가오는 마감일을 타임라인으로 볼 수 있습니다."
       },
       {
-        "title": "Create ClickUp tasks from calendar events",
-        "description": "When you add a calendar event that represents a deliverable — a client presentation, a product demo, or a project kickoff — GAIA creates a linked ClickUp task in the appropriate space and list so the work gets tracked."
+        "title": "캘린더 일정에서 작업 생성",
+        "description": "산출물, 고객 프레젠테이션, 제품 데모, 프로젝트 킥오프를 뜻하는 캘린더 일정을 추가하면 GAIA가 적절한 스페이스와 리스트에 연결된 작업을 만들어 업무가 추적되게 합니다."
       },
       {
-        "title": "Update calendar events when ClickUp deadlines shift",
-        "description": "If a ClickUp task's due date is changed, GAIA updates the corresponding Google Calendar event automatically so your calendar view always reflects the current project timeline without manual correction."
+        "title": "ClickUp 마감일 변경 시 캘린더 일정 업데이트",
+        "description": "작업 마감일이 바뀌면 GAIA가 해당 캘린더 일정을 자동 업데이트해 수동 수정 없이 현재 프로젝트 타임라인을 반영합니다."
       },
       {
-        "title": "Visualize ClickUp project milestones on a team calendar",
-        "description": "GAIA aggregates key ClickUp milestone tasks across your team's spaces and publishes them to a shared Google Calendar, giving non-ClickUp users a clear view of project delivery dates in the tool they already use."
+        "title": "팀 캘린더에 프로젝트 마일스톤 시각화",
+        "description": "GAIA가 팀 스페이스의 핵심 마일스톤 작업을 모아 공유 캘린더에 게시합니다. ClickUp을 쓰지 않는 사람도 이미 쓰는 도구에서 프로젝트 납기일을 명확히 볼 수 있습니다."
       },
       {
-        "title": "Time-block for ClickUp tasks",
-        "description": "GAIA can automatically create time-blocked Google Calendar slots for high-priority ClickUp tasks before their due date, protecting focus time in your calendar so deep work gets scheduled, not just listed."
+        "title": "작업을 위한 시간 블록 설정",
+        "description": "GAIA가 마감 전 고우선순위 작업을 위한 시간 블록을 자동 생성해 캘린더에 집중 업무 시간을 확보합니다. 깊은 작업이 목록에만 남지 않고 일정에 잡힙니다."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Google Calendar and ClickUp to GAIA",
-        "description": "Authorize your Google Calendar and ClickUp workspace in GAIA's integration settings using OAuth. You select which ClickUp spaces, folders, and lists participate in the sync."
+        "step": "Google Calendar와 ClickUp을 GAIA에 연결",
+        "description": "GAIA 연동 설정에서 캘린더와 워크스페이스를 OAuth로 승인합니다. 동기화에 참여할 스페이스, 폴더, 리스트를 선택합니다."
       },
       {
-        "step": "Configure deadline sync and task creation rules",
-        "description": "Set which ClickUp task properties trigger calendar event creation — assignee, priority, list membership, or custom field values. Define which Google Calendar receives ClickUp-sourced events."
+        "step": "마감일 동기화와 작업 생성 규칙 설정",
+        "description": "담당자, 우선순위, 리스트 소속, 사용자 정의 필드 값 중 어떤 작업 속성이 캘린더 일정 생성을 트리거할지 설정하세요. 작업에서 만든 일정을 받을 캘린더도 지정합니다."
       },
       {
-        "step": "GAIA maintains the deadline-to-calendar pipeline automatically",
-        "description": "GAIA watches ClickUp for new and updated tasks and keeps Google Calendar in sync. When calendar events are created manually that match ClickUp task templates, GAIA can create the corresponding ClickUp tasks too."
+        "step": "GAIA가 마감일-캘린더 파이프라인을 자동 유지",
+        "description": "GAIA가 새 작업과 변경된 작업을 지켜보며 캘린더를 동기화합니다. 작업 템플릿에 맞는 캘린더 일정이 직접 만들어지면 GAIA가 대응하는 작업도 만들 수 있습니다."
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA sync ClickUp start dates as well as due dates to Google Calendar?",
-        "answer": "Yes. GAIA can create multi-day Google Calendar events that span from the ClickUp task's start date to its due date, giving you a visual duration view of each task in your calendar."
+        "question": "마감일뿐 아니라 시작일도 Google Calendar로 동기화할 수 있나요?",
+        "answer": "네. GAIA는 작업 시작일부터 마감일까지 이어지는 여러 날 일정을 만들어 캘린더에서 각 작업의 기간을 시각적으로 볼 수 있게 합니다."
       },
       {
-        "question": "Does GAIA support ClickUp's recurring tasks when syncing to Google Calendar?",
-        "answer": "Yes. GAIA maps ClickUp recurring task schedules to Google Calendar recurring events. When the recurrence pattern changes in ClickUp, GAIA updates the calendar recurrence rule accordingly."
+        "question": "캘린더 동기화 시 ClickUp의 반복 작업도 지원하나요?",
+        "answer": "네. GAIA는 반복 작업 일정을 반복 캘린더 일정에 매핑합니다. 반복 패턴이 바뀌면 캘린더 반복 규칙도 그에 맞게 업데이트합니다."
       },
       {
-        "question": "Can GAIA sync tasks from multiple ClickUp workspaces to one Google Calendar?",
-        "answer": "Yes. GAIA supports multiple ClickUp workspaces and can route events from different workspaces to separate Google Calendars or consolidate them into one, depending on your preference."
+        "question": "여러 워크스페이스의 작업을 하나의 캘린더로 동기화할 수 있나요?",
+        "answer": "네. GAIA는 여러 워크스페이스를 지원하며 설정에 따라 서로 다른 워크스페이스의 일정을 별도 캘린더로 보내거나 하나로 통합할 수 있습니다."
       }
     ]
   },
   "google-calendar-trello": {
     "toolA": "Google Calendar",
     "toolB": "Trello",
-    "tagline": "Add Trello card due dates to Google Calendar and create cards from calendar events",
-    "metaTitle": "Trello Google 캘린더 연동: 마감일을 일정으로",
-    "metaDescription": "Trello 마감일을 Google 캘린더 일정으로 만들고, 마감일이 바뀌면 자동으로 업데이트합니다. GAIA는 일정으로 카드도 만듭니다. 설정 단계를 확인하세요.",
+    "tagline": "Trello 카드 마감일을 Google Calendar에 추가하고 캘린더 일정으로 카드를 만드세요",
+    "metaTitle": "Trello Google Calendar 연동: 마감일을 일정으로",
+    "metaDescription": "Trello 마감일을 Google Calendar 일정으로 바꾸고 마감이 바뀌면 업데이트합니다. GAIA는 캘린더 일정으로 카드도 만듭니다.",
     "keywords": [
-      "Google Calendar Trello integration",
-      "Trello Google Calendar sync",
-      "Trello due dates calendar",
-      "Google Calendar Trello automation",
-      "Trello card deadline calendar",
-      "Trello schedule Google Calendar"
+      "Google Calendar Trello 연동",
+      "Trello Google Calendar 동기화",
+      "Trello 마감일 캘린더",
+      "Google Calendar Trello 자동화",
+      "Trello 카드 마감일 캘린더",
+      "Trello 일정 Google Calendar"
     ],
-    "intro": "Trello Google 캘린더 연동은 Trello 카드의 마감일을 Google 캘린더에 올려 회의 일정 옆에서 마감을 볼 수 있게 하고, 캘린더 일정을 Trello 카드로 바꿀 수도 있습니다. 설정 방법은 두 가지입니다. Trello의 캘린더 Power-Up은 iCalendar 피드를 공개할 수 있고, 이를 Google 캘린더에서 구독합니다. 다만 단방향·읽기 전용이며, 구독한 캘린더는 Google이 자체 주기로 새로 고치기 때문에 변경 사항이 보이기까지 몇 시간이 걸릴 수 있습니다. GAIA는 두 계정에 모두 연결해 실제 일정과 실제 카드를 만듭니다.\n\nGAIA의 방식: 동기화 내용을 자연어 워크플로로 설명합니다. GAIA의 Google 캘린더 트리거는 새 일정이 만들어질 때 실행되므로, 일정이 생기는 즉시 알맞은 보드와 리스트에 해당 Trello 카드를 만들 수 있습니다. Trello는 변경 사항을 GAIA에 보내지 않기 때문에 Trello에서 캘린더로 가는 방향은 매시간이나 평일 오전 8시처럼 직접 고른 일정에 따라 실행됩니다. GAIA는 지정한 보드를 읽고, 새 마감일에 대한 일정을 만들고, 마감일이 바뀐 일정을 옮깁니다.\n\n워크플로 예시: \"평일 오전 8시마다 '클라이언트 작업' 보드를 확인해. 앞으로 14일 안에 마감인 카드마다 내 '마감' 캘린더에 카드 이름과 카드 링크가 들어간 종일 일정이 있도록 해. 마감일이 바뀌었으면 일정도 옮겨.\"\n\n캘린더에서 마감일을 보기만 하면 된다면 Power-Up 피드를 쓰세요. 일정에서 카드를 만들고, 마감일 변경에 맞춰 일정을 옮기고, 같은 워크플로에서 Google Tasks, Gmail, Slack까지 다루고 싶다면 GAIA를 쓰세요.",
+    "intro": "Trello Google Calendar 연동은 카드의 마감일을 캘린더에 넣어 회의 옆에서 마감일을 볼 수 있게 하고, 캘린더 일정을 카드로 바꿀 수도 있습니다. 설정 방법은 두 가지입니다. Trello의 Calendar 파워업은 Google Calendar에서 구독할 iCalendar 피드를 게시할 수 있습니다. 이 방식은 단방향 읽기 전용이고 Google이 구독 캘린더를 자체 일정에 따라 갱신하므로 변경 사항이 몇 시간 뒤에 나타날 수 있습니다. GAIA는 두 계정을 연결해 실제 일정과 실제 카드를 작성합니다.\n\nGAIA의 방식은 이렇습니다. 동기화를 자연어로 워크플로우처럼 설명하면 됩니다. GAIA의 캘린더 트리거는 새 일정이 만들어질 때 실행되므로 일정이 생기는 즉시 올바른 보드와 리스트에 맞는 카드를 만들 수 있습니다. 보드는 GAIA로 변경을 밀어주지 않으므로 카드에서 캘린더 방향은 선택한 일정(예: 매시간 또는 평일 오전 8시)에 따라 실행됩니다. GAIA가 지정한 보드를 읽고 새 마감일에 일정을 만들며 마감일이 바뀐 일정을 옮깁니다.\n\n예시 워크플로우: \"평일 오전 8시마다 Client Work 보드를 확인해. 앞으로 14일 안에 마감인 모든 카드에 대해 내 Deadlines 캘린더에 카드 이름과 카드 링크가 담긴 종일 일정이 있는지 확인하고, 마감일이 옮겨졌으면 일정도 옮겨줘.\"\n\n캘린더에서 마감일만 보고 싶다면 파워업 피드를 쓰면 됩니다. 캘린더 일정으로 카드를 만들거나, 마감일 변경을 따라가는 일정이 필요하거나, 같은 워크플로우로 Google Tasks, Gmail, Slack까지 함께 다루고 싶다면 GAIA를 사용하세요.",
     "useCases": [
       {
-        "title": "Trello 마감일을 Google 캘린더에 표시",
-        "description": "설정한 일정에 따라 GAIA가 지정한 보드를 읽고, 마감일이 있는 카드마다 카드 이름과 카드 링크가 들어간 Google 캘린더 일정을 만들어 마감이 회의 옆에 보이게 합니다."
+        "title": "Trello 마감일을 Google Calendar에 표시",
+        "description": "정한 일정에 따라 GAIA가 지정한 보드를 읽고 마감일이 있는 각 카드의 캘린더 일정을 만듭니다. 카드 이름을 제목으로 하고 카드로 돌아가는 링크를 넣어 마감일이 회의 옆에 자리합니다."
       },
       {
-        "title": "새 캘린더 일정으로 Trello 카드 만들기",
-        "description": "Google 캘린더에 새 일정이 만들어지면 워크플로 트리거가 실행되고, GAIA가 선택한 보드와 리스트에 일정 날짜를 마감일로 한 카드를 만듭니다. 제목에 '리뷰'나 '클라이언트' 같은 단어가 들어간 일정에만 반응하도록 지시할 수도 있습니다."
+        "title": "새 캘린더 일정으로 카드 생성",
+        "description": "Google Calendar에 새 일정이 만들어지면 워크플로우 트리거가 실행되어 GAIA가 선택한 보드와 리스트에 카드를 만들고 일정 날짜를 마감일로 설정합니다. 제목에 'Review'나 'Client' 같은 단어가 있는 일정에만 작동하도록 지정할 수 있습니다."
       },
       {
-        "title": "마감일이 바뀌면 일정도 최신으로",
-        "description": "예약 실행 때마다 카드 마감일과 이전에 만든 일정을 비교해, 카드 날짜가 바뀐 일정을 옮깁니다. 변경은 즉시가 아니라 다음 실행 때 반영되므로, 마감일이 바뀌는 빈도에 맞춰 실행 주기를 고르세요."
+        "title": "마감일이 옮겨지면 일정도 최신으로 유지",
+        "description": "예약된 실행마다 카드 마감일을 이전에 만든 일정과 비교해 카드 날짜가 바뀐 일정을 옮깁니다. 변경은 즉시가 아니라 다음 실행에 나타나므로 마감일이 얼마나 자주 바뀌는지에 맞춰 주기를 정하세요."
       },
       {
-        "title": "이해관계자용 마감 캘린더",
-        "description": "Trello를 열지 않는 고객이나 관리자와 공유하는 별도의 Google 캘린더를 워크플로의 대상으로 지정하면, 이미 쓰는 도구에서 납기를 확인할 수 있습니다."
+        "title": "이해관계자를 위한 공유 마감일 캘린더",
+        "description": "Trello를 전혀 열지 않는 고객이나 관리자와 공유하는 별도 캘린더로 워크플로우를 향하게 하세요. 그들이 이미 확인하는 도구에서 납기일을 볼 수 있습니다."
       },
       {
         "title": "Google Tasks와 Trello 함께 쓰기",
-        "description": "GAIA는 Google Tasks에도 연결됩니다. 예약 워크플로로 선택한 목록의 미완료 할 일을 Trello 카드로 만들거나, 오늘 마감인 Trello 카드 목록을 그날 일정과 함께 매일 아침 받아볼 수 있습니다."
+        "description": "GAIA는 Google Tasks도 연결합니다. 예약된 워크플로우로 선택한 목록의 미완료 작업을 카드로 바꾸거나, 오늘 마감인 카드와 그날의 캘린더를 함께 아침 요약으로 받아볼 수 있습니다."
       }
     ],
     "howItWorks": [
       {
-        "step": "Google 캘린더와 Trello를 GAIA에 연결",
-        "description": "GAIA의 통합 페이지에서 두 계정을 승인하세요. 같은 워크플로에서 쓰려면 Google Tasks도 추가하세요."
+        "step": "Google Calendar와 Trello를 GAIA에 연결",
+        "description": "GAIA 연동 페이지에서 두 계정을 승인합니다. 같은 워크플로우에 포함하고 싶다면 Google Tasks도 추가하세요."
       },
       {
-        "step": "동기화 내용을 자연어로 설명",
-        "description": "워크플로를 만들고 어떤 보드와 리스트를 읽을지, 어떤 캘린더에 일정을 넣을지, 일정에서 만든 카드에 무엇을 담을지 적습니다. 트리거는 Trello에서 Google 캘린더로는 예약 실행, Google 캘린더에서 Trello로는 Google 캘린더 새 일정 트리거를 고릅니다."
+        "step": "동기화를 자연어로 설명",
+        "description": "워크플로우를 만들고 어떤 보드와 리스트를 읽을지, 어느 캘린더가 일정을 받을지, 캘린더 일정으로 만든 카드에 무엇이 들어갈지 말하면 됩니다. 카드가 캘린더로 갈 때는 예약 실행을, 일정이 카드로 갈 때는 Google Calendar 새 일정 트리거를 선택하세요."
       },
       {
         "step": "GAIA가 백그라운드에서 실행",
-        "description": "예약 실행은 Trello를 읽어 Google 캘린더를 업데이트하고, 일정 트리거 실행은 캘린더에 일정이 생기는 즉시 카드를 만듭니다. 실행이 끝날 때마다 무엇을 바꿨는지 GAIA가 알려 줄 수 있습니다."
+        "description": "예약 실행은 보드를 읽어 캘린더를 업데이트하고, 이벤트 트리거 실행은 캘린더 일정이 만들어지는 즉시 카드를 만듭니다. GAIA가 실행 후 무엇을 바꿨는지 알려줄 수 있습니다."
       }
     ],
     "faqs": [
       {
-        "question": "Trello를 Google 캘린더에 어떻게 연결하나요?",
-        "answer": "두 가지 방법이 있습니다. 읽기 전용으로 보기만 하려면 보드에서 Trello의 캘린더 Power-Up을 켜고 캘린더 동기화를 활성화해 iCalendar URL을 받은 뒤, Google 캘린더의 '다른 캘린더'에서 'URL로 추가'로 등록합니다. 양방향으로 자동화하려면 GAIA에서 두 계정을 연결하고, 어떤 보드를 읽고 어떤 캘린더에 쓸지 정한 워크플로를 만듭니다."
+        "question": "Trello를 Google Calendar에 어떻게 연결하나요?",
+        "answer": "두 가지 방법이 있습니다. 읽기 전용으로 보려면 보드에서 Calendar 파워업을 켜고 캘린더 동기화를 활성화해 iCalendar URL을 받은 뒤, 캘린더 설정의 '다른 캘린더'에서 'URL로 추가'에 넣으면 됩니다. 양방향 자동화를 원하면 GAIA에서 두 계정을 연결하고 읽을 보드와 기록할 캘린더를 지정하는 워크플로우를 만드세요."
       },
       {
-        "question": "Trello와 Google 캘린더 동기화는 실시간인가요?",
-        "answer": "절반은 그렇습니다. Google 캘린더에서 Trello로는 이벤트 기반이라 새 일정이 만들어지면 GAIA의 트리거가 실행됩니다. Trello에서 Google 캘린더로는 Trello가 변경 사항을 GAIA에 보내지 않기 때문에 설정한 일정에 따라 실행됩니다. 10시 5분에 옮긴 마감일은 다음 실행 후에 반영됩니다."
+        "question": "동기화가 실시간으로 이루어지나요?",
+        "answer": "절반은 그렇습니다. 캘린더에서 보드 방향은 이벤트 기반이라 새 캘린더 일정이 만들어지면 GAIA 트리거가 실행됩니다. 보드에서 캘린더 방향은 보드가 GAIA로 변경을 밀어주지 않으므로 설정한 일정에 따라 실행되어, 오전 10시 5분에 바뀐 마감일은 다음 실행 후에 반영됩니다."
       },
       {
-        "question": "여러 Trello 보드를 서로 다른 Google 캘린더에 동기화할 수 있나요?",
-        "answer": "네. 워크플로에 보드마다 대상 캘린더를 지정하면 됩니다. 예를 들어 클라이언트 보드는 고객과 공유하는 캘린더로, 내부 보드는 팀 전용 캘린더로 보낼 수 있습니다."
+        "question": "여러 보드를 서로 다른 캘린더로 동기화할 수 있나요?",
+        "answer": "네. 워크플로우에 각 보드와 대상 캘린더를 지정하면 됩니다. 예를 들어 고객 보드는 공유 고객 캘린더로, 내부 보드는 팀 전용 캘린더로 보낼 수 있습니다."
       },
       {
-        "question": "Trello 카드를 보관하거나 삭제하면 Google 캘린더에서는 어떻게 되나요?",
-        "answer": "다음 실행 때 GAIA는 열린 카드 중에서 그 카드를 더 이상 찾지 못합니다. 보관되거나 삭제된 카드의 일정을 정리하라고 워크플로에 적어 두면 해당 일정을 지우고, 그렇지 않으면 일정은 그대로 남습니다. 원하는 규칙을 워크플로에 적으세요."
+        "question": "카드가 보관되거나 삭제되면 캘린더에서는 어떻게 되나요?",
+        "answer": "다음 실행에서 GAIA가 열린 카드 중 해당 카드를 찾지 못합니다. 워크플로우에 보관·삭제된 카드의 일정을 정리하라고 되어 있으면 일치하는 일정을 지우고, 그렇지 않으면 일정이 남습니다. 원하는 규칙을 워크플로우에 적어 주세요."
       },
       {
-        "question": "Google Tasks를 Trello와 연결할 수 있나요?",
-        "answer": "네. GAIA는 Google Tasks에도 연결됩니다. Google Tasks와 Trello 모두 변경 사항을 GAIA에 보내지 않으므로, Google Tasks에서 Trello로 가는 워크플로는 예약 실행으로 동작합니다. 예를 들어 매일 저녁 선택한 목록의 새 할 일을 보드의 카드로 바꿀 수 있습니다."
+        "question": "Google Tasks를 보드와 연결할 수 있나요?",
+        "answer": "네. GAIA는 Google Tasks도 연결합니다. Google Tasks와 보드 모두 GAIA로 변경을 밀어주지 않으므로 Google Tasks에서 보드로 가는 워크플로우는 예약 실행으로 동작합니다. 예를 들어 매일 저녁 GAIA가 선택한 목록의 새 작업을 보드의 카드로 바꿉니다."
       }
     ]
   },
   "google-calendar-hubspot": {
     "toolA": "Google Calendar",
     "toolB": "HubSpot",
-    "tagline": "Sync meeting invites with HubSpot contacts and log calls to your CRM automatically",
-    "metaTitle": "Google Calendar + HubSpot 연동: CRM과 회의 연결",
-    "metaDescription": "GAIA로 Google Calendar + HubSpot 연동. Google 캘린더 회의를 HubSpot에 자동 기록하고 연락처 정보를 초대장에 반영합니다. 모든 고객 접점이 CRM에 남습니다.",
+    "tagline": "회의 초대를 HubSpot 연락처와 동기화하고 통화를 CRM에 자동 기록하세요",
+    "metaTitle": "Google Calendar + HubSpot 연동: 회의를 HubSpot에",
+    "metaDescription": "고객 맥락을 갖고 영업 회의에 임하세요. GAIA가 HubSpot 연락처 데이터를 캘린더 초대에 추가하고 끝난 회의를 기록합니다.",
     "keywords": [
-      "Google Calendar HubSpot integration",
-      "HubSpot Google Calendar sync",
-      "log meeting HubSpot calendar",
+      "Google Calendar HubSpot 연동",
+      "HubSpot Google Calendar 동기화",
+      "회의를 HubSpot 캘린더에 기록",
       "Google Calendar HubSpot CRM",
-      "meeting CRM automation",
-      "HubSpot calendar event sync"
+      "회의 CRM 자동화",
+      "HubSpot 캘린더 일정 동기화"
     ],
-    "intro": "Sales and customer success teams live between two critical tools: Google Calendar for scheduling client meetings and HubSpot for managing the CRM records of those same clients. The problem is that these two systems rarely talk to each other. Meetings happen in Google Calendar but are manually logged in HubSpot — or worse, never logged at all. Contact details in HubSpot aren't visible in calendar invites. The result is a CRM that is perpetually behind and a team that wastes time on manual data entry.\n\nGAIA bridges Google Calendar and HubSpot so that client meetings are automatically enriched with CRM data and automatically logged as activities. When you schedule a meeting with a known HubSpot contact, GAIA adds their company, deal stage, and recent activity to the calendar event description so you're prepared. When the meeting ends, GAIA logs it as a HubSpot activity with attendees, duration, and any notes you add, keeping your CRM accurate without any manual entry.\n\nThis integration is essential for sales reps, account executives, and customer success managers who need their meeting and CRM records to stay in perfect alignment without the overhead of double data entry.",
+    "intro": "영업팀과 고객 성공팀은 두 가지 핵심 도구 사이에서 일합니다. 고객 회의 일정은 Google Calendar로, 같은 고객의 CRM 기록은 HubSpot으로 관리합니다. 문제는 두 도구가 거의 서로 소통하지 않는다는 점입니다. 회의는 캘린더에서 열리지만 CRM에는 직접 기록하거나, 더 나쁘게는 아예 기록되지 않습니다. 연락처 정보는 캘린더 초대에 보이지 않습니다. 그 결과 CRM은 늘 뒤처지고 팀은 수동 입력에 시간을 낭비합니다.\n\nGAIA는 Google Calendar와 HubSpot을 연결해 고객 회의에 CRM 데이터를 자동으로 채우고 활동으로 자동 기록합니다. 알려진 연락처와 회의를 잡으면 GAIA가 회사, 딜 단계, 최근 활동을 일정 설명에 추가해 준비된 상태로 임하게 합니다. 회의가 끝나면 참석자, 길이, 추가한 메모와 함께 기록해 수동 입력 없이 CRM이 정확하게 유지됩니다.\n\n이 연동은 회의 기록과 CRM 기록을 이중 입력 부담 없이 완벽히 일치시켜야 하는 영업 담당자, 계정 담당자, 고객 성공 매니저에게 꼭 필요합니다.",
     "useCases": [
       {
-        "title": "Enrich calendar invites with HubSpot contact data",
-        "description": "When you schedule a Google Calendar event with a HubSpot contact's email, GAIA automatically adds their company, title, deal stage, and last interaction date to the event description so you walk into every meeting prepared."
+        "title": "캘린더 초대에 HubSpot 연락처 데이터 추가",
+        "description": "연락처 이메일 주소로 일정을 잡으면 GAIA가 회사, 직함, 딜 단계, 마지막 상호작용 날짜를 일정 설명에 자동 추가합니다. 모든 회의에 준비된 상태로 임할 수 있습니다."
       },
       {
-        "title": "Auto-log completed meetings to HubSpot",
-        "description": "When a Google Calendar event with a HubSpot contact ends, GAIA logs it as a meeting activity in HubSpot with attendees, duration, and the event description, keeping your CRM up to date without manual logging."
+        "title": "완료된 회의를 CRM에 자동 기록",
+        "description": "알려진 연락처와의 일정이 끝나면 GAIA가 참석자, 길이, 일정 설명과 함께 회의 활동으로 기록합니다. 수동 기록 없이 CRM이 최신으로 유지됩니다."
       },
       {
-        "title": "Create HubSpot follow-up tasks from calendar events",
-        "description": "After a meeting is logged, GAIA automatically creates a HubSpot follow-up task for the rep with a suggested due date so the next step is always captured and the deal keeps moving forward."
+        "title": "캘린더 일정에서 후속 작업 생성",
+        "description": "회의가 기록되면 GAIA가 담당자에게 제안 마감일이 있는 후속 작업을 자동 생성합니다. 다음 단계가 항상 포착되고 딜이 계속 진행됩니다."
       },
       {
-        "title": "Surface HubSpot deal context before meetings",
-        "description": "The day before a client meeting, GAIA sends you a briefing with the HubSpot deal status, recent email activity, open tasks, and any notes from previous meetings so you're fully prepared without opening HubSpot."
+        "title": "회의 전 딜 맥락 제공",
+        "description": "고객 회의 전날 GAIA가 딜 상태, 최근 이메일 활동, 열린 작업, 이전 회의 메모를 담은 브리핑을 보냅니다. CRM을 열지 않고도 충분히 준비할 수 있습니다."
       },
       {
-        "title": "Sync HubSpot meeting links to calendar invites",
-        "description": "When HubSpot Meetings is used to schedule calls, GAIA syncs those bookings to Google Calendar with full event details, ensuring your personal calendar reflects every client-scheduled meeting automatically."
+        "title": "HubSpot 회의 링크를 캘린더 초대에 동기화",
+        "description": "HubSpot Meetings로 통화를 예약하면 GAIA가 그 예약을 전체 일정 세부 정보와 함께 Google Calendar로 동기화합니다. 고객이 예약한 모든 회의가 개인 캘린더에 자동으로 반영됩니다."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Google Calendar and HubSpot to GAIA",
-        "description": "Authorize Google Calendar and your HubSpot portal in GAIA's integration settings. GAIA matches calendar attendees to HubSpot contacts by email address to enrich and log events accurately."
+        "step": "Google Calendar와 HubSpot을 GAIA에 연결",
+        "description": "GAIA 연동 설정에서 캘린더와 HubSpot 포털을 승인합니다. GAIA가 캘린더 참석자를 이메일 주소로 연락처와 매칭해 일정을 정확히 보강하고 기록합니다."
       },
       {
-        "step": "Configure enrichment, logging, and follow-up rules",
-        "description": "Set which HubSpot contact and deal fields should appear in calendar event descriptions, which completed event types should be auto-logged to HubSpot, and whether follow-up tasks should be created automatically."
+        "step": "보강, 기록, 후속 규칙 설정",
+        "description": "어떤 연락처와 딜 필드가 캘린더 일정 설명에 나타날지, 어떤 완료 일정 유형을 CRM에 자동 기록할지, 후속 작업을 자동 생성할지 설정하세요."
       },
       {
-        "step": "GAIA enriches meetings and logs them to HubSpot automatically",
-        "description": "Before each meeting GAIA enriches the calendar event with CRM context. After the meeting ends, GAIA logs the activity to HubSpot and creates follow-up tasks, completing the full sales activity loop."
+        "step": "GAIA가 회의를 보강하고 자동 기록",
+        "description": "회의 전 GAIA가 캘린더 일정에 CRM 맥락을 채우고, 회의가 끝나면 활동을 기록하고 후속 작업을 만들어 영업 활동의 전체 순환을 완성합니다."
       }
     ],
     "faqs": [
       {
-        "question": "What if a meeting attendee is not in HubSpot?",
-        "answer": "GAIA can automatically create a new HubSpot contact when a meeting is logged with an attendee email that doesn't match an existing contact, or it can flag the attendee for manual review depending on your preference."
+        "question": "회의 참석자가 HubSpot에 없으면 어떻게 되나요?",
+        "answer": "기존 연락처와 일치하지 않는 이메일로 회의가 기록되면 GAIA가 새 연락처를 자동 생성하거나, 설정에 따라 해당 참석자를 수동 검토 대상으로 표시할 수 있습니다."
       },
       {
-        "question": "Can GAIA log internal meetings or only client-facing ones?",
-        "answer": "You can configure GAIA to log all meetings, only meetings with external attendees, or only meetings where attendees match known HubSpot contacts. This keeps your HubSpot activity log focused on customer interactions."
+        "question": "내부 회의도 기록하나요, 아니면 고객 대상 회의만 기록하나요?",
+        "answer": "모든 회의, 외부 참석자가 있는 회의만, 또는 참석자가 알려진 연락처와 일치하는 회의만 기록하도록 설정할 수 있습니다. 활동 로그가 고객 상호작용에 집중됩니다."
       },
       {
-        "question": "Does GAIA support HubSpot deal associations when logging meetings?",
-        "answer": "Yes. When logging a meeting, GAIA associates the activity with the relevant HubSpot deal or deals linked to the attendee contacts, so the meeting appears in the deal timeline and not just the contact record."
+        "question": "회의를 기록할 때 딜 연결을 지원하나요?",
+        "answer": "네. 회의를 기록할 때 GAIA가 참석자 연락처와 연결된 딜에 활동을 연결합니다. 회의가 연락처 레코드뿐 아니라 딜 타임라인에도 나타납니다."
       }
     ]
   },
   "google-calendar-stripe": {
     "toolA": "Google Calendar",
     "toolB": "Stripe",
-    "tagline": "Schedule billing cycle events and payment reminder deadlines directly from Stripe",
-    "metaTitle": "Google Calendar + Stripe 연동: 결제일을 일정에",
-    "metaDescription": "GAIA로 Google Calendar + Stripe 연동. Stripe 구독 갱신, 결제 실패 후속 조치, 청구서 마감일을 캘린더 일정으로 만듭니다. 결제 일정을 언제든 확인할 수 있습니다.",
+    "tagline": "Stripe에서 청구 주기 일정과 결제 알림 기한을 바로 예약하세요",
+    "metaTitle": "Google Calendar + Stripe 연동: 청구 알림",
+    "metaDescription": "구독 갱신과 인보이스 마감일을 팀 캘린더에 넣고 결제 실패 후속 알림을 받으세요. GAIA가 전부 추적합니다.",
     "keywords": [
-      "Google Calendar Stripe integration",
-      "Stripe billing calendar",
-      "Stripe subscription renewal calendar",
-      "Google Calendar Stripe automation",
-      "payment reminder calendar event",
-      "Stripe invoice due date calendar"
+      "Google Calendar Stripe 연동",
+      "Stripe 청구 캘린더",
+      "Stripe 구독 갱신 캘린더",
+      "Google Calendar Stripe 자동화",
+      "결제 알림 캘린더 일정",
+      "Stripe 인보이스 마감일 캘린더"
     ],
-    "intro": "Stripe manages your subscription billing, invoice schedules, and payment processing, but those financial events rarely appear in your team's calendar. Finance and operations teams need to know when major renewals are due, when trial periods end, and when significant invoices need follow-up — but this visibility currently requires logging into Stripe or running manual reports. Important billing events are invisible to the people who need to act on them.\n\nGAIA bridges Google Calendar and Stripe so your billing timeline becomes a first-class part of your team's schedule. Subscription renewal dates appear as calendar events with customer name and MRR value so account managers can reach out proactively. Failed payment follow-up reminders appear automatically after a charge fails. Invoice due dates become calendar events for your finance team so collections efforts are timely and organized.\n\nThis integration is particularly valuable for SaaS businesses where subscription renewals, churn prevention, and collections are operational priorities that deserve calendar visibility alongside other team activities.",
+    "intro": "Stripe는 구독 청구, 인보이스 일정, 결제 처리를 관리하지만 그 재무 이벤트는 팀 캘린더에 거의 나타나지 않습니다. 재무와 운영 팀은 주요 갱신 시점, 체험 기간 종료, 후속 조치가 필요한 큰 인보이스를 알아야 하지만, 지금은 청구 대시보드에 로그인하거나 보고서를 직접 만들어야 합니다. 중요한 청구 이벤트가 대응해야 할 사람들에게 보이지 않습니다.\n\nGAIA는 Google Calendar와 Stripe를 연결해 청구 타임라인을 팀 일정의 일부로 만듭니다. 구독 갱신일이 고객명과 MRR 금액이 담긴 캘린더 일정으로 표시되어 계정 관리자가 먼저 연락할 수 있습니다. 결제 실패 후속 알림은 청구가 실패한 뒤 자동으로 나타납니다. 인보이스 마감일은 재무 팀의 캘린더 일정이 되어 수금 업무가 시의적절하고 체계적으로 이루어집니다.\n\n이 연동은 구독 갱신, 이탈 방지, 수금이 운영 우선순위인 SaaS 기업에 특히 유용합니다. 다른 팀 활동과 나란히 캘린더에 보여야 할 일들입니다.",
     "useCases": [
       {
-        "title": "Subscription renewal events on the team calendar",
-        "description": "GAIA creates Google Calendar events for upcoming Stripe subscription renewals, including the customer name, plan, and MRR value, so account managers have advance notice for proactive check-ins before renewal dates."
+        "title": "팀 캘린더에 구독 갱신 일정",
+        "description": "GAIA가 다가오는 Stripe 구독 갱신의 Google Calendar 일정을 고객명, 요금제, MRR 금액과 함께 만듭니다. 계정 관리자가 갱신일 전에 미리 연락할 수 있습니다."
       },
       {
-        "title": "Failed payment follow-up reminders",
-        "description": "When a Stripe charge fails, GAIA creates a Google Calendar task or event for the responsible team member with the customer name, failed amount, and a suggested follow-up timeline to maximize recovery chances."
+        "title": "결제 실패 후속 알림",
+        "description": "청구가 실패하면 GAIA가 담당 팀원을 위해 고객명, 실패 금액, 권장 후속 일정이 담긴 캘린더 작업이나 일정을 만듭니다. 회수 가능성을 높일 수 있습니다."
       },
       {
-        "title": "Invoice due date calendar events",
-        "description": "GAIA syncs Stripe invoice due dates to Google Calendar so your finance team has a clear visual timeline of expected payments alongside other operational commitments."
+        "title": "인보이스 마감일 캘린더 일정",
+        "description": "GAIA가 인보이스 마감일을 캘린더로 동기화해 재무 팀이 예상 결제 일정을 다른 운영 일정과 함께 명확한 타임라인으로 볼 수 있게 합니다."
       },
       {
-        "title": "Trial expiration alerts",
-        "description": "When a Stripe trial period is approaching its end, GAIA creates a Google Calendar event for the account or sales team so they can engage the customer before the trial expires and influence the conversion decision."
+        "title": "체험 기간 만료 알림",
+        "description": "체험 기간이 끝나가면 GAIA가 계정이나 영업 팀을 위한 캘린더 일정을 만들어, 만료 전에 고객과 소통하고 전환 결정에 영향을 줄 수 있게 합니다."
       },
       {
-        "title": "Monthly revenue review scheduling",
-        "description": "GAIA reads your Stripe billing cycle and automatically schedules monthly or quarterly revenue review meetings in Google Calendar aligned with your subscription billing dates so financial reviews happen at the right time."
+        "title": "월간 매출 검토 일정 잡기",
+        "description": "GAIA가 청구 주기를 읽어 구독 청구일에 맞춰 월간 또는 분기 매출 검토 회의를 자동 예약합니다. 재무 검토가 적절한 시점에 이루어집니다."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Google Calendar and Stripe to GAIA",
-        "description": "Authorize Google Calendar and your Stripe account in GAIA's integration settings using restricted API keys for Stripe. GAIA only reads billing event data and never writes to Stripe."
+        "step": "Google Calendar와 Stripe를 GAIA에 연결",
+        "description": "GAIA 연동 설정에서 캘린더와 Stripe 계정을 제한된 API 키로 승인합니다. GAIA는 청구 이벤트 데이터만 읽고 계정에 쓰지 않습니다."
       },
       {
-        "step": "Configure billing event types and calendar routing",
-        "description": "Select which Stripe events should create calendar events — renewals, failed payments, invoice due dates, trial expirations — and which Google Calendar should receive each event type."
+        "step": "청구 이벤트 유형과 캘린더 라우팅 설정",
+        "description": "갱신, 결제 실패, 인보이스 마감일, 체험 만료 중 어떤 이벤트가 캘린더 일정을 만들지, 각 유형을 어느 캘린더가 받을지 선택하세요."
       },
       {
-        "step": "GAIA keeps your billing calendar current automatically",
-        "description": "GAIA listens to Stripe webhooks and creates or updates Google Calendar events as billing events occur. Your team has a live view of the billing schedule in their calendar without any manual data entry."
+        "step": "GAIA가 청구 캘린더를 자동으로 최신 유지",
+        "description": "GAIA가 청구 웹훅을 수신해 청구 이벤트가 발생하는 대로 캘린더 일정을 만들거나 업데이트합니다. 수동 입력 없이 팀이 캘린더에서 청구 일정을 실시간으로 확인합니다."
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA filter Stripe subscription events by plan or MRR threshold?",
-        "answer": "Yes. You can configure GAIA to only create calendar events for renewals above a certain MRR value or for specific Stripe subscription plans, focusing calendar visibility on the customers that matter most."
+        "question": "요금제나 MRR 기준으로 구독 이벤트를 필터링할 수 있나요?",
+        "answer": "네. 특정 MRR 금액 이상의 갱신이나 특정 구독 요금제에만 캘린더 일정을 만들도록 설정해 가장 중요한 고객에 캘린더 가시성을 집중할 수 있습니다."
       },
       {
-        "question": "Does GAIA expose sensitive customer payment data in calendar event descriptions?",
-        "answer": "GAIA allows you to configure exactly which fields appear in calendar event descriptions. By default it includes customer name and renewal amount. Full payment details, card numbers, and sensitive data are never included."
+        "question": "캘린더 일정 설명에 민감한 고객 결제 데이터가 노출되나요?",
+        "answer": "GAIA는 어떤 필드가 캘린더 일정 설명에 나타날지 정확히 설정할 수 있게 합니다. 기본값은 고객명과 갱신 금액이며, 전체 결제 세부 정보나 카드 번호 같은 민감한 데이터는 절대 포함되지 않습니다."
       },
       {
-        "question": "Can GAIA handle Stripe's metered billing invoices?",
-        "answer": "Yes. GAIA supports metered billing invoice events from Stripe. Invoice finalization and due dates for metered billing create calendar events with the estimated invoice amount based on usage data available at the time."
+        "question": "Stripe의 사용량 기반 청구 인보이스도 처리할 수 있나요?",
+        "answer": "네. GAIA는 사용량 기반 청구 인보이스 이벤트를 지원합니다. 인보이스 확정과 마감일에 대해 당시 사용 가능한 사용량 데이터를 바탕으로 예상 금액이 담긴 캘린더 일정을 만듭니다."
       }
     ]
   },
@@ -7521,66 +7521,66 @@
   "google-calendar-figma": {
     "toolA": "Google Calendar",
     "toolB": "Figma",
-    "tagline": "Schedule design reviews from Figma milestones and create calendar events from Figma project timelines",
-    "metaTitle": "Google 캘린더 Figma 연동: 디자인 리뷰 일정 잡기",
-    "metaDescription": "디자인을 알맞은 때에 리뷰하세요. GAIA가 Figma 마일스톤으로 리뷰 일정을 잡고 해당 프레임을 첨부합니다. 설정 단계를 확인하세요.",
+    "tagline": "Figma 마일스톤으로 디자인 리뷰를 예약하고 프로젝트 타임라인으로 캘린더 일정을 만드세요",
+    "metaTitle": "Google Calendar Figma 연동: 디자인 리뷰 일정",
+    "metaDescription": "Figma 마일스톤으로 디자인 리뷰를 예약하고 각 일정에 정확한 Figma 프레임을 첨부합니다. GAIA가 인계 기한도 추가합니다.",
     "keywords": [
-      "Google Calendar Figma integration",
-      "Figma Google Calendar sync",
-      "Figma design review calendar",
-      "Figma milestone calendar event",
-      "Google Calendar Figma automation",
-      "design schedule Figma calendar"
+      "Google Calendar Figma 연동",
+      "Figma Google Calendar 동기화",
+      "Figma 디자인 리뷰 캘린더",
+      "Figma 마일스톤 캘린더 일정",
+      "Google Calendar Figma 자동화",
+      "디자인 일정 Figma 캘린더"
     ],
-    "intro": "Figma is where design work happens: wireframes, high-fidelity mockups, and design system components live in Figma projects with their own version history and comment threads. Google Calendar is where design reviews, handoff meetings, and feedback sessions get scheduled. The gap between them means design milestones rarely appear on anyone's calendar, review meetings lack direct links to the Figma files being reviewed, and the design timeline is invisible to stakeholders who rely on Google Calendar.\n\nGAIA bridges Google Calendar and Figma so that design milestones become calendar events and calendar events become linked to the right Figma files. When a Figma project milestone or version tag is created, GAIA can schedule a design review meeting automatically with the relevant stakeholders and a direct link to the Figma frame. When a design review is added to Google Calendar, GAIA can search Figma for the relevant file and attach the link so reviewers have instant access.\n\nThis integration is built for product designers and design leads who want their design schedule surfaced in the broader organization's calendar, and for product managers who need design milestone visibility alongside engineering and marketing timelines.",
+    "intro": "Figma는 디자인 작업이 이루어지는 곳입니다. 와이어프레임, 고해상도 목업, 디자인 시스템 컴포넌트가 자체 버전 기록과 댓글 스레드를 가진 프로젝트에 있습니다. Google Calendar는 디자인 리뷰, 인계 회의, 피드백 세션을 예약하는 곳입니다. 둘 사이의 간극 때문에 디자인 마일스톤이 캘린더에 거의 나타나지 않고, 리뷰 회의에는 검토할 파일 링크가 없으며, 캘린더에 의존하는 이해관계자에게 디자인 타임라인이 보이지 않습니다.\n\nGAIA는 Google Calendar와 Figma를 연결해 디자인 마일스톤이 캘린더 일정이 되고 캘린더 일정이 적절한 파일과 연결되게 합니다. 프로젝트 마일스톤이나 버전 태그가 만들어지면 GAIA가 관련 이해관계자와 프레임 링크를 담은 디자인 리뷰 회의를 자동 예약할 수 있습니다. 디자인 리뷰가 캘린더에 추가되면 GAIA가 관련 파일을 찾아 링크를 첨부해 리뷰어가 바로 접근할 수 있습니다.\n\n이 연동은 디자인 일정을 조직 전체 캘린더에 드러내고 싶은 제품 디자이너와 디자인 리드, 엔지니어링·마케팅 타임라인과 함께 디자인 마일스톤 가시성이 필요한 제품 관리자를 위해 만들어졌습니다.",
     "useCases": [
       {
-        "title": "Schedule design review meetings from Figma milestones",
-        "description": "When a Figma project version is tagged or a milestone comment is added, GAIA schedules a Google Calendar design review event with the right stakeholders, a direct Figma link, and an agenda pre-populated with the milestone details."
+        "title": "Figma 마일스톤으로 디자인 리뷰 회의 예약",
+        "description": "프로젝트 버전이 태그되거나 마일스톤 댓글이 추가되면 GAIA가 적절한 이해관계자, Figma 직접 링크, 마일스톤 세부 정보로 채워진 안건을 담아 Google Calendar 디자인 리뷰 일정을 예약합니다."
       },
       {
-        "title": "Attach Figma file links to design review calendar events",
-        "description": "When a design review or feedback session is added to Google Calendar, GAIA searches Figma for the relevant project file and appends the direct link to the event description so reviewers can open Figma before the meeting."
+        "title": "디자인 리뷰 캘린더 일정에 파일 링크 첨부",
+        "description": "디자인 리뷰나 피드백 세션이 캘린더에 추가되면 GAIA가 관련 프로젝트 파일을 찾아 일정 설명에 직접 링크를 추가합니다. 리뷰어가 회의 전에 파일을 열 수 있습니다."
       },
       {
-        "title": "Design handoff events with Figma inspect links",
-        "description": "When a Figma design is marked ready for development handoff, GAIA creates a Google Calendar handoff meeting invite for the design and engineering team with a link directly to the Figma inspect view."
+        "title": "Figma inspect 링크가 포함된 디자인 인계 일정",
+        "description": "디자인이 개발 인계 준비 완료로 표시되면 GAIA가 디자인·엔지니어링 팀을 위한 인계 회의 초대를 만들고 inspect 화면으로 바로 가는 링크를 넣습니다."
       },
       {
-        "title": "Design deadline calendar events from Figma project dates",
-        "description": "GAIA reads project timeline information from Figma and creates all-day deadline events in Google Calendar for each design deliverable, giving the broader team visibility into the design schedule in the tool they use for planning."
+        "title": "프로젝트 날짜로 디자인 마감 캘린더 일정 생성",
+        "description": "GAIA가 프로젝트 타임라인 정보를 읽어 각 디자인 산출물의 종일 마감 일정을 만듭니다. 계획에 쓰는 도구에서 조직 전체가 디자인 일정을 볼 수 있습니다."
       },
       {
-        "title": "Figma comment review reminders on calendar",
-        "description": "When a Figma file accumulates unresolved comments older than a configurable threshold, GAIA creates a Google Calendar task for the responsible designer to schedule a comment review session, keeping design feedback loops from stalling."
+        "title": "캘린더에 댓글 검토 알림",
+        "description": "파일에 해결되지 않은 댓글이 설정한 기간보다 오래 쌓이면 GAIA가 담당 디자이너를 위한 캘린더 작업을 만들어 댓글 검토 세션을 잡게 합니다. 디자인 피드백 순환이 멈추지 않습니다."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Google Calendar and Figma to GAIA",
-        "description": "Authorize Google Calendar via Google OAuth and your Figma account via Figma's OAuth in GAIA's integration settings. You select which Figma teams and projects GAIA monitors for milestone events."
+        "step": "Google Calendar와 Figma를 GAIA에 연결",
+        "description": "GAIA 연동 설정에서 Google OAuth로 Google Calendar를, Figma 자체 OAuth로 Figma 계정을 승인합니다. GAIA가 마일스톤 이벤트를 모니터링할 팀과 프로젝트를 선택합니다."
       },
       {
-        "step": "Configure milestone triggers and calendar event templates",
-        "description": "Define which Figma events create calendar events — version tags, milestone comments, handoff status changes — and set the calendar event template including attendees, duration, and agenda format."
+        "step": "마일스톤 트리거와 캘린더 일정 템플릿 설정",
+        "description": "버전 태그, 마일스톤 댓글, 인계 상태 변경 중 어떤 디자인 이벤트가 캘린더 일정을 만들지 정의하고, 참석자, 길이, 안건 형식을 포함한 일정 템플릿을 설정하세요."
       },
       {
-        "step": "GAIA links design milestones to your calendar automatically",
-        "description": "GAIA monitors Figma for milestone activity and creates Google Calendar events automatically. It also watches for new design review calendar events and attaches the relevant Figma file links proactively."
+        "step": "GAIA가 디자인 마일스톤을 캘린더와 자동 연결",
+        "description": "GAIA가 마일스톤 활동을 모니터링하며 캘린더 일정을 자동 생성합니다. 새 디자인 리뷰 캘린더 일정도 지켜보며 관련 파일 링크를 먼저 첨부합니다."
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA link to a specific Figma frame or page rather than the whole file?",
-        "answer": "Yes. GAIA can generate direct links to specific Figma frames, pages, or components when creating calendar events, allowing reviewers to open exactly the section under review rather than navigating the full file."
+        "question": "파일 전체가 아니라 특정 Figma 프레임이나 페이지로 연결할 수 있나요?",
+        "answer": "네. GAIA는 캘린더 일정을 만들 때 특정 프레임, 페이지, 컴포넌트로 바로 가는 링크를 생성할 수 있습니다. 리뷰어가 전체 파일을 탐색하지 않고 검토 대상 섹션을 정확히 열 수 있습니다."
       },
       {
-        "question": "Does GAIA support Figma's branching feature when syncing to calendar?",
-        "answer": "Yes. GAIA can detect Figma branch merge events and create design review calendar events for the merged changes, supporting design teams that use branching for parallel workstreams."
+        "question": "Google Calendar로 동기화할 때 브랜치 기능도 지원하나요?",
+        "answer": "네. GAIA는 브랜치 병합 이벤트를 감지해 병합된 변경에 대한 디자인 리뷰 캘린더 일정을 만들 수 있습니다. 병렬 작업 흐름에 브랜치를 쓰는 디자인 팀을 지원합니다."
       },
       {
-        "question": "Can GAIA notify Figma collaborators when a design review calendar event is created?",
-        "answer": "Yes. GAIA can post a comment in the relevant Figma file notifying collaborators that a review meeting has been scheduled and include the Google Calendar event link, keeping the design and calendar systems connected bidirectionally."
+        "question": "디자인 리뷰 캘린더 일정이 만들어지면 협업자에게 알릴 수 있나요?",
+        "answer": "네. GAIA가 관련 파일에 리뷰 회의가 예약되었다는 댓글을 남기고 캘린더 일정 링크를 포함할 수 있습니다. 디자인 파일과 캘린더가 양방향으로 연결됩니다."
       }
     ]
   },
@@ -8287,70 +8287,70 @@
   "google-calendar-loom": {
     "toolA": "Google Calendar",
     "toolB": "Loom",
-    "tagline": "Record Loom video briefs for upcoming meetings and share recaps automatically",
-    "metaTitle": "Google Calendar + Loom 연동: 회의 브리핑과 영상 요약",
-    "metaDescription": "GAIA로 Google Calendar + Loom 연동. 회의 전 Loom 브리핑 녹화를 알려주고 회의 후 요약 영상을 참석자에게 자동 공유합니다. 실시간 회의 부담이 줄어듭니다.",
+    "tagline": "다가오는 회의를 위한 Loom 영상 브리프를 녹화하고 요약을 자동 공유하세요",
+    "metaTitle": "Google Calendar + Loom 연동: 회의용 Loom 요약",
+    "metaDescription": "회의 전에 Loom 브리프를 보내라는 알림을 받고 회의 후 요약을 녹화하세요. GAIA가 참석자에게 공유합니다.",
     "keywords": [
-      "Google Calendar Loom integration",
-      "Google Calendar Loom automation",
-      "pre-meeting video brief",
-      "meeting recap Loom",
-      "async meeting workflow",
-      "connect Google Calendar and Loom"
+      "Google Calendar Loom 연동",
+      "Google Calendar Loom 자동화",
+      "회의 전 영상 브리프",
+      "회의 요약 Loom",
+      "비동기 회의 워크플로우",
+      "Google Calendar와 Loom 연결"
     ],
-    "intro": "The best meetings start with shared context and end with a clear record — but most meetings do neither. Attendees arrive without reviewing relevant background, and decisions made during the call are poorly documented afterward. Loom offers a simple way to record context-setting briefs before meetings and concise recaps after them, but without automation, creating and sharing those videos requires discipline that's hard to maintain across a full calendar.\n\nGAIA connects Google Calendar and Loom to build async context into every meeting automatically. When a meeting appears on your calendar, GAIA can remind you to record a Loom brief so attendees arrive informed. After the meeting, GAIA prompts you to record a recap and then shares the Loom link with all attendees directly, creating a searchable async record without manual distribution.\n\nThis integration is particularly valuable for distributed teams across time zones where pre-read context reduces the need for long synchronous meetings, for managers who run recurring check-ins where a brief async update could replace a full meeting, and for teams committed to async-first communication who want their calendar workflows to reflect that principle.",
+    "intro": "좋은 회의는 공유된 맥락으로 시작해 명확한 기록으로 끝나지만, 대부분의 회의는 둘 다 하지 못합니다. 참석자는 관련 배경을 검토하지 않고 오고, 통화 중 내린 결정은 나중에 제대로 문서화되지 않습니다. Loom은 회의 전 맥락 브리프와 회의 후 간결한 요약을 녹화하는 쉬운 방법을 제공하지만, 자동화가 없으면 꽉 찬 캘린더 전체에서 그 영상을 만들고 공유하는 규율을 유지하기 어렵습니다.\n\nGAIA는 두 도구를 연결해 모든 회의에 비동기 맥락을 자동으로 더합니다. Google Calendar에 회의가 나타나면 GAIA가 브리프 녹화를 알려 참석자가 정보를 갖고 올 수 있게 합니다. 회의 후에는 요약 녹화를 안내하고 완료되면 Loom 링크를 참석자 전원에게 직접 공유해, 수동 배포 없이 검색 가능한 비동기 기록을 만듭니다.\n\n이 연동은 사전 자료가 긴 동기 회의의 필요를 줄여 주는 시간대가 다른 분산 팀, 짧은 비동기 업데이트로 전체 회의를 대체할 수 있는 정기 체크인을 운영하는 관리자, 캘린더 워크플로우에도 비동기 우선 원칙을 반영하려는 팀에 특히 유용합니다.",
     "useCases": [
       {
-        "title": "Pre-meeting Loom brief reminders",
-        "description": "The day before a scheduled Google Calendar meeting, GAIA reminds you to record a short Loom brief with the agenda and context so attendees can prepare and the meeting itself can focus on decisions."
+        "title": "회의 전 Loom 브리프 알림",
+        "description": "예정된 회의 전날 GAIA가 안건과 맥락을 담은 짧은 Loom 브리프를 녹화하라고 알려줍니다. 참석자가 준비할 수 있고 회의는 결정에 집중할 수 있습니다."
       },
       {
-        "title": "Post-meeting recap video prompts",
-        "description": "Within minutes of a Google Calendar meeting ending, GAIA prompts you to record a brief Loom recap summarizing decisions and next steps, while the discussion is still fresh."
+        "title": "회의 후 요약 영상 안내",
+        "description": "회의가 끝난 뒤 몇 분 안에 GAIA가 결정과 다음 단계를 요약한 짧은 영상을 녹화하라고 안내합니다. 논의가 아직 생생할 때 기록할 수 있습니다."
       },
       {
-        "title": "Auto-share Loom recaps with attendees",
-        "description": "Once a post-meeting Loom is recorded, GAIA shares the video link with all Google Calendar attendees via email or calendar event comment so the record reaches everyone automatically."
+        "title": "Loom 요약을 참석자에게 자동 공유",
+        "description": "회의 후 영상이 녹화되면 GAIA가 이메일이나 캘린더 일정 댓글로 참석자 전원에게 링크를 공유합니다. 기록이 자동으로 모두에게 전달됩니다."
       },
       {
-        "title": "Replace recurring meetings with async Loom updates",
-        "description": "For recurring Google Calendar meetings, GAIA can suggest replacing selected occurrences with a Loom update when the agenda doesn't require live discussion, reducing meeting load."
+        "title": "반복 회의를 비동기 업데이트로 대체",
+        "description": "반복 Google Calendar 회의의 경우 안건이 실시간 논의를 필요로 하지 않으면 GAIA가 일부 회차를 영상 업데이트로 대체하도록 제안해 회의 부담을 줄일 수 있습니다."
       },
       {
-        "title": "Onboarding video library from calendar events",
-        "description": "GAIA tracks Loom videos recorded for recurring training or onboarding calendar events and organizes them into a Loom folder so new team members can access the full video library."
+        "title": "캘린더 일정에서 온보딩 영상 라이브러리 구축",
+        "description": "GAIA가 반복 교육이나 온보딩 일정을 위해 녹화된 영상을 추적해 폴더로 정리합니다. 새 팀원이 전체 영상 라이브러리에 접근할 수 있습니다."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Google Calendar and Loom to GAIA",
-        "description": "Authenticate your Google account and your Loom workspace in GAIA's settings. Grant GAIA calendar read access and Loom library access so it can track events and videos."
+        "step": "Google Calendar와 Loom을 GAIA에 연결",
+        "description": "GAIA 설정에서 Google 계정과 워크스페이스를 인증합니다. GAIA에 캘린더 읽기 접근과 Loom 라이브러리 접근을 부여해 일정과 영상을 추적하게 합니다."
       },
       {
-        "step": "Set your meeting brief and recap preferences",
-        "description": "Configure which calendar events should trigger brief reminders and recap prompts, how far in advance to send the reminder, and where recorded Looms should be filed."
+        "step": "회의 브리프와 요약 설정",
+        "description": "어떤 캘린더 일정이 브리프 알림과 요약 안내를 트리거할지, 알림을 얼마나 미리 보낼지, 녹화한 영상을 어디에 정리할지 설정하세요."
       },
       {
-        "step": "GAIA automates the async meeting loop",
-        "description": "GAIA monitors your calendar for upcoming and completed meetings, sends reminders at the right time, and shares recorded Loom videos with attendees automatically."
+        "step": "GAIA가 비동기 회의 순환을 자동화",
+        "description": "GAIA가 다가오는 회의와 끝난 회의를 캘린더에서 모니터링하고 적절한 시점에 알림을 보내며 녹화된 영상을 참석자에게 자동 공유합니다."
       }
     ],
     "faqs": [
       {
-        "question": "Can I choose which meeting types trigger Loom reminders?",
-        "answer": "Yes. You can configure GAIA to trigger reminders only for external meetings, only for meetings above a certain duration, or only for events with specific keywords in the title."
+        "question": "어떤 회의 유형이 Loom 알림을 트리거할지 선택할 수 있나요?",
+        "answer": "네. 외부 회의만, 특정 길이 이상의 회의만, 또는 제목에 특정 키워드가 있는 일정만 알림을 받도록 설정할 수 있습니다."
       },
       {
-        "question": "Does GAIA share the Loom link via calendar event updates or email?",
-        "answer": "You can choose either method. GAIA can add the Loom link as a comment to the Google Calendar event, send it via email to attendees, or both."
+        "question": "요약 링크를 캘린더 일정 업데이트로 공유하나요, 이메일로 보내나요?",
+        "answer": "둘 중 하나를 선택할 수 있습니다. GAIA가 캘린더 일정에 댓글로 링크를 추가하거나, 참석자에게 이메일로 보내거나, 둘 다 할 수 있습니다."
       },
       {
-        "question": "What if I don't record a Loom after a meeting?",
-        "answer": "GAIA sends one reminder prompt and then stops. It does not send repeated reminders for the same meeting if you choose not to record."
+        "question": "회의 후 요약을 녹화하지 않으면 어떻게 되나요?",
+        "answer": "GAIA는 한 번만 알림을 보내고 멈춥니다. 녹화하지 않기로 하면 같은 회의에 대해 반복해서 알림을 보내지 않습니다."
       },
       {
-        "question": "Can GAIA help schedule a meeting to replace a Loom that needs live discussion?",
-        "answer": "Yes. If you record a Loom that prompts follow-up questions requiring a live call, you can ask GAIA to find a time on Google Calendar and schedule a meeting with the relevant attendees."
+        "question": "녹화한 영상에 실시간 논의가 필요하면 회의 일정도 잡아 주나요?",
+        "answer": "네. 영상이 후속 질문을 불러 실시간 통화가 필요하면 GAIA에게 캘린더에서 시간을 찾아 관련 참석자와 회의를 예약해 달라고 요청할 수 있습니다."
       }
     ]
   },
