@@ -318,12 +318,9 @@ def test_only_production_samples_traces_and_profiles(
 
 @pytest.mark.regression
 def test_an_mcp_connect_duplicate_does_not_reach_sentry() -> None:
-    """MCPClient.connect reports the same failure with the integration id.
-
-    The display name is read off the module, not imported: this PR introduces the
-    constant, so a module-level import makes the regression-proof lane collect
-    nothing on base and report an ERROR instead of the red it is meant to prove.
-    """
+    """MCPClient.connect reports the same failure with the integration id."""
+    # Read off the module, not imported: importing a constant this PR adds cannot
+    # collect on base, and a collection error is not the red to prove.
     cap_msg, cap_exc, _scope = _run_sink(
         _record(
             message="MCP protocol error during initialization: code=-32601 message='Method not found'",
