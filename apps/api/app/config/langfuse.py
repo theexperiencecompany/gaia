@@ -18,7 +18,7 @@ from langfuse.langchain import CallbackHandler
 from opentelemetry.sdk.trace import TracerProvider
 
 from app.config.settings import settings
-from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
+from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from shared.py.wide_events import log
 
 # Not an SDK timeout: auth_check retries internally and takes ~120s against
@@ -141,6 +141,10 @@ def build_langfuse_callback() -> CallbackHandler | None:
     """LangChain callback bound to the global client, or None if disabled."""
     if not _langfuse_configured():
         return None
+    # The handler resolves the process-wide client by public key. Initialize it
+    # first, or the SDK creates one with its own defaults and our export budget
+    # (timeout, batch size) never applies.
+    providers.get("langfuse")
     return CallbackHandler()
 
 
