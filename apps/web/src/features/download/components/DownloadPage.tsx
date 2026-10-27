@@ -308,7 +308,7 @@ function MobileSection() {
   return (
     <DownloadSectionLayout
       webpSrc="/images/screenshots/phone_dock.webp"
-      pngSrc="/images/screenshots/phone_dock.png"
+      pngSrc="/images/screenshots/phone_dock.webp"
       imageAlt="GAIA Mobile App"
       imagePosition="right"
       imageClassName="object-cover object-center"
