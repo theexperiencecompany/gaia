@@ -1006,6 +1006,34 @@ class TestRegisterSubagentProviders:
         assert count == 0
         mock_providers.register.assert_not_called()
 
+    def test_an_unavailable_integration_does_not_stop_the_ones_after_it(self):
+        """Skipping must be a skip: a break would drop every later integration."""
+        from app.agents.core.subagents.provider_subagents import (
+            register_subagent_providers,
+        )
+
+        dead = _make_subagent(
+            integration_id="dead_int",
+            available=False,
+            subagent_config=_make_subagent_config(agent_name="dead_agent"),
+        )
+        live = _make_subagent(
+            integration_id="live_int",
+            subagent_config=_make_subagent_config(agent_name="live_agent"),
+        )
+
+        with (
+            patch(
+                "app.agents.core.subagents.provider_subagents.all_subagents",
+                return_value=(dead, live),
+            ),
+            patch("app.agents.core.subagents.provider_subagents.providers") as mock_providers,
+        ):
+            count = register_subagent_providers()
+
+        assert count == 1
+        assert mock_providers.register.call_args.kwargs["name"] == "live_agent"
+
     def test_skips_auth_required_mcp(self):
         from app.agents.core.subagents.provider_subagents import (
             register_subagent_providers,
