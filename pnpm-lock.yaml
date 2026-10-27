@@ -870,8 +870,8 @@ importers:
         specifier: ^3.14.5
         version: 3.14.5(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       '@theexperiencecompany/gaia-icons':
-        specifier: ^1.9.0
-        version: 1.9.0(react@19.2.3)
+        specifier: ^1.9.1
+        version: 1.9.1(react@19.2.3)
       '@tiptap/core':
         specifier: ^2.27.2
         version: 2.27.2(@tiptap/pm@2.27.2)
@@ -9661,8 +9661,8 @@ packages:
       '@types/react-dom':
         optional: true
 
-  '@theexperiencecompany/gaia-icons@1.9.0':
-    resolution: {integrity: sha512-L9atTb83OAOrbjVMJb4G3WLn0KM7nycgHglZb5lFGX+jkzcFln3UhWBgfKWBeGfZmTYfG6pdFalnYvU1qIyezA==}
+  '@theexperiencecompany/gaia-icons@1.9.1':
+    resolution: {integrity: sha512-Z17c1qvwSkTNvO1L7p2qkbc3lGyzMZwkhHYHBysphz6LAtRcSbDktmJ5lPbRRrx+vQz2HHWIHzkcDgDgNCZgpw==}
     peerDependencies:
       react: 19.2.3
 
@@ -29157,7 +29157,7 @@ snapshots:
       '@types/react': 19.2.17
       '@types/react-dom': 19.2.3(@types/react@19.2.17)
 
-  '@theexperiencecompany/gaia-icons@1.9.0(react@19.2.3)':
+  '@theexperiencecompany/gaia-icons@1.9.1(react@19.2.3)':
     dependencies:
       react: 19.2.3
 
