@@ -1130,3 +1130,40 @@ class TestHistoryTrimming:
         assert stored is not None
         assert [message.response for message in stored.messages] == ["m0", "m3", "m4", "m5"]
         assert stored.messages[0].pinned is True
+
+    async def test_a_cap_above_a_short_history_drops_nothing(self, repo):
+        doc, _ids = await self._seed(repo, 4)
+
+        await repo.append_messages(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            messages=[MessageModel(type="user", response="m4")],
+            max_messages=10,
+        )
+
+        stored = await repo.get(doc.conversation_id, user_id=doc.user_id)
+        assert stored is not None
+        assert [message.response for message in stored.messages] == [
+            "m0",
+            "m1",
+            "m2",
+            "m3",
+            "m4",
+        ]
+
+    async def test_a_pinned_message_is_not_duplicated_when_no_trimming_is_needed(self, repo):
+        doc, ids = await self._seed(repo, 3)
+        await repo.set_message_pinned(
+            doc.conversation_id, user_id=doc.user_id, message_id=ids[0], pinned=True
+        )
+
+        await repo.append_messages(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            messages=[MessageModel(type="user", response="m3")],
+            max_messages=10,
+        )
+
+        stored = await repo.get(doc.conversation_id, user_id=doc.user_id)
+        assert stored is not None
+        assert [message.response for message in stored.messages] == ["m0", "m1", "m2", "m3"]
