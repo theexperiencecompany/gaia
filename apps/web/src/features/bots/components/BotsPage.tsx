@@ -59,9 +59,9 @@ function BotCard({
           <Image
             src={icon}
             alt={name}
-            fill
-            sizes="60px"
-            className="object-contain"
+            width={256}
+            height={256}
+            className="h-full w-full object-contain"
           />
         </div>
         <h2 className="font-medium text-white text-xl">{name}</h2>
@@ -128,9 +128,9 @@ export default function BotsPage() {
               <Image
                 src={icon.src}
                 alt={icon.alt}
-                fill
-                sizes="80px"
-                className="object-contain hover:scale-110 hover:-translate-y-4 transition"
+                width={256}
+                height={256}
+                className="h-full w-full object-contain hover:scale-110 hover:-translate-y-4 transition"
               />
             </div>
           ))}

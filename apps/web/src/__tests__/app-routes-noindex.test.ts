@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("@/layouts/MainAppShell", () => ({ default: () => null }));
+vi.mock("@/components/layouts/MainLayoutShell", () => ({
+  default: () => null,
+}));
 
 describe("signed-in app routes", () => {
   it("tell crawlers not to index or follow anything under the (main) layout", async () => {

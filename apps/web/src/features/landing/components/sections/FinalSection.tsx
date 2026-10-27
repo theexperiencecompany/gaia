@@ -52,9 +52,10 @@ export default function FinalSection({
         <Image
           src="/images/wallpapers/creation_of_adam.png"
           alt=""
-          fill
+          width={1672}
+          height={941}
           sizes="100vw"
-          className="z-0 object-cover object-center"
+          className="absolute inset-0 z-0 h-full w-full object-cover object-center"
         />
         {/* Legibility scrim over the Earth photo. */}
         <div className="pointer-events-none absolute inset-0 z-10 bg-black/30" />

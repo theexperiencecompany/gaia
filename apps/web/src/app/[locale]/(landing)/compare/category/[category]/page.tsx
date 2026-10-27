@@ -1,23 +1,16 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
-import JsonLd from "@/components/seo/JsonLd";
-import { PageBreadcrumbs } from "@/components/seo/PageBreadcrumbs";
+import { CategoryHubPage } from "@/components/seo/CategoryHubPage";
 import {
   comparisonCategoryGroups,
   comparisonCategoryPath,
 } from "@/features/comparisons/data/comparisonCategories";
 import { getAllComparisons } from "@/features/comparisons/data/comparisonsData";
 import { getTranslatedComparisons } from "@/features/comparisons/data/getTranslatedComparison";
-import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
 import { prerenderedMarketingParams } from "@/lib/selfhost";
-import {
-  generateBreadcrumbSchema,
-  generateItemListSchema,
-  generateWebPageSchema,
-  siteConfig,
-} from "@/lib/seo";
+import { siteConfig } from "@/lib/seo";
 import { ComparisonCardGrid } from "../../ComparisonCardGrid";
 
 interface PageProps {
@@ -83,50 +76,25 @@ export default async function ComparisonCategoryPage({ params }: PageProps) {
     category: category.label,
     count: category.items.length,
   });
-  const breadcrumbs = [
-    { name: "Home", url: siteConfig.url },
-    { name: t("breadcrumb"), url: `${siteConfig.url}/compare` },
-    { name: title, url: pageUrl },
-  ];
-
   return (
-    <>
-      <JsonLd
-        data={[
-          generateWebPageSchema(title, subtitle, pageUrl, breadcrumbs),
-          generateBreadcrumbSchema(breadcrumbs),
-          generateItemListSchema(
-            category.items.map((comparison) => ({
-              name: t("gaia_vs", { name: comparison.name }),
-              url: `${siteConfig.url}/compare/${comparison.slug}`,
-            })),
-          ),
-        ]}
+    <CategoryHubPage
+      title={title}
+      breadcrumbLabel={title}
+      subtitle={subtitle}
+      pageUrl={pageUrl}
+      homeLabel={tCommon("home")}
+      hubLabel={t("breadcrumb")}
+      hubHref="/compare"
+      categoryLabel={category.label}
+      items={category.items.map((comparison) => ({
+        name: t("gaia_vs", { name: comparison.name }),
+        url: `${siteConfig.url}/compare/${comparison.slug}`,
+      }))}
+    >
+      <ComparisonCardGrid
+        comparisons={category.items}
+        vsLabel={(name) => t("gaia_vs", { name })}
       />
-
-      <div className="mx-auto max-w-5xl px-6 pt-36 pb-24">
-        <PageBreadcrumbs
-          className="mb-8"
-          items={[
-            { label: tCommon("home"), href: "/" },
-            { label: t("breadcrumb"), href: "/compare" },
-            { label: category.label },
-          ]}
-        />
-        <header className="mb-16">
-          <h1 className="mb-4 font-serif text-5xl font-normal text-white md:text-6xl">
-            {title}
-          </h1>
-          <p className="max-w-2xl text-xl text-zinc-400">{subtitle}</p>
-        </header>
-
-        <ComparisonCardGrid
-          comparisons={category.items}
-          vsLabel={(name) => t("gaia_vs", { name })}
-        />
-      </div>
-
-      <FinalSection />
-    </>
+    </CategoryHubPage>
   );
 }

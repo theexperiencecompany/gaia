@@ -1,23 +1,16 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
-import JsonLd from "@/components/seo/JsonLd";
-import { PageBreadcrumbs } from "@/components/seo/PageBreadcrumbs";
+import { CategoryHubPage } from "@/components/seo/CategoryHubPage";
 import { getAllTranslatedGlossaryTerms } from "@/features/glossary/data/getTranslatedGlossary";
 import {
   glossaryCategoryGroups,
   glossaryCategoryPath,
 } from "@/features/glossary/data/glossaryCategories";
 import { getAllGlossaryTerms } from "@/features/glossary/data/glossaryData";
-import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
 import { prerenderedMarketingParams } from "@/lib/selfhost";
-import {
-  generateBreadcrumbSchema,
-  generateItemListSchema,
-  generateWebPageSchema,
-  siteConfig,
-} from "@/lib/seo";
+import { siteConfig } from "@/lib/seo";
 import { GlossaryTermGrid } from "../../GlossaryTermGrid";
 
 interface PageProps {
@@ -86,47 +79,22 @@ export default async function GlossaryCategoryPage({ params }: PageProps) {
     category: category.label,
     count: category.items.length,
   });
-  const breadcrumbs = [
-    { name: "Home", url: siteConfig.url },
-    { name: t("breadcrumb"), url: `${siteConfig.url}/learn` },
-    { name: category.label, url: pageUrl },
-  ];
-
   return (
-    <>
-      <JsonLd
-        data={[
-          generateWebPageSchema(category.label, subtitle, pageUrl, breadcrumbs),
-          generateBreadcrumbSchema(breadcrumbs),
-          generateItemListSchema(
-            category.items.map((term) => ({
-              name: term.term,
-              url: `${siteConfig.url}/learn/${term.slug}`,
-            })),
-          ),
-        ]}
-      />
-
-      <div className="mx-auto max-w-5xl px-6 pt-36 pb-24">
-        <PageBreadcrumbs
-          className="mb-8"
-          items={[
-            { label: tCommon("home"), href: "/" },
-            { label: t("breadcrumb"), href: "/learn" },
-            { label: category.label },
-          ]}
-        />
-        <header className="mb-16">
-          <h1 className="mb-4 font-serif text-5xl font-normal text-white md:text-6xl">
-            {category.label}
-          </h1>
-          <p className="max-w-2xl text-xl text-zinc-400">{subtitle}</p>
-        </header>
-
-        <GlossaryTermGrid terms={category.items} />
-      </div>
-
-      <FinalSection />
-    </>
+    <CategoryHubPage
+      title={category.label}
+      breadcrumbLabel={category.label}
+      subtitle={subtitle}
+      pageUrl={pageUrl}
+      homeLabel={tCommon("home")}
+      hubLabel={t("breadcrumb")}
+      hubHref="/learn"
+      categoryLabel={category.label}
+      items={category.items.map((term) => ({
+        name: term.term,
+        url: `${siteConfig.url}/learn/${term.slug}`,
+      }))}
+    >
+      <GlossaryTermGrid terms={category.items} />
+    </CategoryHubPage>
   );
 }

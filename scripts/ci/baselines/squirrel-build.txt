@@ -12,10 +12,9 @@
 
 a11y/duplicate-id-aria=3
 ax/token-weight=98
-content/keyword-stuffing=7
+content/keyword-stuffing=1
 content/word-count=15
 core/meta-title=2
-images/dimensions=93
 images/image-file-size=93
 images/optimized=5
 links/orphan-pages=11
@@ -27,8 +26,8 @@ perf/source-maps=100
 perf/total-byte-weight=1
 score:Accessibility=98
 score:Agent Experience=50
-score:Content=94
-score:Images=56
+score:Content=95
+score:Images=92
 score:Links=90
 score:Performance=57
 score:Security=76
