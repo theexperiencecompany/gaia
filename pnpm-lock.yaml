@@ -1188,6 +1188,9 @@ importers:
       '@playwright/test':
         specifier: ^1.62.1
         version: 1.62.1
+      '@types/hast':
+        specifier: 3.0.5
+        version: 3.0.5
       '@types/node':
         specifier: ^24.13.3
         version: 24.13.3
