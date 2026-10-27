@@ -24,11 +24,6 @@ from app.constants.log_tags import LogTag
 from app.constants.sandbox import SANDBOX_LIFETIME_SECONDS
 from app.constants.todos import GAIA_TRACKED_LABEL, TodoActivityEvent
 from app.db.redis import redis_cache
-from app.models.notification.notification_models import (
-    NotificationContent,
-    NotificationSourceEnum,
-    NotificationType,
-)
 from app.models.todo_models import TodoDocument
 from app.models.trigger_subscription_models import (
     SubscriptionAction,
@@ -38,6 +33,7 @@ from app.models.trigger_subscription_models import (
 from app.services.agent_lab import agents_home, lab_runs
 from app.services.agent_lab.agents_saves import save_agents_home
 from app.services.agent_lab.sandbox_events import SandboxEventKind, report_sandbox_event
+from app.services.notification_service import notification_service
 from app.services.sandbox.pool import PooledSandbox, refresh_sandbox_timeout
 from app.workers.tasks import sandbox_tasks
 from app.workers.tasks.sandbox_tasks import LabTickOutcome
@@ -49,6 +45,7 @@ TASKS_MODULE = "app.workers.tasks.sandbox_tasks"
 EVENTS_MODULE = "app.services.agent_lab.sandbox_events"
 FROZEN_NOW = datetime(2026, 10, 1, 9, tzinfo=UTC)
 LAB_TEMPLATE = "gaia-coder-8gb"
+CAP_LOG_MESSAGE = f"{LogTag.SANDBOX} lab run hit the run cap; keep-warm stopped"
 
 
 def _make_entry() -> tuple[AsyncMock, PooledSandbox]:
@@ -166,7 +163,9 @@ class _FakePool:
     async def exists(self, key: str) -> int:
         return 1 if key in self.store else 0
 
-    async def set(self, key: str, value: str, ex: int | None = None) -> bool:
+    async def set(self, key: str, value: str, ex: int | None = None, nx: bool = False) -> bool:
+        if nx and key in self.store:
+            return False
         self.store[key] = value
         self.sets.append((key, value, ex))
         return True
@@ -184,7 +183,13 @@ class _Tick:
         self.report = AsyncMock()
         self.notify = AsyncMock()
         self.lookup = AsyncMock()
+        self.log_info = MagicMock()
         self.pool = _FakePool()
+
+    def cap_logs(self) -> list[dict[str, object]]:
+        return [
+            call.kwargs for call in self.log_info.call_args_list if call.args == (CAP_LOG_MESSAGE,)
+        ]
 
     @contextmanager
     def world(
@@ -219,9 +224,13 @@ class _Tick:
                 ("pause_idle_sandbox", self.pause),
                 ("renew_sandbox", self.renew),
                 ("report_sandbox_event", self.report),
-                ("notification_service.create_notification", self.notify),
+                ("log.info", self.log_info),
             ):
                 stack.enter_context(patch(f"{TASKS_MODULE}.{target}", value))
+            # On the singleton, so a notification sent through any import path is seen.
+            stack.enter_context(
+                patch.object(notification_service, "create_notification", self.notify)
+            )
             stack.enter_context(
                 patch(
                     "app.db.repositories.todos.todo_repository.find_active_by_user_and_trigger",
@@ -291,83 +300,59 @@ class TestKeepWarmTick:
         assert tick.acquired == ["lab"]
         tick.pause.assert_not_awaited()
 
-    async def test_the_cap_notice_goes_out_once_per_cap_window(self) -> None:
+    async def test_a_capped_run_is_logged_once_per_cap_window_and_the_user_is_not_notified(
+        self,
+    ) -> None:
+        # the cap used to reach the user as an infrastructure notice
+        # ("stopped keeping its sandbox warm") they could do nothing with.
         tick = _Tick()
         with tick.world({"lab": [_lab_todo(13)]}):
             await tick.run()
             await tick.run()
-        tick.notify.assert_awaited_once()
-        request = tick.notify.await_args.args[0]
-        assert (request.user_id, request.type, request.source) == (
-            "lab",
-            NotificationType.WARNING,
-            NotificationSourceEnum.BACKGROUND_JOB,
-        )
-        assert request.content == NotificationContent(
-            title="Agent lab run hit the 12-hour cap",
-            body=(
-                "GAIA stopped keeping its sandbox warm after 12 hours, "
-                "so the sandbox will pause when idle. Start a fresh run to continue."
-            ),
-        )
-        assert request.metadata == {
-            "cap_seconds": SANDBOX_LAB_MAX_RUN_SECONDS,
-            "todo_ids": ["todo-lab"],
-        }
-        assert tick.pool.sets == [("lab:cap_notified:lab", "1", SANDBOX_LAB_MAX_RUN_SECONDS)]
-
-    async def test_a_failed_dedup_check_still_sends_the_cap_notice(self) -> None:
-        tick = _Tick()
-        with (
-            tick.world({"lab": [_lab_todo(13)]}),
-            patch.object(tick.pool, "exists", AsyncMock(side_effect=RuntimeError("redis down"))),
-        ):
-            async with captured_wide_event() as event:
-                await tick.run()
-        tick.notify.assert_awaited_once()
-        assert event["warnings"] == [
+        tick.notify.assert_not_awaited()
+        assert tick.cap_logs() == [
             {
-                "msg": f"{LogTag.SANDBOX} lab cap dedup check failed; notifying anyway",
                 "user_id": "lab",
-                "error_type": "RuntimeError",
-                "error": "redis down",
+                "todo_ids": ["todo-lab"],
+                "cap_seconds": SANDBOX_LAB_MAX_RUN_SECONDS,
+                "outcome": LabTickOutcome.PAUSED.value,
             }
         ]
+        assert tick.pool.sets == [("lab:cap_logged:lab", "1", SANDBOX_LAB_MAX_RUN_SECONDS)]
 
-    async def test_a_failed_cap_notice_is_logged_and_not_stamped_as_sent(self) -> None:
+    async def test_the_cap_log_records_a_sandbox_left_running_when_it_was_not_idle(self) -> None:
         tick = _Tick()
-        tick.notify.side_effect = RuntimeError("mongo down")
+        tick.pause.return_value = False
         with tick.world({"lab": [_lab_todo(13)]}):
-            async with captured_wide_event() as event:
-                result = await tick.run()
-        assert tick.pool.sets == []
-        assert result == "Kept 0 lab sandboxes warm, paused 1 idle, 0 failed"
-        assert event["warnings"] == [
-            {
-                "msg": f"{LogTag.SANDBOX} lab cap notification failed",
-                "user_id": "lab",
-                "error_type": "RuntimeError",
-                "error": "mongo down",
-            }
-        ]
+            await tick.run()
+        assert [log["outcome"] for log in tick.cap_logs()] == [LabTickOutcome.LEFT.value]
 
-    async def test_a_failed_dedup_stamp_is_logged_after_the_notice(self) -> None:
+    async def test_a_live_run_logs_no_cap(self) -> None:
+        tick = _Tick()
+        with tick.world({"lab": [_lab_todo(1)]}):
+            await tick.run()
+        assert tick.cap_logs() == []
+        tick.notify.assert_not_awaited()
+
+    async def test_a_failed_dedup_still_logs_the_cap(self) -> None:
         tick = _Tick()
         with (
             tick.world({"lab": [_lab_todo(13)]}),
             patch.object(tick.pool, "set", AsyncMock(side_effect=RuntimeError("redis down"))),
         ):
             async with captured_wide_event() as event:
-                await tick.run()
-        tick.notify.assert_awaited_once()
+                result = await tick.run()
+        assert len(tick.cap_logs()) == 1
+        assert result == "Kept 0 lab sandboxes warm, paused 1 idle, 0 failed"
         assert event["warnings"] == [
             {
-                "msg": f"{LogTag.SANDBOX} lab cap dedup stamp failed",
+                "msg": f"{LogTag.SANDBOX} lab cap dedup failed; logging anyway",
                 "user_id": "lab",
                 "error_type": "RuntimeError",
                 "error": "redis down",
             }
         ]
+        tick.notify.assert_not_awaited()
 
     async def test_one_users_failure_does_not_stop_the_others(self) -> None:
         tick = _Tick()
