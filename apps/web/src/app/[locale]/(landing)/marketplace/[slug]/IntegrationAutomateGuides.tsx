@@ -8,23 +8,20 @@ export interface AutomateCombo {
 }
 
 interface IntegrationAutomateGuidesProps {
-  integrationName: string;
   combos: AutomateCombo[];
 }
 
 export function IntegrationAutomateGuides({
-  integrationName,
   combos,
 }: IntegrationAutomateGuidesProps) {
   return (
     <section className="space-y-6 rounded-3xl bg-zinc-900/50 p-8 backdrop-blur-md">
       <div>
         <h2 className="mb-2 text-2xl font-medium text-foreground">
-          Automate {integrationName} with other tools
+          Automate this integration with other tools
         </h2>
         <p className="text-sm leading-relaxed text-zinc-400">
-          Step-by-step guides for connecting {integrationName} to the tools you
-          already use.
+          Step-by-step guides for connecting it to the tools you already use.
         </p>
       </div>
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">

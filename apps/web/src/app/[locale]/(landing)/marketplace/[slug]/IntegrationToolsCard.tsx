@@ -46,6 +46,7 @@ export function IntegrationToolsCard({
                   key={tool.name}
                   name={tool.name}
                   description={tool.description}
+                  integrationName={integration.name}
                 />
               ))}
             </div>

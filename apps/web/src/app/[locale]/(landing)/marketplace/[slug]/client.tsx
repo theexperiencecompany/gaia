@@ -84,7 +84,6 @@ export function IntegrationDetailClient({
 
           <IntegrationRelatedWorkflows
             integrationId={integration.integrationId}
-            integrationName={integration.name}
             variant="section"
             initialWorkflows={initialRelatedWorkflows}
           />
@@ -98,15 +97,11 @@ export function IntegrationDetailClient({
           <IntegrationRelatedIntegrations
             currentSlug={integration.slug}
             category={integration.category}
-            integrationName={integration.name}
             initialIntegrations={initialRelatedIntegrations}
           />
 
           {automateCombos && automateCombos.length > 0 && (
-            <IntegrationAutomateGuides
-              integrationName={integration.name}
-              combos={automateCombos}
-            />
+            <IntegrationAutomateGuides combos={automateCombos} />
           )}
 
           {docsGuides && docsGuides.length > 0 && (

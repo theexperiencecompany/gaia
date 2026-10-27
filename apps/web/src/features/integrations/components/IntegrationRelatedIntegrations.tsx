@@ -11,8 +11,6 @@ interface IntegrationRelatedIntegrationsProps {
   readonly currentSlug: string;
   /** Category used to find similar integrations. */
   readonly category: string;
-  /** Name of the current integration, for the section copy. */
-  readonly integrationName?: string;
   /** Max number of related integrations to show. */
   readonly limit?: number;
   /** Server-fetched siblings; when present no client fetch runs. */
@@ -32,7 +30,6 @@ function getCategoryLabel(category: string): string {
 export function IntegrationRelatedIntegrations({
   currentSlug,
   category,
-  integrationName,
   limit = 6,
   initialIntegrations,
 }: IntegrationRelatedIntegrationsProps) {
@@ -63,9 +60,8 @@ export function IntegrationRelatedIntegrations({
           Related integrations
         </h2>
         <p className="text-sm leading-relaxed text-zinc-400">
-          {integrationName
-            ? `More ${getCategoryLabel(category)} integrations like ${integrationName} you can connect to GAIA.`
-            : "More integrations in this category you can connect to GAIA."}
+          More {getCategoryLabel(category)} integrations you can connect to
+          GAIA.
         </p>
       </div>
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">

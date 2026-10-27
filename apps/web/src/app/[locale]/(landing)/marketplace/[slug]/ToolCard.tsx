@@ -2,17 +2,26 @@
 
 import { Button } from "@heroui/button";
 import { useEffect, useRef, useState } from "react";
-import { formatToolName } from "@/features/chat/utils/chatUtils";
+import { displayToolDescription, displayToolName } from "./toolCopy";
 
 interface ToolCardProps {
   readonly name: string;
   readonly description?: string | null;
+  readonly integrationName: string;
 }
 
-export function ToolCard({ name, description }: ToolCardProps) {
+export function ToolCard({
+  name,
+  description,
+  integrationName,
+}: ToolCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [isClamped, setIsClamped] = useState(false);
   const descriptionRef = useRef<HTMLParagraphElement>(null);
+  const label = displayToolName(name, integrationName);
+  const copy = description
+    ? displayToolDescription(description, integrationName)
+    : description;
 
   // Detect whether the 2-line clamp actually truncates the description, so the
   // toggle only renders when there is hidden content to reveal.
@@ -20,18 +29,18 @@ export function ToolCard({ name, description }: ToolCardProps) {
     const element = descriptionRef.current;
     if (!element) return;
     setIsClamped(element.scrollHeight > element.clientHeight);
-  }, [description]);
+  }, [copy]);
 
   return (
     <div className="rounded-xl bg-zinc-800/50 p-3">
-      <p className="font-medium text-zinc-200">{formatToolName(name)}</p>
-      {description && (
+      <p className="font-medium text-zinc-200">{label}</p>
+      {copy && (
         <>
           <p
             ref={descriptionRef}
             className={`text-sm text-zinc-400 ${expanded ? "" : "line-clamp-2"}`}
           >
-            {description}
+            {copy}
           </p>
           {(isClamped || expanded) && (
             <Button
