@@ -33,10 +33,8 @@ LANGFUSE_EXPORT_TIMEOUT_SECONDS = 10
 # succeeds on retry. 128 fits.
 LANGFUSE_FLUSH_AT = 128
 
-# Langfuse 4.6.1 ignores the flush_at argument when LANGFUSE_FLUSH_AT is unset:
-# `flush_at = flush_at or int(env) if env is not None else None` yields None, and
-# OpenTelemetry then restores its 512-span default. The environment variable is
-# the only path that reaches BatchSpanProcessor.
+# Langfuse 4.6.1 discards the flush_at argument when LANGFUSE_FLUSH_AT is unset
+# and falls back to 512 spans, so the variable is the only knob that works.
 LANGFUSE_FLUSH_AT_ENV = "LANGFUSE_FLUSH_AT"
 
 
