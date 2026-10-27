@@ -6,7 +6,7 @@ the user's chat platforms via the shared deliver_result_to_platforms path,
 which records it into the conversation's langgraph thread.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException
@@ -16,9 +16,11 @@ from app.constants.notifications import CHANNEL_TYPE_INAPP
 from app.models.chat_models import ConversationSource
 from app.models.reminder_models import AgentType, ReminderModel, StaticReminderPayload
 from app.models.user_models import AuthenticatedUser
+from app.services.delivery.chat_channel import ChatChannel, InApp, ProactiveTarget
 from app.tasks.reminder_tasks import (
     _deliver_reminder_to_platforms,
     _execute_static_reminder,
+    _lands_in_source_chat,
     _reminder_result_text,
     execute_reminder_by_agent,
 )
@@ -33,8 +35,28 @@ def _user_context(**fields: object) -> Callable[[str], AuthenticatedUser]:
 
 
 MODULE = "app.tasks.reminder_tasks"
+PLATFORM_MODULE = "app.agents.core.background.workflow_platform_delivery"
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 REMINDER_ID = "6812f0b3c9a14e2b7d5a91dd"
+
+TELEGRAM_ACTIVE = ChatChannel(
+    source=ConversationSource.TELEGRAM, platform_user_id="tg-1", basis="recent_activity"
+)
+TELEGRAM_BY_ORDER = ChatChannel(
+    source=ConversationSource.TELEGRAM, platform_user_id="tg-1", basis="priority"
+)
+WHATSAPP_BY_ORDER = ChatChannel(
+    source=ConversationSource.WHATSAPP, platform_user_id="wa-1", basis="priority"
+)
+
+
+@pytest.fixture(autouse=True)
+def target() -> Iterator[AsyncMock]:
+    """Pin the one place a reminder goes; nobody active by default, so today's routing holds."""
+    with patch(
+        f"{MODULE}.resolve_proactive_target", AsyncMock(return_value=TELEGRAM_BY_ORDER)
+    ) as resolve:
+        yield resolve
 
 
 def _reminder(**overrides) -> ReminderModel:
@@ -71,7 +93,7 @@ async def test_static_reminder_sends_notification() -> None:
             "app.tasks.reminder_tasks.notification_service.create_notification",
             new_callable=AsyncMock,
         ) as create,
-        patch(f"{MODULE}._deliver_reminder_to_platforms", new_callable=AsyncMock),
+        patch(f"{MODULE}._deliver_reminder_to_platforms", AsyncMock(return_value=None)),
         patch("app.tasks.reminder_tasks.log.info") as log_info,
     ):
         await _execute_static_reminder(reminder)
@@ -86,24 +108,41 @@ async def test_static_reminder_sends_notification() -> None:
     log_info.assert_called_once()
 
 
-async def test_reminder_execution_captures_completed() -> None:
-    reminder = _reminder()
+@pytest.mark.parametrize(
+    ("routed_to", "destination", "basis"),
+    [
+        (TELEGRAM_BY_ORDER, "chat_app", "priority"),
+        (TELEGRAM_ACTIVE, "chat_app", "recent_activity"),
+        (InApp(reason="active_in_app"), "in_app", "active_in_app"),
+        (InApp(reason="no_chat_app"), "in_app", "no_chat_app"),
+    ],
+)
+async def test_reminder_completion_names_where_it_was_routed(
+    target: AsyncMock, routed_to: ProactiveTarget, destination: str, basis: str
+) -> None:
+    """A reminder kept in the app for a recently active web user is measurable, not silent."""
+    target.return_value = routed_to
 
     with (
         patch(
             "app.tasks.reminder_tasks.notification_service.create_notification",
             new_callable=AsyncMock,
         ),
-        patch(f"{MODULE}._deliver_reminder_to_platforms", new_callable=AsyncMock),
+        patch(f"{MODULE}.load_user_context", new_callable=AsyncMock, side_effect=_user_context()),
+        patch(f"{MODULE}.deliver_result_to_platforms", new_callable=AsyncMock),
         patch("app.tasks.reminder_tasks.capture") as mock_capture,
         patch("app.tasks.reminder_tasks.log.info"),
     ):
-        await execute_reminder_by_agent(reminder)
+        await execute_reminder_by_agent(_reminder())
 
-    mock_capture.assert_called_once()
-    assert mock_capture.call_args.args == (
+    mock_capture.assert_called_once_with(
         UserId(USER_ID),
-        ReminderCompleted(reminder_id=REMINDER_ID, agent="static"),
+        ReminderCompleted(
+            reminder_id=REMINDER_ID,
+            agent="static",
+            destination=destination,
+            destination_basis=basis,
+        ),
     )
 
 
@@ -116,7 +155,7 @@ async def test_reminder_failure_does_not_capture() -> None:
             new_callable=AsyncMock,
             side_effect=RuntimeError("notify down"),
         ),
-        patch(f"{MODULE}._deliver_reminder_to_platforms", new_callable=AsyncMock),
+        patch(f"{MODULE}._deliver_reminder_to_platforms", AsyncMock(return_value=None)),
         patch("app.tasks.reminder_tasks.capture") as mock_capture,
         patch("app.tasks.reminder_tasks.log.info"),
     ):
@@ -135,7 +174,7 @@ async def test_a_failed_reminder_names_the_user_it_failed_for() -> None:
             new_callable=AsyncMock,
             side_effect=RuntimeError("notify down"),
         ),
-        patch(f"{MODULE}._deliver_reminder_to_platforms", new_callable=AsyncMock),
+        patch(f"{MODULE}._deliver_reminder_to_platforms", AsyncMock(return_value=None)),
         patch(f"{MODULE}.capture"),
     ):
         with pytest.raises(RuntimeError, match="notify down"):
@@ -164,7 +203,7 @@ async def test_a_reminder_with_no_id_is_refused_and_named_in_the_wide_event() ->
             "app.tasks.reminder_tasks.notification_service.create_notification",
             new_callable=AsyncMock,
         ) as create,
-        patch(f"{MODULE}._deliver_reminder_to_platforms", new_callable=AsyncMock),
+        patch(f"{MODULE}._deliver_reminder_to_platforms", AsyncMock(return_value=None)),
         patch(f"{MODULE}.capture") as mock_capture,
     ):
         with pytest.raises(ValueError, match="has no ID, skipping execution"):
@@ -262,9 +301,11 @@ class TestReminderReachesChatPlatforms:
 
         create.assert_awaited_once()
         # The reminder is treated as successfully executed — the side channel's
-        # failure did not mark it failed or skip the completion capture.
-        mock_capture.assert_called_once()
-        assert isinstance(mock_capture.call_args.args[1], ReminderCompleted)
+        # failure did not mark it failed or skip the completion capture. Nothing
+        # reached a chat app, so no destination is claimed.
+        mock_capture.assert_called_once_with(
+            UserId(USER_ID), ReminderCompleted(reminder_id=REMINDER_ID, agent="static")
+        )
 
 
 class TestReminderResultText:
@@ -312,6 +353,7 @@ class TestDeliverReminderToPlatforms:
         assert kwargs["user_id"] == USER_ID
         assert kwargs["origin"] == f'reminder "Water the plants" (id {REMINDER_ID})'
         assert kwargs["notification_text"] == "**Water the plants**\nNow"
+        assert kwargs["target"] is TELEGRAM_BY_ORDER
 
     async def test_source_conversation_delivered_and_excluded_from_fanout(self) -> None:
         # The chat that created the reminder gets it on its own surface, and that
@@ -438,3 +480,215 @@ class TestDeliverReminderToPlatforms:
 
         get_user.assert_not_awaited()
         deliver.assert_not_awaited()
+
+
+class TestAReminderGoesToTheOnePlaceTheUserIsActive:
+    """When the user is active somewhere, a fired reminder reaches exactly that place."""
+
+    async def _fire(
+        self,
+        target: AsyncMock,
+        to: ProactiveTarget,
+        *,
+        set_in: ConversationSource | None,
+        delivered_into_chat: bool = True,
+    ) -> tuple[AsyncMock, AsyncMock]:
+        """Fire a reminder set in a chat on set_in; return the source-chat and chat-app DM sends."""
+        target.return_value = to
+        reminder = _reminder(source_conversation_id="conv-42" if set_in else None)
+        with (
+            patch(
+                f"{MODULE}.load_user_context",
+                new_callable=AsyncMock,
+                side_effect=_user_context(),
+            ),
+            patch(
+                f"{MODULE}.conversation_repository.get_source",
+                AsyncMock(return_value=set_in),
+            ),
+            patch(
+                f"{MODULE}.deliver_message_to_conversation",
+                AsyncMock(return_value=set_in if delivered_into_chat else None),
+            ) as into_chat,
+            patch(
+                f"{PLATFORM_MODULE}._post_workflow_message",
+                AsyncMock(side_effect=lambda **kwargs: kwargs["channel"].source),
+            ) as dm,
+        ):
+            await _deliver_reminder_to_platforms(reminder)
+        target.assert_awaited_once_with(USER_ID)
+        return into_chat, dm
+
+    async def test_active_on_the_chat_app_it_was_set_in_lands_there_only(
+        self, target: AsyncMock
+    ) -> None:
+        into_chat, dm = await self._fire(
+            target, TELEGRAM_ACTIVE, set_in=ConversationSource.TELEGRAM
+        )
+
+        into_chat.assert_awaited_once()
+        dm.assert_not_awaited()
+
+    async def test_active_on_a_chat_app_after_setting_it_on_the_web_lands_on_the_chat_app_only(
+        self, target: AsyncMock
+    ) -> None:
+        into_chat, dm = await self._fire(target, TELEGRAM_ACTIVE, set_in=ConversationSource.WEB)
+
+        into_chat.assert_not_awaited()
+        dm.assert_awaited_once()
+        assert dm.await_args.kwargs["channel"] is TELEGRAM_ACTIVE
+
+    async def test_active_on_a_chat_app_with_no_source_chat_lands_on_the_chat_app(
+        self, target: AsyncMock
+    ) -> None:
+        into_chat, dm = await self._fire(target, TELEGRAM_ACTIVE, set_in=None)
+
+        into_chat.assert_not_awaited()
+        dm.assert_awaited_once()
+
+    async def test_a_source_chat_that_could_not_be_reached_falls_back_to_the_chat_app(
+        self, target: AsyncMock
+    ) -> None:
+        into_chat, dm = await self._fire(
+            target, TELEGRAM_ACTIVE, set_in=ConversationSource.TELEGRAM, delivered_into_chat=False
+        )
+
+        into_chat.assert_awaited_once()
+        dm.assert_awaited_once()
+
+    @pytest.mark.parametrize(
+        "set_in", [ConversationSource.WEB, ConversationSource.MOBILE, ConversationSource.DESKTOP]
+    )
+    async def test_active_in_the_app_and_set_in_the_app_lands_in_the_app_only(
+        self, target: AsyncMock, set_in: ConversationSource
+    ) -> None:
+        into_chat, dm = await self._fire(target, InApp(reason="active_in_app"), set_in=set_in)
+
+        into_chat.assert_awaited_once()
+        dm.assert_not_awaited()
+
+    async def test_active_in_the_app_lands_in_a_web_chat_stored_without_a_source(
+        self, target: AsyncMock
+    ) -> None:
+        """Web chats are created with no source field; found live, the reminder skipped the chat."""
+        target.return_value = InApp(reason="active_in_app")
+        with (
+            patch(
+                f"{MODULE}.load_user_context",
+                new_callable=AsyncMock,
+                side_effect=_user_context(),
+            ),
+            patch(f"{MODULE}.conversation_repository.get_source", AsyncMock(return_value=None)),
+            patch(
+                f"{MODULE}.deliver_message_to_conversation", AsyncMock(return_value=None)
+            ) as into_chat,
+            patch(f"{PLATFORM_MODULE}._post_workflow_message", AsyncMock()) as dm,
+        ):
+            await _deliver_reminder_to_platforms(_reminder(source_conversation_id="conv-42"))
+
+        into_chat.assert_awaited_once()
+        dm.assert_not_awaited()
+
+    async def test_active_in_the_app_after_setting_it_on_a_chat_app_sends_no_chat_message(
+        self, target: AsyncMock
+    ) -> None:
+        """The in-app badge _execute_static_reminder raises is the one place it shows."""
+        into_chat, dm = await self._fire(
+            target, InApp(reason="active_in_app"), set_in=ConversationSource.TELEGRAM
+        )
+
+        into_chat.assert_not_awaited()
+        dm.assert_not_awaited()
+
+    async def test_nobody_active_lands_in_the_source_chat_and_the_first_chat_app(
+        self, target: AsyncMock
+    ) -> None:
+        into_chat, dm = await self._fire(
+            target, WHATSAPP_BY_ORDER, set_in=ConversationSource.TELEGRAM
+        )
+
+        into_chat.assert_awaited_once()
+        dm.assert_awaited_once()
+        assert dm.await_args.kwargs["channel"] is WHATSAPP_BY_ORDER
+
+    async def test_nobody_active_and_the_first_chat_app_is_the_source_chat_lands_once(
+        self, target: AsyncMock
+    ) -> None:
+        into_chat, dm = await self._fire(
+            target, TELEGRAM_BY_ORDER, set_in=ConversationSource.TELEGRAM
+        )
+
+        into_chat.assert_awaited_once()
+        dm.assert_not_awaited()
+
+    async def test_no_chat_app_lands_in_the_source_chat_only(self, target: AsyncMock) -> None:
+        into_chat, dm = await self._fire(
+            target, InApp(reason="no_chat_app"), set_in=ConversationSource.WEB
+        )
+
+        into_chat.assert_awaited_once()
+        dm.assert_not_awaited()
+
+    async def test_no_chat_app_lands_in_a_chat_app_source_chat_without_reading_its_source(
+        self, target: AsyncMock
+    ) -> None:
+        """No chat app is linked, so the source chat is the only chat there is, whatever it was."""
+        into_chat, dm = await self._fire(
+            target, InApp(reason="no_chat_app"), set_in=ConversationSource.TELEGRAM
+        )
+
+        into_chat.assert_awaited_once()
+        dm.assert_not_awaited()
+
+
+class TestLandsInSourceChat:
+    async def test_the_source_is_read_for_the_conversation_and_its_owner(self) -> None:
+        with patch(
+            f"{MODULE}.conversation_repository.get_source",
+            AsyncMock(return_value=ConversationSource.TELEGRAM),
+        ) as get_source:
+            lands = await _lands_in_source_chat(TELEGRAM_ACTIVE, "conv-42", USER_ID)
+
+        assert lands is True
+        get_source.assert_awaited_once_with("conv-42", user_id=USER_ID)
+
+    @pytest.mark.parametrize(
+        "target", [TELEGRAM_BY_ORDER, InApp(reason="no_chat_app")], ids=["priority", "no_chat_app"]
+    )
+    async def test_a_target_not_chosen_by_activity_lands_without_reading_the_source(
+        self, target: ProactiveTarget
+    ) -> None:
+        with patch(f"{MODULE}.conversation_repository.get_source", AsyncMock()) as get_source:
+            lands = await _lands_in_source_chat(target, "conv-42", USER_ID)
+
+        assert lands is True
+        get_source.assert_not_awaited()
+
+    async def test_active_in_the_app_does_not_land_in_a_chat_app_source_chat(self) -> None:
+        with patch(
+            f"{MODULE}.conversation_repository.get_source",
+            AsyncMock(return_value=ConversationSource.TELEGRAM),
+        ):
+            lands = await _lands_in_source_chat(InApp(reason="active_in_app"), "conv-42", USER_ID)
+
+        assert lands is False
+
+    async def test_the_delivery_asks_about_the_reminders_own_chat_and_user(
+        self, target: AsyncMock
+    ) -> None:
+        target.return_value = TELEGRAM_ACTIVE
+        with (
+            patch(
+                f"{MODULE}.load_user_context",
+                new_callable=AsyncMock,
+                side_effect=_user_context(),
+            ),
+            patch(
+                f"{MODULE}._lands_in_source_chat", AsyncMock(return_value=False)
+            ) as lands_in_source,
+            patch(f"{MODULE}.deliver_message_to_conversation", AsyncMock()),
+            patch(f"{MODULE}.deliver_result_to_platforms", AsyncMock()),
+        ):
+            await _deliver_reminder_to_platforms(_reminder(source_conversation_id="conv-42"))
+
+        lands_in_source.assert_awaited_once_with(TELEGRAM_ACTIVE, "conv-42", USER_ID)

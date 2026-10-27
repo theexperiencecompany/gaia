@@ -20,14 +20,14 @@ from langchain_core.messages import (
 from langchain_core.runnables import RunnableConfig
 from prometheus_client import REGISTRY
 
-from app.agents.context.slots import PromptSlot
+from app.agents.context.slots import PRESENCE_NOTE_MARKER, PromptSlot, mark
 from app.agents.core.nodes.manage_system_prompts import (
     _keep_latest_per_slot,
     _KeptPrompts,
     manage_system_prompts_node,
 )
 from app.constants.llm import LLMProviderName
-from app.override.langgraph_bigtool.utils import State
+from app.override.langgraph_bigtool.utils import PRUNED_MESSAGE_IDS_KEY, State
 from tests._harness.context_chain import bound_for
 
 
@@ -111,6 +111,26 @@ class TestManageSystemPrompts:
         assert types.count("ai") == 1
         assert types.count("tool") == 1
         assert types.count("system") == 1
+
+    def test_every_presence_note_stays_inline_and_is_never_pruned(self) -> None:
+        """The note is a CONVERSATION message: it accumulates in place, unlike a singleton slot."""
+        first, second = (
+            mark(HumanMessage(content=f"[Surface change {n}]", id=f"note{n}"), PRESENCE_NOTE_MARKER)
+            for n in (1, 2)
+        )
+        msgs = [
+            _static("prompt"),
+            first,
+            HumanMessage(content="on telegram", id="h1"),
+            AIMessage(content="ok", id="a1"),
+            second,
+            HumanMessage(content="back on web", id="h2"),
+        ]
+
+        result = manage_system_prompts_node(cast(State, {"messages": msgs}), _config(), _store())
+
+        assert [m.id for m in result["messages"][1:]] == ["note1", "h1", "a1", "note2", "h2"]
+        assert result[PRUNED_MESSAGE_IDS_KEY] == []
 
     def test_system_messages_moved_to_front(self) -> None:
         """Kept system messages move before any human/ai message, for providers that only promote a leading system run (Gemini)."""

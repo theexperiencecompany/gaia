@@ -449,7 +449,9 @@ NOTIFICATIONS (send_notification / get_notification_preferences)
 - Do NOT notify for every step of a multi-step workflow; one notification at completion is enough.
 - Do NOT send routine status updates the user can already see in the chat.
 - Limit to at most 1-2 notifications per session unless the user explicitly requests more.
-- CHANNELS: if the user named specific channels ("text me on whatsapp", "ping me on slack"), pass EXACTLY those and honor what they asked for. Only omit the `channels` parameter (which sends to all enabled channels) when the user did NOT specify one.
+- CHANNELS: if the user named specific channels ("text me on whatsapp", "ping me on slack"), pass EXACTLY those and honor what they asked for.
+- WHERE IT LANDS: omit `channels` unless the user named one; the notification then goes where they are reachable now. Never ask which channel.
+- YOUR RESULT ALREADY REACHES THE CHAT: when the user is chatting on a messaging platform (your context says "The user is on Telegram." or similar), your result is delivered into that chat automatically. So "keep me posted" or "let me know when it's done" there needs NO send_notification; just put the update in your result. Use send_notification only for a different channel the user named, or when the user is on web and asked for a ping somewhere else. Never add `inapp` as a filler channel.
 - Use get_notification_preferences first only if the user asks which channels are set up, or if
   you need to verify a specific channel is enabled before targeting it.
 
@@ -510,15 +512,57 @@ PLATFORM_DELIVERY_NOTE = wrap_agent_payload(
 )
 
 
+#: A todo that repeats or watches events reports on its own; most runs find nothing new.
+_RUNS_ON_ITS_OWN = (
+    "Nobody asked for it just now: it ran on its schedule or on an event it watches, "
+    "and its full record is already kept in the todo. "
+)
+#: A todo that runs once exists to answer what the user asked when it was set up.
+_ONE_RUN_ANSWERS = (
+    "This todo runs once, to answer what the user asked when they set it up, so its "
+    "result is that answer and they are waiting for it: always send it, even when the "
+    "answer is no or nothing to worry about. "
+)
+_WHEN_TO_MESSAGE = (
+    "Message the user when the report shows something new they need to know or act on, "
+    "a decision or blocker only they can settle that they have not already been asked "
+    "about, or a result they asked to hear every time (always send that one). Anything "
+    "else is not worth a message: a routine check, a no-op, nothing new, a question they "
+    "already have, a run that only kept notes. A report that says only that nothing is "
+    "new is that too: a mail-woken run with nothing to escalate, or a run held for "
+    "quiet hours, says exactly that, and the next briefing carries the rest. Then reply "
+    "with exactly one line and "
+    f"nothing else: {SILENCE_DIRECTIVE}. "
+)
+#: A reaction is not a delivery for a todo run: it is dropped and nothing is sent.
+_NO_REACTION = "There is no message of theirs to react to, so never answer with a reaction. "
+_HOW_IT_READS = (
+    "it reaches their chat app as plain text with no cards: lead with what "
+    "changed or what they must decide, give the concrete details they need, keep it "
+    "short, never mention runs, schedules or internal ids, and never promise to follow "
+    f"up later. Split with {NEW_MESSAGE_BREAKER} only when there is more than one beat.\n"
+)
+
+
 def tracked_todo_delivery_note(
-    todo_title: str, standing_rules: str | None, key_details: str | None
+    todo_title: str,
+    standing_rules: str | None,
+    key_details: str | None,
+    *,
+    runs_once: bool,
 ) -> str:
     """Build the delivery instructions for a tracked todo's own background run.
 
-    Nobody asked for this result, so comms decides only whether it is worth a message.
+    A one-time todo's result is the answer the user awaits and is always sent; a
+    repeating or watching todo's result is sent only when it is worth a message.
     The todo's own rules come last and bind: a desk briefing with content was silenced
     as routine while its rule said deliver every one.
     """
+    when_to_send = (
+        f"{_ONE_RUN_ANSWERS}{_NO_REACTION}Write it up: "
+        if runs_once
+        else f"{_RUNS_ON_ITS_OWN}{_WHEN_TO_MESSAGE}{_NO_REACTION}When you do write, "
+    )
     rules = (
         "Its Standing rules, the user's own instructions for this todo. They bind this "
         "decision above every default here and in your instructions, the SILENCE rule "
@@ -535,23 +579,7 @@ def tracked_todo_delivery_note(
     return wrap_agent_payload(
         AgentTag.DELIVERY_INSTRUCTIONS,
         f'This is the result of a background run of the user\'s tracked todo "{todo_title}". '
-        "Nobody asked for it just now: it ran on its schedule or on an event it watches, "
-        "and its full record is already kept in the todo. "
-        "Message the user when the report shows something new they need to know or act on, "
-        "a decision or blocker only they can settle that they have not already been asked "
-        "about, or a result they asked to hear every time (always send that one). Anything "
-        "else is not worth a message: a routine check, a no-op, nothing new, a question they "
-        "already have, a run that only kept notes. A report that says only that nothing is "
-        "new is that too: a mail-woken run with nothing to escalate, or a run held for "
-        "quiet hours, says exactly that, and the next briefing carries the rest. Then reply "
-        "with exactly one line and "
-        f"nothing else: {SILENCE_DIRECTIVE}. There is no "
-        "message of theirs to react to, so never answer with a reaction. When you do "
-        "write, it reaches their chat app as plain text with no cards: lead with what "
-        "changed or what they must decide, give the concrete details they need, keep it "
-        "short, never mention runs, schedules or internal ids, and never promise to follow "
-        f"up later. Split with {NEW_MESSAGE_BREAKER} only when there is more than one beat.\n"
-        f"{rules}",
+        f"{when_to_send}{_HOW_IT_READS}{rules}",
     )
 
 

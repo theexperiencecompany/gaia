@@ -15,7 +15,9 @@ from unittest.mock import AsyncMock, patch
 
 from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from app.models.memory_models import MemoryEntry, MemorySearchResult
+from app.models.presence_models import PresenceSnapshot
 from app.models.todo_models import TodoDocument
+from app.services.delivery.chat_channel import InApp, ProactiveTarget
 from app.services.gaia_knowledge_service import KnowledgeResult
 
 
@@ -57,6 +59,12 @@ class ContextSources:
     #: Comms-only: the onboarding system prompt for this turn, or ``None`` when
     #: the conversation is not an onboarding one.
     onboarding_prompt: str | None = None
+    #: What the root's presence read returns; the default is a user never seen anywhere.
+    presence: PresenceSnapshot = field(
+        default_factory=lambda: PresenceSnapshot(captured_at=0, last_seen={})
+    )
+    #: The one place a proactive message would land on.
+    proactive_target: ProactiveTarget = field(default_factory=lambda: InApp(reason="no_chat_app"))
 
 
 def _instructions_for(sources: ContextSources, scope: str) -> str:
@@ -176,6 +184,20 @@ def fake_context_sources(sources: ContextSources) -> Iterator[None]:
             patch(
                 "app.agents.core.messages.get_onboarding_system_prompt_if_applicable",
                 AsyncMock(return_value=sources.onboarding_prompt),
+            )
+        )
+        # Roots with no presence read it (comms in _core_agent_logic, others in
+        # build_agent_config); a background note reads it live with its target.
+        for reader in (
+            "app.agents.core.agent.read_presence",
+            "app.helpers.agent_helpers.read_presence",
+            "app.agents.context.presence_note.read_presence",
+        ):
+            enter(patch(reader, AsyncMock(return_value=sources.presence)))
+        enter(
+            patch(
+                "app.agents.context.presence_note.resolve_proactive_target",
+                AsyncMock(return_value=sources.proactive_target),
             )
         )
         enter(_patch_executor_lock(sources.executor_busy_task_id))

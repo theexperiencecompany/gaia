@@ -99,6 +99,8 @@ USER_CACHE_PREFIX = "user"
 DEVICE_MANIFEST_CACHE_PREFIX = "device_manifest"
 # Redis SET NX EX gate that debounces UserRepository.touch_last_active.
 LAST_ACTIVE_GATE_PREFIX = "last_active_gate"
+# Redis hash per user: surface -> epoch seconds of the user's last inbound message there.
+USER_PRESENCE_PREFIX = "user_presence"
 
 # Cache key prefixes
 TEAM_CACHE_PREFIX = "team"

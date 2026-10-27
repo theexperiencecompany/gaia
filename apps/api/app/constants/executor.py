@@ -22,9 +22,11 @@ EXECUTOR_STEP_LIMIT_MESSAGE = "This task hit its step limit. Try breaking it int
 # work may already have happened: a re-run is the caller's call, never GAIA's.
 EXECUTOR_CRASH_MESSAGE = (
     "The background task stopped before it finished, so there is no result and part "
-    "of the work may have already happened. Tell the user plainly that it could not "
-    "be completed, and ask how they would like to proceed. Never offer to re-run it "
-    "yourself, and never claim a result."
+    "of the work may have already happened. Lead with that: tell the user plainly it "
+    "could not be completed. Anything that depended on it did not happen either, so "
+    "do not answer their question as if it had (no time, place or confirmation for "
+    "something that was never set up). Then ask how they would like to proceed. "
+    "Never offer to re-run it yourself, and never claim a result."
 )
 
 # result_type for a run that stopped on a HIL approval instead of finishing. Such

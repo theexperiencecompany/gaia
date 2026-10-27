@@ -373,6 +373,7 @@ class TestConsumeAgentStreamCallsTheAgent:
             conversation_id="conv-1",
             stream_id="stream-1",
             source="whatsapp",
+            presence={"captured_at": 1_800_000_000, "last_seen": {"web": 1}},
             usage_callback=usage_callback,
         )
 
@@ -388,6 +389,7 @@ class TestConsumeAgentStreamCallsTheAgent:
         assert isinstance(options, AgentRunOptions)
         assert options.usage_metadata_callback is usage_callback
         assert options.source == "whatsapp"
+        assert options.presence == {"captured_at": 1_800_000_000, "last_seen": {"web": 1}}
 
         assert captured["ids"] == StreamMessageIds(
             stream_id="stream-1",
@@ -412,6 +414,7 @@ class TestConsumeAgentStreamAccumulatesAcrossChunks:
             conversation_id="conv-1",
             stream_id="stream-1",
             source=None,
+            presence=None,
             usage_callback=UsageMetadataCallbackHandler(),
         )
         sm = AsyncMock()
@@ -485,6 +488,7 @@ class TestRunChatStreamTurnDerivations:
             patch.object(chat_stream, "stream_manager") as sm,
             patch.object(chat_stream, "register_executor_capture"),
             patch.object(chat_stream, "_set_stream_log_context"),
+            patch.object(chat_stream, "_capture_presence", AsyncMock(return_value=None)),
             patch.object(chat_stream, "_publish_init_chunk", fake_publish_init),
             patch.object(
                 chat_stream, "_resolve_pending_approval_turn", AsyncMock(return_value=False)

@@ -200,7 +200,7 @@ class _Harness:
                 self.update_workflow,
             ),
             patch(f"{MODULE}.add_playbook_run_messages", self.add_messages),
-            patch(f"{MODULE}.deliver_result_to_platforms", self.platform_delivery),
+            patch(f"{MODULE}.deliver_workflow_result", self.platform_delivery),
             patch(
                 f"{MODULE}.send_workflow_completion_notification",
                 self.completion_notification,
@@ -936,7 +936,7 @@ class TestReplayCompletionNotification:
 
         harness.platform_delivery.assert_awaited_once()
         assert harness.platform_delivery.await_args.kwargs["notification_text"] == "Agenda sent."
-        assert harness.platform_delivery.await_args.kwargs["user_id"] == workflow.user_id
+        assert harness.platform_delivery.await_args.kwargs["user"].user_id == workflow.user_id
         harness.completion_notification.assert_awaited_once_with(
             workflow_id=workflow.id,
             workflow_title=workflow.title,
@@ -1953,7 +1953,7 @@ class TestATrustedReplayWritesTheTurnAndTellsTheUser:
         assert harness.platform_delivery.await_args_list == [
             call(
                 user=AGENT_USER,
-                user_id=USER_ID,
+                workflow_id="wf_1",
                 notification_text="Agenda sent.",
                 origin='workflow "Daily agenda" (id wf_1)',
             )
@@ -2108,7 +2108,7 @@ class TestTheReplayCompletionNotificationEdges:
         workflow = _workflow().model_copy(update={"id": None})
         completion = AsyncMock()
         with (
-            patch(f"{MODULE}.deliver_result_to_platforms", AsyncMock()),
+            patch(f"{MODULE}.deliver_workflow_result", AsyncMock()),
             patch(f"{MODULE}.send_workflow_completion_notification", completion),
         ):
             await _notify_replay_finished(workflow, AGENT_USER, "conv_1", "Agenda sent.")
@@ -2127,7 +2127,7 @@ class TestTheReplayCompletionNotificationEdges:
         log_seam = MagicMock()
         with (
             patch(
-                f"{MODULE}.deliver_result_to_platforms",
+                f"{MODULE}.deliver_workflow_result",
                 AsyncMock(side_effect=TimeoutError("platform down")),
             ),
             patch(f"{MODULE}.send_workflow_completion_notification", AsyncMock()),

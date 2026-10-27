@@ -284,6 +284,7 @@ async def _seed_comms(
             source=configurable.get("conversation_source"),
             active_todo_id=configurable.get("active_todo_id"),
             execution_mode=configurable.get("execution_mode") or "interactive",
+            presence=configurable.get("presence"),
         ),
     )
 

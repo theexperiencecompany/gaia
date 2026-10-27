@@ -50,12 +50,14 @@ from app.models.chat_models import ConversationSource, SourceCategory, ToolDataE
 from app.models.mcp_app_models import McpUiMetadata, McpUiResource
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.payment_models import PlanType
+from app.models.presence_models import PresenceSnapshot
 from app.models.stream_events import (
     MessageBoundaryPayload,
     ModelFallbackFrame,
     ReasoningPayload,
     ToolOutputPayload,
 )
+from app.services.delivery.presence import read_presence
 from app.services.latency_metrics import observe_comms_graph, span
 from app.services.mcp.mcp_resource_fetcher import fetch_mcp_ui_resource
 from app.utils.agent_utils import (
@@ -386,6 +388,7 @@ class _TurnScope:
     user_preferences: dict[str, object] | None
     writing_style: dict[str, object] | None
     execution_mode: ExecutionMode | None
+    presence: PresenceSnapshot | None
     stream_id: str | None = None
 
 
@@ -395,7 +398,7 @@ def _inherit_from_parent_configurable(
 ) -> _TurnScope:
     """Merge current with optional inheritance from a parent agent's configurable.
 
-    Fallback fields (tool/subagent/vfs/todo/mode/source): child wins, parent
+    Fallback fields (tool/subagent/vfs/todo/mode/source/presence): child wins, parent
     fills blanks. stream_id always comes from parent. The model is NOT merged
     here — a child inherits its parent's lane whole (see build_agent_config).
     """
@@ -431,8 +434,18 @@ def _inherit_from_parent_configurable(
         active_todo_id=current.active_todo_id or parent.active_todo_id,
         conversation_source=current.conversation_source or parent.conversation_source,
         execution_mode=current.execution_mode or parent.execution_mode,
+        presence=current.presence or parent.presence,
         stream_id=parent.stream_id,
     )
+
+
+def opens_thread(history: list[MessageDict], current: str) -> bool:
+    """Whether this turn starts its conversation: no turn precedes it in the history."""
+    # Clients usually append the current turn to history already; it is not a prior one.
+    if not history:
+        return True
+    latest: MessageDict = history[-1]
+    return len(history) == 1 and (latest["content"] or "").strip() == current.strip()
 
 
 def recent_user_messages(history: list[MessageDict], current: str) -> list[str]:
@@ -593,6 +606,10 @@ class AgentTurn:
     writing_style: dict[str, Any] | None = None
     """Onboarding data; same inheritance rule as ``user_preferences``."""
 
+    presence: PresenceSnapshot | None = None
+    """Where the user is, as captured by the interactive turn that started this tree.
+    Inherited from the parent when omitted; a root run without one reads it."""
+
 
 @dataclass(frozen=True)
 class AgentTracing:
@@ -675,6 +692,7 @@ async def build_agent_config(
         user_request,
         user_preferences,
         writing_style,
+        presence,
     ) = (
         turn.selected_tool,
         turn.tool_category,
@@ -685,6 +703,7 @@ async def build_agent_config(
         turn.user_request,
         turn.user_preferences,
         turn.writing_style,
+        turn.presence,
     )
 
     acting_user = _AgentUser.model_validate(user)
@@ -729,8 +748,16 @@ async def build_agent_config(
         user_preferences=user_preferences,
         writing_style=writing_style,
         execution_mode=execution_mode,
+        presence=presence,
     )
     resolved = _inherit_from_parent_configurable(parent, current)
+
+    # Captured by the interactive turn at the tree's root and inherited from there;
+    # a root with none (a tracked todo run, a dev run) reads it here, the same
+    # seam that resolves the lane. Comms roots read it in _core_agent_logic.
+    resolved_presence = resolved.presence or (
+        await read_presence(acting_user.user_id) if acting_user.user_id else None
+    )
 
     # Explicit kwargs win over what was inherited from the parent's configurable.
     # `is not None` (not `or`) so callers can pass [] to intentionally clear tags.
@@ -783,6 +810,7 @@ async def build_agent_config(
         "user_timezone": home_timezone,
         "root_request_id": root_request_id,
         "analytics_context": run_analytics_context(base_configurable or {}).model_dump(mode="json"),
+        "presence": resolved_presence,
         # The decision, and its expansion into LangChain's binding keys. Only
         # ``lane`` is inherited by children; the binding keys are always
         # re-derived from it, so the two can never drift apart.
