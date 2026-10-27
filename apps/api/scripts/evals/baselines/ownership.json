@@ -1,11 +1,15 @@
 {
   "suite": "ownership",
-  "run_id": "ownership-20261027-184523-b4bfe0",
-  "app_version": "api-v0.25.0-23-g2a58d30e19-dirty",
-  "baseline_accuracy": 0.6182,
-  "graded": 55,
-  "errored": 1,
+  "run_id": "ownership-20261027-193928-bf7468",
+  "app_version": "api-v0.25.0-24-ga677216b90-dirty",
+  "baseline_accuracy": 0.5455,
+  "graded": 88,
+  "errored": 0,
   "per_category": {
+    "external_comm": [
+      5,
+      8
+    ],
     "followup": [
       3,
       8
@@ -15,7 +19,7 @@
       8
     ],
     "l1_default": [
-      5,
+      3,
       8
     ],
     "l2_ask_one": [
@@ -23,15 +27,27 @@
       8
     ],
     "l3_approval": [
-      1,
-      7
+      0,
+      8
     ],
     "l4_goal": [
-      1,
+      2,
+      8
+    ],
+    "multi_step": [
+      5,
+      8
+    ],
+    "multi_turn": [
+      4,
       8
     ],
     "over_proactive": [
       8,
+      8
+    ],
+    "recurring": [
+      2,
       8
     ]
   },

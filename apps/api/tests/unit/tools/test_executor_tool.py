@@ -19,13 +19,20 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool
 import pytest
 
+from app.agents.core.background.confirmation_gate import record_confirmation_asked
 from app.agents.core.background.executor_channel import ExecutorInbox
+from app.agents.core.background.executor_queue import release_lock_if_owned
 from app.agents.core.background.running_registry import RunningSubagents
 from app.agents.core.background.session import get_session, teardown_session
 from app.agents.core.subagents.subagent_runner import compose_executor_brief
 from app.agents.tools import executor_tool
 from app.agents.tools.executor_tool import call_executor, cancel_executor, tools
-from app.constants.agents import AgentTag, TimeHorizon
+from app.constants.agents import (
+    IRREVERSIBLE_APPROVED_BRIEF,
+    IRREVERSIBLE_UNAPPROVED_BRIEF,
+    AgentTag,
+    TimeHorizon,
+)
 from app.constants.browser import BrowserSessionStatus
 from app.constants.cache import (
     EXECUTOR_BUSY_PREFIX,
@@ -225,6 +232,38 @@ def broadcast(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
 
 
 # ── call_executor: dispatch ──────────────────────────────────────────
+
+
+class TestIrreversibleApprovalNeedsAnAsk:
+    """The approval flag counts only as the answer to a confirmation GAIA asked for."""
+
+    async def _dispatched_brief(self, spawned_runs: list[dict[str, Any]]) -> str:
+        await call_executor_with(
+            config=config_for(), task="delete all 3 todos", irreversible_approved=True
+        )
+        await drain_background_tasks()
+        return str(spawned_runs[-1]["task"])
+
+    async def test_the_first_request_is_never_its_own_approval(
+        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
+    ) -> None:
+        """Seen live on gpt-5.6-luna: comms set the flag on "delete all my todos" and they were gone."""
+        brief = await self._dispatched_brief(spawned_runs)
+
+        assert IRREVERSIBLE_UNAPPROVED_BRIEF in brief
+        assert IRREVERSIBLE_APPROVED_BRIEF not in brief
+
+    async def test_a_yes_to_gaia_s_question_is_approval_once(
+        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
+    ) -> None:
+        await record_confirmation_asked(CONVERSATION_ID)
+
+        first = await self._dispatched_brief(spawned_runs)
+        await release_lock_if_owned(CONVERSATION_ID, "stream-1", spawned_runs[-1]["run"].task_id)
+        second = await self._dispatched_brief(spawned_runs)
+
+        assert IRREVERSIBLE_APPROVED_BRIEF in first
+        assert IRREVERSIBLE_UNAPPROVED_BRIEF in second
 
 
 class TestCallExecutorDispatch:

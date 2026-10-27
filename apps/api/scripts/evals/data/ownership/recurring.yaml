@@ -1,0 +1,91 @@
+# Recurring responsibilities: GAIA itself must do the work on a schedule, so a
+# recurring tracked todo or a workflow has to exist afterwards. A repeating
+# reminder only pings the user and does not count.
+
+- id: own-rc-daily-plan
+  ticket: "Daily plan every morning: GAIA builds it each day, not a ping."
+  prompt: "every morning at 8 give me a plan for my day"
+  tags: [ownership, recurring, planning]
+  expected:
+    category: recurring
+    delegation: required
+    end_state: {recurring_setup: true}
+    must_not_communicate: ["what time", "i'll remind you to plan"]
+    score: {gates: [delegation, end_state, must_not_communicate]}
+
+- id: own-rc-weekly-summary
+  ticket: "Weekly summary: GAIA writes it every Friday evening."
+  prompt: "every friday evening send me a summary of what i got done this week"
+  tags: [ownership, recurring]
+  expected:
+    category: recurring
+    delegation: required
+    end_state: {recurring_setup: true}
+    must_not_communicate: ["which day", "i'll remind you to"]
+    score: {gates: [delegation, end_state, must_not_communicate]}
+
+- id: own-rc-umbrella
+  ticket: "Weekday weather check: GAIA looks and tells them, every weekday."
+  prompt: "every weekday morning check the weather and tell me if i need an umbrella"
+  tags: [ownership, recurring, monitoring]
+  expected:
+    category: recurring
+    delegation: required
+    end_state: {recurring_setup: true}
+    must_not_communicate: ["i'll remind you to check"]
+    score: {gates: [delegation, end_state, must_not_communicate]}
+
+- id: own-rc-journal
+  ticket: "Nightly journaling: GAIA asks each night and keeps the journal."
+  prompt: "each night at 9 ask me how my day went and keep a journal of it"
+  tags: [ownership, recurring]
+  expected:
+    category: recurring
+    delegation: required
+    end_state: {recurring_setup: true}
+    must_not_communicate: ["what time"]
+    score: {gates: [delegation, end_state, must_not_communicate]}
+
+- id: own-rc-dinners
+  ticket: "Weekly meal ideas: GAIA suggests them every Sunday."
+  prompt: "every sunday suggest 3 healthy dinners for the week"
+  tags: [ownership, recurring]
+  expected:
+    category: recurring
+    delegation: required
+    end_state: {recurring_setup: true}
+    must_not_communicate: ["i'll remind you to"]
+    score: {gates: [delegation, end_state, must_not_communicate]}
+
+- id: own-rc-hn-ai
+  ticket: "Daily news watch: GAIA reads it and reports the top AI story."
+  prompt: "check hacker news every morning and tell me the top ai story"
+  tags: [ownership, recurring, monitoring]
+  expected:
+    category: recurring
+    delegation: required
+    end_state: {recurring_setup: true}
+    must_not_communicate: ["i'll remind you to check"]
+    score: {gates: [delegation, end_state, must_not_communicate]}
+
+- id: own-rc-log-hours
+  ticket: "Daily check-in that asks for content: GAIA asks, a reminder cannot."
+  prompt: "every weekday at 5pm ask me what i worked on and keep a log"
+  tags: [ownership, recurring]
+  expected:
+    category: recurring
+    delegation: required
+    end_state: {recurring_setup: true}
+    must_not_communicate: ["what time"]
+    score: {gates: [delegation, end_state, must_not_communicate]}
+
+- id: own-rc-bitcoin
+  ticket: "Daily market watch: GAIA checks and reports how bitcoin moved."
+  prompt: "keep an eye on bitcoin and tell me every evening how it moved that day"
+  tags: [ownership, recurring, monitoring]
+  expected:
+    category: recurring
+    delegation: required
+    end_state: {recurring_setup: true}
+    must_not_communicate: ["i'll remind you to check"]
+    score: {gates: [delegation, end_state, must_not_communicate]}

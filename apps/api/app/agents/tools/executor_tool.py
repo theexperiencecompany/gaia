@@ -14,6 +14,7 @@ from uuid import uuid4
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
+from app.agents.core.background.confirmation_gate import spend_confirmation
 from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.executor_progress import drop_progress
 from app.agents.core.background.executor_queue import (
@@ -209,7 +210,8 @@ async def call_executor(
             desired_outcome=desired_outcome,
             time_horizon=time_horizon,
             defaults_assumed=tuple(defaults_assumed or ()),
-            irreversible_approved=irreversible_approved,
+            irreversible_approved=irreversible_approved
+            and await spend_confirmation(conversation_id),
         ),
     )
 

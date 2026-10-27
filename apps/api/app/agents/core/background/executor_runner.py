@@ -23,6 +23,7 @@ from langgraph.types import Command
 from langsmith import traceable
 
 from app.agents.core.background.comms_narrator import record_executor_cancellation
+from app.agents.core.background.confirmation_gate import record_confirmation_asked
 from app.agents.core.background.executor_capture import (
     build_returned_to_frontend_note,
     drain_executor_tool_data,
@@ -60,7 +61,7 @@ from app.agents.core.subagents.subagent_runner import (
     thread_messages,
 )
 from app.agents.prompts.comms_prompts import outcome_delivery_note
-from app.constants.agents import NON_WAKING_TAGS, AgentTag
+from app.constants.agents import NON_WAKING_TAGS, AgentTag, OutcomeState
 from app.constants.executor import (
     EXECUTOR_APPROVAL_LOST_MESSAGE,
     EXECUTOR_CARRY_TASK,
@@ -527,7 +528,7 @@ async def _finalize_executor_run(
     try:
         if not abandoned:
             outcome_note = (
-                await _review_outcome_note(ctx)
+                await _review_outcome_note(run.conversation_id, ctx)
                 if ctx is not None and result_type == "final"
                 else ""
             )
@@ -590,9 +591,11 @@ async def _finalize_executor_run(
     await _carry_pending_into_new_run(run, ctx)
 
 
-async def _review_outcome_note(ctx: SubagentExecutionContext) -> str:
+async def _review_outcome_note(conversation_id: str, ctx: SubagentExecutionContext) -> str:
     """Check the run's declared outcome against its own tool calls; the note comms delivers under."""
     review = review_run(await thread_messages(ctx))
+    if review.verified and review.declared is OutcomeState.ASK:
+        await record_confirmation_asked(conversation_id)
     log.set(
         executor={
             "outcome": review.declared.value if review.declared else None,

@@ -1,0 +1,113 @@
+# Closing the loop across turns: a confirmation is carried out, a no is final, a
+# changed mind is honoured, an answered question becomes the action, and a
+# correction replaces the first attempt instead of duplicating it.
+
+- id: own-mt-confirm-delete-all
+  ticket: "Asked, confirmed: the yes must actually delete them all."
+  tags: [ownership, multi_turn, L3]
+  prompt: "delete all my todos"
+  setup:
+    seed: {todos: ["renew car insurance", "call the bank", "buy a birthday gift"]}
+    turns: ["delete all my todos", "yes, clear them all"]
+  expected:
+    category: multi_turn
+    ownership: {followup: forbidden}
+    end_state: {seeded_open: 0}
+    score: {gates: [end_state, followup]}
+
+- id: own-mt-confirm-subset
+  ticket: "Confirmed subset: delete exactly the two work todos, keep the other."
+  tags: [ownership, multi_turn, L3]
+  prompt: "delete the todos about work"
+  setup:
+    seed: {todos: ["work: send invoice to acme", "work: prep quarterly deck", "buy flowers"]}
+    turns: ["delete the todos about work", "yes, both of those"]
+  expected:
+    category: multi_turn
+    ownership: {followup: forbidden}
+    end_state: {seeded_open: 1}
+    score: {gates: [end_state, followup]}
+
+- id: own-mt-changed-mind
+  ticket: "Changed mind mid-confirmation: keep the bank todo, delete the rest."
+  tags: [ownership, multi_turn, L3, changed_mind]
+  prompt: "delete all my todos"
+  setup:
+    seed: {todos: ["call the bank", "renew passport", "buy flowers"]}
+    turns: ["delete all my todos", "actually keep the bank one and delete the other two"]
+  expected:
+    category: multi_turn
+    ownership: {followup: forbidden}
+    end_state: {seeded_open: 1}
+    score: {gates: [end_state, followup]}
+
+- id: own-mt-declined
+  ticket: "A no is final: nothing is deleted and it is not offered again."
+  tags: [ownership, multi_turn, L3]
+  prompt: "delete all my todos"
+  setup:
+    seed: {todos: ["pay electricity bill", "email the recruiter", "return library books"]}
+    turns: ["delete all my todos", "no, never mind, keep them"]
+  expected:
+    category: multi_turn
+    ownership: {followup: forbidden, questions: {min: 0, max: 0}, max_words: 25}
+    end_state: {seeded_open: 3}
+    # must_not_communicate reads every turn, so only claims that are wrong in any turn.
+    must_not_communicate: ["i've deleted", "deleted them", "they're gone"]
+    score: {gates: [end_state, followup, question_budget, reply_brevity, must_not_communicate]}
+
+- id: own-mt-answered-question
+  ticket: "L2 answered: the reply to the one question becomes the reminder."
+  tags: [ownership, multi_turn, L2]
+  prompt: "remind me about the meeting"
+  setup:
+    turns: ["remind me about the meeting", "the dentist appointment, tomorrow at 4pm"]
+    verify: {followups_containing: dentist}
+  expected:
+    category: multi_turn
+    ownership: {followup: required, followup_contains: dentist}
+    end_state: {followups_matching: 1}
+    score: {gates: [followup, end_state]}
+
+- id: own-mt-answered-subject
+  ticket: "Cadence first, subject second: one recurring reminder about the plants."
+  tags: [ownership, multi_turn, L2, recurring]
+  prompt: "remind me every few days"
+  setup:
+    turns: ["remind me every few days", "to water the plants"]
+    verify: {followups_containing: plant}
+  expected:
+    category: multi_turn
+    ownership: {followup: required, followup_contains: plant}
+    end_state: {followups_matching: 1}
+    score: {gates: [followup, end_state]}
+
+- id: own-mt-correction
+  ticket: "Correction replaces the first reminder; it never leaves two."
+  tags: [ownership, multi_turn, correction]
+  prompt: "remind me tomorrow at 6pm to call the plumber"
+  setup:
+    turns: ["remind me tomorrow at 6pm to call the plumber", "make it 7pm instead"]
+    verify: {followups_containing: plumber}
+  expected:
+    category: multi_turn
+    ownership: {followup: required, followup_contains: plumber}
+    end_state: {followups_matching: 1}
+    score: {gates: [followup, end_state]}
+
+- id: own-mt-goal-then-help
+  ticket: "L4 answered: once the goal is known, give concrete help, still create nothing unasked."
+  tags: [ownership, multi_turn, L4, career]
+  prompt: "should i quit my job?"
+  setup:
+    turns:
+      - "should i quit my job?"
+      - "my manager is toxic, i have 6 months of savings and i want a remote role"
+  expected:
+    category: multi_turn
+    ownership: {followup: forbidden, min_words: 30}
+    must_not_communicate: ["you should stay", "i've created", "i've set a reminder"]
+    judge:
+      criteria:
+        - "MUST: gives concrete next steps that use the savings and the remote goal the user named"
+    score: {gates: [followup, deliverable, must_not_communicate]}

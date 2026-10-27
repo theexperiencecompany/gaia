@@ -66,6 +66,8 @@ from scripts.evals.suites.quality import (
 DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "ownership"
 API = f"{DEV_API_BASE}/api/v1"
 TRACKED_LABEL = "gaia-tracked"
+#: The id prefix of a todo follow-up, and the followup_kind value that demands a tracked todo.
+TRACKED_TODO_KIND = "todo"
 ACTIVE_REMINDER_STATUSES = frozenset({"scheduled", "executing"})
 DELIVERED_KIND = "delivered"
 # Executor work (research, planning) outlives the comms default of 75s.
@@ -159,6 +161,14 @@ def reply_brevity_gate(case: Case, run: CaseRun) -> float:
     return 1.0 if len(reply.split()) <= int(_spec(case)["max_words"]) else 0.0
 
 
+def deliverable_gate(case: Case, run: CaseRun) -> float:
+    """The first real piece arrived (the plan, the list, the draft), not a plan to make one."""
+    reply = _inspectable_reply(run)
+    if reply is None:
+        return 0.0
+    return 1.0 if len(reply.split()) >= int(_spec(case)["min_words"]) else 0.0
+
+
 def followup_gate(case: Case, run: CaseRun) -> float:
     """required: a new follow-up with a wake source exists; forbidden: none was created.
 
@@ -218,9 +228,11 @@ class OwnershipTransport(ChatStreamTransport):
                 async with dev_client(email) as client:
                     client.timeout = self._timeout
                     seeded = await self._seed(client, case, provider)
-                    before = {f["id"] for f in await self._followups(client)} | {
-                        f"todo:{row['id']}" for row in await self._todos(client)
-                    }
+                    before = (
+                        {f["id"] for f in await self._followups(client)}
+                        | {f"{TRACKED_TODO_KIND}:{row['id']}" for row in await self._todos(client)}
+                        | await self._workflow_ids(client)
+                    )
                     for index, turn_text in enumerate(turns):
                         payload: TurnPayload = {
                             "message": turn_text,
@@ -343,7 +355,7 @@ class OwnershipTransport(ChatStreamTransport):
         reminders.raise_for_status()
         found: list[Followup] = [
             {
-                "id": f"todo:{row['id']}",
+                "id": f"{TRACKED_TODO_KIND}:{row['id']}",
                 "title": row.get("title") or "",
                 "wake": not row.get("completed")
                 and bool(
@@ -351,6 +363,7 @@ class OwnershipTransport(ChatStreamTransport):
                     or row.get("recurrence")
                     or row.get("trigger_subscriptions")
                 ),
+                "recurring": bool(row.get("recurrence")),
             }
             for row in todos.json().get("data") or []
             if TRACKED_LABEL in (row.get("labels") or [])
@@ -360,10 +373,16 @@ class OwnershipTransport(ChatStreamTransport):
                 "id": f"reminder:{row['id']}",
                 "title": (row.get("payload") or {}).get("title") or "",
                 "wake": row.get("status") in ACTIVE_REMINDER_STATUSES,
+                "recurring": bool(row.get("repeat")),
             }
             for row in reminders.json()
         )
         return found
+
+    async def _workflow_ids(self, client: httpx.AsyncClient) -> set[str]:
+        resp = await client.get(f"{API}/workflows")
+        resp.raise_for_status()
+        return {f"workflow:{row['id']}" for row in resp.json().get("workflows") or []}
 
     async def _end_state(
         self,
@@ -384,12 +403,28 @@ class OwnershipTransport(ChatStreamTransport):
             if key == "seeded_intact":
                 open_ids = {str(row["id"]) for row in open_todos}
                 state[key] = all(todo_id in open_ids for todo_id in seeded)
+            elif key == "followups_matching":
+                term = str(case.setup["verify"]["followups_containing"]).lower()
+                state[key] = sum(
+                    1 for f in state["followups"] if f["wake"] and term in str(f["title"]).lower()
+                )
+            elif key == "seeded_open":
+                open_ids = {str(row["id"]) for row in open_todos}
+                state[key] = sum(1 for todo_id in seeded if todo_id in open_ids)
+            elif key == "recurring_setup":
+                # Work GAIA itself repeats: a recurring tracked todo or a new workflow.
+                # A repeating reminder only pings the user, so it never counts.
+                new_workflows = await self._workflow_ids(client) - before
+                state[key] = bool(new_workflows) or any(
+                    f["recurring"] and f["wake"] and f["id"].startswith(f"{TRACKED_TODO_KIND}:")
+                    for f in state["followups"]
+                )
             elif key == "todos_containing":
                 term = str(case.setup["verify"]["todos_containing"]).lower()
                 state[key] = sum(
                     1
                     for row in open_todos
-                    if f"todo:{row['id']}" not in before
+                    if f"{TRACKED_TODO_KIND}:{row['id']}" not in before
                     and TRACKED_LABEL not in (row.get("labels") or [])
                     and term in str(row.get("title") or "").lower()
                 )
@@ -409,6 +444,7 @@ class OwnershipSuite(Suite):
         "question_budget": question_budget_gate,
         "reply_brevity": reply_brevity_gate,
         "followup": followup_gate,
+        "deliverable": deliverable_gate,
     }
 
     def __init__(self, cfg: EvalConfig) -> None:

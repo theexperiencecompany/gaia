@@ -8,6 +8,7 @@ import pytest
 from scripts.evals.core.types import Case, CaseRun
 from scripts.evals.suites.ownership import (
     DELIVERED_KIND,
+    deliverable_gate,
     executor_brief_gate,
     followup_gate,
     question_budget_gate,
@@ -91,6 +92,24 @@ class TestReplyBrevity:
         run = _run(_say("Here is a long answer that keeps going well past the budget."))
 
         assert reply_brevity_gate(_case(max_words=5), run) == 0.0
+
+
+class TestDeliverable:
+    def test_a_real_piece_of_work_passes(self) -> None:
+        plan = "Day 1: Alfama and the castle. Day 2: Belem and the river. Day 3: Sintra by train."
+
+        assert deliverable_gate(_case(min_words=15), _run(_say(plan))) == 1.0
+
+    def test_a_plan_to_make_a_plan_fails(self) -> None:
+        assert (
+            deliverable_gate(_case(min_words=15), _run(_say("On it, I'll put that together.")))
+            == 0.0
+        )
+
+    def test_a_reaction_alone_is_no_deliverable(self) -> None:
+        run = _run(_say("[reaction: 👍]", REACTION_KIND))
+
+        assert deliverable_gate(_case(min_words=15), run) == 0.0
 
 
 class TestFollowup:
