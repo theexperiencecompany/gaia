@@ -38,21 +38,23 @@ function walk(dir) {
 }
 
 const dimensions = {};
-for (const sourceDir of SOURCE_DIRS) {
+const files = SOURCE_DIRS.flatMap((sourceDir) => {
   const dir = join(PUBLIC_DIR, sourceDir);
-  if (!existsSync(dir)) continue;
+  return existsSync(dir) ? walk(dir) : [];
+});
 
-  for (const file of walk(dir)) {
+await Promise.all(
+  files.map(async (file) => {
     const metadata = await sharp(file).metadata();
     if (!metadata.width || !metadata.height) {
       console.warn(`[image-dimensions] skipping ${file}: no intrinsic size`);
-      continue;
+      return;
     }
 
     const key = `/${relative(PUBLIC_DIR, file).split("\\").join("/")}`;
     dimensions[key] = { width: metadata.width, height: metadata.height };
-  }
-}
+  }),
+);
 
 const sorted = Object.fromEntries(
   Object.entries(dimensions).sort(([a], [b]) => a.localeCompare(b)),
