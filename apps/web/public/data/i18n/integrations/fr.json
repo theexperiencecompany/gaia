@@ -12361,127 +12361,127 @@
   "salesforce-drive": {
     "toolA": "Salesforce",
     "toolB": "Google Drive",
-    "tagline": "Attach Drive contracts and proposals to Salesforce deals automatically",
-    "metaTitle": "Intégration Salesforce + Google Drive : documents de vente",
-    "metaDescription": "Salesforce + Google Drive avec GAIA : Créez des dossiers Drive pour vos opportunités Salesforce et joignez les propositions, pour tout garder au CRM.",
+    "tagline": "Joignez automatiquement les contrats et propositions Drive aux affaires Salesforce",
+    "metaTitle": "Automatisation Salesforce + Google Drive — Reliez documents commerciaux et CRM",
+    "metaDescription": "Connectez Salesforce et Google Drive avec GAIA. Créez automatiquement des dossiers Drive pour vos opportunités, joignez propositions et contrats aux affaires, et gardez tous vos documents organisés et accessibles depuis votre CRM.",
     "keywords": [
-      "Salesforce Google Drive integration",
-      "Salesforce Drive automation",
-      "attach contracts Salesforce",
-      "connect Salesforce and Google Drive",
-      "deal document management CRM",
-      "sales document workflow"
+      "intégration Salesforce Google Drive",
+      "automatisation Salesforce Drive",
+      "joindre les contrats à Salesforce",
+      "connecter Salesforce et Google Drive",
+      "gestion documentaire des affaires dans le CRM",
+      "workflow des documents commerciaux"
     ],
-    "intro": "Enterprise sales deals generate extensive documentation — proposals, NDAs, statements of work, contracts, legal amendments — that lives in Google Drive while the deal record lives in Salesforce. Without automation, reps spend time searching for the latest version of a proposal, and document links on Salesforce records go stale when files are moved or renamed in Drive.\n\nGAIA connects Salesforce and Google Drive so deal documentation is always organized and accessible from the CRM. When a Salesforce opportunity is created, GAIA creates a structured Drive folder for the account. As documents are created or signed in Drive, GAIA attaches them to the Salesforce deal record with the correct document type and version. When a contract is executed, GAIA advances the Salesforce deal stage automatically.\n\nThis integration is essential for enterprise sales teams managing complex documentation cycles, legal and procurement teams who need audit trails of contract versions, and revenue operations teams who need document accessibility to be automatic rather than reliant on individual rep habits.",
+    "intro": "Les affaires d'entreprise génèrent une documentation abondante — propositions, NDA, cahiers des charges, contrats, avenants juridiques — qui vit dans Google Drive tandis que l'affaire vit dans Salesforce. Sans automatisation, les commerciaux passent leur temps à chercher la dernière version d'une proposition, et les liens documentaires des enregistrements Salesforce se périment quand les fichiers sont déplacés ou renommés dans Drive.\n\nGAIA relie Salesforce et Google Drive pour une documentation toujours organisée et accessible depuis le CRM. À la création d'une opportunité, GAIA crée un dossier Drive structuré pour le compte. À mesure que les documents sont créés ou signés dans Drive, GAIA les joint à l'affaire avec le bon type et la bonne version. À l'exécution d'un contrat, GAIA fait avancer l'étape de l'affaire automatiquement.\n\nCette intégration est essentielle pour les commerciaux gérant des cycles documentaires complexes, les équipes juridiques et achats exigeant des pistes d'audit des versions, et les opérations revenus qui veulent une accessibilité documentaire automatique plutôt que dépendante des habitudes individuelles.",
     "useCases": [
       {
-        "title": "Create Drive account folders from Salesforce opportunities",
-        "description": "When a Salesforce opportunity is created or reaches a qualifying stage, GAIA creates a structured Google Drive folder for the account with subfolders for proposals, contracts, legal documents, and supporting materials."
+        "title": "Créer les dossiers Drive depuis les opportunités Salesforce",
+        "description": "Lorsqu'une opportunité est créée ou atteint une étape éligible, GAIA crée un dossier Google Drive structuré pour le compte avec des sous-dossiers pour propositions, contrats, documents juridiques et pièces complémentaires."
       },
       {
-        "title": "Auto-attach Drive documents to Salesforce deal records",
-        "description": "When a proposal, contract, or SOW is added to an account's Drive folder, GAIA automatically attaches the file to the linked Salesforce opportunity record with the document type labeled, keeping deal files accessible from the CRM."
+        "title": "Joindre les documents Drive aux affaires Salesforce",
+        "description": "Lorsqu'une proposition, un contrat ou un cahier des charges est ajouté au dossier du compte, GAIA joint automatiquement le fichier à l'opportunité liée avec le type de document indiqué, pour un accès depuis le CRM."
       },
       {
-        "title": "Advance deal stage when contracts are signed",
-        "description": "When an executed contract is added to the signed documents subfolder in Drive, GAIA advances the Salesforce opportunity to Closed Won, records the contract date, and creates the post-sale handoff task automatically."
+        "title": "Faire avancer l'affaire à la signature du contrat",
+        "description": "Lorsqu'un contrat signé est ajouté au sous-dossier des documents signés, GAIA fait passer l'opportunité en Gagnée, enregistre la date du contrat et crée automatiquement la tâche de transfert post-vente."
       },
       {
-        "title": "Notify reps when documents require action",
-        "description": "When a legal team member adds comments or a revised version of a contract to Drive, GAIA creates a Salesforce task for the account executive to review and respond, keeping the contract cycle moving."
+        "title": "Notifier les commerciaux des documents à traiter",
+        "description": "Lorsqu'un juriste ajoute des commentaires ou une version révisée d'un contrat dans Drive, GAIA crée une tâche Salesforce invitant le commercial à examiner et répondre, pour un cycle contractuel sans interruption."
       },
       {
-        "title": "Generate proposals from Salesforce data",
-        "description": "When a Salesforce opportunity reaches the proposal stage, GAIA creates a Drive proposal document from a template pre-filled with opportunity data — company name, products, pricing, key contacts — saving the rep manual document setup time."
+        "title": "Générer des propositions depuis les données Salesforce",
+        "description": "Lorsqu'une opportunité atteint l'étape de proposition, GAIA crée un document de proposition Drive depuis un modèle pré-rempli avec les données — entreprise, produits, tarification, contacts clés — épargnant au commercial la mise en forme manuelle."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Salesforce and Google Drive to GAIA",
-        "description": "Authorize GAIA to access your Salesforce organization and Google Drive. Specify the Drive root folder where account folders should be created and the Salesforce pipelines to monitor."
+        "step": "Connectez Salesforce et Google Drive à GAIA",
+        "description": "Autorisez GAIA à accéder à votre organisation Salesforce et à Google Drive. Précisez le dossier Drive racine où créer les dossiers de comptes et les pipelines à surveiller."
       },
       {
-        "step": "Configure folder templates and document rules",
-        "description": "Define the Drive folder structure for new opportunities and the rules GAIA uses to attach files to Salesforce records — by document type, subfolder location, or file naming convention."
+        "step": "Configurez les modèles et règles documentaires",
+        "description": "Définissez l'arborescence Drive des nouvelles opportunités et les règles de rattachement des fichiers aux enregistrements — par type de document, emplacement de sous-dossier ou convention de nommage."
       },
       {
-        "step": "GAIA keeps deal documents organized and CRM-linked",
-        "description": "GAIA monitors both Salesforce and Drive for changes, creating folders, attaching documents, advancing deal stages, and notifying reps so your CRM always reflects the current state of your deal documentation."
+        "step": "GAIA tient les documents organisés et liés au CRM",
+        "description": "GAIA surveille Salesforce et Drive, crée les dossiers, joint les documents, fait avancer les étapes et notifie les commerciaux pour un CRM reflétant toujours l'état actuel de la documentation."
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA generate a proposal draft from a Salesforce opportunity on demand?",
-        "answer": "Yes. Ask GAIA to generate a proposal for a specific Salesforce opportunity and it will create a Drive document from your template, populate it with opportunity and contact data from Salesforce, and attach it to the deal record."
+        "question": "GAIA peut-il générer un projet de proposition sur demande ?",
+        "answer": "Oui. Demandez à GAIA de générer une proposition pour une opportunité précise : il créera un document Drive depuis votre modèle, le renseignera avec les données d'opportunité et de contacts, puis le joindra à l'affaire."
       },
       {
-        "question": "Does GAIA support multiple document versions on the same Salesforce record?",
-        "answer": "Yes. GAIA attaches each document version to the Salesforce record with a version label and timestamp. Previous versions remain accessible and the latest version is flagged as current."
+        "question": "GAIA prend-il en charge plusieurs versions sur un même enregistrement ?",
+        "answer": "Oui. GAIA joint chaque version à l'enregistrement avec un libellé de version et un horodatage. Les versions précédentes restent accessibles et la plus récente est signalée comme actuelle."
       },
       {
-        "question": "Can GAIA enforce document naming conventions when creating Drive files?",
-        "answer": "Yes. You can define file naming templates that GAIA applies when creating Drive documents from Salesforce data — for example, using opportunity name, account, and date in the file name for consistent organization."
+        "question": "GAIA peut-il imposer des conventions de nommage dans Drive ?",
+        "answer": "Oui. Définissez des modèles de nommage appliqués à la création de documents depuis les données Salesforce — par exemple nom d'opportunité, compte et date — pour une organisation cohérente."
       }
     ]
   },
   "discord-slack": {
     "toolA": "Discord",
     "toolB": "Slack",
-    "tagline": "Bridge your Discord community and Slack work channels automatically",
-    "metaTitle": "Slack Discord : relier votre communauté et votre équipe",
-    "metaDescription": "Relayez les annonces Discord dans Slack et remontez les bugs de la communauté à l'équipe technique. GAIA filtre ce qui passe. Voir les étapes.",
+    "tagline": "Reliez automatiquement votre communauté Discord et vos salons de travail Slack",
+    "metaTitle": "Automatisation Discord + Slack — Le pont entre communauté et travail",
+    "metaDescription": "Connectez Discord et Slack avec GAIA. Acheminez les signaux de la communauté vers les équipes Slack, répliquez les annonces, et gardez responsables communauté et équipes internes alignés.",
     "keywords": [
-      "discord slack integration",
-      "connect discord slack",
-      "discord slack automation",
-      "discord slack workflow",
-      "gaia discord slack"
+      "intégration Discord Slack",
+      "connecter Discord et Slack",
+      "automatisation Discord Slack",
+      "workflow Discord Slack",
+      "GAIA Discord Slack"
     ],
-    "intro": "Many teams run their public community on Discord while internal collaboration happens in Slack. Without a bridge, community managers must manually relay feedback, bug reports, and feature requests to engineering and product teams, adding delay and losing context.\n\nGAIA connects Discord and Slack so important community signals flow to the right Slack channels automatically. Announcements posted in Slack can be mirrored to Discord in seconds, and flagged Discord messages can surface directly in Slack threads — keeping both audiences informed without duplicate effort.",
+    "intro": "Beaucoup d'équipes animent leur communauté publique sur Discord tandis que la collaboration interne se fait sur Slack. Sans pont, les responsables communauté doivent relayer manuellement retours, bugs et demandes de fonctionnalités vers les équipes produit et ingénierie, avec délais et perte de contexte.\n\nGAIA relie Discord et Slack pour que les signaux importants de la communauté parviennent automatiquement aux bons salons. Les annonces publiées dans Slack sont répliquées sur Discord en quelques secondes, et les messages Discord signalés remontent directement dans les fils Slack — tenant les deux audiences informées sans double effort.",
     "useCases": [
       {
-        "title": "Mirror Discord announcements to Slack",
-        "description": "When a message is posted in a Discord announcement channel, GAIA forwards it to the designated Slack channel. Internal teams stay informed of community news without monitoring Discord directly."
+        "title": "Répliquer les annonces Discord vers Slack",
+        "description": "Lorsqu'un message est publié dans un salon d'annonces Discord, GAIA le transfère vers le salon Slack désigné. Les équipes internes suivent l'actualité communautaire sans surveiller Discord."
       },
       {
-        "title": "Escalate community bug reports to Slack engineering",
-        "description": "GAIA watches Discord support channels for messages tagged with bug keywords and routes them to your Slack engineering channel with context. Engineers see real user issues without leaving Slack."
+        "title": "Escalader les bugs de la communauté vers l'ingénierie Slack",
+        "description": "GAIA surveille les salons d'assistance Discord pour les messages contenant des mots-clés de bugs et les achemine vers le salon d'ingénierie Slack avec le contexte. Les ingénieurs voient les vrais problèmes sans quitter Slack."
       },
       {
-        "title": "Post Slack release notes to Discord",
-        "description": "When your team posts a release update in Slack, GAIA formats and publishes it to the appropriate Discord channel so your community is always first to hear about new features."
+        "title": "Publier les notes de version Slack sur Discord",
+        "description": "Lorsque votre équipe publie une mise à jour de version dans Slack, GAIA la formate et la publie sur le salon Discord approprié pour que votre communauté soit la première informée des nouveautés."
       },
       {
-        "title": "Sync community feedback to Slack product channel",
-        "description": "GAIA collects Discord reactions and feedback threads above a threshold and posts a daily digest to your Slack product channel. Product managers get a clear picture of community sentiment without context switching."
+        "title": "Synchroniser les retours communautaires vers le salon produit",
+        "description": "GAIA collecte les réactions et fils de retours Discord au-delà d'un seuil et publie un récapitulatif quotidien dans votre salon produit Slack. Les chefs de produit cernent le sentiment communautaire sans changer de contexte."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Discord and Slack to GAIA",
-        "description": "Authorize GAIA with your Discord server and Slack workspace. Select which Discord channels and Slack channels should be linked."
+        "step": "Connectez Discord et Slack à GAIA",
+        "description": "Autorisez GAIA avec votre serveur Discord et votre espace Slack. Sélectionnez les salons Discord et Slack à relier."
       },
       {
-        "step": "Configure routing rules",
-        "description": "Define which Discord events — announcements, flagged messages, keywords — should post to which Slack channels. Set formatting preferences so messages appear naturally in each platform."
+        "step": "Configurez les règles de routage",
+        "description": "Définissez les événements Discord — annonces, messages signalés, mots-clés — à publier vers quels salons Slack. Réglez les préférences de format pour un rendu naturel sur chaque plateforme."
       },
       {
-        "step": "GAIA bridges your platforms automatically",
-        "description": "Once configured, GAIA monitors both platforms and routes messages according to your rules. Your community and internal teams stay synchronized without any manual forwarding."
+        "step": "GAIA relie vos plateformes automatiquement",
+        "description": "Une fois configuré, GAIA surveille les deux plateformes et achemine les messages selon vos règles. Communauté et équipes internes restent synchronisées sans transfert manuel."
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA sync messages in both directions between Discord and Slack?",
-        "answer": "Yes. GAIA supports bidirectional routing — Discord to Slack and Slack to Discord. You configure which channels and event types trigger each direction independently."
+        "question": "GAIA synchronise-t-il les messages dans les deux sens entre Discord et Slack ?",
+        "answer": "Oui. GAIA prend en charge le routage bidirectionnel — de Discord vers Slack et inversement. Vous configurez indépendamment les salons et types d'événements déclencheurs de chaque sens."
       },
       {
-        "question": "Will GAIA expose internal Slack messages to the Discord community?",
-        "answer": "No. GAIA only posts to Discord when you explicitly configure a rule for that direction. Internal-only Slack channels are never exposed unless you set up a rule to share them."
+        "question": "GAIA exposera-t-il les messages Slack internes à la communauté Discord ?",
+        "answer": "Non. GAIA publie sur Discord uniquement si vous configurez explicitement une règle dans ce sens. Les salons Slack internes ne sont jamais exposés sans règle de partage."
       },
       {
-        "question": "Can I filter which Discord messages get forwarded?",
-        "answer": "Yes. You can filter by keyword, channel, role, reaction count, or message type so only relevant signals reach your Slack team. Noise from casual community chat is excluded by default."
+        "question": "Puis-je filtrer les messages Discord transférés ?",
+        "answer": "Oui. Filtrez par mot-clé, salon, rôle, nombre de réactions ou type de message pour que seuls les signaux pertinents parviennent à votre équipe Slack. Le bruit des discussions informelles est exclu par défaut."
       }
     ]
   },
@@ -12561,183 +12561,183 @@
   "discord-todoist": {
     "toolA": "Discord",
     "toolB": "Todoist",
-    "tagline": "Create Todoist tasks from Discord messages without leaving the conversation",
-    "metaTitle": "Intégration Discord + Todoist : tâches depuis le chat",
-    "metaDescription": "Plus aucune action perdue dans le chat. GAIA enregistre un message Discord comme tâche Todoist d'une réaction, dans le bon projet. Voir les étapes.",
+    "tagline": "Créez des tâches Todoist depuis les messages Discord sans quitter la conversation",
+    "metaTitle": "Automatisation Discord + Todoist — Capturez les tâches depuis le chat",
+    "metaDescription": "Connectez Discord et Todoist avec GAIA. Transformez les messages Discord en tâches Todoist aussitôt, assignez les responsables, définissez les échéances, et ne perdez plus aucune action dans le chat.",
     "keywords": [
-      "discord todoist integration",
-      "connect discord todoist",
-      "discord todoist automation",
-      "discord todoist workflow",
-      "gaia discord todoist"
+      "intégration Discord Todoist",
+      "connecter Discord et Todoist",
+      "automatisation Discord Todoist",
+      "workflow Discord Todoist",
+      "GAIA Discord Todoist"
     ],
-    "intro": "Action items surface constantly in Discord conversations — a feature request in the feedback channel, a bug flagged in support, a task someone volunteers for in a thread. Without a way to capture these, they get buried under new messages and forgotten.\n\nGAIA lets anyone on your Discord server create a Todoist task with a simple command or reaction. Tasks are added to the right project with assignee and due date already set, so nothing falls through the cracks and Todoist stays the single source of truth for what needs to get done.",
+    "intro": "Les actions surgissent constamment dans les conversations Discord — une demande de fonctionnalité dans le salon de retours, un bug signalé dans l'assistance, une tâche que quelqu'un prend en charge dans un fil. Sans moyen de les capturer, elles s'enfouissent sous les nouveaux messages et sont oubliées.\n\nGAIA permet à chaque membre de votre serveur Discord de créer une tâche Todoist par simple commande ou réaction. Les tâches rejoignent le bon projet avec assigné et échéance déjà définis, pour que rien ne se perde et que Todoist reste la source unique de ce qui doit être fait.",
     "useCases": [
       {
-        "title": "Capture action items from Discord with a reaction",
-        "description": "When a team member reacts to a Discord message with a designated emoji, GAIA creates a Todoist task from that message. The task includes a link back to the Discord message for full context."
+        "title": "Capturer les actions Discord par réaction",
+        "description": "Lorsqu'un membre réagit à un message Discord avec l'emoji désigné, GAIA crée une tâche Todoist depuis ce message, avec un lien retour vers le message pour le contexte complet."
       },
       {
-        "title": "Create tasks via Discord slash command",
-        "description": "Team members type a GAIA command in any Discord channel to create a Todoist task on the spot. They can specify the project, due date, and assignee without ever leaving Discord."
+        "title": "Créer des tâches par commande slash Discord",
+        "description": "Les membres tapent une commande GAIA dans n'importe quel salon Discord pour créer une tâche Todoist sur-le-champ, en précisant projet, échéance et assigné sans jamais quitter Discord."
       },
       {
-        "title": "Route channel-specific messages to Todoist projects",
-        "description": "Messages in your Discord bug-report or feature-request channels are automatically converted into Todoist tasks in the corresponding project. Triage happens without manual data entry."
+        "title": "Acheminer les messages par salon vers les projets Todoist",
+        "description": "Les messages de vos salons de signalement de bugs ou de demandes sont automatiquement convertis en tâches du projet correspondant. Le tri se fait sans saisie manuelle."
       },
       {
-        "title": "Post Todoist task completions back to Discord",
-        "description": "When a Todoist task is completed, GAIA posts a brief update to the originating Discord channel. The team sees progress in context without checking Todoist separately."
+        "title": "Publier les terminaisons Todoist dans Discord",
+        "description": "Lorsqu'une tâche Todoist est terminée, GAIA publie une brève mise à jour dans le salon Discord d'origine. L'équipe suit l'avancement en contexte sans consulter Todoist séparément."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Discord and Todoist to GAIA",
-        "description": "Authorize GAIA with your Discord server and your Todoist account. Map Discord channels to Todoist projects so tasks land in the right place."
+        "step": "Connectez Discord et Todoist à GAIA",
+        "description": "Autorisez GAIA avec votre serveur Discord et votre compte Todoist. Associez les salons Discord aux projets Todoist pour que les tâches arrivent au bon endroit."
       },
       {
-        "step": "Choose capture triggers",
-        "description": "Select whether tasks are created by emoji reactions, slash commands, or automatic channel rules. Configure default assignees and due-date conventions for each channel."
+        "step": "Choisissez les déclencheurs de capture",
+        "description": "Sélectionnez la création par réactions emoji, commandes slash ou règles automatiques de salon. Configurez les assignés par défaut et les conventions d'échéances pour chaque salon."
       },
       {
-        "step": "GAIA captures and tracks tasks automatically",
-        "description": "GAIA monitors Discord for your configured triggers and creates Todoist tasks instantly. Completions flow back to Discord so the whole team stays informed."
+        "step": "GAIA capture et suit les tâches automatiquement",
+        "description": "GAIA surveille Discord pour vos déclencheurs et crée aussitôt les tâches Todoist. Les terminaisons remontent vers Discord pour une équipe toujours informée."
       }
     ],
     "faqs": [
       {
-        "question": "Do Discord members need a Todoist account to create tasks?",
-        "answer": "No. Discord members trigger task creation through GAIA's Discord bot. Only the GAIA account connected to Todoist needs a valid Todoist login."
+        "question": "Les membres Discord ont-ils besoin d'un compte Todoist pour créer des tâches ?",
+        "answer": "Non. Les membres déclenchent la création via le bot Discord de GAIA. Seul le compte GAIA connecté à Todoist nécessite une connexion Todoist valide."
       },
       {
-        "question": "Can I assign tasks to specific Todoist projects based on the Discord channel?",
-        "answer": "Yes. GAIA's channel-to-project mapping lets you route tasks from different Discord channels into separate Todoist projects automatically. You configure the mapping once in GAIA's settings."
+        "question": "Puis-je assigner les tâches à des projets selon le salon Discord ?",
+        "answer": "Oui. La correspondance salon-projet de GAIA achemine automatiquement les tâches de chaque salon vers des projets distincts. Vous configurez la correspondance une fois dans les paramètres."
       },
       {
-        "question": "Will GAIA create duplicate tasks if the same message is reacted to twice?",
-        "answer": "GAIA deduplicates by tracking which messages have already generated tasks. If a task already exists for a message, subsequent reactions are ignored rather than creating a duplicate."
+        "question": "GAIA créera-t-il des doublons si un même message reçoit deux réactions ?",
+        "answer": "GAIA déduplique en suivant les messages ayant déjà généré des tâches. Si une tâche existe déjà pour un message, les réactions suivantes sont ignorées plutôt que de créer un doublon."
       }
     ]
   },
   "discord-trello": {
     "toolA": "Discord",
     "toolB": "Trello",
-    "tagline": "Track community projects on Trello straight from Discord channels",
-    "metaTitle": "Discord + Trello : créer des cartes depuis vos messages",
-    "metaDescription": "Recueillez les idées de la communauté sans copier-coller. GAIA transforme les messages Discord en cartes Trello et y publie leurs mises à jour. Voir les étapes.",
+    "tagline": "Suivez les projets communautaires sur Trello directement depuis vos salons Discord",
+    "metaTitle": "Automatisation Discord + Trello — Suivi des projets communautaires",
+    "metaDescription": "Connectez Discord et Trello avec GAIA. Créez des cartes Trello depuis les messages Discord, publiez les mises à jour dans Discord, et faites avancer les projets sans quitter le chat.",
     "keywords": [
-      "discord trello integration",
-      "connect discord trello",
-      "discord trello automation",
-      "discord trello workflow",
-      "gaia discord trello"
+      "intégration Discord Trello",
+      "connecter Discord et Trello",
+      "automatisation Discord Trello",
+      "workflow Discord Trello",
+      "GAIA Discord Trello"
     ],
-    "intro": "Open-source communities and creator teams often coordinate on Discord but track work on Trello. The gap between them means cards get created late, assignees miss updates, and contributors don't know what's been completed until they check the board manually.\n\nGAIA bridges Discord and Trello so community members can create and update Trello cards directly from Discord, and Trello activity posts back to the relevant Discord channel. Your community's kanban board stays current without anyone having to leave the conversation.",
+    "intro": "Les communautés open source et les équipes de créateurs se coordonnent souvent sur Discord mais suivent le travail sur Trello. L'écart entre les deux fait que les cartes sont créées tard, les assignés manquent les mises à jour, et les contributeurs ignorent ce qui est terminé jusqu'à consulter manuellement le tableau.\n\nGAIA relie Discord et Trello pour que les membres créent et mettent à jour les cartes directement depuis Discord, et que l'activité Trello soit publiée dans le salon concerné. Votre tableau kanban communautaire reste à jour sans que personne ne quitte la conversation.",
     "useCases": [
       {
-        "title": "Create Trello cards from Discord messages",
-        "description": "A reaction or slash command in Discord triggers GAIA to create a Trello card with the message content, assigned list, and due date. Contributors can submit work items without opening Trello."
+        "title": "Créer des cartes Trello depuis les messages Discord",
+        "description": "Une réaction ou une commande slash dans Discord déclenche la création par GAIA d'une carte Trello avec le contenu du message, la liste assignée et l'échéance. Les contributeurs soumettent leurs éléments sans ouvrir Trello."
       },
       {
-        "title": "Post Trello card updates to Discord",
-        "description": "When a card moves to 'Done' or a comment is added in Trello, GAIA posts an update to the linked Discord channel. The team celebrates wins and stays aware of progress in real time."
+        "title": "Publier les mises à jour Trello dans Discord",
+        "description": "Lorsqu'une carte passe en Terminé ou qu'un commentaire est ajouté dans Trello, GAIA publie une mise à jour dans le salon Discord lié. L'équipe célèbre les réussites et suit l'avancement en temps réel."
       },
       {
-        "title": "Sync Discord feature requests to a Trello backlog",
-        "description": "Feature requests posted in your Discord feedback channel are automatically added as Trello cards in the product backlog. Nothing is lost in chat history and prioritization can happen directly on the board."
+        "title": "Synchroniser les demandes Discord vers un backlog Trello",
+        "description": "Les demandes publiées dans votre salon de retours Discord deviennent automatiquement des cartes du backlog produit Trello. Rien ne se perd dans l'historique et la priorisation se fait directement sur le tableau."
       },
       {
-        "title": "Daily Trello board digest in Discord",
-        "description": "Each morning, GAIA posts a summary of overdue and due-today Trello cards to your Discord project channel. Contributors know their priorities without a standup or manual board review."
+        "title": "Récapitulatif quotidien du tableau dans Discord",
+        "description": "Chaque matin, GAIA publie un résumé des cartes Trello en retard et dues aujourd'hui dans votre salon projet Discord. Les contributeurs connaissent leurs priorités sans standup ni revue manuelle."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Discord and Trello to GAIA",
-        "description": "Authorize GAIA with your Discord server and your Trello workspace. Link specific Discord channels to Trello boards and lists."
+        "step": "Connectez Discord et Trello à GAIA",
+        "description": "Autorisez GAIA avec votre serveur Discord et votre espace Trello. Reliez les salons Discord précis aux tableaux et listes Trello."
       },
       {
-        "step": "Configure card creation and notification rules",
-        "description": "Choose which Discord triggers create Trello cards and which Trello events post back to Discord. Set default labels, lists, and assignees for each channel mapping."
+        "step": "Configurez les règles de création et notification",
+        "description": "Choisissez les déclencheurs Discord créateurs de cartes et les événements Trello publiés dans Discord. Définissez libellés, listes et assignés par défaut pour chaque correspondance."
       },
       {
-        "step": "GAIA keeps Discord and Trello in sync",
-        "description": "GAIA handles card creation and status updates automatically. Your community gets real-time project visibility without switching between Discord and Trello."
+        "step": "GAIA tient Discord et Trello synchronisés",
+        "description": "GAIA gère automatiquement création de cartes et mises à jour de statut. Votre communauté obtient une visibilité projet en temps réel sans jongler entre Discord et Trello."
       }
     ],
     "faqs": [
       {
-        "question": "Can Discord community members who don't have Trello accounts create cards?",
-        "answer": "Yes. GAIA's Discord bot acts as the Trello account for card creation. Community members only interact with GAIA through Discord reactions or commands."
+        "question": "Les membres sans compte Trello peuvent-ils créer des cartes ?",
+        "answer": "Oui. Le bot Discord de GAIA agit comme compte Trello pour la création. Les membres interagissent uniquement avec GAIA via réactions ou commandes Discord."
       },
       {
-        "question": "Which Trello list does GAIA add new cards to?",
-        "answer": "You configure the default list per Discord channel in GAIA's settings. You can also allow users to specify a list in the Discord command at creation time."
+        "question": "Dans quelle liste GAIA ajoute-t-il les nouvelles cartes ?",
+        "answer": "Vous configurez la liste par défaut par salon Discord dans les paramètres de GAIA. Les utilisateurs peuvent aussi préciser une liste dans la commande Discord à la création."
       },
       {
-        "question": "Can I limit which Discord channels can create Trello cards?",
-        "answer": "Yes. GAIA only listens for card-creation triggers in the channels you explicitly configure. Other Discord channels are ignored, preventing accidental card creation from casual conversation."
+        "question": "Puis-je limiter les salons autorisés à créer des cartes ?",
+        "answer": "Oui. GAIA n'écoute les déclencheurs que dans les salons explicitement configurés. Les autres salons sont ignorés, évitant toute création accidentelle depuis des conversations informelles."
       }
     ]
   },
   "discord-jira": {
     "toolA": "Discord",
     "toolB": "Jira",
-    "tagline": "Surface Jira issue updates in Discord engineering channels automatically",
-    "metaTitle": "Jira Software Cloud et Discord : alertes et tickets",
-    "metaDescription": "Publiez les changements de statut et bugs critiques Jira dans le bon salon Discord et créez des tickets avec GAIA. Voir les étapes.",
+    "tagline": "Affichez les mises à jour des tickets Jira dans vos salons Discord d'ingénierie",
+    "metaTitle": "Automatisation Discord + Jira — Mises à jour des tickets dans le salon d'ingénierie",
+    "metaDescription": "Connectez Discord et Jira avec GAIA. Publiez les mises à jour des tickets dans Discord, créez des tickets depuis Discord, et tenez vos ingénieurs open source informés.",
     "keywords": [
-      "discord jira integration",
-      "connect discord jira",
-      "discord jira automation",
-      "discord jira workflow",
-      "gaia discord jira"
+      "intégration Discord Jira",
+      "connecter Discord et Jira",
+      "automatisation Discord Jira",
+      "workflow Discord Jira",
+      "GAIA Discord Jira"
     ],
-    "intro": "Engineering teams that collaborate on Discord still rely on Jira for issue tracking, but context gets siloed between the two. Developers miss status changes because they're heads-down in Discord, while Jira comments go unnoticed by contributors who don't have Jira notifications configured.\n\nGAIA bridges Discord and Jira so engineers stay informed in their primary channel. Jira issue transitions, new assignments, and sprint updates post to the right Discord channels automatically, and team members can create Jira issues directly from Discord without switching tools.",
+    "intro": "Les équipes d'ingénierie qui collaborent sur Discord s'appuient toujours sur Jira pour le suivi, mais le contexte reste cloisonné entre les deux. Les développeurs manquent les changements de statut, concentrés dans Discord, tandis que les commentaires Jira passent inaperçus pour les contributeurs sans notifications configurées.\n\nGAIA relie Discord et Jira pour tenir les ingénieurs informés dans leur canal principal. Transitions de tickets, nouvelles assignations et actus de sprint sont publiées automatiquement dans les bons salons Discord, et les membres créent des tickets directement depuis Discord sans changer d'outil.",
     "useCases": [
       {
-        "title": "Post Jira issue status changes to Discord",
-        "description": "When a Jira issue transitions — from 'In Progress' to 'In Review', for example — GAIA posts an update to the linked Discord channel. Engineers see real-time sprint progress without checking Jira constantly."
+        "title": "Publier les changements de statut Jira dans Discord",
+        "description": "Lorsqu'un ticket Jira change d'état — d'En cours à En révision, par exemple — GAIA publie une mise à jour dans le salon Discord lié. Les ingénieurs suivent l'avancement en temps réel sans consulter Jira sans cesse."
       },
       {
-        "title": "Create Jira issues from Discord messages",
-        "description": "A slash command or emoji reaction in Discord lets contributors file a Jira issue instantly. GAIA pre-fills the summary, description, and project from the message context."
+        "title": "Créer des tickets Jira depuis les messages Discord",
+        "description": "Une commande slash ou une réaction emoji dans Discord permet de déposer un ticket Jira aussitôt. GAIA pré-remplit le résumé, la description et le projet depuis le contexte du message."
       },
       {
-        "title": "Alert Discord when a Jira bug is set to Critical",
-        "description": "GAIA monitors Jira for priority escalations and posts an immediate alert to your Discord engineering channel when a ticket is marked Critical or Blocker. The right engineers are notified without delay."
+        "title": "Alerter Discord quand un bug passe en critique",
+        "description": "GAIA surveille les escalades de priorité dans Jira et publie une alerte immédiate dans votre salon d'ingénierie Discord lorsqu'un ticket passe en Critique ou Bloquant. Les bons ingénieurs sont notifiés sans délai."
       },
       {
-        "title": "Daily Jira sprint digest in Discord",
-        "description": "Each morning GAIA posts a summary of open sprint issues, blockers, and items completed yesterday to your Discord standup channel. Teams get sprint visibility without a dedicated standup meeting."
+        "title": "Résumé quotidien du sprint Jira dans Discord",
+        "description": "Chaque matin, GAIA publie un résumé des tickets ouverts, blocages et éléments terminés la veille dans votre salon de standup Discord. L'équipe a une visibilité sprint sans réunion dédiée."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Discord and Jira to GAIA",
-        "description": "Authorize GAIA with your Discord server and your Jira project. Map Discord channels to Jira projects so updates and alerts land in the right place."
+        "step": "Connectez Discord et Jira à GAIA",
+        "description": "Autorisez GAIA avec votre serveur Discord et votre projet Jira. Associez les salons Discord aux projets Jira pour que mises à jour et alertes arrivent au bon endroit."
       },
       {
-        "step": "Configure notification and creation rules",
-        "description": "Select which Jira events — status changes, priority escalations, new assignments — trigger Discord posts. Define which Discord channels can create Jira issues."
+        "step": "Configurez les règles de notification et création",
+        "description": "Sélectionnez les événements Jira — changements de statut, escalades, nouvelles assignations — déclencheurs de publications Discord. Définissez les salons autorisés à créer des tickets."
       },
       {
-        "step": "GAIA keeps Discord and Jira synchronized",
-        "description": "GAIA monitors both platforms and routes information according to your rules. Engineers stay informed in Discord while Jira remains the authoritative issue tracker."
+        "step": "GAIA tient Discord et Jira synchronisés",
+        "description": "GAIA surveille les deux plateformes et achemine l'information selon vos règles. Les ingénieurs restent informés dans Discord pendant que Jira demeure le suivi de référence."
       }
     ],
     "faqs": [
       {
-        "question": "Do contributors need a Jira account to create issues from Discord?",
-        "answer": "Creating issues via GAIA requires the GAIA account to have Jira write access. Contributors trigger creation through Discord, but the issue is filed under GAIA's connected Jira identity."
+        "question": "Les contributeurs ont-ils besoin d'un compte Jira pour créer des tickets depuis Discord ?",
+        "answer": "La création via GAIA exige que le compte GAIA dispose d'un accès Jira en écriture. Les contributeurs déclenchent la création via Discord, mais le ticket est déposé sous l'identité Jira connectée de GAIA."
       },
       {
-        "question": "Can GAIA notify different Discord channels for different Jira projects?",
-        "answer": "Yes. You can map each Jira project to a separate Discord channel in GAIA's settings. Issues from the mobile project post to the mobile channel, backend issues to the backend channel, and so on."
+        "question": "GAIA peut-il notifier différents salons selon les projets Jira ?",
+        "answer": "Oui. Associez chaque projet Jira à un salon Discord distinct dans les paramètres de GAIA. Les tickets du projet mobile vont dans le salon mobile, ceux du backend dans le salon backend, et ainsi de suite."
       },
       {
-        "question": "Will GAIA spam Discord with every minor Jira comment?",
-        "answer": "No. You control which Jira event types trigger Discord notifications. By default, GAIA only posts status transitions and priority changes — not every comment — to keep signal high."
+        "question": "GAIA va-t-il polluer Discord avec chaque commentaire Jira mineur ?",
+        "answer": "Non. Vous contrôlez les types d'événements publiés. Par défaut, GAIA publie uniquement transitions de statut et changements de priorité — pas chaque commentaire — pour garder un signal élevé."
       }
     ]
   },
@@ -12927,61 +12927,61 @@
   "zoom-teams": {
     "toolA": "Zoom",
     "toolB": "Microsoft Teams",
-    "tagline": "Bridge Zoom and Microsoft Teams for dual-platform organizations",
-    "metaTitle": "Intégration Zoom + Microsoft Teams : pont entre les deux",
-    "metaDescription": "Publiez résumés et enregistrements Zoom dans vos canaux Teams et envoyez des rappels Teams avant chaque appel. GAIA relie les deux plateformes. Voir les étapes.",
+    "tagline": "Reliez Zoom et Microsoft Teams pour les organisations bi-plateformes",
+    "metaTitle": "Automatisation Zoom + Microsoft Teams — Le pont bi-plateforme",
+    "metaDescription": "Connectez Zoom et Microsoft Teams avec GAIA. Partagez les résumés de réunions entre plateformes, notifiez les salons Teams des événements Zoom, et tenez les deux plateformes synchronisées.",
     "keywords": [
-      "zoom microsoft teams integration",
-      "connect zoom microsoft teams",
-      "zoom teams automation",
-      "zoom teams workflow",
-      "gaia zoom microsoft teams"
+      "intégration Zoom Microsoft Teams",
+      "connecter Zoom et Microsoft Teams",
+      "automatisation Zoom Teams",
+      "workflow Zoom Teams",
+      "GAIA Zoom Microsoft Teams"
     ],
-    "intro": "Many organizations run Zoom for video calls and Microsoft Teams for messaging, creating a split where meeting context lives in one platform and team communication in another. Colleagues who weren't on a Zoom call miss decisions; Teams notifications go unseen by people who live in Zoom.\n\nGAIA bridges Zoom and Microsoft Teams so meeting summaries, recordings, and action items flow into the right Teams channels automatically. Both platform users stay informed and aligned without anyone manually copy-pasting between tools.",
+    "intro": "Beaucoup d'organisations utilisent Zoom pour la vidéo et Microsoft Teams pour la messagerie, créant une fracture où le contexte des réunions vit sur une plateforme et la communication d'équipe sur l'autre. Les collègues absents d'un appel manquent les décisions ; les notifications Teams passent inaperçues pour ceux qui vivent dans Zoom.\n\nGAIA relie Zoom et Microsoft Teams pour que résumés, enregistrements et actions affluent automatiquement vers les bons salons. Les utilisateurs des deux plateformes restent informés et alignés sans copier-coller manuel entre outils.",
     "useCases": [
       {
-        "title": "Post Zoom meeting summaries to Microsoft Teams channels",
-        "description": "After a Zoom call, GAIA formats the meeting summary and posts it to the designated Teams channel. Team members who weren't on the call get full context without needing to watch the recording."
+        "title": "Publier les résumés Zoom dans les salons Microsoft Teams",
+        "description": "Après un appel Zoom, GAIA formate le résumé et le publie dans le salon Teams désigné. Les absents obtiennent tout le contexte sans visionner l'enregistrement."
       },
       {
-        "title": "Send Teams reminders for upcoming Zoom meetings",
-        "description": "GAIA posts a reminder in the relevant Teams channel 15 minutes before a Zoom meeting starts, including the join link. Participants never miss a call because they were heads-down in Teams."
+        "title": "Envoyer des rappels Teams pour les réunions Zoom à venir",
+        "description": "GAIA publie un rappel dans le salon Teams concerné 15 minutes avant le début d'une réunion Zoom, avec le lien de connexion. Les participants ne manquent plus un appel, concentrés dans Teams."
       },
       {
-        "title": "Share Zoom recording links in Teams",
-        "description": "When a Zoom recording is ready, GAIA posts the link to the appropriate Teams channel. Stakeholders access the recording in their primary collaboration tool without hunting through email."
+        "title": "Partager les liens d'enregistrements Zoom dans Teams",
+        "description": "Lorsqu'un enregistrement Zoom est prêt, GAIA publie le lien dans le salon Teams approprié. Les parties prenantes y accèdent depuis leur outil principal sans fouiller leurs e-mails."
       },
       {
-        "title": "Notify Teams of Zoom meeting action items",
-        "description": "GAIA extracts action items from Zoom summaries and posts a structured list to Teams. Each item shows the owner and due date, giving the team a clear view of commitments made in the call."
+        "title": "Notifier Teams des actions des réunions Zoom",
+        "description": "GAIA extrait les actions des résumés Zoom et publie une liste structurée dans Teams, avec responsable et échéance pour chaque élément, pour une vision claire des engagements pris en appel."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Zoom and Microsoft Teams to GAIA",
-        "description": "Authorize GAIA with your Zoom account and Microsoft Teams tenant. Map Zoom meetings or meeting series to the corresponding Teams channels."
+        "step": "Connectez Zoom et Microsoft Teams à GAIA",
+        "description": "Autorisez GAIA avec votre compte Zoom et votre tenant Microsoft Teams. Associez les réunions ou séries de réunions Zoom aux salons Teams correspondants."
       },
       {
-        "step": "Configure notification and summary preferences",
-        "description": "Choose which Zoom events — meeting end, recording ready, action items — trigger posts to Teams and set the format and channel for each notification type."
+        "step": "Configurez les préférences de notification et résumé",
+        "description": "Choisissez les événements Zoom — fin de réunion, enregistrement prêt, actions — déclencheurs de publications Teams, ainsi que le format et le salon de chaque type."
       },
       {
-        "step": "GAIA keeps both platforms synchronized",
-        "description": "GAIA monitors your Zoom account and posts structured updates to Teams automatically. Users on either platform stay informed without manual handoffs."
+        "step": "GAIA tient les deux plateformes synchronisées",
+        "description": "GAIA surveille votre compte Zoom et publie automatiquement des mises à jour structurées dans Teams. Les utilisateurs des deux plateformes restent informés sans transferts manuels."
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA also notify Zoom participants about Teams messages?",
-        "answer": "Yes. GAIA can bridge in both directions — important Teams channel messages can trigger a Zoom chat notification or email digest for participants who primarily use Zoom for communication."
+        "question": "GAIA peut-il aussi notifier les participants Zoom des messages Teams ?",
+        "answer": "Oui. GAIA relie dans les deux sens — les messages importants d'un salon Teams peuvent déclencher une notification de chat Zoom ou un récapitulatif par e-mail pour les participants centrés sur Zoom."
       },
       {
-        "question": "Does this work for organizations that use Zoom Rooms?",
-        "answer": "GAIA integrates with Zoom Meetings and Zoom Webinars via the Zoom API. Zoom Rooms support depends on whether your Zoom plan exposes room meeting data through the same API."
+        "question": "Cela fonctionne-t-il pour les organisations utilisant Zoom Rooms ?",
+        "answer": "GAIA s'intègre à Zoom Meetings et Zoom Webinars via l'API Zoom. La prise en charge de Zoom Rooms dépend de l'exposition des données de salles par votre forfait via la même API."
       },
       {
-        "question": "Is there a risk of double-notifications if users have both Zoom and Teams open?",
-        "answer": "GAIA posts to Teams channels rather than individual DMs by default, so notifications appear as channel posts rather than personal pings. You can adjust per-channel notification settings in Teams to control alert frequency."
+        "question": "Y a-t-il un risque de double notification avec Zoom et Teams ouverts ?",
+        "answer": "GAIA publie par défaut dans les salons Teams plutôt qu'en messages privés, sous forme de publications de salon et non de sollicitations personnelles. Ajustez les paramètres de notification par salon dans Teams pour contrôler la fréquence."
       }
     ]
   },
