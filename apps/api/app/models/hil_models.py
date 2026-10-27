@@ -37,6 +37,8 @@ class HILApprovalStatus(StrEnum):
 # The three global approval modes. Launch switch: the default stays
 # ``always_allow`` (HIL off — nothing gated) until we flip it post-launch.
 HILMode = Literal["always_allow", "always_ask", "auto"]
+# once: this call only. always_tool: also set a "never ask" override for the tool.
+ApprovalScope = Literal["once", "always_tool"]
 HIL_DEFAULT_MODE: HILMode = "always_allow"
 
 

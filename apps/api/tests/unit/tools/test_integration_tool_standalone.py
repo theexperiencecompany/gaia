@@ -126,7 +126,7 @@ class TestListIntegrations:
     @patch(f"{MODULE}.user_integration_repository")
     @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.check_multiple_integrations_status", new_callable=AsyncMock)
-    @patch(f"{MODULE}.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     async def test_happy_path_empty_stamps_the_wide_event(
         self,
         mock_status: AsyncMock,
@@ -149,7 +149,7 @@ class TestListIntegrations:
     @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.check_multiple_integrations_status", new_callable=AsyncMock)
     @patch(
-        f"{MODULE}.OAUTH_INTEGRATIONS",
+        "app.config.oauth_config.OAUTH_INTEGRATIONS",
         [
             # Unavailable FIRST: a `break` (instead of `continue`) here would drop
             # every integration after it, so the exact lists below catch it.
@@ -209,7 +209,7 @@ class TestListIntegrations:
     @patch(f"{MODULE}.user_integration_repository")
     @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.check_multiple_integrations_status", new_callable=AsyncMock)
-    @patch(f"{MODULE}.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     async def test_custom_integrations_partition_is_exact(
         self,
         mock_status: AsyncMock,
@@ -265,7 +265,7 @@ class TestListIntegrations:
     @patch(f"{MODULE}.user_integration_repository")
     @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.check_multiple_integrations_status", new_callable=AsyncMock)
-    @patch(f"{MODULE}.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     async def test_listed_custom_ids_are_excluded_from_public_search_exactly(
         self,
         mock_status: AsyncMock,
@@ -290,7 +290,7 @@ class TestListIntegrations:
     @patch(f"{MODULE}.user_integration_repository")
     @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.check_multiple_integrations_status", new_callable=AsyncMock)
-    @patch(f"{MODULE}.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     async def test_no_custom_integrations_skips_the_lookup(
         self,
         mock_status: AsyncMock,
@@ -315,7 +315,7 @@ class TestListIntegrations:
     @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.check_multiple_integrations_status", new_callable=AsyncMock)
     @patch(
-        f"{MODULE}.OAUTH_INTEGRATIONS",
+        "app.config.oauth_config.OAUTH_INTEGRATIONS",
         [_make_integration("gmail", "Gmail"), _make_integration("notion", "Notion")],
     )
     async def test_search_streams_and_returns_exact_suggestions(
@@ -391,7 +391,7 @@ class TestListIntegrations:
     @patch(f"{MODULE}.user_integration_repository")
     @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.check_multiple_integrations_status", new_callable=AsyncMock)
-    @patch(f"{MODULE}.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     async def test_search_failure_is_non_fatal_and_warns(
         self,
         mock_status: AsyncMock,
@@ -419,7 +419,7 @@ class TestListIntegrations:
         assert warning["error_type"] == "RuntimeError"
 
     @patch(f"{MODULE}.current_stream_writer")
-    @patch(f"{MODULE}.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     async def test_no_user_id(self, mock_gsw: MagicMock) -> None:
         result = await _list(_cfg_no_user())
         assert result == "Error: User ID not found in configuration."
@@ -430,7 +430,7 @@ class TestListIntegrations:
         new_callable=AsyncMock,
         side_effect=RuntimeError("err"),
     )
-    @patch(f"{MODULE}.OAUTH_INTEGRATIONS", [_make_integration()])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [_make_integration()])
     async def test_service_error(self, mock_status: AsyncMock, mock_gsw: MagicMock) -> None:
         mock_gsw.return_value = _writer()
         async with captured_wide_event() as event:
@@ -461,7 +461,7 @@ class TestConnectIntegration:
         return_value=False,
     )
     @patch(
-        f"{MODULE}.OAUTH_INTEGRATIONS",
+        "app.config.oauth_config.OAUTH_INTEGRATIONS",
         [_make_integration("gmail", "Gmail", short_name="gmail")],
     )
     async def test_initiates_connection(self, mock_check: AsyncMock, mock_gsw: MagicMock) -> None:
@@ -494,7 +494,7 @@ class TestConnectIntegration:
         return_value=False,
     )
     @patch(
-        f"{MODULE}.OAUTH_INTEGRATIONS",
+        "app.config.oauth_config.OAUTH_INTEGRATIONS",
         [_make_integration("gmail", "Gmail", short_name="gmail")],
     )
     async def test_bot_context_includes_connect_url(
@@ -526,10 +526,6 @@ class TestConnectIntegration:
         "app.services.integrations.connect_steps.check_integration_status",
         new_callable=AsyncMock,
         return_value=False,
-    )
-    @patch(
-        f"{MODULE}.OAUTH_INTEGRATIONS",
-        [_make_integration("posthog", "PostHog", short_name="posthog")],
     )
     @pytest.mark.regression
     async def test_mcp_reconnect_returns_the_standalone_authorization_url(
@@ -565,7 +561,7 @@ class TestConnectIntegration:
         return_value=False,
     )
     @patch(
-        f"{MODULE}.OAUTH_INTEGRATIONS",
+        "app.config.oauth_config.OAUTH_INTEGRATIONS",
         [_make_integration("gmail", "Gmail", short_name="gmail")],
     )
     async def test_the_connect_request_carries_this_integration_and_user(
@@ -604,7 +600,7 @@ class TestConnectIntegration:
         return_value=False,
     )
     @patch(
-        f"{MODULE}.OAUTH_INTEGRATIONS",
+        "app.config.oauth_config.OAUTH_INTEGRATIONS",
         [_make_integration("gmail", "Gmail", short_name="gmail")],
     )
     async def test_ui_context_points_to_card_without_url(
@@ -634,7 +630,7 @@ class TestConnectIntegration:
         return_value=True,
     )
     @patch(
-        f"{MODULE}.OAUTH_INTEGRATIONS",
+        "app.config.oauth_config.OAUTH_INTEGRATIONS",
         [_make_integration("gmail", "Gmail", short_name="gmail")],
     )
     async def test_already_connected(self, mock_check: AsyncMock, mock_gsw: MagicMock) -> None:
@@ -653,7 +649,7 @@ class TestConnectIntegration:
         return_value=True,
     )
     @patch(
-        f"{MODULE}.OAUTH_INTEGRATIONS",
+        "app.config.oauth_config.OAUTH_INTEGRATIONS",
         [_make_integration("posthog", "PostHog", short_name="posthog")],
     )
     async def test_reconnect_mode_bypasses_connected_status_and_renders_reconnect_card(
@@ -690,7 +686,7 @@ class TestConnectIntegration:
     )
     @patch(f"{MODULE}.request_integration_connection", new_callable=AsyncMock)
     @patch(
-        f"{MODULE}.OAUTH_INTEGRATIONS",
+        "app.config.oauth_config.OAUTH_INTEGRATIONS",
         [
             _make_integration("gmail", "Gmail", short_name="gmail"),
             _make_integration("posthog", "PostHog", short_name="posthog"),
@@ -721,7 +717,7 @@ class TestConnectIntegration:
     )
     @patch(f"{MODULE}.request_integration_connection", new_callable=AsyncMock)
     @patch(
-        f"{MODULE}.OAUTH_INTEGRATIONS",
+        "app.config.oauth_config.OAUTH_INTEGRATIONS",
         [_make_integration("gmail", "Gmail", short_name="gmail")],
     )
     async def test_unknown_id_does_not_skip_the_rest(
@@ -742,7 +738,7 @@ class TestConnectIntegration:
         )
 
     @patch(f"{MODULE}.current_stream_writer")
-    @patch(f"{MODULE}.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     async def test_not_found(self, mock_gsw: MagicMock) -> None:
         mock_gsw.return_value = _writer()
 
@@ -753,7 +749,7 @@ class TestConnectIntegration:
 
     @patch(f"{MODULE}.current_stream_writer")
     @patch(
-        f"{MODULE}.OAUTH_INTEGRATIONS",
+        "app.config.oauth_config.OAUTH_INTEGRATIONS",
         [_make_integration("gmail", "Gmail", available=False)],
     )
     async def test_unavailable(self, mock_gsw: MagicMock) -> None:
@@ -771,7 +767,7 @@ class TestConnectIntegration:
         assert "Error" in result
 
     @patch(f"{MODULE}.current_stream_writer")
-    @patch(f"{MODULE}.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     async def test_empty_list(self, mock_gsw: MagicMock) -> None:
         mock_gsw.return_value = _writer()
 
@@ -787,7 +783,7 @@ class TestConnectIntegration:
         side_effect=RuntimeError("err"),
     )
     @patch(
-        f"{MODULE}.OAUTH_INTEGRATIONS",
+        "app.config.oauth_config.OAUTH_INTEGRATIONS",
         [_make_integration("gmail", "Gmail", short_name="gmail")],
     )
     async def test_service_error(self, mock_check: AsyncMock, mock_gsw: MagicMock) -> None:
@@ -811,7 +807,7 @@ class TestCheckIntegrationsStatus:
         return_value=True,
     )
     @patch(
-        f"{MODULE}.OAUTH_INTEGRATIONS",
+        "app.config.oauth_config.OAUTH_INTEGRATIONS",
         [_make_integration("gmail", "Gmail", short_name="gmail")],
     )
     async def test_connected(self, mock_check: AsyncMock) -> None:
@@ -826,7 +822,7 @@ class TestCheckIntegrationsStatus:
         return_value=False,
     )
     @patch(
-        f"{MODULE}.OAUTH_INTEGRATIONS",
+        "app.config.oauth_config.OAUTH_INTEGRATIONS",
         [_make_integration("gmail", "Gmail", short_name="gmail")],
     )
     async def test_not_connected(self, mock_check: AsyncMock) -> None:
@@ -835,7 +831,7 @@ class TestCheckIntegrationsStatus:
         )
         assert "Not Connected" in result
 
-    @patch(f"{MODULE}.OAUTH_INTEGRATIONS", [])
+    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
     async def test_not_found(self) -> None:
         result = await check_integrations_status.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
             config=_cfg(), integration_names=["nonexistent"]
@@ -854,7 +850,7 @@ class TestCheckIntegrationsStatus:
         side_effect=RuntimeError("err"),
     )
     @patch(
-        f"{MODULE}.OAUTH_INTEGRATIONS",
+        "app.config.oauth_config.OAUTH_INTEGRATIONS",
         [_make_integration("gmail", "Gmail", short_name="gmail")],
     )
     async def test_service_error(self, mock_check: AsyncMock) -> None:

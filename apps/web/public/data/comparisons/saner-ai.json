@@ -1,0 +1,100 @@
+{
+  "slug": "saner-ai",
+  "name": "Saner.AI",
+  "domain": "saner.ai",
+  "tagline": "An AI assistant for your notes, emails and to-do list, built for ADHD",
+  "description": "Saner.AI is a note-first AI assistant for people with ADHD: capture notes, ask questions across them and turn emails and brain dumps into planned tasks. GAIA works across email, calendar, tasks and your other tools, from chat apps, the web and the desktop.",
+  "metaTitle": "Saner.AI vs GAIA: Notes Assistant or Full AI Assistant",
+  "metaDescription": "Saner.AI keeps your notes, tasks and inbox in one ADHD-friendly app. GAIA works across email, calendar and your tools from chat apps, web and desktop.",
+  "keywords": [
+    "saner.ai vs GAIA",
+    "GAIA vs Saner.AI",
+    "saner ai review",
+    "saner ai comparison",
+    "ai assistant for adhd",
+    "ai notes and tasks assistant"
+  ],
+  "intro": "Saner.AI is built for people with ADHD who lose track of ideas, tasks and messages. You capture notes by voice, from a Chrome extension or by uploading files, and its assistant Skai organizes them, answers questions across your notes and turns emails and brain dumps into tasks it can prioritize and schedule. Each morning it can draft a plan from your calendar, overdue tasks and recent notes. GAIA starts from the other end: it is an assistant for the work itself. It triages Gmail and Outlook, drafts replies, manages your calendar and tasks, runs workflows triggered by your tools and is reachable from iMessage, WhatsApp, Telegram, Slack and Discord as well as its web and desktop apps. If notes are where your day lives, Saner.AI fits well. If your day lives in your inbox and your tools, GAIA covers more of it.",
+  "rows": [
+    {
+      "feature": "Core approach",
+      "gaia": "A personal AI assistant that works across email, calendar, tasks and your other connected tools",
+      "competitor": "A note-first AI assistant for ADHD that combines notes, emails and a to-do list in one app"
+    },
+    {
+      "feature": "Notes and capture",
+      "gaia": "Not a note-taking app; it remembers facts and preferences you share and can save content to Notion or Google Docs",
+      "competitor": "Core strength: capture by voice, Chrome extension, PDF upload and import, with AI tags, folders and related-note suggestions"
+    },
+    {
+      "feature": "Email",
+      "gaia": "Triages Gmail and Outlook, drafts replies and turns threads into tasks",
+      "competitor": "Pulls in Gmail and shows what needs attention; an Outlook connector arrived in late 2025 as early access"
+    },
+    {
+      "feature": "Tasks and planning",
+      "gaia": "Creates and manages tasks in GAIA, Todoist, Google Tasks, Asana, Linear and more, and plans your day on request",
+      "competitor": "Turns emails and brain dumps into tasks, prioritizes them and drafts a daily plan each morning"
+    },
+    {
+      "feature": "Workflow automation",
+      "gaia": "Multi-step workflows on a schedule or triggered by Gmail, Google Calendar, Slack, GitHub and more",
+      "competitor": "No general workflow builder; proactive help centers on the daily plan and reminders"
+    },
+    {
+      "feature": "Integrations",
+      "gaia": "Gmail, Outlook, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, HubSpot and more, plus custom MCP servers",
+      "competitor": "Gmail, Slack, Google Calendar and Google Drive, plus Outlook in early access"
+    },
+    {
+      "feature": "Where you use it",
+      "gaia": "iMessage, WhatsApp, Telegram, Slack and Discord, plus a web app and a desktop app for macOS, Windows and Linux",
+      "competitor": "Web app, Chrome extension and mobile apps for iOS and Android"
+    },
+    {
+      "feature": "Source-available",
+      "gaia": "Source-available (PolyForm Noncommercial) with self-hosting via Docker; for-profit organizations self-host under an enterprise license",
+      "competitor": "Proprietary and cloud-hosted; says it does not train on, sell or share your data"
+    },
+    {
+      "feature": "Pricing",
+      "gaia": "Hosted Pro at ${{PRO_MONTHLY_PRICE}}/month per person; GAIA Enterprise priced on request",
+      "competitor": "A free plan with monthly AI limits, then paid Starter and Standard plans billed monthly or yearly"
+    }
+  ],
+  "gaiaAdvantages": [
+    "Handles email, calendar and tasks directly instead of collecting them as notes",
+    "Workflows triggered by Gmail, Calendar, Slack, GitHub and more",
+    "Reachable from iMessage, WhatsApp, Telegram, Slack and Discord",
+    "A desktop app for macOS, Windows and Linux",
+    "Source-available, with self-hosting via Docker"
+  ],
+  "competitorAdvantages": [
+    "A real note-taking app with fast capture by voice, Chrome extension and file upload",
+    "Designed around ADHD, with a morning plan built from your notes, tasks and calendar",
+    "A free plan to try it before paying"
+  ],
+  "verdict": "Choose Saner.AI if your notes are the center of your day and you want an ADHD-friendly place to capture ideas and turn them into a plan. Choose GAIA if you want an assistant that acts on your inbox, calendar and tools, runs workflows for you and is there in the chat apps you already use.",
+  "faqs": [
+    {
+      "question": "What is the difference between Saner.AI and GAIA?",
+      "answer": "Saner.AI is a note-first assistant: you capture notes, ask questions across them and turn them into tasks and a daily plan. GAIA is an assistant for the work around those notes. It triages email, drafts replies, manages your calendar and tasks, and runs workflows across your tools from chat apps, the web and the desktop."
+    },
+    {
+      "question": "Is GAIA good for people with ADHD?",
+      "answer": "GAIA takes recurring follow-through off your plate: it can turn emails into tasks, remind you, and run a scheduled workflow that sends you a morning summary in the chat app you already check. It does not offer Saner.AI's note capture, so people who think in notes may want Saner.AI for that part."
+    },
+    {
+      "question": "Can GAIA replace Saner.AI for notes?",
+      "answer": "Not as a note app. GAIA remembers facts and preferences you tell it and can save content to Notion or Google Docs, but it has no note editor, tagging or folders. If you rely on Saner.AI's capture and note search, keep it for notes and let GAIA handle email, calendar and workflows."
+    },
+    {
+      "question": "How much does GAIA cost compared with Saner.AI?",
+      "answer": "Saner.AI has a free plan with monthly AI limits and paid Starter and Standard plans. GAIA's hosted service is a paid subscription per person, with Pro at ${{PRO_MONTHLY_PRICE}}/month, and GAIA Enterprise is priced on request. The code is source-available under the PolyForm Noncommercial license, so self-hosting is free for personal, noncommercial use, and for-profit organizations self-host under an enterprise license (contact the GAIA team)."
+    }
+  ],
+  "relatedPersonas": [
+    "adhd-professionals",
+    "researchers"
+  ]
+}

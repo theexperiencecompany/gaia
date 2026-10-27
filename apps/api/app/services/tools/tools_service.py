@@ -14,7 +14,7 @@ from app.agents.tools.core.registry import (
     get_tool_registry,
     integration_destructive_tools,
 )
-from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.config.oauth_config import all_integrations
 from app.constants.cache import ONE_DAY_TTL
 from app.constants.log_tags import LogTag
 from app.decorators.caching import Cacheable
@@ -28,13 +28,10 @@ from app.services.mcp.mcp_tools_service import get_all_mcp_tools, get_integratio
 from app.utils.request_coalescing import coalesce_request
 from shared.py.wide_events import log
 
-_INTEGRATION_NAME_MAP: dict[str, str] = {
-    integration.id.lower(): integration.name for integration in OAUTH_INTEGRATIONS
-}
-
 
 def get_integration_name(integration_id: str) -> str | None:
-    return _INTEGRATION_NAME_MAP.get(integration_id.lower())
+    lowered = integration_id.lower()
+    return next((i.name for i in all_integrations() if i.id.lower() == lowered), None)
 
 
 async def get_available_tools(user_id: str | None = None) -> ToolsListResponse:
@@ -76,26 +73,55 @@ def filter_tools_response(
     )
 
 
-async def _build_tools_response(user_id: str | None = None) -> ToolsListResponse:
-    tool_infos: list[ToolInfo] = []
-    categories: set[str] = set()
-    seen_tool_names: set[str] = set()
+async def _workspace_integration_ids(user_id: str | None) -> tuple[set[str], set[str]]:
+    """Return the lowercased (added, connected) integration ids of the user's workspace.
 
-    # `added` scopes which integration tools appear at all; `connected` decides locked vs
-    # unlocked. Registry category ids can be upper/mixed case, records lowercase, so
-    # membership tests go through `.lower()`.
+    added scopes which integration tools appear at all; connected decides locked vs unlocked.
+    """
     added: set[str] = set()
     connected: set[str] = set()
-    if user_id:
-        records: list[UserIntegrationRecord] = await get_user_integration_records(user_id)
-        for record in records:
-            iid = record.get("integration_id")
-            if not iid:
-                continue
-            added.add(str(iid).lower())
-            if record.get("status") == "connected":
-                connected.add(str(iid).lower())
+    if not user_id:
+        return added, connected
+    records: list[UserIntegrationRecord] = await get_user_integration_records(user_id)
+    for record in records:
+        iid = record.get("integration_id")
+        if not iid:
+            continue
+        added.add(str(iid).lower())
+        if record.get("status") == "connected":
+            connected.add(str(iid).lower())
+    return added, connected
 
+
+async def _build_tools_response(user_id: str | None = None) -> ToolsListResponse:
+    tool_infos: list[ToolInfo] = []
+    seen_tool_names: set[str] = set()
+    # Registry category ids can be upper/mixed case, records lowercase, so
+    # membership tests go through `.lower()`.
+    added, connected = await _workspace_integration_ids(user_id)
+    tool_infos.extend(await _registry_tool_infos(added, connected, seen_tool_names))
+    tool_infos.extend(await _mcp_tool_infos(user_id, added, connected, seen_tool_names))
+    categories = {t.category for t in tool_infos}
+
+    log.set(
+        tools={
+            "total_count": len(tool_infos),
+            "locked_count": sum(1 for t in tool_infos if t.locked),
+            "category_count": len(categories),
+        }
+    )
+    return ToolsListResponse(
+        tools=tool_infos,
+        total_count=len(tool_infos),
+        categories=sorted(categories),
+    )
+
+
+async def _registry_tool_infos(
+    added: set[str], connected: set[str], seen_tool_names: set[str]
+) -> list[ToolInfo]:
+    """Return the registry's tools: core always, integration-backed only when in the workspace."""
+    tool_infos: list[ToolInfo] = []
     tool_registry = await get_tool_registry()
     _categories = tool_registry.get_all_category_objects(ignore_categories=["delegation"])
 
@@ -125,11 +151,17 @@ async def _build_tools_response(user_id: str | None = None) -> ToolsListResponse
                     locked=locked,
                 )
             )
-            categories.add(category)
+    return tool_infos
 
-    # MCP tools (platform + custom) live only in the global store. Scoping to the
-    # workspace here is also the leak guard: an entry the user hasn't added — a
-    # platform MCP they never connected, or another user's custom MCP — is skipped.
+
+async def _mcp_tool_infos(
+    user_id: str | None, added: set[str], connected: set[str], seen_tool_names: set[str]
+) -> list[ToolInfo]:
+    """Return the MCP tools (platform + custom) of integrations in the user's workspace."""
+    tool_infos: list[ToolInfo] = []
+    # MCP tools live only in the global store. Scoping to the workspace here is
+    # also the leak guard: an entry the user hasn't added — a platform MCP they
+    # never connected, or another user's custom MCP — is skipped.
     try:
         global_mcp_tools = await get_all_mcp_tools()
     except Exception as e:
@@ -179,20 +211,7 @@ async def _build_tools_response(user_id: str | None = None) -> ToolsListResponse
                     locked=locked,
                 )
             )
-            categories.add(integration_id)
-
-    log.set(
-        tools={
-            "total_count": len(tool_infos),
-            "locked_count": sum(1 for t in tool_infos if t.locked),
-            "category_count": len(categories),
-        }
-    )
-    return ToolsListResponse(
-        tools=tool_infos,
-        total_count=len(tool_infos),
-        categories=sorted(categories),
-    )
+    return tool_infos
 
 
 async def get_tools_by_category(category: str) -> ToolsCategoryResponse:

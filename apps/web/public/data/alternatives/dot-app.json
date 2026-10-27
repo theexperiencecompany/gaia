@@ -1,0 +1,91 @@
+{
+  "category": "ai-assistant",
+  "domain": "",
+  "faqs": [
+    {
+      "answer": "Dot shut down in October 2025 and the app stopped working. Former users need a living product, ideally one that cannot be shut down on them.",
+      "question": "Why do I need a Dot alternative?"
+    },
+    {
+      "answer": "GAIA is source-available (PolyForm Noncommercial) and self-hostable via Docker. No company decision can take it away from you.",
+      "question": "Can GAIA shut down like Dot did?"
+    },
+    {
+      "answer": "Yes. GAIA remembers your preferences and history across conversations and tools, then acts on that memory instead of just chatting about it.",
+      "question": "Does GAIA remember me like Dot did?"
+    }
+  ],
+  "gaiaAdvantages": [
+    "Living, actively developed product with a public roadmap",
+    "Memory that spans conversations and all connected tools",
+    "Acts on memory: drafts, schedules, and manages tasks",
+    "Source-available and self-hostable, shutdown-proof by design",
+    "Deep integrations across your tools"
+  ],
+  "gaiaFitScore": 4,
+  "gaiaReplaces": [
+    "Daily check-in chats you had with Dot",
+    "Remembering context across conversations",
+    "Keeping track of what you mentioned in passing",
+    "The companion habit Dot built"
+  ],
+  "keywords": [
+    "dot app alternative",
+    "dot ai replacement",
+    "dot app shutdown alternative",
+    "former dot users",
+    "dot companion alternative",
+    "best dot app replacement"
+  ],
+  "metaDescription": "Dot has shut down. GAIA is the source-available Dot alternative, with memory that acts across your email, calendar, and tasks.",
+  "metaTitle": "Best Dot App Alternative Since Shutdown",
+  "migrationSteps": [
+    "Write down what you used Dot for most: chats, memory, routine",
+    "Sign up for GAIA and tell it about yourself in one message",
+    "Connect Gmail and Calendar so memory has tools to work with",
+    "Rebuild your daily Dot check-in as a GAIA briefing"
+  ],
+  "name": "Dot",
+  "painPoints": [
+    "Dot shut down in October 2025, so the app no longer works at all",
+    "Closed product meant users got no vote and no export path",
+    "Companion-only: it chatted but never touched email or tasks",
+    "iPhone-only with no web, desktop, or messaging presence",
+    "All memory lived on their servers and left with them"
+  ],
+  "slug": "dot-app",
+  "tagline": "The companion is gone. The habit can stay.",
+  "whyPeopleLook": "Dot users lost more than an app: they lost a daily habit and a memory of past conversations. The shutdown taught the real lesson, which is to rebuild on ground nobody can pull away. People searching for a Dot alternative want the companionship back plus a guarantee it cannot vanish again, which is exactly what source-available gives.",
+  "comparisonRows": [
+    {
+      "feature": "Status",
+      "gaia": "Switch to an assistant that is actively developed and source-available",
+      "competitor": "Closed iOS companion app, shut down October 2025"
+    },
+    {
+      "feature": "Memory",
+      "gaia": "Memory that drives drafts, schedules, and tasks across every connected tool",
+      "competitor": "Remembered past chats, could only talk about them"
+    },
+    {
+      "feature": "What it does",
+      "gaia": "Emails drafted, events scheduled, tasks managed, and workflows run daily",
+      "competitor": "Conversation only, no tool connections"
+    },
+    {
+      "feature": "Platforms",
+      "gaia": "Web, desktop, and mobile plus WhatsApp and Telegram for the same chat habit",
+      "competitor": "iPhone only"
+    },
+    {
+      "feature": "Data control",
+      "gaia": "Docker self-hosting keeps your data yours, shutdown-proof by design",
+      "competitor": "One company's servers, gone when they decided"
+    },
+    {
+      "feature": "Setup",
+      "gaia": "Sign up, connect Gmail and Calendar, and delegate in minutes",
+      "competitor": "Nothing, it no longer works"
+    }
+  ]
+}

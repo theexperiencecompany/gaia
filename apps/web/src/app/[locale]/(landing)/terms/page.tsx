@@ -9,7 +9,7 @@ import {
 } from "@/lib/seo";
 
 export const metadata: Metadata = generatePageMetadata({
-  title: "Terms of Service",
+  title: "Terms of Service: The Rules for Using GAIA",
   description:
     "Review GAIA's Terms of Service to understand your rights, responsibilities, and the terms governing your use of our AI assistant platform and services.",
   path: "/terms",

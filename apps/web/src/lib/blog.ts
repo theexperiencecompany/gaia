@@ -12,6 +12,13 @@ export type { BlogContentPost, BlogPostMeta } from "./blog.types";
 // the Cloudflare ASSETS binding at runtime — never fs at request time, which fails on Workers).
 const FEATURE = "blog";
 
+/** When a post last changed: its revision date, else its publish date. The sitemap lastmod, Article dateModified and og:modified_time all read this. */
+export function blogLastModified(
+  post: Pick<BlogContentPost, "date" | "updated">,
+): string {
+  return post.updated ?? post.date;
+}
+
 /**
  * Get all blog post slugs.
  */

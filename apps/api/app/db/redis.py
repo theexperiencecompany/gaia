@@ -4,7 +4,7 @@ Supports generic JSON caching, TTL, pattern-based invalidation, and graceful fal
 Redis is unavailable.
 """
 
-from collections.abc import Mapping, Set as AbstractSet
+from collections.abc import AsyncIterator, Mapping, Set as AbstractSet
 from typing import Any, Literal, Protocol, TypeVar, cast, overload
 
 from pydantic import JsonValue, TypeAdapter
@@ -119,6 +119,10 @@ class AsyncRedisCommands(Protocol):
 
     async def keys(self, pattern: str = "*") -> list[str]:
         """KEYS — full scan; only for small, bounded keyspaces."""
+        ...
+
+    def scan_iter(self, match: str | None = None, count: int | None = None) -> AsyncIterator[str]:
+        """SCAN — iterate matching keys in batches without blocking the server."""
         ...
 
     async def incr(self, name: str, amount: int = 1) -> int:
@@ -279,7 +283,7 @@ class RedisCache:
             log.warning(f"{LogTag.STORAGE} REDIS_URL is not set. Caching will be disabled.")
 
     async def verify_connection(self) -> None:
-        """Assert Redis is reachable, failing fast in production and logging loudly elsewhere.
+        """Assert Redis is reachable, failing fast unless the deployment tolerates it (development).
 
         from_url connects lazily, so without this check an unavailable Redis silently
         looked "connected".
@@ -288,7 +292,7 @@ class RedisCache:
             message = "Redis is UNAVAILABLE: REDIS_URL is not configured."
             log.set(db={"connection_status": "unavailable", "backend": "redis"})
             log.error(f"{LogTag.STORAGE} Redis is UNAVAILABLE: REDIS_URL is not configured")
-            if settings.ENV == "production":
+            if settings.deployment.fail_fast:
                 raise ConnectionError(message)
             return
 
@@ -302,7 +306,7 @@ class RedisCache:
             log.error(
                 f"{LogTag.STORAGE} Redis is UNAVAILABLE: ping failed", error_type=type(e).__name__
             )
-            if settings.ENV == "production":
+            if settings.deployment.fail_fast:
                 raise ConnectionError(message) from e
 
     @overload

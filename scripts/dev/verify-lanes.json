@@ -1,19 +1,19 @@
 {
-  "$comment": "GAIA verify lanes — local mirror of CI quality gates (.github/workflows/code-quality.yml + main.yml). name matches the CI job/step (rows may be step-granular). ci_job = the code-quality.yml job that runs the lane; `verdict.py reuse-plan` unions a job's scopes to decide whether its last pass on a PR still holds, so a lane missing here makes its job always run, and a job whose real inputs a scope misses could be wrongly reused. scope = extended regex over changed paths; lane runs if ANY file matches (--all overrides). heavy=true needs --with-heavy. timeout_s hard cap; expiry -> status=timeout (exit 2). require_cmd: any missing -> skipped(missing-tool). require_env: an unset credential skips the lane in automatic selection (reason printed), while --only <lane> still runs it so it fails loud. command runs at repo root — keep byte-parity with the CI job's own repro line. Edit a workflow lane and this file in the SAME commit. INTENTIONALLY NOT MIRRORED (CI-only): build, build-images, coverage (combines the unit/integration/bridge slices; fail-under 80 on master, report-only on PRs), docker-image, regression-proof, validate-release-manifest, test-harness-tools, trivy-scan (advisory), changelog-sync (auto-fix PR job). Known deltas: py-tests mirrors via Dagger not byte-parity flake-gate slices; alert-rules needs locally installed pint/promtool (CI pins v0.87.0/v3.1.0 from release tarballs); whole-repo scopes are stricter than CI's changed-file scoping (safe direction). Post-merge note: master pinned bandit/xenon/interrogate and split ignore-ratchet into ignore-whys + ignore-staleness + tool-pins (2026-08 merge of origin/master).",
+  "$comment": "GAIA verify lanes — local mirror of CI quality gates (.github/workflows/ci.yml). name matches the CI job/step (rows may be step-granular). ci_check = the ci.yml check (one step of a grouped job, posted as the `ci / <area> / <check>` commit status) that runs this lane on a PR push; `verdict.py reuse-plan` unions a check's scopes to decide whether its last pass on the PR still holds, so a lane without ci_check always runs, and a check whose real inputs a scope misses could be wrongly reused. Only fast-tier checks carry one: reuse applies to pull_request runs only, and the audits and the live PostHog check are never reused. scope = extended regex over changed paths; lane runs if ANY file matches (--all overrides). heavy=true needs --with-heavy. timeout_s hard cap; expiry -> status=timeout (exit 2). require_cmd: any missing -> skipped(missing-tool). require_env: an unset credential skips the lane in automatic selection (reason printed), while --only <lane> still runs it so it fails loud. command runs at repo root — keep byte-parity with the CI job's own repro line. Edit a workflow lane and this file in the SAME commit. INTENTIONALLY NOT MIRRORED (CI-only): build, build-images, coverage (combines the unit/integration/bridge slices; fail-under 80 on master, report-only on PRs), docker-image, regression-proof, validate-release-manifest, test-harness-tools, test-python (the full pytest suite is CI's job; locally run files with `mise test:one`), trivy-scan (advisory), changelog-sync (auto-fix PR job). Known deltas: alert-rules needs locally installed pint/promtool (CI pins v0.87.0/v3.1.0 from release tarballs); whole-repo scopes are stricter than CI's changed-file scoping (safe direction). Post-merge note: master pinned bandit/xenon/interrogate and split ignore-ratchet into ignore-whys + ignore-staleness + tool-pins (2026-08 merge of origin/master).",
   "schema_version": 1,
   "lanes": [
     {
       "name": "biome",
-      "ci_job": "biome",
+      "ci_check": "biome",
       "scope": "\\.(ts|tsx|js|jsx|mjs|cjs|json|jsonc|css)$",
       "heavy": false,
       "timeout_s": 300,
       "require_cmd": [],
-      "command": "pnpm run quality:lint"
+      "command": "node scripts/ci/checks.mjs biome"
     },
     {
       "name": "deps",
-      "ci_job": "deps",
+      "ci_check": "deps",
       "scope": "\\.(ts|tsx|js|jsx|json)$|^pnpm-lock\\.yaml$|^packages/",
       "heavy": false,
       "timeout_s": 120,
@@ -22,7 +22,7 @@
     },
     {
       "name": "circular",
-      "ci_job": "circular",
+      "ci_check": "circular",
       "scope": "\\.(ts|tsx|js|jsx)$",
       "heavy": false,
       "timeout_s": 180,
@@ -31,7 +31,7 @@
     },
     {
       "name": "file-size",
-      "ci_job": "file-size",
+      "ci_check": "file-size",
       "scope": "\\.(ts|tsx|js|jsx|mjs|cjs)$",
       "heavy": false,
       "timeout_s": 120,
@@ -40,7 +40,7 @@
     },
     {
       "name": "types-location",
-      "ci_job": "types-location",
+      "ci_check": "types-location",
       "scope": "\\.(ts|tsx|js)$",
       "heavy": false,
       "timeout_s": 120,
@@ -49,9 +49,9 @@
     },
     {
       "name": "api-schema",
-      "ci_job": "api-schema",
-      "$comment": "THE source of truth for what can change the generated API contract: the prek `api-types` hook's `files:` must match it byte for byte, and code-quality.yml's `changes` job greps it out of this file. A FastAPI/Pydantic bump changes the generated output with no route edit, so the manifests count as inputs. Enforced by scripts/ci/tests/test_api_schema_scope.py.",
-      "scope": "^apps/api/app/.*\\.py$|^apps/api/scripts/export_openapi\\.py$|^apps/api/tests/offline_env\\.py$|^apps/api/pyproject\\.toml$|^apps/api/openapi\\.json$|^uv\\.lock$|^libs/shared/ts/src/api/generated/|^scripts/ci/checks\\.mjs$|^package\\.json$",
+      "ci_check": "api-schema",
+      "$comment": "THE source of truth for what can change the generated API contract: the prek `api-types` hook's `files:` must match it byte for byte, and ci.yml's `detect` job greps it out of this file. A FastAPI/Pydantic bump changes the generated output with no route edit, so the manifests count as inputs. Enforced by scripts/ci/tests/test_api_schema_scope.py.",
+      "scope": "^apps/api/app/.*\\.py$|^apps/api/scripts/(export_openapi|openapi_contract)\\.py$|^apps/api/tests/offline_env\\.py$|^apps/api/pyproject\\.toml$|^apps/api/openapi\\.json$|^uv\\.lock$|^libs/shared/ts/src/api/generated/|^scripts/ci/checks\\.mjs$|^package\\.json$",
       "heavy": false,
       "timeout_s": 300,
       "require_cmd": ["uv", "node"],
@@ -59,7 +59,7 @@
     },
     {
       "name": "analytics-catalog",
-      "ci_job": "api-schema",
+      "ci_check": "analytics-catalog",
       "scope": "^libs/shared/py/analytics/|^libs/shared/ts/src/analytics/generated/|^uv\\.lock$|^scripts/ci/checks\\.mjs$",
       "heavy": false,
       "timeout_s": 300,
@@ -67,8 +67,25 @@
       "command": "node scripts/ci/checks.mjs analytics-catalog"
     },
     {
+      "name": "cli-config-schema",
+      "ci_check": "cli-config-schema",
+      "scope": "^apps/api/app/config/|^apps/api/scripts/dump_config_schema\\.py$|^packages/cli/src/lib/api-config-schema\\.generated\\.json$|^scripts/ci/checks\\.mjs$",
+      "heavy": false,
+      "timeout_s": 300,
+      "require_cmd": ["uv", "node"],
+      "command": "node scripts/ci/checks.mjs cli-config-schema"
+    },
+    {
+      "name": "deploy-templates",
+      "ci_check": "deploy-templates",
+      "scope": "^infra/docker/docker-compose\\.selfhost\\.yml$|^infra/docker/selfhost/Caddyfile$|^packages/cli/src/lib/machine-secrets\\.json$|^deploy/coolify/gaia\\.yaml$|^deploy/proxy\\.Dockerfile$|^render\\.yaml$|^scripts/ci/lib/deploy_templates\\.py$|^scripts/ci/checks\\.mjs$",
+      "heavy": false,
+      "timeout_s": 300,
+      "require_cmd": ["uv", "node"],
+      "command": "node scripts/ci/checks.mjs deploy-templates"
+    },
+    {
       "name": "analytics-check",
-      "ci_job": "analytics-check",
       "scope": "^libs/shared/py/analytics/catalog/|^libs/shared/ts/src/analytics/generated/|^config/posthog/|^scripts/ci/analytics\\.py$",
       "heavy": false,
       "timeout_s": 120,
@@ -78,7 +95,7 @@
     },
     {
       "name": "doc-comments",
-      "ci_job": "doc-comments",
+      "ci_check": "doc-comments",
       "scope": "\\.(ts|tsx|js|jsx|mjs|cjs)$",
       "heavy": false,
       "timeout_s": 120,
@@ -87,7 +104,7 @@
     },
     {
       "name": "api-schema-types",
-      "ci_job": "api-schema",
+      "ci_check": "api-schema-types",
       "scope": "\\.(ts|tsx)$|^apps/api/openapi\\.json$|^config/api-schema-baseline\\.json$",
       "heavy": false,
       "timeout_s": 120,
@@ -96,7 +113,7 @@
     },
     {
       "name": "components-per-file",
-      "ci_job": "components-per-file",
+      "ci_check": "components-per-file",
       "scope": "\\.tsx$",
       "heavy": false,
       "timeout_s": 120,
@@ -105,7 +122,7 @@
     },
     {
       "name": "duplicates",
-      "ci_job": "duplicates",
+      "ci_check": "duplicates",
       "scope": "\\.(ts|tsx|js|jsx|py)$",
       "heavy": false,
       "timeout_s": 240,
@@ -114,7 +131,7 @@
     },
     {
       "name": "package-hygiene",
-      "ci_job": "package-hygiene",
+      "ci_check": "package-hygiene",
       "scope": "^packages/cli/|^pnpm-lock\\.yaml$",
       "heavy": false,
       "timeout_s": 600,
@@ -131,7 +148,7 @@
     },
     {
       "name": "type-check",
-      "ci_job": "type-check",
+      "ci_check": "type-check",
       "scope": "\\.(ts|tsx|js|jsx)$|^tsconfig|^nx\\.json$",
       "heavy": false,
       "timeout_s": 900,
@@ -140,7 +157,7 @@
     },
     {
       "name": "suppression-hygiene",
-      "ci_job": "suppression-hygiene",
+      "ci_check": "suppression-hygiene",
       "scope": "\\.(ts|tsx|js|jsx|py)$",
       "heavy": false,
       "timeout_s": 120,
@@ -149,7 +166,7 @@
     },
     {
       "name": "dead-code",
-      "ci_job": "dead-code",
+      "ci_check": "dead-code",
       "scope": "\\.(ts|tsx|py)$",
       "heavy": false,
       "timeout_s": 600,
@@ -158,7 +175,7 @@
     },
     {
       "name": "python-ruff",
-      "ci_job": "python-static",
+      "ci_check": "ruff",
       "scope": "\\.py$|^pyproject\\.toml$|^ruff\\.toml$",
       "heavy": false,
       "timeout_s": 180,
@@ -167,16 +184,16 @@
     },
     {
       "name": "python-mypy",
-      "ci_job": "python-mypy",
+      "ci_check": "mypy",
       "scope": "\\.py$|^pyproject\\.toml$|^uv\\.lock$",
       "heavy": false,
       "timeout_s": 900,
       "require_cmd": [],
-      "command": "uv run --project apps/api --frozen --group backend --group dev mypy apps/api/app libs/shared/py tools/lints --ignore-missing-imports && bash scripts/ci/runner.sh heal-venv .venv-voice-agent && UV_PROJECT_ENVIRONMENT=.venv-voice-agent uv run --project apps/voice-agent --frozen --group dev mypy apps/voice-agent/src --ignore-missing-imports --cache-dir .mypy_cache/voice-agent"
+      "command": "uv run --project apps/api --frozen --group backend --group dev mypy apps/api/app libs/shared/py tools/lints --ignore-missing-imports && python3 scripts/ci/runner.py heal-venv .venv-voice-agent && UV_PROJECT_ENVIRONMENT=.venv-voice-agent uv run --project apps/voice-agent --frozen --group dev mypy apps/voice-agent/src --ignore-missing-imports --cache-dir .mypy_cache/voice-agent && MYPYPATH=scripts/ci:scripts/ci/tests uv run --project apps/api --frozen --group backend --group dev mypy --explicit-package-bases scripts/ci --ignore-missing-imports --cache-dir .mypy_cache/scripts-ci"
     },
     {
       "name": "custom-lints",
-      "ci_job": "python-static",
+      "ci_check": "custom-lints",
       "scope": "\\.py$|^tools/lints/",
       "heavy": false,
       "timeout_s": 120,
@@ -185,7 +202,7 @@
     },
     {
       "name": "lint-imports",
-      "ci_job": "python-static",
+      "ci_check": "lint-imports",
       "scope": "^apps/api/(app/.*\\.py|pyproject\\.toml)$",
       "heavy": false,
       "timeout_s": 300,
@@ -194,7 +211,7 @@
     },
     {
       "name": "plr-complexity",
-      "ci_job": "python-static",
+      "ci_check": "plr-complexity",
       "scope": "\\.py$|^tools/lints/(check_plr_complexity\\.py|plr_complexity_baseline\\.txt)",
       "heavy": false,
       "timeout_s": 120,
@@ -203,7 +220,7 @@
     },
     {
       "name": "typed-boundaries",
-      "ci_job": "python-static",
+      "ci_check": "typed-boundaries",
       "scope": "\\.py$|^tools/lints/(check_typed_boundaries\\.py|typed_boundaries_baseline\\.txt|_ratchet\\.py|_common\\.py)$",
       "heavy": false,
       "timeout_s": 120,
@@ -212,7 +229,6 @@
     },
     {
       "name": "import-cost",
-      "ci_job": "python-audit",
       "$comment": "Imports the real modules in fresh subprocesses, so it needs the synced venv; --report matches the CI step, which measures without gating until the base layers stop importing upward.",
       "scope": "^apps/api/app/(constants|config|utils|models)/|^apps/api/app/(main|worker)\\.py$|^apps/api/tests/conftest\\.py$|^tools/lints/check_import_cost\\.py$",
       "heavy": true,
@@ -222,7 +238,7 @@
     },
     {
       "name": "ignore-whys",
-      "ci_job": "python-static",
+      "ci_check": "ignore-whys",
       "scope": "^pyproject\\.toml$|^tools/lints/(check_ignore_ratchet\\.py|ignore_ratchet_baseline\\.txt)",
       "heavy": false,
       "timeout_s": 120,
@@ -231,7 +247,7 @@
     },
     {
       "name": "ignore-staleness",
-      "ci_job": "suppression-hygiene",
+      "ci_check": "ignore-staleness",
       "scope": "^pyproject\\.toml$|^tools/lints/",
       "heavy": false,
       "timeout_s": 120,
@@ -240,7 +256,7 @@
     },
     {
       "name": "tool-pins",
-      "ci_job": "suppression-hygiene",
+      "ci_check": "tool-pins",
       "scope": "\\.(py|toml)$|^tools/lints/|^\\.pre-commit-config\\.yaml$",
       "heavy": false,
       "timeout_s": 120,
@@ -248,8 +264,17 @@
       "command": "python3 tools/lints/check_tool_pins.py"
     },
     {
+      "name": "uv-lock",
+      "ci_check": "uv-lock",
+      "scope": "(^|/)(uv\\.lock|pyproject\\.toml)$",
+      "heavy": false,
+      "timeout_s": 300,
+      "require_cmd": ["uv"],
+      "command": "bash scripts/ci/audit.sh uv-lock"
+    },
+    {
       "name": "interrogate",
-      "ci_job": "python-static",
+      "ci_check": "interrogate",
       "scope": "\\.py$|^pyproject\\.toml$",
       "heavy": false,
       "timeout_s": 180,
@@ -258,7 +283,7 @@
     },
     {
       "name": "xenon",
-      "ci_job": "python-static",
+      "ci_check": "xenon",
       "scope": "\\.py$|^pyproject\\.toml$",
       "heavy": false,
       "timeout_s": 180,
@@ -267,7 +292,7 @@
     },
     {
       "name": "bandit",
-      "ci_job": "python-static",
+      "ci_check": "bandit",
       "scope": "\\.py$|^pyproject\\.toml$",
       "heavy": false,
       "timeout_s": 300,
@@ -276,16 +301,15 @@
     },
     {
       "name": "pip-audit",
-      "ci_job": "python-audit",
       "scope": "^uv\\.lock$|^pyproject\\.toml$",
       "heavy": true,
       "timeout_s": 600,
       "require_cmd": ["uv"],
-      "command": "uv export --frozen --no-emit-workspace -o /tmp/gaia-verify-requirements.txt && uvx --no-build pip-audit==2.10.1 --strict --skip-editable --disable-pip --ignore-vuln GHSA-wj6h-64fc-37mp --ignore-vuln PYSEC-2026-1325 -r /tmp/gaia-verify-requirements.txt"
+      "command": "bash scripts/ci/audit.sh pip"
     },
     {
       "name": "observability-evlog-tests",
-      "ci_job": "observability",
+      "ci_check": "observability-evlog-tests",
       "scope": "\\.py$|^tools/(evlog_map|logcheck)/",
       "heavy": false,
       "timeout_s": 300,
@@ -294,7 +318,7 @@
     },
     {
       "name": "observability-map",
-      "ci_job": "observability",
+      "ci_check": "observability-map",
       "scope": "\\.py$|^apps/bots/|^libs/shared/ts/",
       "heavy": false,
       "timeout_s": 300,
@@ -303,7 +327,7 @@
     },
     {
       "name": "observability-ratchet",
-      "ci_job": "observability",
+      "ci_check": "observability-ratchet",
       "scope": "\\.py$",
       "heavy": false,
       "timeout_s": 120,
@@ -312,7 +336,7 @@
     },
     {
       "name": "wide-event-conformance",
-      "ci_job": "wide-event-conformance",
+      "ci_check": "wide-event-conformance",
       "scope": "\\.(py|ts|tsx)$",
       "heavy": false,
       "timeout_s": 300,
@@ -321,7 +345,7 @@
     },
     {
       "name": "alert-rules",
-      "ci_job": "alert-rules",
+      "ci_check": "alert-rules",
       "scope": "^tools/alert-rules/|^infra/docker/observability/grafana/provisioning/alerting/|^config/pint\\.hcl$",
       "heavy": true,
       "timeout_s": 600,
@@ -330,16 +354,14 @@
     },
     {
       "name": "gitleaks",
-      "ci_job": "gitleaks",
       "scope": ".",
       "heavy": false,
       "timeout_s": 300,
       "require_cmd": ["gitleaks"],
-      "command": "gitleaks detect --no-banner --redact -c .gitleaks.toml"
+      "command": "gitleaks detect --no-banner --redact -c .gitleaks.toml --log-opts=\"--no-merges $(bash scripts/ci/changes.sh base-rev)..HEAD\""
     },
     {
       "name": "semgrep",
-      "ci_job": "semgrep",
       "scope": "\\.py$",
       "heavy": true,
       "timeout_s": 900,
@@ -352,7 +374,7 @@
       "heavy": true,
       "timeout_s": 3600,
       "require_cmd": ["uv"],
-      "command": "uv sync --frozen --package gaia --group backend --group dev && bash scripts/ci/mutation.sh local"
+      "command": "uv sync --frozen --package gaia --group backend --group dev && python3 scripts/ci/mutation.py local"
     },
     {
       "name": "ts-tests",
@@ -363,12 +385,13 @@
       "command": "pnpm exec nx run-many -t test --projects=web,desktop,mobile,cli,bot-discord,bot-slack,bot-telegram,bot-whatsapp,bot-imessage --output-style=stream"
     },
     {
-      "name": "py-tests",
-      "scope": "\\.py$",
+      "name": "seo",
+      "$comment": "ts-build-test's seo check: the sitemap crawl and the squirrelscan ratchet (scripts/ci/baselines/squirrel-build.txt) against this checkout's production web build. scope mirrors changes.sh SEO_INPUTS (held equal by scripts/ci/tests/test_changes.py). Known delta: apps/web/mise.toml sets NEXT_PUBLIC_API_BASE_URL to the local API inside the build, whose prerender then cannot reach it; run it with node and pnpm on PATH ahead of mise's shims and NEXT_PUBLIC_API_BASE_URL=https://api.heygaia.io/api/v1/.",
+      "scope": "^apps/web/|^libs/shared/ts/|^\\.github/workflows/(deploy-web|web-build)\\.yml$|^scripts/ci/smoke-web\\.sh$|^scripts/ci/lib/(seo_audit|squirrel|origin_proxy)\\.py$|^scripts/ci/baselines/squirrel-build\\.txt$|^config/squirrel\\.toml$",
       "heavy": true,
-      "timeout_s": 3600,
-      "require_cmd": ["dagger"],
-      "command": "mise run test:python"
+      "timeout_s": 1800,
+      "require_cmd": ["node", "pnpm", "curl", "openssl"],
+      "command": "bash scripts/ci/smoke-web.sh audit-build"
     }
   ]
 }

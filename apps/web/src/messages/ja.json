@@ -9,7 +9,8 @@
     "related_automations": "関連の自動化",
     "dont_see_your_tool": "お探しのツールが見つかりませんか？",
     "view_comparisons": "比較を見る",
-    "get_started": "始める"
+    "get_started": "始める",
+    "docs_guides": "ドキュメントのガイド"
   },
   "alternatives": {
     "breadcrumb": "代替",
@@ -36,7 +37,7 @@
     "gaia_vs_name": "GAIA vs {name}",
     "hub_title": "GAIAを代替として",
     "hub_subtitle": "GAIAが30の人気生産性・AI・自動化ツールをどのように置き換えるかの正直な分析 — フィットスコアと移行手順付き。",
-    "hub_meta_title": "人気生産性ツールの最良の代替 | GAIA",
+    "hub_meta_title": "人気の生産性ツールに代わる最適な選択肢",
     "hub_meta_description": "GAIAがNotion、ChatGPT、Todoist、Zapier、Superhuman、Obsidianなど24以上のツールをどう置き換えるかをご覧ください。正直なフィットスコアと移行手順。",
     "best_name_alternative": "{name}の最良の代替",
     "category_productivity_suite": "生産性スイート",
@@ -47,7 +48,7 @@
     "category_automation": "自動化",
     "category_notes": "ノート＆ナレッジ",
     "dont_see_your_tool": "お探しのツールが見つかりませんか？",
-    "dont_see_your_tool_desc": "GAIAはMCP経由で50以上のツールに接続し、カスタムインテグレーションをサポートしています。今お使いのツールとGAIAを比較してみてください。"
+    "dont_see_your_tool_desc": "GAIAはMCP経由で多数のツールに接続し、カスタムインテグレーションをサポートしています。今お使いのツールとGAIAを比較してみてください。"
   },
   "comparisons": {
     "breadcrumb": "比較",
@@ -69,7 +70,7 @@
     "gaia_for_role_desc": "GAIAがさまざまな役割の専門家の生産性向上にどのように役立つかをご覧ください。",
     "hub_title": "GAIAの比較",
     "hub_subtitle": "正直で詳細な比較で、適切なAI生産性ツールを選ぶお手伝いをします。GAIAが優れている点と、他のツールが適している場合を確認しましょう。",
-    "hub_meta_title": "GAIA vs 競合 - AIアシスタント比較",
+    "hub_meta_title": "AIアシスタント比較：GAIA vs ChatGPT・Motionほか",
     "hub_meta_description": "GAIAとChatGPT、Gemini、Claude、Motion、n8n、Zapier、Reclaimなどの比較をご覧ください。正直で詳細な比較で適切なAI生産性ツールを選びましょう。"
   },
   "automate": {
@@ -106,7 +107,7 @@
     "gaia_for_role_desc": "GAIAがさまざまな役割の専門家をどのように支援するかをご覧ください",
     "hub_title": "AI & 生産性用語集",
     "hub_subtitle": "AIエージェント、自動化、現代の生産性ツールの背後にある主要なコンセプトを理解しましょう。GAIAがこれらの技術を使ってデジタルワークフローを管理する方法を学びましょう。",
-    "hub_meta_title": "AI & 生産性用語集 - 重要なコンセプトを学ぶ",
+    "hub_meta_title": "AI・生産性用語集：やさしい解説",
     "hub_meta_description": "AI、自動化、生産性に関する重要なコンセプトを学びましょう。AIエージェント、LangGraph、MCP、ベクトル埋め込み、ワークフロー自動化がGAIAなどの現代の生産性ツールをどのように支えているかを理解しましょう。",
     "category_ai_concepts": "AI & 機械学習",
     "category_productivity": "生産性向上手法",
@@ -135,11 +136,12 @@
     "learn_ai_concepts_desc": "GAIAと最新の生産性ツールを支えるAI技術とコンセプトを探索",
     "hub_title": "すべての役割のためのGAIA",
     "hub_subtitle": "すべてのプロフェッショナルには独自のワークフローと課題があります。GAIAはあなたの役割に合わせて適応し、既に使っているツールを接続し、時間を消耗するタスクを自動化します。",
-    "hub_meta_title": "すべての役割のためのGAIA - プロフェッショナル向けAIアシスタント",
+    "hub_meta_title": "職種別AIアシスタント：GAIAがあなたの仕事にどう役立つか",
     "hub_meta_description": "GAIAがソフトウェア開発者、プロダクトマネージャー、創業者、マーケターなど20以上の役割のワークフロー自動化と生産性向上をどう支援するかをご覧ください。",
     "featured_experiences": "注目のエクスペリエンス",
     "see_full_experience": "完全なエクスペリエンスを見る",
     "all_roles": "すべての役割",
-    "read_more": "もっと読む"
+    "read_more": "もっと読む",
+    "related_roles": "GAIAが支援するほかの職種"
   }
 }

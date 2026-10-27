@@ -214,6 +214,10 @@ result = run(cmd)  # noqa: S603 -- operator-supplied command is the feature
 const x: any = load(); // biome-ignore lint/suspicious/noExplicitAny: gallery-only demo
 ```
 
+A `biome-ignore` names the one rule it silences (`lint/<group>/<rule>`); a
+blanket `biome-ignore lint:` or `lint/<group>:` fails, because it hides every
+rule in reach, not the one that fired.
+
 The reason states the ROOT CAUSE (upstream typing gap, framework contract,
 deliberate choice). Another tool directive (``NOSONAR …``) is not a reason.
 The bar is presence; review judges quality.
@@ -391,7 +395,7 @@ Measured on the home box, every module under `app/utils` and `app/models`
 costs 6-15 s alone, because those layers import upward
 (`app.utils.chat_utils` -> `app.agents.llm.chatbot`). Gating today would red
 ~200 modules on a PR that caused none of them. Drop `--report` from the step
-in `code-quality.yml` and from `scripts/dev/verify-lanes.json` once the
+in `ci.yml` and from `scripts/dev/verify-lanes.json` once the
 layering is fixed — that is the whole change.
 
 ---
@@ -559,7 +563,7 @@ big enough to be a named helper or a paragraph in the PR — not a comment.
 
 **Rule:** every surface that runs a linter runs the version in the `EXPECTED`
 table of `check_tool_pins.py` — ruff, mypy, bandit, pip-audit, interrogate,
-xenon, biome. Surfaces: both pre-commit configs, `code-quality.yml`,
+xenon, biome. Surfaces: both pre-commit configs, `ci.yml`,
 `scripts/dev/verify-lanes.json`, the root `package.json` quality scripts,
 `apps/api/mise.toml`, the ignore-staleness guard's own ruff call, `uv.lock`,
 and for biome every `package.json` that declares it (exact, caret-free) plus
@@ -570,13 +574,12 @@ surfaces and compare them, there is exactly one declaration — `.node-version` 
 and every consumer derives from it: mise (root and every per-app `mise.toml`)
 via `idiomatic_version_file_enable_tools`, actions/setup-node in
 `setup-node-pnpm`, `publish-cli.yml` and `desktop-release.yml` via
-`node-version-file: .node-version`, and the Dagger base image, which reads the
-file at run time. The single permitted mirror is one `ARG NODE_VERSION` default
-per Dockerfile (`infra/docker/ci-base.Dockerfile`, `apps/web/Dockerfile`,
+`node-version-file: .node-version`. The single permitted mirror is one
+`ARG NODE_VERSION` default per Dockerfile (`infra/docker/ci-base.Dockerfile`, `apps/web/Dockerfile`,
 `apps/bots/Dockerfile`), because Docker cannot read a file in a `FROM` line.
 The guard fails on any other hardcoded node version anywhere in `mise.toml`,
-`apps/*/mise.toml`, `docs/mise.toml`, the workflows, the composite actions, the
-Dockerfiles or `.dagger/`.
+`apps/*/mise.toml`, `docs/mise.toml`, the workflows, the composite actions, or the
+Dockerfiles.
 
 Python and Rust follow the same shape. Python is declared in `.python-version`
 (uv and mise both read it) and mirrored by `ARG PYTHON_VERSION` in

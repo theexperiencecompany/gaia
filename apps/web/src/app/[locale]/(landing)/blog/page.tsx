@@ -13,9 +13,9 @@ import {
 } from "@/lib/seo";
 
 export const metadata: Metadata = generatePageMetadata({
-  title: "Blog",
+  title: "GAIA Blog: Product Updates and Engineering Notes",
   description:
-    "Read the latest updates, insights, and stories from the GAIA team. Learn about AI, productivity, open-source development, and our journey building the future of personal AI assistants.",
+    "Product updates, guides, and engineering notes from the team building GAIA, covering AI assistants, productivity, and how the product works inside.",
   path: "/blog",
   keywords: [
     "GAIA Blog",
@@ -51,9 +51,7 @@ export default async function BlogPage() {
       blogs.map((blog) => ({
         name: blog.title,
         url: `${siteConfig.url}/blog/${blog.slug}`,
-        description: blog.content.slice(0, 160),
       })),
-      "BlogPosting",
     );
 
     // Strip content before crossing the RSC→client boundary — BlogList only

@@ -13,7 +13,7 @@
 # literal via `must_not_communicate`. Synthetic fixtures, never real keys, and
 # they cannot do their job without them.
 #
-# .mutation-<pid>/ is a mutation-run workdir (scripts/ci/mutation.sh module): a
+# .mutation-<pid>/ is a mutation-run workdir (scripts/ci/mutation.py module): a
 # throwaway copy of app/ + tests/ + scripts/ plus mutmut's mutants/ tree. It is
 # gitignored and removed on exit, but one kept run was committed once, and every
 # finding in it was a COPY of a file already in the repo — including the eval
@@ -48,4 +48,13 @@ paths = [
 "apps/api/app/config/oauth_config.py",
   '''^apps/api/scripts/evals/data/''',
   '''(^|/)\.mutation-[0-9]+/''',
+]
+# Placeholders that are fixtures, never credentials, matched by exact value so a
+# real key anywhere still fails (a squash merge gives every finding a new commit
+# id, so commit allowlists do not hold): the IndexNow tests' sequential key
+# (scripts/ci/tests/test_indexnow.py) and the WorkOS settings test's made-up
+# sk_test_ key, which the stripe-access-token rule reads as a Stripe key.
+regexes = [
+  '''^0123456789abcdef0123456789abcdef$''',
+  '''sk_test_configured''',
 ]

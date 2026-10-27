@@ -34,9 +34,9 @@ export default function UseCasesPageClient({
         />
         <div id="community-section" className="mt-22 space-y-6">
           <div className="mb-14 text-center">
-            <h1 className="mb-1 font-serif text-3xl sm:text-5xl md:text-6xl font-normal">
+            <h2 className="mb-1 font-serif text-3xl sm:text-5xl md:text-6xl font-normal">
               Published by The Community
-            </h1>
+            </h2>
             <p className="mx-auto max-w-3xl text-lg text-zinc-300/80">
               Discover what others are building with GAIA
             </p>

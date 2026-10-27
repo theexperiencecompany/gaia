@@ -59,7 +59,7 @@ from app.constants.agents import (
     MAX_PLAYBOOK_DECISION_NUDGES,
     PLAYBOOK_DECISION_NUDGE_MESSAGE,
 )
-from app.constants.general import FINISH_TASK_NAME, NEW_MESSAGE_BREAKER
+from app.constants.general import FINISH_TASK_NAME
 from app.constants.llm import (
     COMPLETION_NUDGE_MESSAGE,
     LANE_FIELD_ID,
@@ -97,6 +97,7 @@ from app.override.langgraph_bigtool.utils import (
     pop_pruned_tombstones,
 )
 from app.utils.mcp_utils import canonical_tool_name_map
+from app.utils.message_breaks import normalize_message_breaks
 from app.utils.multimodal import extract_text_content
 from shared.py.wide_events import log
 
@@ -289,11 +290,11 @@ def _tools_to_bind(deps: _AgentDeps, state: State) -> list[BaseTool]:
 
 
 def _finalize_model_response(response: AIMessage, agent_name: str) -> AIMessage:
+    if agent_name == "comms_agent" and isinstance(response.content, str):
+        response.content = normalize_message_breaks(response.content)
+
     if not response.tool_calls and not response.content:
         response.content = "Empty response from model."
-
-    if isinstance(response.content, str) and agent_name == "comms_agent":
-        response.content = response.content + NEW_MESSAGE_BREAKER
 
     return response
 
@@ -658,6 +659,7 @@ async def areject_unbound_tools(tool_calls: list[dict[str, Any]], *, store: Base
 
 
 def finish_task_node(tool_calls: list[ToolCall], *, store: BaseStore) -> State:  # noqa: ARG001 -- langgraph injects store positionally at graph-execution time
+    """Answer each finish_task call with its result as the tool message."""
     messages = []
     for call in tool_calls:
         args = call.get("args", {}) if isinstance(call, dict) else {}
@@ -705,6 +707,7 @@ def _after_finish_task(exit_node: str) -> Callable[[State], str]:
 
 
 def nudge_continue_node(state: State) -> State:
+    """Append the nudge that sends the agent back to work before it may finish."""
     # The message IS the tally: completion_nudges_spent / playbook_nudges_spent
     # count these back out of the current delegation, so there is no counter
     # to keep in sync.
@@ -915,8 +918,8 @@ def create_agent(
     """Create a ReAct agent that starts with only a tool-retrieval tool and binds retrieved tools as it runs.
 
     hooks_config.require_finish_to_end nudges-and-loops instead of ending early
-    on an unfinished plain-text reply; agent_config.agent_name == "comms_agent"
-    appends NEW_MESSAGE_BREAKER to string replies.
+    on an unfinished plain-text reply; comms_agent string replies are stored
+    with their message breaks normalized.
     """
     tools = tools_config or ToolRetrievalConfig()
     hooks = hooks_config or HookConfig()

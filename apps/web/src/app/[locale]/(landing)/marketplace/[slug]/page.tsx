@@ -1,145 +1,56 @@
-import type { IntegrationsConfigResponse } from "@shared/api/generated";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { cache } from "react";
 import JsonLd from "@/components/seo/JsonLd";
+import { getTranslatedAlternative } from "@/features/alternatives/data/getTranslatedAlternative";
 import { getComparison } from "@/features/comparisons/data/comparisonsData";
-import type {
-  CommunityIntegration,
-  CommunityIntegrationsResponse,
-  PublicIntegrationResponse,
-} from "@/features/integrations/types";
+import { getAllCombos } from "@/features/integrations/data/combosData";
+import {
+  getAllCommunityIntegrations,
+  getCommunityIntegrations,
+  getIntegrationWorkflows,
+  getNativeIntegrations,
+  getPublicIntegration,
+} from "@/features/integrations/lib/serverMarketplaceApi";
+import type { CommunityIntegration } from "@/features/integrations/types";
+import { isRedirectedPath } from "@/lib/canonicalLinks";
+import {
+  getMarketplaceFallbackGuides,
+  MARKETPLACE_DOCS_LINKS,
+} from "@/lib/docs-links";
+import { prerenderedMarketingParams } from "@/lib/selfhost";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
   generateHowToSchema,
+  generatePageMetadata,
+  generateProOffer,
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
-import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
-
 import { IntegrationDetailClient } from "./client";
+import {
+  generateIntegrationDescription,
+  generateIntegrationTitle,
+} from "./integrationMeta";
 
 export const revalidate = 60;
-
-// Fetch integration data for metadata and page
-// Backend accepts both slug and UUID for backward compatibility
-const getIntegration = cache(
-  async (slug: string): Promise<PublicIntegrationResponse | null> => {
-    const baseUrl = getServerApiBaseUrl();
-    if (!baseUrl) return null;
-
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-      const response = await fetch(`${baseUrl}/integrations/public/${slug}`, {
-        next: { revalidate: 60 },
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) return null;
-      return (await response.json()) as PublicIntegrationResponse;
-    } catch (error) {
-      console.error(
-        `[marketplace/${slug}] Failed to fetch integration:`,
-        error,
-      );
-      return null;
-    }
-  },
-);
-
-// Fetch all integrations for static generation
-async function getAllIntegrations(): Promise<CommunityIntegration[]> {
-  const baseUrl = getServerApiBaseUrl();
-  if (!baseUrl) return [];
-
-  try {
-    const isDev = process.env.NODE_ENV === "development";
-
-    if (isDev) {
-      const response = await fetch(
-        `${baseUrl}/integrations/community?limit=50`,
-        { next: { revalidate: 60 } },
-      );
-      if (!response.ok) return [];
-      const data = (await response.json()) as CommunityIntegrationsResponse;
-      return data.integrations ?? [];
-    }
-
-    const { fetchAllPaginated } = await import("@/lib/fetchAll");
-    const allIntegrations = await fetchAllPaginated<CommunityIntegration>(
-      async (limit, offset) => {
-        const response = await fetch(
-          `${baseUrl}/integrations/community?limit=${limit}&offset=${offset}`,
-          { next: { revalidate: 60 } },
-        );
-        if (!response.ok) return { items: [], total: 0, hasMore: false };
-
-        const data = (await response.json()) as CommunityIntegrationsResponse;
-        return {
-          items: data.integrations ?? [],
-          total: data.total ?? 0,
-          hasMore: data.has_more !== false,
-        };
-      },
-      100,
-    );
-
-    return allIntegrations;
-  } catch (error) {
-    console.error("[marketplace] Failed to fetch integrations for SSG:", error);
-    return [];
-  }
-}
-
-async function getNativeIntegrationSlugs(): Promise<string[]> {
-  const baseUrl = getServerApiBaseUrl();
-  if (!baseUrl) return [];
-
-  try {
-    const response = await fetch(`${baseUrl}/integrations/config`, {
-      next: { revalidate: 60 },
-    });
-    if (!response.ok) return [];
-    const data = (await response.json()) as IntegrationsConfigResponse;
-    const slugs: string[] = [];
-    for (const integration of data.integrations) {
-      if (integration.id && integration.available !== false) {
-        slugs.push(integration.id);
-      }
-    }
-    return slugs;
-  } catch (error) {
-    console.error(
-      "[SSG Marketplace] Failed to fetch native integration slugs:",
-      error,
-    );
-    return [];
-  }
-}
 
 /**
  * Generate static params for all public integrations (community + native).
  * This enables search engines to crawl and index all integration pages.
  * Uses slug for SEO-friendly URLs.
  */
-export async function generateStaticParams() {
-  const [communityIntegrations, nativeSlugs] = await Promise.all([
-    getAllIntegrations(),
-    getNativeIntegrationSlugs(),
+async function allStaticParams() {
+  const [native, community] = await Promise.all([
+    getNativeIntegrations(),
+    getAllCommunityIntegrations(),
   ]);
+  const slugs = new Set([...native, ...community].map((item) => item.slug));
+  return [...slugs].map((slug) => ({ slug }));
+}
 
-  const communitySlugs = communityIntegrations.map(
-    (i: { slug: string }) => i.slug,
-  );
-
-  // Deduplicate by slug
-  const allSlugs = [...new Set([...communitySlugs, ...nativeSlugs])];
-  return allSlugs.map((slug) => ({ slug }));
+export function generateStaticParams() {
+  return prerenderedMarketingParams(allStaticParams);
 }
 
 export const dynamicParams = true;
@@ -148,62 +59,9 @@ interface Props {
   readonly params: Promise<{ readonly slug: string }>;
 }
 
-function generateIntegrationDescription(integration: {
-  name: string;
-  category: string;
-  description?: string;
-  toolCount?: number;
-}): string {
-  const name = integration.name;
-  const toolCount = integration.toolCount || 0;
-  const toolsNote = toolCount > 0 ? ` ${toolCount} actions available.` : "";
-
-  const categoryDescriptions: Record<string, string> = {
-    email: `GAIA reads and triages your ${name} inbox, drafts context-aware replies, auto-labels threads, and creates tasks from emails, automatically, without manual prompts.${toolsNote}`,
-    calendar: `GAIA schedules meetings, prepares pre-meeting briefings, finds free slots, and manages your ${name} calendar proactively, triggered by email, conversation, or automation.${toolsNote}`,
-    task: `GAIA creates, updates, and prioritizes ${name} tasks automatically from your emails, calendar events, and conversations, no copy-pasting required.${toolsNote}`,
-    tasks: `GAIA creates, updates, and prioritizes ${name} tasks automatically from your emails, calendar events, and conversations, no copy-pasting required.${toolsNote}`,
-    productivity: `GAIA connects ${name} to your email, calendar, and workflows, automating the repetitive parts so you can focus on deep work.${toolsNote}`,
-    communication: `GAIA monitors your ${name} channels, summarizes threads, surfaces what needs your attention, and creates tasks from messages, automatically.${toolsNote}`,
-    crm: `GAIA updates ${name} contacts and deals automatically from email threads, meeting notes, and calendar events, keeping your CRM current without manual entry.${toolsNote}`,
-    notes: `GAIA saves meeting notes, email summaries, and task context directly to ${name}, automatically building your knowledge base without copy-pasting.${toolsNote}`,
-    development: `GAIA creates ${name} issues from email threads, tracks PR status, prepares standup summaries, and syncs your engineering workflow with your calendar.${toolsNote}`,
-    automation: `GAIA triggers ${name} workflows from natural language, describe what you want to automate, and GAIA handles the execution across your connected tools.${toolsNote}`,
-    storage: `GAIA organizes files and documents in ${name} automatically, saving meeting notes, email attachments, and project artifacts in the right place.${toolsNote}`,
-    finance: `GAIA tracks ${name} activity, summarizes transactions, creates follow-up tasks from financial events, and integrates your financial data into your workflow.${toolsNote}`,
-    marketing: `GAIA automates ${name} tasks from email campaigns, tracks results, and creates follow-up workflows, connecting your marketing tool to your full productivity stack.${toolsNote}`,
-  };
-
-  const categoryKey = integration.category?.toLowerCase();
-  if (categoryKey && categoryDescriptions[categoryKey]) {
-    return categoryDescriptions[categoryKey];
-  }
-
-  return `Connect ${name} to GAIA and automate your workflows with AI. GAIA proactively manages your email, calendar, tasks, and connected tools, including ${name}.${toolsNote} Free MCP integration.`;
-}
-
-function generateIntegrationTitle(name: string, category: string): string {
-  // The layout title template appends "| GAIA" — never include the brand here,
-  // and keep titles short enough to survive SERP truncation (~60 chars).
-  const categoryTitles: Record<string, string> = {
-    email: `${name} AI Email Integration: Auto-Triage & Replies`,
-    calendar: `${name} AI Calendar Integration: Smart Scheduling`,
-    task: `${name} AI Task Integration: Auto-Create Tasks`,
-    tasks: `${name} AI Task Integration: Auto-Create Tasks`,
-    communication: `${name} AI Integration: Monitor & Summarize Messages`,
-    crm: `${name} AI CRM Integration: Auto-Update Contacts & Deals`,
-    development: `${name} AI Integration: Automate Engineering Workflows`,
-    notes: `${name} AI Notes Integration: Auto-Save Notes & Summaries`,
-  };
-  const key = category?.toLowerCase();
-  return (
-    categoryTitles[key] ?? `${name} AI Integration: Automate ${name} Workflows`
-  );
-}
-
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
-  const integration = await getIntegration(slug);
+  const integration = await getPublicIntegration(slug);
 
   if (!integration) {
     return {
@@ -211,24 +69,16 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     };
   }
 
-  const url = `${siteConfig.url}/marketplace/${slug}`;
-  const ogImage = `/api/og/integration?slug=${slug}`;
   const integrationName = integration.name;
   const categoryLabel =
     integration.category.charAt(0).toUpperCase() +
     integration.category.slice(1);
 
-  const seoDescription = generateIntegrationDescription(integration);
-
-  const title = generateIntegrationTitle(integrationName, integration.category);
-  const ogTitle = `${integrationName} AI Integration - Connect ${integrationName} to Your AI Assistant`;
-
-  return {
-    title,
-    description: seoDescription,
-    alternates: {
-      canonical: url,
-    },
+  return generatePageMetadata({
+    title: generateIntegrationTitle(integration),
+    description: generateIntegrationDescription(integration),
+    path: `/marketplace/${slug}`,
+    image: `/api/og/integration?slug=${slug}`,
     keywords: [
       integrationName,
       `AI assistant for ${integrationName}`,
@@ -238,36 +88,19 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       `${integrationName} MCP server`,
       `connect ${integrationName} to AI`,
       "MCP integration",
-      "AI integration",
-      "AI agents",
       "Model Context Protocol",
       `${categoryLabel} AI tools`,
       `${categoryLabel} automation`,
       "GAIA integrations",
-      "GAIA",
-    ].filter(Boolean),
-    openGraph: {
-      title: ogTitle,
-      description: seoDescription,
-      url,
-      siteName: siteConfig.fullName,
-      images: [{ url: ogImage, width: 1200, height: 630 }],
-      type: "website",
-    },
-    twitter: {
-      card: "summary_large_image",
-      title: ogTitle,
-      description: seoDescription,
-      images: [ogImage],
-    },
-  };
+    ],
+  });
 }
 
 export default async function IntegrationPage({ params }: Props) {
   const { slug } = await params;
   // Independent fetches — run in parallel to save a round-trip on the happy path.
   const [integration, comparison] = await Promise.all([
-    getIntegration(slug),
+    getPublicIntegration(slug),
     getComparison(slug),
   ]);
 
@@ -294,6 +127,7 @@ export default async function IntegrationPage({ params }: Props) {
     `Automate ${integration.name} with GAIA AI assistant. Connect ${integration.name} to your AI-powered workflow with ${integration.toolCount || 0} available tools.`,
     pageUrl,
     breadcrumbItems,
+    integration.publishedAt ?? undefined,
   );
 
   const integrationSchema = {
@@ -305,11 +139,7 @@ export default async function IntegrationPage({ params }: Props) {
     applicationCategory: "Integration",
     applicationSubCategory: categoryLabel,
     operatingSystem: "Web",
-    offers: {
-      "@type": "Offer" as const,
-      price: "0",
-      priceCurrency: "USD",
-    },
+    offers: generateProOffer(),
     ...(integration.creator?.name && {
       author: {
         "@type": "Person" as const,
@@ -323,50 +153,34 @@ export default async function IntegrationPage({ params }: Props) {
     }),
   };
 
-  const howToSchema = generateHowToSchema(
-    `How to automate ${integration.name} with GAIA`,
-    `Connect ${integration.name} to GAIA and start automating your ${categoryLabel.toLowerCase()} workflows in plain English, no code required.`,
-    [
-      {
-        name: `Connect ${integration.name} to GAIA`,
-        text: `Open the GAIA Marketplace, find the ${integration.name} integration, and click "Add to your GAIA". Authorise access via OAuth or bearer token in under two minutes.`,
-      },
-      {
-        name: "Tell GAIA what to automate in plain English",
-        text: `Describe the task you want to automate in natural language. For example: "summarise my ${integration.name} activity every morning" or "notify me on Slack when a new ${categoryLabel.toLowerCase()} event happens in ${integration.name}".`,
-      },
-      {
-        name: "GAIA handles it automatically, 24/7",
-        text: `GAIA runs your ${integration.name} automations in the background around the clock, delivering results to you without any manual intervention or scripts to maintain.`,
-      },
-    ],
-  );
+  // Both schemas mirror the stored content the page renders, and are omitted with it.
+  const { howItWorks = [], faqs = [] } = integration.content ?? {};
+  const contentSchemas = [
+    ...(howItWorks.length > 0
+      ? [
+          generateHowToSchema(
+            `How to automate ${integration.name} with GAIA`,
+            `Connect ${integration.name} to GAIA and automate it in plain English, no code required.`,
+            howItWorks.map((step) => ({ name: step.title, text: step.body })),
+          ),
+        ]
+      : []),
+    ...(faqs.length > 0 ? [generateFAQSchema(faqs)] : []),
+  ];
 
-  const toolsText =
-    integration.toolCount > 0
-      ? `all ${integration.toolCount} ${integration.name} tools`
-      : `the available ${integration.name} tools`;
+  const comparisonSlug =
+    comparison && !isRedirectedPath(`/compare/${slug}`) ? slug : undefined;
 
-  const faqSchema = generateFAQSchema([
-    {
-      question: `How do I connect ${integration.name} to GAIA?`,
-      answer: `Connecting ${integration.name} to GAIA takes under two minutes. Open the GAIA Marketplace, find the ${integration.name} integration, and click "Add to your GAIA". Depending on the integration type, you will be redirected to an OAuth consent screen or asked to paste a bearer token. Once authorised, GAIA immediately gains access to all ${integration.name} tools.`,
-    },
-    {
-      question: `Is the ${integration.name} integration free?`,
-      answer: `Community integrations like ${integration.name} are included with every GAIA plan at no extra charge — connect it, run automations, and use all available tools as part of your subscription. Paid plans unlock higher usage limits and advanced workflow features.`,
-    },
-    {
-      question: `What can GAIA do with ${integration.name}?`,
-      answer: `GAIA exposes ${toolsText} to its AI agent, meaning you can perform any ${categoryLabel.toLowerCase()} action supported by ${integration.name} by describing it in plain English. GAIA can also combine ${integration.name} with other connected integrations to build cross-tool automations.`,
-    },
-    {
-      question: `Does GAIA's ${integration.name} integration work on mobile?`,
-      answer: `Absolutely. GAIA runs on web, desktop (macOS and Windows), and mobile (iOS and Android). Your ${integration.name} integration is available across all platforms with your account.`,
-    },
-  ]);
-
-  const comparisonSlug = comparison ? slug : undefined;
+  // Same-category siblings and related workflows, fetched server-side so
+  // crawlers see real links in the SSR HTML instead of client-only orphans.
+  // Combos and the alternative guide come from local JSON (no backend).
+  const [relatedIntegrations, relatedWorkflows, automateCombos, alternative] =
+    await Promise.all([
+      getRelatedIntegrations(integration.category, slug),
+      getIntegrationWorkflows(integration.integrationId, 4),
+      getAutomateCombos(slug),
+      getTranslatedAlternative(slug),
+    ]);
 
   return (
     <>
@@ -375,14 +189,58 @@ export default async function IntegrationPage({ params }: Props) {
           webPageSchema,
           breadcrumbSchema,
           integrationSchema,
-          howToSchema,
-          faqSchema,
+          ...contentSchemas,
         ]}
       />
       <IntegrationDetailClient
         integration={integration}
         comparisonSlug={comparisonSlug}
+        alternativeSlug={
+          alternative && !isRedirectedPath(`/alternative-to/${slug}`)
+            ? slug
+            : undefined
+        }
+        initialRelatedIntegrations={relatedIntegrations}
+        initialRelatedWorkflows={relatedWorkflows}
+        automateCombos={automateCombos}
+        docsGuides={
+          MARKETPLACE_DOCS_LINKS[slug] ?? getMarketplaceFallbackGuides()
+        }
       />
     </>
   );
+}
+
+/** Automate combos featuring this tool. The list is _slugs-driven, so
+ * consolidated victims never appear — no marker filter needed. */
+async function getAutomateCombos(
+  slug: string,
+): Promise<
+  Array<{ slug: string; toolA: string; toolB: string; tagline: string }>
+> {
+  const combos = await getAllCombos();
+  return combos
+    .filter((combo) => combo.toolASlug === slug || combo.toolBSlug === slug)
+    .slice(0, 6)
+    .map((combo) => ({
+      slug: combo.slug,
+      toolA: combo.toolA,
+      toolB: combo.toolB,
+      tagline: combo.tagline,
+    }));
+}
+
+/** Same-category siblings for SSR related-links (excludes the current page). */
+async function getRelatedIntegrations(
+  category: string,
+  slug: string,
+): Promise<CommunityIntegration[]> {
+  const page = await getCommunityIntegrations({
+    category,
+    sort: "popular",
+    limit: 7,
+  });
+  return (page?.integrations ?? [])
+    .filter((integration) => integration.slug !== slug)
+    .slice(0, 6);
 }

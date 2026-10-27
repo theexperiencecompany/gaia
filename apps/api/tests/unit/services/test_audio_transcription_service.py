@@ -15,6 +15,7 @@ from app.services.audio_transcription_service import (
     transcribe_audio,
     validate_audio_payload,
 )
+from app.services.providers.provider_credentials_service import ProviderConfig
 
 
 class TestValidateAudioPayload:
@@ -68,7 +69,56 @@ class TestTranscribeAudio:
     """Tests for transcribe_audio's Whisper call and transcript handling."""
 
     @patch("app.services.audio_transcription_service.AsyncOpenAI")
-    async def test_returns_trimmed_transcript(self, mock_client_cls: MagicMock):
+    @patch("app.services.audio_transcription_service.resolve_openai_config")
+    async def test_uses_the_stored_credential_key(
+        self,
+        mock_resolve: MagicMock,
+        mock_client_cls: MagicMock,
+    ):
+        """Pass a Settings-stored key explicitly; the SDK must not need the env var."""
+        mock_resolve.return_value = ProviderConfig(
+            api_key="sk-stored",
+        )
+        mock_instance = MagicMock()
+        mock_instance.audio.transcriptions.create = AsyncMock(return_value=MagicMock(text="hi"))
+        mock_client_cls.return_value = mock_instance
+
+        result = await transcribe_audio(
+            audio_bytes=b"bytes", filename="voice.ogg", content_type="audio/ogg"
+        )
+
+        assert result == "hi"
+        assert mock_client_cls.call_args.kwargs["api_key"] == "sk-stored"
+        mock_resolve.assert_awaited_once_with("openai")
+
+    @patch("app.services.audio_transcription_service.AsyncOpenAI")
+    @patch("app.services.audio_transcription_service.resolve_openai_config")
+    async def test_falls_back_to_env_when_nothing_is_stored(
+        self,
+        mock_resolve: MagicMock,
+        mock_client_cls: MagicMock,
+    ):
+        # resolve() already applies the service's env fallback internally, so
+        # its None result means neither store nor env has a key.
+        mock_resolve.return_value = None
+
+        with pytest.raises(RuntimeError) as refused:
+            await transcribe_audio(
+                audio_bytes=b"bytes", filename="voice.ogg", content_type="audio/ogg"
+            )
+        mock_client_cls.assert_not_called()
+        assert str(refused.value) == (
+            "OpenAI is not configured: store an OpenAI credential in Settings "
+            "or set OPENAI_API_KEY to transcribe audio."
+        )
+
+    @patch("app.services.audio_transcription_service.AsyncOpenAI")
+    @patch("app.services.audio_transcription_service.resolve_openai_config")
+    async def test_returns_trimmed_transcript(
+        self,
+        _mock_resolve: MagicMock,
+        mock_client_cls: MagicMock,
+    ):
         # AsyncOpenAI() returns a client whose .audio.transcriptions.create is async
         transcript = MagicMock(text="  buy milk on the way home  ")
         mock_create = AsyncMock(return_value=transcript)
@@ -93,6 +143,10 @@ class TestTranscribeAudio:
         assert kwargs["file"][2] == "audio/ogg"
 
     @patch("app.services.audio_transcription_service.AsyncOpenAI")
+    @patch(
+        "app.services.audio_transcription_service.resolve_openai_config",
+        new=AsyncMock(return_value=ProviderConfig(api_key="sk-stored")),
+    )
     async def test_returns_empty_string_for_empty_response(self, mock_client_cls: MagicMock):
         mock_instance = MagicMock()
         mock_instance.audio.transcriptions.create = AsyncMock(return_value=MagicMock(text=None))

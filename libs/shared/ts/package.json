@@ -15,6 +15,7 @@
     "./bridge-core/*": "./src/bridge-core/*.ts",
     "./bots": "./src/bots/index.ts",
     "./chat": "./src/chat/index.ts",
+    "./constants/*": "./src/constants/*.ts",
     "./cli": "./src/cli/index.ts",
     "./desktop-tools": "./src/desktop-tools/index.ts",
     "./icons": "./src/icons/index.ts",
@@ -39,6 +40,7 @@
     "./todos": "./src/todos/index.ts",
     "./utils/dateUtils": "./src/utils/dateUtils.ts",
     "./utils/auth": "./src/utils/auth.ts",
+    "./utils/sessionCookies": "./src/utils/sessionCookies.ts",
     "./hooks": "./src/hooks/index.ts"
   },
   "scripts": {

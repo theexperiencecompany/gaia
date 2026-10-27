@@ -3,7 +3,7 @@
 
 The whole point of pinning is that "passed locally" means "passes CI". This
 check fails when the versions drift apart across the surfaces in SURFACES:
-both pre-commit configs, code-quality.yml, the local lane table
+both pre-commit configs, ci.yml, the local lane table
 (scripts/dev/verify-lanes.json), the root package.json quality scripts, the
 api mise tasks and taskipy scripts, the ignore-staleness guard's own ruff
 invocation, uv.lock, for biome pnpm-lock.yaml plus every biome.json schema, and
@@ -12,7 +12,7 @@ for uv itself mise.toml, the setup-uv action and the app Dockerfiles.
 Node is the exception to the EXPECTED table, because it is derived rather than
 repeated: ``.node-version`` is the single declaration, mise reads it (via
 ``idiomatic_version_file_enable_tools``), actions/setup-node reads it (via
-``node-version-file``) and the Dagger image reads it at run time. The only
+``node-version-file``). The only
 permitted mirror is one ``ARG NODE_VERSION`` default per Dockerfile, since
 Docker cannot read a file in a FROM line. Any other hardcoded node version in
 the scanned surfaces is a failure.
@@ -50,8 +50,9 @@ REPO_ROOT = _HERE.parents[1]
 
 PRE_COMMIT = REPO_ROOT / "apps/api/.pre-commit-config.yaml"
 ROOT_PRE_COMMIT = REPO_ROOT / ".pre-commit-config.yaml"
-CODE_QUALITY = REPO_ROOT / ".github/workflows/code-quality.yml"
+CI_WORKFLOW = REPO_ROOT / ".github/workflows/ci.yml"
 VERIFY_LANES = REPO_ROOT / "scripts/dev/verify-lanes.json"
+AUDIT_SH = REPO_ROOT / "scripts/ci/audit.sh"
 ROOT_PACKAGE_JSON = REPO_ROOT / "package.json"
 ROOT_MISE = REPO_ROOT / "mise.toml"
 API_MISE = REPO_ROOT / "apps/api/mise.toml"
@@ -69,15 +70,13 @@ NODE_FILE_REFERENCE_SURFACES = (
     REPO_ROOT / ".github/workflows/publish-cli.yml",
     REPO_ROOT / ".github/workflows/desktop-release.yml",
 )
-# Docker cannot read a file in a FROM line, and the Dagger module would need its
-# sync container builders turned async to read one. Both therefore carry a
-# single mirrored literal, and the guard ties each one back to .node-version so
-# a stale mirror fails CI instead of shipping.
+# Docker cannot read a file in a FROM line, so each Dockerfile carries a single
+# mirrored literal, and the guard ties each one back to .node-version so a stale
+# mirror fails CI instead of shipping.
 NODE_MIRRORS = (
     (REPO_ROOT / "infra/docker/ci-base.Dockerfile", r"^ARG\s+NODE_VERSION=(\d+\.\d+\.\d+)\s*$"),
     (REPO_ROOT / "apps/web/Dockerfile", r"^ARG\s+NODE_VERSION=(\d+\.\d+\.\d+)\s*$"),
     (REPO_ROOT / "apps/bots/Dockerfile", r"^ARG\s+NODE_VERSION=(\d+\.\d+\.\d+)\s*$"),
-    (REPO_ROOT / ".dagger/src/gaia_ci/main.py", r'\.from_\("node:(\d+\.\d+\.\d+)-'),
 )
 # Every Dockerfile that must take its tag from the ARG rather than restating it.
 NODE_DOCKERFILES = (
@@ -94,7 +93,6 @@ NODE_LITERAL_SCAN = (
     ".github/actions/*/action.yml",
     "**/Dockerfile",
     "**/*.Dockerfile",
-    ".dagger/src/**/*.py",
 )
 _NODE_SKIP = ("node_modules", ".venv", ".git", ".nx", ".next", "dist")
 UV_DOCKERFILES = (
@@ -115,8 +113,8 @@ EXPECTED = {
     "pip-audit": "2.10.1",
     "interrogate": "1.7.0",
     "xenon": "0.9.3",
-    "biome": "2.5.7",
-    "uv": "0.10.6",
+    "biome": "2.6.2",
+    "uv": "0.12.23",
 }
 
 # Where each expectation must literally appear. Values are the module
@@ -132,17 +130,18 @@ SURFACES = {
     "ruff": (
         "PRE_COMMIT",
         "ROOT_PRE_COMMIT",
-        "CODE_QUALITY",
+        "CI_WORKFLOW",
         "IGNORE_STALENESS",
         "UV_LOCK",
         "ROOT_MISE",
     ),
     # The api mypy hook runs `uv run mypy`, so the lockfile IS the pin.
     "mypy": ("UV_LOCK",),
-    "bandit": ("PRE_COMMIT", "CODE_QUALITY", "VERIFY_LANES", "API_MISE", "API_PYPROJECT"),
-    "pip-audit": ("PRE_COMMIT", "CODE_QUALITY", "VERIFY_LANES", "API_MISE", "API_PYPROJECT"),
-    "interrogate": ("CODE_QUALITY", "VERIFY_LANES", "ROOT_PACKAGE_JSON"),
-    "xenon": ("CODE_QUALITY", "VERIFY_LANES", "ROOT_PACKAGE_JSON"),
+    "bandit": ("PRE_COMMIT", "CI_WORKFLOW", "VERIFY_LANES", "API_MISE", "API_PYPROJECT"),
+    # CI and the local lane both run `audit.sh pip`, which carries the pin.
+    "pip-audit": ("PRE_COMMIT", "AUDIT_SH", "API_MISE", "API_PYPROJECT"),
+    "interrogate": ("CI_WORKFLOW", "VERIFY_LANES", "ROOT_PACKAGE_JSON"),
+    "xenon": ("CI_WORKFLOW", "VERIFY_LANES", "ROOT_PACKAGE_JSON"),
     # package.json keeps syncpack's caret policy; the version pnpm-lock.yaml
     # resolved is the pin, and every biome.json $schema must name that release.
     "biome": ("PNPM_LOCK", "BIOME_CONFIGS"),
@@ -210,7 +209,7 @@ def _missing(tool: str, version: str) -> list[Path]:
 # The node version used to be restated on nine surfaces across four commits and
 # they drifted. It is now declared once in .node-version, which mise reads
 # (via idiomatic_version_file_enable_tools), actions/setup-node reads (via
-# node-version-file) and the Dagger image reads at run time. These checks turn a
+# node-version-file). These checks turn a
 # second declaration into a build failure instead of a bad afternoon later.
 _NODE_FILE_FORM = re.compile(r"^\d+\.\d+\.\d+$")
 _NODE_FILE_REF = re.compile(r"""node-version-file:\s*['"]?\.node-version""")
@@ -246,7 +245,6 @@ _PNPM_MIRRORS = (
     ),
     (REPO_ROOT / "apps/web/Dockerfile", r"corepack prepare pnpm@(\d+\.\d+\.\d+)"),
     (REPO_ROOT / "apps/bots/Dockerfile", r"corepack prepare pnpm@(\d+\.\d+\.\d+)"),
-    (REPO_ROOT / ".dagger/src/gaia_ci/main.py", r"corepack prepare pnpm@(\d+\.\d+\.\d+)"),
     (
         REPO_ROOT / ".github/actions/setup-node-pnpm/action.yml",
         r'PNPM_VERSION:\s*"(\d+\.\d+\.\d+)"',
@@ -497,13 +495,17 @@ def _node_violations() -> list[Violation]:
 
 # ── Python and Rust: the same single-declaration shape ───────────────────────
 # Python is declared in .python-version (uv and mise both read it) and mirrored
-# in the two images. Rust has no idiomatic file, so mise.toml declares it and
+# in the three images. Rust has no idiomatic file, so mise.toml declares it and
 # the api image mirrors it. apps/api/.python-version used to pin 3.12.11 while
 # the root said 3.12.15, which is exactly the drift the stray scan catches.
 PYTHON_VERSION_FILE = REPO_ROOT / ".python-version"
 PYTHON_MIRRORS = (
     (REPO_ROOT / "apps/api/Dockerfile", r"ARG\s+PYTHON_VERSION=(\d+\.\d+\.\d+)"),
     (REPO_ROOT / "apps/voice-agent/Dockerfile", r"ARG\s+PYTHON_VERSION=(\d+\.\d+\.\d+)"),
+    (
+        REPO_ROOT / "apps/api/app/services/sandbox/local_sandbox.Dockerfile",
+        r"ARG\s+PYTHON_VERSION=(\d+\.\d+\.\d+)",
+    ),
 )
 RUST_MIRRORS = ((REPO_ROOT / "apps/api/Dockerfile", r"ARG\s+RUST_VERSION=(\d+\.\d+\.\d+)"),)
 PYTHON_FROM = re.compile(r"^FROM\s+python:\$\{PYTHON_VERSION\}", re.MULTILINE)

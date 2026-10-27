@@ -1,1 +1,125 @@
-{"slug":"sanebox","name":"SaneBox","domain":"sanebox.com","category":"email","tagline":"AI email filtering that prioritizes your inbox automatically","painPoints":["Only filters and organizes email — cannot draft, reply, or take action","Expensive for what is essentially a smart email filter ($7–$36/month)","No calendar, task, or workflow integration","Works on top of your email client rather than replacing it","AI filtering requires training over days or weeks to be accurate"],"metaTitle":"Best SaneBox Alternative in 2026","metaDescription":"SaneBox only filters email. GAIA is a proactive AI assistant that manages email, creates tasks, and handles your calendar. Free tier + open-source self-hosting.","keywords":["sanebox alternative","best sanebox alternative","sanebox replacement","ai inbox filter","sanebox vs gaia","smart email management","free sanebox alternative","open source sanebox alternative","self-hosted sanebox alternative","sanebox alternative for individuals","sanebox alternative 2026","AI email triage","inbox zero AI","email management AI"],"whyPeopleLook":"SaneBox is effective at separating important email from noise, but its intelligence stops at filtering. It moves email to folders but does not tell you what to do with those emails, cannot draft replies, and has no awareness of your tasks or calendar. Users who want a more active AI email partner — one that summarizes threads, drafts replies, creates tasks, and connects email to the rest of their workflow — quickly outgrow SaneBox.","gaiaFitScore":5,"gaiaReplaces":["Intelligent inbox triage beyond folder sorting","Email summarization for long threads and digests","Task creation from emails that require follow-up action","Follow-up nudges when you haven't replied to important threads","Calendar event creation from scheduling emails"],"gaiaAdvantages":["Takes action on email rather than just organizing it","Full calendar and task integration beyond email filtering","Proactive: surfaces urgent emails before you ask","Open-source with self-hosting for complete data privacy","Free tier includes meaningful email AI capabilities"],"migrationSteps":["Cancel SaneBox and reconnect your inbox to GAIA via Gmail OAuth","Configure GAIA's inbox monitoring and priority preferences","Enable auto-task creation from emails requiring action","Use GAIA's daily email briefing to replace SaneBox digest summaries"],"faqs":[{"question":"Does GAIA filter and organize email like SaneBox?","answer":"GAIA triages email proactively and can categorize and prioritize messages. Rather than moving email to folders automatically, GAIA surfaces what needs your attention and can take action — drafting replies, creating tasks, and scheduling meetings."},{"question":"Is GAIA more expensive than SaneBox?","answer":"SaneBox starts at $7/month for basic filtering. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month but includes active email management, calendar, tasks, memory, and 50+ integrations. Self-hosted GAIA is free."},{"question":"Can GAIA train on my email patterns like SaneBox?","answer":"GAIA's memory system learns from your preferences and communication patterns over time, adjusting its triage and drafting to match how you work. This is more sophisticated than SaneBox's folder-based training."},{"question":"Does GAIA work with email clients other than Gmail?","answer":"GAIA's native integration is with Gmail. Other email providers can be connected via MCP integrations. SaneBox supports a wider range of email providers natively."}]}
+{
+  "slug": "sanebox",
+  "name": "SaneBox",
+  "domain": "sanebox.com",
+  "category": "email",
+  "tagline": "The best SaneBox alternative depends on the job: free built-in filters, a bulk inbox cleaner, a new email client, or GAIA to act on the email that matters",
+  "painPoints": [
+    "Only filters and organizes email, cannot draft, reply, or take action",
+    "Expensive for what is essentially a smart email filter",
+    "No calendar, task, or workflow integration",
+    "Works on top of your email client rather than replacing it",
+    "AI filtering requires training over days or weeks to be accurate"
+  ],
+  "metaTitle": "SaneBox Alternatives in {{CURRENT_YEAR}}: AI That Acts, Not Just Filters",
+  "metaDescription": "SaneBox only filters your inbox. GAIA sorts email, drafts replies, and creates tasks and calendar events. Compare pricing and switch steps.",
+  "keywords": [
+    "sanebox alternative",
+    "best sanebox alternative",
+    "sanebox replacement",
+    "ai inbox filter",
+    "smart email management",
+    "source-available sanebox alternative",
+    "self-hosted sanebox alternative",
+    "sanebox alternative for individuals",
+    "sanebox alternative {{CURRENT_YEAR}}",
+    "AI email triage",
+    "inbox zero AI",
+    "email management AI"
+  ],
+  "whyPeopleLook": "SaneBox is a paid filtering service that sits on top of your existing mailbox (Gmail, Outlook, iCloud, or any IMAP account). It looks at message headers rather than message bodies, moves low-priority mail into folders such as SaneLater and SaneNews, and sends a digest of what it moved. People look for SaneBox alternatives for three reasons: they want something cheaper or free, they no longer want a separate subscription just for filtering, or they want an assistant that does something with the important email instead of only sorting it. Pick the alternative by which of those you are after.\n\nIf you only want sorting, and want it cheaper: start with what your mailbox already includes at no cost. Gmail's inbox categories (Primary, Promotions, Social, Updates) plus filters, and Outlook's Focused Inbox, cover much of what SaneBox does. Add an unsubscribe pass on the senders you never read and most of the noise is gone.\n\nIf you want a one-off cleanup: inbox cleaners such as Clean Email and Mailstrom group your mail by sender so you can archive, delete, or unsubscribe in bulk, and set rules for future mail from those senders.\n\nIf you are willing to change email apps: Superhuman, Shortwave, Spark, and HEY each sort mail inside their own client, with split inboxes, a smart inbox, or HEY's Screener for first-time senders. The sorting comes with the app you read email in. HEY is its own email service, so it also means a new address.\n\nIf you want the important email handled, not just found: that is where GAIA fits. GAIA connects to Gmail or Outlook, reads the content of each message, and acts on it: it drafts replies, turns requests into todos, puts meetings on your calendar, and sends you a briefing of what needs a decision. A workflow that runs on new Gmail mail can label, summarize, or route messages as they arrive. GAIA does not copy SaneBox's folder training or its IMAP support. If your mail is on iCloud, Yahoo, or another IMAP-only provider, SaneBox works there and GAIA cannot connect.",
+  "gaiaFitScore": 5,
+  "gaiaReplaces": [
+    "Intelligent inbox triage beyond folder sorting",
+    "Email summarization for long threads and digests",
+    "Task creation from emails that require follow-up action",
+    "Follow-up nudges when you haven't replied to important threads",
+    "Calendar event creation from scheduling emails"
+  ],
+  "gaiaAdvantages": [
+    "Takes action on email rather than just organizing it",
+    "Full calendar and task integration beyond email filtering",
+    "Proactive: surfaces urgent emails before you ask",
+    "Source-available with self-hosting for complete data privacy",
+    "Acts on important email instead of only filtering it"
+  ],
+  "migrationSteps": [
+    "Connect Gmail or Outlook to GAIA from the integrations page. SaneBox can keep running while you compare the two for a week.",
+    "Tell GAIA who and what matters (key people, clients, keywords) and what it can ignore. It keeps these preferences in memory.",
+    "Create a workflow that runs on new Gmail mail, for example: \"If an email needs a reply from me, add a todo and draft a response. If it is a newsletter, label it Read Later.\"",
+    "Schedule a daily email briefing workflow to replace the SaneBox digest.",
+    "After you cancel SaneBox, its folders (SaneLater, SaneNews, and the rest) remain in your mailbox as ordinary folders or labels. Move anything you need back to the inbox, then delete the empty folders."
+  ],
+  "faqs": [
+    {
+      "question": "Does GAIA filter and organize email like SaneBox?",
+      "answer": "GAIA triages email proactively and can categorize and prioritize messages. Rather than moving email to folders automatically, GAIA surfaces what needs your attention and can take action, drafting replies, creating tasks, and scheduling meetings."
+    },
+    {
+      "question": "Is GAIA more expensive than SaneBox?",
+      "answer": "SaneBox is a paid service for filtering only. GAIA Pro is ${{PRO_MONTHLY_PRICE}}/month with active email management, calendar, tasks, memory, and the rest of your tools included. Self-hosted GAIA is free for non-commercial use (plus your own model API costs)."
+    },
+    {
+      "question": "Can GAIA train on my email patterns like SaneBox?",
+      "answer": "GAIA's memory system learns from your preferences and communication patterns over time, adjusting its triage and drafting to match how you work. This is more sophisticated than SaneBox's folder-based training."
+    },
+    {
+      "question": "Does GAIA work with email clients other than Gmail?",
+      "answer": "GAIA connects natively to Gmail and Outlook. It has no generic IMAP connection, so iCloud, Yahoo, Fastmail, and other IMAP-only accounts are not supported. SaneBox works with any IMAP account, so for those providers SaneBox is the better fit."
+    },
+    {
+      "question": "What is the best free SaneBox alternative?",
+      "answer": "For sorting alone, the free option is the one built into your mailbox: Gmail's inbox categories and filters, or Outlook's Focused Inbox. If you also want help with the email that matters (drafting replies, creating tasks, scheduling meetings), GAIA connects to Gmail or Outlook; it is a paid plan at ${{PRO_MONTHLY_PRICE}}/month, or free to self-host for non-commercial use."
+    },
+    {
+      "question": "Who are SaneBox's main competitors?",
+      "answer": "It depends on the job. For bulk cleanup and unsubscribing: Clean Email and Mailstrom. For an email app that sorts mail itself: Superhuman, Shortwave, Spark, and HEY. For an assistant that reads email and takes action across your calendar and tasks: GAIA."
+    },
+    {
+      "question": "Can I use GAIA and SaneBox together?",
+      "answer": "Yes. SaneBox keeps moving low-priority mail out of your inbox, and GAIA works on what is left: drafting replies, turning requests into todos, and scheduling meetings. GAIA reads your whole mailbox, including SaneBox's folders, so you can also ask it what landed in SaneLater this week."
+    }
+  ],
+  "comparisonRows": [
+    {
+      "feature": "Core approach",
+      "gaia": "Move from filtering to doing: an assistant that understands content and executes across tools",
+      "competitor": "Passive email filtering service: moves non-urgent messages into smart folders using machine-learning classification; never reads email body content"
+    },
+    {
+      "feature": "Email filtering",
+      "gaia": "Urgency triage and auto-labels that adapt from graph memory of your behavior and relationships",
+      "competitor": "Sorts email into SaneLater, SaneNews, SaneNoReplies, and custom folders; learns sender importance from your engagement; works with Gmail, Outlook, Apple Mail, and any IMAP client"
+    },
+    {
+      "feature": "Email drafting",
+      "gaia": "Reply drafts informed by conversation history, calendar availability, linked tasks, and sender memory",
+      "competitor": "No email drafting capability: SaneBox is a routing and filtering layer only; composing replies is left entirely to the user or their email client"
+    },
+    {
+      "feature": "Task creation from email",
+      "gaia": "Action items extracted into structured tasks with priorities, deadlines, and project links",
+      "competitor": "No task creation: SaneBox does not read or parse email content; users must manually forward or copy information to a separate task manager"
+    },
+    {
+      "feature": "Calendar integration",
+      "gaia": "Events created and updated, slots found, meetings scheduled and briefed, all from email",
+      "competitor": "No calendar integration: SaneBox operates exclusively within email and has no awareness of your schedule or meeting context"
+    },
+    {
+      "feature": "Cross-tool workflows",
+      "gaia": "Automations in words spanning email, calendar, Slack, Notion, GitHub, Linear, and the rest of your tools",
+      "competitor": "No workflow automation: SaneBox does not connect to tools outside email and has no automation engine"
+    },
+    {
+      "feature": "Source-available",
+      "gaia": "Self-host with Docker for full data ownership and no training on your emails",
+      "competitor": "Closed-source proprietary SaaS; email metadata is processed on SaneBox servers; no self-hosting option available"
+    },
+    {
+      "feature": "Pricing",
+      "gaia": "Hosted: paid plan at ${{PRO_MONTHLY_PRICE}}/month; self-hosting free for non-commercial use (plus your own model API costs)",
+      "competitor": "Paid plans only, no free tier; trial available."
+    }
+  ]
+}

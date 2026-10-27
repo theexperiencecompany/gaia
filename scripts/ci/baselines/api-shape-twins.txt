@@ -36,7 +36,7 @@ apps/mobile/src/features/chat/tool-data/cards/calendar-options-card.tsx:SameDayE
 apps/mobile/src/features/chat/tool-data/cards/chart-card.tsx:ChartDisplayData=SupportRequestCreate
 apps/mobile/src/features/chat/tool-data/cards/connection-status-card.tsx:ConnectionStatusData=IntegrationSuccessResponse
 apps/mobile/src/features/chat/tool-data/cards/email-fetch-card.tsx:EmailFetchItem=GmailMessageSummary
-apps/mobile/src/features/chat/tool-data/cards/integration-list-card.tsx:SuggestedIntegration=MyIntegrationItem
+apps/mobile/src/features/chat/tool-data/cards/integration-list-card.tsx:SuggestedIntegration=IntegrationConfigItem
 apps/mobile/src/features/chat/tool-data/cards/notification-card.tsx:NotificationActionItem=NotificationAction
 apps/mobile/src/features/chat/tool-data/cards/support-ticket-card.tsx:SupportResponse=SupportRequestSubmissionResponse
 apps/mobile/src/features/chat/tool-data/cards/support-ticket-card.tsx:SupportTicketData=SupportRequestCreate
@@ -69,7 +69,6 @@ apps/mobile/src/lib/analytics.ts:UserTraits=AuthenticatedUserResponse
 apps/web/src/app/[locale]/(landing)/thanks/page.tsx:ToolMetadata=URLResponse
 apps/web/src/app/api/og/integration/route.tsx:OgIntegration=CommunityIntegrationItem
 apps/web/src/app/api/og/use-case/route.tsx:OgWorkflow=PersonalizationWorkflow
-apps/web/src/app/feed.xml/route.ts:IntegrationEntry=CommunityIntegrationItem
 apps/web/src/components/ui/holo-card/BackCardContent.tsx:BackCardContentProps=PersonalizationResponse
 apps/web/src/components/ui/holo-card/FrontCardContent.tsx:FrontCardContentProps=PersonalizationResponse
 apps/web/src/components/ui/holo-card/types.ts:HoloCardDisplayData=PersonalizationResponse
@@ -89,8 +88,7 @@ apps/web/src/features/integrations/components/MCPIntegrationModal.tsx:MCPFormDat
 apps/web/src/features/integrations/data/combosData.ts:IntegrationCombo=IntegrationContent
 apps/web/src/features/integrations/hooks/useBearerTokenModal.ts:BearerConnectResult=AddIntegrationResponse
 apps/web/src/features/integrations/types/index.ts:Integration=IntegrationConfigItem
-apps/web/src/features/integrations/types/index.ts:PublicIntegrationResponse=PublicIntegrationDetailResponse
-apps/web/src/features/integrations/types/index.ts:SuggestedIntegration=MyIntegrationItem
+apps/web/src/features/integrations/types/index.ts:SuggestedIntegration=IntegrationConfigItem
 apps/web/src/features/landing/components/demo/constants.ts:DummyIntegration=DeviceResponse
 apps/web/src/features/landing/components/demo/founders-demo/types.ts:ChatMessage=ReplyToMessageData
 apps/web/src/features/landing/components/demo/integrations-demo/integrationsDemoConstants.ts:DemoIntegration=MyIntegrationItem
@@ -100,6 +98,7 @@ apps/web/src/features/landing/components/demo/todos-demo/todosDemoConstants.type
 apps/web/src/features/landing/components/demo/todos-demo/todosDemoConstants.types.ts:DemoWorkflowStep=PublicWorkflowStep
 apps/web/src/features/landing/components/features/demos/MCPSupportDemo.tsx:Tool=IntegrationConfigItem
 apps/web/src/features/landing/components/features/demos/SkillsDemo.tsx:DemoSkill=MyIntegrationItem
+apps/web/src/features/landing/components/sections/ComparisonGrid.tsx:CompetitorInfo=ComposioCatalogEntry
 apps/web/src/features/landing/data/featuresData.types.ts:FeatureBenefit=CreateWorkflowRequest
 apps/web/src/features/landing/data/featuresData.types.ts:FeatureData=IntegrationContent
 apps/web/src/features/mail/components/EmailComposeCard.tsx:EmailData=DraftRequest
@@ -127,11 +126,9 @@ apps/web/src/features/workflows/triggers/handlers/SlackSettings.tsx:SlackTrigger
 apps/web/src/features/workflows/utils/creator.ts:ResolvableCreator=AuthorDetails
 # Owned by the concurrent lib/api migration, which deletes ErrorBody outright.
 apps/web/src/lib/blog.types.ts:Author=AuthorDetails
-apps/web/src/lib/blog.types.ts:BlogContentPost=BlogPost
 apps/web/src/lib/db/chatDb.ts:IConversation=ConversationDocument
 apps/web/src/lib/db/chatDb.ts:IMessage=ReplyToMessageData
 apps/web/src/lib/seo.ts:PageMetadataOptions=SupportRequestCreate
-apps/web/src/lib/sitemapData.ts:ConfigIntegration=IntegrationConfigItem
 apps/web/src/lib/sitemapData.ts:ExploreWorkflow=PublicWorkflowCard
 apps/web/src/stores/chatStore.ts:OptimisticMessage=ReplyToMessageData
 apps/web/src/types/api/aboutApiTypes.ts:Author=AuthorDetails
@@ -224,3 +221,4 @@ libs/shared/ts/src/types/workflow.ts:ContentCreator=AuthorDetails
 libs/shared/ts/src/types/workflow.ts:CreateWorkflowPayload=SelectedWorkflowDataInput
 libs/shared/ts/src/workflows/triggers.ts:TriggerFieldSchema=TriggerConfigFieldSchema
 libs/shared/ts/src/workflows/triggers.ts:TriggerSchema=WorkflowTriggerResponse
+

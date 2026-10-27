@@ -1,1 +1,80 @@
-{"slug":"gmail-notion","toolA":"Gmail","toolASlug":"gmail","toolB":"Notion","toolBSlug":"notion","tagline":"Transform emails into structured Notion pages and databases","metaTitle":"Gmail + Notion Automation - Email to Knowledge Base","metaDescription":"Automate Gmail and Notion with GAIA. Convert important emails into Notion pages, update databases from email content, and build a searchable knowledge base from your inbox.","keywords":["Gmail Notion integration","email to Notion automation","Gmail Notion workflow","save emails to Notion","connect Gmail and Notion"],"intro":"Your inbox is full of valuable information: client briefs, project updates, research summaries, and decisions that need to be preserved and searchable. But Gmail is a poor knowledge base. Emails get buried, threads become hard to navigate, and colleagues who weren't CC'd lack context.\n\nGAIA connects Gmail and Notion so important email content flows automatically into your knowledge management system. Client emails become structured Notion database entries. Project update threads get converted into linked pages with proper context. Research compiled over email gets organized into searchable Notion documents.\n\nThe result is an inbox that feeds your knowledge base rather than competing with it. Information captured in Gmail becomes accessible in Notion without the manual work of copy-pasting and reformatting.","useCases":[{"title":"Client communication log","description":"GAIA automatically creates a Notion database entry for each significant client email, including sender, date, key points, and action items extracted by AI, giving your team a searchable client communication history."},{"title":"Project update capture","description":"Status update emails from stakeholders and vendors get converted into structured Notion pages linked to the relevant project, keeping your project documentation up to date without manual effort."},{"title":"Action item extraction","description":"GAIA reads incoming emails, identifies commitments and action items, and adds them as tasks to your Notion workspace so nothing gets buried in your inbox."},{"title":"Meeting notes from email threads","description":"When a meeting is confirmed over email, GAIA creates a Notion page pre-populated with attendees, agenda items mentioned in the email chain, and a space for notes."},{"title":"Research email archive","description":"Newsletter and research emails you mark for reading get saved to a structured Notion database with AI-generated summaries so you can find and reference them later without digging through Gmail."}],"howItWorks":[{"step":"Connect Gmail and Notion to GAIA","description":"Authenticate both accounts in GAIA. For Notion, GAIA will ask which workspace and databases it should have access to write to."},{"step":"Map email types to Notion destinations","description":"Tell GAIA which types of emails should go to which Notion databases or pages. You can use labels, senders, keywords, or AI classification to categorize incoming email."},{"step":"Review and refine the automation","description":"GAIA begins routing emails to Notion automatically. You can review what it creates and give feedback to improve accuracy. Most workflows are fully automated within a day or two of setup."}],"faqs":[{"question":"Can GAIA update existing Notion pages or only create new ones?","answer":"GAIA can do both. It can create new database entries for each email or append information to an existing page. For example, follow-up emails from the same client can be appended to their existing Notion contact page rather than creating duplicates."},{"question":"Will GAIA extract attachments from emails into Notion?","answer":"GAIA can reference attachments and summarize their content, but uploading binary files to Notion directly depends on your Notion plan's storage limits. GAIA will note attachment details and can store links to them."},{"question":"Does this work with team Notion workspaces?","answer":"Yes. GAIA can write to shared Notion workspaces so email intelligence is available to your whole team. Each team member can connect their own Gmail, and GAIA will route their emails to the shared workspace."}]}
+{
+  "slug": "gmail-notion",
+  "toolA": "Gmail",
+  "toolASlug": "gmail",
+  "toolB": "Notion",
+  "toolBSlug": "notion",
+  "tagline": "Transform emails into structured Notion pages and databases",
+  "metaTitle": "Notion Gmail Integration: Save Emails and Action Items",
+  "metaDescription": "Log client emails and pull action items from Gmail threads into Notion. GAIA updates existing pages or creates new ones. See the setup steps.",
+  "keywords": [
+    "Gmail Notion integration",
+    "email to Notion automation",
+    "Gmail Notion workflow",
+    "save emails to Notion",
+    "connect Gmail and Notion"
+  ],
+  "intro": "A Notion Gmail integration turns emails into Notion content: a client email becomes a database entry, a project update becomes a page, a request becomes a task, with the important parts pulled out instead of pasted in whole. GAIA does this with plain-English workflows that read your Gmail and write to your Notion workspace, either automatically when new mail arrives or when you ask in chat.\n\nGAIA connects Gmail and Notion so important email content flows automatically into your knowledge management system. Client emails become structured Notion database entries. Project update threads get converted into linked pages with proper context. Research compiled over email gets organized into searchable Notion documents.\n\nThe result is an inbox that feeds your knowledge base rather than competing with it. Information captured in Gmail becomes accessible in Notion without the manual work of copy-pasting and reformatting.\n\nSetting it up: connect Gmail and Notion, then create a workflow with the Gmail new-message trigger and describe the rule, for example: \"When an email arrives from a client domain, add a row to the Clients database with the sender, date, a three-line summary and any action items, and append the summary to that client's page if one exists.\" For one-off saves, just ask in chat: \"save the thread from Maria about the Q3 budget to my Finance page.\"\n\nLimits worth knowing: GAIA writes text, properties and links into Notion; attachments are summarized or linked rather than uploaded. It can only write to the pages and databases you share with it when you authorize Notion. If you just want to read and sort mail in a Notion-style app, Notion Mail (Notion's email client for Gmail) covers that; GAIA is for filing email content into your workspace and acting on it.",
+  "useCases": [
+    {
+      "title": "Client communication log",
+      "description": "GAIA automatically creates a Notion database entry for each significant client email, including sender, date, key points, and action items extracted by AI, giving your team a searchable client communication history."
+    },
+    {
+      "title": "Project update capture",
+      "description": "Status update emails from stakeholders and vendors get converted into structured Notion pages linked to the relevant project, keeping your project documentation up to date without manual effort."
+    },
+    {
+      "title": "Action item extraction",
+      "description": "GAIA reads incoming emails, identifies commitments and action items, and adds them as tasks to your Notion workspace so nothing gets buried in your inbox."
+    },
+    {
+      "title": "Meeting notes from email threads",
+      "description": "When a meeting is confirmed over email, GAIA creates a Notion page pre-populated with attendees, agenda items mentioned in the email chain, and a space for notes."
+    },
+    {
+      "title": "Research email archive",
+      "description": "Newsletter and research emails you mark for reading get saved to a structured Notion database with AI-generated summaries so you can find and reference them later without digging through Gmail."
+    }
+  ],
+  "howItWorks": [
+    {
+      "step": "Connect Gmail and Notion to GAIA",
+      "description": "Authenticate both accounts in GAIA. For Notion, GAIA will ask which workspace and databases it should have access to write to."
+    },
+    {
+      "step": "Map email types to Notion destinations",
+      "description": "Tell GAIA which types of emails should go to which Notion databases or pages. You can use labels, senders, keywords, or AI classification to categorize incoming email."
+    },
+    {
+      "step": "Review and refine the automation",
+      "description": "GAIA begins routing emails to Notion automatically. You can review what it creates and give feedback to improve accuracy. Most workflows are fully automated within a day or two of setup."
+    }
+  ],
+  "faqs": [
+    {
+      "question": "Can GAIA update existing Notion pages or only create new ones?",
+      "answer": "GAIA can do both. It can create new database entries for each email or append information to an existing page. For example, follow-up emails from the same client can be appended to their existing Notion contact page rather than creating duplicates."
+    },
+    {
+      "question": "Will GAIA extract attachments from emails into Notion?",
+      "answer": "GAIA can reference attachments and summarize their content, but uploading binary files to Notion directly depends on your Notion plan's storage limits. GAIA will note attachment details and can store links to them."
+    },
+    {
+      "question": "Does this work with team Notion workspaces?",
+      "answer": "Yes. GAIA can write to shared Notion workspaces so email intelligence is available to your whole team. Each team member can connect their own Gmail, and GAIA will route their emails to the shared workspace."
+    },
+    {
+      "question": "How do I connect Gmail to Notion?",
+      "answer": "Connect both accounts in GAIA (Notion asks which pages and databases to share), then either ask GAIA in chat to save a specific email, or create a workflow with the Gmail new-message trigger that says which emails go where in Notion. No copy-paste and no separate automation tool."
+    },
+    {
+      "question": "Can I automate Gmail to Notion without Zapier?",
+      "answer": "Yes. GAIA's workflows run on its own Gmail trigger, so a new email can create or update a Notion page without a separate automation tool. Instead of a fixed field mapping, GAIA reads each email and extracts what your instructions ask for, such as a summary, a due date or the client name."
+    },
+    {
+      "question": "Can GAIA save emails I have already received to Notion?",
+      "answer": "Yes. Ask GAIA to search Gmail, for example every email from a vendor this quarter, and it creates one Notion entry per email or a single summary page. A scheduled workflow can also sweep a Gmail label into Notion every day."
+    }
+  ]
+}

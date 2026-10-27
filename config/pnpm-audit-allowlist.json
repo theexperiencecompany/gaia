@@ -5,31 +5,6 @@
       "id": "GHSA-86w9-cpqp-85rv",
       "reason": "node-forge RSA PKCS#1 v1.5 verification accepts extra DigestAlgorithm elements; no fixed release exists upstream (patched <0.0.0). Reachable only transitively via Expo CLI build tooling, never for signature verification of untrusted input.",
       "expires": "2027-01-02"
-    },
-    {
-      "id": "GHSA-vfj7-8cjw-p6xm",
-      "reason": "braces mishandles unclosed extended glob syntax; no fixed release exists upstream (patched <0.0.0). Reachable only transitively via Expo metro file-map globbing of local project files, never on untrusted input.",
-      "expires": "2027-01-02"
-    },
-    {
-      "id": "GHSA-v5rq-49vh-5v5c",
-      "reason": "simple-git through 3.36.0: VISUAL-editor and unsafe-operation-guard issues fixed only in the 4.x line, and a 3.x->4.x major jump does not belong in a CVE-fix PR. Reachable only through the @heygaia/cli init flow, which pulls repos the invoking user explicitly names \u2014 no remote or third-party input reaches it. Re-check on every simple-git release; drop these once the CLI migrates to 4.x.",
-      "expires": "2027-04-06"
-    },
-    {
-      "id": "GHSA-x6jw-m9v5-85vh",
-      "reason": "simple-git through 3.36.0: VISUAL-editor and unsafe-operation-guard issues fixed only in the 4.x line, and a 3.x->4.x major jump does not belong in a CVE-fix PR. Reachable only through the @heygaia/cli init flow, which pulls repos the invoking user explicitly names \u2014 no remote or third-party input reaches it. Re-check on every simple-git release; drop these once the CLI migrates to 4.x.",
-      "expires": "2027-04-06"
-    },
-    {
-      "id": "GHSA-g4wm-2vf7-vfgr",
-      "reason": "simple-git through 3.36.0: VISUAL-editor and unsafe-operation-guard issues fixed only in the 4.x line, and a 3.x->4.x major jump does not belong in a CVE-fix PR. Reachable only through the @heygaia/cli init flow, which pulls repos the invoking user explicitly names \u2014 no remote or third-party input reaches it. Re-check on every simple-git release; drop these once the CLI migrates to 4.x.",
-      "expires": "2027-04-06"
-    },
-    {
-      "id": "GHSA-858h-whjf-mvg5",
-      "reason": "simple-git through 3.36.0: VISUAL-editor and unsafe-operation-guard issues fixed only in the 4.x line, and a 3.x->4.x major jump does not belong in a CVE-fix PR. Reachable only through the @heygaia/cli init flow, which pulls repos the invoking user explicitly names \u2014 no remote or third-party input reaches it. Re-check on every simple-git release; drop these once the CLI migrates to 4.x.",
-      "expires": "2027-04-06"
     }
   ]
 }

@@ -9,7 +9,8 @@
     "related_automations": "Automatisations associées",
     "dont_see_your_tool": "Vous ne trouvez pas votre outil ?",
     "view_comparisons": "Voir les comparaisons",
-    "get_started": "Commencer"
+    "get_started": "Commencer",
+    "docs_guides": "Guides dans la documentation"
   },
   "alternatives": {
     "breadcrumb": "Alternatives",
@@ -35,9 +36,9 @@
     "gaia_for_role_desc": "Découvrez comment GAIA aide les professionnels dans différents rôles",
     "gaia_vs_name": "GAIA vs {name}",
     "hub_title": "GAIA comme alternative",
-    "hub_subtitle": "Analyses honnêtes de la façon dont GAIA remplace 30 outils populaires de productivité, IA et automatisation — avec des scores de compatibilité et des étapes de migration.",
-    "hub_meta_title": "Meilleures alternatives aux outils de productivité populaires | GAIA",
-    "hub_meta_description": "Découvrez comment GAIA remplace Notion, ChatGPT, Todoist, Zapier, Superhuman, Obsidian et 24 autres outils. Scores de compatibilité et étapes de migration honnêtes.",
+    "hub_subtitle": "Analyses honnêtes de la façon dont GAIA remplace des outils populaires de productivité, IA et automatisation — avec des scores de compatibilité et des étapes de migration pour chacun.",
+    "hub_meta_title": "Meilleures alternatives aux outils de productivité",
+    "hub_meta_description": "Découvrez comment GAIA remplace Notion, ChatGPT, Todoist, Zapier, Superhuman, Obsidian et d'autres, avec des scores honnêtes et des étapes de migration.",
     "best_name_alternative": "Meilleure alternative à {name}",
     "category_productivity_suite": "Suites de Productivité",
     "category_ai_assistant": "Assistants IA",
@@ -47,7 +48,7 @@
     "category_automation": "Automatisation",
     "category_notes": "Notes & Connaissances",
     "dont_see_your_tool": "Vous ne voyez pas votre outil ?",
-    "dont_see_your_tool_desc": "GAIA se connecte à plus de 50 outils via MCP et prend en charge les intégrations personnalisées. Comparez GAIA avec n'importe quel outil que vous utilisez."
+    "dont_see_your_tool_desc": "GAIA se connecte à de nombreux outils via MCP et prend en charge les intégrations personnalisées. Comparez GAIA avec n'importe quel outil que vous utilisez."
   },
   "comparisons": {
     "breadcrumb": "Comparaisons",
@@ -69,8 +70,8 @@
     "gaia_for_role_desc": "Découvrez comment GAIA aide les professionnels dans différents rôles à améliorer leur productivité.",
     "hub_title": "Comment GAIA se compare",
     "hub_subtitle": "Des comparaisons honnêtes et détaillées pour vous aider à choisir le bon outil de productivité IA. Découvrez où GAIA excelle et où d'autres pourraient mieux convenir.",
-    "hub_meta_title": "GAIA vs Concurrents - Comparaisons d'assistants IA",
-    "hub_meta_description": "Découvrez comment GAIA se compare à ChatGPT, Gemini, Claude, Motion, n8n, Zapier, Reclaim et plus. Comparaisons honnêtes et détaillées pour choisir le bon outil de productivité IA."
+    "hub_meta_title": "Comparatifs d'assistants IA : GAIA vs ChatGPT et plus",
+    "hub_meta_description": "Des comparaisons honnêtes et détaillées de GAIA avec ChatGPT, Gemini, Claude, Motion, Zapier, Reclaim et d'autres, pour choisir le bon outil d'IA."
   },
   "automate": {
     "breadcrumb": "Automatiser",
@@ -88,7 +89,7 @@
     "hub_title": "Automatisez N'importe Quels Deux Outils Ensemble",
     "hub_subtitle": "Choisissez deux outils que vous utilisez. GAIA les connecte et gère les workflows entre eux — automatiquement, sans code.",
     "hub_meta_title": "Automatisez N'importe Quels Deux Outils avec GAIA",
-    "hub_meta_description": "Parcourez plus de 240 combos d'automatisation. Connectez Gmail + Slack, Notion + Todoist, GitHub + Linear, et plus — GAIA gère les workflows entre vos outils automatiquement.",
+    "hub_meta_description": "Connectez Gmail + Slack, Notion + Todoist, GitHub + Linear et plus. GAIA gère automatiquement les workflows entre vos outils.",
     "combos_count": "{count} combos d'automatisation",
     "dont_see_your_combo": "Vous ne voyez pas votre combo ?",
     "dont_see_your_combo_desc": "Parcourez le marketplace d'intégrations complet ou connectez n'importe quel outil via MCP."
@@ -106,8 +107,8 @@
     "gaia_for_role_desc": "Découvrez comment GAIA aide les professionnels dans différents rôles",
     "hub_title": "Glossaire IA & Productivité",
     "hub_subtitle": "Comprenez les concepts clés derrière les agents IA, l'automatisation et les outils de productivité modernes. Découvrez comment GAIA utilise ces technologies pour gérer votre flux de travail numérique.",
-    "hub_meta_title": "Glossaire IA & Productivité - Apprenez les Concepts Clés",
-    "hub_meta_description": "Apprenez les concepts essentiels de l'IA, de l'automatisation et de la productivité. Comprenez comment les agents IA, LangGraph, MCP, les embeddings vectoriels et l'automatisation des workflows propulsent des outils modernes comme GAIA.",
+    "hub_meta_title": "Glossaire IA et productivité : définitions claires",
+    "hub_meta_description": "Des explications claires sur les agents IA, le MCP, les embeddings et l'automatisation, et sur ce qu'ils apportent à un assistant proactif comme GAIA.",
     "category_ai_concepts": "IA & Apprentissage Automatique",
     "category_productivity": "Méthodes de Productivité",
     "category_automation": "Automatisation & Workflows",
@@ -135,11 +136,12 @@
     "learn_ai_concepts_desc": "Explorez la technologie et les concepts d'IA derrière GAIA et les outils de productivité modernes",
     "hub_title": "GAIA pour chaque rôle",
     "hub_subtitle": "Chaque professionnel a des workflows et des points de douleur uniques. GAIA s'adapte à votre rôle, connectant les outils que vous utilisez déjà et automatisant les tâches qui drainent votre temps.",
-    "hub_meta_title": "GAIA pour chaque rôle - Assistant IA pour professionnels",
-    "hub_meta_description": "Découvrez comment GAIA aide les développeurs, product managers, fondateurs, marketeurs et plus de 20 rôles à automatiser leurs workflows et booster leur productivité avec l'IA.",
+    "hub_meta_title": "Assistant IA par métier : GAIA adapté à votre poste",
+    "hub_meta_description": "Découvrez comment GAIA aide développeurs, product managers, fondateurs, marketeurs et bien d'autres à automatiser leur travail avec l'IA.",
     "featured_experiences": "Expériences en Vedette",
     "see_full_experience": "Voir l'expérience complète",
     "all_roles": "Tous les Rôles",
-    "read_more": "En savoir plus"
+    "read_more": "En savoir plus",
+    "related_roles": "D'autres métiers que GAIA aide"
   }
 }

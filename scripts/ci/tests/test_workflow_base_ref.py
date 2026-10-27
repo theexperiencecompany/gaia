@@ -28,9 +28,9 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[3]
 WORKFLOWS = REPO_ROOT / ".github" / "workflows"
 
-# The job each workflow resolves the base in: the first one that inspects the
+# The job the workflow resolves the base in: the first one that inspects the
 # diff, and the one every scoped lane already depends on.
-DETECTOR = {"code-quality.yml": "changes", "main.yml": "detect"}
+DETECTOR = {"ci.yml": "detect"}
 RESOLVER = "scripts/ci/changes.sh base"
 BASE_ENV = "GAIA_PR_BASE"
 
@@ -40,10 +40,8 @@ BASE_ENV = "GAIA_PR_BASE"
 UNSCOPED = {
     "obscura-bin",
     "select-runner",
-    "select-runner-services",
     "runner-watchdog",
     "probe",
-    "changes",
     # Validates the PR title only; it never diffs the tree, so it has nothing to
     # scope against the resolved base.
     "pr-title",
@@ -71,6 +69,8 @@ def test_the_run_resolves_the_real_base_once(named_workflow: tuple[str, dict[str
     env = resolver[0].get("env", {})
     assert "GITHUB_TOKEN" in env
     assert "pull_request.number" in str(env.get("PR_NUMBER", ""))
+    # A merge group has no PR number: its base is the commit it was built on.
+    assert "merge_group.base_sha" in str(env.get("MERGE_GROUP_BASE_SHA", ""))
 
 
 def test_the_resolved_base_is_published_as_a_job_output(
@@ -131,8 +131,10 @@ def test_the_regression_proof_lane_proves_against_this_prs_base() -> None:
     # the PRs below it added (7, on #1175, which added none) — and a test that
     # passes on the parent because the parent already carries its fix fails the
     # lane for being correct.
-    workflow = yaml.safe_load((WORKFLOWS / "main.yml").read_text())
-    steps = workflow["jobs"]["regression-proof"]["steps"]
+    workflow = yaml.safe_load((WORKFLOWS / "ci.yml").read_text())
+    steps = workflow["jobs"]["test-python"]["steps"]
     run = next(s["run"] for s in steps if "pytest.sh regression-proof" in str(s.get("run", "")))
 
-    assert BASE_ENV in run, f"regression-proof still proves against a fixed base: {run!r}"
+    assert "changes.sh base-rev" in run, (
+        f"regression-proof still proves against a fixed base: {run!r}"
+    )

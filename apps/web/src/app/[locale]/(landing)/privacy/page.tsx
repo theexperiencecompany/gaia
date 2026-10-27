@@ -2,7 +2,7 @@ import { Link } from "@heroui/link";
 import type { Metadata } from "next";
 
 import JsonLd from "@/components/seo/JsonLd";
-import { Link as I18nLink } from "@/i18n/navigation";
+import { SiteLink } from "@/components/seo/SiteLink";
 import {
   generateBreadcrumbSchema,
   generatePageMetadata,
@@ -11,9 +11,9 @@ import {
 } from "@/lib/seo";
 
 export const metadata: Metadata = generatePageMetadata({
-  title: "Privacy Policy",
+  title: "Privacy Policy: How GAIA Handles Your Data",
   description:
-    "Review GAIA's Privacy Policy to learn how we collect, use, and protect your personal data while providing our AI assistant services. We prioritize your privacy and data security.",
+    "How GAIA collects, uses, stores, and protects your personal data, which third parties process it, and how to export or delete everything we hold.",
   path: "/privacy",
   keywords: [
     "Privacy Policy",
@@ -619,9 +619,9 @@ function YourRightsAndRetention() {
           </a>{" "}
           from the email address associated with your account, or submit a
           request through our{" "}
-          <I18nLink className="text-blue-500 underline" href="/contact">
+          <SiteLink className="text-blue-500 underline" href="/contact">
             contact page
-          </I18nLink>
+          </SiteLink>
           , and tell us which right you wish to exercise.
         </p>
         <ul className="mb-4 ml-6 list-disc">

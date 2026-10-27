@@ -7,6 +7,8 @@ export default defineConfig({
     jsxImportSource: "react",
   },
   test: {
+    // Per project: parallel nx test tasks sharing the root cache race to clear it (ENOTEMPTY).
+    fsModuleCachePath: "node_modules/.vitest-cache",
     // Every co-located test under src/, not just src/__tests__ — narrow globs
     // silently drop any test placed next to its module (it never runs and
     // nothing tells you).
@@ -27,10 +29,9 @@ export default defineConfig({
     },
     server: {
       deps: {
-        // Allow vite to resolve internal bare specifiers inside ESM packages
-        // that omit file extensions (e.g. @openuidev/react-lang/dist/index.js
-        // imports from "./library" without ".js")
-        inline: ["@openuidev/react-lang"],
+        // ESM packages importing extensionless specifiers ("./library",
+        // next-intl's "next/navigation") resolve only when vite inlines them
+        inline: ["@openuidev/react-lang", "next-intl"],
       },
     },
   },

@@ -21,6 +21,7 @@ import argparse
 import json
 from pathlib import Path
 
+import librosa
 import numpy as np
 import onnxruntime as ort
 import soundfile as sf
@@ -79,8 +80,6 @@ def score_directory(
         try:
             audio, sr = sf.read(path, dtype="float32")
             if sr != SR:
-                import librosa
-
                 audio = librosa.resample(audio, orig_sr=sr, target_sr=SR)
             results.append((path.name, score_clip(feat, cls, audio, input_name)))
         except Exception as exc:
@@ -133,8 +132,6 @@ def _score_fixtures(
     for path in sorted(fixtures_dir.glob("*.wav")):
         audio, sr = sf.read(path, dtype="float32")
         if sr != SR:
-            import librosa
-
             audio = librosa.resample(audio, orig_sr=sr, target_sr=SR)
         s = score_clip(feat, cls, audio, input_name)
         scores.append(s)

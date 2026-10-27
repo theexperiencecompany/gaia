@@ -7,12 +7,15 @@ import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { paywallCopyFor } from "@/features/pricing/constants";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import SettingsMenu from "@/features/settings/components/SettingsMenu";
+import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 
 import { Avatar, AvatarFallback, AvatarImage } from "../../ui/avatar";
 
 export default function UserContainer() {
   const user = useCurrentUser();
   const { isPaid, isUnknown, hasEverSubscribed } = useIsPaid();
+  // Self-host instances have no billing — the plan chip makes no sense there.
+  const billingHidden = !useDeployment().bills;
   const [isOpen, setIsOpen] = React.useState(false);
 
   return (
@@ -49,15 +52,16 @@ export default function UserContainer() {
           </Avatar>
           <div className="flex flex-col items-start -space-y-0.5">
             <span className="text-sm">{user?.name}</span>
-            {isUnknown ? (
-              <Skeleton className="h-2.5 w-12 rounded-full" />
-            ) : (
-              <span className="text-[11px] text-foreground-400">
-                {isPaid
-                  ? "GAIA Pro"
-                  : paywallCopyFor(hasEverSubscribed).planLabel}
-              </span>
-            )}
+            {!billingHidden &&
+              (isUnknown ? (
+                <Skeleton className="h-2.5 w-12 rounded-full" />
+              ) : (
+                <span className="text-[11px] text-foreground-400">
+                  {isPaid
+                    ? "GAIA Pro"
+                    : paywallCopyFor(hasEverSubscribed).planLabel}
+                </span>
+              ))}
           </div>
         </div>
       </Button>

@@ -1,0 +1,77 @@
+{
+  "slug": "google-docs-slack",
+  "toolA": "Google Docs",
+  "toolASlug": "google-docs",
+  "toolB": "Slack",
+  "toolBSlug": "slack",
+  "tagline": "Share Google Docs in Slack with correct permissions and follow every comment",
+  "metaTitle": "Google Docs + Slack Integration: Comment Alerts in Slack",
+  "metaDescription": "Review Google Docs without leaving Slack. GAIA posts comment and suggestion alerts to Slack and shares docs with the right permissions set. See the setup steps.",
+  "keywords": [
+    "google docs slack integration",
+    "share google doc in slack",
+    "google docs slack notifications",
+    "connect google docs to slack",
+    "google docs comment alerts slack",
+    "create google doc from slack"
+  ],
+  "intro": "Drafts live in Google Docs, decisions happen in Slack, and the two rarely meet cleanly. Links pasted in chat hit request-access walls, feedback scatters across threads that never reach the doc comments, and review deadlines slip because nobody knows the doc changed.\n\nGAIA connects Google Docs and Slack so documents move at chat speed. Ask GAIA to share a doc and it checks channel members have access before posting, fixing permissions first. Comments, suggestions, and edits surface as Slack alerts in the right channel, and threads in Slack can become Docs with one command.\n\nThis is built for teams that review specs, proposals, and posts together: writers keep working in Docs while stakeholders follow along, approve, and comment from Slack without learning a new tool.",
+  "useCases": [
+    {
+      "title": "Share docs with permissions handled",
+      "description": "When you ask GAIA to post a Doc in a channel, it verifies every member can open it and grants view or comment access first. No more request-access dead ends."
+    },
+    {
+      "title": "Comment and suggestion alerts in Slack",
+      "description": "New comments, replies, and resolved threads on watched docs post to the owning channel with a direct link. Reviewers respond in hours, not days."
+    },
+    {
+      "title": "Create Docs from Slack threads",
+      "description": "A decision reached in a long thread becomes a brief, spec, or meeting note in Drive with one command. GAIA drafts from the thread and posts the link back."
+    },
+    {
+      "title": "Review deadline reminders",
+      "description": "Docs awaiting review get polite scheduled nudges in Slack until comments arrive or the owner signs off. Nothing waits silently."
+    },
+    {
+      "title": "Find any Doc without leaving Slack",
+      "description": "Ask GAIA for a doc by name, client, or topic and get a permission-checked link on demand. Team knowledge stays one message away."
+    }
+  ],
+  "howItWorks": [
+    {
+      "step": "Connect Google Docs and Slack to GAIA",
+      "description": "Authorize GAIA with your Google account and Slack workspace. GAIA gets read, write, and sharing scope on Docs plus posting scope in Slack."
+    },
+    {
+      "step": "Choose watched docs and alert channels",
+      "description": "Tell GAIA which docs or Drive folders to watch and which channels receive alerts. Set who may grant access when GAIA shares."
+    },
+    {
+      "step": "GAIA shares, watches, and drafts for you",
+      "description": "Shares go out permission-checked, comments arrive as alerts, and new docs get created from chat on demand. Docs and discussion stay linked."
+    }
+  ],
+  "faqs": [
+    {
+      "question": "Will everyone in the channel be able to open a shared doc?",
+      "answer": "Yes. GAIA checks access for channel members before posting and grants the view or comment permission you configured. If your policy blocks external sharing, GAIA tells you who is excluded instead of posting a broken link."
+    },
+    {
+      "question": "Can I get Slack alerts for Google Docs comments?",
+      "answer": "Yes. GAIA watches the docs you choose and posts new comments, replies, and suggestion activity to the mapped channel with a link straight to the thread."
+    },
+    {
+      "question": "Can GAIA create a Google Doc from a Slack conversation?",
+      "answer": "Yes. Point GAIA at a thread and it drafts a Doc from the discussion, saves it to your chosen Drive folder, and posts the link back to the channel."
+    },
+    {
+      "question": "Does this work with docs in Shared Drives?",
+      "answer": "Yes. GAIA supports docs in Shared Drives as well as My Drive, respecting the same folder permissions your workspace already enforces."
+    },
+    {
+      "question": "Can GAIA limit who receives doc alerts?",
+      "answer": "Yes. Alerts route per doc or per folder to the channel you choose, and you can restrict comment alerts to mentions of specific people or unresolved threads only."
+    }
+  ]
+}

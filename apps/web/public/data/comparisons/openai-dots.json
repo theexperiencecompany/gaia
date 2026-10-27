@@ -1,0 +1,73 @@
+{
+  "competitorAdvantages": [
+    "Always-on agent that keeps working after the chat ends",
+    "Backed by OpenAI, so it improves as their models improve"
+  ],
+  "description": "OpenAI Dots is a persistent agent that works across ChatGPT, Slack, and Teams. GAIA is the source-available assistant you can inspect and self-host.",
+  "domain": "",
+  "faqs": [
+    {
+      "answer": "Dots is a persistent agent with its own cloud computer: it learns your preferences, keeps your goals, and keeps working between chats. GAIA is the open alternative: source-available, self-hostable, with memory and tools under your control.",
+      "question": "What is the difference between Dots and a full assistant?"
+    },
+    {
+      "answer": "As of 2026 the surface is still evolving. GAIA is source-available and self-hostable, so its roadmap is public and its data stays under your control either way.",
+      "question": "Is OpenAI Dots still changing?"
+    }
+  ],
+  "gaiaAdvantages": [
+    "Persistent graph-based memory across every task",
+    "Deep integrations with email, calendar, tasks, and chat",
+    "Proactive behavior that acts before you ask",
+    "Source-available and self-hostable via Docker",
+    "Works in WhatsApp and Telegram, not just one chat"
+  ],
+  "intro": "Dots is OpenAI's always-on agent: it learns your preferences and goals, works on its own cloud computer, and connects to thousands of apps through ChatGPT, Slack, and Teams. That persistence is real, and it lives inside OpenAI's closed cloud. GAIA takes a different route. It is source-available and self-hostable, so its memory and roadmap stay under your control. It connects to the tools you live in and works from web, mobile, WhatsApp, and Telegram.",
+  "keywords": [
+    "GAIA vs OpenAI Dots",
+    "OpenAI Dots vs GAIA",
+    "OpenAI Dots comparison"
+  ],
+  "metaDescription": "Compare GAIA and OpenAI Dots for AI help. Dots is a persistent agent in OpenAI's cloud while GAIA is the source-available, self-hostable alternative.",
+  "metaTitle": "GAIA vs OpenAI Dots: Open vs Closed AI Assistant",
+  "name": "OpenAI Dots",
+  "rows": [
+    {
+      "competitor": "Persistent agent with its own cloud computer and browser, reached through ChatGPT, Slack, and Teams",
+      "feature": "Core approach",
+      "gaia": "Full productivity OS with memory, tools, and follow-through"
+    },
+    {
+      "competitor": "Persistent agent that learns your preferences and goals over time",
+      "feature": "Memory",
+      "gaia": "Graph-based memory that builds across every interaction"
+    },
+    {
+      "competitor": "Connects to 4,000+ apps, reached through ChatGPT, Slack, and Teams",
+      "feature": "Integrations",
+      "gaia": "Deep integrations across email, calendar, tasks, and chat"
+    },
+    {
+      "competitor": "Works toward goals on its own and brings results back for review",
+      "feature": "Proactivity",
+      "gaia": "Monitors your tools and acts before you ask"
+    },
+    {
+      "competitor": "Closed product on OpenAI's cloud; first dot included on Pro and Business Premium plans",
+      "feature": "Openness",
+      "gaia": "Source-available (PolyForm Noncommercial) with a public roadmap"
+    },
+    {
+      "competitor": "Set up from ChatGPT on desktop or web; rollout varies by plan and region",
+      "feature": "Setup",
+      "gaia": "Connect tools once, then use from web, mobile, or messaging apps"
+    }
+  ],
+  "slug": "openai-dots",
+  "tagline": "Always-on agents in OpenAI's cloud",
+  "verdict": "Choose OpenAI Dots for an always-on agent inside ChatGPT, Slack, and Teams. Choose GAIA when you want open code, self-hosting, and memory under your control.",
+  "relatedPersonas": [
+    "startup-founders",
+    "software-developers"
+  ]
+}

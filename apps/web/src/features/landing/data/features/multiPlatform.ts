@@ -6,6 +6,7 @@ export const MULTI_PLATFORM_FEATURES: FeatureData[] = [
     category: "Multi-Platform",
     icon: "MicrophoneIcon",
     title: "Voice",
+    metaTitle: "Voice AI Assistant: Real-Time Hands-Free Conversations",
     tagline: "Talk to GAIA hands-free: real-time voice conversations",
     headline: "Say it. GAIA handles the rest.",
     subheadline:
@@ -97,6 +98,7 @@ export const MULTI_PLATFORM_FEATURES: FeatureData[] = [
     category: "Multi-Platform",
     icon: "MessageMultiple02Icon",
     title: "Slack Bot",
+    metaTitle: "AI Slack Bot: Use GAIA Inside Your Workspace",
     tagline: "Use GAIA directly inside your Slack workspace",
     headline: "@GAIA in Slack, doing real work.",
     subheadline:
@@ -188,6 +190,7 @@ export const MULTI_PLATFORM_FEATURES: FeatureData[] = [
     category: "Multi-Platform",
     icon: "GameboyIcon",
     title: "Discord Bot",
+    metaTitle: "AI Discord Bot: Full GAIA in Your Server",
     tagline: "Full GAIA capabilities in your Discord server",
     headline: "GAIA lives in your Discord server.",
     subheadline:
@@ -279,6 +282,7 @@ export const MULTI_PLATFORM_FEATURES: FeatureData[] = [
     category: "Multi-Platform",
     icon: "AirplaneIcon",
     title: "Telegram Bot",
+    metaTitle: "AI Telegram Bot: GAIA in Your DMs and Groups",
     tagline: "GAIA in your Telegram: commands, DMs, group chats",
     headline: "GAIA in your Telegram, anywhere in the world.",
     subheadline:
@@ -370,6 +374,7 @@ export const MULTI_PLATFORM_FEATURES: FeatureData[] = [
     category: "Multi-Platform",
     icon: "SmartPhone01Icon",
     title: "Mobile App",
+    metaTitle: "GAIA Mobile App: Your AI Assistant on Your Phone",
     tagline: "The full GAIA experience on iOS and Android",
     headline: "The full GAIA experience on mobile.",
     subheadline:

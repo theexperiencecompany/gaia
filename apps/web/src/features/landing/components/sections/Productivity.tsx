@@ -1,7 +1,7 @@
 import { useRef } from "react";
+import { SiteLink } from "@/components/seo/SiteLink";
 import { RaisedButton } from "@/components/ui/raised-button";
 import UseCaseSection from "@/features/use-cases/components/UseCaseSection";
-import { Link } from "@/i18n/navigation";
 import GetStartedButton from "../shared/GetStartedButton";
 import { TextSoftBlurIn } from "../shared/TextSoftBlurIn";
 
@@ -30,14 +30,14 @@ export default function UseCasesSectionLanding() {
           />
         </div>
         <div className="mt-2 flex flex-col gap-3 sm:flex-row">
-          <Link href={"/use-cases"}>
+          <SiteLink href={"/use-cases"}>
             <RaisedButton
               className="rounded-xl text-black! before:rounded-xl hover:scale-105 gap-1"
               color="#00bbff"
             >
               View More
             </RaisedButton>
-          </Link>
+          </SiteLink>
           <GetStartedButton
             btnColor="#ffffff"
             classname="px-1 hover:scale-105"

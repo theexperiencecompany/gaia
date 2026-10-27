@@ -62,8 +62,7 @@ describe("instrumentation-client posthog init", () => {
     vi.doMock("@/lib/analytics", async () => {
       await new Promise((resolve) => setTimeout(resolve, CHUNK_LOAD_MS));
       return {
-        resetLegacyEmailIdentity: () => sdkOrder.push("reset_legacy_identity"),
-        flushPendingAnalytics: () => sdkOrder.push("flush"),
+        connectPostHog: () => sdkOrder.push("connect_posthog"),
       };
     });
     initMock.mockImplementation(() => {
@@ -75,10 +74,10 @@ describe("instrumentation-client posthog init", () => {
 
     await runIdleLoader();
     await vi.waitFor(() => {
-      expect(sdkOrder).toHaveLength(3);
+      expect(sdkOrder).toHaveLength(2);
     });
 
-    expect(sdkOrder.indexOf("reset_legacy_identity")).toBeLessThan(
+    expect(sdkOrder.indexOf("connect_posthog")).toBeLessThan(
       sdkOrder.indexOf("initial_pageview"),
     );
   });

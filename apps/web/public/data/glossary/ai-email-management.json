@@ -1,0 +1,49 @@
+{
+  "slug": "ai-email-management",
+  "term": "AI Email Management",
+  "metaTitle": "What Is AI Email Management? AI vs Filters, and Is It Safe",
+  "metaDescription": "AI email management sorts, prioritizes, and drafts responses so your inbox needs less of your day. Learn how it works and what GAIA handles for you.",
+  "definition": "AI email management is the use of software that reads, classifies, and acts on email on your behalf: sorting messages by urgency, archiving routine items, drafting replies, and surfacing only what needs your judgment.",
+  "extendedDescription": "The inbox problem is volume plus ambiguity. Hundreds of messages arrive daily, mixing urgent requests with newsletters, receipts, and threads you were copied on just in case. Manual triage means reading everything to find the few items that matter, which is how email eats hours of every workday.\n\nAI email management addresses both halves. Classification models sort incoming mail by urgency, project, and required action. Drafting tools write first versions of routine replies from thread context. Summarization condenses long threads into decisions and open items. Unsubscribe and filter automation clears recurring noise without attention.\n\nThe practical line is judgment. AI handles high-volume, low-risk work well: archiving notifications, sorting newsletters, drafting standard replies for review. Sensitive, ambiguous, or relationship-critical messages still deserve a human. The best setups make that handoff explicit, so nothing important is handled without your review.",
+  "keywords": [
+    "ai email management",
+    "what is ai email management",
+    "ai email manager",
+    "automate email management",
+    "ai inbox management",
+    "ai email organizer"
+  ],
+  "category": "email",
+  "howGaiaUsesIt": "GAIA manages email continuously. It classifies incoming messages by urgency and required action, archives routine items, unsubscribes from unwanted lists, and drafts replies for your review. Over time it learns your communication patterns, so the messages that reach you are the ones that need your judgment.",
+  "relatedTerms": [
+    "email-automation",
+    "email-triage",
+    "inbox-management",
+    "inbox-zero",
+    "ai-email-assistant",
+    "email-threading"
+  ],
+  "relatedComparisons": [
+    "superhuman",
+    "shortwave",
+    "spark"
+  ],
+  "faqs": [
+    {
+      "question": "Can AI fully manage my inbox?",
+      "answer": "AI can handle most of the volume: sorting, archiving, unsubscribing, and drafting routine replies. Messages that need nuanced judgment or carry relationship weight still benefit from human review."
+    },
+    {
+      "question": "Is it safe to let AI read my email?",
+      "answer": "It depends on where the AI runs and who controls the data. Self-hosted setups keep messages on your own infrastructure. With hosted services, check data retention terms and whether message content trains shared models."
+    },
+    {
+      "question": "What is the difference between filters and AI email management?",
+      "answer": "Filters follow fixed rules you write and maintain. AI management classifies new, unseen messages by meaning and urgency, drafts replies from context, and adapts as your patterns change."
+    },
+    {
+      "question": "How does GAIA handle urgent emails?",
+      "answer": "GAIA flags messages that need your attention based on sender, content, and your past behavior, while routine mail is sorted or archived quietly. Urgent items surface with context instead of sitting in an unread pile."
+    }
+  ]
+}

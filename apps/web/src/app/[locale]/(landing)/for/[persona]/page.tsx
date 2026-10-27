@@ -1,12 +1,14 @@
 import { Chip } from "@heroui/chip";
 import type { Metadata } from "next";
-import Image from "next/image";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import type { ComponentType } from "react";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
+import { RelatedComparisonsGrid } from "@/components/seo/RelatedComparisonsGrid";
+import { SiteLink } from "@/components/seo/SiteLink";
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import type { CommunityIntegration } from "@/features/integrations/types";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import {
   AGENCY_FAQS,
@@ -16,13 +18,18 @@ import {
   SALES_FAQS,
   SOFTWARE_DEV_FAQS,
 } from "@/features/landing/data/personaFaqs";
-import { getTranslatedPersona } from "@/features/personas/data/getTranslatedPersona";
+import {
+  getRelatedPersonas,
+  getTranslatedPersona,
+} from "@/features/personas/data/getTranslatedPersona";
+import { resolvePersonaIntegrations } from "@/features/personas/data/personaIntegrations";
 import { getAllPersonaSlugs } from "@/features/personas/data/personasData";
-import { getLocalizedAlternates } from "@/i18n/getAlternates";
+import { defaultLocale } from "@/i18n/config";
+import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
+import { prerenderedMarketingParams } from "@/lib/selfhost";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
-  generatePageMetadata,
   generateProductSchema,
   generateWebPageSchema,
   siteConfig,
@@ -47,12 +54,11 @@ interface PersonaConfig {
 
 const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
   "startup-founders": {
-    metaTitle:
-      "GAIA for Startup Founders: AI Chief of Staff & Proactive Automation",
+    metaTitle: "GAIA for Startup Founders: Your AI Chief of Staff",
     metaDescription:
-      "GAIA connects to your email, Slack, calendar, CRM, GitHub, and 30+ tools, then handles the operational work so you can focus on building. Save 8 to 12 hours every week.",
+      "GAIA connects to your email, Slack, calendar, CRM, and GitHub, then handles the operational work so you can focus on building. Save 8 to 12 hours a week.",
     schemaDescription:
-      "GAIA connects to your email, Slack, calendar, CRM, GitHub, and 30+ tools, then handles the operational work so you can focus on building.",
+      "GAIA connects to your email, Slack, calendar, CRM, GitHub, and the rest of your tools, then handles the operational work so you can focus on building.",
     keywords: [
       "AI for founders",
       "startup AI assistant",
@@ -79,8 +85,7 @@ const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
     getClient: () => import("@/app/[locale]/(landing)/founders/FoundersClient"),
   },
   "software-developers": {
-    metaTitle:
-      "GAIA for Software Developers: AI Standup Generator & GitHub Automation",
+    metaTitle: "GAIA for Developers: AI Standups & GitHub Automation",
     metaDescription:
       "GAIA connects to GitHub, Linear, and Slack, then writes your standup, triages your PRs, and monitors production so you stay in deep work longer.",
     schemaDescription:
@@ -110,8 +115,7 @@ const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
       import("@/app/[locale]/(landing)/software-developers/SoftwareDevClient"),
   },
   "sales-professionals": {
-    metaTitle:
-      "GAIA for Sales Professionals: AI CRM Monitor & Follow-Up Automation",
+    metaTitle: "GAIA for Sales: AI CRM Monitor & Follow-Up Automation",
     metaDescription:
       "GAIA monitors your HubSpot pipeline, drafts follow-ups before deals go cold, and preps you for every call automatically. Spend more time selling.",
     schemaDescription:
@@ -141,8 +145,7 @@ const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
       import("@/app/[locale]/(landing)/sales-professionals/SalesClient"),
   },
   "product-managers": {
-    metaTitle:
-      "GAIA for Product Managers: Automate Stakeholder Updates & Sprint Reports",
+    metaTitle: "GAIA for Product Managers: Auto Stakeholder Updates",
     metaDescription:
       "GAIA connects Linear, GitHub, Slack, and Notion, then handles stakeholder updates, feature triage, and sprint reporting so you can focus on product strategy.",
     schemaDescription:
@@ -171,8 +174,7 @@ const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
       import("@/app/[locale]/(landing)/product-managers/ProductManagerClient"),
   },
   "engineering-managers": {
-    metaTitle:
-      "GAIA for Engineering Managers: 1:1 Prep, Sprint Reports & Team Analytics",
+    metaTitle: "GAIA for Engineering Managers: 1:1 Prep & Sprint Reports",
     metaDescription:
       "GAIA monitors GitHub, Linear, and Slack so you don't have to. It preps your 1:1s, builds sprint reports, and surfaces blockers automatically.",
     schemaDescription:
@@ -203,8 +205,7 @@ const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
       ),
   },
   "agency-owners": {
-    metaTitle:
-      "GAIA for Agency Owners: Automate Client Reports & Portfolio Management",
+    metaTitle: "GAIA for Agency Owners: Automate Client Reports",
     metaDescription:
       "GAIA monitors every client project, writes your weekly status reports, and keeps your pipeline active automatically. Scale your agency without scaling your overhead.",
     schemaDescription:
@@ -234,9 +235,23 @@ const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
   },
 };
 
-export async function generateStaticParams() {
+/** The bespoke English page for a featured role; other locales render the translated persona data instead. */
+function specialPersonaConfig(
+  persona: string,
+  locale: string,
+): PersonaConfig | undefined {
+  return locale === defaultLocale
+    ? SPECIAL_PERSONA_CONFIGS[persona]
+    : undefined;
+}
+
+async function allStaticParams() {
   const slugs = await getAllPersonaSlugs();
   return slugs.map((persona) => ({ persona }));
+}
+
+export function generateStaticParams() {
+  return prerenderedMarketingParams(allStaticParams);
 }
 
 export async function generateMetadata({
@@ -244,18 +259,15 @@ export async function generateMetadata({
 }: PageProps): Promise<Metadata> {
   const { locale, persona } = await params;
 
-  const config = SPECIAL_PERSONA_CONFIGS[persona];
+  const config = specialPersonaConfig(persona, locale);
   if (config) {
-    const metadata = generatePageMetadata({
+    return generateLocalizedPageMetadata({
       title: config.metaTitle,
       description: config.metaDescription,
       path: `/for/${persona}`,
       keywords: config.keywords,
+      locale,
     });
-    return {
-      ...metadata,
-      alternates: getLocalizedAlternates(`/for/${persona}`, locale),
-    };
   }
 
   const data = await getTranslatedPersona(persona);
@@ -264,99 +276,68 @@ export async function generateMetadata({
     return { title: "Role Not Found" };
   }
 
-  const metadata = generatePageMetadata({
+  return generateLocalizedPageMetadata({
     title: data.metaTitle,
     description: data.metaDescription,
     path: `/for/${persona}`,
     keywords: data.keywords,
+    locale,
   });
-  return {
-    ...metadata,
-    alternates: getLocalizedAlternates(`/for/${persona}`, locale),
-  };
 }
 
-const INTEGRATION_DOMAINS: Record<string, string> = {
-  github: "github.com",
-  linear: "linear.app",
-  slack: "slack.com",
-  "google-calendar": "calendar.google.com",
-  gmail: "gmail.com",
-  notion: "notion.so",
-  todoist: "todoist.com",
-  perplexity: "perplexity.ai",
-  deepwiki: "deepwiki.com",
-  context7: "context7.com",
-  figma: "figma.com",
-  jira: "jira.atlassian.com",
-  asana: "asana.com",
-  trello: "trello.com",
-  hubspot: "hubspot.com",
-  salesforce: "salesforce.com",
-  intercom: "intercom.com",
-  zendesk: "zendesk.com",
-  stripe: "stripe.com",
-  quickbooks: "quickbooks.intuit.com",
-  "google-docs": "docs.google.com",
-  "google-sheets": "sheets.google.com",
-  "google-drive": "drive.google.com",
-  dropbox: "dropbox.com",
-  airtable: "airtable.com",
-  monday: "monday.com",
-  clickup: "clickup.com",
-  discord: "discord.com",
-  zoom: "zoom.us",
-  teams: "teams.microsoft.com",
-  outlook: "outlook.com",
-  twitter: "x.com",
-  linkedin: "linkedin.com",
-  mailchimp: "mailchimp.com",
-  "google-analytics": "analytics.google.com",
-  semrush: "semrush.com",
-  canva: "canva.com",
-  wordpress: "wordpress.com",
-  shopify: "shopify.com",
-  amplitude: "amplitude.com",
-  mixpanel: "mixpanel.com",
-  datadog: "datadoghq.com",
-  sentry: "sentry.io",
-  vercel: "vercel.com",
-  netlify: "netlify.com",
-  aws: "aws.amazon.com",
-  "google-cloud": "cloud.google.com",
-  confluence: "confluence.atlassian.com",
-};
-
-function IntegrationBadge({ name }: { name: string }) {
-  const displayName = name
-    .split("-")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
-
-  const domain = INTEGRATION_DOMAINS[name];
-
+function IntegrationBadge({
+  integration,
+}: {
+  readonly integration: CommunityIntegration;
+}) {
   return (
-    <Link href={`/marketplace/${name}`}>
+    <SiteLink href={`/marketplace/${integration.slug}`}>
       <Chip
         variant="flat"
         size="md"
         className="bg-zinc-800 text-zinc-300"
-        startContent={
-          domain ? (
-            <Image
-              src={`https://www.google.com/s2/favicons?domain=${domain}&sz=128`}
-              alt={displayName}
-              width={16}
-              height={16}
-              className="ml-1 rounded-sm"
-              unoptimized
-            />
-          ) : undefined
-        }
+        startContent={getToolCategoryIcon(
+          integration.integrationId,
+          { size: 16, width: 16, height: 16, showBackground: false },
+          integration.iconUrl,
+        )}
       >
-        {displayName}
+        {integration.name}
       </Chip>
-    </Link>
+    </SiteLink>
+  );
+}
+
+async function RelatedRoles({
+  persona,
+  locale,
+}: {
+  readonly persona: string;
+  readonly locale: string;
+}) {
+  const [t, roles] = await Promise.all([
+    getTranslations("personas"),
+    getRelatedPersonas(persona, locale),
+  ]);
+  return (
+    <section className="mb-16">
+      <h2 className="mb-6 text-3xl font-semibold text-white">
+        {t("related_roles")}
+      </h2>
+      <div className="grid gap-4 sm:grid-cols-2">
+        {roles.map((role) => (
+          <SiteLink
+            key={role.slug}
+            href={`/for/${role.slug}`}
+            className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
+          >
+            <h3 className="text-lg font-medium text-white transition-colors group-hover:text-primary">
+              {t("ai_assistant_for", { role: role.role })}
+            </h3>
+          </SiteLink>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -364,7 +345,7 @@ export default async function PersonaPage({ params }: PageProps) {
   const { locale, persona } = await params;
   setRequestLocale(locale);
 
-  const config = SPECIAL_PERSONA_CONFIGS[persona];
+  const config = specialPersonaConfig(persona, locale);
   if (config) {
     const breadcrumbs = [
       { name: "Home", url: siteConfig.url },
@@ -377,6 +358,13 @@ export default async function PersonaPage({ params }: PageProps) {
     } catch {
       notFound();
     }
+    // Special pages render a bespoke client component but share the same
+    // persona JSON: surface its relatedComparisons grid identically to the
+    // generic branch. Meta/FAQs stay hardcoded above (JSON copy is dated).
+    const [t, personaData] = await Promise.all([
+      getTranslations(),
+      getTranslatedPersona(persona),
+    ]);
     return (
       <>
         <JsonLd
@@ -393,6 +381,15 @@ export default async function PersonaPage({ params }: PageProps) {
           ]}
         />
         <Client />
+        <div className="mx-auto max-w-4xl px-6 pb-24">
+          <RelatedComparisonsGrid
+            heading={t("personas.tools_compare", {
+              role: personaData?.role ?? "",
+            })}
+            slugs={personaData?.relatedComparisons ?? []}
+          />
+          <RelatedRoles persona={persona} locale={locale} />
+        </div>
       </>
     );
   }
@@ -405,6 +402,8 @@ export default async function PersonaPage({ params }: PageProps) {
   if (!data) {
     notFound();
   }
+
+  const integrations = await resolvePersonaIntegrations(data);
 
   const breadcrumbs = [
     { name: "Home", url: siteConfig.url },
@@ -439,13 +438,13 @@ export default async function PersonaPage({ params }: PageProps) {
       <article className="mx-auto max-w-4xl px-6 pt-36 pb-24">
         {/* Breadcrumb */}
         <nav className="mb-8 text-sm text-zinc-500">
-          <Link href="/" className="hover:text-zinc-300">
+          <SiteLink href="/" className="hover:text-zinc-300">
             {t("common.home")}
-          </Link>
+          </SiteLink>
           <span className="mx-2">/</span>
-          <Link href="/for" className="hover:text-zinc-300">
+          <SiteLink href="/for" className="hover:text-zinc-300">
             {t("personas.breadcrumb")}
-          </Link>
+          </SiteLink>
           <span className="mx-2">/</span>
           <span className="text-zinc-300">
             {t("personas.ai_assistant_for", { role: data.role })}
@@ -513,8 +512,11 @@ export default async function PersonaPage({ params }: PageProps) {
             {t("personas.integrations_desc", { role: data.role })}
           </p>
           <div className="flex flex-wrap gap-3">
-            {data.relevantIntegrations.map((integration) => (
-              <IntegrationBadge key={integration} name={integration} />
+            {integrations.map((integration) => (
+              <IntegrationBadge
+                key={integration.slug}
+                integration={integration}
+              />
             ))}
           </div>
         </section>
@@ -528,35 +530,12 @@ export default async function PersonaPage({ params }: PageProps) {
         </section>
 
         {/* Relevant Tool Comparisons */}
-        {data.relatedComparisons && data.relatedComparisons.length > 0 && (
-          <section className="mb-16">
-            <h2 className="mb-6 text-3xl font-semibold text-white">
-              {t("personas.tools_compare", { role: data.role })}
-            </h2>
-            <div className="grid gap-4 sm:grid-cols-3">
-              {data.relatedComparisons.map((slug) => (
-                <Link
-                  key={slug}
-                  href={`/compare/${slug}`}
-                  className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
-                >
-                  <h3 className="mb-1 text-base font-medium text-white group-hover:text-primary">
-                    GAIA vs{" "}
-                    {slug
-                      .split("-")
-                      .map(
-                        (w: string) => w.charAt(0).toUpperCase() + w.slice(1),
-                      )
-                      .join(" ")}
-                  </h3>
-                  <p className="text-xs text-zinc-400">
-                    {t("personas.see_full_comparison")}
-                  </p>
-                </Link>
-              ))}
-            </div>
-          </section>
-        )}
+        <RelatedComparisonsGrid
+          heading={t("personas.tools_compare", { role: data.role })}
+          slugs={data.relatedComparisons ?? []}
+        />
+
+        <RelatedRoles persona={persona} locale={locale} />
 
         {/* Explore More */}
         <section className="mb-16">
@@ -564,7 +543,7 @@ export default async function PersonaPage({ params }: PageProps) {
             {t("common.explore_more")}
           </h2>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Link
+            <SiteLink
               href="/compare"
               className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
             >
@@ -574,8 +553,8 @@ export default async function PersonaPage({ params }: PageProps) {
               <p className="text-sm leading-relaxed text-zinc-400">
                 {t("personas.see_how_compares_desc")}
               </p>
-            </Link>
-            <Link
+            </SiteLink>
+            <SiteLink
               href="/learn"
               className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
             >
@@ -585,7 +564,7 @@ export default async function PersonaPage({ params }: PageProps) {
               <p className="text-sm leading-relaxed text-zinc-400">
                 {t("personas.learn_ai_concepts_desc")}
               </p>
-            </Link>
+            </SiteLink>
           </div>
         </section>
       </article>

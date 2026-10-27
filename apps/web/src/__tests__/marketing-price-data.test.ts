@@ -2,6 +2,11 @@
  * The static marketing data quotes GAIA's own monthly price only through the
  * price token, in every locale, and the loader writes the advertised price in
  * before any page sees it.
+ *
+ * Competitor prices are being removed from the SEO data (depricing): base
+ * files and the English overlay must quote no competitor $20 at all. The six
+ * other locale overlays still carry translated competitor-price prose, which
+ * is pinned below as known locale debt until translators rework those strings.
  */
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -57,16 +62,33 @@ function readData(file: string): Json {
 describe("marketing price data", () => {
   // Reads and parses every marketing data file in seven locales; on a loaded CI
   // runner that is well past vitest's 5s default even though it takes ~1s idle.
-  it("leaves a literal $20 only where it is a competitor's price", () => {
-    const remaining = pricedDataFiles().flatMap((file) =>
-      [...strings(readData(file))]
-        .map(([at, text]) => ({
-          file,
-          path: at,
-          competitor_prices: text.match(TWENTY_DOLLARS)?.length ?? 0,
-        }))
-        .filter((hit) => hit.competitor_prices > 0),
-    );
+  it("quotes no competitor $20 in base files or the English overlay", () => {
+    const remaining = pricedDataFiles()
+      .filter((file) => !file.startsWith("i18n/") || file.endsWith("/en.json"))
+      .flatMap((file) =>
+        [...strings(readData(file))]
+          .map(([at, text]) => ({
+            file,
+            path: at,
+            competitor_prices: text.match(TWENTY_DOLLARS)?.length ?? 0,
+          }))
+          .filter((hit) => hit.competitor_prices > 0),
+      );
+    expect(remaining).toEqual([]);
+  }, 30_000);
+
+  it("pins the remaining translated competitor $20 as locale debt", () => {
+    const remaining = pricedDataFiles()
+      .filter((file) => file.startsWith("i18n/") && !file.endsWith("/en.json"))
+      .flatMap((file) =>
+        [...strings(readData(file))]
+          .map(([at, text]) => ({
+            file,
+            path: at,
+            competitor_prices: text.match(TWENTY_DOLLARS)?.length ?? 0,
+          }))
+          .filter((hit) => hit.competitor_prices > 0),
+      );
     const byKey = (a: { file: string; path: (string | number)[] }) =>
       `${a.file}#${JSON.stringify(a.path)}`;
 
@@ -89,6 +111,17 @@ describe("marketing price data", () => {
         );
         expect(raw, `${feature}/${locale}`).toContain(PRO_MONTHLY_PRICE_TOKEN);
       }
+  });
+
+  it("writes GAIA's price in dollars in every locale", () => {
+    const otherCurrency =
+      /(?:€|£|¥|₩|R\$|EUR)\s?\{\{PRO_MONTHLY_PRICE\}\}|\{\{PRO_MONTHLY_PRICE\}\}\s?(?:€|£|¥|₩|EUR|円|원|ユーロ|유로|euros?\b)/;
+    const misquoted = pricedDataFiles().flatMap((file) =>
+      [...strings(readData(file))]
+        .filter(([, text]) => otherCurrency.test(text))
+        .map(([at]) => `${file}#${at.join(".")}`),
+    );
+    expect(misquoted).toEqual([]);
   });
 
   it.each(locales.filter((locale) => locale !== "en"))(

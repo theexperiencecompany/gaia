@@ -65,7 +65,7 @@ async def _fetch_git_tree(
             return await _fetch_git_tree(owner, repo, "master")
 
         if resp.status_code == 403:
-            log.warning(f"{LogTag.SKILLS} GitHub rate limited. Set GITHUB_TOKEN for higher limits")
+            log.warning(f"{LogTag.SKILLS} GitHub rate limited; a GitHub token raises the limit")
             return [], branch
 
         resp.raise_for_status()

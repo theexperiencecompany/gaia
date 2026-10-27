@@ -42,7 +42,6 @@ from app.services.integrations.integration_account_lifecycle import (
     update_account,
 )
 from app.services.integrations.integration_connection_service import (
-    MCPConnectOptions,
     build_integrations_config,
     connect_composio_integration,
     connect_mcp_integration,
@@ -1266,9 +1265,7 @@ class TestMCPIntegrationConnection:
                 integration_id="deepwiki",
                 integration_name="DeepWiki",
                 requires_auth=False,
-                options=MCPConnectOptions(
-                    redirect_path="/integrations",
-                ),
+                redirect_path="/integrations",
             )
 
             assert response.status == "connected"
@@ -1305,10 +1302,8 @@ class TestMCPIntegrationConnection:
                 integration_id="custom-api",
                 integration_name="Custom API",
                 requires_auth=False,
-                options=MCPConnectOptions(
-                    redirect_path="/integrations",
-                    bearer_token="sk-test-bearer-token",
-                ),
+                redirect_path="/integrations",
+                bearer_token="sk-test-bearer-token",
             )
 
             assert response.status == "connected"
@@ -1346,10 +1341,8 @@ class TestMCPIntegrationConnection:
                 integration_id="broken-api",
                 integration_name="Broken API",
                 requires_auth=False,
-                options=MCPConnectOptions(
-                    redirect_path="/integrations",
-                    bearer_token="sk-bad-token",
-                ),
+                redirect_path="/integrations",
+                bearer_token="sk-bad-token",
             )
 
             assert response.status == "error"
@@ -1383,10 +1376,8 @@ class TestMCPIntegrationConnection:
                 integration_id="linear",
                 integration_name="Linear",
                 requires_auth=True,
-                options=MCPConnectOptions(
-                    redirect_path="/integrations",
-                    is_platform=True,
-                ),
+                redirect_path="/integrations",
+                is_platform=True,
             )
 
             assert response.status == "redirect"

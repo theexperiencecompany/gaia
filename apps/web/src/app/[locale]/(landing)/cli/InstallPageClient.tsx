@@ -15,10 +15,12 @@ import {
   CLI_COMMAND_DESCRIPTIONS,
   CLI_INSTALL_COMMANDS,
 } from "@shared/cli/command-manifest";
+import Image from "next/image";
 import Link from "next/link";
 import { type ReactNode, useState } from "react";
 import CopyButton from "@/components/ui/CopyButton";
-import ProgressiveImage from "@/components/ui/ProgressiveImage";
+import { copyText } from "@/lib/clipboard";
+import { siteConfig } from "@/lib/seo";
 
 function InlineCode({ children }: { children: ReactNode }) {
   return (
@@ -33,7 +35,7 @@ function CodeBlock({ code }: { code: string }) {
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(code);
+      await copyText(code);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
@@ -57,92 +59,69 @@ function CodeBlock({ code }: { code: string }) {
   );
 }
 
-function InstallTab({
-  code,
-  hint,
-  skipInitHint,
-}: {
-  code: string;
-  hint: string;
-  skipInitHint?: boolean;
-}) {
+const INSTALLER_COMMAND = "curl -fsSL https://heygaia.io/install.sh | sh";
+
+function InstallTab({ code, hint }: { code: string; hint: ReactNode }) {
   return (
     <div className="flex flex-col items-center space-y-4 py-1">
       <CodeBlock code={code} />
-      <p className="text-sm text-zinc-400 text-center">
-        {skipInitHint ? (
-          hint
-        ) : (
-          <>
-            After installation, run <InlineCode>gaia init</InlineCode> {hint}
-          </>
-        )}
-      </p>
+      <p className="text-sm text-zinc-400 text-center">{hint}</p>
     </div>
   );
 }
 
+const packageManagerHint = (
+  <>
+    Then run <InlineCode>gaia up</InlineCode> to download GAIA and start it.
+  </>
+);
+
 const installMethods = [
+  {
+    key: "installer",
+    title: "Installer",
+    code: INSTALLER_COMMAND,
+    hint: (
+      <>
+        Installs the GAIA CLI, then offers to run{" "}
+        <InlineCode>gaia up</InlineCode>: it installs Docker if it&apos;s
+        missing, downloads GAIA and starts it.
+      </>
+    ),
+  },
   {
     key: "npm",
     title: "npm",
     code: CLI_INSTALL_COMMANDS.npm,
-    hint: "from any directory.",
+    hint: packageManagerHint,
   },
   {
     key: "pnpm",
     title: "pnpm",
     code: CLI_INSTALL_COMMANDS.pnpm,
-    hint: "from any directory.",
+    hint: packageManagerHint,
   },
   {
     key: "bun",
     title: "bun",
     code: CLI_INSTALL_COMMANDS.bun,
-    hint: "from any directory.",
+    hint: packageManagerHint,
   },
 ];
 
 const commands = [
+  { command: "gaia up", description: CLI_COMMAND_DESCRIPTIONS.up },
+  { command: "gaia status", description: CLI_COMMAND_DESCRIPTIONS.status },
+  { command: "gaia doctor", description: CLI_COMMAND_DESCRIPTIONS.doctor },
+  { command: "gaia update", description: CLI_COMMAND_DESCRIPTIONS.update },
+  { command: "gaia backup", description: CLI_COMMAND_DESCRIPTIONS.backup },
+  { command: "gaia restore", description: CLI_COMMAND_DESCRIPTIONS.restore },
+  { command: "gaia logs", description: CLI_COMMAND_DESCRIPTIONS.logs },
+  { command: "gaia stop", description: CLI_COMMAND_DESCRIPTIONS.stop },
+  { command: "gaia start", description: CLI_COMMAND_DESCRIPTIONS.start },
   {
-    command: "gaia init",
-    description: CLI_COMMAND_DESCRIPTIONS.init,
-  },
-  {
-    command: "gaia setup",
-    description: CLI_COMMAND_DESCRIPTIONS.setup,
-  },
-  {
-    command: "gaia start",
-    description: CLI_COMMAND_DESCRIPTIONS.start,
-  },
-  {
-    command: "gaia dev",
-    description: CLI_COMMAND_DESCRIPTIONS.dev,
-  },
-  {
-    command: "gaia dev full",
-    description: "Run developer mode + workers in Nx TUI",
-  },
-  {
-    command: "gaia logs",
-    description: CLI_COMMAND_DESCRIPTIONS.logs,
-  },
-  {
-    command: "gaia stop",
-    description: CLI_COMMAND_DESCRIPTIONS.stop,
-  },
-  {
-    command: "gaia stop --force-ports",
-    description: "Aggressively stop listeners on app ports",
-  },
-  {
-    command: "gaia status",
-    description: CLI_COMMAND_DESCRIPTIONS.status,
-  },
-  {
-    command: "gaia --version",
-    description: "Show the current CLI version",
+    command: "gaia uninstall",
+    description: CLI_COMMAND_DESCRIPTIONS.uninstall,
   },
   {
     command: "gaia --help",
@@ -155,41 +134,38 @@ export function InstallPageClient() {
     <div className="relative flex min-h-screen w-full flex-col items-center">
       <div className="w-full max-w-4xl mx-auto mt-24 sm:mt-32 px-4 sm:px-6">
         <div className="relative aspect-video w-full overflow-hidden rounded-4xl bg-zinc-900">
-          <ProgressiveImage
-            webpSrc="/images/screenshots/cli.webp"
-            pngSrc="/images/screenshots/cli.png"
-            alt="Terminal"
-            width={1920}
-            height={1080}
-            className="w-full rounded-4xl"
+          <Image
+            src="/images/readme/self-host-installer.webp"
+            alt="The GAIA installer: Node.js, the GAIA CLI and Docker installed, then GAIA downloading with a progress bar and a row per service"
+            width={2400}
+            height={1350}
+            priority
+            sizes="(min-width: 896px) 896px, 100vw"
+            className="h-full w-full rounded-4xl object-cover"
           />
         </div>
       </div>
 
       <section className="relative z-10 flex w-full max-w-5xl flex-col items-center gap-4 px-6 mt-5">
         <h1 className="mt-8 text-4xl font-medium text-white sm:text-7xl font-serif">
-          Install GAIA CLI
+          Install GAIA
         </h1>
         <p className="max-w-xl text-center text-lg text-zinc-400">
-          Set up your self-hosted GAIA instance with a single command
+          Run GAIA on your own machine with one command
         </p>
       </section>
 
       <div className="relative z-10 w-full max-w-5xl space-y-8 pb-6 px-6">
         <div className="flex justify-center mt-8 flex-col">
           <Tabs
-            aria-label="Package managers"
+            aria-label="Install methods"
             color="primary"
             variant="underlined"
             classNames={{ base: "mx-auto pb-0 mb-0", panel: "pt-3" }}
           >
             {installMethods.map((method) => (
               <Tab key={method.key} title={method.title}>
-                <InstallTab
-                  code={method.code}
-                  hint={method.hint}
-                  skipInitHint={"skipInitHint" in method}
-                />
+                <InstallTab code={method.code} hint={method.hint} />
               </Tab>
             ))}
           </Tabs>
@@ -230,16 +206,16 @@ export function InstallPageClient() {
         <div className="flex justify-center gap-4">
           <Button
             as={Link}
-            href="https://docs.heygaia.io/self-hosting/cli-setup"
+            href="https://docs.heygaia.io/self-hosting/walkthrough"
             color="primary"
             target="_blank"
             rel="noopener noreferrer"
           >
-            Read Full Documentation
+            Read the self-hosting guide
           </Button>
           <Button
             as={Link}
-            href="https://github.com/heygaia/gaia"
+            href={siteConfig.links.repo}
             variant="bordered"
             target="_blank"
             rel="noopener noreferrer"

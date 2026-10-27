@@ -1,19 +1,24 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
+import DocsGuidesSection from "@/components/seo/DocsGuidesSection";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
-import { getTranslatedComparison } from "@/features/comparisons/data/getTranslatedComparison";
+import { ProseParagraphs } from "@/components/seo/ProseParagraphs";
+import { RelatedAutomationsGrid } from "@/components/seo/RelatedAutomationsGrid";
+import { RelatedComparisonsGrid } from "@/components/seo/RelatedComparisonsGrid";
+import { SiteLink } from "@/components/seo/SiteLink";
 import { getTranslatedGlossaryTerm } from "@/features/glossary/data/getTranslatedGlossary";
 import { getAllGlossaryTermSlugs } from "@/features/glossary/data/glossaryData";
+import { getTranslatedCombo } from "@/features/integrations/data/getTranslatedCombo";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
-import { getLocalizedAlternates } from "@/i18n/getAlternates";
+import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
+import { LEARN_DOCS_LINKS } from "@/lib/docs-links";
+import { prerenderedMarketingParams } from "@/lib/selfhost";
 import {
   generateBreadcrumbSchema,
   generateDefinedTermSchema,
   generateFAQSchema,
-  generatePageMetadata,
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
@@ -25,9 +30,13 @@ interface PageProps {
   }>;
 }
 
-export async function generateStaticParams() {
+async function allStaticParams() {
   const slugs = await getAllGlossaryTermSlugs();
   return slugs.map((term) => ({ term }));
+}
+
+export function generateStaticParams() {
+  return prerenderedMarketingParams(allStaticParams);
 }
 
 export const dynamicParams = false;
@@ -42,24 +51,13 @@ export async function generateMetadata({
     return { title: "Term Not Found" };
   }
 
-  const metadata = generatePageMetadata({
+  return generateLocalizedPageMetadata({
     title: data.metaTitle,
     description: data.metaDescription,
     path: `/learn/${term}`,
-    canonicalPath: data.canonicalSlug
-      ? `/learn/${data.canonicalSlug}`
-      : undefined,
     keywords: data.keywords,
+    locale,
   });
-
-  return {
-    ...metadata,
-    alternates: getLocalizedAlternates(
-      `/learn/${term}`,
-      locale,
-      data.canonicalSlug ? `/learn/${data.canonicalSlug}` : undefined,
-    ),
-  };
 }
 
 export default async function GlossaryTermPage({ params }: PageProps) {
@@ -108,8 +106,9 @@ export default async function GlossaryTermPage({ params }: PageProps) {
     `${siteConfig.url}/learn/${term}`,
   );
 
-  // Fetch related terms and comparisons in parallel
-  const [relatedTerms, relatedComparisonData] = await Promise.all([
+  const docsGuides = LEARN_DOCS_LINKS[term] ?? [];
+
+  const [relatedTerms, relatedAutomations] = await Promise.all([
     Promise.all(
       data.relatedTerms.map((slug) => getTranslatedGlossaryTerm(slug)),
     ).then((results) =>
@@ -119,11 +118,11 @@ export default async function GlossaryTermPage({ params }: PageProps) {
       ),
     ),
     Promise.all(
-      (data.relatedComparisons ?? []).map((slug) =>
-        getTranslatedComparison(slug),
-      ),
+      (data.relatedAutomations ?? []).map((slug) => getTranslatedCombo(slug)),
     ).then((results) =>
-      results.filter((c): c is NonNullable<typeof c> => c !== undefined),
+      results.filter(
+        (combo): combo is NonNullable<typeof combo> => combo !== undefined,
+      ),
     ),
   ]);
 
@@ -136,13 +135,13 @@ export default async function GlossaryTermPage({ params }: PageProps) {
       <article className="mx-auto max-w-4xl px-6 pt-36 pb-24">
         {/* Breadcrumb */}
         <nav className="mb-8 text-sm text-zinc-500">
-          <Link href="/" className="hover:text-zinc-300">
+          <SiteLink href="/" className="hover:text-zinc-300">
             {t("common.home")}
-          </Link>
+          </SiteLink>
           <span className="mx-2">/</span>
-          <Link href="/learn" className="hover:text-zinc-300">
+          <SiteLink href="/learn" className="hover:text-zinc-300">
             {t("glossary.breadcrumb")}
-          </Link>
+          </SiteLink>
           <span className="mx-2">/</span>
           <span className="text-zinc-300">{data.term}</span>
         </nav>
@@ -164,9 +163,10 @@ export default async function GlossaryTermPage({ params }: PageProps) {
           <h2 className="mb-4 text-3xl font-semibold text-white">
             {t("glossary.understanding")} {data.term}
           </h2>
-          <p className="text-lg leading-relaxed text-zinc-300">
-            {data.extendedDescription}
-          </p>
+          <ProseParagraphs
+            text={data.extendedDescription}
+            className="text-lg leading-relaxed text-zinc-300"
+          />
         </section>
 
         {/* How GAIA Uses It */}
@@ -174,9 +174,10 @@ export default async function GlossaryTermPage({ params }: PageProps) {
           <h2 className="mb-4 text-2xl font-semibold text-emerald-400">
             {t("glossary.how_gaia_uses")} {data.term}
           </h2>
-          <p className="text-lg leading-relaxed text-zinc-300">
-            {data.howGaiaUsesIt}
-          </p>
+          <ProseParagraphs
+            text={data.howGaiaUsesIt}
+            className="text-lg leading-relaxed text-zinc-300"
+          />
         </section>
 
         {/* Related Terms */}
@@ -187,7 +188,7 @@ export default async function GlossaryTermPage({ params }: PageProps) {
             </h2>
             <div className="grid gap-4 sm:grid-cols-2">
               {relatedTerms.map((related) => (
-                <Link
+                <SiteLink
                   key={related.slug}
                   href={`/learn/${related.slug}`}
                   className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
@@ -198,7 +199,7 @@ export default async function GlossaryTermPage({ params }: PageProps) {
                   <p className="line-clamp-2 text-sm leading-relaxed text-zinc-400">
                     {related.definition}
                   </p>
-                </Link>
+                </SiteLink>
               ))}
             </div>
           </section>
@@ -213,27 +214,20 @@ export default async function GlossaryTermPage({ params }: PageProps) {
         </section>
 
         {/* Tools That Use This Term */}
-        {relatedComparisonData.length > 0 && (
-          <section className="mb-16">
-            <h2 className="mb-6 text-3xl font-semibold text-white">
-              {t("glossary.tools_that_use", { term: data.term })}
-            </h2>
-            <div className="grid gap-4 sm:grid-cols-3">
-              {relatedComparisonData.map((comparison) => (
-                <Link
-                  key={comparison.slug}
-                  href={`/compare/${comparison.slug}`}
-                  className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
-                >
-                  <h3 className="mb-1 text-base font-medium text-white group-hover:text-primary">
-                    {t("glossary.gaia_vs", { name: comparison.name })}
-                  </h3>
-                  <p className="text-xs text-zinc-400">{comparison.tagline}</p>
-                </Link>
-              ))}
-            </div>
-          </section>
-        )}
+        <RelatedComparisonsGrid
+          heading={t("glossary.tools_that_use", { term: data.term })}
+          slugs={data.relatedComparisons ?? []}
+        />
+
+        <RelatedAutomationsGrid
+          heading={t("common.related_automations")}
+          combos={relatedAutomations}
+        />
+
+        <DocsGuidesSection
+          heading={t("common.docs_guides")}
+          guides={docsGuides}
+        />
 
         {/* Explore More */}
         <section className="mb-16">
@@ -241,7 +235,7 @@ export default async function GlossaryTermPage({ params }: PageProps) {
             {t("common.explore_more")}
           </h2>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Link
+            <SiteLink
               href="/compare"
               className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
             >
@@ -251,8 +245,8 @@ export default async function GlossaryTermPage({ params }: PageProps) {
               <p className="text-sm leading-relaxed text-zinc-400">
                 {t("glossary.compare_alternatives_desc")}
               </p>
-            </Link>
-            <Link
+            </SiteLink>
+            <SiteLink
               href="/for"
               className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
             >
@@ -262,7 +256,7 @@ export default async function GlossaryTermPage({ params }: PageProps) {
               <p className="text-sm leading-relaxed text-zinc-400">
                 {t("glossary.gaia_for_role_desc")}
               </p>
-            </Link>
+            </SiteLink>
           </div>
         </section>
       </article>

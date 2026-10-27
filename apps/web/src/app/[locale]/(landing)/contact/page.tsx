@@ -12,7 +12,7 @@ import {
   siteConfig,
 } from "@/lib/seo";
 
-const title = "Contact Us";
+const title = "Contact the GAIA Team: Get Help or Send Feedback";
 const description =
   "Get in touch with the GAIA team for support, feature requests, partnerships, or general inquiries. We're here to help you maximize your productivity with AI.";
 

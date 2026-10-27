@@ -32,6 +32,8 @@ export interface FeatureData {
   category: FeatureCategory;
   icon: string;
   title: string;
+  /** Search-result title: what people search for this feature, in the snippet range of src/config/seoSnippet.json. */
+  metaTitle: string;
   tagline: string;
   headline: string;
   subheadline: string;
@@ -41,4 +43,10 @@ export interface FeatureData {
   useCases?: [FeatureUseCase, FeatureUseCase, FeatureUseCase];
   relatedSlugs?: [string, string, string];
   demoComponent: string;
+}
+
+/** One group of linked capabilities in the /features at-a-glance list. */
+export interface CapabilityGroup {
+  heading: string;
+  items: { text: string; href: string }[];
 }

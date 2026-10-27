@@ -1,12 +1,13 @@
 import type { Metadata, Viewport } from "next";
 import { notFound } from "next/navigation";
-import Script from "next/script";
 import { hasLocale, NextIntlClientProvider } from "next-intl";
 import { setRequestLocale } from "next-intl/server";
 import { type ReactNode, Suspense } from "react";
 import { defaultFont, getAllFontVariables } from "@/app/fonts";
 import { AgentationProvider } from "@/components/dev/AgentationProvider";
+import JsonLd from "@/components/seo/JsonLd";
 import { ChunkErrorRecovery } from "@/components/shared/ChunkErrorRecovery";
+import { prerenderedLocales } from "@/i18n/prerenderedLocales";
 import { routing } from "@/i18n/routing";
 import AnalyticsLayout from "@/layouts/AnalyticsLayout";
 import RootProviders from "@/layouts/RootProviders";
@@ -32,7 +33,7 @@ type Props = {
 };
 
 export function generateStaticParams() {
-  return routing.locales.map((locale) => ({ locale }));
+  return prerenderedLocales().map((locale) => ({ locale }));
 }
 
 export async function generateMetadata({
@@ -169,6 +170,11 @@ export default async function LocaleLayout({ children, params }: Props) {
           crossOrigin="anonymous"
         />
         <link rel="dns-prefetch" href="https://uptime.betterstackcdn.com" />
+        <link
+          rel="preconnect"
+          href="https://cdn.jsdelivr.net"
+          crossOrigin="anonymous"
+        />
         {/* The header/footer logo is rendered via next/image (which emits its
             own preload where appropriate) and sits below the fold, so a manual
             high-priority preload here only competed with the hero LCP image and
@@ -195,13 +201,9 @@ export default async function LocaleLayout({ children, params }: Props) {
           </div>
         </NextIntlClientProvider>
 
-        <Script id="json-ld-organization" type="application/ld+json">
-          {JSON.stringify(generateOrganizationSchema())}
-        </Script>
-
-        <Script id="json-ld-website" type="application/ld+json">
-          {JSON.stringify(generateWebSiteSchema())}
-        </Script>
+        <JsonLd
+          data={[generateOrganizationSchema(), generateWebSiteSchema()]}
+        />
 
         <ChunkErrorRecovery />
         <AnalyticsLayout />

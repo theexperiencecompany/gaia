@@ -1,7 +1,7 @@
 {
   "name": "@gaia/desktop",
   "description": "GAIA Desktop - Your Personal AI Assistant",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "private": true,
   "main": "./out/main/index.mjs",
   "scripts": {
@@ -28,7 +28,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.7",
+    "@biomejs/biome": "^2.6.2",
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^3.0.0",
     "@electron/notarize": "^3.0.1",

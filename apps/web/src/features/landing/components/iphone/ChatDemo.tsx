@@ -8,9 +8,10 @@ import { DiscordIcon, SlackIcon, TelegramIcon, WhatsappIcon } from "@icons";
 import Image from "next/image";
 import type React from "react";
 import { Fragment, useEffect, useRef, useState } from "react";
+import { SiteLink } from "@/components/seo/SiteLink";
 import { RaisedButton } from "@/components/ui/raised-button";
-import { Link } from "@/i18n/navigation";
 import { cn } from "@/lib/utils";
+import { vanityTarget } from "../../../../../vanity-redirects.mjs";
 
 export type ChatPlatform =
   | "imessage"
@@ -84,7 +85,7 @@ const DEMO_CTA: Record<
   imessage: { label: "Chat with GAIA", href: "/signup", accent: "#0A84FF" },
   whatsapp: {
     label: "Chat on WhatsApp",
-    href: "/whatsapp",
+    href: vanityTarget("/whatsapp"),
     accent: "#25D366",
     darkText: true,
   },
@@ -135,7 +136,7 @@ function DemoCtaIcon({
 function DemoCta({ platform }: { platform: ChatPlatform }) {
   const { label, href, accent, darkText } = DEMO_CTA[platform];
   return (
-    <Link href={href} className="chat-bubble-pop mt-1 w-fit">
+    <SiteLink href={href} className="chat-bubble-pop mt-1 w-fit">
       <RaisedButton
         color={accent}
         size="sm"
@@ -144,7 +145,7 @@ function DemoCta({ platform }: { platform: ChatPlatform }) {
         <DemoCtaIcon platform={platform} color={darkText ? "#000" : "#fff"} />
         {label}
       </RaisedButton>
-    </Link>
+    </SiteLink>
   );
 }
 
@@ -1288,7 +1289,7 @@ function TelegramDemo({
           gap: 8,
           backgroundColor: blueOverlay,
           backgroundImage:
-            'linear-gradient(rgba(43,120,205,0.5), rgba(43,120,205,0.5)), url("/telegram-doodle.png")',
+            'linear-gradient(rgba(43,120,205,0.5), rgba(43,120,205,0.5)), url("/telegram-doodle.webp")',
           backgroundSize: "auto, 480px auto",
           backgroundRepeat: "repeat",
           paddingTop: 8,

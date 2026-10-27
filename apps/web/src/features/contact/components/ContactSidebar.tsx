@@ -10,7 +10,6 @@ import {
   LinkedinIcon,
   TwitterIcon,
   WhatsappIcon,
-  YoutubeIcon,
 } from "@/components/shared/icons";
 
 const emailLinks = [
@@ -57,11 +56,6 @@ const socialLinks = [
     ariaLabel: "WhatsApp",
     href: "https://whatsapp.heygaia.io",
     Icon: WhatsappIcon,
-  },
-  {
-    ariaLabel: "YouTube",
-    href: "https://youtube.com/@theexperiencecompany",
-    Icon: YoutubeIcon,
   },
   {
     ariaLabel: "LinkedIn",

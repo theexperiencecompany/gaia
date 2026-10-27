@@ -560,6 +560,42 @@ class TestHandlePaymentSucceeded:
         assert event.amount_usd_pre_tax == 0
         assert event.to_properties()["amount_usd_pre_tax"] == 0
 
+    @pytest.mark.regression
+    async def test_a_renewal_with_the_fields_dodo_sends_as_null_is_captured(
+        self,
+        webhook_service,
+        mock_processed_webhook_repository,
+        mock_webhook_users_collection,
+        mock_payment_capture,
+    ):
+        """Regression: a renewal with these fields null was abandoned and its payment event lost."""
+        payload = {
+            **PAYMENT_DATA_PAYLOAD,
+            "total_amount": 1000,
+            "settlement_amount": 1000,
+            "tax": None,
+            "settlement_tax": None,
+            "status": None,
+            "payment_method": None,
+        }
+        result = await webhook_service.process_webhook(
+            _make_webhook_event("payment.succeeded", payload), "wh_pay_null_tax"
+        )
+
+        assert result.status == "processed"
+        mock_payment_capture.assert_called_once_with(
+            UserId(FAKE_USER_ID),
+            PaymentSucceeded(
+                payment_id="pay_001",
+                amount=10.0,
+                currency="USD",
+                # A null tax is Dodo collecting none, so the charge is pre-tax in full.
+                amount_charged_pre_tax=10.0,
+                currency_charged="USD",
+                amount_usd_pre_tax=10.0,
+            ),
+        )
+
     async def test_a_non_usd_settlement_sends_no_usd_amount_and_says_so(
         self,
         webhook_service,

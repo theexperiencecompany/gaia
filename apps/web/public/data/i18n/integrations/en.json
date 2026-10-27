@@ -13263,7 +13263,7 @@
       },
       {
         "question": "Does GAIA support GitHub Enterprise?",
-        "answer": "GAIA supports GitHub Enterprise as well as GitHub.com. Provide your Enterprise hostname during setup and GAIA connects to your self-hosted instance."
+        "answer": "GAIA supports GitHub Enterprise as well as GitHub.com. Provide your Enterprise hostname during setup and GAIA connects to your GitHub Enterprise Server instance."
       }
     ]
   },
@@ -14118,6 +14118,228 @@
       {
         "question": "What happens if an Airtable record is deleted?",
         "answer": "When an Airtable record is deleted, GAIA removes the corresponding Google Calendar event. Your calendar stays clean and only reflects active Airtable records."
+      }
+    ]
+  },
+  "airtable-google-sheets": {
+    "toolA": "Airtable",
+    "toolB": "Google Sheets",
+    "tagline": "Sync Airtable records to Google Sheets and log sheet rows back to your base",
+    "metaTitle": "Airtable + Google Sheets Integration with GAIA",
+    "metaDescription": "Connect Airtable and Google Sheets with GAIA. Sync records to spreadsheets automatically and skip manual CSV exports for good.",
+    "keywords": [
+      "airtable google sheets integration",
+      "connect airtable to google sheets",
+      "sync airtable to google sheets",
+      "airtable to google sheets automation",
+      "export airtable records to sheets",
+      "airtable sheets two-way sync"
+    ],
+    "intro": "Airtable is where structured work lives: pipelines, inventories, content calendars, applicant trackers. But executives, clients, and finance teams live in Google Sheets. Today the bridge between them is a manual CSV export that is stale the moment it downloads, plus version chaos when five people annotate five different copies.\n\nGAIA keeps Airtable and Google Sheets in step without exports. New or changed records in Airtable appear as rows in the right sheet automatically, with columns mapped to your fields. Updates can flow the other way too: edits in Sheets write back to Airtable records, so the sheet becomes a safe editing surface for people who never open Airtable.\n\nReporting gets simpler as a side effect. Build pivot tables, charts, and dashboards in Sheets on data that refreshes itself, while Airtable stays the system of record with views, permissions, and linked records intact.",
+    "useCases": [
+      {
+        "title": "Append new Airtable records as sheet rows",
+        "description": "When a record is created in Airtable, by form, automation, or teammate, GAIA appends it as a row in the mapped Google Sheet with fields in the right columns. Intake pipelines stay visible to sheet-only stakeholders."
+      },
+      {
+        "title": "Sync record updates to existing rows",
+        "description": "When a status, owner, or date field changes in Airtable, GAIA updates the matching row instead of duplicating it. Sheets always reflect the current state of the base."
+      },
+      {
+        "title": "Log form and intake responses for review",
+        "description": "Airtable form submissions land in a review sheet where teammates without Airtable seats can triage, comment, and approve. Approved rows write back to Airtable with one confirmation."
+      },
+      {
+        "title": "Scheduled snapshots for reporting",
+        "description": "GAIA exports a timestamped snapshot of a view on your schedule: daily pipeline, weekly inventory, monthly applicants. Each snapshot lands as a dated tab, so trends are trivially chartable."
+      },
+      {
+        "title": "Build live dashboards on synced data",
+        "description": "Point Sheets charts and pivot tables at the synced tab and they refresh as Airtable changes. Leadership gets dashboards without extra seats, logins, or stale exports."
+      }
+    ],
+    "howItWorks": [
+      {
+        "step": "Connect Airtable and Google Sheets to GAIA",
+        "description": "Authorize GAIA with your Airtable account and Google account. Pick the bases GAIA may read and the spreadsheets it may write to."
+      },
+      {
+        "step": "Map bases, views, and fields to sheets",
+        "description": "Choose which Airtable view syncs to which sheet tab and match fields to columns. GAIA writes linked records as readable names, not record IDs."
+      },
+      {
+        "step": "GAIA syncs rows and records continuously",
+        "description": "Creates, updates, and scheduled snapshots run on their own. GAIA matches rows to records by a key field so updates never create duplicates."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "How do I sync Airtable to Google Sheets automatically?",
+        "answer": "Connect both tools to GAIA, pick the Airtable view and the destination sheet tab, and map fields to columns once. New records append as rows and field changes update the matching row, with no further exports."
+      },
+      {
+        "question": "Does GAIA update existing rows or only add new ones?",
+        "answer": "Both. GAIA matches rows to Airtable records by a key field you choose, such as record ID or email. New records append new rows while changes to existing records update the matched row in place."
+      },
+      {
+        "question": "Can I sync only a filtered Airtable view instead of the whole base?",
+        "answer": "Yes. Point GAIA at a specific view and only records passing that view's filters sync to Sheets. Different views can feed different tabs for different audiences."
+      },
+      {
+        "question": "Can edits in Google Sheets update Airtable records?",
+        "answer": "Yes. With two-way sync enabled, edits to mapped columns write back to the matched Airtable record. You control which columns are editable so formula and rollup territory stays protected."
+      },
+      {
+        "question": "How do linked records and attachments appear in Sheets?",
+        "answer": "Linked records sync as readable names, not cryptic record IDs, and GAIA can include attachment URLs in a dedicated column. Rollups and formulas sync as their computed values at sync time."
+      }
+    ]
+  },
+  "google-docs-slack": {
+    "toolA": "Google Docs",
+    "toolB": "Slack",
+    "tagline": "Share Google Docs in Slack with correct permissions and never miss a comment",
+    "metaTitle": "Google Docs + Slack Integration with GAIA",
+    "metaDescription": "Connect Google Docs and Slack with GAIA. Share docs with permissions handled, get comment alerts in channels, and create docs from chat.",
+    "keywords": [
+      "google docs slack integration",
+      "share google doc in slack",
+      "google docs slack notifications",
+      "connect google docs to slack",
+      "google docs comment alerts slack",
+      "create google doc from slack"
+    ],
+    "intro": "Drafts live in Google Docs, decisions happen in Slack, and the two rarely meet cleanly. Links pasted in chat hit request-access walls, feedback scatters across threads that never reach the doc comments, and review deadlines slip because nobody knows the doc changed.\n\nGAIA connects Google Docs and Slack so documents move at chat speed. Ask GAIA to share a doc and it checks channel members have access before posting, fixing permissions first. Comments, suggestions, and edits surface as Slack alerts in the right channel, and threads in Slack can become Docs with one command.\n\nThis is built for teams that review specs, proposals, and posts together: writers keep working in Docs while stakeholders follow along, approve, and comment from Slack without learning a new tool.",
+    "useCases": [
+      {
+        "title": "Share docs with permissions handled",
+        "description": "When you ask GAIA to post a Doc in a channel, it verifies every member can open it and grants view or comment access first. No more request-access dead ends."
+      },
+      {
+        "title": "Comment and suggestion alerts in Slack",
+        "description": "New comments, replies, and resolved threads on watched docs post to the owning channel with a direct link. Reviewers respond in hours, not days."
+      },
+      {
+        "title": "Create Docs from Slack threads",
+        "description": "A decision reached in a long thread becomes a brief, spec, or meeting note in Drive with one command. GAIA drafts from the thread and posts the link back."
+      },
+      {
+        "title": "Review deadline reminders",
+        "description": "Docs awaiting review get polite scheduled nudges in Slack until comments arrive or the owner signs off. Nothing waits silently."
+      },
+      {
+        "title": "Find any Doc without leaving Slack",
+        "description": "Ask GAIA for a doc by name, client, or topic and get a permission-checked link instantly. Team knowledge stays one message away."
+      }
+    ],
+    "howItWorks": [
+      {
+        "step": "Connect Google Docs and Slack to GAIA",
+        "description": "Authorize GAIA with your Google account and Slack workspace. GAIA gets read, write, and sharing scope on Docs plus posting scope in Slack."
+      },
+      {
+        "step": "Choose watched docs and alert channels",
+        "description": "Tell GAIA which docs or Drive folders to watch and which channels receive alerts. Set who may grant access when GAIA shares."
+      },
+      {
+        "step": "GAIA shares, watches, and drafts for you",
+        "description": "Shares go out permission-checked, comments arrive as alerts, and new docs get created from chat on demand. Docs and discussion stay linked."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "Will everyone in the channel be able to open a shared doc?",
+        "answer": "Yes. GAIA checks access for channel members before posting and grants the view or comment permission you configured. If your policy blocks external sharing, GAIA tells you who is excluded instead of posting a broken link."
+      },
+      {
+        "question": "Can I get Slack alerts for Google Docs comments?",
+        "answer": "Yes. GAIA watches the docs you choose and posts new comments, replies, and suggestion activity to the mapped channel with a link straight to the thread."
+      },
+      {
+        "question": "Can GAIA create a Google Doc from a Slack conversation?",
+        "answer": "Yes. Point GAIA at a thread and it drafts a Doc from the discussion, saves it to your chosen Drive folder, and posts the link back to the channel."
+      },
+      {
+        "question": "Does this work with docs in Shared Drives?",
+        "answer": "Yes. GAIA supports docs in Shared Drives as well as My Drive, respecting the same folder permissions your workspace already enforces."
+      },
+      {
+        "question": "Can GAIA limit who receives doc alerts?",
+        "answer": "Yes. Alerts route per doc or per folder to the channel you choose, and you can restrict comment alerts to mentions of specific people or unresolved threads only."
+      }
+    ]
+  },
+  "todoist-google-sheets": {
+    "toolA": "Todoist",
+    "toolB": "Google Sheets",
+    "tagline": "Log completed Todoist tasks to Google Sheets and turn sheet rows into tasks",
+    "metaTitle": "Todoist + Google Sheets Integration with GAIA",
+    "metaDescription": "Connect Todoist and Google Sheets with GAIA. Log completed tasks to spreadsheets automatically and turn sheet rows into tracked tasks.",
+    "keywords": [
+      "todoist google sheets integration",
+      "export todoist tasks to google sheets",
+      "todoist completed tasks spreadsheet",
+      "connect todoist to google sheets",
+      "todoist sheets automation",
+      "todoist productivity report sheets"
+    ],
+    "intro": "Todoist knows what you finished, but proving it means screenshots or manual logs. Managers ask for weekly summaries, freelancers need billable-task records, and teams want cycle-time data, all locked inside the task list.\n\nGAIA pipes Todoist into Google Sheets automatically. Completed tasks append to a log sheet with project, labels, dates, and priority fields, ready for pivot tables. The reverse works too: rows added to a sheet, new leads, content ideas, bug reports, become Todoist tasks with fields mapped to titles, projects, and due dates.\n\nThe result is a personal analytics layer on top of Todoist plus a bulk-entry path for work captured anywhere else. Your task list stays the place work happens, and Sheets becomes the place work gets measured.",
+    "useCases": [
+      {
+        "title": "Auto-log completed tasks to Sheets",
+        "description": "Every completed task lands in a log sheet with its project, labels, due date, and completion time. Timesheets and weekly reports write themselves."
+      },
+      {
+        "title": "Weekly productivity summaries",
+        "description": "GAIA rolls the log into a weekly tab: tasks completed per project, overdue items carried forward, and current streaks. Share it with your manager or keep it for yourself."
+      },
+      {
+        "title": "Create tasks from sheet rows",
+        "description": "New rows in a tracked tab become Todoist tasks with columns mapped to title, project, priority, and due date. Content calendars and lead lists convert to action directly."
+      },
+      {
+        "title": "Track estimates against actuals",
+        "description": "Log estimated versus actual completion data per task and chart accuracy over time in Sheets. Planning gets measurably better each quarter."
+      },
+      {
+        "title": "Bulk-import backlogs from spreadsheets",
+        "description": "Migrating from another tool or planning a project in Sheets? GAIA converts each row into a task in the right project, preserving order, labels, and dates."
+      }
+    ],
+    "howItWorks": [
+      {
+        "step": "Connect Todoist and Google Sheets to GAIA",
+        "description": "Authorize GAIA with your Todoist account and Google account. Choose which projects log to Sheets and which tabs create tasks."
+      },
+      {
+        "step": "Map fields to columns once",
+        "description": "Match Todoist fields like project, labels, priority, and due date to sheet columns. GAIA remembers the mapping for every future sync."
+      },
+      {
+        "step": "GAIA logs completions and creates tasks",
+        "description": "Finished tasks append to the log on their own while new sheet rows arrive in Todoist as tasks. Both directions run without babysitting."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "Can GAIA automatically log my completed Todoist tasks?",
+        "answer": "Yes. Connect Todoist and pick a log spreadsheet. Every completed task appends a row with project, labels, dates, and priority, so your history builds itself."
+      },
+      {
+        "question": "What Todoist fields appear in the sheet?",
+        "answer": "Task title, project, section, labels, priority, due date, creation date, and completion timestamp. You choose the column order once and GAIA keeps it for every row."
+      },
+      {
+        "question": "Can new rows in Google Sheets become Todoist tasks?",
+        "answer": "Yes. Map columns to task fields and each new row creates a task in the project you chose, with priority and due date set from the sheet values."
+      },
+      {
+        "question": "Can I log only certain projects and not everything?",
+        "answer": "Yes. Select exactly which Todoist projects feed the log. Personal tasks stay private while work projects sync for reporting."
+      },
+      {
+        "question": "Does GAIA handle recurring tasks in the log?",
+        "answer": "Yes. Each completion of a recurring task logs its own row with its own dates, so streaks and frequency analysis stay accurate."
       }
     ]
   }

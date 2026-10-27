@@ -10,7 +10,6 @@ import {
   PublicIntegrationCardSkeletonGrid,
 } from "@/features/integrations/components/PublicIntegrationCard";
 import type { CommunityIntegration } from "@/features/integrations/types";
-import FinalSection from "@/features/landing/components/sections/FinalSection";
 
 const ITEMS_PER_PAGE = 18;
 
@@ -151,87 +150,72 @@ export function IntegrationsPageClient() {
   const displayTotal = filteredNativeIntegrations.length + total;
 
   return (
-    <div className="min-h-screen pt-16 pb-16">
-      <div className="mx-auto max-w-7xl px-6 z-1 relative mt-10">
-        <div className="mb-12">
-          <h1 className="mb-4 font-serif text-5xl md:text-7xl font-normal text-foreground">
-            Integration Marketplace
-          </h1>
-          <p className="text-lg text-foreground-500 font-light max-w-2xl">
-            Discover and automate your favorite tools with AI. Browse
-            community-built MCP integrations to connect Gmail, Slack, Notion,
-            GitHub, and 50+ services to your AI assistant.
+    <>
+      <IntegrationsFilters
+        onFilterChange={handleFilterChange}
+        category={filters.category}
+        initialFilters={{ search: filters.search, sort: filters.sort }}
+      />
+
+      {displayLoading && (
+        <p className="mb-6 text-sm text-zinc-500">Loading...</p>
+      )}
+      {!displayLoading && (
+        <p className="mb-6 text-sm text-zinc-500">
+          {displayTotal} integration{displayTotal !== 1 ? "s" : ""} found
+        </p>
+      )}
+
+      {displayLoading ? (
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <PublicIntegrationCardSkeletonGrid count={6} />
+        </div>
+      ) : filteredNativeIntegrations.length === 0 &&
+        integrations.length === 0 ? (
+        <div className="py-20 text-center">
+          <p className="text-zinc-400">No integrations found</p>
+          <p className="mt-2 text-sm text-zinc-500">
+            Try adjusting your search or filters
           </p>
         </div>
-
-        <IntegrationsFilters
-          onFilterChange={handleFilterChange}
-          category={filters.category}
-          initialFilters={{ search: filters.search, sort: filters.sort }}
-        />
-
-        {displayLoading && (
-          <p className="mb-6 text-sm text-zinc-500">Loading...</p>
-        )}
-        {!displayLoading && (
-          <p className="mb-6 text-sm text-zinc-500">
-            {displayTotal} integration{displayTotal !== 1 ? "s" : ""} found
-          </p>
-        )}
-
-        {displayLoading ? (
+      ) : (
+        <>
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-            <PublicIntegrationCardSkeletonGrid count={6} />
-          </div>
-        ) : filteredNativeIntegrations.length === 0 &&
-          integrations.length === 0 ? (
-          <div className="py-20 text-center">
-            <p className="text-zinc-400">No integrations found</p>
-            <p className="mt-2 text-sm text-zinc-500">
-              Try adjusting your search or filters
-            </p>
-          </div>
-        ) : (
-          <>
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {/* Native integrations are not paginated by the community endpoint,
+            {/* Native integrations are not paginated by the community endpoint,
                   so show them once on the first page instead of re-pinning them
                   on top of every page. */}
-              {currentPage === 1 &&
-                filteredNativeIntegrations.map((integration) => (
-                  <PublicIntegrationCard
-                    key={integration.integrationId}
-                    integration={integration}
-                  />
-                ))}
-              {integrations.map((integration) => (
+            {currentPage === 1 &&
+              filteredNativeIntegrations.map((integration) => (
                 <PublicIntegrationCard
                   key={integration.integrationId}
                   integration={integration}
                 />
               ))}
+            {integrations.map((integration) => (
+              <PublicIntegrationCard
+                key={integration.integrationId}
+                integration={integration}
+              />
+            ))}
+          </div>
+
+          {/* Pagination — community only */}
+          {totalPages > 1 && (
+            <div className="mt-12 flex justify-center">
+              <Pagination
+                total={totalPages}
+                page={currentPage}
+                onChange={handlePageChange}
+                showControls
+                variant="faded"
+                classNames={{
+                  base: "cursor-pointer!",
+                }}
+              />
             </div>
-
-            {/* Pagination — community only */}
-            {totalPages > 1 && (
-              <div className="mt-12 flex justify-center">
-                <Pagination
-                  total={totalPages}
-                  page={currentPage}
-                  onChange={handlePageChange}
-                  showControls
-                  variant="faded"
-                  classNames={{
-                    base: "cursor-pointer!",
-                  }}
-                />
-              </div>
-            )}
-          </>
-        )}
-      </div>
-
-      <FinalSection />
-    </div>
+          )}
+        </>
+      )}
+    </>
   );
 }

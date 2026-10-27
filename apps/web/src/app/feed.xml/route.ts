@@ -1,14 +1,17 @@
 import { getAllAlternatives } from "@/features/alternatives/data/alternativesData";
-import { blogApi } from "@/features/blog/api/blogApi";
 import { getAllComparisons } from "@/features/comparisons/data/comparisonsData";
 import { getAllGlossaryTerms } from "@/features/glossary/data/glossaryData";
 import { getAllCombos } from "@/features/integrations/data/combosData";
+import { getAllCommunityIntegrations } from "@/features/integrations/lib/serverMarketplaceApi";
 import { FEATURES } from "@/features/landing/data/featuresData";
 import { getAllPersonas } from "@/features/personas/data/personasData";
-import { workflowApi } from "@/features/workflows/api/workflowApi";
-import { fetchAllPaginated } from "@/lib/fetchAll";
+import {
+  getAllCommunityWorkflowsServer,
+  getExploreWorkflowsServer,
+} from "@/features/workflows/lib/serverWorkflowsApi";
+import { getAllBlogPosts } from "@/lib/blog";
+import { MARKETING_PAGES } from "@/lib/marketingPages";
 import { siteConfig } from "@/lib/seo";
-import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
 
 interface FeedItem {
   title: string;
@@ -40,159 +43,7 @@ function buildItem(item: FeedItem): string {
 }
 
 function getStaticPages(baseUrl: string, buildDate: string): FeedItem[] {
-  const pages: Array<{
-    path: string;
-    title: string;
-    description: string;
-    category: string;
-  }> = [
-    {
-      path: "",
-      title: "GAIA - Your Personal AI Assistant",
-      description:
-        "GAIA is your open-source personal AI assistant to proactively manage your email, calendar, todos, workflows and all your digital tools.",
-      category: "Product",
-    },
-    {
-      path: "/pricing",
-      title: "Pricing",
-      description:
-        "Explore GAIA pricing plans. Free open-source tier, Pro, and Enterprise options for personal AI assistance.",
-      category: "Product",
-    },
-    {
-      path: "/features",
-      title: "Features",
-      description:
-        "Explore everything GAIA can do. AI intelligence, productivity tools, workflow automation, integrations, and multi-platform support.",
-      category: "Product",
-    },
-    {
-      path: "/marketplace",
-      title: "Integration Marketplace",
-      description:
-        "Browse community integrations for GAIA. Connect your favorite tools and automate workflows.",
-      category: "Product",
-    },
-    {
-      path: "/use-cases",
-      title: "Use Cases",
-      description:
-        "Discover AI workflows and automation use cases powered by GAIA.",
-      category: "Product",
-    },
-    {
-      path: "/download",
-      title: "Download GAIA",
-      description:
-        "Get GAIA for desktop, mobile, and web. Available on macOS, Windows, Linux, iOS, and Android.",
-      category: "Product",
-    },
-    {
-      path: "/blog",
-      title: "GAIA Blog",
-      description:
-        "Read the latest updates, insights, and stories from the GAIA team about AI, productivity, and open-source development.",
-      category: "Resources",
-    },
-    {
-      path: "/cli",
-      title: "Install GAIA CLI",
-      description:
-        "Install the GAIA CLI for self-hosting your personal AI assistant.",
-      category: "Resources",
-    },
-    {
-      path: "/compare",
-      title: "Compare GAIA",
-      description:
-        "See how GAIA compares to other AI assistants and productivity tools.",
-      category: "Resources",
-    },
-    {
-      path: "/alternative-to",
-      title: "GAIA Alternatives",
-      description:
-        "Discover which tools GAIA replaces and how it compares as an alternative.",
-      category: "Resources",
-    },
-    {
-      path: "/automate",
-      title: "Automation Combos",
-      description:
-        "Automate any two tools together with GAIA. Browse integration combinations.",
-      category: "Resources",
-    },
-    {
-      path: "/learn",
-      title: "Glossary",
-      description:
-        "AI and productivity terms explained. Learn about the concepts behind GAIA.",
-      category: "Resources",
-    },
-    {
-      path: "/for",
-      title: "Built For",
-      description:
-        "Discover how GAIA is built for different roles and industries.",
-      category: "Product",
-    },
-    {
-      path: "/about",
-      title: "About GAIA",
-      description:
-        "Learn about GAIA and the team building the future of personal AI assistants.",
-      category: "Company",
-    },
-    {
-      path: "/manifesto",
-      title: "Our Manifesto",
-      description: "The mission and vision behind GAIA.",
-      category: "Company",
-    },
-    {
-      path: "/faq",
-      title: "FAQ",
-      description:
-        "Frequently asked questions about GAIA, the open-source personal AI assistant.",
-      category: "Company",
-    },
-    {
-      path: "/contact",
-      title: "Contact",
-      description: "Get in touch with the GAIA team.",
-      category: "Company",
-    },
-    {
-      path: "/brand",
-      title: "Branding",
-      description: "GAIA brand guidelines and downloadable assets.",
-      category: "Company",
-    },
-    {
-      path: "/open-source-ai-assistant",
-      title: "Open Source AI Assistant",
-      description:
-        "GAIA is the open-source AI assistant that proactively manages your digital life.",
-      category: "Product",
-    },
-    {
-      path: "/ai-chief-of-staff",
-      title: "AI Chief of Staff",
-      description:
-        "GAIA acts as your AI chief of staff, managing communications, scheduling, and workflows.",
-      category: "Product",
-    },
-    {
-      path: "/inbox-zero-ai",
-      title: "Inbox Zero AI",
-      description:
-        "Achieve inbox zero with GAIA's AI email management and automation.",
-      category: "Product",
-    },
-  ];
-
-  return pages.map((page) => ({
+  return MARKETING_PAGES.map((page) => ({
     title: page.title,
     link: `${baseUrl}${page.path}`,
     description: page.description,
@@ -259,8 +110,8 @@ async function getGlossaryPages(
 ): Promise<FeedItem[]> {
   const all = await getAllGlossaryTerms();
   const items: FeedItem[] = [];
+  // Victims excluded via _slugs.json (see sitemapData.ts) — no filter here.
   for (const term of all) {
-    if (term.canonicalSlug) continue;
     items.push({
       title: term.metaTitle || term.term,
       link: `${baseUrl}/learn/${term.slug}`,
@@ -279,7 +130,6 @@ async function getComboPages(
   const all = await getAllCombos();
   const items: FeedItem[] = [];
   for (const combo of all) {
-    if (combo.canonicalSlug) continue;
     items.push({
       title: combo.metaTitle || `${combo.toolA} + ${combo.toolB} Automation`,
       link: `${baseUrl}/automate/${combo.slug}`,
@@ -292,112 +142,55 @@ async function getComboPages(
 }
 
 async function getIntegrationItems(baseUrl: string): Promise<FeedItem[]> {
-  try {
-    const apiBaseUrl = getServerApiBaseUrl();
-    if (!apiBaseUrl) return [];
-
-    type IntegrationEntry = {
-      slug: string;
-      name?: string;
-      description?: string;
-      publishedAt?: string;
-      createdAt?: string;
-    };
-
-    const allIntegrations: IntegrationEntry[] = await fetchAllPaginated(
-      async (limit, offset) => {
-        const response = await fetch(
-          `${apiBaseUrl}/integrations/community?limit=${limit}&offset=${offset}`,
-          { next: { revalidate: 3600 } },
-        );
-        if (!response.ok) return { items: [], total: 0, hasMore: false };
-        const data = (await response.json()) as {
-          integrations?: IntegrationEntry[];
-          total?: number;
-          hasMore?: boolean;
-        };
-        return {
-          items: data.integrations ?? [],
-          total: data.total ?? 0,
-          hasMore: data.hasMore !== false,
-        };
-      },
-      100,
-    );
-
-    return allIntegrations.map((integration) => ({
-      title: integration.name
-        ? `${integration.name} Integration`
-        : `GAIA Marketplace: ${integration.slug}`,
-      link: `${baseUrl}/marketplace/${integration.slug}`,
-      description:
-        integration.description ||
-        `Connect ${integration.name || integration.slug} with GAIA to automate your workflows.`,
-      pubDate: new Date(
-        integration.publishedAt || integration.createdAt || Date.now(),
-      ).toUTCString(),
-      category: "Integrations",
-    }));
-  } catch (error) {
-    console.error("Error fetching integrations for RSS feed:", error);
-    return [];
-  }
+  const integrations = await getAllCommunityIntegrations();
+  return integrations.map((integration) => ({
+    title: `${integration.name} Integration`,
+    link: `${baseUrl}/marketplace/${integration.slug}`,
+    description: integration.description,
+    pubDate: new Date(integration.publishedAt ?? Date.now()).toUTCString(),
+    category: "Integrations",
+  }));
 }
 
+/** Blog posts from the local content, the same source the sitemap and /blog render. */
 async function getBlogItems(baseUrl: string): Promise<FeedItem[]> {
-  try {
-    const blogs = await blogApi.getBlogs(true);
-    return blogs.map((blog) => ({
-      title: blog.title,
-      link: `${baseUrl}/blog/${blog.slug}`,
-      description: blog.content
-        .replace(/[#*`[\]()]/g, "")
-        .replace(/\n/g, " ")
-        .slice(0, 500)
-        .trim(),
-      pubDate: new Date(blog.date).toUTCString(),
-      category: blog.category || "Blog",
-    }));
-  } catch (error) {
-    console.error("Error fetching blogs for RSS feed:", error);
-    return [];
-  }
+  const posts = await getAllBlogPosts(true);
+  return posts.map((post) => ({
+    title: post.title,
+    link: `${baseUrl}/blog/${post.slug}`,
+    description: post.content
+      .replace(/[#*`[\]()]/g, "")
+      .replace(/\n/g, " ")
+      .slice(0, 500)
+      .trim(),
+    pubDate: new Date(post.date).toUTCString(),
+    category: post.category || "Blog",
+  }));
 }
 
 async function getWorkflowItems(baseUrl: string): Promise<FeedItem[]> {
-  try {
-    const [explore, community] = await Promise.all([
-      workflowApi.getExploreWorkflows(1000, 0).catch(() => ({ workflows: [] })),
-      workflowApi
-        .getCommunityWorkflows(1000, 0)
-        .catch(() => ({ workflows: [] })),
-    ]);
-
-    const allWorkflows = [...explore.workflows, ...community.workflows];
-    const seen = new Set<string>();
-    const items: FeedItem[] = [];
-
-    for (const wf of allWorkflows) {
-      if (seen.has(wf.slug)) continue;
-      seen.add(wf.slug);
-      items.push({
-        title: wf.title,
-        link: `${baseUrl}/use-cases/${wf.slug}`,
-        description:
-          wf.description ||
-          `AI workflow: ${wf.title}. Automate this use case with GAIA.`,
-        pubDate: new Date(wf.created_at).toUTCString(),
-        category: wf.categories?.includes("featured")
-          ? "Featured Workflows"
-          : "Community Workflows",
-      });
-    }
-
-    return items;
-  } catch (error) {
-    console.error("Error fetching workflows for RSS feed:", error);
-    return [];
+  const [explore, community] = await Promise.all([
+    getExploreWorkflowsServer(1000),
+    getAllCommunityWorkflowsServer(),
+  ]);
+  const seen = new Set<string>();
+  const items: FeedItem[] = [];
+  for (const wf of [...explore, ...community]) {
+    if (!wf.slug || seen.has(wf.slug)) continue;
+    seen.add(wf.slug);
+    items.push({
+      title: wf.title,
+      link: `${baseUrl}/use-cases/${wf.slug}`,
+      description:
+        wf.description ||
+        `AI workflow: ${wf.title}. Automate this use case with GAIA.`,
+      pubDate: new Date(wf.created_at).toUTCString(),
+      category: wf.categories?.includes("featured")
+        ? "Featured Workflows"
+        : "Community Workflows",
+    });
   }
+  return items;
 }
 
 export async function GET() {
@@ -447,15 +240,15 @@ export async function GET() {
      xmlns:atom="http://www.w3.org/2005/Atom"
      xmlns:content="http://purl.org/rss/1.0/modules/content/">
   <channel>
-    <title>GAIA - Your Personal AI Assistant</title>
+    <title>${escapeXml(siteConfig.name)}</title>
     <link>${baseUrl}</link>
     <description>${escapeXml(siteConfig.description)}</description>
     <language>en-us</language>
     <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
     <atom:link href="${baseUrl}/feed.xml" rel="self" type="application/rss+xml"/>
     <image>
-      <url>${baseUrl}/images/logos/logo.webp</url>
-      <title>GAIA</title>
+      <url>${baseUrl}/brand/gaia_logo.png</url>
+      <title>${escapeXml(siteConfig.name)}</title>
       <link>${baseUrl}</link>
     </image>
     ${rssItems}

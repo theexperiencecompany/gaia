@@ -143,8 +143,6 @@ i18n.cache
 docs/superpowers
 superpowers/
 
-bin/dagger
-
 .nx/polygraph
 .claude/settings.local.json
 
@@ -186,7 +184,7 @@ dump.rdb
 # Embedding sidecar benchmark outputs (regenerable; charts live in the PR)
 apps/api/scripts/sidecar_benchmark/results/
 
-# Per-invocation mutation workdirs (scripts/ci/mutation.sh module, .mutation-$$) —
+# Per-invocation mutation workdirs (scripts/ci/mutation.py module, .mutation-<pid>) —
 # a full app/tests/scripts copy plus mutmut's mutants/ tree, ~3.5k files. Left
 # behind only on a crash or MUTMUT_KEEP_WORKDIR=1, and swept into a commit once.
 .mutation-*/

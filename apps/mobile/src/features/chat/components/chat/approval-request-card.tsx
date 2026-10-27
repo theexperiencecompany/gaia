@@ -258,15 +258,17 @@ export function ApprovalRequestCard({
           </Button.Label>
         </Button>
       </View>
-      <Pressable
-        onPress={() => decide("approve", "always_tool")}
-        disabled={submitting !== null}
-        hitSlop={8}
-      >
-        <Text style={{ fontSize: 12, color: "#71717a" }}>
-          Always allow this tool
-        </Text>
-      </Pressable>
+      {!data.always_asks && (
+        <Pressable
+          onPress={() => decide("approve", "always_tool")}
+          disabled={submitting !== null}
+          hitSlop={8}
+        >
+          <Text style={{ fontSize: 12, color: "#71717a" }}>
+            Always allow this tool
+          </Text>
+        </Pressable>
+      )}
     </View>,
   );
 }

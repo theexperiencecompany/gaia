@@ -1,0 +1,97 @@
+{
+  "category": "ai-assistant",
+  "domain": "openclaw.ai",
+  "faqs": [
+    {
+      "answer": "OpenClaw is a framework you build on; GAIA is an assistant you use. If you want to configure automations in code, OpenClaw fits. If you want help today, GAIA does.",
+      "question": "How is GAIA different from OpenClaw?"
+    },
+    {
+      "answer": "Hosted GAIA is a paid plan at ${{PRO_MONTHLY_PRICE}}/month. Self-hosted GAIA has no per-run metering.",
+      "question": "How much does GAIA cost?"
+    },
+    {
+      "answer": "Inventory the OpenClaw automations you actually rely on, connect the same tools to GAIA, and describe each workflow in plain words. GAIA rebuilds them without code.",
+      "question": "How do I move my OpenClaw setup to GAIA?"
+    }
+  ],
+  "gaiaAdvantages": [
+    "Works immediately with no code or configuration",
+    "Proactive across email, calendar, and notifications",
+    "Ready integrations instead of DIY connectors",
+    "Graph-based memory that learns without setup",
+    "Plain-words workflow building"
+  ],
+  "gaiaFitScore": 4,
+  "gaiaReplaces": [
+    "Custom OpenClaw automations you maintain by hand",
+    "Glue code connecting tools OpenClaw does not cover",
+    "Debugging scripts when an automation breaks",
+    "Explaining your setup to anyone else on the team"
+  ],
+  "keywords": [
+    "openclaw alternative",
+    "openclaw replacement",
+    "openclaw replacement app",
+    "openclaw no code alternative",
+    "best openclaw alternative",
+    "moltbot alternative",
+    "clawdbot alternative"
+  ],
+  "metaDescription": "Want OpenClaw power without the setup? GAIA is the source-available OpenClaw alternative that works from day one.",
+  "metaTitle": "Best OpenClaw Alternative: Zero-Setup AI Help",
+  "migrationSteps": [
+    "List the OpenClaw automations you depend on daily",
+    "Connect the same tools to GAIA via its integrations",
+    "Describe each workflow in plain words and let GAIA build it",
+    "Turn off the scripts you no longer maintain"
+  ],
+  "name": "OpenClaw",
+  "painPoints": [
+    "Framework, not product: everything needs building first",
+    "Requires technical setup and ongoing maintenance",
+    "No proactive help until you configure it yourself",
+    "Connecting each tool means more custom work",
+    "Built for developers, not for people with inboxes"
+  ],
+  "slug": "openclaw",
+  "tagline": "The power without the homework.",
+  "whyPeopleLook": "OpenClaw is genuinely impressive, and genuinely a second job. Users love the idea and tire of the upkeep: every integration is a project, every automation needs debugging, and the inbox still fills while you maintain scripts. People searching for an OpenClaw alternative want the same source-available automation energy with zero homework: connect tools, describe outcomes, done.",
+  "comparisonRows": [
+    {
+      "feature": "Core approach",
+      "gaia": "Skip the framework: a complete productivity OS that works the moment you sign up",
+      "competitor": "AI automation framework that requires configuration and development"
+    },
+    {
+      "feature": "Proactive behavior",
+      "gaia": "Email, calendar, and notifications watched so actions happen before you ask",
+      "competitor": "Executes automations when configured triggers fire"
+    },
+    {
+      "feature": "Integrations",
+      "gaia": "Gmail, Slack, Notion, GitHub, Linear, and more ready now, with no connectors to build",
+      "competitor": "Integration capabilities that need developer configuration"
+    },
+    {
+      "feature": "Memory",
+      "gaia": "Habits learned and context connected over time, with no setup or schema to maintain",
+      "competitor": "Session-based context within automation runs"
+    },
+    {
+      "feature": "Multi-platform",
+      "gaia": "Web, desktop, and mobile apps on macOS, Windows, and Linux from day one",
+      "competitor": "Primarily developer-focused interfaces"
+    },
+    {
+      "feature": "Source-available",
+      "gaia": "Source-available and Docker self-hostable, with a community and roadmap you can see",
+      "competitor": "Open source with community contributions"
+    },
+    {
+      "feature": "Setup time",
+      "gaia": "Connect Gmail and Calendar and delegate your first task in minutes",
+      "competitor": "Requires technical setup and configuration"
+    }
+  ]
+}

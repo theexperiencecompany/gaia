@@ -40,6 +40,15 @@ class TestBaseAppSettingsDefaults:
             settings = BaseAppSettings()
         assert settings.ENV == "staging"
 
+    def test_env_accepts_selfhost(self):
+        # Self-hosted deployments boot every app with ENV=selfhost; without it
+        # in the shared Literal each app would have to widen it per-subclass,
+        # which is an incompatible override under mypy.
+
+        with patch.dict(os.environ, {"ENV": "selfhost"}, clear=True):
+            settings = BaseAppSettings()
+        assert settings.ENV == "selfhost"
+
     def test_env_rejects_invalid_value(self):
         with patch.dict(os.environ, {"ENV": "qa"}, clear=True):
             with pytest.raises(ValidationError):

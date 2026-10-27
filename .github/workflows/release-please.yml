@@ -46,6 +46,8 @@ jobs:
       cli_release_created: ${{ steps.release.outputs['packages/cli--release_created'] }}
       cli_tag_name: ${{ steps.release.outputs['packages/cli--tag_name'] }}
       cli_version: ${{ steps.release.outputs['packages/cli--version'] }}
+      # The release commit: the CLI pins the gaia + gaia-web images built from it.
+      cli_sha: ${{ steps.release.outputs['packages/cli--sha'] }}
       desktop_release_created: ${{ steps.release.outputs['apps/desktop--release_created'] }}
       desktop_tag_name: ${{ steps.release.outputs['apps/desktop--tag_name'] }}
     steps:
@@ -61,6 +63,23 @@ jobs:
           config-file: config/release-please-config.json
           manifest-file: config/.release-please-manifest.json
 
+  # release-please bumps apps/api/pyproject.toml but not uv.lock, which records
+  # that version, so the release PR fails CI's uv-lock check until it is re-locked.
+  sync-release-uv-lock:
+    timeout-minutes: 10
+    needs: release-please
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The release token, so the push re-runs CI on the release PR.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+      - uses: ./.github/actions/setup-uv
+      - name: Re-lock uv.lock on the release PR branch
+        env:
+          RELEASE_BRANCH: release-please--branches--master
+        run: bash scripts/ci/release.sh sync-uv-lock
+
   # After release-please publishes component releases, the most recently
   # created one becomes GitHub's "Latest" release. electron-updater relies
   # on /releases/latest to find desktop update metadata (latest-*.yml), so
@@ -74,6 +93,7 @@ jobs:
       - name: Mark latest desktop release as Latest
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
         run: |
           DESKTOP_TAG=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 50 --json tagName \
             | jq -r '[.[] | select(.tagName | startswith("desktop-v"))][0].tagName // empty')
@@ -86,7 +106,9 @@ jobs:
 
   # Trigger CLI publish workflow only when a new CLI release is produced.
   trigger-cli-publish:
-    timeout-minutes: 10
+    # Blocks on publish-cli.yml end to end (binaries, the image pin's bounded
+    # wait for the release commit's build, then npm); release.sh waits 60 min.
+    timeout-minutes: 70
     needs: release-please
     if: needs.release-please.outputs.cli_release_created == 'true'
     runs-on: ubuntu-latest
@@ -105,4 +127,5 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.release-please.outputs.cli_tag_name }}
           VERSION: ${{ needs.release-please.outputs.cli_version }}
+          SHA: ${{ needs.release-please.outputs.cli_sha }}
         run: bash scripts/ci/release.sh dispatch-cli-publish

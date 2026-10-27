@@ -2,7 +2,9 @@
 import { renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const sendMessage = vi.fn();
+const { sendMessage } = vi.hoisted(() => ({
+  sendMessage: vi.fn(() => Promise.resolve()),
+}));
 const clearInputText = vi.fn();
 const clearAllFiles = vi.fn();
 const clearToolSelection = vi.fn();
@@ -17,9 +19,7 @@ vi.mock("@/features/pricing/hooks/useIsPaid", () => ({
   useIsPaid: () => ({ isPaid, isUnknown: isSubscriptionStatusUnknown }),
 }));
 
-vi.mock("@/hooks/useSendMessage", () => ({
-  useSendMessage: () => sendMessage,
-}));
+vi.mock("@/features/chat/stream/sendMessage", () => ({ sendMessage }));
 
 vi.mock("@/features/chat/hooks/useCalendarEventSelection", () => ({
   useCalendarEventSelection: () => ({

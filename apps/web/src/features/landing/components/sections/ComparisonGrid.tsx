@@ -3,7 +3,7 @@
 import { Tooltip } from "@heroui/tooltip";
 import { ArrowRight02Icon, Cancel01Icon, Tick02Icon } from "@icons";
 import Image from "next/image";
-import { Link } from "@/i18n/navigation";
+import { SiteLink } from "@/components/seo/SiteLink";
 
 import LargeHeader from "../shared/LargeHeader";
 
@@ -160,7 +160,7 @@ const GRID_ROWS: GridRow[] = [
   {
     feature: "Integrations",
     values: [
-      { type: "text", label: "50+ native + MCP" },
+      { type: "text", label: "Native + MCP" },
       { type: "text", label: "50+ + 100 skills" },
       { type: "text", label: "~10 services + MCP" },
       { type: "no" },
@@ -239,13 +239,13 @@ export default function ComparisonGrid() {
                   >
                     <Tooltip content={c.name} placement="top">
                       {c.slug ? (
-                        <Link
+                        <SiteLink
                           href={`/compare/${c.slug}`}
                           aria-label={`Compare with ${c.name}`}
                           className="inline-flex transition-transform hover:scale-110"
                         >
                           <BrandLogo competitor={c} />
-                        </Link>
+                        </SiteLink>
                       ) : (
                         <span className="inline-flex">
                           <BrandLogo competitor={c} />
@@ -285,13 +285,13 @@ export default function ComparisonGrid() {
 
         <p className="text-center text-xs text-zinc-400">
           Sourced from official websites and documentation.{" "}
-          <Link
+          <SiteLink
             href="/compare"
             className="inline-flex items-center gap-1 underline underline-offset-2 transition-colors hover:text-zinc-300"
           >
             See full comparisons
             <ArrowRight02Icon width={12} height={12} />
-          </Link>
+          </SiteLink>
         </p>
       </div>
     </section>

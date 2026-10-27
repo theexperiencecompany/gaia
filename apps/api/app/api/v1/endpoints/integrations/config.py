@@ -25,7 +25,6 @@ from app.schemas.integrations.responses import (
 from app.services.analytics_service import capture
 from app.services.connect_link_service import resolve_and_consume_connect_code
 from app.services.integrations.integration_connection_service import (
-    MCPConnectOptions,
     build_integrations_config,
     connect_composio_integration,
     connect_mcp_integration,
@@ -170,12 +169,10 @@ async def _connect_by_manager(
             integration_id=integration_id,
             integration_name=resolved.name,
             requires_auth=resolved.requires_auth,
-            options=MCPConnectOptions(
-                redirect_path=request.redirect_path,
-                server_url=resolved.mcp_config.server_url if resolved.mcp_config else None,
-                is_platform=resolved.source == "platform",
-                bearer_token=request.bearer_token,
-            ),
+            redirect_path=request.redirect_path,
+            server_url=resolved.mcp_config.server_url if resolved.mcp_config else None,
+            is_platform=resolved.source == "platform",
+            bearer_token=request.bearer_token,
         )
         # OAuth-managed connects complete at their callback; only a direct
         # (no-auth / bearer) connect finishes here.

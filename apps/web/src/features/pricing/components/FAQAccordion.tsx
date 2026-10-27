@@ -35,7 +35,8 @@ export function FAQAccordion({ faqs }: { faqs?: FAQItem[] }) {
           variant="light"
           className="cursor-pointer p-0!"
           itemClasses={{ titleWrapper: "cursor-pointer" }}
-          defaultSelectedKeys={["0"]}
+          defaultSelectedKeys={faqItems[0] ? [faqItems[0].question] : []}
+          keepContentMounted
         >
           {faqItems.map((item) => (
             <AccordionItem

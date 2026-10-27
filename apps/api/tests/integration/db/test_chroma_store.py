@@ -1,6 +1,6 @@
 """Integration tests for ChromaStore and the chroma_tools_store indexing helpers.
 
-USE_REAL_SERVICES=1 (Dagger CI) uses the real AsyncHttpClient against the
+USE_REAL_SERVICES=1 (CI) uses the real AsyncHttpClient against the
 chroma service container, exercising the full HTTP path. Otherwise this falls
 back to _AsyncEphemeralWrapper — an async shim over the synchronous
 EphemeralClient, since chromadb 1.x has no AsyncEphemeralClient.
@@ -17,8 +17,7 @@ import chromadb
 from langgraph.store.base import GetOp, PutOp, SearchOp
 import pytest
 
-from app.constants.chroma import MAX_CONCURRENT_CHROMA_WRITES
-from app.db.chroma.chroma_store import ChromaBatchWriteError, ChromaStore
+from app.db.chroma.chroma_store import ChromaStore
 from app.db.chroma.chroma_tools_store import (
     _build_put_operations,
     _compute_tool_diff,
@@ -409,96 +408,25 @@ class TestChromaStoreSearch:
         # Exactly 2 items should be returned — not 0, not 3.
         assert len(results[0]) == 2
 
-    async def test_partial_failure_in_gather_does_not_block_successful_puts(self, chroma_store):
-        """ChromaStore uses __slots__, so _upsert_item is patched at the class level — patch.object on the instance raises a read-only-attribute error."""
-        from unittest.mock import patch
+    async def test_a_mixed_batch_lands_whole_against_the_real_client(self, chroma_store):
+        """Rows with a vector, rows without and deletes go in separate requests, which the real client accepts."""
+        ns = ("mixed_ns",)
+        await chroma_store.abatch([PutOp(namespace=ns, key="old", value={"description": "old"})])
 
-        success_key = "ok_tool"
-        fail_key = "bad_tool"
-        ns = ("gather_ns",)
-
-        original_upsert_item = type(chroma_store)._upsert_item
-
-        async def selective_upsert(self_arg, doc_id, op, collection):
-            if op.key == fail_key:
-                raise RuntimeError("Simulated upsert failure")
-            return await original_upsert_item(self_arg, doc_id, op, collection)
-
-        with (
-            patch.object(type(chroma_store), "_upsert_item", selective_upsert),
-            pytest.raises(ChromaBatchWriteError),
-        ):
-            await chroma_store.abatch(
-                [
-                    PutOp(
-                        namespace=ns,
-                        key=success_key,
-                        value={"description": "ok", "tool_hash": "h_ok"},
-                    ),
-                    PutOp(
-                        namespace=ns,
-                        key=fail_key,
-                        value={"description": "bad", "tool_hash": "h_bad"},
-                    ),
-                ]
-            )
-
-        # The successful item should be present despite the surfaced failure.
-        ok_results = await chroma_store.abatch([GetOp(namespace=ns, key=success_key)])
-        assert ok_results[0] is not None
-        assert ok_results[0].key == success_key
-
-        # The failed item should be absent.
-        bad_results = await chroma_store.abatch([GetOp(namespace=ns, key=fail_key)])
-        assert bad_results[0] is None
-
-    @pytest.mark.regression
-    async def test_concurrent_apply_put_ops_share_one_semaphore(self, chroma_store):
-        """Must share one process-wide semaphore (loop_bound_semaphore), or the fd cap doubles per concurrent caller (e.g. startup catalog warmup)."""
-        batch_size = MAX_CONCURRENT_CHROMA_WRITES
-        in_flight = 0
-        max_in_flight = 0
-        lock = asyncio.Lock()
-
-        original_upsert_item = type(chroma_store)._upsert_item
-
-        async def tracked_upsert(self_arg, doc_id, op, collection):
-            nonlocal in_flight, max_in_flight
-            async with lock:
-                in_flight += 1
-                max_in_flight = max(max_in_flight, in_flight)
-            try:
-                await asyncio.sleep(0.02)
-                return await original_upsert_item(self_arg, doc_id, op, collection)
-            finally:
-                async with lock:
-                    in_flight -= 1
-
-        ops_a = [
-            PutOp(
-                namespace=("sem_a",),
-                key=f"tool_{i}",
-                value={"description": "x", "tool_hash": f"a{i}"},
-            )
-            for i in range(batch_size)
-        ]
-        ops_b = [
-            PutOp(
-                namespace=("sem_b",),
-                key=f"tool_{i}",
-                value={"description": "x", "tool_hash": f"b{i}"},
-            )
-            for i in range(batch_size)
-        ]
-
-        with patch.object(type(chroma_store), "_upsert_item", tracked_upsert):
-            await asyncio.gather(chroma_store.abatch(ops_a), chroma_store.abatch(ops_b))
-
-        assert max_in_flight <= MAX_CONCURRENT_CHROMA_WRITES, (
-            f"saw {max_in_flight} concurrent writes across two batches, expected at "
-            f"most {MAX_CONCURRENT_CHROMA_WRITES} — the semaphore isn't shared across "
-            "concurrent _apply_put_ops calls"
+        await chroma_store.abatch(
+            [
+                PutOp(
+                    namespace=ns, key="vec", value={"description": "v", "embedding": [0.1] * 1024}
+                ),
+                PutOp(namespace=ns, key="plain", value={"description": "p"}),
+                PutOp(namespace=ns, key="old", value=None),
+            ]
         )
+
+        got = await chroma_store.abatch(
+            [GetOp(namespace=ns, key=k) for k in ("vec", "plain", "old")]
+        )
+        assert [item.key if item else None for item in got] == ["vec", "plain", None]
 
 
 # ---------------------------------------------------------------------------

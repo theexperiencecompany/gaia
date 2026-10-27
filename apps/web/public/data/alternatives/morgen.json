@@ -1,0 +1,110 @@
+{
+  "slug": "morgen",
+  "name": "Morgen",
+  "domain": "morgen.so",
+  "category": "calendar",
+  "tagline": "Your calendar is planned. Now hand off the work around it.",
+  "metaTitle": "Morgen Alternative: AI Assistant for Email, Calendar, Tasks",
+  "metaDescription": "Looking for a Morgen alternative? GAIA handles email, calendar and tasks in one assistant, runs workflows across your tools and works from your chat apps.",
+  "keywords": [
+    "morgen alternative",
+    "morgen calendar alternative",
+    "morgen alternatives",
+    "morgen.so alternative",
+    "apps like morgen",
+    "ai daily planner alternative"
+  ],
+  "whyPeopleLook": "Morgen is one of the better calendar apps around: every calendar in one place, tasks pulled in from your tools and an AI Planner that keeps them time-blocked. People look for an alternative when the calendar is under control but the work around it is not. Email still needs replies, meetings still need coordinating and chores repeat, and Morgen leaves email triage to Kai, a separate product with its own subscription.",
+  "painPoints": [
+    "Email triage and replies live in Kai, a separate product with its own subscription",
+    "A planner for your time, not an assistant that does the work",
+    "No workflows for recurring chores across your tools",
+    "Not reachable from WhatsApp, Telegram, iMessage or Slack",
+    "Proprietary, with no way to self-host or read the code"
+  ],
+  "gaiaReplaces": [
+    "Turning emails into tasks before Morgen can plan them",
+    "Coordinating meeting times over email by hand",
+    "Recurring weekly chores across your tools",
+    "Paying for a separate assistant to handle email"
+  ],
+  "gaiaAdvantages": [
+    "Email, calendar and tasks in one assistant",
+    "Workflows on a schedule or triggered by Gmail, Calendar, Slack and GitHub",
+    "Reachable from iMessage, WhatsApp, Telegram, Slack and Discord",
+    "Memory of your preferences that you can view, edit and delete",
+    "Source-available, with self-hosting via Docker"
+  ],
+  "gaiaFitScore": 3,
+  "migrationSteps": [
+    "Connect the Google Calendar you used in Morgen to GAIA",
+    "Connect Gmail or Outlook and the task tools Morgen pulled from",
+    "Tell GAIA your working hours and how you like your day planned",
+    "Rebuild a recurring chore as a GAIA workflow"
+  ],
+  "faqs": [
+    {
+      "question": "What is the best Morgen alternative?",
+      "answer": "If you want another calendar with automatic time-blocking, Motion, Reclaim and Akiflow are the closest. If you want an assistant that handles the email, scheduling and recurring work around your calendar, GAIA is a better fit."
+    },
+    {
+      "question": "Does GAIA replace Morgen's calendar app?",
+      "answer": "No. GAIA is not a calendar app and does not unify Apple, Fastmail or CalDAV calendars. It works on your Google Calendar from chat, the web and the desktop. Many people keep a calendar app and let GAIA handle the work around it."
+    },
+    {
+      "question": "How much does GAIA cost?",
+      "answer": "GAIA's hosted service is a paid subscription per person, with Pro at ${{PRO_MONTHLY_PRICE}}/month, and GAIA Enterprise is priced on request. The code is source-available under the PolyForm Noncommercial license, so self-hosting is free for personal, noncommercial use, and for-profit organizations self-host under an enterprise license (contact the GAIA team)."
+    },
+    {
+      "question": "How do I switch from Morgen to GAIA?",
+      "answer": "Connect your calendar, email and task tools to GAIA, tell it your working hours, then move one recurring chore at a time into a workflow."
+    }
+  ],
+  "comparisonRows": [
+    {
+      "feature": "Core approach",
+      "gaia": "A personal AI assistant that works across email, calendar, tasks and your other connected tools",
+      "competitor": "A unified calendar and daily planner with an AI Planner that time-blocks your tasks"
+    },
+    {
+      "feature": "Calendar",
+      "gaia": "Creates and edits Google Calendar events and finds open time",
+      "competitor": "Core strength: one view across Google, Outlook, Apple, Fastmail and CalDAV calendars, with travel and buffer time"
+    },
+    {
+      "feature": "Daily planning",
+      "gaia": "Plans your day on request and creates the calendar blocks you ask for",
+      "competitor": "AI Planner time-blocks tasks, flags ones at risk of running late and replans around conflicts"
+    },
+    {
+      "feature": "Email",
+      "gaia": "Triages Gmail and Outlook, drafts replies and turns threads into tasks",
+      "competitor": "Flagged Outlook emails become tasks; email triage is in Kai, a separate product"
+    },
+    {
+      "feature": "Scheduling links",
+      "gaia": "Drafts scheduling emails and books events once a time is agreed",
+      "competitor": "Booking pages and scheduling links checked against your chosen calendars"
+    },
+    {
+      "feature": "Integrations",
+      "gaia": "Gmail, Outlook, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, HubSpot and more, plus custom MCP servers",
+      "competitor": "Notion, Todoist, Obsidian, ClickUp, Linear, Google Tasks, Microsoft To Do, Apple Reminders and Zapier"
+    },
+    {
+      "feature": "Where you use it",
+      "gaia": "iMessage, WhatsApp, Telegram, Slack and Discord, plus a web app and a desktop app for macOS, Windows and Linux",
+      "competitor": "Apps for Windows, Mac, Linux, web and mobile"
+    },
+    {
+      "feature": "Source-available",
+      "gaia": "Source-available (PolyForm Noncommercial) with self-hosting via Docker; for-profit organizations self-host under an enterprise license",
+      "competitor": "Proprietary and cloud-hosted"
+    },
+    {
+      "feature": "Pricing",
+      "gaia": "Hosted Pro at ${{PRO_MONTHLY_PRICE}}/month per person; GAIA Enterprise priced on request",
+      "competitor": "A free trial, then monthly or yearly plans for individuals and per-seat team plans"
+    }
+  ]
+}

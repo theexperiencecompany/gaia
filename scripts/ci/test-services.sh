@@ -11,14 +11,14 @@
 #   down          what a lane's `if: always()` teardown calls: reset on the box,
 #                 remove this job's containers on a GitHub-hosted runner.
 #   janitor       reset every lane whose env file is older than STALE_HOURS
-#                 (self-hosted only; a GitHub-hosted runner is thrown away).
+#                 (the box only; any other runner is thrown away).
 #
 # The script decides for itself which topology it is on — callers never choose:
 #
-#   self-hosted ($RUNNER_ENVIRONMENT)  ONE persistent set of containers per box,
-#                                      namespaced per lane by $RUNNER_INDEX.
-#   GitHub-hosted                      five containers for this job alone, host
-#                                      ports offset by $RUNNER_INDEX * 100.
+#   the home box (ci_on_the_box)  ONE persistent set of containers per box,
+#                                 namespaced per lane by $RUNNER_INDEX.
+#   any other runner              five containers for this job alone, host
+#   (GitHub-hosted, Blacksmith)   ports offset by $RUNNER_INDEX * 100.
 #
 # Why the shared set on the box: five containers per job × six concurrent jobs
 # is 30 containers — a measured 20-45s of boot paid by every job and ~15-22 GB
@@ -36,7 +36,8 @@
 # containers cannot express.
 #
 # Env contract:
-#   RUNNER_ENVIRONMENT      "self-hosted" selects the shared topology.
+#   RUNNER_NAME             a box runner name (gaia-home-<n>, lib/runner-host.sh)
+#                           selects the shared topology.
 #   RUNNER_INDEX            lane number / port offset (default 0).
 #   GAIA_CI_RUNDIR,
 #   RUNNER_LOCAL_CACHE      where the per-lane env file and the lock live.
@@ -49,6 +50,8 @@ set -euo pipefail
 
 # shellcheck source=scripts/ci/lib/log.sh
 source "$(dirname "$0")/lib/log.sh"
+# shellcheck source=scripts/ci/lib/runner-host.sh
+source "$(dirname "$0")/lib/runner-host.sh"
 # shellcheck source=scripts/ci/lib/service-images.sh
 source "$(dirname "$0")/lib/service-images.sh"
 
@@ -107,11 +110,8 @@ LOCK_WAIT_SECS=600
 env_file_for() { echo "${RUNDIR}/gaia-test-services-$1.env"; }
 
 # ── which topology are we on? ─────────────────────────────────────────────
-# RUNNER_ENVIRONMENT is set by the Actions runner itself ("self-hosted" on the
-# box, "github-hosted" on a GitHub VM); RUNNER_INDEX comes from each instance's
-# .env (gaia-infra:self-hosted-runner/setup.sh). Exactly the signals the
-# separate scripts keyed off before they were merged.
-on_the_box() { [[ "${RUNNER_ENVIRONMENT:-}" == "self-hosted" ]]; }
+# ci_on_the_box (lib/runner-host.sh) reads the runner name; RUNNER_INDEX comes
+# from each instance's .env (gaia-infra:self-hosted-runner/setup.sh).
 
 lane_of() {
   local lane="${1:-${RUNNER_INDEX:-0}}"
@@ -122,7 +122,7 @@ lane_of() {
 
 # Names and host ports differ per topology; everything below reads these.
 set_topology() {
-  if on_the_box; then
+  if ci_on_the_box; then
     # Fixed ports: there is exactly one shared set, so the per-runner port
     # arithmetic has nothing to disambiguate here. High, non-standard host
     # ports: the home box runs its own Postgres/Redis/Mongo/RabbitMQ/Chroma
@@ -185,7 +185,7 @@ _run_labelled() {
 }
 
 _pg_spec() {
-  if on_the_box; then
+  if ci_on_the_box; then
     echo "${POSTGRES_IMAGE}|shared|${POSTGRES_PORT}|max_connections=${PG_MAX_CONNECTIONS}|shared_buffers=${PG_SHARED_BUFFERS}|tmpfs=6g"
   else
     echo "${POSTGRES_IMAGE}|perjob|${POSTGRES_PORT}|max_connections=${PERJOB_PG_MAX_CONNECTIONS}|tmpfs=2g"
@@ -193,7 +193,7 @@ _pg_spec() {
 }
 
 start_postgres() {
-  if on_the_box; then
+  if ci_on_the_box; then
     _run_labelled "$PG_NAME" "$(_pg_spec)" --restart unless-stopped \
       -e POSTGRES_USER=gaia -e POSTGRES_PASSWORD=gaia -e POSTGRES_DB=gaia_test \
       -e PGDATA=/var/lib/postgresql/data/pgdata \
@@ -218,23 +218,23 @@ start_postgres() {
 # another lane. Per-job: 32, one per worker.
 # --save "" disables RDB snapshotting: the dataset is discarded with the
 # container, and the fork-to-disk pauses only add latency.
-_redis_databases() { if on_the_box; then echo "$REDIS_DATABASES"; else echo "$PERJOB_REDIS_DATABASES"; fi; }
+_redis_databases() { if ci_on_the_box; then echo "$REDIS_DATABASES"; else echo "$PERJOB_REDIS_DATABASES"; fi; }
 _redis_spec() { echo "${REDIS_IMAGE}|${REDIS_PORT}|databases=$(_redis_databases)"; }
 
 start_redis() {
   local restart=()
-  on_the_box && restart=(--restart unless-stopped)
+  ci_on_the_box && restart=(--restart unless-stopped)
   _run_labelled "$REDIS_NAME" "$(_redis_spec)" "${restart[@]}" \
     -p "127.0.0.1:${REDIS_PORT}:6379" "$REDIS_IMAGE" \
     redis-server --databases "$(_redis_databases)" --save "" --appendonly no
 }
 
-_mongo_tmpfs() { if on_the_box; then echo 6g; else echo 2g; fi; }
+_mongo_tmpfs() { if ci_on_the_box; then echo 6g; else echo 2g; fi; }
 _mongo_spec() { echo "${MONGO_IMAGE}|${MONGO_PORT}|tmpfs=$(_mongo_tmpfs)"; }
 
 start_mongo() {
   local restart=()
-  on_the_box && restart=(--restart unless-stopped)
+  ci_on_the_box && restart=(--restart unless-stopped)
   _run_labelled "$MONGO_NAME" "$(_mongo_spec)" "${restart[@]}" \
     -e MONGO_INITDB_ROOT_USERNAME=gaia -e MONGO_INITDB_ROOT_PASSWORD=gaia \
     --tmpfs "/data/db:rw,noexec,nosuid,size=$(_mongo_tmpfs)" \
@@ -245,7 +245,7 @@ _chroma_spec() { echo "${CHROMA_IMAGE}|${CHROMA_PORT}"; }
 
 start_chroma() {
   local restart=()
-  on_the_box && restart=(--restart unless-stopped)
+  ci_on_the_box && restart=(--restart unless-stopped)
   _run_labelled "$CHROMA_NAME" "$(_chroma_spec)" "${restart[@]}" \
     -p "127.0.0.1:${CHROMA_PORT}:8000" "$CHROMA_IMAGE"
 }
@@ -254,7 +254,7 @@ _rabbitmq_spec() { echo "${RABBITMQ_IMAGE}|${RABBITMQ_PORT}"; }
 
 start_rabbitmq() {
   local restart=()
-  on_the_box && restart=(--restart unless-stopped)
+  ci_on_the_box && restart=(--restart unless-stopped)
   _run_labelled "$RABBITMQ_NAME" "$(_rabbitmq_spec)" "${restart[@]}" \
     -p "127.0.0.1:${RABBITMQ_PORT}:5672" "$RABBITMQ_IMAGE"
 }
@@ -358,7 +358,7 @@ wait_ready() {
     return 0
   fi
   docker logs "$container" 2>&1 | tail -50
-  if on_the_box && container_running "$container"; then
+  if ci_on_the_box && container_running "$container"; then
     ci_warn "${label} is running but failed its probe for ${READY_TIMEOUT_SECS}s — NOT recreating a live shared container (other lanes may be using it); waiting once more"
     if probe_until_deadline "$@"; then
       echo "${label}: ready (slow probe, container kept)"
@@ -381,7 +381,7 @@ wait_ready() {
 
 cmd_up() {
   set_topology
-  echo "test services: $(on_the_box && echo 'shared set (self-hosted)' || echo "per-job containers (runner index ${RUNNER_INDEX:-0})") — pg=${POSTGRES_PORT} redis=${REDIS_PORT} mongo=${MONGO_PORT} chroma=${CHROMA_PORT} rabbit=${RABBITMQ_PORT}"
+  echo "test services: $(ci_on_the_box && echo 'shared set (the box)' || echo "per-job containers (runner index ${RUNNER_INDEX:-0})") — pg=${POSTGRES_PORT} redis=${REDIS_PORT} mongo=${MONGO_PORT} chroma=${CHROMA_PORT} rabbit=${RABBITMQ_PORT}"
 
   # The whole point is to pay nothing on the common path: every lane calls `up`
   # and only the first one on a cold box does any work. The pre-lock check keeps
@@ -462,7 +462,7 @@ cmd_prepare() {
   lane="$(lane_of "${1:-}")"
   all_running || ci_die "test services are not running — run '$0 up' first"
 
-  if on_the_box; then
+  if ci_on_the_box; then
     _prepare_shared "$lane"
   else
     _prepare_perjob
@@ -493,7 +493,9 @@ _prepare_shared() {
 
   flush_redis_stripe "$redis_base" || ci_warn "Redis: flushing the lane stripe failed — continuing"
   drop_mongo_databases "$lane" || ci_warn "MongoDB: dropping stale gaia_test_r${lane}_* failed — continuing"
-  reset_chroma "$chroma_suffix" || ci_warn "ChromaDB: clearing collections ending in ${chroma_suffix} failed — continuing"
+  # Fatal, unlike the warnings around it: the lane's collections share one
+  # server with every other lane's, so a listing that failed cleared nothing.
+  reset_chroma "$chroma_suffix" || ci_die "ChromaDB: could not list collections to clear those ending in ${chroma_suffix}"
 
   # A vhost left by a cancelled job keeps its queues and their contents; delete
   # before adding so the lane always starts with an empty broker.
@@ -594,16 +596,18 @@ drop_mongo_databases() {
 # the name suffix the app appended (GAIA_CHROMA_COLLECTION_SUFFIX) and deleted
 # one by one through the v2 REST API. python3 does the JSON parsing: the runner
 # has it (it runs the pytest suite), and jq is not guaranteed to be installed.
+# A listing that fails returns 1: read as "no collections", it once let a lane
+# start on another lane's leftovers, failing in ways that look like pollution.
 reset_chroma() {
   local suffix="$1"
   local base="http://localhost:${CHROMA_PORT}/api/v2/tenants/default_tenant/databases/default_database/collections"
-  local names
-  names="$(curl -sf "${base}?limit=1000" \
-    | python3 -c 'import json,sys
+  local listing names
+  listing="$(curl -sf "${base}?limit=1000")" || return 1
+  names="$(python3 -c 'import json,sys
 for c in json.load(sys.stdin):
-    print(c["name"])' 2>/dev/null || true)"
+    print(c["name"])' <<< "$listing")" || return 1
   if [ -z "$names" ]; then
-    echo "ChromaDB: no collections listed (empty server or v2 API unavailable)"
+    echo "ChromaDB: the server holds no collections"
     return 0
   fi
   local name deleted=0
@@ -630,7 +634,7 @@ cmd_reset() {
   local lane
   lane="$(lane_of "${1:-}")"
 
-  if ! on_the_box; then
+  if ! ci_on_the_box; then
     _down_perjob
     return 0
   fi
@@ -710,7 +714,7 @@ cmd_down() { cmd_reset "${1:-}"; }
 # `prepare` writes it at job start, and nothing outlives STALE_HOURS legitimately.
 cmd_janitor() {
   set_topology
-  if ! on_the_box; then
+  if ! ci_on_the_box; then
     ci_ok "test services: janitor is a no-op off the box (GitHub-hosted runners are thrown away)"
     return 0
   fi
@@ -742,10 +746,10 @@ Usage: test-services.sh <up|prepare|reset|down|janitor> [lane]
   prepare [r]   claim lane r's namespace, clean it, export its env contract
   reset [r]     release lane r's namespace (never fails a green lane)
   down          teardown for an `if: always()` step
-  janitor       reset every lane whose env file is stale (self-hosted only)
+  janitor       reset every lane whose env file is stale (the box only)
 
 The topology (shared set on the box vs per-job containers) is decided from
-RUNNER_ENVIRONMENT and RUNNER_INDEX; callers do not choose.
+RUNNER_NAME (lib/runner-host.sh) and RUNNER_INDEX; callers do not choose.
 USAGE
 }
 

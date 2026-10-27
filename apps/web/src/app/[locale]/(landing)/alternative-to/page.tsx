@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import Image from "next/image";
+import { getTranslations, setRequestLocale } from "next-intl/server";
 import JsonLd from "@/components/seo/JsonLd";
+import { SiteLink } from "@/components/seo/SiteLink";
 import type { AlternativeData } from "@/features/alternatives/data/alternativesData";
-import { getAllAlternatives } from "@/features/alternatives/data/alternativesData";
+import { getTranslatedAlternatives } from "@/features/alternatives/data/getTranslatedAlternative";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
-import { Link } from "@/i18n/navigation";
 import {
   generateBreadcrumbSchema,
   generateItemListSchema,
@@ -21,10 +22,10 @@ export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
   const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: "alternatives" });
   return generateLocalizedPageMetadata({
-    title: "Best Alternatives to Popular Productivity Tools",
-    description:
-      "See how GAIA replaces Notion, ChatGPT, Todoist, Zapier, Superhuman, Obsidian, and 24 more tools. Honest fit scores and migration steps for each.",
+    title: t("hub_meta_title"),
+    description: t("hub_meta_description"),
     path: "/alternative-to",
     keywords: [
       "notion alternative",
@@ -34,21 +35,22 @@ export async function generateMetadata({
       "superhuman alternative",
       "obsidian alternative",
       "ai productivity assistant",
-      "best productivity tools 2026",
+      `best productivity tools ${new Date().getFullYear()}`,
     ],
     locale,
   });
 }
 
-const CATEGORY_LABELS: Record<AlternativeData["category"], string> = {
-  "productivity-suite": "Productivity Suites",
-  "ai-assistant": "AI Assistants",
-  calendar: "Calendar & Time Management",
-  email: "Email",
-  "task-manager": "Task Managers",
-  automation: "Automation",
-  notes: "Notes & Knowledge",
-};
+/** The alternatives message naming each category's section heading. */
+const CATEGORY_LABEL_KEYS = {
+  "productivity-suite": "category_productivity_suite",
+  "ai-assistant": "category_ai_assistant",
+  calendar: "category_calendar",
+  email: "category_email",
+  "task-manager": "category_task_manager",
+  automation: "category_automation",
+  notes: "category_notes",
+} as const satisfies Record<AlternativeData["category"], string>;
 
 const CATEGORY_ORDER: AlternativeData["category"][] = [
   "ai-assistant",
@@ -60,9 +62,17 @@ const CATEGORY_ORDER: AlternativeData["category"][] = [
   "notes",
 ];
 
-function AlternativeCard({ alt }: { readonly alt: AlternativeData }) {
+function AlternativeCard({
+  alt,
+  title,
+  fitLabel,
+}: {
+  readonly alt: AlternativeData;
+  readonly title: string;
+  readonly fitLabel: string;
+}) {
   return (
-    <Link
+    <SiteLink
       href={`/alternative-to/${alt.slug}`}
       className="group flex flex-col gap-3 rounded-3xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
     >
@@ -92,7 +102,7 @@ function AlternativeCard({ alt }: { readonly alt: AlternativeData }) {
         </div>
       </div>
       <h3 className="text-lg font-medium text-white transition-colors group-hover:text-primary">
-        Best {alt.name} Alternative
+        {title}
       </h3>
       <p className="text-sm text-zinc-500">{alt.tagline}</p>
       <div className="mt-auto flex items-center gap-1.5 pt-2">
@@ -103,15 +113,21 @@ function AlternativeCard({ alt }: { readonly alt: AlternativeData }) {
           />
         ))}
         <span className="ml-1 text-xs text-zinc-500">
-          {alt.gaiaFitScore}/5 fit
+          {alt.gaiaFitScore}/5 {fitLabel}
         </span>
       </div>
-    </Link>
+    </SiteLink>
   );
 }
 
-export default async function AlternativesHubPage() {
-  const allAlternatives = await getAllAlternatives();
+export default async function AlternativesHubPage({ params }: PageProps) {
+  const { locale } = await params;
+  setRequestLocale(locale);
+  const [t, tCommon, allAlternatives] = await Promise.all([
+    getTranslations({ locale, namespace: "alternatives" }),
+    getTranslations({ locale, namespace: "common" }),
+    getTranslatedAlternatives(locale),
+  ]);
   // Pre-group by category since getAlternativesByCategory is now async — avoids
   // awaiting inside JSX render.
   const byCategory = new Map<string, typeof allAlternatives>();
@@ -122,27 +138,25 @@ export default async function AlternativesHubPage() {
   }
 
   const webPageSchema = generateWebPageSchema(
-    "Best Alternatives to Popular Productivity Tools",
-    "See how GAIA replaces Notion, ChatGPT, Todoist, Zapier, Superhuman, Obsidian, and more.",
+    t("hub_meta_title"),
+    t("hub_meta_description"),
     `${siteConfig.url}/alternative-to`,
     [
       { name: "Home", url: siteConfig.url },
-      { name: "Alternatives", url: `${siteConfig.url}/alternative-to` },
+      { name: t("breadcrumb"), url: `${siteConfig.url}/alternative-to` },
     ],
   );
 
   const breadcrumbSchema = generateBreadcrumbSchema([
     { name: "Home", url: siteConfig.url },
-    { name: "Alternatives", url: `${siteConfig.url}/alternative-to` },
+    { name: t("breadcrumb"), url: `${siteConfig.url}/alternative-to` },
   ]);
 
   const itemListSchema = generateItemListSchema(
     allAlternatives.map((a) => ({
-      name: `Best ${a.name} Alternative`,
+      name: t("best_name_alternative", { name: a.name }),
       url: `${siteConfig.url}/alternative-to/${a.slug}`,
-      description: a.tagline,
     })),
-    "Article",
   );
 
   return (
@@ -152,11 +166,10 @@ export default async function AlternativesHubPage() {
       <div className="mx-auto max-w-5xl px-6 pt-36 pb-24">
         <header className="mb-16 text-center">
           <h1 className="mb-4 font-serif text-5xl font-normal text-white md:text-6xl">
-            GAIA as Your Alternative
+            {t("hub_title")}
           </h1>
           <p className="mx-auto max-w-2xl text-xl text-zinc-400">
-            Honest breakdowns of how GAIA replaces 30 popular productivity, AI,
-            and automation tools, with fit scores and migration steps for each.
+            {t("hub_subtitle")}
           </p>
         </header>
 
@@ -168,11 +181,16 @@ export default async function AlternativesHubPage() {
             return (
               <section key={category}>
                 <h2 className="mb-6 text-2xl font-semibold text-white">
-                  {CATEGORY_LABELS[category]}
+                  {t(CATEGORY_LABEL_KEYS[category])}
                 </h2>
                 <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                   {items.map((alt) => (
-                    <AlternativeCard key={alt.slug} alt={alt} />
+                    <AlternativeCard
+                      key={alt.slug}
+                      alt={alt}
+                      title={t("best_name_alternative", { name: alt.name })}
+                      fitLabel={t("fit_score")}
+                    />
                   ))}
                 </div>
               </section>
@@ -182,18 +200,17 @@ export default async function AlternativesHubPage() {
 
         <section className="mt-20 rounded-3xl bg-zinc-800 p-8 text-center">
           <h2 className="mb-3 text-2xl font-semibold text-white">
-            Don't see your tool?
+            {t("dont_see_your_tool")}
           </h2>
           <p className="mx-auto mb-6 max-w-lg text-zinc-400">
-            GAIA connects to 50+ tools via MCP and supports custom integrations.
-            Compare GAIA side-by-side with any tool you use today.
+            {t("dont_see_your_tool_desc")}
           </p>
-          <Link
+          <SiteLink
             href="/compare"
             className="inline-flex items-center gap-2 rounded-full bg-primary px-6 py-3 text-sm font-medium text-black transition-opacity hover:opacity-90"
           >
-            View head-to-head comparisons
-          </Link>
+            {tCommon("view_comparisons")}
+          </SiteLink>
         </section>
       </div>
 

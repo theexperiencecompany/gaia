@@ -1,0 +1,107 @@
+{
+  "slug": "ai-assistant-with-memory",
+  "metaTitle": "AI Assistant That Remembers Everything That Matters",
+  "metaDescription": "GAIA keeps long-term memory of your preferences, people and plans across every chat, and lets you see, edit or delete each memory. Here is how it works.",
+  "keywords": [
+    "ai assistant that remembers everything",
+    "ai assistant with long term memory",
+    "ai with memory",
+    "personal ai with memory",
+    "ai assistant that remembers you",
+    "ai that remembers conversations",
+    "ai assistant persistent memory"
+  ],
+  "breadcrumbName": "AI Assistant With Memory",
+  "heading": "An AI assistant that remembers what matters about you",
+  "answer": "GAIA is a personal AI assistant with long-term memory. After each conversation it quietly picks out what you said about yourself, such as preferences, routines, the people you work with and the projects you are on, and brings it back whenever it is relevant. You never re-explain that you prefer morning meetings or who Priya is. Every memory is visible in settings, where you can edit it or delete it.",
+  "sections": [
+    {
+      "heading": "What GAIA remembers",
+      "paragraphs": [
+        "GAIA's memory is about you, not a transcript of everything you ever typed. It keeps facts that stay true for a while and experiences worth recalling later, and it tracks the people, places, organizations, projects and topics that come up in them."
+      ],
+      "bullets": [
+        "Preferences: how you like replies written, when you take meetings, what you eat",
+        "People: who your cofounder is, which client is difficult, whose birthday is next week",
+        "Routines and context: your gym schedule, your timezone, the city you just moved to",
+        "Commitments: things you promised to do, which go onto your agenda rather than into a fact list"
+      ]
+    },
+    {
+      "heading": "How it learns, without you managing it",
+      "paragraphs": [
+        "Memory is written in the background after a conversation turn, so it adds no delay to the reply. Only what you said counts as a fact about you. GAIA's own replies and the strangers who appear in your inbox are never stored as things about you.",
+        "Each candidate is checked against what GAIA already knows. If you mention that you moved from Mumbai to Bangalore, the old fact is updated instead of left contradicting the new one, and duplicates are dropped. Details with a short shelf life, like being on holiday this week, are kept as temporary state rather than frozen as permanent truth.",
+        "When you first connect Gmail, GAIA also reads a batch of your recent inbox mail to build a starting picture, so it is useful on day one rather than after weeks of chatting."
+      ]
+    },
+    {
+      "heading": "Long-term memory across every app",
+      "paragraphs": [
+        "There is one memory per GAIA account. The web app, the desktop app and the chat apps (WhatsApp, Telegram, iMessage, Slack and Discord) all talk to the same assistant, so a preference you mention in a voice note on WhatsApp is there when you open the desktop app.",
+        "A short profile of you, a running memory, your agenda and the people in your life are given to GAIA at the start of every conversation. Anything older or more specific is searched on demand, so GAIA can recall a detail from months ago when the conversation calls for it."
+      ]
+    },
+    {
+      "heading": "You stay in control of it",
+      "paragraphs": [
+        "Open Settings, then Memory to see everything GAIA knows. You can add a memory yourself, edit one that is slightly wrong, delete one, or wipe them all. The same page lets you edit the core documents directly and browse memories as a list, a timeline or a graph of how they connect.",
+        "You can also manage it in conversation. Say 'remember that I am vegetarian' and GAIA stores it; say 'forget my old address' and it removes it."
+      ]
+    },
+    {
+      "heading": "Where the memory is stored",
+      "paragraphs": [
+        "Memories are stored per user in PostgreSQL, with a vector index in ChromaDB for search. The embeddings that make memories searchable are computed on GAIA's own servers rather than sent to a separate embedding service. If you self-host GAIA, the whole memory lives on your own machine."
+      ]
+    }
+  ],
+  "limits": {
+    "heading": "What 'remembers everything' does not mean",
+    "items": [
+      "It does not keep a verbatim recording of every message as memory. It keeps facts and experiences about you; your chat history is stored separately as conversations.",
+      "It does not record or transcribe your meetings and calls, so nothing said there becomes memory.",
+      "It only learns about other people through what you tell it, never by profiling strangers in your inbox."
+    ]
+  },
+  "faqs": [
+    {
+      "question": "Is there an AI assistant that remembers everything?",
+      "answer": "No assistant should keep literally everything, and GAIA does not try to. It remembers what a good human assistant would: your preferences, the people around you, your routines and your commitments, updated as they change. Short-lived details expire on their own so old context does not pile up."
+    },
+    {
+      "question": "Can I see and delete what GAIA remembers about me?",
+      "answer": "Yes. Settings, then Memory lists every memory. You can edit or delete any one of them, delete them all, or tell GAIA in chat to forget something specific."
+    },
+    {
+      "question": "Does GAIA remember things between different chats?",
+      "answer": "Yes. Memory belongs to your account, not to one conversation, so a new chat on any device or chat app starts with what GAIA already knows about you."
+    },
+    {
+      "question": "How is this different from chat history?",
+      "answer": "Chat history is the record of a conversation. Memory is what GAIA learned from it, distilled into facts it can reuse. Starting a new conversation clears the thread, not the memory."
+    }
+  ],
+  "related": [
+    {
+      "href": "/learn/agent-memory",
+      "label": "What is agent memory?",
+      "description": "How AI agents store and recall knowledge, explained without the jargon."
+    },
+    {
+      "href": "/learn/graph-based-memory",
+      "label": "Graph-based memory",
+      "description": "Why linking people, projects and facts beats a flat list of notes."
+    },
+    {
+      "href": "/ai-assistant-whatsapp-telegram-imessage",
+      "label": "GAIA on WhatsApp, Telegram and iMessage",
+      "description": "The same assistant and memory, in the chat app you use."
+    },
+    {
+      "href": "/alternative-to/chatgpt",
+      "label": "ChatGPT alternative",
+      "description": "When you want an assistant that acts on your tools, not only answers."
+    }
+  ]
+}

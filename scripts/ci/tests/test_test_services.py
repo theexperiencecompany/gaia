@@ -20,8 +20,6 @@ import os
 from pathlib import Path
 import subprocess
 
-import pytest
-
 CI = Path(__file__).parent.parent
 SCRIPT = CI / "test-services.sh"
 
@@ -67,7 +65,10 @@ CURL_STUB = """\
 printf '%s\\n' "$*" >> "$REC/curl.log"
 case "$*" in
   *heartbeat*) echo '{"nanosecond heartbeat":1}'; exit 0 ;;
-  *collections*limit*) echo '[]'; exit 0 ;;
+  *collections*limit*)
+    # $REC/chroma-down stands in for Chroma refusing the connection.
+    [ -f "$REC/chroma-down" ] && exit 7
+    echo '[]'; exit 0 ;;
 esac
 exit 0
 """
@@ -115,19 +116,19 @@ def test_reset_without_services_warns_and_succeeds(tmp_path: Path) -> None:
     # unit-a / unit-b run with services: "false" and never call `up`, yet their
     # `if: always()` teardown still calls reset.
     (tmp_path / "running").write_text("false\n")
-    proc = run(tmp_path, "reset", RUNNER_ENVIRONMENT="self-hosted")
+    proc = run(tmp_path, "reset", RUNNER_NAME="gaia-home-1")
     assert proc.returncode == 0
     assert "nothing to reset" in proc.stderr
 
 
 def test_janitor_without_services_succeeds(tmp_path: Path) -> None:
     (tmp_path / "running").write_text("false\n")
-    proc = run(tmp_path, "janitor", RUNNER_ENVIRONMENT="self-hosted")
+    proc = run(tmp_path, "janitor", RUNNER_NAME="gaia-home-1")
     assert proc.returncode == 0
 
 
 def test_down_off_the_box_removes_this_jobs_containers(tmp_path: Path) -> None:
-    proc = run(tmp_path, "down", RUNNER_ENVIRONMENT="github-hosted")
+    proc = run(tmp_path, "down", RUNNER_NAME="GitHub Actions 1")
     assert proc.returncode == 0
     assert "gaia-test-postgres-3" in docker_log(tmp_path)
 
@@ -135,14 +136,24 @@ def test_down_off_the_box_removes_this_jobs_containers(tmp_path: Path) -> None:
 # --- topology is decided by the script, not the caller ----------------------
 
 
-def test_self_hosted_uses_the_shared_set(tmp_path: Path) -> None:
-    proc = run(tmp_path, "up", RUNNER_ENVIRONMENT="self-hosted")
-    assert "shared set (self-hosted)" in proc.stdout
+def test_the_box_uses_the_shared_set(tmp_path: Path) -> None:
+    proc = run(tmp_path, "up", RUNNER_NAME="gaia-home-1")
+    assert "shared set (the box)" in proc.stdout
     assert "25432" in proc.stdout  # the shared Postgres port
 
 
+def test_blacksmith_uses_per_job_containers_despite_reporting_self_hosted(tmp_path: Path) -> None:
+    proc = run(
+        tmp_path,
+        "up",
+        RUNNER_NAME="blacksmith-4vcpu-ubuntu-2404-1",
+        RUNNER_ENVIRONMENT="self-hosted",
+    )
+    assert "per-job containers" in proc.stdout
+
+
 def test_github_hosted_uses_per_job_containers(tmp_path: Path) -> None:
-    proc = run(tmp_path, "up", RUNNER_ENVIRONMENT="github-hosted")
+    proc = run(tmp_path, "up", RUNNER_NAME="GitHub Actions 1")
     assert "per-job containers" in proc.stdout
     assert "5732" in proc.stdout  # 5432 + RUNNER_INDEX(3) * 100
 
@@ -151,10 +162,10 @@ def test_github_hosted_uses_per_job_containers(tmp_path: Path) -> None:
 
 
 def test_up_is_a_noop_when_the_config_fingerprint_matches(tmp_path: Path) -> None:
-    first = run(tmp_path, "up", RUNNER_ENVIRONMENT="self-hosted")
+    first = run(tmp_path, "up", RUNNER_NAME="gaia-home-1")
     assert first.returncode == 0
     (tmp_path / "docker.log").unlink()
-    second = run(tmp_path, "up", RUNNER_ENVIRONMENT="self-hosted")
+    second = run(tmp_path, "up", RUNNER_NAME="gaia-home-1")
     assert "already healthy" in second.stdout
     assert "\nrun " not in "\n" + docker_log(tmp_path)
 
@@ -162,10 +173,10 @@ def test_up_is_a_noop_when_the_config_fingerprint_matches(tmp_path: Path) -> Non
 def test_up_recreates_a_container_started_with_stale_flags(tmp_path: Path) -> None:
     # A Postgres still running with the old max_connections must be replaced,
     # not left serving a suite sized for the new one.
-    run(tmp_path, "up", RUNNER_ENVIRONMENT="self-hosted")
+    run(tmp_path, "up", RUNNER_NAME="gaia-home-1")
     (tmp_path / "label-gaia-shared-postgres").write_text("stale-fingerprint\n")
     (tmp_path / "docker.log").unlink()
-    proc = run(tmp_path, "up", RUNNER_ENVIRONMENT="self-hosted")
+    proc = run(tmp_path, "up", RUNNER_NAME="gaia-home-1")
     assert proc.returncode == 0
     assert "gaia-shared-postgres: running with stale configuration" in proc.stderr
     log = docker_log(tmp_path)
@@ -178,13 +189,13 @@ def test_up_recreates_a_container_started_with_stale_flags(tmp_path: Path) -> No
 def test_the_fingerprint_covers_the_flags_not_just_the_image(tmp_path: Path) -> None:
     # Same images, different max_connections => different fingerprint, so a
     # flag bump actually reconciles instead of looking identical.
-    run(tmp_path, "up", RUNNER_ENVIRONMENT="self-hosted")
+    run(tmp_path, "up", RUNNER_NAME="gaia-home-1")
     label_a = (tmp_path / "label-gaia-shared-postgres").read_text().strip()
     (tmp_path / "docker.log").unlink()
     proc = run(
         tmp_path,
         "up",
-        RUNNER_ENVIRONMENT="self-hosted",
+        RUNNER_NAME="gaia-home-1",
         GAIA_SHARED_PG_MAX_CONNECTIONS="999",
     )
     assert proc.returncode == 0
@@ -197,7 +208,7 @@ def test_the_fingerprint_covers_the_flags_not_just_the_image(tmp_path: Path) -> 
 
 
 def test_prepare_drops_and_recreates_the_lane_database(tmp_path: Path) -> None:
-    proc = run(tmp_path, "prepare", "4", RUNNER_ENVIRONMENT="self-hosted")
+    proc = run(tmp_path, "prepare", "4", RUNNER_NAME="gaia-home-1")
     assert proc.returncode == 0
     log = docker_log(tmp_path)
     assert "DROP DATABASE IF EXISTS gaia_test_r4 WITH (FORCE)" in log
@@ -205,7 +216,7 @@ def test_prepare_drops_and_recreates_the_lane_database(tmp_path: Path) -> None:
 
 
 def test_prepare_clears_the_other_four_namespaces(tmp_path: Path) -> None:
-    proc = run(tmp_path, "prepare", "4", RUNNER_ENVIRONMENT="self-hosted")
+    proc = run(tmp_path, "prepare", "4", RUNNER_NAME="gaia-home-1")
     assert proc.returncode == 0
     log = docker_log(tmp_path)
     assert "flushdb" in log  # Redis stripe
@@ -215,6 +226,24 @@ def test_prepare_clears_the_other_four_namespaces(tmp_path: Path) -> None:
     assert (tmp_path / "curl.log").read_text().count("collections") >= 1  # Chroma
 
 
+def test_prepare_fails_when_chroma_cannot_list_its_collections(tmp_path: Path) -> None:
+    # Read as "no collections", an unreachable Chroma let the lane start on the
+    # last lane's leftover data, failing in ways that look like test pollution.
+    (tmp_path / "chroma-down").touch()
+    proc = run(tmp_path, "prepare", "4", RUNNER_NAME="gaia-home-1")
+    assert proc.returncode != 0
+    assert "ChromaDB" in proc.stderr
+    assert "no collections" not in proc.stdout
+
+
+def test_reset_warns_but_succeeds_when_chroma_cannot_list(tmp_path: Path) -> None:
+    (tmp_path / "chroma-down").touch()
+    proc = run(tmp_path, "reset", "4", RUNNER_NAME="gaia-home-1")
+    assert proc.returncode == 0
+    assert "::warning::ChromaDB" in proc.stderr
+    assert "no collections" not in proc.stdout
+
+
 def test_prepare_writes_the_lane_env_contract(tmp_path: Path) -> None:
     gh_env = tmp_path / "github.env"
     gh_env.touch()
@@ -222,7 +251,7 @@ def test_prepare_writes_the_lane_env_contract(tmp_path: Path) -> None:
         tmp_path,
         "prepare",
         "4",
-        RUNNER_ENVIRONMENT="self-hosted",
+        RUNNER_NAME="gaia-home-1",
         GITHUB_ENV=str(gh_env),
     )
     assert proc.returncode == 0
@@ -246,7 +275,7 @@ def test_perjob_prepare_publishes_endpoints_without_the_bookkeeping_list(
     proc = run(
         tmp_path,
         "prepare",
-        RUNNER_ENVIRONMENT="github-hosted",
+        RUNNER_NAME="GitHub Actions 1",
         GITHUB_ENV=str(gh_env),
     )
     assert proc.returncode == 0
@@ -262,8 +291,8 @@ def test_perjob_prepare_publishes_endpoints_without_the_bookkeeping_list(
 def test_rabbitmq_is_always_execed_as_the_rabbitmq_user(tmp_path: Path) -> None:
     # A plain exec runs as root, creates a root-owned .erlang.cookie during
     # boot and crashes the server with eacces (docker-library/rabbitmq#318).
-    run(tmp_path, "prepare", "4", RUNNER_ENVIRONMENT="self-hosted")
-    run(tmp_path, "reset", "4", RUNNER_ENVIRONMENT="self-hosted")
+    run(tmp_path, "prepare", "4", RUNNER_NAME="gaia-home-1")
+    run(tmp_path, "reset", "4", RUNNER_NAME="gaia-home-1")
     for line in docker_log(tmp_path).splitlines():
         if "gaia-shared-rabbitmq" in line and line.startswith("exec"):
             assert "-u rabbitmq" in line, line
@@ -279,24 +308,6 @@ def test_service_image_digests_live_in_exactly_one_place(tmp_path: Path) -> None
         if "sha256:" in path.read_text() and "_IMAGE=" in path.read_text():
             holders.add(path.relative_to(repo).as_posix())
     assert holders == {"scripts/ci/lib/service-images.sh"}, holders
-
-
-@pytest.mark.parametrize(
-    "image",
-    ["POSTGRES_IMAGE", "REDIS_IMAGE", "MONGO_IMAGE", "CHROMA_IMAGE", "RABBITMQ_IMAGE"],
-)
-def test_dagger_pins_match_the_shared_source(image: str) -> None:
-    # .dagger is the one deliberate second copy (the local harness must give a
-    # dev machine the same topology); it may not drift.
-    repo = CI.parent.parent
-    pins = dict(
-        line.split("=", 1)
-        for line in (CI / "lib" / "service-images.sh").read_text().splitlines()
-        if line.startswith(tuple(f"{k}=" for k in [image]))
-    )
-    digest = pins[image].strip('"').split("@")[1]
-    dagger = (repo / ".dagger/src/gaia_ci/main.py").read_text()
-    assert digest in dagger, f"{image} digest missing from .dagger"
 
 
 def test_shell_is_syntactically_valid() -> None:

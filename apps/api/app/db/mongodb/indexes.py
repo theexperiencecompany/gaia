@@ -8,12 +8,23 @@ from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorCollection
 from pymongo.errors import OperationFailure
 
+from app.constants.auth import InstanceRole
 from app.constants.browser import BROWSER_PROFILE_TTL_SECONDS
 from app.constants.log_tags import LogTag
+from app.constants.payments import CLAIMED_STATUS
 from app.db.mongodb.collections import get_async_collection
 from app.db.repositories.integrations import integration_repository
+from app.db.repositories.local_credentials import local_credentials_repository
+from app.db.repositories.users import user_repository
 from app.helpers.integration_helpers import dedup_server_url_key
 from shared.py.wide_events import log
+
+# Security-critical index builds: these unique indexes enforce invariants, so
+# unlike performance indexes (warn-and-continue) a failed build aborts boot
+# rather than running healthy with the constraint silently absent.
+SECURITY_CRITICAL_COLLECTIONS = frozenset(
+    {"auth_credentials", "auth_invites", "instance_settings", "provider_credentials"}
+)
 
 # Mirrors pymongo's private `_IndexKeyHint` (pymongo.operations) — the shape
 # every `create_index` call in this module actually passes: a single field
@@ -31,6 +42,14 @@ class IndexOptions(TypedDict, total=False):
     unique: bool
     sparse: bool
     partialFilterExpression: Mapping[str, object]
+
+
+class _IndexSpec(TypedDict):
+    """One list_indexes entry, narrowed to the fields the slot-index migration reads."""
+
+    name: str
+    key: Mapping[str, int]
+    partialFilterExpression: NotRequired[Mapping[str, object]]
 
 
 class _DuplicateShapeGroup(TypedDict):
@@ -84,9 +103,16 @@ async def create_all_indexes() -> None:
             create_usage_indexes(),
             create_integration_indexes(),
             create_user_integration_indexes(),
-            create_integration_instructions_indexes(),
+            create_user_instructions_indexes(),
             create_device_token_indexes(),
             create_installed_skills_indexes(),
+            # Security-critical (see SECURITY_CRITICAL_COLLECTIONS): these unique
+            # indexes are what enforce the bootstrap-admin claim and the provisioning
+            # upsert keys, so their creators must run with the rest.
+            create_local_credential_indexes(),
+            create_local_invite_indexes(),
+            create_instance_settings_indexes(),
+            create_provider_credential_indexes(),
             create_workflow_execution_indexes(),
             create_bot_session_indexes(),
             create_e2b_sandbox_indexes(),
@@ -121,9 +147,13 @@ async def create_all_indexes() -> None:
             "usage",
             "integrations",
             "user_integrations",
-            "integration_instructions",
+            "user_instructions",
             "device_tokens",
             "skills",
+            "auth_credentials",
+            "auth_invites",
+            "instance_settings",
+            "provider_credentials",
             "workflow_executions",
             "bot_sessions",
             "e2b_sandboxes",
@@ -138,6 +168,7 @@ async def create_all_indexes() -> None:
         ]
 
         index_results = {}
+        critical_failures: list[tuple[str, Exception]] = []
         for collection_name, result in zip(collection_names, results):
             if isinstance(result, Exception):
                 log.error(
@@ -146,6 +177,8 @@ async def create_all_indexes() -> None:
                     result=result,
                 )
                 index_results[collection_name] = f"FAILED: {result!s}"
+                if collection_name in SECURITY_CRITICAL_COLLECTIONS:
+                    critical_failures.append((collection_name, result))
             else:
                 index_results[collection_name] = "SUCCESS"
 
@@ -165,6 +198,22 @@ async def create_all_indexes() -> None:
             log.warning(
                 f"{LogTag.MONGO} Failed to create indexes for collections",
                 failed_collections=failed_collections,
+            )
+
+        # Fail loud when a security-critical build failed: booting without the
+        # unique constraints leaves registration/provisioning unenforced while
+        # every healthcheck stays green. Same convention as startup_validation.
+        if critical_failures:
+            log.error(
+                f"{LogTag.MONGO} Security-critical index creation failed — refusing to start",
+                failed_collections=[name for name, _ in critical_failures],
+            )
+            raise RuntimeError(
+                "Security-critical MongoDB index creation failed; unique "
+                "constraints are NOT enforced — "
+                + "; ".join(f"{name}: {error}" for name, error in critical_failures)
+                + ". Resolve the cause (e.g. duplicate documents left by a "
+                "restore, or the logged Mongo error) and restart."
             )
 
     except Exception as e:
@@ -707,6 +756,14 @@ async def create_processed_webhook_indexes() -> None:
                 "processed_at",
                 expireAfterSeconds=2592000,  # 30 days
             ),
+            # A claim with no outcome blocks Dodo's retry for its whole 30-day TTL;
+            # the eight attempts span ~27.5h, so stuck ones expire at 48h.
+            processed_webhooks_collection.create_index(
+                "processed_at",
+                expireAfterSeconds=172800,  # 48h
+                partialFilterExpression={"status": CLAIMED_STATUS},
+                name="claimed_ttl",
+            ),
         )
     except Exception as e:
         log.error(
@@ -925,6 +982,100 @@ async def _create_index_safe(
         # IndexOptionsConflict (code 85) - index exists with different name
         if "IndexOptionsConflict" in error_str or "'code': 85" in error_str:
             return  # Silently skip - equivalent index already exists
+        raise
+
+
+async def _drop_unfiltered_slot_index(collection: AsyncIOMotorCollection[DocumentT]) -> None:
+    """Drop the single-admin era's unique slot index, which admits only one slotless member row."""
+    async for raw in collection.list_indexes():
+        index: _IndexSpec = cast("_IndexSpec", raw)
+        if dict(index["key"]) == {"slot": 1} and "partialFilterExpression" not in index:
+            await collection.drop_index(index["name"])
+
+
+async def _backfill_bootstrap_admin_role() -> None:
+    """Make the single-admin era's account an admin; idempotent, a no-op once its role is set."""
+    admin = await local_credentials_repository.get_admin()
+    if admin is None:
+        return
+    if await user_repository.set_role_if_unset(admin.user_id, InstanceRole.ADMIN):
+        log.info(f"{LogTag.MONGO} Backfilled the instance administrator role")
+
+
+async def create_local_credential_indexes() -> None:
+    """Create indexes for auth_credentials collection (local auth mode)."""
+    collection = get_async_collection("auth_credentials")
+    try:
+        await _drop_unfiltered_slot_index(collection)
+        await asyncio.gather(
+            # One credential per user — session lookups resolve by user_id.
+            _create_index_safe(collection, "user_id", unique=True),
+            # The bootstrap gate: only the first account's row carries slot=admin,
+            # so concurrent first signups race in Mongo instead of a
+            # check-then-create that two requests can both pass.
+            _create_index_safe(
+                collection,
+                "slot",
+                unique=True,
+                partialFilterExpression={"slot": {"$exists": True}},
+            ),
+        )
+        await _backfill_bootstrap_admin_role()
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating local credential indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_local_invite_indexes() -> None:
+    """Create indexes for auth_invites collection (local auth mode)."""
+    collection = get_async_collection("auth_invites")
+    try:
+        # Redemption looks an invite up by its token digest; two invites never share one.
+        await _create_index_safe(collection, "token_hash", unique=True)
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating local invite indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_instance_settings_indexes() -> None:
+    """Create indexes for instance_settings collection."""
+    collection = get_async_collection("instance_settings")
+    try:
+        await asyncio.gather(
+            # Business-key lookup (e.g. key="secrets"); one doc per key.
+            _create_index_safe(collection, "key", unique=True),
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating instance settings indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_provider_credential_indexes() -> None:
+    """Create indexes for provider_credentials collection."""
+    collection = get_async_collection("provider_credentials")
+    try:
+        await asyncio.gather(
+            # One credential document per provider; upserts race on this key.
+            _create_index_safe(collection, "provider", unique=True),
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating provider credential indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise
 
 
@@ -1168,26 +1319,26 @@ async def create_user_integration_indexes() -> None:
         raise
 
 
-async def create_integration_instructions_indexes() -> None:
+async def create_user_instructions_indexes() -> None:
     """
-    Create indexes for integration_instructions collection.
+    Create indexes for user_instructions collection.
 
     Query patterns:
-    - Read one integration's instructions: user_id + integration_id (unique)
-    - List all of a user's instructions for materialization
+    - Read or write one scope: user_id + scope (unique; also the revision guard's collision)
+    - List all of a user's instructions for the prompt and the projections
     """
-    integration_instructions_collection = get_async_collection("integration_instructions")
+    user_instructions_collection = get_async_collection("user_instructions")
     try:
         await _create_index_safe(
-            integration_instructions_collection,
-            [("user_id", 1), ("integration_id", 1)],
+            user_instructions_collection,
+            [("user_id", 1), ("scope", 1)],
             unique=True,
-            name="user_integration_instructions_unique",
+            name="user_instructions_scope_unique",
         )
 
     except Exception as e:
         log.error(
-            f"{LogTag.MONGO} Error creating integration instructions indexes",
+            f"{LogTag.MONGO} Error creating user instructions indexes",
             error=str(e),
             error_type=type(e).__name__,
         )

@@ -4,9 +4,9 @@ import asyncio
 from datetime import UTC, datetime
 import uuid
 
-import cloudinary.uploader
 from fastapi import HTTPException, UploadFile
 
+from app.constants.files import BlobKind
 from app.db.repositories.support_requests import support_request_repository
 from app.models.support_models import (
     SupportAttachment,
@@ -20,11 +20,11 @@ from app.models.support_models import (
     SupportRequestStatus,
     SupportRequestSubmissionResponse,
 )
+from app.services.blob_store import blob_store
 from app.services.email import (
     send_support_team_notification,
     send_support_to_user_email,
 )
-from app.services.upload_service import upload_file_to_cloudinary
 from shared.py.wide_events import log
 
 # Support team emails
@@ -39,42 +39,10 @@ MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024  # 10MB
 MAX_ATTACHMENTS = 5
 
 
-async def _delete_uploaded_files(attachment_urls: list[str]) -> None:
-    """Delete uploaded files from Cloudinary."""
-    for url in attachment_urls:
-        try:
-            # Extract filename from URL to construct public_id
-            # URL format: https://res.cloudinary.com/.../support/{ticket_id}_{filename}
-            url_parts = url.split("/")
-            if "support" in url_parts:
-                # Find the filename part after 'support/'
-                support_index = url_parts.index("support")
-                if support_index + 1 < len(url_parts):
-                    filename_with_ext = url_parts[support_index + 1]
-                    # The file is named {ticket_id}_{original_name}; the ticket
-                    # id rides in the URL so a failed delete stays attributable.
-                    ticket_id = filename_with_ext.split("_", 1)[0]
-                    # Remove file extension from public_id
-                    public_id = f"support/{filename_with_ext.rsplit('.', 1)[0]}"
-
-                    # Cloudinary's SDK is blocking HTTP — off the loop, or every
-                    # other request on this worker waits out the round trip.
-                    result = await asyncio.to_thread(cloudinary.uploader.destroy, public_id)
-                    if result.get("result") != "ok":
-                        log.warning(
-                            "Failed to delete file from Cloudinary",
-                            public_id=public_id,
-                        )
-                    else:
-                        log.info("Successfully deleted file from Cloudinary", public_id=public_id)
-        except Exception as e:
-            log.error(
-                "Error deleting file from Cloudinary",
-                url=url,
-                ticket_id=ticket_id,
-                error=str(e),
-                error_type=type(e).__name__,
-            )
+async def _delete_uploaded_files(owner_id: str, public_ids: list[str]) -> None:
+    """Delete uploaded attachments from the blob store (best-effort per file)."""
+    for public_id in public_ids:
+        await blob_store().delete(owner_id, public_id)
 
 
 async def _upload_single_attachment(
@@ -83,13 +51,15 @@ async def _upload_single_attachment(
     current_time: datetime,
     allowed_types: list[str],
     max_file_size: int,
+    user_id: str,
 ) -> tuple[str, SupportAttachment]:
-    """Upload a single attachment and return (file_url, attachment metadata)."""
+    """Upload a single attachment and return (public_id, attachment metadata)."""
     # Validate file type
-    if attachment.content_type not in allowed_types:
+    content_type = attachment.content_type
+    if content_type is None or content_type not in allowed_types:
         raise HTTPException(
             status_code=400,
-            detail=f"Only image files are supported. File type {attachment.content_type} not allowed. Please use JPG, PNG, or WebP.",
+            detail=f"Only image files are supported. File type {content_type} not allowed. Please use JPG, PNG, or WebP.",
         )
 
     # Validate filename
@@ -104,26 +74,29 @@ async def _upload_single_attachment(
             detail=f"File {attachment.filename} exceeds maximum size of 10MB",
         )
 
-    # Upload to Cloudinary
     public_id = f"support/{ticket_id}_{attachment.filename}"
+    store = blob_store()
     try:
-        # Run the synchronous upload function in a thread pool to avoid blocking
-        loop = asyncio.get_event_loop()
-        file_url = await loop.run_in_executor(
-            None,
-            lambda: upload_file_to_cloudinary(public_id=public_id, file_data=content),
+        store.ensure_ready()
+        file_url = await store.put(
+            user_id,
+            public_id,
+            content,
+            resource_type="auto",
+            kind=BlobKind.SUPPORT_ATTACHMENT,
+            content_type=content_type,
         )
 
         # Create attachment metadata
         attachment_info = SupportAttachment(
             filename=attachment.filename,
             file_size=len(content),
-            content_type=attachment.content_type or "application/octet-stream",
+            content_type=content_type,
             file_url=file_url,
             uploaded_at=current_time,
         )
 
-        return file_url, attachment_info
+        return public_id, attachment_info
 
     except Exception as e:
         log.error(
@@ -195,11 +168,12 @@ async def _process_attachments(
     attachments: list[UploadFile],
     ticket_id: str,
     current_time: datetime,
+    user_id: str,
 ) -> tuple[list[str], list[SupportAttachment]]:
     """Validate and upload all attachments in parallel.
 
     On any failure, files that were already uploaded are deleted before the
-    error propagates. Returns (uploaded urls, attachment metadata).
+    error propagates. Returns (uploaded public ids, attachment metadata).
     """
     if not attachments:
         return [], []
@@ -210,7 +184,7 @@ async def _process_attachments(
             detail=f"Maximum {MAX_ATTACHMENTS} images allowed",
         )
 
-    attachment_urls: list[str] = []
+    attachment_ids: list[str] = []
     processed_attachments: list[SupportAttachment] = []
 
     try:
@@ -221,6 +195,7 @@ async def _process_attachments(
                 current_time=current_time,
                 allowed_types=ALLOWED_ATTACHMENT_TYPES,
                 max_file_size=MAX_ATTACHMENT_SIZE,
+                user_id=user_id,
             )
             for attachment in attachments
         ]
@@ -235,8 +210,8 @@ async def _process_attachments(
                 if first_error is None:
                     first_error = upload_result
                 continue
-            file_url, attachment_metadata = upload_result
-            attachment_urls.append(file_url)
+            public_id, attachment_metadata = upload_result
+            attachment_ids.append(public_id)
             processed_attachments.append(attachment_metadata)
 
         if first_error is not None:
@@ -244,23 +219,23 @@ async def _process_attachments(
 
         log.info(
             "Successfully uploaded files in parallel for ticket",
-            attachment_urls_count=len(attachment_urls),
+            attachment_count=len(attachment_ids),
             ticket_id=ticket_id,
         )
     except Exception:
         # Clean up any files that were successfully uploaded before the failure
-        if attachment_urls:
+        if attachment_ids:
             log.info(
                 "Cleaning up partially uploaded files for ticket",
-                attachment_urls_count=len(attachment_urls),
+                attachment_count=len(attachment_ids),
                 ticket_id=ticket_id,
             )
-            await _delete_uploaded_files(attachment_urls)
+            await _delete_uploaded_files(user_id, attachment_ids)
 
         # Re-raise the original exception (could be HTTPException from validation or upload error)
         raise
 
-    return attachment_urls, processed_attachments
+    return attachment_ids, processed_attachments
 
 
 async def create_support_request(
@@ -401,7 +376,7 @@ async def create_support_request_with_attachments(
         attachment_count=len(attachments),
     )
     request_id = None
-    attachment_urls: list[str] = []
+    attachment_ids: list[str] = []  # pragma: no mutate — only read for truthiness
     ticket_id = None
 
     try:
@@ -412,8 +387,8 @@ async def create_support_request_with_attachments(
         current_time = datetime.now(UTC)
 
         # Process attachments (helper cleans up partial uploads before re-raising)
-        attachment_urls, processed_attachments = await _process_attachments(
-            attachments, ticket_id, current_time
+        attachment_ids, processed_attachments = await _process_attachments(
+            attachments, ticket_id, current_time, user_id
         )
 
         # Create support request document
@@ -468,12 +443,12 @@ async def create_support_request_with_attachments(
             )
 
             # Rollback: Delete uploaded files
-            if attachment_urls:
+            if attachment_ids:
                 try:
-                    await _delete_uploaded_files(attachment_urls)
+                    await _delete_uploaded_files(user_id, attachment_ids)
                     log.info(
                         "Successfully cleaned up uploaded files for ticket",
-                        attachment_urls_count=len(attachment_urls),
+                        attachment_count=len(attachment_ids),
                         ticket_id=ticket_id,
                     )
                 except Exception as cleanup_error:
@@ -524,12 +499,12 @@ async def create_support_request_with_attachments(
         )
 
         # Clean up uploaded files
-        if attachment_urls and ticket_id:
+        if attachment_ids:
             try:
-                await _delete_uploaded_files(attachment_urls)
+                await _delete_uploaded_files(user_id, attachment_ids)
                 log.info(
                     "Cleaned up uploaded files due to unexpected error",
-                    attachment_urls_count=len(attachment_urls),
+                    attachment_count=len(attachment_ids),
                 )
             except Exception as cleanup_error:
                 log.error(

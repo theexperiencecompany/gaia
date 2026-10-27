@@ -3306,6 +3306,31 @@
             ],
             "default": null,
             "title": "Error Digest"
+          },
+          "error_name": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Error Name"
+          },
+          "is_chunk_error": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Is Chunk Error"
           }
         },
         "required": ["error_type"],
@@ -3897,6 +3922,108 @@
       }
     },
     {
+      "event": "instance:invite_created",
+      "class": "InstanceInviteCreated",
+      "owner": "server",
+      "domain": "instance",
+      "description": "A self-host administrator created an invite link.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A self-host administrator created an invite link.",
+        "properties": {},
+        "title": "InstanceInviteCreated",
+        "type": "object"
+      }
+    },
+    {
+      "event": "instance:member_joined",
+      "class": "InstanceMemberJoined",
+      "owner": "server",
+      "domain": "instance",
+      "description": "A member account was created on a self-host instance, emitted for the new member.",
+      "previous_names": [],
+      "budget_per_user_day": 1,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A member account was created on a self-host instance, emitted for the new member.",
+        "properties": {
+          "via": {
+            "enum": ["invite", "open"],
+            "title": "Via",
+            "type": "string"
+          }
+        },
+        "required": ["via"],
+        "title": "InstanceMemberJoined",
+        "type": "object"
+      }
+    },
+    {
+      "event": "instructions:conflict",
+      "class": "InstructionsConflict",
+      "owner": "server",
+      "domain": "instructions",
+      "description": "A standing-instructions save was refused because another write landed first.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A standing-instructions save was refused because another write landed first.",
+        "properties": {
+          "scope_kind": {
+            "enum": ["global", "integration"],
+            "title": "Scope Kind",
+            "type": "string"
+          }
+        },
+        "required": ["scope_kind"],
+        "title": "InstructionsConflict",
+        "type": "object"
+      }
+    },
+    {
+      "event": "instructions:updated",
+      "class": "InstructionsUpdated",
+      "owner": "server",
+      "domain": "instructions",
+      "description": "A set of standing instructions (global or one integration's) was saved or cleared.",
+      "previous_names": ["integration:instructions_updated"],
+      "budget_per_user_day": 30,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A set of standing instructions (global or one integration's) was saved or cleared.",
+        "properties": {
+          "scope_kind": {
+            "enum": ["global", "integration"],
+            "title": "Scope Kind",
+            "type": "string"
+          },
+          "updated_by": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Updated By",
+            "type": "string"
+          },
+          "cleared": {
+            "title": "Cleared",
+            "type": "boolean"
+          }
+        },
+        "required": ["scope_kind", "updated_by", "cleared"],
+        "title": "InstructionsUpdated",
+        "type": "object"
+      }
+    },
+    {
       "event": "integration:account_added",
       "class": "IntegrationAccountAdded",
       "owner": "server",
@@ -4350,27 +4477,34 @@
       }
     },
     {
-      "event": "integration:instructions_updated",
-      "class": "IntegrationInstructionsUpdated",
+      "event": "integration:instance_setup_saved",
+      "class": "IntegrationInstanceSetupSaved",
       "owner": "server",
       "domain": "integration",
-      "description": "A user edited an integration's custom instructions.",
+      "description": "A self-host admin saved which Composio auth config each integration connects through.",
       "previous_names": [],
-      "budget_per_user_day": 10,
+      "budget_per_user_day": 50,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "A user edited an integration's custom instructions.",
+        "description": "A self-host admin saved which Composio auth config each integration connects through.",
         "properties": {
-          "integration_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
-            "title": "Integration Id",
-            "type": "string"
+          "stored_count": {
+            "title": "Stored Count",
+            "type": "integer"
+          },
+          "set_up_count": {
+            "title": "Set Up Count",
+            "type": "integer"
+          },
+          "total_count": {
+            "title": "Total Count",
+            "type": "integer"
           }
         },
-        "required": ["integration_id"],
-        "title": "IntegrationInstructionsUpdated",
+        "required": ["stored_count", "set_up_count", "total_count"],
+        "title": "IntegrationInstanceSetupSaved",
         "type": "object"
       }
     },
@@ -4400,6 +4534,65 @@
         },
         "required": ["integration_id", "account_count"],
         "title": "IntegrationPrimaryChanged",
+        "type": "object"
+      }
+    },
+    {
+      "event": "integration:toolkit_disabled",
+      "class": "IntegrationToolkitDisabled",
+      "owner": "server",
+      "domain": "integration",
+      "description": "A self-host admin removed a Composio toolkit they had enabled.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A self-host admin removed a Composio toolkit they had enabled.",
+        "properties": {
+          "toolkit": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Toolkit",
+            "type": "string"
+          }
+        },
+        "required": ["toolkit"],
+        "title": "IntegrationToolkitDisabled",
+        "type": "object"
+      }
+    },
+    {
+      "event": "integration:toolkit_enabled",
+      "class": "IntegrationToolkitEnabled",
+      "owner": "server",
+      "domain": "integration",
+      "description": "A self-host admin enabled a Composio toolkit; GAIA created its auth config.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A self-host admin enabled a Composio toolkit; GAIA created its auth config.",
+        "properties": {
+          "toolkit": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Toolkit",
+            "type": "string"
+          },
+          "origin": {
+            "enum": ["code", "instance"],
+            "title": "Origin",
+            "type": "string"
+          },
+          "composio_managed": {
+            "title": "Composio Managed",
+            "type": "boolean"
+          }
+        },
+        "required": ["toolkit", "origin", "composio_managed"],
+        "title": "IntegrationToolkitEnabled",
         "type": "object"
       }
     },
@@ -6142,18 +6335,6 @@
             "default": null,
             "title": "Fields"
           },
-          "has_custom_instructions": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Has Custom Instructions"
-          },
           "voice_id": {
             "anyOf": [
               {
@@ -6264,14 +6445,14 @@
       "class": "SkillInstalled",
       "owner": "server",
       "domain": "skill",
-      "description": "A user installed a skill from GitHub or inline.",
+      "description": "A skill was installed from GitHub, written inline, or learned by GAIA's agent.",
       "previous_names": [],
       "budget_per_user_day": 10,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "A user installed a skill from GitHub or inline.",
+        "description": "A skill was installed from GitHub, written inline, or learned by GAIA's agent.",
         "properties": {
           "target": {
             "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
@@ -6279,8 +6460,13 @@
             "type": "string"
           },
           "source": {
-            "enum": ["github", "inline"],
+            "enum": ["github", "inline", "learned"],
             "title": "Source",
+            "type": "string"
+          },
+          "author": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Author",
             "type": "string"
           },
           "skill_id": {
@@ -6297,7 +6483,7 @@
             "title": "Skill Id"
           }
         },
-        "required": ["target", "source"],
+        "required": ["target", "source", "author"],
         "title": "SkillInstalled",
         "type": "object"
       }
@@ -6355,15 +6541,27 @@
       "class": "SkillUpdated",
       "owner": "server",
       "domain": "skill",
-      "description": "A user edited a skill.",
+      "description": "A skill's instructions were edited, by the user or by GAIA's agent.",
       "previous_names": [],
       "budget_per_user_day": 50,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "A user edited a skill.",
-        "properties": {},
+        "description": "A skill's instructions were edited, by the user or by GAIA's agent.",
+        "properties": {
+          "target": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Target",
+            "type": "string"
+          },
+          "author": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Author",
+            "type": "string"
+          }
+        },
+        "required": ["target", "author"],
         "title": "SkillUpdated",
         "type": "object"
       }
@@ -6980,8 +7178,7 @@
               "invalid_conditions",
               "invalid_config",
               "registration_failed",
-              "no_trigger_instance",
-              "write_conflict"
+              "no_trigger_instance"
             ],
             "title": "Reason",
             "type": "string"

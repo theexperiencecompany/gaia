@@ -1,0 +1,67 @@
+{
+  "slug": "chatbot-vs-ai-assistant",
+  "term": "Chatbot vs AI Assistant",
+  "metaTitle": "What Is a Chatbot? Chatbot vs AI Assistant Explained",
+  "metaDescription": "A chatbot talks; an AI assistant, also called a virtual or digital assistant, acts in your tools. See the difference, real examples and when each is enough.",
+  "definition": "A chatbot is software that talks with you: it answers questions in a chat window using scripted rules or a language model. The difference between a chatbot and an AI assistant is action. A chatbot replies; an AI assistant (often called a virtual or digital assistant) also does the work, such as sending the email, booking the meeting or creating the task, in the tools you already use.",
+  "extendedDescription": "Chatbots are conversational interfaces. Early ones matched keywords to canned answers, and modern ones generate fluent replies with large language models. But the job description never changed: you type, it talks back. A chatbot cannot check your calendar, file your expenses, or follow up on an email thread, because it has no connection to the tools where work happens and no memory that persists between chats.\n\nAn AI assistant adds three things a chatbot lacks: tool integration, persistent memory, and initiative. It reads and writes in your real systems, remembers your preferences and history across sessions, and acts without being asked: flagging the urgent email, prepping the meeting brief, creating the task the moment it is mentioned. The conversation is just the interface. The work behind it is the product.\n\nThe labels blur because assistants talk like chatbots. The test is simple: if it only answers, it is a chatbot. If it does things, books, files, sends, schedules, reminds, it is an AI assistant. Price, platform, and personality are secondary. Agency is the difference.\n\nThe vocabulary is loose, so here is how the terms map. Virtual assistant, intelligent virtual assistant and digital assistant all mean the same thing as AI assistant: software that does tasks for a person. Siri, Alexa and Google Assistant are voice-first digital assistants. Conversational AI is not a product at all; it is the technology (language understanding, dialogue handling, large language models) that both chatbots and assistants are built on. An AI agent is the step beyond: an assistant that can plan and carry out a multi-step task on its own.\n\nA chatbot is still the right tool in plenty of cases: answering the same customer questions on a website, capturing leads, walking someone through a policy, or brainstorming and drafting when you will do the follow-up yourself. Reach for an AI assistant when the work repeats and lives in your accounts: an inbox that needs triage every morning, meetings that need prep, commitments that need tracking. A quick test: list the last five things you wanted help with and count how many ended with you copying an answer into another app. If most did, you need an assistant, not a chatbot.",
+  "keywords": [
+    "chatbot vs AI assistant",
+    "what is a chatbot",
+    "difference between chatbot and AI assistant",
+    "chatbot vs virtual assistant",
+    "chatbot vs digital assistant",
+    "conversational AI vs chatbot"
+  ],
+  "category": "ai-concepts",
+  "howGaiaUsesIt": "GAIA is an AI assistant in the full sense. Built as a multi-agent system, it connects to your tools across email, calendar, tasks, and chat, remembers context across sessions, and acts proactively: triaging inboxes, scheduling with context, and running multi-step workflows while you sleep.",
+  "relatedTerms": [
+    "ai-assistant",
+    "ai-agent",
+    "digital-assistant",
+    "proactive-ai",
+    "ai-assistant-vs-ai-agent"
+  ],
+  "faqs": [
+    {
+      "question": "What is a chatbot?",
+      "answer": "A chatbot is software that holds a text conversation, answering questions with scripted rules or generated language. It responds in words but cannot act in your tools: no calendar booking, no email sending, no task creation."
+    },
+    {
+      "question": "What is an AI assistant?",
+      "answer": "An AI assistant is software that does work on your behalf across connected tools. It manages email, schedules meetings, creates tasks, and runs workflows, using conversation as the interface rather than the whole job."
+    },
+    {
+      "question": "What is the main difference between a chatbot and an AI assistant?",
+      "answer": "Agency. A chatbot answers questions. An AI assistant takes actions: it integrates with tools, remembers context across sessions, and initiates work proactively instead of waiting for prompts."
+    },
+    {
+      "question": "Is ChatGPT a chatbot or an AI assistant?",
+      "answer": "ChatGPT is a chatbot at its core: a conversational model that answers prompts. Pair it with tool access, memory, and autonomous agents and it starts behaving like an assistant, which is exactly the gap products like GAIA are built to close."
+    },
+    {
+      "question": "Which should I choose for productivity: a chatbot or an AI assistant?",
+      "answer": "Choose an AI assistant if you want outcomes, not answers: triaged inboxes, scheduled meetings, tracked tasks. A chatbot suffices for quick questions, drafting help, and brainstorming where no follow-through is needed."
+    },
+    {
+      "question": "Can a chatbot manage my calendar and email?",
+      "answer": "A standalone chatbot cannot, because it has no access to those systems. An AI assistant like GAIA connects directly to Gmail, Google Calendar, Todoist, Slack, and other tools, so asking and doing happen in the same place."
+    },
+    {
+      "question": "Is a virtual assistant the same as a chatbot?",
+      "answer": "No. A chatbot only converses. A virtual assistant (also called an intelligent virtual assistant or digital assistant) uses conversation to take actions for you, such as booking a meeting or sending an email. Many virtual assistants use a chatbot as their interface, which is where the confusion comes from."
+    },
+    {
+      "question": "What is the difference between conversational AI and a chatbot?",
+      "answer": "Conversational AI is the underlying technology: natural language understanding, dialogue management and large language models. A chatbot is one product built with it. AI assistants use the same technology, then add tool access, memory and the ability to act."
+    },
+    {
+      "question": "Are Siri and Alexa chatbots or AI assistants?",
+      "answer": "They are AI assistants, specifically voice-first digital assistants: they act (set timers, control smart-home devices, add calendar events) rather than only chat. Their reach into work, such as triaging email or running multi-step workflows, is limited, which is the gap productivity assistants like GAIA cover."
+    }
+  ],
+  "relatedComparisons": [
+    "chatgpt",
+    "claude"
+  ]
+}

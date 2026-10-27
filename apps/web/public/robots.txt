@@ -1,64 +1,39 @@
+# Search and AI crawlers are all welcome on the marketing site; the signed-in app is not worth crawling.
 User-agent: *
-Allow: /
-
-# OpenAI bots
 User-agent: GPTBot
-Allow: /
-
 User-agent: ChatGPT-User
-Allow: /
-
 User-agent: OAI-SearchBot
-Allow: /
-
-# Anthropic bots
 User-agent: ClaudeBot
-Allow: /
-
 User-agent: Claude-Web
-Allow: /
-
 User-agent: anthropic-ai
-Allow: /
-
-# Perplexity
 User-agent: PerplexityBot
-Allow: /
-
-# Google AI
 User-agent: Google-Extended
-Allow: /
-
 User-agent: GoogleOther
-Allow: /
-
-# Apple AI
 User-agent: Applebot-Extended
-Allow: /
-
-# Meta AI
 User-agent: Meta-ExternalAgent
-Allow: /
-
-# Amazon AI
 User-agent: Amazonbot
-Allow: /
-
-# Common Crawl (used by many AI models)
 User-agent: CCBot
-Allow: /
-
 User-agent: Bingbot
-Allow: /
-
 User-agent: YandexBot
-Allow: /
-
 User-agent: Bytespider
-Allow: /
-
 User-agent: PetalBot
 Allow: /
+Disallow: /api/
+Disallow: /auth
+Disallow: /c/
+Disallow: /c$
+Disallow: /calendar
+Disallow: /dashboard
+Disallow: /integrations
+Disallow: /mail
+Disallow: /notifications
+Disallow: /onboarding
+Disallow: /pins
+Disallow: /redirect
+Disallow: /settings
+Disallow: /todos
+Disallow: /workflows
+Disallow: /connect
 
 Sitemap: https://heygaia.io/sitemap.xml
 Sitemap: https://heygaia.io/brand/sitemap.xml

@@ -10,10 +10,9 @@ from datetime import UTC, datetime
 
 from pymongo.errors import DuplicateKeyError
 
+from app.constants.payments import CLAIMED_STATUS
 from app.db.repositories.base import MongoRepository
 from app.models.payment_models import ProcessedWebhookDocument, ProcessedWebhookUpdate
-
-CLAIMED_STATUS = "processing"
 
 
 class ProcessedWebhooksRepository(

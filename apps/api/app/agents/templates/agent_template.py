@@ -20,6 +20,7 @@ from app.agents.prompts.executor_activation_prompt import (
     build_activation_executor_prompt,
 )
 from app.agents.prompts.openui_prompts import OPENUI_INSTRUCTIONS
+from app.agents.prompts.user_instructions_prompts import INSTRUCTION_PRECEDENCE_RULES
 from app.agents.workspace.operational_docs import GAIA_CORE
 from app.constants.chat import ConversationSource
 from app.constants.general import NEW_MESSAGE_BREAKER
@@ -167,7 +168,7 @@ _EXECUTOR_BASE: Final[str] = build_activation_executor_prompt()
 
 def get_executor_prompt() -> str:
     """Return the static executor prompt (activation doctrine, always)."""
-    return _EXECUTOR_BASE + "\n\n" + GAIA_CORE
+    return _EXECUTOR_BASE + "\n\n" + INSTRUCTION_PRECEDENCE_RULES + "\n\n" + GAIA_CORE
 
 
 EXECUTOR_PROMPT_TEMPLATE: Final[str] = get_executor_prompt()

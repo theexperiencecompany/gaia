@@ -1,1 +1,50 @@
-{"slug":"recurring-event","term":"Recurring Event","metaTitle":"What Is a Recurring Event? Managing Repeating Calendar Items","metaDescription":"A recurring event repeats on a defined schedule, like a weekly team standup. Learn how GAIA manages recurring events and extracts patterns from your calendar.","definition":"A recurring event is a calendar event that automatically repeats at a defined interval — daily, weekly, monthly, or on a custom schedule — without requiring manual recreation for each occurrence.","extendedDescription":"Recurring events form the stable rhythm of most professional schedules: weekly team standups, monthly board meetings, quarterly reviews, and daily standup calls. Calendar applications support various recurrence patterns: every weekday, every second Tuesday, the last Friday of each month. Managing recurring events effectively means understanding that a single change might affect only one occurrence or the entire series. Recurring events also define the meeting cadence that AI scheduling tools must respect when finding open slots.","keywords":["recurring event","repeating calendar event","recurring meeting","calendar recurrence","weekly meeting"],"category":"calendar","howGaiaUsesIt":"GAIA manages recurring events as part of its calendar intelligence, distinguishing between single-occurrence modifications and series changes. When scheduling new meetings, GAIA accounts for recurring events as fixed commitments. It can also identify recurring meeting patterns in your calendar and suggest optimization — for example, consolidating recurring check-ins that could be replaced with async updates.","relatedTerms":["ai-calendar-management","calendar-automation","availability-window","asynchronous-meeting"],"faqs":[{"question":"Can GAIA create recurring events?","answer":"Yes. GAIA can create recurring events in Google Calendar with any standard recurrence pattern. You can describe the recurrence in natural language — 'weekly on Tuesdays at 10am' or 'monthly on the first Monday' — and GAIA configures the correct recurrence rule."},{"question":"How does GAIA handle changes to recurring events?","answer":"GAIA asks whether a change applies to a single occurrence or the entire series before modifying a recurring event. This prevents accidental series-wide changes when you only intend to modify one instance."}],"relatedComparisons":["google-calendar","fantastical","notion-calendar"]}
+{
+  "slug": "recurring-event",
+  "term": "Recurring Event",
+  "metaTitle": "Recurring Calendar Events: Edit One or the Whole Series",
+  "metaDescription": "A recurring event repeats on a set schedule, from weekly syncs to monthly reviews. See how to edit one occurrence or the series, and how GAIA creates them.",
+  "definition": "A recurring event is a calendar event that repeats on a rule (daily, weekly, monthly, yearly, or a custom pattern such as every second Tuesday) and is stored as one series instead of separate copies, so a scheduler can show every occurrence while you change one occurrence or the whole series.",
+  "extendedDescription": "Recurring events form the stable rhythm of most professional schedules: weekly team standups, monthly board meetings, quarterly reviews, and daily standup calls. Calendar applications support various recurrence patterns: every weekday, every second Tuesday, the last Friday of each month. Managing recurring events effectively means understanding that a single change might affect only one occurrence or the entire series. Recurring events also define the meeting cadence that AI scheduling tools must respect when finding open slots.\n\nHow calendars store them: Google Calendar uses the recurrence rules of the iCalendar standard (RFC 5545), and calendars exchange recurring events in the same format. A recurring event is one master event plus a rule, the RRULE. FREQ sets the unit (DAILY, WEEKLY, MONTHLY, YEARLY), INTERVAL skips periods (INTERVAL=2 is every other week), BYDAY picks weekdays or the nth weekday (BYDAY=1MO is the first Monday), and COUNT or UNTIL ends the series. FREQ=WEEKLY;INTERVAL=2;BYDAY=TU;COUNT=10 means every other Tuesday, ten times.\n\nExceptions: when you move or cancel a single occurrence, the calendar keeps the series and records an exception for that date. That is why calendar apps ask whether an edit applies to this event, this and following events, or all events (Google Calendar's wording). Choosing this and following events ends the original series on that date and starts a new one.\n\nScheduling recurring events well: anchor them to a time zone so a 9:00 meeting stays at 9:00 local time when daylight saving changes; give every series an end date or a review date so dead meetings do not linger; avoid the 29th to 31st for monthly events (months without that date can be skipped) or use a rule like the last Friday of the month; and remember that booking pages and schedulers treat every occurrence as busy time, so a forgotten series blocks real availability.\n\nRecurring event or recurring task? Use a recurring event for time you need to block, such as a standup or a class. Use a recurring task or reminder for work that has a deadline but no fixed slot, such as sending a timesheet every Friday.",
+  "keywords": [
+    "recurring event",
+    "repeating calendar event",
+    "recurring meeting",
+    "calendar recurrence",
+    "weekly meeting"
+  ],
+  "category": "calendar",
+  "howGaiaUsesIt": "GAIA creates recurring events in Google Calendar from plain-English requests and turns them into the matching recurrence rule: daily, weekly on chosen days, every N weeks, monthly on the nth weekday, or yearly, ending after a set number of occurrences or on a date. When it reads your calendar, each occurrence is expanded into its own entry, so recurring meetings count as fixed commitments when GAIA looks for free slots or schedules something new. For repeating work that does not need a time slot, GAIA can set recurring reminders and todos instead.",
+  "relatedTerms": [
+    "ai-calendar-management",
+    "calendar-automation",
+    "availability-window",
+    "asynchronous-meeting"
+  ],
+  "faqs": [
+    {
+      "question": "Can GAIA create recurring events?",
+      "answer": "Yes. GAIA can create recurring events in Google Calendar. Describe the pattern in natural language, such as 'weekly on Tuesdays at 10am' or 'monthly on the first Monday', and GAIA sets the matching recurrence rule, including an end after a number of occurrences or on a date."
+    },
+    {
+      "question": "How does GAIA handle changes to recurring events?",
+      "answer": "GAIA sees each occurrence of a recurring event separately, so say which one you mean: 'move this Thursday's standup to 11' changes that occurrence. For an edit that should apply to the whole series, say so explicitly; Google Calendar's own All events option is the most reliable route for series-wide changes."
+    },
+    {
+      "question": "How do I schedule a recurring event in Google Calendar?",
+      "answer": "Create the event, open the Does not repeat menu under the date, and pick a preset (daily, weekly on that day, monthly, annually, every weekday) or Custom to set the interval, the days and the end. Or ask GAIA in plain English and it sets the recurrence for you."
+    },
+    {
+      "question": "How do I stop a recurring event?",
+      "answer": "Open the occurrence where it should end, delete it, and choose This and following events. Earlier occurrences stay and later ones are removed. To end the series on a date instead, edit the recurrence and set an end date."
+    },
+    {
+      "question": "What is the difference between a recurring event and a recurring task?",
+      "answer": "A recurring event blocks a time slot on your calendar every time it repeats. A recurring task or reminder repeats a piece of work with a due date but no fixed slot. Use events for meetings and classes, and tasks for things like weekly reports."
+    }
+  ],
+  "relatedComparisons": [
+    "google-calendar",
+    "fantastical",
+    "notion-calendar"
+  ]
+}

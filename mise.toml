@@ -6,7 +6,7 @@
 # nx manages build caching and project graph
 #
 # Quick Start:
-#   mise setup        # First-time setup (all apps)
+#   mise bootstrap    # First-time setup: packages, Docker, toolchain, all apps
 #   mise dev          # Start API + web
 #   mise tasks        # List all available tasks
 #
@@ -59,10 +59,8 @@ config_roots = [
 # Python and Node come from .python-version / .node-version (see [settings]);
 # Rust has no idiomatic file, so it is declared here and mirrored in the image.
 rust = "1.99.1"
-uv = "0.10.6"  # same as .github/actions/setup-uv and the Dockerfiles; tools/lints/check_tool_pins.py holds them together
+uv = "0.12.23"  # same as .github/actions/setup-uv and the Dockerfiles; tools/lints/check_tool_pins.py holds them together
 prek = "0.2.23"
-# Dagger runs the python test lanes (mise test:python, ci:local py-tests) and backs the dagger MCP server.
-dagger = "0.21.10"
 "npm:nx" = "22.7.7"  # matches package.json's nx; a newer CLI than the workspace breaks task resolution
 "npm:mintlify" = "4.2.988"
 # apps/mobile tasks shell out to `eas`; a floating global CLI changes build output.
@@ -78,8 +76,8 @@ _.file = ".env.worktree"
 
 [settings]
 experimental = true
-# Node's version lives in .node-version and nowhere else — mise, actions/setup-node
-# and the Dagger CI image all read that one file. Enabling idiomatic version files
+# Node's version lives in .node-version and nowhere else — mise and
+# actions/setup-node both read that one file. Enabling idiomatic version files
 # is what lets mise honour it; without this setting mise ignores .node-version and
 # silently falls back to the global default, which is the drift this prevents.
 idiomatic_version_file_enable_tools = ["node", "python"]
@@ -91,14 +89,14 @@ node.corepack = true
 # ─────────────────────────────────────────────────────────────────────────────
 
 [tasks."setup:env"]
-description = "Check if environment files exist for all apps"
+description = "Create missing environment files for all apps from their examples (never overwrites)"
 run = '''
 echo "Checking environment files..."
-missing=""
 
-# API (Manual check)
+# API (Auto-copy; the template carries no secrets — fill in keys or use Infisical)
 if [ ! -f "apps/api/.env" ]; then
-    missing="$missing\n  cp apps/api/.env.example apps/api/.env"
+    echo "Creating apps/api/.env from example (add your keys, or use Infisical)"
+    cp apps/api/.env.example apps/api/.env
 fi
 
 # Web (Auto-copy)
@@ -113,13 +111,6 @@ if [ ! -f "apps/mobile/.env" ] && [ -f "apps/mobile/.env.example" ]; then
     cp apps/mobile/.env.example apps/mobile/.env
 fi
 
-if [ -n "$missing" ]; then
-    echo "ERROR: Missing API environment file!"
-    echo ""
-    echo "Please copy the example file (contains secrets):"
-    echo -e "$missing"
-    exit 1
-fi
 echo "Environment files ready"
 '''
 
@@ -150,12 +141,56 @@ echo "Installing voice-agent dependencies..."
 echo "All dependencies installed"
 '''
 
-[tasks.setup]
-description = "Complete project setup for all apps (API, Web, Desktop, Mobile, Voice)"
+# ─────────────────────────────────────────────────────────────────────────────
+# CONTRIBUTOR MACHINE SETUP (`mise bootstrap`)
+# ─────────────────────────────────────────────────────────────────────────────
+# From a fresh clone to a machine that runs `mise dev`, in one command:
+#   1. [bootstrap.packages]: git and curl.
+#   2. The post-packages hook: Docker, installed the way `gaia up` installs it
+#      (Docker's get.docker.com script on Linux, never the distro's older
+#      docker.io); on macOS it asks for OrbStack or Docker Desktop.
+#   3. The [tools] toolchain.
+#   4. [tasks.bootstrap]: env files, JS + Python deps, voice models, databases.
+# `mise run bootstrap` runs step 4 alone; `gaia init` and `gaia setup` call it
+# after checking the prerequisites themselves.
+#
+# Self-hosters never use this: they install with
+# `curl -fsSL https://heygaia.io/install.sh | sh`, which needs no checkout and no mise.
+[bootstrap.packages]
+"apt:git" = "latest"
+"apt:curl" = "latest"
+"brew:git" = { os = "macos" }
+"brew:curl" = { os = "macos" }
+
+[bootstrap.hooks.post-packages]
+run = """
+set -eu
+command -v docker >/dev/null 2>&1 && exit 0
+if [ "$(uname -s)" != "Linux" ]; then
+  echo "Docker isn't installed. Install OrbStack (https://orbstack.dev) or Docker Desktop, open it, then run 'mise bootstrap' again." >&2
+  exit 1
+fi
+# Docker's script installs docker-ce with the Compose plugin and starts the daemon.
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker "$USER"
+"""
+
+[tasks.bootstrap]
+description = "Contributor setup: env files, JS + Python deps, voice models, then the databases (`mise bootstrap` sets up the machine first)"
 depends = ["setup:env", "setup:deps", "setup:voice-agent"]
 run = '''
+set -eu
 echo "Starting Docker services..."
-nx run docker:docker:up
+if docker info >/dev/null 2>&1; then
+  nx run docker:docker:up
+elif command -v sg >/dev/null 2>&1 && id -nG "$USER" | grep -qw docker; then
+  # Just added to the docker group, which only a new login carries: enter it for this one command.
+  sg docker -c "nx run docker:docker:up"
+  echo "Log out and back in so every new shell can reach Docker."
+else
+  echo "Docker isn't answering. Start it (OrbStack, Docker Desktop or 'sudo systemctl start docker'), then run 'mise run bootstrap'." >&2
+  exit 1
+fi
 echo ""
 echo "Setup complete! Run 'mise dev' to start development servers."
 '''
@@ -378,16 +413,12 @@ run = "nx affected -t build"
 # ─────────────────────────────────────────────────────────────────────────────
 
 [tasks.test]
-description = "Run all JS/TS tests via Nx"
+description = "Run every Nx project's tests (TS and the full API pytest suite with xdist workers): heavy, prefer mise test:one locally"
 run = "nx run-many -t test --parallel=3"
 
 [tasks."test:affected"]
 description = "Test only affected projects"
 run = "nx affected -t test --parallel=3"
-
-[tasks."test:python"]
-description = "Run all Python tests with real services via Dagger"
-run = "dagger call -s test-python"
 
 [tasks."api:types"]
 description = "Export apps/api/openapi.json and regenerate the TypeScript API types in libs/shared/ts/src/api/generated (CI fails when either drifts)"
@@ -471,15 +502,11 @@ run = "cd apps/api && USE_REAL_SERVICES=1 uv run --group backend --group dev pyt
 
 [tasks."test:one"]
 description = "Run one or more API test files exactly as CI does, minus xdist: `mise test:one tests/unit/x.py [more...]` (keeps --strict-markers and the -m filter; `-o addopts=\"\"` silently drops both)"
-run = "cd apps/api && uv run pytest -p no:xdist -q {{arg(name=\"paths\", var=true)}}"
+run = "cd apps/api && uv run --group backend --group dev pytest -p no:xdist -q {{arg(name=\"paths\", var=true)}}"
 
 [tasks."test:python:unit"]
 description = "Run Python unit tests only (no services, fast)"
-run = "cd apps/api && USE_REAL_SERVICES=0 uv run pytest tests/unit --tb=short -q"
-
-[tasks."test:python:coverage"]
-description = "Run Python tests with coverage via Dagger"
-run = "dagger call -s test-python-coverage"
+run = "cd apps/api && USE_REAL_SERVICES=0 uv run --group backend --group dev pytest tests/unit --tb=short -q"
 
 [tasks."test:typescript"]
 description = "Run JS/TS tests via Nx"
@@ -489,9 +516,21 @@ run = "nx run-many -t test --parallel=3"
 description = "Test all bots (Discord, Slack, Telegram, WhatsApp)"
 run = "cd apps/bots && pnpm vitest run"
 
+[tasks."cli:try"]
+description = "Try this tree's CLI on a fresh VM without CI or a publish: builds + packs the CLI, builds the self-host bundle (release.sh selfhost-bundle), serves them and install.sh over HTTP (port CLI_TRY_PORT, default 8790) and prints the commands to paste in the VM. Images are a published release's: GAIA_VERSION, default the newest cli-v* tag"
+run = "bash scripts/dev/cli-try.sh"
+
 [tasks."test:cli"]
 description = "Run CLI tests"
 run = "cd packages/cli && pnpm vitest run"
+
+[tasks."cli:schema"]
+description = "Regenerate the CLI's vendored API config schema (packages/cli/src/lib/api-config-schema.generated.json) from the API's settings groups and capability table — CI's api-schema lane fails when it drifts"
+run = "node scripts/ci/checks.mjs cli-config-schema --write"
+
+[tasks."deploy:templates"]
+description = "Regenerate the one-click deploy templates (deploy/coolify/gaia.yaml, render.yaml, deploy/proxy.Dockerfile) from the self-host compose file, its Caddyfile and the CLI's machine secrets — CI's api-schema lane fails when they drift"
+run = "node scripts/ci/checks.mjs deploy-templates --write"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # LINTING & FORMATTING
@@ -532,7 +571,7 @@ run = "nx affected -t format --parallel=3"
 #
 # These run CI's exact command, from the root, at CI's exact pin, so a clean
 # local run means a clean lane. Keep the ruff version in lockstep with
-# .github/workflows/code-quality.yml, .pre-commit-config.yaml and uv.lock —
+# .github/workflows/ci.yml, .pre-commit-config.yaml and uv.lock —
 # `python3 tools/lints/check_tool_pins.py` enforces that.
 [tasks."lint:py"]
 description = "Whole-repo Python lint + format check — CI's exact ruff command (covers scripts/, tools/)"
@@ -559,7 +598,7 @@ description = "pnpm audit (prod, >=high) with expiring allowlist in config/pnpm-
 run = "bash scripts/ci/audit.sh pnpm"
 
 [tasks."audit:deps:test"]
-description = "Unit tests for the CI shell gates (runner.sh, audit.sh, ...)"
+description = "Unit tests for the CI shell gates (runner.py, audit.sh, ...)"
 run = "uv run --no-project --with pytest pytest scripts/ci -q"
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -602,10 +641,6 @@ run = "nx run-many -t clean"
 description = "Clean Nx cache"
 run = "nx reset"
 
-[tasks."dagger-clean"]
-description = "Clear Dagger engine local cache"
-run = "dagger core engine local-cache prune"
-
 # ─────────────────────────────────────────────────────────────────────────────
 # NX UTILITIES
 # ─────────────────────────────────────────────────────────────────────────────
@@ -622,75 +657,15 @@ run = "nx affected:graph"
 # CI/CD COMMANDS
 # ─────────────────────────────────────────────────────────────────────────────
 
-# ── Dagger (only for tasks that need service containers) ──
-
-[tasks."ci:test-python"]
-description = "Run Python tests via Dagger with real services (same as CI)"
-run = "dagger call -s test-python"
-
-[tasks."ci:test-python:coverage"]
-description = "Run Python tests with coverage via Dagger"
-run = "dagger call -s test-python-coverage"
-
-[tasks."ci:quality"]
-description = "Run full quality gate via Dagger (local convenience, runs everything)"
-run = "dagger call -s quality-checks"
-
-[tasks."ci:quality:debug"]
-description = "Run quality gate with interactive debugging on failure"
-run = "dagger call quality-checks --interactive"
-
-[tasks."ci:quality:verbose"]
-description = "Run quality gate with full TUI and debug logs"
-run = "dagger call -vv quality-checks"
-
-# ── Docker image builds via Dagger ──
-
-[tasks."ci:docker"]
-description = "Build all Docker images via Dagger"
-run = "dagger call -s docker-build-all"
-
-[tasks."ci:docker:api"]
-description = "Build API Docker image via Dagger"
-run = "dagger call -s docker-build --app api"
-
-[tasks."ci:docker:web"]
-description = "Build web Docker image via Dagger"
-run = "dagger call -s docker-build --app web"
-
-[tasks."ci:docker:voice-agent"]
-description = "Build voice-agent Docker image via Dagger"
-run = "dagger call -s docker-build --app voice-agent"
-
-[tasks."ci:docker:bot-discord"]
-description = "Build Discord bot Docker image via Dagger"
-run = "dagger call -s docker-build --app bot-discord"
-
-[tasks."ci:docker:bot-slack"]
-description = "Build Slack bot Docker image via Dagger"
-run = "dagger call -s docker-build --app bot-slack"
-
-[tasks."ci:docker:bot-telegram"]
-description = "Build Telegram bot Docker image via Dagger"
-run = "dagger call -s docker-build --app bot-telegram"
-
-[tasks."ci:docker:bot-whatsapp"]
-description = "Build WhatsApp bot Docker image via Dagger"
-run = "dagger call -s docker-build --app bot-whatsapp"
-
-[tasks."ci:docker:bot-imessage"]
-description = "Build iMessage bot Docker image via Dagger"
-run = "dagger call -s docker-build --app bot-imessage"
-
 # ── GitHub Actions simulation (via act) ──
 
 [tasks."ci:act:quality"]
-description = "Dry-run quality-checks workflow locally with act"
-run = "act workflow_dispatch -n -W .github/workflows/main.yml"
+description = "Dry-run the CI workflow locally with act"
+run = "act workflow_dispatch -n -W .github/workflows/ci.yml"
 
 [tasks."ci:act:quality:run"]
-description = "Actually run quality-checks workflow locally with act"
-run = "act workflow_dispatch -W .github/workflows/main.yml"
+description = "Actually run the CI workflow locally with act"
+run = "act workflow_dispatch -W .github/workflows/ci.yml"
 
 [tasks."ci:act:desktop"]
 description = "Test desktop-release workflow locally with act (dry-run)"
@@ -783,6 +758,14 @@ run = "uv run --no-project python scripts/dev/gaia_verify.py"
 description = "Fetch PR review threads read-only: resolution state, IDs for resolve/reply, next-step syntax"
 run = "uv run python scripts/dev/pr_comments.py"
 
+[tasks."pr:conflicts"]
+description = "Replay the merge queue for open PRs (default: yours): which conflict with master or with each other, and the order to queue them"
+run = "uv run python scripts/dev/pr_conflicts.py"
+
 [tasks."ci:remote"]
 description = "Why a PR is red: each failing lane's verdict artifact or error-anchored job log, plus conflicts, reviews, threads and the gh stack (--verbose/--json/--watch)"
 run = "uv run python scripts/dev/ci_remote.py"
+
+[tasks."ci:watch"]
+description = "Wait on a PR's CI: `mise ci:watch <PR|branch>` polls up to an hour and exits at the first red check, printing its failure. The only sanctioned way to wait on CI"
+run = "uv run python scripts/dev/ci_remote.py --watch --fail-fast --max-wait 3600"

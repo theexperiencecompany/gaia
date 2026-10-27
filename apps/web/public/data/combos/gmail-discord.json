@@ -1,1 +1,81 @@
-{"slug":"gmail-discord","toolA":"Gmail","toolASlug":"gmail","toolB":"Discord","toolBSlug":"discord","tagline":"Route important emails to Discord channels and keep your community in the loop","metaTitle":"Gmail + Discord Automation - Email Notifications to Discord","metaDescription":"Connect Gmail and Discord with GAIA. Forward important email alerts to Discord channels, notify your community about key updates, and bridge email communications with Discord automatically.","keywords":["Gmail Discord integration","email to Discord notification","Gmail Discord automation","forward email to Discord","connect Gmail and Discord","Discord email alerts"],"intro":"Many teams and communities coordinate in Discord but still receive critical notifications — system alerts, client emails, payment confirmations, and vendor communications — via Gmail. Manually monitoring both platforms creates alert fatigue and gaps in awareness, especially for distributed teams spread across time zones.\n\nGAIA bridges Gmail and Discord by routing important email notifications to the right Discord channels automatically. System alert emails can post to a #monitoring channel. Client communication summaries can land in a #clients channel. Financial notifications can appear in a #finance channel. Your Discord server becomes a real-time nerve center that pulls in email-based signals without anyone having to relay them manually.\n\nThis is especially useful for developer communities, open-source projects, gaming studios, and creator-led businesses that run their operations inside Discord but still interact with partners and vendors over email.","useCases":[{"title":"System alert emails to Discord monitoring channel","description":"Infrastructure monitoring tools often send alert emails when systems go down or thresholds are breached. GAIA routes these emails to your #monitoring Discord channel the moment they arrive, with a formatted summary so your on-call team can respond immediately without checking email."},{"title":"Client update summaries to team Discord","description":"When important client emails arrive in Gmail, GAIA posts a concise summary to the relevant Discord channel so the whole team is aware of client needs and context without being CC'd on every email thread."},{"title":"Payment and billing notifications","description":"Payment confirmations, subscription renewals, and billing alerts from services like Stripe or PayPal arrive by email. GAIA forwards these to a private Discord channel for your finance or operations team so nothing is missed."},{"title":"Community announcement emails to Discord","description":"When you send a newsletter or announcement to your email list, GAIA can simultaneously post a version to your Discord announcements channel so your Discord community receives the news at the same time as your email subscribers."},{"title":"New lead or inquiry alerts","description":"When a contact form submission or sales inquiry arrives in Gmail, GAIA posts an alert to your #sales or #leads Discord channel so the team can discuss and assign follow-up immediately rather than waiting for someone to check email."}],"howItWorks":[{"step":"Connect Gmail and Discord to GAIA","description":"Authenticate your Gmail account and authorize GAIA to post to your Discord server. GAIA uses Discord webhooks or bot permissions to post to specific channels, so you control exactly where messages appear."},{"step":"Map email types to Discord channels","description":"Define rules for which emails should route to which Discord channels. You can filter by sender, subject keywords, Gmail labels, or let GAIA use AI classification to determine the appropriate channel."},{"step":"GAIA monitors Gmail and posts to Discord automatically","description":"GAIA watches your inbox continuously and posts formatted notifications to the configured Discord channels as qualifying emails arrive, keeping your Discord server updated in real time."}],"faqs":[{"question":"Can GAIA format the Discord message differently from the original email?","answer":"Yes. GAIA can post the full email, an AI-generated summary, or a custom template that extracts specific fields like sender, subject, and key points. For noisy alert emails, a concise one-line summary is often more useful than the full email body."},{"question":"Can GAIA post to multiple Discord channels for the same email?","answer":"Yes. You can configure rules where a single email triggers posts to multiple channels. For example, a major client email might post to both #clients and #management so both teams are notified simultaneously."},{"question":"Will GAIA work with private Discord channels?","answer":"Yes, as long as the GAIA bot or webhook has permission to post in the private channel. During setup, you grant GAIA access to specific channels, and it will only post where it is authorized."}]}
+{
+  "slug": "gmail-discord",
+  "toolA": "Gmail",
+  "toolASlug": "gmail",
+  "toolB": "Discord",
+  "toolBSlug": "discord",
+  "tagline": "Get important Gmail emails summarized in Discord, and ask GAIA about your inbox from any server or DM",
+  "metaTitle": "Connect Discord to Gmail: Email Alerts in Discord Channels",
+  "metaDescription": "Route system alerts, billing notices, and client updates from Gmail into the right Discord channels. GAIA formats each message for you. See the setup steps.",
+  "keywords": [
+    "Gmail Discord integration",
+    "email to Discord notification",
+    "Gmail Discord automation",
+    "forward email to Discord",
+    "connect Gmail and Discord",
+    "Discord email alerts"
+  ],
+  "intro": "To connect Discord to Gmail you need something in between, because neither app forwards to the other on its own. There are two common setups. If you want matching emails posted as-is into a server channel, create a webhook in that channel (Server Settings > Integrations > Webhooks) and point an email automation tool such as Zapier or Make at it, using Gmail filters or labels to choose which emails go through. If you want an assistant that reads your inbox, decides what matters and tells you in Discord, connect Gmail to GAIA and add the GAIA bot to Discord.\n\nHere is how the GAIA side works. A workflow with the Gmail new-email trigger starts shortly after each email arrives. GAIA reads it, applies your instructions (\"only failed payments, client replies and anything from my bank\") and sends a short summary to your Discord DMs through the GAIA bot. You can also @mention GAIA in a server channel or DM it and ask \"anything urgent in my inbox since lunch?\", and it answers right there and can draft or send the reply from Gmail. GAIA does not post into arbitrary server channels through Discord webhooks, so for a shared #alerts feed that the whole server reads, the webhook route is the right tool.\n\nSale alerts are the most common request. Most stores and payment providers (Shopify, Stripe, Gumroad, PayPal) email a receipt for every order, so the email is your signal. With GAIA: \"When an email from Stripe arrives with 'Payment received' in the subject, DM me the amount, product and customer country.\" For a #sales channel the whole team watches, feed a Discord channel webhook from Zapier or Make instead.\n\nIf you were looking for an email parser: parsers such as Mailparser pull fixed fields (order number, amount, tracking code) out of emails that always share one layout, using templates. GAIA extracts the same fields from plain instructions, which copes better when the layout changes. For thousands of identical emails a day, a template parser is more predictable.",
+  "useCases": [
+    {
+      "title": "System alert emails to your Discord DMs",
+      "description": "Monitoring tools send alert emails when a service goes down. A Gmail-triggered GAIA workflow reads each one shortly after it arrives and DMs you a one-line summary in Discord (service, error, time), so you see it on your phone without opening email."
+    },
+    {
+      "title": "Client email summaries in Discord",
+      "description": "When an email from a client arrives, GAIA DMs you who wrote, what they need and whether it needs a reply today. Ask GAIA in the same chat to draft the answer and it saves a Gmail draft for you to check."
+    },
+    {
+      "title": "Payment and billing notifications",
+      "description": "Payment confirmations, failed charges and renewals from Stripe or PayPal arrive by email. GAIA filters them and sends you a short Discord message with the amount and anything that needs action, skipping routine receipts if you ask it to."
+    },
+    {
+      "title": "Email highlights posted in a server channel",
+      "description": "@mention GAIA in a channel and ask \"post the key points of today's newsletter email here\". GAIA reads the email in Gmail and replies in that channel. To post every newsletter automatically, use a Discord channel webhook."
+    },
+    {
+      "title": "New lead or inquiry alerts",
+      "description": "When a contact-form submission or sales inquiry arrives in Gmail, GAIA DMs you the name, company and request, and can add a follow-up task to your todo list so the lead does not go cold."
+    }
+  ],
+  "howItWorks": [
+    {
+      "step": "Connect Gmail and add GAIA to Discord",
+      "description": "Connect your Gmail account in GAIA, then add the GAIA bot to Discord and link it to your GAIA account with /auth. The bot can then DM you and answer when you @mention it in a server."
+    },
+    {
+      "step": "Describe which emails matter",
+      "description": "Create a workflow with the Gmail new-email trigger and write the rule in plain language: senders, subject words, labels, or a description like \"anything a client is waiting on\". Say what the Discord message should contain."
+    },
+    {
+      "step": "GAIA reads new email and messages you",
+      "description": "Each matching email becomes a Discord DM shortly after it arrives, and emails that do not match are left alone. List and run your workflows from Discord with /workflow."
+    }
+  ],
+  "faqs": [
+    {
+      "question": "Can GAIA format the Discord message differently from the original email?",
+      "answer": "Yes. GAIA can send a one-line summary, the key fields (sender, subject, amount, deadline) or the full text. For noisy alert emails, a one-line summary is usually the most useful."
+    },
+    {
+      "question": "Can GAIA post to multiple Discord channels for the same email?",
+      "answer": "No. GAIA's workflow notifications go to your Discord DMs, and the same workflow can also notify you on Slack, Telegram or WhatsApp. To fan one email out to several server channels, create a webhook in each channel and use a forwarding tool such as Zapier or Make."
+    },
+    {
+      "question": "Will GAIA work with private Discord channels?",
+      "answer": "GAIA's email alerts arrive as DMs, which only you can see. In a server, GAIA reads only messages that @mention it and replies in channels where the bot has permission to read and send messages."
+    },
+    {
+      "question": "How do I connect Discord to Gmail?",
+      "answer": "Pick by goal. For raw emails in a server channel: create a channel webhook in Discord (Server Settings > Integrations > Webhooks) and connect it to Gmail with Zapier or Make. For summaries of the emails that matter: connect Gmail to GAIA, add the GAIA bot to Discord, link it with /auth, and create a workflow with the Gmail trigger."
+    },
+    {
+      "question": "How do I automatically post Discord alerts when a new sale comes through?",
+      "answer": "Use the order or payment email as the trigger. In GAIA, create a workflow such as \"When an email from Shopify with 'New order' in the subject arrives, DM me the order total and items.\" For a channel the whole team reads, send the same email to a Discord channel webhook with Zapier or Make."
+    },
+    {
+      "question": "Can I forward Discord messages to Gmail?",
+      "answer": "Discord has no built-in way to forward messages to email. With GAIA, paste a Discord message into your chat with the bot and say \"email this to Priya\", and GAIA sends it from your Gmail or saves it as a draft. Automatically forwarding every message in a channel needs a dedicated bot or automation tool."
+    }
+  ]
+}

@@ -59,28 +59,6 @@ export const integrationsApi = {
     }),
 
   /**
-   * Get the user's custom instructions for one integration.
-   */
-  getIntegrationInstructions: (integrationId: string) =>
-    api.get(
-      "/api/v1/integrations/users/me/integrations/{integration_id}/instructions",
-      { path: { integration_id: integrationId }, silent: true },
-    ),
-
-  /**
-   * Save the user's custom instructions for one integration.
-   */
-  updateIntegrationInstructions: (integrationId: string, content: string) =>
-    api.put(
-      "/api/v1/integrations/users/me/integrations/{integration_id}/instructions",
-      {
-        path: { integration_id: integrationId },
-        body: { content },
-        silent: true,
-      },
-    ),
-
-  /**
    * Connect an integration using the unified backend endpoint.
    */
   connectIntegration: async (

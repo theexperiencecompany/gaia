@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
-
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import ComparisonTable from "@/components/seo/ComparisonTable";
+import DocsGuidesSection from "@/components/seo/DocsGuidesSection";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
+import { ProseParagraphs } from "@/components/seo/ProseParagraphs";
+import { SiteLink } from "@/components/seo/SiteLink";
 import { getAllAlternativeSlugs } from "@/features/alternatives/data/alternativesData";
 import {
   getTranslatedAlternative,
@@ -16,13 +17,16 @@ import {
   getTranslatedComparison,
   getTranslatedComparisons,
 } from "@/features/comparisons/data/getTranslatedComparison";
+import { getMarketplacePath } from "@/features/integrations/lib/serverMarketplaceApi";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
-import { getLocalizedAlternates } from "@/i18n/getAlternates";
+import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
+import { isRedirectedPath } from "@/lib/canonicalLinks";
+import { ALTERNATIVE_DOCS_LINKS, type DocsGuideLink } from "@/lib/docs-links";
+import { prerenderedMarketingParams } from "@/lib/selfhost";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
   generateHowToSchema,
-  generatePageMetadata,
   generateProductSchema,
   generateWebPageSchema,
   siteConfig,
@@ -35,9 +39,13 @@ interface PageProps {
   }>;
 }
 
-export async function generateStaticParams() {
+async function allStaticParams() {
   const slugs = await getAllAlternativeSlugs();
   return slugs.map((slug) => ({ slug }));
+}
+
+export function generateStaticParams() {
+  return prerenderedMarketingParams(allStaticParams);
 }
 
 export async function generateMetadata({
@@ -50,16 +58,13 @@ export async function generateMetadata({
     return { title: "Alternative Not Found" };
   }
 
-  const metadata = generatePageMetadata({
+  return generateLocalizedPageMetadata({
     title: data.metaTitle,
     description: data.metaDescription,
     path: `/alternative-to/${slug}`,
     keywords: data.keywords,
+    locale,
   });
-  return {
-    ...metadata,
-    alternates: getLocalizedAlternates(`/alternative-to/${slug}`, locale),
-  };
 }
 
 function FitScorePip({ filled }: { readonly filled: boolean }) {
@@ -90,12 +95,14 @@ interface AlternativeArticleProps {
   >;
   readonly slug: string;
   readonly hasComparisonPage: boolean;
+  readonly marketplacePath: string | null;
   readonly relatedAlternatives: Awaited<
     ReturnType<typeof getTranslatedAlternatives>
   >;
   readonly relatedComparisons: Awaited<
     ReturnType<typeof getTranslatedComparisons>
   >;
+  readonly docsGuides: readonly DocsGuideLink[];
 }
 
 function AlternativeArticle({
@@ -103,20 +110,22 @@ function AlternativeArticle({
   data,
   slug,
   hasComparisonPage,
+  marketplacePath,
   relatedAlternatives,
   relatedComparisons,
+  docsGuides,
 }: AlternativeArticleProps) {
   return (
     <article className="mx-auto max-w-4xl px-6 pt-36 pb-24">
       {/* Breadcrumb */}
       <nav className="mb-8 text-sm text-zinc-500">
-        <Link href="/" className="hover:text-zinc-300">
+        <SiteLink href="/" className="hover:text-zinc-300">
           {t("common.home")}
-        </Link>
+        </SiteLink>
         <span className="mx-2">/</span>
-        <Link href="/alternative-to" className="hover:text-zinc-300">
+        <SiteLink href="/alternative-to" className="hover:text-zinc-300">
           {t("alternatives.breadcrumb")}
-        </Link>
+        </SiteLink>
         <span className="mx-2">/</span>
         <span className="text-zinc-300">
           {t("alternatives.best_alternative", { name: data.name })}
@@ -133,9 +142,10 @@ function AlternativeArticle({
 
       {/* Why people look */}
       <section className="mb-16">
-        <p className="text-lg leading-relaxed text-zinc-300">
-          {data.whyPeopleLook}
-        </p>
+        <ProseParagraphs
+          text={data.whyPeopleLook}
+          className="text-lg leading-relaxed text-zinc-300"
+        />
       </section>
 
       {/* Pain points */}
@@ -261,6 +271,25 @@ function AlternativeArticle({
         <FAQAccordion faqs={data.faqs} />
       </section>
 
+      {/* Connect CTA: only rendered when the marketplace page exists */}
+      {marketplacePath && (
+        <section className="mb-16 rounded-3xl bg-zinc-800 p-8">
+          <h2 className="mb-3 text-2xl font-semibold text-white">
+            Connect {data.name} to GAIA
+          </h2>
+          <p className="mb-6 leading-relaxed text-zinc-400">
+            Use {data.name} with your AI assistant: connect it in under two
+            minutes, then automate {data.name} workflows in plain English.
+          </p>
+          <SiteLink
+            href={marketplacePath}
+            className="inline-flex items-center rounded-full bg-primary px-6 py-3 text-sm font-medium text-black transition-opacity hover:opacity-90"
+          >
+            Connect {data.name}
+          </SiteLink>
+        </section>
+      )}
+
       {/* More Alternatives to Consider */}
       {relatedAlternatives.length > 0 && (
         <section className="mb-16">
@@ -269,7 +298,7 @@ function AlternativeArticle({
           </h2>
           <div className="grid gap-4 sm:grid-cols-3">
             {relatedAlternatives.map((alt) => (
-              <Link
+              <SiteLink
                 key={alt.slug}
                 href={`/alternative-to/${alt.slug}`}
                 className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
@@ -278,7 +307,7 @@ function AlternativeArticle({
                   {t("alternatives.best_alternative", { name: alt.name })}
                 </h3>
                 <p className="text-xs text-zinc-400">{alt.tagline}</p>
-              </Link>
+              </SiteLink>
             ))}
           </div>
         </section>
@@ -292,7 +321,7 @@ function AlternativeArticle({
           </h2>
           <div className="grid gap-4 sm:grid-cols-3">
             {relatedComparisons.map((comp) => (
-              <Link
+              <SiteLink
                 key={comp.slug}
                 href={`/compare/${comp.slug}`}
                 className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
@@ -301,23 +330,28 @@ function AlternativeArticle({
                   {t("alternatives.gaia_vs_name", { name: comp.name })}
                 </h3>
                 <p className="text-xs text-zinc-400">{comp.tagline}</p>
-              </Link>
+              </SiteLink>
             ))}
           </div>
         </section>
       )}
+
+      <DocsGuidesSection
+        heading={t("common.docs_guides")}
+        guides={docsGuides}
+      />
 
       {/* Cross-link to comparison page */}
       {hasComparisonPage && (
         <section className="mb-16 border-t border-zinc-800 pt-8">
           <p className="text-sm text-zinc-500">
             {t("alternatives.want_comparison")}{" "}
-            <Link
+            <SiteLink
               href={`/compare/${slug}`}
               className="text-zinc-400 underline underline-offset-2 hover:text-zinc-200"
             >
               {t("alternatives.see_comparison", { name: data.name })} &rarr;
-            </Link>
+            </SiteLink>
           </p>
         </section>
       )}
@@ -328,7 +362,7 @@ function AlternativeArticle({
           {t("common.explore_more")}
         </h2>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Link
+          <SiteLink
             href="/compare"
             className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
           >
@@ -338,8 +372,8 @@ function AlternativeArticle({
             <p className="text-sm leading-relaxed text-zinc-400">
               {t("alternatives.gaia_vs_competitors_desc")}
             </p>
-          </Link>
-          <Link
+          </SiteLink>
+          <SiteLink
             href="/for"
             className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
           >
@@ -349,7 +383,7 @@ function AlternativeArticle({
             <p className="text-sm leading-relaxed text-zinc-400">
               {t("alternatives.gaia_for_role_desc")}
             </p>
-          </Link>
+          </SiteLink>
         </div>
       </section>
     </article>
@@ -372,7 +406,11 @@ export default async function AlternativePage({ params }: PageProps) {
     notFound();
   }
 
-  const hasComparisonPage = comparisonData !== undefined;
+  // "Connect {name}" CTA only where the marketplace slug verifiably exists.
+  const marketplacePath = await getMarketplacePath(slug);
+
+  const hasComparisonPage =
+    comparisonData !== undefined && !isRedirectedPath(`/compare/${slug}`);
 
   const currentCategory = COMPARISON_CATEGORIES[slug] ?? "Other";
   const relatedComparisons = allComparisons
@@ -385,6 +423,8 @@ export default async function AlternativePage({ params }: PageProps) {
   const relatedAlternatives = allAlternatives
     .filter((a) => a.slug !== slug && a.category === data.category)
     .slice(0, 3);
+
+  const docsGuides = ALTERNATIVE_DOCS_LINKS[slug] ?? [];
 
   const webPageSchema = generateWebPageSchema(
     data.metaTitle,
@@ -434,8 +474,10 @@ export default async function AlternativePage({ params }: PageProps) {
         data={data}
         slug={slug}
         hasComparisonPage={hasComparisonPage}
+        marketplacePath={marketplacePath}
         relatedAlternatives={relatedAlternatives}
         relatedComparisons={relatedComparisons}
+        docsGuides={docsGuides}
       />
 
       <FinalSection />

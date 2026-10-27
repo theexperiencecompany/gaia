@@ -53,6 +53,16 @@ export const homepageFAQs: FAQItem[] = [
 export const faqData: FAQItem[] = [
   ...homepageFAQs,
   {
+    question: "What is GAIA?",
+    answer:
+      "GAIA is a proactive personal AI assistant made by The Experience Company. It works inside your email, calendar, tasks and other tools, runs workflows on its own and remembers your context. You use it on the web, in the desktop app, or by texting it on WhatsApp, Telegram and iMessage.",
+  },
+  {
+    question: "Is heygaia.io legit?",
+    answer:
+      "Yes. heygaia.io is the official site of GAIA, built by The Experience Company, founded by Aryan Randeriya and Dhruv Maradiya. GAIA's full source code is public on GitHub, so anyone can read how it handles data, and hosted GAIA is a paid subscription.",
+  },
+  {
     question: "How is GAIA different from Claude Cowork?",
     answer:
       "Claude Cowork runs on your desktop. You install it and give it tasks to run on your laptop. It can't do anything without a prompt, it can't be messaged from WhatsApp or Slack, and when you close your laptop it stops. GAIA runs in the cloud. You text it from WhatsApp, Telegram, Slack, Discord, or the web, and it watches your inbox and calendar on its own so it can surface things before you ask.",
@@ -60,7 +70,7 @@ export const faqData: FAQItem[] = [
   {
     question: "How is GAIA different from OpenClaw?",
     answer:
-      "OpenClaw is a kit. You run your own agent on your own machine with your own credentials, then figure out what to build. Fun for developers, a security headache for everyone else. GAIA is the finished product: cloud hosted, with 50+ integrations wired up and workflows that work from day one.",
+      "OpenClaw is a kit. You run your own agent on your own machine with your own credentials, then figure out what to build. Fun for developers, a security headache for everyone else. GAIA is the finished product: cloud hosted, with integrations wired up and workflows that work from day one.",
   },
   {
     question: "Who is GAIA for?",
@@ -80,7 +90,7 @@ export const faqData: FAQItem[] = [
   },
   {
     question: "Is GAIA free?",
-    answer: `GAIA is a paid product. Pro starts at $${ADVERTISED_PRO_MONTHLY_PRICE} a month for full access with higher limits and priority support. Enterprise is available for teams that need SSO, custom integrations, and dedicated support. You can also self-host the whole thing for zero cost on your own infrastructure.`,
+    answer: `GAIA is a paid product. Pro starts at $${ADVERTISED_PRO_MONTHLY_PRICE} a month for full access with higher limits and priority support. Enterprise is available for teams that need SSO, custom integrations, and dedicated support. Self-hosting is free for non-commercial use under the PolyForm Noncommercial license; you pay only for your own server and model API usage.`,
   },
 ];
 

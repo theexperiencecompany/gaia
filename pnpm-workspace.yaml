@@ -25,6 +25,7 @@ minimumReleaseAge: 4320
 #   pnpm add foo@1.2.3 --config.minimum-release-age=0
 minimumReleaseAgeExclude:
   - "@heygaia/*"
+  - "@theexperiencecompany/*"
 
 # Re-check package tarball integrity against the lockfile hashes on every
 # install (pnpm default; set explicitly so a stray .npmrc cannot switch it off).

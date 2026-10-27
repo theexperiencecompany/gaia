@@ -1,1 +1,81 @@
-{"slug":"notion-trello","toolA":"Notion","toolASlug":"notion","toolB":"Trello","toolBSlug":"trello","tagline":"Sync Trello cards with Notion databases and embed boards in project docs","metaTitle":"Notion + Trello Automation - Sync Cards with Notion Databases","metaDescription":"Connect Notion and Trello with GAIA. Sync Trello cards with Notion database entries, embed board views in project docs, and keep your kanban boards and project wiki in perfect alignment.","keywords":["Notion Trello integration","Notion Trello automation","sync Trello cards with Notion","connect Notion and Trello","embed Trello in Notion","Notion Trello workflow"],"intro":"Teams that use Trello for day-to-day task tracking and Notion for project documentation find themselves constantly copying information between the two. A Trello card gets completed, but the Notion project page still lists it as in progress. A project plan documented in Notion spawns a whole set of Trello cards that are never linked back to their source. The kanban board and the project wiki exist in parallel universes, and the team spends valuable time at status meetings just reconciling the two.\n\nGAIA connects Notion and Trello to eliminate this reconciliation overhead. Trello card status changes can update corresponding Notion database entries. Notion project documents can automatically generate Trello cards for new action items. And GAIA can maintain an embedded, always-updated Trello board view within a Notion project page so stakeholders see live task progress without switching tools.\n\nThis combination is especially popular with small product teams, content teams, and consultancies that love Trello's visual simplicity for task tracking but rely on Notion's depth for project documentation, wikis, and stakeholder reporting.","useCases":[{"title":"Sync Trello card status with Notion database properties","description":"When a Trello card moves to a new list, GAIA updates the status field on the corresponding Notion database entry so project tracking pages in Notion reflect real-time task progress from the Trello board without any manual updates."},{"title":"Create Trello cards from Notion action items","description":"When a Notion project page is updated with new tasks or requirements, GAIA parses the action items and creates corresponding Trello cards in the designated board and list, pre-filled with descriptions, due dates, and label mappings from the Notion document."},{"title":"Link Trello cards to Notion pages for full context","description":"GAIA attaches the relevant Notion page link as a Trello card attachment so team members working from the Trello board can jump directly to full project specifications, design docs, and meeting notes without searching Notion separately."},{"title":"Generate Notion project summaries from Trello board state","description":"GAIA can generate a structured Notion page summarizing the current state of a Trello board — cards by list, overdue cards, recently completed work, and upcoming deadlines — providing a narrative project status update that complements the visual kanban view."},{"title":"Archive Trello board history to Notion","description":"When a Trello board is closed or a sprint ends, GAIA exports the full board history into a structured Notion database, creating a searchable record of completed work that persists beyond the active board lifecycle."}],"howItWorks":[{"step":"Connect Notion and Trello to GAIA","description":"Authenticate your Notion workspace and Trello account in GAIA's integrations panel. Select the Notion databases and Trello boards that should be linked, and configure the direction of sync for each pairing."},{"step":"Map Trello lists to Notion status options","description":"Tell GAIA how Trello list names correspond to Notion status field values. Configure how Trello labels map to Notion tags, how card due dates map to Notion date properties, and which Trello members map to Notion assignees."},{"step":"GAIA syncs your kanban and wiki automatically","description":"GAIA listens for Trello webhook events and Notion page updates, propagating changes between the two platforms in real time. Your Notion project docs stay current with Trello board activity without any manual copy-pasting."}],"faqs":[{"question":"Can GAIA sync multiple Trello boards into a single Notion database?","answer":"Yes. You can map multiple Trello boards to a single Notion database, with a board or project property distinguishing which cards came from which source. This is useful for teams that run separate Trello boards per client or project but want unified reporting in Notion."},{"question":"What Notion page properties does GAIA support for Trello sync?","answer":"GAIA supports all standard Notion property types for Trello sync: text, select, multi-select, date, checkbox, person, URL, and number. This covers the full range of Trello card attributes including title, description, due date, labels, members, and completion status."},{"question":"Is there a limit to how many Trello cards GAIA can sync per Notion database?","answer":"GAIA does not impose a hard limit on the number of cards synced. Practical limits are determined by Trello and Notion API rate limits, which are generous for typical team usage. For very large boards with thousands of cards, GAIA can be configured to sync incrementally or filter to active cards only."}]}
+{
+  "slug": "notion-trello",
+  "toolA": "Notion",
+  "toolASlug": "notion",
+  "toolB": "Trello",
+  "toolBSlug": "trello",
+  "tagline": "Connect Trello to Notion: turn new Notion tasks into cards and roll board status back into Notion on a schedule",
+  "metaTitle": "Trello Notion Integration: Sync Cards with Notion Databases",
+  "metaDescription": "Keep Trello card status in sync with Notion database properties and turn Notion action items into cards. GAIA links both for full context. See the setup steps.",
+  "keywords": [
+    "Notion Trello integration",
+    "Notion Trello automation",
+    "sync Trello cards with Notion",
+    "connect Notion and Trello",
+    "embed Trello in Notion",
+    "Notion Trello workflow"
+  ],
+  "intro": "A Trello Notion integration links your Trello boards to your Notion workspace so cards and project pages stop drifting apart. Notion and Trello have no built-in two-way sync, and pasting a Trello link into Notion only gives you a link or embed block, not rows you can filter, sort, or relate. GAIA connects to both apps: when a page is added to a Notion database it can create the matching Trello card, and on a schedule you set it reads your boards and updates the Notion entries to match.\n\nThe two directions work differently. Notion tells GAIA when a page is created or its properties change, so Notion to Trello runs when that event arrives. Trello has no event trigger in GAIA, so Trello to Notion runs on a schedule: hourly, every weekday morning, or whatever interval you choose. Between runs, Notion can lag behind the board.\n\nIf you need a field-by-field mirror of every card that refreshes within minutes, a dedicated automation tool such as Zapier or Make is the better fit. GAIA suits teams that want the sync plus judgment: deciding which Notion items deserve a card, summarizing a board into a status page, or archiving a finished sprint as a readable record.",
+  "useCases": [
+    {
+      "title": "Create Trello cards from new Notion tasks",
+      "description": "Point a workflow at a Notion database. When a new page lands there, GAIA creates a card on the board and list you named, with the title, description, and due date from the page, and adds the Notion link so nobody has to search for the spec."
+    },
+    {
+      "title": "Update Notion status from Trello lists on a schedule",
+      "description": "On the schedule you set, GAIA reads the cards on a board and updates the status property of the matching Notion entries, using the list-to-status pairs you described (for example Doing to In progress, Done to Complete)."
+    },
+    {
+      "title": "Link Trello cards to Notion pages for full context",
+      "description": "GAIA adds the relevant Notion page link to the card, so people working from the board can open the spec, design notes, or meeting notes in one click."
+    },
+    {
+      "title": "Write a Notion status page from the board",
+      "description": "GAIA reads a Trello board and writes a Notion page with cards grouped by list, overdue cards, recent completions, and upcoming due dates, as a weekly digest or whenever you ask."
+    },
+    {
+      "title": "Archive a finished board or sprint to Notion",
+      "description": "When you tell GAIA a sprint is done, it copies the board's cards into a Notion database, so completed work stays searchable after the board is closed."
+    }
+  ],
+  "howItWorks": [
+    {
+      "step": "Connect Notion and Trello to GAIA",
+      "description": "Add both from GAIA's integrations page. Notion asks which pages and databases GAIA may access, so share the database you want to sync. Trello connects through its own authorization screen."
+    },
+    {
+      "step": "Describe the sync in plain English",
+      "description": "Create a workflow and say what should happen, for example: \"When a page is added to the Product Tasks database, create a card in the Backlog list of the Roadmap board\" or \"Every weekday at 9am, set each Notion task's Status from the list its Trello card is in.\" Name the list-to-status pairs once in the description."
+    },
+    {
+      "step": "GAIA runs it in the background",
+      "description": "Notion-triggered workflows run when the Notion event arrives. Trello-to-Notion updates run on your schedule. GAIA can notify you after each run with what it changed, and you can ask it to run the sync on demand at any time."
+    }
+  ],
+  "faqs": [
+    {
+      "question": "Can GAIA sync multiple Trello boards into a single Notion database?",
+      "answer": "Yes. A scheduled workflow can read several boards and write them into one Notion database, with a Board or Project property recording where each card came from. This suits teams that run one board per client or project but want one report in Notion."
+    },
+    {
+      "question": "What Notion page properties does GAIA support for Trello sync?",
+      "answer": "GAIA writes the common Notion property types: title, text, select, multi-select, date, checkbox, URL, and number. Those cover a card's name, description, list, labels, due date, completion, and link."
+    },
+    {
+      "question": "Is there a limit to how many Trello cards GAIA can sync per Notion database?",
+      "answer": "GAIA sets no card limit. Large boards take longer per run because GAIA reads them through the Trello and Notion APIs, which have rate limits. For boards with hundreds of cards, sync only the open lists or the cards still in progress."
+    },
+    {
+      "question": "Can I embed a Trello board in Notion?",
+      "answer": "You can paste a Trello board or card URL into a Notion page and choose the embed or link option. That gives you a window onto the board, but the cards are not Notion data, so Notion cannot filter, sort, or relate them. To get cards as database rows, sync them with a workflow like the ones on this page."
+    },
+    {
+      "question": "Is the Notion and Trello sync real-time?",
+      "answer": "Half of it is. Notion to Trello runs when Notion reports a new or changed page. Trello to Notion runs on the schedule you set, because GAIA has no Trello event trigger. If the board changes at 9:05 and the sync runs hourly, Notion catches up at the next run."
+    },
+    {
+      "question": "How do I sync Notion tasks with Asana or Trello?",
+      "answer": "Connect Notion and the task app to GAIA, then describe the sync as a workflow. For Trello, use a Notion trigger for new tasks and a schedule for status coming back. Asana does have event triggers in GAIA, so Asana to Notion updates can run when a task changes instead of on a timer."
+    }
+  ]
+}

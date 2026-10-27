@@ -1,0 +1,100 @@
+{
+  "slug": "lifestack",
+  "name": "Lifestack",
+  "domain": "lifestack.ai",
+  "tagline": "An AI daily planner that schedules your tasks around your energy",
+  "description": "Lifestack is an energy-aware AI planner that reads sleep and recovery from wearables and schedules tasks, meals and rest around your focus. GAIA is a personal assistant that works across your email, calendar, tasks and other tools.",
+  "metaTitle": "Lifestack vs GAIA: Energy Planner or Personal AI Assistant",
+  "metaDescription": "Lifestack plans your day around sleep and energy from your wearable. GAIA handles the email, calendar and tasks that fill that day. See where each wins.",
+  "keywords": [
+    "lifestack vs GAIA",
+    "GAIA vs Lifestack",
+    "lifestack ai review",
+    "lifestack planner",
+    "energy based planner",
+    "ai planner for adhd"
+  ],
+  "intro": "Lifestack, from DeMind Inc., plans your day around your body. It reads sleep, recovery and activity from Apple Health, Oura, WHOOP, Garmin and Fitbit, predicts when your focus will peak and time-blocks tasks from your calendar and to-do list into those windows, along with meals and rest. It works with Google Calendar, Outlook, Todoist and Trello and is aimed at people who want structure without burnout, including people with ADHD. GAIA does not read wearable data. It handles the work that fills the day: triaging Gmail and Outlook, drafting replies, managing your calendar and tasks, and running workflows triggered by your tools, from chat apps, the web and the desktop.",
+  "rows": [
+    {
+      "feature": "Core approach",
+      "gaia": "A personal AI assistant that works across email, calendar, tasks and your other connected tools",
+      "competitor": "An energy-aware AI daily planner that schedules tasks, meals and rest around your focus"
+    },
+    {
+      "feature": "Health and energy data",
+      "gaia": "Does not connect to wearables or health data",
+      "competitor": "Core strength: sleep, recovery and activity from Apple Health, Apple Watch, Oura, WHOOP, Garmin and Fitbit"
+    },
+    {
+      "feature": "Daily planning",
+      "gaia": "Plans your day on request and creates the calendar events you ask for",
+      "competitor": "Time-blocks tasks into predicted high-energy windows and plans meals and sleep"
+    },
+    {
+      "feature": "Email",
+      "gaia": "Triages Gmail and Outlook, drafts replies and turns threads into tasks",
+      "competitor": "No email handling"
+    },
+    {
+      "feature": "Integrations",
+      "gaia": "Gmail, Outlook, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, HubSpot and more, plus custom MCP servers",
+      "competitor": "Google Calendar, Outlook, Todoist and Trello, plus wearables"
+    },
+    {
+      "feature": "Workflow automation",
+      "gaia": "Multi-step workflows on a schedule or triggered by Gmail, Google Calendar, Slack, GitHub and more",
+      "competitor": "No workflow automation beyond planning your day"
+    },
+    {
+      "feature": "Where you use it",
+      "gaia": "iMessage, WhatsApp, Telegram, Slack and Discord, plus a web app and a desktop app for macOS, Windows and Linux",
+      "competitor": "iPhone, Android, Mac and a Chrome extension"
+    },
+    {
+      "feature": "Source-available",
+      "gaia": "Source-available (PolyForm Noncommercial) with self-hosting via Docker; for-profit organizations self-host under an enterprise license",
+      "competitor": "Proprietary and cloud-hosted"
+    },
+    {
+      "feature": "Pricing",
+      "gaia": "Hosted Pro at ${{PRO_MONTHLY_PRICE}}/month per person; GAIA Enterprise priced on request",
+      "competitor": "Monthly and yearly memberships, with a free trial on the yearly plan, plus a one-time lifetime plan"
+    }
+  ],
+  "gaiaAdvantages": [
+    "Handles email: triage, drafted replies and tasks from threads",
+    "Workflows triggered by Gmail, Calendar, Slack, GitHub and more",
+    "Integrations across work tools such as Slack, Notion, GitHub and HubSpot",
+    "Reachable from iMessage, WhatsApp, Telegram, Slack and Discord",
+    "Source-available, with self-hosting via Docker"
+  ],
+  "competitorAdvantages": [
+    "Plans around your sleep and recovery from Oura, WHOOP, Garmin, Fitbit and Apple Health",
+    "Schedules meals and rest, not only work",
+    "A one-time lifetime plan for people who prefer not to subscribe"
+  ],
+  "verdict": "Choose Lifestack if you want your schedule shaped by your sleep and energy data and you mainly need help pacing your day. Choose GAIA if your day is driven by email, meetings and team tools and you want an assistant that handles that work and runs workflows for you.",
+  "faqs": [
+    {
+      "question": "What is the difference between Lifestack and GAIA?",
+      "answer": "Lifestack is a daily planner that uses wearable data to place tasks, meals and rest where your energy fits them. GAIA is an assistant for the work itself: it triages email, drafts replies, manages your calendar and tasks and runs workflows across your tools."
+    },
+    {
+      "question": "Does GAIA use data from Oura, WHOOP or Apple Health?",
+      "answer": "No. GAIA does not connect to wearables or health data, so it cannot plan around your sleep or recovery. If that matters to you, Lifestack does it and GAIA does not."
+    },
+    {
+      "question": "Can I use Lifestack and GAIA together?",
+      "answer": "Yes. Both work with Google Calendar and Outlook. Lifestack can pace your day while GAIA turns your email into tasks and events and runs your workflows."
+    },
+    {
+      "question": "How much does GAIA cost compared with Lifestack?",
+      "answer": "Lifestack sells monthly and yearly memberships and a one-time lifetime plan. GAIA's hosted service is a paid subscription per person, with Pro at ${{PRO_MONTHLY_PRICE}}/month, and GAIA Enterprise is priced on request. The code is source-available under the PolyForm Noncommercial license, so self-hosting is free for personal, noncommercial use, and for-profit organizations self-host under an enterprise license (contact the GAIA team)."
+    }
+  ],
+  "relatedPersonas": [
+    "adhd-professionals",
+    "remote-workers"
+  ]
+}

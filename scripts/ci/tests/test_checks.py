@@ -43,7 +43,9 @@ def _add(repo: Path, rel: str, lines: int) -> None:
 NODE = shutil.which("node")
 
 
-def _run(repo: Path, *args: str, changed_files: str | None = None):
+def _run(
+    repo: Path, *args: str, changed_files: str | None = None
+) -> subprocess.CompletedProcess[str]:
     # PATH inherited: node and git come from the mise-managed toolchain, not a
     # fixed system path. CHANGED_FILES is set explicitly per case so a value
     # leaking in from the surrounding lane cannot silently rescope the gate.
@@ -314,7 +316,7 @@ def _stub_generators(tmp_path: Path, openapi: str, types: str) -> dict[str, str]
     }
 
 
-def _run_env(repo: Path, env: dict[str, str], *args: str):
+def _run_env(repo: Path, env: dict[str, str], *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [NODE, str(CHECKS), *args], cwd=repo, capture_output=True, text=True, check=False, env=env
     )

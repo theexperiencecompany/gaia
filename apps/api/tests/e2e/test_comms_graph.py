@@ -179,19 +179,26 @@ class TestMemoryTools:
 
 
 class TestReplyShape:
-    async def test_a_comms_reply_carries_the_message_break_marker(self):
-        """The client splits a comms turn into bubbles on this marker; the executor's text never carries it."""
-        async with comms_graph(["Hi there."]) as graph:
+    async def test_a_comms_reply_is_stored_without_edge_breaks(self):
+        """Breaks separate bubbles; one at the edge is history the model copies and grows."""
+        async with comms_graph(
+            [f"{NEW_MESSAGE_BREAKER * 2}Hi there.{NEW_MESSAGE_BREAKER}"]
+        ) as graph:
             run = await run_graph(graph, "hello")
 
-        assert run.final_text() == f"Hi there.{NEW_MESSAGE_BREAKER}"
+        assert run.final_text() == "Hi there."
 
     async def test_an_empty_model_reply_is_replaced_with_something_sayable(self):
         async with comms_graph([AIMessage(content="")]) as graph:
             run = await run_graph(graph, "hello")
 
-        assert run.final_text().replace(NEW_MESSAGE_BREAKER, "")
-        assert "Empty response" in run.final_text()
+        assert run.final_text() == "Empty response from model."
+
+    async def test_a_break_only_reply_is_replaced_with_something_sayable(self):
+        async with comms_graph([AIMessage(content=NEW_MESSAGE_BREAKER * 50)]) as graph:
+            run = await run_graph(graph, "hello")
+
+        assert run.final_text() == "Empty response from model."
 
 
 class TestEndOfTurnHooks:

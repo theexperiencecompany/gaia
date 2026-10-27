@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import TypeAdapter
 
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
-from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.config.oauth_config import all_integrations
 from app.constants.log_tags import LogTag
 from app.db.chroma.public_integrations_store import search_public_integrations
 from app.db.repositories.integrations import integration_repository
@@ -34,7 +34,6 @@ from app.schemas.integrations.responses import (
 )
 from app.services.analytics_service import capture
 from app.services.integrations.integration_connection_service import (
-    MCPConnectOptions,
     connect_mcp_integration,
 )
 from app.services.integrations.user_integrations import add_user_integration
@@ -63,7 +62,7 @@ async def get_public_integration(
         # 1. Check platform (native) integrations first — in-memory, instant
         # Platform integrations use their ID as slug (e.g., "googlecalendar", "slack")
         native = next(
-            (i for i in OAUTH_INTEGRATIONS if i.id == identifier and i.managed_by != "internal"),
+            (i for i in all_integrations() if i.id == identifier and i.managed_by != "internal"),
             None,
         )
         if native:
@@ -198,11 +197,10 @@ async def add_public_integration(
             integration_id=integration_id,
             integration_name=integration_name,
             requires_auth=requires_auth,
-            options=MCPConnectOptions(
-                redirect_path=request.redirect_path,
-                server_url=server_url,
-                bearer_token=request.bearer_token,
-            ),
+            redirect_path=request.redirect_path,
+            server_url=server_url,
+            is_platform=False,
+            bearer_token=request.bearer_token,
         )
 
         log.set(integration_name=integration_name)

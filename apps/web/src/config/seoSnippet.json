@@ -1,0 +1,4 @@
+{
+  "titleLength": { "min": 30, "max": 60 },
+  "descriptionLength": { "min": 70, "max": 165 }
+}

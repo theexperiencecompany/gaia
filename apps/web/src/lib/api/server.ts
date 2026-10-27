@@ -23,3 +23,23 @@ export function serverApiError(response: Response, body: unknown): ApiError {
     requestId: response.headers.get(REQUEST_ID_HEADER) ?? undefined,
   });
 }
+
+interface ServerResult<T> {
+  readonly data?: T;
+  readonly error?: unknown;
+  readonly response: Response;
+}
+
+/** The data of a server read, or the read's failure thrown as an ApiError. */
+export function serverData<T>(result: ServerResult<T>): T {
+  if (result.error !== undefined || result.data === undefined) {
+    throw serverApiError(result.response, result.error);
+  }
+  return result.data;
+}
+
+/** Like serverData, but a 404 is an answer (null) rather than a failure. */
+export function serverDataOrNull<T>(result: ServerResult<T>): T | null {
+  if (result.response.status === 404) return null;
+  return serverData(result);
+}

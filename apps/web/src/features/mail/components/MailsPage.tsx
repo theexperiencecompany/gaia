@@ -30,7 +30,10 @@ const ViewEmail = dynamic(() => import("@/features/mail/components/ViewMail"), {
 
 import { useEmailActions } from "@/features/mail/hooks/useEmailActions";
 import { useEmailAnalysisIndicators } from "@/features/mail/hooks/useEmailAnalysis";
-import { useEmailGrouping } from "@/features/mail/hooks/useEmailGrouping";
+import {
+  type ListItem,
+  useEmailGrouping,
+} from "@/features/mail/hooks/useEmailGrouping";
 import { useEmailReadStatus } from "@/features/mail/hooks/useEmailReadStatus";
 import { useEmailSelection } from "@/features/mail/hooks/useEmailSelection";
 import { useEmailViewer } from "@/features/mail/hooks/useEmailViewer";
@@ -246,6 +249,149 @@ function EmailRowActions({
   );
 }
 
+type EmailRowHandler = (e: React.MouseEvent, email: EmailData) => void;
+
+interface MailRowData {
+  groupedItems: ListItem[];
+  isItemLoaded: (index: number) => boolean;
+  isMobileScreen: boolean;
+  selectedEmails: Set<string>;
+  hasAnalysis: (emailId: string) => boolean;
+  onOpen: (email: EmailData) => void;
+  onToggleSelection: (e: React.MouseEvent, emailId: string) => void;
+  onToggleStar: EmailRowHandler;
+  onArchive: EmailRowHandler;
+  onTrash: EmailRowHandler;
+  onToggleRead: EmailRowHandler;
+}
+
+/**
+ * One react-window row: a section header, a loading placeholder, or an email.
+ * Module-scoped so its component type survives page re-renders; a type that
+ * changed every render would remount each visible row and drop its focus.
+ */
+function MailRow({ index, style, data }: ListChildComponentProps<MailRowData>) {
+  const [title, setTitle] = useState("");
+
+  if (!data.isItemLoaded(index)) {
+    return (
+      <div style={style} className="flex items-center justify-center">
+        <Spinner />
+      </div>
+    );
+  }
+
+  const item = data.groupedItems[index];
+  if (!item) return null;
+
+  if (item.type === "header")
+    return (
+      <div
+        style={style}
+        className="relative flex h-full w-full items-center px-4 text-sm text-foreground/70 backdrop-blur-xs sm:px-1"
+      >
+        {item.data as string}
+        <div className="absolute bottom-4 h-[1px] w-full border-none bg-white/20 outline-hidden sm:bottom-2"></div>
+      </div>
+    );
+
+  const email = item.data as EmailData;
+  const isSelected = data.selectedEmails.has(email.id);
+
+  const fetchSummary = (isOpen: boolean) => {
+    if (isOpen && !title) {
+      setTitle(email.subject);
+    }
+  };
+
+  return (
+    <Tooltip
+      showArrow
+      placement="top"
+      delay={400}
+      closeDelay={0}
+      shouldCloseOnInteractOutside={() => true}
+      onOpenChange={fetchSummary}
+      content={
+        <div className="flex w-[300px] flex-col p-1">
+          <div className="text-lg leading-tight font-medium">{title}</div>
+        </div>
+      }
+      onClose={() => {
+        return !!title;
+      }}
+      color="foreground"
+      radius="sm"
+    >
+      <div
+        className={`group relative grid w-full cursor-pointer gap-1 p-2 px-4 transition-all duration-200 hover:bg-primary/20 hover:text-primary sm:gap-2 sm:px-1 ${email?.labelIds?.includes("UNREAD") ? "font-medium" : "font-normal text-foreground-400"} sm:grid-cols-[auto_0.3fr_1fr_auto] sm:items-center`}
+        style={style}
+      >
+        <button
+          type="button"
+          aria-label={`Open email: ${email.subject}`}
+          className="absolute inset-0 z-10"
+          onClick={() => data.onOpen(email)}
+        />
+        <button
+          type="button"
+          className="relative z-20 flex items-center justify-center px-2"
+          aria-label={isSelected ? "Deselect email" : "Select email"}
+          onClick={(e) => {
+            e.stopPropagation();
+            data.onToggleSelection(e, email.id);
+          }}
+        >
+          {isSelected ? (
+            <CheckmarkSquare03Icon className="h-5 w-5 cursor-pointer text-primary" />
+          ) : (
+            <SquareIcon className="h-5 w-5 cursor-pointer opacity-60 hover:opacity-100" />
+          )}
+        </button>
+
+        {data.isMobileScreen ? (
+          <>
+            <div className="col-span-1 min-h-fit truncate text-lg sm:block">
+              <EmailFrom from={email.from} />
+            </div>
+
+            <div className="col-span-1 mt-1 flex min-h-fit items-center gap-2 text-right text-sm opacity-50 sm:mt-0">
+              <AIAnalysisIndicator hasAnalysis={data.hasAnalysis(email.id)} />
+              {formatTime(email.time)}
+            </div>
+
+            <div className="col-span-2 min-h-fit w-full truncate sm:col-span-1">
+              {email.subject}
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="col-span-1 min-h-fit truncate pl-2 sm:block">
+              <EmailFrom from={email.from} />
+            </div>
+
+            <div className="col-span-2 min-h-fit w-full truncate sm:col-span-1">
+              {email.subject}
+            </div>
+
+            <div className="col-span-1 mt-1 flex min-h-fit items-center gap-2 text-right text-sm opacity-50 sm:mt-0">
+              <AIAnalysisIndicator hasAnalysis={data.hasAnalysis(email.id)} />
+              {formatTime(email.time)}
+            </div>
+            <EmailRowActions
+              email={email}
+              onToggleStar={(e) => data.onToggleStar(e, email)}
+              onArchive={(e) => data.onArchive(e, email)}
+              onTrash={(e) => data.onTrash(e, email)}
+              onToggleRead={(e) => data.onToggleRead(e, email)}
+            />
+          </>
+        )}
+      </div>
+    </Tooltip>
+  );
+}
+
 export default function MailsPage() {
   const isMobileScreen: boolean = useMediaQuery("(max-width: 600px)");
   // react-window needs a numeric pixel height; measure post-mount instead of
@@ -340,131 +486,18 @@ export default function MailsPage() {
     return <LoadErrorState onRetry={() => window.location.reload()} />;
   }
 
-  const Row = ({ index, style }: ListChildComponentProps) => {
-    const [title, setTitle] = useState("");
-
-    if (!isItemLoaded(index)) {
-      return (
-        <div style={style} className="flex items-center justify-center">
-          <Spinner />
-        </div>
-      );
-    }
-
-    const item = groupedItems[index];
-    if (!item) return null;
-
-    if (item.type === "header")
-      return (
-        <div
-          style={style}
-          className="relative flex h-full w-full items-center px-4 text-sm text-foreground/70 backdrop-blur-xs sm:px-1"
-        >
-          {item.data as string}
-          <div className="absolute bottom-4 h-[1px] w-full border-none bg-white/20 outline-hidden sm:bottom-2"></div>
-        </div>
-      );
-
-    const email = item.data as EmailData;
-
-    const fetchSummary = (isOpen: boolean) => {
-      if (isOpen && !title) {
-        setTitle(email.subject);
-      }
-    };
-
-    return (
-      <Tooltip
-        showArrow
-        placement="top"
-        delay={400}
-        closeDelay={0}
-        shouldCloseOnInteractOutside={() => true}
-        onOpenChange={fetchSummary}
-        content={
-          <div className="flex w-[300px] flex-col p-1">
-            <div className="text-lg leading-tight font-medium">{title}</div>
-          </div>
-        }
-        onClose={() => {
-          return !!title;
-        }}
-        color="foreground"
-        radius="sm"
-      >
-        <div
-          className={`group relative grid w-full cursor-pointer gap-1 p-2 px-4 transition-all duration-200 hover:bg-primary/20 hover:text-primary sm:gap-2 sm:px-1 ${email?.labelIds?.includes("UNREAD") ? "font-medium" : "font-normal text-foreground-400"} sm:grid-cols-[auto_0.3fr_1fr_auto] sm:items-center`}
-          style={style}
-        >
-          <button
-            type="button"
-            aria-label={`Open email: ${email.subject}`}
-            className="absolute inset-0 z-10"
-            onClick={() => openEmail(email)}
-          />
-          <button
-            type="button"
-            className="relative z-20 flex items-center justify-center px-2"
-            aria-label={
-              selectedEmails.has(email.id) ? "Deselect email" : "Select email"
-            }
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleEmailSelection(e, email.id);
-            }}
-          >
-            {selectedEmails.has(email.id) ? (
-              <CheckmarkSquare03Icon className="h-5 w-5 cursor-pointer text-primary" />
-            ) : (
-              <SquareIcon className="h-5 w-5 cursor-pointer opacity-60 hover:opacity-100" />
-            )}
-          </button>
-
-          {isMobileScreen ? (
-            <>
-              <div className="col-span-1 min-h-fit truncate text-lg sm:block">
-                <EmailFrom from={email.from} />
-              </div>
-
-              <div className="col-span-1 mt-1 flex min-h-fit items-center gap-2 text-right text-sm opacity-50 sm:mt-0">
-                <AIAnalysisIndicator
-                  hasAnalysis={emailAnalysisIndicators.hasAnalysis(email.id)}
-                />
-                {formatTime(email.time)}
-              </div>
-
-              <div className="col-span-2 min-h-fit w-full truncate sm:col-span-1">
-                {email.subject}
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="col-span-1 min-h-fit truncate pl-2 sm:block">
-                <EmailFrom from={email.from} />
-              </div>
-
-              <div className="col-span-2 min-h-fit w-full truncate sm:col-span-1">
-                {email.subject}
-              </div>
-
-              <div className="col-span-1 mt-1 flex min-h-fit items-center gap-2 text-right text-sm opacity-50 sm:mt-0">
-                <AIAnalysisIndicator
-                  hasAnalysis={emailAnalysisIndicators.hasAnalysis(email.id)}
-                />
-                {formatTime(email.time)}
-              </div>
-              <EmailRowActions
-                email={email}
-                onToggleStar={(e) => handleToggleStarStatus(e, email)}
-                onArchive={(e) => handleArchiveEmail(e, email)}
-                onTrash={(e) => handleTrashEmail(e, email)}
-                onToggleRead={(e) => handleToggleReadStatus(e, email)}
-              />
-            </>
-          )}
-        </div>
-      </Tooltip>
-    );
+  const rowData: MailRowData = {
+    groupedItems,
+    isItemLoaded,
+    isMobileScreen,
+    selectedEmails,
+    hasAnalysis: emailAnalysisIndicators.hasAnalysis,
+    onOpen: openEmail,
+    onToggleSelection: toggleEmailSelection,
+    onToggleStar: handleToggleStarStatus,
+    onArchive: handleArchiveEmail,
+    onTrash: handleTrashEmail,
+    onToggleRead: handleToggleReadStatus,
   };
 
   const itemCount = groupedItems.length + (emails.length > 0 ? 1 : 0);
@@ -498,8 +531,9 @@ export default function MailsPage() {
             ref={ref}
             width="100%"
             className="overflow-x-hidden! rounded-xl"
+            itemData={rowData}
           >
-            {Row}
+            {MailRow}
           </List>
         )}
       </InfiniteLoader>

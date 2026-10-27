@@ -1,20 +1,18 @@
 import type { Metadata } from "next";
-import type {
-  HowTo,
-  HowToStep,
-  ImageObject,
-  Organization,
-  Person,
-  WithContext,
-} from "schema-dts";
-import type { BlogContentPost } from "@/lib/blog";
-import { siteConfig } from "@/lib/seo";
+import type { HowTo, HowToStep, Person, WithContext } from "schema-dts";
+import { isSystemCreator } from "@/features/workflows/utils/creator";
+import { type BlogContentPost, blogLastModified } from "@/lib/blog";
+import {
+  brandedTitle,
+  generatePageMetadata,
+  organizationRef,
+  siteConfig,
+} from "@/lib/seo";
 import type { UseCase } from "@/types/features/workflowTypes";
-
-function toAbsoluteUrl(url: string): string {
-  if (/^https?:\/\//i.test(url)) return url;
-  return `${siteConfig.url}${url.startsWith("/") ? url : `/${url}`}`;
-}
+import {
+  generateUseCaseDescription,
+  generateUseCaseTitle,
+} from "@/utils/useCaseMeta";
 
 /**
  * Extracts description from markdown content for meta descriptions
@@ -45,66 +43,32 @@ function extractDescription(markdown: string, maxLength: number = 160): string {
  * Generates metadata for a blog post
  */
 export function generateBlogMetadata(blog: BlogContentPost): Metadata {
-  const description = extractDescription(blog.content);
-  const canonicalUrl = `/blog/${blog.slug}`;
-  const imageUrl = blog.image || "/og-image.webp";
-
   return {
-    title: blog.title,
-    description,
-    authors: blog.authors.map((author) => ({ name: author.name })),
-
-    openGraph: {
-      title: blog.title,
-      description,
-      url: canonicalUrl,
-      siteName: siteConfig.name,
-      images: [
-        {
-          url: imageUrl,
-          width: 1200,
-          height: 630,
-          alt: blog.title,
-          type: "image/webp",
-        },
-      ],
+    ...generatePageMetadata({
+      title: blog.metaTitle ?? blog.title,
+      description: extractDescription(blog.content),
+      path: `/blog/${blog.slug}`,
+      image: blog.image || siteConfig.ogImage,
       type: "article",
       publishedTime: blog.date,
+      modifiedTime: blogLastModified(blog),
       authors: blog.authors.map((author) => author.name),
       section: blog.category,
-    },
-
-    twitter: {
-      card: "summary_large_image",
-      title: blog.title,
-      description,
-      images: [
-        {
-          url: imageUrl,
-          width: 1200,
-          height: 630,
-          alt: blog.title,
-        },
-      ],
-      site: "@trygaia",
-      creator: "@trygaia",
-    },
-
-    alternates: { canonical: canonicalUrl },
-    robots: { index: true, follow: true },
+    }),
+    authors: blog.authors.map((author) => ({ name: author.name })),
   };
 }
 
-/**
- * Generates metadata for a use case page
- */
-export function generateUseCaseMetadata(useCase: UseCase): Metadata {
-  const description = useCase.detailed_description || useCase.description || "";
-  const canonicalUrl = `/use-cases/${useCase.slug}`;
+/** Metadata for a use case page; a copy of another page passes that page's slug as canonical. */
+export function generateUseCaseMetadata(
+  useCase: UseCase,
+  canonicalSlug: string = useCase.slug,
+): Metadata {
+  const description = generateUseCaseDescription(useCase);
+  const canonicalUrl = `/use-cases/${canonicalSlug}`;
   const ogImageUrl = `/api/og/use-case?slug=${useCase.slug}`;
 
-  // The layout title template appends "| GAIA" — never include the brand here.
-  const title = `${useCase.title}: AI Workflow`;
+  const title = brandedTitle(generateUseCaseTitle(useCase));
   const keywords = [
     useCase.title,
     ...useCase.categories,
@@ -115,7 +79,8 @@ export function generateUseCaseMetadata(useCase: UseCase): Metadata {
   ].join(", ");
 
   return {
-    title,
+    // Absolute: brandedTitle has already decided whether " | GAIA" fits.
+    title: { absolute: title },
     description,
     keywords,
     authors: useCase.creator
@@ -171,23 +136,16 @@ export function generateUseCaseStructuredData(
     name: useCase.title,
     description: useCase.detailed_description || useCase.description,
     image: ogImageUrl,
-    publisher: {
-      "@type": "Organization",
-      name: siteConfig.short_name,
-      logo: {
-        "@type": "ImageObject",
-        url: toAbsoluteUrl("/images/logos/logo.webp"),
-      } as ImageObject,
-    } as Organization,
+    publisher: organizationRef,
     url: `${siteConfig.url}/use-cases/${useCase.slug}`,
     inLanguage: "en-US",
   };
 
   if (useCase.creator) {
-    structuredData.author = {
-      "@type": "Person",
-      name: useCase.creator.name,
-    } as Person;
+    // GAIA's own workflows are authored by the organization, not a person called "GAIA Team".
+    structuredData.author = isSystemCreator(useCase.creator)
+      ? organizationRef
+      : ({ "@type": "Person", name: useCase.creator.name } as Person);
   }
 
   if (useCase.steps && useCase.steps.length > 0) {

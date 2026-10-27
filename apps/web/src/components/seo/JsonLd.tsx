@@ -4,22 +4,26 @@ interface JsonLdProps {
   data: WithContext<Thing> | WithContext<Thing>[];
 }
 
-function serializeSchema(schema: WithContext<Thing>): string | null {
-  const seen = new WeakSet();
-  try {
-    return JSON.stringify(schema, (_key, value) => {
-      if (value instanceof Promise || typeof value === "function") {
-        return undefined;
-      }
-      if (typeof value === "object" && value !== null) {
-        if (seen.has(value)) return undefined;
-        seen.add(value);
-      }
-      return value;
-    });
-  } catch {
-    return null;
-  }
+/** The schema as plain JSON data: functions and promises dropped, and a property that loops back to an enclosing node cut. A value shared by two properties is kept in both. */
+function toJsonData(value: unknown, ancestors: Set<object>): unknown {
+  if (value instanceof Promise || typeof value === "function") return undefined;
+  if (typeof value !== "object" || value === null) return value;
+  if (ancestors.has(value)) return undefined;
+  ancestors.add(value);
+  const data = Array.isArray(value)
+    ? value.map((item) => toJsonData(item, ancestors))
+    : Object.fromEntries(
+        Object.entries(value).map(([key, item]) => [
+          key,
+          toJsonData(item, ancestors),
+        ]),
+      );
+  ancestors.delete(value);
+  return data;
+}
+
+function serializeSchema(schema: WithContext<Thing>): string {
+  return JSON.stringify(toJsonData(schema, new Set()));
 }
 
 /**
@@ -33,7 +37,6 @@ export default function JsonLd({ data }: JsonLdProps) {
     <>
       {schemaArray.map((schema) => {
         const json = serializeSchema(schema);
-        if (!json) return null;
         return (
           <script
             key={json}

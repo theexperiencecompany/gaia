@@ -1,1 +1,69 @@
-{"slug":"ical","term":"iCal (iCalendar)","metaTitle":"What Is iCal? iCalendar Format for Calendar Sharing","metaDescription":"iCal (iCalendar) is the standard format for sharing calendar data across applications, enabling Google Calendar, Outlook, and Apple Calendar to interoperate. Learn how GAIA uses iCal.","definition":"iCal, short for iCalendar, is an open standard file format (RFC 5545) for sharing and syncing calendar data across different applications and platforms, enabling interoperability between Google Calendar, Microsoft Outlook, Apple Calendar, and other calendar tools.","extendedDescription":"The iCalendar standard was published in 1998 and has become the universal language of calendar data. An .ics file (or iCal feed) contains structured text describing calendar events, including their title, start and end times, recurrence rules, attendees, location, and description. Any calendar application that supports iCalendar can read, import, and subscribe to these files regardless of which platform created them.\n\nThe standard supports two primary use cases. First, static .ics file export/import — you download a file from one calendar and import it into another. Second, live calendar subscriptions — your calendar application subscribes to a URL that returns an up-to-date .ics file, which it refreshes periodically so changes made at the source propagate to subscribers.\n\nFor personal productivity, iCal is the mechanism that makes cross-platform calendar sharing possible. Adding a conference schedule, sports team fixtures, or public holiday calendar to your personal calendar almost always uses an iCal subscription URL. For developers, the iCalendar format is essential for building anything that creates, reads, or syncs calendar events across platforms.\n\nCommon iCalendar fields include DTSTART and DTEND for event times, RRULE for recurrence patterns (e.g., 'every Monday at 9am'), ATTENDEE for participant email addresses, and ORGANIZER for the event creator. VTIMEZONE components handle time zone conversions, which are a frequent source of bugs in calendar integrations.","keywords":["iCal","iCalendar","ics file","calendar sharing format","calendar subscription","iCal vs Google Calendar"],"category":"productivity","howGaiaUsesIt":"GAIA supports iCal subscription URLs for importing external calendars — conference schedules, team rosters, project timelines — directly into your unified calendar view. When GAIA creates calendar events and exports them to connected tools, it uses the iCalendar format to ensure compatibility across Google Calendar, Outlook, and Apple Calendar. GAIA also parses iCal data to understand recurring event patterns and attendee lists when performing calendar analysis.","relatedTerms":["ai-calendar-management","calendar-automation","meeting-scheduling","time-blocking","smart-scheduling"],"faqs":[{"question":"What is an .ics file?","answer":"An .ics file is a plain-text file in iCalendar format containing one or more calendar events. You can open it in any calendar application — Google Calendar, Outlook, Apple Calendar — to import the events. It is the standard way to share calendar events across different platforms."},{"question":"What is the difference between an iCal import and an iCal subscription?","answer":"Importing an .ics file adds events as a one-time snapshot — future changes to the source are not reflected. Subscribing to an iCal URL sets up a live feed that your calendar app periodically refreshes, so events added or changed at the source appear automatically."},{"question":"Does GAIA support iCal?","answer":"Yes. GAIA can subscribe to iCal feeds and import .ics files, allowing you to include external calendars — conference schedules, public holidays, team calendars — in your unified schedule. GAIA then factors these events into scheduling decisions, focus time blocking, and meeting conflict detection."},{"question":"Is iCal the same as Google Calendar?","answer":"No. iCalendar (iCal) is an open file format standard, while Google Calendar is a calendar application. Google Calendar supports iCalendar — it can export .ics files and accept iCal subscription URLs — but the two are distinct. iCal is the format; Google Calendar is one of many apps that uses it."}]}
+{
+  "slug": "ical",
+  "term": "iCal (iCalendar)",
+  "metaTitle": "iCal: What It Is, .ics Files and Import vs Subscription",
+  "metaDescription": "iCal (iCalendar) is the open format behind .ics files and calendar links. See when to import or subscribe, how it relates to Google Calendar, and GAIA support.",
+  "definition": "iCal is short for iCalendar, the open standard format (RFC 5545) that calendar apps use to exchange events. An iCal file is a plain-text .ics file, and an iCal link is a URL that points to one, so Google Calendar, Outlook, Apple Calendar and nearly every other calendar can import the events once or subscribe to them and stay updated. iCal was also the name of Apple's Mac calendar app until Apple renamed it Calendar in 2012, which is why the word has both meanings.",
+  "extendedDescription": "The iCalendar standard was published in 1998 and has become the universal language of calendar data. An .ics file (or iCal feed) contains structured text describing calendar events, including their title, start and end times, recurrence rules, attendees, location, and description. Any calendar application that supports iCalendar can read, import, and subscribe to these files regardless of which platform created them.\n\nThe standard supports two primary use cases. First, static .ics file export/import: you download a file from one calendar and import it into another. Second, live calendar subscriptions: your calendar application subscribes to a URL that returns an up-to-date .ics file, which it refreshes periodically so changes made at the source propagate to subscribers.\n\nFor personal productivity, iCal is the mechanism that makes cross-platform calendar sharing possible. Adding a conference schedule, sports team fixtures, or public holiday calendar to your personal calendar almost always uses an iCal subscription URL. For developers, the iCalendar format is essential for building anything that creates, reads, or syncs calendar events across platforms.\n\nCommon iCalendar fields include DTSTART and DTEND for event times, RRULE for recurrence patterns (e.g., 'every Monday at 9am'), ATTENDEE for participant email addresses, and ORGANIZER for the event creator. VTIMEZONE components handle time zone conversions, which are a frequent source of bugs in calendar integrations.\n\nWhat is inside an .ics file: it is plain text you can open in any editor. It starts with BEGIN:VCALENDAR, then VERSION:2.0 and a PRODID line naming the app that wrote it. Each event sits in its own block from BEGIN:VEVENT to END:VEVENT, with a UID (a stable ID, so an update replaces the right event), DTSTAMP, DTSTART, DTEND and SUMMARY, plus optional LOCATION, DESCRIPTION, RRULE and ATTENDEE lines. END:VCALENDAR closes the file. Every property is one NAME:value line, and lines longer than 75 octets fold onto a next line that starts with a space. A time ending in Z is UTC; any other time carries a TZID parameter that points to a VTIMEZONE block.\n\nUsing iCal in Google Calendar, Outlook and Apple Calendar: in Google Calendar you add a feed under Other calendars with the From URL option, and you load a file through Import & export in settings. Outlook calls a subscribed feed an Internet calendar, and the meeting invitations it sends and receives are .ics attachments, which is what Outlook means by an iCalendar file. On a Mac, Calendar subscribes through File, New Calendar Subscription. A webcal:// link is the same feed served over HTTP; the webcal scheme only tells your device to open it in the calendar app.\n\niCal connection vs API connection: booking tools, project trackers and school portals often offer an iCal connection, which is a private feed URL your calendar reads. It is one-way and read-only. Your calendar app decides how often to fetch it again, so changes can take hours to show up, you cannot edit or RSVP to those events, and anyone who has the URL can read the feed, so treat it like a password. An API (direct) connection signs in to the calendar provider with OAuth, for example the Google Calendar API or Microsoft Graph for Outlook. It works both ways: the app can create, move and delete events, and changes appear within minutes. Use an iCal feed to publish or follow a schedule; use an API connection when a tool needs to manage your calendar.\n\niCal is not CalDAV: iCalendar is the data format, while CalDAV (RFC 4791) is the protocol that servers such as iCloud and Fastmail use to sync calendars in both directions, carrying iCalendar data underneath. Apple's old iCal Server product was a CalDAV server, not a different file format.",
+  "keywords": [
+    "how to use ical",
+    "ical subscription",
+    "iCalendar",
+    "ics file",
+    "calendar sharing format",
+    "calendar subscription",
+    "iCal vs Google Calendar",
+    "ical vs icalendar"
+  ],
+  "category": "productivity",
+  "howGaiaUsesIt": "GAIA uses direct API connections, not iCal feeds. Connect Google Calendar or Outlook and GAIA can read, create, move and delete events in those calendars. A feed you have subscribed to inside Google Calendar (public holidays, a sports schedule, a shared team calendar) is one of your calendars there, so GAIA sees those events too and accounts for them when it plans your day or flags a conflict. GAIA does not import .ics files or subscribe to iCal URLs by itself: add the feed to your calendar app first.",
+  "relatedTerms": [
+    "ai-calendar-management",
+    "calendar-automation",
+    "meeting-scheduling",
+    "time-blocking",
+    "smart-scheduling"
+  ],
+  "faqs": [
+    {
+      "question": "What is the difference between iCal and iCalendar?",
+      "answer": "There is none. iCal is the everyday name for the iCalendar standard (RFC 5545, published 1998). Files and feeds in this format use the .ics extension and carry event titles, times, recurrence rules, attendees, and locations, readable by Google Calendar, Outlook, Apple Calendar, and GAIA alike."
+    },
+    {
+      "question": "What is iCal?",
+      "answer": "iCal is the common name for iCalendar, the open standard (RFC 5545) for sharing calendar data. An iCal feed lets any calendar app, from Google Calendar to Outlook to Apple Calendar, subscribe to the same events and stay in sync. When those feeds sync into your connected Google Calendar or Outlook, they appear in your unified GAIA schedule."
+    },
+    {
+      "question": "What is an .ics file?",
+      "answer": "An .ics file is a plain-text file in iCalendar format containing one or more calendar events. You can open it in any calendar application, Google Calendar, Outlook, Apple Calendar, to import the events. It is the standard way to share calendar events across different platforms."
+    },
+    {
+      "question": "What is the difference between an iCal import and an iCal subscription?",
+      "answer": "Importing an .ics file adds events as a one-time snapshot; future changes to the source are not reflected. Subscribing to an iCal URL sets up a live feed that your calendar app periodically refreshes, so events added or changed at the source appear automatically."
+    },
+    {
+      "question": "Does GAIA support iCal?",
+      "answer": "Yes, through the calendars behind those feeds. Connect Google Calendar or Outlook and your events, including ones synced from subscribed feeds, appear in your unified schedule. GAIA then factors these events into scheduling decisions, focus time blocking, and meeting conflict detection."
+    },
+    {
+      "question": "Is iCal the same as Google Calendar?",
+      "answer": "No. iCalendar (iCal) is an open file format standard, while Google Calendar is a calendar application. Google Calendar supports iCalendar, it can export .ics files and accept iCal subscription URLs, but the two are distinct. iCal is the format; Google Calendar is one of many apps that uses it."
+    },
+    {
+      "question": "What is the difference between an iCal link and an API (direct) connection?",
+      "answer": "An iCal connection is a read-only feed URL that your calendar app fetches on its own schedule, so updates can lag by hours and you cannot edit the events. An API connection signs in to Google Calendar, Outlook or another provider with OAuth and works both ways: the tool can create and change events, and changes appear within minutes. GAIA uses API connections."
+    },
+    {
+      "question": "What is an iCalendar file in Outlook?",
+      "answer": "It is an .ics file. Outlook attaches one to every meeting invitation, and you can save any event as one to share it. Opening the file adds the event to your calendar once. To follow a schedule that keeps changing, add its feed as an Internet calendar instead of importing a file."
+    },
+    {
+      "question": "What does an .ics file look like inside?",
+      "answer": "It is plain text. A minimal file has BEGIN:VCALENDAR, VERSION:2.0 and PRODID, then a BEGIN:VEVENT block with UID, DTSTAMP, DTSTART, DTEND and SUMMARY, closed by END:VEVENT and END:VCALENDAR. Each line is NAME:value, and a time ending in Z is in UTC."
+    }
+  ],
+  "relatedComparisons": [
+    "google-calendar",
+    "discord"
+  ]
+}

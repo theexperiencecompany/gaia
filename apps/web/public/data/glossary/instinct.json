@@ -1,0 +1,36 @@
+{
+  "category": "productivity",
+  "definition": "Instinct is an AI agent from Spear Street that handles travel bookings and everyday errands by text or call. You reach it over WhatsApp, iMessage, or email, and it works across your connected apps and devices.",
+  "extendedDescription": "Instinct works where you already text. There is no app to learn and no dashboard to check. You send a message about a flight, a booking, or an errand, and the agent works through it for you.\n\nThe product has grown through a waitlist, focused on nailing travel and errands before expanding further. That narrow focus is the point: Instinct wants to be the fastest way to hand off a task by text.\n\nText agents trade openness for convenience. Instinct connects to email, messages, calendar, and devices, and stores your preferences. The tradeoff is control: it is a closed, invite-only product you cannot inspect or run yourself.",
+  "faqs": [
+    {
+      "answer": "Instinct handles travel bookings and everyday errands over SMS and WhatsApp. You describe what you need in a text, and the agent arranges it.",
+      "question": "What does Instinct do?"
+    },
+    {
+      "answer": "Instinct grew through a waitlist while the team focused on travel and errands. Availability has expanded over time, so check their site for current access.",
+      "question": "Is Instinct publicly available?"
+    }
+  ],
+  "howGaiaUsesIt": "GAIA meets you in the same places: it works in WhatsApp and Telegram, not just on the web. The difference is control. GAIA is source-available and self-hostable with deep integrations, so a trip it books connects to your schedule, your inbox, and your tasks in a system you can inspect.",
+  "keywords": [
+    "instinct ai",
+    "what is instinct ai",
+    "instinct sms agent",
+    "spear street instinct",
+    "instinct ai waitlist"
+  ],
+  "metaDescription": "Instinct is Spear Street's SMS agent for travel and errands over text. Learn how it works and where GAIA fits for inbox and calendar help.",
+  "metaTitle": "What Is Instinct? What the SMS Agent Does and Who Can Use It",
+  "relatedComparisons": [
+    "poke"
+  ],
+  "relatedTerms": [
+    "ai-assistant",
+    "ai-agent",
+    "proactive-ai",
+    "context-awareness"
+  ],
+  "slug": "instinct",
+  "term": "Instinct"
+}

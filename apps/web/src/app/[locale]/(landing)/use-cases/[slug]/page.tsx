@@ -3,10 +3,14 @@ import { notFound, redirect } from "next/navigation";
 import { cache } from "react";
 import UseCaseDetailClient from "@/app/[locale]/(landing)/use-cases/[slug]/client";
 import JsonLd from "@/components/seo/JsonLd";
+import type { Workflow } from "@/features/workflows/api/workflowApi";
 import {
-  type Workflow,
-  workflowApi,
-} from "@/features/workflows/api/workflowApi";
+  getAllCommunityWorkflowsServer,
+  getExploreWorkflowsServer,
+  getPublicWorkflowServer,
+} from "@/features/workflows/lib/serverWorkflowsApi";
+import { findCopiedTemplate } from "@/features/workflows/lib/templateCopies";
+import { prerenderedMarketingParams } from "@/lib/selfhost";
 import { generateBreadcrumbSchema, siteConfig } from "@/lib/seo";
 import type { UseCase } from "@/types/features/workflowTypes";
 import {
@@ -14,13 +18,8 @@ import {
   generateUseCaseStructuredData,
 } from "@/utils/seoUtils";
 
-/**
- * Cached explore workflows fetch for per-request deduplication.
- * Called by both generateMetadata and the page component — without
- * React.cache() the axios-based fetch would run twice per request.
- */
-const getExploreWorkflowsCached = cache((limit: number, offset: number) =>
-  workflowApi.getExploreWorkflows(limit, offset),
+const getExploreWorkflowsCached = cache((limit: number) =>
+  getExploreWorkflowsServer(limit),
 );
 
 interface PageProps {
@@ -29,37 +28,18 @@ interface PageProps {
 
 export const revalidate = 3600; // Revalidate every hour
 
-export async function generateStaticParams() {
-  try {
-    const isDev = process.env.NODE_ENV === "development";
+async function allStaticParams() {
+  const [explore, community] = await Promise.all([
+    getExploreWorkflowsServer(1000),
+    getAllCommunityWorkflowsServer(),
+  ]);
+  return [...explore, ...community].flatMap((w) =>
+    w.slug ? [{ slug: w.slug }] : [],
+  );
+}
 
-    if (isDev) {
-      const resp = await workflowApi.getExploreWorkflows(50, 0);
-      return resp.workflows.flatMap((w) => (w.slug ? [{ slug: w.slug }] : []));
-    }
-
-    const exploreResp = await workflowApi.getExploreWorkflows(1000, 0);
-
-    const { fetchAllPaginated } = await import("@/lib/fetchAll");
-    const communityWorkflows = await fetchAllPaginated(
-      async (limit, offset) => {
-        const resp = await workflowApi.getCommunityWorkflows(limit, offset);
-        return {
-          items: resp.workflows,
-          total: resp.total || 0,
-          hasMore: resp.workflows.length === limit,
-        };
-      },
-      100,
-    );
-
-    return [...exploreResp.workflows, ...communityWorkflows].flatMap((w) =>
-      w.slug ? [{ slug: w.slug }] : [],
-    );
-  } catch (error) {
-    console.error("Error generating static params for use-cases:", error);
-    return [];
-  }
+export function generateStaticParams() {
+  return prerenderedMarketingParams(allStaticParams);
 }
 
 export const dynamicParams = true;
@@ -68,62 +48,31 @@ export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
   const { slug } = await params;
-
-  // First, attempt to find the use-case in explore workflows (API)
-  try {
-    const resp = await getExploreWorkflowsCached(200, 0);
-    const found = resp.workflows.find((w) => w.id === slug || w.slug === slug);
-    if (found) {
-      const workflowAsUseCase: UseCase = {
-        title: found.title,
-        description: found.description || "",
-        detailed_description: found.description,
-        slug: found.slug,
-        action_type: "workflow",
-        integrations: found.steps?.map((s) => s.category) || [],
-        categories: found.categories || ["featured"],
-        published_id: found.id,
-        creator: found.creator,
-      };
-
-      const meta = generateUseCaseMetadata(workflowAsUseCase);
-      return meta;
-    }
-  } catch (err) {
-    console.error("Error fetching explore workflows for metadata:", err);
-  }
-
-  // If not found in static data, try API as community workflow
-  try {
-    const response = await workflowApi.getPublicWorkflow(slug);
-    const workflow = response.workflow;
-
-    if (!workflow.slug) {
-      return {
-        title: "Use Case Not Found",
-        description: "The requested use case could not be found.",
-      };
-    }
-
-    const workflowAsUseCase: UseCase = {
-      title: workflow.title,
-      description: workflow.description || "",
-      detailed_description: workflow.description,
-      slug: workflow.slug,
+  const { useCase, communityWorkflow } = await resolveUseCase(slug);
+  if (!useCase && !communityWorkflow) return {};
+  const display = displayFromResolved(useCase, communityWorkflow);
+  const template = communityWorkflow
+    ? findCopiedTemplate(
+        communityWorkflow,
+        await getExploreWorkflowsCached(200),
+      )
+    : undefined;
+  return generateUseCaseMetadata(
+    {
+      title: display.title,
+      description: display.description,
+      detailed_description: display.description,
+      slug: useCase?.slug ?? communityWorkflow?.slug ?? slug,
       action_type: "workflow",
-      integrations: workflow.steps?.map((s) => s.category) || [],
-      categories: ["featured"],
-      published_id: workflow.id,
-      creator: workflow.creator ?? undefined,
-    };
-
-    return generateUseCaseMetadata(workflowAsUseCase);
-  } catch {
-    return {
-      title: "Use Case Not Found",
-      description: "The requested use case could not be found.",
-    };
-  }
+      integrations: display.integrations,
+      categories: display.categories,
+      published_id: display.published_id,
+      creator: display.creator,
+      steps: display.steps,
+      trigger_config: display.trigger_config,
+    },
+    template?.slug ?? undefined,
+  );
 }
 
 interface ResolvedUseCase {
@@ -139,13 +88,13 @@ interface ResolvedUseCase {
  * redirect() outside of try/catch — redirect() throws a NEXT_REDIRECT control
  * flow error, which a surrounding catch would otherwise swallow or convert.
  */
-async function resolveUseCase(slug: string): Promise<ResolvedUseCase> {
+const resolveUseCase = cache(async (slug: string): Promise<ResolvedUseCase> => {
   const isLegacyId = (canonicalSlug?: string | null) =>
     slug.startsWith("wf_") && !!canonicalSlug && canonicalSlug !== slug;
 
-  try {
-    const resp = await getExploreWorkflowsCached(200, 0);
-    const found = resp.workflows.find((w) => w.id === slug || w.slug === slug);
+  {
+    const workflows = await getExploreWorkflowsCached(200);
+    const found = workflows.find((w) => w.id === slug || w.slug === slug);
     if (found) {
       if (isLegacyId(found.slug)) {
         return {
@@ -179,40 +128,11 @@ async function resolveUseCase(slug: string): Promise<ResolvedUseCase> {
         missing: false,
       };
     }
-  } catch (err) {
-    console.error("Error fetching explore workflows for page data:", err);
   }
 
-  try {
-    const response = await workflowApi.getPublicWorkflow(slug);
-    const workflow = response.workflow;
-    // A workflow without a canonical slug has no valid use-case URL — treat
-    // it as missing so this matches generateMetadata's "Not Found" for this
-    // case, avoiding a page whose canonical/breadcrumb resolves to an empty slug.
-    if (!workflow.slug) {
-      return {
-        useCase: null,
-        communityWorkflow: null,
-        redirectTo: null,
-        missing: true,
-      };
-    }
-    if (isLegacyId(workflow.slug)) {
-      return {
-        useCase: null,
-        communityWorkflow: null,
-        redirectTo: `/use-cases/${workflow.slug}`,
-        missing: false,
-      };
-    }
-    return {
-      useCase: null,
-      communityWorkflow: workflow,
-      redirectTo: null,
-      missing: false,
-    };
-  } catch (error) {
-    console.error("Error fetching workflow:", error);
+  const workflow = await getPublicWorkflowServer(slug);
+  // No workflow, or one without a canonical slug, has no valid use-case URL.
+  if (!workflow?.slug) {
     return {
       useCase: null,
       communityWorkflow: null,
@@ -220,7 +140,21 @@ async function resolveUseCase(slug: string): Promise<ResolvedUseCase> {
       missing: true,
     };
   }
-}
+  if (isLegacyId(workflow.slug)) {
+    return {
+      useCase: null,
+      communityWorkflow: null,
+      redirectTo: `/use-cases/${workflow.slug}`,
+      missing: false,
+    };
+  }
+  return {
+    useCase: null,
+    communityWorkflow: workflow,
+    redirectTo: null,
+    missing: false,
+  };
+});
 
 type Resolved = Awaited<ReturnType<typeof resolveUseCase>>;
 
@@ -241,6 +175,8 @@ function displayFromResolved(
     published_id: useCase?.published_id ?? communityWorkflow?.id ?? "",
     creator: (useCase?.creator ?? communityWorkflow?.creator) || undefined,
     steps: useCase?.steps ?? communityWorkflow?.steps,
+    trigger_config:
+      useCase?.trigger_config ?? communityWorkflow?.trigger_config,
   };
 }
 

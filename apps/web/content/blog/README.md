@@ -45,6 +45,8 @@ Write your blog post content here using Markdown syntax.
 - **category** (required): Blog post category (e.g., "Product", "Engineering", "AI", etc.)
 - **image** (required): Featured image path (relative to public directory)
 - **slug** (required): URL-friendly slug for the blog post
+- **metaTitle** (optional): The search-result title, 30 to 60 characters, when the post title is too short to describe the post
+- **updated** (optional): Revision date in YYYY-MM-DD format; the sitemap and Article dateModified both use it
 
 ## Markdown Features
 

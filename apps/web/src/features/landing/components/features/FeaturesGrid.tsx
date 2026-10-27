@@ -7,7 +7,7 @@ import { ArrowRight02Icon, Search01Icon } from "@icons";
 import type { Easing, Variants } from "motion/react";
 import * as m from "motion/react-m";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import ProgressiveImage from "@/components/ui/ProgressiveImage";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
@@ -36,7 +36,8 @@ const cardVariants: Variants = {
   },
 };
 
-export function FeaturesGrid() {
+/** The searchable feature catalogue; children render after it, above the closing CTA. */
+export function FeaturesGrid({ children }: { children?: ReactNode }) {
   const [search, setSearch] = useState("");
   const query = search.toLowerCase().trim();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -98,8 +99,8 @@ export function FeaturesGrid() {
           transition={{ duration: 0.7, ease, delay: 0.2 }}
           className="relative z-10 mb-10 max-w-2xl text-xl font-light leading-relaxed text-white"
         >
-          30 capabilities across AI intelligence, productivity, automation,
-          integrations, and every platform you use.
+          Everything GAIA can do across AI intelligence, productivity,
+          automation, integrations, and every platform you use.
         </m.p>
 
         <m.div
@@ -209,6 +210,7 @@ export function FeaturesGrid() {
           );
         })}
       </div>
+      {children}
       <FinalSection />
     </LazyMotionProvider>
   );

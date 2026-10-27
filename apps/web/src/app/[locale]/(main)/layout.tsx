@@ -12,6 +12,7 @@ import RightSidebarSlot, {
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useOnboardingGuard } from "@/features/auth/hooks/useOnboardingGuard";
+import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 import { useIsMobile } from "@/hooks/ui/useMobile";
 import { usePlatform } from "@/hooks/ui/usePlatform";
 import { useBackgroundSync } from "@/hooks/useBackgroundSync";
@@ -75,6 +76,7 @@ export default function MainLayout({ children }: { children: ReactNode }) {
   const [defaultOpen, setDefaultOpen] = useState(true);
   const dragRef = useRef<HTMLDivElement>(null);
   const [commandMenuOpen, setCommandMenuOpen] = useState(false);
+  const billingEnabled = useDeployment().bills;
   // Check if user needs onboarding
   useOnboardingGuard();
   useBackgroundSync();
@@ -194,8 +196,8 @@ export default function MainLayout({ children }: { children: ReactNode }) {
 
             {/* The one Pro upsell modal — non-dismissible when opened by
               enforcement (402 subscription_required), dismissible when the
-              user opened it themselves. */}
-            <UpgradeModal />
+              user opened it themselves. Nothing to sell where billing is off. */}
+            {billingEnabled && <UpgradeModal />}
 
             {/* What's New Modal */}
             <WhatsNewModal />

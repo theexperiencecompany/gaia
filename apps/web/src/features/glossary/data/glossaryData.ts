@@ -24,10 +24,10 @@ export interface GlossaryTerm {
   howGaiaUsesIt: string;
   relatedTerms: string[];
   faqs: Array<{ question: string; answer: string }>;
-  /** When set, this page's canonical points to /learn/{canonicalSlug} — concentrates PageRank on the primary entry. */
-  canonicalSlug?: string;
   /** Slugs of comparison pages that are genuinely related to this term (e.g. tools that implement the concept). */
   relatedComparisons?: string[];
+  /** Slugs of /automate combos that demonstrate the term (only on terms about connecting or automating tools). */
+  relatedAutomations?: string[];
 }
 
 const FEATURE = "glossary";

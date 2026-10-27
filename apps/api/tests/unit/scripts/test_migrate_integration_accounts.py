@@ -4,6 +4,7 @@ It deletes Composio accounts, so the plan is pinned case by case: the profile
 call (identity) is the only seam mocked; the grouping and choices are real.
 """
 
+import argparse
 from collections.abc import AsyncIterator, Iterator
 from datetime import UTC, datetime
 import itertools
@@ -13,8 +14,10 @@ from bson import ObjectId
 import pytest
 
 from app.config.oauth_config import get_integration_by_id
+from app.constants.integrations import ComposioAuthConfigSource
 from app.models.integration_models import IntegrationAccount
 from app.models.oauth_models import OAuthIntegration
+from app.scripts import migrate_integration_accounts as migration
 from app.scripts.migrate_integration_accounts import (
     _LegacyRecord,
     _Plan,
@@ -22,6 +25,7 @@ from app.scripts.migrate_integration_accounts import (
     connect_args_with_mode,
     migrate_connect_approvals,
 )
+from app.services.composio.auth_config_resolver import ResolvedAuthConfig
 from app.services.hil.fingerprint import approval_fingerprint
 from tests.integration_account_factories import make_integration_account, provider_account_id
 
@@ -417,3 +421,33 @@ async def test_a_dry_run_counts_the_approvals_and_writes_nothing() -> None:
 
     assert await migrate_connect_approvals(approvals, apply=False) == 2
     approvals.update_one.assert_not_awaited()
+
+
+async def test_the_run_migrates_only_resolvable_integrations_through_their_resolved_auth_config() -> (
+    None
+):
+    """A stored or env auth config replaces the catalog one; an unresolvable integration is skipped."""
+    legacy = {"_id": ObjectId(), "user_id": "u1", "integration_id": "gmail", "status": "created"}
+    database = MagicMock()
+    database.user_integrations.find.return_value = _cursor([legacy])
+    database.approval_ledger = _approvals()
+    database.users.count_documents = AsyncMock(return_value=0)
+    resolved = {"gmail": ResolvedAuthConfig("ac_stored", ComposioAuthConfigSource.STORED)}
+    with (
+        patch.object(migration, "capture_running_loop"),
+        patch.object(migration, "init_composio_service"),
+        patch.object(migration, "MongoDB", return_value=MagicMock(database=database)),
+        patch.object(migration, "resolve_auth_configs", AsyncMock(return_value=resolved)),
+        patch.object(migration, "_migrate_document", AsyncMock()) as migrate_document,
+    ):
+        await migration._run(argparse.Namespace(apply=False))
+
+    query = database.user_integrations.find.call_args.args[0]
+    assert query["integration_id"] == {"$in": ["gmail"]}
+    doc, integration, auth_config_id, _totals, apply = migrate_document.await_args.args
+    assert (doc.id, integration.id, auth_config_id, apply) == (
+        legacy["_id"],
+        "gmail",
+        "ac_stored",
+        False,
+    )

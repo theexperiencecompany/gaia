@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from dataclasses import replace
 from inspect import iscoroutinefunction
 import math
+import re
 from types import SimpleNamespace
 from typing import Any, Protocol, cast
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
@@ -24,7 +25,7 @@ from app.agents.llm import lane as lane_module
 from app.agents.llm.client import _sim_llm
 from app.agents.llm.lane import ModelLane
 from app.agents.middleware.executor import BeforeModelResult
-from app.constants.general import FINISH_TASK_NAME
+from app.constants.general import FINISH_TASK_NAME, NEW_MESSAGE_BREAKER
 from app.constants.llm import (
     COMPLETION_NUDGE_MESSAGE,
     DEFAULT_MAX_TOKENS,
@@ -503,27 +504,61 @@ class TestCallModel:
         result = agent_node.runnable.func(state, config, store=store)  # type: ignore[union-attr]  # RunnableCallable types func/afunc as Optional
         assert result["messages"][0].content == "Empty response from model."
 
-    def test_sync_call_model_comms_agent_appends_breaker(self) -> None:
-        """comms_agent should append NEW_MESSAGE_BREAKER."""
-        from app.constants.general import NEW_MESSAGE_BREAKER
-
+    def test_sync_call_model_comms_agent_stores_reply_without_edge_breaks(self) -> None:
         llm = _make_llm()
-        registry = _make_tool_registry()
-
+        llm.with_config.return_value.bind_tools.return_value.invoke.return_value = AIMessage(
+            content=f"{NEW_MESSAGE_BREAKER * 2}hello{NEW_MESSAGE_BREAKER * 3}"
+        )
         builder = create_agent(
             llm,
-            registry,
+            _make_tool_registry(),
             tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
             agent_config=AgentConfig(agent_name="comms_agent"),
         )
 
-        agent_node = builder.nodes["agent"]
-        state = _make_state()
-        config = _make_config()
-        store = MagicMock()
+        result = builder.nodes["agent"].runnable.func(  # type: ignore[union-attr]  # RunnableCallable types func/afunc as Optional
+            _make_state(), _make_config(), store=MagicMock()
+        )
 
-        result = agent_node.runnable.func(state, config, store=store)  # type: ignore[union-attr]  # RunnableCallable types func/afunc as Optional
-        assert result["messages"][0].content.endswith(NEW_MESSAGE_BREAKER)
+        assert result["messages"][-1].content == "hello"
+
+    def test_sync_call_model_other_agents_keep_their_breaks(self) -> None:
+        reply = f"one{NEW_MESSAGE_BREAKER * 2}two{NEW_MESSAGE_BREAKER}"
+        llm = _make_llm()
+        llm.with_config.return_value.bind_tools.return_value.invoke.return_value = AIMessage(
+            content=reply
+        )
+        builder = create_agent(
+            llm,
+            _make_tool_registry(),
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            agent_config=AgentConfig(agent_name="executor_agent"),
+        )
+
+        result = builder.nodes["agent"].runnable.func(  # type: ignore[union-attr]  # RunnableCallable types func/afunc as Optional
+            _make_state(), _make_config(), store=MagicMock()
+        )
+
+        assert result["messages"][-1].content == reply
+
+    def test_sync_call_model_comms_agent_leaves_non_string_content_alone(self) -> None:
+        blocks = [{"type": "text", "text": f"hi{NEW_MESSAGE_BREAKER}"}]
+        llm = _make_llm()
+        llm.with_config.return_value.bind_tools.return_value.invoke.return_value = AIMessage(
+            content=blocks
+        )
+        builder = create_agent(
+            llm,
+            _make_tool_registry(),
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            agent_config=AgentConfig(agent_name="comms_agent"),
+        )
+
+        result = builder.nodes["agent"].runnable.func(  # type: ignore[union-attr]  # RunnableCallable types func/afunc as Optional
+            _make_state(), _make_config(), store=MagicMock()
+        )
+
+        assert result["messages"][-1].content == blocks
 
 
 class TestAcallModel:
@@ -609,25 +644,66 @@ class TestAcallModel:
         assert result["messages"][0].content == "Empty response from model."
 
     @pytest.mark.asyncio
-    async def test_acall_model_comms_agent_appends_breaker(self) -> None:
-        from app.constants.general import NEW_MESSAGE_BREAKER
-
+    async def test_acall_model_comms_tool_call_with_only_breaks_is_stored_empty(self) -> None:
         llm = _make_llm()
-        registry = _make_tool_registry()
-
+        llm.with_config.return_value.bind_tools.return_value.ainvoke = AsyncMock(
+            return_value=AIMessage(
+                content=NEW_MESSAGE_BREAKER * 12,
+                tool_calls=[{"name": "call_executor", "args": {"task": "x"}, "id": "tc-1"}],
+            )
+        )
         builder = create_agent(
             llm,
-            registry,
+            _make_tool_registry(),
             tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
             agent_config=AgentConfig(agent_name="comms_agent"),
         )
 
-        agent_node = builder.nodes["agent"]
-        state = _make_state()
-        result = await agent_node.runnable.afunc(  # type: ignore[union-attr]  # RunnableCallable types func/afunc as Optional
-            state, _make_config(), store=MagicMock()
+        result = await builder.nodes["agent"].runnable.afunc(  # type: ignore[union-attr]  # RunnableCallable types func/afunc as Optional
+            _make_state(), _make_config(), store=MagicMock()
         )
-        assert result["messages"][0].content.endswith(NEW_MESSAGE_BREAKER)
+
+        assert result["messages"][-1].content == ""
+
+    @pytest.mark.asyncio
+    async def test_comms_history_never_ratchets_message_breaks(self) -> None:
+        """Regression: a model echoing its last reply's break run plus one reached 3,998 breaks in prod."""
+        break_run = re.compile(f"(?:{re.escape(NEW_MESSAGE_BREAKER)})+")
+
+        async def echo_run_plus_one(
+            messages: Sequence[AnyMessage], *_: object, **__: object
+        ) -> AIMessage:
+            last = next((m for m in reversed(messages) if isinstance(m, AIMessage)), None)
+            runs = (
+                break_run.findall(last.content)
+                if last is not None and isinstance(last.content, str)
+                else []
+            )
+            width = max((len(run) // len(NEW_MESSAGE_BREAKER) for run in runs), default=0)
+            return AIMessage(
+                content=NEW_MESSAGE_BREAKER * (width + 1),
+                tool_calls=[{"name": "call_executor", "args": {"task": "x"}, "id": f"tc-{width}"}],
+            )
+
+        llm = _make_llm()
+        llm.with_config.return_value.bind_tools.return_value.ainvoke = AsyncMock(
+            side_effect=echo_run_plus_one
+        )
+        node = create_agent(
+            llm,
+            _make_tool_registry(),
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            agent_config=AgentConfig(agent_name="comms_agent"),
+        ).nodes["agent"]
+
+        history: list[AnyMessage] = [HumanMessage(content="go")]
+        for _ in range(5):
+            result = await node.runnable.afunc(  # type: ignore[union-attr]  # RunnableCallable types func/afunc as Optional
+                _make_state(messages=history), _make_config(), store=MagicMock()
+            )
+            history.append(result["messages"][-1])
+
+        assert [m.content for m in history[1:]] == ["", "", "", "", ""]
 
 
 # ---------------------------------------------------------------------------
@@ -1181,7 +1257,7 @@ def _gemini_lane() -> ModelLane:
 def _next_is_gemini() -> Any:
     return patch.object(
         lane_module,
-        "next_fallback_provider",
+        "chat_route",
         lambda _current: (LLMProviderName.GEMINI, "gemini-x"),
     )
 
@@ -1204,7 +1280,7 @@ class TestFallbackPreparation:
             AgentConfigurable, {LANE_FIELD_ID: _openrouter_lane().to_configurable()}
         )
 
-        with patch.object(lane_module, "next_fallback_provider", lambda _current: None):
+        with patch.object(lane_module, "chat_route", lambda _current: None):
             assert _prepare_fallback(_make_llm(), [dummy_tool_a], configurable) is None
 
     def test_the_fallback_targets_the_next_provider_with_the_same_tools(self) -> None:
@@ -1405,7 +1481,7 @@ class TestTheFallbackKeepsTheAgentsOwnChain:
         )
 
         with (
-            patch.object(lane_module, "next_fallback_provider", lambda _current: None),
+            patch.object(lane_module, "chat_route", lambda _current: None),
             patch(
                 "app.override.langgraph_bigtool.create_agent.ainvoke_llm",
                 new=AsyncMock(return_value=AIMessage(content="ok")),
@@ -2343,7 +2419,7 @@ class TestTheFallbackTheModelNodeHandsTheClient:
     def _next_is_gemini(self) -> Any:
         return patch.object(
             lane_module,
-            "next_fallback_provider",
+            "chat_route",
             lambda _current: (LLMProviderName.GEMINI, "gemini-x"),
         )
 
@@ -2417,7 +2493,7 @@ class TestTheFallbackTheModelNodeHandsTheClient:
         builder = self._builder(llm)
 
         with (
-            patch.object(lane_module, "next_fallback_provider", lambda _current: None),
+            patch.object(lane_module, "chat_route", lambda _current: None),
             patch(
                 "app.override.langgraph_bigtool.create_agent.ainvoke_llm",
                 new=AsyncMock(return_value=AIMessage(content="ok")),

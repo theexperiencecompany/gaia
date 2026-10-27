@@ -47,35 +47,35 @@ export function getAlternates(path: string): Record<string, string> {
 /**
  * Build the full `alternates` block for a translated page: a self-referential,
  * locale-aware canonical plus the hreflang map, so each variant points at
- * itself. `canonicalPath`, if given, consolidates near-duplicate pages so canonical and hreflang both resolve against it.
+ * itself. Near-duplicate consolidation lives one layer down at the router
+ * (308s in `canonical-redirects.mjs`), so every rendered page canonicalizes
+ * to itself — no override parameter.
  */
-export function getLocalizedAlternates(
+function getLocalizedAlternates(
   path: string,
   locale: string,
-  canonicalPath?: string,
 ): { canonical: string; languages: Record<string, string> } {
-  const target = canonicalPath ?? path;
   return {
-    canonical: `${getSiteUrl()}${localizePath(target, locale)}`,
-    languages: getAlternates(target),
+    canonical: `${getSiteUrl()}${localizePath(path, locale)}`,
+    languages: getAlternates(path),
   };
 }
 
 /**
  * Page metadata for a translated route: `generatePageMetadata` plus the
- * locale-aware self-canonical + hreflang block, in one call. Use on every page
- * under a translated route family instead of repeating the spread-and-override.
+ * locale-aware self-canonical + hreflang block, with og:url on that canonical,
+ * in one call. Use on every page under a translated route family instead of
+ * repeating the spread-and-override.
  */
 export function generateLocalizedPageMetadata(
   options: PageMetadataOptions & { locale: string },
 ): Metadata {
   const { locale, ...pageOptions } = options;
+  const metadata = generatePageMetadata(pageOptions);
+  const alternates = getLocalizedAlternates(pageOptions.path, locale);
   return {
-    ...generatePageMetadata(pageOptions),
-    alternates: getLocalizedAlternates(
-      pageOptions.path,
-      locale,
-      pageOptions.canonicalPath,
-    ),
+    ...metadata,
+    alternates,
+    openGraph: { ...metadata.openGraph, url: alternates.canonical },
   };
 }

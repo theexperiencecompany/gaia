@@ -5,7 +5,7 @@ actor that sources it exactly as a lane does — never a reimplementation of the
 counting logic. The atomicity primitive is `flock`, so the concurrency proofs
 skip where it is absent (a stock macOS dev box); they run on every Linux runner,
 which is the only environment the governor is ever live in
-(`RUNNER_ENVIRONMENT=self-hosted`). The two fail-open guards that need no lock
+(a `gaia-home-<n>` RUNNER_NAME). The two fail-open guards that need no lock
 run everywhere.
 
 The core invariant under test is the one the whole feature rests on: at no
@@ -20,6 +20,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import time
 
 import pytest
@@ -27,7 +28,7 @@ import pytest
 CI = Path(__file__).parent.parent
 LIB = CI / "lib" / "cpu-slots.sh"
 LOG = CI / "lib" / "log.sh"
-MUTATION = CI / "mutation.sh"
+MUTATION = CI / "mutation.py"
 
 HAVE_FLOCK = shutil.which("flock") is not None
 needs_flock = pytest.mark.skipif(not HAVE_FLOCK, reason="flock absent (governor is Linux-box-only)")
@@ -47,7 +48,7 @@ def _run(script: str, env: dict[str, str], timeout: int = 60) -> subprocess.Comp
 
 def _base_env(slots_dir: Path, tokens: int) -> dict[str, str]:
     return {
-        "RUNNER_ENVIRONMENT": "self-hosted",
+        "RUNNER_NAME": "gaia-home-1",
         "GAIA_CPU_SLOTS_DIR": str(slots_dir),
         "GAIA_CPU_TOKENS": str(tokens),
     }
@@ -68,10 +69,11 @@ def _live_sum(holders: Path) -> int:
 # ── fail-open guards (no lock needed, run everywhere) ───────────────────────
 
 
-def test_failopen_when_not_self_hosted(tmp_path: Path) -> None:
-    """With RUNNER_ENVIRONMENT unset, acquire takes nothing and succeeds (GitHub-hosted VMs)."""
-    env = _base_env(tmp_path / "pool", 8)
-    del env["RUNNER_ENVIRONMENT"]
+@pytest.mark.parametrize("runner_name", ["GitHub Actions 1", "blacksmith-4vcpu-ubuntu-2404-1"])
+def test_failopen_off_the_box(tmp_path: Path, runner_name: str) -> None:
+    """Off the box acquire takes nothing and succeeds, Blacksmith's self-hosted kind included."""
+    env = {**_base_env(tmp_path / "pool", 8), "RUNNER_NAME": runner_name}
+    env["RUNNER_ENVIRONMENT"] = "self-hosted"
     r = _run("cpu_slots_acquire 5 && echo OK", env)
     assert r.returncode == 0 and "OK" in r.stdout
     assert not (tmp_path / "pool" / "holders").exists() or not list(
@@ -133,23 +135,24 @@ def test_an_explicit_pool_size_wins_over_the_default(tmp_path: Path) -> None:
 #
 # The governor only works if each lane asks for what it really runs, so the
 # shard's own arithmetic belongs with the pool's. Driven through the REAL
-# `mutation.sh shard`, in a sandbox with no apps/api, so it prints its budget
+# `mutation.py shard` on a module that does not exist, so it prints its budget
 # and then fails on the missing module — the budget line is the contract.
 
 
 def _shard_budget(tmp_path: Path, env: dict[str, str]) -> tuple[int, int]:
-    """Run `mutation.sh shard` in a sandbox and return (workers, tokens)."""
-    scripts = tmp_path / "scripts" / "ci"
-    (scripts / "lib").mkdir(parents=True)
-    shutil.copy(MUTATION, scripts / "mutation.sh")
-    shutil.copy(LOG, scripts / "lib" / "log.sh")
-    shutil.copy(LIB, scripts / "lib" / "cpu-slots.sh")
+    """Run `mutation.py shard` on a missing module and return (workers, tokens)."""
     group = json.dumps([{"module": "app/nope.py", "testfiles": '["t.py"]', "ranges": "[[1,1]]"}])
     r = subprocess.run(
-        ["bash", str(scripts / "mutation.sh"), "shard"],
+        [sys.executable, str(MUTATION), "shard"],
         capture_output=True,
         text=True,
-        env={**os.environ, **env, "GROUP": group, "SHARD_LOG": str(tmp_path / "shard.log")},
+        env={
+            **os.environ,
+            **env,
+            "GROUP": group,
+            "SHARD_LOG": str(tmp_path / "shard.log"),
+            "GAIA_VERDICT_DIR": str(tmp_path / "verdicts"),
+        },
         cwd=tmp_path,
         timeout=120,
         check=False,

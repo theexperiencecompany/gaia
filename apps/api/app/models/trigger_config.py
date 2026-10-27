@@ -30,6 +30,39 @@ class TriggerConfigFieldSchema(BaseModel):
     description: str | None = None
 
 
+class IndexedTriggerValue(BaseModel):
+    """The trigger fields the triggers store persists per entry; its other keys are ignored."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    slug: str
+    name: str
+    description: str | None
+    integration_id: str
+    integration_name: str
+
+
+class TriggerSearchConfigField(BaseModel):
+    """One config field of a searched trigger, as the agent reads it."""
+
+    type: Literal["string", "integer", "boolean", "number"]
+    description: str | None
+    default: bool | int | float | str
+    required: bool
+
+
+class TriggerSearchResult(BaseModel):
+    """A trigger matched by semantic search, with the user's connection status and its config fields."""
+
+    trigger_slug: str
+    trigger_name: str
+    description: str | None
+    integration_id: str
+    integration_name: str
+    is_connected: bool
+    config_fields: dict[str, TriggerSearchConfigField]
+
+
 class WorkflowTriggerSchema(BaseModel):
     """Schema for workflow trigger definitions."""
 

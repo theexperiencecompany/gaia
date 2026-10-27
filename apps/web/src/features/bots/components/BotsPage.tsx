@@ -1,10 +1,12 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { Snippet } from "@heroui/snippet";
 import Image from "next/image";
 import Link from "next/link";
 import { BOT_PLATFORM_ICONS, BOT_PLATFORM_LABELS } from "@/config/botPlatforms";
-import { BOTS, type BotConfig } from "../constants";
+import type { BotConfig } from "../constants";
+import { useBotCards } from "../hooks/useBotCards";
 
 const stackedIcons = [
   {
@@ -45,6 +47,7 @@ function BotCard({
   description,
   primaryAction,
   secondaryAction,
+  setupCommand,
 }: BotConfig) {
   return (
     <div className="flex flex-col items-start gap-5 rounded-3xl bg-zinc-900/50 p-4 text-left group hover:bg-zinc-900 transition">
@@ -61,6 +64,22 @@ function BotCard({
         <h2 className="font-medium text-white text-xl">{name}</h2>
         <p className="text-sm text-zinc-400">{description}</p>
       </div>
+      {setupCommand && (
+        <div className="flex w-full flex-col gap-2">
+          <p className="text-sm text-zinc-500">
+            Not set up on this instance. On the server, run:
+          </p>
+          <Snippet
+            hideSymbol
+            variant="flat"
+            size="sm"
+            codeString={setupCommand}
+            className="w-full bg-zinc-800 text-zinc-200"
+          >
+            <span className="truncate font-mono text-xs">{setupCommand}</span>
+          </Snippet>
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-end gap-2 w-full">
         {primaryAction && (
           <Button
@@ -90,6 +109,7 @@ function BotCard({
 }
 
 export default function BotsPage() {
+  const bots = useBotCards();
   return (
     <div className="relative flex min-h-screen w-full flex-col items-center">
       <section className="relative z-10 flex w-full max-w-5xl flex-col items-center gap-3 px-6 pb-8 pt-24 sm:pt-32">
@@ -117,12 +137,18 @@ export default function BotsPage() {
             Chat, delegate tasks, and get answers, right inside Discord,
             Telegram, Slack, WhatsApp, or iMessage.
           </p>
+          <Link
+            href="/ai-assistant-whatsapp-telegram-imessage"
+            className="text-sm text-zinc-500 underline underline-offset-2 hover:text-zinc-300"
+          >
+            What GAIA can do on WhatsApp, Telegram and iMessage
+          </Link>
         </div>
       </section>
 
       <section className="relative z-10 mx-auto w-full max-w-3xl px-6 pb-16 gap-5 pt-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-2">
-          {BOTS.map((bot) => (
+          {bots.map((bot) => (
             <BotCard key={bot.id} {...bot} />
           ))}
         </div>

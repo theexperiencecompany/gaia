@@ -21,6 +21,7 @@ from httpx import ASGITransport, AsyncClient
 import pytest
 
 from app.memory import embeddings
+from app.models.embedding_sidecar_models import EmbedRequest, RerankRequest, RerankResponse
 from app.services.embedding_sidecar import server
 
 TEXTS = ["first passage", "second passage"]
@@ -263,7 +264,7 @@ class TestSaturationBackpressure:
         monkeypatch.setattr(server, "_inference_slots", asyncio.Semaphore(1))
         async with server._inference_slots:
             with pytest.raises(server.HTTPException) as exc_info:
-                await server.embed(server.EmbedRequest(texts=TEXTS))
+                await server.embed(EmbedRequest(texts=TEXTS))
 
         exc = exc_info.value
         assert exc.status_code == 503
@@ -288,15 +289,28 @@ class TestClientRetryContract:
         """Second home for the chunked-rerank contract so the mutation lane attributes it from both covering files."""
         calls: list[dict] = []
 
-        async def fake_post(path: str, payload: dict, *, interactive: bool = False) -> dict:
+        async def fake_post(
+            path: str,
+            request: RerankRequest,
+            response_model: type[RerankResponse],
+            *,
+            interactive: bool = False,
+        ) -> RerankResponse:
             assert path == "/rerank"
-            assert set(payload) == {"query", "documents"}
-            calls.append({"q": payload["query"], "n": len(payload["documents"])})
-            return {"scores": [float(len(calls))] * len(payload["documents"])}
+            assert response_model is RerankResponse
+            calls.append({"q": request.query, "n": len(request.documents)})
+            return RerankResponse(scores=[float(len(calls))] * len(request.documents))
 
         observed: list[tuple[str, str, int]] = []
 
-        async def fake_observed(operation: str, backend: str, count: int, awaitable):
+        async def fake_observed(
+            operation: str,
+            backend: str,
+            count: int,
+            awaitable,
+            *,
+            interactive: bool = False,
+        ):
             observed.append((operation, backend, count))
             return await awaitable
 
@@ -335,7 +349,7 @@ class TestClientRetryContract:
         # Exhausted budget hands back the last response; _sidecar_post turns
         # it into a loud failure via raise_for_status.
         response = await embeddings._post_with_retry(
-            client, "http://sidecar.test/embed", {"texts": ["a"]}
+            client, "http://sidecar.test/embed", EmbedRequest(texts=["a"])
         )
 
         assert response.status_code == 503
@@ -358,7 +372,7 @@ class TestClientRetryContract:
         client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
 
         response = await embeddings._post_with_retry(
-            client, "http://sidecar.test/embed", {"texts": ["a"]}
+            client, "http://sidecar.test/embed", EmbedRequest(texts=["a"])
         )
 
         assert response.status_code == 200

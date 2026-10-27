@@ -5,6 +5,8 @@ import fs from "fs";
 import createNextIntlPlugin from "next-intl/plugin";
 import path from "path";
 import { fileURLToPath } from "url";
+import { expandCanonicalRedirects } from "./canonical-redirects.mjs";
+import { vanityRedirects } from "./vanity-redirects.mjs";
 
 const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
@@ -96,9 +98,8 @@ const nextConfig = {
             "onnxruntime-web/wasm": "./scripts/empty-module.mjs",
           }
         : {}),
-      // Stub out unused heavy deps (mirrors the webpack hook below). Webpack's
-      // `alias: false` doesn't exist for Turbopack — we point to a tiny empty
-      // module that exports a no-op proxy.
+      // Stub out unused heavy deps: Turbopack has no `alias: false`, so they
+      // point to a tiny empty module that exports a no-op proxy.
       cytoscape: "./scripts/empty-module.mjs",
       "cytoscape-cose-bilkent": "./scripts/empty-module.mjs",
       "cytoscape-fcose": "./scripts/empty-module.mjs",
@@ -136,11 +137,6 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   experimental: {
-    // Dagger's local quality gate sets this to keep Next's static-page workers
-    // from consuming the whole developer machine; CI leaves its normal default.
-    ...(process.env.GAIA_BUILD_WORKERS
-      ? { cpus: Number(process.env.GAIA_BUILD_WORKERS) }
-      : {}),
     // prefetchInlining stays OFF until OpenNext serves Next's segment-prefetch
     // protocol (as of @opennextjs/cloudflare 1.20.2 it doesn't — /_tree gets the
     // full build-time RSC payload, no x-nextjs-postponed header). With inlining on, the client marks the route cache stale and refetches at ~5 req/s per visible <Link> (observed heygaia.io /signup, 2026-08-18).
@@ -172,45 +168,6 @@ const nextConfig = {
       "motion",
       "schema-dts",
     ],
-  },
-  webpack: (config, { isServer }) => {
-    // Exclude cytoscape from bundle since it's not used (both client and server)
-    config.resolve.alias = {
-      ...config.resolve.alias,
-      cytoscape: false,
-      "cytoscape-cose-bilkent": false,
-      "cytoscape-fcose": false,
-    };
-    // Alias @icons to the active icon variant — change here to swap the entire set
-    config.resolve.alias["@icons"] =
-      "@theexperiencecompany/gaia-icons/solid-rounded";
-
-    // Desktop-only wake-word ONNX runtime — stub out of the Cloudflare build
-    // so its WASM never lands in the Worker script (see turbopack alias above).
-    if (useCloudflareImageLoader) {
-      config.resolve.alias["onnxruntime-web"] = false;
-      config.resolve.alias["onnxruntime-web/wasm"] = false;
-    }
-
-    // Keep gaia-icons out of the eager initial chunk: by default, modules reachable
-    // from ≥2 chunks hoist into a shared common chunk, putting ~137 icons on the
-    // critical path though most are only used by dynamically-imported below-the-fold sections; scoping to chunks:"async" consolidates them into one async chunk while Navbar's icons stay inlined in main.
-    if (!isServer && config.optimization?.splitChunks) {
-      const splitChunks = config.optimization.splitChunks;
-      splitChunks.cacheGroups = {
-        ...splitChunks.cacheGroups,
-        gaiaIcons: {
-          test: /[\\/]node_modules[\\/]@theexperiencecompany[\\/]gaia-icons[\\/]/,
-          name: "gaia-icons-async",
-          chunks: "async",
-          priority: 40,
-          reuseExistingChunk: true,
-          enforce: true,
-        },
-      };
-    }
-
-    return config;
   },
   images: {
     // Offload optimization to Cloudflare Image Resizing (/cdn-cgi/image/) via a
@@ -318,6 +275,12 @@ const nextConfig = {
   },
   // This is required to support PostHog trailing slash API requests
   skipTrailingSlashRedirect: true,
+  // Consolidated near-duplicate pages 308-redirect to their canonical: the
+  // pairs mirror the canonicalSlug/canonicalPath markers in public/data (see
+  // canonical-redirects.mjs). Runs before routing/middleware, per locale prefix.
+  async redirects() {
+    return [...expandCanonicalRedirects(), ...vanityRedirects()];
+  },
 };
 
 const withMDX = createMDX({
