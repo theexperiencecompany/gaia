@@ -2575,66 +2575,66 @@
   "jira-linear": {
     "toolA": "Jira",
     "toolB": "Linear",
-    "tagline": "Sync Jira and Linear so teams using both stay perfectly aligned",
-    "metaTitle": "Jira と Linear の連携: チーム間で課題を同期",
-    "metaDescription": "JiraとLinearをGAIAで連携。JiraとLinearの課題を同期し、部門をまたぐプロジェクトを整合。二つの開発ツールを行き来する手間をなくします。",
+    "tagline": "JiraとLinearを同期し、両方を使うチームの足並みを揃える",
+    "metaTitle": "Jira + Linear 連携: チームをまたぐ課題の同期",
+    "metaDescription": "JiraとLinearに分かれたチームが互いの課題を見られるようにし、ステータスを同期します。2つの間の移行にもGAIAが役立ちます。設定手順をご覧ください。",
     "keywords": [
-      "Jira Linear integration",
-      "Jira Linear sync",
-      "Jira Linear automation",
-      "cross-team issue sync",
-      "engineering tool integration",
-      "Jira to Linear migration"
+      "Jira Linear 連携",
+      "Jira Linear 同期",
+      "Jira Linear 自動化",
+      "チームをまたぐ課題の同期",
+      "開発ツールの連携",
+      "JiraからLinearへの移行"
     ],
-    "intro": "Many organizations have teams that use Jira and teams that use Linear. Enterprise departments use Jira for compliance and audit trails while product engineering teams prefer Linear for speed. When these teams collaborate, work coordination requires manual translation between the two systems — a constant overhead that slows cross-team projects.\n\nGAIA synchronizes Jira and Linear so cross-team work is visible in both places. Issues created in Linear for a cross-functional feature appear in Jira for the enterprise team. Jira ticket status changes flow back to Linear. Teams use their preferred tool while GAIA keeps the shared work in sync.\n\nThis integration is valuable for organizations with mixed engineering stacks, for teams migrating between the tools, and for ensuring consistent visibility across all engineering efforts.",
+    "intro": "多くの組織はチームを2つの課題管理ツールに分けています。企業の部門はコンプライアンスと監査証跡のためにJiraを使い、プロダクトのエンジニアリングチームは速さを求めてLinearを好みます。こうしたチームが協力するとき、作業の調整には2つのシステムの間の手作業の翻訳が必要になり、チームをまたぐプロジェクトを常に遅らせます。\n\nGAIAはこの2つを同期し、チームをまたぐ作業がどちらからでも見えるようにします。部門をまたぐ機能のためにLinearで作られた課題は、企業のチームのためにJiraにも現れます。そのチケットのステータス変更は元の課題に書き戻されます。各チームは慣れたツールを使いながら、共通の作業はGAIAが揃えておきます。",
     "useCases": [
       {
-        "title": "Cross-team issue visibility",
-        "description": "When a Linear team creates an issue that requires input from a Jira team (like infrastructure or security), GAIA creates a linked Jira ticket so the work is tracked in both systems."
+        "title": "チームをまたぐ課題の可視化",
+        "description": "あるチームが、別のチーム（インフラやセキュリティなど）の協力を要する課題を作ると、GAIAがもう一方のシステムにリンクしたチケットを作り、両方で作業が追跡されるようにします。"
       },
       {
-        "title": "Bidirectional status sync",
-        "description": "Issue status changes in either Jira or Linear propagate to the linked issue in the other system, so both teams always see current status without checking the other tool."
+        "title": "リンクした課題のステータス同期",
+        "description": "どちらかのシステムで課題のステータスが変わると、もう一方のリンクした課題にも反映されます。相手のツールを確認しなくても、両チームが最新の状況を見られます。"
       },
       {
-        "title": "Migration assistance",
-        "description": "Teams migrating from Jira to Linear use GAIA to run both tools in parallel during transition, keeping historical Jira issues linked to new Linear counterparts without losing audit history."
+        "title": "移行の支援",
+        "description": "JiraからLinearへ移行するチームは、移行期間中にGAIAで両方を並行して動かし、過去の課題を新しい対応先にリンクしたまま、監査の履歴を失わずに保てます。"
       },
       {
-        "title": "Dependency tracking across tools",
-        "description": "When a Linear issue is blocked by a Jira ticket, GAIA links the dependency and notifies both teams so blockers are visible regardless of which tool each team checks."
+        "title": "チーム間の依存関係の追跡",
+        "description": "あるチームの課題が、別のチームのシステムのチケットで止まっているとき、GAIAは依存関係をリンクして両チームに知らせます。どちらのツールを見ていてもブロッカーが見えます。"
       },
       {
-        "title": "Executive reporting across both platforms",
-        "description": "GAIA compiles status from both Jira and Linear into a unified report for leadership, showing project health across teams without requiring executives to access either platform directly."
+        "title": "チームをまたぐ経営向けレポート",
+        "description": "GAIAは両方のシステムの状況を1つのレポートにまとめ、経営層がどちらにも直接アクセスせずにチームをまたいだプロジェクトの健全性を把握できるようにします。"
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Jira and Linear to GAIA",
-        "description": "Authorize Jira instance and Linear workspace with GAIA. Map Jira projects to Linear teams for routing."
+        "step": "JiraとLinearをGAIAに接続",
+        "description": "JiraのインスタンスとLinearワークスペースでGAIAを認証します。振り分けのために、どのプロジェクトがどのチームに対応するかを対応づけます。"
       },
       {
-        "step": "Configure sync rules and field mappings",
-        "description": "Define which issue types sync between systems, how priority and status fields map across the two tools, and which events trigger cross-system updates."
+        "step": "同期のルールとフィールドの対応を設定",
+        "description": "どの課題タイプを同期するか、優先度やステータスのフィールドをどう対応させるか、どのイベントでシステムをまたぐ更新を行うかを決めます。"
       },
       {
-        "step": "Teams work independently, GAIA keeps them aligned",
-        "description": "Each team works in their preferred tool. GAIA handles all cross-tool synchronization automatically so collaboration happens without tool-switching overhead."
+        "step": "チームは独立して働き、GAIAが揃える",
+        "description": "各チームは慣れたツールで作業します。ツールをまたぐ同期はすべてGAIAが自動で行うので、ツールの切り替えの負担なく協力できます。"
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA handle the different priority scales between Jira and Linear?",
-        "answer": "Yes. GAIA maps Jira's priority levels (Highest, High, Medium, Low, Lowest) to Linear's priority scale (Urgent, High, Medium, Low, No priority) intelligently, and you can customize the mapping."
+        "question": "2つのシステムで異なる優先度の段階に対応できますか？",
+        "answer": "はい。GAIAは移行元の5段階（Highest、High、Medium、Low、Lowest）を移行先の段階（Urgent、High、Medium、Low、No priority）に賢く対応づけます。対応は自由に変更できます。"
       },
       {
-        "question": "Does GAIA sync comments between Jira and Linear?",
-        "answer": "Yes. Comments added to issues in either tool sync to the linked issue in the other system, so conversation context is preserved regardless of where team members prefer to comment."
+        "question": "2つのシステムの間でコメントも同期しますか？",
+        "answer": "はい。どちらかで課題に追加されたコメントは、もう一方のリンクした課題に同期されます。メンバーがどちらでコメントしても、会話の文脈が保たれます。"
       },
       {
-        "question": "Is this suitable for compliance-heavy Jira workflows?",
-        "answer": "GAIA respects Jira's audit and compliance requirements. It creates issues and adds comments through the standard Jira API so all changes are properly attributed and logged in Jira's audit trail."
+        "question": "コンプライアンスの厳しいJiraの運用にも使えますか？",
+        "answer": "GAIAは監査とコンプライアンスの要件を尊重します。標準のAPIを通じて課題を作成しコメントを追加するため、変更はすべて適切に記録され、監査証跡に残ります。"
       }
     ]
   },
@@ -2839,606 +2839,606 @@
   "gmail-github": {
     "toolA": "Gmail",
     "toolB": "GitHub",
-    "tagline": "Convert emails into GitHub issues and route PR alerts to your inbox",
-    "metaTitle": "GitHub と Gmail の連携: バグ報告メールを Issue に",
-    "metaDescription": "メールのバグ報告をそのまま課題に。GAIAがGmailからGitHubのIssueを作成し、同じ不具合の重複を防ぎます。設定手順をご覧ください。",
+    "tagline": "メールをGitHubの課題に変え、PRのアラートを受信トレイへ",
+    "metaTitle": "GitHub Gmail 連携: バグ報告メールを課題に変換",
+    "metaDescription": "バグ報告や機能要望のメールから、重複なくGitHubの課題を作成します。エンジニア以外の関係者にはPRの状況をメールで届けます。設定手順をご覧ください。",
     "keywords": [
-      "Gmail GitHub integration",
-      "email to GitHub issue",
-      "Gmail GitHub automation",
-      "GitHub PR notification email",
-      "connect Gmail and GitHub",
-      "GitHub issue from email"
+      "Gmail GitHub 連携",
+      "メールをGitHubの課題に変換",
+      "Gmail GitHub 自動化",
+      "GitHub PR 通知メール",
+      "GmailとGitHubの接続",
+      "メールからGitHubの課題を作成"
     ],
-    "intro": "Bug reports arrive by email. Feature requests come from clients over email threads. Yet your engineering workflow lives entirely in GitHub. The gap between these two worlds creates a tedious manual loop: copy the email, open GitHub, create an issue, paste the details, and remember to update both sides when progress is made.\n\nGAIA eliminates this translation layer by connecting Gmail and GitHub directly. When a client emails a bug report or a stakeholder sends a feature request, GAIA can create a properly formatted GitHub issue with the right labels, assignees, and milestones extracted from the email context. Conversely, when pull requests are opened, reviewed, or merged, GAIA can route structured summaries to relevant inboxes so non-technical stakeholders stay informed without needing GitHub access.\n\nThis integration is particularly valuable for teams where product managers, client-facing staff, and engineers need to collaborate across the email-to-code divide without losing context or creating duplicated effort.",
+    "intro": "バグ報告はメールで届きます。機能要望は顧客とのメールのやりとりで届きます。しかし開発の流れはすべてGitHubにあります。この2つの世界の間には面倒な手作業のループがあります。メールをコピーし、GitHubを開き、課題を作り、詳細を貼り付け、進展があれば両方を更新するのを忘れないこと。\n\nGAIAはGmailをリポジトリに直接つなぎ、この翻訳の層をなくします。顧客がバグ報告のメールを送り、あるいは関係者が機能要望を送れば、GAIAはメールの文脈から適切なラベル、担当者、マイルストーンを備えた課題を作成できます。逆に、プルリクエストが作成、レビュー、マージされたときは、整形した要約を関係者の受信トレイへ届け、リポジトリへのアクセスなしに状況を伝えられます。\n\nこの連携は、プロダクトマネージャー、顧客対応の担当者、エンジニアが、メールとコードの隔たりを越えて、文脈を失わず重複した作業も生まないように協力する必要があるチームに特に役立ちます。",
     "useCases": [
       {
-        "title": "Create GitHub issues from bug report emails",
-        "description": "When a client or teammate emails a bug report, GAIA parses the email, extracts the key details — steps to reproduce, environment, severity — and creates a formatted GitHub issue in the correct repository with appropriate labels. The original sender is referenced in the issue body so engineers have full context."
+        "title": "バグ報告メールからGitHubの課題を作成",
+        "description": "顧客や同僚がバグ報告のメールを送ると、GAIAがメールを解析し、要点、再現手順、環境、深刻度を抜き出して、適切なラベルを付けた課題を正しいリポジトリに作成します。元の送信者を課題の本文に記載するので、エンジニアは全体の文脈を持てます。"
       },
       {
-        "title": "Feature request pipeline from email to backlog",
-        "description": "Product feedback and feature requests sent by email are automatically converted into GitHub issues tagged as feature requests and added to the relevant project backlog. GAIA extracts the core request and formats it as a user story so engineers can act on it immediately."
+        "title": "メールからバックログへの機能要望の流れ",
+        "description": "メールで届いた製品へのフィードバックや機能要望は、機能要望としてタグ付けされた課題に自動で変換され、該当するプロジェクトのバックログに追加されます。GAIAは要望の核心を抜き出し、すぐ動けるようにユーザーストーリーの形に整えます。"
       },
       {
-        "title": "PR status notifications for non-technical stakeholders",
-        "description": "When a pull request tied to a client-facing feature is opened, reviewed, or merged, GAIA sends a plain-language email summary to the relevant stakeholders so they know progress is being made without needing to navigate GitHub."
+        "title": "エンジニア以外の関係者へのPR状況の通知",
+        "description": "顧客向けの機能に関わるプルリクエストが作成、レビュー、マージされると、GAIAが平易な言葉の要約をメールで関係者へ送ります。GitHubを開かなくても進捗が分かります。"
       },
       {
-        "title": "Release notification emails",
-        "description": "When a new GitHub release is published, GAIA composes and sends a formatted release summary email to your distribution list — including changelog highlights, known issues, and upgrade notes — keeping clients and internal teams informed automatically."
+        "title": "リリース通知メール",
+        "description": "新しいリリースが公開されると、GAIAは変更点のハイライト、既知の問題、アップグレードの注意を含むリリースの要約メールを作成し、配信リストへ送ります。顧客も社内のチームも自動で把握できます。"
       },
       {
-        "title": "Email-triggered issue comments",
-        "description": "When a stakeholder replies to a GitHub notification email with a comment or update, GAIA posts their reply as a comment on the original GitHub issue so the conversation stays unified in the engineering workflow."
+        "title": "メールから課題へのコメント追加",
+        "description": "関係者が通知メールに返信してコメントや更新を伝えると、GAIAがその返信を元の課題へのコメントとして投稿します。会話が開発の流れの中で一つにまとまります。"
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Gmail and GitHub to GAIA",
-        "description": "Authenticate your Gmail account and GitHub organization or personal account in GAIA's integration settings. GAIA uses OAuth for both connections so your credentials remain secure."
+        "step": "GmailとGitHubをGAIAに接続",
+        "description": "GAIAの連携設定でGmailアカウントと、GitHubの組織または個人アカウントを認証します。どちらもOAuthを使うので、認証情報は安全に保たれます。"
       },
       {
-        "step": "Configure your routing rules",
-        "description": "Tell GAIA which email senders, labels, or keywords should trigger issue creation, which repositories to target, and which GitHub events should send email notifications. You can specify assignees, labels, and milestones as part of the rules."
+        "step": "振り分けのルールを設定",
+        "description": "どの送信者、ラベル、キーワードで課題を作るか、どのリポジトリを対象にするか、どのリポジトリのイベントでメール通知を送るかをGAIAに伝えます。担当者、ラベル、マイルストーンもルールの一部として指定できます。"
       },
       {
-        "step": "GAIA automates the email-to-GitHub workflow",
-        "description": "Once configured, GAIA monitors Gmail and GitHub continuously, creating issues from qualifying emails and dispatching notifications for relevant GitHub events without any manual intervention."
+        "step": "GAIAがメールから課題への流れを自動化",
+        "description": "設定が済めば、GAIAが受信トレイとリポジトリを継続的に監視し、条件に合うメールから課題を作り、該当するイベントの通知を送ります。手作業は要りません。"
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA create issues in specific repositories based on email content?",
-        "answer": "Yes. You can set up rules that route emails to different repositories based on sender, subject keywords, Gmail labels, or AI classification of the email content. For example, emails about your mobile app can go to the mobile-app repo while API-related emails go to the backend repo."
+        "question": "メールの内容に応じて特定のリポジトリに課題を作れますか？",
+        "answer": "はい。送信者、件名のキーワード、ラベル、メール内容のAIによる分類に基づいて、メールを別々のリポジトリへ振り分けるルールを設定できます。たとえばモバイルアプリのメールはmobile-appのリポジトリへ、API関連はバックエンドのリポジトリへ、といった具合です。"
       },
       {
-        "question": "Will GAIA avoid creating duplicate issues if the same bug is emailed twice?",
-        "answer": "GAIA checks for existing open issues with similar titles and content before creating a new one. If a likely duplicate is found, GAIA can add the new email as a comment on the existing issue instead, keeping discussions consolidated."
+        "question": "同じバグが2回メールで届いても重複した課題を作りませんか？",
+        "answer": "GAIAは新しい課題を作る前に、似た件名と内容のオープンな課題がないか確認します。重複の可能性があれば、新しいメールを既存の課題へのコメントとして追加し、議論を一つにまとめます。"
       },
       {
-        "question": "Can GAIA handle GitHub notifications I already receive in Gmail?",
-        "answer": "Yes. GAIA can parse GitHub's native notification emails and enrich them — summarizing long PR review threads, extracting action items, or routing specific notifications to teammates — rather than just letting them accumulate in your inbox."
+        "question": "すでにGmailで受け取っているGitHubの通知も扱えますか？",
+        "answer": "はい。GAIAは標準の通知メールを解析して内容を充実させられます。長いPRレビューのスレッドの要約、アクション項目の抽出、特定の通知の同僚への転送などができ、受信トレイに溜まるままにしません。"
       }
     ]
   },
   "gmail-trello": {
     "toolA": "Gmail",
     "toolB": "Trello",
-    "tagline": "Convert emails into Trello cards and keep your boards updated from your inbox",
-    "metaTitle": "Gmail と Trello の連携: メールをカードに",
-    "metaDescription": "GmailとTrelloをGAIAで連携。メールからTrelloカードを作成し、返信に応じてリストを更新。受信トレイとボードを行き来せずにタスクを管理できます。",
+    "tagline": "メールをTrelloのカードに変え、受信トレイからボードを更新",
+    "metaTitle": "Gmail + Trello 連携: 顧客メールをTrelloカードに",
+    "metaDescription": "顧客の依頼メールをTrelloのカードにし、返信が届いたらカードを移動します。カードが完了したら顧客へメールで知らせます。設定手順をご覧ください。",
     "keywords": [
-      "Gmail Trello integration",
-      "email to Trello card",
-      "Gmail Trello automation",
-      "create Trello card from email",
-      "connect Gmail and Trello",
-      "Trello email workflow"
+      "Gmail Trello 連携",
+      "メールをTrelloカードに変換",
+      "Gmail Trello 自動化",
+      "メールからTrelloカードを作成",
+      "GmailとTrelloの接続",
+      "Trello メール ワークフロー"
     ],
-    "intro": "Email is where work requests arrive; Trello is where work gets organized and tracked. But bridging the two requires constant manual effort — reading emails, deciding which board and list they belong in, creating cards, copying over the relevant details, and then returning to Gmail to reply. For teams managing high email volumes, this becomes a significant time drain that takes attention away from actual work.\n\nGAIA connects Gmail and Trello so that email content flows directly into your boards. Incoming emails that represent tasks, requests, or deliverables can be automatically converted into Trello cards with the right metadata, assigned to the correct list, and linked back to the original email thread. When card statuses change in Trello, GAIA can notify the relevant people via email so external stakeholders stay informed without needing Trello access.\n\nThis integration is ideal for client-facing teams, project managers, and operations teams who live in both email and Trello and want to eliminate the manual handoff between the two.",
+    "intro": "メールは仕事の依頼が届く場所、Trelloは仕事を整理して追跡する場所です。しかしこの2つをつなぐには絶えず手を動かす必要があります。メールを読み、どのボードのどのリストに入れるかを決め、カードを作り、必要な詳細を写し、受信トレイに戻って返信する。メールの量が多いチームでは、これが大きな時間の浪費になり、本来の仕事から注意を奪います。\n\nGAIAはGmailとTrelloをつなぎ、メールの内容がそのままボードに流れ込むようにします。タスクや依頼、成果物にあたるメールは、適切な情報を備えたカードに自動で変換され、正しいリストに置かれ、元のスレッドにリンクされます。カードの状況が変われば、GAIAが関係者へメールで知らせ、外部の関係者もボードへのアクセスなしに把握できます。\n\nこの連携は、受信トレイとボードの両方で仕事をする顧客対応チーム、プロジェクトマネージャー、運用チームが、2つの間の手作業の受け渡しをなくしたい場合に最適です。",
     "useCases": [
       {
-        "title": "Create Trello cards from client request emails",
-        "description": "When a client emails a new request, GAIA creates a Trello card in the appropriate board and list, pre-populated with the request details, due date if mentioned, and a link back to the original email thread so your team has full context when they pick up the card."
+        "title": "顧客の依頼メールからTrelloカードを作成",
+        "description": "顧客が新しい依頼のメールを送ると、GAIAが適切なボードとリストにカードを作り、依頼の内容、書かれていれば期限、元のメールスレッドへのリンクをあらかじめ入れます。カードを手に取ったときに全体の文脈が分かります。"
       },
       {
-        "title": "Move cards based on email replies",
-        "description": "When you or a teammate sends an email update on a project, GAIA can move the corresponding Trello card to the next list — for example, from 'In Progress' to 'Awaiting Client Feedback' — so your board reflects the actual state of work without manual updates."
+        "title": "メールの返信に応じてカードを移動",
+        "description": "あなたや同僚がプロジェクトについて更新のメールを送ると、GAIAが対応するカードを次のリストへ移せます。たとえば「In Progress」から「顧客の返信待ち」へ。ボードが手作業の更新なしに実際の作業の状態を映します。"
       },
       {
-        "title": "Email notifications when cards are completed",
-        "description": "When a Trello card is moved to 'Done', GAIA composes and sends a completion notification email to the relevant stakeholder, summarizing what was done and any next steps, keeping clients informed without requiring manual follow-up emails."
+        "title": "カード完了時のメール通知",
+        "description": "カードが「Done」に移ると、GAIAが関係者への完了通知メールを作成して送り、何をしたか、次に何があるかをまとめます。手作業のフォローアップなしに顧客へ状況が伝わります。"
       },
       {
-        "title": "Daily board digest to email",
-        "description": "GAIA sends a morning email digest summarizing the state of your Trello boards — cards due today, overdue items, and recently completed tasks — so you start the day with a clear picture of priorities without opening Trello."
+        "title": "毎日のボードダイジェストをメールで",
+        "description": "GAIAはボードの状況、今日が期限のカード、期限を過ぎた項目、最近完了したタスクをまとめた朝のダイジェストをメールで送ります。Trelloを開かずに一日の優先順位を把握できます。"
       },
       {
-        "title": "Attachment forwarding from email to cards",
-        "description": "Files and documents sent as email attachments are automatically attached to the corresponding Trello card so your team has everything they need in one place without hunting through email threads for assets."
+        "title": "メールの添付をカードへ転送",
+        "description": "メールの添付として送られたファイルや文書は、対応するカードに自動で添付されます。資料をメールのスレッドから探し回らなくても、必要なものが一か所に揃います。"
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Gmail and Trello to GAIA",
-        "description": "Authenticate your Gmail account and Trello workspace in GAIA's integration settings. GAIA will ask which boards it should have access to so you control the scope of the integration."
+        "step": "GmailとTrelloをGAIAに接続",
+        "description": "GAIAの連携設定でアカウントを認証します。アクセスさせるボードをGAIAが尋ねるので、連携の範囲を自分で決められます。"
       },
       {
-        "step": "Set up your card creation rules",
-        "description": "Tell GAIA which types of emails should become Trello cards, which board and list they should land in, how to set labels and due dates, and who to assign cards to. Rules can be based on sender, Gmail labels, keywords, or AI classification."
+        "step": "カード作成のルールを設定",
+        "description": "どんな種類のメールをカードにするか、どのボードのどのリストに入れるか、ラベルと期限をどう設定するか、誰に割り当てるかをGAIAに伝えます。ルールは送信者、Gmailのラベル、キーワード、AIによる分類に基づいて設定できます。"
       },
       {
-        "step": "GAIA manages the email-to-board pipeline automatically",
-        "description": "GAIA monitors your Gmail and Trello boards continuously, creating cards from qualifying emails and sending notifications for board events according to your rules — no manual copying required."
+        "step": "GAIAがメールからボードへの流れを自動で管理",
+        "description": "GAIAは受信トレイとボードを継続的に監視し、条件に合うメールからカードを作り、ボードのイベントに応じた通知をルールどおりに送ります。手作業のコピーは要りません。"
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA create cards on different Trello boards based on the email content?",
-        "answer": "Yes. You can set rules that route emails to different boards based on sender domain, Gmail labels, or AI-detected content type. For example, design request emails go to your Design board while support emails go to your Support board."
+        "question": "メールの内容に応じて別々のTrelloボードにカードを作れますか？",
+        "answer": "はい。送信元ドメイン、受信トレイのラベル、AIが判定した内容の種類に基づいて、メールを別々のボードへ振り分けるルールを設定できます。たとえばデザインの依頼メールはDesignボードへ、サポートのメールはSupportボードへ、といった具合です。"
       },
       {
-        "question": "What happens to the original email after GAIA creates a Trello card?",
-        "answer": "GAIA can apply a Gmail label such as 'Sent to Trello' to the original email and optionally archive it so your inbox stays clean. The link back to the email thread is stored in the Trello card description so you can always find the source."
+        "question": "GAIAがカードを作ったあと、元のメールはどうなりますか？",
+        "answer": "GAIAはボードに送信済みであることを示すラベルを元のメールに付け、必要ならアーカイブして受信トレイをきれいに保てます。メールスレッドへのリンクはカードの説明に保存されるので、いつでも元のメールをたどれます。"
       },
       {
-        "question": "Can I create a Trello card manually by forwarding an email to GAIA?",
-        "answer": "Yes. In addition to automatic rules, you can forward any email to GAIA with a quick instruction like 'add this to the Marketing board under To Do' and GAIA will create the card immediately."
+        "question": "メールをGAIAに転送して手動でカードを作れますか？",
+        "answer": "はい。自動のルールに加えて、メールをGAIAに転送し「これをMarketingボードのTo Doに入れて」と短く指示すれば、GAIAがすぐにカードを作成します。"
       }
     ]
   },
   "gmail-discord": {
     "toolA": "Gmail",
     "toolB": "Discord",
-    "tagline": "大事なGmailのメールをDiscordで要約して受け取り、どのサーバーやDMからでもGAIAに受信箱のことを聞ける",
-    "metaTitle": "Discord Gmail 連携: メール通知をチャンネルへ",
-    "metaDescription": "システムアラート、請求通知、顧客の近況などGmailのメールを適切なDiscordチャンネルへ。GAIAがメッセージを整形します。設定手順をご覧ください。",
+    "tagline": "Gmailの重要メールをDiscordで要約し、どのサーバーやDMからでも受信トレイについてGAIAに聞ける",
+    "metaTitle": "DiscordとGmailの接続: Discordチャンネルへのメール通知",
+    "metaDescription": "システムのアラート、請求の通知、顧客からの更新をGmailから適切なDiscordチャンネルへ振り分けます。GAIAが各メッセージを整えます。設定手順をご覧ください。",
     "keywords": [
-      "Gmail Discord integration",
-      "email to Discord notification",
-      "Gmail Discord automation",
-      "forward email to Discord",
-      "connect Gmail and Discord",
-      "Discord email alerts"
+      "Gmail Discord 連携",
+      "メールをDiscordに通知",
+      "Gmail Discord 自動化",
+      "メールをDiscordに転送",
+      "GmailとDiscordの接続",
+      "Discord メール アラート"
     ],
-    "intro": "DiscordとGmailを連携するには、間をつなぐ仕組みが必要です。どちらのアプリも、単体ではもう一方へ転送しないためです。よくある構成は2つです。条件に合うメールをそのままサーバーのチャンネルに投稿したい場合は、そのチャンネルでWebhookを作成し(サーバー設定 > 連携サービス > ウェブフック)、ZapierやMakeのような自動化ツールをそこにつなぎます。どのメールを通すかはGmailのフィルタやラベルで決めます。受信箱を読んで重要なものを判断し、Discordで知らせてくれるアシスタントが欲しい場合は、GmailをGAIAに接続し、GAIAボットをDiscordに追加します。\n\nGAIA側の仕組みは次のとおりです。Gmailの新着メールトリガーを使ったワークフローは、メールが届いて間もなく起動します。GAIAはメールを読み、あなたの指示(「支払いの失敗、顧客からの返信、銀行からのメールだけ」)に沿って判断し、GAIAボット経由でDiscordのDMに短い要約を送ります。サーバーのチャンネルでGAIAを@メンションするかDMで「お昼以降に急ぎのメールはある?」と聞けば、その場で答え、Gmailから返信の下書きや送信もできます。GAIAはDiscordのWebhookを使って任意のサーバーチャンネルに投稿することはありません。サーバー全体で見る共有の#alertsチャンネルには、Webhookの方法が適しています。\n\n最も多い要望は売上の通知です。多くのストアや決済サービス(Shopify、Stripe、Gumroad、PayPal)は注文ごとに領収メールを送るので、そのメールが合図になります。GAIAなら「Stripeから件名に'Payment received'を含むメールが届いたら、金額、商品、購入者の国をDMで送って」と指定します。チーム全員が見る#salesチャンネルには、ZapierやMakeからDiscordのチャンネルWebhookに送る方法を使ってください。\n\nメールパーサーを探していた場合: Mailparserなどのツールは、いつも同じレイアウトのメールからテンプレートを使って決まった項目(注文番号、金額、追跡番号)を取り出します。GAIAは普段の言葉で書いた指示から同じ項目を抽出するので、レイアウトが変わっても対応しやすくなります。同じ形式のメールが1日に数千通届くなら、テンプレート型のパーサーの方が安定します。",
+    "intro": "この2つをつなぐには間に入るものが必要です。どちらのアプリも単独でもう一方へ転送しないためです。よくある構成は2つあります。該当するメールをそのままサーバーのチャンネルへ投稿したいなら、そのチャンネルでWebhookを作り（サーバー設定 > 連携 > Webhook）、ZapierやMakeのようなメールの自動化ツールを向けます。どのメールを通すかはGmailのフィルタやラベルで選びます。受信トレイを読んで何が重要かを判断し、Discordで知らせるアシスタントが欲しいなら、GmailをGAIAに接続し、GAIAのボットをDiscordに追加します。\n\nGAIA側の動きはこうです。新着メールをトリガーにしたワークフローが、メールが届いてほどなく動き出します。GAIAが内容を読み、指示（「失敗した支払い、顧客からの返信、銀行からのメールだけ」など）を当てはめ、短い要約をGAIAのボット経由でDMに送ります。サーバーのチャンネルでGAIAを@メンションするかDMで「昼以降で急ぎのものはある？」と聞けば、その場で答えるだけでなく、あなたのアカウントから返信を下書きしたり送信したりもできます。GAIAはチャンネルのWebhook経由で任意のサーバーチャンネルへ投稿はしないので、サーバー全員が読む共有の#alertsのような場にはWebhookの方法が適しています。\n\n販売のアラートが最もよくある要望です。多くのストアや決済サービス（Shopify、Stripe、Gumroad、PayPal）は注文ごとに領収書をメールで送るので、そのメールが合図になります。GAIAなら「Stripeから件名に『Payment received』を含むメールが届いたら、金額、商品、顧客の国をDMで知らせて」。チーム全員が見る#salesチャンネルなら、ZapierやMakeからチャンネルのWebhookへ流すほうが適しています。\n\nメールのパーサーをお探しなら、Mailparserのようなパーサーは、いつも同じ構成のメールから定型の項目（注文番号、金額、追跡番号）をテンプレートで取り出します。GAIAは同じ項目を平易な指示から取り出すので、構成が変わったときに強い面があります。1日に何千通も同じ形式のメールを処理するなら、テンプレート型のパーサーのほうが予測しやすいでしょう。",
     "useCases": [
       {
-        "title": "システム障害のアラートメールをDiscordのDMへ",
-        "description": "監視ツールはサービスが落ちるとアラートメールを送ります。Gmailトリガーで動くGAIAのワークフローがメールの到着後まもなく内容を読み、DiscordのDMに1行の要約(サービス、エラー、時刻)を送るので、メールを開かなくてもスマートフォンで確認できます。"
+        "title": "システムのアラートメールをDiscordのDMへ",
+        "description": "監視ツールはサービスが落ちるとアラートのメールを送ります。新着メールをトリガーにしたワークフローが届いてほどなく内容を読み、1行の要約（サービス、エラー、時刻）をDMで送るので、メールを開かずにスマートフォンで気づけます。"
       },
       {
-        "title": "顧客からのメールの要約をDiscordで",
-        "description": "顧客からメールが届くと、GAIAは差出人、用件、今日中に返信が必要かをDMで伝えます。同じチャットで返信の下書きを頼めば、確認用のGmail下書きとして保存します。"
+        "title": "Discordでの顧客メールの要約",
+        "description": "顧客からメールが届くと、GAIAが誰からか、何を必要としているか、今日返信が必要かをDMで知らせます。同じチャットで返信の下書きを頼めば、確認用のGmailの下書きを用意します。"
       },
       {
         "title": "支払いと請求の通知",
-        "description": "StripeやPayPalからの支払い完了、決済失敗、更新のお知らせはメールで届きます。GAIAはそれらを絞り込み、金額と対応が必要な点をまとめた短いメッセージをDiscordで送ります。指示すれば定型の領収書は省きます。"
+        "description": "StripeやPayPalからの支払いの確認、失敗した請求、更新はメールで届きます。GAIAが絞り込み、金額と対応が必要なことを短いメッセージで知らせます。頼めば定型の領収書は省けます。"
       },
       {
-        "title": "メールの要点をサーバーのチャンネルに投稿",
-        "description": "チャンネルでGAIAを@メンションし、「今日のニュースレターの要点をここに投稿して」と頼むと、GAIAがGmailでメールを読み、そのチャンネルに返信します。毎回のニュースレターを自動で投稿したい場合は、DiscordのチャンネルWebhookを使ってください。"
+        "title": "サーバーチャンネルへのメールの要点の投稿",
+        "description": "チャンネルでGAIAを@メンションし「今日のニュースレターのメールの要点をここに投稿して」と頼みます。GAIAは受信トレイのメールを読み、そのチャンネルで答えます。すべてのニュースレターを自動で投稿するなら、チャンネルのWebhookをお使いください。"
       },
       {
         "title": "新しいリードや問い合わせの通知",
-        "description": "問い合わせフォームや営業の問い合わせがGmailに届くと、GAIAは名前、会社、用件をDMで送り、フォローアップのタスクをToDoリストに追加することもできます。リードを放置せずに済みます。"
+        "description": "問い合わせフォームの送信や営業の引き合いが受信トレイに届くと、GAIAが名前、会社、依頼内容をDMで知らせ、ToDoリストにフォローアップのタスクも追加できます。リードを放置しません。"
       }
     ],
     "howItWorks": [
       {
         "step": "Gmailを接続し、GAIAをDiscordに追加",
-        "description": "GAIAでGmailアカウントを接続し、GAIAボットをDiscordに追加して/authでGAIAアカウントと連携します。これでボットからDMが届き、サーバーで@メンションすると応答するようになります。"
+        "description": "GAIAでGmailアカウントを接続し、GAIAのボットをDiscordに追加して/authでGAIAのアカウントと連携します。これでボットがDMを送り、サーバーで@メンションされたときに答えられます。"
       },
       {
-        "step": "どのメールが重要かを書く",
-        "description": "Gmailの新着メールトリガーでワークフローを作り、条件を普段の言葉で書きます。差出人、件名の語句、ラベル、または「顧客が返事を待っているもの」のような説明でかまいません。Discordのメッセージに何を含めるかも指定します。"
+        "step": "どのメールが重要かを伝える",
+        "description": "新着メールをトリガーにしたワークフローを作り、ルールを平易な言葉で書きます。送信者、件名の語、ラベル、あるいは「顧客が待っているものすべて」のような説明です。メッセージに何を含めるかも指定します。"
       },
       {
         "step": "GAIAが新着メールを読んで知らせる",
-        "description": "条件に合うメールは到着後まもなくDiscordのDMになり、合わないメールには手を付けません。Discordから/workflowでワークフローの一覧表示や実行ができます。"
+        "description": "条件に合うメールは届いてほどなくDMになり、合わないメールはそのままにされます。ワークフローの一覧と実行はボットの/workflowから行えます。"
       }
     ],
     "faqs": [
       {
-        "question": "Discordのメッセージを元のメールとは違う形式にできますか?",
-        "answer": "はい。GAIAは1行の要約、主要な項目(差出人、件名、金額、期限)、全文のいずれでも送れます。大量に届くアラートメールなら、1行の要約が最も役立つことが多いです。"
+        "question": "元のメールと違う形に整えて送れますか？",
+        "answer": "はい。1行の要約、主要な項目（送信者、件名、金額、期限）、全文のいずれかを送れます。ノイズの多いアラートメールなら、1行の要約がたいてい最も役立ちます。"
       },
       {
-        "question": "同じメールを複数のDiscordチャンネルに投稿できますか?",
-        "answer": "いいえ。GAIAのワークフロー通知はDiscordのDMに届き、同じワークフローでSlack、Telegram、WhatsAppにも通知できます。1通のメールを複数のサーバーチャンネルに配信するには、各チャンネルでWebhookを作成し、ZapierやMakeなどの転送ツールを使ってください。"
+        "question": "同じメールを複数のチャンネルへ投稿できますか？",
+        "answer": "いいえ。GAIAのワークフローの通知はあなたのDMに届き、同じワークフローでSlack、Telegram、WhatsAppにも通知できます。1つのメールを複数のサーバーチャンネルへ配るには、各チャンネルでWebhookを作り、ZapierやMakeのような転送ツールをお使いください。"
       },
       {
-        "question": "プライベートなDiscordチャンネルでも使えますか?",
-        "answer": "GAIAのメール通知はDMで届くため、見えるのはあなただけです。サーバーでは、GAIAは自分を@メンションしたメッセージだけを読み、ボットに閲覧と送信の権限があるチャンネルで返信します。"
+        "question": "非公開のチャンネルでも動きますか？",
+        "answer": "GAIAのメールのアラートはDMで届き、あなただけが見られます。サーバー内では、GAIAは@メンションされたメッセージだけを読み、ボットに読み取りと送信の権限があるチャンネルで返信します。"
       },
       {
-        "question": "DiscordとGmailを連携するには?",
-        "answer": "目的で選びます。メールをそのままサーバーのチャンネルに流すなら、DiscordでチャンネルWebhookを作成し(サーバー設定 > 連携サービス > ウェブフック)、ZapierやMakeでGmailとつなぎます。重要なメールの要約が欲しいなら、GmailをGAIAに接続し、GAIAボットをDiscordに追加して/authで連携し、Gmailトリガーのワークフローを作ります。"
+        "question": "DiscordとGmailはどうやって接続しますか？",
+        "answer": "目的で選びます。サーバーチャンネルに生のメールを流すなら、チャンネルでWebhookを作り（サーバー設定 > 連携 > Webhook）、ZapierやMakeで受信トレイとつなぎます。重要なメールの要約が欲しいなら、受信トレイをGAIAに接続し、GAIAのボットをサーバーに追加して/authで連携し、新着メールをトリガーにしたワークフローを作ります。"
       },
       {
-        "question": "新しい売上が入ったときにDiscordへ自動通知するには?",
-        "answer": "注文や支払いのメールをトリガーにします。GAIAで「Shopifyから件名に'New order'を含むメールが届いたら、合計金額と商品をDMで送って」のようなワークフローを作ります。チーム全員が見るチャンネルには、同じメールをZapierやMakeでDiscordのチャンネルWebhookに送ってください。"
+        "question": "新しい売上が入ったときに自動でアラートを投稿するには？",
+        "answer": "注文や支払いのメールをトリガーにします。GAIAで「Shopifyから件名に『New order』を含むメールが届いたら、注文の合計と商品をDMで知らせて」のようなワークフローを作ります。チーム全員が読むチャンネルなら、同じメールをZapierやMakeでチャンネルのWebhookへ送ります。"
       },
       {
-        "question": "DiscordのメッセージをGmailに転送できますか?",
-        "answer": "Discordには、メッセージをメールに転送する標準機能はありません。GAIAなら、ボットとのチャットにDiscordのメッセージを貼り付けて「これをPriyaにメールして」と頼むと、Gmailから送信するか下書きとして保存します。チャンネルのメッセージをすべて自動転送するには、専用のボットや自動化ツールが必要です。"
+        "question": "チャンネルのメッセージをメールに転送できますか？",
+        "answer": "メッセージをメールへ転送する標準の方法はありません。GAIAなら、メッセージをボットとのチャットに貼り付けて「これをPriyaにメールして」と言えば、あなたのアカウントから送信するか下書きとして保存します。チャンネルのすべてのメッセージを自動で転送するには、専用のボットか自動化ツールが必要です。"
       }
     ]
   },
   "gmail-drive": {
     "toolA": "Gmail",
     "toolB": "Google Drive",
-    "tagline": "Save email attachments and content to Google Drive automatically",
-    "metaTitle": "Gmail と Google Drive の連携: 添付ファイルを自動保存",
-    "metaDescription": "GmailとGoogle DriveをGAIAで連携。メールの添付ファイルをDriveのフォルダに自動保存し、スレッドをドキュメント化。手作業のダウンロードなしでファイルを整理できます。",
+    "tagline": "メールの添付ファイルと内容をGoogle Driveへ自動で保存",
+    "metaTitle": "Gmail + Google Drive 連携: 添付ファイルをDriveに保存",
+    "metaDescription": "請求書の添付を適切なDriveのフォルダへ保存し、契約書を保管し、Gmailから案件の資料を集めます。GAIAがすべての添付を整理します。設定手順をご覧ください。",
     "keywords": [
-      "Gmail Google Drive integration",
-      "save email attachments to Drive",
-      "Gmail Drive automation",
-      "email to Google Drive",
-      "connect Gmail and Google Drive",
-      "automatic email file backup"
+      "Gmail Google Drive 連携",
+      "メールの添付をDriveに保存",
+      "Gmail Drive 自動化",
+      "メールからGoogle Driveへ",
+      "GmailとGoogle Driveの接続",
+      "メールのファイルを自動で保管"
     ],
-    "intro": "Email attachments are one of the most common ways files enter a team's workflow, yet they remain locked inside Gmail threads rather than organized in a shared Drive folder where everyone can find them. Downloading attachments manually, renaming them, and uploading them to the right folder is a repetitive chore that adds up to hours of wasted time each week.\n\nGAIA automates the entire pipeline from Gmail to Google Drive. Attachments from qualifying emails are saved to the correct Drive folders automatically, named consistently, and organized by sender, project, or date depending on your preferences. Entire email threads can be converted into Drive documents for archiving. Contracts, invoices, and reports that arrive by email end up exactly where your team expects to find them.\n\nThis integration is invaluable for finance teams handling invoices, legal teams receiving contracts, operations teams managing vendor documents, and any team that regularly receives files by email and needs them accessible in a shared Drive.",
+    "intro": "メールの添付ファイルは、チームの作業にファイルが入ってくる最も一般的な経路の一つです。しかしそれはGmailのスレッドの中に閉じ込められたままで、全員が見つけられる共有のDriveのフォルダには整理されません。添付を手でダウンロードし、名前を変え、正しいフォルダにアップロードするのは繰り返しの雑務で、毎週何時間も失われます。\n\nGAIAはGmailからGoogle Driveまでの流れを自動化します。条件に合うメールの添付は正しいフォルダに自動で保存され、一貫した名前が付き、好みに応じて送信者、プロジェクト、日付で整理されます。メールのスレッド全体を保管用の文書に変えることもできます。メールで届いた契約書、請求書、レポートが、チームが期待する場所にきちんと収まります。\n\nこれは、請求書を扱う財務チーム、契約書を受け取る法務チーム、取引先の文書を管理する運用チーム、そしてメールで定期的にファイルを受け取り、共有フォルダから参照できる必要があるあらゆるチームに欠かせません。",
     "useCases": [
       {
-        "title": "Auto-save invoice attachments to the correct Drive folder",
-        "description": "When an invoice or receipt arrives in Gmail, GAIA extracts the attachment and saves it to the designated Drive folder for that vendor or project. The file is named consistently — including vendor name, invoice number, and date — so your accounting team can always find it without searching email."
+        "title": "請求書の添付を正しいDriveのフォルダへ自動保存",
+        "description": "請求書や領収書が届くと、GAIAが添付を取り出し、その取引先やプロジェクト用のフォルダへ保存します。取引先名、請求書番号、日付を含む一貫した名前が付くので、経理チームはメールを探さずにいつでも見つけられます。"
       },
       {
-        "title": "Contract and agreement archiving",
-        "description": "Signed contracts and legal agreements sent by email are automatically saved to your Contracts Drive folder. GAIA can also create a Drive shortcut linked back to the original email thread for full context."
+        "title": "契約書と合意書の保管",
+        "description": "メールで送られた署名済みの契約書や法的な合意書は、Contractsフォルダに自動で保存されます。元のメールスレッドへリンクしたショートカットを作り、全体の文脈を残すこともできます。"
       },
       {
-        "title": "Project asset collection",
-        "description": "Design files, briefs, and project assets sent by clients or vendors over email are automatically routed to the correct project folder in Drive so your team has access without anyone acting as a manual file relay."
+        "title": "プロジェクト資料の収集",
+        "description": "顧客や取引先がメールで送ったデザインファイル、概要書、プロジェクトの資料は、正しいプロジェクトのフォルダへ自動で振り分けられます。誰かがファイルの仲介役にならなくても、チームが参照できます。"
       },
       {
-        "title": "Email thread to Drive document",
-        "description": "Important email threads — project decisions, client approvals, or policy discussions — can be converted by GAIA into formatted Drive documents for long-term archiving and easy sharing with people who weren't on the original thread."
+        "title": "メールスレッドをDriveの文書に",
+        "description": "重要なメールのやりとり（プロジェクトの決定、顧客の承認、方針の議論など）は、GAIAが整形した文書に変えて長期保管でき、元のスレッドにいなかった人とも共有しやすくなります。"
       },
       {
-        "title": "Photo and media attachment organization",
-        "description": "Photos and media files emailed by clients or partners are saved to organized Drive folders automatically, eliminating the need to manually download and re-upload assets that arrive in your inbox."
+        "title": "写真やメディアの添付を整理",
+        "description": "顧客やパートナーがメールで送った写真やメディアのファイルは、整理されたフォルダに自動で保存されます。受信トレイに届いた資料を手でダウンロードして再アップロードする必要がなくなります。"
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Gmail and Google Drive to GAIA",
-        "description": "Authenticate your Google account for both Gmail and Drive access. GAIA uses a single OAuth connection for Google Workspace services, so you only authorize once and specify which Drive folders GAIA should have write access to."
+        "step": "GmailとGoogle DriveをGAIAに接続",
+        "description": "GmailとDriveの両方にアクセスできるようGoogleアカウントを認証します。GAIAはGoogle Workspaceのサービスに1つのOAuth接続を使うので、認証は一度だけですみみ、書き込みを許可するフォルダを指定します。"
       },
       {
-        "step": "Configure your folder routing rules",
-        "description": "Tell GAIA which types of attachments or emails should go to which Drive folders. You can base rules on sender domain, Gmail labels, subject keywords, file type, or AI-detected document category such as invoice, contract, or design file."
+        "step": "フォルダの振り分けルールを設定",
+        "description": "どんな種類の添付やメールをどのフォルダへ送るかをGAIAに伝えます。ルールは送信元ドメイン、ラベル、件名のキーワード、ファイルの種類、請求書・契約書・デザインファイルといったAIが判定した文書の種類に基づいて設定できます。"
       },
       {
-        "step": "GAIA automatically saves files as they arrive",
-        "description": "From the moment setup is complete, GAIA monitors incoming emails and saves qualifying attachments to Drive without any manual action. Files are organized, named, and placed exactly where your team expects them."
+        "step": "GAIAが届いたファイルを自動で保存",
+        "description": "設定が終わった瞬間から、GAIAは届くメールを監視し、条件に合う添付を手作業なしで自動保存します。ファイルは整理され、名前が付き、チームが期待する場所に置かれます。"
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA organize files into subfolders based on the email sender or date?",
-        "answer": "Yes. You can instruct GAIA to create a folder structure based on sender name, sender domain, year and month, project name, or any combination. For example, invoices can be organized into Drive folders by vendor and then by month automatically."
+        "question": "メールの送信者や日付に応じてサブフォルダに整理できますか？",
+        "answer": "はい。送信者名、送信元ドメイン、年月、プロジェクト名、あるいはその組み合わせでフォルダの構成を作るよう指示できます。たとえば請求書を取引先ごと、さらに月ごとのフォルダに自動で整理できます。"
       },
       {
-        "question": "What file types can GAIA save to Drive?",
-        "answer": "GAIA can save any file type that Gmail supports as an attachment, including PDFs, Word documents, Excel spreadsheets, images, ZIP archives, and more. Google Workspace files like Docs and Sheets are handled natively."
+        "question": "どんな種類のファイルをDriveに保存できますか？",
+        "answer": "メールの添付として送れるものであれば、PDF、Word文書、Excelの表計算、画像、ZIPアーカイブなど何でも保存できます。DocsやSheetsのようなGoogle Workspaceのファイルは標準で扱えます。"
       },
       {
-        "question": "Will GAIA create duplicate files if the same attachment is sent twice?",
-        "answer": "GAIA checks for existing files with the same name and content hash before saving. If a duplicate is detected, it will skip the save or append a version suffix depending on your preference, keeping your Drive folders clean."
+        "question": "同じ添付が2回送られたときに重複したファイルを作りますか？",
+        "answer": "GAIAは保存する前に、同じ名前と同じ内容のハッシュを持つファイルがないか確認します。重複があれば、設定に応じて保存を飛ばすか、版の番号を付けて保存し、フォルダをきれいに保ちます。"
       }
     ]
   },
   "gmail-hubspot": {
     "toolA": "Gmail",
     "toolB": "HubSpot",
-    "tagline": "Sync Gmail conversations with HubSpot CRM contacts and deals automatically",
-    "metaTitle": "Gmail と HubSpot の連携: メールを CRM に記録",
-    "metaDescription": "GmailとHubSpotをGAIAで連携。メールのやり取りをCRMの連絡先に記録し、取引を作成して連絡先情報も自動更新。営業のやり取りを一つも取りこぼしません。",
+    "tagline": "GmailのやりとりをHubSpot CRMの連絡先と商談に自動で同期",
+    "metaTitle": "Gmail + HubSpot 連携: メールをHubSpotの連絡先に記録",
+    "metaDescription": "メールをHubSpotの連絡先に記録し、問い合わせから商談を作り、メールの兆候で商談ステージを更新します。GAIAがCRMを最新に保ちます。設定手順をご覧ください。",
     "keywords": [
-      "Gmail HubSpot integration",
-      "email to HubSpot CRM",
-      "Gmail HubSpot automation",
-      "log emails to HubSpot",
-      "connect Gmail and HubSpot",
-      "HubSpot email sync"
+      "Gmail HubSpot 連携",
+      "メールをHubSpot CRMに",
+      "Gmail HubSpot 自動化",
+      "メールをHubSpotに記録",
+      "GmailとHubSpotの接続",
+      "HubSpot メール同期"
     ],
-    "intro": "Sales and customer success teams rely on HubSpot to manage relationships, but the actual conversations happen in Gmail. When email interactions aren't consistently logged to CRM, your HubSpot data becomes incomplete, deal timelines have gaps, and new team members lack context when they take over an account. Manual CRM logging is tedious enough that it gets skipped, especially under pressure.\n\nGAIA bridges Gmail and HubSpot by keeping them synchronized automatically. When you exchange emails with a HubSpot contact, GAIA logs the conversation to the correct contact record, extracts action items, and updates deal stages based on email signals. New contacts discovered in email can be automatically created in HubSpot with relevant context. Your CRM stays accurate without relying on sales reps to remember to log every interaction.\n\nThis integration is essential for sales teams who do high-volume outreach, account managers who maintain long-term client relationships, and customer success teams who need a complete interaction history for every account.",
+    "intro": "営業やカスタマーサクセスのチームは関係の管理にHubSpotを使いますが、実際の会話はGmailで行われます。メールのやりとりがCRMにきちんと記録されないと、データは不完全になり、商談の経過に穴が空き、担当が変わった新しいメンバーには文脈がありません。手作業のCRM入力は面倒で、特に追い込まれているときは後回しにされます。\n\nGAIAはGmailとHubSpotを自動で同期させ、この2つをつなぎます。CRMの連絡先とメールをやりとりすると、GAIAが会話を正しい連絡先の記録に残し、アクション項目を抜き出し、メールの兆候から商談ステージを更新します。メールで見つかった新しい連絡先は、関連する文脈とともに自動作成できます。営業担当がすべてのやりとりを記録し忘れても、CRMは正確なままです。\n\nこの連携は、大量のアプローチを行う営業チーム、長期的な顧客関係を保つアカウントマネージャー、すべての顧客の完全なやりとりの履歴を必要とするカスタマーサクセスのチームに欠かせません。",
     "useCases": [
       {
-        "title": "Automatic email logging to HubSpot contacts",
-        "description": "Every qualifying email you send or receive is automatically logged as an activity on the corresponding HubSpot contact record. The full email content, date, and thread context are captured so your CRM always reflects what has actually been communicated with each contact."
+        "title": "HubSpotの連絡先へのメールの自動記録",
+        "description": "条件に合う送受信のメールは、対応する連絡先の記録に活動として自動で記録されます。メールの全文、日付、スレッドの文脈が残るので、CRMはその連絡先と実際に交わした内容を常に映します。"
       },
       {
-        "title": "Create HubSpot deals from inbound email inquiries",
-        "description": "When a prospect emails with an inquiry or request for information, GAIA creates a new HubSpot deal and associates it with the contact, setting the deal stage, estimated value if mentioned, and linked email thread so your sales team can follow up immediately from HubSpot."
+        "title": "受信した問い合わせメールからHubSpotの商談を作成",
+        "description": "見込み客が問い合わせや資料請求のメールを送ると、GAIAが新しい商談を作って連絡先と関連づけ、商談ステージ、書かれていれば想定金額、メールスレッドへのリンクを設定します。営業チームはHubSpotからすぐにフォローできます。"
       },
       {
-        "title": "Update deal stages based on email signals",
-        "description": "When an email indicates a deal has progressed — a prospect confirms a meeting, sends a purchase order, or requests a contract — GAIA updates the HubSpot deal stage accordingly so your pipeline always reflects current reality without requiring manual updates."
+        "title": "メールの兆候に応じた商談ステージの更新",
+        "description": "商談が進んだことを示すメール、見込み客の会議の承諾、注文書の送付、契約書の依頼などがあれば、GAIAが商談ステージを更新します。手作業なしで、パイプラインが現在の実態を映します。"
       },
       {
-        "title": "New contact creation from email signatures",
-        "description": "When you receive an email from someone not yet in HubSpot, GAIA extracts contact details from the email signature — name, company, phone, title — and creates a new HubSpot contact record enriched with that information."
+        "title": "メールの署名からの連絡先の作成",
+        "description": "まだCRMにいない人からメールが届くと、GAIAが署名から名前、会社、電話番号、役職といった情報を抜き出し、その情報を加えた新しい連絡先の記録を作ります。"
       },
       {
-        "title": "Follow-up task creation from email commitments",
-        "description": "When an email contains a commitment — 'I'll get back to you by Friday' or 'let's schedule a call next week' — GAIA creates a follow-up task in HubSpot assigned to the responsible rep so commitments are tracked and nothing falls through the cracks."
+        "title": "メールの約束からのフォローアップタスクの作成",
+        "description": "「金曜までにご連絡します」「来週打ち合わせを入れましょう」といった約束がメールにあれば、GAIAがCRMにフォローアップのタスクを作り、責任のある担当者に割り当てます。約束が追跡され、抜け落ちません。"
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Gmail and HubSpot to GAIA",
-        "description": "Authenticate your Gmail account and HubSpot portal in GAIA. GAIA uses HubSpot's OAuth integration and requests only the permissions needed to read and write contacts, deals, and activities."
+        "step": "GmailとHubSpotをGAIAに接続",
+        "description": "GAIAでGmailアカウントとHubSpotのポータルを認証します。CRMのOAuth連携を使い、連絡先、商談、活動の読み書きに必要な権限だけを求めます。"
       },
       {
-        "step": "Define your sync rules and preferences",
-        "description": "Specify which email addresses or domains should trigger CRM logging, how contacts should be matched or created, and which email signals indicate deal stage changes. You can also set which team members' inboxes GAIA should monitor."
+        "step": "同期のルールと好みを決める",
+        "description": "どのメールアドレスやドメインでCRMへの記録を行うか、連絡先をどう照合し作成するか、どのメールの兆候が商談ステージの変化を示すかを指定します。どのメンバーの受信トレイを監視するかも設定できます。"
       },
       {
-        "step": "GAIA keeps Gmail and HubSpot synchronized automatically",
-        "description": "GAIA monitors qualifying inboxes and logs interactions to HubSpot continuously. Your CRM data stays current without manual entry, giving your whole team an accurate and complete view of every customer relationship."
+        "step": "GAIAが受信トレイとCRMを自動で同期",
+        "description": "GAIAは対象の受信トレイを監視し、やりとりを継続的に記録します。手入力なしでCRMのデータが最新に保たれ、チーム全員がすべての顧客関係を正確かつ完全に把握できます。"
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA match emails to existing HubSpot contacts automatically?",
-        "answer": "Yes. GAIA matches emails to HubSpot contacts by email address first, and if no match is found, it can search by company domain. You can configure whether unmatched emails create new contacts automatically or are flagged for manual review."
+        "question": "メールを既存のHubSpotの連絡先に自動で照合できますか？",
+        "answer": "はい。GAIAはまずメールアドレスで連絡先を照合し、見つからなければ会社のドメインで検索できます。一致しないメールで新しい連絡先を自動で作るか、手動の確認に回すかを設定できます。"
       },
       {
-        "question": "Will personal emails also be logged to HubSpot?",
-        "answer": "No. GAIA only logs emails that match your defined rules — typically emails from or to contacts in HubSpot or email addresses from known customer domains. Internal team emails and personal communications are excluded by default."
+        "question": "個人のメールもCRMに記録されますか？",
+        "answer": "いいえ。GAIAは設定したルールに合うメールだけを記録します。通常は既存の連絡先とのやりとりや、既知の顧客ドメインからのメールです。社内のメールや個人のやりとりは既定で除外されます。"
       },
       {
-        "question": "Can GAIA work across multiple team members' Gmail inboxes?",
-        "answer": "Yes. GAIA can be configured for an entire sales or customer success team, logging interactions from each team member's Gmail to the appropriate HubSpot contact records so your CRM captures the full picture of every customer relationship."
+        "question": "複数のメンバーのGmailの受信トレイをまたいで動けますか？",
+        "answer": "はい。営業やカスタマーサクセスのチーム全体に対して設定でき、各メンバーの受信トレイのやりとりを適切な連絡先の記録に残します。CRMはすべての顧客関係の全体像を捉えます。"
       }
     ]
   },
   "gmail-salesforce": {
     "toolA": "Gmail",
     "toolB": "Salesforce",
-    "tagline": "Log emails to Salesforce automatically and create leads from your inbox",
-    "metaTitle": "Gmail と Salesforce の連携: メールを商談に自動記録",
-    "metaDescription": "CRMへの手入力をなくします。GAIAがGmailのメールをSalesforceの取引先や商談に記録し、問い合わせからリードを作成します。設定手順をご覧ください。",
+    "tagline": "メールをSalesforce CRMに記録し、受信トレイからリードを自動で作成",
+    "metaTitle": "GmailのメールをSalesforceに自動記録し、すべての商談を追う",
+    "metaDescription": "メールをCRMにコピーする作業はもう不要です。GAIAがGmailのスレッドを適切なSalesforceの取引先と商談に記録し、リードも作成します。設定手順をご覧ください。",
     "keywords": [
-      "Gmail Salesforce integration",
-      "Gmail Salesforce automation",
-      "log emails Salesforce",
-      "Gmail Salesforce sync",
-      "connect Gmail and Salesforce",
-      "email CRM logging automation"
+      "Gmail Salesforce 連携",
+      "メールをSalesforce CRMに",
+      "Gmail Salesforce 自動化",
+      "メールをSalesforceに記録",
+      "メールからSalesforceのリードを作成",
+      "GmailとSalesforceの接続"
     ],
-    "intro": "Sales reps send and receive dozens of client emails every day in Gmail, but those emails rarely make it into Salesforce without a deliberate BCC to the CRM email address or a manual activity log. The result is a Salesforce record that understates contact frequency, misses key conversation threads, and fails to capture the email trail that might be critical for deal reviews or handoffs.\n\nGAIA connects Salesforce and Gmail so every relevant client email is logged to the correct CRM record automatically. When a Gmail message is sent to or received from a Salesforce contact, GAIA logs the email as an activity on the contact and opportunity record. When a promising email reply arrives from an unknown address, GAIA can create a new lead in Salesforce so the prospect enters the pipeline immediately.\n\nThis integration is built for sales teams that want complete CRM activity timelines without requiring reps to remember to log emails, and for revenue operations teams who need accurate engagement data for pipeline analysis and forecasting.",
+    "intro": "Salesforceは企業の営業チームにとっての正となる記録の仕組みですが、正確に保つには顧客とのやりとりをすべて記録する必要があり、その負担はすでに余裕のない営業担当にのしかかります。手作業の記録は時間がかかり、ばらつきがあり、商談のクロージングで忙しいときに真っ先に省かれるため、CRMのデータ品質が損なわれることは繰り返し指摘されています。\n\nGAIAはGmailからSalesforceへのデータの流れを自動化し、営業チームに負担をかけずにCRMを正確に保ちます。見込み客からの受信メールは、正しいリードの流入元、連絡先の情報、メールの内容を捉えたリードを自動で作成します。既存の顧客とのメールスレッドは、適切な取引先、連絡先、商談の記録に残ります。商談が進んだことを示すメールの兆候は、商談のステージ更新につながります。CRMのデータは、手作業の近似値ではなく、営業活動の真の反映になります。\n\nこの連携は、企業の営業チーム、CRMのデータ品質に依存するレベニューオペレーションの責任者、すべての顧客とのやりとりについてCRMを正となる記録とする組織のために作られています。",
     "useCases": [
       {
-        "title": "Log Gmail emails to Salesforce contact records automatically",
-        "description": "When a Gmail email is sent to or received from a Salesforce contact's email address, GAIA logs the email as an activity on the contact record with the subject, timestamp, and direction, keeping the CRM timeline complete."
+        "title": "受信した問い合わせメールからのリードの自動作成",
+        "description": "見込み客が初めて営業チームへメールを送ると、GAIAはメールと署名から得られる連絡先の情報をすべて含むリードの記録を作り、流入元を「メール」に設定し、元のメールを記録に添えます。営業担当はフォローのときに全体の文脈を持てます。"
       },
       {
-        "title": "Create Salesforce leads from inbound email replies",
-        "description": "When an inbound Gmail reply arrives from an email address not in Salesforce, GAIA creates a new lead with the sender's name, email, company, and the email content as the lead description, triggering immediate follow-up."
+        "title": "取引先と商談へのメール活動の記録",
+        "description": "連絡先とのメールのやりとりは、関連する取引先と商談の記録にメールの活動として自動で記録されます。営業マネージャーは、担当者に通話やメールの記録を促さなくても、完全なやりとりの履歴を得られます。"
       },
       {
-        "title": "Attach emails to Salesforce opportunity records",
-        "description": "GAIA matches Gmail emails to the relevant Salesforce opportunity based on the contact association and logs the email on both the contact and the deal record, giving account teams full deal email history in the CRM."
+        "title": "メールの兆候からの商談ステージの前進",
+        "description": "見込み客のメールに、提案書の依頼、参照先の確認、口頭での承諾など、商談の進展を示す表現があれば、GAIAが関連する商談を適切なステージへ進め、担当者向けのフォローアップタスクを作ります。"
       },
       {
-        "title": "Identify unresponsive prospects from email gaps",
-        "description": "GAIA monitors Gmail activity for Salesforce contacts and alerts the rep when a prospect has not replied to an email in a configurable number of days, prompting follow-up before the deal goes cold."
+        "title": "メールの署名からの連絡先の充実",
+        "description": "GAIAはメールの署名から役職、直通の電話番号、LinkedInのプロフィール、会社の情報を抜き出し、対応する連絡先の記録を更新します。関係が進むにつれて、CRMのデータが充実した最新の状態に保たれます。"
       },
       {
-        "title": "Draft Salesforce-informed email responses",
-        "description": "When a client email arrives, ask GAIA to draft a reply using CRM context — deal stage, last meeting notes, open tasks — so the response is personalized and accurate without the rep switching to Salesforce to look up details."
+        "title": "リードの変換時のメール通知",
+        "description": "商談化の面談が成功してリードが取引先と連絡先に変換されると、GAIAが新しい連絡先へGmailからお礼のメールを自動で送ります。新しい記録を整えている間も、やりとりが温かいまま保たれます。"
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Salesforce and Gmail to GAIA",
-        "description": "Authorize GAIA to access your Salesforce organization and Gmail account. GAIA matches Gmail sender and recipient addresses to Salesforce contact and lead records automatically."
+        "step": "GmailとSalesforceをGAIAに接続",
+        "description": "GAIAでメールアカウントとCRMの組織を認証します。サンドボックスと本番の両方に対応し、リード、連絡先、取引先、商談、活動の読み書きに必要なAPIの権限だけを求めます。"
       },
       {
-        "step": "Configure logging rules and lead creation criteria",
-        "description": "Define which Gmail emails to log — by contact domain, label, or thread — and set the criteria for when an unknown email address should create a new Salesforce lead versus be ignored."
+        "step": "メールからCRMへのルールを対応づける",
+        "description": "どの送信者でリードを作るか、メールを既存の記録にどう照合するか、どの商談ステージの変化をどのキーワードに対応させるか、どのメンバーの受信トレイを監視するかを設定します。"
       },
       {
-        "step": "GAIA keeps every client email in your CRM",
-        "description": "GAIA monitors Gmail for inbound and outbound messages matching Salesforce contacts and logs them automatically, while also creating leads from high-potential inbound emails so no prospect slips through."
+        "step": "GAIAがCRMを自動で最新に保つ",
+        "description": "GAIAは対象の受信トレイを監視し、メールの受信と送信に合わせて記録をリアルタイムで更新します。CRMは最新に保たれ、営業チームはデータ入力ではなく営業に時間を使えます。"
       }
     ],
     "faqs": [
       {
-        "question": "Does GAIA log every email or only emails to Salesforce contacts?",
-        "answer": "By default, GAIA logs only emails where the sender or recipient matches a Salesforce contact or lead email address. You can also configure it to log emails from specific domains or Gmail labels."
+        "question": "標準のオブジェクトだけでなく、Salesforceのカスタムオブジェクトにも対応していますか？",
+        "answer": "はい。標準のリード、連絡先、取引先、商談に加えて、カスタムオブジェクトの読み書きもできます。GAIAの設定で対応を説明すれば、メールの内容をカスタムフィールドに割り当てられます。"
       },
       {
-        "question": "Can GAIA attach the full email body to Salesforce or just a summary?",
-        "answer": "GAIA logs the email subject, timestamp, direction, and a configurable amount of the body text to the Salesforce activity record. Full email bodies can be included if your Salesforce storage limits allow."
+        "question": "複数の記録に一致するメールはどう扱われますか？",
+        "answer": "1つのメールが複数の記録に一致する場合（たとえば複数の商談に関わる連絡先）、設定に応じて、すべての関連する記録に活動を記録するか、どれに紐づけるかを確認します。"
       },
       {
-        "question": "What happens when an email involves multiple Salesforce contacts?",
-        "answer": "GAIA logs the email to all matching Salesforce contact records in the thread and associates it with the relevant open opportunity for each contact, ensuring no touchpoint is missed on multi-stakeholder deals."
+        "question": "LightningとClassicの両方に対応していますか？",
+        "answer": "GAIAはREST APIで連携するため、LightningとClassicの両方に対応します。チームがどちらの画面を使っていても動きます。"
       }
     ]
   },
   "gmail-airtable": {
     "toolA": "Gmail",
     "toolB": "Airtable",
-    "tagline": "Save email data to Airtable databases and trigger workflows from your inbox",
-    "metaTitle": "Gmail と Airtable の連携: メールのデータをレコードに",
-    "metaDescription": "GmailとAirtableをGAIAで連携。メールからAirtableのレコードを自動作成し、受信トレイの情報を構造化。手入力なしでデータベースを最新に保てます。",
+    "tagline": "メールのデータをAirtableのデータベースに保存し、受信トレイからワークフローを動かす",
+    "metaTitle": "Gmail + Airtable 連携: メールのデータをレコードに",
+    "metaDescription": "注文の確認、求人への応募、イベントの登録をGmailからAirtableのレコードとして取り込みます。GAIAが項目を抜き出します。設定手順をご覧ください。",
     "keywords": [
-      "Gmail Airtable integration",
-      "email to Airtable automation",
-      "Gmail Airtable workflow",
-      "save email data to Airtable",
-      "connect Gmail and Airtable",
-      "Airtable email sync"
+      "Gmail Airtable 連携",
+      "メールからAirtableへ",
+      "Gmail Airtable ワークフロー",
+      "メールのデータをAirtableに保存",
+      "GmailとAirtableの接続",
+      "Airtable メール同期"
     ],
-    "intro": "Airtable's power lies in its ability to structure and organize information flexibly — but feeding that database with data from email still requires someone to read each email and manually enter the relevant fields. For teams that receive high volumes of structured information by email — orders, applications, registrations, inquiries, or reports — manual data entry is a bottleneck that slows down operations and introduces errors.\n\nGAIA connects Gmail and Airtable so that email content flows automatically into the right database fields. When an order confirmation arrives, GAIA creates an Airtable record with the order number, customer name, items, and value extracted from the email. When a job application lands in your inbox, GAIA creates an applicant record with name, contact details, and relevant experience parsed from the email. Your Airtable databases stay current without anyone acting as a manual data relay.\n\nThis is particularly powerful for operations teams running Airtable-based workflows, HR teams managing applicant tracking, event teams handling registrations, and any team that receives structured data via email and needs it organized in a database.",
+    "intro": "Airtableの力は、情報を柔軟に構造化して整理できる点にあります。しかしメールからデータベースへ情報を入れるには、いまでも誰かが1通ずつ読んで項目を手入力する必要があります。注文、応募、登録、問い合わせ、レポートなど、構造化された情報を大量にメールで受け取るチームにとって、手入力は業務を遅らせ、誤りを招くボトルネックです。\n\nGAIAはGmailとAirtableをつなぎ、メールの内容が正しいデータベースの項目に自動で流れ込むようにします。注文の確認が届けば、GAIAが注文番号、顧客名、商品、金額をメールから抜き出してレコードを作ります。求人の応募が受信トレイに届けば、名前、連絡先、関連する経験を解析した応募者のレコードを作ります。データの仲介役がいなくても、データベースは最新に保たれます。\n\nこれは、データベースを中心に業務を回す運用チーム、応募者の管理を行う人事チーム、登録を扱うイベントのチーム、そして構造化されたデータをメールで受け取り、データベースで整理する必要があるあらゆるチームに特に力を発揮します。",
     "useCases": [
       {
-        "title": "Order and purchase confirmation data capture",
-        "description": "When order confirmation or purchase receipt emails arrive, GAIA extracts the structured data — order number, items, quantities, amounts, vendor name, and delivery date — and creates a new Airtable record in your orders or purchases database with all fields populated automatically."
+        "title": "注文と購入の確認データの取り込み",
+        "description": "注文の確認や購入の領収書のメールが届くと、GAIAが構造化されたデータ（注文番号、商品、数量、金額、取引先名、配送予定日）を抜き出し、注文や購入のデータベースにすべての項目を埋めた新しいレコードを作ります。"
       },
       {
-        "title": "Job application intake",
-        "description": "When job applications arrive by email, GAIA parses the applicant's details, extracts the position they are applying for, and creates a new record in your Airtable applicant tracking base, assigning the appropriate status and notifying the hiring manager."
+        "title": "求人応募の受け付け",
+        "description": "求人の応募がメールで届くと、GAIAが応募者の情報を解析し、応募先の職種を抜き出して、応募者管理のベースに新しいレコードを作り、適切なステータスを設定して採用担当者に知らせます。"
       },
       {
-        "title": "Event registration management",
-        "description": "Registration confirmation emails from events, webinars, or workshops are parsed by GAIA and added as records in your Airtable events database with attendee name, company, role, and registration date captured automatically."
+        "title": "イベント登録の管理",
+        "description": "イベント、ウェビナー、ワークショップの登録確認のメールをGAIAが解析し、参加者名、会社、役職、登録日を自動で捉えてイベントのデータベースにレコードとして追加します。"
       },
       {
-        "title": "Vendor invoice tracking",
-        "description": "Invoice emails from vendors are processed by GAIA, which extracts invoice number, vendor name, amount due, and payment due date, then creates a record in your Airtable accounts payable database and alerts your finance team if the amount exceeds a defined threshold."
+        "title": "取引先の請求書の追跡",
+        "description": "取引先からの請求書のメールをGAIAが処理し、請求書番号、取引先名、請求額、支払期限を抜き出して買掛金のデータベースにレコードを作り、金額が定めた基準を超えていれば財務チームに知らせます。"
       },
       {
-        "title": "Customer feedback collection",
-        "description": "Feedback and survey responses received by email are parsed by GAIA and stored as structured records in your Airtable feedback database, categorized by sentiment and topic so your product team can analyze patterns without reading every email manually."
+        "title": "顧客のフィードバックの収集",
+        "description": "メールで届いたフィードバックやアンケートの回答をGAIAが解析し、感情とトピックで分類した構造化されたレコードとしてフィードバックのデータベースに保存します。プロダクトチームはすべてのメールを読まずに傾向を分析できます。"
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Gmail and Airtable to GAIA",
-        "description": "Authenticate your Gmail account and Airtable workspace in GAIA's integration settings. Specify which Airtable bases and tables GAIA should have write access to, and GAIA will map your email fields to Airtable columns."
+        "step": "GmailとAirtableをGAIAに接続",
+        "description": "GAIAでGmailアカウントとAirtableワークスペースを認証します。書き込みを許可するベースとテーブルを指定すると、GAIAがメールの項目をテーブルの列に対応づけます。"
       },
       {
-        "step": "Define your email-to-record mapping",
-        "description": "Tell GAIA which types of emails should create records in which Airtable tables, and how email content maps to table fields. GAIA uses AI to extract structured data from unstructured email text, so you don't need perfectly formatted emails."
+        "step": "メールからレコードへの対応を決める",
+        "description": "どんな種類のメールをどのテーブルにレコードとして作るか、メールの内容をテーブルの項目にどう対応させるかをGAIAに伝えます。GAIAはAIで構造化されていないメールの文面からデータを抜き出すので、整った形式のメールである必要はありません。"
       },
       {
-        "step": "GAIA populates your Airtable databases automatically",
-        "description": "GAIA processes qualifying emails as they arrive and creates or updates Airtable records accordingly. Your databases stay current without manual data entry, and your team can focus on acting on the data rather than entering it."
+        "step": "GAIAがデータベースを自動で埋める",
+        "description": "GAIAは条件に合うメールを届くそばから処理し、それに応じてレコードを作成または更新します。手入力なしでデータベースが最新に保たれ、チームはデータの入力ではなく活用に集中できます。"
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA update existing Airtable records as well as create new ones?",
-        "answer": "Yes. GAIA can match incoming emails to existing Airtable records based on a key field like email address or order number, and update the record rather than creating a duplicate. For example, a follow-up email from a job applicant can update their existing applicant record."
+        "question": "新しいレコードの作成だけでなく、既存のレコードの更新もできますか？",
+        "answer": "はい。GAIAはメールアドレスや注文番号のようなキーの項目で受信メールを既存のレコードに照合し、重複を作らずに更新できます。たとえば応募者からのフォローアップのメールで、既存の応募者のレコードを更新できます。"
       },
       {
-        "question": "What if the email doesn't contain all the fields my Airtable table requires?",
-        "answer": "GAIA will populate the fields it can extract from the email and leave required fields blank or set them to a default value you specify. You can configure GAIA to notify you when a record is created with missing required fields so you can complete it manually."
+        "question": "メールにテーブルで必須の項目がすべて含まれていない場合は？",
+        "answer": "GAIAはメールから抜き出せる項目を埋め、必須の項目は空欄のままにするか、指定した既定値にします。必須の項目が欠けたままレコードが作られたときに通知するよう設定すれば、手動で補えます。"
       },
       {
-        "question": "Can GAIA trigger Airtable automations after creating a record?",
-        "answer": "Yes. Once GAIA creates a record in Airtable, any Airtable automations triggered by record creation will fire as normal. You can also configure GAIA to send a confirmation email or Slack notification after creating the Airtable record."
+        "question": "レコードを作成したあとにAirtableの自動化を動かせますか？",
+        "answer": "はい。GAIAがレコードを作れば、レコードの作成で動く自動化は通常どおり実行されます。レコードの作成後に確認のメールやSlackの通知を送るよう設定することもできます。"
       }
     ]
   },
   "gmail-stripe": {
     "toolA": "Gmail",
     "toolB": "Stripe",
-    "tagline": "Enrich payment emails with Stripe data and automate revenue notifications",
-    "metaTitle": "Stripe Gmail 連携: 決済アラートと売上レポート",
-    "metaDescription": "決済失敗、異議申し立て、サブスクリプションの通知を背景情報付きでGmailに届け、日次・週次の売上まとめも作成。GAIAがフォローアップを下書きします。設定手順をご覧ください。",
+    "tagline": "支払いのメールをStripeのデータで補い、売上の通知を自動化",
+    "metaTitle": "Stripe Gmail 連携: 支払いのアラートと売上のダイジェスト",
+    "metaDescription": "支払いの失敗、異議申し立て、サブスクリプションのアラートをGmailで受け取り、日次・週次の売上サマリーも得られます。GAIAがフォローを下書きします。設定手順をご覧ください。",
     "keywords": [
-      "Gmail Stripe integration",
-      "payment email Stripe automation",
-      "Gmail Stripe workflow",
-      "Stripe payment notification email",
-      "connect Gmail and Stripe",
-      "Stripe revenue alert Gmail"
+      "Gmail Stripe 連携",
+      "支払いメール Stripe 自動化",
+      "Gmail Stripe ワークフロー",
+      "Stripe 支払い通知メール",
+      "GmailとStripeの接続",
+      "Stripe 売上アラート Gmail"
     ],
-    "intro": "Stripe sends email notifications for payments, failed charges, disputes, and subscription events, but those emails contain only minimal context — a transaction ID and an amount. Getting the full picture requires logging into Stripe, finding the customer, and cross-referencing with your own records. For finance teams and operations managers processing dozens of payment events daily, this back-and-forth is a significant time drain.\n\nGAIA connects Gmail and Stripe so that payment-related emails are automatically enriched with detailed Stripe customer and transaction data. When a payment failure email arrives, GAIA fetches the customer's full payment history, subscription status, and contact details and compiles a complete summary so your team can respond intelligently without opening Stripe. Dispute and chargeback emails trigger automated evidence gathering. Revenue milestone emails can be generated automatically based on Stripe data.\n\nThis integration is most valuable for SaaS companies, e-commerce teams, and subscription businesses where payment events require coordinated action from finance, customer success, and operations teams.",
+    "intro": "Stripeは支払い、失敗した請求、異議申し立て、サブスクリプションのイベントについてメールで通知しますが、そのメールには取引IDと金額といった最小限の情報しかありません。全体像をつかむにはダッシュボードにログインし、顧客を探し、自社の記録と突き合わせる必要があります。毎日何十件もの支払いのイベントを扱う財務チームや運用の責任者にとって、この往復は大きな時間の浪費です。\n\nGAIAはGmailとStripeをつなぎ、支払いに関するメールを顧客と取引の詳細なデータで自動的に補います。支払い失敗のメールが届けば、GAIAが顧客の支払い履歴、サブスクリプションの状況、連絡先を取得して完全な要約にまとめます。ダッシュボードを開かずに、適切な対応ができます。異議申し立てやチャージバックのメールは、証拠の収集を自動で始めます。売上の節目のメールは、支払いのデータから自動で作れます。\n\nこの連携は、支払いのイベントに対して財務、カスタマーサクセス、運用の各チームが協力して対応する必要があるSaaS企業、ECのチーム、サブスクリプションの事業者に最も役立ちます。",
     "useCases": [
       {
-        "title": "Payment failure enrichment and follow-up",
-        "description": "When a failed payment notification arrives from Stripe, GAIA fetches the customer's full details from Stripe — their plan, payment history, and contact information — and composes a personalized follow-up email ready for review, so your team can respond in minutes rather than manually looking up each case."
+        "title": "支払い失敗の補完とフォローアップ",
+        "description": "Stripeから支払い失敗の通知が届くと、GAIAが顧客の詳細（契約内容、支払い履歴、連絡先）を取得し、確認用のパーソナライズしたフォローアップメールを組み立てます。1件ずつ手作業で調べる代わりに、数分で対応できます。"
       },
       {
-        "title": "Dispute and chargeback response automation",
-        "description": "When a Stripe dispute notification email arrives, GAIA automatically pulls the relevant transaction details, order confirmation, and communication history from Gmail and assembles a dispute evidence package to streamline your response before the deadline."
+        "title": "異議申し立てとチャージバックへの対応の自動化",
+        "description": "異議申し立ての通知メールが届くと、GAIAが関連する取引の詳細、注文の確認、Gmailのやりとりの履歴を自動で引き、異議申し立ての証拠一式をまとめます。期限までに対応しやすくなります。"
       },
       {
-        "title": "Daily and weekly revenue summaries",
-        "description": "GAIA pulls revenue data from Stripe and delivers a structured email summary to your finance team every morning or week — including total revenue, new subscribers, churned accounts, and outstanding invoices — eliminating the need for manual Stripe dashboard exports."
+        "title": "日次・週次の売上サマリー",
+        "description": "GAIAは売上のデータを引き、毎朝または毎週、総売上、新規の契約者、解約したアカウント、未回収の請求書を含む構造化されたメールのサマリーを財務チームへ届けます。ダッシュボードから手作業で書き出す必要がなくなります。"
       },
       {
-        "title": "Subscription event notifications to team email",
-        "description": "When a customer upgrades, downgrades, or cancels their subscription in Stripe, GAIA sends an enriched notification email to the relevant internal team with the customer's account history and context so customer success can reach out proactively."
+        "title": "サブスクリプションのイベントをチームのメールへ",
+        "description": "顧客がプランを上げる、下げる、解約すると、GAIAが顧客の履歴と文脈を添えた通知メールを該当する社内チームへ送ります。カスタマーサクセスが先手を打って声をかけられます。"
       },
       {
-        "title": "High-value payment alerts",
-        "description": "When a Stripe payment above a defined threshold is processed, GAIA sends an immediate alert email to your sales or finance leadership with the customer details, plan, and payment history so high-value transactions receive the attention they deserve."
+        "title": "高額の支払いのアラート",
+        "description": "定めた基準を超える支払いが処理されると、GAIAが顧客の詳細、契約内容、支払い履歴を添えたアラートのメールを営業や財務の責任者へすぐに送ります。高額の取引にふさわしい注意が向きます。"
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Gmail and Stripe to GAIA",
-        "description": "Authenticate your Gmail account and connect your Stripe account via API key in GAIA. GAIA uses read-only Stripe API access by default so your financial data remains secure."
+        "step": "GmailとStripeをGAIAに接続",
+        "description": "GAIAでメールアカウントを認証し、APIキーで決済のアカウントを接続します。財務のデータを守るため、GAIAは既定で読み取り専用のAPIを使います。"
       },
       {
-        "step": "Configure your payment event rules",
-        "description": "Define which Stripe events should trigger email actions, what data to pull from Stripe for enrichment, who should receive notifications, and what thresholds apply for high-value or high-priority alerts."
+        "step": "支払いのイベントのルールを設定",
+        "description": "どのイベントでメールの処理を動かすか、補完のためにどのデータを引くか、誰に通知するか、高額や優先度の高いアラートにどの基準を当てるかを決めます。"
       },
       {
-        "step": "GAIA enriches payment emails and automates revenue workflows",
-        "description": "GAIA monitors both incoming Stripe notification emails and Stripe webhook events, enriches them with full customer context, and dispatches the right actions — follow-up emails, internal alerts, or summary reports — automatically."
+        "step": "GAIAが支払いのメールを補い、売上の流れを自動化",
+        "description": "GAIAはStripeの通知メールとWebhookのイベントの両方を監視し、顧客の完全な文脈で補い、フォローアップのメール、社内のアラート、サマリーのレポートといった必要な対応を自動で振り分けます。"
       }
     ],
     "faqs": [
       {
-        "question": "Does GAIA need write access to my Stripe account?",
-        "answer": "For most workflows, GAIA only needs read access to retrieve customer and transaction data. If you want GAIA to take actions like issuing refunds or updating subscriptions, you can grant write permissions for those specific capabilities, but it is not required for email enrichment and notifications."
+        "question": "決済のアカウントへの書き込み権限は必要ですか？",
+        "answer": "ほとんどのワークフローでは、顧客と取引のデータを取得する読み取り権限だけで十分です。返金やサブスクリプションの更新といった操作を行いたい場合は、その機能に限って書き込みを許可できますが、メールの補完と通知には必要ありません。"
       },
       {
-        "question": "Can GAIA send automated dunning emails for failed payments?",
-        "answer": "Yes. GAIA can compose and send personalized dunning emails when payment failures occur, including the customer's name, the failed amount, and a link to update their payment method. You can set a sequence of escalating follow-ups on a schedule you define."
+        "question": "支払い失敗の督促メールを自動で送れますか？",
+        "answer": "はい。支払いが失敗したときに、顧客名、失敗した金額、支払い方法を更新するリンクを含む督促のメールを組み立てて送れます。設定したスケジュールで、段階的に強めるフォローの連続も組めます。"
       },
       {
-        "question": "Does this work with Stripe Connect or only standard Stripe accounts?",
-        "answer": "GAIA works with standard Stripe accounts. Stripe Connect support for marketplace and platform integrations is on the roadmap. Contact the GAIA team if you have a specific Connect use case."
+        "question": "Stripe Connectでも使えますか、標準のアカウントだけですか？",
+        "answer": "標準のアカウントで使えます。マーケットプレイスやプラットフォーム向けのConnectへの対応は今後の予定です。Connectの具体的な用途がある場合はGAIAのチームへご連絡ください。"
       }
     ]
   },
   "gmail-zoom": {
     "toolA": "Gmail",
     "toolB": "Zoom",
-    "tagline": "Create Zoom meetings from email invites and send join links automatically",
-    "metaTitle": "Gmail と Zoom の連携: メールから会議を予約",
-    "metaDescription": "GmailとZoomをGAIAで連携。日程調整メールの受信でZoom会議を自動作成し、参加者に参加リンクを送信。カレンダーと受信トレイを同期できます。",
+    "tagline": "メールの招待からZoom会議を作り、参加リンクを自動で送信",
+    "metaTitle": "Gmail + Zoom 連携: メールのやりとりからZoom会議を作成",
+    "metaDescription": "メールで日時が固まったらZoom会議を作成し、スレッドからはワンクリックで作れます。GAIAがメールのやりとりから定例会議も設定します。設定手順をご覧ください。",
     "keywords": [
-      "Gmail Zoom integration",
-      "email to Zoom meeting",
-      "Gmail Zoom automation",
-      "schedule Zoom from email",
-      "connect Gmail and Zoom",
-      "Zoom meeting email invite"
+      "Gmail Zoom 連携",
+      "メールからZoom会議を作成",
+      "Gmail Zoom 自動化",
+      "メールからZoomを設定",
+      "GmailとZoomの接続",
+      "Zoom 会議 メール招待"
     ],
-    "intro": "Scheduling a meeting over email is a multi-step process: negotiate a time by email, open Zoom to create a meeting, copy the link, return to Gmail, compose a reply with the link, and hope you didn't forget to add it to your calendar. When this process repeats dozens of times a week, it consumes significant time and is prone to errors — forgotten links, wrong time zones, and meetings that never make it onto the calendar.\n\nGAIA automates the Gmail-to-Zoom scheduling loop entirely. When an email arrives with a meeting request or a confirmed time, GAIA creates the Zoom meeting, adds it to your Google Calendar, and replies to the thread with the join link — all without you leaving your inbox. For teams using Zoom as their primary video conferencing tool, this eliminates the single most tedious step in the workday.\n\nThis integration is particularly valuable for executives, sales teams, consultants, and customer success managers who spend a significant portion of their day negotiating and setting up meetings over email.",
+    "intro": "メールで会議の日程を決めるのは何段階もの作業です。メールで日時を調整し、Zoomを開いて会議を作り、リンクをコピーし、Gmailに戻ってリンク付きの返信を書き、カレンダーへの追加を忘れていないことを願う。これが週に何十回も繰り返されると、多くの時間を奪い、誤りも起きます。リンクの付け忘れ、タイムゾーンの間違い、カレンダーに入らない会議です。\n\nGAIAはこの日程調整のループを丸ごと自動化します。会議の依頼や確定した日時のメールが届くと、GAIAが会議を作り、Google Calendarに追加し、参加リンクを添えてスレッドに返信します。受信トレイを離れる必要はありません。Zoomを主なビデオ会議の手段にするチームにとって、一日で最も煩わしい作業がなくなります。\n\nこの連携は、一日の多くの時間をメールでの日程調整と会議の設定に使う経営層、営業チーム、コンサルタント、カスタマーサクセスの担当者に特に役立ちます。",
     "useCases": [
       {
-        "title": "Auto-create Zoom meetings from confirmed email times",
-        "description": "When an email exchange concludes with a confirmed meeting time, GAIA detects the agreed time, creates a Zoom meeting for that slot, adds it to your calendar, and replies to the email thread with the Zoom join link and calendar invite so both parties are set up instantly."
+        "title": "確定した日時のメールからZoom会議を自動作成",
+        "description": "メールのやりとりが会議の日時の確定で終わると、GAIAが合意した日時を検知し、その枠で会議を作り、カレンダーに追加し、参加リンクとカレンダーの招待を添えてスレッドに返信します。往復なしで双方の準備が整います。"
       },
       {
-        "title": "One-click meeting creation from email",
-        "description": "Forward any email to GAIA with a note like 'set up a Zoom for Thursday at 2 PM' and GAIA creates the meeting, sends the invite to all email participants, and confirms the details back to you — turning a multi-step process into a single action."
+        "title": "メールからのワンクリックの会議作成",
+        "description": "メールをGAIAに転送し「木曜の14時にZoomを設定して」と一言添えれば、GAIAが会議を作り、メールの参加者全員に招待を送り、詳細をあなたに確認させます。何段階もの作業が1つの操作になります。"
       },
       {
-        "title": "Recurring meeting setup from email chains",
-        "description": "When an email discussion establishes a recurring check-in or weekly sync, GAIA creates the recurring Zoom meeting series, sends invites to all participants, and adds the series to your calendar so you never have to set up a recurring meeting manually again."
+        "title": "メールのやりとりからの定例会議の設定",
+        "description": "メールのやりとりで定例の確認や週次の同期が決まると、GAIAが繰り返しの会議を作り、全参加者に招待を送り、カレンダーに追加します。定例会議を手作業で設定する必要がなくなります。"
       },
       {
-        "title": "Zoom link recovery and resending",
-        "description": "When a meeting participant emails asking for the Zoom link, GAIA looks up the scheduled meeting, retrieves the join URL, and replies automatically so you don't have to dig through your calendar and compose a reply yourself."
+        "title": "Zoomリンクの再取得と再送",
+        "description": "参加者がリンクを求めるメールを送ると、GAIAが予定された会議を探して参加URLを取得し、自動で返信します。カレンダーを掘り返して返信を書く必要はありません。"
       },
       {
-        "title": "Post-meeting follow-up email automation",
-        "description": "After a Zoom meeting ends, GAIA sends an automated follow-up email to all participants with a summary of discussion points and agreed next steps extracted from the meeting, keeping the post-meeting communication loop closed without manual effort."
+        "title": "会議後のフォローアップメールの自動化",
+        "description": "会議が終わると、GAIAが会議から抜き出した議論の要点と合意した次の一手をまとめたフォローアップメールを全参加者へ自動で送ります。会議後の連絡も手作業なしで完結します。"
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Gmail and Zoom to GAIA",
-        "description": "Authenticate your Gmail account and Zoom account in GAIA's settings. GAIA uses Zoom's OAuth integration to create and manage meetings on your behalf, and accesses your Gmail to detect scheduling signals in email threads."
+        "step": "GmailとZoomをGAIAに接続",
+        "description": "GAIAで両方のアカウントを認証します。ZoomのOAuth連携で代理で会議を作成、管理し、受信トレイを読んでメールのスレッドから日程調整の兆候を検知します。"
       },
       {
-        "step": "Set your scheduling preferences",
-        "description": "Tell GAIA your default Zoom meeting settings — duration, waiting room preference, recording options, and calendar integration. You can also specify which types of email threads should trigger automatic meeting creation versus requiring your confirmation."
+        "step": "日程調整の好みを設定",
+        "description": "既定の会議の設定（長さ、待機室の利用、録画の可否、カレンダーとの連携）をGAIAに伝えます。どの種類のメールのやりとりで会議を自動で作るか、確認を挟むかも指定できます。"
       },
       {
-        "step": "GAIA handles meeting creation and communication automatically",
-        "description": "GAIA monitors your Gmail for meeting-related signals and creates Zoom meetings automatically when the conditions are met. Join links are sent to participants and meetings appear on your calendar without any manual steps."
+        "step": "GAIAが会議の作成と連絡を自動で担う",
+        "description": "GAIAは受信トレイで会議に関わる兆候を監視し、条件が満たされれば会議を自動で作ります。参加リンクは参加者へ送られ、会議は手作業なしでカレンダーに現れます。"
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA handle time zone differences when creating Zoom meetings from email?",
-        "answer": "Yes. GAIA detects time zone references in email text and converts them to the correct UTC time when creating the"
+        "question": "メールから会議を作るときに時差を扱えますか？",
+        "answer": "はい。メールの文面にあるタイムゾーンの記述を検知し、会議とカレンダーの予定を作るときに正しいUTCの時刻へ変換します。タイムゾーンが曖昧な場合は、会議を作る前に確認します。"
       },
       {
-        "question": "Will GAIA create Zoom meetings for every email that mentions a time, or only confirmed meetings?",
-        "answer": "GAIA uses context to distinguish between 'are you free Thursday at 2?' (a proposal) and 'confirmed: Thursday at 2 PM' (a commitment). You can also configure GAIA to always ask before creating a meeting if you prefer full control."
+        "question": "時刻に触れたすべてのメールで会議を作りますか、確定した会議だけですか？",
+        "answer": "GAIAは文脈で「木曜の14時は空いていますか」（提案）と「確定: 木曜14時」（約束）を見分けます。完全に自分で制御したい場合は、会議を作る前に必ず確認するよう設定することもできます。"
       },
       {
-        "question": "Does this work with Google Calendar for adding meeting events?",
-        "answer": "Yes. When GAIA creates a Zoom meeting from Gmail, it simultaneously creates the Google Calendar event with the Zoom link embedded so the meeting appears on your calendar with all the details in one place."
+        "question": "会議の予定を追加するのにGoogle Calendarと連携しますか？",
+        "answer": "はい。メールから会議を作るときに、参加リンクを埋め込んだGoogle Calendarの予定も同時に作り、会議の詳細が一か所にまとまった状態でカレンダーに現れます。"
       }
     ]
   },
