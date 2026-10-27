@@ -13,6 +13,7 @@ import uuid
 
 import pytest
 
+from app.constants.chat import CONVERSATION_MAX_RETAINED_PINS
 from app.db.repositories.cache import CachePolicy
 from app.db.repositories.conversations import ConversationRepository
 from app.models.chat_models import (
@@ -1113,6 +1114,7 @@ class TestHistoryTrimming:
         assert stored is not None
         assert [message.response for message in stored.messages] == ["m3", "m4", "m5"]
 
+    @pytest.mark.regression
     async def test_trimming_keeps_a_pinned_message_outside_the_window(self, repo):
         doc, ids = await self._seed(repo, 5)
         await repo.set_message_pinned(
@@ -1167,3 +1169,44 @@ class TestHistoryTrimming:
         stored = await repo.get(doc.conversation_id, user_id=doc.user_id)
         assert stored is not None
         assert [message.response for message in stored.messages] == ["m0", "m1", "m2", "m3"]
+
+    async def test_pins_retained_across_many_trims_stay_bounded(self, repo):
+        """Pins outlive the window, so the pin count needs its own ceiling."""
+        doc = _doc()
+        await repo.create(doc)
+        kept = CONVERSATION_MAX_RETAINED_PINS + 10
+        pinned_ids: list[str] = []
+        for index in range(kept):
+            added = await repo.append_messages(
+                doc.conversation_id,
+                user_id=doc.user_id,
+                messages=[MessageModel(type="user", response=f"p{index}")],
+            )
+            assert added is not None
+            pinned_ids.extend(added)
+
+        for message_id in pinned_ids:
+            await repo.set_message_pinned(
+                doc.conversation_id, user_id=doc.user_id, message_id=message_id, pinned=True
+            )
+
+        # Each append trims to the window, so every pin here lives outside it.
+        for index in range(3):
+            await repo.append_messages(
+                doc.conversation_id,
+                user_id=doc.user_id,
+                messages=[MessageModel(type="user", response=f"tail{index}")],
+                max_messages=3,
+            )
+
+        stored = await repo.get(doc.conversation_id, user_id=doc.user_id)
+        assert stored is not None
+        pinned = [message.response for message in stored.messages if message.pinned]
+        assert len(pinned) == CONVERSATION_MAX_RETAINED_PINS
+        # The newest pins survive; the oldest fall out with the messages carrying them.
+        assert pinned[0] == f"p{kept - CONVERSATION_MAX_RETAINED_PINS}"
+        assert [message.response for message in stored.messages][-3:] == [
+            "tail0",
+            "tail1",
+            "tail2",
+        ]

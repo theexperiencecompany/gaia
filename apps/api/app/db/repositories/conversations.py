@@ -22,6 +22,7 @@ from datetime import datetime
 from bson import ObjectId
 
 from app.constants.chat import (
+    CONVERSATION_MAX_RETAINED_PINS,
     FOLDED_CARDS_FIELD,
     FOLDED_CARDS_KEEP_SECONDS,
     SUBAGENT_GROUP_TOOL_NAME,
@@ -270,8 +271,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
 
         One atomic update: each message takes the folded cards waiting for its id
         into its tool_data, and those (and any a day stale) leave the waiting room.
-        max_messages caps stored history so per-workflow threads stay under 16MB,
-        keeping every pinned message ahead of the cap.
+        max_messages caps stored history so per-workflow threads stay under 16MB;
+        pinned messages outlive the cap, up to CONVERSATION_MAX_RETAINED_PINS.
         """
         stored: list[dict[str, object]] = []
         message_ids: list[str] = []
@@ -304,11 +305,16 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                             {
                                 "$concatArrays": [
                                     {
-                                        "$filter": {
-                                            "input": {"$slice": [appended, 0, "$$cut"]},
-                                            "as": "message",
-                                            "cond": {"$eq": ["$$message.pinned", True]},
-                                        }
+                                        "$slice": [
+                                            {
+                                                "$filter": {
+                                                    "input": {"$slice": [appended, 0, "$$cut"]},
+                                                    "as": "message",
+                                                    "cond": {"$eq": ["$$message.pinned", True]},
+                                                }
+                                            },
+                                            -CONVERSATION_MAX_RETAINED_PINS,
+                                        ]
                                     },
                                     {"$slice": [appended, -max_messages]},
                                 ]
