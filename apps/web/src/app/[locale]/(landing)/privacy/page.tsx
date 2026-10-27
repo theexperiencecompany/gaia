@@ -287,20 +287,65 @@ function DataSharingAndGoogleData() {
           3.2 Service Providers
         </h3>
         <p className="mb-2">
-          We may share your information with trusted third-party service
-          providers who assist us in operating our business, including:
+          We share personal information with the processors below only as needed
+          to run the Service. Each processes it only for the purpose described.
+          The list is current as of the effective date above.
         </p>
         <ul className="mb-4 ml-6 list-disc">
-          <li>Cloud hosting and infrastructure providers;</li>
-          <li>Payment processing companies;</li>
           <li>
-            Integration platforms that connect the Service to your third-party
-            accounts;
+            <strong>Hosting and infrastructure:</strong> Cloudflare (CDN,
+            Workers, image resizing, object storage), Google Cloud (servers),
+            Infisical (secrets management).
           </li>
-          <li>Customer support and communication platforms;</li>
-          <li>Analytics and monitoring services;</li>
-          <li>Security and fraud prevention services.</li>
+          <li>
+            <strong>Authentication:</strong> WorkOS (AuthKit sign-in).
+          </li>
+          <li>
+            <strong>AI models:</strong> OpenRouter (model routing), DeepSeek,
+            Google (Gemini models and embeddings), xAI, Anthropic, OpenAI.
+          </li>
+          <li>
+            <strong>Speech:</strong> Deepgram (transcription), ElevenLabs (voice
+            synthesis), LiveKit (real-time voice).
+          </li>
+          <li>
+            <strong>Search and retrieval:</strong> Brave Search, Tavily, Exa,
+            Firecrawl.
+          </li>
+          <li>
+            <strong>Code and browser execution:</strong> E2B (sandboxes), Vercel
+            (hosted browsers).
+          </li>
+          <li>
+            <strong>Messaging:</strong> Resend (email), Discord, Slack,
+            Telegram, Kapso (WhatsApp Business), Photon (iMessage).
+          </li>
+          <li>
+            <strong>Integrations you connect:</strong> Composio (OAuth and tool
+            execution), Google Workspace (Gmail, Calendar, Drive), Notion,
+            Figma, GitHub. When you connect any other marketplace integration,
+            GAIA sends data to that provider on your instruction and their terms
+            apply.
+          </li>
+          <li>
+            <strong>Payments:</strong> Dodo Payments.
+          </li>
+          <li>
+            <strong>Analytics and monitoring:</strong> PostHog, Google
+            Analytics, Rybbit, Fastlane, Sentry, Cloudinary, OpenWeather.
+          </li>
         </ul>
+        <p className="mb-2">
+          We do not sell personal information. To request our data processing
+          terms or a machine-readable copy of this list, contact{" "}
+          <Link
+            className="text-blue-500 underline"
+            href="mailto:support@heygaia.io"
+          >
+            support@heygaia.io
+          </Link>
+          .
+        </p>
         <p className="mb-2">
           <strong>Google User Data:</strong> We only share Google user data with
           service providers who are necessary for providing our AI assistant

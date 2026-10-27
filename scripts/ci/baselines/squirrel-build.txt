@@ -29,7 +29,6 @@ images/dimensions=100
 images/image-file-size=93
 images/offscreen-lazy=8
 images/optimized=5
-legal/subprocessor-disclosure=1
 links/orphan-pages=11
 links/weak-internal-links=8
 perf/cache-headers=99
