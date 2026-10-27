@@ -205,7 +205,17 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
 
         assert seams.send.await_args.kwargs["notification_text"] == message
 
-    async def test_the_run_conversation_is_never_written(self) -> None:
+    @pytest.mark.regression
+    async def test_a_silence_tag_inside_the_message_never_reaches_the_chat_app(self) -> None:
+        """Live: a daily check-in wrote its recap and its silence in one bubble, and both were sent."""
+        message = "Alex still needs a reply; the inbox fix remains unpushed."
+        narrated = (
+            f"{message} <SILENCE>Pending actions already noted.</SILENCE>{NEW_MESSAGE_BREAKER}"
+        )
+        with _seams(todo=_todo(), narrated=narrated) as seams:
+            await run_todo_on_executor(_request())
+
+        assert seams.send.await_args.kwargs["notification_text"].strip() == message
         """It has no transport and does not exist: a save there 404s and drops the result."""
         with _seams(todo=_todo()) as seams:
             await run_todo_on_executor(_request())

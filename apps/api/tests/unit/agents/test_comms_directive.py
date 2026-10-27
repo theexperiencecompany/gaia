@@ -93,6 +93,10 @@ class TestInterpretCommsOutput:
     def test_a_silence_without_a_reason_is_still_a_silence(self) -> None:
         assert interpret_comms_output("<SILENCE></SILENCE>").kind == CommsDirectiveKind.SILENCE
 
+    def test_a_silence_never_closed_is_still_a_silence(self) -> None:
+        d = interpret_comms_output(f"<SILENCE>nothing new{BREAK}")
+        assert (d.kind, d.payload) == (CommsDirectiveKind.SILENCE, "nothing new")
+
     def test_the_pre_tag_silence_line_is_still_a_silence(self) -> None:
         d = interpret_comms_output("SILENCE: no-op wake")
         assert d.kind == CommsDirectiveKind.SILENCE
@@ -114,7 +118,7 @@ class TestInterpretCommsOutput:
         text = "<SILENCE>is golden</SILENCE>\nBut here is the actual answer you asked for."
         d = interpret_comms_output(text)
         assert d.kind == CommsDirectiveKind.REPLY
-        assert d.payload == text
+        assert d.payload == "But here is the actual answer you asked for."
 
     def test_a_directive_before_a_message_leaves_only_the_message(self) -> None:
         d = interpret_comms_output(
@@ -156,6 +160,45 @@ class TestADirectiveBesideAReplyIsNeverDelivered:
         """Held while streaming because it could have become one; once the reply ends, it is text."""
         d = interpret_comms_output(f"<SILENCE>x</SILENCE>{BREAK}Re")
         assert (d.kind, d.payload) == (CommsDirectiveKind.REPLY, "Re")
+
+    @pytest.mark.regression
+    def test_a_directive_written_inside_a_reply_bubble_is_dropped(self) -> None:
+        """Regression: a daily check-in wrote prose and its silence in one bubble, and both reached the user."""
+        text = (
+            "Alex still needs a reply; the inbox fix remains unpushed. "
+            "<SILENCE>Daily check-in surfaced pending actions already noted.</SILENCE>"
+            f"{BREAK}"
+        )
+
+        d = interpret_comms_output(text)
+
+        assert (d.kind, d.payload) == (
+            CommsDirectiveKind.REPLY,
+            "Alex still needs a reply; the inbox fix remains unpushed. ",
+        )
+
+    @pytest.mark.parametrize(
+        ("text", "payload"),
+        [
+            (f"{PASSPORT}\n<SILENCE>threshold</SILENCE>", f"{PASSPORT}\n"),
+            (f"{PASSPORT}\n< SILENCE >threshold</ SILENCE >\nBook it.", f"{PASSPORT}\nBook it."),
+            ("Done <EMOJI>👍</EMOJI> and filed.", "Done and filed."),
+            ("Done. <EMOJI>👍</EMOJI>", "Done. "),
+            # Not a directive, so it is the model's text and stays.
+            ("Say <EMOJI>ok</EMOJI> back.", "Say <EMOJI>ok</EMOJI> back."),
+            ("Use <b>bold</b> here.", "Use <b>bold</b> here."),
+        ],
+    )
+    def test_a_directive_anywhere_in_a_bubble_never_shows(self, text: str, payload: str) -> None:
+        d = interpret_comms_output(text)
+        assert (d.kind, d.payload) == (CommsDirectiveKind.REPLY, payload)
+
+    async def test_an_inline_directive_is_logged_as_dropped(self) -> None:
+        async with captured_wide_event() as event:
+            interpret_comms_output(f"{PASSPORT} <SILENCE>threshold</SILENCE>")
+
+        (warning,) = event["warnings"]
+        assert warning["dropped_directives"] == [{"kind": "silence", "payload": "threshold"}]
 
     async def test_the_dropped_directive_is_logged(self) -> None:
         async with captured_wide_event() as event:
@@ -200,7 +243,7 @@ class TestVisibleCommsText:
             ("  ", ""),
             ("<b>bold</b> reply", "<b>bold</b> reply"),
             ("<EMOJI>\n", "<EMOJI>\n"),
-            ("<EMOJI>👍</EMOJI>\nand more", "<EMOJI>👍</EMOJI>\nand more"),
+            ("<EMOJI>👍</EMOJI>\nand more", "and more"),
             ("Hello there.<NEW_MESS", "Hello there."),
             ("Hello there. <", "Hello there. "),
             (f"Hello there.{BREAK}", "Hello there."),
@@ -219,6 +262,15 @@ class TestVisibleCommsText:
             ("< SILENCE >Already rep", ""),
             (f"Hello there.{BREAK}< SILENCE >x</SILENCE>", "Hello there."),
             ("< 5 items left", "< 5 items left"),
+            # A tag inside a bubble is held while it is written, then dropped.
+            ("Noted. <SIL", "Noted. "),
+            ("Noted. <SILENCE>already rep", "Noted. "),
+            ("Noted. <SILENCE>already reported</SILEN", "Noted. "),
+            ("Noted. <SILENCE>already reported</SILENCE>", "Noted. "),
+            ("Noted. <SILENCE>x</SILENCE> More.", "Noted. More."),
+            ("Noted.\n<SILENCE>x</SILENCE>\nMore.", "Noted.\nMore."),
+            ("Noted. <b>bo", "Noted. <b>bo"),
+            ("Noted. <EMOJI>ok</EMOJI>", "Noted. <EMOJI>ok</EMOJI>"),
         ],
     )
     def test_while_streaming(self, text: str, visible: str) -> None:
@@ -238,6 +290,10 @@ class TestVisibleCommsText:
             (f"A.{BREAK}  {BREAK}C", f"A.{BREAK}C"),
             ("< SILENCE >Already reported.</SILENCE>", ""),
             (f"Hello there.{BREAK}< EMOJI >👍</ EMOJI >", "Hello there."),
+            ("Noted. <SILENCE>already reported</SILENCE>", "Noted. "),
+            ("Noted. <SILENCE>never closed", "Noted. "),
+            ("Noted.\n< SILENCE >never closed\nMore.", "Noted.\nMore."),
+            ("Noted. <SILENCE>wrong close</EMOJI>", "Noted. "),
         ],
     )
     def test_once_the_message_ended(self, text: str, visible: str) -> None:
@@ -247,10 +303,11 @@ class TestVisibleCommsText:
         """Clients append each delta; text shown early and then retracted would stay on screen."""
         text = (
             f"Hi <b>there</b>.{BREAK}  < SILENCE >no</ SILENCE >{BREAK}"
-            "Re: your trip<NEW_LINE_BREAK>ok"
+            "Re: your trip<NEW_LINE_BREAK>ok <SILENCE>dup</SILENCE> then\n"
+            "<EMOJI>👍</EMOJI>\ndone"
         )
         shown = [visible_comms_text_so_far(text[:end]) for end in range(len(text) + 1)]
         shown.append(visible_comms_text(text))
         for earlier, later in pairwise(shown):
             assert later.startswith(earlier)
-        assert shown[-1] == f"Hi <b>there</b>.{BREAK}Re: your trip<NEW_LINE_BREAK>ok"
+        assert shown[-1] == (f"Hi <b>there</b>.{BREAK}Re: your trip<NEW_LINE_BREAK>ok then\ndone")

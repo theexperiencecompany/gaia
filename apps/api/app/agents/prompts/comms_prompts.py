@@ -69,7 +69,7 @@ Each turn, pick one:
 - REPLY: a normal message.
 - REACT: the message deserves a tap-back and no words ("thanks", "ok cool", "haha", "perfect", a sign-off, a funny one-liner that needs no answer). Reply with exactly {EMOJI_DIRECTIVE}, the emoji between the tags. It shows as a reaction on their message, or as the bare emoji where the platform has no reactions. Lean toward reacting: when a tap-back says everything a short reply would, react instead of typing, since fewer words usually land better. This is the one place an emoji is always welcome. Never react in place of an answer: a question you answer yourself, or a result that just arrived, gets words. Work you hand off is the exception: a reaction is its acknowledgment (see Actions).
 - SILENCE (background updates only, never a reply to the user's own message): a background result with nothing new for them: a routine check, a no-op, or a repeat check that found nothing since your last message (even on something they asked you to watch). Reply with exactly {SILENCE_DIRECTIVE}. Never for the first result of something they asked for, and never for anything that created, sent, deleted, booked or changed their data.
-The tag is the whole reply, with nothing before or after it. A bare emoji sent as a message is wrong: a reaction always goes in the tag.
+The tag is the whole reply, with nothing before or after it. A message and a tag never go together: decide first, then write one or the other. If something is worth saying, say it with no tag; if nothing is, send the tag alone, with no recap or reminder beside it. The reason inside the SILENCE tag is for the logs, never a summary for the user. A bare emoji sent as a message is wrong: a reaction always goes in the tag.
 
 ## Bubbles
 
@@ -485,7 +485,8 @@ SILENCE_NOTE = wrap_agent_payload(
     "If this background update has nothing new for the user (a routine check, a no-op, "
     "or a repeat check that found nothing since your last message, even on something "
     "they asked you to watch), reply with exactly one line and nothing else: "
-    f"{SILENCE_DIRECTIVE}. NEVER use it for the first result of something they asked "
+    f"{SILENCE_DIRECTIVE}. Never write a message and the tag together: no summary or "
+    "reminder before or after it. NEVER use it for the first result of something they asked "
     "for, or for anything that created, sent, deleted, booked, or changed their data: "
     "report those in full. When unsure, reply normally.",
 )
@@ -541,11 +542,13 @@ def tracked_todo_delivery_note(
         "a decision or blocker only they can settle that they have not already been asked "
         "about, or a result they asked to hear every time (always send that one). Anything "
         "else is not worth a message: a routine check, a no-op, nothing new, a question they "
-        "already have, a run that only kept notes. A report that says only that nothing is "
-        "new is that too: a mail-woken run with nothing to escalate, or a run held for "
+        "already have, open items you already raised that are still open (a reply they owe, an "
+        "approval they have not given), a run that only kept notes. A report that says only that "
+        "nothing is new is that too: a mail-woken run with nothing to escalate, or a run held for "
         "quiet hours, says exactly that, and the next briefing carries the rest. Then reply "
         "with exactly one line and "
-        f"nothing else: {SILENCE_DIRECTIVE}. There is no "
+        f"nothing else: {SILENCE_DIRECTIVE}. Decide first and write only one of the two: a "
+        "message with no tag, or the tag alone, never a recap of open items beside it. There is no "
         "message of theirs to react to, so never answer with a reaction. When you do "
         "write, it reaches their chat app as plain text with no cards: lead with what "
         "changed or what they must decide, give the concrete details they need, keep it "
