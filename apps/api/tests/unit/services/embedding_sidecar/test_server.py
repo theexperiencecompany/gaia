@@ -303,7 +303,14 @@ class TestClientRetryContract:
 
         observed: list[tuple[str, str, int]] = []
 
-        async def fake_observed(operation: str, backend: str, count: int, awaitable):
+        async def fake_observed(
+            operation: str,
+            backend: str,
+            count: int,
+            awaitable,
+            *,
+            interactive: bool = False,
+        ):
             observed.append((operation, backend, count))
             return await awaitable
 
