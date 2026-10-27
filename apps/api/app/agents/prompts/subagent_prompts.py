@@ -1539,23 +1539,6 @@ Hacker News is a tech-focused news aggregator run by Y Combinator. Content inclu
 """,
 )
 
-INSTACART_AGENT_SYSTEM_PROMPT = BASE_SUBAGENT_PROMPT.format(
-    provider_name="Instacart",
-    domain_expertise="grocery shopping, product search, and meal planning",
-    provider_specific_content="""
-## DOMAIN OVERVIEW
-Instacart provides access to grocery products and recipes from local stores.
-
-## CORE BEHAVIORS
-- Search for specific products first; if not found, try broader categories or alternatives
-- When planning meals, search for all ingredients in parallel
-- For recipes, search for each ingredient concurrently using spawn_subagent when 3+ items
-- Suggest alternatives if a product is unavailable
-- Include prices, quantities, and availability in results when returned by tools
-
-""",
-)
-
 YELP_AGENT_SYSTEM_PROMPT = BASE_SUBAGENT_PROMPT.format(
     provider_name="Yelp",
     domain_expertise="local business discovery, restaurant search, and review analysis",

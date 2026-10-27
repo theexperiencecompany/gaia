@@ -1107,48 +1107,6 @@ HACKERNEWS_CONTENT = IntegrationContent(
     ],
 )
 
-INSTACART_CONTENT = IntegrationContent(
-    use_cases=[
-        "Add items to your Instacart cart by listing what you need in plain English",
-        "Search for grocery products and find the best options from local stores",
-        "Build a shopping list from a meal plan or recipe and send it to Instacart",
-        "Check availability and prices for specific products in your area",
-        "Automate your weekly grocery order with a recurring GAIA workflow",
-    ],
-    how_it_works=[
-        IntegrationHowItWorksStep(
-            title="Connect Instacart to GAIA",
-            body='Open the GAIA Marketplace, find Instacart, and click "Add to your GAIA". Connects via MCP. No complex OAuth setup required.',
-        ),
-        IntegrationHowItWorksStep(
-            title="Tell GAIA what groceries you need",
-            body='Say "I need ingredients for a pasta carbonara for four people" or "add almond milk, eggs, and sourdough bread to my cart". GAIA handles the search and cart management.',
-        ),
-        IntegrationHowItWorksStep(
-            title="GAIA handles your grocery shopping automatically",
-            body="Set up recurring shopping lists: GAIA can automatically populate your Instacart cart every Sunday with your weekly staples, ready for you to confirm and checkout.",
-        ),
-    ],
-    faqs=[
-        IntegrationFAQ(
-            question="Can GAIA add items directly to my Instacart cart?",
-            answer="Yes. GAIA can search for products and add them to your Instacart cart. You review and checkout from the Instacart app.",
-        ),
-        IntegrationFAQ(
-            question="Can GAIA suggest grocery lists from a meal plan?",
-            answer="Yes. Give GAIA a list of meals you plan to cook and it will generate a shopping list and add the ingredients to Instacart.",
-        ),
-        IntegrationFAQ(
-            question="Does GAIA know which stores are available in my area?",
-            answer="GAIA queries Instacart's product availability based on your location settings in Instacart. Local store inventory is pulled in real time.",
-        ),
-        IntegrationFAQ(
-            question="Can GAIA check prices on Instacart?",
-            answer="Yes. Ask GAIA to find the best price for a specific item and it will search available stores and return price comparisons.",
-        ),
-    ],
-)
-
 YELP_CONTENT = IntegrationContent(
     use_cases=[
         "Find top-rated restaurants, bars, or services near any location instantly",
