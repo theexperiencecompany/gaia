@@ -13840,63 +13840,63 @@
     ]
   },
   "figma-notion": {
-    "toolA": "Figma",
-    "toolB": "Notion",
-    "tagline": "Embed Figma designs in Notion pages and sync design status",
-    "metaTitle": "Figma と Notion の連携: デザインをドキュメントに埋め込み",
-    "metaDescription": "Notionに常に最新のデザインを表示。GAIAがFigmaフレームを埋め込み、デザインの状態をプロジェクトDBに同期します。設定手順をご覧ください。",
-    "keywords": [
-      "figma notion integration",
-      "connect figma notion",
-      "figma notion automation",
-      "gaia figma notion",
-      "figma notion workflow"
-    ],
-    "intro": "Product and design teams maintain Notion pages for requirements and specifications while the actual designs live in Figma. The disconnect means that Notion documents reference outdated screenshots instead of live designs, and design status updates in Figma never reach the project tracking databases in Notion.\n\nGAIA links Figma and Notion so designs are always embedded live in the right pages and design status flows into Notion databases automatically. When a designer marks a frame ready, the Notion feature page reflects it. When a new Notion feature page is created, GAIA creates a linked Figma file ready for design work.",
-    "useCases": [
+    "faqs": [
       {
-        "title": "Embed live Figma frames in Notion pages",
-        "description": "When a new Figma frame is created for a feature, GAIA embeds it live in the corresponding Notion page. Stakeholders always see the current design, not a stale screenshot."
+        "answer": "GAIAがファイルの埋め込みURLでライブの対話型埋め込みを挿入します。閲覧者は最新のデザインを確認し、ページ内で直接フレームを移動できます。",
+        "question": "NotionのFigma埋め込みはライブですか、静止画ですか？"
       },
       {
-        "title": "Sync design status to Notion project database",
-        "description": "When a Figma file's status changes to 'Ready for Review,' GAIA updates the Notion project database record. Product managers see design progress without leaving Notion."
+        "answer": "はい。コメントスレッドはページのコメント区分へ反映でき、デザインツールのアカウントなしの人にもデザインフィードバックの可視性を与えます。",
+        "question": "GAIAはデザインコメントをページへ同期できますか？"
       },
       {
-        "title": "Create Figma files from Notion project pages",
-        "description": "When a new feature is created in the Notion product database, GAIA creates a corresponding Figma file from your team's template. Design starts organized and linked from day one."
-      },
-      {
-        "title": "Log Figma version history in Notion",
-        "description": "Each time a Figma version is published, GAIA appends an entry to the design history table on the Notion page. Teams maintain a clear design changelog inside their documentation."
+        "answer": "GAIAは特定のブランチを追跡してブランチ状況をページへ反映できます。ブランチのマージ時、ページ状況は相応に更新されます。",
+        "question": "ブランチで動作しますか？"
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Figma and Notion to GAIA",
-        "description": "Authorize GAIA with your Figma account and Notion workspace. GAIA maps your Figma projects to the corresponding Notion databases."
+        "description": "FigmaアカウントとNotionワークスペースでGAIAを認証します。GAIAがデザインプロジェクトを対応データベースに対応づけます。",
+        "step": "FigmaとNotionをGAIAに接続"
       },
       {
-        "step": "Configure embedding rules and status mappings",
-        "description": "Define which Figma files embed in which Notion pages and how Figma status tags map to Notion database properties. GAIA maintains these links automatically."
+        "description": "どのファイルがどのページに埋め込まれるか、状況タグをデータベース属性にどう対応させるか定義します。GAIAがこれらのリンクを自動維持します。",
+        "step": "埋め込みルールと状況対応を設定"
       },
       {
-        "step": "GAIA automates design-to-documentation sync",
-        "description": "Figma updates flow into Notion in real time. Designs are embedded live, statuses are updated, and version history is logged without manual intervention."
+        "description": "更新は両者間をリアルタイムに移動します。デザインはライブ埋め込みされ、状況は更新され、バージョン履歴は手動介入なしに記録されます。",
+        "step": "GAIAがデザインから文書への同期を自動化"
       }
     ],
-    "faqs": [
+    "intro": "製品とデザインのチームは要件や仕様用にNotionページを維持し、実際のデザインはFigmaにあります。この断絶のため、文書はライブデザインではなく古いスクリーンショットを参照し、デザイン状況の更新はNotionのプロジェクト追跡データベースに届きません。\n\nGAIAは両者をリンクし、デザインが常に正しいページにライブ埋め込みされ、デザイン状況が自動でデータベースへ流れるようにします。デザイナーがフレームの準備完了を印づけたら、機能ページはそれを反映します。新規機能ページが作成されたら、GAIAがデザイン作業向けのリンクされたファイルを作成します。",
+    "keywords": [
+      "figma notion 連携",
+      "figma notionの接続",
+      "figma notion 自動化",
+      "gaia figma notion",
+      "figma notion ワークフロー"
+    ],
+    "metaDescription": "Notionプロジェクトページに最新のデザインを表示し続けます。GAIAがライブのFigmaフレームを埋め込み、各デザインの状況をNotionデータベースへ同期します。設定手順をご覧ください。",
+    "metaTitle": "Figma + Notion 連携: 文書内のライブデザイン",
+    "tagline": "FigmaデザインをNotionページに埋め込み、デザイン状況を同期します",
+    "toolA": "Figma",
+    "toolB": "Notion",
+    "useCases": [
       {
-        "question": "Are Figma embeds in Notion live or static images?",
-        "answer": "GAIA uses Figma's embed URL to insert live, interactive embeds in Notion. Viewers see the current design and can navigate frames directly within the Notion page."
+        "description": "機能向けに新規フレームが作成されたら、GAIAが対応するページへライブ埋め込みします。関係者は古いスクリーンショットではなく常に最新のデザインを確認できます。",
+        "title": "ライブのFigmaフレームをNotionページに埋め込み"
       },
       {
-        "question": "Can GAIA sync Figma comments to Notion?",
-        "answer": "Yes. Figma comment threads can be mirrored to a comments section of the Notion page, giving non-Figma users visibility into design feedback without needing a Figma account."
+        "description": "ファイル状況が「レビュー準備完了」に変わったら、GAIAがプロジェクトデータベースのレコードを更新します。プロダクトマネージャーはNotionを離れずにデザイン進捗を把握できます。",
+        "title": "デザイン状況をプロジェクトデータベースへ同期"
       },
       {
-        "question": "Does this work with Figma branches?",
-        "answer": "GAIA can track specific Figma branches and reflect branch status in Notion. When a branch is merged, the Notion page status updates accordingly."
+        "description": "製品データベースに新規機能が作成されたら、GAIAがチームのテンプレートから対応ファイルを作成します。デザインは初日から整理されリンクされた状態で始まります。",
+        "title": "NotionプロジェクトページからFigmaファイルを作成"
+      },
+      {
+        "description": "版が公開されるたびに、GAIAがページのデザイン履歴表に項目を追記します。チームは文書内に明確なデザイン変更履歴を維持します。",
+        "title": "文書にバージョン履歴を記録"
       }
     ]
   },
@@ -14084,435 +14084,435 @@
     ]
   },
   "airtable-slack": {
-    "toolA": "Airtable",
-    "toolB": "Slack",
-    "tagline": "Airtableのレコード通知とまとめをSlackに送り、SlackのメッセージをAirtableのレコードとして保存",
-    "metaTitle": "Airtable Slack 連携: レコード通知と日次まとめ",
-    "metaDescription": "Airtableのレコード変更をビューごとに絞ってSlackへ通知。GAIAはSlackのメッセージからレコードも作成します。設定手順をご覧ください。",
-    "keywords": [
-      "airtable slack integration",
-      "connect airtable slack",
-      "airtable slack automation",
-      "gaia airtable slack",
-      "airtable slack workflow"
-    ],
-    "intro": "Airtable Slack連携とは、Airtableのレコードの変更をSlackに投稿し、SlackのメッセージをAirtableのレコードに変える仕組みです。Airtableには標準機能があります。Airtableのオートメーションで「When a record is created」「When a record is updated」「When a record enters a view」などのトリガーを選び、メッセージを送るSlackアクションを追加してチャンネルを指定するだけです。決まった1種類の通知なら、これが最も手早い方法です。GAIAはそのアクションではできない部分を担います。人が読みやすいまとめの作成、変更ごとに投稿先チャンネルを判断すること、そしてSlackのメッセージをAirtableに書き戻すことです。\n\nGAIAでは2つの方向で動き方が異なります。SlackからAirtableへはイベント駆動です。GAIAのSlackトリガーは指定したチャンネルに新しいメッセージが届くたびに起動し(ボットのメッセージ、DM、スレッドの返信は除外できます)、ワークフローがレコードを作成または更新します。AirtableからSlackへはスケジュール実行です。Airtableは変更をGAIAに送らないためです。実行のたびにGAIAはフィルターに合うレコード、たとえば特定のビューのレコードや、Last modified timeが前回の実行より後のレコードを一覧にし、まとめを投稿します。受付キューなら15分ごと、パイプラインのまとめなら朝1回で十分です。\n\n編集のたびに数秒以内でSlackに投稿したい場合は、Airtable内で完結させてください。AirtableのSlackアクション、またはレコードをSlackの着信Webhook URLに送る「Run script」ステップなら、レコードが変わった時点で動きます。GmailやGoogle スプレッドシートを組み合わせる場合も考え方は同じです。GAIAにはGmailの新着メールとGoogle スプレッドシートの新しい行のトリガーがあるため、「見込み客からメールが来たらAirtableにレコードを作り、#salesに知らせる」はメールが届くたびに実行されます。TypeformはGAIAの連携先に含まれていません。TypeformからAirtableとSlackへつなぐ場合は、Typeform自身のAirtable連携とSlack連携を使ってください。\n\nワークフローの例:「平日の毎朝9時に、営業ベースのDealsテーブルからStageがClosed Wonで昨日以降に更新されたレコードを抽出し、案件名、担当者、金額を添えて#sales-winsに投稿する」",
-    "useCases": [
+    "faqs": [
       {
-        "title": "レコードのステータス変更をSlackに通知",
-        "description": "スケジュール実行のたびに、GAIAは前回の確認以降にステータス項目が変わったレコード(成約した商談、完了したタスク、承認された申請)を見つけ、該当チャンネルに投稿します。編集から数秒以内の通知が必要なら、Airtable自身のSlackアクションを使ってください。"
+        "answer": "はい。ワークフローでビューを名指しします（たとえば「Open bugs - P1」）。GAIAはそのビューのレコードだけを列挙するため、チャネルはチームがベースで使うのと同じ絞りを見ます。",
+        "question": "通知を特定のAirtableビューだけに絞れますか？"
       },
       {
-        "title": "SlackのメッセージからAirtableのレコードを作成",
-        "description": "GAIAのSlackトリガーは指定したチャンネルの新しいメッセージを読み取ります。「見込み客: Dana Ruiz、Acme社、来週デモ希望」のようなメッセージが、名前、会社、要望を入力済みのLeadsテーブルのレコードになります。どのメッセージを対象にするかはワークフローで指定するため、普段の会話には手を付けません。"
+        "answer": "GAIAへ直接引き起こすものはありません。ベースが変更イベントをGAIAへ送らないためです。GAIAは予定でレコードを読み、計算式が検査できる任意の項目（単一選択・状況・チェックボックス・日付・数値・最終更新時刻）で絞れます。項目変化そのものへのきっかけには、ベース内の「レコード更新時」の自動化とチャネルへメッセージを送るアクションを使います。",
+        "question": "どの項目種別がチャネル通知を引き起こせますか？"
       },
       {
-        "title": "受付フローの新規レコード通知",
-        "description": "GAIAは設定した間隔で受付テーブルを確認し、新しいレコード(フォーム送信、バグ報告、依頼)を担当チャンネルに投稿します。1回の実行につき1件のメッセージにまとめるので、チャンネルがあふれません。"
+        "answer": "はい。GAIAがリンクレコード項目やロールアップ値を取り込んでメッセージに含められ、受信者は関連テーブルからの完全な文脈を得られます。",
+        "question": "通知に関連テーブルのリンクレコードデータを含められますか？"
       },
       {
-        "title": "Airtableの毎日のまとめをSlackに投稿",
-        "description": "GAIAは毎朝、Airtableの主要な指標(未完了のタスク、パイプラインの金額、保留中の依頼)のまとめをチームのSlackチャンネルに投稿します。全員が同じデータで1日を始められます。"
+        "answer": "ベース内では、「レコード更新時」のトリガーで自動化を作り、監視項目を選び、メッセージを送るアクションを追加して、チャネルとメッセージを設定します。編集の直後に投稿されます。GAIAでは、「15分ごとに前回実行以降に更新された要求テーブル内のレコードを探し、各々の一行要約を#opsへ投稿する」のような定期実行ワークフローを作ります。GAIAが要約と振り分けを加えます。一つの固定アラートには標準自動化が高速です。",
+        "question": "レコード更新時にSlack通知を自動送信するにはどうしますか？"
+      },
+      {
+        "answer": "はい、ベース側からできます。チャネル用の受信Webhookを作り、ベースの自動化にレコード項目をそのURLへPOST要求で送る「スクリプト実行」アクションを追加します。GAIAはベースからWebhookを受け取らないため、変更ごとの生メッセージにはこの経路を、定期ダイジェストや人向けメッセージにはGAIAを使います。",
+        "question": "Webhookでベースをチャネルに接続できますか？"
+      },
+      {
+        "answer": "はい。3つすべてをGAIAに接続して流れを説明します。たとえば「新規顧客からのメール到着で顧客テーブルにレコードを作成し、氏名と要望を#new-clientsへ投稿する」。Gmailトリガーが各メール到着でワークフローを開始します。Google Sheetsも新規行トリガーで同様です。",
+        "question": "Gmailとベースとチャネルをつなげられますか？"
       }
     ],
     "howItWorks": [
       {
-        "step": "AirtableとSlackをGAIAに接続",
-        "description": "AirtableアカウントとSlackワークスペースでGAIAを認可します。これでGAIAは許可したベースのレコードを読み書きでき、アクセスできるSlackチャンネルに投稿できます。"
+        "description": "AirtableアカウントとSlackワークスペースでGAIAを認証します。GAIAは許可したベースのレコードを読み書きでき、アクセスできるチャネルへ投稿できます。",
+        "step": "AirtableとSlackをGAIAに接続"
       },
       {
-        "step": "ワークフローを書いてトリガーを選ぶ",
-        "description": "やりたいことを普段の言葉で書き、トリガーを選びます。SlackからAirtableへはSlackの新着メッセージトリガー、AirtableからSlackへはスケジュール(15分ごと、1時間ごと、毎日)です。ベース、テーブル、項目、チャンネルを明記すると、メッセージに必要な情報が入ります。"
+        "description": "何をすべきか平易な言葉で書き、きっかけを選びます。メッセージのベース保存向けにはチャネルの新規メッセージトリガー、レコードのチャネル投稿向けには予定（15分ごと・毎時・毎日）。ベース・テーブル・項目・チャネルを名指しして、各メッセージが有用な文脈を運ぶようにします。",
+        "step": "ワークフローを説明してきっかけを選ぶ"
       },
       {
-        "step": "GAIAがバックグラウンドで実行",
-        "description": "スケジュール実行でAirtableを読み取ってSlackに投稿し、Slackの新しいメッセージは届いた時点でレコードを作成・更新します。本番で使う前に一度手動で実行し、結果を確認してください。"
+        "description": "定期実行はベースを読んでチャネルへ投稿し、新規メッセージは到着次第レコードを作成・更新します。本運用の前に一度だけ手動実行して出力を確認します。",
+        "step": "GAIAが裏側で実行"
       }
     ],
-    "faqs": [
+    "intro": "ベースをワークスペースチャネルにつなぐと2つの仕事をします。レコード変更をチャネルへ投稿し、メッセージをレコードに変えます。Airtableにはこれが標準搭載です。「レコード作成時」「レコード更新時」「レコードがビューに入ったとき」のようなトリガーの自動化を作り、メッセージを送るSlackアクションを追加して、チャネルを選びます。一つの固定アラートにはそれが最速の構成です。GAIAはそのアクションにできない部分を担います。人向けに書かれたダイジェスト、変更が属するチャネルの判断、メッセージのベースへの保存です。\n\nGAIAでの2つの方向は異なる動きです。メッセージ保存はイベント駆動です。GAIAのSlackトリガーは選んだチャネルの各新規メッセージで発火し（ボットメッセージ・DM・スレッド返信は除外できます）、ワークフローがレコードを作成・更新します。チャネルへの投稿は予定で動きます。Airtableは変更をGAIAへプッシュしないためです。各実行でGAIAは絞りに一致するレコードを列挙します。たとえばビューのレコードや最終更新時刻が前回実行以降のレコード。要約を投稿します。15分ごとが受付待ち行列に適し、朝一回がパイプライン要約に十分です。\n\n全編集の数秒以内の投稿が必要なら、ベース内に留まります。標準のメッセージアクションか、レコードを受信Webhook URLへ送る「スクリプト実行」手順が、レコード変化後すぐに発火します。GmailやGoogle Sheetsが流れに加わっても同じ分かれ目です。GAIAには新規Gmailメッセージと新規Google Sheets行のイベントトリガーがあるため、「リードのメール到着でベースへレコード追加して#salesへ知らせる」は各メール到着で動きます。TypeformはGAIAの連携の一つではありません。Typeformからベースを経てチャネルへの流れには、Typeform独自の両ツールへの接続を使います。\n\nワークフローの例：「平日9時に営業ベースの商談テーブルの商談段階が成約で昨日以降に更新されたレコードを列挙し、商談名・所有者・金額つきで#sales-winsへ投稿する。」",
+    "keywords": [
+      "airtable slack 連携",
+      "airtable slackの接続",
+      "airtable slack 自動化",
+      "gaia airtable slack",
+      "airtable slack ワークフロー"
+    ],
+    "metaDescription": "Airtableレコードの変化を、気になるビューで絞ったSlackアラートで受け取ります。GAIAはSlackメッセージからレコードも作成します。設定手順をご覧ください。",
+    "metaTitle": "Airtable Slack 連携: レコードアラートと日次ダイジェスト",
+    "tagline": "AirtableレコードのアラートやダイジェストをSlackへ送り、チャネルメッセージをレコードとして保存します",
+    "toolA": "Airtable",
+    "toolB": "Slack",
+    "useCases": [
       {
-        "question": "通知を特定のAirtableビューに絞れますか?",
-        "answer": "はい。ワークフローでビュー名(例:「未対応バグ - P1」)を指定すると、GAIAはそのビューのレコードだけを一覧にします。SlackチャンネルにはチームがAirtableで使っているのと同じ絞り込みが反映されます。"
+        "description": "各定期実行で、GAIAが前回確認以降に状況項目が動いたレコード（商談成約・タスク完了・要求承認）を探して関連チャネルへ投稿します。編集の数秒以内のアラートには、代わりにAirtable標準のSlackアクションを使います。",
+        "title": "Slackでのレコード状況変化通知"
       },
       {
-        "question": "どのAirtableの項目タイプでSlack通知を起動できますか?",
-        "answer": "GAIAを直接起動できる項目はありません。AirtableはGAIAに変更イベントを送らないためです。GAIAはスケジュールでレコードを読み取り、Airtableの数式で判定できる項目なら何でも絞り込みに使えます。単一選択、ステータス、チェックボックス、日付、数値、Last modified timeなどです。項目の変更そのものをトリガーにしたい場合は、Airtableのオートメーションで「When a record is updated」とSlackアクションを使ってください。"
+        "description": "GAIAの新規メッセージトリガーは選んだチャネルの新規メッセージを読みます。「見込み客：Dana Ruiz、Acme、来週デモ希望」のようなメッセージは、氏名・会社・要望を埋めた見込み客テーブルのレコードになります。どのメッセージが対象かワークフローに伝えるため、通常の雑談はそのままです。",
+        "title": "SlackメッセージからAirtableレコードを作成"
       },
       {
-        "question": "Slack通知に関連テーブルのリンクされたレコードの情報を含められますか?",
-        "answer": "はい。GAIAはリンクされたレコードの項目やロールアップの値をSlack通知に含められるため、受け取った人は関連テーブルの情報まで把握できます。"
+        "description": "GAIAが設定した予定で受付テーブルを確認し、新規レコード（フォーム送信・バグ報告・要求）を担当チャネルへ投稿します。実行ごとに一つのメッセージにまとめるため、チャネルは埋もれません。",
+        "title": "受付ワークフロー向けの新規レコードアラート"
       },
       {
-        "question": "Airtableのレコードが更新されたときにSlackへ自動通知するには?",
-        "answer": "Airtableで行う場合: トリガー「When a record is updated」のオートメーションを作り、監視する項目を選び、Slackアクションを追加してチャンネルとメッセージを設定します。編集の直後に投稿されます。GAIAで行う場合:「15分ごとに、前回の実行以降に更新された依頼テーブルのレコードを探し、1件ずつ1行のまとめを#opsに投稿する」のようなスケジュール実行のワークフローを作ります。GAIAは要約と振り分けを加えられ、決まった通知1種類ならAirtableの方が速く届きます。"
-      },
-      {
-        "question": "WebhookでAirtableとSlackを接続できますか?",
-        "answer": "はい、Airtable側で設定します。チャンネル用にSlackの着信Webhookを作成し、Airtableのオートメーションに「Run script」アクションを追加して、レコードの項目をそのURLにPOSTで送ります。GAIAはAirtableのWebhookを受け取らないため、変更1件ごとの素の通知にはこの方法を、スケジュールでのまとめや人向けに書いたメッセージにはGAIAを使ってください。"
-      },
-      {
-        "question": "Airtable、Gmail、Slackをまとめて連携できますか?",
-        "answer": "はい。3つともGAIAに接続し、流れを書くだけです。例:「新しい顧客からメールが届いたら、顧客テーブルにレコードを作り、名前と要望を#new-clientsに投稿する」。Gmailのトリガーがメールの到着ごとにワークフローを起動します。Google スプレッドシートも新しい行のトリガーで同じように動きます。"
+        "description": "GAIAがベースの主要指標（未完了タスク・パイプライン金額・保留要求）の朝のダイジェストをチームチャネルへ投稿します。全員が同じデータで一日を始めます。",
+        "title": "チーム向け日次Airtable要約ダイジェスト"
       }
     ]
   },
   "airtable-notion": {
-    "toolA": "Airtable",
-    "toolB": "Notion",
-    "tagline": "Sync data between Airtable bases and Notion databases seamlessly",
-    "metaTitle": "Airtable と Notion の連携: レコードを双方向同期",
-    "metaDescription": "AirtableのレコードをNotionページに同期し、NotionのタスクをAirtableに反映、ステータスも双方向で一致。GAIAが重複を防ぎます。設定手順をご覧ください。",
-    "keywords": [
-      "airtable notion integration",
-      "connect airtable notion",
-      "airtable notion automation",
-      "gaia airtable notion",
-      "airtable notion sync"
-    ],
-    "intro": "Teams often use Airtable for structured data management and Notion for documentation and project planning, resulting in duplicate data entry when the same information needs to live in both tools. A CRM record updated in Airtable never reflects in the Notion client page, and tasks added to a Notion project database don't appear in the Airtable operations tracker.\n\nGAIA syncs Airtable and Notion so data flows automatically between both systems. Record updates in Airtable propagate to the corresponding Notion database entries, and Notion page status changes update the linked Airtable records. Teams maintain one source of truth without choosing between the two tools they rely on.",
-    "useCases": [
+    "faqs": [
       {
-        "title": "Sync Airtable CRM records to Notion client pages",
-        "description": "When a client record is updated in Airtable, GAIA updates the corresponding Notion client page with the latest status, owner, and notes. Both tools reflect the same information without duplicate entry."
+        "answer": "GAIAは一般的な項目種別を自動変換します。ベースの選択項目はデータベースの選択属性に、日付項目は日付属性に対応します。特殊例には独自対応が利用可能です。",
+        "question": "GAIAはAirtableとNotionの項目種別の違いをどう扱いますか？"
       },
       {
-        "title": "Mirror Notion project tasks to Airtable",
-        "description": "Tasks created in a Notion project database are automatically added to the Airtable operations base. Operations teams track all work in Airtable while project managers work in Notion."
+        "answer": "はい。添付項目はデータベースのファイル・メディア属性へ同期できます。ファイルは転送・リンクされ、両レコードは同じ素材を参照します。",
+        "question": "GAIAはレコード添付ファイルをページへ同期できますか？"
       },
       {
-        "title": "Sync status fields bidirectionally",
-        "description": "Status changes in Airtable flow to the linked Notion database record and vice versa. Teams working in either tool always see current status without manual reconciliation."
-      },
-      {
-        "title": "Aggregate Airtable data in Notion dashboards",
-        "description": "GAIA pulls summary metrics from Airtable — counts, sums, averages — and updates Notion dashboard pages daily. Leadership sees live operational data inside their Notion workspace."
+        "answer": "いいえ。GAIAが同期レコードに一意の識別子を割り当てて出所を追跡し、重複を防ぎます。どちら側で更新されたレコードも新規作成ではなく相手側を更新します。",
+        "question": "双方向同期は重複レコードを生む危険がありますか？"
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Airtable and Notion to GAIA",
-        "description": "Authorize GAIA with your Airtable account and Notion workspace. GAIA maps Airtable table fields to Notion database properties for each sync pair you configure."
+        "description": "AirtableアカウントとNotionワークスペースでGAIAを認証します。GAIAが設定する各同期ペア向けにテーブル項目をデータベース属性に対応づけます。",
+        "step": "AirtableとNotionをGAIAに接続"
       },
       {
-        "step": "Configure field mappings and sync direction",
-        "description": "Define which fields sync between Airtable and Notion and whether sync is one-way or bidirectional. GAIA handles field type translation between the two platforms."
+        "description": "どの項目を同期するか、一方向か双方向かを定義します。GAIAが両ツール間の項目種別変換を処理します。",
+        "step": "項目対応と同期方向を設定"
       },
       {
-        "step": "GAIA automates cross-platform data sync",
-        "description": "Record changes in either platform are mirrored to the other according to your mappings. Data stays consistent without anyone manually updating two systems."
+        "description": "どちら側のレコード変更も対応づけに従ってもう片側へ反映されます。誰も2つのシステムを手動更新せずにデータは一貫します。",
+        "step": "GAIAに両側の同期維持を任せます"
       }
     ],
-    "faqs": [
+    "intro": "チームは構造化データ管理にAirtable、文書化とプロジェクト計画にNotionを使うことが多く、同じ情報が両方にあるべきときに重複データ入力を生みます。ベースで更新されたCRMレコードは顧客ページに現れず、プロジェクトデータベースに追加されたタスクはオペレーション追跡に現れません。\n\nGAIAは両者を同期し、データがベースとワークスペースのあいだを自動で動くようにします。Airtableのレコード更新はNotionの対応するデータベースエントリへ伝播し、ページの状況変化はリンクされたレコードを更新します。チームは頼る2つのツールから選ばずに単一の信頼できる情報源を維持します。",
+    "keywords": [
+      "airtable notion 連携",
+      "airtable notionの接続",
+      "airtable notion 自動化",
+      "gaia airtable notion",
+      "airtable notion 同期"
+    ],
+    "metaDescription": "AirtableレコードをNotionページへ同期し、NotionタスクをAirtableへ戻し、状況項目を双方向に対応づけます。GAIAが重複を防ぎます。設定手順をご覧ください。",
+    "metaTitle": "Airtable Notion 連携: 双方向のレコードと状況同期",
+    "tagline": "AirtableベースとNotionデータベースのあいだでデータを同期します",
+    "toolA": "Airtable",
+    "toolB": "Notion",
+    "useCases": [
       {
-        "question": "How does GAIA handle field type differences between Airtable and Notion?",
-        "answer": "GAIA translates common field types automatically — Airtable select fields map to Notion select properties, Airtable dates map to Notion date properties. Custom mappings are available for edge cases."
+        "description": "顧客レコードがAirtableで更新されたら、GAIAが対応する顧客ページを最新の状況・所有者・メモで更新します。重複入力なしに両ツールは同じ情報を反映します。",
+        "title": "Airtable CRMレコードをNotion顧客ページへ同期"
       },
       {
-        "question": "Can GAIA sync Airtable attachments to Notion?",
-        "answer": "Yes. Airtable attachment fields can be synced to Notion file and media properties. Files are transferred and linked so both records reference the same assets."
+        "description": "プロジェクトデータベースで作成されたタスクは自動でオペレーションベースに追加されます。オペレーションチームはそのベースで全仕事を追跡し、プロジェクトマネージャーはNotionで働きます。",
+        "title": "NotionプロジェクトタスクをAirtableへ反映"
       },
       {
-        "question": "Does bidirectional sync risk creating duplicate records?",
-        "answer": "No. GAIA assigns unique identifiers to synced records and tracks origin to prevent duplication. Records updated in either tool update their counterpart rather than creating a new entry."
+        "description": "ベースの状況変化はリンクされたデータベースレコードへ適用され、データベースの変化はベースレコードへ適用されます。どちらのツールで働くチームも手動突き合わせなしに常に現状を確認できます。",
+        "title": "状況項目を双方向に同期"
+      },
+      {
+        "description": "GAIAがベースから要約指標（件数・合計・平均）を取得してダッシュボードページを毎日更新します。経営層はワークスペース内で生の運営データを把握できます。",
+        "title": "ダッシュボードページにベースデータを集約"
       }
     ]
   },
   "airtable-google-calendar": {
-    "toolA": "Airtable",
-    "toolB": "Google Calendar",
-    "tagline": "Sync Airtable date fields to Google Calendar events automatically",
-    "metaTitle": "Airtable と Google カレンダーの連携: 期限を予定に",
-    "metaDescription": "Airtableの期限やコンテンツカレンダーをGoogleカレンダーの予定に変換し、日付の変更も自動反映。GAIAは任意のカレンダーに同期します。設定手順をご覧ください。",
-    "keywords": [
-      "airtable google calendar integration",
-      "connect airtable google calendar",
-      "airtable google calendar automation",
-      "gaia airtable google calendar",
-      "airtable google calendar sync"
-    ],
-    "intro": "AirtableとGoogleカレンダーは単体では互いに同期しないため、間をつなぐツールが必要です。GAIAは両方のアカウントに接続し、双方向に動きます。新しいGoogleカレンダーの予定ごとに、その詳細（タイトル、開始・終了時刻、参加者、場所、説明）からAirtableのレコードを作成でき、Airtableの日付フィールドをGoogleカレンダーの予定に変えることもできます。Airtableの日付をカレンダーで見るだけでよいなら、Airtableのカレンダービューで読み取り専用のiCalリンクを共有し、Googleカレンダーで購読する方法もあります。ただしGoogleは購読カレンダーを独自のタイミングで更新するため、変更が反映されるまで数時間かかることがあります。\n\n2つの方向は動き方が異なります。カレンダーからAirtableへはイベント駆動です。選んだカレンダーで新しい予定が作成されるとGAIAのGoogleカレンダートリガーが起動し、ワークフローがレコードを書き込みます。Airtableからカレンダーへはスケジュール実行です。AirtableはGAIAに変更を通知しないためです。GAIAは実行のたびにテーブルを読み、新しい日付の予定を作り、日付が変わった予定を移動します。10時5分に変更した日付は次の実行後に反映されます。チームの共有スケジュールなら1時間ごと、公開日なら1日1回で十分です。\n\nワークフローの例：「『顧客との通話』カレンダーに新しい予定が追加されたら、CRMベースの『ミーティング』テーブルにレコードを作成する。予定のタイトルを『名前』、開始時刻を『日付』、参加者のメールアドレスを『参加者』、説明を『メモ』に入れる。」逆方向のワークフローも作れます：「平日の毎朝8時に、『プロジェクト』テーブルで期日が14日以内のレコードごとに『締め切り』カレンダーへ終日の予定を追加し、日付が変わっていれば予定を移動する。」",
-    "useCases": [
+    "faqs": [
       {
-        "title": "Airtableのプロジェクト期限をカレンダーの予定に",
-        "description": "Airtableのプロジェクト管理表の日付フィールドが、レコード名とAirtableへのリンク付きのGoogleカレンダーの予定になります。GAIAはスケジュール実行のたびに新しい期限を追加するので、誰も書き写さなくても全員のカレンダーに届きます。"
+        "answer": "はい。ワークフローで各テーブルからのイベントを受け取るカレンダーを名指しします。異なるテーブルが異なるカレンダーを埋められます。たとえばコンテンツカレンダーとプロジェクトカレンダー。",
+        "question": "GAIAは主要カレンダーだけでなく特定のGoogleカレンダーへ同期できますか？"
       },
       {
-        "title": "コンテンツカレンダーをGoogleカレンダーに同期",
-        "description": "Airtableのコンテンツカレンダーにある公開日が、コンテンツチーム向けのGoogleカレンダーの予定として表示されます。ライターや編集者は、普段使っているカレンダーで予定を確認できます。"
+        "answer": "はい。GAIAが作成する各イベントにGoogle Meetリンクを追加できます。レコードから予定した会議は既に動画リンクを持ちます。",
+        "question": "GAIAはカレンダーイベントにGoogle Meetリンクを追加しますか？"
       },
       {
-        "title": "イベント運営のスケジュール管理",
-        "description": "会場、時間、主催者を含むAirtableのイベントレコードが、詳しい説明付きのGoogleカレンダーの予定になります。レコードに参加者が記載されていれば、GAIAが予定に追加し、Googleカレンダーが招待状を送ります。"
+        "answer": "レコード削除時にベースはGAIAへ通知しません。ワークフローが存在しなくなったレコードのイベント削除をGAIAに指示していれば、次回定期実行で行います。そうでなければイベントはカレンダーに残ります。望むルールをワークフローに書き込みます。",
+        "question": "Airtableレコードが削除されたらどうなりますか？"
       },
       {
-        "title": "期限変更の反映",
-        "description": "Airtableで期日が延びると、GAIAは次のスケジュール実行でGoogleカレンダーの予定を移動します。すでに動いた締め切りに向けて準備してしまうことがなくなります。"
+        "answer": "両アカウントをGAIAに接続し、新規イベントトリガーのワークフローを作って監視するカレンダーを選びます。説明文でベースとテーブルを名指しし、各詳細を項目に対応づけます。たとえば名前欄にタイトル、日付欄に開始時刻、参加者欄に参加者、メモ欄に説明。各新規イベントは写さずにレコードになります。",
+        "question": "カレンダーイベント詳細からレコードを自動作成するにはどうしますか？"
       },
       {
-        "title": "カレンダーの会議をAirtableのレコードとして記録",
-        "description": "選んだカレンダーの新しい予定が、タイトル、時刻、参加者、説明付きでAirtableの行になります。営業や採用のチームは、二度入力することなく、絞り込みや連絡先とのリンク、レポートに使える会議ログを持てます。"
+        "answer": "はい。Calendlyがカレンダーに接続されていれば、各予約が新規イベントとしてそこに入るため、同じ新規イベントワークフローがベースへ記録します。GAIAはCalendlyへ直接も接続するため、尋ねれば予定会議やイベント種別を調べられます。",
+        "question": "Calendly予約をレコードとして記録できますか？"
+      },
+      {
+        "answer": "新規イベント作成の瞬間に始まるのはカレンダーからテーブルへの方向だけです。テーブルの変化は設定した予定（毎時など）でカレンダーに届きます。ベースは変更をGAIAへプッシュしないためです。日程が頻繁に動くなら短い間隔を選びます。",
+        "question": "テーブルからカレンダーへの同期は即時ですか？"
       }
     ],
     "howItWorks": [
       {
-        "step": "AirtableとGoogleカレンダーをGAIAに接続",
-        "description": "GAIAの連携設定で両方のアカウントを認可します。GAIAはベースの一覧と各テーブルのフィールドを読めるようになるので、テーブルやフィールドを名前で指定できます。"
+        "description": "GAIAの連携設定で両アカウントを認証します。GAIAはベースを一覧して各テーブルの項目を読めるため、テーブルや項目を名前で参照できます。",
+        "step": "AirtableとGoogle CalendarをGAIAに接続"
       },
       {
-        "step": "同期の内容を普段の言葉で書く",
-        "description": "ワークフローを作成し、使うベース、テーブル、カレンダーを指定します。予定のタイトル、日付または開始時刻、説明、場所、参加者に使うフィールドを挙げ、Google Meetのリンクを付けるかどうかも書きます。"
+        "description": "ワークフローを作って使うベース・テーブル・カレンダーを言います。イベント名・日付または開始時刻・説明・場所・参加者の項目を名指しし、Google Meetリンクを付けるか言います。",
+        "step": "同期を平易な言葉で説明"
       },
       {
-        "step": "トリガーを選ぶ",
-        "description": "カレンダーの予定からAirtableのレコードを作るならGoogleカレンダーの新規予定トリガーを、Airtableの日付をカレンダーに送るならスケジュール（1時間ごと、平日の朝8時など）を選びます。GAIAはワークフローをバックグラウンドで実行し、完了時に通知することもできます。"
+        "description": "カレンダーイベントからベースにレコードを作るにはカレンダーの新規イベントトリガーを、テーブルの日程をカレンダーへ送るには予定（毎時・平日8時）を選びます。GAIAがワークフローを裏側で実行し、完了時に通知できます。",
+        "step": "きっかけを選ぶ"
       }
     ],
-    "faqs": [
+    "intro": "AirtableとGoogle Calendarは単独では互いに同期しないため、あいだにツールが必要です。GAIAが両アカウントを接続して双方向に動作します。各新規カレンダーイベントの詳細（タイトル・開始終了時刻・参加者・場所・説明）からベースにレコードを作れ、日付項目をカレンダーイベントに変えられます。カレンダーで日程を見るだけでよいなら、ベースのカレンダー表示がGoogle Calendarで購読する読み取り専用iCalリンクを共有できます。Googleは購読カレンダーを独自予定で更新するため、変更反映に数時間かかることがあります。\n\n2つの方向は異なる動きです。カレンダーからベースはイベント駆動です。GAIAの新規イベントトリガーは選んだカレンダーでの新規イベント作成で発火し、ワークフローがレコードを書き込みます。逆方向は予定で動きます。Airtableは変更をGAIAへプッシュしないためです。各実行でGAIAはテーブルを読み、新規日程のイベントを作り、日程が変わったイベントを動かします。10時5分に編集された日程は次回実行後に現れます。毎時が共有チーム予定に適し、一日一回が公開日程に十分です。\n\nワークフローの例：「Client Callsカレンダーに新規イベントが追加されたら、CRMベースの会議テーブルにレコードを作成する。名前欄にイベント名、日付欄に開始時刻、参加者欄に参加者メール、メモ欄にイベント説明」。2つ目のワークフローは逆方向に動きます。「平日8時に、期限が今後14日以内のプロジェクト内各レコードについて、期限カレンダーに終日イベントを追加し、日程が変わったらイベントを動かす」。",
+    "keywords": [
+      "airtable google calendar 連携",
+      "airtable google calendarの接続",
+      "airtable google calendar 自動化",
+      "gaia airtable google calendar",
+      "airtable google calendar 同期"
+    ],
+    "metaDescription": "Airtableの期限やコンテンツカレンダーを、日程変化で更新されるGoogle Calendarイベントに変えます。GAIAが選んだカレンダーを同期します。設定手順をご覧ください。",
+    "metaTitle": "Airtable Google Calendar 連携: 期限をイベントに",
+    "tagline": "Airtable日付項目をGoogle Calendarイベントへ自動同期します",
+    "toolA": "Airtable",
+    "toolB": "Google Calendar",
+    "useCases": [
       {
-        "question": "メイン以外の特定のGoogleカレンダーにも同期できますか？",
-        "answer": "はい。ワークフローの中で、各Airtableテーブルの予定を受け取るGoogleカレンダーを指定します。コンテンツ用とプロジェクト用のように、テーブルごとに別のカレンダーを使えます。"
+        "description": "プロジェクト追跡の全日付項目は、レコード名とAirtableへのリンクつきのカレンダーイベントになります。GAIAが各定期実行で新規期限を追加するため、誰も写さずに全員のカレンダーへ届きます。",
+        "title": "Airtableプロジェクト期限をカレンダーイベントに変える"
       },
       {
-        "question": "GAIAは予定にGoogle Meetのリンクを追加しますか？",
-        "answer": "はい。GAIAは作成する予定ごとにGoogle Meetのリンクを追加できるので、Airtableのレコードから予定した会議にはすでにビデオ会議のリンクが付いています。"
+        "description": "コンテンツカレンダーテーブルの公開日がコンテンツチーム向けのイベントとして現れます。執筆者と編集者は暮らしているカレンダーで予定を確認できます。",
+        "title": "コンテンツカレンダーをGoogle Calendarへ同期"
       },
       {
-        "question": "Airtableのレコードを削除するとどうなりますか？",
-        "answer": "Airtableはレコードの削除をGAIAに通知しません。レコードがなくなった予定を削除するようワークフローで指示しておけば、GAIAは次のスケジュール実行で削除します。指示がなければ予定はカレンダーに残ります。必要なルールをワークフローに書いてください。"
+        "description": "会場・時刻・主催者つきのイベントレコードは、完全な説明つきの詳細なカレンダーイベントになります。レコードが参加者を列挙したら、GAIAがイベントへ追加してカレンダーが招待を送ります。",
+        "title": "イベント管理の予定"
       },
       {
-        "question": "カレンダーの予定の詳細からAirtableのレコードを自動で作成するには？",
-        "answer": "GoogleカレンダーとAirtableをGAIAに接続し、Googleカレンダーの新規予定トリガーを使うワークフローを作成して、監視するカレンダーを選びます。指示の中でベースとテーブルを指定し、タイトルを『名前』、開始時刻を『日付』、参加者を『参加者』、説明を『メモ』のように各項目をフィールドに割り当てます。以後、新しい予定はコピーの手間なくレコードになります。"
+        "description": "ベースで期限が延びたら、GAIAが次回定期実行でカレンダーイベントを動かします。既に動いた期限に向けて誰も準備しません。",
+        "title": "期限変更の伝播"
       },
       {
-        "question": "Calendlyの予約をAirtableに送れますか？",
-        "answer": "はい。CalendlyをGoogleカレンダーに接続していれば、予約はそこに新しい予定として入るので、同じ新規予定ワークフローでAirtableに記録できます。GAIAはCalendlyにも直接接続できるため、頼めば予定済みのミーティングやイベントタイプを調べられます。"
-      },
-      {
-        "question": "AirtableからGoogleカレンダーへの同期はすぐに反映されますか？",
-        "answer": "すぐに動くのは、新しい予定が作成されたときのカレンダーからAirtableへの方向だけです。AirtableはGAIAに変更を通知しないため、Airtableの変更は1時間ごとなど設定したスケジュールでカレンダーに反映されます。日付が頻繁に変わるなら、間隔を短くしてください。"
+        "description": "選んだカレンダーの全新規イベントは、タイトル・時刻・参加者・説明つきのベースの行になります。営業や採用チームは絞り込み・連絡先リンク・報告ができる会議記録を、二度入力なしに得られます。",
+        "title": "カレンダー会議をAirtableレコードとして記録"
       }
     ]
   },
   "airtable-google-sheets": {
-    "toolA": "Airtable",
-    "toolB": "Google Sheets",
-    "tagline": "AirtableのレコードをGoogle Sheetsに同期し、シートの行をベースに書き戻す",
-    "metaTitle": "Airtable と Google Sheets の連携: レコードを行に同期",
-    "metaDescription": "Airtableの新しいレコードをGoogle Sheetsに追加し、既存の行にも更新を同期。GAIAはフォームの回答も記録します。設定手順をご覧ください。",
-    "keywords": [
-      "Airtable Google Sheets 連携",
-      "Airtable と Google Sheets の接続",
-      "Airtable を Google Sheets に同期",
-      "Airtable から Google Sheets への自動化",
-      "Airtable のレコードをスプレッドシートに書き出し",
-      "Airtable とスプレッドシートの双方向同期"
-    ],
-    "intro": "Airtableには、パイプライン、在庫、コンテンツカレンダー、応募者管理といった構造化された仕事が集まっています。一方で、経営層、クライアント、経理チームが使っているのはGoogle Sheetsです。現状、この2つをつなぐのは手作業のCSVエクスポートで、ダウンロードした瞬間から古くなり、5人が別々の5つのコピーにメモを書き込めばバージョンも混乱します。\n\nGAIAはエクスポートなしで、AirtableとGoogle Sheetsを常に同じ状態に保ちます。Airtableで新規作成・変更されたレコードは、フィールドに対応づけた列とともに、適切なシートの行として自動で反映されます。逆方向の更新も可能です。Sheetsでの編集はAirtableのレコードに書き戻されるため、Airtableを開かない人にとってもシートが安全な編集の場になります。\n\nその副次的な効果として、レポート作成も簡単になります。自動で更新されるデータをもとに、Sheetsでピボットテーブル、グラフ、ダッシュボードを作成できます。その間もAirtableはビュー、権限、リンクされたレコードを保ったまま、正式な記録の場であり続けます。",
-    "useCases": [
+    "faqs": [
       {
-        "title": "Airtableの新規レコードをシートの行として追加",
-        "description": "フォーム、自動化、チームメンバーのいずれかによってAirtableにレコードが作成されると、GAIAは対応するGoogle Sheetsに行として追加し、各フィールドを正しい列に配置します。受付のパイプラインを、シートだけを使う関係者にも見える状態に保てます。"
+        "answer": "両ツールをGAIAに接続し、ビューと送り先シートタブを選んで、項目を列に一度対応づけます。新規レコードは行として追記され、項目変更は一致する行を更新します。以降の出力は不要です。",
+        "question": "AirtableをGoogle Sheetsへ自動同期するにはどうしますか？"
       },
       {
-        "title": "レコードの更新を既存の行に同期",
-        "description": "Airtableでステータス、担当者、日付のフィールドが変わると、GAIAは行を重複させるのではなく、対応する行を更新します。シートには常にベースの最新状態が反映されます。"
+        "answer": "両方です。GAIAは選択した主要項目（レコードIDやメールなど）で行をレコードに対応づけます。新規レコードは新規行として追記され、既存レコードの変更は一致した行をその場で更新します。",
+        "question": "GAIAは既存行を更新しますか、新規追加だけですか？"
       },
       {
-        "title": "フォームや受付の回答を確認用に記録",
-        "description": "Airtableフォームの送信内容は確認用シートに届き、Airtableのアカウントを持たないメンバーも仕分け、コメント、承認ができます。承認された行は、1回の確認でAirtableに書き戻されます。"
+        "answer": "はい。GAIAを特定のビューに向ければ、そのビューの絞りを通過するレコードだけが表計算へ同期されます。異なるビューは異なる対象向けに異なるタブへ供給できます。",
+        "question": "ベース全体ではなく絞り込んだビューだけ同期できますか？"
       },
       {
-        "title": "レポート用の定期スナップショット",
-        "description": "GAIAは指定したスケジュールで、ビューのタイムスタンプ付きスナップショットを書き出します。毎日のパイプライン、毎週の在庫、毎月の応募者などです。スナップショットは日付ごとのタブとして保存されるので、推移を簡単にグラフにできます。"
+        "answer": "はい。きっかけ経由で双方向同期を有効にすれば、対応づけた列の編集は一致するレコードへ書き戻されます。どの列を編集可能にするか管理できるため、計算式やロールアップの領域は保護されます。",
+        "question": "シートでの編集は元のレコードを更新できますか？"
       },
       {
-        "title": "同期したデータでリアルタイムのダッシュボードを作成",
-        "description": "Sheetsのグラフやピボットテーブルを同期済みのタブに向ければ、Airtableの変更に合わせて自動で更新されます。経営層は、追加のアカウントやログインなしで、古いエクスポートに頼らずダッシュボードを見られます。"
+        "answer": "リンクされたレコードは不可解なレコードIDではなく読みやすい名前として同期され、GAIAは添付ファイルのURLを専用列に含められます。ロールアップと計算式は同期時点の算出値として同期されます。",
+        "question": "リンクされたレコードや添付ファイルはシートにどう現れますか？"
       }
     ],
     "howItWorks": [
       {
-        "step": "AirtableとGoogle SheetsをGAIAに接続",
-        "description": "AirtableアカウントとGoogleアカウントでGAIAを承認します。GAIAが読み取れるベースと、書き込めるスプレッドシートを選びます。"
+        "description": "AirtableアカウントとGoogleアカウントでGAIAを認証します。GAIAが読むベースと書き込む表計算を選択します。",
+        "step": "AirtableとGoogle SheetsをGAIAに接続"
       },
       {
-        "step": "ベース、ビュー、フィールドをシートに対応づける",
-        "description": "どのAirtableビューをどのシートタブに同期するかを選び、フィールドを列に対応づけます。GAIAはリンクされたレコードを、レコードIDではなく読みやすい名前で書き込みます。"
+        "description": "どのビューがどのシートタブへ同期するか選択し、項目を列に対応づけます。GAIAはリンクされたレコードをレコードIDではなく読みやすい名前で書きます。",
+        "step": "ベース・ビュー・項目をシートに対応づけ"
       },
       {
-        "step": "GAIAが行とレコードを継続的に同期",
-        "description": "作成、更新、定期スナップショットは自動で実行されます。GAIAはキーとなるフィールドで行とレコードを照合するため、更新によって重複が生まれることはありません。"
+        "description": "作成・更新・定期スナップショットは独力で動きます。GAIAが主要項目で行をレコードに対応づけるため、更新が重複を生むことは決してありません。",
+        "step": "GAIAが行とレコードを継続同期"
       }
     ],
-    "faqs": [
+    "intro": "Airtableは構造化業務の居場所です。パイプライン、在庫、コンテンツカレンダー、応募者追跡。でも経営層、顧客、経理チームはGoogle Sheetsにいます。今日の両者の橋は、ダウンロードの瞬間に古くなる手動CSV出力と、5人が5つの異なる複製に注釈する版の混乱です。\n\nGAIAは出力なしにベースと表計算を足並み揃えて保ちます。新規・変更のAirtableレコードは自動で正しいシートの行として現れ、列は項目に対応づけられます。更新は逆方向にも流れます。シートの編集は一致するレコードへ書き戻され、ベースを開かない人々にとってシートは安全な編集面になります。\n\n副次効果として報告は簡単になります。自動更新されるデータでピボットテーブル、グラフ、ダッシュボードを構築し、ベースはビュー・権限・リンクされたレコードつきの正式な記録のままです。",
+    "keywords": [
+      "airtable google sheets 連携",
+      "airtableをgoogle sheetsへ接続",
+      "airtableをgoogle sheetsへ同期",
+      "airtableのgoogle sheets自動化",
+      "airtableレコードをsheetsへ出力",
+      "airtableレコードとsheetsの双方向同期"
+    ],
+    "metaDescription": "新規AirtableレコードをGoogle Sheetsへ追記し、既存行への更新を同期します。GAIAはフォーム回答も記録します。設定手順をご覧ください。",
+    "metaTitle": "Airtable + Google Sheets 連携: レコードを行へ",
+    "tagline": "AirtableレコードをGoogle Sheetsへ同期し、シート行をベースへ戻り記録します",
+    "toolA": "Airtable",
+    "toolB": "Google Sheets",
+    "useCases": [
       {
-        "question": "AirtableをGoogle Sheetsに自動で同期するにはどうすればいいですか？",
-        "answer": "両方のツールをGAIAに接続し、Airtableのビューと同期先のシートタブを選んで、フィールドと列の対応づけを一度だけ行います。新しいレコードは行として追加され、フィールドの変更は対応する行に反映されます。以後のエクスポートは不要です。"
+        "description": "レコードが作成されたら（フォーム・自動化・同僚経由）、GAIAが対応シートに行として追記し、項目は正しい列に入ります。受付パイプラインは表計算だけの関係者に見えるままです。",
+        "title": "新規Airtableレコードをシート行として追記"
       },
       {
-        "question": "GAIAは既存の行を更新しますか？それとも新しい行を追加するだけですか？",
-        "answer": "両方に対応しています。GAIAは、レコードIDやメールアドレスなど、指定したキーとなるフィールドで行とAirtableのレコードを照合します。新しいレコードは新しい行として追加され、既存のレコードの変更は対応する行がその場で更新されます。"
+        "description": "状況・所有者・日付項目が変わったら、GAIAが重複の代わりに一致する行を更新します。シートは常にベースの現状を反映します。",
+        "title": "レコード更新を既存行へ同期"
       },
       {
-        "question": "ベース全体ではなく、フィルタしたAirtableビューだけを同期できますか？",
-        "answer": "はい。GAIAを特定のビューに向ければ、そのビューのフィルタ条件を満たすレコードだけがSheetsに同期されます。ビューごとに別のタブへ送り、閲覧者に応じて使い分けることもできます。"
+        "description": "フォーム送信は確認用シートに届き、Airtable席のない仲間も仕分け・コメント・承認ができます。承認された行は一度の確認でベースへ書き戻されます。",
+        "title": "フォームや受付の回答を確認用に記録"
       },
       {
-        "question": "Google Sheetsでの編集をAirtableのレコードに反映できますか？",
-        "answer": "はい。トリガーで双方向の同期を有効にすると、対応づけた列の編集が該当するAirtableのレコードに書き戻されます。編集可能な列は自分で決められるため、数式やロールアップの領域は保護されたままです。"
+        "description": "GAIAが予定に従ってビューの時刻つきスナップショットを出力します。日次パイプライン、週次在庫、月次応募者。各スナップショットは日付つきタブに届くため、傾向は簡単に図表化できます。",
+        "title": "報告用の定期スナップショット"
       },
       {
-        "question": "リンクされたレコードや添付ファイルはSheetsでどう表示されますか？",
-        "answer": "リンクされたレコードは、わかりにくいレコードIDではなく読みやすい名前で同期され、添付ファイルのURLは専用の列に含めることもできます。ロールアップや数式は、同期した時点で計算された値として同期されます。"
+        "description": "表計算のグラフとピボットテーブルを同期タブに向ければ、ベース変化に応じて更新されます。経営層は追加席・ログイン・古い出力なしにダッシュボードを得られます。",
+        "title": "同期データでライブダッシュボードを構築"
       }
     ]
   },
   "google-docs-slack": {
-    "toolA": "Google Docs",
-    "toolB": "Slack",
-    "tagline": "Google Docsを正しい権限でSlackに共有し、すべてのコメントを追いかける",
-    "metaTitle": "Google Docs と Slack の連携: コメント通知をSlackへ",
-    "metaDescription": "Slackを離れずにGoogle Docsをレビュー。GAIAがコメントや提案の通知をSlackに投稿し、適切な権限を設定してドキュメントを共有します。設定手順はこちら。",
-    "keywords": [
-      "Google Docs Slack 連携",
-      "Google ドキュメントを Slack で共有",
-      "Google Docs Slack 通知",
-      "Google Docs と Slack の接続",
-      "Google Docs コメント通知 Slack",
-      "Slack から Google ドキュメントを作成"
-    ],
-    "intro": "下書きはGoogle Docsにあり、意思決定はSlackで行われ、この2つがうまくつながることはめったにありません。チャットに貼ったリンクはアクセス権のリクエスト画面で止まり、フィードバックはドキュメントのコメントに届かないままスレッドに散らばり、ドキュメントが更新されたことに誰も気づかずレビューの締め切りが過ぎていきます。\n\nGAIAはGoogle DocsとSlackをつなぎ、ドキュメントをチャットのスピードで動かします。GAIAにドキュメントの共有を頼むと、投稿前にチャンネルのメンバーがアクセスできるかを確認し、必要なら先に権限を修正します。コメント、提案、編集は適切なチャンネルにSlackの通知として届き、Slackのスレッドは1つのコマンドでドキュメントにできます。\n\nこれは、仕様書、提案書、記事などを一緒にレビューするチームのための連携です。書き手はDocsで作業を続け、関係者は新しいツールを覚えることなく、Slackから進捗を追い、承認し、コメントできます。",
-    "useCases": [
+    "faqs": [
       {
-        "title": "権限を整えたうえでドキュメントを共有",
-        "description": "GAIAにチャンネルへのドキュメント投稿を頼むと、メンバー全員が開けるかを確認し、先に閲覧またはコメントの権限を付与します。アクセス権のリクエストで行き止まりになることはもうありません。"
+        "answer": "はい。GAIAが投稿前にチャネルメンバーのアクセスを確認し、設定した閲覧やコメントの権限を付与します。方針が外部共有を禁じていれば、壊れたリンクの代わりに除外対象をGAIAが知らせます。",
+        "question": "チャネル全員が共有文書を開けますか？"
       },
       {
-        "title": "コメントと提案の通知をSlackで受け取る",
-        "description": "監視中のドキュメントに新しいコメント、返信、解決済みのスレッドがあると、直接リンク付きで担当チャンネルに投稿されます。レビュアーの返答は数日ではなく数時間で届きます。"
+        "answer": "はい。GAIAが選んだ文書を監視し、新規コメント・返信・提案活動を対応チャネルへスレッドへの直接リンクつきで投稿します。",
+        "question": "Google DocsコメントのSlackアラートを受け取れますか？"
       },
       {
-        "title": "Slackのスレッドからドキュメントを作成",
-        "description": "長いスレッドでまとまった結論を、1つのコマンドでDrive上の概要、仕様書、議事録にできます。GAIAがスレッドから下書きを作成し、リンクをスレッドに返します。"
+        "answer": "はい。スレッドをGAIAに向ければ、議論から文書を起草して選んだDriveフォルダへ保存し、リンクをチャネルへ投稿します。",
+        "question": "GAIAはチャネル会話から文書を作成できますか？"
       },
       {
-        "title": "レビュー締め切りのリマインダー",
-        "description": "レビュー待ちのドキュメントには、コメントが届くかオーナーが承認するまで、Slackで丁寧なリマインダーが定期的に送られます。黙って放置されるものはありません。"
+        "answer": "はい。GAIAはマイドライブと同様に共有ドライブの文書に対応し、ワークスペースが既に適用する同じフォルダ権限を尊重します。",
+        "question": "共有ドライブの文書で動作しますか？"
       },
       {
-        "title": "Slackを離れずにどのドキュメントも見つける",
-        "description": "名前、クライアント、トピックでGAIAにドキュメントを尋ねれば、権限確認済みのリンクがすぐに届きます。チームの知識はメッセージ1つで手に入ります。"
+        "answer": "はい。アラートは文書ごとやフォルダごとに選んだチャネルへ振り分けられ、コメントアラートを特定の人への言及や未解決スレッドのみに限定できます。",
+        "question": "GAIAは文書アラートの受信者を限定できますか？"
       }
     ],
     "howItWorks": [
       {
-        "step": "Google DocsとSlackをGAIAに接続",
-        "description": "GoogleアカウントとSlackワークスペースでGAIAを承認します。GAIAはDocsの読み取り、書き込み、共有の権限と、Slackへの投稿権限を得ます。"
+        "description": "GoogleアカウントとワークスペースでGAIAを認証します。GAIAは文書の読み書きと共有範囲に加え、チャット投稿範囲を取得します。",
+        "step": "Google DocsとSlackをGAIAに接続"
       },
       {
-        "step": "監視するドキュメントと通知チャンネルを選ぶ",
-        "description": "監視するドキュメントやDriveフォルダと、通知を受け取るチャンネルをGAIAに指定します。GAIAが共有する際に、誰がアクセス権を付与できるかも設定します。"
+        "description": "GAIAに監視すべき文書やDriveフォルダ、どのチャネルがアラートを受け取るかを伝えます。GAIAが共有するときのアクセス付与者を決めます。",
+        "step": "監視文書とアラートチャネルを選択"
       },
       {
-        "step": "GAIAが共有、監視、下書きを代行",
-        "description": "共有は権限を確認したうえで行われ、コメントは通知として届き、必要に応じてチャットから新しいドキュメントが作成されます。ドキュメントと議論は常につながったままです。"
+        "description": "共有は権限確認済みで送られ、コメントはアラートとして届き、新規文書は求めに応じてチャットから作られます。文書と議論はつながったままです。",
+        "step": "GAIAが共有・監視・起草を代行"
       }
     ],
-    "faqs": [
+    "intro": "草稿はGoogle Docsに、決定はSlackにあり、両者がきれいに出会うことはめったにありません。チャットに貼ったリンクはアクセス要求の壁に当たり、フィードバックは文書コメントに届かないスレッドに散らばり、文書変更を誰も知らないためレビュー期限がずれます。\n\nGAIAは両者をつなぎ、文書がチャット速度で動くようにします。GAIAに文書共有を頼めば、投稿前にチャネルメンバーのアクセスを確認して先に権限を直します。コメント・提案・編集は正しいチャネルのアラートとして浮上し、スレッドはワンコマンドで文書になれます。\n\n仕様・提案・投稿を一緒にレビューするチーム向けに作られています。執筆者は文書で作業を続け、関係者は新しいツールを学ばずにSlackから追随・承認・コメントします。",
+    "keywords": [
+      "google docs slack 連携",
+      "google docをslackで共有",
+      "google docs slack 通知",
+      "google docsをslackへ接続",
+      "google docsコメントアラートslack",
+      "slackからgoogle docを作成"
+    ],
+    "metaDescription": "Slackを離れずにGoogle Docsをレビューします。GAIAがコメントと提案のアラートをSlackへ投稿し、文書を正しい権限つきで共有します。設定手順をご覧ください。",
+    "metaTitle": "Google Docs + Slack 連携: Slackでのコメントアラート",
+    "tagline": "Google DocsをSlackで正しい権限で共有し、すべてのコメントを追跡します",
+    "toolA": "Google Docs",
+    "toolB": "Slack",
+    "useCases": [
       {
-        "question": "共有したドキュメントは、チャンネルの全員が開けますか？",
-        "answer": "はい。GAIAは投稿前にチャンネルメンバーのアクセス権を確認し、設定した閲覧またはコメントの権限を付与します。ポリシーで外部共有がブロックされている場合は、壊れたリンクを投稿する代わりに、誰がアクセスできないかをお知らせします。"
+        "description": "チャネルへの文書投稿をGAIAに頼めば、全員が開けるか確認して先に閲覧やコメントのアクセスを付与します。アクセス要求の行き止まりはもうありません。",
+        "title": "権限処理つきで文書を共有"
       },
       {
-        "question": "Google DocsのコメントをSlackで通知してもらえますか？",
-        "answer": "はい。GAIAは選んだドキュメントを監視し、新しいコメント、返信、提案のアクティビティを、スレッドへの直接リンク付きで対応するチャンネルに投稿します。"
+        "description": "監視中の文書の新規コメント・返信・解決済みスレッドは、直接リンクつきで所有チャネルへ投稿されます。レビュアーは日ではなく時間で返答します。",
+        "title": "Slackでのコメントと提案のアラート"
       },
       {
-        "question": "GAIAはSlackの会話からGoogleドキュメントを作成できますか？",
-        "answer": "はい。GAIAにスレッドを指定すると、議論の内容からドキュメントを下書きし、選んだDriveフォルダに保存して、リンクをチャンネルに返します。"
+        "description": "長いスレッドでの決定は、ワンコマンドでDrive内の概要・仕様・会議メモになります。GAIAがスレッドから起草してリンクを投稿します。",
+        "title": "Slackスレッドから文書を作成"
       },
       {
-        "question": "共有ドライブ内のドキュメントにも対応していますか？",
-        "answer": "はい。GAIAはマイドライブだけでなく共有ドライブ内のドキュメントにも対応し、ワークスペースですでに適用されているフォルダの権限をそのまま守ります。"
+        "description": "レビュー待ちの文書は、コメント到着か所有者の承認までチャットで丁寧な定期の催促を受けます。静かに待つものはありません。",
+        "title": "レビュー期限のリマインダー"
       },
       {
-        "question": "ドキュメントの通知を受け取る人を限定できますか？",
-        "answer": "はい。通知はドキュメントごと、またはフォルダごとに指定したチャンネルへ送られます。コメント通知を、特定の人へのメンションや未解決のスレッドだけに絞ることもできます。"
+        "description": "GAIAに名前・顧客・話題で文書を求めれば、権限確認済みリンクをオンデマンドで取得できます。チーム知識は一つのメッセージの距離です。",
+        "title": "チャットを離れずに任意の文書を検索"
       }
     ]
   },
   "todoist-google-sheets": {
-    "toolA": "Todoist",
-    "toolB": "Google Sheets",
-    "tagline": "Todoistの完了タスクをGoogle Sheetsに記録し、シートの行をタスクに変える",
-    "metaTitle": "Todoist と Google Sheets の連携: 完了タスクを記録",
-    "metaDescription": "Todoistの完了タスクをGoogle Sheetsに記録し、毎週の生産性サマリーを作成。GAIAはシートの行からタスクも作ります。設定手順をご覧ください。",
-    "keywords": [
-      "Todoist Google Sheets 連携",
-      "Todoist のタスクを Google Sheets に書き出し",
-      "Todoist 完了タスク スプレッドシート",
-      "Todoist と Google Sheets の接続",
-      "Todoist Sheets 自動化",
-      "Todoist 生産性レポート スプレッドシート"
-    ],
-    "intro": "Todoistはあなたが何を終えたかを知っていますが、それを示すにはスクリーンショットか手作業の記録が必要です。マネージャーは週次のまとめを求め、フリーランサーは請求対象タスクの記録を必要とし、チームはサイクルタイムのデータを欲しがります。そのすべてがタスクリストの中に閉じ込められています。\n\nGAIAはTodoistの情報を自動でGoogle Sheetsに流し込みます。完了したタスクは、プロジェクト、ラベル、日付、優先度のフィールドとともにログシートに追加され、そのままピボットテーブルに使えます。逆方向も可能です。新しいリード、コンテンツのアイデア、バグ報告などシートに追加した行が、タイトル、プロジェクト、期日にフィールドを対応づけたTodoistのタスクになります。\n\nその結果、Todoistの上に個人向けの分析レイヤーができ、ほかの場所で集めた仕事を一括で登録する手段も手に入ります。タスクリストは引き続き仕事をする場所であり、Sheetsは仕事を測る場所になります。",
-    "useCases": [
+    "faqs": [
       {
-        "title": "完了したタスクをSheetsに自動記録",
-        "description": "完了したタスクはすべて、プロジェクト、ラベル、期日、完了時刻とともにログシートに追加されます。タイムシートも週次レポートも自動でできあがります。"
+        "answer": "はい。アカウントを接続して記録表計算を選びます。全完了タスクはプロジェクト・ラベル・日付・優先度つきの行を追記するため、履歴は自動で構築されます。",
+        "question": "GAIAは完了したTodoistタスクを自動記録できますか？"
       },
       {
-        "title": "毎週の生産性サマリー",
-        "description": "GAIAはログを週次タブにまとめます。プロジェクトごとの完了タスク数、翌週に持ち越した期限切れの項目、現在の連続達成記録などです。マネージャーと共有することも、自分用に残すこともできます。"
+        "answer": "タスク名、プロジェクト、区分、ラベル、優先度、期限、作成日、完了時刻。列順序を一度選べば、GAIAが全行に適用し続けます。",
+        "question": "シートに現れるタスク項目は何ですか？"
       },
       {
-        "title": "シートの行からタスクを作成",
-        "description": "監視中のタブに追加された新しい行は、タイトル、プロジェクト、優先度、期日に列を対応づけたTodoistのタスクになります。コンテンツカレンダーやリードのリストが、そのまま行動に変わります。"
+        "answer": "はい。列をタスク項目に対応づければ、各新規行は選んだプロジェクトにタスクを作り、優先度と期限はシート値から設定されます。",
+        "question": "シートの新規行はタスクになれますか？"
       },
       {
-        "title": "見積もりと実績を比較",
-        "description": "タスクごとに見積もりと実際の完了データを記録し、その精度の推移をSheetsのグラフで追跡します。四半期ごとに、計画の精度が目に見えて上がっていきます。"
+        "answer": "はい。記録に送るプロジェクトを正確に選択します。個人タスクは非公開のまま、仕事プロジェクトは報告向けに同期します。",
+        "question": "すべてではなく特定プロジェクトだけ記録できますか？"
       },
       {
-        "title": "スプレッドシートからバックログを一括インポート",
-        "description": "別のツールから移行する場合や、Sheetsでプロジェクトを計画している場合も、GAIAが各行を適切なプロジェクトのタスクに変換し、順序、ラベル、日付を保持します。"
+        "answer": "はい。繰り返しタスクの各完了は独自の日付つきで独自の行を記録するため、連続記録と頻度分析は正確に保たれます。",
+        "question": "GAIAは記録内の繰り返しタスクを扱えますか？"
       }
     ],
     "howItWorks": [
       {
-        "step": "TodoistとGoogle SheetsをGAIAに接続",
-        "description": "TodoistアカウントとGoogleアカウントでGAIAを承認します。どのプロジェクトをSheetsに記録し、どのタブからタスクを作成するかを選びます。"
+        "description": "両アカウントでGAIAを認証します。どのプロジェクトが表計算へ記録するか、どのタブがタスクを作るか選択します。",
+        "step": "TodoistとGoogle SheetsをGAIAに接続"
       },
       {
-        "step": "フィールドと列の対応づけは一度だけ",
-        "description": "プロジェクト、ラベル、優先度、期日などのTodoistのフィールドを、シートの列に対応づけます。GAIAはその対応づけを覚え、以後のすべての同期に使います。"
+        "description": "プロジェクト・ラベル・優先度・期限のようなタスク項目をシート列に対応づけます。GAIAが今後の全同期向けに対応を記憶します。",
+        "step": "項目を列へ一度だけ対応づけ"
       },
       {
-        "step": "GAIAが完了を記録し、タスクを作成",
-        "description": "完了したタスクは自動でログに追加され、シートの新しい行はタスクとしてTodoistに届きます。どちらの方向も、つきっきりで見守る必要はありません。"
+        "description": "完了タスクは独力で記録へ追記され、新規シート行はタスクとして届きます。両方向は見守りなしに動きます。",
+        "step": "GAIAが完了を記録してタスクを作成"
       }
     ],
-    "faqs": [
+    "intro": "Todoistは完了内容を知っていますが、証明にはスクリーンショットや手動記録が必要です。マネージャーは週次要約を求め、フリーランサーは請求対象タスク記録を必要とし、チームは周期時間データを求めます。すべてタスクリストの中に閉じ込められています。\n\nGAIAはTodoistをGoogle Sheetsへ自動で送り込みます。完了タスクはプロジェクト・ラベル・日付・優先度項目つきで記録シートへ追記され、ピボットテーブル対応です。逆方向も動きます。シートに追加された行（新規見込み客・コンテンツ案・バグ報告）は、項目をタイトル・プロジェクト・期限に対応づけたタスクになります。\n\n結果は、タスクリストの上の個人分析層と、他所で捉えた仕事の一括入力経路です。タスクは仕事が行われる場所のままで、Sheetsは仕事が測られる場所になります。",
+    "keywords": [
+      "todoist google sheets 連携",
+      "todoistタスクをgoogle sheetsへ出力",
+      "todoist完了タスクの表計算",
+      "todoistをgoogle sheetsへ接続",
+      "todoist sheets 自動化",
+      "todoist生産性報告sheets"
+    ],
+    "metaDescription": "完了したTodoistタスクをGoogle Sheetsへ記録し、週次生産性要約を受け取ります。GAIAが行からタスクを作ります。設定手順をご覧ください。",
+    "metaTitle": "Todoist + Google Sheets 連携: 完了タスク記録",
+    "tagline": "完了したTodoistタスクをGoogle Sheetsへ記録し、シート行をタスクに変えます",
+    "toolA": "Todoist",
+    "toolB": "Google Sheets",
+    "useCases": [
       {
-        "question": "GAIAはTodoistの完了タスクを自動で記録できますか？",
-        "answer": "はい。Todoistを接続し、ログ用のスプレッドシートを選ぶだけです。完了したタスクごとに、プロジェクト、ラベル、日付、優先度を含む行が追加されるので、履歴が自動で積み上がります。"
+        "description": "全完了タスクはプロジェクト・ラベル・期限・完了時刻つきで記録シートに届きます。作業時間表や週次報告は自動で書けます。",
+        "title": "完了タスクをSheetsへ自動記録"
       },
       {
-        "question": "シートにはTodoistのどのフィールドが表示されますか？",
-        "answer": "タスク名、プロジェクト、セクション、ラベル、優先度、期日、作成日、完了時刻です。列の順序は一度決めれば、GAIAがすべての行でその順序を保ちます。"
+        "description": "GAIAが記録を週次タブへまとめます。プロジェクト別完了タスク、持ち越し期限切れ項目、現在の連続記録。マネージャーと共有しても自分のためにも。",
+        "title": "週次生産性要約"
       },
       {
-        "question": "Google Sheetsの新しい行をTodoistのタスクにできますか？",
-        "answer": "はい。列をタスクのフィールドに対応づければ、新しい行ごとに選んだプロジェクトにタスクが作成され、優先度と期日もシートの値から設定されます。"
+        "description": "追跡タブの新規行は、列をタイトル・プロジェクト・優先度・期限に対応づけたタスクになります。コンテンツカレンダーや見込み客一覧は直接行動に変換されます。",
+        "title": "シート行からタスクを作成"
       },
       {
-        "question": "すべてではなく、特定のプロジェクトだけを記録できますか？",
-        "answer": "はい。ログに送るTodoistのプロジェクトを個別に選べます。個人的なタスクは非公開のまま、仕事のプロジェクトだけをレポート用に同期できます。"
+        "description": "タスクごとに見積もりと実際の完了データを記録し、シートで長期の正確性を図表化します。計画は四半期ごとに測定可能に改善します。",
+        "title": "見積もりと実績を追跡"
       },
       {
-        "question": "GAIAは繰り返しタスクもログに記録できますか？",
-        "answer": "はい。繰り返しタスクは完了するたびに、それぞれの日付を持つ別の行として記録されるため、連続達成記録や頻度の分析も正確に保たれます。"
+        "description": "他のツールから移行したり表計算でプロジェクトを計画したりするとき、GAIAが各行を正しいプロジェクトのタスクに変換し、順序・ラベル・日付を保持します。",
+        "title": "表計算からバックログを一括取り込み"
       }
     ]
   }
