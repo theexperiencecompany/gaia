@@ -6,6 +6,7 @@
  */
 import { globSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { NextIntlClientProvider } from "next-intl";
 import type { ReactElement, ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
@@ -99,7 +100,11 @@ vi.mock("@/features/integrations/hooks/useIntegrationLookup", () => ({
 
 function parse(element: ReactElement): Document {
   return new DOMParser().parseFromString(
-    renderToStaticMarkup(element),
+    renderToStaticMarkup(
+      <NextIntlClientProvider locale="en" messages={{}}>
+        {element}
+      </NextIntlClientProvider>,
+    ),
     "text/html",
   );
 }

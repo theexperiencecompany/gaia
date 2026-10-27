@@ -41,6 +41,9 @@ function stubBackend(): void {
       if (pathname.endsWith("/workflows")) {
         return Response.json({ workflows: [], total: 0 });
       }
+      if (pathname.endsWith("/integrations/config")) {
+        return Response.json({ integrations: [] });
+      }
       if (pathname.endsWith("/integrations/community")) {
         return Response.json({
           integrations: [{ ...ARXIV, cloneCount: 0, iconUrl: null }],
