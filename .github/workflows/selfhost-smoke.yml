@@ -11,8 +11,12 @@ name: Self-host smoke
 # what a self-hoster runs (changes.sh selfhost-inputs) and on dispatch.
 # No `branches:` filter on pull_request: it matches the PR's base, so it would
 # exempt every stacked PR (see CLAUDE.md, Skipped / Non-Gated Lanes).
+# `merge_group` is required: this workflow's checks gate the merge queue, and a
+# required check that never reports on the group commit ejects the entry — every
+# merge-group build today carried no Self-host smoke status at all.
 on:
   pull_request:
+  merge_group:
   push:
     branches:
       - master
