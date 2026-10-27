@@ -32,7 +32,8 @@ from sentry_sdk.types import Event
 from app.config import sentry as sentry_config
 from app.config.loggers import REQUEST_LOGGER_NAME
 from app.config.sentry import _make_sentry_loguru_sink
-from shared.py.logging import MCP_USE_LOGGER_DISPLAY_NAME, _InterceptHandler, env_context
+from shared.py import logging as shared_logging
+from shared.py.logging import _InterceptHandler, env_context
 from shared.py.wide_events import (
     BACKGROUND_LOGGER_NAME,
     BOUNDARY_FAILURE_MESSAGE,
@@ -317,11 +318,16 @@ def test_only_production_samples_traces_and_profiles(
 
 @pytest.mark.regression
 def test_an_mcp_connect_duplicate_does_not_reach_sentry() -> None:
-    """MCPClient.connect reports the same failure with the integration id."""
+    """MCPClient.connect reports the same failure with the integration id.
+
+    The display name is read off the module, not imported: this PR introduces the
+    constant, so a module-level import makes the regression-proof lane collect
+    nothing on base and report an ERROR instead of the red it is meant to prove.
+    """
     cap_msg, cap_exc, _scope = _run_sink(
         _record(
             message="MCP protocol error during initialization: code=-32601 message='Method not found'",
-            logger_name=MCP_USE_LOGGER_DISPLAY_NAME,
+            logger_name=shared_logging.MCP_USE_LOGGER_DISPLAY_NAME,
         )
     )
 
@@ -335,7 +341,7 @@ def test_an_mcp_background_session_error_still_reaches_sentry() -> None:
     cap_msg, _cap_exc, _scope = _run_sink(
         _record(
             message="Error in SseConnectionManager task: unhandled errors in a TaskGroup",
-            logger_name=MCP_USE_LOGGER_DISPLAY_NAME,
+            logger_name=shared_logging.MCP_USE_LOGGER_DISPLAY_NAME,
         )
     )
 
@@ -354,7 +360,7 @@ def test_an_mcp_background_session_error_still_reaches_sentry() -> None:
 def test_every_connect_transport_line_is_a_duplicate(message: str) -> None:
     """Each of these is re-raised to MCPClient.connect, which reports it with the id."""
     cap_msg, cap_exc, _scope = _run_sink(
-        _record(message=message, logger_name=MCP_USE_LOGGER_DISPLAY_NAME)
+        _record(message=message, logger_name=shared_logging.MCP_USE_LOGGER_DISPLAY_NAME)
     )
 
     cap_msg.assert_not_called()
@@ -366,7 +372,7 @@ def test_a_swallowed_tool_listing_failure_still_reaches_sentry() -> None:
     cap_msg, _cap_exc, _scope = _run_sink(
         _record(
             message="Error listing tools for connector https://mcp.example: boom",
-            logger_name=MCP_USE_LOGGER_DISPLAY_NAME,
+            logger_name=shared_logging.MCP_USE_LOGGER_DISPLAY_NAME,
         )
     )
 
