@@ -1367,8 +1367,8 @@ class TestMCPIntegrationConnection:
                 AsyncMock(return_value=True),
             ),
             patch(
-                "app.services.integrations.integration_connection_service.get_api_base_url",
-                return_value="https://api.example.com",
+                "app.services.integrations.integration_connection_service.get_mcp_oauth_redirect_uri",
+                return_value="https://api.example.com/integrations/callback",
             ),
         ):
             response = await connect_mcp_integration(

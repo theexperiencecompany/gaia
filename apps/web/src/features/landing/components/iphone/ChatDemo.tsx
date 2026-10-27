@@ -1279,7 +1279,7 @@ function TelegramDemo({
           gap: 8,
           backgroundColor: blueOverlay,
           backgroundImage:
-            'linear-gradient(rgba(43,120,205,0.5), rgba(43,120,205,0.5)), url("/telegram-doodle.png")',
+            'linear-gradient(rgba(43,120,205,0.5), rgba(43,120,205,0.5)), url("/telegram-doodle.webp")',
           backgroundSize: "auto, 480px auto",
           backgroundRepeat: "repeat",
           paddingTop: 8,

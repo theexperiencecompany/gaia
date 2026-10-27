@@ -18,7 +18,7 @@ type SessionIdReader = () => string | undefined;
 
 let readSessionId: SessionIdReader | null = null;
 
-/** Called by `@/lib/analytics`, the only module that imports posthog-js. */
+/** Called by `@/lib/analytics`, the only module that holds the posthog client. */
 export function registerPostHogSessionId(reader: SessionIdReader): void {
   readSessionId = reader;
 }

@@ -126,10 +126,8 @@ vi.mock("@/hooks/ui/useDragAndDrop", () => ({
   useDragAndDrop: () => ({ isDragging: false, dragHandlers: {} }),
 }));
 
-const sendMessage = vi.fn();
-vi.mock("@/hooks/useSendMessage", () => ({
-  useSendMessage: () => sendMessage,
-}));
+const { sendMessage } = vi.hoisted(() => ({ sendMessage: vi.fn() }));
+vi.mock("@/features/chat/stream/sendMessage", () => ({ sendMessage }));
 
 vi.mock("@/lib/analytics", () => ({
   track: (...args: unknown[]) => track(...args),

@@ -12,6 +12,7 @@ from typing import cast
 import httpx
 
 from app.config.settings import settings
+from app.constants.mcp import MCP_OAUTH_CALLBACK_PATH
 from app.utils.url_safety import assert_endpoint_url_shape
 
 _LOOPBACK_HOSTNAMES = frozenset({"localhost", "localhost.localdomain"})
@@ -20,6 +21,11 @@ _LOOPBACK_HOSTNAMES = frozenset({"localhost", "localhost.localdomain"})
 def get_api_base_url() -> str:
     """Get the backend API base URL for callbacks."""
     return cast(str, settings.HOST)
+
+
+def get_mcp_oauth_redirect_uri() -> str:
+    """Return the backend callback every MCP provider OAuth flow redirects back to."""
+    return f"{get_api_base_url()}{MCP_OAUTH_CALLBACK_PATH}"
 
 
 def get_frontend_url() -> str:

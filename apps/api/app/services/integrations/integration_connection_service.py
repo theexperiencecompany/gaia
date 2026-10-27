@@ -20,7 +20,7 @@ from app.constants.integrations import (
     NOT_SET_UP_ON_INSTANCE,
 )
 from app.constants.log_tags import LogTag
-from app.helpers.mcp_helpers import get_api_base_url
+from app.helpers.mcp_helpers import get_mcp_oauth_redirect_uri
 from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from app.models.integrations.composio import ComposioConnectLink
 from app.models.mcp_config import McpAuthChallenge, McpProbeResult
@@ -109,7 +109,7 @@ async def _redirect_to_oauth(
     """Build the provider OAuth URL and wrap it in a redirect response."""
     auth_url = await mcp_client.build_oauth_auth_url(
         integration_id=integration_id,
-        redirect_uri=f"{get_api_base_url()}/api/v1/mcp/oauth/callback",
+        redirect_uri=get_mcp_oauth_redirect_uri(),
         redirect_path=redirect_path,
         challenge_data=challenge_data,
     )

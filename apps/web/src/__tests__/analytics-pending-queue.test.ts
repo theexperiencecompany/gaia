@@ -24,14 +24,16 @@ const { posthogMock, capture, identify, setPersonProperties } = vi.hoisted(
         setPersonProperties,
         reset: vi.fn(),
         _isIdentified: vi.fn(() => true),
+        captureException: vi.fn(),
+        get_distinct_id: vi.fn(() => "0192f0b3-anonymous"),
+        get_session_id: vi.fn(),
       },
     };
   },
 );
 
-vi.mock("posthog-js", () => ({ default: posthogMock }));
-
 import {
+  connectPostHog,
   flushPendingAnalytics,
   identifyUser,
   resetUser,
@@ -39,6 +41,8 @@ import {
 } from "@/lib/analytics";
 
 const USER_ID = "6812f0b3c9a14e2b7d5a91cc";
+
+connectPostHog(posthogMock);
 
 beforeEach(() => {
   posthogMock.__loaded = false;
