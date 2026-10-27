@@ -2839,132 +2839,132 @@
   "gmail-github": {
     "toolA": "Gmail",
     "toolB": "GitHub",
-    "tagline": "Turn emails into GitHub issues and route PR alerts to your inbox",
-    "metaTitle": "GitHub Gmail 연동: 버그 제보 메일을 이슈로",
-    "metaDescription": "메일 속 버그 제보를 바로 이슈로. GAIA가 Gmail로 GitHub 이슈를 만들고 같은 버그의 중복을 막습니다. 설정 단계를 확인하세요.",
+    "tagline": "이메일을 GitHub 이슈로 바꾸고 PR 알림을 메일함으로 받아보세요",
+    "metaTitle": "GitHub Gmail 연동: 버그 리포트 이메일을 이슈로",
+    "metaDescription": "버그 리포트와 기능 요청 이메일로 GitHub 이슈를 중복 없이 생성합니다. GAIA가 PR 진행 상황을 비기술 이해관계자에게 이메일로 전달합니다. 설정 방법을 확인하세요.",
     "keywords": [
-      "Gmail GitHub integration",
-      "email to GitHub issue",
-      "Gmail GitHub automation",
-      "GitHub PR notification email",
-      "connect Gmail and GitHub",
-      "GitHub issue from email"
+      "Gmail GitHub 연동",
+      "이메일을 GitHub 이슈로",
+      "Gmail GitHub 자동화",
+      "GitHub PR 알림 이메일",
+      "Gmail과 GitHub 연결",
+      "이메일로 GitHub 이슈 생성"
     ],
-    "intro": "Bug reports arrive by email. Feature requests come from clients over email threads. Yet your engineering workflow lives entirely in GitHub. The gap between these two worlds creates a tedious manual loop: copy the email, open GitHub, create an issue, paste the details, and remember to update both sides when progress is made.\n\nGAIA eliminates this translation layer by connecting Gmail and GitHub directly. When a client emails a bug report or a stakeholder sends a feature request, GAIA can create a properly formatted GitHub issue with the right labels, assignees, and milestones extracted from the email context. Conversely, when pull requests are opened, reviewed, or merged, GAIA can route structured summaries to relevant inboxes so non-technical stakeholders stay informed without needing GitHub access.\n\nThis integration is particularly valuable for teams where product managers, client-facing staff, and engineers need to collaborate across the email-to-code divide without losing context or creating duplicated effort.",
+    "intro": "버그 리포트는 이메일로 오고, 기능 요청도 고객과의 이메일 스레드로 들어옵니다. 그런데 엔지니어링 업무는 전부 GitHub에서 이루어집니다. 이 두 세계 사이에는 번거로운 수작업 고리가 생깁니다. 이메일을 복사하고, GitHub를 열고, 이슈를 만들고, 세부 내용을 붙여넣은 뒤, 진행 상황이 바뀔 때마다 양쪽을 모두 업데이트해야 합니다.\n\nGAIA는 Gmail을 저장소에 직접 연결해 이 변환 단계를 없앱니다. 고객이 버그 리포트를 보내거나 이해관계자가 기능 요청을 보내면, GAIA가 이메일 맥락에서 라벨, 담당자, 마일스톤을 추출해 형식에 맞는 이슈를 만듭니다. 반대로 PR이 생성되거나 리뷰, 병합되면 관련 메일함으로 구조화된 요약을 보내 비기술 이해관계자가 저장소 접근 권한 없이도 진행 상황을 파악할 수 있게 합니다.\n\n이 연동은 제품 관리자, 고객 대응 담당자, 엔지니어가 이메일과 코드 사이를 오가며 맥락을 잃지 않고 중복 작업 없이 협업해야 하는 팀에 특히 유용합니다.",
     "useCases": [
       {
-        "title": "Create GitHub issues from bug report emails",
-        "description": "When a client or teammate emails a bug report, GAIA parses the email, extracts the key details — steps to reproduce, environment, severity — and creates a formatted GitHub issue in the correct repository with appropriate labels. The original sender is referenced in the issue body so engineers have full context."
+        "title": "버그 리포트 이메일을 GitHub 이슈로 생성",
+        "description": "고객이나 동료가 버그 리포트를 이메일로 보내면 GAIA가 메일을 분석해 핵심 정보, 재현 단계, 환경, 심각도를 추출하고 적절한 라벨을 붙여 올바른 저장소에 형식에 맞는 이슈를 만듭니다. 이슈 본문에는 원래 발신자를 명시해 엔지니어가 전체 맥락을 파악할 수 있습니다."
       },
       {
-        "title": "Feature request pipeline from email to backlog",
-        "description": "Product feedback and feature requests sent by email are automatically converted into GitHub issues tagged as feature requests and added to the relevant project backlog. GAIA extracts the core request and formats it as a user story so engineers can act on it immediately."
+        "title": "이메일에서 백로그로 이어지는 기능 요청 파이프라인",
+        "description": "이메일로 들어온 제품 피드백과 기능 요청은 자동으로 기능 요청 라벨이 붙은 이슈로 전환되어 해당 프로젝트 백로그에 추가됩니다. GAIA가 핵심 요청을 추출해 사용자 스토리 형식으로 정리하므로 엔지니어가 바로 작업에 들어갈 수 있습니다."
       },
       {
-        "title": "PR status notifications for non-technical stakeholders",
-        "description": "When a pull request tied to a client-facing feature is opened, reviewed, or merged, GAIA sends a plain-language email summary to the relevant stakeholders so they know progress is being made without needing to navigate GitHub."
+        "title": "비기술 이해관계자를 위한 PR 상태 알림",
+        "description": "고객 대면 기능과 연결된 PR이 생성되거나 리뷰, 병합되면 GAIA가 관련 이해관계자에게 쉬운 말로 정리한 이메일 요약을 보냅니다. GitHub에 들어가지 않아도 진행 상황을 알 수 있습니다."
       },
       {
-        "title": "Release notification emails",
-        "description": "When a new GitHub release is published, GAIA composes and sends a formatted release summary email to your distribution list — including changelog highlights, known issues, and upgrade notes — keeping clients and internal teams informed automatically."
+        "title": "릴리스 알림 이메일",
+        "description": "새 릴리스가 게시되면 GAIA가 변경 사항 요약, 알려진 이슈, 업그레이드 안내를 담은 릴리스 요약 이메일을 배포 목록으로 작성해 보냅니다. 고객과 내부 팀이 자동으로 소식을 받습니다."
       },
       {
-        "title": "Email-triggered issue comments",
-        "description": "When a stakeholder replies to a GitHub notification email with a comment or update, GAIA posts their reply as a comment on the original GitHub issue so the conversation stays unified in the engineering workflow."
+        "title": "이메일로 트리거되는 이슈 댓글",
+        "description": "이해관계자가 알림 이메일에 댓글이나 업데이트를 회신하면 GAIA가 그 답장을 원래 이슈의 댓글로 등록합니다. 대화가 엔지니어링 워크플로우 안에서 끊기지 않고 이어집니다."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Gmail and GitHub to GAIA",
-        "description": "Authenticate your Gmail account and GitHub organization or personal account in GAIA's integration settings. GAIA uses OAuth for both connections so your credentials remain secure."
+        "step": "Gmail과 GitHub를 GAIA에 연결",
+        "description": "GAIA 연동 설정에서 Gmail 계정과 GitHub 조직 또는 개인 계정을 인증합니다. 두 연결 모두 OAuth를 사용하므로 자격 증명이 안전하게 보호됩니다."
       },
       {
-        "step": "Configure your routing rules",
-        "description": "Tell GAIA which email senders, labels, or keywords should trigger issue creation, which repositories to target, and which GitHub events should send email notifications. You can specify assignees, labels, and milestones as part of the rules."
+        "step": "라우팅 규칙 설정",
+        "description": "어떤 발신자, 라벨, 키워드의 이메일이 이슈 생성을 트리거할지, 어떤 저장소를 대상으로 할지, 어떤 저장소 이벤트에 이메일 알림을 보낼지 GAIA에 알려주세요. 규칙에 담당자, 라벨, 마일스톤도 지정할 수 있습니다."
       },
       {
-        "step": "GAIA automates the email-to-GitHub workflow",
-        "description": "Once configured, GAIA monitors Gmail and GitHub continuously, creating issues from qualifying emails and dispatching notifications for relevant GitHub events without any manual intervention."
+        "step": "GAIA가 이메일-이슈 워크플로우를 자동화",
+        "description": "설정이 끝나면 GAIA가 메일함과 저장소를 계속 모니터링하며 조건에 맞는 이메일로 이슈를 만들고 관련 이벤트 알림을 보냅니다. 수작업이 필요 없습니다."
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA create issues in specific repositories based on email content?",
-        "answer": "Yes. You can set up rules that route emails to different repositories based on sender, subject keywords, Gmail labels, or AI classification of the email content. For example, emails about your mobile app can go to the mobile-app repo while API-related emails go to the backend repo."
+        "question": "GAIA가 이메일 내용에 따라 특정 저장소에 이슈를 만들 수 있나요?",
+        "answer": "네. 발신자, 제목 키워드, 라벨, 또는 이메일 내용의 AI 분류를 기준으로 이메일을 다른 저장소로 보내는 규칙을 설정할 수 있습니다. 예를 들어 모바일 앱 관련 이메일은 mobile-app 저장소로, API 관련 이메일은 백엔드 저장소로 보낼 수 있습니다."
       },
       {
-        "question": "Will GAIA avoid creating duplicate issues if the same bug is emailed twice?",
-        "answer": "GAIA checks for existing open issues with similar titles and content before creating a new one. If a likely duplicate is found, GAIA can add the new email as a comment on the existing issue instead, keeping discussions consolidated."
+        "question": "같은 버그가 두 번 이메일로 오면 중복 이슈를 만들지 않나요?",
+        "answer": "GAIA는 새 이슈를 만들기 전에 제목과 내용이 비슷한 열린 이슈가 있는지 확인합니다. 중복으로 판단되면 새 이메일을 기존 이슈의 댓글로 추가해 논의를 한곳에 모을 수 있습니다."
       },
       {
-        "question": "Can GAIA handle GitHub notifications I already receive in Gmail?",
-        "answer": "Yes. GAIA can parse GitHub's native notification emails and enrich them — summarizing long PR review threads, extracting action items, or routing specific notifications to teammates — rather than just letting them accumulate in your inbox."
+        "question": "이미 Gmail로 받고 있는 GitHub 알림도 처리할 수 있나요?",
+        "answer": "네. GAIA는 GitHub의 기본 알림 이메일을 분석해 긴 PR 리뷰 스레드를 요약하거나, 실행 항목을 추출하거나, 특정 알림을 동료에게 전달하는 등 알림을 한층 유용하게 가공합니다. 메일함에 쌓아두기만 하지 않아도 됩니다."
       }
     ]
   },
   "gmail-trello": {
     "toolA": "Gmail",
     "toolB": "Trello",
-    "tagline": "Convert emails into Trello cards and keep your boards updated from your inbox",
-    "metaTitle": "Gmail + Trello 연동: 이메일을 카드로",
-    "metaDescription": "GAIA로 Gmail + Trello 연동. 이메일에서 Trello 카드를 만들고 답장에 따라 보드 목록을 업데이트합니다. 받은편지함과 보드를 오가지 않고 업무를 관리하세요.",
+    "tagline": "이메일을 Trello 카드로 바꾸고 메일함에서 보드를 최신 상태로 유지하세요",
+    "metaTitle": "Gmail + Trello 연동: 고객 이메일을 카드로",
+    "metaDescription": "고객 요청 이메일을 Trello 카드로 만들고 답장이 오면 카드를 이동합니다. 카드가 완료되면 GAIA가 고객에게 이메일을 보냅니다. 설정 방법을 확인하세요.",
     "keywords": [
-      "Gmail Trello integration",
-      "email to Trello card",
-      "Gmail Trello automation",
-      "create Trello card from email",
-      "connect Gmail and Trello",
-      "Trello email workflow"
+      "Gmail Trello 연동",
+      "이메일을 Trello 카드로",
+      "Gmail Trello 자동화",
+      "이메일로 Trello 카드 생성",
+      "Gmail과 Trello 연결",
+      "Trello 이메일 워크플로우"
     ],
-    "intro": "Email is where work requests arrive; Trello is where work gets organized and tracked. But bridging the two requires constant manual effort — reading emails, deciding which board and list they belong in, creating cards, copying over the relevant details, and then returning to Gmail to reply. For teams managing high email volumes, this becomes a significant time drain that takes attention away from actual work.\n\nGAIA connects Gmail and Trello so that email content flows directly into your boards. Incoming emails that represent tasks, requests, or deliverables can be automatically converted into Trello cards with the right metadata, assigned to the correct list, and linked back to the original email thread. When card statuses change in Trello, GAIA can notify the relevant people via email so external stakeholders stay informed without needing Trello access.\n\nThis integration is ideal for client-facing teams, project managers, and operations teams who live in both email and Trello and want to eliminate the manual handoff between the two.",
+    "intro": "이메일은 업무 요청이 도착하는 곳이고, Trello는 업무를 정리하고 추적하는 곳입니다. 하지만 둘을 잇는 데는 끊임없는 수작업이 필요합니다. 이메일을 읽고, 어느 보드와 리스트에 속하는지 판단하고, 카드를 만들고, 관련 내용을 옮겨 적은 뒤, 다시 메일함으로 돌아가 답장해야 합니다. 이메일 양이 많은 팀에게 이 과정은 실제 업무에서 주의를 빼앗는 큰 시간 낭비입니다.\n\nGAIA는 Gmail과 Trello를 연결해 이메일 내용이 보드로 바로 흘러가게 합니다. 업무, 요청, 산출물에 해당하는 이메일은 적절한 메타데이터와 함께 카드로 자동 전환되고, 올바른 리스트에 배치되며, 원래 스레드와 연결됩니다. 카드 상태가 바뀌면 GAIA가 관련 담당자에게 이메일로 알려 외부 이해관계자가 보드 접근 권한 없이도 상황을 알 수 있습니다.\n\n이 연동은 메일함과 보드를 함께 쓰면서 두 도구 사이의 수동 인계를 없애고 싶은 고객 대응 팀, 프로젝트 관리자, 운영 팀에 이상적입니다.",
     "useCases": [
       {
-        "title": "Create Trello cards from client request emails",
-        "description": "When a client emails a new request, GAIA creates a Trello card in the appropriate board and list, pre-populated with the request details, due date if mentioned, and a link back to the original email thread so your team has full context when they pick up the card."
+        "title": "고객 요청 이메일로 Trello 카드 생성",
+        "description": "고객이 새 요청을 이메일로 보내면 GAIA가 해당 보드와 리스트에 카드를 만들고, 요청 내용과 이메일에 언급된 마감일, 원래 이메일 스레드 링크를 미리 채워둡니다. 팀이 카드를 맡는 순간 전체 맥락을 확인할 수 있습니다."
       },
       {
-        "title": "Move cards based on email replies",
-        "description": "When you or a teammate sends an email update on a project, GAIA can move the corresponding Trello card to the next list — for example, from 'In Progress' to 'Awaiting Client Feedback' — so your board reflects the actual state of work without manual updates."
+        "title": "이메일 답장에 따라 카드 이동",
+        "description": "프로젝트에 대해 이메일 업데이트를 보내면 GAIA가 해당 카드를 다음 리스트로 옮깁니다. 예를 들어 '진행 중'에서 '고객 피드백 대기'로 이동시켜, 수동 수정 없이 보드가 실제 업무 상태를 반영하게 합니다."
       },
       {
-        "title": "Email notifications when cards are completed",
-        "description": "When a Trello card is moved to 'Done', GAIA composes and sends a completion notification email to the relevant stakeholder, summarizing what was done and any next steps, keeping clients informed without requiring manual follow-up emails."
+        "title": "카드 완료 시 이메일 알림",
+        "description": "카드가 '완료'로 이동하면 GAIA가 완료 알림 이메일을 작성해 관련 이해관계자에게 보냅니다. 무엇을 했고 다음 단계가 무엇인지 요약해 주므로 별도의 후속 이메일 없이도 고객이 상황을 알 수 있습니다."
       },
       {
-        "title": "Daily board digest to email",
-        "description": "GAIA sends a morning email digest summarizing the state of your Trello boards — cards due today, overdue items, and recently completed tasks — so you start the day with a clear picture of priorities without opening Trello."
+        "title": "매일 보드 요약을 이메일로",
+        "description": "GAIA가 보드 상태, 오늘 마감인 카드, 기한이 지난 항목, 최근 완료한 업무를 정리한 아침 요약 이메일을 보냅니다. Trello를 열지 않아도 하루의 우선순위를 명확히 파악할 수 있습니다."
       },
       {
-        "title": "Attachment forwarding from email to cards",
-        "description": "Files and documents sent as email attachments are automatically attached to the corresponding Trello card so your team has everything they need in one place without hunting through email threads for assets."
+        "title": "이메일 첨부파일을 카드로 전달",
+        "description": "이메일 첨부파일로 온 파일과 문서는 해당 카드에 자동으로 첨부됩니다. 자료를 찾기 위해 이메일 스레드를 뒤질 필요 없이 팀이 필요한 모든 것을 한곳에서 확인할 수 있습니다."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Gmail and Trello to GAIA",
-        "description": "Authenticate your Gmail account and Trello workspace in GAIA's integration settings. GAIA will ask which boards it should have access to so you control the scope of the integration."
+        "step": "Gmail과 Trello를 GAIA에 연결",
+        "description": "GAIA 연동 설정에서 두 계정을 인증합니다. GAIA가 접근할 보드를 물어보므로 연동 범위를 직접 정할 수 있습니다."
       },
       {
-        "step": "Set up your card creation rules",
-        "description": "Tell GAIA which types of emails should become Trello cards, which board and list they should land in, how to set labels and due dates, and who to assign cards to. Rules can be based on sender, Gmail labels, keywords, or AI classification."
+        "step": "카드 생성 규칙 설정",
+        "description": "어떤 이메일이 카드가 되어야 하는지, 어느 보드와 리스트에 들어가야 하는지, 라벨과 마감일은 어떻게 지정할지, 누구에게 카드를 배정할지 GAIA에 알려주세요. 발신자, Gmail 라벨, 키워드, AI 분류를 기준으로 규칙을 만들 수 있습니다."
       },
       {
-        "step": "GAIA manages the email-to-board pipeline automatically",
-        "description": "GAIA monitors your Gmail and Trello boards continuously, creating cards from qualifying emails and sending notifications for board events according to your rules — no manual copying required."
+        "step": "GAIA가 이메일-보드 파이프라인을 자동 관리",
+        "description": "GAIA가 메일함과 보드를 계속 모니터링하며 조건에 맞는 이메일로 카드를 만들고, 규칙에 따라 보드 이벤트 알림을 보냅니다. 직접 복사할 필요가 없습니다."
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA create cards on different Trello boards based on the email content?",
-        "answer": "Yes. You can set rules that route emails to different boards based on sender domain, Gmail labels, or AI-detected content type. For example, design request emails go to your Design board while support emails go to your Support board."
+        "question": "이메일 내용에 따라 서로 다른 Trello 보드에 카드를 만들 수 있나요?",
+        "answer": "네. 발신자 도메인, 메일함 라벨, AI가 감지한 내용 유형을 기준으로 이메일을 다른 보드로 보내는 규칙을 설정할 수 있습니다. 예를 들어 디자인 요청 이메일은 디자인 보드로, 지원 이메일은 지원 보드로 보낼 수 있습니다."
       },
       {
-        "question": "What happens to the original email after GAIA creates a Trello card?",
-        "answer": "GAIA can apply a Gmail label such as 'Sent to Trello' to the original email and optionally archive it so your inbox stays clean. The link back to the email thread is stored in the Trello card description so you can always find the source."
+        "question": "GAIA가 카드를 만든 뒤 원래 이메일은 어떻게 되나요?",
+        "answer": "GAIA가 원래 이메일에 보드로 전달됨을 표시하는 라벨을 붙이고, 원하면 보관 처리해 메일함을 깔끔하게 유지할 수 있습니다. 이메일 스레드 링크는 카드 설명에 저장되므로 언제든 원본을 찾을 수 있습니다."
       },
       {
-        "question": "Can I create a Trello card manually by forwarding an email to GAIA?",
-        "answer": "Yes. In addition to automatic rules, you can forward any email to GAIA with a quick instruction like 'add this to the Marketing board under To Do' and GAIA will create the card immediately."
+        "question": "이메일을 GAIA로 전달해 직접 카드를 만들 수도 있나요?",
+        "answer": "네. 자동 규칙과 별개로, '이 메일을 마케팅 보드의 할 일에 추가해줘'처럼 간단히 지시해 이메일을 전달하면 GAIA가 즉시 카드를 만듭니다."
       }
     ]
   },
@@ -3049,528 +3049,528 @@
   "gmail-drive": {
     "toolA": "Gmail",
     "toolB": "Google Drive",
-    "tagline": "Automatically save email attachments and content to Google Drive",
-    "metaTitle": "Gmail + Google Drive 연동: 첨부파일 자동 저장",
-    "metaDescription": "GAIA로 Gmail + Google Drive 연동. 이메일 첨부파일을 Drive 폴더에 자동 저장하고 스레드를 문서로 변환합니다. 직접 다운로드하지 않아도 파일이 정리됩니다.",
+    "tagline": "이메일 첨부파일과 내용을 Google Drive에 자동으로 저장하세요",
+    "metaTitle": "Gmail + Google Drive 연동: 첨부파일을 Drive에 저장",
+    "metaDescription": "인보이스 첨부파일을 알맞은 Drive 폴더에 저장하고, 계약서를 보관하며, Gmail에서 프로젝트 자료를 모읍니다. GAIA가 모든 첨부파일을 정리합니다. 설정 방법을 확인하세요.",
     "keywords": [
-      "Gmail Google Drive integration",
-      "save email attachments to Drive",
-      "Gmail Drive automation",
-      "email to Google Drive",
-      "connect Gmail and Google Drive",
-      "automatic email file backup"
+      "Gmail Google Drive 연동",
+      "이메일 첨부파일을 Drive에 저장",
+      "Gmail Drive 자동화",
+      "이메일을 Google Drive로",
+      "Gmail과 Google Drive 연결",
+      "이메일 파일 자동 백업"
     ],
-    "intro": "Email attachments are one of the most common ways files enter a team's workflow, yet they remain locked inside Gmail threads rather than organized in a shared Drive folder where everyone can find them. Downloading attachments manually, renaming them, and uploading them to the right folder is a repetitive chore that adds up to hours of wasted time each week.\n\nGAIA automates the entire pipeline from Gmail to Google Drive. Attachments from qualifying emails are saved to the correct Drive folders automatically, named consistently, and organized by sender, project, or date depending on your preferences. Entire email threads can be converted into Drive documents for archiving. Contracts, invoices, and reports that arrive by email end up exactly where your team expects to find them.\n\nThis integration is invaluable for finance teams handling invoices, legal teams receiving contracts, operations teams managing vendor documents, and any team that regularly receives files by email and needs them accessible in a shared Drive.",
+    "intro": "이메일 첨부파일은 팀 업무에 파일이 들어오는 가장 흔한 경로지만, 대개 Gmail 스레드 안에 갇혀 있어 모두가 찾을 수 있는 공유 Drive 폴더에는 정리되지 않습니다. 첨부파일을 직접 내려받고, 이름을 바꾸고, 올바른 폴더에 업로드하는 일은 매주 몇 시간씩 쌓이는 반복 작업입니다.\n\nGAIA는 Gmail에서 Google Drive로 이어지는 전체 과정을 자동화합니다. 조건에 맞는 이메일의 첨부파일을 올바른 폴더에 자동 저장하고, 설정에 따라 발신자, 프로젝트, 날짜별로 일관된 이름을 붙여 정리합니다. 이메일 스레드 전체를 문서로 변환해 보관할 수도 있습니다. 이메일로 온 계약서, 인보이스, 보고서가 팀이 기대하는 위치에 정확히 도착합니다.\n\n이 기능은 인보이스를 처리하는 재무 팀, 계약서를 받는 법무 팀, 벤더 문서를 관리하는 운영 팀, 그리고 이메일로 파일을 자주 받아 공유 폴더에서 접근해야 하는 모든 팀에 특히 유용합니다.",
     "useCases": [
       {
-        "title": "Auto-save invoice attachments to the correct Drive folder",
-        "description": "When an invoice or receipt arrives in Gmail, GAIA extracts the attachment and saves it to the designated Drive folder for that vendor or project. The file is named consistently — including vendor name, invoice number, and date — so your accounting team can always find it without searching email."
+        "title": "인보이스 첨부파일을 올바른 Drive 폴더에 자동 저장",
+        "description": "인보이스나 영수증이 도착하면 GAIA가 첨부파일을 추출해 해당 벤더나 프로젝트용 폴더에 저장합니다. 벤더명, 인보이스 번호, 날짜를 포함해 일관된 이름을 붙이므로 회계 팀이 이메일을 뒤지지 않고도 파일을 찾을 수 있습니다."
       },
       {
-        "title": "Contract and agreement archiving",
-        "description": "Signed contracts and legal agreements sent by email are automatically saved to your Contracts Drive folder. GAIA can also create a Drive shortcut linked back to the original email thread for full context."
+        "title": "계약서와 합의서 보관",
+        "description": "이메일로 온 서명된 계약서와 법적 합의서는 자동으로 계약 폴더에 저장됩니다. GAIA가 원래 이메일 스레드로 연결되는 바로가기를 만들어 전체 맥락도 함께 남길 수 있습니다."
       },
       {
-        "title": "Project asset collection",
-        "description": "Design files, briefs, and project assets sent by clients or vendors over email are automatically routed to the correct project folder in Drive so your team has access without anyone acting as a manual file relay."
+        "title": "프로젝트 자료 수집",
+        "description": "고객이나 벤더가 이메일로 보낸 디자인 파일, 브리프, 프로젝트 자료는 올바른 프로젝트 폴더로 자동 전달됩니다. 누군가 파일을 일일이 옮겨줄 필요 없이 팀이 바로 접근할 수 있습니다."
       },
       {
-        "title": "Email thread to Drive document",
-        "description": "Important email threads — project decisions, client approvals, or policy discussions — can be converted by GAIA into formatted Drive documents for long-term archiving and easy sharing with people who weren't on the original thread."
+        "title": "이메일 스레드를 Drive 문서로",
+        "description": "중요한 이메일 스레드(프로젝트 결정, 고객 승인, 정책 논의)를 GAIA가 형식에 맞는 문서로 변환해 장기 보관하고, 원래 스레드에 없던 사람과도 쉽게 공유할 수 있습니다."
       },
       {
-        "title": "Photo and media attachment organization",
-        "description": "Photos and media files emailed by clients or partners are saved to organized Drive folders automatically, eliminating the need to manually download and re-upload assets that arrive in your inbox."
+        "title": "사진과 미디어 첨부파일 정리",
+        "description": "고객이나 파트너가 이메일로 보낸 사진과 미디어 파일을 정리된 폴더에 자동 저장합니다. 메일함으로 온 자료를 직접 내려받아 다시 업로드할 필요가 없습니다."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Gmail and Google Drive to GAIA",
-        "description": "Authenticate your Google account for both Gmail and Drive access. GAIA uses a single OAuth connection for Google Workspace services, so you only authorize once and specify which Drive folders GAIA should have write access to."
+        "step": "Gmail과 Google Drive를 GAIA에 연결",
+        "description": "Gmail과 Drive 접근 권한을 위해 Google 계정을 인증합니다. GAIA는 Google Workspace 서비스에 하나의 OAuth 연결을 사용하므로 한 번만 승인하고, GAIA가 쓰기 권한을 가질 폴더를 지정하면 됩니다."
       },
       {
-        "step": "Configure your folder routing rules",
-        "description": "Tell GAIA which types of attachments or emails should go to which Drive folders. You can base rules on sender domain, Gmail labels, subject keywords, file type, or AI-detected document category such as invoice, contract, or design file."
+        "step": "폴더 라우팅 규칙 설정",
+        "description": "어떤 첨부파일이나 이메일이 어느 폴더로 가야 하는지 GAIA에 알려주세요. 발신자 도메인, 라벨, 제목 키워드, 파일 형식, 또는 인보이스·계약서·디자인 파일처럼 AI가 감지한 문서 분류를 기준으로 규칙을 만들 수 있습니다."
       },
       {
-        "step": "GAIA automatically saves files as they arrive",
-        "description": "From the moment setup is complete, GAIA monitors incoming emails and saves qualifying attachments to Drive without any manual action. Files are organized, named, and placed exactly where your team expects them."
+        "step": "GAIA가 파일이 도착하는 대로 자동 저장",
+        "description": "설정이 끝난 순간부터 GAIA가 들어오는 이메일을 모니터링하며 조건에 맞는 첨부파일을 자동 저장합니다. 별도 조작 없이 팀이 기대하는 위치에 정리되고 이름이 붙어 저장됩니다."
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA organize files into subfolders based on the email sender or date?",
-        "answer": "Yes. You can instruct GAIA to create a folder structure based on sender name, sender domain, year and month, project name, or any combination. For example, invoices can be organized into Drive folders by vendor and then by month automatically."
+        "question": "이메일 발신자나 날짜를 기준으로 하위 폴더에 파일을 정리할 수 있나요?",
+        "answer": "네. 발신자 이름, 발신자 도메인, 연도와 월, 프로젝트명 또는 이들을 조합한 기준으로 폴더 구조를 만들도록 GAIA에 지시할 수 있습니다. 예를 들어 인보이스를 벤더별로, 그 안에서 다시 월별로 자동 정리할 수 있습니다."
       },
       {
-        "question": "What file types can GAIA save to Drive?",
-        "answer": "GAIA can save any file type that Gmail supports as an attachment, including PDFs, Word documents, Excel spreadsheets, images, ZIP archives, and more. Google Workspace files like Docs and Sheets are handled natively."
+        "question": "GAIA는 어떤 파일 형식을 Drive에 저장할 수 있나요?",
+        "answer": "이메일 첨부파일로 보낼 수 있는 모든 형식을 저장할 수 있습니다. PDF, Word 문서, Excel 스프레드시트, 이미지, ZIP 압축 파일 등이 포함되며, Docs나 Sheets 같은 Google Workspace 파일은 기본 형식으로 처리됩니다."
       },
       {
-        "question": "Will GAIA create duplicate files if the same attachment is sent twice?",
-        "answer": "GAIA checks for existing files with the same name and content hash before saving. If a duplicate is detected, it will skip the save or append a version suffix depending on your preference, keeping your Drive folders clean."
+        "question": "같은 첨부파일이 두 번 오면 중복 파일이 생기지 않나요?",
+        "answer": "GAIA는 저장 전에 이름과 내용 해시가 같은 파일이 있는지 확인합니다. 중복으로 판단되면 저장을 건너뛰거나, 설정에 따라 버전 접미사를 붙여 폴더를 깔끔하게 유지합니다."
       }
     ]
   },
   "gmail-hubspot": {
     "toolA": "Gmail",
     "toolB": "HubSpot",
-    "tagline": "Sync Gmail conversations with HubSpot CRM contacts and deals automatically",
-    "metaTitle": "Gmail + HubSpot 연동: 이메일을 CRM에 기록",
-    "metaDescription": "GAIA로 Gmail + HubSpot 연동. 이메일 대화를 CRM 연락처에 기록하고 거래를 만들며 연락처 정보도 자동 갱신합니다. 영업 대화를 하나도 놓치지 않습니다.",
+    "tagline": "Gmail 대화를 HubSpot CRM 연락처와 딜에 자동으로 동기화하세요",
+    "metaTitle": "Gmail + HubSpot 연동: 이메일을 연락처에 기록",
+    "metaDescription": "이메일을 HubSpot 연락처에 기록하고, 인바운드 문의로 딜을 만들며, 이메일 신호로 딜 단계를 업데이트합니다. GAIA가 CRM을 최신 상태로 유지합니다.",
     "keywords": [
-      "Gmail HubSpot integration",
-      "email to HubSpot CRM",
-      "Gmail HubSpot automation",
-      "log emails to HubSpot",
-      "connect Gmail and HubSpot",
-      "HubSpot email sync"
+      "Gmail HubSpot 연동",
+      "이메일을 HubSpot CRM으로",
+      "Gmail HubSpot 자동화",
+      "이메일을 HubSpot에 기록",
+      "Gmail과 HubSpot 연결",
+      "HubSpot 이메일 동기화"
     ],
-    "intro": "Sales and customer success teams rely on HubSpot to manage relationships, but the actual conversations happen in Gmail. When email interactions aren't consistently logged to CRM, your HubSpot data becomes incomplete, deal timelines have gaps, and new team members lack context when they take over an account. Manual CRM logging is tedious enough that it gets skipped, especially under pressure.\n\nGAIA bridges Gmail and HubSpot by keeping them synchronized automatically. When you exchange emails with a HubSpot contact, GAIA logs the conversation to the correct contact record, extracts action items, and updates deal stages based on email signals. New contacts discovered in email can be automatically created in HubSpot with relevant context. Your CRM stays accurate without relying on sales reps to remember to log every interaction.\n\nThis integration is essential for sales teams who do high-volume outreach, account managers who maintain long-term client relationships, and customer success teams who need a complete interaction history for every account.",
+    "intro": "영업팀과 고객 성공팀은 관계 관리를 위해 HubSpot을 쓰지만, 실제 대화는 Gmail에서 이루어집니다. 이메일 상호작용이 CRM에 꾸준히 기록되지 않으면 데이터가 불완전해지고, 딜 타임라인에 빈틈이 생기며, 새로 계정을 맡은 팀원은 맥락을 알 수 없습니다. 수동 CRM 기록은 번거로워서, 특히 바쁠 때는 가장 먼저 건너뛰게 되는 일입니다.\n\nGAIA는 Gmail과 HubSpot을 자동으로 동기화해 이 간극을 메웁니다. CRM 연락처와 이메일을 주고받으면 GAIA가 대화를 올바른 연락처 레코드에 기록하고, 실행 항목을 추출하며, 이메일 신호에 따라 딜 단계를 업데이트합니다. 이메일에서 발견한 새 연락처는 관련 맥락과 함께 자동으로 생성됩니다. 영업 담당자가 모든 상호작용을 기억해 기록하지 않아도 CRM이 정확하게 유지됩니다.\n\n이 연동은 대량 아웃리치를 하는 영업팀, 장기 고객 관계를 관리하는 어카운트 매니저, 모든 계정의 완전한 상호작용 이력이 필요한 고객 성공팀에 꼭 필요합니다.",
     "useCases": [
       {
-        "title": "Automatic email logging to HubSpot contacts",
-        "description": "Every qualifying email you send or receive is automatically logged as an activity on the corresponding HubSpot contact record. The full email content, date, and thread context are captured so your CRM always reflects what has actually been communicated with each contact."
+        "title": "HubSpot 연락처에 이메일 자동 기록",
+        "description": "주고받은 이메일 중 조건에 맞는 것은 해당 연락처 레코드에 활동으로 자동 기록됩니다. 이메일 전체 내용, 날짜, 스레드 맥락이 저장되어 CRM이 각 연락처와 실제로 나눈 대화를 그대로 반영합니다."
       },
       {
-        "title": "Create HubSpot deals from inbound email inquiries",
-        "description": "When a prospect emails with an inquiry or request for information, GAIA creates a new HubSpot deal and associates it with the contact, setting the deal stage, estimated value if mentioned, and linked email thread so your sales team can follow up immediately from HubSpot."
+        "title": "인바운드 이메일 문의로 HubSpot 딜 생성",
+        "description": "잠재 고객이 문의나 정보 요청 이메일을 보내면 GAIA가 새 딜을 만들어 연락처에 연결하고, 딜 단계와 이메일에 언급된 예상 금액, 연결된 이메일 스레드를 설정합니다. 영업팀이 HubSpot에서 바로 후속 조치를 할 수 있습니다."
       },
       {
-        "title": "Update deal stages based on email signals",
-        "description": "When an email indicates a deal has progressed — a prospect confirms a meeting, sends a purchase order, or requests a contract — GAIA updates the HubSpot deal stage accordingly so your pipeline always reflects current reality without requiring manual updates."
+        "title": "이메일 신호에 따른 딜 단계 업데이트",
+        "description": "잠재 고객이 미팅을 확정하거나, 발주서를 보내거나, 계약서를 요청하는 등 딜이 진전되었음을 보여주는 이메일이 오면 GAIA가 그에 맞게 딜 단계를 업데이트합니다. 수동 수정 없이 파이프라인이 현재 상황을 반영합니다."
       },
       {
-        "title": "New contact creation from email signatures",
-        "description": "When you receive an email from someone not yet in HubSpot, GAIA extracts contact details from the email signature — name, company, phone, title — and creates a new HubSpot contact record enriched with that information."
+        "title": "이메일 서명으로 새 연락처 생성",
+        "description": "아직 CRM에 없는 사람에게서 이메일을 받으면 GAIA가 서명에서 이름, 회사, 전화번호, 직함을 추출해 그 정보로 보강된 새 연락처 레코드를 만듭니다."
       },
       {
-        "title": "Follow-up task creation from email commitments",
-        "description": "When an email contains a commitment — 'I'll get back to you by Friday' or 'let's schedule a call next week' — GAIA creates a follow-up task in HubSpot assigned to the responsible rep so commitments are tracked and nothing falls through the cracks."
+        "title": "이메일 속 약속으로 후속 작업 생성",
+        "description": "'금요일까지 다시 연락드릴게요'나 '다음 주에 통화 일정을 잡죠' 같은 약속이 이메일에 담겨 있으면 GAIA가 담당 영업사원에게 배정된 후속 작업을 CRM에 만들어, 약속이 추적되고 빠지는 일이 없게 합니다."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Gmail and HubSpot to GAIA",
-        "description": "Authenticate your Gmail account and HubSpot portal in GAIA. GAIA uses HubSpot's OAuth integration and requests only the permissions needed to read and write contacts, deals, and activities."
+        "step": "Gmail과 HubSpot을 GAIA에 연결",
+        "description": "GAIA에서 Gmail 계정과 HubSpot 포털을 인증합니다. GAIA는 CRM의 OAuth 연동을 사용하며 연락처, 딜, 활동을 읽고 쓰는 데 필요한 권한만 요청합니다."
       },
       {
-        "step": "Define your sync rules and preferences",
-        "description": "Specify which email addresses or domains should trigger CRM logging, how contacts should be matched or created, and which email signals indicate deal stage changes. You can also set which team members' inboxes GAIA should monitor."
+        "step": "동기화 규칙과 선호 설정",
+        "description": "어떤 이메일 주소나 도메인이 CRM 기록을 트리거할지, 연락처를 어떻게 매칭하거나 생성할지, 어떤 이메일 신호가 딜 단계 변경을 뜻하는지 지정하세요. GAIA가 모니터링할 팀원의 메일함도 설정할 수 있습니다."
       },
       {
-        "step": "GAIA keeps Gmail and HubSpot synchronized automatically",
-        "description": "GAIA monitors qualifying inboxes and logs interactions to HubSpot continuously. Your CRM data stays current without manual entry, giving your whole team an accurate and complete view of every customer relationship."
+        "step": "GAIA가 메일함과 CRM을 자동 동기화",
+        "description": "GAIA가 해당 메일함을 모니터링하며 상호작용을 계속 기록합니다. 수동 입력 없이 CRM 데이터가 최신으로 유지되어 팀 전체가 모든 고객 관계를 정확하고 완전하게 파악할 수 있습니다."
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA match emails to existing HubSpot contacts automatically?",
-        "answer": "Yes. GAIA matches emails to HubSpot contacts by email address first, and if no match is found, it can search by company domain. You can configure whether unmatched emails create new contacts automatically or are flagged for manual review."
+        "question": "GAIA가 이메일을 기존 HubSpot 연락처와 자동으로 매칭하나요?",
+        "answer": "네. GAIA는 먼저 이메일 주소로 연락처를 찾고, 매칭되는 연락처가 없으면 회사 도메인으로 검색합니다. 매칭되지 않은 이메일을 새 연락처로 자동 생성할지, 수동 검토 대상으로 표시할지 설정할 수 있습니다."
       },
       {
-        "question": "Will personal emails also be logged to HubSpot?",
-        "answer": "No. GAIA only logs emails that match your defined rules — typically emails from or to contacts in HubSpot or email addresses from known customer domains. Internal team emails and personal communications are excluded by default."
+        "question": "개인 이메일도 CRM에 기록되나요?",
+        "answer": "아니요. GAIA는 설정한 규칙에 맞는 이메일만 기록합니다. 보통 기존 연락처와 주고받은 이메일이나 알려진 고객 도메인의 주소에서 온 이메일이 대상이며, 내부 팀 이메일과 개인적인 연락은 기본적으로 제외됩니다."
       },
       {
-        "question": "Can GAIA work across multiple team members' Gmail inboxes?",
-        "answer": "Yes. GAIA can be configured for an entire sales or customer success team, logging interactions from each team member's Gmail to the appropriate HubSpot contact records so your CRM captures the full picture of every customer relationship."
+        "question": "여러 팀원의 Gmail 메일함에서 함께 사용할 수 있나요?",
+        "answer": "네. 영업팀이나 고객 성공팀 전체에 GAIA를 설정해 각 팀원의 메일함에서 오가는 상호작용을 적절한 연락처 레코드에 기록할 수 있습니다. CRM이 모든 고객 관계의 전체 그림을 담게 됩니다."
       }
     ]
   },
   "gmail-salesforce": {
     "toolA": "Gmail",
     "toolB": "Salesforce",
-    "tagline": "Log emails to Salesforce CRM and create leads from your inbox automatically",
-    "metaTitle": "Gmail Salesforce 연동: 메일을 영업 기회에 자동 기록",
-    "metaDescription": "CRM 수작업 입력을 없애세요. GAIA가 Gmail 메일을 Salesforce 계정과 영업 기회에 기록하고 문의로 리드를 만듭니다. 설정 단계를 확인하세요.",
+    "tagline": "이메일을 Salesforce CRM에 기록하고 메일함에서 리드를 자동 생성하세요",
+    "metaTitle": "Gmail 이메일을 Salesforce에 자동 기록",
+    "metaDescription": "이메일을 CRM에 복사하지 마세요. GAIA가 Gmail 스레드를 올바른 Salesforce 계정과 기회에 기록하고 리드를 생성합니다. 설정 방법을 확인하세요.",
     "keywords": [
-      "Gmail Salesforce integration",
-      "email to Salesforce CRM",
-      "Gmail Salesforce automation",
-      "log emails to Salesforce",
-      "create Salesforce lead from email",
-      "connect Gmail and Salesforce"
+      "Gmail Salesforce 연동",
+      "이메일을 Salesforce CRM으로",
+      "Gmail Salesforce 자동화",
+      "이메일을 Salesforce에 기록",
+      "이메일로 Salesforce 리드 생성",
+      "Gmail과 Salesforce 연결"
     ],
-    "intro": "Salesforce is the system of record for enterprise sales teams, but keeping it accurate requires logging every customer interaction — a task that falls on sales reps who are already stretched thin. Studies consistently show that CRM data quality suffers because manual logging is time-consuming, inconsistent, and the first thing to be skipped when reps are busy closing deals.\n\nGAIA automates Gmail-to-Salesforce data flow so your CRM is kept accurate without burdening your sales team. Inbound emails from prospects automatically create Salesforce leads with the correct lead source, contact details, and email content captured. Existing customer email threads are logged to the right Account, Contact, and Opportunity records. Deal-progressing email signals trigger Opportunity stage updates. Your Salesforce data becomes a true reflection of sales activity rather than a manual approximation.\n\nThis integration is designed for enterprise sales teams, revenue operations managers who depend on CRM data quality, and organizations where Salesforce is the authoritative system of record for all customer interactions.",
+    "intro": "Salesforce는 엔터프라이즈 영업팀의 기준 시스템이지만, 정확성을 유지하려면 모든 고객 상호작용을 기록해야 합니다. 이미 바쁜 영업 담당자에게 이 일이 돌아갑니다. 여러 연구에 따르면 수동 기록은 시간이 많이 들고 일관성이 떨어지며, 딜을 성사시키느라 바쁠 때 가장 먼저 생략되기 때문에 CRM 데이터 품질이 떨어집니다.\n\nGAIA는 Gmail에서 Salesforce로 이어지는 데이터 흐름을 자동화해 영업팀에 부담을 주지 않고 CRM을 정확하게 유지합니다. 잠재 고객의 인바운드 이메일은 올바른 리드 소스와 연락처 정보, 이메일 내용을 담은 리드로 자동 생성됩니다. 기존 고객과의 이메일 스레드는 알맞은 계정, 연락처, 기회 레코드에 기록됩니다. 딜이 진전되었음을 보여주는 이메일 신호는 기회 단계 업데이트를 촉발합니다. CRM 데이터는 수작업으로 추정한 값이 아니라 영업 활동을 그대로 반영하게 됩니다.\n\n이 연동은 엔터프라이즈 영업팀, CRM 데이터 품질에 의존하는 매출 운영 관리자, 모든 고객 상호작용의 기준 시스템으로 CRM을 사용하는 조직을 위해 설계되었습니다.",
     "useCases": [
       {
-        "title": "Automatic lead creation from inbound inquiry emails",
-        "description": "When a prospect emails your sales team for the first time, GAIA creates a Salesforce Lead record with all available contact information extracted from the email and signature, the lead source set to 'Email', and the original email attached to the record so your sales reps have full context when following up."
+        "title": "인바운드 문의 이메일로 리드 자동 생성",
+        "description": "잠재 고객이 영업팀에 처음 이메일을 보내면 GAIA가 이메일과 서명에서 확인 가능한 연락처 정보를 모두 추출해 리드 레코드를 만들고, 리드 소스를 '이메일'로 설정하며, 원본 이메일을 레코드에 첨부합니다. 영업 담당자가 후속 조치 시 전체 맥락을 갖게 됩니다."
       },
       {
-        "title": "Email activity logging to Accounts and Opportunities",
-        "description": "Every email exchange with a Salesforce Contact is automatically logged as an Email Activity on the related Account and Opportunity records. Sales managers get a complete interaction timeline without chasing reps to log their calls and emails manually."
+        "title": "계정과 기회에 이메일 활동 기록",
+        "description": "연락처와 주고받은 모든 이메일이 관련 계정과 기회 레코드의 이메일 활동으로 자동 기록됩니다. 영업 관리자는 담당자에게 통화와 이메일 기록을 재촉하지 않아도 완전한 상호작용 타임라인을 확인할 수 있습니다."
       },
       {
-        "title": "Opportunity stage advancement from email signals",
-        "description": "When an email from a prospect contains language indicating deal progression — a request for a proposal, a reference check, or a verbal commitment — GAIA advances the associated Salesforce Opportunity to the appropriate stage and creates a follow-up task for the rep."
+        "title": "이메일 신호로 기회 단계 진전",
+        "description": "잠재 고객의 이메일에 제안서 요청, 레퍼런스 확인, 구두 동의처럼 딜 진전을 뜻하는 표현이 있으면 GAIA가 관련 기회를 적절한 단계로 올리고 담당자를 위한 후속 작업을 만듭니다."
       },
       {
-        "title": "Contact record enrichment from email signatures",
-        "description": "GAIA extracts contact details from email signatures — title, direct phone, LinkedIn profile, and company details — and updates the corresponding Salesforce Contact record so your CRM data stays enriched and current as relationships evolve."
+        "title": "이메일 서명으로 연락처 레코드 보강",
+        "description": "GAIA가 이메일 서명에서 직함, 직통 전화번호, LinkedIn 프로필, 회사 정보를 추출해 해당 연락처 레코드를 업데이트합니다. 관계가 발전하는 만큼 CRM 데이터도 풍부하고 최신으로 유지됩니다."
       },
       {
-        "title": "Lead conversion email notifications",
-        "description": "When a Salesforce Lead is converted to an Account and Contact after a successful qualification call, GAIA sends an automated welcome email from Gmail to the new contact, keeping communication warm while the Salesforce record is being set up."
+        "title": "리드 전환 알림 이메일",
+        "description": "자격 검증 통화가 성공해 리드가 계정과 연락처로 전환되면 GAIA가 Gmail에서 새 연락처로 환영 이메일을 자동 발송합니다. 새 레코드가 설정되는 동안에도 소통의 온기를 유지합니다."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Gmail and Salesforce to GAIA",
-        "description": "Authenticate your Gmail account and Salesforce organization in GAIA. GAIA supports both Salesforce sandbox and production environments and requests only the API permissions needed for reading and writing Leads, Contacts, Accounts, Opportunities, and Activities."
+        "step": "Gmail과 Salesforce를 GAIA에 연결",
+        "description": "GAIA에서 이메일 계정과 CRM 조직을 인증합니다. 샌드박스와 프로덕션 환경을 모두 지원하며, 리드, 연락처, 계정, 기회, 활동을 읽고 쓰는 데 필요한 API 권한만 요청합니다."
       },
       {
-        "step": "Map your email-to-Salesforce rules",
-        "description": "Configure which email senders trigger lead creation, how emails are matched to existing Salesforce records, which Opportunity stage changes map to which email signal keywords, and which team members' inboxes should be monitored."
+        "step": "이메일-CRM 규칙 매핑",
+        "description": "어떤 발신자의 이메일이 리드 생성을 트리거할지, 이메일을 기존 레코드와 어떻게 매칭할지, 어떤 기회 단계 변경이 어떤 이메일 신호 키워드에 대응하는지, 어느 팀원의 메일함을 모니터링할지 설정하세요."
       },
       {
-        "step": "GAIA keeps your Salesforce CRM automatically updated",
-        "description": "GAIA monitors qualifying Gmail inboxes and updates Salesforce records in real time as emails arrive and are sent. Your CRM stays current and your sales team spends more time selling and less time on data entry."
+        "step": "GAIA가 CRM을 자동으로 최신 상태로 유지",
+        "description": "GAIA가 해당 메일함을 모니터링하며 이메일이 오고 갈 때마다 실시간으로 레코드를 업데이트합니다. CRM은 최신 상태를 유지하고, 영업팀은 데이터 입력 대신 영업에 더 많은 시간을 쓸 수 있습니다."
       }
     ],
     "faqs": [
       {
-        "question": "Does GAIA support Salesforce custom objects, not just standard ones?",
-        "answer": "Yes. GAIA can read and write to custom Salesforce objects in addition to standard Leads, Contacts, Accounts, and Opportunities. You can map email content to custom fields by describing the mapping in GAIA's configuration."
+        "question": "표준 객체뿐 아니라 Salesforce 사용자 정의 객체도 지원하나요?",
+        "answer": "네. 표준 리드, 연락처, 계정, 기회 외에 사용자 정의 객체도 읽고 쓸 수 있습니다. GAIA 설정에서 매핑을 설명하면 이메일 내용을 사용자 정의 필드에 연결할 수 있습니다."
       },
       {
-        "question": "How does GAIA handle emails that match multiple Salesforce records?",
-        "answer": "When an email matches multiple Salesforce records — for example, a contact associated with multiple opportunities — GAIA will log the activity to all relevant records or prompt for disambiguation based on your configuration preferences."
+        "question": "이메일이 여러 레코드와 일치하면 GAIA는 어떻게 처리하나요?",
+        "answer": "이메일이 여러 레코드와 일치할 때, 예를 들어 한 연락처가 여러 기회와 연결되어 있을 때는 설정에 따라 관련된 모든 레코드에 활동을 기록하거나 어떤 레코드에 기록할지 확인을 요청합니다."
       },
       {
-        "question": "Is this compatible with Salesforce Lightning and Classic?",
-        "answer": "GAIA integrates with Salesforce via the REST API, which is compatible with both Lightning and Classic. The integration works regardless of which Salesforce UI your team uses."
+        "question": "Lightning과 Classic 모두에서 사용할 수 있나요?",
+        "answer": "GAIA는 REST API로 연동하며, 이는 Lightning과 Classic 모두와 호환됩니다. 팀이 어떤 UI를 사용하든 연동은 그대로 작동합니다."
       }
     ]
   },
   "gmail-airtable": {
     "toolA": "Gmail",
     "toolB": "Airtable",
-    "tagline": "Save email data to Airtable databases and trigger workflows from your inbox",
+    "tagline": "이메일 데이터를 Airtable 데이터베이스에 저장하고 메일함에서 워크플로우를 실행하세요",
     "metaTitle": "Gmail + Airtable 연동: 이메일 데이터를 레코드로",
-    "metaDescription": "GAIA로 Gmail + Airtable 연동. 이메일에서 Airtable 레코드를 자동 생성하고 받은편지함의 정보를 구조화합니다. 직접 입력하지 않아도 데이터베이스가 최신입니다.",
+    "metaDescription": "주문 확인, 입사 지원, 이벤트 등록 이메일을 Gmail에서 Airtable 레코드로 저장합니다. GAIA가 필요한 필드를 추출합니다. 설정 방법을 확인하세요.",
     "keywords": [
-      "Gmail Airtable integration",
-      "email to Airtable automation",
-      "Gmail Airtable workflow",
-      "save email data to Airtable",
-      "connect Gmail and Airtable",
-      "Airtable email sync"
+      "Gmail Airtable 연동",
+      "이메일을 Airtable로 자동화",
+      "Gmail Airtable 워크플로우",
+      "이메일 데이터를 Airtable에 저장",
+      "Gmail과 Airtable 연결",
+      "Airtable 이메일 동기화"
     ],
-    "intro": "Airtable's power lies in its ability to structure and organize information flexibly — but feeding that database with data from email still requires someone to read each email and manually enter the relevant fields. For teams that receive high volumes of structured information by email — orders, applications, registrations, inquiries, or reports — manual data entry is a bottleneck that slows down operations and introduces errors.\n\nGAIA connects Gmail and Airtable so that email content flows automatically into the right database fields. When an order confirmation arrives, GAIA creates an Airtable record with the order number, customer name, items, and value extracted from the email. When a job application lands in your inbox, GAIA creates an applicant record with name, contact details, and relevant experience parsed from the email. Your Airtable databases stay current without anyone acting as a manual data relay.\n\nThis is particularly powerful for operations teams running Airtable-based workflows, HR teams managing applicant tracking, event teams handling registrations, and any team that receives structured data via email and needs it organized in a database.",
+    "intro": "Airtable의 힘은 정보를 유연하게 구조화하고 정리하는 데 있습니다. 하지만 이메일로 들어온 데이터를 데이터베이스에 넣으려면 누군가 메시지를 하나씩 읽고 해당 필드를 직접 입력해야 합니다. 주문, 지원서, 등록, 문의, 보고서 같은 정형 정보를 이메일로 대량 받는 팀에게 수동 입력은 운영 속도를 떨어뜨리고 오류를 만드는 병목입니다.\n\nGAIA는 Gmail과 Airtable을 연결해 이메일 내용이 올바른 데이터베이스 필드로 자동 흘러가게 합니다. 주문 확인 이메일이 오면 GAIA가 주문 번호, 고객명, 품목, 금액을 추출해 레코드를 만듭니다. 입사 지원서가 메일함에 도착하면 이름, 연락처, 관련 경력을 분석해 지원자 레코드를 만듭니다. 누군가 데이터를 손으로 옮기지 않아도 데이터베이스가 최신 상태로 유지됩니다.\n\n이 연동은 데이터베이스 기반 워크플로우를 운영하는 팀, 지원자 관리를 하는 인사팀, 등록 업무를 처리하는 이벤트 팀, 그리고 이메일로 정형 데이터를 받아 데이터베이스에 정리해야 하는 모든 팀에 특히 강력합니다.",
     "useCases": [
       {
-        "title": "Order and purchase confirmation data capture",
-        "description": "When order confirmation or purchase receipt emails arrive, GAIA extracts the structured data — order number, items, quantities, amounts, vendor name, and delivery date — and creates a new Airtable record in your orders or purchases database with all fields populated automatically."
+        "title": "주문 및 구매 확인 데이터 수집",
+        "description": "주문 확인이나 구매 영수증 이메일이 도착하면 GAIA가 주문 번호, 품목, 수량, 금액, 벤더명, 배송일 같은 정형 데이터를 추출해 주문 데이터베이스에 모든 필드가 채워진 새 레코드를 만듭니다."
       },
       {
-        "title": "Job application intake",
-        "description": "When job applications arrive by email, GAIA parses the applicant's details, extracts the position they are applying for, and creates a new record in your Airtable applicant tracking base, assigning the appropriate status and notifying the hiring manager."
+        "title": "입사 지원서 접수",
+        "description": "입사 지원서가 이메일로 오면 GAIA가 지원자 정보를 분석하고 지원 직무를 추출해 지원자 관리 베이스에 새 레코드를 만들고, 적절한 상태를 지정하며 채용 담당자에게 알립니다."
       },
       {
-        "title": "Event registration management",
-        "description": "Registration confirmation emails from events, webinars, or workshops are parsed by GAIA and added as records in your Airtable events database with attendee name, company, role, and registration date captured automatically."
+        "title": "이벤트 등록 관리",
+        "description": "이벤트, 웨비나, 워크숍의 등록 확인 이메일을 GAIA가 분석해 참석자 이름, 회사, 직무, 등록일이 자동으로 입력된 레코드로 이벤트 데이터베이스에 추가합니다."
       },
       {
-        "title": "Vendor invoice tracking",
-        "description": "Invoice emails from vendors are processed by GAIA, which extracts invoice number, vendor name, amount due, and payment due date, then creates a record in your Airtable accounts payable database and alerts your finance team if the amount exceeds a defined threshold."
+        "title": "벤더 인보이스 추적",
+        "description": "벤더가 보낸 인보이스 이메일을 GAIA가 처리해 인보이스 번호, 벤더명, 청구 금액, 납부 기한을 추출한 뒤 미지급금 데이터베이스에 레코드를 만들고, 금액이 정한 기준을 넘으면 재무 팀에 알립니다."
       },
       {
-        "title": "Customer feedback collection",
-        "description": "Feedback and survey responses received by email are parsed by GAIA and stored as structured records in your Airtable feedback database, categorized by sentiment and topic so your product team can analyze patterns without reading every email manually."
+        "title": "고객 피드백 수집",
+        "description": "이메일로 받은 피드백과 설문 응답을 GAIA가 분석해 감정과 주제별로 분류된 정형 레코드로 피드백 데이터베이스에 저장합니다. 제품팀이 이메일을 하나씩 읽지 않아도 패턴을 파악할 수 있습니다."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Gmail and Airtable to GAIA",
-        "description": "Authenticate your Gmail account and Airtable workspace in GAIA. Specify which Airtable bases and tables GAIA should have write access to, and GAIA will map your email fields to Airtable columns."
+        "step": "Gmail과 Airtable을 GAIA에 연결",
+        "description": "GAIA에서 Gmail 계정과 Airtable 워크스페이스를 인증합니다. GAIA가 쓰기 권한을 가질 베이스와 테이블을 지정하면 이메일 필드를 테이블 열에 매핑해 줍니다."
       },
       {
-        "step": "Define your email-to-record mapping",
-        "description": "Tell GAIA which types of emails should create records in which Airtable tables, and how email content maps to table fields. GAIA uses AI to extract structured data from unstructured email text, so you don't need perfectly formatted emails."
+        "step": "이메일-레코드 매핑 정의",
+        "description": "어떤 이메일이 어느 테이블에 레코드를 만들어야 하는지, 이메일 내용이 테이블 필드에 어떻게 대응하는지 GAIA에 알려주세요. GAIA가 AI로 비정형 이메일에서 정형 데이터를 추출하므로 이메일 형식이 완벽하지 않아도 됩니다."
       },
       {
-        "step": "GAIA populates your Airtable databases automatically",
-        "description": "GAIA processes qualifying emails as they arrive and creates or updates Airtable records accordingly. Your databases stay current without manual data entry, and your team can focus on acting on the data rather than entering it."
+        "step": "GAIA가 데이터베이스를 자동으로 채움",
+        "description": "GAIA가 조건에 맞는 이메일을 도착하는 대로 처리해 레코드를 생성하거나 업데이트합니다. 수동 입력 없이 데이터베이스가 최신 상태로 유지되고, 팀은 데이터를 입력하는 대신 활용하는 데 집중할 수 있습니다."
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA update existing Airtable records as well as create new ones?",
-        "answer": "Yes. GAIA can match incoming emails to existing Airtable records based on a key field like email address or order number, and update the record rather than creating a duplicate. For example, a follow-up email from a job applicant can update their existing applicant record."
+        "question": "GAIA가 새 레코드 생성뿐 아니라 기존 레코드도 업데이트할 수 있나요?",
+        "answer": "네. 이메일 주소나 주문 번호 같은 키 필드를 기준으로 들어오는 이메일을 기존 레코드와 매칭해, 중복을 만들지 않고 해당 레코드를 업데이트할 수 있습니다. 예를 들어 지원자의 후속 이메일은 기존 지원자 레코드를 업데이트합니다."
       },
       {
-        "question": "What if the email doesn't contain all the fields my Airtable table requires?",
-        "answer": "GAIA will populate the fields it can extract from the email and leave required fields blank or set them to a default value you specify. You can configure GAIA to notify you when a record is created with missing required fields so you can complete it manually."
+        "question": "이메일에 테이블에 필요한 필드가 모두 없으면 어떻게 되나요?",
+        "answer": "GAIA는 이메일에서 추출할 수 있는 필드는 채우고, 필수 필드는 비워두거나 지정한 기본값으로 설정합니다. 필수 필드가 빠진 채 레코드가 만들어지면 알림을 받도록 설정해 직접 보완할 수 있습니다."
       },
       {
-        "question": "Can GAIA trigger Airtable automations after creating a record?",
-        "answer": "Yes. Once GAIA creates a record in Airtable, any Airtable automations triggered by record creation will fire as normal. You can also configure GAIA to send a confirmation email or Slack notification after creating the Airtable record."
+        "question": "레코드를 만든 뒤 Airtable 자동화를 실행할 수 있나요?",
+        "answer": "네. GAIA가 레코드를 만들면 레코드 생성으로 트리거되는 자동화가 정상적으로 실행됩니다. 레코드 생성 후 확인 이메일이나 Slack 알림을 보내도록 GAIA를 설정할 수도 있습니다."
       }
     ]
   },
   "gmail-stripe": {
     "toolA": "Gmail",
     "toolB": "Stripe",
-    "tagline": "Enrich payment emails with Stripe data and automate revenue notifications",
+    "tagline": "결제 이메일에 Stripe 데이터를 더하고 매출 알림을 자동화하세요",
     "metaTitle": "Stripe Gmail 연동: 결제 알림과 매출 요약",
-    "metaDescription": "결제 실패, 분쟁, 구독 이벤트 알림을 맥락과 함께 Gmail로 받고, 일간·주간 매출 요약도 받으세요. GAIA가 후속 메일 초안을 씁니다. 설정 단계를 확인하세요.",
+    "metaDescription": "결제 실패, 분쟁, 구독 알림을 Gmail에서 받고 일간·주간 매출 요약도 확인하세요. GAIA가 후속 이메일 초안까지 작성합니다. 설정 방법을 확인하세요.",
     "keywords": [
-      "Gmail Stripe integration",
-      "payment email Stripe automation",
-      "Gmail Stripe workflow",
-      "Stripe payment notification email",
-      "connect Gmail and Stripe",
-      "Stripe revenue alert Gmail"
+      "Gmail Stripe 연동",
+      "결제 이메일 Stripe 자동화",
+      "Gmail Stripe 워크플로우",
+      "Stripe 결제 알림 이메일",
+      "Gmail과 Stripe 연결",
+      "Stripe 매출 알림 Gmail"
     ],
-    "intro": "Stripe sends email notifications for payments, failed charges, disputes, and subscription events, but those emails contain only minimal context — a transaction ID and an amount. Getting the full picture requires logging into Stripe, finding the customer, and cross-referencing with your own records. For finance teams and operations managers processing dozens of payment events daily, this back-and-forth is a significant time drain.\n\nGAIA connects Gmail and Stripe so that payment-related emails are automatically enriched with detailed Stripe customer and transaction data. When a payment failure email arrives, GAIA fetches the customer's full payment history, subscription status, and contact details and compiles a complete summary so your team can respond intelligently without opening Stripe. Dispute and chargeback emails trigger automated evidence gathering. Revenue milestone emails can be generated automatically based on Stripe data.\n\nThis integration is most valuable for SaaS companies, e-commerce teams, and subscription businesses where payment events require coordinated action from finance, customer success, and operations teams.",
+    "intro": "Stripe는 결제, 실패한 청구, 분쟁, 구독 이벤트에 대해 이메일 알림을 보내지만, 그 이메일에는 거래 ID와 금액 정도의 최소한의 맥락만 담깁니다. 전체 상황을 파악하려면 대시보드에 로그인해 고객을 찾고 자체 기록과 대조해야 합니다. 매일 수십 건의 결제 이벤트를 처리하는 재무 팀과 운영 관리자에게 이 왕복은 상당한 시간 낭비입니다.\n\nGAIA는 Gmail과 Stripe를 연결해 결제 관련 이메일에 고객과 거래의 상세 데이터를 자동으로 채워 넣습니다. 결제 실패 이메일이 오면 GAIA가 고객의 전체 결제 이력, 구독 상태, 연락처 정보를 가져와 완전한 요약을 만듭니다. 팀은 대시보드를 열지 않고도 상황에 맞게 대응할 수 있습니다. 분쟁과 지불 거절 이메일은 증빙 자료 수집을 자동으로 시작하고, 매출 마일스톤 이메일은 결제 데이터를 바탕으로 자동 생성됩니다.\n\n이 연동은 결제 이벤트에 대해 재무, 고객 성공, 운영 팀의 협업 대응이 필요한 SaaS 기업, 이커머스 팀, 구독 비즈니스에 가장 유용합니다.",
     "useCases": [
       {
-        "title": "Payment failure enrichment and follow-up",
-        "description": "When a failed payment notification arrives from Stripe, GAIA fetches the customer's full details from Stripe — their plan, payment history, and contact information — and composes a personalized follow-up email ready for review, so your team can respond in minutes rather than manually looking up each case."
+        "title": "결제 실패 정보 보강과 후속 조치",
+        "description": "Stripe에서 결제 실패 알림이 오면 GAIA가 고객의 요금제, 결제 이력, 연락처 정보를 가져와 검토만 하면 되는 맞춤형 후속 이메일을 작성합니다. 사건마다 직접 조회하지 않고도 몇 분 안에 대응할 수 있습니다."
       },
       {
-        "title": "Dispute and chargeback response automation",
-        "description": "When a Stripe dispute notification email arrives, GAIA automatically pulls the relevant transaction details, order confirmation, and communication history from Gmail and assembles a dispute evidence package to streamline your response before the deadline."
+        "title": "분쟁 및 지불 거절 대응 자동화",
+        "description": "분쟁 알림 이메일이 오면 GAIA가 관련 거래 내역, 주문 확인, Gmail의 커뮤니케이션 이력을 자동으로 모아 분쟁 증빙 패키지를 구성합니다. 기한 전에 대응 절차를 더 빠르게 진행할 수 있습니다."
       },
       {
-        "title": "Daily and weekly revenue summaries",
-        "description": "GAIA pulls revenue data from Stripe and delivers a structured email summary to your finance team every morning or week — including total revenue, new subscribers, churned accounts, and outstanding invoices — eliminating the need for manual Stripe dashboard exports."
+        "title": "일간 및 주간 매출 요약",
+        "description": "GAIA가 매출 데이터를 가져와 매일 아침 또는 매주 재무 팀에 구조화된 요약 이메일을 보냅니다. 총매출, 신규 구독자, 이탈 계정, 미수금이 포함되어 대시보드에서 직접 내려받을 필요가 없습니다."
       },
       {
-        "title": "Subscription event notifications to team email",
-        "description": "When a customer upgrades, downgrades, or cancels their subscription in Stripe, GAIA sends an enriched notification email to the relevant internal team with the customer's account history and context so customer success can reach out proactively."
+        "title": "구독 이벤트를 팀 이메일로 알림",
+        "description": "고객이 구독을 업그레이드, 다운그레이드, 해지하면 GAIA가 고객의 계정 이력과 맥락을 담은 알림 이메일을 관련 내부 팀에 보냅니다. 고객 성공팀이 먼저 다가가 대응할 수 있습니다."
       },
       {
-        "title": "High-value payment alerts",
-        "description": "When a Stripe payment above a defined threshold is processed, GAIA sends an immediate alert email to your sales or finance leadership with the customer details, plan, and payment history so high-value transactions receive the attention they deserve."
+        "title": "고액 결제 알림",
+        "description": "정한 기준을 넘는 결제가 처리되면 GAIA가 고객 정보, 요금제, 결제 이력을 담은 알림 이메일을 영업 또는 재무 리더에게 즉시 보냅니다. 큰 거래가 마땅한 주목을 받게 됩니다."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Gmail and Stripe to GAIA",
-        "description": "Authenticate your Gmail account and connect your Stripe account via API key in GAIA. GAIA uses read-only Stripe API access by default so your financial data remains secure."
+        "step": "Gmail과 Stripe를 GAIA에 연결",
+        "description": "GAIA에서 이메일 계정을 인증하고 API 키로 결제 계정을 연결합니다. GAIA는 기본적으로 읽기 전용 API 접근을 사용하므로 금융 데이터가 안전하게 보호됩니다."
       },
       {
-        "step": "Configure your payment event rules",
-        "description": "Define which Stripe events should trigger email actions, what data to pull from Stripe for enrichment, who should receive notifications, and what thresholds apply for high-value or high-priority alerts."
+        "step": "결제 이벤트 규칙 설정",
+        "description": "어떤 이벤트가 이메일 작업을 트리거할지, 정보 보강을 위해 어떤 데이터를 가져올지, 누구에게 알림을 보낼지, 고액·우선순위 알림에 어떤 기준을 적용할지 정의하세요."
       },
       {
-        "step": "GAIA enriches payment emails and automates revenue workflows",
-        "description": "GAIA monitors both incoming Stripe notification emails and Stripe webhook events, enriches them with full customer context, and dispatches the right actions — follow-up emails, internal alerts, or summary reports — automatically."
+        "step": "GAIA가 결제 이메일을 보강하고 매출 워크플로우를 자동화",
+        "description": "GAIA가 Stripe 알림 이메일과 웹훅 이벤트를 모두 모니터링하고, 전체 고객 맥락으로 보강한 뒤 후속 이메일, 내부 알림, 요약 보고서 등 필요한 작업을 자동으로 실행합니다."
       }
     ],
     "faqs": [
       {
-        "question": "Does GAIA need write access to my Stripe account?",
-        "answer": "For most workflows, GAIA only needs read access to retrieve customer and transaction data. If you want GAIA to take actions like issuing refunds or updating subscriptions, you can grant write permissions for those specific capabilities, but it is not required for email enrichment and notifications."
+        "question": "GAIA가 결제 계정에 쓰기 권한이 필요한가요?",
+        "answer": "대부분의 워크플로우에서는 고객과 거래 데이터를 조회하는 읽기 권한만 있으면 됩니다. 환불 처리나 구독 변경 같은 작업을 맡기려면 해당 기능에 한해 쓰기 권한을 부여할 수 있지만, 이메일 보강과 알림에는 필요하지 않습니다."
       },
       {
-        "question": "Can GAIA send automated dunning emails for failed payments?",
-        "answer": "Yes. GAIA can compose and send personalized dunning emails when payment failures occur, including the customer's name, the failed amount, and a link to update their payment method. You can set a sequence of escalating follow-ups on a schedule you define."
+        "question": "결제 실패 시 독촉 이메일을 자동으로 보낼 수 있나요?",
+        "answer": "네. 결제가 실패하면 고객 이름, 실패 금액, 결제 수단 변경 링크를 포함한 맞춤형 독촉 이메일을 작성해 보낼 수 있습니다. 정한 일정에 따라 단계적으로 강도를 높이는 후속 이메일 시퀀스도 설정할 수 있습니다."
       },
       {
-        "question": "Does this work with Stripe Connect or only standard Stripe accounts?",
-        "answer": "GAIA works with standard Stripe accounts. Stripe Connect support for marketplace and platform integrations is on the roadmap. Contact the GAIA team if you have a specific Connect use case."
+        "question": "Stripe Connect에서도 되나요, 아니면 표준 계정만 지원하나요?",
+        "answer": "표준 계정에서 작동합니다. 마켓플레이스와 플랫폼 연동을 위한 Connect 지원은 로드맵에 있습니다. Connect를 활용한 구체적인 사례가 있다면 GAIA 팀에 문의해 주세요."
       }
     ]
   },
   "gmail-zoom": {
     "toolA": "Gmail",
     "toolB": "Zoom",
-    "tagline": "Create Zoom meetings from email invites and send join links automatically",
-    "metaTitle": "Gmail + Zoom 연동: 이메일로 회의 예약",
-    "metaDescription": "GAIA로 Gmail + Zoom 연동. 일정 조율 이메일이 오면 Zoom 회의를 만들고 참가자에게 링크를 보냅니다. 캘린더와 받은편지함이 항상 맞춰집니다.",
+    "tagline": "이메일 초대로 Zoom 회의를 만들고 참석 링크를 자동으로 보내세요",
+    "metaTitle": "Gmail + Zoom 연동: 이메일 스레드에서 회의 생성",
+    "metaDescription": "이메일로 시간이 확정되면 Zoom 회의를 만들고, 스레드에서 클릭 한 번으로 생성합니다. GAIA가 이메일 대화로 반복 회의도 설정합니다.",
     "keywords": [
-      "Gmail Zoom integration",
-      "email to Zoom meeting",
-      "Gmail Zoom automation",
-      "schedule Zoom from email",
-      "connect Gmail and Zoom",
-      "Zoom meeting email invite"
+      "Gmail Zoom 연동",
+      "이메일을 Zoom 회의로",
+      "Gmail Zoom 자동화",
+      "이메일로 Zoom 일정 잡기",
+      "Gmail과 Zoom 연결",
+      "Zoom 회의 초대 이메일"
     ],
-    "intro": "Scheduling a meeting over email is a multi-step process: negotiate a time by email, open Zoom to create a meeting, copy the link, return to Gmail, compose a reply with the link, and hope you didn't forget to add it to your calendar. When this process repeats dozens of times a week, it consumes significant time and is prone to errors — forgotten links, wrong time zones, and meetings that never make it onto the calendar.\n\nGAIA automates the Gmail-to-Zoom scheduling loop entirely. When an email arrives with a meeting request or a confirmed time, GAIA creates the Zoom meeting, adds it to your Google Calendar, and replies to the thread with the join link — all without you leaving your inbox. For teams using Zoom as their primary video conferencing tool, this eliminates the single most tedious step in the workday.\n\nThis integration is particularly valuable for executives, sales teams, consultants, and customer success managers who spend a significant portion of their day negotiating and setting up meetings over email.",
+    "intro": "이메일로 회의를 잡는 일은 여러 단계를 거칩니다. 이메일로 시간을 조율하고, Zoom을 열어 회의를 만들고, 링크를 복사하고, Gmail로 돌아와 링크를 넣은 답장을 쓰고, 캘린더에 추가하는 걸 잊지 않아야 합니다. 이 과정이 일주일에 수십 번 반복되면 적지 않은 시간이 들고 실수도 생깁니다. 링크를 빠뜨리거나, 시간대를 착각하거나, 회의가 캘린더에 아예 올라가지 않는 일이 생깁니다.\n\nGAIA는 이 일정 조율 과정을 전부 자동화합니다. 회의 요청이나 확정된 시간이 담긴 이메일이 오면 GAIA가 회의를 만들고, Google Calendar에 추가하고, 참석 링크를 담아 스레드에 답장합니다. 메일함을 떠날 필요가 없습니다. Zoom을 주 화상회의 도구로 쓰는 팀이라면 업무 시간에서 가장 번거로운 단계 하나가 사라집니다.\n\n이 연동은 하루의 상당 부분을 이메일로 회의를 조율하고 잡는 데 쓰는 임원, 영업팀, 컨설턴트, 고객 성공 매니저에게 특히 유용합니다.",
     "useCases": [
       {
-        "title": "Auto-create Zoom meetings from confirmed email times",
-        "description": "When an email exchange concludes with a confirmed meeting time, GAIA detects the agreed time, creates a Zoom meeting for that slot, adds it to your calendar, and replies to the email thread with the Zoom join link and calendar invite so both parties are set up instantly."
+        "title": "확정된 이메일 시간으로 Zoom 회의 자동 생성",
+        "description": "이메일 대화가 회의 시간 확정으로 끝나면 GAIA가 합의된 시간을 감지해 회의를 만들고 캘린더에 추가한 뒤, 참석 링크와 캘린더 초대를 담아 스레드에 답장합니다. 양쪽 모두 추가 왕복 없이 준비를 마칩니다."
       },
       {
-        "title": "One-click meeting creation from email",
-        "description": "Forward any email to GAIA with a note like 'set up a Zoom for Thursday at 2 PM' and GAIA creates the meeting, sends the invite to all email participants, and confirms the details back to you — turning a multi-step process into a single action."
+        "title": "이메일에서 클릭 한 번으로 회의 생성",
+        "description": "'목요일 오후 2시에 Zoom 회의를 잡아줘' 같은 메모와 함께 이메일을 GAIA로 전달하면 GAIA가 회의를 만들고 모든 참석자에게 초대를 보낸 뒤 세부 내용을 확인해 줍니다. 여러 단계가 한 번의 동작으로 끝납니다."
       },
       {
-        "title": "Recurring meeting setup from email chains",
-        "description": "When an email discussion establishes a recurring check-in or weekly sync, GAIA creates the recurring Zoom meeting series, sends invites to all participants, and adds the series to your calendar so you never have to set up a recurring meeting manually again."
+        "title": "이메일 대화로 반복 회의 설정",
+        "description": "이메일 논의에서 정기 체크인이나 주간 싱크가 정해지면 GAIA가 반복 회의 시리즈를 만들고 참석자 전원에게 초대를 보내며 캘린더에 시리즈를 추가합니다. 반복 회의를 직접 설정할 일이 없습니다."
       },
       {
-        "title": "Zoom link recovery and resending",
-        "description": "When a meeting participant emails asking for the Zoom link, GAIA looks up the scheduled meeting, retrieves the join URL, and replies automatically so you don't have to dig through your calendar and compose a reply yourself."
+        "title": "Zoom 링크 재조회 및 재발송",
+        "description": "참석자가 링크를 요청하는 이메일을 보내면 GAIA가 예약된 회의를 찾아 참석 URL을 가져와 자동으로 답장합니다. 캘린더를 뒤지고 답장을 작성할 필요가 없습니다."
       },
       {
-        "title": "Post-meeting follow-up email automation",
-        "description": "After a Zoom meeting ends, GAIA sends an automated follow-up email to all participants with a summary of discussion points and agreed next steps extracted from the meeting, keeping the post-meeting communication loop closed without manual effort."
+        "title": "회의 후 후속 이메일 자동화",
+        "description": "회의가 끝나면 GAIA가 회의에서 추출한 논의 사항과 합의된 다음 단계 요약을 담아 참석자 전원에게 후속 이메일을 자동 발송합니다. 회의 후 커뮤니케이션이 수작업 없이 마무리됩니다."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Gmail and Zoom to GAIA",
-        "description": "Authenticate your Gmail account and Zoom account in GAIA. GAIA uses Zoom's OAuth integration to create and manage meetings on your behalf, and accesses your Gmail to detect scheduling signals in email threads."
+        "step": "Gmail과 Zoom을 GAIA에 연결",
+        "description": "GAIA에서 두 계정을 인증합니다. GAIA는 Zoom의 OAuth 연동으로 회의를 만들고 관리하며, 메일함을 읽어 이메일 스레드의 일정 신호를 감지합니다."
       },
       {
-        "step": "Set your scheduling preferences",
-        "description": "Tell GAIA your default Zoom meeting settings — duration, waiting room preference, recording options, and calendar integration. You can also specify which types of email threads should trigger automatic meeting creation versus requiring your confirmation."
+        "step": "일정 설정 지정",
+        "description": "기본 회의 설정(길이, 대기실 사용 여부, 녹화 옵션, 캘린더 연동)을 GAIA에 알려주세요. 어떤 이메일 스레드가 회의를 자동 생성하고 어떤 경우에 확인을 받을지도 지정할 수 있습니다."
       },
       {
-        "step": "GAIA handles meeting creation and communication automatically",
-        "description": "GAIA monitors your Gmail for meeting-related signals and creates Zoom meetings automatically when the conditions are met. Join links are sent to participants and meetings appear on your calendar without any manual steps."
+        "step": "GAIA가 회의 생성과 안내를 자동 처리",
+        "description": "GAIA가 메일함에서 회의 관련 신호를 모니터링하다 조건이 충족되면 회의를 자동 생성합니다. 참석자에게 링크가 전송되고 회의가 캘린더에 표시되며, 수동 단계는 없습니다."
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA handle time zone differences when creating Zoom meetings from email?",
-        "answer": "Yes. GAIA detects time zone references in email text and converts them to the correct UTC time when creating the Zoom meeting and calendar event. If the time zone is ambiguous, GAIA will ask for clarification before creating the meeting."
+        "question": "이메일로 회의를 만들 때 시간대 차이도 처리하나요?",
+        "answer": "네. 이메일 본문의 시간대 표기를 감지해 회의와 캘린더 이벤트를 만들 때 올바른 UTC 시간으로 변환합니다. 시간대가 모호하면 회의를 만들기 전에 확인을 요청합니다."
       },
       {
-        "question": "Will GAIA create Zoom meetings for every email that mentions a time, or only confirmed meetings?",
-        "answer": "GAIA uses context to distinguish between 'are you free Thursday at 2?' (a proposal) and 'confirmed: Thursday at 2 PM' (a commitment). You can also configure GAIA to always ask before creating a meeting if you prefer full control."
+        "question": "시간이 언급된 모든 이메일에 회의를 만드나요, 아니면 확정된 회의만 만드나요?",
+        "answer": "GAIA는 맥락을 활용해 '목요일 2시에 시간 되세요?'(제안)와 '확정: 목요일 오후 2시'(약속)를 구분합니다. 완전한 통제를 원하면 회의를 만들기 전에 항상 확인하도록 설정할 수도 있습니다."
       },
       {
-        "question": "Does this work with Google Calendar for adding meeting events?",
-        "answer": "Yes. When GAIA creates a Zoom meeting from Gmail, it simultaneously creates the Google Calendar event with the Zoom link embedded so the meeting appears on your calendar with all the details in one place."
+        "question": "회의 일정을 추가할 때 Google Calendar와 연동되나요?",
+        "answer": "네. 이메일로 회의를 만들면 GAIA가 참석 링크를 넣은 Google Calendar 이벤트를 동시에 생성합니다. 회의가 모든 세부 정보와 함께 캘린더 한곳에 표시됩니다."
       }
     ]
   },
   "gmail-teams": {
     "toolA": "Gmail",
     "toolB": "Microsoft Teams",
-    "tagline": "Route important Gmail messages to Microsoft Teams channels automatically",
-    "metaTitle": "Gmail for Teams: 중요한 메일을 Teams 채널로",
-    "metaDescription": "고객 메일, 시스템 알림, 일일 요약을 긴급도에 따라 골라 알맞은 Teams 채널로 보냅니다. GAIA는 답장 초안도 씁니다. 설정 단계를 확인하세요.",
+    "tagline": "중요한 Gmail 메시지를 Microsoft Teams 채널로 자동 전달하세요",
+    "metaTitle": "Teams용 Gmail: 중요 이메일을 Teams 채널로",
+    "metaDescription": "고객 이메일, 시스템 알림, 일일 요약을 Gmail에서 Teams 채널로 보내고 긴급도에 따라 필터링합니다. GAIA가 답장 초안도 작성합니다.",
     "keywords": [
-      "Gmail Microsoft Teams integration",
-      "email to Teams notification",
-      "Gmail Teams automation",
-      "forward email to Teams",
-      "connect Gmail and Microsoft Teams",
-      "Teams email alert workflow"
+      "Gmail Microsoft Teams 연동",
+      "이메일을 Teams 알림으로",
+      "Gmail Teams 자동화",
+      "이메일을 Teams로 전달",
+      "Gmail과 Microsoft Teams 연결",
+      "Teams 이메일 알림 워크플로우"
     ],
-    "intro": "Organizations that use Google Workspace for email but Microsoft 365 for team collaboration face a constant bridging problem. Important emails arrive in Gmail while the team is active in Microsoft Teams. Colleagues who need to know about a client email, system alert, or vendor communication have to be individually forwarded threads, creating email overload and losing the collaborative context that Teams provides.\n\nGAIA bridges Gmail and Microsoft Teams so that critical email communications surface automatically in the right Teams channels. Client emails can post to a #clients channel. System alerts can go to #monitoring. Financial notifications can appear in a #finance channel. Your Teams workspace becomes informed by Gmail events in real time, and your team can discuss and respond within Teams rather than jumping between platforms.\n\nThis integration is essential for organizations in hybrid technology environments — using Google Workspace for email but Microsoft 365 for Office apps and team collaboration — and for teams where different departments have standardized on different platforms.",
+    "intro": "이메일은 Google Workspace를 쓰고 팀 협업은 Microsoft 365로 하는 조직은 늘 두 도구를 잇는 문제를 안고 있습니다. 중요한 이메일은 Gmail로 오는데 팀은 Microsoft Teams에서 활동합니다. 고객 이메일, 시스템 알림, 벤더 연락을 알아야 하는 동료에게는 스레드를 개별 전달해야 하고, 그 결과 이메일이 넘쳐나고 채널이 제공하는 협업 맥락은 사라집니다.\n\nGAIA는 이 간극을 메워 중요한 이메일 커뮤니케이션이 알맞은 채널에 자동으로 나타나게 합니다. 고객 이메일은 #clients 채널에, 시스템 알림은 #monitoring에, 재무 관련 알림은 #finance 채널에 게시할 수 있습니다. Teams 워크스페이스가 Gmail 이벤트를 실시간으로 반영하고, 팀은 플랫폼을 오가지 않고 그 자리에서 논의하고 대응할 수 있습니다.\n\n이 연동은 이메일은 Google Workspace, Office 앱과 팀 협업은 Microsoft 365로 사용하는 하이브리드 기술 환경의 조직, 그리고 부서마다 다른 플랫폼을 표준으로 쓰는 팀에 꼭 필요합니다.",
     "useCases": [
       {
-        "title": "Client email alerts to Teams channels",
-        "description": "When a priority client emails your Gmail, GAIA posts a formatted summary to the designated Microsoft Teams channel so the whole account team is immediately aware and can coordinate a response in Teams without waiting for someone to forward the email."
+        "title": "고객 이메일을 Teams 채널로 알림",
+        "description": "우선순위 고객이 이메일을 보내면 GAIA가 지정된 채널에 형식에 맞는 요약을 게시합니다. 계정 팀 전체가 즉시 상황을 알고, 누군가 이메일을 전달해 주기를 기다리지 않고 Teams에서 대응을 조율할 수 있습니다."
       },
       {
-        "title": "System and infrastructure alert routing",
-        "description": "Monitoring services that send email alerts can have those alerts forwarded by GAIA to your Teams #ops or #monitoring channel so your engineering team sees them immediately in the platform they are already working in."
+        "title": "시스템 및 인프라 알림 라우팅",
+        "description": "이메일로 알림을 보내는 모니터링 서비스의 메시지를 GAIA가 #ops나 #monitoring 채널로 전달합니다. 엔지니어링 팀은 이미 작업 중인 채팅 앱에서 바로 알림을 확인합니다."
       },
       {
-        "title": "Daily email digest in Teams",
-        "description": "GAIA posts a morning summary of your key unread Gmail messages directly to your personal Teams chat so you can triage your inbox without opening Gmail, seeing the most important emails summarized in the collaboration tool you start your day in."
+        "title": "Teams에서 매일 이메일 요약 받기",
+        "description": "GAIA가 주요 미확인 메시지를 정리한 아침 요약을 개인 채팅으로 게시합니다. 메일함을 열지 않고도 우선순위를 판단할 수 있고, 하루를 시작하는 협업 도구에서 가장 중요한 이메일을 요약해 볼 수 있습니다."
       },
       {
-        "title": "Cross-platform reply drafting",
-        "description": "When your team discusses a client email in Teams and reaches a decision, you can ask GAIA to draft the Gmail reply based on the Teams conversation thread, composing the response with the agreed content and queuing it for your review in Gmail."
+        "title": "플랫폼을 넘나드는 답장 초안 작성",
+        "description": "팀이 채널에서 고객 이메일을 논의해 결정을 내리면, 그 대화를 바탕으로 GAIA에 답장 초안을 요청할 수 있습니다. 합의된 내용으로 답장을 작성해 Gmail에서 검토할 수 있도록 대기열에 올립니다."
       },
       {
-        "title": "New lead and inquiry notifications",
-        "description": "Contact form submissions and sales inquiry emails that land in Gmail are routed by GAIA to your Teams sales channel with the prospect's details and inquiry summary so your sales team can immediately discuss and assign follow-up within Teams."
+        "title": "신규 리드 및 문의 알림",
+        "description": "문의 양식 제출과 영업 문의 이메일이 메일함에 도착하면 GAIA가 잠재 고객 정보와 문의 요약을 담아 영업 채널로 전달합니다. 영업팀이 채널에서 바로 논의하고 후속 담당을 배정할 수 있습니다."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Gmail and Microsoft Teams to GAIA",
-        "description": "Authenticate your Gmail account and your Microsoft 365 organization in GAIA. GAIA uses Microsoft Graph API and Teams webhooks to post to specific channels, and Google OAuth to access Gmail."
+        "step": "Gmail과 Microsoft Teams를 GAIA에 연결",
+        "description": "GAIA에서 이메일 계정과 Microsoft 365 조직을 인증합니다. GAIA는 Microsoft Graph API와 웹훅으로 특정 채널에 게시하고, Google OAuth로 이메일을 읽습니다."
       },
       {
-        "step": "Configure your routing and notification rules",
-        "description": "Specify which Gmail labels, senders, or email categories should trigger Teams notifications, which Teams channels each type should go to, and what format the Teams messages should take — full email, summary, or custom template."
+        "step": "라우팅 및 알림 규칙 설정",
+        "description": "어떤 Gmail 라벨, 발신자, 이메일 분류가 알림을 트리거할지, 각 유형이 어느 채널로 가야 할지, 메시지 형식은 전체 이메일·요약·사용자 지정 템플릿 중 무엇인지 지정하세요."
       },
       {
-        "step": "GAIA bridges Gmail and Teams automatically",
-        "description": "GAIA monitors your Gmail continuously and posts to Teams channels as qualifying emails arrive. Your Teams environment stays informed by Gmail activity without anyone manually relaying information between the two platforms."
+        "step": "GAIA가 조건에 맞는 이메일을 자동 전달",
+        "description": "GAIA가 메일함을 계속 모니터링하며 조건에 맞는 이메일이 오면 채널에 게시합니다. 누군가 두 앱 사이에서 정보를 손으로 옮기지 않아도 팀이 상황을 파악합니다."
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA post to Teams private channels as well as public ones?",
-        "answer": "Yes. GAIA can post to any Teams channel — public, private, or shared — where it has been granted permission. During setup, you specify which channels GAIA should have access to, and it will only post where authorized."
+        "question": "공개 채널뿐 아니라 Teams 비공개 채널에도 게시할 수 있나요?",
+        "answer": "네. 권한이 부여된 채널이라면 공개, 비공개, 공유 채널 어디든 게시할 수 있습니다. 설정할 때 접근할 채널을 지정하며, 허용된 채널에만 게시합니다."
       },
       {
-        "question": "Can GAIA include email attachments in the Teams notification?",
-        "answer": "GAIA can reference attachments in the Teams message and provide a link back to the original Gmail thread. Uploading binary attachments directly to Teams is supported for common file types. For large files, GAIA recommends linking to a shared Google Drive location instead."
+        "question": "알림에 이메일 첨부파일도 포함할 수 있나요?",
+        "answer": "메시지에서 첨부파일을 언급하고 원래 이메일 스레드로 가는 링크를 제공할 수 있습니다. 일반적인 파일 형식은 바이너리 첨부파일 직접 업로드도 지원합니다. 큰 파일은 공유 Google Drive 위치를 링크하는 방식을 권장합니다."
       },
       {
-        "question": "Does GAIA support conditional routing — for example, only posting emails above a certain urgency level?",
-        "answer": "Yes. GAIA can assess email urgency using AI classification and only route emails that meet your defined threshold to Teams. This prevents your Teams channels from being flooded with low-priority notifications."
+        "question": "긴급도가 일정 수준 이상인 이메일만 게시하는 조건부 라우팅도 되나요?",
+        "answer": "네. GAIA가 AI 분류로 이메일 긴급도를 평가해 설정한 기준을 충족하는 이메일만 전달할 수 있습니다. 우선순위가 낮은 알림으로 채널이 넘치는 일을 막아 줍니다."
       }
     ]
   },
   "slack-trello": {
     "toolA": "Slack",
     "toolB": "Trello",
-    "tagline": "Create Trello cards from Slack messages and get board updates in Slack",
-    "metaTitle": "Slack + Trello 연동: 메시지에서 카드 생성",
-    "metaDescription": "GAIA로 Slack + Trello 연동. Slack 메시지에서 Trello 카드를 만들고 카드 업데이트를 채널에서 받습니다. 팀 채팅을 떠나지 않고 보드를 관리하세요.",
+    "tagline": "Slack 메시지로 Trello 카드를 만들고 보드 업데이트를 채팅으로 받으세요",
+    "metaTitle": "Slack + Trello 연동: Slack 메시지를 카드로",
+    "metaDescription": "대화가 일어나는 곳에서 업무를 포착하세요. GAIA가 Slack 이모지 반응으로 Trello 카드를 만들고 카드 업데이트를 다시 게시합니다. 설정 방법을 확인하세요.",
     "keywords": [
-      "Slack Trello integration",
-      "create Trello card from Slack",
-      "Slack Trello automation",
-      "Trello updates in Slack",
-      "connect Slack and Trello",
-      "Slack Trello workflow"
+      "Slack Trello 연동",
+      "Slack에서 Trello 카드 생성",
+      "Slack Trello 자동화",
+      "Trello 업데이트를 Slack으로",
+      "Slack과 Trello 연결",
+      "Slack Trello 워크플로우"
     ],
-    "intro": "The best ideas and most urgent action items in a team often emerge in Slack conversations, but those insights evaporate if they're not captured in Trello where work actually gets tracked. Teams develop workarounds — screenshotting Slack messages, copying them into Trello cards manually — but these habits are inconsistent and create a disconnect between where discussions happen and where work gets done.\n\nGAIA bridges Slack and Trello so that capturing work from conversation is effortless. A single emoji reaction or a quick command in Slack can turn a message into a properly structured Trello card on the right board. When Trello cards are updated — moved to a new list, given a due date, or marked complete — Slack receives a notification in the appropriate channel so the team stays informed without checking Trello manually.\n\nThis integration is ideal for product teams who ideate in Slack and execute in Trello, marketing teams managing campaign tasks, and any team that needs their task board to reflect work captured in real-time conversations.",
+    "intro": "팀의 좋은 아이디어와 긴급한 실행 항목은 대개 Slack 대화에서 나옵니다. 하지만 업무가 실제로 추적되는 Trello에 기록되지 않으면 그 통찰은 사라집니다. 팀은 메시지를 캡처하거나 카드에 직접 복사하는 우회 방법을 쓰지만, 이런 습관은 일관성이 없고 논의가 이루어지는 곳과 업무가 처리되는 곳 사이에 단절을 만듭니다.\n\nGAIA는 Slack과 Trello를 연결해 대화에서 업무를 포착하는 일을 한 단계로 줄입니다. 이모지 반응 하나나 간단한 명령으로 메시지를 올바른 보드의 제대로 된 카드로 바꿀 수 있습니다. 카드가 새 리스트로 이동하거나 마감일이 지정되거나 완료 처리되면 해당 채널로 알림이 가서, 팀이 보드를 직접 확인하지 않아도 상황을 알 수 있습니다.\n\n이 연동은 채팅에서 아이디어를 내고 보드에서 실행하는 제품팀, 캠페인 업무를 관리하는 마케팅 팀, 실시간 대화에서 포착한 업무를 업무 보드에 반영해야 하는 모든 팀에 이상적입니다.",
     "useCases": [
       {
-        "title": "Create Trello cards with emoji reactions",
-        "description": "React to any Slack message with a designated emoji — like a clipboard or checkmark — and GAIA automatically creates a Trello card in the configured board and list with the message content as the card description, tagged with the channel and author so context is preserved."
+        "title": "이모지 반응으로 Trello 카드 생성",
+        "description": "클립보드나 체크 표시처럼 지정한 이모지로 메시지에 반응하면 GAIA가 설정된 보드와 리스트에 카드를 만들고 메시지 내용을 카드 설명으로 넣습니다. 채널과 작성자도 태그해 맥락을 유지합니다."
       },
       {
-        "title": "Slash command card creation with details",
-        "description": "Use a Slack slash command like '/gaia add to trello [board] [list]' to create a detailed Trello card from a Slack message, complete with due date, assignee, and labels specified inline, without leaving Slack."
+        "title": "상세 정보를 담은 슬래시 명령 카드 생성",
+        "description": "'/gaia add to trello [보드] [리스트]' 같은 슬래시 명령으로 메시지에서 상세 카드를 만들 수 있습니다. 마감일, 담당자, 라벨을 그 자리에서 지정하며 Slack을 떠날 필요가 없습니다."
       },
       {
-        "title": "Trello card status updates in Slack",
-        "description": "When a Trello card is moved to a new list — such as 'In Review' or 'Done' — GAIA posts a brief update to the relevant Slack channel so the team knows work has progressed without anyone having to check the Trello board or send a manual update."
+        "title": "Slack에서 카드 상태 업데이트",
+        "description": "카드가 '검토 중'이나 '완료' 같은 새 리스트로 이동하면 GAIA가 관련 채널에 간단한 업데이트를 게시합니다. 누군가 보드를 확인하거나 수동으로 알리지 않아도 팀이 진행 상황을 알 수 있습니다."
       },
       {
-        "title": "Daily board summary in Slack",
-        "description": "GAIA posts a morning digest to a designated Slack channel summarizing the state of your Trello boards: cards due today, overdue items, and what was completed yesterday — giving the team a shared overview to start each day."
+        "title": "Slack에서 매일 보드 요약",
+        "description": "GAIA가 지정된 채널에 아침 요약을 게시합니다. 오늘 마감인 카드, 기한이 지난 항목, 어제 완료한 업무를 정리해 팀이 하루를 시작할 때 공통된 현황을 공유할 수 있습니다."
       },
       {
-        "title": "Overdue card alerts to Slack",
-        "description": "When a Trello card's due date passes without it being moved to 'Done', GAIA sends an alert to the assigned team member's Slack DM and optionally to the team channel so overdue tasks are never silently missed."
+        "title": "기한 지난 카드를 DM으로 알림",
+        "description": "카드의 마감일이 지났는데 '완료'로 이동하지 않으면 GAIA가 담당 팀원의 DM으로, 필요하면 팀 채널에도 알림을 보냅니다. 기한이 지난 업무가 조용히 누락되는 일이 없습니다."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Slack and Trello to GAIA",
-        "description": "Authorize GAIA in your Slack workspace and authenticate your Trello account. GAIA will ask which Trello boards it should have access to and which Slack channels should receive Trello notifications."
+        "step": "Slack과 Trello를 GAIA에 연결",
+        "description": "워크스페이스에서 GAIA를 승인하고 Trello 계정을 인증합니다. GAIA가 접근할 보드와 알림을 받을 채널을 물어봅니다."
       },
       {
-        "step": "Configure card creation triggers and notification rules",
-        "description": "Define which emoji reactions or slash commands should create cards, which Slack channels map to which Trello boards and lists, and which Trello events should trigger Slack notifications. You can set up different rules for different channels and boards."
+        "step": "카드 생성 트리거와 알림 규칙 설정",
+        "description": "어떤 이모지 반응이나 슬래시 명령이 카드를 만들지, 어느 채널이 어느 보드와 리스트에 대응하는지, 어떤 보드 이벤트가 알림을 트리거할지 정의하세요. 채널과 보드별로 다른 규칙을 설정할 수 있습니다."
       },
       {
-        "step": "GAIA keeps Slack and Trello synchronized automatically",
-        "description": "GAIA monitors Slack for triggers and Trello for events, creating cards and posting notifications as defined. Your team captures work from conversation effortlessly and always knows the state of the Trello board from Slack."
+        "step": "GAIA가 채팅과 보드를 자동으로 동기화",
+        "description": "GAIA가 트리거와 보드 이벤트를 모니터링하며 정한 대로 카드를 만들고 알림을 게시합니다. 팀은 추가 단계 없이 대화에서 업무를 포착하고, 채팅에서 보드 상태를 항상 확인할 수 있습니다."
       }
     ],
     "faqs": [
       {
-        "question": "Can multiple team members create Trello cards from Slack, or only admins?",
-        "answer": "Any team member in the configured Slack workspace can create Trello cards using the defined triggers. GAIA respects Trello board permissions, so cards will only be created on boards the triggering user has access to."
+        "question": "관리자만이 아니라 여러 팀원이 Slack에서 Trello 카드를 만들 수 있나요?",
+        "answer": "설정된 워크스페이스의 팀원이라면 누구나 정해진 트리거로 카드를 만들 수 있습니다. GAIA는 보드 권한을 따르므로, 트리거한 사용자가 접근 권한을 가진 보드에만 카드를 만듭니다."
       },
       {
-        "question": "Can I choose which Slack channel gets notified for specific Trello boards?",
-        "answer": "Yes. You can map each Trello board to a specific Slack channel for notifications. For example, your Marketing board updates can go to #marketing while your Engineering board goes to #engineering."
+        "question": "특정 보드의 알림을 받을 채널을 직접 고를 수 있나요?",
+        "answer": "네. 각 보드를 알림용 채널에 매핑할 수 있습니다. 예를 들어 마케팅 보드 업데이트는 #marketing으로, 엔지니어링 보드는 #engineering으로 보낼 수 있습니다."
       },
       {
-        "question": "Does GAIA attach the Slack message link to the Trello card?",
-        "answer": "Yes. GAIA embeds a link back to the original Slack message in the Trello card description so anyone reading the card can navigate directly to the conversation where the task originated for full context."
+        "question": "GAIA가 메시지 링크를 카드에 첨부하나요?",
+        "answer": "네. GAIA가 원래 메시지로 돌아가는 링크를 카드 설명에 넣습니다. 카드를 읽는 사람은 누구든 업무가 시작된 대화로 바로 이동해 전체 맥락을 확인할 수 있습니다."
       }
     ]
   },
@@ -3775,66 +3775,66 @@
   "slack-stripe": {
     "toolA": "Slack",
     "toolB": "Stripe",
-    "tagline": "Get real-time Stripe payment alerts and revenue summaries in Slack",
-    "metaTitle": "Stripe Slack 연동: 결제를 채널로 알림",
-    "metaDescription": "새 결제, 결제 실패, 매출 이정표를 원하는 Slack 채널에 올리고 테스트 거래는 제외합니다. GAIA가 일일 매출 요약도 보냅니다. 설정 단계를 확인하세요.",
+    "tagline": "Stripe 결제 알림과 매출 요약을 Slack에서 실시간으로 받아보세요",
+    "metaTitle": "Stripe Slack 연동: 결제 내역을 채널로",
+    "metaDescription": "새 결제, 실패한 청구, 매출 마일스톤을 원하는 Slack 채널에 게시합니다. GAIA가 테스트 거래를 걸러냅니다. 설정 방법을 확인하세요.",
     "keywords": [
-      "Slack Stripe integration",
-      "Stripe payment notification Slack",
-      "Slack Stripe automation",
-      "revenue alert Slack",
-      "connect Slack and Stripe",
-      "Stripe Slack webhook"
+      "Slack Stripe 연동",
+      "Stripe 결제 알림 Slack",
+      "Slack Stripe 자동화",
+      "매출 알림 Slack",
+      "Slack과 Stripe 연결",
+      "Stripe Slack 웹훅"
     ],
-    "intro": "Stripe processes your revenue in real time, but that data lives in the Stripe dashboard where most of your team never goes. Sales teams want to celebrate new customers. Finance wants to know about failed charges immediately. Leadership wants revenue milestones surfaced as they happen. Currently, all of this requires either manually checking Stripe or waiting for a weekly report that is already outdated.\n\nGAIA connects Stripe and Slack so that payment events are surfaced in the channels where your team is already paying attention. New subscriptions post to #sales for a real-time win celebration. Failed payments alert your customer success team in #support so they can proactively reach out. Revenue milestones trigger automated announcements. Your team gets a live pulse on the business without anyone having to maintain dashboards or relay information manually.\n\nThis integration is essential for SaaS companies, subscription businesses, and e-commerce teams where revenue events require coordinated responses from sales, finance, customer success, and leadership.",
+    "intro": "Stripe는 매출을 실시간으로 처리하지만, 그 데이터는 대부분의 팀원이 열지 않는 대시보드에 있습니다. 영업팀은 새 고객을 축하하고 싶어 하고, 재무팀은 실패한 청구를 즉시 알아야 하며, 리더십은 매출 마일스톤이 달성되는 순간을 보고 싶어 합니다. 지금은 이 모든 것이 대시보드를 직접 확인하거나 이미 지나간 주간 보고서를 기다리는 일로 이어집니다.\n\nGAIA는 두 도구를 연결해 결제 이벤트가 팀이 이미 주목하는 Slack 채널에 나타나게 합니다. 새 구독은 #sales에 게시되어 실시간 성과를 축하하고, 결제 실패는 #support의 고객 성공팀에 알려 먼저 다가갈 수 있게 하며, 매출 마일스톤은 자동 공지를 발생시킵니다. 누군가 대시보드를 관리하거나 정보를 손으로 전달하지 않아도 팀이 비즈니스 흐름을 실시간으로 파악합니다.\n\n이 연동은 매출 이벤트에 영업, 재무, 고객 성공, 리더십의 협업 대응이 필요한 SaaS 기업, 구독 비즈니스, 이커머스 팀에 꼭 필요합니다.",
     "useCases": [
       {
-        "title": "New customer payment alerts in Slack",
-        "description": "When a new customer completes their first Stripe payment or activates a subscription, GAIA posts a celebration notification to your #sales or #wins Slack channel with the customer name, plan, and MRR impact so the whole team can share in the win and customer success can begin onboarding immediately."
+        "title": "Slack에서 신규 고객 결제 알림",
+        "description": "새 고객이 첫 결제를 완료하거나 구독을 활성화하면 GAIA가 고객명, 요금제, MRR 영향을 담아 #sales나 #wins 채널에 축하 알림을 게시합니다. 팀 전체가 성과를 함께하고 고객 성공팀은 바로 온보딩을 시작할 수 있습니다."
       },
       {
-        "title": "Failed payment alerts to customer success",
-        "description": "When a Stripe charge fails, GAIA immediately posts an alert to your #support or #customer-success Slack channel with the customer's name, plan, failed amount, and failure reason so your team can reach out proactively before the customer even realizes there is a problem."
+        "title": "결제 실패를 고객 성공팀에 알림",
+        "description": "청구가 실패하면 GAIA가 고객명, 요금제, 실패 금액, 실패 사유를 담아 #support나 #customer-success 채널에 즉시 알립니다. 고객이 문제를 인지하기 전에 팀이 먼저 다가갈 수 있습니다."
       },
       {
-        "title": "Revenue milestone announcements",
-        "description": "Configure GAIA to post to your #general or #wins channel when Stripe MRR crosses key milestones — $10K, $50K, $100K — so the whole company gets to celebrate growth moments in real time rather than waiting for a quarterly review."
+        "title": "매출 마일스톤 공지",
+        "description": "MRR이 1만 달러, 5만 달러, 10만 달러 같은 주요 지점을 넘으면 #general이나 #wins 채널에 게시하도록 GAIA를 설정하세요. 분기 리뷰를 기다리지 않고 전사가 성장의 순간을 실시간으로 함께 축하할 수 있습니다."
       },
       {
-        "title": "Daily and weekly revenue digests",
-        "description": "GAIA posts a structured daily revenue summary to your #finance channel every morning: new MRR, churned MRR, net new revenue, total active subscriptions, and any anomalies detected — giving your finance and leadership teams a daily financial pulse without opening Stripe."
+        "title": "일간 및 주간 매출 요약",
+        "description": "GAIA가 매일 아침 #finance 채널에 구조화된 매출 요약을 게시합니다. 신규 MRR, 이탈 MRR, 순신규 매출, 전체 활성 구독, 감지된 이상 징후가 포함되어 대시보드를 열지 않아도 재무와 리더십이 매일 재무 현황을 파악합니다."
       },
       {
-        "title": "Chargeback and dispute alerts",
-        "description": "When a Stripe dispute or chargeback is opened, GAIA sends an immediate alert to your #finance or #ops Slack channel with the transaction details and dispute deadline so your team can begin assembling evidence before the response window closes."
+        "title": "지불 거절 및 분쟁 알림",
+        "description": "분쟁이나 지불 거절이 접수되면 GAIA가 거래 세부 정보와 대응 기한을 담아 #finance나 #ops 채널에 즉시 알립니다. 대응 기간이 끝나기 전에 증빙 자료를 준비할 수 있습니다."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Slack and Stripe to GAIA",
-        "description": "Authorize GAIA in your Slack workspace and provide your Stripe API key. GAIA uses read-only Stripe access by default and Stripe webhook events to receive real-time payment notifications."
+        "step": "두 앱을 GAIA에 연결",
+        "description": "Slack 워크스페이스에서 GAIA를 승인하고 Stripe API 키를 제공합니다. GAIA는 기본적으로 읽기 전용 접근과 웹훅 이벤트로 실시간 결제 알림을 받습니다."
       },
       {
-        "step": "Configure your payment event routing",
-        "description": "Specify which Stripe events should post to which Slack channels, what information to include in each notification, and what thresholds or conditions apply for milestone alerts and digest schedules."
+        "step": "결제 이벤트 라우팅 설정",
+        "description": "어떤 결제 이벤트를 어느 채널에 게시할지, 각 알림에 어떤 정보를 포함할지, 마일스톤 알림과 요약 일정에 어떤 기준이나 조건을 적용할지 지정하세요."
       },
       {
-        "step": "GAIA delivers Stripe events to Slack in real time",
-        "description": "GAIA listens to Stripe webhooks and posts formatted notifications to the configured Slack channels as payment events occur. Your team gets a live view of business revenue without anyone acting as a manual relay from the Stripe dashboard."
+        "step": "GAIA가 결제 이벤트를 Slack으로 실시간 전달",
+        "description": "GAIA가 웹훅을 수신해 결제 이벤트가 발생하는 대로 설정된 채널에 형식에 맞는 알림을 게시합니다. 누군가 대시보드에서 정보를 옮기지 않아도 팀이 매출 현황을 실시간으로 확인합니다."
       }
     ],
     "faqs": [
       {
-        "question": "Can I control which Slack channels receive which types of Stripe events?",
-        "answer": "Yes. You can route different Stripe events to different channels. New subscriptions can go to #sales, failed payments to #support, disputes to #finance, and revenue summaries to #leadership — ensuring each team gets the relevant financial information without noise."
+        "question": "어떤 채널이 어떤 유형의 결제 이벤트를 받을지 정할 수 있나요?",
+        "answer": "네. 결제 이벤트 유형별로 다른 채널에 라우팅할 수 있습니다. 새 구독은 #sales, 결제 실패는 #support, 분쟁은 #finance, 매출 요약은 #leadership으로 보내 각 팀이 잡음 없이 필요한 재무 정보만 받게 할 수 있습니다."
       },
       {
-        "question": "Can GAIA suppress notifications for small test transactions in Stripe?",
-        "answer": "Yes. GAIA can filter out Stripe test mode events and can apply minimum threshold filters so that low-value transactions below a defined amount do not generate Slack notifications, keeping your channels focused on meaningful payment events."
+        "question": "소액 테스트 거래 알림은 걸러낼 수 있나요?",
+        "answer": "네. GAIA는 테스트 모드 이벤트를 필터링하고 최소 금액 기준을 적용해 정한 금액 미만의 저액 거래는 알림을 만들지 않습니다. 채널은 의미 있는 결제 이벤트에 집중할 수 있습니다."
       },
       {
-        "question": "Does GAIA support Stripe Connect for platforms with multiple sub-accounts?",
-        "answer": "GAIA supports standard Stripe accounts fully. For Stripe Connect platforms, basic payment notifications are supported but deep sub-account analytics are on the roadmap. Contact the GAIA team for specific Connect use cases."
+        "question": "여러 하위 계정이 있는 플랫폼을 위한 Stripe Connect도 지원하나요?",
+        "answer": "GAIA는 표준 계정을 완전히 지원합니다. Connect 플랫폼의 경우 기본 결제 알림은 지원하지만 하위 계정 심층 분석은 로드맵에 있습니다. 구체적인 Connect 사례는 GAIA 팀에 문의해 주세요."
       }
     ]
   },
@@ -4055,210 +4055,210 @@
   "gmail-figma": {
     "toolA": "Gmail",
     "toolB": "Figma",
-    "tagline": "Connect design feedback loops between Gmail and Figma so nothing gets lost in translation",
-    "metaTitle": "Gmail + Figma 연동: 메일 피드백을 Figma로",
-    "metaDescription": "GAIA로 Gmail + Figma 연동. 이메일 피드백을 Figma 댓글로 바꾸고 디자인 업데이트를 이해관계자에게 메일로 알립니다. 수동 인계 없이 리뷰가 이어집니다.",
+    "tagline": "Gmail과 Figma 사이의 디자인 피드백 흐름을 이어 전달 과정에서 놓치는 일이 없게 하세요",
+    "metaTitle": "Gmail + Figma 연동: 이메일 피드백을 댓글로",
+    "metaDescription": "디자인 피드백 이메일을 Figma 댓글로 바꾸고, 디자인이 바뀌면 이해관계자에게 알리며, 승인 요청을 보냅니다. GAIA가 이 과정을 처리합니다.",
     "keywords": [
-      "Gmail Figma integration",
-      "email design feedback Figma",
-      "Gmail Figma automation",
-      "Figma comment from email",
-      "connect Gmail and Figma",
-      "design review email workflow"
+      "Gmail Figma 연동",
+      "이메일 디자인 피드백 Figma",
+      "Gmail Figma 자동화",
+      "이메일을 Figma 댓글로",
+      "Gmail과 Figma 연결",
+      "디자인 리뷰 이메일 워크플로우"
     ],
-    "intro": "Design review cycles are notorious for feedback fragmentation. Stakeholders send design comments over email because that's the tool they're comfortable with, while designers work in Figma and need feedback directly on the canvas. The result is designers manually transcribing email feedback into Figma comments, stakeholders unsure whether their input was received, and review cycles that drag on longer than they should.\n\nGAIA bridges this gap by connecting Gmail feedback to Figma. When a stakeholder emails design feedback on a specific file or frame, GAIA can add that feedback as a comment on the correct Figma file, tagging the responsible designer. When a designer marks feedback as resolved in Figma or publishes a new version, GAIA can notify the stakeholder by email so they know to review the update.\n\nFor product and design teams working with non-technical stakeholders who will never open Figma, this automation means feedback actually lands where designers can act on it—and stakeholders stay informed without needing to learn a new tool.",
+    "intro": "디자인 리뷰 주기는 피드백이 흩어지는 것으로 악명 높습니다. 이해관계자는 익숙한 도구인 이메일로 디자인 의견을 보내고, 디자이너는 Figma에서 작업하며 캔버스 위에서 바로 피드백을 받아야 합니다. 그 결과 디자이너가 이메일 피드백을 댓글로 직접 옮겨 적고, 이해관계자는 자신의 의견이 전달되었는지 확신하지 못하며, 리뷰 주기가 필요 이상으로 길어집니다.\n\nGAIA는 Gmail의 피드백을 Figma에 연결해 이 간극을 메웁니다. 이해관계자가 특정 파일이나 프레임에 대한 디자인 피드백을 이메일로 보내면 GAIA가 해당 파일의 올바른 위치에 댓글로 추가하고 담당 디자이너를 태그합니다. 디자이너가 피드백을 해결 처리하거나 새 버전을 게시하면 GAIA가 이해관계자에게 이메일로 알려 업데이트를 확인하도록 안내합니다.\n\n디자인 파일을 열지 않는 비기술 이해관계자와 협업하는 제품·디자인 팀에게 이 자동화는 피드백이 디자이너가 실제로 활용할 수 있는 곳에 도착하고, 이해관계자는 새 도구를 배우지 않아도 상황을 파악하게 해줍니다.",
     "useCases": [
       {
-        "title": "Convert email feedback into Figma comments",
-        "description": "When a stakeholder emails design feedback referencing a specific screen or flow, GAIA extracts the feedback and adds it as a comment on the relevant Figma file frame, tagging the designer responsible for that section."
+        "title": "이메일 피드백을 Figma 댓글로 변환",
+        "description": "이해관계자가 특정 화면이나 흐름을 언급하며 디자인 피드백을 이메일로 보내면 GAIA가 피드백을 추출해 해당 파일의 관련 프레임에 댓글로 추가하고 그 영역을 담당하는 디자이너를 태그합니다."
       },
       {
-        "title": "Notify stakeholders when designs are updated",
-        "description": "When a new version of a Figma file is published or a comment thread is resolved, GAIA sends an email to the relevant stakeholders with a direct link to the updated frame and a summary of what changed."
+        "title": "디자인 업데이트 시 이해관계자 알림",
+        "description": "파일의 새 버전이 게시되거나 댓글 스레드가 해결되면 GAIA가 업데이트된 프레임 링크와 변경 사항 요약을 담아 관련 이해관계자에게 이메일을 보냅니다."
       },
       {
-        "title": "Design approval request emails",
-        "description": "When a designer is ready for review, GAIA sends a formatted email to the approvers with a thumbnail, the Figma share link, the design brief summary, and a deadline for feedback, kickstarting the review cycle."
+        "title": "디자인 승인 요청 이메일",
+        "description": "디자이너가 리뷰를 받을 준비가 되면 GAIA가 썸네일, Figma 공유 링크, 디자인 브리프 요약, 피드백 기한을 담은 형식화된 이메일을 승인자에게 보내 리뷰 주기를 시작합니다."
       },
       {
-        "title": "Client design handoff email generation",
-        "description": "When a Figma project is marked ready for handoff, GAIA drafts a client-facing email with the file link, export instructions, and any relevant notes from the design brief, ready for the account manager to send."
+        "title": "고객 디자인 인계 이메일 생성",
+        "description": "프로젝트가 인계 준비 완료로 표시되면 GAIA가 파일 링크, 내보내기 안내, 디자인 브리프의 관련 메모를 담은 고객용 이메일 초안을 작성해 계정 담당자가 바로 보낼 수 있게 합니다."
       },
       {
-        "title": "Feedback aggregation from multiple email reviewers",
-        "description": "When multiple stakeholders email feedback on the same design, GAIA consolidates all comments into a single structured Figma comment thread with each reviewer attributed, preventing comment duplication and chaos."
+        "title": "여러 리뷰어의 이메일 피드백 통합",
+        "description": "여러 이해관계자가 같은 디자인에 대해 이메일로 피드백을 보내면 GAIA가 모든 의견을 리뷰어별로 구분된 하나의 구조화된 댓글 스레드로 통합해 댓글이 중복되고 뒤엉키는 일을 막습니다."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Gmail and Figma to GAIA",
-        "description": "Authenticate your Gmail account and Figma workspace in GAIA's settings. GAIA accesses Figma files you specify and monitors Gmail for feedback-related email threads."
+        "step": "Gmail과 Figma를 GAIA에 연결",
+        "description": "GAIA 설정에서 Gmail 계정과 Figma 워크스페이스를 인증합니다. GAIA는 지정한 파일에 접근하고 피드백 관련 이메일 스레드를 메일함에서 모니터링합니다."
       },
       {
-        "step": "Map email conversations to Figma files",
-        "description": "Tell GAIA which email threads or projects correspond to which Figma files. You can link by project name, client name, or specific Gmail label so GAIA routes feedback to the right canvas."
+        "step": "이메일 대화를 디자인 파일에 매핑",
+        "description": "어떤 이메일 스레드나 프로젝트가 어떤 파일에 해당하는지 GAIA에 알려주세요. 프로젝트명, 고객명, 특정 라벨로 연결해 GAIA가 피드백을 올바른 캔버스로 보내게 할 수 있습니다."
       },
       {
-        "step": "Feedback flows between email and Figma automatically",
-        "description": "Email feedback becomes Figma comments, Figma updates trigger email notifications, and the review cycle moves forward without designers and stakeholders having to manually bridge the two tools."
+        "step": "피드백이 이메일과 디자인 파일 사이를 자동으로 이동",
+        "description": "이메일 피드백은 댓글이 되고, 디자인 업데이트는 이메일 알림을 발생시키며, 디자이너와 이해관계자가 두 도구를 직접 잇지 않아도 리뷰 주기가 진행됩니다."
       }
     ],
     "faqs": [
       {
-        "question": "How does GAIA know which Figma file an email refers to?",
-        "answer": "GAIA uses context from the email—project name, client name, subject line—and your configured mappings to identify the correct Figma file. You can also include a Figma file URL in the email to make the match unambiguous."
+        "question": "GAIA는 이메일이 어떤 파일을 가리키는지 어떻게 아나요?",
+        "answer": "GAIA는 이메일의 프로젝트명, 고객명, 제목 같은 맥락과 설정한 매핑을 활용해 올바른 파일을 찾습니다. 이메일에 파일 URL을 포함하면 매칭을 더 확실하게 할 수 있습니다."
       },
       {
-        "question": "Can GAIA add comments to specific frames rather than the whole file?",
-        "answer": "Yes, when the email feedback references a specific screen by name or description, GAIA will place the comment on the most relevant frame. For general feedback without a specific frame reference, the comment is added at the file level."
+        "question": "파일 전체가 아니라 특정 프레임에 댓글을 달 수 있나요?",
+        "answer": "네. 이메일 피드백이 특정 화면을 이름이나 설명으로 언급하면 GAIA가 가장 관련 있는 프레임에 댓글을 배치합니다. 특정 프레임을 가리키지 않는 일반적인 피드백은 파일 수준에 댓글로 추가됩니다."
       },
       {
-        "question": "Do stakeholders need a Figma account for this to work?",
-        "answer": "No. Stakeholders only interact via email. GAIA translates their email feedback into Figma comments using its own authenticated Figma connection, so external stakeholders never need to open Figma."
+        "question": "이해관계자에게도 Figma 계정이 필요한가요?",
+        "answer": "아니요. 이해관계자는 이메일로만 소통합니다. GAIA가 자체 인증 연결로 이메일 피드백을 댓글로 변환하므로 외부 이해관계자가 디자인 앱을 열 필요가 없습니다."
       },
       {
-        "question": "Can GAIA send design files or exports as email attachments?",
-        "answer": "GAIA can include Figma share links and exported image previews in emails. For full file exports (PDF, PNG, SVG), GAIA can trigger a Figma export and attach the result to the outbound email where the API supports it."
+        "question": "GAIA가 디자인 파일이나 내보낸 파일을 이메일 첨부파일로 보낼 수 있나요?",
+        "answer": "GAIA는 이메일에 공유 링크와 내보낸 이미지 미리보기를 포함할 수 있습니다. PDF, PNG, SVG 같은 전체 파일 내보내기는 API가 지원하는 경우 GAIA가 내보내기를 실행해 결과물을 발송 이메일에 첨부합니다."
       }
     ]
   },
   "gmail-loom": {
     "toolA": "Gmail",
     "toolB": "Loom",
-    "tagline": "Attach Loom video context to email workflows and never lose recorded insights in your inbox",
-    "metaTitle": "Gmail + Loom 연동: 이메일과 영상 메시지 워크플로",
-    "metaDescription": "GAIA로 Gmail + Loom 연동. 이메일을 계기로 Loom 녹화본을 보내고 영상 내용을 요약 메일로 변환합니다. 비동기 영상 소통을 깔끔하게 정리합니다.",
+    "tagline": "이메일 업무 흐름에 영상 맥락을 더하고 녹화된 인사이트를 메일함에서 잃지 마세요",
+    "metaTitle": "Gmail + Loom 연동: Loom 영상을 이메일로 요약",
+    "metaDescription": "이메일로 받은 Loom 영상을 텍스트로 요약하고, 스레드에서 녹화 알림을 받습니다. GAIA가 Loom을 외부에 공유합니다. 설정 방법을 확인하세요.",
     "keywords": [
-      "Gmail Loom integration",
-      "Loom video email automation",
-      "Gmail Loom workflow",
-      "send Loom from email",
-      "connect Gmail and Loom",
-      "Loom email summary"
+      "Gmail Loom 연동",
+      "Loom 영상 이메일 자동화",
+      "Gmail Loom 워크플로우",
+      "이메일에서 Loom 보내기",
+      "Gmail과 Loom 연결",
+      "Loom 이메일 요약"
     ],
-    "intro": "Loom recordings and email threads often carry different parts of the same conversation. A client emails a question that would take paragraphs to answer in text; a Loom video would explain it in two minutes. A team member records a Loom walkthrough of a problem; the recipients need to email it to external stakeholders with proper context. These two async communication formats rarely work together smoothly.\n\nGAIA connects Gmail and Loom to make video and email work as a unified async communication layer. When you receive an email that warrants a video response, GAIA can prompt you to record a Loom and automatically send the link with a transcript excerpt in reply. When a Loom video is shared with you, GAIA can generate a text summary and file it in Gmail with the relevant thread so the content is searchable.\n\nFor customer success teams, sales professionals, and async-first remote teams, this integration means video context is never isolated from the email conversations that surround it—and you spend less time deciding whether to type a long reply or record a video.",
+    "intro": "녹화된 화면 안내와 이메일 스레드는 같은 대화의 서로 다른 부분을 담는 경우가 많습니다. 글로 답하면 몇 문단이 걸릴 질문을 고객이 이메일로 보내지만, Loom 영상이라면 2분이면 설명할 수 있습니다. 팀원이 문제를 화면으로 녹화하지만, 받은 사람은 적절한 맥락과 함께 외부 이해관계자에게 이메일로 전달해야 합니다. 이 두 비동기 소통 방식은 좀처럼 매끄럽게 함께 작동하지 않습니다.\n\nGAIA는 Gmail과 Loom을 연결해 영상과 이메일이 하나의 비동기 소통 계층으로 작동하게 합니다. 영상 답변이 적절한 이메일을 받으면 GAIA가 녹화를 안내하고, 완료되면 스크립트 발췌와 함께 링크를 답장으로 자동 발송합니다. 녹화를 공유받으면 GAIA가 텍스트 요약을 만들어 관련 이메일 스레드에 정리하므로 내용을 검색할 수 있습니다.\n\n고객 성공팀, 영업 담당자, 비동기 우선 원격 팀에게 이 연동은 영상 맥락이 주변 이메일 대화와 분리되지 않게 해주며, 긴 답장을 쓸지 영상을 녹화할지 고민하는 시간도 줄여 줍니다.",
     "useCases": [
       {
-        "title": "Trigger Loom recording reminders from email threads",
-        "description": "When an email arrives that GAIA identifies as better suited for a video response—complex explanations, product demos, onboarding walkthroughs—GAIA flags it and prompts you to record a Loom, then handles sending the link as a reply."
+        "title": "이메일 스레드에서 Loom 녹화 알림",
+        "description": "복잡한 설명, 제품 데모, 온보딩 안내처럼 영상 답변이 더 적합하다고 GAIA가 판단한 이메일이 오면 해당 메일을 표시하고 녹화를 안내한 뒤, 완료된 링크를 답장으로 보내는 일까지 처리합니다."
       },
       {
-        "title": "Summarize Loom videos received by email into text",
-        "description": "When someone emails you a Loom link, GAIA generates a text summary of the video content using the Loom transcript and adds it to the email thread as a note, so you can reference key points without rewatching."
+        "title": "이메일로 받은 영상을 텍스트로 요약",
+        "description": "누군가 녹화 링크를 이메일로 보내면 GAIA가 녹화 스크립트를 활용해 영상 내용을 텍스트로 요약하고 이메일 스레드에 메모로 추가합니다. 다시 보지 않고도 핵심을 확인할 수 있습니다."
       },
       {
-        "title": "Share Loom recordings with external email recipients",
-        "description": "When a Loom is created internally for client communication, GAIA drafts the outbound email with the Loom link, a text summary excerpt, and the relevant context from previous email threads, ready to send with one click."
+        "title": "외부 이메일 수신자와 녹화 공유",
+        "description": "고객 커뮤니케이션을 위해 내부에서 녹화를 만들면 GAIA가 영상 링크, 텍스트 요약 발췌, 이전 이메일 스레드의 관련 맥락을 담은 발송 이메일 초안을 작성해 클릭 한 번으로 보낼 수 있게 합니다."
       },
       {
-        "title": "Archive Loom content into searchable email threads",
-        "description": "GAIA takes Loom recordings shared across various channels and files their transcript summaries into the relevant Gmail thread, creating a single searchable record of both written and video communication."
+        "title": "Loom 콘텐츠를 검색 가능한 이메일 스레드로 보관",
+        "description": "GAIA가 여러 채널에서 공유된 녹화를 가져와 스크립트 요약을 관련 이메일 스레드에 정리합니다. 글로 된 소통과 영상 소통이 하나의 검색 가능한 기록으로 남습니다."
       },
       {
-        "title": "Automated follow-up after Loom views",
-        "description": "When GAIA detects that a recipient has viewed your Loom recording (via view notifications), it can draft a follow-up email asking for questions or next steps, keeping the conversation moving."
+        "title": "영상 시청 후 자동 후속 조치",
+        "description": "수신자가 녹화를 시청했다는 알림을 GAIA가 감지하면 질문이나 다음 단계를 묻는 후속 이메일 초안을 작성해 대화가 계속 이어지게 합니다."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Gmail and Loom to GAIA",
-        "description": "Authenticate your Gmail account and Loom workspace in GAIA's settings. GAIA accesses your Loom library and Gmail inbox to coordinate content between them."
+        "step": "Gmail과 Loom을 GAIA에 연결",
+        "description": "GAIA 설정에서 두 계정을 인증합니다. GAIA가 녹화 라이브러리와 메일함에 접근해 양쪽 콘텐츠를 조율합니다."
       },
       {
-        "step": "Define your video-email workflow preferences",
-        "description": "Tell GAIA when to suggest video responses, how to format Loom summaries in email, and how to handle incoming Loom links. You set the rules in plain language."
+        "step": "영상-이메일 워크플로우 선호 설정",
+        "description": "언제 영상 답변을 제안할지, 이메일 요약을 어떤 형식으로 만들지, 들어오는 영상 링크를 어떻게 처리할지 GAIA에 알려주세요. 규칙은 자연어로 설정합니다."
       },
       {
-        "step": "Video and email work together automatically",
-        "description": "GAIA handles the translation between Loom content and email threads, keeping async communication cohesive and making sure video context is never siloed from the conversations that need it."
+        "step": "영상과 이메일이 자동으로 함께 작동",
+        "description": "GAIA가 영상 콘텐츠와 이메일 스레드 사이의 변환을 처리해 비동기 소통을 일관되게 유지하고, 영상 맥락이 필요한 대화와 분리되지 않게 합니다."
       }
     ],
     "faqs": [
       {
-        "question": "Does GAIA automatically transcribe Loom videos or use Loom's built-in transcript?",
-        "answer": "GAIA uses Loom's native transcript where available (Loom Business and above includes auto-transcription). For recordings without transcripts, GAIA can summarize based on the video title, description, and any captions."
+        "question": "GAIA가 영상을 직접 받아쓰나요, 아니면 Loom의 기본 스크립트를 쓰나요?",
+        "answer": "가능한 경우 Loom의 기본 스크립트를 사용합니다(Business 요금제 이상에 자동 스크립트가 포함됩니다). 스크립트가 없는 녹화는 영상 제목, 설명, 포함된 자막을 바탕으로 요약합니다."
       },
       {
-        "question": "Can GAIA send a Loom reply directly from Gmail?",
-        "answer": "GAIA facilitates the workflow: it identifies the email needing a video response, prompts you to record, and then sends the Loom link as an email reply once you've completed the recording. The recording step itself happens in Loom."
+        "question": "Gmail에서 바로 영상 답장을 보낼 수 있나요?",
+        "answer": "GAIA는 과정을 돕습니다. 영상 답변이 필요한 이메일을 찾아 녹화를 안내하고, 녹화가 끝나면 링크를 이메일 답장으로 보냅니다. 실제 녹화는 녹화 앱에서 이루어집니다."
       },
       {
-        "question": "Does this work for shared Loom workspaces used by a team?",
-        "answer": "Yes. GAIA can be configured to monitor shared Loom workspaces and route video summaries or notifications to the appropriate team member's Gmail based on the video's assigned owner or topic."
+        "question": "팀이 함께 쓰는 공유 워크스페이스에서도 작동하나요?",
+        "answer": "네. 공유 워크스페이스를 모니터링하고 영상의 담당자나 주제에 따라 영상 요약이나 알림을 적절한 팀원의 메일함으로 보내도록 설정할 수 있습니다."
       },
       {
-        "question": "Can GAIA track whether email recipients have watched the Loom?",
-        "answer": "If Loom provides view analytics via its API, GAIA can monitor view status and trigger follow-up email drafts when a recipient has watched the recording. This depends on your Loom plan's analytics capabilities."
+        "question": "이메일 수신자가 영상을 봤는지 추적할 수 있나요?",
+        "answer": "영상 서비스 API에서 시청 분석을 제공하면 GAIA가 시청 상태를 확인하고 수신자가 녹화를 본 뒤 후속 이메일 초안을 만들 수 있습니다. 이 기능은 요금제의 분석 지원 여부에 따라 달라집니다."
       }
     ]
   },
   "slack-google-calendar": {
     "toolA": "Slack",
     "toolB": "Google Calendar",
-    "tagline": "Keep your Slack team informed of calendar events and reduce meeting no-shows automatically",
-    "metaTitle": "Slack 상태 Google Calendar 동기화: 회의 중 자동 표시",
-    "metaDescription": "Google 캘린더 회의에 맞춰 Slack 상태를 자동으로 바꾸고 하루 일정을 채널에 올립니다. GAIA는 Slack에서 회의 예약도 합니다. 설정 단계를 확인하세요.",
+    "tagline": "Slack에서 팀에 캘린더 일정을 알리고 회의 불참을 자동으로 줄이세요",
+    "metaTitle": "Slack Google Calendar 상태: 회의를 상태로 동기화",
+    "metaDescription": "Google Calendar 회의로 Slack 상태를 설정하고 팀 채널에 일일 일정을 게시합니다. GAIA가 Slack에서 회의를 예약하기도 합니다.",
     "keywords": [
-      "Slack Google Calendar integration",
-      "Slack calendar automation",
-      "Google Calendar Slack reminders",
-      "Slack meeting notifications",
-      "connect Slack and Google Calendar",
-      "calendar to Slack sync"
+      "Slack Google Calendar 연동",
+      "Slack 캘린더 자동화",
+      "Google Calendar Slack 알림",
+      "Slack 회의 알림",
+      "Slack과 Google Calendar 연결",
+      "캘린더를 Slack으로 동기화"
     ],
-    "intro": "Calendar events and Slack conversations are deeply connected in practice but completely disconnected in software. A meeting gets added to Google Calendar, but nobody on Slack knows about it unless someone manually announces it. A Slack discussion concludes with a decision to schedule a meeting, but that requires leaving Slack and opening Calendar. Status information about who's in a meeting versus available sits in Google Calendar but doesn't appear in Slack.\n\nGAIA connects Slack and Google Calendar so these two tools reinforce each other. Upcoming meetings can be announced in the right Slack channels automatically. Slack statuses can reflect your current calendar status—in a meeting, heads-down block, or out of office—without manual updates. Meetings can be scheduled from a Slack conversation by simply asking GAIA to find a time that works.\n\nFor distributed teams where Slack is the operational heartbeat, having calendar context surfaced automatically means fewer missed meetings, better coordination around availability, and a Slack status that's actually accurate.",
+    "intro": "캘린더 일정과 Slack 대화는 실제 업무에서는 깊이 연결되어 있지만 소프트웨어에서는 완전히 분리되어 있습니다. 회의가 Google Calendar에 추가되어도 누군가 직접 공지하지 않으면 워크스페이스의 누구도 알지 못합니다. 논의 끝에 회의를 잡기로 해도 채팅을 나가 캘린더를 열어야 합니다. 회의 중인지, 시간이 비는지에 대한 상태 정보는 캘린더에 있지만 Slack에는 나타나지 않습니다.\n\nGAIA는 두 도구를 연결해 서로를 보강하게 합니다. 예정된 회의를 적절한 채널에 자동으로 공지할 수 있습니다. 회의 중, 집중 업무 시간, 자리 비움 같은 현재 캘린더 상태를 수동 변경 없이 Slack 상태에 반영할 수 있습니다. 대화 중에 GAIA에게 가능한 시간을 찾아 달라고 하면 회의도 예약됩니다.\n\n채팅이 운영의 중심인 분산 팀에게 캘린더 맥락이 자동으로 드러난다는 것은 회의 불참이 줄고, 가용 시간을 더 잘 조율하며, 상태가 실제로 정확해진다는 뜻입니다.",
     "useCases": [
       {
-        "title": "Post daily meeting schedules to team Slack channels",
-        "description": "Each morning, GAIA posts a summary of the day's scheduled meetings to the relevant Slack channels, so the team knows what's on the agenda and can coordinate around focus time and meeting blocks."
+        "title": "매일 회의 일정을 팀 채널에 게시",
+        "description": "GAIA가 매일 아침 그날의 예정된 회의 요약을 관련 채널에 게시합니다. 팀이 안건을 파악하고 집중 업무 시간과 회의 시간을 조율할 수 있습니다."
       },
       {
-        "title": "Automatic Slack status from Google Calendar",
-        "description": "GAIA reads your Google Calendar and automatically updates your Slack status when you're in a meeting ('In a meeting until 3pm'), on a focus block ('Do not disturb'), or out of office ('OOO until Monday')."
+        "title": "Google Calendar 기반 자동 Slack 상태",
+        "description": "GAIA가 캘린더를 읽어 회의 중('오후 3시까지 회의 중'), 집중 업무 시간('방해 금지'), 자리 비움('월요일까지 부재')일 때 상태를 자동으로 변경합니다."
       },
       {
-        "title": "Schedule Google Calendar meetings from Slack",
-        "description": "When a Slack thread concludes with a decision to meet, ask GAIA to find a time that works for all participants, create the Google Calendar event, and post the event link back to the Slack thread."
+        "title": "Slack에서 Google Calendar 회의 예약",
+        "description": "스레드에서 회의를 하기로 결정되면 GAIA에게 모든 참석자에게 맞는 시간을 찾아 달라고 요청하세요. GAIA가 일정을 만들고 이벤트 링크를 스레드에 다시 게시합니다."
       },
       {
-        "title": "Pre-meeting reminders in Slack",
-        "description": "GAIA sends a Slack DM reminder 10 minutes before scheduled meetings with the event title, attendees, video link, and any relevant prep notes from the calendar event description."
+        "title": "DM으로 회의 전 알림",
+        "description": "GAIA가 예정된 회의 10분 전에 이벤트 제목, 참석자, 화상 링크, 이벤트 설명의 준비 메모를 담아 DM 알림을 보냅니다."
       },
       {
-        "title": "Alert channels when key team members are unavailable",
-        "description": "When a team lead or key contributor has an all-day event or extended meeting block, GAIA notifies the relevant Slack channel so the team knows in advance and can plan accordingly."
+        "title": "핵심 팀원 부재 시 채널 알림",
+        "description": "팀 리드나 핵심 기여자에게 종일 일정이나 긴 회의가 잡혀 있으면 GAIA가 관련 채널에 알려 팀이 미리 알고 계획을 세울 수 있게 합니다."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Slack and Google Calendar to GAIA",
-        "description": "Authenticate your Slack workspace and Google Calendar account in GAIA's settings. GAIA accesses calendar events and can post to Slack channels and DMs you authorize."
+        "step": "두 앱을 GAIA에 연결",
+        "description": "GAIA 설정에서 Slack 워크스페이스와 Google Calendar 계정을 인증합니다. GAIA는 캘린더 일정에 접근하고 승인한 채널과 DM에 게시할 수 있습니다."
       },
       {
-        "step": "Configure your calendar-to-Slack preferences",
-        "description": "Tell GAIA which calendars to monitor, which Slack channels should receive which types of notifications, and how far in advance reminders should be sent. Define status update rules in plain language."
+        "step": "캘린더-Slack 설정 구성",
+        "description": "어떤 캘린더를 모니터링할지, 어떤 채널이 어떤 알림을 받을지, 알림을 얼마나 미리 보낼지 GAIA에 알려주세요. 상태 업데이트 규칙은 자연어로 정의할 수 있습니다."
       },
       {
-        "step": "Calendar and Slack stay in sync automatically",
-        "description": "GAIA monitors your Google Calendar and updates Slack proactively. Meeting reminders, status updates, and scheduling requests all flow automatically without you having to bridge the two tools manually."
+        "step": "두 도구가 자동으로 동기화",
+        "description": "GAIA가 캘린더를 모니터링하며 워크스페이스를 능동적으로 업데이트합니다. 회의 알림, 상태 업데이트, 일정 요청이 모두 자동으로 처리되어 두 도구를 직접 잇지 않아도 됩니다."
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA update Slack statuses for all team members or just the connected user?",
-        "answer": "GAIA updates Slack status for each user who connects their own Google Calendar. For team-wide status updates, each team member authenticates their own Calendar and Slack accounts, and GAIA manages their statuses individually."
+        "question": "GAIA가 연결된 사용자만이 아니라 모든 팀원의 Slack 상태를 바꿀 수 있나요?",
+        "answer": "GAIA는 각자 캘린더를 연결한 사용자의 상태를 업데이트합니다. 팀 전체 상태 변경이 필요하면 팀원 각자가 자신의 캘린더와 채팅 계정을 인증하고, GAIA가 개별적으로 상태를 관리합니다."
       },
       {
-        "question": "Which Google Calendar events trigger Slack notifications?",
-        "answer": "You configure the triggers. Common setups include all events on a team calendar, events matching specific keywords (all-hands, client meeting, launch), or events involving specific attendees. GAIA filters based on your rules."
+        "question": "어떤 Google Calendar 일정이 알림을 트리거하나요?",
+        "answer": "트리거는 직접 설정합니다. 팀 캘린더의 모든 일정, 특정 키워드(전사 회의, 고객 미팅, 출시)가 포함된 일정, 특정 참석자가 있는 일정 등이 일반적입니다. GAIA가 설정한 규칙에 따라 필터링합니다."
       },
       {
-        "question": "Can GAIA handle Google Calendar invites sent via Slack?",
-        "answer": "Yes. You can ask GAIA in a Slack message to schedule a meeting with specific people, and GAIA will check calendar availability, create the event, send invites through Google Calendar, and post the event summary back to Slack."
+        "question": "메시지로 요청한 캘린더 초대도 처리할 수 있나요?",
+        "answer": "네. 메시지로 특정 인원과의 회의를 잡아 달라고 요청하면 GAIA가 캘린더 가용성을 확인하고 이벤트를 만들고 캘린더를 통해 초대를 보낸 뒤, 이벤트 요약을 대화에 다시 게시합니다."
       },
       {
-        "question": "Does GAIA work with shared and resource calendars?",
-        "answer": "GAIA can monitor shared team calendars and resource calendars (like meeting rooms) in addition to personal calendars. This is useful for posting conference room availability or shared team schedule updates to Slack."
+        "question": "공유 캘린더와 리소스 캘린더도 지원하나요?",
+        "answer": "GAIA는 개인 캘린더 외에 공유 팀 캘린더와 회의실 같은 리소스 캘린더도 모니터링할 수 있습니다. 회의실 가용 시간이나 공유 팀 일정 업데이트를 채널에 게시할 때 유용합니다."
       }
     ]
   },
@@ -4335,140 +4335,140 @@
   "slack-zoom": {
     "toolA": "Slack",
     "toolB": "Zoom",
-    "tagline": "Start, schedule, and follow up on Zoom meetings without ever leaving Slack",
-    "metaTitle": "Slack Zoom 연동: 회의 예약과 요약 공유",
-    "metaDescription": "Slack 스레드에서 Zoom 회의를 예약하고 즉시 링크를 공유하며, 회의 요약을 알맞은 채널에 올립니다. GAIA가 자동으로 처리합니다. 설정 단계를 확인하세요.",
+    "tagline": "Slack을 떠나지 않고 Zoom 회의를 시작하고 예약하고 후속 조치하세요",
+    "metaTitle": "Slack Zoom 연동: 통화 예약과 요약 게시",
+    "metaDescription": "Slack 스레드에서 Zoom 회의를 예약하고, 논의 중인 대화에 즉시 링크를 넣고, 요약을 채널에 게시합니다. GAIA가 전 과정을 운영합니다.",
     "keywords": [
-      "Slack Zoom integration",
-      "schedule Zoom from Slack",
-      "Slack Zoom automation",
-      "Zoom meeting Slack workflow",
-      "connect Slack and Zoom",
-      "Zoom summary Slack"
+      "Slack Zoom 연동",
+      "Slack에서 Zoom 예약",
+      "Slack Zoom 자동화",
+      "Zoom 회의 Slack 워크플로우",
+      "Slack과 Zoom 연결",
+      "Zoom 요약 Slack"
     ],
-    "intro": "Slack is where team decisions get made and Zoom is where conversations happen, but the handoff between them is clunky. Scheduling a Zoom meeting from Slack requires app-switching, link-sharing, and calendar juggling. When a Zoom meeting ends, the decisions and action items discussed rarely make it back into the relevant Slack channel where the team continues to work.\n\nGAIA connects Slack and Zoom to make video meetings a native part of your Slack workflow. When a Slack conversation requires a real-time discussion, ask GAIA to schedule a Zoom meeting, find availability, and post the link to the channel. After the meeting ends, GAIA can post a summary of the discussion and action items back to the Slack thread so anyone who missed it is immediately caught up.\n\nFor remote and hybrid teams, this integration means the context gap between Zoom meetings and Slack work disappears. What's decided in Zoom lands back in Slack automatically, and scheduling Zoom from Slack is as easy as mentioning it in a message.",
+    "intro": "Slack은 팀이 결정을 내리는 곳이고 Zoom은 대화가 이루어지는 곳이지만, 둘 사이의 인계는 매끄럽지 않습니다. 채팅에서 회의를 잡으려면 앱을 전환하고 링크를 공유하고 캘린더를 조정해야 합니다. 회의가 끝나면 논의된 결정과 실행 항목이 팀이 계속 일하는 채널로 돌아오는 일은 드뭅니다.\n\nGAIA는 두 도구를 연결해 화상 회의를 Slack 워크플로우의 자연스러운 일부로 만듭니다. 실시간 논의가 필요하면 GAIA에게 Zoom 회의 예약을 요청하고, 가능한 시간을 찾아 채널에 링크를 게시하게 하세요. 회의가 끝나면 GAIA가 논의 요약과 실행 항목을 스레드에 다시 게시해 참석하지 못한 사람도 바로 상황을 따라잡을 수 있습니다.\n\n원격·하이브리드 팀에게 이 연동은 화상 회의와 채팅 업무 사이의 맥락 단절을 없애 줍니다. 회의에서 결정된 내용이 채널로 자동 돌아오고, 회의 예약은 메시지로 언급하는 것만큼 간단해집니다.",
     "useCases": [
       {
-        "title": "Schedule Zoom meetings from Slack conversations",
-        "description": "When a Slack thread reaches a point where a meeting is needed, ask GAIA to schedule a Zoom call with the thread participants. GAIA checks availability, creates the Zoom meeting, and posts the invite link back to the channel."
+        "title": "Slack 대화에서 Zoom 회의 예약",
+        "description": "스레드가 회의가 필요한 지점에 이르면 GAIA에게 스레드 참여자와의 통화를 예약해 달라고 요청하세요. GAIA가 가용성을 확인하고 회의를 만들고 초대 링크를 채널에 다시 게시합니다."
       },
       {
-        "title": "Post Zoom meeting summaries to Slack channels",
-        "description": "After a Zoom meeting ends, GAIA generates a summary of the discussion and key action items and posts it to the relevant Slack channel so the team has a written record without needing to take manual notes."
+        "title": "회의 요약을 채널에 게시",
+        "description": "회의가 끝나면 GAIA가 논의 요약과 핵심 실행 항목을 만들어 관련 채널에 게시합니다. 누군가 직접 기록하지 않아도 팀에 문서 기록이 남습니다."
       },
       {
-        "title": "Instant Zoom link for ongoing Slack discussions",
-        "description": "When a Slack back-and-forth gets too complicated for text, ask GAIA for a quick Zoom link. GAIA generates an instant meeting link and posts it to the thread so participants can jump on a call in seconds."
+        "title": "진행 중인 논의를 위한 즉시 Zoom 링크",
+        "description": "글로 주고받기엔 너무 복잡해지면 GAIA에게 빠른 링크를 요청하세요. GAIA가 즉시 회의 링크를 만들어 스레드에 게시하므로 참여자가 몇 초 만에 통화에 접속할 수 있습니다."
       },
       {
-        "title": "Pre-meeting Slack reminders",
-        "description": "GAIA sends Slack DMs to meeting participants 10 minutes before scheduled Zoom calls with the meeting title, agenda, and join link, reducing no-shows without requiring calendar reminder configuration."
+        "title": "DM으로 회의 전 알림",
+        "description": "GAIA가 예정된 통화 10분 전에 회의 제목, 안건, 참석 링크를 담아 참석자에게 DM을 보냅니다. 캘린더 알림을 따로 설정하지 않아도 불참을 줄일 수 있습니다."
       },
       {
-        "title": "Meeting recording notifications in Slack",
-        "description": "When a Zoom cloud recording is available, GAIA posts a notification in the relevant Slack channel with a link to the recording and a text summary, ensuring everyone can access meeting content even if they missed it."
+        "title": "회의 녹화 알림을 Slack으로",
+        "description": "클라우드 녹화가 준비되면 GAIA가 관련 채널에 녹화 링크와 텍스트 요약을 담은 알림을 게시합니다. 회의에 참석하지 못한 사람도 내용을 확인할 수 있습니다."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Slack and Zoom to GAIA",
-        "description": "Authenticate your Slack workspace and Zoom account in GAIA's settings. GAIA integrates with both platforms to coordinate scheduling, meeting creation, and post-meeting content sharing."
+        "step": "Slack과 Zoom을 GAIA에 연결",
+        "description": "GAIA 설정에서 Slack 워크스페이스와 Zoom 계정을 인증합니다. GAIA가 두 도구와 연동해 일정 조율, 회의 생성, 회의 후 콘텐츠 공유를 조정합니다."
       },
       {
-        "step": "Define how meetings flow between Slack and Zoom",
-        "description": "Configure which Slack channels can trigger meeting scheduling, how post-meeting summaries should be formatted, and which channels receive recording notifications. Set preferences in plain language."
+        "step": "두 앱 사이의 회의 흐름 정의",
+        "description": "어떤 채널이 회의 예약을 트리거할 수 있는지, 회의 후 요약 형식은 어떻게 할지, 어떤 채널이 녹화 알림을 받을지 설정하세요. 선호는 자연어로 지정할 수 있습니다."
       },
       {
-        "step": "Meetings and Slack work together seamlessly",
-        "description": "GAIA handles scheduling from Slack, posting meeting context, and routing post-meeting content back to the right channels. The gap between Zoom discussions and Slack work closes automatically."
+        "step": "회의와 채팅이 자동으로 함께 작동",
+        "description": "GAIA가 채팅에서 회의를 예약하고, 회의 맥락을 게시하며, 회의 후 콘텐츠를 올바른 채널로 전달합니다. 회의 논의와 일상 업무 사이의 간극이 자동으로 메워집니다."
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA start an instant Zoom meeting from a Slack command?",
-        "answer": "Yes. You can ask GAIA in any Slack channel or DM to start a Zoom meeting immediately. GAIA creates the meeting and posts the join link within seconds, no calendar scheduling required."
+        "question": "Slack 명령으로 즉시 Zoom 회의를 시작할 수 있나요?",
+        "answer": "네. 어느 채널이나 DM에서든 GAIA에게 바로 회의를 시작해 달라고 요청할 수 있습니다. GAIA가 회의를 만들고 참석 링크를 게시하며, 캘린더 예약은 필요하지 않습니다."
       },
       {
-        "question": "Does GAIA use Zoom transcripts for meeting summaries?",
-        "answer": "When Zoom cloud transcription is enabled on your account (available on Zoom Business and above), GAIA uses the actual transcript to generate accurate meeting summaries. For accounts without transcription, GAIA generates summaries from meeting metadata and any notes shared."
+        "question": "회의 요약에 스크립트를 사용하나요?",
+        "answer": "계정에서 클라우드 스크립트가 활성화되어 있으면(Business 요금제 이상) GAIA가 실제 스크립트로 정확한 회의 요약을 만듭니다. 스크립트가 없는 계정은 회의 메타데이터와 공유된 메모를 바탕으로 요약합니다."
       },
       {
-        "question": "Can GAIA post the Zoom summary to a specific Slack channel rather than where it was scheduled?",
-        "answer": "Yes. You can configure GAIA to post summaries to a dedicated #meeting-notes channel, the channel where the meeting was scheduled, or both. You can also request a specific channel at scheduling time."
+        "question": "예약한 채널이 아니라 특정 채널에 요약을 게시할 수 있나요?",
+        "answer": "네. 전용 #meeting-notes 채널, 회의를 예약한 채널, 또는 두 곳 모두에 요약을 게시하도록 설정할 수 있습니다. 예약할 때 특정 채널을 지정할 수도 있습니다."
       },
       {
-        "question": "Does this work for recurring Zoom meetings?",
-        "answer": "GAIA can schedule recurring Zoom meetings from a Slack request and post summaries after each occurrence. For recurring meetings, GAIA tracks each session separately and posts summaries to the designated channel after every meeting."
+        "question": "반복 회의에도 사용할 수 있나요?",
+        "answer": "GAIA는 채팅 요청으로 반복 회의를 예약하고 매회 종료 후 요약을 게시할 수 있습니다. 반복 회의의 경우 각 회차를 별도로 추적해 매 회의 후 지정된 채널에 요약을 올립니다."
       }
     ]
   },
   "slack-loom": {
     "toolA": "Slack",
     "toolB": "Loom",
-    "tagline": "Make Loom videos a first-class part of your Slack workflow with automatic summaries and routing",
-    "metaTitle": "Slack + Loom 연동: Slack에서 Loom 영상 활용",
-    "metaDescription": "GAIA로 Slack + Loom 연동. Loom 영상 요약을 Slack으로 바로 받고 녹화본을 알맞은 채널로 보냅니다. 팀의 비동기 영상 소통이 한결 정돈됩니다.",
+    "tagline": "자동 요약과 라우팅으로 Loom 영상을 Slack 업무 흐름의 핵심으로 만드세요",
+    "metaTitle": "Slack + Loom 연동: Loom 링크를 Slack에서 요약",
+    "metaDescription": "Slack에 공유된 Loom 링크를 요약하고, 새 녹화를 채널로 전달하며, 영상에서 실행 항목을 추출합니다. GAIA가 대신 봅니다.",
     "keywords": [
-      "Slack Loom integration",
-      "Loom video Slack automation",
-      "Slack Loom summary",
-      "Loom notifications Slack",
-      "connect Slack and Loom",
-      "async video Slack workflow"
+      "Slack Loom 연동",
+      "Loom 영상 Slack 자동화",
+      "Slack Loom 요약",
+      "Loom 알림 Slack",
+      "Slack과 Loom 연결",
+      "비동기 영상 Slack 워크플로우"
     ],
-    "intro": "Loom recordings are a powerful async communication tool, but they create a new coordination problem: who has seen the video, which channel should it go in, and what were the key takeaways for people who don't have time to watch? When Looms are shared ad-hoc in Slack, they often sit unviewed or their content never gets discussed because extracting context from a video mid-Slack-thread requires too much friction.\n\nGAIA makes Loom videos a productive part of your Slack workflow by handling the translation between the two. When a Loom is shared in Slack, GAIA generates a text summary and adds it as a reply so everyone gets the key points instantly. When a new Loom is created in your workspace, GAIA routes it to the appropriate Slack channel based on the content or creator. Team members can respond to a Loom's content directly in Slack, and GAIA keeps the conversation organized.\n\nFor async-first teams where Loom is a primary communication format, this integration means video content is no longer a black box in Slack—it's a structured, searchable, actionable part of the team's communication flow.",
+    "intro": "Loom 녹화는 강력한 비동기 소통 도구지만 새로운 조율 문제를 만듭니다. 누가 영상을 봤는지, 어느 채널에 올려야 하는지, 볼 시간이 없는 사람에게 핵심은 무엇인지 정해야 합니다. 녹화가 Slack에 즉석에서 공유되면 보지 않은 채 남거나, 스레드 중간에서 영상의 맥락을 추출하는 부담 때문에 내용이 논의되지 않는 일이 많습니다.\n\nGAIA는 두 도구 사이의 변환을 처리해 이런 영상을 업무 흐름의 생산적인 일부로 만듭니다. 채널에 Loom이 공유되면 GAIA가 텍스트 요약을 만들어 답글로 추가하므로 모두가 영상 전체를 보지 않고도 핵심을 파악합니다. 워크스페이스에 새 녹화가 만들어지면 내용이나 제작자에 따라 적절한 채널로 전달합니다. 팀원은 스레드에서 영상 내용에 바로 응답할 수 있고, GAIA가 대화를 정돈합니다.\n\n영상이 주된 소통 형식인 비동기 우선 팀에게 이 연동은 Slack 속 영상이 더 이상 블랙박스가 아니라 구조화되고 검색 가능하며 실행 가능한 소통 흐름의 일부가 된다는 뜻입니다.",
     "useCases": [
       {
-        "title": "Auto-summarize Loom links shared in Slack",
-        "description": "When a team member shares a Loom link in any Slack channel, GAIA generates a concise text summary of the video content and replies in the thread so everyone can get the key points without watching the full recording."
+        "title": "Slack에 공유된 Loom 링크 자동 요약",
+        "description": "팀원이 어느 채널에든 녹화 링크를 공유하면 GAIA가 영상 내용을 간결한 텍스트로 요약해 스레드에 답글로 올립니다. 모두가 영상 전체를 보지 않고 핵심을 파악할 수 있습니다."
       },
       {
-        "title": "Route new Loom recordings to the right Slack channels",
-        "description": "When a Loom is created in your workspace, GAIA analyzes the title, description, and content to route it to the most relevant Slack channel automatically—product updates to #product, customer feedback recordings to #customer-success."
+        "title": "새 Loom 녹화를 올바른 채널로 전달",
+        "description": "워크스페이스에 녹화가 만들어지면 GAIA가 제목, 설명, 내용을 분석해 가장 관련 있는 채널로 자동 전달합니다. 제품 업데이트는 #product로, 고객 피드백 녹화는 #customer-success로 보냅니다."
       },
       {
-        "title": "Extract action items from Loom recordings",
-        "description": "GAIA processes Loom transcripts to identify action items, decisions, and commitments mentioned in the recording, and posts them as a structured list in the Slack thread so nothing is lost in the video."
+        "title": "녹화에서 실행 항목 추출",
+        "description": "GAIA가 스크립트를 분석해 녹화에서 언급된 실행 항목, 결정, 약속을 찾아 구조화된 목록으로 스레드에 게시합니다. 영상 속에서 놓치는 내용이 없습니다."
       },
       {
-        "title": "Notify Slack when Loom recordings are viewed",
-        "description": "When a shared Loom recording is viewed by all intended recipients, GAIA can post a Slack notification confirming everyone has seen the video, helping async teams confirm information has been received."
+        "title": "녹화 시청 시 Slack 알림",
+        "description": "공유된 녹화를 의도한 수신자가 모두 보면 GAIA가 모두 확인했다는 알림을 게시할 수 있습니다. 비동기 팀이 정보 전달 여부를 확인하는 데 도움이 됩니다."
       },
       {
-        "title": "Weekly Loom digest to team channels",
-        "description": "GAIA compiles a weekly digest of Loom recordings created by and for your team, posts it to the relevant Slack channel with summaries of each video, and ensures no recorded update gets missed."
+        "title": "팀 채널을 위한 주간 녹화 요약",
+        "description": "GAIA가 팀이 만들고 팀을 위해 만들어진 녹화의 주간 요약을 정리해 각 영상 요약과 함께 관련 채널에 게시합니다. 녹화된 업데이트를 놓치지 않습니다."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Slack and Loom to GAIA",
-        "description": "Authenticate your Slack workspace and Loom account in GAIA's settings. GAIA monitors your Loom workspace and the Slack channels you designate for automatic processing."
+        "step": "Slack과 Loom을 GAIA에 연결",
+        "description": "GAIA 설정에서 Slack 워크스페이스와 Loom 계정을 인증합니다. GAIA가 녹화 워크스페이스와 자동 처리를 위해 지정한 채널을 모니터링합니다."
       },
       {
-        "step": "Set your Loom-to-Slack workflow rules",
-        "description": "Tell GAIA how to handle new Loom recordings—which channels to route them to, whether to auto-summarize, and what to extract from transcripts. Define rules in plain language based on your team's workflow."
+        "step": "영상-채널 워크플로우 규칙 설정",
+        "description": "새 녹화를 어떻게 처리할지 GAIA에 알려주세요. 어느 채널로 보낼지, 자동 요약할지, 스크립트에서 무엇을 추출할지 정하면 됩니다. 팀 워크플로우에 맞춰 자연어로 규칙을 정의하세요."
       },
       {
-        "step": "Loom content becomes active in Slack automatically",
-        "description": "As Loom recordings are created and shared, GAIA processes them, routes them to the right channels, and surfaces their content in text form so video communication becomes a searchable part of your Slack history."
+        "step": "영상 콘텐츠가 채널에서 자동으로 활성화",
+        "description": "녹화가 만들어지고 공유되면 GAIA가 처리해 올바른 채널로 전달하고 내용을 텍스트로 보여줍니다. 영상 소통이 채널 기록의 검색 가능한 일부가 됩니다."
       }
     ],
     "faqs": [
       {
-        "question": "Does GAIA summarize all Loom links or only from specific workspaces?",
-        "answer": "You configure the scope. GAIA can summarize all Loom links shared in monitored channels, only recordings from your organization's Loom workspace, or only Looms matching specific criteria like title keywords or creator."
+        "question": "GAIA가 모든 Loom 링크를 요약하나요, 아니면 특정 워크스페이스만 요약하나요?",
+        "answer": "범위는 직접 설정합니다. 모니터링하는 채널에 공유된 모든 링크, 조직 워크스페이스의 녹화만, 또는 제목 키워드나 제작자 같은 특정 기준에 맞는 영상만 요약하도록 할 수 있습니다."
       },
       {
-        "question": "What Loom plan is needed for GAIA to access transcripts?",
-        "answer": "Loom's auto-transcription is available on Business plans and above. For Starter plan recordings without transcripts, GAIA summarizes based on the video title, description, and any captions included by the creator."
+        "question": "스크립트에 접근하려면 어떤 요금제가 필요한가요?",
+        "answer": "자동 스크립트는 Business 요금제 이상에서 제공됩니다. 스크립트가 없는 Starter 요금제 녹화는 영상 제목, 설명, 제작자가 포함한 자막을 바탕으로 GAIA가 요약합니다."
       },
       {
-        "question": "Can GAIA prompt team members to record a Loom from within Slack?",
-        "answer": "Yes. You can ask GAIA in Slack to suggest a Loom recording for a specific topic or to a specific person. GAIA will generate a suggested recording prompt and can send a Slack DM to the relevant person encouraging them to record."
+        "question": "Slack에서 팀원에게 영상 녹화를 제안할 수 있나요?",
+        "answer": "네. 채널에서 GAIA에게 특정 주제나 특정인을 위한 녹화를 제안해 달라고 요청할 수 있습니다. GAIA가 녹화 제안 문구를 만들고 해당 인원에게 녹화를 권하는 DM을 보낼 수 있습니다."
       },
       {
-        "question": "Does this work with Loom recordings shared from outside my organization?",
-        "answer": "GAIA can summarize public Loom links shared in Slack regardless of whether they're from your organization, as long as the recordings are publicly accessible. For private Loom recordings, access depends on the sharing settings of the video."
+        "question": "조직 외부에서 공유된 녹화도 처리할 수 있나요?",
+        "answer": "녹화가 공개 접근 가능하다면 조직 외부에서 온 공개 링크도 채널에서 요약할 수 있습니다. 비공개 녹화는 영상의 공유 설정에 따라 접근이 달라집니다."
       }
     ]
   },
@@ -4673,66 +4673,66 @@
   "github-discord": {
     "toolA": "GitHub",
     "toolB": "Discord",
-    "tagline": "Post GitHub PR and issue notifications to Discord developer communities",
+    "tagline": "GitHub PR과 이슈 알림을 Discord 개발자 커뮤니티에 게시하세요",
     "metaTitle": "GitHub Discord 연동: PR, CI, 릴리스 알림",
-    "metaDescription": "PR 병합, CI 상태, 변경 내역이 담긴 새 릴리스를 Discord에 올리고, 입문용 이슈도 알립니다. GAIA가 알림 형식을 맞춥니다. 설정 단계를 확인하세요.",
+    "metaDescription": "PR 병합, CI 상태, 변경 로그가 포함된 새 릴리스를 Discord에 게시하고 기여자를 위한 good first issue를 표시합니다. GAIA가 알림 형식을 맞춥니다.",
     "keywords": [
-      "GitHub Discord integration",
-      "GitHub Discord notifications",
-      "post GitHub activity to Discord",
-      "connect GitHub and Discord",
-      "open source community Discord",
-      "developer community automation"
+      "GitHub Discord 연동",
+      "GitHub Discord 알림",
+      "GitHub 활동을 Discord에 게시",
+      "GitHub과 Discord 연결",
+      "소스 공개 커뮤니티 Discord",
+      "개발자 커뮤니티 자동화"
     ],
-    "intro": "Open-source projects and developer communities live on Discord, but GitHub activity stays siloed inside GitHub unless someone manually posts updates. Contributors miss important issues and PRs because they are not watching the repository. Maintainers spend time copying GitHub links into Discord announcements. Community members who want to contribute have no easy way to discover what needs help without digging through GitHub's interface.\n\nGAIA connects GitHub and Discord to keep your developer community informed and engaged automatically. When a new issue is opened, a PR is merged, or a release is published, GAIA formats the event into a clean Discord message and routes it to the right channel. Members can react, discuss, and jump directly to GitHub from Discord without maintainers doing any manual announcement work.\n\nThis integration is essential for open-source project maintainers who want active contributor communities, for developer-focused companies running public Discord servers, and for internal engineering teams that use Discord as their primary communication platform and want real-time code activity feeds.",
+    "intro": "소스 공개 프로젝트와 개발자 커뮤니티는 Discord에서 활동하지만, 누군가 직접 업데이트를 게시하지 않으면 저장소의 활동은 분리된 채 남습니다. 기여자는 저장소를 지켜보지 않아 중요한 이슈와 PR을 놓칩니다. 메인테이너는 링크를 공지에 손으로 복사하느라 시간을 씁니다. 기여하고 싶은 커뮤니티 구성원은 GitHub 인터페이스를 뒤지지 않고는 도움이 필요한 일을 찾기 어렵습니다.\n\nGAIA는 두 도구를 연결해 개발자 커뮤니티가 자동으로 정보를 받고 참여하도록 합니다. 새 이슈가 열리거나 PR이 병합되거나 릴리스가 게시되면 GAIA가 이벤트를 깔끔한 메시지로 만들어 올바른 채널로 전달합니다. 구성원은 반응하고 논의하며 GitHub의 원본 항목을 열 수 있고, 메인테이너가 직접 공지할 필요가 없습니다.\n\n이 연동은 활발한 기여자 커뮤니티를 원하는 소스 공개 프로젝트 메인테이너, 공개 서버를 운영하는 개발자 중심 기업, Discord를 주 소통 플랫폼으로 쓰면서 실시간 코드 활동 피드를 원하는 내부 엔지니어링 팀에 꼭 필요합니다.",
     "useCases": [
       {
-        "title": "Post PR merge announcements to Discord",
-        "description": "When a pull request merges to the main branch, GAIA sends a formatted announcement to your Discord #releases or #dev-activity channel including the PR title, author, a summary of changes, and a link to the full diff."
+        "title": "PR 병합 소식을 채널에 게시",
+        "description": "PR이 메인 브랜치에 병합되면 GAIA가 PR 제목, 작성자, 변경 요약, 전체 diff 링크를 담은 형식화된 공지를 #releases나 #dev-activity 채널에 보냅니다."
       },
       {
-        "title": "Alert contributors to issues tagged 'good first issue'",
-        "description": "GAIA monitors GitHub for newly opened issues labeled 'good first issue' or 'help wanted' and posts them to a dedicated Discord channel so community contributors can immediately see where they can jump in and help."
+        "title": "'good first issue' 이슈를 기여자에게 알림",
+        "description": "GAIA가 'good first issue'나 'help wanted' 라벨이 붙은 새 이슈를 모니터링해 전용 채널에 게시합니다. 커뮤니티 기여자가 어디서 바로 도움을 줄 수 있는지 즉시 알 수 있습니다."
       },
       {
-        "title": "Real-time CI/CD status in Discord",
-        "description": "GAIA posts GitHub Actions workflow results to Discord so the team knows immediately when a build passes or fails. Failed builds include a direct link to the failing step so engineers can triage without context-switching back to GitHub."
+        "title": "Discord에서 실시간 CI/CD 상태",
+        "description": "GAIA가 CI 워크플로우 결과를 채널에 게시해 빌드 성공이나 실패를 즉시 알립니다. 실패한 빌드는 실패 단계로 바로 가는 링크를 포함해 엔지니어가 저장소로 돌아가지 않고 원인을 파악할 수 있습니다."
       },
       {
-        "title": "New release notifications with changelog",
-        "description": "When a new GitHub release is published, GAIA formats the release notes and posts them to Discord with a download link, version number, and any breaking changes highlighted so community members are always informed about new versions."
+        "title": "변경 로그가 포함된 새 릴리스 알림",
+        "description": "새 릴리스가 게시되면 GAIA가 릴리스 노트를 정리해 다운로드 링크, 버전 번호, 주요 호환성 변경 사항과 함께 채널에 게시합니다. 커뮤니티가 새 버전 소식을 항상 받습니다."
       },
       {
-        "title": "Daily contributor digest in Discord",
-        "description": "Each day GAIA posts a digest of the previous day's GitHub activity to Discord — merged PRs, resolved issues, new contributors, and open PRs awaiting review — keeping the entire community informed at a glance."
+        "title": "기여자를 위한 일일 요약",
+        "description": "GAIA가 매일 전날의 저장소 활동 요약을 채널에 게시합니다. 병합된 PR, 해결된 이슈, 새 기여자, 리뷰를 기다리는 열린 PR을 정리해 커뮤니티 전체가 한눈에 상황을 파악합니다."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect GitHub and Discord to GAIA",
-        "description": "Authenticate your GitHub repository or organization and your Discord server in GAIA's settings. GAIA uses a Discord bot with webhook access so you control exactly which channels receive which notifications."
+        "step": "GitHub과 Discord를 GAIA에 연결",
+        "description": "GAIA 설정에서 저장소 또는 조직과 서버를 인증합니다. GAIA는 웹훅 접근 권한이 있는 봇을 사용하므로 어떤 채널이 어떤 알림을 받을지 직접 control할 수 있습니다."
       },
       {
-        "step": "Map GitHub events to Discord channels",
-        "description": "Configure which GitHub events (issues, PRs, releases, CI runs) should post to which Discord channels. You can filter by repository, branch, label, or event type so each channel receives only relevant, focused updates."
+        "step": "저장소 이벤트를 채널에 매핑",
+        "description": "어떤 이벤트(이슈, PR, 릴리스, CI 실행)를 어느 채널에 게시할지 설정하세요. 저장소, 브랜치, 라벨, 이벤트 유형으로 필터링해 각 채널이 관련성 높은 업데이트만 받게 할 수 있습니다."
       },
       {
-        "step": "GAIA delivers GitHub activity to Discord automatically",
-        "description": "GAIA processes GitHub webhook events and formats them into rich Discord messages with relevant context, links, and formatting. Your community stays informed without any manual announcement effort from maintainers."
+        "step": "GAIA가 활동을 채널로 자동 전달",
+        "description": "GAIA가 GitHub 웹훅 이벤트를 처리해 관련 맥락, 링크, 서식을 갖춘 풍부한 메시지로 만듭니다. 메인테이너가 직접 공지하지 않아도 커뮤니티가 상황을 파악합니다."
       }
     ],
     "faqs": [
       {
-        "question": "Can I customize the format of GitHub notifications posted to Discord?",
-        "answer": "Yes. GAIA supports customizable message templates for each event type. You can control which fields are included, adjust the embed colors, add custom text, and configure whether messages appear as simple text or rich embeds with thumbnails and action buttons."
+        "question": "채널에 게시되는 알림 형식을 바꿀 수 있나요?",
+        "answer": "네. GAIA는 이벤트 유형별로 메시지 템플릿을 사용자 지정할 수 있습니다. 포함할 필드를 정하고, 임베드 색상을 조정하고, 사용자 지정 텍스트를 추가하며, 단순 텍스트로 보낼지 썸네일과 버튼이 있는 임베드로 보낼지 설정할 수 있습니다."
       },
       {
-        "question": "Can GAIA handle multiple GitHub repositories in one Discord server?",
-        "answer": "Absolutely. You can connect multiple repositories to a single Discord server and route each repository's events to different channels. For example, a mono-repo organization might route frontend PRs to #frontend-dev and backend PRs to #backend-dev."
+        "question": "한 서버에서 여러 저장소를 처리할 수 있나요?",
+        "answer": "물론입니다. 여러 저장소를 하나의 서버에 연결하고 저장소별 이벤트를 서로 다른 채널로 라우팅할 수 있습니다. 예를 들어 모노레포 조직이라면 프론트엔드 PR은 #frontend-dev로, 백엔드 PR은 #backend-dev로 보낼 수 있습니다."
       },
       {
-        "question": "Is this only for public open-source projects?",
-        "answer": "No. GAIA works equally well for private repositories and internal engineering teams that use Discord for communication. All GitHub data is handled securely, and GAIA only posts to the Discord channels you configure with the permissions you grant."
+        "question": "공개 소스 프로젝트 전용인가요?",
+        "answer": "아니요. 비공개 저장소와 채팅 플랫폼으로 소통하는 내부 엔지니어링 팀에도 똑같이 잘 작동합니다. 모든 저장소 데이터는 안전하게 처리되며, GAIA는 부여한 권한으로 설정한 채널에만 게시합니다."
       }
     ]
   },
@@ -5011,66 +5011,66 @@
   "notion-clickup": {
     "toolA": "Notion",
     "toolB": "ClickUp",
-    "tagline": "Sync project documentation with task management across Notion and ClickUp",
+    "tagline": "Notion과 ClickUp 사이에서 프로젝트 문서와 작업을 동기화하세요",
     "metaTitle": "Notion + ClickUp 연동: 문서와 작업 연결",
-    "metaDescription": "GAIA로 Notion + ClickUp 연동. 프로젝트 문서와 ClickUp 업무를 동기화하고 진행 상황에 맞춰 Notion 페이지를 갱신합니다. 문서가 뒤처지는 문제를 해결합니다.",
+    "metaDescription": "ClickUp 작업이 바뀌면 Notion 페이지를 업데이트하고, Notion 실행 항목으로 작업을 만듭니다. GAIA가 프로젝트 타임라인을 동기화합니다.",
     "keywords": [
-      "Notion ClickUp integration",
-      "Notion ClickUp automation",
-      "sync Notion with ClickUp tasks",
-      "connect Notion and ClickUp",
-      "project docs and task management",
-      "Notion ClickUp workflow"
+      "Notion ClickUp 연동",
+      "Notion ClickUp 자동화",
+      "Notion과 ClickUp 작업 동기화",
+      "Notion과 ClickUp 연결",
+      "프로젝트 문서와 작업 관리",
+      "Notion ClickUp 워크플로우"
     ],
-    "intro": "Project teams that use Notion for documentation and ClickUp for task management inevitably face the same problem: the two tools drift apart. A ClickUp task gets completed but the Notion spec page still says 'In Progress.' A Notion project plan is updated but none of the ClickUp tasks reflect the new requirements. Teams end up holding sync meetings not because there is important news to share, but simply to manually reconcile the state of two tools that should be speaking to each other automatically.\n\nGAIA connects Notion and ClickUp so documentation and task management stay in lockstep. When a ClickUp task moves to a new status, GAIA can update the corresponding Notion page. When a Notion project document is published or updated with new requirements, GAIA can create or update the relevant ClickUp tasks. The two systems become a unified project management environment where changes in one tool are always reflected in the other.\n\nThis integration is particularly powerful for product teams where the product manager maintains Notion specs and the engineering team tracks work in ClickUp, and for agencies that document project plans in Notion for clients while executing tasks in ClickUp internally.",
+    "intro": "문서는 Notion, 작업 관리는 ClickUp을 쓰는 프로젝트 팀은 결국 같은 문제를 겪습니다. 두 도구가 서로 어긋납니다. 작업은 완료됐는데 기획 페이지에는 여전히 '진행 중'이라고 적혀 있습니다. 프로젝트 계획은 업데이트됐지만 어떤 작업에도 새 요구 사항이 반영되지 않습니다. 결국 팀은 공유할 중요한 소식이 있어서가 아니라, 자동으로 서로 소통해야 할 두 도구의 상태를 손으로 맞추기 위해 싱크 회의를 엽니다.\n\nGAIA는 두 도구를 연결해 문서와 작업 관리가 보조를 맞추게 합니다. 작업이 새 상태로 이동하면 GAIA가 해당 페이지를 업데이트할 수 있습니다. 프로젝트 문서가 게시되거나 새 요구 사항으로 업데이트되면 GAIA가 관련 작업을 만들거나 수정할 수 있습니다. 문서와 작업이 하나의 프로젝트 관리 환경이 되어 한쪽의 변경이 항상 다른 쪽에 반영됩니다.\n\n이 연동은 제품 관리자가 Notion에서 기획서를 관리하고 엔지니어링 팀이 ClickUp에서 업무를 추적하는 제품팀, 고객에게 프로젝트 계획을 문서로 제공하고 내부에서 작업을 실행하는 에이전시에 특히 강력합니다.",
     "useCases": [
       {
-        "title": "Update Notion pages when ClickUp tasks change status",
-        "description": "When a ClickUp task moves from 'In Progress' to 'Complete,' GAIA updates the status indicator on the linked Notion page so project documentation reflects real-time task progress without anyone manually touching the Notion page."
+        "title": "ClickUp 작업 상태 변경 시 Notion 페이지 업데이트",
+        "description": "작업이 '진행 중'에서 '완료'로 이동하면 GAIA가 연결된 페이지의 상태 표시를 업데이트합니다. 누군가 페이지를 직접 건드리지 않아도 프로젝트 문서가 실시간 작업 진행을 반영합니다."
       },
       {
-        "title": "Create ClickUp tasks from Notion action items",
-        "description": "When a Notion document is updated with a new action item or requirement, GAIA parses the change and creates a corresponding ClickUp task with the appropriate assignee, list, and due date derived from context in the Notion page."
+        "title": "Notion 실행 항목으로 ClickUp 작업 생성",
+        "description": "문서에 새 실행 항목이나 요구 사항이 추가되면 GAIA가 변경 내용을 분석해 페이지 맥락에서 적절한 담당자, 리스트, 마감일이 도출된 작업을 만듭니다."
       },
       {
-        "title": "Sync project timelines between Notion databases and ClickUp",
-        "description": "GAIA maps Notion database date properties to ClickUp task due dates, keeping timeline data consistent across both tools. When a deadline shifts in ClickUp, the Notion project database updates automatically and vice versa."
+        "title": "데이터베이스와 작업 사이의 프로젝트 타임라인 동기화",
+        "description": "GAIA가 데이터베이스의 날짜 속성을 작업 마감일에 매핑해 두 도구의 타임라인 데이터를 일관되게 유지합니다. 작업 기한이 바뀌면 프로젝트 데이터베이스가 자동 업데이트되고, 데이터베이스의 날짜가 바뀌면 작업이 업데이트됩니다."
       },
       {
-        "title": "Generate Notion meeting notes from ClickUp sprint reviews",
-        "description": "After a sprint review is logged in ClickUp, GAIA creates a structured Notion page with the sprint summary, completed tasks, carry-over work, and blockers so project documentation grows automatically alongside task completion."
+        "title": "스프린트 리뷰에서 회의 노트 생성",
+        "description": "스프린트 리뷰가 ClickUp에 기록되면 GAIA가 스프린트 요약, 완료한 작업, 이월 작업, 차단 요인을 담은 구조화된 페이지를 만듭니다. 작업 완료와 함께 프로젝트 문서도 자동으로 쌓입니다."
       },
       {
-        "title": "Archive completed ClickUp tasks into Notion project logs",
-        "description": "GAIA periodically exports completed ClickUp tasks into a Notion database structured as a project log, giving leadership and stakeholders a searchable, long-term record of what was delivered without cluttering the active ClickUp workspace."
+        "title": "완료된 작업을 프로젝트 로그로 보관",
+        "description": "GAIA가 완료된 작업을 주기적으로 프로젝트 로그 형식의 Notion 데이터베이스로 내보냅니다. 리더십과 이해관계자는 활성 워크스페이스를 어지럽히지 않고 무엇이 완료됐는지 검색 가능한 장기 기록을 갖게 됩니다."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Notion and ClickUp to GAIA",
-        "description": "Authenticate your Notion workspace and ClickUp workspace through GAIA's integration settings. Select the Notion pages and databases and the ClickUp spaces and lists that should be linked for automated syncing."
+        "step": "Notion과 ClickUp을 GAIA에 연결",
+        "description": "GAIA 연동 설정에서 Notion 워크스페이스와 ClickUp 워크스페이스를 인증합니다. 자동 동기화할 페이지와 데이터베이스, 스페이스와 리스트를 선택하세요."
       },
       {
-        "step": "Define your sync rules and mappings",
-        "description": "Configure which Notion pages correspond to which ClickUp lists, how status fields map between the two tools, and whether sync should be one-directional or fully bidirectional. Use natural language to describe your workflow preferences."
+        "step": "동기화 규칙과 매핑 정의",
+        "description": "어떤 페이지가 어떤 리스트에 대응하는지, 상태 필드가 두 도구 사이에서 어떻게 매핑되는지, 동기화를 한 방향으로 할지 양방향으로 할지 설정하세요. 워크플로우 선호는 자연어로 설명할 수 있습니다."
       },
       {
-        "step": "GAIA keeps your docs and tasks aligned automatically",
-        "description": "GAIA monitors both Notion and ClickUp for changes and propagates updates between them in real time. Your documentation always reflects the actual state of the work, and your task board always reflects the documented requirements."
+        "step": "GAIA가 문서와 작업을 자동으로 정렬",
+        "description": "GAIA가 두 도구의 변경을 모니터링하며 업데이트를 실시간으로 전파합니다. 문서는 항상 실제 업무 상태를 반영하고, 작업 보드는 항상 문서화된 요구 사항을 반영합니다."
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA sync a Notion database with multiple ClickUp lists simultaneously?",
-        "answer": "Yes. A single Notion database can be mapped to multiple ClickUp lists, useful for projects that span several ClickUp spaces or teams. GAIA handles the routing based on properties in the Notion database, such as team, project type, or priority."
+        "question": "하나의 데이터베이스를 여러 ClickUp 리스트와 동시에 동기화할 수 있나요?",
+        "answer": "네. 하나의 데이터베이스를 여러 리스트에 매핑할 수 있어 여러 스페이스나 팀에 걸친 프로젝트에 유용합니다. GAIA는 팀, 프로젝트 유형, 우선순위 같은 데이터베이스 속성을 기준으로 라우팅을 처리합니다."
       },
       {
-        "question": "Does GAIA support Notion's relation and rollup properties for ClickUp sync?",
-        "answer": "GAIA can read and write standard Notion properties including selects, dates, text, and checkboxes. Relation and rollup properties are readable but writes to relation fields depend on the linked databases also being part of the configured integration."
+        "question": "Notion의 관계형 및 롤업 속성을 지원하나요?",
+        "answer": "GAIA는 선택, 날짜, 텍스트, 체크박스 같은 표준 속성을 읽고 쓸 수 있습니다. 관계형과 롤업 속성은 읽을 수 있지만, 관계형 필드에 쓰려면 연결된 데이터베이스도 연동 설정에 포함되어야 합니다."
       },
       {
-        "question": "What happens if a ClickUp task is deleted — does GAIA delete the Notion page?",
-        "answer": "No. GAIA does not delete Notion content by default when a ClickUp task is removed. Instead, it updates the Notion page with a 'Task deleted in ClickUp' status note. Deletion must be explicitly configured or performed manually to prevent accidental data loss."
+        "question": "작업이 삭제되면 GAIA가 페이지도 삭제하나요?",
+        "answer": "아니요. GAIA는 기본적으로 작업이 삭제될 때 페이지 내용을 지우지 않습니다. 대신 작업이 삭제되었다는 상태 메모를 페이지에 업데이트합니다. 실수로 데이터를 잃지 않도록 삭제는 명시적으로 설정하거나 직접 해야 합니다."
       }
     ]
   },
@@ -5221,66 +5221,66 @@
   "notion-discord": {
     "toolA": "Notion",
     "toolB": "Discord",
-    "tagline": "Share Notion pages to Discord communities and capture decisions in Notion",
-    "metaTitle": "Notion Discord 연동: 페이지 공지와 결정 사항 저장",
-    "metaDescription": "커뮤니티 공지와 결정 기록을 한 번에. GAIA가 새 Notion 페이지를 Discord에 알리고 중요한 스레드를 Notion에 저장합니다. 설정 단계를 확인하세요.",
+    "tagline": "Discord 커뮤니티에 페이지를 공유하고 결정을 Notion에 기록하세요",
+    "metaTitle": "Notion Discord 연동: 페이지 공지와 결정 저장",
+    "metaDescription": "커뮤니티에 최신 소식을 전하고 결정을 기록으로 남기세요. GAIA가 새 Notion 페이지를 Discord에 알리고 중요한 스레드를 Notion에 저장합니다.",
     "keywords": [
-      "Notion Discord integration",
-      "Notion Discord automation",
-      "share Notion pages to Discord",
-      "capture Discord decisions in Notion",
-      "connect Notion and Discord",
-      "community documentation workflow"
+      "Notion Discord 연동",
+      "Notion Discord 자동화",
+      "Notion 페이지를 Discord에 공유",
+      "Discord 결정을 Notion에 기록",
+      "Notion과 Discord 연결",
+      "커뮤니티 문서 워크플로우"
     ],
-    "intro": "Communities and teams that build their knowledge base in Notion and their conversations in Discord face a familiar problem: important decisions, announcements, and resources get trapped in one platform and never reach the people in the other. A major update gets published in Notion but community members in Discord never see it unless someone manually shares the link. A critical decision made in a Discord discussion thread is lost to history because no one took the time to document it in Notion.\n\nGAIA bridges Notion and Discord to create a continuous flow of information between your knowledge base and your community. When a Notion page is published or updated, GAIA can post a formatted announcement to the relevant Discord channel so your community always knows about new content. When an important decision is made in a Discord thread, GAIA can capture it in a Notion database so it is documented, searchable, and accessible to people who were not in the conversation.\n\nThis integration is ideal for open-source communities, DAOs, creator communities, and developer ecosystems that maintain public documentation in Notion while running their real-time community in Discord. It is also valuable for internal teams that use Discord as their chat platform but need to maintain a permanent knowledge base in Notion.",
+    "intro": "지식 베이스는 Notion에, 대화는 Discord에 두는 커뮤니티와 팀은 익숙한 문제를 겪습니다. 중요한 결정, 공지, 자료가 한쪽에 갇혀 다른 쪽 사람들에게 전달되지 않습니다. 주요 업데이트가 페이지로 게시되어도 누군가 링크를 직접 공유하지 않으면 커뮤니티 구성원은 보지 못합니다. 토론 스레드에서 내린 중요한 결정은 누구도 지식 베이스에 기록할 시간을 내지 않아 역사 속으로 사라집니다.\n\nGAIA는 두 도구를 연결해 지식 베이스와 커뮤니티 사이에 정보가 계속 흐르게 합니다. 페이지가 게시되거나 업데이트되면 GAIA가 관련 채널에 형식화된 공지를 게시해 커뮤니티가 새 콘텐츠를 항상 알게 합니다. 스레드에서 중요한 결정이 나오면 GAIA가 이를 Notion 데이터베이스에 기록해 문서화되고 검색 가능하며 대화에 없던 사람도 접근할 수 있게 합니다.\n\n이 연동은 공개 문서는 지식 베이스에 두고 실시간 커뮤니티는 Discord에서 운영하는 소스 공개 커뮤니티, DAO, 크리에이터 커뮤니티, 개발자 생태계에 이상적입니다. 서버를 채팅 플랫폼으로 쓰면서 영구적인 지식 베이스를 유지해야 하는 내부 팀에도 유용합니다.",
     "useCases": [
       {
-        "title": "Auto-announce Notion page publications in Discord",
-        "description": "When a Notion page is published or moved to a published state, GAIA posts an announcement to the designated Discord channel with the page title, a brief summary, and the link so community members are immediately informed about new content."
+        "title": "Notion 페이지 게시를 Discord에 자동 공지",
+        "description": "페이지가 게시되거나 게시 상태로 이동하면 GAIA가 페이지 제목, 간단한 요약, 링크를 담아 지정된 채널에 공지를 게시합니다. 커뮤니티 구성원이 새 콘텐츠를 즉시 알게 됩니다."
       },
       {
-        "title": "Capture important Discord decisions in Notion",
-        "description": "When a Discord conversation is marked with a specific emoji reaction or a moderator uses a slash command, GAIA extracts the thread context and creates a structured Notion page documenting the decision, participants, date, and any relevant links."
+        "title": "중요한 Discord 결정을 Notion에 기록",
+        "description": "대화에 특정 이모지 반응이 붙거나 운영자가 슬래시 명령을 사용하면 GAIA가 스레드 맥락을 추출해 결정, 참여자, 날짜, 관련 링크를 정리한 구조화된 페이지를 만듭니다."
       },
       {
-        "title": "Sync Notion announcements to multiple Discord servers",
-        "description": "For communities with multiple Discord servers or channels for different audiences, GAIA can route Notion page updates to the most relevant Discord destination based on tags, categories, or explicit routing rules defined in GAIA."
+        "title": "페이지 공지를 여러 서버에 동기화",
+        "description": "대상별로 여러 서버나 채널을 운영하는 커뮤니티라면 GAIA가 태그, 카테고리, GAIA에 정의한 명시적 라우팅 규칙에 따라 페이지 업데이트를 가장 관련 있는 곳으로 보냅니다."
       },
       {
-        "title": "Create Notion FAQ entries from Discord Q&A threads",
-        "description": "GAIA monitors Discord channels designated for Q&A and automatically exports resolved question threads to a Notion FAQ database, building your knowledge base from real community questions without any manual documentation effort."
+        "title": "Q&A 스레드로 FAQ 항목 생성",
+        "description": "GAIA가 Q&A용으로 지정된 채널을 모니터링하고 해결된 질문 스레드를 자동으로 FAQ 데이터베이스로 내보냅니다. 직접 문서를 작성하지 않아도 실제 커뮤니티 질문으로 지식 베이스가 쌓입니다."
       },
       {
-        "title": "Post Notion weekly digest to Discord",
-        "description": "GAIA compiles a weekly digest of new and updated Notion pages and posts a structured summary to Discord every week so community members who miss individual announcements get a regular catch-up of everything new in the knowledge base."
+        "title": "새 페이지 주간 요약 게시",
+        "description": "GAIA가 새 페이지와 업데이트된 페이지의 주간 요약을 정리해 매주 서버에 게시합니다. 개별 공지를 놓친 커뮤니티 구성원도 지식 베이스의 새 소식을 정기적으로 따라잡을 수 있습니다."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Notion and Discord to GAIA",
-        "description": "Authenticate your Notion workspace and Discord server in GAIA's integration settings. Configure which Notion databases and pages GAIA should monitor and which Discord channels should receive announcements or capture triggers."
+        "step": "Notion과 Discord를 GAIA에 연결",
+        "description": "GAIA 연동 설정에서 Notion 워크스페이스와 Discord 서버를 인증합니다. GAIA가 모니터링할 데이터베이스와 페이지, 공지나 기록 트리거를 받을 채널을 설정하세요."
       },
       {
-        "step": "Set up your announcement and capture rules",
-        "description": "Tell GAIA which types of Notion page updates should post to Discord, what the announcement format should look like, and how Discord messages or reactions should trigger Notion captures. You can set rules per-channel, per-database, or globally."
+        "step": "공지 및 기록 규칙 설정",
+        "description": "어떤 페이지 업데이트를 채널에 게시할지, 공지 형식은 어떻게 할지, 어떤 메시지나 반응이 기록을 트리거할지 GAIA에 알려주세요. 채널별, 데이터베이스별, 또는 전체 규칙으로 설정할 수 있습니다."
       },
       {
-        "step": "GAIA flows information between Notion and Discord automatically",
-        "description": "GAIA monitors both platforms for configured triggers and executes announcements and captures in real time. Your Discord community stays informed about knowledge base updates, and important community discussions always find their way into Notion."
+        "step": "GAIA가 정보를 양방향으로 자동 이동",
+        "description": "GAIA가 두 플랫폼에서 설정된 트리거를 모니터링하며 공지와 기록을 실시간으로 실행합니다. 커뮤니티는 지식 베이스 업데이트를 계속 받고, 중요한 논의는 항상 문서로 남습니다."
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA capture entire Discord threads, or just individual messages?",
-        "answer": "GAIA can capture full Discord threads as a single Notion page, including all replies, timestamps, and participant names. For long threads, GAIA provides a summary at the top followed by the full transcript, making the captured content useful even without reading every message."
+        "question": "GAIA가 Discord 스레드 전체를 기록하나요, 아니면 개별 메시지만 기록하나요?",
+        "answer": "GAIA는 전체 스레드를 모든 답글, 타임스탬프, 참여자 이름과 함께 하나의 페이지로 기록할 수 있습니다. 긴 스레드는 상단에 요약을 두고 전체 대화록을 이어 붙여, 모든 메시지를 읽지 않아도 유용하게 활용할 수 있습니다."
       },
       {
-        "question": "Can GAIA post Notion updates to multiple Discord channels simultaneously?",
-        "answer": "Yes. A single Notion page update can trigger posts to multiple Discord channels if configured. You can also set up routing rules where a Notion page tagged 'announcement' goes to a public Discord channel while pages tagged 'internal' route only to a private staff channel."
+        "question": "페이지 업데이트를 여러 채널에 동시에 게시할 수 있나요?",
+        "answer": "네. 설정하면 하나의 페이지 업데이트로 여러 채널에 게시할 수 있습니다. '공지' 태그가 붙은 페이지는 공개 채널로, '내부' 태그가 붙은 페이지는 비공개 운영 채널로만 보내는 라우팅 규칙도 만들 수 있습니다."
       },
       {
-        "question": "Does GAIA require bot permissions in Discord to function?",
-        "answer": "Yes. GAIA uses a Discord bot with message send, read message history, and reaction access permissions. These are standard permissions that can be granted without admin access and can be scoped to specific channels if your Discord server uses channel-level permission overrides."
+        "question": "작동하려면 서버에서 봇 권한이 필요한가요?",
+        "answer": "네. GAIA는 메시지 전송, 메시지 기록 읽기, 반응 접근 권한이 있는 봇을 사용합니다. 관리자 권한 없이 부여할 수 있는 표준 권한이며, 서버에서 채널별 권한 재정의를 쓰는 경우 특정 채널로 범위를 좁힐 수 있습니다."
       }
     ]
   },
