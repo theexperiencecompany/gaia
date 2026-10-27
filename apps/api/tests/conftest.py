@@ -948,4 +948,3 @@ def _fresh_redis_client() -> None:
     from app.db.redis import _new_client, redis_cache
 
     redis_cache.redis = _new_client(redis_cache.redis_url) if redis_cache.redis_url else None
-    return
