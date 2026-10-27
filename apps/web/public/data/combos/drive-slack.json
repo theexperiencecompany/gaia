@@ -4,7 +4,7 @@
   "toolASlug": "google-drive",
   "toolB": "Slack",
   "toolBSlug": "slack",
-  "tagline": "Share Drive files in Slack and auto-save Slack files to Drive",
+  "tagline": "Share Drive files in Slack and auto-save uploads to folders",
   "metaTitle": "Slack Google Drive Integration: Save Files and Get Alerts",
   "metaDescription": "Save Slack file uploads to Drive, share docs with the right permissions, and get change alerts. GAIA can search Drive from Slack too. See the setup steps.",
   "keywords": [
@@ -14,37 +14,37 @@
     "gaia google drive slack",
     "google drive slack workflow"
   ],
-  "intro": "Teams share files in Slack constantly, but those attachments disappear into Slack's storage with no organization and limited searchability. Meanwhile, important Google Drive documents are shared via long links in chat without proper access control, leaving colleagues unable to open them.\n\nGAIA connects Google Drive and Slack so file sharing becomes effortless and organized. Files shared in Slack can be automatically saved to the right Drive folder, and Drive file links shared in Slack are enriched with previews and access-checked links. Your team's documents stay organized in Drive while the sharing experience lives in Slack.",
+  "intro": "Teams share files in Slack constantly, but those attachments disappear into chat storage with no organization and limited searchability. Meanwhile, important Google Drive documents are shared via long links in chat without proper access control, leaving colleagues unable to open them.\n\nGAIA connects the two so file sharing stays organized. Files shared in Slack can be automatically saved to the right Drive folder, and links to documents shared in chat are enriched with previews and access-checked links. Your team's documents stay organized in their folders while the sharing experience lives in chat.",
   "useCases": [
     {
       "title": "Auto-save Slack file uploads to Drive",
-      "description": "Files uploaded to designated Slack channels are automatically saved to the corresponding Google Drive folder. Attachments are organized and searchable rather than lost in Slack storage."
+      "description": "Files uploaded to designated channels are automatically saved to the corresponding Google Drive folder. Attachments are organized and searchable rather than lost in chat storage."
     },
     {
-      "title": "Share Drive files with correct permissions",
-      "description": "When you ask GAIA to share a Drive file in a Slack channel, it checks and sets view permissions for all channel members before posting. No more 'request access' errors."
+      "title": "Share files with correct permissions",
+      "description": "When you ask GAIA to share a file in a channel, it checks and sets view permissions for all channel members before posting. No more 'request access' errors."
     },
     {
-      "title": "Drive file change notifications in Slack",
-      "description": "When a collaborator edits a shared Drive document, GAIA posts a notification to the relevant Slack channel. Reviewers are alerted the moment new content is ready."
+      "title": "Document change notifications in chat",
+      "description": "When a collaborator edits a shared document, GAIA posts a notification to the relevant channel. Reviewers are alerted the moment new content is ready."
     },
     {
       "title": "Search Drive from Slack",
-      "description": "Ask GAIA in any Slack channel to find a Drive document by name or topic. GAIA searches your Drive and returns a direct link without you ever leaving Slack."
+      "description": "Ask GAIA in any channel to find a document by name or topic. GAIA searches your files and returns a direct link without you ever leaving Slack."
     }
   ],
   "howItWorks": [
     {
       "step": "Connect Google Drive and Slack to GAIA",
-      "description": "Authorize GAIA with your Google Drive and Slack workspace. GAIA gets the permissions needed to read, write, and manage sharing settings on Drive files."
+      "description": "Authorize GAIA with your Google Drive and Slack workspace. GAIA gets the permissions needed to read, write, and manage sharing settings on the stored files."
     },
     {
       "step": "Configure folder mappings and channel rules",
-      "description": "Map Slack channels to Google Drive folders and set rules for which file types to auto-save. GAIA applies your organization structure automatically."
+      "description": "Map channels to folders and set rules for which file types to auto-save. GAIA applies your organization structure automatically."
     },
     {
       "step": "GAIA automates file sharing and organization",
-      "description": "Files flow between Slack and Drive according to your rules. Uploads are organized, links are permission-checked, and change alerts keep the team informed."
+      "description": "Files move between both sides according to your rules. Uploads are organized, links are permission-checked, and change alerts keep the team informed."
     }
   ],
   "faqs": [
@@ -53,12 +53,12 @@
       "answer": "No. You configure which channels and file types trigger auto-save. GAIA only moves files that match your defined rules, avoiding clutter."
     },
     {
-      "question": "Can GAIA set specific sharing permissions on Drive files?",
-      "answer": "Yes. GAIA can set viewer, commenter, or editor permissions for individuals or entire Slack channels when sharing a Drive file via chat."
+      "question": "Can GAIA set specific sharing permissions on files?",
+      "answer": "Yes. GAIA can set viewer, commenter, or editor permissions for individuals or entire channels when sharing a file via chat."
     },
     {
       "question": "What file types are supported?",
-      "answer": "GAIA supports all Google Drive native file types (Docs, Sheets, Slides) as well as uploaded files including PDFs, images, and Office documents."
+      "answer": "GAIA supports all native Google file types (Docs, Sheets, Slides) as well as uploaded files including PDFs, images, and Office documents."
     }
   ]
 }

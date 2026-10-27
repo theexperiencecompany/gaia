@@ -4,7 +4,7 @@
   "toolASlug": "discord",
   "toolB": "Google Calendar",
   "toolBSlug": "google-calendar",
-  "tagline": "Add events to Google Calendar from Discord and get your reminders as Discord DMs",
+  "tagline": "Add events to Google Calendar from Discord and get reminders as DMs",
   "metaTitle": "Connect Discord to Google Calendar: 3 Ways That Work",
   "metaDescription": "Discord has no built-in Google Calendar sync. Compare event bots, webhooks, and GAIA, which adds events to your calendar and DMs you reminders in Discord.",
   "keywords": [
@@ -14,33 +14,33 @@
     "discord google calendar workflow",
     "gaia discord google calendar"
   ],
-  "intro": "Discord has no built-in Google Calendar integration, so there is no setting in either app that connects them. You connect Discord to Google Calendar in one of three ways: a community event bot that posts and tracks events in your server, an automation tool such as Zapier or Make that sends Google Calendar events to a Discord channel through a webhook, or a personal assistant like GAIA that works with your own calendar from inside Discord. Which one fits depends on whether the calendar belongs to the community or to you.\n\nFor a whole server's events: Discord's own scheduled events (the Events section above the channel list) let members mark themselves Interested and get notified when an event starts. Event bots such as Sesh and Apollo add RSVPs and reminder posts in a channel, and Sesh also offers Google Calendar sync. To post reminders into a channel ahead of each event on a shared Google Calendar, an automation that triggers before the event starts and posts to a Discord channel webhook is the most direct setup.\n\nGAIA covers the personal side. GAIA has a Discord bot: link your GAIA account, then DM the bot or @mention it in a server channel and it works on your Google Calendar. Ask it to add Friday's game night at 8pm UTC, check whether you are free on Saturday, or move a session, and it replies where you asked. Reminders and scheduled briefings arrive as Discord DMs when Discord is your preferred chat platform. GAIA does not read your server's channels or its Events section, and it does not post scheduled announcements into a server channel, so it does not replace an event bot.",
+  "intro": "Discord has no built-in Google Calendar integration, so no setting in either app connects them. You can link the two in one of three ways: a community event bot that posts and tracks events in a server, an automation tool such as Zapier or Make that sends calendar events to a channel through a webhook, or a personal assistant like GAIA that works with your own calendar from inside the chat app. Which one fits depends on whether the calendar belongs to the community or to you.\n\nFor events that belong to the whole server, use the server's scheduled events (the Events section above the channel list). Members can mark themselves Interested and get notified when an event starts. Event bots such as Sesh and Apollo add RSVPs and reminder posts to a channel, and Sesh also offers Google Calendar sync. To post reminders to a channel ahead of each event on a shared calendar, an automation that triggers before the event starts and posts to a channel through a webhook is the most direct setup.\n\nGAIA covers the personal side. Link your GAIA account, then DM the GAIA bot or @mention it in a server channel, and it works on your calendar. Ask it to add Friday's game night at 8pm UTC, check whether you are free on Saturday, or move a session, and it replies where you asked. Reminders and scheduled briefings arrive as DMs when Discord is your preferred chat platform. GAIA does not read your server's channels or its Events section, and it does not post scheduled announcements into a server channel, so it does not replace an event bot.",
   "useCases": [
     {
-      "title": "Add an event to your Google Calendar from Discord",
-      "description": "DM GAIA or @mention it with the details, for example \"add the study session Thursday 6pm to 8pm CET to my calendar\". GAIA creates the Google Calendar event and confirms in the same conversation."
+      "title": "Add an event to Google Calendar from Discord",
+      "description": "DM GAIA or @mention it with the details, for example \"add the study session Thursday 6pm to 8pm CET to my calendar\". GAIA creates the calendar event and confirms in the same conversation."
     },
     {
-      "title": "Get event reminders as Discord DMs",
-      "description": "Ask GAIA to remind you before an event, for example \"remind me an hour before the raid\", or every week before a recurring one. With Discord set as your preferred chat platform, the reminder arrives as a DM from the GAIA bot."
+      "title": "Get event reminders as DMs",
+      "description": "Ask GAIA to remind you before an event, for example \"remind me an hour before the raid\", or to repeat every week before a recurring one. If Discord is your preferred chat platform, the reminder arrives as a DM from the GAIA bot."
     },
     {
-      "title": "Check your schedule without leaving Discord",
-      "description": "Ask \"what do I have tomorrow?\" or \"am I free Saturday evening?\" and GAIA reads your Google Calendar and answers in Discord."
+      "title": "Check your schedule without leaving the chat app",
+      "description": "Ask \"what do I have tomorrow?\" or \"am I free Saturday evening?\" and GAIA reads your calendar and answers in the same chat."
     },
     {
-      "title": "A daily agenda in your Discord DMs",
-      "description": "Create a scheduled workflow that sends you each morning's calendar events, plus anything urgent in your inbox, as a Discord DM."
+      "title": "A daily agenda in your DMs",
+      "description": "Create a scheduled workflow that sends you each morning's calendar events, plus anything urgent in your inbox, as a DM."
     }
   ],
   "howItWorks": [
     {
       "step": "Connect Google Calendar to GAIA",
-      "description": "Sign in to GAIA and connect Google Calendar from the integrations page."
+      "description": "Sign in to GAIA and connect your calendar from the integrations page."
     },
     {
       "step": "Link your Discord account",
-      "description": "Message the GAIA bot on Discord. The first time, it sends you a link to connect your Discord account to GAIA. Set Discord as your preferred chat platform if you want reminders and briefings there."
+      "description": "Message the GAIA bot. The first time, it sends you a link that connects your account to GAIA. Set Discord as your preferred chat platform if you want reminders and briefings there."
     },
     {
       "step": "Ask GAIA in a DM or with an @mention",
@@ -49,27 +49,27 @@
   ],
   "faqs": [
     {
-      "question": "Can community members add events to Google Calendar directly from Discord?",
-      "answer": "Each member who links their own GAIA account can DM GAIA or @mention it to add an event to their own Google Calendar. GAIA does not add events to other people's calendars from a server post. To give the whole server an easy way to save events, use Discord's scheduled events or an event bot such as Sesh."
+      "question": "Can community members add events to Google Calendar from a server?",
+      "answer": "Each member who links their own GAIA account can DM GAIA or @mention it to add an event to their own calendar. GAIA does not add events to other people's calendars from a server post. To give the whole server an easy way to save events, use the server's scheduled events or an event bot such as Sesh."
     },
     {
       "question": "What time zone does GAIA use for reminders?",
-      "answer": "GAIA uses the time zone of your GAIA account when it creates events and reminders. If a Discord post gives a time in another zone, include it in your message, for example \"8pm UTC\", and GAIA converts it."
+      "answer": "GAIA uses the time zone of your GAIA account when it creates events and reminders. If a server post gives a time in another zone, include it in your message, for example \"8pm UTC\", and GAIA converts it."
     },
     {
-      "question": "Can GAIA handle recurring Discord events?",
-      "answer": "GAIA can create a recurring Google Calendar event, such as a weekly game night, and set a recurring reminder before it in your Discord DMs. It does not read Discord's own scheduled events, recurring or not."
+      "question": "Can GAIA handle recurring events?",
+      "answer": "GAIA can create a recurring calendar event, such as a weekly game night, and set a recurring reminder before it in your DMs. It does not read the server's scheduled events, recurring or not."
     },
     {
-      "question": "How do I automatically send Discord reminders for community events?",
-      "answer": "If a notification at start time is enough, use Discord's scheduled events: members who mark an event as Interested are notified when it begins. For reminders posted in a channel ahead of time, use an event bot such as Sesh or Apollo, or an automation tool (Zapier or Make) that triggers before each Google Calendar event and posts to the channel through a Discord webhook. GAIA's reminders go to your own DMs, not to a server channel."
+      "question": "How do I automatically send reminders for community events to a channel?",
+      "answer": "If a notification at start time is enough, use the server's scheduled events: members who mark an event as Interested are notified when it begins. For reminders posted in a channel ahead of time, use an event bot such as Sesh or Apollo, or an automation tool (Zapier or Make) that triggers before each calendar event and posts to the channel through a webhook. GAIA's reminders go to your own DMs, not to a server channel."
     },
     {
       "question": "Does Discord have a calendar?",
-      "answer": "Discord has scheduled events, listed in the Events section above a server's channel list, but no calendar view and no built-in Google Calendar sync. Events created there stay in Discord unless a bot or automation copies them out."
+      "answer": "No calendar view, but there are scheduled events, listed in the Events section above a server's channel list. There is no built-in calendar sync. Events created there stay in the server unless a bot or automation copies them out."
     },
     {
-      "question": "Can GAIA read my Discord server's messages or events?",
+      "question": "Can GAIA read a server's messages or events?",
       "answer": "No. GAIA only sees messages sent to it: DMs to the bot and messages that @mention it in a channel. It does not read other channel messages or the server's Events section."
     }
   ]

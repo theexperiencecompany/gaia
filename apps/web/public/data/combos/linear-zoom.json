@@ -16,54 +16,54 @@
     "engineering meeting automation",
     "Linear Zoom workflow"
   ],
-  "intro": "Engineering sprint ceremonies — planning, standup, review, retrospective — happen in Zoom. The action items, decisions, and issue updates from those meetings should live in Linear. But capturing that context from a Zoom call and getting it back into Linear requires someone to take notes, identify action items, and manually create or update Linear issues after every meeting. That process is rarely done consistently.\n\nGAIA automates the connection between Zoom meetings and Linear by scheduling ceremonies automatically from cycle dates, transcribing and summarizing meetings, and extracting action items as new Linear issues. The team gets a meeting record attached to the right sprint without anyone spending time on post-meeting admin.\n\nThis integration is ideal for remote engineering teams that run all their ceremonies over Zoom and want the insights from those meetings captured in Linear automatically rather than lost in meeting notes that nobody reads.",
+  "intro": "Engineering sprint ceremonies — planning, standup, review, retrospective — happen in Zoom. The action items, decisions, and issue updates from those meetings should live in Linear. But capturing that context from a call and getting it back into the backlog requires someone to take notes, identify action items, and manually create or update issues after every meeting. That process is rarely done consistently.\n\nGAIA automates the connection between the two by scheduling ceremonies automatically from cycle dates, transcribing and summarizing meetings, and extracting action items as new issues. The team gets a meeting record attached to the right sprint without anyone spending time on post-meeting admin.\n\nThis integration is ideal for remote engineering teams that run all their ceremonies over Zoom and want the insights from those meetings captured in Linear automatically rather than lost in meeting notes that nobody reads.",
   "useCases": [
     {
       "title": "Auto-schedule sprint ceremonies from Linear cycles",
-      "description": "When a new Linear cycle is created, GAIA schedules recurring Zoom meetings for sprint planning, daily standup, sprint review, and retrospective based on the cycle dates and the team's configured ceremony cadence."
+      "description": "When a new cycle is created, GAIA schedules recurring Zoom meetings for sprint planning, daily standup, sprint review, and retrospective based on the cycle dates and the team's configured ceremony cadence."
     },
     {
-      "title": "Post Zoom meeting summaries to Linear cycles",
-      "description": "After a sprint ceremony ends on Zoom, GAIA generates a meeting summary using the transcript and attaches it as a comment on the corresponding Linear cycle so the team has a searchable record of what was discussed."
+      "title": "Post Zoom meeting summaries to cycles",
+      "description": "After a sprint ceremony ends, GAIA generates a meeting summary using the transcript and attaches it as a comment on the corresponding cycle so the team has a searchable record of what was discussed."
     },
     {
-      "title": "Create Linear issues from Zoom action items",
-      "description": "GAIA identifies action items in Zoom meeting transcripts, commitments, follow-up tasks, blockers raised, and creates corresponding Linear issues assigned to the relevant team member with the meeting context as the issue description."
+      "title": "Create issues from meeting action items",
+      "description": "GAIA identifies action items in meeting transcripts — commitments, follow-up tasks, blockers raised — and creates corresponding issues assigned to the relevant team member with the meeting context as the issue description."
     },
     {
-      "title": "Add Zoom recording links to Linear issues",
-      "description": "After a Zoom call that references specific Linear issues by ID, GAIA attaches the Zoom recording link to each mentioned issue so engineers can review the conversation context without asking for the recording link."
+      "title": "Add call recording links to issues",
+      "description": "After a call that references specific issues by ID, GAIA attaches the recording link to each mentioned issue so engineers can review the conversation context without asking for the link."
     },
     {
-      "title": "Generate sprint review agenda from Linear cycle",
-      "description": "Before the sprint review Zoom meeting, GAIA generates an agenda document listing all completed Linear issues with their titles and descriptions, ready to share as a Zoom meeting document so the team can walk through shipped work systematically."
+      "title": "Generate sprint review agenda from the cycle",
+      "description": "Before the sprint review meeting, GAIA generates an agenda document listing all completed issues with their titles and descriptions, ready to share as a meeting document so the team can walk through shipped work systematically."
     }
   ],
   "howItWorks": [
     {
       "step": "Connect Zoom and Linear to GAIA",
-      "description": "Authorize GAIA with your Zoom account and Linear workspace. Configure the ceremony types, their default durations, and the Zoom meeting settings GAIA should use when scheduling."
+      "description": "Authorize GAIA with your Zoom account and Linear workspace. Configure the ceremony types, their default durations, and the meeting settings GAIA should use when scheduling."
     },
     {
-      "step": "Map ceremony types to Linear events",
-      "description": "Tell GAIA which Linear cycle events should trigger which Zoom meeting types and where meeting summaries and action items should be posted in Linear."
+      "step": "Map ceremony types to cycle events",
+      "description": "Tell GAIA which cycle events should trigger which meeting types and where meeting summaries and action items should be posted in the workspace."
     },
     {
       "step": "Sprint ceremonies schedule and document themselves",
-      "description": "GAIA creates Zoom meetings when cycles start, joins the meetings to capture transcripts, and posts summaries and action items to Linear automatically after each ceremony ends."
+      "description": "GAIA creates the meetings when cycles start, joins them to capture transcripts, and posts summaries and action items where you mapped them after each ceremony ends."
     }
   ],
   "faqs": [
     {
       "question": "Does GAIA join Zoom meetings automatically or only if invited?",
-      "answer": "GAIA joins meetings it schedules automatically. For meetings you schedule independently, you can invite GAIA's Zoom participant link and it will join, transcribe, and post a summary to your configured Linear destination."
+      "answer": "GAIA joins meetings it schedules automatically. For meetings you schedule independently, you can invite GAIA's participant link and it will join, transcribe, and post a summary to your configured destination."
     },
     {
-      "question": "How accurate is GAIA's action item extraction from Zoom transcripts?",
-      "answer": "GAIA uses structured prompt analysis on Zoom transcripts to identify action items with high confidence. It flags extracted items for human review before creating Linear issues, so you can approve, edit, or discard each one before it enters the backlog."
+      "question": "How accurate is GAIA's action item extraction from transcripts?",
+      "answer": "GAIA uses structured prompt analysis on the transcripts to identify action items with high confidence. It flags extracted items for human review before creating issues, so you can approve, edit, or discard each one before it enters the backlog."
     },
     {
-      "question": "Can GAIA schedule Zoom meetings based on team members' calendar availability?",
+      "question": "Can GAIA schedule meetings based on team members' calendar availability?",
       "answer": "Yes. When connected to Google Calendar or Outlook, GAIA checks team member availability before scheduling ceremony times and picks the slot with the best attendance overlap within your configured working hours."
     }
   ]

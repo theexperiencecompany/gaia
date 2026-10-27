@@ -15,27 +15,27 @@
     "HubSpot Notion automation",
     "deal documentation Notion"
   ],
-  "intro": "A HubSpot Notion integration copies CRM records into Notion so deal notes, account research, and pipeline reports sit next to the rest of your team's docs. With GAIA connected to both apps, you describe the rule once: add new HubSpot contacts to a Notion database, create a Notion page for each new deal, or log deal stage changes in Notion. GAIA checks HubSpot on the schedule you set (hourly, every morning, weekly) and writes the new or changed records into Notion.\n\nThe direction matters. GAIA has no HubSpot event trigger, so HubSpot to Notion runs on a schedule rather than the moment a deal is created, and between runs Notion can be one interval behind. Notion to HubSpot can be event-driven: when a page is added to a Notion database, such as your meeting notes, GAIA can log it as a note on the matching HubSpot contact or deal.\n\nIf you need every HubSpot property mirrored into Notion within minutes, a dedicated automation tool such as Zapier or Make is the better fit. GAIA suits teams that want judgment in the loop: a research page that includes the contact's recent emails, a weekly pipeline summary written as prose, or skipping test and duplicate deals instead of copying everything.",
+  "intro": "A HubSpot Notion integration copies CRM records into Notion so deal notes, account research, and pipeline reports sit next to the rest of your team's docs. With GAIA connected to both apps, you describe the rule once: add new contacts to a database, create a page for each new deal, or log deal stage changes. GAIA checks the CRM on the schedule you set (hourly, every morning, weekly) and writes the new or changed records into the workspace.\n\nThe direction matters. GAIA has no HubSpot event trigger, so the sync from the CRM into the workspace runs on a schedule rather than the moment a deal is created, and between runs the pages can be one interval behind. The reverse direction can be event-driven: when a page is added to a database, such as your meeting notes, GAIA can log it as a note on the matching contact or deal.\n\nIf you need every property mirrored within minutes, a dedicated automation tool such as Zapier or Make is the better fit. GAIA suits teams that want judgment in the loop: a research page that includes the contact's recent emails, a weekly pipeline summary written as prose, or skipping test and duplicate deals instead of copying everything.",
   "useCases": [
     {
-      "title": "Create a Notion page for each new HubSpot deal",
-      "description": "On each scheduled run, GAIA lists the deals created since the last run and creates a page in your Notion deals database with the deal name, amount, stage, close date, and associated contacts, plus the research template you described."
+      "title": "Create a page for each new HubSpot deal",
+      "description": "On each scheduled run, GAIA lists the deals created since the last run and creates a page in your deals database with the deal name, amount, stage, close date, and associated contacts, plus the research template you described."
     },
     {
-      "title": "Add new HubSpot contacts to a Notion database",
-      "description": "GAIA copies new contacts into a Notion database with name, email, company, job title, and lifecycle stage, so the team can look up accounts in Notion without opening HubSpot."
+      "title": "Add new contacts to a Notion database",
+      "description": "GAIA copies new contacts into a database with name, email, company, job title, and lifecycle stage, so the team can look up accounts in Notion without opening HubSpot."
     },
     {
-      "title": "Log HubSpot deal stage changes in Notion",
-      "description": "On each run, GAIA compares every open deal's stage with its Notion entry. When the stage moved, GAIA updates the Stage property and appends a dated line to the deal page, building a stage history in Notion."
+      "title": "Log deal stage changes in Notion",
+      "description": "On each run, GAIA compares every open deal's stage with its matching page. When the stage moved, GAIA updates the Stage property and appends a dated line to the deal page, building a stage history."
     },
     {
-      "title": "Write a weekly pipeline summary in Notion",
-      "description": "On a weekly schedule, GAIA reads your open deals and writes a Notion page with deals by stage, total value, deals closing this month, and deals whose close date has already passed."
+      "title": "Write a weekly pipeline summary",
+      "description": "On a weekly schedule, GAIA reads your open deals and writes a page with deals by stage, total value, deals closing this month, and deals whose close date has already passed."
     },
     {
-      "title": "Log Notion meeting notes to HubSpot",
-      "description": "When a page is added to your Notion meeting notes database, GAIA finds the matching contact or deal in HubSpot and logs the notes there, so the CRM timeline stays complete."
+      "title": "Log meeting notes to HubSpot",
+      "description": "When a page is added to your meeting notes database, GAIA finds the matching contact or deal and logs the notes on it, so the CRM timeline stays complete."
     }
   ],
   "howItWorks": [
@@ -45,36 +45,36 @@
     },
     {
       "step": "Describe the sync in plain English",
-      "description": "Create a workflow and say what should happen, for example: \"Every hour, create a page in the Deals database for each new HubSpot deal, with amount, stage, close date, and primary contact\" or \"Every morning, update the Stage property of each Notion deal page from HubSpot.\" Say which HubSpot property fills which Notion property."
+      "description": "Create a workflow and say what should happen, for example: \"Every hour, create a page in the Deals database for each new HubSpot deal, with amount, stage, close date, and primary contact\" or \"Every morning, update the Stage property of each deal page from the CRM.\" Say which property in the CRM fills which property on the page."
     },
     {
       "step": "GAIA runs it in the background",
-      "description": "HubSpot-to-Notion workflows run on your schedule. Notion-to-HubSpot workflows run when the Notion page is created. GAIA can send you a short report after each run, and you can ask for a run on demand."
+      "description": "Workflows from the CRM into the workspace run on your schedule. Workflows from the workspace into the CRM run when the page is created. GAIA can send you a short report after each run, and you can ask for a run on demand."
     }
   ],
   "faqs": [
     {
       "question": "Can GAIA sync Notion meeting notes back to HubSpot?",
-      "answer": "Yes. When a page is added to a Notion meeting notes database, GAIA can log it as a note on the matching HubSpot deal or contact, keeping the CRM timeline complete."
+      "answer": "Yes. When a page is added to a meeting notes database, GAIA can log it as a note on the matching deal or contact, keeping the CRM timeline complete."
     },
     {
-      "question": "Does GAIA create one Notion page per deal or per account?",
+      "question": "Does GAIA create one page per deal or per account?",
       "answer": "Either. Describe the structure you want: one page per deal for detailed opportunity tracking, or one page per company that collects all of its deals and contacts."
     },
     {
-      "question": "Can GAIA sync HubSpot custom properties to Notion custom fields?",
-      "answer": "Yes. GAIA reads and writes HubSpot custom properties. Name the HubSpot property and the Notion property it should fill in your workflow description, and changed values are written on the next scheduled run."
+      "question": "Can GAIA sync custom CRM properties to custom database fields?",
+      "answer": "Yes. GAIA reads and writes custom CRM properties. Name the source property and the page property it should fill in your workflow description, and changed values are written on the next scheduled run."
     },
     {
-      "question": "Does Notion update the moment a HubSpot deal is created?",
-      "answer": "No. GAIA has no HubSpot event trigger, so it checks HubSpot on the schedule you set. With an hourly workflow, a deal created at 10:10 shows up in Notion by the 11:00 run. You can also ask GAIA to run the sync right away."
+      "question": "Does the workspace update the moment a deal is created?",
+      "answer": "No. GAIA has no CRM event trigger, so it checks on the schedule you set. With an hourly workflow, a deal created at 10:10 shows up by the 11:00 run. You can also ask GAIA to run the sync right away."
     },
     {
-      "question": "Can I send data from Notion to HubSpot?",
-      "answer": "Yes. A Notion trigger can start the workflow when a page is created or its properties change. GAIA can then create or update a HubSpot contact, company, or deal from the page, or log the page as a note on an existing record."
+      "question": "Can I send data the other way, from pages to the CRM?",
+      "answer": "Yes. A page trigger can start the workflow when a page is created or its properties change. GAIA can then create or update a contact, company, or deal from the page, or log the page as a note on an existing record."
     },
     {
-      "question": "How is this different from a Zapier or Make HubSpot Notion automation?",
+      "question": "How is this different from a Zapier or Make automation?",
       "answer": "A Zapier or Make automation copies fixed fields from one trigger, and for a pure field copy it is the simpler choice. GAIA works from a plain-English description, so it can also handle the parts that need reading: adding a summary of a contact's recent emails to the deal page, skipping test deals, or writing a weekly pipeline narrative."
     }
   ]

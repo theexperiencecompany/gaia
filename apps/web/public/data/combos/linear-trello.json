@@ -4,7 +4,7 @@
   "toolASlug": "linear",
   "toolB": "Trello",
   "toolBSlug": "trello",
-  "tagline": "Link Trello product roadmap cards to Linear engineering issues seamlessly",
+  "tagline": "Link roadmap cards in Trello to engineering issues in Linear",
   "metaTitle": "Linear + Trello Integration: Trello Cards to Linear Issues",
   "metaDescription": "Keep your Trello roadmap honest. GAIA creates Linear issues from roadmap cards and moves each card once all its issues ship. See the setup steps.",
   "keywords": [
@@ -16,55 +16,55 @@
     "product engineering workflow automation",
     "Trello card Linear issue link"
   ],
-  "intro": "Product teams that plan roadmaps in Trello and engineering teams that execute in Linear often struggle to keep both views in sync. A Trello card representing a roadmap feature may spawn ten Linear issues, but the Trello card has no idea when those issues are completed. Product managers watch the Trello board and have no signal that engineering has shipped the underlying work.\n\nGAIA creates and maintains the link between Trello cards and Linear issues so product and engineering always share the same reality. When a Trello card moves to In Development, GAIA creates the corresponding Linear issues. As those issues progress and complete, GAIA updates the Trello card automatically. When the last issue ships, the Trello card moves to Done.\n\nThis integration suits companies that want to keep using Trello for high-level roadmap planning — its visual simplicity and broad accessibility make it popular with non-technical stakeholders — while giving engineering the power of Linear for day-to-day sprint work.",
+  "intro": "Product teams that plan roadmaps in Trello and engineering teams that execute in Linear often struggle to keep both views in sync. A card representing a roadmap feature may spawn ten issues, but the card has no idea when those issues are completed. Product managers watch the board and have no signal that engineering has shipped the underlying work.\n\nGAIA creates and maintains the link between cards and issues so product and engineering always share the same reality. When a card moves to In Development, GAIA creates the corresponding engineering issues. As those issues progress and complete, GAIA updates the card automatically. When the last issue ships, the card moves to Done.\n\nThis integration suits companies that want to keep using Trello for high-level roadmap planning — its visual simplicity and broad accessibility make it popular with non-technical stakeholders — while giving engineering the power of Linear for day-to-day sprint work.",
   "useCases": [
     {
       "title": "Create Linear issues from Trello cards",
-      "description": "When a Trello card is moved to the Ready for Development list, GAIA breaks it into Linear issues based on the card checklist items, assigns them to the relevant Linear team, and attaches the Trello card URL for reference."
+      "description": "When a card is moved to the Ready for Development list, GAIA breaks it into issues based on the card checklist items, assigns them to the relevant team, and attaches the card URL for reference."
     },
     {
-      "title": "Update Trello card status from Linear progress",
-      "description": "As Linear issues linked to a Trello card progress, GAIA updates the card's checklist items and custom fields so product managers see a live progress indicator on the roadmap card without checking Linear."
+      "title": "Update card status from issue progress",
+      "description": "As issues linked to a card progress, GAIA updates the card's checklist items and custom fields so product managers see a live progress indicator on the roadmap card without checking Linear."
     },
     {
-      "title": "Auto-move Trello cards when all issues ship",
-      "description": "When all Linear issues linked to a Trello card are marked Done, GAIA automatically moves the card to the Shipped list on the Trello board, giving the roadmap an accurate picture of what has been delivered."
+      "title": "Auto-move cards when all issues ship",
+      "description": "When all issues linked to a card are marked Done, GAIA automatically moves the card to the Shipped list on the board, giving the roadmap an accurate picture of what has been delivered."
     },
     {
-      "title": "Attach Linear cycle info to Trello cards",
-      "description": "GAIA writes the target Linear cycle to a Trello card's label or custom field so product managers can see at a glance which sprint a feature is scheduled for without asking engineering."
+      "title": "Attach sprint cycle info to roadmap cards",
+      "description": "GAIA writes the target cycle to a card's label or custom field so product managers can see at a glance which sprint a feature is scheduled for without asking engineering."
     },
     {
-      "title": "Notify Trello card members of Linear blockers",
-      "description": "When a Linear issue linked to a Trello card moves to Blocked, GAIA adds a comment to the Trello card summarizing the blocker so product owners can take cross-team action without waiting for standup."
+      "title": "Notify card members of issue blockers",
+      "description": "When a linked issue moves to Blocked, GAIA adds a comment to the card summarizing the blocker so product owners can take cross-team action without waiting for standup."
     }
   ],
   "howItWorks": [
     {
       "step": "Connect Trello and Linear to GAIA",
-      "description": "Authorize GAIA with your Trello account and Linear workspace. Map Trello boards to Linear teams and define which Trello lists correspond to which development stages."
+      "description": "Authorize GAIA with your Trello account and Linear workspace. Map boards to teams and define which lists correspond to which development stages."
     },
     {
       "step": "Define creation and sync triggers",
-      "description": "Specify which Trello list moves trigger Linear issue creation, how Trello checklist items map to Linear issue titles, and which Linear state changes should update the Trello card."
+      "description": "Specify which list moves trigger issue creation, how checklist items map to issue titles, and which issue state changes should update the card."
     },
     {
       "step": "Keep roadmap and sprint board aligned automatically",
-      "description": "GAIA handles all cross-tool updates from that point. Product managers work in Trello, engineers work in Linear, and both boards stay synchronized without anyone manually managing the connection."
+      "description": "GAIA handles every update between the two tools from that point. Product managers work on the roadmap board, engineers work in the sprint board, and both stay synchronized without anyone manually managing the connection."
     }
   ],
   "faqs": [
     {
-      "question": "Can one Trello card be linked to multiple Linear issues?",
-      "answer": "Yes, this is the typical use case. A single Trello roadmap card often represents a feature that requires multiple engineering tasks. GAIA tracks all linked Linear issues and rolls up their status to the Trello card automatically."
+      "question": "Can one card be linked to multiple Linear issues?",
+      "answer": "Yes, this is the typical use case. A single roadmap card often represents a feature that requires multiple engineering tasks. GAIA tracks all linked issues and rolls up their status to the card automatically."
     },
     {
       "question": "Does GAIA work with Trello Power-Ups?",
-      "answer": "GAIA operates through the Trello API and works alongside existing Power-Ups without conflict. It uses standard Trello card fields, custom fields, and comments, so it is compatible with most popular Trello Power-Up configurations."
+      "answer": "GAIA operates through the API and works alongside existing Power-Ups without conflict. It uses standard card fields, custom fields, and comments, so it is compatible with most popular Power-Up configurations."
     },
     {
-      "question": "What if we move a Trello card back to a previous list?",
-      "answer": "GAIA detects backward movement and can optionally reopen the corresponding Linear issues or add a comment to notify the engineering team. You configure whether regressions should trigger automatic actions or just log a notification."
+      "question": "What if we move a card back to a previous list?",
+      "answer": "GAIA detects backward movement and can optionally reopen the corresponding issues or add a comment to notify the engineering team. You configure whether regressions should trigger automatic actions or just log a notification."
     }
   ]
 }

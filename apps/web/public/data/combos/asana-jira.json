@@ -15,37 +15,37 @@
     "Asana to Jira tickets",
     "project management integration"
   ],
-  "intro": "Product teams track work in Asana while engineering teams work in Jira. The gap between them is where projects slow down — product managers create Asana tasks that need corresponding Jira tickets, status updates must be manually mirrored across both tools, and neither side has full visibility into the other.\n\nGAIA synchronizes Asana and Jira so the right information is in both places without double entry. Asana tasks create Jira tickets. Jira status changes update Asana. Product managers see engineering progress in Asana. Engineers see product context in Jira. Both teams work in their preferred tool while GAIA keeps them aligned.",
+  "intro": "Product teams track work in Asana while engineering teams work in Jira. The gap between them is where projects slow down — product managers create tasks that need corresponding tickets, status updates must be manually mirrored across both tools, and neither side has full visibility into the other.\n\nGAIA synchronizes the two so the right information is in both places without double entry. Tasks create tickets. Ticket status changes update the matching task. Product managers see engineering progress in Asana. Engineers see product context in Jira. Both teams work in their preferred tool while GAIA keeps them aligned.",
   "useCases": [
     {
       "title": "Asana task to Jira ticket creation",
-      "description": "When an Asana task requires engineering work, GAIA creates a corresponding Jira ticket with the product context, acceptance criteria, and due date from the Asana task."
+      "description": "When a task requires engineering work, GAIA creates a corresponding ticket with the product context, acceptance criteria, and due date from the task."
     },
     {
       "title": "Jira status mirrored to Asana",
-      "description": "As Jira tickets progress through engineering workflow stages, GAIA updates the linked Asana task status so product managers see real-time engineering progress without checking Jira."
+      "description": "As tickets progress through engineering workflow stages, GAIA updates the linked task status so product managers see real-time engineering progress without checking the tickets."
     },
     {
-      "title": "Asana deadline alerts in Jira",
-      "description": "When an Asana task has a product deadline, GAIA adds that deadline context to the linked Jira ticket so engineers understand the business urgency behind their technical work."
+      "title": "Deadline alerts on tickets",
+      "description": "When a task has a product deadline, GAIA adds that deadline context to the linked ticket so engineers understand the business urgency behind their technical work."
     },
     {
-      "title": "Bug escalation from Jira to Asana",
-      "description": "High-severity Jira bugs automatically create Asana tasks in the product team's project so product managers can track customer-facing impact and coordinate response communications."
+      "title": "Bug escalation to the product team",
+      "description": "High-severity bugs automatically create tasks in the product team's project so product managers can track customer-facing impact and coordinate response communications."
     },
     {
       "title": "Release planning coordination",
-      "description": "Asana release milestones link to Jira fix versions so GAIA can report on what percentage of planned release work is complete in Jira, giving product teams accurate launch confidence."
+      "description": "Asana release milestones link to Jira fix versions so GAIA can report on what percentage of planned release work is complete, giving product teams accurate launch confidence."
     }
   ],
   "howItWorks": [
     {
       "step": "Connect Asana and Jira to GAIA",
-      "description": "Authorize GAIA with your Asana workspace and Jira project. Define the mapping between Asana projects and Jira projects."
+      "description": "Authorize GAIA with your Asana workspace and Jira project. Define the mapping between the two sets of projects."
     },
     {
       "step": "Configure bidirectional sync rules",
-      "description": "Set which Asana task events create Jira tickets, which Jira status changes update Asana, and how fields map between the two systems."
+      "description": "Set which task events create tickets, which ticket status changes update the task, and how fields map between the two systems."
     },
     {
       "step": "Product and engineering work in their preferred tools",
@@ -55,15 +55,15 @@
   "faqs": [
     {
       "question": "Can GAIA map Asana custom fields to Jira custom fields?",
-      "answer": "Yes. Custom fields in Asana can map to custom fields in Jira so specialized metadata like client name, budget code, or component area is preserved when tasks sync between tools."
+      "answer": "Yes. Custom fields on a task can map to custom fields on a ticket so specialized metadata like client name, budget code, or component area is preserved when items sync between the two tools."
     },
     {
-      "question": "What happens if someone updates the Asana task and the Jira ticket at the same time?",
-      "answer": "GAIA uses timestamp-based conflict resolution, applying the most recent update as the source of truth. For critical fields, you can configure which system takes priority in conflict scenarios."
+      "question": "What happens if someone updates the task and the ticket at the same time?",
+      "answer": "GAIA uses timestamp-based conflict resolution, applying the most recent update as the source of truth. For critical fields, you can configure which tool takes priority in conflict scenarios."
     },
     {
-      "question": "Does GAIA support syncing between Asana portfolios and Jira epics?",
-      "answer": "Yes. Asana portfolios can map to Jira epics, giving product leadership a cross-tool view where Asana's portfolio progress reflects the actual Jira issue completion underneath."
+      "question": "Does GAIA support syncing between portfolios and epics?",
+      "answer": "Yes. Portfolios can map to epics, giving product leadership a cross-tool view where portfolio progress reflects the actual issue completion underneath."
     }
   ]
 }

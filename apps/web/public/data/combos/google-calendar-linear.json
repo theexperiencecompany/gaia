@@ -15,55 +15,55 @@
     "Linear deadline Google Calendar",
     "sprint planning calendar"
   ],
-  "intro": "Engineering teams plan in Linear but schedule in Google Calendar. Sprint start and end dates live in Linear but don't appear on the calendar. Important Linear deadlines and cycle reviews aren't visible in the tool engineers check for their daily schedule. GAIA connects the two so your engineering timeline is visible wherever you look.\n\nLinear cycle dates appear on Google Calendar. Calendar events for sprint planning and retrospectives generate Linear cycle items. The engineering schedule and the project board tell the same story without manual synchronization between them.",
+  "intro": "Engineering teams plan in Linear but schedule in Google Calendar. Sprint start and end dates live in Linear but don't appear on the calendar. Important deadlines and cycle reviews don't show up where engineers check their daily schedule. GAIA connects the two so your engineering timeline is visible wherever you look.\n\nCycle dates appear on the calendar. Calendar events for sprint planning and retrospectives generate cycle items. The engineering schedule and the project board tell the same story without manual synchronization between them.",
   "useCases": [
     {
       "title": "Linear cycle dates synced to Google Calendar",
-      "description": "Linear sprint cycles appear as Google Calendar events with start and end dates, giving engineers and engineering managers visibility into the sprint timeline alongside their other commitments."
+      "description": "Sprint cycles appear as calendar events with start and end dates, giving engineers and engineering managers visibility into the sprint timeline alongside their other commitments."
     },
     {
-      "title": "Linear issue due dates as calendar reminders",
-      "description": "High-priority Linear issues with due dates create Google Calendar reminders so engineers see approaching deadlines in their calendar rather than only in Linear."
+      "title": "Issue due dates as calendar reminders",
+      "description": "High-priority issues with due dates create calendar reminders so engineers see approaching deadlines in their calendar rather than only in Linear."
     },
     {
       "title": "Sprint planning meeting prep from Linear",
-      "description": "Before sprint planning calendar events, GAIA compiles the Linear backlog items proposed for the sprint and sends a prep summary so the team arrives with full context."
+      "description": "Before sprint planning events, GAIA compiles the backlog items proposed for the sprint and sends a prep summary so the team arrives with full context."
     },
     {
       "title": "Retrospective data before review meetings",
-      "description": "Before retrospective calendar events, GAIA pulls Linear cycle metrics (completed issues, velocity, cycle time) and creates a meeting prep document so retrospectives are data-informed."
+      "description": "Before retrospective events, GAIA pulls cycle metrics (completed issues, velocity, cycle time) and creates a meeting prep document so retrospectives are data-informed."
     },
     {
       "title": "Engineering milestone calendar events",
-      "description": "Linear project milestones generate Google Calendar events so product launches, feature freezes, and major deliverables are visible on the shared team calendar."
+      "description": "Project milestones generate Google Calendar events so product launches, feature freezes, and major deliverables are visible on the shared team calendar."
     }
   ],
   "howItWorks": [
     {
       "step": "Connect Google Calendar and Linear to GAIA",
-      "description": "Authorize GAIA with your Google Calendar and Linear workspace. Specify which Linear teams and cycles should sync to which calendars."
+      "description": "Authorize GAIA with your calendar and your Linear workspace. Specify which teams and cycles should sync to which calendars."
     },
     {
       "step": "Configure sync and notification rules",
-      "description": "Choose which Linear events create Calendar events, which issue due dates generate reminders, and which calendar events should pull Linear context for prep summaries."
+      "description": "Choose which cycle events create calendar events, which issue due dates generate reminders, and which calendar events should pull issue context for prep summaries."
     },
     {
       "step": "Engineering schedule and board stay aligned",
-      "description": "Linear timelines appear on the calendar automatically. Calendar events have Linear context attached. Both tools reflect the same engineering schedule."
+      "description": "Cycle timelines appear on the calendar automatically. Calendar events have issue context attached. Both tools reflect the same engineering schedule."
     }
   ],
   "faqs": [
     {
       "question": "Can GAIA create Linear cycles from calendar date ranges I define?",
-      "answer": "Yes. You can ask GAIA to create a new Linear cycle based on dates you've set in Google Calendar for a sprint, and it will configure the cycle with the correct start and end dates in Linear."
+      "answer": "Yes. You can ask GAIA to create a new cycle based on dates you've set in the calendar for a sprint, and it will configure the cycle with the correct start and end dates."
     },
     {
-      "question": "Does GAIA sync Linear cycles for all teams or specific ones?",
-      "answer": "You configure which Linear teams sync to which calendars. This is useful for separating engineering team calendars from product or design team cycles."
+      "question": "Does GAIA sync cycles for all teams or specific ones?",
+      "answer": "You configure which teams sync to which calendars. This is useful for separating engineering team calendars from product or design team cycles."
     },
     {
       "question": "Can GAIA send calendar invites to the team for sprint events?",
-      "answer": "Yes. When GAIA creates Google Calendar events from Linear cycles, you can configure it to add your team members as guests so the sprint events appear on everyone's calendar."
+      "answer": "Yes. When GAIA creates calendar events from cycles, you can configure it to add your team members as guests so the sprint events appear on everyone's calendar."
     }
   ]
 }
