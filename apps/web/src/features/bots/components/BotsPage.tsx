@@ -88,6 +88,7 @@ function BotCard({
             target={primaryAction.external ? "_blank" : "_self"}
             rel={primaryAction.external ? "noopener noreferrer" : undefined}
             color="primary"
+            aria-label={`${primaryAction.label} on ${name}`}
           >
             {primaryAction.label}
           </Button>
@@ -99,6 +100,7 @@ function BotCard({
             target={secondaryAction.external ? "_blank" : "_self"}
             rel={secondaryAction.external ? "noopener noreferrer" : undefined}
             variant="flat"
+            aria-label={`${secondaryAction.label} on ${name}`}
           >
             {secondaryAction.label}
           </Button>

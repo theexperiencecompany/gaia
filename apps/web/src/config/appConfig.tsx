@@ -317,7 +317,7 @@ export const appConfig = {
       ),
       socialLink(
         "https://github.com/theexperiencecompany",
-        "GitHub",
+        "The Experience Company on GitHub",
         Github,
         "white",
         "Check out our open source projects",

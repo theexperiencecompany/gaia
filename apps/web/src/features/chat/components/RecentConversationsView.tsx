@@ -112,9 +112,9 @@ const RecentConversationsView = memo(() => {
             <div className="min-w-0 flex-1 flex justify-between">
               <div>
                 <div className="flex items-start justify-between gap-2">
-                  <h4 className="text-base font-medium text-white line-clamp-1">
+                  <h3 className="text-base font-medium text-white line-clamp-1">
                     {conversation.title}
-                  </h4>
+                  </h3>
                   {conversation.starred && (
                     <span className="flex-shrink-0 text-yellow-500">★</span>
                   )}

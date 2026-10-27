@@ -3,6 +3,7 @@ import Link from "next/link";
 interface LinkedGuide {
   readonly slug: string;
   readonly name: string;
+  readonly tagline?: string;
 }
 
 export function BestHubComparisonLinks({
@@ -30,6 +31,11 @@ export function BestHubComparisonLinks({
           <li key={comparison.slug} className="break-inside-avoid">
             <Link
               href={`/compare/${comparison.slug}`}
+              aria-label={
+                comparison.tagline
+                  ? `GAIA vs ${comparison.name}: ${comparison.tagline}`
+                  : `GAIA vs ${comparison.name} comparison`
+              }
               className="hover:text-zinc-200 hover:underline hover:underline-offset-2"
             >
               GAIA vs {comparison.name}
@@ -66,6 +72,7 @@ export function BestHubAlternativeLinks({
           <li key={alternative.slug} className="break-inside-avoid">
             <Link
               href={`/alternative-to/${alternative.slug}`}
+              aria-label={`${alternative.name} alternative guide`}
               className="hover:text-zinc-200 hover:underline hover:underline-offset-2"
             >
               {alternative.name}

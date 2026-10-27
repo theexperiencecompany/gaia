@@ -154,9 +154,16 @@ export default function Footer() {
                   className="text-zinc-200 transition-colors hover:text-primary"
                 >
                   {/* Drop each icon's brand color so the row reads as one set
-                      and inherits the hover state. */}
-                  {isValidElement<{ color?: string }>(link.icon)
-                    ? cloneElement(link.icon, { color: undefined })
+                      and inherits the hover state. The icon is decorative:
+                      the link already carries its name in aria-label. */}
+                  {isValidElement<{
+                    color?: string;
+                    "aria-hidden"?: boolean;
+                  }>(link.icon)
+                    ? cloneElement(link.icon, {
+                        color: undefined,
+                        "aria-hidden": true,
+                      })
                     : link.icon}
                 </Link>
               ))}

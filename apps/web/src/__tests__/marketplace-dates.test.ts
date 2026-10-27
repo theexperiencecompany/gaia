@@ -97,7 +97,7 @@ describe("marketplace page dates", () => {
     );
     expect(app?.author).toMatchObject({
       "@type": "Person",
-      "@id": "https://heygaia.io/about#vinit-thakkar",
+      "@id": "https://heygaia.io/#person-vinit-thakkar",
       name: "Vinit Thakkar",
     });
   });
