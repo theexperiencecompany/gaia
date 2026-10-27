@@ -22,6 +22,10 @@
 #                            Writes build=true|false to $GITHUB_OUTPUT.
 #   web-inputs               Does this change touch anything the web Worker
 #                            bundle depends on? Same output, for deploy-web.
+#   seo-inputs               Does this change touch what the web app renders
+#                            (the web inputs) or what audits it (the SEO
+#                            audit, squirrel, their config and baseline)? Same
+#                            output, for ci.yml's seo check.
 #   desktop-inputs           Does this change touch anything the packaged
 #                            desktop app depends on? Same output, for
 #                            desktop-pr-build.
@@ -82,6 +86,7 @@
 #   docker-inputs  BASE_BRANCH (the RESOLVED base, not github.base_ref), GITHUB_OUTPUT.
 #   selfhost-inputs  BASE_BRANCH (github.base_ref), GITHUB_OUTPUT.
 #   web-inputs     BASE_BRANCH (a branch or a merge_group base sha), GITHUB_OUTPUT.
+#   seo-inputs     BASE_BRANCH (a branch or a merge_group base sha), GITHUB_OUTPUT.
 #   desktop-inputs BASE_BRANCH (a branch or a merge_group base sha), GITHUB_OUTPUT.
 set -euo pipefail
 
@@ -327,6 +332,23 @@ cmd_web_inputs() {
   _inputs_changed "web bundle" "$BASE_BRANCH" "${WEB_INPUTS[@]}"
 }
 
+# What the SEO audit judges, and what judges it: a change to the audit is proven
+# on the PR that makes it.
+SEO_INPUTS=(
+  "${WEB_INPUTS[@]}"
+  scripts/ci/smoke-web.sh
+  scripts/ci/lib/seo_audit.py
+  scripts/ci/lib/squirrel.py
+  scripts/ci/lib/origin_proxy.py
+  scripts/ci/baselines/squirrel-build.txt
+  config/squirrel.toml
+)
+
+cmd_seo_inputs() {
+  BASE_BRANCH="${BASE_BRANCH:?BASE_BRANCH is required (the base branch or merge_group base sha)}"
+  _inputs_changed "SEO audit" "$BASE_BRANCH" "${SEO_INPUTS[@]}"
+}
+
 # The paths the packaged desktop app is built from. Web is left out on purpose
 # (high churn, its own gates), and so are the generated API types: `export type`
 # only, erased at compile time, so they cannot change a packaged binary.
@@ -392,7 +414,7 @@ _inputs_changed() {
 }
 
 usage() {
-  sed -n '2,27p' "$0" >&2
+  sed -n '2,31p' "$0" >&2
 }
 
 main() {
@@ -406,6 +428,7 @@ main() {
     docker-inputs) cmd_docker_inputs "$@" ;;
     selfhost-inputs) cmd_selfhost_inputs "$@" ;;
     web-inputs)    cmd_web_inputs "$@" ;;
+    seo-inputs)    cmd_seo_inputs "$@" ;;
     desktop-inputs) cmd_desktop_inputs "$@" ;;
     *)
       echo "changes.sh: unknown subcommand '${sub}'" >&2

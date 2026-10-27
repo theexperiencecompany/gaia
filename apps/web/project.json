@@ -36,6 +36,8 @@
       "inputs": [
         "typecheck",
         { "env": "NEXT_PUBLIC_API_BASE_URL" },
+        { "env": "NEXT_PUBLIC_DISCORD_CLIENT_ID" },
+        { "env": "NEXT_PUBLIC_SLACK_CLIENT_ID" },
         "{workspaceRoot}/apps/web/next.config.mjs",
         "{workspaceRoot}/apps/web/tsconfig.json",
         "{workspaceRoot}/apps/web/tailwind.config.ts"
