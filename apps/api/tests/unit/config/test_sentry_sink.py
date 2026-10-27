@@ -555,3 +555,14 @@ def test_an_existing_fingerprint_is_not_replaced() -> None:
 
     assert event is not None
     assert event["fingerprint"] == ["mine"]
+
+
+def test_a_user_that_already_has_an_id_is_left_alone() -> None:
+    """The caller's attribution wins; ours only fills a gap."""
+    event = sentry_config._before_send(
+        _event(user={"id": "existing"}, extra={"user": {"id": "67bdb4367c7dd1f0ea343216"}}),
+        {},
+    )
+
+    assert event is not None
+    assert event["user"] == {"id": "existing"}
