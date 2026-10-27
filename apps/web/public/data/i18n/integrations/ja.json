@@ -1851,7 +1851,7 @@
     "toolB": "Jira",
     "tagline": "メールからJiraの課題を作成し、顧客と開発のループを閉じる",
     "metaTitle": "Gmail + Jira 連携: バグ報告メールをJiraの課題に",
-    "metaDescription": "バグ報告のメールをJiraの課題にし、重複を防ぎ、解決時に顧客へ知らせます。GAIAが切り分けを担います。設定手順をご覧ください。",
+    "metaDescription": "バグ報告のメールをJiraの課題に変換し、重複をまとめて、解決時に顧客へも知らせます。GAIAが内容を読み取り切り分けを担います。設定手順をご覧ください。",
     "keywords": [
       "Gmail Jira 連携",
       "メールをJiraの課題に変換",
@@ -3810,7 +3810,7 @@
       "SlackとStripeの接続",
       "Stripe Slack Webhook"
     ],
-    "metaDescription": "新規決済・失敗・売上の節目をあなたが選ぶSlackチャンネルへ投稿します。GAIAがテスト取引を除外します。設定手順をご覧ください。",
+    "metaDescription": "新規決済・失敗・売上の節目をあなたが選んだSlackチャンネルへ自動投稿します。GAIAがテスト用の取引を除外します。設定手順をご覧ください。",
     "metaTitle": "Stripe Slack 連携: 決済をSlackチャンネルへ投稿",
     "tagline": "Stripeからのリアルタイム決済アラートと売上サマリーをSlackで受け取ります",
     "toolA": "Slack",
@@ -6151,7 +6151,7 @@
       "非同期コードレビューLoom",
       "GitHub Loom ワークフロー"
     ],
-    "metaDescription": "大規模PRにはLoom録画を促し、Loomのバグ録画から問題を作成します。GAIAがレビューを明確にします。設定手順をご覧ください。",
+    "metaDescription": "大規模PRにはLoom録画を促して、Loomのバグ録画から問題を自動作成します。GAIAがレビューを明確にまとめます。設定手順をご覧ください。",
     "metaTitle": "GitHub + Loom 連携: PRでの動画ウォークスルー",
     "tagline": "LoomウォークスルーをPRに添付し、複雑なコード変更には動画レビューを自動依頼します",
     "toolA": "GitHub",
@@ -6493,7 +6493,7 @@
       "TodoistをClickUpへ同期",
       "ClickUp Todoist ワークフロー"
     ],
-    "metaDescription": "Todoistで記録したタスクをClickUpで遂行し、完了を双方向に同期します。GAIAが担当分を取り込みます。設定手順をご覧ください。",
+    "metaDescription": "Todoistで記録したタスクをClickUpで遂行し、完了を双方向に同期します。GAIAが担当分を取り込んで反映します。設定手順をご覧ください。",
     "metaTitle": "Todoist + ClickUp 連携: 個人とチームのタスク",
     "tagline": "Todoistでの個人タスク記録とClickUpでのチームプロジェクト管理を橋渡しします",
     "toolA": "Todoist",
@@ -8335,7 +8335,7 @@
       "非同期会議ワークフロー",
       "Google CalendarとLoomの接続"
     ],
-    "metaDescription": "会議前のLoomブリーフ送信のリマインダーを受け取り、後に要約を録画します。GAIAが参加者と共有します。設定手順をご覧ください。",
+    "metaDescription": "会議前のLoomブリーフ送信のリマインダーを受け取り、会議後に要約動画を録画します。GAIAが参加者全員と共有します。設定手順をご覧ください。",
     "metaTitle": "Google Calendar + Loom 連携: 会議向けLoom要約",
     "tagline": "今後の会議向けにLoom動画ブリーフを録画し、要約を自動共有します",
     "toolA": "Google Calendar",
@@ -9419,7 +9419,7 @@
       "Jira Trello 自動化",
       "バグボードTrello Jira"
     ],
-    "metaDescription": "JiraバグをTrello追跡ボードへ反映し、バグ状況変化でカードを動かします。GAIAが両者を整合させます。設定手順をご覧ください。",
+    "metaDescription": "JiraバグをTrello追跡ボードへ反映し、バグ状況の変化でカードを自動で動かします。GAIAが両者を整合させます。設定手順をご覧ください。",
     "metaTitle": "Jira + Trello 連携: Trelloボード上のJiraバグ",
     "tagline": "JiraバグをTrelloバグ追跡ボードへ自動同期します",
     "toolA": "Jira",
@@ -11802,7 +11802,7 @@
       "機能要望のCRMワークフロー",
       "営業と開発の整合"
     ],
-    "metaDescription": "顧客の要望を開発に見せます。GAIAがHubSpot機能要望をLinear問題に変え、出荷時に担当者へ警告します。設定手順をご覧ください。",
+    "metaDescription": "顧客の要望を開発チームに見せます。GAIAがHubSpot機能要望をLinear問題に変え、出荷時に担当者へ警告します。設定手順をご覧ください。",
     "metaTitle": "HubSpot + Linear 連携: 機能要望を問題へ",
     "tagline": "HubSpotの顧客機能要望をLinearの開発問題にリンクします",
     "toolA": "HubSpot",
@@ -12717,7 +12717,7 @@
       "discord jira ワークフロー",
       "gaia discord jira"
     ],
-    "metaDescription": "Jiraの状況変化と重大バグを正しいDiscordチャネルへ投稿し、メッセージから問題を作成します。GAIAの設定方法をご覧ください。",
+    "metaDescription": "Jiraの状況変化と重大バグを正しいDiscordチャネルへ自動投稿し、メッセージから問題を自動作成します。GAIAの設定方法をご覧ください。",
     "metaTitle": "Jira Software Cloud Discord 連携: 問題アラート",
     "tagline": "Jira問題の更新をDiscord開発チャネルへ自動で浮上させます",
     "toolA": "Discord",
