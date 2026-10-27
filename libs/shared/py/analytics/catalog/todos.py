@@ -3,6 +3,7 @@
 from typing import ClassVar, Literal
 
 from shared.py.analytics.catalog.base import ServerEvent, WebEvent
+from shared.py.analytics.catalog.delivery import ProactiveDestinationBasis, ProactiveDestinationKind
 from shared.py.analytics.catalog.properties import Identifier, ObjectIdStr
 
 __all__ = [
@@ -127,7 +128,7 @@ class TodosTriggerFired(ServerEvent):
 
 
 class TodosRunResultDelivered(ServerEvent):
-    """A tracked todo's run result reached, or failed to reach, the user's chat app."""
+    """A tracked todo's run result reached, or failed to reach, the user; destination is where it was routed."""
 
     event: ClassVar[str] = "todos:run_result_delivered"
     # One per run, like trigger_fired: an hourly tracked todo alone delivers 12+ a day.
@@ -138,6 +139,8 @@ class TodosRunResultDelivered(ServerEvent):
     trigger_type: Identifier
     recurring: bool
     platform: Identifier | None = None
+    destination: ProactiveDestinationKind | None = None
+    destination_basis: ProactiveDestinationBasis | None = None
 
 
 class TodosInboxDeskProvisioned(ServerEvent):

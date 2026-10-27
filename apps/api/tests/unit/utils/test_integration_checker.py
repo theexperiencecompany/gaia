@@ -8,7 +8,13 @@ import pytest
 
 from app.constants.integrations import ACCOUNT_NEEDS_RECONNECT_HINT, ConnectMode
 from app.db.repositories.user_integrations import user_integration_repository
-from app.utils.integration_checker import request_integration_connection
+from app.helpers.mcp_helpers import get_mcp_oauth_redirect_uri
+from app.models.mcp_config import MCPConfig
+from app.services.integrations.integration_resolver import ResolvedIntegration
+from app.utils.integration_checker import (
+    _standalone_mcp_auth,
+    request_integration_connection,
+)
 from tests.integration_account_factories import make_integration_account, make_integration_record
 
 # ---------------------------------------------------------------------------
@@ -17,9 +23,46 @@ from tests.integration_account_factories import make_integration_account, make_i
 
 _FAKE_FRONTEND = "https://app.example.com"
 _MAGIC_LINK = "https://app.example.com/connect/abc123"
+_MCP_AUTH_URL = (
+    "https://mcp.example.com/authorize?client_id=gaia&state=xyz"
+    "&redirect_uri=https%3A%2F%2Fapi.example.com%2Fapi%2Fv1%2Fmcp%2Foauth%2Fcallback"
+)
+
+
 # The identity the status lookup is expected to be asked about.
 _USER = "user1"
 _INTEGRATION_ID = "gmail"
+
+
+def _mcp_client() -> MagicMock:
+    """Return a stand-in MCP client whose provider authorization URL is known to the test."""
+    client = MagicMock()
+    client.build_oauth_auth_url = AsyncMock(return_value=_MCP_AUTH_URL)
+    return client
+
+
+def _unavailable_mcp_client() -> MagicMock:
+    """Return a client whose OAuth discovery fails."""
+    client = MagicMock()
+    client.build_oauth_auth_url = AsyncMock(side_effect=RuntimeError("discovery failed"))
+    return client
+
+
+def _resolved_mcp(auth_type: str | None, integration_id: str = "posthog") -> ResolvedIntegration:
+    """Return a resolvable custom MCP integration with the given auth type."""
+    return ResolvedIntegration(
+        integration_id=integration_id,
+        name="Custom MCP",
+        description="A custom MCP server",
+        category="custom",
+        managed_by="mcp",
+        source="custom",
+        requires_auth=True,
+        auth_type=auth_type,
+        mcp_config=MCPConfig(server_url="https://mcp.example.com/mcp", requires_auth=True),
+        platform_integration=None,
+        custom_doc=None,
+    )
 
 
 @contextmanager
@@ -62,6 +105,10 @@ def _graph_run(
         patch(
             "app.utils.integration_checker.build_connect_link_url",
             AsyncMock(return_value=connect_url),
+        ),
+        patch(
+            "app.utils.integration_checker.get_mcp_client",
+            AsyncMock(return_value=_mcp_client()),
         ),
         patch("app.utils.integration_checker.settings") as mock_settings,
         patch.object(user_integration_repository, "is_expired", AsyncMock(side_effect=_is_expired)),
@@ -182,6 +229,7 @@ class TestExpiredConnectionPrompt:
             )
 
         assert "reconnect button" in ui_message
+        assert _MCP_AUTH_URL in ui_message
         card = self._card(writer)
         assert card["expired"] is True
         assert "reauthorize" in str(card["message"]).lower()
@@ -191,7 +239,8 @@ class TestExpiredConnectionPrompt:
                 "posthog", "PostHog", "user1", mode=ConnectMode.RECONNECT
             )
 
-        assert _MAGIC_LINK in bot_message
+        assert _MCP_AUTH_URL in bot_message
+        assert _MAGIC_LINK not in bot_message
         assert "reconnect" in bot_message.lower()
 
     @pytest.mark.regression
@@ -209,12 +258,365 @@ class TestExpiredConnectionPrompt:
             "The user's PostHog connection needs fresh authorization; "
             "they need to reconnect to refresh access. A reconnect button has been shown"
         ) in ui_message
+        assert _MCP_AUTH_URL in ui_message
 
         with _graph_run("bg", execution_mode="background"):
             bg_message = await request_integration_connection(
                 "posthog", "PostHog", "user1", mode=ConnectMode.RECONNECT
             )
         assert "the PostHog connection needs a refresh" in bg_message
+
+
+class TestStandaloneMcpAuthorization:
+    """OAuth MCP servers hand out their provider URL; token-only servers say there is none."""
+
+    async def test_oauth_mcp_url_is_relayed_verbatim_on_ui_and_bots(self) -> None:
+        client = _mcp_client()
+        with (
+            _graph_run("ui"),
+            patch(
+                "app.utils.integration_checker.get_mcp_client",
+                AsyncMock(return_value=client),
+            ),
+        ):
+            ui_message = await request_integration_connection(
+                "posthog", "PostHog", "user1", mode=ConnectMode.RECONNECT
+            )
+
+        client.build_oauth_auth_url.assert_awaited_once_with(
+            integration_id="posthog",
+            redirect_uri=get_mcp_oauth_redirect_uri(),
+            redirect_path="/integrations",
+        )
+        assert _MCP_AUTH_URL in ui_message
+        assert "clickable link" in ui_message
+
+        with _graph_run("bot"):
+            bot_message = await request_integration_connection(
+                "posthog", "PostHog", "user1", mode=ConnectMode.RECONNECT
+            )
+
+        assert _MCP_AUTH_URL in bot_message
+        assert "expires after about 10 minutes" in bot_message
+        assert "1 hour" not in bot_message
+        assert _MAGIC_LINK not in bot_message
+
+    async def test_token_only_mcp_says_so_and_never_mints_a_connect_link(self) -> None:
+        with (
+            _graph_run("bot"),
+            patch(
+                "app.utils.integration_checker.IntegrationResolver.resolve",
+                AsyncMock(return_value=_resolved_mcp("bearer")),
+            ),
+        ):
+            message = await request_integration_connection(
+                "posthog", "PostHog", "user1", mode=ConnectMode.RECONNECT
+            )
+
+        assert "API key" in message
+        assert "no standalone authorization URL exists" in message
+        assert _MAGIC_LINK not in message
+        assert f"{_FAKE_FRONTEND}/integrations" in message
+
+    async def test_token_only_mcp_still_shows_the_ui_card(self) -> None:
+        with (
+            _graph_run("ui") as writer,
+            patch(
+                "app.utils.integration_checker.IntegrationResolver.resolve",
+                AsyncMock(return_value=_resolved_mcp("bearer")),
+            ),
+        ):
+            message = await request_integration_connection(
+                "posthog", "PostHog", "user1", mode=ConnectMode.RECONNECT
+            )
+
+        card = writer.call_args.args[0]["integration_connection_required"]
+        assert card["expired"] is True
+        assert "API key" in message
+        assert "no standalone authorization URL exists" in message
+
+    async def test_discovery_failure_falls_back_to_the_integrations_page(self) -> None:
+        with (
+            _graph_run("bot"),
+            patch(
+                "app.utils.integration_checker.get_mcp_client",
+                AsyncMock(return_value=_unavailable_mcp_client()),
+            ),
+        ):
+            message = await request_integration_connection(
+                "posthog", "PostHog", "user1", mode=ConnectMode.RECONNECT
+            )
+
+        assert "No standalone authorization URL is available" in message
+        assert f"{_FAKE_FRONTEND}/integrations" in message
+        assert _MAGIC_LINK not in message
+
+
+class TestExactCopyPerBranch:
+    """Pin the whole instruction per channel and auth kind, not just a substring.
+
+    The agent acts on these sentences, so a mutation that swaps one clause for a
+    similar one must fail here rather than reach a user.
+    """
+
+    async def test_background_token_only(self) -> None:
+        with (
+            _graph_run("bg", execution_mode="background"),
+            patch(
+                "app.utils.integration_checker.IntegrationResolver.resolve",
+                AsyncMock(return_value=_resolved_mcp("bearer")),
+            ),
+        ):
+            msg = await request_integration_connection(
+                "posthog", "PostHog", "user1", mode=ConnectMode.RECONNECT
+            )
+        assert msg == (
+            "The user's PostHog connection needs fresh authorization; they need to reconnect "
+            "to refresh access. This integration authenticates with an API key, so no "
+            "standalone authorization URL exists. This is a background run and no user is "
+            "present to enter it, so retrying PostHog this run cannot succeed. Record in your "
+            "result that the PostHog connection needs a refresh and that the user must enter "
+            f"the API key at {_FAKE_FRONTEND}/integrations, then carry on with the rest of the "
+            "task."
+        )
+
+    async def test_background_classification_failure(self) -> None:
+        with (
+            _graph_run("bg", execution_mode="background"),
+            patch(
+                "app.utils.integration_checker.IntegrationResolver.resolve",
+                AsyncMock(side_effect=RuntimeError("discovery failed")),
+            ),
+        ):
+            msg = await request_integration_connection(
+                "posthog", "PostHog", "user1", mode=ConnectMode.RECONNECT
+            )
+        assert msg == (
+            "The user's PostHog connection needs fresh authorization; they need to reconnect "
+            "to refresh access. No standalone authorization URL is available for this "
+            "integration. This is a background run and no user is present, so retrying PostHog "
+            "this run cannot succeed. Record in your result that the PostHog connection needs "
+            f"a refresh (the user can reconnect it at {_FAKE_FRONTEND}/integrations), then "
+            "carry on with the rest of the task."
+        )
+
+    async def test_ui_oauth(self) -> None:
+        with _graph_run("ui"):
+            msg = await request_integration_connection(
+                "posthog", "PostHog", "user1", mode=ConnectMode.RECONNECT
+            )
+        assert msg == (
+            "The user's PostHog connection needs fresh authorization; they need to reconnect "
+            "to refresh access. A reconnect button has been shown to the user, and a "
+            f"standalone authorization URL is available: {_MCP_AUTH_URL}. Relay that URL "
+            "verbatim as a clickable link so the user can reconnect even if the card is not "
+            "visible, then try again."
+        )
+
+    async def test_ui_token_only(self) -> None:
+        with (
+            _graph_run("ui"),
+            patch(
+                "app.utils.integration_checker.IntegrationResolver.resolve",
+                AsyncMock(return_value=_resolved_mcp("bearer")),
+            ),
+        ):
+            msg = await request_integration_connection(
+                "posthog", "PostHog", "user1", mode=ConnectMode.RECONNECT
+            )
+        assert msg == (
+            "The user's PostHog connection needs fresh authorization; they need to reconnect "
+            "to refresh access. This integration authenticates with an API key, so no "
+            "standalone authorization URL exists. A reconnect button has been shown to the "
+            "user; ask them to enter the API key there."
+        )
+
+    async def test_ui_unavailable(self) -> None:
+        with (
+            _graph_run("ui"),
+            patch(
+                "app.utils.integration_checker.get_mcp_client",
+                AsyncMock(return_value=_unavailable_mcp_client()),
+            ),
+        ):
+            msg = await request_integration_connection(
+                "posthog", "PostHog", "user1", mode=ConnectMode.RECONNECT
+            )
+        assert msg == (
+            "The user's PostHog connection needs fresh authorization; they need to reconnect "
+            "to refresh access. A reconnect button has been shown to the user, but no "
+            "standalone authorization URL is available right now. Ask the user to click it, "
+            "then try again."
+        )
+
+    async def test_bot_oauth(self) -> None:
+        with _graph_run("bot"):
+            msg = await request_integration_connection(
+                "posthog", "PostHog", "user1", mode=ConnectMode.RECONNECT
+            )
+        assert msg == (
+            "The user's PostHog connection needs fresh authorization; they need to reconnect "
+            "to refresh access. The user is on a text-only platform (no UI). Include this "
+            "standalone authorization URL verbatim in your result so the comms agent can relay "
+            "it to the user, and tell them to open it soon because it expires after about 10 "
+            f"minutes: {_MCP_AUTH_URL}"
+        )
+
+    async def test_bot_token_only(self) -> None:
+        with (
+            _graph_run("bot"),
+            patch(
+                "app.utils.integration_checker.IntegrationResolver.resolve",
+                AsyncMock(return_value=_resolved_mcp("bearer")),
+            ),
+        ):
+            msg = await request_integration_connection(
+                "posthog", "PostHog", "user1", mode=ConnectMode.RECONNECT
+            )
+        assert msg == (
+            "The user's PostHog connection needs fresh authorization; they need to reconnect "
+            "to refresh access. This integration authenticates with an API key, so no "
+            "standalone authorization URL exists. The user is on a text-only platform (no UI); "
+            f"ask them to open {_FAKE_FRONTEND}/integrations and enter the API key to connect "
+            "PostHog there."
+        )
+
+    async def test_bot_unavailable(self) -> None:
+        with (
+            _graph_run("bot"),
+            patch(
+                "app.utils.integration_checker.get_mcp_client",
+                AsyncMock(return_value=_unavailable_mcp_client()),
+            ),
+        ):
+            msg = await request_integration_connection(
+                "posthog", "PostHog", "user1", mode=ConnectMode.RECONNECT
+            )
+        assert msg == (
+            "The user's PostHog connection needs fresh authorization; they need to reconnect "
+            "to refresh access. No standalone authorization URL is available for this "
+            "integration. The user is on a text-only platform (no UI); ask them to open "
+            f"{_FAKE_FRONTEND}/integrations and reconnect PostHog there."
+        )
+
+    async def test_bot_falls_back_to_a_connect_link_when_oauth_url_is_missing(self) -> None:
+        client = MagicMock()
+        client.build_oauth_auth_url = AsyncMock(return_value=None)
+        with (
+            _graph_run("bot"),
+            patch("app.utils.integration_checker.get_mcp_client", AsyncMock(return_value=client)),
+        ):
+            msg = await request_integration_connection(
+                "posthog", "PostHog", "user1", mode=ConnectMode.RECONNECT
+            )
+        assert msg == (
+            "The user's PostHog connection needs fresh authorization; they need to reconnect "
+            "to refresh access. The user is on a text-only platform (no UI). Include this URL "
+            "verbatim in your result so the comms agent can relay it to the user, and tell "
+            f"them it is valid for 1 hour: {_MAGIC_LINK}"
+        )
+
+    async def test_ui_treats_a_missing_oauth_url_as_no_url(self) -> None:
+        client = MagicMock()
+        client.build_oauth_auth_url = AsyncMock(return_value=None)
+        with (
+            _graph_run("ui"),
+            patch("app.utils.integration_checker.get_mcp_client", AsyncMock(return_value=client)),
+        ):
+            msg = await request_integration_connection(
+                "posthog", "PostHog", "user1", mode=ConnectMode.RECONNECT
+            )
+        assert msg == (
+            "The user's PostHog connection needs fresh authorization; they need to reconnect "
+            "to refresh access. A reconnect button has been shown to the user, so do NOT "
+            "include any URL in your reply, the UI card handles it. Ask the user to click it, "
+            "then try again."
+        )
+
+
+class TestStandaloneMcpAuthClassification:
+    """_standalone_mcp_auth decides the auth kind without touching the network when it can."""
+
+    async def test_a_composio_integration_is_not_mcp_even_with_a_config(self) -> None:
+        resolved = _resolved_mcp("oauth")
+        resolved.managed_by = "composio"
+        with patch(
+            "app.utils.integration_checker.IntegrationResolver.resolve",
+            AsyncMock(return_value=resolved),
+        ):
+            auth = await _standalone_mcp_auth("user1", "posthog", build_url=True)
+        assert auth.kind == "not_mcp"
+        assert auth.url is None
+
+    async def test_unknown_integration_is_not_mcp(self) -> None:
+        with patch(
+            "app.utils.integration_checker.IntegrationResolver.resolve",
+            AsyncMock(return_value=None),
+        ):
+            auth = await _standalone_mcp_auth("user1", "posthog", build_url=True)
+        assert auth.kind == "not_mcp"
+
+    async def test_mcp_without_a_config_is_not_mcp(self) -> None:
+        resolved = _resolved_mcp("oauth")
+        resolved.mcp_config = None
+        with patch(
+            "app.utils.integration_checker.IntegrationResolver.resolve",
+            AsyncMock(return_value=resolved),
+        ):
+            auth = await _standalone_mcp_auth("user1", "posthog", build_url=True)
+        assert auth.kind == "not_mcp"
+
+    async def test_mcp_that_needs_no_auth_is_not_mcp(self) -> None:
+        resolved = _resolved_mcp("oauth")
+        resolved.requires_auth = False
+        with patch(
+            "app.utils.integration_checker.IntegrationResolver.resolve",
+            AsyncMock(return_value=resolved),
+        ):
+            auth = await _standalone_mcp_auth("user1", "posthog", build_url=True)
+        assert auth.kind == "not_mcp"
+
+    async def test_bearer_server_is_token_only(self) -> None:
+        with (
+            patch(
+                "app.utils.integration_checker.IntegrationResolver.resolve",
+                AsyncMock(return_value=_resolved_mcp("bearer")),
+            ),
+            patch("app.utils.integration_checker.get_mcp_client") as get_client,
+        ):
+            auth = await _standalone_mcp_auth("user1", "posthog", build_url=True)
+        assert auth.kind == "token_only"
+        get_client.assert_not_awaited()
+
+    async def test_oauth_without_building_the_url_stays_oauth(self) -> None:
+        with (
+            patch(
+                "app.utils.integration_checker.IntegrationResolver.resolve",
+                AsyncMock(return_value=_resolved_mcp("oauth")),
+            ),
+            patch("app.utils.integration_checker.get_mcp_client") as get_client,
+        ):
+            auth = await _standalone_mcp_auth("user1", "posthog", build_url=False)
+        assert auth.kind == "oauth"
+        assert auth.url is None
+        get_client.assert_not_awaited()
+
+    async def test_discovery_failure_is_unavailable_and_logged(self) -> None:
+        with (
+            patch(
+                "app.utils.integration_checker.IntegrationResolver.resolve",
+                AsyncMock(side_effect=RuntimeError("boom")),
+            ),
+            patch("app.utils.integration_checker.log.warning") as warning,
+        ):
+            auth = await _standalone_mcp_auth("user1", "posthog", build_url=True)
+        assert auth.kind == "unavailable"
+        warning.assert_called_once_with(
+            "MCP standalone authorization URL unavailable",
+            integration_id="posthog",
+            error_type="RuntimeError",
+            error="boom",
+        )
 
 
 class TestAddAccountPrompt:

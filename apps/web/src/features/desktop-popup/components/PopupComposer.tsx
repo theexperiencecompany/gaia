@@ -5,8 +5,8 @@ import { Input } from "@heroui/input";
 import { Cancel01Icon } from "@icons";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { useConversation } from "@/features/chat/hooks/useConversation";
+import { sendMessage } from "@/features/chat/stream/sendMessage";
 import { useElectron } from "@/hooks/useElectron";
-import { useSendMessage } from "@/hooks/useSendMessage";
 import { useIsInitialResponseStreaming } from "@/stores/streamStore";
 import { usePopupDismissGuard } from "../hooks/usePopupEscapeDismiss";
 import type { PopupAgentState } from "../hooks/usePopupVoice";
@@ -33,7 +33,6 @@ export default function PopupComposer({
 }: Readonly<PopupComposerProps>) {
   const [text, setText] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-  const sendMessage = useSendMessage();
   const isStreaming = useIsInitialResponseStreaming();
   const { dismissPopup } = useElectron();
   const dismissIfIdle = usePopupDismissGuard();
@@ -58,7 +57,9 @@ export default function PopupComposer({
     // No client-side paid-only pre-check here: a free user's send gets a 402
     // from chat-stream, and `PopupPaywallNotice` renders that block in the
     // feed window (this pill has no room for it). See sync.ts.
-    sendMessage(content);
+    sendMessage(content).catch((error) => {
+      console.error("Popup send failed", error);
+    });
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {

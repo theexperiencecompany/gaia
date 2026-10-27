@@ -93,6 +93,7 @@ export type ServerEventName =
   | "notes:deleted"
   | "notes:updated"
   | "notification:action_executed"
+  | "notification:agent_sent"
   | "notification:bulk_action"
   | "notification:read"
   | "notification:unsubscribed"
@@ -157,6 +158,7 @@ export type ServerEventName =
   | "workflow:deleted"
   | "workflow:executed"
   | "workflow:published"
+  | "workflow:result_delivered"
   | "workflow:steps_regenerated"
   | "workflow:unpublished"
   | "workflow:updated";
@@ -1085,6 +1087,14 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
   };
+  "notification:agent_sent": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "outcome": "sent" | "folded_into_reply";
+    "destination"?: "chat_app" | "in_app";
+    "destination_basis"?: "recent_activity" | "priority" | "active_in_app" | "no_chat_app";
+  };
   "notification:bulk_action": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
@@ -1256,6 +1266,8 @@ export interface EventProperties {
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "reminder_id": string;
     "agent": string;
+    "destination"?: "chat_app" | "in_app";
+    "destination_basis"?: "recent_activity" | "priority" | "active_in_app" | "no_chat_app";
   };
   "reminder:created": {
     "actor": "user" | "agent";
@@ -1470,6 +1482,8 @@ export interface EventProperties {
     "trigger_type": string;
     "recurring": boolean;
     "platform"?: string;
+    "destination"?: "chat_app" | "in_app";
+    "destination_basis"?: "recent_activity" | "priority" | "active_in_app" | "no_chat_app";
   };
   "todos:subscription_failed": {
     "actor": "user" | "agent";
@@ -1667,6 +1681,16 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+  };
+  "workflow:result_delivered": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "workflow_id"?: string;
+    "outcome": "delivered" | "undelivered" | "lookup_failed";
+    "destination"?: "chat_app" | "in_app";
+    "destination_basis"?: "recent_activity" | "priority" | "active_in_app" | "no_chat_app";
+    "platform"?: string;
   };
   "workflow:steps_regenerated": {
     "actor": "user" | "agent";

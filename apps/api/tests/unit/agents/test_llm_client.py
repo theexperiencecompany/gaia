@@ -12,7 +12,9 @@ Covers:
 """
 
 import asyncio
+from collections.abc import AsyncIterator
 from dataclasses import replace
+import json
 from typing import Any, ClassVar, cast
 from unittest.mock import AsyncMock, MagicMock, NonCallableMagicMock, patch
 
@@ -35,6 +37,7 @@ from langchain_openrouter import ChatOpenRouter
 from openai import APIConnectionError, AuthenticationError, RateLimitError
 from pydantic import BaseModel, SecretStr
 import pytest
+import tenacity
 
 from app.agents.llm import client as client_module
 from app.agents.llm.chatbot import chatbot
@@ -63,6 +66,7 @@ from app.agents.llm.client import (
     invoke_llm,
     register_llm_providers,
     resolve_model,
+    without_sdk_retry,
 )
 from app.agents.llm.exceptions import (
     LLM_FALLBACK_EXCEPTIONS,
@@ -872,6 +876,25 @@ class TestAinvokeLlm:
         assert result.content == "fallback-ok"
         # The fallback path is retry-wrapped too.
         fallback.with_retry.assert_called_once()
+
+    @pytest.mark.regression
+    @patch("app.agents.llm.client.log")
+    async def test_a_malformed_structured_reply_reaches_the_fallback_lane(
+        self, mock_log: MagicMock
+    ) -> None:
+        """A prose reply crosses lanes: the fallback's JSON mode cannot answer in prose."""
+        primary = self._runnable(
+            side_effect=MalformedStructuredOutputError(
+                "EpisodeSummary: reply made no EpisodeSummary tool call",
+                llm_output="Routine inbox sweeps, nothing worth summarizing.",
+            )
+        )
+        fallback = self._runnable(result={"summary": "a real summary"})
+
+        result = await ainvoke_llm(primary, [HumanMessage(content="hi")], fallback=fallback)
+
+        assert result == {"summary": "a real summary"}
+        fallback.ainvoke.assert_awaited_once()
 
     @patch("app.agents.llm.client.log")
     async def test_fallback_factory_called_lazily(self, mock_log: MagicMock) -> None:
@@ -2656,6 +2679,110 @@ class TestTheInvokeTimeoutIsEnforced:
                 label="comms_agent",
                 options=LLMInvokeOptions(timeout=0.05, meter_auxiliary=False),
             )
+
+
+class _ReadTimeoutMidStream(httpx.AsyncByteStream):
+    """A streamed reply whose socket read times out after the first SSE frame."""
+
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        yield _stream_frame("Hel")
+        raise httpx.ReadTimeout("The read operation timed out")
+
+
+def _stream_frame(content: str, finish: str | None = None) -> bytes:
+    frame = {
+        "id": "gen-1",
+        "object": "chat.completion.chunk",
+        "created": 1,
+        "model": DEFAULT_MODEL_NAME,
+        "choices": [
+            {
+                "index": 0,
+                "delta": {"role": "assistant", "content": content},
+                "finish_reason": finish,
+            }
+        ],
+    }
+    return f"data: {json.dumps(frame)}\n\n".encode()
+
+
+class TestAReadTimeoutMidStreamIsRetriedThenFallsBack:
+    """The OpenRouter SDK lets a raw httpx.ReadTimeout escape a streamed reply; it is no TimeoutError.
+
+    Drives the real streaming ChatOpenRouter and its SDK over an httpx mock
+    transport, so the error surfaces exactly where the SDK raises it.
+    """
+
+    @staticmethod
+    def _openrouter(replies: list[httpx.AsyncByteStream]) -> tuple[ChatOpenRouter, list[int]]:
+        requests_served = [0]
+
+        async def _reply(_request: httpx.Request) -> httpx.Response:
+            requests_served[0] += 1
+            return httpx.Response(
+                200, headers={"content-type": "text/event-stream"}, stream=replies.pop(0)
+            )
+
+        llm = without_sdk_retry(
+            ChatOpenRouter(model=DEFAULT_MODEL_NAME, api_key=SecretStr("k"), streaming=True)
+        )
+        llm.client.sdk_configuration.async_client = httpx.AsyncClient(
+            transport=httpx.MockTransport(_reply)
+        )
+        return llm, requests_served
+
+    @pytest.mark.regression
+    async def test_the_next_attempt_answers_after_a_mid_stream_read_timeout(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(tenacity.wait_exponential_jitter, "__call__", lambda *_: 0.0)
+        whole_reply = httpx.ByteStream(_stream_frame("Hello", finish="stop") + b"data: [DONE]\n\n")
+        llm, requests_served = self._openrouter([_ReadTimeoutMidStream(), whole_reply])
+
+        result = await ainvoke_llm(
+            llm, [HumanMessage(content="hi")], options=LLMInvokeOptions(meter_auxiliary=False)
+        )
+
+        assert result.content == "Hello"
+        assert requests_served[0] == 2
+
+    @pytest.mark.regression
+    async def test_the_fallback_answers_when_the_primary_read_times_out_mid_stream(self) -> None:
+        llm, requests_served = self._openrouter([_ReadTimeoutMidStream()])
+
+        result = await ainvoke_llm(
+            llm,
+            [HumanMessage(content="hi")],
+            fallback=RunnableLambda(lambda _: AIMessage(content="fallback-ok")),
+            options=LLMInvokeOptions(max_attempts=1, meter_auxiliary=False),
+        )
+
+        assert result.content == "fallback-ok"
+        assert requests_served[0] == 1
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            httpx.ConnectTimeout("connect"),
+            httpx.ReadError("reset by peer"),
+            httpx.RemoteProtocolError("peer closed connection mid-body"),
+        ],
+    )
+    def test_a_dropped_connection_is_retried_and_then_falls_back(
+        self, error: httpx.TransportError
+    ) -> None:
+        assert isinstance(error, LLM_RETRYABLE_EXCEPTIONS)
+        assert isinstance(error, LLM_FALLBACK_EXCEPTIONS)
+
+    @pytest.mark.parametrize(
+        "error",
+        [httpx.UnsupportedProtocol("ftp://"), httpx.LocalProtocolError("bad header")],
+    )
+    def test_a_misconfigured_request_is_neither_retried_nor_downgraded(
+        self, error: httpx.TransportError
+    ) -> None:
+        assert not isinstance(error, LLM_RETRYABLE_EXCEPTIONS)
+        assert not isinstance(error, LLM_FALLBACK_EXCEPTIONS)
 
 
 class TestTheStickyKeyNeverReachesANonOpenRouterFallback:

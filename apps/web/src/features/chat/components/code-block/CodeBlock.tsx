@@ -2,9 +2,8 @@
 
 import dynamic from "next/dynamic";
 import type React from "react";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useState } from "react";
 import { copyWithFeedback } from "@/lib/clipboard";
-import { useActiveLoading } from "@/stores/streamStore";
 import CopyButton from "./CopyButton";
 import DownloadButton from "./DownloadButton";
 
@@ -32,6 +31,8 @@ interface CodeBlockProps extends React.HTMLAttributes<HTMLElement> {
   className?: string;
   children: ReactNode;
   hideToolbar?: boolean;
+  /** A chat turn is still streaming this block; mermaid stays on its code tab until it ends. */
+  isStreaming?: boolean;
 }
 
 const CodeBlock: React.FC<CodeBlockProps> = ({
@@ -39,21 +40,18 @@ const CodeBlock: React.FC<CodeBlockProps> = ({
   className,
   children,
   hideToolbar,
+  isStreaming: isLoading = false,
   ...props
 }) => {
-  const { isLoading } = useActiveLoading();
-  const [activeTab, setActiveTab] = useState("code");
+  // While a turn streams, mermaid starts on its code tab; once it ends the
+  // preview is the useful view. Deriving it keeps the tab in sync with the
+  // prop without an effect, and a manual pick wins from then on.
+  const [pickedTab, setPickedTab] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const activeTab = pickedTab ?? (isLoading ? "code" : "preview");
 
   const match = /language-(\w+)/.exec(className || "");
   const isMermaid = match && match[1] === "mermaid";
-
-  // Automatically switch to preview mode once loading is done.
-  // FlowchartPreview re-runs `mermaid.contentLoaded()` whenever its children
-  // change, so we no longer need to call it from here.
-  useEffect(() => {
-    if (!isLoading) setActiveTab("preview");
-  }, [isLoading]);
 
   const handleCopy = async () => {
     if (!(await copyWithFeedback(String(children).replace(/\n$/, "")))) return;
@@ -66,7 +64,7 @@ const CodeBlock: React.FC<CodeBlockProps> = ({
       <div className="relative my-3 flex w-[40vw] max-w-[30vw] flex-col gap-0 overflow-x-visible rounded-t-[10px]! bg-zinc-900 pb-0!">
         <MermaidTabs
           activeTab={activeTab}
-          onTabChange={setActiveTab}
+          onTabChange={setPickedTab}
           isLoading={isLoading}
           syntaxHighlighterProps={{
             ...props,

@@ -379,10 +379,11 @@ proactively pings the user on a channel. Use it for "text me on WhatsApp when
 X", or to alert the user to an important result when they may be away from the
 app.
 
-- `channels` is REQUIRED and must be exactly what the user named: "text me on
-  WhatsApp" → `["whatsapp"]`, "ping me on Slack" → `["slack"]`. Valid channels:
-  `whatsapp`, `telegram`, `discord`, `slack`, `inapp`. If the user did NOT name
-  a channel, ASK which one(s); never guess and never broadcast.
+- Pass `channels` only when the user named one: "text me on WhatsApp" →
+  `["whatsapp"]`, "ping me on Slack" → `["slack"]`. Valid channels: `whatsapp`,
+  `telegram`, `discord`, `slack`, `inapp`. If they named none, omit `channels`:
+  the tool picks the one place they are active (a chat app or the GAIA app).
+  Never broadcast to channels the user did not ask for.
 - A messaging channel only delivers if the user has LINKED that platform
   (WhatsApp/Telegram/Discord/Slack) and has it enabled; an unlinked channel is
   silently skipped. The return reports `delivered_channels`; check it. If a
@@ -401,16 +402,21 @@ the user in their app settings; there is no agent tool for that yet.
 
 ## Automatic result delivery
 
-Two things already deliver their own results, and calling `send_notification`
+Three things already deliver their own results, and calling `send_notification`
 to announce one of them sends it to the user twice:
 
+- A background task started from a **chat** delivers its result into the
+  conversation it came from (the user's Telegram/WhatsApp/... chat, or the web
+  app). "Keep me posted" there needs no notification on that same channel.
 - A finished **workflow** run delivers its result to the user's linked platforms
   plus in-app, unless the workflow is silent. See the `workflows` doc.
 - A finished **tracked todo** run is reported to the user's chat app when it
   found something that matters, unless that todo has `notify_on_run` off. See
   the `tracked-todos` doc.
 
-In both cases the run's result is delivered for you. Notify only for something
+When one of these delivers the result, do not announce it again. A silent
+workflow, or a todo with `notify_on_run` off, delivers nothing, so there a
+notification is the only way the user hears. Otherwise notify only for something
 genuinely separate and urgent.
 """
 

@@ -17,7 +17,7 @@ from app.db.redis import delete_cache, delete_cache_by_pattern
 from app.db.repositories.integrations import integration_repository
 from app.db.repositories.user_integrations import user_integration_repository
 from app.helpers.integration_helpers import dedup_server_url_key
-from app.helpers.mcp_helpers import get_api_base_url
+from app.helpers.mcp_helpers import get_mcp_oauth_redirect_uri
 from app.models.db_oauth import MCPCredential
 from app.models.integration_models import (
     CreateCustomIntegrationRequest,
@@ -448,7 +448,7 @@ async def _build_oauth_result(mcp_client: MCPClient, integration_id: str) -> Cus
     try:
         auth_url = await mcp_client.build_oauth_auth_url(
             integration_id=integration_id,
-            redirect_uri=f"{get_api_base_url()}/api/v1/mcp/oauth/callback",
+            redirect_uri=get_mcp_oauth_redirect_uri(),
             redirect_path="/integrations",
         )
         return {"status": "requires_oauth", "oauth_url": auth_url}

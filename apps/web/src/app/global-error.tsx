@@ -6,10 +6,9 @@
 
 import * as Sentry from "@sentry/nextjs";
 import NextError from "next/error";
-import posthog from "posthog-js";
 import { useEffect, useState } from "react";
 
-import { track } from "@/lib/analytics";
+import { captureException, track } from "@/lib/analytics";
 import {
   isChunkLoadError,
   recoverFromChunkError,
@@ -38,7 +37,7 @@ function GlobalErrorView({ error }: GlobalErrorProps) {
     if (isChunk) return;
 
     Sentry.captureException(error);
-    posthog.captureException(error);
+    captureException(error);
     // Full diagnostics go through Sentry/captureException above; error
     // message/stack can carry user content, so analytics only gets the stable
     // type and digest.

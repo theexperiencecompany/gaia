@@ -12,11 +12,14 @@ from app.agents.tools.notification_tool import (
     get_notification_preferences,
     get_notifications,
     mark_notifications_read,
+    result_is_delivered_automatically,
     search_notifications,
     send_notification,
 )
 from app.constants.notifications import NOTIFICATION_CHANNEL_TYPES
+from app.helpers.agent_helpers import AgentIdentity, AgentThread, AgentTurn, build_agent_config
 from app.models.agent_models import RunUserMissingError
+from app.models.chat_models import ConversationSource
 from app.models.notification.notification_models import (
     ChannelDeliveryStatus,
     NotificationContentView,
@@ -28,6 +31,10 @@ from app.models.notification.notification_models import (
     NotificationType,
     NotificationView,
 )
+from app.services.delivery.chat_channel import ChatChannel, InApp
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.notifications import NotificationAgentSent
+from tests.helpers import captured_wide_event
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -412,21 +419,206 @@ class TestMarkNotificationsRead:
 
 
 class TestSendNotificationChannels:
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.notification_service")
-    async def test_no_channels_is_refused_and_lists_every_channel(
-        self,
-        mock_service: MagicMock,
+    @patch(f"{MODULE}.resolve_proactive_target", new_callable=AsyncMock)
+    async def test_no_channel_named_goes_where_the_user_is_reachable_now(
+        self, mock_resolve: AsyncMock, mock_service: MagicMock, mock_writer_factory: MagicMock
     ) -> None:
+        mock_writer_factory.return_value = _writer_mock()
+        mock_resolve.return_value = ChatChannel(
+            source=ConversationSource.TELEGRAM, platform_user_id="tg-1", basis="recent_activity"
+        )
+        mock_service.create_notification = AsyncMock(side_effect=_delivered_on_every_channel)
+
         result = await send_notification.coroutine(
+            config=_chat_run_config("web"), message="Build done", title="Build"
+        )
+
+        mock_resolve.assert_awaited_once_with(FAKE_USER_ID)
+        assert _requested_channels(mock_service) == ["telegram"]
+        assert result["delivered_channels"] == ["telegram"]
+
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.notification_service")
+    @patch(f"{MODULE}.resolve_proactive_target", new_callable=AsyncMock)
+    async def test_no_chat_app_linked_means_in_app(
+        self, mock_resolve: AsyncMock, mock_service: MagicMock, mock_writer_factory: MagicMock
+    ) -> None:
+        mock_writer_factory.return_value = _writer_mock()
+        mock_resolve.return_value = InApp(reason="no_chat_app")
+        mock_service.create_notification = AsyncMock(side_effect=_delivered_on_every_channel)
+
+        await send_notification.coroutine(
             config=_make_config(), message="Build done", title="Build", channels=[]
         )
 
-        assert result["success"] is False
-        assert result["error"].startswith(
-            f"channels is required: specify which channel(s) to notify "
-            f"({', '.join(NOTIFICATION_CHANNEL_TYPES)})."
+        assert _requested_channels(mock_service) == ["inapp"]
+
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.notification_service")
+    @patch(f"{MODULE}.resolve_proactive_target", new_callable=AsyncMock)
+    async def test_a_workflow_run_with_no_channel_folds_into_its_own_result(
+        self, mock_resolve: AsyncMock, mock_service: MagicMock, mock_writer_factory: MagicMock
+    ) -> None:
+        mock_writer_factory.return_value = _writer_mock()
+        mock_resolve.return_value = InApp(reason="active_in_app")
+
+        result = await send_notification.coroutine(
+            config=_chat_run_config(None, workflow_id="wf-1", execution_mode="background"),
+            message="Build done",
+            title="Build",
         )
+
         mock_service.create_notification.assert_not_called()
+        assert result["delivered_via_conversation"] == "inapp"
+
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.notification_service")
+    @patch(f"{MODULE}.resolve_proactive_target", new_callable=AsyncMock)
+    async def test_a_workflow_run_without_completion_delivery_still_notifies(
+        self, mock_resolve: AsyncMock, mock_service: MagicMock, mock_writer_factory: MagicMock
+    ) -> None:
+        mock_writer_factory.return_value = _writer_mock()
+        mock_resolve.return_value = InApp(reason="active_in_app")
+        mock_service.create_notification = AsyncMock(side_effect=_delivered_on_every_channel)
+        config = _chat_run_config(None, workflow_id="wf-1", execution_mode="background")
+        config["configurable"]["workflow_notify_on_completion"] = False
+
+        await send_notification.coroutine(config=config, message="Build done", title="Build")
+
+        assert _requested_channels(mock_service) == ["inapp"]
+
+    @pytest.mark.regression
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.todo_repository")
+    @patch(f"{MODULE}.notification_service")
+    @patch(f"{MODULE}.resolve_proactive_target", new_callable=AsyncMock)
+    async def test_a_tracked_todo_run_with_no_channel_folds_into_its_own_result(
+        self,
+        mock_resolve: AsyncMock,
+        mock_service: MagicMock,
+        mock_todos: MagicMock,
+        mock_writer_factory: MagicMock,
+    ) -> None:
+        mock_writer_factory.return_value = _writer_mock()
+        mock_resolve.return_value = ChatChannel(
+            source=ConversationSource.TELEGRAM, platform_user_id="tg-1", basis="recent_activity"
+        )
+        mock_todos.get = AsyncMock(return_value=MagicMock(notify_on_run=True))
+
+        result = await send_notification.coroutine(
+            config=_chat_run_config(None, active_todo_id="todo-1", execution_mode="background"),
+            message="Found it",
+            title="Todo",
+        )
+
+        # Scoped to the run's user: an agent tool never reads another user's todo.
+        mock_todos.get.assert_awaited_once_with("todo-1", user_id=FAKE_USER_ID)
+        mock_service.create_notification.assert_not_called()
+        assert result["delivered_via_conversation"] == "telegram"
+
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.todo_repository")
+    @patch(f"{MODULE}.notification_service")
+    @patch(f"{MODULE}.resolve_proactive_target", new_callable=AsyncMock)
+    async def test_a_silent_tracked_todo_run_still_notifies(
+        self,
+        mock_resolve: AsyncMock,
+        mock_service: MagicMock,
+        mock_todos: MagicMock,
+        mock_writer_factory: MagicMock,
+    ) -> None:
+        mock_writer_factory.return_value = _writer_mock()
+        mock_resolve.return_value = InApp(reason="active_in_app")
+        mock_service.create_notification = AsyncMock(side_effect=_delivered_on_every_channel)
+        mock_todos.get = AsyncMock(return_value=MagicMock(notify_on_run=False))
+
+        await send_notification.coroutine(
+            config=_chat_run_config(None, active_todo_id="todo-1", execution_mode="background"),
+            message="Found it",
+            title="Todo",
+        )
+
+        assert _requested_channels(mock_service) == ["inapp"]
+
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.notification_service")
+    @patch(f"{MODULE}.resolve_proactive_target", new_callable=AsyncMock)
+    async def test_a_background_run_naming_a_channel_still_sends_it(
+        self, mock_resolve: AsyncMock, mock_service: MagicMock, mock_writer_factory: MagicMock
+    ) -> None:
+        mock_writer_factory.return_value = _writer_mock()
+        mock_service.create_notification = AsyncMock(side_effect=_delivered_on_every_channel)
+
+        await send_notification.coroutine(
+            config=_chat_run_config(None, workflow_id="wf-1", execution_mode="background"),
+            message="Urgent",
+            title="Urgent",
+            channels=["whatsapp"],
+        )
+
+        assert _requested_channels(mock_service) == ["whatsapp"]
+        mock_resolve.assert_not_called()
+
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.todo_repository")
+    @patch(f"{MODULE}.notification_service")
+    @patch(f"{MODULE}.resolve_proactive_target", new_callable=AsyncMock)
+    async def test_an_interactive_run_bound_to_a_todo_is_not_treated_as_delivered(
+        self,
+        mock_resolve: AsyncMock,
+        mock_service: MagicMock,
+        mock_todos: MagicMock,
+        mock_writer_factory: MagicMock,
+    ) -> None:
+        mock_writer_factory.return_value = _writer_mock()
+        mock_resolve.return_value = InApp(reason="no_chat_app")
+        mock_service.create_notification = AsyncMock(side_effect=_delivered_on_every_channel)
+
+        await send_notification.coroutine(
+            config=_chat_run_config(None, active_todo_id="todo-1", execution_mode="interactive"),
+            message="Hi",
+            title="Hi",
+        )
+
+        mock_todos.get.assert_not_called()
+        assert _requested_channels(mock_service) == ["inapp"]
+
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.notification_service")
+    @patch(f"{MODULE}.resolve_proactive_target", new_callable=AsyncMock)
+    async def test_an_unnamed_channel_from_a_web_chat_folds_into_the_reply(
+        self, mock_resolve: AsyncMock, mock_service: MagicMock, mock_writer_factory: MagicMock
+    ) -> None:
+        """The user is in the app and the reply lands there: a web run notifies nobody else."""
+        mock_writer_factory.return_value = _writer_mock()
+        mock_resolve.return_value = InApp(reason="active_in_app")
+
+        result = await send_notification.coroutine(
+            config=_chat_run_config("web"), message="Done", title="Done"
+        )
+
+        mock_service.create_notification.assert_not_called()
+        assert result["delivered_via_conversation"] == "inapp"
+
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.notification_service")
+    @patch(f"{MODULE}.resolve_proactive_target", new_callable=AsyncMock)
+    async def test_an_unnamed_channel_on_the_chat_the_user_is_in_folds_into_the_reply(
+        self, mock_resolve: AsyncMock, mock_service: MagicMock, mock_writer_factory: MagicMock
+    ) -> None:
+        mock_writer_factory.return_value = _writer_mock()
+        mock_resolve.return_value = ChatChannel(
+            source=ConversationSource.TELEGRAM, platform_user_id="tg-1", basis="recent_activity"
+        )
+
+        result = await send_notification.coroutine(
+            config=_chat_run_config("telegram"), message="Done", title="Done"
+        )
+
+        mock_service.create_notification.assert_not_called()
+        assert result["delivered_via_conversation"] == "telegram"
 
     @patch(f"{MODULE}.notification_service")
     async def test_unknown_channels_are_named_and_valid_ones_listed(
@@ -491,6 +683,373 @@ async def test_a_sent_notification_is_streamed_as_the_result_it_returns(
     writer.assert_called_once_with({"send_notification_data": result})
 
 
+def _chat_run_config(
+    source: str | None, **extra: str | bool
+) -> dict[str, dict[str, str | bool | None]]:
+    """Build a run config the way build_agent_config writes one for a turn from source."""
+    configurable: dict[str, str | bool | None] = {
+        "user_id": FAKE_USER_ID,
+        "conversation_id": "conv-1",
+        "conversation_source": source,
+        **extra,
+    }
+    return {"configurable": configurable, "metadata": {"user_id": FAKE_USER_ID}}
+
+
+async def _delivered_on_every_channel(request: NotificationRequest) -> NotificationRecord:
+    return NotificationRecord(
+        id="notif-7",
+        user_id=FAKE_USER_ID,
+        status=NotificationStatus.DELIVERED,
+        created_at="2026-01-01T00:00:00+00:00",
+        channels=[
+            ChannelDeliveryStatus(channel_type=ch.channel_type, status=NotificationStatus.DELIVERED)
+            for ch in request.channels
+        ],
+        original_request=request,
+    )
+
+
+def _requested_channels(mock_service: MagicMock) -> list[str]:
+    request: NotificationRequest = mock_service.create_notification.await_args.args[0]
+    return [ch.channel_type for ch in request.channels]
+
+
+TELEGRAM_ACTIVE = ChatChannel(
+    source=ConversationSource.TELEGRAM, platform_user_id="tg-1", basis="recent_activity"
+)
+
+
+class TestSendNotificationIsMeasured:
+    """One event per call, after it succeeded: sent or folded, and where GAIA routed an unnamed one."""
+
+    @pytest.mark.parametrize(
+        ("source", "routed_to", "expected"),
+        [
+            (
+                "web",
+                TELEGRAM_ACTIVE,
+                NotificationAgentSent(
+                    outcome="sent", destination="chat_app", destination_basis="recent_activity"
+                ),
+            ),
+            (
+                "web",
+                InApp(reason="active_in_app"),
+                NotificationAgentSent(
+                    outcome="folded_into_reply",
+                    destination="in_app",
+                    destination_basis="active_in_app",
+                ),
+            ),
+            (
+                "telegram",
+                TELEGRAM_ACTIVE,
+                NotificationAgentSent(
+                    outcome="folded_into_reply",
+                    destination="chat_app",
+                    destination_basis="recent_activity",
+                ),
+            ),
+            (
+                None,
+                InApp(reason="no_chat_app"),
+                NotificationAgentSent(
+                    outcome="sent", destination="in_app", destination_basis="no_chat_app"
+                ),
+            ),
+        ],
+        ids=["chat-app", "folded-in-app", "folded-chat-app", "no-chat-app"],
+    )
+    async def test_an_unnamed_notification_names_where_it_was_routed(
+        self,
+        source: str | None,
+        routed_to: ChatChannel | InApp,
+        expected: NotificationAgentSent,
+    ) -> None:
+        with (
+            patch(f"{MODULE}.capture") as mock_capture,
+            patch(f"{MODULE}.current_stream_writer", return_value=_writer_mock()),
+            patch(f"{MODULE}.notification_service") as mock_service,
+            patch(f"{MODULE}.resolve_proactive_target", AsyncMock(return_value=routed_to)),
+        ):
+            mock_service.create_notification = AsyncMock(side_effect=_delivered_on_every_channel)
+            await send_notification.coroutine(
+                config=_chat_run_config(source), message="Build done", title="Build"
+            )
+
+        mock_capture.assert_called_once_with(UserId(FAKE_USER_ID), expected)
+
+    @pytest.mark.parametrize(
+        ("channels", "outcome"),
+        [(["telegram"], "folded_into_reply"), (["telegram", "whatsapp"], "sent")],
+        ids=["folded", "sent"],
+    )
+    @patch(f"{MODULE}.capture")
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.notification_service")
+    async def test_a_named_channel_records_no_routing_decision(
+        self,
+        mock_service: MagicMock,
+        mock_writer_factory: MagicMock,
+        mock_capture: MagicMock,
+        channels: list[str],
+        outcome: str,
+    ) -> None:
+        mock_writer_factory.return_value = _writer_mock()
+        mock_service.create_notification = AsyncMock(side_effect=_delivered_on_every_channel)
+
+        await send_notification.coroutine(
+            config=_chat_run_config("telegram"), message="Booked", title="Flight", channels=channels
+        )
+
+        mock_capture.assert_called_once_with(
+            UserId(FAKE_USER_ID), NotificationAgentSent(outcome=outcome)
+        )
+
+    @patch(f"{MODULE}.capture")
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.notification_service")
+    async def test_a_notification_that_failed_to_create_is_not_counted(
+        self, mock_service: MagicMock, mock_writer_factory: MagicMock, mock_capture: MagicMock
+    ) -> None:
+        mock_writer_factory.return_value = _writer_mock()
+        mock_service.create_notification = AsyncMock(return_value=None)
+
+        result = await send_notification.coroutine(
+            config=_make_config(), message="Booked", title="Flight", channels=["whatsapp"]
+        )
+
+        assert result["success"] is False
+        mock_capture.assert_not_called()
+
+
+class TestSendNotificationNeverDuplicatesTheReply:
+    """A run started from a bot chat already replies into that chat."""
+
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.notification_service")
+    async def test_notifying_the_chat_the_user_is_in_sends_nothing_and_says_why(
+        self, mock_service: MagicMock, mock_writer_factory: MagicMock
+    ) -> None:
+        writer = _writer_mock()
+        mock_writer_factory.return_value = writer
+        mock_service.create_notification = AsyncMock(side_effect=_delivered_on_every_channel)
+
+        result = await send_notification.coroutine(
+            config=_chat_run_config("telegram"),
+            message="Your flight is booked",
+            title="Flight",
+            channels=["telegram"],
+        )
+
+        mock_service.create_notification.assert_not_called()
+        writer.assert_not_called()
+        assert {k: v for k, v in result.items() if k != "_rate_limit_info"} == {
+            "success": True,
+            "delivered_channels": [],
+            "delivered_via_conversation": "telegram",
+            "note": (
+                "Your result is delivered on Telegram automatically. Put the update "
+                "in your result instead of notifying."
+            ),
+        }
+
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.notification_service")
+    async def test_another_channel_the_user_named_is_still_sent(
+        self, mock_service: MagicMock, mock_writer_factory: MagicMock
+    ) -> None:
+        mock_writer_factory.return_value = _writer_mock()
+        mock_service.create_notification = AsyncMock(side_effect=_delivered_on_every_channel)
+
+        result = await send_notification.coroutine(
+            config=_chat_run_config("telegram"),
+            message="Your flight is booked",
+            title="Flight",
+            channels=["telegram", "whatsapp"],
+        )
+
+        assert _requested_channels(mock_service) == ["whatsapp"]
+        assert result["success"] is True
+        assert result["delivered_channels"] == ["whatsapp"]
+
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.notification_service")
+    async def test_a_fold_into_a_bot_chat_is_logged_with_that_chat(
+        self, mock_service: MagicMock, mock_writer_factory: MagicMock
+    ) -> None:
+        mock_writer_factory.return_value = _writer_mock()
+        mock_service.create_notification = AsyncMock(side_effect=_delivered_on_every_channel)
+
+        async with captured_wide_event() as event:
+            await send_notification.coroutine(
+                config=_chat_run_config("telegram"),
+                message="Your flight is booked",
+                title="Flight",
+                channels=["telegram", "whatsapp"],
+            )
+
+        assert event["tool"]["folded_into_reply"] == "telegram"
+
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.notification_service")
+    async def test_a_fold_into_the_app_is_logged_as_inapp(
+        self, mock_service: MagicMock, mock_writer_factory: MagicMock
+    ) -> None:
+        mock_writer_factory.return_value = _writer_mock()
+
+        async with captured_wide_event() as event:
+            await send_notification.coroutine(
+                config=_chat_run_config("web"),
+                message="Your flight is booked",
+                title="Flight",
+                channels=["inapp"],
+            )
+
+        assert event["tool"]["folded_into_reply"] == "inapp"
+
+    @pytest.mark.parametrize("source", ["telegram", "web"])
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.notification_service")
+    async def test_nothing_is_logged_as_folded_when_the_reply_channel_was_not_asked_for(
+        self, mock_service: MagicMock, mock_writer_factory: MagicMock, source: str
+    ) -> None:
+        mock_writer_factory.return_value = _writer_mock()
+        mock_service.create_notification = AsyncMock(side_effect=_delivered_on_every_channel)
+
+        async with captured_wide_event() as event:
+            await send_notification.coroutine(
+                config=_chat_run_config(source),
+                message="Your flight is booked",
+                title="Flight",
+                channels=["slack"],
+            )
+
+        assert "folded_into_reply" not in event.get("tool", {})
+
+    @pytest.mark.parametrize("source", ["web", "mobile", "desktop"])
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.notification_service")
+    async def test_an_in_app_notification_from_an_app_chat_folds_into_the_reply(
+        self, mock_service: MagicMock, mock_writer_factory: MagicMock, source: str
+    ) -> None:
+        mock_writer_factory.return_value = _writer_mock()
+
+        result = await send_notification.coroutine(
+            config=_chat_run_config(source),
+            message="Your flight is booked",
+            title="Flight",
+            channels=["inapp"],
+        )
+
+        mock_service.create_notification.assert_not_called()
+        assert result["delivered_via_conversation"] == "inapp"
+        assert result["note"].startswith("Your result is delivered in the GAIA app")
+
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.notification_service")
+    async def test_a_web_chat_run_notifies_telegram_as_asked(
+        self, mock_service: MagicMock, mock_writer_factory: MagicMock
+    ) -> None:
+        mock_writer_factory.return_value = _writer_mock()
+        mock_service.create_notification = AsyncMock(side_effect=_delivered_on_every_channel)
+
+        await send_notification.coroutine(
+            config=_chat_run_config("web"),
+            message="Your flight is booked",
+            title="Flight",
+            channels=["telegram"],
+        )
+
+        assert _requested_channels(mock_service) == ["telegram"]
+
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.notification_service")
+    async def test_a_web_chat_run_drops_only_the_in_app_copy_of_a_mixed_list(
+        self, mock_service: MagicMock, mock_writer_factory: MagicMock
+    ) -> None:
+        mock_writer_factory.return_value = _writer_mock()
+        mock_service.create_notification = AsyncMock(side_effect=_delivered_on_every_channel)
+
+        await send_notification.coroutine(
+            config=_chat_run_config("web"),
+            message="Your flight is booked",
+            title="Flight",
+            channels=["inapp", "telegram"],
+        )
+
+        assert _requested_channels(mock_service) == ["telegram"]
+
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.notification_service")
+    async def test_a_workflow_run_notifies_telegram_as_asked(
+        self, mock_service: MagicMock, mock_writer_factory: MagicMock
+    ) -> None:
+        # A workflow fire carries no conversation_source (workflow_tasks passes none).
+        mock_writer_factory.return_value = _writer_mock()
+        mock_service.create_notification = AsyncMock(side_effect=_delivered_on_every_channel)
+
+        await send_notification.coroutine(
+            config=_chat_run_config(None, workflow_id="wf-1", execution_mode="background"),
+            message="An urgent email arrived",
+            title="Urgent email",
+            channels=["telegram"],
+        )
+
+        assert _requested_channels(mock_service) == ["telegram"]
+
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.notification_service")
+    async def test_a_bot_run_without_a_conversation_is_not_folded(
+        self, mock_service: MagicMock, mock_writer_factory: MagicMock
+    ) -> None:
+        mock_writer_factory.return_value = _writer_mock()
+        mock_service.create_notification = AsyncMock(side_effect=_delivered_on_every_channel)
+        config = _chat_run_config("telegram")
+        config["configurable"]["conversation_id"] = None
+
+        await send_notification.coroutine(
+            config=config, message="Done", title="Done", channels=["telegram"]
+        )
+
+        assert _requested_channels(mock_service) == ["telegram"]
+
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.notification_service")
+    async def test_the_executor_a_telegram_turn_spawns_folds_through_its_inherited_config(
+        self, mock_service: MagicMock, mock_writer_factory: MagicMock
+    ) -> None:
+        # The bug's real path: comms on Telegram -> call_executor -> the executor's own
+        # config, built the way prepare_executor_execution builds it (no source of its own).
+        mock_writer_factory.return_value = _writer_mock()
+        mock_service.create_notification = AsyncMock(side_effect=_delivered_on_every_channel)
+        user = {"user_id": FAKE_USER_ID, "email": "user@example.com", "name": "User"}
+        comms = await build_agent_config(
+            identity=AgentIdentity(conversation_id="conv-1", user=user, agent_name="comms_agent"),
+            turn=AgentTurn(source="telegram"),
+        )
+        executor = await build_agent_config(
+            identity=AgentIdentity(
+                conversation_id=comms["configurable"]["thread_id"],
+                user=user,
+                agent_name="executor_agent",
+            ),
+            thread=AgentThread(
+                thread_id=f"executor_{comms['configurable']['thread_id']}",
+                base_configurable=comms["configurable"],
+                subagent_id="executor_agent",
+            ),
+        )
+
+        result = await send_notification.coroutine(
+            config=executor, message="Done", title="Done", channels=["telegram"]
+        )
+
+        mock_service.create_notification.assert_not_called()
+        assert result["delivered_via_conversation"] == "telegram"
+
+
 @patch(f"{MODULE}.fetch_channel_preferences", new_callable=AsyncMock)
 async def test_the_run_users_channel_preferences_are_read(mock_fetch: AsyncMock) -> None:
     mock_fetch.return_value = {"email": False}
@@ -513,3 +1072,19 @@ def _required_args(tool: Any) -> dict[str, None]:
 async def test_a_run_with_no_user_raises_instead_of_returning_a_tool_error(tool: Any) -> None:
     with pytest.raises(RunUserMissingError):
         await tool.coroutine(config={"configurable": {}}, **_required_args(tool))
+
+
+class TestResultIsDeliveredAutomatically:
+    async def test_a_background_run_bound_to_neither_workflow_nor_todo_is_not(self) -> None:
+        configurable = notification_tool_module.read_agent_configurable(
+            _chat_run_config(None, execution_mode="background")
+        )
+
+        assert await result_is_delivered_automatically(configurable, FAKE_USER_ID) is False
+
+    async def test_an_interactive_run_is_not(self) -> None:
+        configurable = notification_tool_module.read_agent_configurable(
+            _chat_run_config(None, workflow_id="wf-1", workflow_notify_on_completion=True)
+        )
+
+        assert await result_is_delivered_automatically(configurable, FAKE_USER_ID) is False

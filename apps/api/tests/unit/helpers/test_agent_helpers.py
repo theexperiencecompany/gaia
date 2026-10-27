@@ -1,7 +1,9 @@
 """Comprehensive tests for app/helpers/agent_helpers.py."""
 
+from collections.abc import Iterator
 import inspect
 import json
+from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
@@ -32,12 +34,14 @@ from app.helpers.agent_helpers import (
     execute_graph_silent,
     execute_graph_streaming,
     get_handoff_metadata,
+    opens_thread,
     recent_user_messages,
 )
 from app.models.agent_models import run_analytics_context
 from app.models.integration_models import Integration
 from app.models.mcp_config import SubAgentConfig
 from app.models.payment_models import PlanType
+from app.models.presence_models import PresenceSnapshot
 from app.models.subagent_models import Subagent
 from app.utils.agent_utils import IntegrationDisplayMetadata
 from app.utils.stream_publishers import ExtractedToolData
@@ -89,6 +93,15 @@ USER_ID = "507f1f77bcf86cd799439011"
 _TODO_A = {"id": "t1", "content": "draft", "status": "in_progress"}
 _TODO_B = {"id": "t1", "content": "draft", "status": "completed"}
 CONV_ID = "conv-001"
+
+
+@pytest.fixture(autouse=True)
+def _no_real_presence_read() -> Iterator[AsyncMock]:
+    """Keep a root run from reading presence off Redis unless a test patches it itself."""
+    with patch("app.helpers.agent_helpers.read_presence", new_callable=AsyncMock) as mock_read:
+        mock_read.return_value = {"captured_at": 0, "last_seen": {}}
+        yield mock_read
+
 
 FAKE_USER = {
     "user_id": USER_ID,
@@ -887,6 +900,37 @@ class TestBuildInitialState:
 
         assert state["active_todo_id"] == "todo-3"
         assert state["execution_mode"] == "background"
+
+
+class TestOpensThread:
+    def test_a_turn_with_only_itself_in_history_opens_the_thread(self):
+        assert opens_thread([{"role": "user", "content": "hi "}], "hi")
+
+    def test_a_turn_sent_without_history_opens_the_thread(self):
+        assert opens_thread([], "hi")
+
+    def test_any_earlier_turn_means_the_thread_is_already_open(self):
+        history = [
+            {"role": "assistant", "content": "Your reminder: stretch"},
+            {"role": "user", "content": "thanks"},
+        ]
+
+        assert not opens_thread(history, "thanks")
+
+    def test_a_blank_turn_alone_in_history_is_the_current_blank_turn(self):
+        assert opens_thread([{"role": "user", "content": ""}], "")
+        assert opens_thread([{"role": "user", "content": None}], "")
+
+    def test_a_single_different_turn_in_history_means_the_thread_is_open(self):
+        assert not opens_thread([{"role": "user", "content": "earlier"}], "hi")
+
+    def test_two_turns_in_history_mean_the_thread_is_open_even_if_the_last_is_current(self):
+        history = [
+            {"role": "user", "content": "hi"},
+            {"role": "user", "content": "hi"},
+        ]
+
+        assert not opens_thread(history, "hi")
 
 
 class TestRecentUserMessages:
@@ -1772,6 +1816,47 @@ class TestBuildAgentConfigWorkflowInheritance:
         assert configurable["workflow_id"] == "wf_123"
         assert configurable["workflow_title"] == ""
         assert configurable["workflow_notify_on_completion"] is True
+
+
+class TestBuildAgentConfigPresence:
+    """Where the user is: captured once at the run tree's root and inherited by every child."""
+
+    TURN: ClassVar[PresenceSnapshot] = {"captured_at": 1_800_000_000, "last_seen": {"telegram": 1}}
+    STORED: ClassVar[PresenceSnapshot] = {"captured_at": 1_800_000_500, "last_seen": {"web": 2}}
+
+    @patch("app.helpers.agent_helpers.read_presence", new_callable=AsyncMock)
+    async def test_a_root_run_with_no_presence_reads_it_once(self, mock_read):
+        mock_read.return_value = self.STORED
+
+        config = await build_agent_config(
+            identity=AgentIdentity(conversation_id=CONV_ID, user=FAKE_USER, agent_name="executor"),
+        )
+
+        mock_read.assert_awaited_once_with(USER_ID)
+        assert config["configurable"]["presence"] == self.STORED
+
+    @patch("app.helpers.agent_helpers.read_presence", new_callable=AsyncMock)
+    async def test_the_turns_own_presence_wins_and_reads_nothing(self, mock_read):
+        config = await build_agent_config(
+            identity=AgentIdentity(
+                conversation_id=CONV_ID, user=FAKE_USER, agent_name="comms_agent"
+            ),
+            thread=AgentThread(base_configurable={"presence": self.STORED}),
+            turn=AgentTurn(presence=self.TURN),
+        )
+
+        mock_read.assert_not_awaited()
+        assert config["configurable"]["presence"] == self.TURN
+
+    @patch("app.helpers.agent_helpers.read_presence", new_callable=AsyncMock)
+    async def test_an_executor_child_inherits_its_parents_presence(self, mock_read):
+        config = await build_agent_config(
+            identity=AgentIdentity(conversation_id=CONV_ID, user=FAKE_USER, agent_name="executor"),
+            thread=AgentThread(base_configurable={"presence": self.TURN}),
+        )
+
+        mock_read.assert_not_awaited()
+        assert config["configurable"]["presence"] == self.TURN
 
 
 # ---------------------------------------------------------------------------

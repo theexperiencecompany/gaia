@@ -5,6 +5,7 @@ module-level globals next to the invocation logic.
 """
 
 from google.genai.errors import APIError as GeminiAPIError, ServerError as GeminiServerError
+import httpx
 from langchain_core.exceptions import OutputParserException
 from langchain_google_genai.chat_models import ChatGoogleGenerativeAIError
 from openai import (
@@ -57,6 +58,15 @@ _OPENROUTER_TRANSIENT_ERRORS: tuple[type[BaseException], ...] = (
     NoResponseError,
 )
 
+# The OpenRouter SDK never wraps httpx errors; the OpenAI SDK skips one raised mid-stream.
+# Transient only: UnsupportedProtocol, LocalProtocolError and ProxyError are a
+# misconfigured request, so they stay fail-loud.
+_HTTPX_TRANSIENT_ERRORS: tuple[type[BaseException], ...] = (
+    httpx.TimeoutException,
+    httpx.NetworkError,
+    httpx.RemoteProtocolError,
+)
+
 # Transient provider/infra errors — safe to retry; the app rate limiter's
 # LangChainRateLimitError must NOT be. Gemini wraps every 4xx (including 429s) into
 # ChatGoogleGenerativeAIError, hiding the status class, so Gemini 429s fall through to fallback.
@@ -69,6 +79,7 @@ LLM_RETRYABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
     OpenAIRateLimitError,
     OpenAIServerError,
     OpenAIConnectionError,
+    *_HTTPX_TRANSIENT_ERRORS,
     # stdlib
     ConnectionError,
     TimeoutError,
@@ -85,8 +96,13 @@ LLM_FALLBACK_EXCEPTIONS: tuple[type[BaseException], ...] = (
     OpenAIError,  # every OpenAI SDK failure, incl. auth, quota and connection
     ChatGoogleGenerativeAIError,
     GeminiAPIError,
+    *_HTTPX_TRANSIENT_ERRORS,
     ConnectionError,
     TimeoutError,
+    # A reply that is not the tool call the parser needs. Another sample may obey,
+    # and the fallback lane's native JSON-schema mode cannot answer in prose at
+    # all, so this is the one error where switching lanes fixes the class.
+    MalformedStructuredOutputError,
 )
 
 # chatbot.py one-shot helper: operational failures are logged and re-raised for the
