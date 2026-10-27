@@ -21,6 +21,7 @@ from langgraph.errors import GraphRecursionError
 import pytest
 
 from app.agents.context.assemble import AssembledContext
+from app.agents.core.held_replies import HeldReplies
 from app.constants.llm import WORKFLOW_SUBAGENT_RECURSION_LIMIT
 from app.helpers.agent_helpers import AgentIdentity, AgentThread
 from app.services.workflow.workflow_subagent import SubagentRunContext, WorkflowSubagentRunner
@@ -265,78 +266,79 @@ class _StreamGraph:
 @pytest.mark.unit
 class TestConsumeMessageChunk:
     def test_a_silent_chunk_is_ignored(self) -> None:
-        chunk = AIMessageChunk(content="hidden")
+        held = HeldReplies()
 
-        result = WorkflowSubagentRunner._consume_message_chunk(
-            (chunk, {"silent": True}), MagicMock(), "kept"
+        WorkflowSubagentRunner._consume_message_chunk(
+            (AIMessageChunk(content="hidden", id="m1"), {"silent": True}), MagicMock(), held
         )
 
-        assert result == "kept"
+        assert held.reply_text() == ""
 
-    @pytest.mark.filterwarnings(_TEXT_DEPRECATION)
-    def test_an_ai_chunks_text_is_appended(self) -> None:
-        result = WorkflowSubagentRunner._consume_message_chunk(
-            (AIMessageChunk(content="Hello"), {}), None, ""
+    def test_an_ai_chunks_text_is_held_as_the_reply(self) -> None:
+        held = HeldReplies()
+
+        WorkflowSubagentRunner._consume_message_chunk(
+            (AIMessageChunk(content="Hello", id="m1"), {}), None, held
         )
 
-        assert result == "Hello"
+        assert held.reply_text() == "Hello"
 
-    @pytest.mark.filterwarnings(_TEXT_DEPRECATION)
-    def test_an_empty_ai_chunk_appends_nothing(self) -> None:
-        result = WorkflowSubagentRunner._consume_message_chunk(
-            (AIMessageChunk(content=""), {}), MagicMock(), "kept"
+    def test_an_empty_ai_chunk_holds_nothing(self) -> None:
+        held = HeldReplies()
+
+        WorkflowSubagentRunner._consume_message_chunk(
+            (AIMessageChunk(content="", id="m1"), {}), MagicMock(), held
         )
 
-        assert result == "kept"
+        assert held.reply_text() == ""
+
+    def test_text_beside_a_tool_call_is_not_the_reply(self) -> None:
+        """Regression: narration before a tool call was handed to the JSON parser as part of the reply."""
+        held = HeldReplies()
+        narrating = AIMessageChunk(
+            content="Let me look that up.",
+            id="m1",
+            tool_call_chunks=[{"name": "lookup", "args": "{}", "id": "tc1", "index": 0}],
+        )
+
+        WorkflowSubagentRunner._consume_message_chunk((narrating, {}), None, held)
+        WorkflowSubagentRunner._consume_message_chunk(
+            (AIMessageChunk(content="the draft", id="m2"), {}), None, held
+        )
+
+        assert held.reply_text() == "the draft"
 
     @pytest.mark.filterwarnings(_TEXT_DEPRECATION)
     def test_a_tool_result_is_streamed_as_tool_output(self) -> None:
         writer = MagicMock()
+        held = HeldReplies()
 
-        result = WorkflowSubagentRunner._consume_message_chunk(
-            (ToolMessage(content="tool ran", tool_call_id="tc1"), {}), writer, ""
+        WorkflowSubagentRunner._consume_message_chunk(
+            (ToolMessage(content="tool ran", tool_call_id="tc1"), {}), writer, held
         )
 
         writer.assert_called_once_with(
             {"tool_output": {"tool_call_id": "tc1", "output": "tool ran"}}
         )
-        assert result == ""
+        assert held.reply_text() == ""
 
-    @pytest.mark.filterwarnings(_TEXT_DEPRECATION)
     def test_a_tool_result_without_a_writer_changes_nothing(self) -> None:
-        result = WorkflowSubagentRunner._consume_message_chunk(
-            (ToolMessage(content="tool ran", tool_call_id="tc1"), {}), None, ""
+        held = HeldReplies()
+
+        WorkflowSubagentRunner._consume_message_chunk(
+            (ToolMessage(content="tool ran", tool_call_id="tc1"), {}), None, held
         )
 
-        assert result == ""
+        assert held.reply_text() == ""
 
-    @pytest.mark.filterwarnings(_TEXT_DEPRECATION)
     def test_a_block_list_content_is_unwrapped_via_text_not_str(self) -> None:
-        """text() extracts the blocks' text; str(content) would ship the raw repr of the block list to the user."""
-        chunk = AIMessageChunk(content=[{"type": "text", "text": "abc", "index": 0}])
+        """Text extracts the blocks' text; str(content) would ship the raw repr of the block list to the user."""
+        held = HeldReplies()
+        chunk = AIMessageChunk(content=[{"type": "text", "text": "abc", "index": 0}], id="m1")
 
-        result = WorkflowSubagentRunner._consume_message_chunk((chunk, {}), None, "")
+        WorkflowSubagentRunner._consume_message_chunk((chunk, {}), None, held)
 
-        assert result == "abc"
-
-    @pytest.mark.filterwarnings(_TEXT_DEPRECATION)
-    def test_a_chunk_without_text_falls_back_to_its_content(self) -> None:
-        result = WorkflowSubagentRunner._consume_message_chunk(
-            (_NoTextChunk(content="plain"), {}), None, ""
-        )
-
-        assert result == "plain"
-
-    @pytest.mark.filterwarnings(_TEXT_DEPRECATION)
-    def test_a_falsy_tool_message_is_skipped_like_any_falsy_chunk(self) -> None:
-        """Only real message chunks reach the writer; a falsey value must not slip through the guard as a tool output."""
-        writer = MagicMock()
-        falsy_tool = _FalsyToolMessage(content="", tool_call_id="tc1")
-
-        result = WorkflowSubagentRunner._consume_message_chunk((falsy_tool, {}), writer, "kept")
-
-        writer.assert_not_called()
-        assert result == "kept"
+        assert held.reply_text() == "abc"
 
 
 @pytest.mark.unit

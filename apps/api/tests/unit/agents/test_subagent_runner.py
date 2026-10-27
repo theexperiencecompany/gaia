@@ -900,39 +900,42 @@ class TestProcessUpdatesPayload:
 
 
 class TestConsumeStreamEvent:
-    """The "messages" branch hands five positional arguments down, each deciding where the chunk's output is routed."""
-
-    @staticmethod
-    def _messages_handler() -> Any:
-        return patch(
-            "app.agents.core.subagents.subagent_runner._process_messages_payload",
-            return_value="accumulated",
-        )
+    """The "messages" branch hands the run and the payload to the handler, which decides where the chunk's output is routed."""
 
     @pytest.mark.asyncio
-    async def test_the_messages_handler_gets_the_runs_writer_id_and_stream(self):
+    async def test_the_messages_handler_gets_the_run_and_the_payload(self):
+        run = _make_run()
+        payload = (AIMessageChunk(content="hi"), {})
+
+        with patch(
+            "app.agents.core.subagents.subagent_runner._process_messages_payload"
+        ) as mock_handler:
+            await _consume_stream_event(run, "messages", payload)
+
+        assert mock_handler.call_args == call(run, payload)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("stream_id", "claimed_under"), [("s-1", "s-1"), (None, "")], ids=["stream", "no-stream"]
+    )
+    async def test_a_tool_result_is_claimed_under_the_runs_stream_id(
+        self, stream_id: str | None, claimed_under: str
+    ):
         writer = MagicMock()
         run = _make_run(
-            stream_writer=writer, subagent_id="sub-1", ctx_overrides={"stream_id": "s-1"}
+            stream_writer=writer, subagent_id="sub-1", ctx_overrides={"stream_id": stream_id}
         )
-        run.complete_message = "so far"
-        payload = (AIMessageChunk(content="hi"), {})
+        payload = (ToolMessage(content="3 unread", tool_call_id="tc-1", name="read"), {})
 
-        with self._messages_handler() as mock_handler:
+        with patch(
+            "app.agents.core.subagents.subagent_runner.claim_tool_output", return_value=True
+        ) as mock_claim:
             await _consume_stream_event(run, "messages", payload)
 
-        assert mock_handler.call_args == call(payload, "so far", writer, "sub-1", "s-1")
-        assert run.complete_message == "accumulated"
-
-    @pytest.mark.asyncio
-    async def test_a_run_with_no_stream_id_passes_the_empty_string_down(self):
-        run = _make_run(ctx_overrides={"stream_id": None})
-        payload = (AIMessageChunk(content="hi"), {})
-
-        with self._messages_handler() as mock_handler:
-            await _consume_stream_event(run, "messages", payload)
-
-        assert mock_handler.call_args.args[4] == ""
+        assert mock_claim.call_args == call(claimed_under, "tc-1", "sub-1")
+        assert writer.call_args == call(
+            {"tool_output": {"tool_call_id": "tc-1", "output": "3 unread", "subagent_id": "sub-1"}}
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -962,7 +965,7 @@ class TestFinalizeRun:
     def test_a_paused_run_returns_its_partial_text_the_merged_approval_and_its_messages(self):
         ai = AIMessage(content="", tool_calls=[{"name": "send_email", "args": {}, "id": "tc-1"}])
         run = _make_run()
-        run.complete_message = "partial"
+        run.held.texts["m1"] = "partial"
         run.run_messages = [ai]
         run.pending_approvals = [
             {"approval_id": "a1", "tool": "send_email"},
@@ -983,7 +986,7 @@ class TestFinalizeRun:
 
     def test_a_narration_only_run_is_reported_as_an_actionable_failure(self):
         run = _make_run(ctx_overrides=self._ctx_overrides())
-        run.complete_message = "I will send the email"
+        run.held.texts["m1"] = "I will send the email"
 
         with patch("app.agents.core.subagents.subagent_runner.log") as mock_log:
             outcome = _finalize_run(run)
@@ -1005,7 +1008,7 @@ class TestFinalizeRun:
     def test_the_executors_plain_answer_is_its_answer(self):
         """A collection run's whole job is to report what landed, in words; nothing re-issues the executor."""
         run = _make_run(ctx_overrides={**self._ctx_overrides(), "integration_id": "executor"})
-        run.complete_message = "The report is drafted and saved."
+        run.held.texts["m1"] = "The report is drafted and saved."
 
         with patch("app.agents.core.subagents.subagent_runner.log"):
             outcome = _finalize_run(run)
@@ -1015,7 +1018,7 @@ class TestFinalizeRun:
     def test_an_announced_tool_call_makes_the_same_text_an_ordinary_result(self):
         """A run that announced a call did the work, even if no ToolMessage came back before the stream ended."""
         run = _make_run(ctx_overrides=self._ctx_overrides())
-        run.complete_message = "I will send the email"
+        run.held.texts["m1"] = "I will send the email"
         run.emitted_tool_calls.add("tc-1")
 
         with patch("app.agents.core.subagents.subagent_runner.log") as mock_log:

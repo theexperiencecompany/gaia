@@ -24,13 +24,13 @@ from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, Too
 import pytest
 
 from app.agents.core.background.session import RunKind, create_session, teardown_session
+from app.agents.core.held_replies import HeldReplies
 from app.helpers.agent_helpers import (
     _buffer_mcp_app,
     _emit_mcp_app_event,
     _model_fallback_frame,
     _parse_stream_event,
     _PendingMcpApp,
-    _settle_message_boundary,
     _stream_custom,
     _stream_messages,
     _stream_tool_call_frames,
@@ -84,17 +84,11 @@ def test_model_fallback_frame_is_none_without_response_metadata() -> None:
     assert _model_fallback_frame(SimpleNamespace()) is None
 
 
-# ── _settle_message_boundary / _parse_stream_event ───────────────────
+# ── HeldReplies.settle / _parse_stream_event ───────────────────
 
 
-def test_settle_message_boundary_reports_no_boundary_and_no_discard() -> None:
-    held: dict[str, str] = {}
-
-    assert _settle_message_boundary([HumanMessage(content="hi")], True, "so far", held, set()) == (
-        "so far",
-        None,
-        False,
-    )
+def test_settle_reports_no_boundary_and_no_discard() -> None:
+    assert HeldReplies().settle([HumanMessage(content="hi")], "so far") == ("so far", None, False)
 
 
 def test_parse_stream_event_reads_both_tuple_shapes() -> None:
@@ -854,7 +848,7 @@ async def test_silent_messages_emit_nothing() -> None:
     frames = await _drain(_stream_messages((chunk, {"silent": True}), state, True, "s1", "u1"))
 
     assert frames == []
-    assert state.message_texts == {}
+    assert state.held.texts == {}
 
 
 @pytest.mark.asyncio
@@ -865,7 +859,7 @@ async def test_comms_reply_text_is_streamed_and_held_for_its_boundary() -> None:
     frames = await _drain(_stream_messages((chunk, {}), state, True, "s1", "u1"))
 
     assert frames == [_sse({"response": "hello"})]
-    assert state.message_texts == {"msg-1": "hello"}
+    assert state.held.texts == {"msg-1": "hello"}
 
 
 @pytest.mark.asyncio

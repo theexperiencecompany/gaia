@@ -23,14 +23,9 @@ from unittest.mock import AsyncMock, patch
 from langchain_core.messages import AIMessage, AIMessageChunk
 import pytest
 
+from app.agents.core.held_replies import HeldReplies, announces_tool_call, drop_retracted_text
 from app.constants.general import NEW_MESSAGE_BREAKER
-from app.helpers.agent_helpers import (
-    _flush_held_messages,
-    announces_tool_call,
-    drop_retracted_text,
-    execute_graph_silent,
-    execute_graph_streaming,
-)
+from app.helpers.agent_helpers import execute_graph_silent, execute_graph_streaming
 from tests.helpers import (
     GraphStreamEvent,
     ScriptedGraph,
@@ -79,15 +74,15 @@ class TestFlushHeldMessages:
 
     def test_held_text_is_appended_as_its_own_bubble(self) -> None:
         """Concatenating directly turned "fixing it." and "fixing it now" into one glued word."""
-        flushed = _flush_held_messages("first", {"m1": "second"})
+        flushed = HeldReplies(texts={"m1": "second"}).flush("first")
 
         assert flushed == f"first{NEW_MESSAGE_BREAKER}second"
 
     def test_nothing_held_leaves_the_message_untouched(self) -> None:
-        assert _flush_held_messages("first", {}) == "first"
+        assert HeldReplies().flush("first") == "first"
 
     def test_an_empty_hold_does_not_open_a_bubble(self) -> None:
-        assert _flush_held_messages("first", {"m1": ""}) == "first"
+        assert HeldReplies(texts={"m1": ""}).flush("first") == "first"
 
 
 @pytest.mark.unit
