@@ -474,6 +474,7 @@ export const footerSections: LinkSection[] = [
     links: [
       { label: "Terms of Use", href: "/terms" },
       { label: "Privacy Policy", href: "/privacy" },
+      { label: "Subprocessors", href: "/privacy#subprocessors" },
     ],
   },
 ];

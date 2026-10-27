@@ -283,7 +283,7 @@ function DataSharingAndGoogleData() {
           integrations to improve our services, as described in Section 2.3.
         </p>
 
-        <h3 className="mt-4 mb-2 text-lg font-semibold">
+        <h3 id="subprocessors" className="mt-4 mb-2 text-lg font-semibold">
           3.2 Service Providers
         </h3>
         <p className="mb-2">
