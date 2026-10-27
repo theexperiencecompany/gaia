@@ -35,3 +35,9 @@ enabled = false
 [cloud]
 enabled = false
 publish = false
+
+[rule_options."content/keyword-stuffing"]
+density_threshold = 4
+# Grammatical words the rule's own language list should already exclude; the
+# translated persona pages still trip it on them.
+whitelist = ["les", "des", "und", "mehr", "vos", "com", "con", "avec"]

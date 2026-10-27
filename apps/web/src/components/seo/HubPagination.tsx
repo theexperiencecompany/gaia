@@ -47,7 +47,7 @@ export function HubPagination({
         <SiteLink
           href={hubPageHref(pathname, page - 1)}
           rel="prev"
-          aria-label="Previous page"
+          aria-label="← Previous page"
           className={PAGE_LINK}
         >
           ←
@@ -73,7 +73,7 @@ export function HubPagination({
         <SiteLink
           href={hubPageHref(pathname, page + 1)}
           rel="next"
-          aria-label="Next page"
+          aria-label="Next page →"
           className={PAGE_LINK}
         >
           →
