@@ -566,3 +566,26 @@ def test_a_user_that_already_has_an_id_is_left_alone() -> None:
 
     assert event is not None
     assert event["user"] == {"id": "existing"}
+
+
+def test_a_trace_export_failure_never_reaches_sentry() -> None:
+    """It says the collector is unreachable, not that a request failed; Loki keeps the line."""
+    from shared.py.logging import OTEL_LOGGER_DISPLAY_NAME
+
+    cap_msg, cap_exc, _scope = _run_sink(
+        _record(
+            message="Failed to export span batch code: 502, reason: <html>",
+            logger_name=OTEL_LOGGER_DISPLAY_NAME,
+        )
+    )
+
+    cap_msg.assert_not_called()
+    cap_exc.assert_not_called()
+
+
+def test_an_arq_job_failure_is_left_to_the_arq_integration() -> None:
+    """ArqIntegration reports the job with its own trace; this line cannot be deduped."""
+    cap_msg, cap_exc, _scope = _run_sink(_record(message="job failed", logger_name="ARQ"))
+
+    cap_msg.assert_not_called()
+    cap_exc.assert_not_called()

@@ -17,7 +17,12 @@ from app.config.deployment import DeploymentKind
 from app.config.loggers import REQUEST_LOGGER_NAME
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
-from shared.py.logging import ARQ_LOGGER_DISPLAY_NAME, MCP_USE_LOGGER_DISPLAY_NAME, env_context
+from shared.py.logging import (
+    ARQ_LOGGER_DISPLAY_NAME,
+    MCP_USE_LOGGER_DISPLAY_NAME,
+    OTEL_LOGGER_DISPLAY_NAME,
+    env_context,
+)
 from shared.py.wide_events import (
     BOUNDARY_FAILURE_MESSAGE,
     BOUNDARY_LOGGER_NAMES,
@@ -228,6 +233,22 @@ def _before_send(event: Event, hint: Hint) -> Event | None:
     return event
 
 
+def _record_is_skipped(record: _Record, logger_name: str | None) -> bool:
+    """Return True when this record is a roll-up, or another surface already reports it."""
+    if logger_name == REQUEST_LOGGER_NAME:
+        return True
+    if logger_name in BOUNDARY_LOGGER_NAMES:
+        return True
+    if logger_name in _REPORTED_BY_CALLER_LOGGERS:
+        return True
+    if logger_name == MCP_USE_LOGGER_DISPLAY_NAME:
+        return str(record["message"]).startswith(_MCP_USE_CONNECT_DUPLICATES)
+    if logger_name == OTEL_LOGGER_DISPLAY_NAME:
+        # Trace loss is not a user-facing failure: the line stays in Loki.
+        return True
+    return record["message"] == BOUNDARY_FAILURE_MESSAGE and record["exception"] is None
+
+
 def _make_sentry_loguru_sink() -> Callable[[object], None]:
     """Return the Loguru sink that is the one path from a log record to a Sentry event.
 
@@ -246,29 +267,7 @@ def _make_sentry_loguru_sink() -> Callable[[object], None]:
         extra: _Extra = record["extra"]
         logger_name = extra.get("logger_name")
 
-        # Skip the per-request wide-event roll-up ("http_request"): forwarding it
-        # would group every 5xx under one useless Sentry issue carrying PII in extras.
-        if logger_name == REQUEST_LOGGER_NAME:
-            return
-
-        # Worker/background boundary roll-ups have a constant message, so every
-        # task failure would collapse into one issue; the specific cause reaches
-        # Sentry via its own log.error elsewhere.
-        if logger_name in BOUNDARY_LOGGER_NAMES:
-            return
-
-        # The library's own line is logged outside the caller's context, so Sentry cannot dedupe it.
-        if logger_name in _REPORTED_BY_CALLER_LOGGERS:
-            return
-        if logger_name == MCP_USE_LOGGER_DISPLAY_NAME and str(record["message"]).startswith(
-            _MCP_USE_CONNECT_DUPLICATES
-        ):
-            return
-
-        # The constant "task failed" line is skipped only when it carries no
-        # exception; a boundary that raised without a specific error still
-        # reaches Sentry below, captured as its attached exception.
-        if record["message"] == BOUNDARY_FAILURE_MESSAGE and record["exception"] is None:
+        if _record_is_skipped(record, logger_name):
             return
 
         exc_info = record["exception"]

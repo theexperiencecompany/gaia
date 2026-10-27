@@ -266,6 +266,7 @@ _OTLP_TRACE_EXPORTER_LOGGER = "opentelemetry.exporter.otlp.proto.http.trace_expo
 
 ARQ_LOGGER_DISPLAY_NAME = "ARQ"
 MCP_USE_LOGGER_DISPLAY_NAME = "MCP_USE"
+OTEL_LOGGER_DISPLAY_NAME = "OTEL"
 
 # Short display names for the busiest loggers. Anything unmapped falls back to
 # its top-level package (`aiormq.connection` → `AIORMQ`).
@@ -278,6 +279,7 @@ _LOGGER_DISPLAY_NAMES = {
     "gunicorn": "GUNICOR",
     "livekit": "LIVEKIT",
     "mcp_use": MCP_USE_LOGGER_DISPLAY_NAME,
+    _OTLP_TRACE_EXPORTER_LOGGER: OTEL_LOGGER_DISPLAY_NAME,
     "py.warnings": "WARNING",
 }
 
@@ -757,9 +759,6 @@ def configure_loguru() -> Logger:
 
     for logger_name in _OWNED_LOG_NAMESPACES:
         _route_through_root(logger_name, LOG_CONFIG["level"])
-
-    # Langfuse's OTLP endpoint is a home server that is down on purpose; its export failures are noise.
-    logging.getLogger(_OTLP_TRACE_EXPORTER_LOGGER).setLevel(logging.CRITICAL + 1)
 
     # uvicorn decides whether an access log exists at all, and re-checks that
     # decision per connection with `uvicorn.access`.hasHandlers(): --no-access-log

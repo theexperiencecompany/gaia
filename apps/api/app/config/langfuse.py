@@ -25,6 +25,14 @@ from shared.py.wide_events import log
 # an unreachable host regardless of the value passed (measured at 2s and 5s).
 LANGFUSE_AUTH_CHECK_WAIT_SECONDS = 5
 
+# The SDK's 5s budget is shared by serialization and every retry, so a flapping
+# collector spent it before the request left and reported a 0.3s read timeout.
+LANGFUSE_EXPORT_TIMEOUT_SECONDS = 10
+
+# 512 spans of LLM payloads overflows the collector's ingress (413), which never
+# succeeds on retry. 128 fits.
+LANGFUSE_FLUSH_AT = 128
+
 
 def _langfuse_configured() -> bool:
     """Return True only when all three Langfuse env vars are non-blank.
@@ -74,6 +82,8 @@ def init_langfuse() -> Langfuse:
         host=settings.LANGFUSE_HOST,
         environment=settings.ENV,
         tracer_provider=TracerProvider(),
+        timeout=LANGFUSE_EXPORT_TIMEOUT_SECONDS,
+        flush_at=LANGFUSE_FLUSH_AT,
     )
     # Diagnostic only — a Langfuse outage costs a bounded wait, not the SDK's
     # full retry budget. Daemon so a still-running check can't block shutdown.

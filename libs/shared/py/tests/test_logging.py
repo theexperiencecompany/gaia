@@ -403,17 +403,14 @@ class TestInterceptHandler:
         handler.emit(self._record("uvicorn.error"))
         mock_logger.bind.assert_called_with(logger_name="UVICORN")
 
-    def test_a_trace_export_failure_is_silenced(self, mock_logger: MagicMock):
-        """Langfuse's trace backend is unstable on purpose; its export failures are not ours."""
+    def test_a_trace_export_failure_is_logged_as_otel(self, mock_logger: MagicMock):
+        """The exporter's failure says tracing is down, so it stays visible in Loki."""
         configure_loguru()
 
         logging.getLogger("opentelemetry.exporter.otlp.proto.http.trace_exporter").error(
             "Failed to export span batch code: %s, reason: %s", 502, "Bad Gateway"
         )
-        mock_logger.bind.assert_not_called()
-
-        logging.getLogger("opentelemetry.sdk.trace").error("span processor crashed")
-        mock_logger.bind.assert_called_once()
+        mock_logger.bind.assert_called_once_with(logger_name="OTEL")
 
 
 # ---------------------------------------------------------------------------
