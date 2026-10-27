@@ -440,6 +440,24 @@ class TestTriggeredExecutionLock:
         # yielded the lock rather than crashing.
         log_mock.info.assert_any_call("tracked_todo.execute_lock_held", todo_id="todo-1")
 
+    async def test_the_origin_reaches_the_execution_helper(self):
+        pool = _pool()
+        inner = AsyncMock(return_value="success:todo-1")
+        origin = self._origin()
+        with (
+            patch(f"{MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=pool)),
+            patch(f"{MODULE}._execute_todo_with_retry", inner),
+            patch(f"{MODULE}.log") as log_mock,
+        ):
+            await execute_tracked_todo({}, "todo-1", origin)
+
+        assert inner.await_args.args[1] is origin
+        # A triggered run stamps the wide event with the trigger's name, not None,
+        # so the run is attributable to the watch that woke it.
+        log_mock.set.assert_any_call(
+            todo_id="todo-1", trigger_origin="gmail_new_message", scheduled_for=None
+        )
+
 
 class TestTriggeredExecutionPrompt:
     """The payload has to be IN the prompt.
@@ -559,6 +577,16 @@ class TestTriggeredExecutionPrompt:
 
         assert todo_prompts.SANDBOX_RUN_EVENT_GUIDANCE in prompt
         assert TRIGGERED_RELEVANCE_GUIDANCE not in prompt
+
+    def test_sandbox_guidance_marks_run_outcomes_as_asked_for_every_time(self):
+        # Live E2B run: the todo completed the delegated work and delivery kept quiet,
+        # because nothing told it the user asked to hear the outcome.
+        assert "asked to hear" in todo_prompts.SANDBOX_RUN_EVENT_GUIDANCE
+
+    def test_sandbox_guidance_says_the_payload_session_id_is_the_clis_own(self):
+        # Live E2B run: a woken todo dismissed a real StopFailure as a non-match because
+        # the payload's session_id (Claude's) differed from the watched run id.
+        assert "session_id" in todo_prompts.SANDBOX_RUN_EVENT_GUIDANCE
 
     def test_coalesced_events_share_the_one_untrusted_fence(self):
         origin = TriggerOrigin(
@@ -2767,6 +2795,13 @@ class TestExecuteOnExecutor:
         assert "Details: verify staging" in request.task
         assert "Canvas (canvas.md):\n## Current State\nall good" in request.task
         assert "Recent activity (activity.md):\n- earlier run" in request.task
+
+    async def test_the_runs_inherited_context_is_gathered_for_this_todo(self) -> None:
+        doc = _doc(references=["todo-0", "todo-00"])
+
+        await self._execute(doc)
+
+        self.context.assert_awaited_once_with(doc)
 
     async def test_a_triggered_run_is_attributed_to_its_trigger(self):
         origin = TriggerOrigin(
