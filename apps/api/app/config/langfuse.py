@@ -33,6 +33,12 @@ LANGFUSE_EXPORT_TIMEOUT_SECONDS = 10
 # succeeds on retry. 128 fits.
 LANGFUSE_FLUSH_AT = 128
 
+# Langfuse 4.6.1 ignores the flush_at argument when LANGFUSE_FLUSH_AT is unset:
+# `flush_at = flush_at or int(env) if env is not None else None` yields None, and
+# OpenTelemetry then restores its 512-span default. The environment variable is
+# the only path that reaches BatchSpanProcessor.
+LANGFUSE_FLUSH_AT_ENV = "LANGFUSE_FLUSH_AT"
+
 
 def _langfuse_configured() -> bool:
     """Return True only when all three Langfuse env vars are non-blank.
@@ -48,6 +54,11 @@ def _langfuse_configured() -> bool:
             settings.LANGFUSE_HOST,
         )
     )
+
+
+def _configure_export_env() -> None:
+    """Set the batch-size variable the SDK actually reads; its kwarg is ignored when unset."""
+    os.environ.setdefault(LANGFUSE_FLUSH_AT_ENV, str(LANGFUSE_FLUSH_AT))
 
 
 @lazy_provider(
@@ -73,6 +84,7 @@ def init_langfuse() -> Langfuse:
     # SDK's `environment` kwarg never reaches the OTel Resource; the env var is
     # the path it reads instead. Both are set deliberately.
     os.environ["LANGFUSE_TRACING_ENVIRONMENT"] = settings.ENV
+    _configure_export_env()
     # Isolated TracerProvider (langfuse's "Option C"): falling back to Sentry's
     # global provider drops per-trace attributes (session_id, user_id) —
     # confirmed via prod/dev trace comparison. Orphaned-looking spans are the trade-off.
