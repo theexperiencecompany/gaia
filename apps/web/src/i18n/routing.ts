@@ -6,10 +6,8 @@ export const routing = defineRouting({
   locales,
   defaultLocale,
   localePrefix: "as-needed",
-  // Not HttpOnly on purpose: next-intl rewrites this cookie from document.cookie
-  // on client locale switches (navigation/shared/syncLocaleCookie). It holds no
-  // secret — only the last locale — so HttpOnly would buy nothing and break that
-  // write. Secure + SameSite still apply, and the URL prefix is the source of truth.
+  // Not HttpOnly: next-intl rewrites this cookie from document.cookie on locale
+  // switch, and it holds only the last locale — the URL prefix is authoritative.
   localeCookie: {
     name: "NEXT_LOCALE",
     secure: true,
