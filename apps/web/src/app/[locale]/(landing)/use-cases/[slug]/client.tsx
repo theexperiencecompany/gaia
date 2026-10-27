@@ -404,9 +404,9 @@ export default function UseCaseDetailClient({
           steps && steps.length > 0 ? (
             <div className="w-fit shrink-0">
               <div className="sticky top-8 rounded-3xl bg-zinc-900 p-6 pb-2">
-                <div className="mb-2 text-sm font-medium text-zinc-500">
+                <h2 className="mb-2 text-sm font-medium text-zinc-500">
                   Steps
-                </div>
+                </h2>
                 <WorkflowSteps steps={stepsFormatted || []} size="large" />
               </div>
             </div>

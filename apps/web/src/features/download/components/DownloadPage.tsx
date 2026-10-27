@@ -24,8 +24,12 @@ import {
   usePlatformDetection,
 } from "@/hooks/ui/usePlatformDetection";
 import { track } from "@/lib/analytics";
+import { getImageDimensions } from "@/lib/imageDimensions";
 
 const DESKTOP_OSES: DesktopOS[] = ["mac", "windows", "linux"];
+
+const APPLE_ICON = getImageDimensions("/images/icons/apple.svg");
+const GOOGLE_PLAY_ICON = getImageDimensions("/images/icons/google_play.svg");
 
 const OS_META: Record<DesktopOS, { name: string; icon: string }> = {
   mac: { name: "macOS", icon: "/images/icons/apple.svg" },
@@ -46,6 +50,8 @@ interface DownloadSectionLayoutProps {
   description: string;
   actions: ReactNode;
   extraContent?: ReactNode;
+  /** False for a section that starts below the fold on every viewport. */
+  imagePriority?: boolean;
 }
 
 const CONTENT_ALIGNMENT_CLASSES: Record<"left" | "right" | "center", string> = {
@@ -66,6 +72,7 @@ function DownloadSectionLayout({
   description,
   actions,
   extraContent,
+  imagePriority = true,
 }: DownloadSectionLayoutProps) {
   return (
     <section className="relative z-10 w-full max-w-5xl px-4 sm:px-6 py-16">
@@ -79,6 +86,7 @@ function DownloadSectionLayout({
             pngSrc={pngSrc}
             alt={imageAlt}
             className={imageClassName}
+            priority={imagePriority}
           />
         </div>
 
@@ -122,16 +130,20 @@ function DesktopDownloadButton({
   const buttonVariant = isPrimary ? undefined : ("flat" as const);
   // Mac's apple.svg is dark; invert it on the light "flat" (secondary) buttons.
   const invertIcon = os === "mac" && !isPrimary;
+  const iconSize = getImageDimensions(meta.icon);
 
   const icon = (
     <div className="relative h-4 w-4">
       <Image
         src={meta.icon}
-        alt={meta.name}
-        fill
+        alt=""
+        width={iconSize.width}
+        height={iconSize.height}
         sizes="16px"
         className={
-          invertIcon ? "object-contain filter invert" : "object-contain"
+          invertIcon
+            ? "absolute inset-0 h-full w-full object-contain filter invert"
+            : "absolute inset-0 h-full w-full object-contain"
         }
       />
     </div>
@@ -248,6 +260,7 @@ function DesktopSection() {
       imageAlt="GAIA Desktop App"
       imagePosition="left"
       contentAlignment="right"
+      imagePriority={false}
       title="Download for Desktop"
       chip={
         <Chip variant="flat" color="success">
@@ -300,6 +313,7 @@ function MobileSection() {
       imagePosition="right"
       imageClassName="object-cover object-center"
       contentAlignment="left"
+      imagePriority={false}
       chip={
         <Chip variant="flat" color="warning">
           Waitlist
@@ -328,10 +342,11 @@ function MobileSection() {
                 <div className="relative h-4 w-4">
                   <Image
                     src="/images/icons/apple.svg"
-                    alt="iOS"
-                    fill
+                    alt=""
+                    width={APPLE_ICON.width}
+                    height={APPLE_ICON.height}
                     sizes="16px"
-                    className="object-contain"
+                    className="absolute inset-0 h-full w-full object-contain"
                   />
                 </div>
               }
@@ -345,10 +360,11 @@ function MobileSection() {
                 <div className="relative h-4 w-4">
                   <Image
                     src="/images/icons/google_play.svg"
-                    alt="Android"
-                    fill
+                    alt=""
+                    width={GOOGLE_PLAY_ICON.width}
+                    height={GOOGLE_PLAY_ICON.height}
                     sizes="16px"
-                    className="object-contain"
+                    className="absolute inset-0 h-full w-full object-contain"
                   />
                 </div>
               }
@@ -383,6 +399,7 @@ function WebSection() {
       imageAlt="GAIA Web App"
       imagePosition="left"
       imageClassName="object-cover object-top"
+      imagePriority={false}
       contentAlignment="right"
       title="Get Started on the Web"
       description="No download required. Access GAIA directly from your browser."

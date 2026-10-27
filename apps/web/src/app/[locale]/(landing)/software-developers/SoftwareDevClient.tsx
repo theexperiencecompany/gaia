@@ -26,7 +26,7 @@ const SlackIcon = () => (
     src="/images/icons/slack.svg"
     width={14}
     height={14}
-    alt="Slack"
+    alt=""
     className="opacity-70"
   />
 );

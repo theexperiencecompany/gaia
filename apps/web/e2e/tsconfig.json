@@ -10,6 +10,7 @@
     "**/*.ts",
     "../playwright.config.ts",
     "../playwright.selfhost.config.ts",
-    "../playwright.worker.config.ts"
+    "../playwright.worker.config.ts",
+    "../playwright.visual.config.ts"
   ]
 }

@@ -3,15 +3,11 @@
 import { GoogleAnalytics } from "@next/third-parties/google";
 import Script from "next/script";
 import { useEffect, useState } from "react";
+import { FASTLANE_HOST, RYBBIT_HOST } from "../../third-party-origins.mjs";
 
 const GA_ID = process.env.NEXT_PUBLIC_GA_ID;
 const RYBBIT_SITE_ID = process.env.NEXT_PUBLIC_RYBBIT_SITE_ID;
-const RYBBIT_HOST =
-  process.env.NEXT_PUBLIC_RYBBIT_HOST ?? "https://as.heygaia.io";
 const FASTLANE_TRACKING_ID = process.env.NEXT_PUBLIC_FASTLANE_TRACKING_ID;
-const FASTLANE_HOST =
-  process.env.NEXT_PUBLIC_FASTLANE_HOST ??
-  "https://aromatic-caribou-889.convex.site";
 
 export default function AnalyticsLayout() {
   const [shouldLoad, setShouldLoad] = useState(false);

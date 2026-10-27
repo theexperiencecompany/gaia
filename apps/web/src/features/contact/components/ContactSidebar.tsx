@@ -69,12 +69,12 @@ export default function ContactSidebar() {
   return (
     <div className="grid gap-10">
       <section aria-labelledby="email-heading">
-        <h3
+        <h2
           id="email-heading"
           className="mb-3 text-base font-semibold tracking-tight"
         >
           Get in Touch
-        </h3>
+        </h2>
         {emailLinks.map(({ href, label, Icon, external }) => (
           <a
             key={label}
@@ -91,12 +91,12 @@ export default function ContactSidebar() {
       </section>
 
       <section aria-labelledby="follow-heading">
-        <h3
+        <h2
           id="follow-heading"
           className="text-base font-semibold tracking-tight"
         >
           Socials
-        </h3>
+        </h2>
         <div className="mt-3 flex items-center gap-2 text-foreground-500">
           {socialLinks.map(({ ariaLabel, href, Icon }) => (
             <a

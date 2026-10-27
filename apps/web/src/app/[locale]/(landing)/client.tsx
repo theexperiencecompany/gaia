@@ -8,6 +8,11 @@ import HeroSection from "@/features/landing/components/hero/HeroSection";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
 import type { LatestRelease } from "@/features/landing/utils/getLatestRelease";
 import { homepageFAQs } from "@/lib/faq";
+import { getImageDimensions } from "@/lib/imageDimensions";
+
+const DEMO_WALLPAPER = getImageDimensions(
+  "/images/wallpapers/bands_gradient_1.webp",
+);
 
 function SectionLoader() {
   return (
@@ -115,9 +120,10 @@ export default function LandingPageClient({
           <Image
             src="/images/wallpapers/bands_gradient_1.webp"
             alt=""
-            fill
+            width={DEMO_WALLPAPER.width}
+            height={DEMO_WALLPAPER.height}
             sizes="100vw"
-            className="z-0 object-cover"
+            className="absolute inset-0 z-0 h-full w-full object-cover"
           />
           <div className="relative z-10">
             <ChatDemoSection />

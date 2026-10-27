@@ -4,30 +4,36 @@ import Link from "next/link";
 
 import { GrainOverlay } from "@/components/ui/GrainOverlay";
 import type { BlogPostMeta } from "@/lib/blog";
+import { getImageDimensions } from "@/lib/imageDimensions";
 
 import { AuthorTooltip } from "./AuthorTooltip";
 
 interface BlogCardProps {
   blog: BlogPostMeta;
   variant?: "large" | "small";
+  /** h2 where the cards sit directly under the page h1, h3 under a section heading. */
+  titleAs: "h2" | "h3";
 }
 
-export function BlogCard({ blog, variant = "large" }: BlogCardProps) {
+export function BlogCard({ blog, variant = "large", titleAs }: BlogCardProps) {
   const isLarge = variant === "large";
+  const Title = titleAs;
+  const image = blog.image ? getImageDimensions(blog.image) : null;
 
   return (
     <Link href={`/blog/${blog.slug}`} className="block">
       <div
         className={`group flex h-full flex-col overflow-hidden rounded-3xl bg-zinc-900/70 p-5 transition-all hover:bg-zinc-900 ${isLarge ? "p-1" : "p-0"} `}
       >
-        {blog.image && (
+        {blog.image && image && (
           <div className="relative mb-6 aspect-video">
             <Image
               src={blog.image}
               alt={blog.title}
-              fill
+              width={image.width}
+              height={image.height}
               sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
-              className="rounded-2xl object-cover"
+              className="absolute inset-0 h-full w-full rounded-2xl object-cover"
             />
             <GrainOverlay className="rounded-2xl" />
             {blog.featured && (
@@ -78,11 +84,11 @@ export function BlogCard({ blog, variant = "large" }: BlogCardProps) {
               })}
             </span>
           </div>
-          <h3
+          <Title
             className={`font-medium text-white transition-colors ${isLarge ? "text-lg" : "line-clamp-2 text-sm"}`}
           >
             {blog.title}
-          </h3>
+          </Title>
         </div>
       </div>
     </Link>

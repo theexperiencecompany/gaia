@@ -108,7 +108,12 @@ export default function BlogPostClient({
             <h2 className="mb-8 text-2xl font-medium">Suggested Posts</h2>
             <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
               {suggestedPosts.map((post) => (
-                <BlogCard key={post.slug} blog={post} variant="small" />
+                <BlogCard
+                  key={post.slug}
+                  blog={post}
+                  variant="small"
+                  titleAs="h3"
+                />
               ))}
             </div>
           </div>

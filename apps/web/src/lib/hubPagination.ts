@@ -1,5 +1,10 @@
-/** Child links per hub page: with the navbar, footer, section and page links, a page stays within 100 internal links. */
-const HUB_PAGE_SIZE = 40;
+/**
+ * Links rendered per hub page. With the navbar, footer, section and page
+ * links, a page stays within 100 internal links; each card is also duplicated
+ * into the RSC flight payload, so an unbounded list costs roughly twice its
+ * markup.
+ */
+export const HUB_PAGE_SIZE = 40;
 
 /** The path segment that holds a hub's later pages: /automate/page/2. */
 const PAGE_SEGMENT = "page";
@@ -51,6 +56,19 @@ export function paginateSections<T>(
 /** A hub page's path: the hub itself for page 1, /<hub>/page/<n> after it. */
 export function hubPagePath(hubPath: string, page: number): string {
   return page === 1 ? hubPath : `${hubPath}/${PAGE_SEGMENT}/${page}`;
+}
+
+/** `/automate` for the first page, `/automate/page/2` after it — plain links, no client state. */
+export function hubPageHref(pathname: string, page: number): string {
+  return page <= 1 ? pathname : `${pathname}/page/${page}`;
+}
+
+export function hubPageCount(totalItems: number): number {
+  return Math.max(1, Math.ceil(totalItems / HUB_PAGE_SIZE));
+}
+
+export function hubPageSlice<T>(items: readonly T[], page: number): T[] {
+  return items.slice((page - 1) * HUB_PAGE_SIZE, page * HUB_PAGE_SIZE);
 }
 
 /** Static params for /<hub>/page/[page]: every page after the first. */

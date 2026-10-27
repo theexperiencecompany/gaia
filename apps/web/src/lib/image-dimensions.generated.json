@@ -1,0 +1,566 @@
+{
+  "/brand/experience_full_wordmark_black.png": {
+    "width": 1699,
+    "height": 323
+  },
+  "/brand/experience_full_wordmark_white.png": {
+    "width": 1699,
+    "height": 323
+  },
+  "/brand/experience_logo_black.png": {
+    "width": 2918,
+    "height": 2521
+  },
+  "/brand/experience_logo_black.svg": {
+    "width": 2917,
+    "height": 2521
+  },
+  "/brand/experience_logo_white.png": {
+    "width": 2918,
+    "height": 2521
+  },
+  "/brand/experience_logo_white.svg": {
+    "width": 2917,
+    "height": 2596
+  },
+  "/brand/experience_wordmark_black.png": {
+    "width": 2112,
+    "height": 323
+  },
+  "/brand/experience_wordmark_white.png": {
+    "width": 2112,
+    "height": 323
+  },
+  "/brand/gaia_logo.png": {
+    "width": 2442,
+    "height": 2400
+  },
+  "/brand/gaia_logo.svg": {
+    "width": 2441,
+    "height": 2400
+  },
+  "/brand/gaia_wordmark_black.png": {
+    "width": 2968,
+    "height": 866
+  },
+  "/brand/gaia_wordmark_white.png": {
+    "width": 2968,
+    "height": 866
+  },
+  "/images/avatars/aryan.webp": {
+    "width": 460,
+    "height": 460
+  },
+  "/images/avatars/default.webp": {
+    "width": 626,
+    "height": 626
+  },
+  "/images/blog/desktop.webp": {
+    "width": 1672,
+    "height": 941
+  },
+  "/images/blog/how-tool-calling-works.webp": {
+    "width": 1672,
+    "height": 941
+  },
+  "/images/blog/how-tool-calling-works/Untitled_diagram-2025-11-11-183124.png": {
+    "width": 1137,
+    "height": 1910
+  },
+  "/images/blog/how-tool-calling-works/Untitled_diagram-2025-11-11-183144.png": {
+    "width": 1609,
+    "height": 1734
+  },
+  "/images/blog/how-tool-calling-works/Untitled_diagram-2025-11-11-183214.png": {
+    "width": 2490,
+    "height": 1960
+  },
+  "/images/blog/monorepo.webp": {
+    "width": 1672,
+    "height": 941
+  },
+  "/images/blog/open-source.webp": {
+    "width": 1199,
+    "height": 675
+  },
+  "/images/blog/tool-calling-under-the-hood.webp": {
+    "width": 1199,
+    "height": 675
+  },
+  "/images/blog/v0.webp": {
+    "width": 1672,
+    "height": 941
+  },
+  "/images/icons/airtable.svg": {
+    "width": 128,
+    "height": 128
+  },
+  "/images/icons/apple.svg": {
+    "width": 842,
+    "height": 1000
+  },
+  "/images/icons/asana.svg": {
+    "width": 128,
+    "height": 128
+  },
+  "/images/icons/chatgpt.webp": {
+    "width": 320,
+    "height": 320
+  },
+  "/images/icons/clickup.svg": {
+    "width": 128,
+    "height": 128
+  },
+  "/images/icons/context7.png": {
+    "width": 460,
+    "height": 460
+  },
+  "/images/icons/deepseek.png": {
+    "width": 128,
+    "height": 128
+  },
+  "/images/icons/deepwiki.webp": {
+    "width": 1360,
+    "height": 1440
+  },
+  "/images/icons/docker3d.webp": {
+    "width": 449,
+    "height": 449
+  },
+  "/images/icons/figma.svg": {
+    "width": 128,
+    "height": 128
+  },
+  "/images/icons/gemini.webp": {
+    "width": 1024,
+    "height": 1024
+  },
+  "/images/icons/github.png": {
+    "width": 512,
+    "height": 512
+  },
+  "/images/icons/github3d.webp": {
+    "width": 449,
+    "height": 449
+  },
+  "/images/icons/gmail.webp": {
+    "width": 256,
+    "height": 204
+  },
+  "/images/icons/google_maps.webp": {
+    "width": 256,
+    "height": 256
+  },
+  "/images/icons/google_play.svg": {
+    "width": 29,
+    "height": 32
+  },
+  "/images/icons/google.webp": {
+    "width": 256,
+    "height": 262
+  },
+  "/images/icons/googlecalendar.webp": {
+    "width": 256,
+    "height": 275
+  },
+  "/images/icons/googledocs.webp": {
+    "width": 256,
+    "height": 353
+  },
+  "/images/icons/googledrive.webp": {
+    "width": 640,
+    "height": 572
+  },
+  "/images/icons/googlemeet.webp": {
+    "width": 256,
+    "height": 201
+  },
+  "/images/icons/googlesheets.webp": {
+    "width": 256,
+    "height": 187
+  },
+  "/images/icons/googletasks.webp": {
+    "width": 256,
+    "height": 256
+  },
+  "/images/icons/hackernews.png": {
+    "width": 225,
+    "height": 225
+  },
+  "/images/icons/hubspot.svg": {
+    "width": 128,
+    "height": 128
+  },
+  "/images/icons/instacart.png": {
+    "width": 1050,
+    "height": 1200
+  },
+  "/images/icons/instagram.svg": {
+    "width": 132,
+    "height": 132
+  },
+  "/images/icons/linear.svg": {
+    "width": 200,
+    "height": 200
+  },
+  "/images/icons/linkedin.svg": {
+    "width": 128,
+    "height": 128
+  },
+  "/images/icons/linux.svg": {
+    "width": 28,
+    "height": 32
+  },
+  "/images/icons/macos/airtable.webp": {
+    "width": 256,
+    "height": 256
+  },
+  "/images/icons/macos/asana.webp": {
+    "width": 256,
+    "height": 256
+  },
+  "/images/icons/macos/calendar.webp": {
+    "width": 256,
+    "height": 256
+  },
+  "/images/icons/macos/clickup.webp": {
+    "width": 256,
+    "height": 256
+  },
+  "/images/icons/macos/discord.webp": {
+    "width": 256,
+    "height": 256
+  },
+  "/images/icons/macos/drive.webp": {
+    "width": 256,
+    "height": 256
+  },
+  "/images/icons/macos/figma.webp": {
+    "width": 256,
+    "height": 256
+  },
+  "/images/icons/macos/github.webp": {
+    "width": 256,
+    "height": 256
+  },
+  "/images/icons/macos/hubspot.webp": {
+    "width": 256,
+    "height": 256
+  },
+  "/images/icons/macos/imessage.webp": {
+    "width": 256,
+    "height": 256
+  },
+  "/images/icons/macos/instagram.webp": {
+    "width": 256,
+    "height": 256
+  },
+  "/images/icons/macos/linear.webp": {
+    "width": 240,
+    "height": 240
+  },
+  "/images/icons/macos/macos_weather.png": {
+    "width": 264,
+    "height": 264
+  },
+  "/images/icons/macos/mail.png": {
+    "width": 264,
+    "height": 264
+  },
+  "/images/icons/macos/notion_calendar.webp": {
+    "width": 256,
+    "height": 256
+  },
+  "/images/icons/macos/notion.webp": {
+    "width": 256,
+    "height": 256
+  },
+  "/images/icons/macos/slack.png": {
+    "width": 256,
+    "height": 256
+  },
+  "/images/icons/macos/slack.webp": {
+    "width": 256,
+    "height": 256
+  },
+  "/images/icons/macos/teams.webp": {
+    "width": 256,
+    "height": 256
+  },
+  "/images/icons/macos/telegram.webp": {
+    "width": 256,
+    "height": 256
+  },
+  "/images/icons/macos/todoist.webp": {
+    "width": 256,
+    "height": 256
+  },
+  "/images/icons/macos/trello.webp": {
+    "width": 256,
+    "height": 256
+  },
+  "/images/icons/macos/whatsapp.webp": {
+    "width": 256,
+    "height": 256
+  },
+  "/images/icons/macos/youtube.webp": {
+    "width": 256,
+    "height": 256
+  },
+  "/images/icons/macos/zoom.webp": {
+    "width": 256,
+    "height": 256
+  },
+  "/images/icons/microsoft_teams.svg": {
+    "width": 128,
+    "height": 128
+  },
+  "/images/icons/minimax.png": {
+    "width": 32,
+    "height": 32
+  },
+  "/images/icons/notion.webp": {
+    "width": 512,
+    "height": 512
+  },
+  "/images/icons/openclaw.svg": {
+    "width": 120,
+    "height": 120
+  },
+  "/images/icons/perplexity.png": {
+    "width": 512,
+    "height": 591
+  },
+  "/images/icons/poke.png": {
+    "width": 192,
+    "height": 192
+  },
+  "/images/icons/posthog.svg": {
+    "width": 50,
+    "height": 30
+  },
+  "/images/icons/reddit.svg": {
+    "width": 128,
+    "height": 128
+  },
+  "/images/icons/sealed-envelope.webp": {
+    "width": 1536,
+    "height": 1024
+  },
+  "/images/icons/slack.svg": {
+    "width": 128,
+    "height": 128
+  },
+  "/images/icons/todoist.svg": {
+    "width": 256,
+    "height": 256
+  },
+  "/images/icons/trello.svg": {
+    "width": 128,
+    "height": 128
+  },
+  "/images/icons/twitter.webp": {
+    "width": 2491,
+    "height": 2050
+  },
+  "/images/icons/vercel.svg": {
+    "width": 76,
+    "height": 65
+  },
+  "/images/icons/weather.webp": {
+    "width": 160,
+    "height": 160
+  },
+  "/images/icons/whatsapp.webp": {
+    "width": 1024,
+    "height": 1026
+  },
+  "/images/icons/windows.svg": {
+    "width": 88,
+    "height": 88
+  },
+  "/images/icons/x.svg": {
+    "width": 1200,
+    "height": 1227
+  },
+  "/images/icons/yelp.png": {
+    "width": 980,
+    "height": 980
+  },
+  "/images/icons/zai.png": {
+    "width": 128,
+    "height": 128
+  },
+  "/images/icons/zoom.svg": {
+    "width": 2500,
+    "height": 2500
+  },
+  "/images/logos/experience_logo.svg": {
+    "width": 2917,
+    "height": 2596
+  },
+  "/images/logos/logo.svg": {
+    "width": 2441,
+    "height": 2400
+  },
+  "/images/logos/logo.webp": {
+    "width": 2442,
+    "height": 2400
+  },
+  "/images/logos/macos.png": {
+    "width": 1024,
+    "height": 1024
+  },
+  "/images/logos/macos.webp": {
+    "width": 1024,
+    "height": 1024
+  },
+  "/images/logos/text_w_logo_white.webp": {
+    "width": 2968,
+    "height": 866
+  },
+  "/images/readme/cloud.webp": {
+    "width": 2400,
+    "height": 1350
+  },
+  "/images/readme/cta-get-started.webp": {
+    "width": 296,
+    "height": 104
+  },
+  "/images/readme/cta-read-the-docs.webp": {
+    "width": 334,
+    "height": 104
+  },
+  "/images/readme/self-host-installer.webp": {
+    "width": 2400,
+    "height": 1350
+  },
+  "/images/readme/self-host-ready.webp": {
+    "width": 2400,
+    "height": 1350
+  },
+  "/images/screenshots/desktop_dock.png": {
+    "width": 1280,
+    "height": 720
+  },
+  "/images/screenshots/desktop_dock.webp": {
+    "width": 1280,
+    "height": 720
+  },
+  "/images/screenshots/phone_dock.png": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/images/screenshots/phone_dock.webp": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/images/screenshots/website_tab.png": {
+    "width": 870,
+    "height": 494
+  },
+  "/images/screenshots/website_tab.webp": {
+    "width": 870,
+    "height": 494
+  },
+  "/images/wallpapers/bands_gradient_1.png": {
+    "width": 1536,
+    "height": 1024
+  },
+  "/images/wallpapers/bands_gradient_1.webp": {
+    "width": 1536,
+    "height": 1024
+  },
+  "/images/wallpapers/bands_gradient_black.png": {
+    "width": 1536,
+    "height": 1024
+  },
+  "/images/wallpapers/blueprint.png": {
+    "width": 1536,
+    "height": 1024
+  },
+  "/images/wallpapers/creation_of_adam.png": {
+    "width": 1672,
+    "height": 941
+  },
+  "/images/wallpapers/dreamy_rocket_launch.png": {
+    "width": 1672,
+    "height": 941
+  },
+  "/images/wallpapers/earth_satellite.png": {
+    "width": 1536,
+    "height": 1024
+  },
+  "/images/wallpapers/ethereal_alpine_valley.png": {
+    "width": 1672,
+    "height": 941
+  },
+  "/images/wallpapers/ethereal_alpine_valley.webp": {
+    "width": 1672,
+    "height": 941
+  },
+  "/images/wallpapers/glowing_doorway.png": {
+    "width": 1199,
+    "height": 675
+  },
+  "/images/wallpapers/glowing_doorway.webp": {
+    "width": 1199,
+    "height": 675
+  },
+  "/images/wallpapers/holo/bluehaven.jpg": {
+    "width": 1200,
+    "height": 2100
+  },
+  "/images/wallpapers/holo/frostpeak.jpg": {
+    "width": 512,
+    "height": 768
+  },
+  "/images/wallpapers/holo/greenvale.jpg": {
+    "width": 1012,
+    "height": 1799
+  },
+  "/images/wallpapers/holo/mistgrove.png": {
+    "width": 673,
+    "height": 1200
+  },
+  "/images/wallpapers/subtle_glow_deep_blues.webp": {
+    "width": 1672,
+    "height": 941
+  },
+  "/images/wallpapers/swiss_evening.png": {
+    "width": 1536,
+    "height": 1024
+  },
+  "/images/wallpapers/swiss_evening.webp": {
+    "width": 1536,
+    "height": 1024
+  },
+  "/images/wallpapers/swiss_morning.png": {
+    "width": 1536,
+    "height": 1024
+  },
+  "/images/wallpapers/swiss_morning.webp": {
+    "width": 1536,
+    "height": 1024
+  },
+  "/images/wallpapers/swiss_night.png": {
+    "width": 1536,
+    "height": 1024
+  },
+  "/images/wallpapers/swiss_night.webp": {
+    "width": 1536,
+    "height": 1024
+  },
+  "/images/wallpapers/swiss.png": {
+    "width": 1536,
+    "height": 1024
+  },
+  "/images/wallpapers/swiss.webp": {
+    "width": 1536,
+    "height": 1024
+  },
+  "/images/whats-new-fallback.png": {
+    "width": 1920,
+    "height": 1080
+  }
+}
