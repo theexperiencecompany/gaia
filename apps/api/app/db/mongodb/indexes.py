@@ -11,6 +11,7 @@ from pymongo.errors import OperationFailure
 from app.constants.auth import InstanceRole
 from app.constants.browser import BROWSER_PROFILE_TTL_SECONDS
 from app.constants.log_tags import LogTag
+from app.constants.payments import CLAIMED_STATUS
 from app.db.mongodb.collections import get_async_collection
 from app.db.repositories.integrations import integration_repository
 from app.db.repositories.local_credentials import local_credentials_repository
@@ -754,6 +755,17 @@ async def create_processed_webhook_indexes() -> None:
             processed_webhooks_collection.create_index(
                 "processed_at",
                 expireAfterSeconds=2592000,  # 30 days
+            ),
+            # A claim whose handler died mid-flight never gets an outcome, and a
+            # 30-day tombstone makes Dodo's retry answer "already processed" for
+            # the whole window: the delivery is lost. Dodo's eight attempts span
+            # ~27.5h, so a stuck claim expires just past the last one while a
+            # finished record keeps its 30 days.
+            processed_webhooks_collection.create_index(
+                "processed_at",
+                expireAfterSeconds=172800,  # 48h
+                partialFilterExpression={"status": CLAIMED_STATUS},
+                name="claimed_ttl",
             ),
         )
     except Exception as e:
