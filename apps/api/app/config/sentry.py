@@ -195,7 +195,8 @@ def _attribute_user(event: Event) -> None:
     includes ARQ jobs, which have no request to set it from.
     """
     fields = _EventFields.model_validate(event)
-    if fields.user:
+    existing_user = (event.get("user") or {}) if isinstance(event.get("user"), dict) else {}
+    if existing_user.get("id"):
         return
     user_id = fields.extra.user.id if fields.extra.user else None
     if not user_id:
@@ -205,7 +206,7 @@ def _attribute_user(event: Event) -> None:
         event_user = _EventExtras.model_validate(current_event_fields()).user
         user_id = event_user.id if event_user else None
     if user_id:
-        event["user"] = {"id": user_id}
+        event["user"] = {**existing_user, "id": user_id}
 
 
 def _before_send(event: Event, hint: Hint) -> Event | None:
@@ -220,7 +221,7 @@ def _before_send(event: Event, hint: Hint) -> Event | None:
         # A hook that raises makes the SDK drop the event: ship it ungrouped instead.
         log.warning("sentry_event_shaping_failed", error_type=type(exc).__name__)
         return event
-    if fingerprint is not None:
+    if fingerprint is not None and not event.get("fingerprint"):
         event["fingerprint"] = fingerprint
     return event
 

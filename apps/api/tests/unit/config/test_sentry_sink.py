@@ -31,7 +31,7 @@ from sentry_sdk.types import Event, Hint
 
 from app.config import sentry as sentry_config
 from app.config.loggers import REQUEST_LOGGER_NAME
-from app.config.sentry import _before_send, _make_sentry_loguru_sink
+from app.config.sentry import _make_sentry_loguru_sink
 from shared.py.logging import MCP_USE_LOGGER_DISPLAY_NAME, _InterceptHandler, env_context
 from shared.py.wide_events import (
     BACKGROUND_LOGGER_NAME,
@@ -380,35 +380,37 @@ def _event(**overrides: object) -> Event:
 
 
 def test_a_wide_event_user_becomes_the_sentry_user() -> None:
-    event = _before_send(_event(extra={"user": {"id": "67bdb4367c7dd1f0ea343216"}}), {})
+    event = sentry_config._before_send(
+        _event(extra={"user": {"id": "67bdb4367c7dd1f0ea343216"}}), {}
+    )
 
     assert event is not None
     assert event["user"] == {"id": "67bdb4367c7dd1f0ea343216"}
 
 
 def test_the_user_falls_back_to_a_flat_user_id() -> None:
-    event = _before_send(_event(extra={"user_id": "67bdb4367c7dd1f0ea343216"}), {})
+    event = sentry_config._before_send(_event(extra={"user_id": "67bdb4367c7dd1f0ea343216"}), {})
 
     assert event is not None
     assert event["user"] == {"id": "67bdb4367c7dd1f0ea343216"}
 
 
 def test_an_event_without_a_user_stays_anonymous() -> None:
-    event = _before_send(_event(extra={"trace_id": "t1"}), {})
+    event = sentry_config._before_send(_event(extra={"trace_id": "t1"}), {})
 
     assert event is not None
     assert "user" not in event
 
 
 def test_two_messages_differing_only_by_identifiers_share_a_fingerprint() -> None:
-    first = _before_send(
+    first = sentry_config._before_send(
         _event(
             tags={"logger": "APP"},
             logentry={"message": "MCP DCR failed for https://x.dev/u/67bdb4367c7dd1f0ea343216"},
         ),
         {},
     )
-    second = _before_send(
+    second = sentry_config._before_send(
         _event(
             tags={"logger": "APP"},
             logentry={"message": "MCP DCR failed for https://y.dev/u/aaaaaaaaaaaaaaaaaaaa"},
@@ -421,22 +423,24 @@ def test_two_messages_differing_only_by_identifiers_share_a_fingerprint() -> Non
 
 
 def test_different_messages_keep_different_fingerprints() -> None:
-    first = _before_send(_event(logentry={"message": "redis unreachable"}), {})
-    second = _before_send(_event(logentry={"message": "mongo unreachable"}), {})
+    first = sentry_config._before_send(_event(logentry={"message": "redis unreachable"}), {})
+    second = sentry_config._before_send(_event(logentry={"message": "mongo unreachable"}), {})
 
     assert first is not None and second is not None
     assert first["fingerprint"] != second["fingerprint"]
 
 
 def test_a_message_fingerprint_names_the_logger_that_said_it() -> None:
-    event = _before_send(_event(tags={"logger": "MCP_USE"}), {})
+    event = sentry_config._before_send(_event(tags={"logger": "MCP_USE"}), {})
 
     assert event is not None
     assert event["fingerprint"][1] == "MCP_USE"
 
 
 def test_an_exception_event_is_grouped_by_its_stack_not_its_message() -> None:
-    event = _before_send(_event(exception={"values": []}, logentry={"message": "boom 12"}), {})
+    event = sentry_config._before_send(
+        _event(exception={"values": []}, logentry={"message": "boom 12"}), {}
+    )
 
     assert event is not None
     assert "fingerprint" not in event
@@ -447,7 +451,7 @@ def test_a_retried_llm_attempt_is_dropped_before_anything_else() -> None:
         "origin": LangchainIntegration.origin,
         "op": OP.GEN_AI_CHAT,
     }
-    assert _before_send(_event(contexts={"trace": trace}), {}) is None
+    assert sentry_config._before_send(_event(contexts={"trace": trace}), {}) is None
 
 
 @pytest.mark.parametrize(
@@ -470,14 +474,14 @@ def test_the_fingerprint_reads_every_fallback_in_order(
     event: dict[str, object], expected: list[str]
 ) -> None:
     """Each source is a fallback: logentry.formatted, then message, then the event's own."""
-    result = _before_send(_event(**event), {})
+    result = sentry_config._before_send(_event(**event), {})
 
     assert result is not None
     assert result["fingerprint"] == expected
 
 
 def test_a_very_long_message_is_capped_for_readability() -> None:
-    result = _before_send(_event(logentry={"message": "z" * 400}), {})
+    result = sentry_config._before_send(_event(logentry={"message": "z" * 400}), {})
 
     assert result is not None
     assert len(result["fingerprint"][2]) == 160
@@ -485,7 +489,7 @@ def test_a_very_long_message_is_capped_for_readability() -> None:
 
 def test_an_event_with_no_message_keeps_sentry_s_own_grouping() -> None:
     """A blank fingerprint would merge every message-less event into one issue."""
-    result = _before_send(_event(logentry={}), {})
+    result = sentry_config._before_send(_event(logentry={}), {})
 
     assert result is not None
     assert "fingerprint" not in result
@@ -501,7 +505,7 @@ def test_the_hint_reaches_the_llm_attempt_filter(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(sentry_config, "_drop_llm_attempt_errors", record)
     hint: Hint = {"exc_info": (ValueError, ValueError("x"), None)}
 
-    _before_send(_event(), hint)
+    sentry_config._before_send(_event(), hint)
 
     assert seen["hint"] is hint
 
@@ -525,8 +529,29 @@ def test_an_unvalidatable_event_still_reaches_sentry(
     warning = MagicMock()
     monkeypatch.setattr(sentry_config.log, "warning", warning)
 
-    event = _before_send(_event(tags={"logger": 5}), {})
+    event = sentry_config._before_send(_event(tags={"logger": 5}), {})
 
     assert event is not None
     assert "fingerprint" not in event
     warning.assert_called_once_with("sentry_event_shaping_failed", error_type="ValidationError")
+
+
+def test_a_user_without_an_id_still_gets_one() -> None:
+    """Sentry allows a user dict with only a username; the event's own id must join it."""
+    event = sentry_config._before_send(
+        _event(extra={"user": {"id": "67bdb4367c7dd1f0ea343216"}}, user={"username": "a"}),
+        {},
+    )
+
+    assert event is not None
+    assert event["user"] == {"username": "a", "id": "67bdb4367c7dd1f0ea343216"}
+
+
+def test_an_existing_fingerprint_is_not_replaced() -> None:
+    """Scope code may have grouped the event already; ours must not silently undo it."""
+    event = sentry_config._before_send(
+        _event(logentry={"message": "boom 4242"}, fingerprint=["mine"]), {}
+    )
+
+    assert event is not None
+    assert event["fingerprint"] == ["mine"]
