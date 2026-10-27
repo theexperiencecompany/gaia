@@ -300,6 +300,7 @@ class TestKeepWarmTick:
         assert tick.acquired == ["lab"]
         tick.pause.assert_not_awaited()
 
+    @pytest.mark.regression
     async def test_a_capped_run_is_logged_once_per_cap_window_and_the_user_is_not_notified(
         self,
     ) -> None:
