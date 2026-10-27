@@ -37,7 +37,7 @@ describe("ChatChannelSettings", () => {
   it("promotes the second platform and saves the new order", async () => {
     render(<ChatChannelSettings linkedPlatforms={linked} />);
     await waitFor(() =>
-      expect(screen.getByText("Texts you here first")).toBeDefined(),
+      expect(screen.getByText("First in line")).toBeDefined(),
     );
 
     fireEvent.click(screen.getByLabelText("Move WhatsApp up"));
@@ -51,5 +51,14 @@ describe("ChatChannelSettings", () => {
         true,
       ),
     );
+  });
+
+  it("says GAIA stays in the app while you are using it", async () => {
+    render(<ChatChannelSettings linkedPlatforms={linked} />);
+
+    // Activity in the GAIA app routes messages to the app, never to a chat app.
+    expect(
+      await screen.findByText(/active in the GAIA app, it messages you there/),
+    ).toBeDefined();
   });
 });

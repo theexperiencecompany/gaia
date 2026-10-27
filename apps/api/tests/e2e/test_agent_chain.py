@@ -48,6 +48,7 @@ from app.models.message_models import MessageRequestWithHistory
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.services.chat import stream as chat_stream
+from app.services.delivery.chat_channel import InApp
 from tests.e2e._harness.background import drain_background_runs
 from tests.e2e._harness.graph_run import RecordingFakeModel, call, scripted_model
 from tests.e2e._harness.saved_messages import SavedToolData
@@ -284,6 +285,11 @@ async def run_chain(
         patch(
             "app.agents.core.subagents.base_subagent.get_checkpointer_manager",
             new=AsyncMock(side_effect=RuntimeError("no postgres in tests")),
+        ),
+        # Mongo here is a MagicMock, so the presence note's user read gets no chat app.
+        patch(
+            "app.agents.context.presence_note.resolve_proactive_target",
+            new=AsyncMock(return_value=InApp(reason="no_chat_app")),
         ),
     ]
     if subagent is not None:

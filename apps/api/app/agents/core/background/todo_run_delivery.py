@@ -7,6 +7,7 @@ the todo store fails is finished by a durable job, keyed by the run, never by
 running the todo again.
 """
 
+import asyncio
 from typing import NamedTuple
 
 from pydantic import BaseModel, ConfigDict
@@ -45,6 +46,11 @@ from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services.analytics_service import capture
 from app.services.canvas_markdown import section_body
+from app.services.delivery.chat_channel import (
+    ProactiveTarget,
+    proactive_destination,
+    resolve_proactive_target,
+)
 from app.services.notification_service import notification_service
 from app.services.todo_activity import record_run_finished, run_finished_marker
 from app.utils.message_breaks import split_message_bubbles
@@ -63,11 +69,12 @@ _NOT_SENT_NOTES: dict[TodoRunDeliveryOutcome, str] = {
 
 
 class _Resolution(NamedTuple):
-    """What became of one run's result: the outcome, its activity note, and the platform."""
+    """What became of one run's result: outcome, activity note, platform, and the target a sent result was routed by."""
 
     outcome: TodoRunDeliveryOutcome
     note: str
     platform: ConversationSource | None = None
+    target: ProactiveTarget | None = None
 
 
 def _not_sent(outcome: TodoRunDeliveryOutcome) -> _Resolution:
@@ -215,6 +222,7 @@ async def _send_once(finished: FinishedTodoRun, user: AuthenticatedUser) -> tupl
             platform=resolution.platform.value if resolution.platform else None,
             trigger_type=finished.trigger_type.value,
             recurring=bool(todo.recurrence),
+            **proactive_destination(resolution.target),
         ),
     )
     summary = finished.result_text.strip().replace("\n", " ")[:RUN_SUMMARY_ACTIVITY_CHARS]
@@ -228,7 +236,7 @@ def _canvas_section(todo: TodoDocument, heading: str, max_chars: int) -> str | N
 
 
 async def _send_in_app(todo: TodoDocument, text: str) -> _Resolution:
-    """Deliver a result as an in-app notification, for a user with no chat app linked."""
+    """Deliver a result as an in-app notification: the fallback, or the target for an in-app user."""
     try:
         await notification_service.create_notification(
             NotificationRequest(
@@ -251,6 +259,20 @@ async def _send_in_app(todo: TodoDocument, text: str) -> _Resolution:
     return _Resolution(TodoRunDeliveryOutcome.DELIVERED, "result sent as an in-app notification")
 
 
+async def _lookup_target(todo: TodoDocument) -> ProactiveTarget | None:
+    """Resolve where the result goes; None (logged) when the lookup fails, so it falls back in-app."""
+    try:
+        return await resolve_proactive_target(todo.user_id)
+    except Exception as e:
+        log.error(
+            f"{LogTag.AGENT} todo run target lookup failed, falling back to in-app",
+            todo_id=todo.id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return None
+
+
 async def _narrate_and_send(
     finished: FinishedTodoRun, user: AuthenticatedUser, todo: TodoDocument
 ) -> _Resolution:
@@ -258,16 +280,21 @@ async def _narrate_and_send(
 
     A report whose form its todo's guidance sets is sent as written: comms decides only whether.
     """
-    text = await narrate_executor_result(
-        finished.result_text,
-        "result",
-        finished.conversation_id,
-        user,
-        preamble=tracked_todo_delivery_note(
-            todo.title,
-            _canvas_section(todo, CANVAS_STANDING_RULES_SECTION, STANDING_RULES_MAX_CHARS),
-            _canvas_section(todo, CANVAS_KEY_DETAILS_SECTION, DELIVERY_KEY_DETAILS_MAX_CHARS),
+    # Where it goes is looked up while comms writes it up: neither waits on the other.
+    text, target = await asyncio.gather(
+        narrate_executor_result(
+            finished.result_text,
+            "result",
+            finished.conversation_id,
+            user,
+            preamble=tracked_todo_delivery_note(
+                todo.title,
+                _canvas_section(todo, CANVAS_STANDING_RULES_SECTION, STANDING_RULES_MAX_CHARS),
+                _canvas_section(todo, CANVAS_KEY_DETAILS_SECTION, DELIVERY_KEY_DETAILS_MAX_CHARS),
+                runs_once=not (todo.recurrence or todo.trigger_subscriptions),
+            ),
         ),
+        _lookup_target(todo),
     )
     if not text:
         log.error(f"{LogTag.AGENT} todo run result narration failed", todo_id=todo.id)
@@ -289,14 +316,19 @@ async def _narrate_and_send(
     # comms' retelling dropped the headings a report-form owner's guidance requires.
     owns_form = todo.external_ref is not None and todo.external_ref.source.owns_report_form
     message = finished.result_text if owns_form else directive.payload
-    platform = await deliver_result_to_platforms(
-        user=user,
-        user_id=todo.user_id,
-        notification_text=message,
-        origin=f'tracked todo "{todo.title}" (id {todo.id})',
+    platform = (
+        await deliver_result_to_platforms(
+            user=user,
+            user_id=todo.user_id,
+            notification_text=message,
+            origin=f'tracked todo "{todo.title}" (id {todo.id})',
+            target=target,
+        )
+        if target is not None
+        else None
     )
     if platform is None:
-        return await _send_in_app(todo, message)
+        return (await _send_in_app(todo, message))._replace(target=target)
     return _Resolution(
-        TodoRunDeliveryOutcome.DELIVERED, f"result sent on {platform.value}", platform
+        TodoRunDeliveryOutcome.DELIVERED, f"result sent on {platform.value}", platform, target
     )

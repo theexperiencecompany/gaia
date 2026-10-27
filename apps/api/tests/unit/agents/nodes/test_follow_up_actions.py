@@ -4,6 +4,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from prometheus_client import REGISTRY
 import pytest
 
+from app.agents.context.slots import PRESENCE_NOTE_MARKER, mark
 from app.agents.core.nodes.follow_up_actions_node import (
     _FOLLOW_UP_CONTEXT_MAX_CHARS,
     SUGGEST_FOLLOW_UP_ACTIONS,
@@ -127,6 +128,21 @@ class TestFollowUpActionsNode:
             return_value=mock_writer,
         ):
             result = await follow_up_actions_node(state, config, store)
+
+        assert result is state
+        assert {"follow_up_actions": []} in written_values
+
+    @pytest.mark.asyncio
+    async def test_a_state_without_messages_writes_empty_actions(self):
+        state = {"selected_tool_ids": [], "todos": []}
+        written_values = []
+        mock_writer = MagicMock(side_effect=written_values.append)
+
+        with patch(
+            "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
+            return_value=mock_writer,
+        ):
+            result = await follow_up_actions_node(state, _make_config(), _make_store())
 
         assert result is state
         assert {"follow_up_actions": []} in written_values
@@ -593,3 +609,26 @@ class TestExecutorDelegationSkip:
 
         assert written == [{"main_response_complete": True}, {"follow_up_actions": ["Next step"]}]
         generate.assert_awaited_once()
+
+
+class TestThePresenceNoteIsNotContext:
+    """GAIA's surface-change note is not part of the exchange follow-ups react to."""
+
+    async def test_the_note_never_reaches_the_follow_up_context(self) -> None:
+        note = mark(
+            HumanMessage(content="[Surface change: now on Telegram.]"), PRESENCE_NOTE_MARKER
+        )
+        messages = [
+            HumanMessage(content="first question"),
+            AIMessage(content="first answer"),
+            note,
+            HumanMessage(content="Weather?"),
+            AIMessage(content="Sunny."),
+        ]
+
+        _, generate = await TestExecutorDelegationSkip._run(messages)
+
+        context = generate.await_args.args[0]
+        assert "Surface change" not in context
+        # The note does not take a slot in the four-message window either.
+        assert "first question" in context

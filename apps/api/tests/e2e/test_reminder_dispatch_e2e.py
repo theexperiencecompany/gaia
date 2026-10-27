@@ -27,6 +27,7 @@ import pytest
 from app.models.chat_models import ConversationSource
 from app.models.reminder_models import AgentType, ReminderModel, StaticReminderPayload
 from app.models.scheduler_models import ScheduledTaskStatus, TaskOutcome
+from app.services.delivery.chat_channel import InApp
 from app.services.payments.subscription_events import resume_paywall_pauses_safely
 from app.services.reminder_service import ReminderScheduler
 from app.tasks.reminder_tasks import PAYWALL_FEATURE_REMINDER
@@ -124,6 +125,11 @@ def _patch_delivery_edges(paid: bool = True):
     patchers = (
         patch(f"{REMINDER_TASKS}.is_paid", new=paid_m),
         patch(f"{REMINDER_TASKS}.load_user_context", new=user_m),
+        # Nobody active: the reminder lands back in the chat it was set in.
+        patch(
+            f"{REMINDER_TASKS}.resolve_proactive_target",
+            new=AsyncMock(return_value=InApp(reason="no_chat_app")),
+        ),
         patch(f"{REMINDER_TASKS}.deliver_message_to_conversation", new=conv_m),
         patch(f"{REMINDER_TASKS}.deliver_result_to_platforms", new=plat_m),
     )

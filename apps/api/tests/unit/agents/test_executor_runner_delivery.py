@@ -20,7 +20,11 @@ from fastapi import HTTPException
 from prometheus_client import REGISTRY
 import pytest
 
-from app.agents.core.background import executor_runner as er, result_delivery as rd
+from app.agents.core.background import (
+    executor_runner as er,
+    result_delivery as rd,
+    workflow_platform_delivery as wpd,
+)
 from app.agents.core.background.session import (
     ExecutorRun,
     RunKind,
@@ -41,9 +45,11 @@ from app.models.chat_models import ConversationSource, MessageModel, ToolDataEnt
 from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
 from app.models.message_models import ReplyToMessageData
 from app.models.user_models import AuthenticatedUser
+from app.services.delivery.chat_channel import InApp
 from shared.py.analytics import Dedupe, UserId
 from shared.py.analytics.catalog.agents import AgentRunCompleted, AgentRunFailed, AgentRunStarted
 from shared.py.analytics.catalog.chat import ChatBackgroundUpdateResolved
+from shared.py.analytics.catalog.workflows import WorkflowResultDelivered
 from shared.py.wide_events import log
 from tests.helpers import captured_wide_event
 
@@ -51,6 +57,7 @@ from tests.helpers import captured_wide_event
 pytestmark = pytest.mark.usefixtures("fake_redis")
 
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
+NO_CHAT_APP = InApp(reason="no_chat_app")
 
 
 def _run(
@@ -175,7 +182,8 @@ class TestAWorkflowAnswerCarriesItsFollowUpsInline:
             ),
             patch.object(rd, "update_messages", new_callable=AsyncMock) as save,
             patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
-            patch.object(rd, "deliver_result_to_platforms", new_callable=AsyncMock),
+            patch.object(wpd, "resolve_proactive_target", AsyncMock(return_value=NO_CHAT_APP)),
+            patch.object(wpd, "deliver_result_to_platforms", AsyncMock(return_value=None)),
             patch.object(rd, "_dispatch_workflow_notification", new_callable=AsyncMock),
         ):
             await rd.deliver_result(
@@ -346,20 +354,77 @@ class TestWorkflowResultReachesThePlatformDelivery:
             ),
             patch.object(rd, "_safe_inline_follow_ups", new_callable=AsyncMock, return_value=[]),
             patch.object(rd, "update_messages", new_callable=AsyncMock),
-            patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
-            patch.object(rd, "deliver_result_to_platforms", new_callable=AsyncMock) as deliver,
+            patch.object(
+                rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None
+            ) as conversation_source,
+            patch.object(
+                wpd, "resolve_proactive_target", AsyncMock(return_value=NO_CHAT_APP)
+            ) as resolve_target,
+            patch.object(
+                wpd, "deliver_result_to_platforms", AsyncMock(return_value=None)
+            ) as deliver,
+            patch.object(wpd, "capture") as capture,
             patch.object(rd, "_dispatch_workflow_notification", new_callable=AsyncMock) as notify,
         ):
             await rd.deliver_result(
                 _run(workflow=True), result_text="done", result_type="final", tool_data=None
             )
 
+        capture.assert_called_once_with(
+            UserId(USER_ID),
+            WorkflowResultDelivered(
+                workflow_id="wf-1",
+                outcome="delivered",
+                destination="in_app",
+                destination_basis="no_chat_app",
+            ),
+        )
+        conversation_source.assert_awaited_once_with("conv-1", USER_ID)
+        resolve_target.assert_awaited_once_with(USER_ID)
         deliver.assert_awaited_once()
         kwargs = deliver.await_args.kwargs
         assert kwargs["user"] == AuthenticatedUser(user_id=USER_ID)
         assert kwargs["user_id"] == USER_ID
         assert kwargs["origin"] == ('workflow "Morning digest" (id wf-1), tracked todo (id todo-9)')
+        assert kwargs["target"] is NO_CHAT_APP
         notify.assert_awaited_once()  # the in-app badge still fires alongside
+
+    async def test_a_failed_target_lookup_loses_only_the_chat_app_copy(self) -> None:
+        """Regression: the lookup ran before the save, so its failure dropped the saved result and the badge."""
+        with (
+            patch.object(
+                rd, "narrate_executor_result", new_callable=AsyncMock, return_value="done"
+            ),
+            patch.object(rd, "_safe_inline_follow_ups", new_callable=AsyncMock, return_value=[]),
+            patch.object(rd, "update_messages", new_callable=AsyncMock) as save,
+            patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
+            patch.object(
+                wpd,
+                "resolve_proactive_target",
+                AsyncMock(side_effect=ConnectionError("mongo down")),
+            ),
+            patch.object(
+                wpd, "deliver_result_to_platforms", AsyncMock(return_value=None)
+            ) as deliver,
+            patch.object(rd, "_dispatch_workflow_notification", new_callable=AsyncMock) as notify,
+        ):
+            async with captured_wide_event() as event:
+                narrated, message_id = await rd.deliver_result(
+                    _run(workflow=True), result_text="done", result_type="final", tool_data=None
+                )
+
+        save.assert_awaited_once()
+        notify.assert_awaited_once()
+        deliver.assert_not_awaited()
+        assert (narrated, message_id is not None) == ("done", True)
+        assert event["errors"] == [
+            {
+                "msg": f"{LogTag.AGENT} workflow result: chat app lookup failed, not sent to the chat app",
+                "workflow_id": "wf-1",
+                "error": "mongo down",
+                "error_type": "ConnectionError",
+            }
+        ]
 
 
 class TestGetConversationSource:
@@ -2174,7 +2239,8 @@ class TestWorkflowNotificationRef:
             patch.object(rd, "_safe_inline_follow_ups", new_callable=AsyncMock, return_value=[]),
             patch.object(rd, "update_messages", new_callable=AsyncMock),
             patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
-            patch.object(rd, "deliver_result_to_platforms", new_callable=AsyncMock),
+            patch.object(wpd, "resolve_proactive_target", AsyncMock(return_value=NO_CHAT_APP)),
+            patch.object(wpd, "deliver_result_to_platforms", AsyncMock(return_value=None)),
             patch.object(rd, "_dispatch_workflow_notification", new_callable=AsyncMock) as notify,
         ):
             await rd.deliver_result(run, result_text="done", result_type="final", tool_data=None)
@@ -2632,7 +2698,10 @@ async def _deliver_run(
             patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
             patch.object(rd, "_spawn_deferred_follow_ups") as spawn,
             patch.object(rd, "capture") as capture,
-            patch.object(rd, "deliver_result_to_platforms", new_callable=AsyncMock) as to_platforms,
+            patch.object(wpd, "resolve_proactive_target", AsyncMock(return_value=NO_CHAT_APP)),
+            patch.object(
+                wpd, "deliver_result_to_platforms", AsyncMock(return_value=None)
+            ) as to_platforms,
             patch.object(rd, "_dispatch_workflow_notification", new_callable=AsyncMock) as notify,
         ):
             returned = await rd.deliver_result(
@@ -2886,7 +2955,8 @@ class TestWorkflowNotificationIsTraceable:
             patch.object(rd, "generate_follow_up_actions", new_callable=AsyncMock, return_value=[]),
             patch.object(rd, "update_messages", new_callable=AsyncMock),
             patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
-            patch.object(rd, "deliver_result_to_platforms", new_callable=AsyncMock),
+            patch.object(wpd, "resolve_proactive_target", AsyncMock(return_value=NO_CHAT_APP)),
+            patch.object(wpd, "deliver_result_to_platforms", AsyncMock(return_value=None)),
             patch(
                 "app.services.workflow.notifications.send_workflow_completion_notification",
                 new_callable=AsyncMock,

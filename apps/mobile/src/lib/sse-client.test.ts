@@ -1,5 +1,37 @@
 import { parseSubscriptionRequiredBody } from "@gaia/shared";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { createSSEConnection } from "./sse-client";
+
+const { opened } = vi.hoisted(() => ({
+  opened: { headers: null as Record<string, string> | null },
+}));
+
+vi.mock("react-native-sse", () => ({
+  default: class {
+    constructor(_url: string, init: { headers: Record<string, string> }) {
+      opened.headers = init.headers;
+    }
+    addEventListener = vi.fn();
+    removeAllEventListeners = vi.fn();
+    close = vi.fn();
+  },
+}));
+
+vi.mock("@/features/auth/utils/auth-storage", () => ({
+  getAuthToken: vi.fn(async () => "token-1"),
+}));
+
+describe("createSSEConnection", () => {
+  it("tells the backend the stream comes from the mobile app", async () => {
+    const controller = await createSSEConnection("/chat-stream", {
+      onMessage: vi.fn(),
+    });
+    await vi.waitFor(() => expect(opened.headers).not.toBeNull());
+    controller.abort();
+
+    expect(opened.headers?.["X-Client-Type"]).toBe("mobile");
+  });
+});
 
 /**
  * The mobile SSE transport hands back the 402's raw `responseText`, never a

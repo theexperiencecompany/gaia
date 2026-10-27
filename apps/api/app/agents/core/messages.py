@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal
@@ -5,6 +6,7 @@ from typing import Literal
 from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
 
 from app.agents.context.assemble import assemble_context
+from app.agents.context.presence_note import presence_note_message
 from app.agents.context.section_context import SectionContext
 from app.agents.context.slots import ONBOARDING_MARKER, mark
 from app.agents.context.tiers import AgentTier
@@ -23,9 +25,11 @@ from app.models.message_models import (
     SelectedCalendarEventData,
     SelectedWorkflowData,
 )
+from app.models.presence_models import PresenceSnapshot
 from app.models.user_models import AuthenticatedUser
 from app.services.files import FileService
 from app.utils.user_preferences_utils import onboarding_preferences
+from shared.py.analytics.context import current_analytics_context
 
 
 @dataclass(frozen=True)
@@ -41,6 +45,9 @@ class MessageScope:
     agent_type: Literal["comms", "executor"] = "comms"
     active_todo_id: str | None = None
     execution_mode: Literal["interactive", "background"] = "interactive"
+    presence: PresenceSnapshot | None = None
+    #: The turn starts a conversation, so its thread has never been told where the user is.
+    opens_thread: bool = False
 
 
 @dataclass(frozen=True)
@@ -91,19 +98,30 @@ async def construct_langchain_messages(
 
     user_content = query.strip()
 
-    assembled = await assemble_context(
-        SectionContext(
-            tier=AgentTier.COMMS,
-            user_id=user_id,
-            user_name=user_name,
-            user_timezone=user_timezone,
-            user_preferences=user_preferences,
-            writing_style=writing_style,
-            query=query,
-            active_todo_id=scope.active_todo_id,
-            execution_mode=scope.execution_mode,
-            source=source,
-        )
+    assembled, note = await asyncio.gather(
+        assemble_context(
+            SectionContext(
+                tier=AgentTier.COMMS,
+                user_id=user_id,
+                user_name=user_name,
+                user_timezone=user_timezone,
+                user_preferences=user_preferences,
+                writing_style=writing_style,
+                query=query,
+                active_todo_id=scope.active_todo_id,
+                execution_mode=scope.execution_mode,
+                source=source,
+            )
+        ),
+        presence_note_message(
+            user_id,
+            scope.presence,
+            source,
+            scope.execution_mode,
+            opens_thread=scope.opens_thread,
+            # The entry point the turn is bound to; build_agent_config stamps the same on the tree.
+            entry_surface=current_analytics_context().attribution.surface,
+        ),
     )
 
     # Its own slot, not the dynamic one: tagged `memory_message` it once
@@ -130,7 +148,9 @@ async def construct_langchain_messages(
         chain_msgs.append(assembled.volatile)
 
     human_msg = HumanMessage(content=await _human_content(scope, attachments, user_content))
-    return [*chain_msgs, human_msg, time_msg]
+    # The note sits inline just ahead of the turn it describes, and stays in the thread.
+    turn_msgs = [human_msg] if note is None else [note, human_msg]
+    return [*chain_msgs, *turn_msgs, time_msg]
 
 
 async def _human_content(

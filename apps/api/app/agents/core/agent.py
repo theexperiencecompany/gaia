@@ -49,6 +49,7 @@ from app.helpers.agent_helpers import (
     build_initial_state,
     execute_graph_silent,
     execute_graph_streaming,
+    opens_thread,
     recent_user_messages,
 )
 from app.models.agent_models import (
@@ -61,9 +62,11 @@ from app.models.agent_models import (
     read_agent_configurable,
 )
 from app.models.message_models import MessageRequestWithHistory
+from app.models.presence_models import PresenceSnapshot
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import agent_run_lifecycle
 from app.services.chat.state import aggregate_usage_metadata
+from app.services.delivery.presence import read_presence
 from app.utils.user_preferences_utils import onboarding_preferences
 from shared.py.analytics.catalog.agents import AgentRunStarted
 from shared.py.wide_events import log
@@ -105,12 +108,14 @@ class AgentRunOptions:
 
     trigger_context is the workflow/todo/trigger data of a background run;
     usage_metadata_callback collects token usage; source names the
-    surface the turn came from; the two langfuse_* fields seed the trace.
+    surface the turn came from; presence is where the user was before this
+    turn; the two langfuse_* fields seed the trace.
     """
 
     usage_metadata_callback: UsageMetadataCallbackHandler | None = None
     trigger_context: dict[str, Any] | None = None
     source: str | None = None
+    presence: PresenceSnapshot | None = None
     langfuse_trace_id: str | None = None
     langfuse_tags: list[str] | None = None
 
@@ -159,6 +164,11 @@ async def _core_agent_logic(
         if trigger.execution_mode == "background":
             execution_mode = "background"
 
+    # Read once here, not left to build_agent_config: the comms context below
+    # renders it too, and a workflow fire arrives without one. A voice call
+    # captures none either; note_is_due keeps its turns noteless by entry surface.
+    presence = options.presence or (await read_presence(user_id) if user_id else None)
+
     # Build langchain messages and get graph concurrently
     history, graph = await asyncio.gather(
         construct_langchain_messages(
@@ -171,6 +181,8 @@ async def _core_agent_logic(
                 source=source,
                 active_todo_id=active_todo_id,
                 execution_mode=execution_mode,
+                presence=presence,
+                opens_thread=opens_thread(request.messages, request.message),
             ),
             attachments=MessageAttachments(
                 selected_tool=request.selectedTool,
@@ -228,6 +240,7 @@ async def _core_agent_logic(
             user_preferences=user_preferences,
             writing_style=writing_style,
             workflow_id=trigger.workflow_id,
+            presence=presence,
         ),
         tracing=AgentTracing(
             usage_metadata_callback=usage_metadata_callback,
@@ -314,6 +327,7 @@ async def call_agent(
                 AgentRunOptions(
                     usage_metadata_callback=options.usage_metadata_callback,
                     source=options.source,
+                    presence=options.presence,
                     langfuse_trace_id=(
                         trace_id_for_message(ids.bot_message_id) if ids.bot_message_id else None
                     ),
@@ -380,6 +394,7 @@ async def call_agent_silent(
                     usage_metadata_callback=usage_metadata_callback,
                     trigger_context=options.trigger_context,
                     source=options.source,
+                    presence=options.presence,
                 ),
             )
 

@@ -11,7 +11,12 @@ from collections.abc import Sequence
 
 from langchain_core.messages import AnyMessage, HumanMessage
 
-from app.agents.context.slots import TIME_CONTEXT_MARKER, has_marker, is_conversation_summary
+from app.agents.context.slots import (
+    TIME_CONTEXT_MARKER,
+    has_marker,
+    is_conversation_summary,
+    is_gaia_authored_note,
+)
 from app.constants.agents import (
     PLAYBOOK_DECISION_NUDGE_MESSAGE,
     REQUEST_AGENT_TAGS,
@@ -44,7 +49,8 @@ def running_turn_start(messages: Sequence[AnyMessage]) -> int | None:
     """Index of the newest genuine request turn, or None when there is none.
 
     Skips the HumanMessages that are graph plumbing rather than a request: the
-    clock, a conversation summary, the completion/playbook nudges, and internal
+    clock, a conversation summary, a GAIA-authored note, the completion/playbook
+    nudges, and internal
     result or instruction payloads.
     """
     for index in range(len(messages) - 1, -1, -1):
@@ -54,6 +60,7 @@ def running_turn_start(messages: Sequence[AnyMessage]) -> int | None:
         if (
             has_marker(message, TIME_CONTEXT_MARKER)
             or is_conversation_summary(message)
+            or is_gaia_authored_note(message)
             or is_completion_nudge(message)
             or is_playbook_nudge(message)
             or _is_internal_payload(message)
