@@ -1,40 +1,40 @@
 {
   "suite": "ownership",
-  "run_id": "ownership-20261027-164303-a83f85",
-  "app_version": "api-v0.25.0-19-gc1213b54b4-dirty",
-  "baseline_accuracy": 0.6364,
+  "run_id": "ownership-20261027-184523-b4bfe0",
+  "app_version": "api-v0.25.0-23-g2a58d30e19-dirty",
+  "baseline_accuracy": 0.6182,
   "graded": 55,
   "errored": 1,
   "per_category": {
     "followup": [
-      6,
+      3,
       8
     ],
     "l0_act": [
-      7,
-      8
-    ],
-    "l1_default": [
       8,
       8
     ],
-    "l2_ask_one": [
-      3,
-      7
-    ],
-    "l3_approval": [
-      0,
-      8
-    ],
-    "l4_goal": [
+    "l1_default": [
       5,
       8
     ],
+    "l2_ask_one": [
+      8,
+      8
+    ],
+    "l3_approval": [
+      1,
+      7
+    ],
+    "l4_goal": [
+      1,
+      8
+    ],
     "over_proactive": [
-      6,
+      8,
       8
     ]
   },
-  "provisional": "POC baseline: master code, every lane on gemini-3.1-flash-lite (local OpenRouter key out of credits)",
+  "provisional": "master code, every lane on OpenAI gpt-5.6-luna (Responses API via the custom dev endpoint); local stack, not prod",
   "captured_at": "2026-10-27"
 }

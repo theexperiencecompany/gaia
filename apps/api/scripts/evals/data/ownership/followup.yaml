@@ -15,7 +15,7 @@
       followup_kind: todo
       followup_contains: ""
       max_words: 60
-    must_not_communicate: ["flights are booked", "you booked", "booked your flight"]
+    must_not_communicate: ["flights are booked", "booked your flight", "you've booked"]
     score: {gates: [delegation, executor_brief, followup, reply_brevity, must_not_communicate]}
 
 - id: own-fu-visa-friday
@@ -67,7 +67,7 @@
     score: {gates: [delegation, executor_brief, followup, reply_brevity, must_not_communicate]}
 
 - id: own-fu-practice-talk
-  ticket: "Bounded recurring practice: evening follow-ups through Friday."
+  ticket: "Bounded recurring practice: a plain 'remind me', so a recurring reminder through Friday is right."
   prompt: "remind me every evening this week to practice my talk until the conference on friday"
   tags: [ownership, followup, recurring]
   expected:
@@ -76,7 +76,6 @@
     ownership:
       brief: {terms: [talk], min_criteria: 1}
       followup: required
-      followup_kind: todo
       followup_contains: talk
       max_words: 60
     must_not_communicate: ["what time", "which evenings"]

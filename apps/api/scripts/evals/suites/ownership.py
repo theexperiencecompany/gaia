@@ -43,7 +43,7 @@ from scripts.evals.core.cases import load_case_files
 from scripts.evals.core.cost import EvalCostTracker, estimate_tokens
 from scripts.evals.core.dev_users import dev_client, provision
 from scripts.evals.core.gates import ExtraGates, score_gates
-from scripts.evals.core.live_chat import DELEGATION_TOOL, await_delivery
+from scripts.evals.core.live_chat import DELEGATION_TOOL, bot_messages_after
 from scripts.evals.core.providers import EvalConfig, ProviderConfig, judge_model
 from scripts.evals.core.runner import Suite, register_suite
 from scripts.evals.core.scorers import (
@@ -70,6 +70,7 @@ ACTIVE_REMINDER_STATUSES = frozenset({"scheduled", "executing"})
 DELIVERED_KIND = "delivered"
 # Executor work (research, planning) outlives the comms default of 75s.
 DELIVERY_WAIT_S = float(os.environ.get("EVALS_OWNERSHIP_DELIVERY_WAIT_S", "240"))
+DELIVERY_POLL_S = 4.0
 _QUESTION = re.compile(r"[^?.!\n]*\?")
 
 Followup = dict[str, Any]
@@ -246,20 +247,10 @@ class OwnershipTransport(ChatStreamTransport):
                         error = error or turn["error"]
                         delegated = any(c["name"] == DELEGATION_TOOL for c in turn["tool_calls"])
                         if delegated and conversation_id:
-                            delivered, delivered_tools = await await_delivery(
-                                client,
-                                DEV_API_BASE,
-                                conversation_id,
-                                turn_text,
-                                wait_seconds=DELIVERY_WAIT_S,
+                            delivered = await self._await_result(
+                                client, conversation_id, turn_text, turn["text"]
                             )
-                            raw.append(
-                                {
-                                    "type": "delivered",
-                                    "chars": len(delivered),
-                                    "tools": delivered_tools,
-                                }
-                            )
+                            raw.append({"type": "delivered", "chars": len(delivered)})
                             if delivered:
                                 transcript.append(
                                     {
@@ -294,6 +285,34 @@ class OwnershipTransport(ChatStreamTransport):
             duration_s=time.monotonic() - start,
             error=error[:300] if error else None,
         )
+
+    async def _await_result(
+        self, client: httpx.AsyncClient, conversation_id: str, user_text: str, ack: str
+    ) -> str:
+        """Wait for the executor's result to land as a bot message after the streamed ack.
+
+        Not live_chat.await_delivery: it returns as soon as a tool card is saved,
+        which here is often before the result, and it assumes the ack is a saved
+        message, which a reaction-only ack is not.
+        """
+        deadline = time.monotonic() + DELIVERY_WAIT_S
+        last = ""
+        while time.monotonic() < deadline:
+            await asyncio.sleep(DELIVERY_POLL_S)
+            resp = await client.get(f"{API}/conversations/{conversation_id}")
+            resp.raise_for_status()
+            payload = resp.json()
+            messages = payload.get("conversation", payload).get("messages") or []
+            texts = [
+                text
+                for message in bot_messages_after(messages, user_text)
+                if (text := str(message.get("response") or "").strip()) and text != ack.strip()
+            ]
+            current = "\n".join(texts)
+            if current and current == last:
+                return current
+            last = current
+        return last
 
     async def _seed(
         self, client: httpx.AsyncClient, case: Case, provider: ProviderConfig
