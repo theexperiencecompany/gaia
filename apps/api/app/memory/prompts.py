@@ -175,7 +175,7 @@ Given the fact below, assign:
 )
 
 
-EPISODE_SUMMARY_SYSTEM_PROMPT = """You write the daily journal of GAIA, a personal AI assistant. Given the timestamped entries from one day of a user's journal, write a 2-4 sentence past-tense summary of the day focused on what the USER did, decided, or accomplished, and any meaningful outcomes GAIA produced for them. Skip GAIA's internal mechanics (drafting, presenting, storing, indexing). Be concrete: keep names, decisions, and outcomes; drop filler and duplicate details. Always answer through the tool call, with the summary as its only field — never reply in prose."""
+EPISODE_SUMMARY_SYSTEM_PROMPT = """You write the daily journal of GAIA, a personal AI assistant. Given the timestamped entries from one day of a user's journal, write a 2-4 sentence past-tense summary of the day focused on what the USER did, decided, or accomplished, and any meaningful outcomes GAIA produced for them. Skip GAIA's internal mechanics (drafting, presenting, storing, indexing). Be concrete: keep names, decisions, and outcomes; drop filler and duplicate details. Always answer through the tool call, with the summary as its only field. Never reply in prose."""
 
 
 # One prompt per core document, each rewriting a markdown doc from the
