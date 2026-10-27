@@ -1,10 +1,5 @@
 import { SiteLink } from "@/components/seo/SiteLink";
-import {
-  HUB_PAGE_SIZE,
-  hubPageCount,
-  hubPageHref,
-  hubPageSlice,
-} from "@/lib/hubPagination";
+import { hubPageHref } from "@/lib/hubPagination";
 
 const PAGE_LINK =
   "flex h-8 min-w-8 items-center justify-center rounded-lg bg-zinc-800 px-2 text-sm font-medium text-zinc-400 transition hover:bg-zinc-700 hover:text-white";

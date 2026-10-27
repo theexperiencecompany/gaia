@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
-import { AutomateHub, automateHubMetadata } from "./Hub";
+import { AutomateHub } from "./Hub";
+import { automateHubMetadata } from "./metadata";
 
 interface PageProps {
   readonly params: Promise<{

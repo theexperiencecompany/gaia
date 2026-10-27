@@ -1,5 +1,4 @@
 import { Button } from "@heroui/button";
-import type { Metadata } from "next";
 import Image from "next/image";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { HubPagination } from "@/components/seo/HubPagination";
@@ -7,7 +6,6 @@ import JsonLd from "@/components/seo/JsonLd";
 import { SiteLink } from "@/components/seo/SiteLink";
 import { getTranslatedCombos } from "@/features/integrations/data/getTranslatedCombo";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
-import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
 import {
   HUB_PAGE_SIZE,
   hubPageCount,
@@ -20,27 +18,6 @@ import {
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
-
-export async function automateHubMetadata(locale: string): Promise<Metadata> {
-  const t = await getTranslations({ locale, namespace: "automate" });
-
-  return generateLocalizedPageMetadata({
-    title: t("hub_meta_title"),
-    description: t("hub_meta_description"),
-    path: "/automate",
-    keywords: [
-      "automate tools together",
-      "tool automation combos",
-      "Gmail Slack automation",
-      "Notion Todoist automation",
-      "GitHub Linear automation",
-      "AI workflow automation",
-      "connect two apps AI",
-      "productivity tool automation",
-    ],
-    locale,
-  });
-}
 
 const TOOL_DOMAINS: Record<string, string> = {
   airtable: "airtable.com",

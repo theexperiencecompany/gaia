@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 import { getAllCombos } from "@/features/integrations/data/combosData";
 import { hubPageCount } from "@/lib/hubPagination";
 
-import { AutomateHub, automateHubMetadata } from "../../Hub";
+import { AutomateHub } from "../../Hub";
+import { automateHubMetadata } from "../../metadata";
 
 interface PageProps {
   readonly params: Promise<{
