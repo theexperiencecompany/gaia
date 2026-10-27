@@ -7,7 +7,12 @@ import JsonLd from "@/components/seo/JsonLd";
 import { SiteLink } from "@/components/seo/SiteLink";
 import { GrainOverlay } from "@/components/ui/GrainOverlay";
 import { connect, footerSections } from "@/config/appConfig";
+import { getImageDimensions } from "@/lib/imageDimensions";
 import { siteConfig } from "@/lib/seo";
+
+const FOOTER_GLOW = getImageDimensions(
+  "/images/wallpapers/subtle_glow_deep_blues.webp",
+);
 
 export default function Footer() {
   const navigationSchema: WithContext<SiteNavigationElement> = {
@@ -43,10 +48,11 @@ export default function Footer() {
         <Image
           src="/images/wallpapers/subtle_glow_deep_blues.webp"
           alt=""
-          fill
+          width={FOOTER_GLOW.width}
+          height={FOOTER_GLOW.height}
           sizes="100vw"
           priority={false}
-          className="pointer-events-none z-0 origin-bottom scale-150 select-none object-cover object-bottom"
+          className="pointer-events-none absolute inset-0 z-0 h-full w-full origin-bottom scale-150 object-cover object-bottom select-none"
         />
 
         {/* Fade the footer's top edge into the page background above, so the

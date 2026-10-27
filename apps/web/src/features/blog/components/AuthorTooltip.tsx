@@ -23,6 +23,12 @@ export function AuthorTooltip({
             src={author.avatar}
             size="sm"
             className="h-8 w-8"
+            imgProps={{
+              width: 32,
+              height: 32,
+              loading: "lazy",
+              decoding: "async",
+            }}
             name={author.name}
           />
           <div className="flex flex-col">
@@ -63,6 +69,12 @@ export function AuthorTooltip({
         src={author.avatar}
         size={avatarSize}
         className={avatarClassName}
+        imgProps={{
+          width: 32,
+          height: 32,
+          loading: "lazy",
+          decoding: "async",
+        }}
         name={author.name}
       />
     </Tooltip>

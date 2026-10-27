@@ -9,9 +9,14 @@ import {
   TwitterIcon,
   WhatsappIcon,
 } from "@/components/shared/icons";
+import { getImageDimensions } from "@/lib/imageDimensions";
 
 import GetStartedButton from "../shared/GetStartedButton";
 import { TextSoftBlurIn } from "../shared/TextSoftBlurIn";
+
+const FINAL_SECTION_IMAGE = getImageDimensions(
+  "/images/wallpapers/creation_of_adam.png",
+);
 
 const SOCIAL_LINKS = [
   {
@@ -51,9 +56,10 @@ export default function FinalSection({
         <Image
           src="/images/wallpapers/creation_of_adam.png"
           alt=""
-          fill
+          width={FINAL_SECTION_IMAGE.width}
+          height={FINAL_SECTION_IMAGE.height}
           sizes="100vw"
-          className="z-0 object-cover object-center"
+          className="absolute inset-0 z-0 h-full w-full object-cover object-center"
         />
         {/* Legibility scrim over the Earth photo. */}
         <div className="pointer-events-none absolute inset-0 z-10 bg-black/30" />

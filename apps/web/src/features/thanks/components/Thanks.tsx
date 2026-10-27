@@ -6,6 +6,9 @@ import { useEffect } from "react";
 import { type ToolCategory, toolCategories, tools } from "@/data/tools";
 import ToolCard from "@/features/thanks/components/ToolCard";
 import { track } from "@/lib/analytics";
+import { getImageDimensions } from "@/lib/imageDimensions";
+
+const BACKGROUND_LOGO = getImageDimensions("/images/logos/logo.webp");
 
 interface ToolMetadata {
   title: string | null;
@@ -39,9 +42,10 @@ export default function Thanks({ toolsMetadata }: ThanksProps) {
         <Image
           src="/images/logos/logo.webp"
           alt=""
-          className="scale-110 object-contain grayscale"
+          width={BACKGROUND_LOGO.width}
+          height={BACKGROUND_LOGO.height}
+          className="absolute inset-0 h-full w-full scale-110 object-contain grayscale"
           sizes="100vw"
-          fill
         />
       </div>
 

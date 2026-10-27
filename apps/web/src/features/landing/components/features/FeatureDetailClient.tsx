@@ -12,12 +12,18 @@ import {
   type FeatureData,
   getFeatureBySlug,
 } from "@/features/landing/data/featuresData";
+import { getImageDimensions } from "@/lib/imageDimensions";
+
 import { FeatureDemoWrapper } from "./FeatureDemoWrapper";
 import { FeatureIcon } from "./FeatureIcon";
 
 interface Props {
   feature: FeatureData;
 }
+
+const HERO_WALLPAPER = getImageDimensions(
+  "/images/wallpapers/bands_gradient_1.webp",
+);
 
 const ease = [0.22, 1, 0.36, 1] as const;
 
@@ -55,9 +61,10 @@ export function FeatureDetailClient({ feature }: Props) {
         <Image
           src="/images/wallpapers/bands_gradient_1.webp"
           alt=""
-          fill
+          width={HERO_WALLPAPER.width}
+          height={HERO_WALLPAPER.height}
           sizes="100vw"
-          className="object-cover pointer-events-none select-none"
+          className="pointer-events-none absolute inset-0 h-full w-full object-cover select-none"
           priority
         />
         {/* Fade into page bg at the bottom */}

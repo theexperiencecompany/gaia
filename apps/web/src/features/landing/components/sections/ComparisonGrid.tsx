@@ -4,6 +4,7 @@ import { Tooltip } from "@heroui/tooltip";
 import { ArrowRight02Icon, Cancel01Icon, Tick02Icon } from "@icons";
 import Image from "next/image";
 import { SiteLink } from "@/components/seo/SiteLink";
+import { getImageDimensions } from "@/lib/imageDimensions";
 
 import LargeHeader from "../shared/LargeHeader";
 
@@ -178,13 +179,16 @@ function BrandLogo({
   alt: string;
 }) {
   if (competitor.logo.type === "image") {
+    const { width, height } = getImageDimensions(competitor.logo.src);
+
     return (
       <div className="relative h-7 w-7 overflow-hidden rounded-md">
         <Image
           src={competitor.logo.src}
           alt={alt}
-          fill
-          className="object-contain p-0.5"
+          width={width}
+          height={height}
+          className="absolute inset-0 h-full w-full object-contain p-0.5"
           sizes="28px"
           unoptimized
         />

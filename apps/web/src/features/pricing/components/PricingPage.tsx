@@ -11,11 +11,13 @@ import { BillingPeriodTabs } from "@/features/pricing/components/BillingPeriodTa
 import { PricingCards } from "@/features/pricing/components/PricingCards";
 import { ProDailyPriceHeading } from "@/features/pricing/components/ProDailyPriceHeading";
 import { track } from "@/lib/analytics";
+import { getImageDimensions } from "@/lib/imageDimensions";
 
 import type { Plan } from "../api/pricingApi";
 import { FAQAccordion } from "./FAQAccordion";
 
 const EMPTY_PLANS: Plan[] = [];
+const PRICING_WALLPAPER = getImageDimensions(wallpapers.pricing.png);
 
 interface PricingPageProps {
   initialPlans?: Plan[];
@@ -40,8 +42,9 @@ export default function PricingPage({
           alt="GAIA Pricing page Wallpaper"
           sizes="100vw"
           priority
-          fill
-          className="aspect-video object-cover object-bottom opacity-80"
+          width={PRICING_WALLPAPER.width}
+          height={PRICING_WALLPAPER.height}
+          className="absolute inset-0 aspect-video h-full w-full object-cover object-bottom opacity-80"
         />
         {/* Above the photo but below the fade, so the grain stops where the
             wallpaper does instead of speckling the solid background. Heavier
