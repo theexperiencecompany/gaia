@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import { useImageDialog } from "@/stores/uiStore";
 
 import { slugifyHeading } from "../utils/parseHeadings";
+import { rehypeSplitMarkdownSections } from "../utils/splitMarkdownSections";
 
 function extractText(node: React.ReactNode): string {
   if (typeof node === "string") return node;
@@ -155,7 +156,7 @@ export default function MarkdownWrapper({ content }: { content: string }) {
           remarkSmartypants,
           remarkSupersub,
         ]}
-        rehypePlugins={[rehypeKatex]}
+        rehypePlugins={[rehypeKatex, rehypeSplitMarkdownSections]}
       >
         {content}
       </ReactMarkdown>

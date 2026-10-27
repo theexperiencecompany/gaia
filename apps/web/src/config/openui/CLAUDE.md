@@ -24,7 +24,7 @@ response text with         →        TextBubble splits at :::openui fences
   Table/Col, Tag, Steps, forms, Modal, …) — see `genui-lib`.
 - **Theme**: `theme.ts` (`gaiaOpenUITheme`) maps every `--openui-*` token to GAIA's design
   system. Mounted once via `<ThemeProvider mode="dark" darkTheme={gaiaOpenUITheme}>` in
-  `apps/web/src/layouts/RootProviders.tsx`. Layered CSS is imported in `globals.css`.
+  `apps/web/src/layouts/RootProviders.tsx`. Layered CSS is `openui.css`, imported by `genericLibrary.tsx` so only pages that render OpenUI load it; `globals.css` keeps the `@layer` order statement.
 
 ## 2. The merged library (`genericLibrary.tsx`)
 

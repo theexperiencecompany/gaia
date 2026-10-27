@@ -1,9 +1,81 @@
 import Link from "next/link";
 
+import {
+  CATEGORY_ORDER,
+  COMPARISON_CATEGORIES,
+} from "@/features/comparisons/data/categories";
+
 interface LinkedGuide {
   readonly slug: string;
   readonly name: string;
   readonly tagline?: string;
+}
+
+interface LinkedGuideGroup {
+  readonly category: string;
+  readonly guides: readonly LinkedGuide[];
+}
+
+const CATEGORY_RANK = new Map<string, number>(
+  CATEGORY_ORDER.map((category, index) => [category, index]),
+);
+
+/** Group the flattened, pre-sorted guides by the categories the compare hub uses, keeping their order within each group. */
+function groupGuides(guides: readonly LinkedGuide[]): LinkedGuideGroup[] {
+  const grouped = new Map<string, LinkedGuide[]>();
+
+  for (const guide of guides) {
+    const category = COMPARISON_CATEGORIES[guide.slug] ?? "Other";
+    const existing = grouped.get(category);
+    if (existing) {
+      existing.push(guide);
+    } else {
+      grouped.set(category, [guide]);
+    }
+  }
+
+  return [...grouped.entries()]
+    .sort(
+      ([a], [b]) =>
+        (CATEGORY_RANK.get(a) ?? CATEGORY_ORDER.length) -
+        (CATEGORY_RANK.get(b) ?? CATEGORY_ORDER.length),
+    )
+    .map(([category, groupedGuides]) => ({
+      category,
+      guides: groupedGuides,
+    }));
+}
+
+function GuideGroups({
+  guides,
+  href,
+  text,
+  ariaLabel,
+}: {
+  readonly guides: readonly LinkedGuide[];
+  readonly href: (slug: string) => string;
+  readonly text: (guide: LinkedGuide) => string;
+  readonly ariaLabel: (guide: LinkedGuide) => string;
+}) {
+  return (
+    <div className="columns-2 gap-6 text-sm leading-loose text-zinc-400 sm:columns-3">
+      {groupGuides(guides).map((group) => (
+        <ul key={group.category} className="contents">
+          {group.guides.map((guide) => (
+            <li key={guide.slug} className="break-inside-avoid">
+              <Link
+                href={href(guide.slug)}
+                aria-label={ariaLabel(guide)}
+                className="hover:text-zinc-200 hover:underline hover:underline-offset-2"
+              >
+                {text(guide)}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      ))}
+    </div>
+  );
 }
 
 export function BestHubComparisonLinks({
@@ -26,23 +98,16 @@ export function BestHubComparisonLinks({
         </Link>{" "}
         or jump straight in:
       </p>
-      <ul className="columns-2 gap-6 text-sm leading-loose text-zinc-400 sm:columns-3">
-        {comparisons.map((comparison) => (
-          <li key={comparison.slug} className="break-inside-avoid">
-            <Link
-              href={`/compare/${comparison.slug}`}
-              aria-label={
-                comparison.tagline
-                  ? `GAIA vs ${comparison.name}: ${comparison.tagline}`
-                  : `GAIA vs ${comparison.name} comparison`
-              }
-              className="hover:text-zinc-200 hover:underline hover:underline-offset-2"
-            >
-              GAIA vs {comparison.name}
-            </Link>
-          </li>
-        ))}
-      </ul>
+      <GuideGroups
+        guides={comparisons}
+        href={(slug) => `/compare/${slug}`}
+        text={(comparison) => `GAIA vs ${comparison.name}`}
+        ariaLabel={(comparison) =>
+          comparison.tagline
+            ? `GAIA vs ${comparison.name}: ${comparison.tagline}`
+            : `GAIA vs ${comparison.name} comparison`
+        }
+      />
     </section>
   );
 }
@@ -67,19 +132,12 @@ export function BestHubAlternativeLinks({
         </Link>{" "}
         or jump straight in:
       </p>
-      <ul className="columns-2 gap-6 text-sm leading-loose text-zinc-400 sm:columns-3">
-        {alternatives.map((alternative) => (
-          <li key={alternative.slug} className="break-inside-avoid">
-            <Link
-              href={`/alternative-to/${alternative.slug}`}
-              aria-label={`${alternative.name} alternative guide`}
-              className="hover:text-zinc-200 hover:underline hover:underline-offset-2"
-            >
-              {alternative.name}
-            </Link>
-          </li>
-        ))}
-      </ul>
+      <GuideGroups
+        guides={alternatives}
+        href={(slug) => `/alternative-to/${slug}`}
+        text={(alternative) => alternative.name}
+        ariaLabel={(alternative) => `${alternative.name} alternative guide`}
+      />
     </section>
   );
 }
