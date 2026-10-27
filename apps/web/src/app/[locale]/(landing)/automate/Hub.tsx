@@ -2,18 +2,18 @@ import { Button } from "@heroui/button";
 import type { Metadata } from "next";
 import Image from "next/image";
 import { getTranslations, setRequestLocale } from "next-intl/server";
-import {
-  HUB_PAGE_SIZE,
-  HubPagination,
-  hubPageCount,
-  hubPageHref,
-  hubPageSlice,
-} from "@/components/seo/HubPagination";
+import { HubPagination } from "@/components/seo/HubPagination";
 import JsonLd from "@/components/seo/JsonLd";
 import { SiteLink } from "@/components/seo/SiteLink";
 import { getTranslatedCombos } from "@/features/integrations/data/getTranslatedCombo";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
+import {
+  HUB_PAGE_SIZE,
+  hubPageCount,
+  hubPageHref,
+  hubPageSlice,
+} from "@/lib/hubPagination";
 import {
   generateBreadcrumbSchema,
   generateItemListSchema,

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { hubPageCount } from "@/components/seo/HubPagination";
 import { getAllCombos } from "@/features/integrations/data/combosData";
+import { hubPageCount } from "@/lib/hubPagination";
 
 import { AutomateHub, automateHubMetadata } from "../../Hub";
 

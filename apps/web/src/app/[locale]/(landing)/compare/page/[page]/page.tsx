@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { hubPageCount } from "@/components/seo/HubPagination";
 import { getAllComparisons } from "@/features/comparisons/data/comparisonsData";
+import { hubPageCount } from "@/lib/hubPagination";
 
-import { ComparisonsHub, comparisonsHubMetadata } from "../../Hub";
+import { ComparisonsHub } from "../../Hub";
+import { comparisonsHubMetadata } from "../../metadata";
 
 interface PageProps {
   readonly params: Promise<{

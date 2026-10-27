@@ -1,11 +1,6 @@
-import type { Metadata } from "next";
 import Image from "next/image";
 import { getTranslations, setRequestLocale } from "next-intl/server";
-import {
-  HubPagination,
-  hubPageCount,
-  hubPageSlice,
-} from "@/components/seo/HubPagination";
+import { HubPagination } from "@/components/seo/HubPagination";
 import JsonLd from "@/components/seo/JsonLd";
 import { SiteLink } from "@/components/seo/SiteLink";
 import {
@@ -14,36 +9,13 @@ import {
 } from "@/features/comparisons/data/categories";
 import { getTranslatedComparisons } from "@/features/comparisons/data/getTranslatedComparison";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
-import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
+import { hubPageCount, hubPageSlice } from "@/lib/hubPagination";
 import {
   generateBreadcrumbSchema,
   generateItemListSchema,
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
-
-export async function comparisonsHubMetadata(
-  locale: string,
-): Promise<Metadata> {
-  const t = await getTranslations({ locale, namespace: "comparisons" });
-
-  return generateLocalizedPageMetadata({
-    title: t("hub_meta_title"),
-    description: t("hub_meta_description"),
-    path: "/compare",
-    keywords: [
-      "GAIA comparisons",
-      "AI assistant comparison",
-      "ChatGPT alternative",
-      "Zapier alternative",
-      "n8n alternative",
-      "Motion alternative",
-      "AI productivity tools",
-      "best AI assistant",
-    ],
-    locale,
-  });
-}
 
 interface ComparisonsHubProps {
   readonly locale: string;

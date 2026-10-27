@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
-import { ComparisonsHub, comparisonsHubMetadata } from "./Hub";
+import { ComparisonsHub } from "./Hub";
+import { comparisonsHubMetadata } from "./metadata";
 
 interface PageProps {
   readonly params: Promise<{

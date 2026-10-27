@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
-import { glossaryHubMetadata, LearnHub } from "./Hub";
+import { LearnHub } from "./Hub";
+import { glossaryHubMetadata } from "./metadata";
 
 interface PageProps {
   readonly params: Promise<{

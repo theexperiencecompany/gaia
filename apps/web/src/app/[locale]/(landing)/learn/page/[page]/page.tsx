@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { hubPageCount } from "@/components/seo/HubPagination";
 import { getAllGlossaryTerms } from "@/features/glossary/data/glossaryData";
+import { hubPageCount } from "@/lib/hubPagination";
 
-import { glossaryHubMetadata, LearnHub } from "../../Hub";
+import { LearnHub } from "../../Hub";
+import { glossaryHubMetadata } from "../../metadata";
 
 interface PageProps {
   readonly params: Promise<{
