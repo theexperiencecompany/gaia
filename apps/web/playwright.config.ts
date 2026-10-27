@@ -9,9 +9,10 @@ import { WEB_BASE_URL } from "./e2e/harness";
  */
 export default defineConfig({
   testDir: "./e2e",
-  // The self-host journey runs only against a `gaia up` stack (playwright.selfhost.config.ts);
-  // e2e/worker runs against the built worker, through playwright.worker.config.ts.
-  testIgnore: ["selfhost/**", "worker/**"],
+  // selfhost/ and worker/ have their own configs; hosted/ mocks every backend
+  // call (playwright.hosted.config.ts), so it must skip this config's
+  // API-seeding global setup.
+  testIgnore: ["selfhost/**", "worker/**", "hosted/**"],
   globalSetup: "./e2e/global-setup.ts",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,

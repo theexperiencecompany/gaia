@@ -21,6 +21,7 @@
     "sync-wake-word-runtime": "node scripts/sync-wake-word-runtime.mjs",
     "extract-blog": "node scripts/extract-blog-data.mjs",
     "test": "vitest run",
+    "test:e2e:hosted": "playwright test --config=playwright.hosted.config.ts",
     "prebuild": "npm run extract-icons && npm run extract-blog && npm run sync-wake-word-runtime",
     "predev": "npm run sync-wake-word-runtime && node scripts/clean-corrupt-dev-manifest.mjs",
     "dev": "nx next:dev --turbopack --port=${WEB_PORT:-3000}",
