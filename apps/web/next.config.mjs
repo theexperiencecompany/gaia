@@ -209,6 +209,10 @@ const nextConfig = {
     return config;
   },
   images: {
+    // The largest source image on the site is 2442px and no layout exceeds
+    // 1920 CSS px; asking Cloudflare for 3840 upscaled files (500KB+) with no
+    // visible gain on any viewport.
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920],
     // Offload optimization to Cloudflare Image Resizing (/cdn-cgi/image/) via a
     // custom loader — edge-cached, off the worker. Requires Transformations enabled
     // on the zone; gated on the Cloudflare build (see image-loader.ts), else falls through to Next's built-in optimizer.
