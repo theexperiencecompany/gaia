@@ -17,25 +17,25 @@ import { TextSoftBlurIn } from "../shared/TextSoftBlurIn";
 const SOCIAL_LINKS = [
   {
     href: siteConfig.links.twitter,
-    ariaLabel: "Twitter",
+    ariaLabel: "GAIA on X",
     icon: <TwitterIcon width={20} height={20} aria-hidden="true" />,
     label: "Twitter",
   },
   {
     href: siteConfig.links.whatsapp,
-    ariaLabel: "WhatsApp",
+    ariaLabel: "GAIA on WhatsApp",
     icon: <WhatsappIcon width={20} height={20} aria-hidden="true" />,
     label: "WhatsApp",
   },
   {
     href: siteConfig.links.discord,
-    ariaLabel: "Discord",
+    ariaLabel: "GAIA on Discord",
     icon: <DiscordIcon width={20} height={20} aria-hidden="true" />,
     label: "Discord",
   },
   {
     href: siteConfig.links.repo,
-    ariaLabel: "GitHub",
+    ariaLabel: "GAIA on GitHub",
     icon: <Github width={20} height={20} aria-hidden="true" />,
     label: "GitHub",
   },
