@@ -327,6 +327,10 @@ export default withSentryConfig(
 
   org: "gaia-la",
   project: "gaia-frontend",
+  // One release for the upload and for the events: the CI commit SHA.
+  release: process.env.SENTRY_RELEASE
+    ? { name: process.env.SENTRY_RELEASE }
+    : undefined,
 
   // Only print logs for uploading source maps in CI
   silent: !process.env.CI,
