@@ -986,7 +986,7 @@ async def execute_graph_silent(
                     )
 
                     acc.complete_message, _boundary_id, _discarded = acc.held.settle(
-                        messages, acc.complete_message, reply_tier=is_comms
+                        messages, acc.complete_message
                     )
             continue
 

@@ -263,6 +263,41 @@ class TestBoundaryBookkeeping:
         assert await _run_silent(events) == f"on it.{NEW_MESSAGE_BREAKER}all done."
 
 
+_EXECUTOR_CONFIG: Any = {"agent_name": "executor_agent", "configurable": {"user_id": "u1"}}
+_WORKING_EVENTS = [
+    message_chunk_event(message_id="m1", content="working on it."),
+    agent_update_event(AIMessage(id="m1", content="working on it.")),
+]
+
+
+@pytest.mark.unit
+class TestOnlyTheReplyTierSpeaks:
+    """Only comms text is a reply: an executor run through these drivers answers through its tool results."""
+
+    async def test_a_silent_run_of_another_tier_keeps_no_text(self) -> None:
+        message, _ = await execute_graph_silent(
+            ScriptedGraph(_WORKING_EVENTS), {}, _EXECUTOR_CONFIG
+        )
+
+        assert message == ""
+
+    async def test_a_streamed_run_of_another_tier_streams_and_keeps_no_text(self) -> None:
+        frames = [
+            frame
+            async for frame in execute_graph_streaming(
+                ScriptedGraph(_WORKING_EVENTS), {}, _EXECUTOR_CONFIG
+            )
+        ]
+
+        assert _frames(frames, "response") == []
+        assert _frames(frames, "message_boundary") == []
+        assert _streamed_message(frames) == ""
+
+    async def test_the_same_events_from_comms_are_kept(self) -> None:
+        """Control: the config is the only difference between this and the two tests above."""
+        assert await _run_silent(_WORKING_EVENTS) == "working on it."
+
+
 @pytest.mark.unit
 class TestChunkLevelSilence:
     """The per-chunk guard, on the delta order where it is the only guard."""
