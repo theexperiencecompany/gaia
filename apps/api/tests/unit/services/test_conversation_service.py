@@ -16,7 +16,6 @@ from fastapi import HTTPException
 import pytest
 
 from app.models.chat_models import (
-    MessageModel,
     BatchSyncRequest,
     ConversationModel,
     ConversationSource,
