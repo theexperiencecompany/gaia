@@ -9663,134 +9663,134 @@
   "jira-drive": {
     "toolA": "Jira",
     "toolB": "Google Drive",
-    "tagline": "Attach requirement docs from Google Drive to Jira epics automatically",
-    "metaTitle": "Intégration Jira + Google Drive : exigences liées aux epics",
-    "metaDescription": "Jira + Google Drive avec GAIA : Joignez les documents d'exigences Drive aux epics Jira et créez des post-mortems, pour lier la documentation au travail.",
+    "tagline": "Joignez automatiquement les docs de besoins Drive à vos epics Jira",
+    "metaTitle": "Intégration Jira + Google Drive — Docs de besoins liés aux epics",
+    "metaDescription": "Connectez Jira et Google Drive avec GAIA. Joignez automatiquement les documents de besoins Drive aux epics Jira, créez des post-mortems depuis les incidents résolus, et gardez la documentation liée au travail actif.",
     "keywords": [
-      "Jira Google Drive integration",
-      "Jira Drive automation",
-      "attach docs to Jira",
-      "requirements document Jira workflow",
-      "connect Jira and Google Drive",
-      "Jira Drive sync",
-      "engineering docs automation"
+      "intégration Jira Google Drive",
+      "automatisation Jira Drive",
+      "joindre des docs à Jira",
+      "workflow de document de besoins Jira",
+      "connecter Jira et Google Drive",
+      "synchronisation Jira Drive",
+      "automatisation des docs d'ingénierie"
     ],
-    "intro": "Every Jira epic has documentation that lives somewhere in Google Drive: the product requirements document, the technical design doc, the stakeholder sign-off email, the post-launch notes. But finding and attaching those documents to the right Jira epic is manual work that often does not happen, leaving engineers to dig through Drive each time they need context.\n\nGAIA builds and maintains the link between Google Drive documents and Jira epics automatically. When a product requirements document is created in Drive with a matching name, GAIA attaches it to the corresponding Jira epic. When an incident is resolved in Jira, GAIA creates a post-mortem document in Drive. The documentation system and the issue tracking system stay connected without anyone manually managing the relationship.\n\nThis integration reduces the context-gathering overhead that slows engineers down at the start of each task and ensures that the rationale behind engineering decisions is always accessible from the Jira issue where the work is tracked.",
+    "intro": "Chaque epic Jira possède une documentation qui vit quelque part dans Google Drive : le cahier des charges produit, le doc de conception technique, l'e-mail de validation des parties prenantes, les notes post-lancement. Mais trouver ces documents et les joindre au bon epic est un travail manuel souvent omis, laissant les ingénieurs fouiller dans Drive à chaque besoin de contexte.\n\nGAIA construit et entretient automatiquement le lien entre les documents Drive et les epics Jira. Lorsqu'un cahier des charges est créé dans Drive avec un nom correspondant, GAIA le joint à l'epic Jira concerné. Lorsqu'un incident est résolu dans Jira, GAIA crée un document post-mortem dans Drive. Le système documentaire et le suivi des tickets restent connectés sans gestion manuelle de la relation.\n\nCette intégration réduit le coût de collecte du contexte qui ralentit les ingénieurs au démarrage de chaque tâche, et garantit que la logique des décisions d'ingénierie reste toujours accessible depuis le ticket Jira où le travail est suivi.",
     "useCases": [
       {
-        "title": "Auto-attach Drive requirement docs to Jira epics",
-        "description": "When a new Google Doc is added to the requirements folder in Drive with a name matching a Jira epic, GAIA attaches the document link to the epic so engineers immediately have access to the full specification without searching Drive."
+        "title": "Joindre les docs de besoins Drive aux epics Jira",
+        "description": "Lorsqu'un nouveau Google Docs est ajouté au dossier des besoins dans Drive avec un nom correspondant à un epic Jira, GAIA joint le lien au ticket pour un accès immédiat à la spécification complète sans fouiller dans Drive."
       },
       {
-        "title": "Create Jira epics from new Drive PRDs",
-        "description": "When a Product Requirements Document is created in Drive and marked as Ready for Engineering, GAIA creates a Jira epic with the PRD title, a summary of the requirements, and a link back to the Drive document so engineering can begin planning immediately."
+        "title": "Créer des epics Jira depuis les nouveaux PRD Drive",
+        "description": "Lorsqu'un cahier des charges est créé dans Drive et marqué Prêt pour l'ingénierie, GAIA crée un epic Jira avec le titre, un résumé des besoins et un lien retour vers le document, pour une planification immédiate."
       },
       {
-        "title": "Generate post-mortem documents from resolved Jira incidents",
-        "description": "When a Jira incident issue is transitioned to Resolved, GAIA creates a post-mortem document in Drive pre-populated with the incident title, timeline from Jira comments, and a structured template so the team can complete the analysis without starting from a blank page."
+        "title": "Générer des post-mortems depuis les incidents Jira résolus",
+        "description": "Lorsqu'un incident Jira passe en résolu, GAIA crée un document post-mortem dans Drive, pré-rempli avec le titre, la chronologie tirée des commentaires et un modèle structuré, pour compléter l'analyse sans partir d'une page blanche."
       },
       {
-        "title": "Attach technical design docs to Jira stories",
-        "description": "When an engineer creates a technical design document in Drive and includes a Jira story key in the document title, GAIA attaches the document to the referenced Jira story so future engineers can find the design rationale in the issue."
+        "title": "Joindre les docs de conception aux stories Jira",
+        "description": "Lorsqu'un ingénieur crée un document de conception technique dans Drive en incluant une clé de story Jira dans le titre, GAIA joint le document à la story référencée pour retrouver la logique de conception dans le ticket."
       },
       {
-        "title": "Maintain a Drive folder structure mirroring Jira projects",
-        "description": "GAIA creates and maintains a Google Drive folder structure that mirrors your Jira project hierarchy. When a new Jira project or epic is created, GAIA creates the corresponding Drive folder so document organization stays consistent automatically."
+        "title": "Maintenir une arborescence Drive reflétant les projets Jira",
+        "description": "GAIA crée et maintient une arborescence Drive qui reflète votre hiérarchie de projets Jira. À la création d'un projet ou d'un epic, GAIA crée le dossier Drive correspondant pour une organisation documentaire toujours cohérente."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Google Drive and Jira to GAIA",
-        "description": "Authorize GAIA with your Google Workspace account and Jira project. Designate the Drive folders GAIA should monitor and map them to Jira projects."
+        "step": "Connectez Google Drive et Jira à GAIA",
+        "description": "Autorisez GAIA avec votre compte Google Workspace et votre projet Jira. Désignez les dossiers Drive à surveiller et associez-les aux projets Jira."
       },
       {
-        "step": "Configure naming conventions and trigger rules",
-        "description": "Define the naming patterns GAIA should use to match Drive documents to Jira epics and stories, which Drive events should create Jira issues, and which Jira events should create Drive documents."
+        "step": "Configurez les conventions de nommage et déclencheurs",
+        "description": "Définissez les motifs de nommage pour rapprocher documents Drive et epics ou stories Jira, les événements Drive créateurs de tickets, et ceux de Jira créateurs de documents."
       },
       {
-        "step": "Docs attach to Jira issues automatically",
-        "description": "GAIA monitors both platforms and maintains links between documents and issues in real time. Engineers click through from Jira to the right Drive document without searching; documents in Drive reference their linked Jira issues."
+        "step": "Les docs se joignent aux tickets automatiquement",
+        "description": "GAIA surveille les deux plateformes et maintient les liens entre documents et tickets en temps réel. Les ingénieurs accèdent au bon document depuis Jira sans chercher ; les documents Drive référencent leurs tickets liés."
       }
     ],
     "faqs": [
       {
-        "question": "Does GAIA require documents to follow a specific naming format?",
-        "answer": "GAIA works best with consistent naming but supports flexible matching patterns including partial name matches and regular expressions. You can also link Drive documents to Jira epics manually and GAIA will maintain those explicit links going forward."
+        "question": "GAIA exige-t-il un format de nommage précis pour les documents ?",
+        "answer": "GAIA fonctionne mieux avec des conventions cohérentes, mais accepte des motifs flexibles incluant correspondances partielles et expressions régulières. Vous pouvez aussi lier manuellement des documents aux epics, et GAIA maintiendra ces liens explicites."
       },
       {
-        "question": "Can GAIA attach files from shared drives, not just personal Drive?",
-        "answer": "Yes. GAIA can access any Google Drive location that the authorized Google account has access to, including shared drives and files shared with the domain. It respects existing Drive sharing permissions and does not modify them."
+        "question": "GAIA peut-il joindre des fichiers des drives partagés, pas seulement du Drive personnel ?",
+        "answer": "Oui. GAIA accède à tout emplacement Drive accessible au compte Google autorisé, y compris les drives partagés et les fichiers partagés avec le domaine. Il respecte les autorisations existantes sans les modifier."
       },
       {
-        "question": "What happens to Drive links in Jira when a document is moved to a different Drive folder?",
-        "answer": "Google Drive URLs are stable and do not change when a file is moved between folders. Jira links remain valid after file moves. GAIA does log the move event so you have a record of where the document currently lives."
+        "question": "Qu'advient-il des liens Drive dans Jira si un document est déplacé ?",
+        "answer": "Les URL Google Drive sont stables et ne changent pas lors d'un déplacement entre dossiers. Les liens Jira restent valides après déplacement. GAIA journalise l'événement pour garder trace de l'emplacement actuel du document."
       }
     ]
   },
   "jira-hubspot": {
     "toolA": "Jira",
     "toolB": "HubSpot",
-    "tagline": "Sync customer bug reports from HubSpot to Jira tickets automatically",
-    "metaTitle": "Intégration Jira + HubSpot : bugs clients vers le dev",
-    "metaDescription": "Jira + HubSpot avec GAIA : Créez des tickets Jira depuis les signalements HubSpot et prévenez les responsables de compte une fois le bug résolu.",
+    "tagline": "Synchronisez automatiquement les bugs clients HubSpot vers les tickets Jira",
+    "metaTitle": "Intégration Jira + HubSpot — Les bugs clients parviennent vite à l'ingénierie",
+    "metaDescription": "Connectez Jira et HubSpot avec GAIA. Créez automatiquement des tickets Jira depuis les bugs clients HubSpot, ajoutez le contexte commercial aux problèmes d'ingénierie, et notifiez les responsables de comptes à chaque résolution.",
     "keywords": [
-      "Jira HubSpot integration",
-      "Jira HubSpot sync",
-      "customer bug reports to Jira",
-      "HubSpot Jira automation",
-      "connect Jira and HubSpot",
-      "CRM engineering bug workflow",
-      "customer reported bugs Jira"
+      "intégration Jira HubSpot",
+      "synchronisation Jira HubSpot",
+      "bugs clients vers Jira",
+      "automatisation HubSpot Jira",
+      "connecter Jira et HubSpot",
+      "workflow CRM et bugs d'ingénierie",
+      "bugs signalés par les clients dans Jira"
     ],
-    "intro": "Customer-reported bugs logged in HubSpot need to reach engineering in Jira, but the handoff is almost always manual. A support rep logs a bug in HubSpot, then someone reads it, decides it belongs in Jira, creates the ticket, and periodically checks back to update HubSpot when engineering resolves it. That chain is slow, inconsistent, and dependent on people remembering to close the loop.\n\nGAIA automates the path from HubSpot bug report to Jira ticket and back. When a customer bug is logged in HubSpot and meets your configured criteria, GAIA creates a Jira ticket with the full customer context attached. As the ticket progresses in Jira, GAIA updates the HubSpot ticket. When engineering resolves the bug, GAIA notifies the account owner in HubSpot so they can communicate the fix to the customer.\n\nThis integration is most impactful for B2B SaaS teams where customer-reported bugs have direct revenue implications and where closing the loop with the customer requires coordination between customer success, engineering, and sales.",
+    "intro": "Les bugs signalés par les clients dans HubSpot doivent parvenir à l'ingénierie dans Jira, mais le transfert est presque toujours manuel. Un agent support consigne un bug dans HubSpot, puis quelqu'un le lit, décide qu'il relève de Jira, crée le ticket, et vérifie périodiquement pour mettre à jour HubSpot à la résolution. Cette chaîne est lente, irrégulière, et dépend de la mémoire des boucles à fermer.\n\nGAIA automatise le chemin du signalement HubSpot au ticket Jira, et retour. Lorsqu'un bug client est consigné dans HubSpot et répond à vos critères, GAIA crée un ticket Jira avec tout le contexte client joint. À mesure que le ticket progresse, GAIA met à jour le ticket HubSpot. À la résolution, GAIA notifie le responsable du compte dans HubSpot pour annoncer la correction au client.\n\nCette intégration a le plus d'impact pour les équipes SaaS B2B où les bugs clients ont des implications directes sur le revenu, et où boucler la boucle avec le client exige une coordination entre succès client, ingénierie et ventes.",
     "useCases": [
       {
-        "title": "Create Jira tickets from HubSpot customer bug reports",
-        "description": "When a HubSpot support ticket is classified as a bug and linked to an account above your ARR threshold, GAIA creates a Jira bug ticket with the customer description, affected account, deal value, and HubSpot ticket link so engineering has full context to reproduce and prioritize the issue."
+        "title": "Créer des tickets Jira depuis les bugs clients HubSpot",
+        "description": "Lorsqu'un ticket support HubSpot est classé bug et lié à un compte au-delà de votre seuil de revenu annuel, GAIA crée un bug Jira avec la description client, le compte affecté, la valeur du contrat et le lien HubSpot, pour une reproduction et une priorisation éclairées."
       },
       {
-        "title": "Notify HubSpot account owners when Jira bugs are resolved",
-        "description": "When a Jira bug ticket linked to a HubSpot account is resolved, GAIA creates a HubSpot activity on the deal and sends a task to the account owner so they know to reach out to the customer with the good news."
+        "title": "Notifier les responsables HubSpot à la résolution des bugs Jira",
+        "description": "Lorsqu'un bug Jira lié à un compte HubSpot est résolu, GAIA crée une activité HubSpot sur l'affaire et assigne une tâche au responsable du compte pour annoncer la bonne nouvelle au client."
       },
       {
-        "title": "Aggregate customer impact on existing Jira bugs",
-        "description": "When multiple HubSpot tickets report the same underlying bug, GAIA links them to a single Jira ticket and increments an affected-accounts counter on the issue. Engineering can sort the backlog by customer impact to prioritize fixes that affect the most accounts."
+        "title": "Agréger l'impact client sur les bugs Jira existants",
+        "description": "Lorsque plusieurs tickets HubSpot signalent le même bug sous-jacent, GAIA les relie à un seul ticket Jira et incrémente un compteur de comptes affectés. L'ingénierie peut trier le backlog par impact client pour corriger en priorité ce qui touche le plus de comptes."
       },
       {
-        "title": "Post Jira status updates back to HubSpot tickets",
-        "description": "As a Jira bug moves through the workflow — to In Progress, In Review, and Resolved — GAIA posts corresponding status updates to the linked HubSpot support ticket so the support team can answer customer inquiries about fix timing without checking Jira."
+        "title": "Publier les statuts Jira vers les tickets HubSpot",
+        "description": "À mesure qu'un bug Jira traverse le workflow — En cours, En révision, Résolu — GAIA publie les mises à jour correspondantes sur le ticket support HubSpot lié, pour répondre aux clients sur les délais sans consulter Jira."
       },
       {
-        "title": "Escalate HubSpot VIP bug reports to urgent Jira priority",
-        "description": "When a bug report comes from a HubSpot contact at an account designated as a VIP tier, GAIA creates the Jira ticket with Blocker priority and sends an immediate notification to the engineering lead so high-value customer issues are never deprioritized by accident."
+        "title": "Escalader les bugs VIP HubSpot en priorité urgente Jira",
+        "description": "Lorsqu'un signalement provient d'un contact d'un compte classé VIP, GAIA crée le ticket Jira en priorité Bloquant et notifie aussitôt le responsable d'ingénierie, pour que les problèmes des comptes clés ne soient jamais dépriorisés par erreur."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect HubSpot and Jira to GAIA",
-        "description": "Authorize GAIA with your HubSpot portal and Jira project. Configure which HubSpot ticket properties and deal characteristics should trigger Jira ticket creation."
+        "step": "Connectez HubSpot et Jira à GAIA",
+        "description": "Autorisez GAIA avec votre portail HubSpot et votre projet Jira. Configurez les propriétés de tickets et caractéristiques commerciales déclencheuses de création de tickets."
       },
       {
-        "step": "Define customer context mapping and escalation rules",
-        "description": "Map HubSpot deal properties to Jira fields, set the account tier or ARR threshold that determines Jira priority, and configure which Jira state transitions should update HubSpot."
+        "step": "Définissez les correspondances de contexte et règles d'escalade",
+        "description": "Associez les propriétés d'affaires HubSpot aux champs Jira, définissez le palier de compte ou seuil de revenu déterminant la priorité, et configurez les transitions Jira à répercuter dans HubSpot."
       },
       {
-        "step": "Bugs flow from customers to engineering and back automatically",
-        "description": "GAIA monitors HubSpot for qualifying bug reports, creates Jira tickets with customer context, and keeps HubSpot updated as engineering progresses. The customer loop closes without anyone managing it manually."
+        "step": "Les bugs circulent automatiquement des clients vers l'ingénierie et retour",
+        "description": "GAIA surveille HubSpot pour les signalements éligibles, crée les tickets Jira avec le contexte client, et tient HubSpot à jour au fil de l'avancement. La boucle client se ferme sans gestion manuelle."
       }
     ],
     "faqs": [
       {
-        "question": "How does GAIA prevent duplicate Jira tickets when multiple customers report the same bug?",
-        "answer": "GAIA uses semantic similarity matching to identify existing Jira tickets that likely correspond to a new HubSpot report. If a match above your configured confidence threshold exists, GAIA links the HubSpot ticket to the existing Jira issue and increments the customer impact counter rather than creating a duplicate."
+        "question": "Comment GAIA évite-t-il les doublons quand plusieurs clients signalent le même bug ?",
+        "answer": "GAIA utilise une correspondance par similarité sémantique pour repérer les tickets Jira existants correspondant à un nouveau signalement. En cas de correspondance au-delà de votre seuil de confiance, GAIA relie le ticket HubSpot au problème existant et incrémente le compteur d'impact au lieu de créer un doublon."
       },
       {
-        "question": "Does GAIA include customer PII from HubSpot in Jira tickets?",
-        "answer": "By default GAIA includes only the company name, account tier, and deal ARR in Jira tickets — not individual contact names or email addresses. You can configure how much customer context to include based on your data handling policies."
+        "question": "GAIA inclut-il des données personnelles HubSpot dans les tickets Jira ?",
+        "answer": "Par défaut, GAIA inclut uniquement le nom de l'entreprise, le palier du compte et le revenu annuel — ni noms de contacts ni e-mails. Vous pouvez configurer le niveau de contexte client selon vos politiques de données."
       },
       {
-        "question": "Can GAIA handle the reverse flow — engineering bugs that should proactively notify affected HubSpot accounts?",
-        "answer": "Yes. You can configure GAIA to search HubSpot for accounts likely affected by a newly filed Jira bug based on product usage data or account properties. GAIA then creates HubSpot tasks for the relevant account owners to proactively notify their customers."
+        "question": "GAIA gère-t-il le flux inverse — des bugs d'ingénierie notifiant proactivement les comptes HubSpot ?",
+        "answer": "Oui. Vous pouvez configurer GAIA pour rechercher dans HubSpot les comptes probablement affectés par un nouveau bug Jira, selon les données d'usage ou les propriétés. GAIA crée alors des tâches HubSpot pour que les responsables préviennent leurs clients en amont."
       }
     ]
   },
@@ -9867,210 +9867,210 @@
   "linear-salesforce": {
     "toolA": "Linear",
     "toolB": "Salesforce",
-    "tagline": "Connect Linear engineering sprints to Salesforce opportunities and cases",
-    "metaTitle": "Intégration Linear + Salesforce : ingénierie et CRM",
-    "metaDescription": "Linear + Salesforce avec GAIA : Liez les tickets Linear aux opportunités Salesforce et mettez à jour les cas, pour aligner livraison et revenus.",
+    "tagline": "Reliez les sprints d'ingénierie Linear aux opportunités et dossiers Salesforce",
+    "metaTitle": "Intégration Linear + Salesforce — Ingénierie et CRM synchronisés",
+    "metaDescription": "Automatisez Linear et Salesforce avec GAIA. Reliez les tickets d'ingénierie aux opportunités Salesforce, mettez à jour les dossiers avec l'état des corrections, et alignez la livraison produit sur les objectifs de revenu.",
     "keywords": [
-      "Linear Salesforce integration",
-      "Linear Salesforce sync",
-      "Linear Salesforce automation",
-      "engineering CRM alignment",
-      "Salesforce Linear workflow",
-      "product delivery Salesforce"
+      "intégration Linear Salesforce",
+      "synchronisation Linear Salesforce",
+      "automatisation Linear Salesforce",
+      "alignement ingénierie et CRM",
+      "workflow Salesforce Linear",
+      "livraison produit Salesforce"
     ],
-    "intro": "Enterprise sales teams rely on Salesforce to manage opportunities and customer cases, while engineering teams build and ship in Linear. When a customer-blocking bug or a deal-winning feature lives in Linear, Salesforce has no visibility into its progress — and account executives are left manually chasing engineering updates before customer calls.\n\nGAIA connects Linear and Salesforce so customer-facing teams always have accurate engineering status. Salesforce cases linked to known bugs receive automatic progress updates from Linear. Feature requests attached to high-value opportunities are tracked as Linear issues with revenue context baked in. When engineering ships, Salesforce records update automatically.\n\nFor enterprise software companies with dedicated sales engineering and customer success teams, this integration eliminates an entire category of internal coordination work that currently consumes hours every week.",
+    "intro": "Les équipes commerciales d'entreprise s'appuient sur Salesforce pour gérer opportunités et dossiers clients, tandis que les équipes d'ingénierie construisent et livrent dans Linear. Lorsqu'un bug bloquant ou une fonctionnalité décisive vit dans Linear, Salesforce n'a aucune visibilité sur son avancement — et les commerciaux doivent relancer manuellement l'ingénierie avant chaque appel client.\n\nGAIA relie Linear et Salesforce pour que les équipes en contact avec les clients disposent toujours d'un statut exact. Les dossiers liés à des bugs connus reçoivent des mises à jour automatiques depuis Linear. Les demandes de fonctionnalités attachées à des opportunités à forte valeur sont suivies comme des tickets Linear avec le contexte de revenu intégré. À chaque livraison, les enregistrements Salesforce se mettent à jour automatiquement.\n\nPour les éditeurs de logiciels avec des équipes d'avant-vente et de succès client dédiées, cette intégration élimine toute une catégorie de coordination interne qui consomme aujourd'hui des heures chaque semaine.",
     "useCases": [
       {
-        "title": "Opportunity-linked feature tracking",
-        "description": "Sales reps attach feature requests to Salesforce opportunities. GAIA creates corresponding Linear issues tagged with the opportunity value so product teams can prioritize by revenue impact."
+        "title": "Suivi des fonctionnalités liées aux opportunités",
+        "description": "Les commerciaux attachent les demandes de fonctionnalités aux opportunités Salesforce. GAIA crée les tickets Linear correspondants étiquetés avec la valeur de l'opportunité, pour prioriser selon l'impact sur le revenu."
       },
       {
-        "title": "Case-to-bug issue creation",
-        "description": "When a Salesforce case is escalated as a product bug, GAIA opens a Linear issue with full case context and keeps the Salesforce case status updated as the bug moves through the fix cycle."
+        "title": "Création de tickets depuis les dossiers escaladés",
+        "description": "Lorsqu'un dossier Salesforce est escaladé comme bug produit, GAIA ouvre un ticket Linear avec tout le contexte du dossier et tient le statut Salesforce à jour au fil du cycle de correction."
       },
       {
-        "title": "Deal stage-triggered engineering escalation",
-        "description": "When a Salesforce opportunity moves to Negotiation or Close Won and has open engineering dependencies, GAIA escalates the linked Linear issues to ensure delivery commitments are met."
+        "title": "Escalade d'ingénierie déclenchée par l'étape commerciale",
+        "description": "Lorsqu'une opportunité passe en Négociation ou en Gagnée avec des dépendances d'ingénierie ouvertes, GAIA escalade les tickets Linear liés pour garantir le respect des engagements de livraison."
       },
       {
-        "title": "Customer delivery notifications via Salesforce",
-        "description": "When a Linear issue tied to a Salesforce opportunity ships, GAIA triggers a Salesforce task for the account executive to notify the customer, keeping the relationship warm."
+        "title": "Notifications de livraison via Salesforce",
+        "description": "Lorsqu'un ticket Linear lié à une opportunité est livré, GAIA déclenche une tâche Salesforce invitant le commercial à prévenir le client, pour entretenir la relation."
       },
       {
-        "title": "Engineering roadmap in Salesforce reports",
-        "description": "GAIA syncs Linear project and cycle completion data to Salesforce custom objects so sales leadership can include engineering delivery timelines in account planning reports."
+        "title": "Feuille de route d'ingénierie dans les rapports Salesforce",
+        "description": "GAIA synchronise les données d'achèvement des projets et cycles Linear vers des objets personnalisés Salesforce, pour inclure les délais de livraison dans les rapports de planification des comptes."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Linear and Salesforce to GAIA",
-        "description": "Authenticate your Linear workspace and Salesforce org in GAIA's settings. GAIA uses Salesforce Connected App OAuth and Linear API tokens, requesting only the permissions your workflows need."
+        "step": "Connectez Linear et Salesforce à GAIA",
+        "description": "Authentifiez votre espace Linear et votre organisation Salesforce dans les paramètres de GAIA. GAIA utilise l'application connectée Salesforce (OAuth) et les jetons API Linear, en demandant uniquement les autorisations nécessaires."
       },
       {
-        "step": "Map Salesforce objects to Linear issues",
-        "description": "Define which Salesforce objects (opportunities, cases, accounts) should link to Linear issues, and which Linear status changes should write back to Salesforce fields."
+        "step": "Associez les objets Salesforce aux tickets Linear",
+        "description": "Définissez les objets Salesforce (opportunités, dossiers, comptes) à relier aux tickets, et les changements de statut Linear à répercuter dans les champs Salesforce."
       },
       {
-        "step": "GAIA syncs engineering progress to CRM automatically",
-        "description": "GAIA runs continuously in the background, keeping Salesforce records updated with the latest Linear issue status so sales teams always have accurate information for customer conversations."
+        "step": "GAIA synchronise l'avancement vers le CRM automatiquement",
+        "description": "GAIA fonctionne en continu en arrière-plan et tient les enregistrements Salesforce à jour avec le dernier statut des tickets, pour des informations toujours exactes dans les échanges clients."
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA link a single Linear issue to multiple Salesforce opportunities?",
-        "answer": "Yes. A platform issue or widely-requested feature can be linked to multiple opportunities. When it ships, all linked Salesforce records are updated and tasks are created for each account executive."
+        "question": "GAIA peut-il relier un ticket Linear à plusieurs opportunités Salesforce ?",
+        "answer": "Oui. Un problème de plateforme ou une fonctionnalité très demandée peut être lié à plusieurs opportunités. À la livraison, tous les enregistrements liés sont mis à jour et des tâches sont créées pour chaque commercial."
       },
       {
-        "question": "Does GAIA write to standard Salesforce fields or custom fields?",
-        "answer": "Both. GAIA can update standard fields like Case Status and create or update custom fields you define. The mapping is fully configurable without code."
+        "question": "GAIA écrit-il dans les champs Salesforce standards ou personnalisés ?",
+        "answer": "Les deux. GAIA peut mettre à jour des champs standards comme le statut de dossier et créer ou mettre à jour vos champs personnalisés. La correspondance est entièrement configurable sans code."
       },
       {
-        "question": "Can this integration help with Salesforce CPQ or contracts?",
-        "answer": "Indirectly. If a contract or quote is linked to an opportunity with engineering dependencies tracked in Linear, GAIA can surface the Linear status on the opportunity record visible to your CPQ workflow."
+        "question": "Cette intégration aide-t-elle avec Salesforce CPQ ou les contrats ?",
+        "answer": "Indirectement. Si un contrat ou un devis est lié à une opportunité avec des dépendances suivies dans Linear, GAIA peut afficher le statut Linear sur l'enregistrement d'opportunité visible dans votre workflow CPQ."
       },
       {
-        "question": "Is this suitable for teams with Salesforce Enterprise or higher?",
-        "answer": "Yes. GAIA's Salesforce integration works with Professional, Enterprise, and Unlimited editions. API access is required, which is available on Enterprise and Unlimited, and as an add-on for Professional."
+        "question": "Convient-elle aux équipes Salesforce Enterprise ou supérieur ?",
+        "answer": "Oui. L'intégration Salesforce de GAIA fonctionne avec les éditions Professional, Enterprise et Unlimited. L'accès API est requis, disponible sur Enterprise et Unlimited, et en option sur Professional."
       }
     ]
   },
   "linear-teams": {
     "toolA": "Linear",
     "toolB": "Microsoft Teams",
-    "tagline": "Surface Linear issue updates and sprint progress inside Microsoft Teams",
-    "metaTitle": "Intégration Linear + Microsoft Teams : actus dev dans Teams",
-    "metaDescription": "Linear + Microsoft Teams avec GAIA : Publiez résumés de sprint et alertes de tickets dans Teams, pour garder votre équipe alignée sans quitter le chat.",
+    "tagline": "Affichez les mises à jour et l'avancement des sprints Linear dans Microsoft Teams",
+    "metaTitle": "Intégration Linear + Microsoft Teams — Les actus de développement dans Teams",
+    "metaDescription": "Automatisez Linear et Microsoft Teams avec GAIA. Publiez résumés de sprint, notifications de tickets et mises à jour de PR dans vos salons Teams, pour une équipe alignée sans quitter la discussion.",
     "keywords": [
-      "Linear Microsoft Teams integration",
-      "Linear Teams notifications",
-      "Linear Teams automation",
-      "engineering sprint updates Teams",
-      "Linear issue alerts Teams",
-      "dev team Microsoft Teams workflow"
+      "intégration Linear Microsoft Teams",
+      "notifications Linear Teams",
+      "automatisation Linear Teams",
+      "mises à jour de sprint dans Teams",
+      "alertes de tickets Linear dans Teams",
+      "workflow d'équipe de développement Microsoft Teams"
     ],
-    "intro": "Organizations that standardized on Microsoft Teams for communication often have engineering teams using Linear for issue tracking. Without integration, engineering updates live exclusively in Linear while the rest of the organization communicates in Teams — creating a visibility gap that forces stakeholders to request manual status updates constantly.\n\nGAIA bridges Linear and Microsoft Teams so engineering progress is visible to the entire organization in the communication tool they already use. Issue assignments, sprint updates, PR merges, and escalations appear in the relevant Teams channels as formatted notifications. Non-engineers can ask GAIA in Teams for the status of any Linear project without needing a Linear account.\n\nFor enterprise teams running on Microsoft 365, this integration fits naturally into an existing Teams-centric workflow and eliminates the need for separate project status meetings.",
+    "intro": "Les organisations qui ont standardisé Microsoft Teams pour la communication ont souvent des équipes d'ingénierie qui suivent leurs tickets dans Linear. Sans intégration, les actus d'ingénierie vivent exclusivement dans Linear pendant que le reste de l'organisation communique dans Teams — créant un déficit de visibilité qui force les parties prenantes à réclamer sans cesse des mises à jour manuelles.\n\nGAIA relie Linear et Microsoft Teams pour rendre l'avancement visible à toute l'organisation dans l'outil déjà utilisé. Assignations, mises à jour de sprint, fusions de PR et escalades apparaissent dans les salons Teams concernés sous forme de notifications formatées. Les non-ingénieurs peuvent demander à GAIA dans Teams le statut de n'importe quel projet Linear sans compte Linear.\n\nPour les équipes d'entreprise sur Microsoft 365, cette intégration s'inscrit naturellement dans un workflow centré sur Teams et élimine le besoin de réunions d'avancement séparées.",
     "useCases": [
       {
-        "title": "Sprint progress channel updates",
-        "description": "GAIA posts daily sprint burn-down updates to a designated Teams channel showing completed, in-progress, and blocked issues so stakeholders can track progress without interrupting engineers."
+        "title": "Mises à jour d'avancement dans un salon dédié",
+        "description": "GAIA publie chaque jour l'avancement du sprint dans un salon Teams désigné — tickets terminés, en cours et bloqués — pour suivre la progression sans interrompre les ingénieurs."
       },
       {
-        "title": "Issue assignment notifications",
-        "description": "When a Linear issue is assigned, GAIA sends a Teams message to the assigned engineer with full issue details, due date, and a direct link to the issue."
+        "title": "Notifications d'assignation de tickets",
+        "description": "Lorsqu'un ticket Linear est assigné, GAIA envoie un message Teams à l'ingénieur avec les détails complets, l'échéance et un lien direct vers le ticket."
       },
       {
-        "title": "Cross-functional release announcements",
-        "description": "When a Linear cycle completes, GAIA posts a formatted release summary to the organization-wide Teams channel listing all shipped features, with links to any associated documentation."
+        "title": "Annonces de livraison transverses",
+        "description": "À la fin d'un cycle Linear, GAIA publie un résumé de livraison formaté dans le salon Teams général, listant toutes les fonctionnalités livrées avec liens vers la documentation associée."
       },
       {
-        "title": "Escalation alerts to management channels",
-        "description": "When a Linear issue is escalated to Urgent or a cycle is at risk of missing its target date, GAIA posts an alert to the engineering manager's Teams channel for immediate attention."
+        "title": "Alertes d'escalade vers les salons de direction",
+        "description": "Lorsqu'un ticket Linear est escaladé en urgent ou qu'un cycle risque de manquer sa date cible, GAIA publie une alerte dans le salon Teams du responsable d'ingénierie pour une attention immédiate."
       },
       {
-        "title": "Linear queries from Teams",
-        "description": "Team members can ask GAIA directly in Teams — 'What's in the current sprint?' or 'Who owns the login bug?' — and receive an accurate answer pulled live from Linear."
+        "title": "Interroger Linear depuis Teams",
+        "description": "Les membres peuvent demander à GAIA directement dans Teams — « Que contient le sprint actuel ? » ou « Qui s'occupe du bug de connexion ? » — et recevoir une réponse exacte tirée de Linear en direct."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Linear and Microsoft Teams to GAIA",
-        "description": "Authenticate your Linear workspace and install the GAIA app in your Microsoft Teams organization. Configure the Teams channels where Linear notifications should be posted."
+        "step": "Connectez Linear et Microsoft Teams à GAIA",
+        "description": "Authentifiez votre espace Linear et installez l'application GAIA dans votre organisation Microsoft Teams. Configurez les salons destinataires des notifications Linear."
       },
       {
-        "step": "Configure notification preferences",
-        "description": "Define which Linear events generate Teams notifications — sprint events, issue assignments, priority changes, PR links — and map each event type to the appropriate Teams channel."
+        "step": "Configurez les préférences de notification",
+        "description": "Définissez les événements Linear générateurs de notifications — événements de sprint, assignations, changements de priorité, liens de PR — et associez chaque type au salon Teams approprié."
       },
       {
-        "step": "GAIA delivers updates and answers queries",
-        "description": "GAIA posts real-time Linear updates to Teams and responds to natural language queries about issue status, cycle progress, and team workload directly within Teams conversations."
+        "step": "GAIA diffuse les mises à jour et répond aux questions",
+        "description": "GAIA publie les actus Linear en temps réel dans Teams et répond en langage naturel aux questions sur les statuts, l'avancement des cycles et la charge de l'équipe, directement dans les conversations."
       }
     ],
     "faqs": [
       {
-        "question": "Does GAIA support Teams channels within specific Teams (team spaces)?",
-        "answer": "Yes. GAIA can post to any channel in any team space within your Microsoft Teams organization. You can map different Linear teams to different Teams channels with full granularity."
+        "question": "GAIA prend-il en charge les salons au sein d'équipes Teams spécifiques ?",
+        "answer": "Oui. GAIA peut publier dans n'importe quel salon de n'importe quelle équipe de votre organisation Microsoft Teams. Vous pouvez associer différentes équipes Linear à différents salons avec une granularité totale."
       },
       {
-        "question": "Can Teams users create Linear issues without opening Linear?",
-        "answer": "Yes. Users can describe a bug or feature request to GAIA in a Teams chat or channel, and GAIA creates the Linear issue and confirms the link in the conversation."
+        "question": "Les utilisateurs Teams peuvent-ils créer des tickets Linear sans ouvrir Linear ?",
+        "answer": "Oui. Les utilisateurs décrivent un bug ou une demande à GAIA dans une discussion ou un salon Teams, et GAIA crée le ticket Linear en confirmant le lien dans la conversation."
       },
       {
-        "question": "Does GAIA support Teams Adaptive Cards for richer notifications?",
-        "answer": "Yes. GAIA uses Adaptive Cards to format Linear notifications in Teams, including issue titles, descriptions, priority badges, assignees, and action buttons for common Linear operations."
+        "question": "GAIA prend-il en charge les cartes adaptatives Teams pour des notifications enrichies ?",
+        "answer": "Oui. GAIA utilise les cartes adaptatives pour formater les notifications Linear dans Teams : titres, descriptions, badges de priorité, assignés et boutons d'action pour les opérations Linear courantes."
       },
       {
-        "question": "Is this compatible with Teams on mobile?",
-        "answer": "Yes. GAIA's Teams integration works on the Teams mobile app as well as desktop and web. Notifications appear in real time across all Teams clients."
+        "question": "Est-ce compatible avec Teams sur mobile ?",
+        "answer": "Oui. L'intégration Teams de GAIA fonctionne aussi bien sur l'application mobile que sur desktop et web. Les notifications arrivent en temps réel sur tous les clients Teams."
       }
     ]
   },
   "linear-loom": {
     "toolA": "Linear",
     "toolB": "Loom",
-    "tagline": "Attach Loom video walkthroughs to Linear issues for richer async context",
-    "metaTitle": "Intégration Linear + Loom : contexte vidéo pour les tickets",
-    "metaDescription": "Linear + Loom avec GAIA : Joignez les enregistrements de bugs Loom aux tickets Linear et remplacez les points de statut par des résumés asynchrones.",
+    "tagline": "Joignez des visites vidéo Loom aux tickets Linear pour un contexte asynchrone enrichi",
+    "metaTitle": "Intégration Linear + Loom — Le contexte vidéo pour vos tickets d'ingénierie",
+    "metaDescription": "Automatisez Linear et Loom avec GAIA. Joignez les enregistrements de bugs Loom aux tickets Linear, envoyez des nouvelles vidéo sur les tickets bloqués, et remplacez les réunions d'avancement par des résumés Loom asynchrones.",
     "keywords": [
-      "Linear Loom integration",
-      "Linear Loom automation",
-      "bug recording Linear",
-      "async engineering updates Loom",
-      "Loom to Linear issues",
-      "video engineering workflow"
+      "intégration Linear Loom",
+      "automatisation Linear Loom",
+      "enregistrement de bug vers Linear",
+      "mises à jour d'ingénierie asynchrones Loom",
+      "Loom vers tickets Linear",
+      "workflow vidéo d'ingénierie"
     ],
-    "intro": "Text descriptions in Linear issues often fall short for complex bugs or nuanced feature feedback. A ten-second Loom recording of a UI bug conveys more than three paragraphs of written description — but attaching that recording to the right Linear issue requires remembering the issue number, opening Linear, and manually pasting the Loom link.\n\nGAIA makes Loom and Linear work together seamlessly. When a Loom recording is created with a specific tag or title convention, GAIA identifies the relevant Linear issue and attaches the video automatically. Bug recordings made in Loom generate new Linear issues with the video embedded. Sprint update Looms are posted as comments on all issues completed that week.\n\nFor remote and async-first dev teams, this integration enables a richer asynchronous communication layer on top of Linear's structured workflow — combining the precision of issue tracking with the clarity of video communication.",
+    "intro": "Les descriptions textuelles des tickets Linear sont souvent insuffisantes pour les bugs complexes ou les retours nuancés. Un enregistrement Loom de dix secondes montrant un bug d'interface en dit plus que trois paragraphes — mais joindre cet enregistrement au bon ticket exige de retenir le numéro, d'ouvrir Linear et de coller manuellement le lien.\n\nGAIA fait collaborer Loom et Linear en toute fluidité. Lorsqu'un enregistrement Loom est créé avec une étiquette ou une convention de titre précise, GAIA identifie le ticket concerné et joint la vidéo automatiquement. Les enregistrements de bugs créés dans Loom génèrent de nouveaux tickets avec la vidéo intégrée. Les vidéos de bilan de sprint sont publiées en commentaires de tous les tickets terminés de la semaine.\n\nPour les équipes de développement à distance et adeptes de l'asynchrone, cette intégration ajoute une couche de communication asynchrone riche au workflow structuré de Linear — combinant la précision du suivi des tickets et la clarté de la vidéo.",
     "useCases": [
       {
-        "title": "Bug recording to Linear issue",
-        "description": "When a QA tester or user records a Loom showing a bug, GAIA creates a Linear issue with the Loom video embedded as the primary description, making it immediately actionable for the assigned engineer."
+        "title": "D'un enregistrement de bug au ticket Linear",
+        "description": "Lorsqu'un testeur ou un utilisateur enregistre un Loom montrant un bug, GAIA crée un ticket Linear avec la vidéo intégrée en description principale, pour une prise en charge immédiate par l'ingénieur assigné."
       },
       {
-        "title": "Design feedback videos on issues",
-        "description": "Designers record Loom walkthroughs of design feedback and GAIA attaches them to the corresponding Linear implementation issues so engineers see the exact changes requested without a meeting."
+        "title": "Vidéos de retours design sur les tickets",
+        "description": "Les designers enregistrent des visites Loom de leurs retours et GAIA les joint aux tickets d'implémentation correspondants, pour voir exactement les changements demandés sans réunion."
       },
       {
-        "title": "Sprint demo recordings on completed issues",
-        "description": "After a sprint demo, GAIA attaches the Loom recording to each Linear issue demonstrated, creating a permanent video record of what was built and how it works."
+        "title": "Enregistrements de démo sur les tickets terminés",
+        "description": "Après une démo de sprint, GAIA joint l'enregistrement Loom à chaque ticket présenté, créant un enregistrement vidéo permanent de ce qui a été construit et de son fonctionnement."
       },
       {
-        "title": "Async standup updates",
-        "description": "Engineers record daily Loom standup updates mentioning their Linear issues. GAIA parses the video transcript and posts relevant updates as comments on each mentioned issue."
+        "title": "Mises à jour de standup asynchrones",
+        "description": "Les ingénieurs enregistrent des standups vidéo quotidiens mentionnant leurs tickets Linear. GAIA analyse la transcription et publie les nouvelles pertinentes en commentaires de chaque ticket cité."
       },
       {
-        "title": "Onboarding walkthroughs linked to issues",
-        "description": "GAIA attaches relevant Loom onboarding and architecture walkthrough videos to Linear issues in specific areas, giving new engineers video context alongside written issue descriptions."
+        "title": "Visites d'onboarding liées aux tickets",
+        "description": "GAIA joint les vidéos d'onboarding et de présentation d'architecture aux tickets Linear des domaines concernés, offrant aux nouveaux arrivants un contexte vidéo avec les descriptions écrites."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Linear and Loom to GAIA",
-        "description": "Authenticate your Linear workspace and Loom workspace in GAIA's settings. GAIA uses Loom's API to access video metadata and transcripts."
+        "step": "Connectez Linear et Loom à GAIA",
+        "description": "Authentifiez vos espaces Linear et Loom dans les paramètres de GAIA. GAIA utilise l'API Loom pour accéder aux métadonnées et transcriptions des vidéos."
       },
       {
-        "step": "Define video-to-issue linking rules",
-        "description": "Tell GAIA how to identify which Loom videos relate to which Linear issues — by title convention (e.g., including the issue ID), by folder, or by transcript content analysis."
+        "step": "Définissez les règles de liaison vidéo-ticket",
+        "description": "Indiquez à GAIA comment identifier les vidéos correspondant aux tickets — par convention de titre (par exemple avec l'identifiant du ticket), par dossier, ou par analyse du contenu des transcriptions."
       },
       {
-        "step": "GAIA links videos to issues automatically",
-        "description": "When a new Loom is created matching your rules, GAIA attaches it to the appropriate Linear issue as a comment or description link and notifies the relevant team member."
+        "step": "GAIA relie les vidéos aux tickets automatiquement",
+        "description": "À la création d'un Loom correspondant à vos règles, GAIA le joint au bon ticket en commentaire ou lien de description, et notifie le membre concerné."
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA create a Linear issue from a Loom recording without a pre-existing issue?",
-        "answer": "Yes. If a Loom recording title includes a trigger phrase (e.g., 'Bug:' or 'Issue:'), GAIA creates a new Linear issue using the video title as the issue name and embeds the Loom link as the description."
+        "question": "GAIA peut-il créer un ticket depuis un enregistrement sans ticket préexistant ?",
+        "answer": "Oui. Si le titre de l'enregistrement contient une formule déclencheuse (par exemple « Bug : » ou « Problème : »), GAIA crée un ticket en reprenant le titre de la vidéo et intègre le lien Loom en description."
       },
       {
-        "question": "Does GAIA use Loom transcripts to populate Linear issue fields?",
-        "answer": "Yes. GAIA reads the Loom transcript to extract a summary, steps to reproduce (for bugs), and any mentioned issue numbers, using this content to populate the Linear issue description and comments."
+        "question": "GAIA utilise-t-il les transcriptions Loom pour remplir les champs Linear ?",
+        "answer": "Oui. GAIA lit la transcription pour extraire un résumé, les étapes de reproduction (pour les bugs) et les numéros de tickets mentionnés, afin d'alimenter la description et les commentaires du ticket."
       },
       {
-        "question": "Does attaching a Loom to Linear require the viewer to have a Loom account?",
-        "answer": "Not necessarily. Loom videos can be set to public or shared-link access. GAIA attaches videos using their shared link so anyone with the Linear issue can view the recording without a Loom login."
+        "question": "Faut-il un compte Loom pour voir une vidéo jointe à Linear ?",
+        "answer": "Pas nécessairement. Les vidéos Loom peuvent être publiques ou accessibles par lien partagé. GAIA joint les vidéos via leur lien partagé pour une visualisation sans connexion Loom."
       },
       {
-        "question": "Can GAIA attach Loom videos to sub-issues or just top-level issues?",
-        "answer": "GAIA can attach Loom links to both top-level Linear issues and sub-issues. This is particularly useful for QA feedback on specific acceptance criteria tracked as sub-issues."
+        "question": "GAIA peut-il joindre des vidéos aux sous-tickets ou seulement aux tickets principaux ?",
+        "answer": "GAIA peut joindre des liens Loom aux tickets principaux comme aux sous-tickets Linear. C'est particulièrement utile pour les retours QA sur des critères d'acceptation précis suivis en sous-tickets."
       }
     ]
   },
@@ -10147,750 +10147,750 @@
   "jira-salesforce": {
     "toolA": "Jira",
     "toolB": "Salesforce",
-    "tagline": "Connect Jira engineering tickets to Salesforce cases and opportunities",
-    "metaTitle": "Jira + Salesforce : des cas client aux bugs, et retour",
-    "metaDescription": "Donnez la priorité aux bugs qui coûtent du chiffre. GAIA transforme les cas Salesforce en tickets Jira et clôture le cas à la résolution. Voir les étapes.",
+    "tagline": "Reliez les tickets d'ingénierie Jira aux dossiers et opportunités Salesforce",
+    "metaTitle": "Intégration Jira + Salesforce — Alignement CRM d'entreprise et développement",
+    "metaDescription": "Automatisez Jira et Salesforce avec GAIA. Reliez les tickets Jira aux dossiers et opportunités Salesforce, mettez à jour le CRM à mesure des corrections, et donnez aux commerciaux un statut d'ingénierie en direct.",
     "keywords": [
-      "Jira Salesforce integration",
-      "Jira Salesforce sync",
-      "Jira Salesforce automation",
-      "enterprise CRM engineering sync",
-      "Salesforce Jira workflow",
-      "customer bug Jira Salesforce"
+      "intégration Jira Salesforce",
+      "synchronisation Jira Salesforce",
+      "automatisation Jira Salesforce",
+      "synchronisation CRM d'entreprise et ingénierie",
+      "workflow Salesforce Jira",
+      "bug client Jira Salesforce"
     ],
-    "intro": "Enterprise software companies run their customer relationships in Salesforce and their engineering operations in Jira. When a customer reports a critical bug or requests a feature, the information must travel from Salesforce to Jira for engineering action — and back to Salesforce when the fix ships. Without automation, that journey is manual, slow, and unreliable.\n\nGAIA connects Jira and Salesforce so customer-facing teams always know the status of the engineering work that affects their accounts. Salesforce cases escalated as bugs auto-generate Jira tickets. Jira ticket resolutions update Salesforce case statuses. High-value opportunities with engineering dependencies surface their Jira ticket status directly on the Salesforce record.\n\nFor enterprise B2B SaaS companies where customer trust depends on reliable communication about engineering timelines, this integration ensures every customer-affecting issue is tracked end-to-end across both systems.",
+    "intro": "Les éditeurs de logiciels gèrent leurs relations clients dans Salesforce et leurs opérations d'ingénierie dans Jira. Lorsqu'un client signale un bug critique ou demande une fonctionnalité, l'information doit voyager de Salesforce vers Jira pour action — puis revenir vers Salesforce à la livraison. Sans automatisation, ce voyage est manuel, lent et peu fiable.\n\nGAIA relie Jira et Salesforce pour que les équipes en contact avec les clients connaissent toujours le statut des travaux qui affectent leurs comptes. Les dossiers escaladés comme bugs génèrent automatiquement des tickets Jira. Les résolutions de tickets mettent à jour les statuts des dossiers. Les opportunités à forte valeur avec des dépendances d'ingénierie affichent le statut des tickets directement sur l'enregistrement Salesforce.\n\nPour les entreprises SaaS B2B où la confiance des clients dépend d'une communication fiable sur les délais d'ingénierie, cette intégration garantit le suivi de bout en bout de chaque problème affectant les clients, dans les deux systèmes.",
     "useCases": [
       {
-        "title": "Salesforce case to Jira bug ticket",
-        "description": "When a Salesforce case is escalated as a product defect, GAIA creates a Jira bug ticket with the case description, account tier, ARR at risk, and a link back to the Salesforce case for full customer context."
+        "title": "Du dossier Salesforce au bug Jira",
+        "description": "Lorsqu'un dossier Salesforce est escaladé comme défaut produit, GAIA crée un bug Jira avec la description du dossier, le palier du compte, le revenu en risque et un lien retour vers Salesforce, pour un contexte client complet."
       },
       {
-        "title": "Jira resolution to Salesforce case closure",
-        "description": "When a Jira ticket linked to a Salesforce case is resolved, GAIA updates the Salesforce case status and creates an activity for the account owner to notify the customer that their issue has been fixed."
+        "title": "De la résolution Jira à la clôture du dossier",
+        "description": "Lorsqu'un ticket Jira lié à un dossier Salesforce est résolu, GAIA met à jour le statut du dossier et crée une activité pour inviter le responsable du compte à annoncer la correction au client."
       },
       {
-        "title": "Revenue-weighted Jira priority",
-        "description": "GAIA enriches Jira tickets created from Salesforce cases with the linked account's ARR and opportunity value, giving engineering a revenue-weighted backlog view for enterprise customer issues."
+        "title": "Priorité Jira pondérée par le revenu",
+        "description": "GAIA enrichit les tickets Jira créés depuis les dossiers avec le revenu annuel et la valeur d'opportunité du compte lié, offrant à l'ingénierie une vision du backlog pondérée par le revenu pour les problèmes des grands comptes."
       },
       {
-        "title": "Deal-blocking issue escalation",
-        "description": "When a Salesforce opportunity is marked as blocked by a technical issue, GAIA escalates the linked Jira ticket to Blocker priority and notifies the engineering lead, ensuring deal timelines are protected."
+        "title": "Escalade des problèmes bloquant des affaires",
+        "description": "Lorsqu'une opportunité Salesforce est marquée bloquée par un problème technique, GAIA escalade le ticket Jira lié en priorité Bloquant et notifie le responsable d'ingénierie, pour protéger les délais commerciaux."
       },
       {
-        "title": "Quarterly business review readiness",
-        "description": "GAIA generates a summary of all Jira tickets linked to a Salesforce account and their current status, giving customer success managers a complete engineering history before QBR calls."
+        "title": "Préparation des revues d'affaires trimestrielles",
+        "description": "GAIA génère un résumé de tous les tickets Jira liés à un compte Salesforce avec leur statut actuel, offrant aux responsables succès client un historique d'ingénierie complet avant les revues trimestrielles."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Jira and Salesforce to GAIA",
-        "description": "Authenticate your Jira instance and Salesforce org in GAIA's settings. GAIA uses Salesforce Connected App OAuth and Jira API tokens, scoped to the minimum permissions your workflows require."
+        "step": "Connectez Jira et Salesforce à GAIA",
+        "description": "Authentifiez votre instance Jira et votre organisation Salesforce dans les paramètres de GAIA. GAIA utilise l'application connectée Salesforce (OAuth) et les jetons API Jira, avec les autorisations minimales requises."
       },
       {
-        "step": "Configure case and opportunity mapping",
-        "description": "Define which Salesforce case categories or opportunity stages trigger Jira ticket creation, how Salesforce fields map to Jira issue fields, and which Jira transitions write back to Salesforce."
+        "step": "Configurez les correspondances de dossiers et opportunités",
+        "description": "Définissez les catégories de dossiers ou étapes d'opportunités déclencheuses de création de tickets, la correspondance entre champs Salesforce et champs Jira, et les transitions Jira à répercuter dans Salesforce."
       },
       {
-        "step": "GAIA automates the customer-to-engineering loop",
-        "description": "GAIA monitors both systems and executes your workflows continuously, ensuring Salesforce cases become Jira tickets promptly and Jira resolutions reach Salesforce without manual intervention."
+        "step": "GAIA automatise la boucle client-ingénierie",
+        "description": "GAIA surveille les deux systèmes et exécute vos workflows en continu : les dossiers deviennent promptement des tickets, et les résolutions parviennent à Salesforce sans intervention manuelle."
       }
     ],
     "faqs": [
       {
-        "question": "Does GAIA work with Salesforce Service Cloud as well as Sales Cloud?",
-        "answer": "Yes. GAIA integrates with both Sales Cloud (opportunities and accounts) and Service Cloud (cases and entitlements). You can configure workflows for each object type independently."
+        "question": "GAIA fonctionne-t-il avec Service Cloud en plus de Sales Cloud ?",
+        "answer": "Oui. GAIA s'intègre à Sales Cloud (opportunités et comptes) comme à Service Cloud (dossiers et droits). Vous pouvez configurer les workflows de chaque type d'objet indépendamment."
       },
       {
-        "question": "Can GAIA prioritize Jira tickets by Salesforce account tier?",
-        "answer": "Yes. GAIA reads Salesforce account tier or custom priority fields and maps them to Jira priority levels. Enterprise or Platinum tier accounts can automatically generate Blocker-priority Jira tickets."
+        "question": "GAIA peut-il prioriser les tickets selon le palier du compte Salesforce ?",
+        "answer": "Oui. GAIA lit le palier ou les champs de priorité personnalisés du compte et les associe aux niveaux de priorité Jira. Les comptes Entreprise ou Platine peuvent générer automatiquement des tickets de priorité Bloquant."
       },
       {
-        "question": "How does GAIA handle Salesforce cases that don't require engineering action?",
-        "answer": "GAIA only creates Jira tickets for cases that match your configured criteria — specific case categories, escalation flags, or custom field values. Non-engineering cases are ignored."
+        "question": "Comment GAIA traite-t-il les dossiers sans action d'ingénierie requise ?",
+        "answer": "GAIA crée des tickets uniquement pour les dossiers correspondant à vos critères — catégories précises, marqueurs d'escalade ou valeurs de champs personnalisés. Les dossiers non techniques sont ignorés."
       },
       {
-        "question": "Can I see Jira ticket status inside Salesforce without switching tools?",
-        "answer": "Yes. GAIA writes Jira ticket status back to a custom Salesforce field on the linked case or opportunity, so account managers see live engineering status directly in Salesforce without a Jira login."
+        "question": "Voit-on le statut Jira dans Salesforce sans changer d'outil ?",
+        "answer": "Oui. GAIA répercute le statut du ticket dans un champ Salesforce personnalisé sur le dossier ou l'opportunité liée, pour un statut en direct visible sans connexion Jira."
       }
     ]
   },
   "jira-zoom": {
     "toolA": "Jira",
     "toolB": "Zoom",
-    "tagline": "Turn Zoom meeting action items into Jira tickets automatically",
-    "metaTitle": "Intégration Jira + Zoom : actions de réunion vers Jira",
-    "metaDescription": "Jira + Zoom avec GAIA : Transformez les actions de planning et de daily en tickets Jira et joignez les résumés, sans travail manuel.",
+    "tagline": "Transformez automatiquement les actions de vos réunions Zoom en tickets Jira",
+    "metaTitle": "Intégration Jira + Zoom — Des actions de réunion vers Jira",
+    "metaDescription": "Automatisez Jira et Zoom avec GAIA. Convertissez les actions de planification et de standup en tickets Jira, joignez les résumés aux tickets, et planifiez les rituels liés à vos sprints actifs.",
     "keywords": [
-      "Jira Zoom integration",
-      "Jira Zoom automation",
-      "meeting action items Jira",
-      "Zoom to Jira tickets",
-      "sprint planning Zoom Jira",
-      "enterprise standup Jira workflow"
+      "intégration Jira Zoom",
+      "automatisation Jira Zoom",
+      "actions de réunion vers Jira",
+      "Zoom vers tickets Jira",
+      "planification de sprint Zoom Jira",
+      "workflow de standup d'entreprise Jira"
     ],
-    "intro": "Enterprise engineering teams run their sprint ceremonies — planning, refinement, standups, retrospectives — over Zoom. Every meeting generates action items, decisions, and issue updates that need to land in Jira. Without automation, a dedicated note-taker manually transcribes outcomes into tickets after every call, a process that's slow, incomplete, and unsustainable at scale.\n\nGAIA connects Zoom and Jira so meeting outcomes become Jira artifacts automatically. Sprint planning calls generate new Jira tickets for committed items. Standups with flagged blockers create or update Jira impediments. Retrospective action items land in the team's backlog with the appropriate labels. Meeting summaries are attached to relevant Jira tickets for traceability.\n\nFor distributed enterprise teams where most cross-team coordination happens over video, this integration ensures every decision made in a Zoom call is captured and tracked in Jira.",
+    "intro": "Les équipes d'ingénierie d'entreprise organisent leurs rituels — planification, affinage, standups, rétrospectives — sur Zoom. Chaque réunion produit des actions, des décisions et des mises à jour à consigner dans Jira. Sans automatisation, un preneur de notes dédié transcrit manuellement les résultats en tickets après chaque appel : un processus lent, incomplet et intenable à grande échelle.\n\nGAIA relie Zoom et Jira pour que les résultats des réunions deviennent automatiquement des artefacts Jira. Les appels de planification génèrent de nouveaux tickets pour les éléments engagés. Les standups signalant des blocages créent ou mettent à jour les obstacles Jira. Les actions de rétrospective rejoignent le backlog avec les bons libellés. Les résumés sont joints aux tickets concernés pour la traçabilité.\n\nPour les équipes d'entreprise distribuées où la coordination transverse passe surtout par la vidéo, cette intégration garantit que chaque décision prise sur Zoom est capturée et suivie dans Jira.",
     "useCases": [
       {
-        "title": "Sprint planning to Jira sprint",
-        "description": "After a sprint planning Zoom call, GAIA processes the transcript and creates Jira stories for each committed item, assigns them to the engineers who accepted ownership, and adds them to the active sprint."
+        "title": "De la planification de sprint au sprint Jira",
+        "description": "Après un appel de planification sur Zoom, GAIA traite la transcription et crée des stories Jira pour chaque élément engagé, les assigne aux ingénieurs responsables et les ajoute au sprint actif."
       },
       {
-        "title": "Standup blocker tracking",
-        "description": "When an engineer mentions a blocker during a Zoom standup, GAIA creates or updates the relevant Jira ticket with an impediment flag and notifies the Scrum Master to schedule a resolution."
+        "title": "Suivi des blocages de standup",
+        "description": "Lorsqu'un ingénieur mentionne un blocage pendant un standup Zoom, GAIA crée ou met à jour le ticket concerné avec un marqueur d'obstacle et notifie le Scrum Master pour planifier la résolution."
       },
       {
-        "title": "Retrospective action items as Jira tasks",
-        "description": "GAIA processes retrospective meeting transcripts and converts process improvement actions into Jira tasks, assigned to the appropriate owners and labeled for tracking across sprints."
+        "title": "Actions de rétrospective en tâches Jira",
+        "description": "GAIA traite les transcriptions de rétrospective et convertit les actions d'amélioration en tâches Jira, assignées aux bons responsables et étiquetées pour un suivi entre les sprints."
       },
       {
-        "title": "Meeting summary on Jira issues",
-        "description": "When a Zoom meeting is specifically linked to a Jira issue, GAIA attaches a concise AI-generated summary to the ticket as a comment so any team member can understand what was discussed."
+        "title": "Résumé de réunion sur les tickets Jira",
+        "description": "Lorsqu'une réunion Zoom est explicitement liée à un ticket Jira, GAIA joint un résumé concis généré par IA en commentaire du ticket, pour que chacun comprenne ce qui a été discuté."
       },
       {
-        "title": "Sprint ceremony scheduling",
-        "description": "GAIA schedules Zoom meetings for Jira sprint start and end dates automatically, inviting all sprint assignees and including the sprint goal and issue list in the meeting agenda."
+        "title": "Planification des rituels de sprint",
+        "description": "GAIA planifie automatiquement les réunions Zoom pour les dates de début et fin des sprints Jira, en invitant tous les assignés et en incluant l'objectif du sprint et la liste des tickets dans l'ordre du jour."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Jira and Zoom to GAIA",
-        "description": "Authenticate your Jira instance and Zoom account in GAIA's settings. Enable Zoom cloud recording with transcription (available on Pro and above) for automatic action item extraction."
+        "step": "Connectez Jira et Zoom à GAIA",
+        "description": "Authentifiez votre instance Jira et votre compte Zoom dans les paramètres de GAIA. Activez l'enregistrement cloud Zoom avec transcription (disponible dès Pro) pour une extraction automatique des actions."
       },
       {
-        "step": "Tag sprint meetings for Jira processing",
-        "description": "Add a GAIA keyword to Zoom meeting titles or use calendar metadata to indicate which meetings are sprint ceremonies. GAIA applies the appropriate Jira workflow to each meeting type."
+        "step": "Identifiez les réunions de sprint pour traitement Jira",
+        "description": "Ajoutez un mot-clé GAIA aux titres de réunions Zoom ou utilisez les métadonnées d'agenda pour signaler les rituels. GAIA applique le workflow Jira adapté à chaque type de réunion."
       },
       {
-        "step": "GAIA processes meetings and updates Jira",
-        "description": "After each tagged Zoom meeting, GAIA reads the transcript, extracts action items and decisions, and creates or updates Jira issues automatically. A summary is posted for team review."
+        "step": "GAIA traite les réunions et met à jour Jira",
+        "description": "Après chaque réunion identifiée, GAIA lit la transcription, extrait actions et décisions, puis crée ou met à jour les tickets automatiquement. Un résumé est publié pour révision par l'équipe."
       }
     ],
     "faqs": [
       {
-        "question": "Does GAIA need Zoom cloud recording enabled?",
-        "answer": "Zoom cloud recording with transcription provides the best results. For teams without cloud recording, GAIA can also process a pasted meeting summary or notes document to extract Jira action items."
+        "question": "GAIA nécessite-t-il l'enregistrement cloud Zoom ?",
+        "answer": "L'enregistrement cloud avec transcription donne les meilleurs résultats. Sans enregistrement cloud, GAIA peut aussi traiter un résumé collé ou un document de notes pour en extraire les actions Jira."
       },
       {
-        "question": "Can GAIA create Jira epics, stories, and sub-tasks from a single planning meeting?",
-        "answer": "Yes. GAIA infers the appropriate Jira issue type from the meeting context. High-level items become epics or stories while granular tasks become sub-tasks under the relevant story."
+        "question": "GAIA peut-il créer epics, stories et sous-tâches depuis une seule réunion ?",
+        "answer": "Oui. GAIA déduit le type de ticket approprié du contexte : les sujets de haut niveau deviennent des epics ou stories, les tâches fines des sous-tâches de la story concernée."
       },
       {
-        "question": "Will GAIA create duplicate Jira issues from recurring standup mentions?",
-        "answer": "GAIA checks for existing open Jira issues before creating new ones. If a matching open issue exists, GAIA adds a standup update comment rather than creating a duplicate ticket."
+        "question": "GAIA créera-t-il des doublons depuis les mentions répétées en standup ?",
+        "answer": "GAIA vérifie les tickets ouverts existants avant toute création. Si un ticket ouvert correspondant existe, GAIA ajoute un commentaire de standup plutôt que de créer un doublon."
       },
       {
-        "question": "Can GAIA link Zoom meeting recordings to Jira issues for reference?",
-        "answer": "Yes. GAIA can attach the Zoom cloud recording link to all Jira issues created from that meeting, providing a permanent video reference alongside the extracted action items."
+        "question": "GAIA peut-il lier les enregistrements Zoom aux tickets pour référence ?",
+        "answer": "Oui. GAIA peut joindre le lien d'enregistrement cloud à tous les tickets créés depuis cette réunion, offrant une référence vidéo permanente avec les actions extraites."
       }
     ]
   },
   "jira-teams": {
     "toolA": "Jira",
     "toolB": "Microsoft Teams",
-    "tagline": "Deliver Jira sprint updates and issue alerts directly in Microsoft Teams",
-    "metaTitle": "Jira + Microsoft Teams : notifications par projet",
-    "metaDescription": "Informez chaque équipe sans ouvrir Jira. GAIA publie les bilans de sprint et escalades prioritaires de chaque projet dans son canal Teams. Voir les étapes.",
+    "tagline": "Recevez les mises à jour de sprint et alertes Jira directement dans Microsoft Teams",
+    "metaTitle": "Intégration Jira + Microsoft Teams — Les actus de développement dans Teams",
+    "metaDescription": "Automatisez Jira et Microsoft Teams avec GAIA. Publiez résumés de sprint, notifications de tickets et alertes de blocage dans vos salons Teams, pour des parties prenantes informées sans ouvrir Jira.",
     "keywords": [
-      "Jira Microsoft Teams integration",
-      "Jira Teams notifications",
-      "Jira Teams automation",
-      "enterprise sprint updates Teams",
-      "Jira issue alerts Teams",
-      "dev team Microsoft Teams workflow"
+      "intégration Jira Microsoft Teams",
+      "notifications Jira Teams",
+      "automatisation Jira Teams",
+      "mises à jour de sprint d'entreprise dans Teams",
+      "alertes de tickets Jira dans Teams",
+      "workflow d'équipe de développement Microsoft Teams"
     ],
-    "intro": "Microsoft Teams is the enterprise communication standard for organizations running on Microsoft 365, and Jira is the enterprise issue tracker of choice for software teams. Despite how often they're used together, keeping Teams informed of Jira progress requires either manual posting or a limited built-in connector that lacks contextual formatting and intelligent routing.\n\nGAIA provides a richer Jira-Teams integration. Sprint summaries, blocker alerts, release notifications, and high-priority issue escalations are posted to the right Teams channels with structured, readable formatting. Non-technical stakeholders can query GAIA in Teams for Jira project status without needing a Jira license. Engineering managers receive personalized digests of their team's sprint progress.\n\nFor large enterprises where Teams is the operational hub, this integration ensures Jira data reaches the right people in the right channels with the right context — automatically.",
+    "intro": "Microsoft Teams est le standard de communication des organisations sur Microsoft 365, et Jira le suivi de tickets de choix des équipes logicielles. Bien qu'ils soient souvent utilisés ensemble, tenir Teams informé de l'avancement Jira exige soit des publications manuelles, soit un connecteur intégré limité, sans mise en forme contextuelle ni routage intelligent.\n\nGAIA offre une intégration Jira-Teams plus riche. Résumés de sprint, alertes de blocage, notifications de livraison et escalades prioritaires sont publiés dans les bons salons avec une mise en forme structurée et lisible. Les parties prenantes non techniques peuvent interroger GAIA dans Teams sur le statut des projets sans licence Jira. Les responsables d'ingénierie reçoivent des résumés personnalisés de l'avancement de leur équipe.\n\nPour les grandes entreprises où Teams est le hub opérationnel, cette intégration garantit que les données Jira parviennent aux bonnes personnes, dans les bons salons, avec le bon contexte — automatiquement.",
     "useCases": [
       {
-        "title": "Daily sprint status digest",
-        "description": "GAIA posts a morning sprint status digest to the engineering Teams channel showing yesterday's completions, today's planned work, and any open blockers requiring immediate attention."
+        "title": "Résumé quotidien de l'avancement du sprint",
+        "description": "GAIA publie chaque matin un résumé dans le salon d'ingénierie : réalisations de la veille, travail prévu du jour et blocages ouverts exigeant une attention immédiate."
       },
       {
-        "title": "High-priority issue escalation alerts",
-        "description": "When a Jira ticket is raised to Blocker or Critical priority, GAIA posts an alert to the team's Teams channel and tags the assignee and engineering lead for immediate response."
+        "title": "Alertes d'escalade des tickets prioritaires",
+        "description": "Lorsqu'un ticket Jira passe en priorité Bloquant ou Critique, GAIA publie une alerte dans le salon de l'équipe en mentionnant l'assigné et le responsable d'ingénierie pour une réaction immédiate."
       },
       {
-        "title": "Release notification to stakeholder channels",
-        "description": "When a Jira sprint or version is released, GAIA posts a formatted release announcement to the designated Teams channel listing all resolved issues, suitable for sharing with business stakeholders."
+        "title": "Annonce de livraison aux salons des parties prenantes",
+        "description": "Lorsqu'un sprint ou une version Jira est livré, GAIA publie une annonce formatée dans le salon Teams désigné, listant tous les problèmes résolus, prête à partager avec les parties prenantes métier."
       },
       {
-        "title": "Jira queries answered in Teams",
-        "description": "Stakeholders can ask GAIA in Teams — 'What's the status of the payments project?' or 'Is the login bug fixed yet?' — and receive an accurate, real-time answer sourced from Jira."
+        "title": "Questions Jira répondues dans Teams",
+        "description": "Les parties prenantes peuvent demander à GAIA dans Teams — « Quel est le statut du projet paiements ? » ou « Le bug de connexion est-il corrigé ? » — et recevoir une réponse exacte en temps réel, issue de Jira."
       },
       {
-        "title": "New issue assignment notifications",
-        "description": "When a Jira issue is assigned to a team member, GAIA sends them a Teams message with the issue summary, priority, due date, and sprint assignment so they're immediately aware of new work."
+        "title": "Notifications d'assignation de nouveaux tickets",
+        "description": "Lorsqu'un ticket Jira est assigné à un membre, GAIA lui envoie un message Teams avec le résumé, la priorité, l'échéance et le sprint, pour une prise de connaissance immédiate."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Jira and Microsoft Teams to GAIA",
-        "description": "Authenticate your Jira instance and install the GAIA app in your Microsoft Teams organization. Map Jira projects to the Teams channels where notifications should be delivered."
+        "step": "Connectez Jira et Microsoft Teams à GAIA",
+        "description": "Authentifiez votre instance Jira et installez l'application GAIA dans votre organisation Microsoft Teams. Associez les projets Jira aux salons destinataires des notifications."
       },
       {
-        "step": "Configure notification and alert rules",
-        "description": "Define which Jira events generate Teams notifications — issue assignments, priority escalations, sprint events, deployments — and configure the format and routing for each event type."
+        "step": "Configurez les règles de notification et d'alerte",
+        "description": "Définissez les événements Jira générateurs de notifications — assignations, escalades, événements de sprint, déploiements — ainsi que le format et le routage de chaque type."
       },
       {
-        "step": "GAIA notifies Teams and responds to queries",
-        "description": "GAIA monitors Jira continuously and posts structured notifications to Teams in real time. Team members can also query GAIA directly within Teams for live Jira project status."
+        "step": "GAIA notifie Teams et répond aux questions",
+        "description": "GAIA surveille Jira en continu et publie des notifications structurées dans Teams en temps réel. Les membres peuvent aussi interroger GAIA directement dans Teams pour un statut projet en direct."
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA post to different Teams channels based on Jira project?",
-        "answer": "Yes. You can configure a separate Teams channel for each Jira project or board. GAIA routes notifications to the appropriate channel automatically based on the issue's project assignment."
+        "question": "GAIA peut-il publier dans différents salons selon le projet Jira ?",
+        "answer": "Oui. Vous pouvez configurer un salon Teams distinct par projet ou tableau Jira. GAIA route automatiquement les notifications vers le bon salon selon le projet du ticket."
       },
       {
-        "question": "Can Teams users create Jira issues without a Jira account?",
-        "answer": "Yes. Users can ask GAIA in a Teams message to create a Jira issue, providing a description and priority. GAIA creates the issue under the appropriate project and returns the Jira link."
+        "question": "Les utilisateurs Teams peuvent-ils créer des tickets Jira sans compte Jira ?",
+        "answer": "Oui. Les utilisateurs demandent à GAIA dans un message Teams de créer un ticket, avec description et priorité. GAIA crée le ticket dans le bon projet et renvoie le lien Jira."
       },
       {
-        "question": "Does GAIA support Microsoft Teams Adaptive Cards for Jira notifications?",
-        "answer": "Yes. GAIA formats Jira notifications as Adaptive Cards in Teams, including issue summary, priority indicator, assignee, sprint name, and action buttons to transition issue status from within Teams."
+        "question": "GAIA prend-il en charge les cartes adaptatives pour les notifications Jira ?",
+        "answer": "Oui. GAIA formate les notifications Jira en cartes adaptatives dans Teams : résumé, indicateur de priorité, assigné, nom du sprint et boutons d'action pour changer le statut depuis Teams."
       },
       {
-        "question": "How is this different from the standard Jira connector for Teams?",
-        "answer": "The standard Jira connector sends basic webhook notifications. GAIA adds AI-powered filtering, intelligent routing, natural language queries, and two-way actions (like creating or updating Jira issues) directly from Teams."
+        "question": "En quoi est-ce différent du connecteur Jira standard pour Teams ?",
+        "answer": "Le connecteur standard envoie des notifications webhook basiques. GAIA ajoute un filtrage IA, un routage intelligent, des questions en langage naturel et des actions bidirectionnelles (créer ou mettre à jour des tickets) directement depuis Teams."
       }
     ]
   },
   "jira-airtable": {
     "toolA": "Jira",
     "toolB": "Airtable",
-    "tagline": "Sync Jira sprint data with Airtable for cross-functional reporting",
-    "metaTitle": "Intégration Jira + Airtable : données d'ingénierie",
-    "metaDescription": "Jira + Airtable avec GAIA : Synchronisez les tickets Jira avec Airtable et créez des tableaux de bord, pour donner aux ops et au produit une vue en direct.",
+    "tagline": "Synchronisez les données de sprint Jira avec Airtable pour un reporting transverse",
+    "metaTitle": "Intégration Jira + Airtable — Vos données d'ingénierie dans votre base",
+    "metaDescription": "Automatisez Jira et Airtable avec GAIA. Synchronisez les tickets Jira vers Airtable, construisez des tableaux de bord transverses, et offrez aux équipes opérations et produit une vision base de données en direct du travail d'ingénierie.",
     "keywords": [
-      "Jira Airtable integration",
-      "Jira Airtable sync",
-      "Jira Airtable automation",
-      "engineering database Airtable",
-      "Jira to Airtable records",
-      "cross-functional reporting Jira"
+      "intégration Jira Airtable",
+      "synchronisation Jira Airtable",
+      "automatisation Jira Airtable",
+      "base de données d'ingénierie Airtable",
+      "tickets Jira vers enregistrements Airtable",
+      "reporting transverse Jira"
     ],
-    "intro": "Operations, program management, and business teams love Airtable for its flexible views, formulas, and reporting. Engineering teams depend on Jira for sprint management, issue tracking, and release planning. When these groups need to collaborate on roadmaps, resourcing, or executive reporting, the data gap between Jira and Airtable forces manual exports and stale spreadsheets.\n\nGAIA bridges Jira and Airtable in real time. Jira issues, epics, sprints, and version data flow into Airtable records automatically, giving business teams the database views they need without a Jira license. Airtable intake forms generate Jira tickets instantly. Executive dashboards built in Airtable pull live sprint velocity and burn-down data from Jira.\n\nFor enterprise organizations using Airtable as a cross-functional operations hub, this integration makes engineering delivery data a first-class citizen in every operational report.",
+    "intro": "Les équipes opérations, programmes et business adorent Airtable pour ses vues flexibles, ses formules et son reporting. Les équipes d'ingénierie dépendent de Jira pour la gestion des sprints, le suivi des tickets et la planification des versions. Quand ces groupes doivent collaborer sur feuilles de route, ressources ou reporting de direction, l'écart de données entre Jira et Airtable impose des exports manuels et des tableurs obsolètes.\n\nGAIA relie Jira et Airtable en temps réel. Tickets, epics, sprints et versions alimentent automatiquement des enregistrements Airtable, offrant aux équipes métier les vues base de données dont elles ont besoin sans licence Jira. Les formulaires de demande Airtable génèrent instantanément des tickets Jira. Les tableaux de direction construits dans Airtable tirent la vélocité et l'avancement en direct depuis Jira.\n\nPour les organisations d'entreprise qui font d'Airtable un hub opérationnel transverse, cette intégration fait des données de livraison d'ingénierie un citoyen de premier ordre dans chaque rapport opérationnel.",
     "useCases": [
       {
-        "title": "Jira issues as Airtable records",
-        "description": "GAIA syncs Jira issues to a configured Airtable table, with records for each ticket containing status, assignee, priority, sprint, fix version, and story points, updated in real time."
+        "title": "Tickets Jira en enregistrements Airtable",
+        "description": "GAIA synchronise les tickets Jira vers une table Airtable configurée, avec pour chaque ticket le statut, l'assigné, la priorité, le sprint, la version corrective et les points, mis à jour en temps réel."
       },
       {
-        "title": "Airtable intake forms to Jira backlog",
-        "description": "Business teams submit requests via Airtable forms. GAIA converts qualifying submissions into Jira issues automatically and writes the Jira ticket link back to the Airtable record."
+        "title": "Formulaires Airtable vers le backlog Jira",
+        "description": "Les équipes métier soumettent leurs demandes via des formulaires Airtable. GAIA convertit automatiquement les soumissions éligibles en tickets Jira et réécrit le lien du ticket dans l'enregistrement Airtable."
       },
       {
-        "title": "Executive roadmap dashboard in Airtable",
-        "description": "GAIA feeds Jira epic and version data into a dedicated Airtable base configured as an executive roadmap view, giving leadership accurate delivery timelines without Jira access."
+        "title": "Tableau de feuille de route de direction dans Airtable",
+        "description": "GAIA alimente une base Airtable dédiée configurée en vue roadmap de direction avec les epics et versions Jira, offrant à la direction des délais de livraison exacts sans accès Jira."
       },
       {
-        "title": "Sprint velocity tracking",
-        "description": "GAIA writes Jira sprint velocity and story point completion data to Airtable after each sprint, enabling operations teams to build capacity planning models using native Airtable formulas."
+        "title": "Suivi de la vélocité des sprints",
+        "description": "Après chaque sprint, GAIA écrit la vélocité et les points réalisés dans Airtable, permettant aux opérations de construire des modèles de capacité avec les formules natives."
       },
       {
-        "title": "SLA monitoring for customer-linked tickets",
-        "description": "GAIA syncs Jira tickets tagged with customer identifiers to Airtable and triggers alerts when tickets approach or breach SLA thresholds, based on Airtable automation rules."
+        "title": "Surveillance des SLA pour les tickets clients",
+        "description": "GAIA synchronise les tickets Jira marqués d'identifiants clients vers Airtable et déclenche des alertes à l'approche ou au dépassement des seuils SLA, via les règles d'automatisation Airtable."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Jira and Airtable to GAIA",
-        "description": "Authenticate your Jira instance and Airtable account in GAIA's settings. Specify the Airtable base and table where Jira issue data should be synced."
+        "step": "Connectez Jira et Airtable à GAIA",
+        "description": "Authentifiez votre instance Jira et votre compte Airtable dans les paramètres de GAIA. Précisez la base et la table Airtable destinées aux données Jira."
       },
       {
-        "step": "Map Jira fields to Airtable columns",
-        "description": "Define the mapping between Jira issue fields and Airtable table columns. GAIA provides a default schema covering standard Jira fields and supports custom field mapping for advanced configurations."
+        "step": "Associez les champs Jira aux colonnes Airtable",
+        "description": "Définissez la correspondance entre les champs des tickets et les colonnes de la table. GAIA fournit un schéma par défaut couvrant les champs standards et prend en charge les champs personnalisés pour les configurations avancées."
       },
       {
-        "step": "GAIA keeps Airtable updated with live Jira data",
-        "description": "GAIA monitors Jira for changes and updates Airtable records in real time. Airtable form submissions are also monitored and converted to Jira issues on a configurable schedule."
+        "step": "GAIA tient Airtable à jour avec les données Jira en direct",
+        "description": "GAIA surveille les changements dans Jira et met à jour les enregistrements en temps réel. Les soumissions de formulaires Airtable sont également surveillées et converties en tickets selon une planification configurable."
       }
     ],
     "faqs": [
       {
-        "question": "Does GAIA sync Jira epics and sprints as well as individual issues?",
-        "answer": "Yes. GAIA can sync Jira epics, sprints, and versions to separate Airtable tables or as linked records, giving you a relational database view of your entire Jira project structure."
+        "question": "GAIA synchronise-t-il les epics et sprints en plus des tickets individuels ?",
+        "answer": "Oui. GAIA peut synchroniser epics, sprints et versions vers des tables Airtable séparées ou en enregistrements liés, offrant une vision base de données relationnelle de toute votre structure projet Jira."
       },
       {
-        "question": "Can Airtable users update Jira tickets by editing Airtable records?",
-        "answer": "Selective writeback is supported. You can configure specific columns (like assignee or priority) to push updates back to Jira when changed in Airtable, while keeping other fields read-only."
+        "question": "Les utilisateurs Airtable peuvent-ils mettre à jour Jira en modifiant des enregistrements ?",
+        "answer": "L'écriture retour sélective est prise en charge. Vous pouvez configurer certaines colonnes (comme l'assigné ou la priorité) pour répercuter les modifications vers Jira, en gardant les autres champs en lecture seule."
       },
       {
-        "question": "How often does GAIA sync Jira data to Airtable?",
-        "answer": "By default, GAIA syncs in near real time for high-signal events (status changes, assignments, new issues) and on a periodic schedule for bulk data like sprint velocity metrics."
+        "question": "À quelle fréquence GAIA synchronise-t-il les données Jira ?",
+        "answer": "Par défaut, GAIA synchronise en temps quasi réel pour les événements à fort signal (changements de statut, assignations, nouveaux tickets) et selon une planification périodique pour les données volumineuses comme les métriques de vélocité."
       },
       {
-        "question": "Can I use this to build a public-facing roadmap in Airtable?",
-        "answer": "Yes. GAIA can sync a filtered subset of Jira issues (e.g., issues tagged as public roadmap items) to an Airtable base configured for public sharing, giving you a live roadmap without manual updates."
+        "question": "Puis-je construire une feuille de route publique dans Airtable ?",
+        "answer": "Oui. GAIA peut synchroniser un sous-ensemble filtré de tickets (par exemple ceux étiquetés éléments publics de feuille de route) vers une base configurée pour le partage public, pour une roadmap en direct sans mises à jour manuelles."
       }
     ]
   },
   "jira-loom": {
     "toolA": "Jira",
     "toolB": "Loom",
-    "tagline": "Attach Loom video context to Jira tickets for faster issue resolution",
-    "metaTitle": "Intégration Jira + Loom : bugs en vidéo et sprints",
-    "metaDescription": "Jira + Loom avec GAIA : Joignez des enregistrements Loom aux tickets Jira et créez des tickets depuis les rapports vidéo, pour analyser les bugs plus vite.",
+    "tagline": "Joignez le contexte vidéo Loom aux tickets Jira pour résoudre plus vite",
+    "metaTitle": "Intégration Jira + Loom — Signalements vidéo de bugs et nouvelles de sprint",
+    "metaDescription": "Automatisez Jira et Loom avec GAIA. Joignez les enregistrements de bugs Loom aux tickets Jira, créez des tickets depuis les signalements vidéo, et reliez les démos de sprint aux tickets terminés automatiquement.",
     "keywords": [
-      "Jira Loom integration",
-      "Jira Loom automation",
-      "video bug reports Jira",
-      "Loom to Jira tickets",
-      "async engineering updates Jira",
-      "sprint demo recording Jira"
+      "intégration Jira Loom",
+      "automatisation Jira Loom",
+      "signalements vidéo de bugs Jira",
+      "Loom vers tickets Jira",
+      "mises à jour d'ingénierie asynchrones Jira",
+      "enregistrement de démo de sprint Jira"
     ],
-    "intro": "Jira tickets that describe complex bugs or nuanced requirements in text alone often lead to back-and-forth clarification threads that slow down resolution. A brief Loom recording demonstrating a bug or walking through a feature requirement communicates in seconds what paragraphs of text struggle to convey — but connecting that recording to the right Jira ticket requires manual effort.\n\nGAIA automates the link between Loom and Jira. Bug recordings created in Loom generate Jira tickets with the video embedded. Loom recordings referencing a Jira issue ID are automatically attached to that ticket as a comment. Sprint demo recordings are attached to the completed Jira issues they cover, creating a permanent video audit trail of delivered features.\n\nFor enterprise teams managing complex Jira backlogs where issue clarity directly affects resolution speed, Loom video context reduces the clarification cycle dramatically and keeps async collaboration productive.",
+    "intro": "Les tickets Jira qui décrivent en texte seul des bugs complexes ou des besoins nuancés engendrent souvent des fils de clarification qui ralentissent la résolution. Un bref enregistrement Loom montrant un bug ou présentant un besoin communique en quelques secondes ce que des paragraphes peinent à transmettre — mais relier cet enregistrement au bon ticket exige un effort manuel.\n\nGAIA automatise le lien entre Loom et Jira. Les enregistrements de bugs créés dans Loom génèrent des tickets avec la vidéo intégrée. Les enregistrements mentionnant un identifiant Jira sont automatiquement joints au ticket en commentaire. Les démos de sprint sont jointes aux tickets terminés qu'elles couvrent, créant une trace vidéo permanente des fonctionnalités livrées.\n\nPour les équipes d'entreprise gérant des backlogs Jira complexes où la clarté des tickets conditionne directement la vitesse de résolution, le contexte vidéo Loom réduit spectaculairement le cycle de clarification et garde la collaboration asynchrone productive.",
     "useCases": [
       {
-        "title": "Bug recording to Jira ticket",
-        "description": "When a tester records a Loom demonstrating a bug, GAIA creates a Jira bug ticket with the Loom video embedded as the issue description, complete with steps to reproduce extracted from the transcript."
+        "title": "D'un enregistrement de bug au ticket Jira",
+        "description": "Lorsqu'un testeur enregistre un Loom montrant un bug, GAIA crée un bug Jira avec la vidéo intégrée en description, accompagnée des étapes de reproduction extraites de la transcription."
       },
       {
-        "title": "Requirement walkthrough attached to stories",
-        "description": "Product managers record Loom walkthroughs of new feature requirements and GAIA attaches them to the corresponding Jira stories so engineers have rich context without a synchronous meeting."
+        "title": "Présentation des besoins jointe aux stories",
+        "description": "Les chefs de produit enregistrent des visites Loom des nouveaux besoins et GAIA les joint aux stories Jira correspondantes, pour un contexte riche sans réunion synchrone."
       },
       {
-        "title": "Sprint demo recordings on completed issues",
-        "description": "After a sprint review, GAIA attaches the Loom demo recording to each Jira issue demonstrated, creating a permanent video record of what was delivered that stakeholders can review asynchronously."
+        "title": "Démos de sprint sur les tickets terminés",
+        "description": "Après une revue de sprint, GAIA joint l'enregistrement de démo Loom à chaque ticket présenté, créant un enregistrement vidéo permanent que les parties prenantes revoient en asynchrone."
       },
       {
-        "title": "Design change walkthroughs on in-progress tickets",
-        "description": "When a designer records a Loom showing a design change on an in-progress Jira ticket, GAIA attaches the video to the ticket and flags the assignee to review before continuing implementation."
+        "title": "Visites de changements design sur les tickets en cours",
+        "description": "Lorsqu'un designer enregistre un Loom montrant un changement sur un ticket en cours, GAIA joint la vidéo au ticket et signale à l'assigné de la revoir avant de poursuivre l'implémentation."
       },
       {
-        "title": "Incident post-mortems with video evidence",
-        "description": "During incident response, engineers record Loom walkthroughs of the issue and remediation steps. GAIA attaches these recordings to the Jira incident ticket as a post-mortem reference."
+        "title": "Post-mortems d'incidents avec preuves vidéo",
+        "description": "Pendant la réponse aux incidents, les ingénieurs enregistrent des visites Loom du problème et des étapes de remédiation. GAIA joint ces enregistrements au ticket d'incident comme référence post-mortem."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Jira and Loom to GAIA",
-        "description": "Authenticate your Jira instance and Loom workspace in GAIA's settings. GAIA uses Loom's API to monitor new recordings and access video transcripts."
+        "step": "Connectez Jira et Loom à GAIA",
+        "description": "Authentifiez votre instance Jira et votre espace Loom dans les paramètres de GAIA. GAIA utilise l'API Loom pour surveiller les nouveaux enregistrements et accéder aux transcriptions."
       },
       {
-        "step": "Define video-to-ticket linking conventions",
-        "description": "Tell GAIA how to match Loom recordings to Jira tickets — by Jira issue ID in the video title, by Loom folder, or by transcript content analysis. Set trigger phrases for auto-creating new tickets."
+        "step": "Définissez les conventions de liaison vidéo-ticket",
+        "description": "Indiquez à GAIA comment rapprocher enregistrements et tickets — par identifiant Jira dans le titre, par dossier Loom, ou par analyse du contenu des transcriptions. Définissez les formules déclencheuses de création."
       },
       {
-        "step": "GAIA attaches videos and creates tickets automatically",
-        "description": "When a new Loom is created matching your rules, GAIA attaches it to the correct Jira ticket or creates a new one, notifying the relevant team member with a link to both the video and the ticket."
+        "step": "GAIA joint les vidéos et crée les tickets automatiquement",
+        "description": "À la création d'un Loom correspondant à vos règles, GAIA le joint au bon ticket ou en crée un nouveau, en notifiant le membre concerné avec un lien vers la vidéo et le ticket."
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA create a Jira ticket from a Loom recording without a pre-existing issue?",
-        "answer": "Yes. If a Loom title includes a trigger phrase like 'Bug:' or 'Issue:', GAIA creates a new Jira ticket using the video title as the issue summary and embeds the Loom link in the description."
+        "question": "GAIA peut-il créer un ticket depuis un enregistrement sans ticket préexistant ?",
+        "answer": "Oui. Si le titre contient une formule déclencheuse comme « Bug : » ou « Problème : », GAIA crée un ticket en reprenant le titre de la vidéo et intègre le lien Loom dans la description."
       },
       {
-        "question": "Does GAIA use the Loom transcript to populate Jira fields?",
-        "answer": "Yes. GAIA processes the Loom transcript to extract a description, steps to reproduce, and acceptance criteria, using this content to populate the Jira ticket's Description and Comments fields."
+        "question": "GAIA utilise-t-il la transcription pour remplir les champs Jira ?",
+        "answer": "Oui. GAIA traite la transcription pour extraire une description, des étapes de reproduction et des critères d'acceptation, afin d'alimenter les champs Description et Commentaires du ticket."
       },
       {
-        "question": "Do Jira users need a Loom account to view attached videos?",
-        "answer": "Not necessarily. Loom recordings shared via a public or workspace link can be viewed by anyone with the link. GAIA attaches videos using their shared link so Jira users can view them without a Loom login if the video is set to shared-link access."
+        "question": "Faut-il un compte Loom aux utilisateurs Jira pour voir les vidéos jointes ?",
+        "answer": "Pas nécessairement. Les enregistrements partagés via un lien public ou d'espace sont visibles par quiconque possède le lien. GAIA joint les vidéos via leur lien partagé pour une visualisation sans connexion Loom si la vidéo est en accès par lien."
       },
       {
-        "question": "Can GAIA attach Loom videos to Jira sub-tasks?",
-        "answer": "Yes. GAIA can attach Loom links to Jira stories, epics, tasks, sub-tasks, and bugs. This is particularly useful for QA recordings that correspond to specific acceptance criteria tracked as sub-tasks."
+        "question": "GAIA peut-il joindre des vidéos aux sous-tâches Jira ?",
+        "answer": "Oui. GAIA peut joindre des liens Loom aux stories, epics, tâches, sous-tâches et bugs Jira. C'est particulièrement utile pour les enregistrements QA correspondant à des critères d'acceptation précis suivis en sous-tâches."
       }
     ]
   },
   "jira-stripe": {
     "toolA": "Jira",
     "toolB": "Stripe",
-    "tagline": "Escalate Stripe billing failures into Jira tickets with revenue context",
-    "metaTitle": "Intégration Jira + Stripe : bugs critiques pour le revenu",
-    "metaDescription": "Jira + Stripe avec GAIA : Transformez les paiements Stripe échoués en tickets Jira avec leur impact, pour que les bugs critiques arrivent vite.",
+    "tagline": "Escaladez les échecs de facturation Stripe en tickets Jira avec le contexte de revenu",
+    "metaTitle": "Intégration Jira + Stripe — Suivi des bugs critiques pour le revenu",
+    "metaDescription": "Automatisez Jira et Stripe avec GAIA. Convertissez les échecs de paiement Stripe en tickets Jira, annotez les problèmes avec leur impact sur le revenu, et faites parvenir vite à l'ingénierie les bugs critiques de facturation.",
     "keywords": [
-      "Jira Stripe integration",
-      "Jira Stripe automation",
-      "Stripe billing bugs Jira",
-      "payment failure Jira ticket",
-      "revenue impact Jira",
-      "enterprise billing Jira workflow"
+      "intégration Jira Stripe",
+      "automatisation Jira Stripe",
+      "bugs de facturation Stripe dans Jira",
+      "échec de paiement vers ticket Jira",
+      "impact revenu Jira",
+      "workflow de facturation d'entreprise Jira"
     ],
-    "intro": "For enterprise SaaS companies, Stripe is the revenue engine and Jira is the engineering command center. When Stripe reports payment failures, webhook errors, or subscription anomalies, those events require immediate engineering investigation — but the path from a Stripe dashboard alert to a properly filed, prioritized Jira ticket is rarely automated.\n\nGAIA connects Stripe and Jira so revenue-critical events automatically generate engineering tickets with the context needed for fast resolution. Payment failure spikes create urgent Jira bugs with error codes and affected plan data. Webhook delivery failures become Jira tasks with replay instructions. API deprecation notices create Jira tickets with deadlines and code references. Engineers prioritize billing work with full revenue impact data visible in the Jira issue.\n\nFor companies where billing reliability is a board-level metric, this integration ensures that Stripe anomalies never wait in someone's inbox before reaching the engineering team.",
+    "intro": "Pour les entreprises SaaS, Stripe est le moteur du revenu et Jira le centre de commandement de l'ingénierie. Lorsque Stripe signale des échecs de paiement, des erreurs de webhook ou des anomalies d'abonnement, ces événements exigent une investigation immédiate — mais le chemin d'une alerte du tableau Stripe vers un ticket Jira bien rempli et priorisé est rarement automatisé.\n\nGAIA relie Stripe et Jira pour que les événements critiques génèrent automatiquement des tickets avec le contexte nécessaire à une résolution rapide. Les pics d'échecs créent des bugs Jira urgents avec codes d'erreur et données de formules affectées. Les échecs de webhooks deviennent des tâches Jira avec instructions de rejeu. Les avis d'obsolescence d'API créent des tickets avec échéances et références de code. Les ingénieurs priorisent la facturation avec l'impact revenu visible dans le ticket.\n\nPour les entreprises où la fiabilité de la facturation est un indicateur suivi au conseil d'administration, cette intégration garantit que les anomalies Stripe ne patientent jamais dans une boîte mail avant d'atteindre l'ingénierie.",
     "useCases": [
       {
-        "title": "Payment failure spike to Jira incident ticket",
-        "description": "When Stripe reports a spike in payment failures above your configured threshold, GAIA creates a Blocker-priority Jira incident ticket with the failure rate, error codes, affected plan types, and estimated MRR impact."
+        "title": "Pic d'échecs de paiement vers ticket d'incident Jira",
+        "description": "Lorsque Stripe signale un pic d'échecs au-delà de votre seuil, GAIA crée un incident Jira de priorité Bloquant avec le taux d'échec, les codes d'erreur, les types de formules affectés et l'impact MRR estimé."
       },
       {
-        "title": "Revenue impact annotation on billing tickets",
-        "description": "GAIA enriches Jira tickets related to Stripe issues with live revenue data — MRR at risk, number of affected subscriptions, and churn probability — so engineering can prioritize by financial impact."
+        "title": "Annotation de l'impact revenu sur les tickets de facturation",
+        "description": "GAIA enrichit les tickets Jira liés à Stripe avec des données de revenu en direct — MRR en risque, nombre d'abonnements affectés et probabilité de churn — pour prioriser selon l'impact financier."
       },
       {
-        "title": "Webhook failure tracking",
-        "description": "When Stripe webhook delivery fails for a critical event type, GAIA creates a Jira task with the event ID, endpoint URL, failure reason, and instructions for replaying the event."
+        "title": "Suivi des échecs de webhooks",
+        "description": "Lorsqu'une livraison de webhook Stripe échoue pour un type d'événement critique, GAIA crée une tâche Jira avec l'identifiant d'événement, l'URL du endpoint, la cause d'échec et les instructions de rejeu."
       },
       {
-        "title": "Stripe API deprecation management",
-        "description": "When Stripe announces API version deprecations, GAIA creates Jira tickets for each affected integration endpoint in your codebase, tagged with the deprecation deadline and migration guide link."
+        "title": "Gestion des obsolescences d'API Stripe",
+        "description": "Lorsque Stripe annonce des obsolescences de versions d'API, GAIA crée des tickets Jira pour chaque endpoint d'intégration affecté dans votre code, étiquetés avec l'échéance et le lien du guide de migration."
       },
       {
-        "title": "Churn event to Jira escalation",
-        "description": "When a subscription cancellation in Stripe cites a billing or product defect, GAIA identifies the corresponding open Jira ticket and escalates its priority, attaching the churn event data as evidence."
+        "title": "Escalade des résiliations vers Jira",
+        "description": "Lorsqu'une résiliation d'abonnement dans Stripe invoque un défaut de facturation ou de produit, GAIA identifie le ticket Jira ouvert correspondant et escalade sa priorité en joignant les données de churn comme preuve."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Jira and Stripe to GAIA",
-        "description": "Provide GAIA with a restricted Stripe API key (read-only) and authenticate your Jira instance. Configure which Stripe event types and thresholds should trigger Jira ticket creation."
+        "step": "Connectez Jira et Stripe à GAIA",
+        "description": "Fournissez à GAIA une clé API Stripe restreinte (lecture seule) et authentifiez votre instance Jira. Configurez les types d'événements et seuils déclencheurs de création de tickets."
       },
       {
-        "step": "Define revenue thresholds and Jira routing",
-        "description": "Set the Stripe event conditions that warrant Jira tickets — failure rates, MRR thresholds, specific error codes — and map them to Jira projects, issue types, and priority levels."
+        "step": "Définissez les seuils de revenu et le routage Jira",
+        "description": "Définissez les conditions d'événements justifiant des tickets — taux d'échec, seuils MRR, codes d'erreur précis — et associez-les aux projets, types et priorités Jira."
       },
       {
-        "step": "GAIA monitors Stripe and manages Jira automatically",
-        "description": "GAIA listens for the Stripe events you've configured and creates or updates Jira tickets accordingly, annotating each with revenue context so your team can prioritize and resolve billing issues efficiently."
+        "step": "GAIA surveille Stripe et gère Jira automatiquement",
+        "description": "GAIA écoute les événements configurés et crée ou met à jour les tickets en conséquence, en annotant chacun du contexte de revenu pour prioriser et résoudre efficacement."
       }
     ],
     "faqs": [
       {
-        "question": "Does GAIA need write access to the Stripe account?",
-        "answer": "No. GAIA uses read-only Stripe API access for monitoring events and subscription data. GAIA never initiates charges, refunds, or any financial transactions."
+        "question": "GAIA a-t-il besoin d'un accès en écriture au compte Stripe ?",
+        "answer": "Non. GAIA utilise un accès API Stripe en lecture seule pour surveiller événements et abonnements. GAIA n'initie jamais de prélèvements, remboursements ni aucune transaction financière."
       },
       {
-        "question": "Can GAIA distinguish between transient Stripe errors and systemic issues?",
-        "answer": "Yes. GAIA applies configurable thresholds and time windows to distinguish a temporary gateway blip from a systemic billing failure. Only events exceeding your thresholds generate Jira tickets."
+        "question": "GAIA distingue-t-il les erreurs Stripe transitoires des problèmes systémiques ?",
+        "answer": "Oui. GAIA applique des seuils et fenêtres temporelles configurables pour distinguer un incident passager d'un échec systémique. Seuls les événements dépassant vos seuils génèrent des tickets."
       },
       {
-        "question": "Can GAIA correlate Stripe errors with recent Jira deployments?",
-        "answer": "GAIA can correlate the timing of a Stripe error spike with recently completed Jira tickets or sprint deployments, surfacing likely root cause candidates in the incident ticket."
+        "question": "GAIA peut-il corréler les erreurs Stripe avec les déploiements récents ?",
+        "answer": "GAIA peut corréler la chronologie d'un pic d'erreurs avec les tickets récemment terminés ou les déploiements de sprint, et signaler les causes probables dans le ticket d'incident."
       },
       {
-        "question": "What if a Stripe issue resolves before engineering investigates?",
-        "answer": "GAIA monitors the Stripe event stream continuously. If an error condition clears, GAIA comments on the Jira ticket noting the resolution and suggests closing or downgrading its priority."
+        "question": "Que se passe-t-il si un problème Stripe se résorbe avant investigation ?",
+        "answer": "GAIA surveille le flux d'événements en continu. Si une condition d'erreur disparaît, GAIA commente le ticket en notant la résolution et suggère de le clore ou d'abaisser sa priorité."
       }
     ]
   },
   "asana-clickup": {
     "toolA": "Asana",
     "toolB": "ClickUp",
-    "tagline": "Bridge Asana and ClickUp when teams use both platforms",
-    "metaTitle": "Intégration Asana + ClickUp : tâches synchronisées",
-    "metaDescription": "Asana + ClickUp avec GAIA : GAIA synchronise tâches, statuts et échéances entre Asana et ClickUp, pour que chacun voie des données projet à jour.",
+    "tagline": "Reliez Asana et ClickUp quand vos équipes utilisent les deux plateformes",
+    "metaTitle": "Automatisation Asana + ClickUp — Synchronisez les tâches entre les deux plateformes",
+    "metaDescription": "Fini la duplication entre Asana et ClickUp. GAIA tient tâches, statuts et échéances synchronisés pour que chacun voie des données projet exactes, quel que soit son outil favori.",
     "keywords": [
-      "Asana ClickUp integration",
-      "Asana ClickUp sync",
-      "connect Asana and ClickUp",
-      "Asana ClickUp automation",
-      "cross-platform project management",
-      "task sync Asana ClickUp"
+      "intégration Asana ClickUp",
+      "synchronisation Asana ClickUp",
+      "connecter Asana et ClickUp",
+      "automatisation Asana ClickUp",
+      "gestion de projet multi-plateformes",
+      "synchronisation des tâches Asana ClickUp"
     ],
-    "intro": "Many growing organizations run Asana and ClickUp simultaneously — one team adopted Asana early, another migrated to ClickUp, and now both coexist without talking to each other. The result is duplicated task entry, mismatched statuses, and project leads who spend hours reconciling two separate sources of truth.\n\nGAIA eliminates the manual overhead of managing projects across both platforms. When a task is created or updated in Asana, GAIA mirrors the change in ClickUp and vice versa, keeping assignees, due dates, and completion statuses consistent. Teams can continue using their preferred tool while leadership gets a consolidated view of project health.\n\nThis integration is especially valuable during platform migrations, when departments have different tool preferences, or when client-facing projects need to live in one system while internal execution happens in another.",
+    "intro": "Beaucoup d'organisations en croissance utilisent Asana et ClickUp simultanément — une équipe a adopté Asana tôt, une autre a migré vers ClickUp, et les deux coexistent désormais sans se parler. Résultat : saisies dupliquées, statuts incohérents, et des responsables projet qui passent des heures à réconcilier deux sources de vérité distinctes.\n\nGAIA élimine le coût manuel de la gestion de projets sur les deux plateformes. Lorsqu'une tâche est créée ou mise à jour dans Asana, GAIA répercute le changement dans ClickUp et inversement, en gardant assignés, échéances et statuts cohérents. Les équipes continuent d'utiliser leur outil favori pendant que la direction obtient une vision consolidée de la santé des projets.\n\nCette intégration est particulièrement précieuse pendant les migrations de plateformes, quand les départements ont des préférences différentes, ou quand les projets clients doivent vivre dans un système tandis que l'exécution interne se fait dans un autre.",
     "useCases": [
       {
-        "title": "Mirror task creation across platforms",
-        "description": "When a new task is created in Asana with an assigned team member and due date, GAIA automatically creates a corresponding task in ClickUp so both platforms reflect the same work without manual duplication."
+        "title": "Répliquer la création de tâches entre plateformes",
+        "description": "Lorsqu'une tâche est créée dans Asana avec un assigné et une échéance, GAIA crée automatiquement la tâche correspondante dans ClickUp pour un reflet identique du travail sans duplication manuelle."
       },
       {
-        "title": "Sync task completion status bidirectionally",
-        "description": "When a task is marked complete in either Asana or ClickUp, GAIA updates the counterpart record immediately, preventing stale open items from cluttering project views in either tool."
+        "title": "Synchroniser les complétions dans les deux sens",
+        "description": "Lorsqu'une tâche est marquée terminée dans Asana ou ClickUp, GAIA met à jour l'enregistrement jumeau aussitôt, évitant que des éléments obsolètes n'encombrent les vues de l'un ou l'autre outil."
       },
       {
-        "title": "Unified cross-team reporting",
-        "description": "GAIA aggregates task data from both Asana and ClickUp to generate a single weekly status report, giving leadership consistent project visibility without requiring everyone to switch tools."
+        "title": "Reporting unifié entre équipes",
+        "description": "GAIA agrège les données des deux plateformes pour générer un rapport hebdomadaire unique, offrant à la direction une visibilité cohérente sans exiger que chacun change d'outil."
       },
       {
-        "title": "Escalate blockers between systems",
-        "description": "When a task in ClickUp is flagged as blocked, GAIA creates a dependency flag on the linked Asana task so project managers in both systems are aware and can intervene quickly."
+        "title": "Escalader les blocages entre systèmes",
+        "description": "Lorsqu'une tâche ClickUp est marquée bloquée, GAIA crée un marqueur de dépendance sur la tâche Asana liée pour que les chefs de projet des deux systèmes soient informés et interviennent vite."
       },
       {
-        "title": "Deadline drift alerts",
-        "description": "GAIA monitors due dates across both platforms and alerts the team when a task's deadline in one system does not match the other, preventing schedule confusion before it becomes a delivery issue."
+        "title": "Alertes de dérive des échéances",
+        "description": "GAIA surveille les échéances sur les deux plateformes et alerte l'équipe quand celle d'un système ne correspond plus à l'autre, évitant la confusion de planning avant qu'elle ne devienne un problème de livraison."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect both workspaces to GAIA",
-        "description": "Authorize GAIA to access your Asana workspace and your ClickUp workspace. GAIA maps projects and lists between the two platforms so it knows which items correspond to each other."
+        "step": "Connectez les deux espaces à GAIA",
+        "description": "Autorisez GAIA à accéder à vos espaces Asana et ClickUp. GAIA associe les projets et listes des deux plateformes pour savoir quels éléments se correspondent."
       },
       {
-        "step": "Define sync rules and field mappings",
-        "description": "Tell GAIA which Asana projects should sync with which ClickUp lists, and configure how fields map between them — assignees, priorities, due dates, and custom fields."
+        "step": "Définissez les règles et correspondances",
+        "description": "Indiquez à GAIA les projets Asana à synchroniser avec quelles listes ClickUp, et configurez la correspondance des champs — assignés, priorités, échéances et champs personnalisés."
       },
       {
-        "step": "GAIA keeps both platforms current",
-        "description": "GAIA monitors both systems for changes and propagates updates bidirectionally so teams in each platform always see current, accurate task data."
+        "step": "GAIA tient les deux plateformes à jour",
+        "description": "GAIA surveille les changements dans les deux systèmes et propage les mises à jour dans les deux sens, pour des données toujours actuelles dans chaque plateforme."
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA handle a one-time migration from Asana to ClickUp?",
-        "answer": "Yes. GAIA can bulk-read all tasks from an Asana project and create corresponding tasks in a ClickUp list, preserving titles, descriptions, assignees, and due dates. After migration you can turn off the sync or keep it active for a transition period."
+        "question": "GAIA gère-t-il une migration ponctuelle d'Asana vers ClickUp ?",
+        "answer": "Oui. GAIA peut lire en masse toutes les tâches d'un projet Asana et créer les tâches correspondantes dans une liste ClickUp, en préservant titres, descriptions, assignés et échéances. Après la migration, vous pouvez couper la synchronisation ou la garder active pendant la transition."
       },
       {
-        "question": "What happens if a task is edited in both platforms simultaneously?",
-        "answer": "GAIA applies a last-write-wins rule by default and flags the conflict in a designated Slack channel or email digest so a human can review. You can also configure one platform to always be the system of record."
+        "question": "Que se passe-t-il si une tâche est modifiée simultanément des deux côtés ?",
+        "answer": "Par défaut, GAIA applique la règle du dernier écrivain gagnant et signale le conflit dans un salon Slack dédié ou un récapitulatif par e-mail pour révision humaine. Vous pouvez aussi désigner une plateforme comme système de référence."
       },
       {
-        "question": "Do custom fields in ClickUp sync with custom fields in Asana?",
-        "answer": "GAIA supports mapping custom fields by name or type. If field names differ between platforms, you can define explicit mappings during setup. Fields without a counterpart are logged but not discarded."
+        "question": "Les champs personnalisés ClickUp se synchronisent-ils avec ceux d'Asana ?",
+        "answer": "GAIA prend en charge la correspondance des champs personnalisés par nom ou par type. Si les noms diffèrent, définissez des correspondances explicites pendant la configuration. Les champs sans équivalent sont journalisés mais pas écartés."
       }
     ]
   },
   "asana-trello": {
     "toolA": "Asana",
     "toolB": "Trello",
-    "tagline": "Migrate or sync tasks between Asana projects and Trello boards",
-    "metaTitle": "Intégration Asana + Trello : tâches et tableaux synchronisés",
-    "metaDescription": "Asana + Trello avec GAIA : Synchronisez les tâches et déplacez les cartes quand le statut change, sans saisie manuelle de données.",
+    "tagline": "Migrez ou synchronisez les tâches entre projets Asana et tableaux Trello",
+    "metaTitle": "Automatisation Asana + Trello — Synchronisez tâches et tableaux sans effort",
+    "metaDescription": "Connectez projets Asana et tableaux Trello avec GAIA. Synchronisez automatiquement les tâches, déplacez les cartes au fil des statuts, et tenez les deux plateformes à jour sans saisie manuelle.",
     "keywords": [
-      "Asana Trello integration",
-      "Asana Trello sync",
-      "migrate Asana to Trello",
-      "connect Asana and Trello",
-      "Asana Trello automation",
-      "task management sync"
+      "intégration Asana Trello",
+      "synchronisation Asana Trello",
+      "migrer d'Asana vers Trello",
+      "connecter Asana et Trello",
+      "automatisation Asana Trello",
+      "synchronisation de la gestion des tâches"
     ],
-    "intro": "Asana and Trello approach project management differently — Asana with structured task hierarchies and timelines, Trello with visual Kanban boards — but many teams rely on both. Client-facing work might live in Trello for its simplicity while internal project tracking uses Asana's more powerful features. Without automation, teams must update both tools manually, creating delays and inconsistencies.\n\nGAIA connects Asana and Trello so tasks flow between them automatically. New Asana tasks can become Trello cards, Trello card movements can update Asana task statuses, and deadlines stay consistent across both platforms. Teams can collaborate in their preferred interface while the underlying data stays unified.\n\nThis integration is ideal for agencies managing client boards in Trello while tracking internal project timelines in Asana, and for teams transitioning between the two tools who need a reliable migration path.",
+    "intro": "Asana et Trello abordent la gestion de projet différemment — Asana avec des hiérarchies de tâches structurées et des chronologies, Trello avec des tableaux Kanban visuels — mais beaucoup d'équipes s'appuient sur les deux. Le travail côté client vit parfois dans Trello pour sa simplicité, tandis que le suivi interne utilise les fonctions plus puissantes d'Asana. Sans automatisation, les équipes doivent mettre à jour les deux outils à la main, avec retards et incohérences.\n\nGAIA relie Asana et Trello pour que les tâches circulent automatiquement. Les nouvelles tâches Asana deviennent des cartes Trello, les déplacements de cartes mettent à jour les statuts Asana, et les échéances restent cohérentes des deux côtés. Les équipes collaborent dans leur interface favorite sur des données sous-jacentes unifiées.\n\nCette intégration est idéale pour les agences gérant les tableaux clients dans Trello tout en suivant les plannings internes dans Asana, et pour les équipes en transition entre les deux outils qui ont besoin d'une migration fiable.",
     "useCases": [
       {
-        "title": "Create Trello cards from new Asana tasks",
-        "description": "When a task is added to an Asana project, GAIA automatically creates a corresponding Trello card in the appropriate list, complete with the task title, description, due date, and assignee."
+        "title": "Créer des cartes Trello depuis les nouvelles tâches Asana",
+        "description": "Lorsqu'une tâche est ajoutée à un projet Asana, GAIA crée automatiquement la carte Trello correspondante dans la bonne liste, avec titre, description, échéance et assigné."
       },
       {
-        "title": "Sync Trello card moves back to Asana",
-        "description": "When a Trello card moves from In Progress to Done, GAIA marks the linked Asana task as complete, keeping both tools consistent without requiring team members to update two systems."
+        "title": "Répercuter les déplacements Trello vers Asana",
+        "description": "Lorsqu'une carte Trello passe d'En cours à Terminé, GAIA marque la tâche Asana liée comme achevée, pour une cohérence sans que les membres mettent à jour deux systèmes."
       },
       {
-        "title": "Bulk migrate projects from Asana to Trello",
-        "description": "GAIA reads all tasks in an Asana project and creates a fully populated Trello board with lists mapped to Asana sections, making platform transitions seamless and data-complete."
+        "title": "Migrer en masse d'Asana vers Trello",
+        "description": "GAIA lit toutes les tâches d'un projet Asana et crée un tableau Trello entièrement renseigné, avec des listes correspondant aux sections Asana, pour des transitions fluides et complètes."
       },
       {
-        "title": "Deadline synchronization",
-        "description": "GAIA monitors due dates in both platforms and alerts the team when dates diverge, ensuring that deadline changes made in one tool are reflected in the other before they cause scheduling conflicts."
+        "title": "Synchronisation des échéances",
+        "description": "GAIA surveille les échéances des deux plateformes et alerte l'équipe en cas de divergence, pour que les changements effectués d'un côté se reflètent de l'autre avant tout conflit de planning."
       },
       {
-        "title": "Client board updates from internal tracking",
-        "description": "When internal Asana milestones are reached, GAIA updates the corresponding Trello card in the client-facing board, giving clients real-time progress visibility without exposing internal project details."
+        "title": "Mises à jour du tableau client depuis le suivi interne",
+        "description": "Lorsque des jalons internes Asana sont atteints, GAIA met à jour la carte Trello correspondante du tableau client, offrant aux clients une visibilité en temps réel sans exposer les détails internes."
       }
     ],
     "howItWorks": [
       {
-        "step": "Authorize Asana and Trello in GAIA",
-        "description": "Connect your Asana workspace and Trello account to GAIA. GAIA maps Asana projects to Trello boards and Asana sections to Trello lists based on your configuration."
+        "step": "Autorisez Asana et Trello dans GAIA",
+        "description": "Connectez votre espace Asana et votre compte Trello à GAIA. GAIA associe les projets Asana aux tableaux Trello et les sections Asana aux listes Trello selon votre configuration."
       },
       {
-        "step": "Set sync direction and field mappings",
-        "description": "Choose whether to sync one-way or bidirectionally. Configure which fields carry over — title, description, due date, assignee, labels — between the two platforms."
+        "step": "Définissez le sens et les correspondances",
+        "description": "Choisissez une synchronisation unidirectionnelle ou bidirectionnelle. Configurez les champs repris — titre, description, échéance, assigné, libellés — entre les deux plateformes."
       },
       {
-        "step": "GAIA automates the rest",
-        "description": "Once configured, GAIA monitors both platforms and propagates changes automatically, keeping tasks and cards consistent so your team always works from accurate data."
+        "step": "GAIA automatise tout le reste",
+        "description": "Une fois configuré, GAIA surveille les deux plateformes et propage les changements automatiquement, pour des tâches et cartes cohérentes et des données toujours exactes."
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA sync Asana subtasks to Trello checklists?",
-        "answer": "Yes. GAIA can convert Asana subtasks into Trello card checklists, preserving the hierarchical structure of your work items even though Trello's data model differs from Asana's."
+        "question": "GAIA synchronise-t-il les sous-tâches Asana vers les checklists Trello ?",
+        "answer": "Oui. GAIA peut convertir les sous-tâches Asana en checklists de cartes Trello, en préservant la structure hiérarchique bien que le modèle de données de Trello diffère de celui d'Asana."
       },
       {
-        "question": "What happens to Asana custom fields when syncing to Trello?",
-        "answer": "Asana custom fields that have a Trello equivalent are mapped automatically. Fields without a direct counterpart are appended to the Trello card description so no information is lost."
+        "question": "Qu'advient-il des champs personnalisés Asana lors de la synchronisation ?",
+        "answer": "Les champs personnalisés Asana ayant un équivalent Trello sont associés automatiquement. Ceux sans équivalent direct sont ajoutés à la description de la carte pour qu'aucune information ne soit perdue."
       },
       {
-        "question": "Is this suitable for a permanent sync or just a one-time migration?",
-        "answer": "Both. GAIA supports ongoing bidirectional sync for teams running both platforms in parallel, as well as one-time migration jobs for teams moving from Asana to Trello or vice versa."
+        "question": "Est-ce adapté à une synchronisation permanente ou seulement à une migration ?",
+        "answer": "Les deux. GAIA prend en charge la synchronisation bidirectionnelle continue pour les équipes utilisant les deux plateformes en parallèle, comme les migrations ponctuelles d'Asana vers Trello ou inversement."
       }
     ]
   },
   "asana-linear": {
     "toolA": "Asana",
     "toolB": "Linear",
-    "tagline": "Sync product management in Asana with engineering execution in Linear",
-    "metaTitle": "Intégration Asana + Linear : relier produit et ingénierie",
-    "metaDescription": "Asana + Linear avec GAIA : Synchronisez les jalons Asana avec les tickets Linear et reflétez l'avancement, pour réduire les réunions de rapprochement.",
+    "tagline": "Synchronisez la gestion produit dans Asana avec l'exécution d'ingénierie dans Linear",
+    "metaTitle": "Automatisation Asana + Linear — Reliez produit et ingénierie",
+    "metaDescription": "Gardez produit et ingénierie alignés avec GAIA. Synchronisez les jalons Asana vers les tickets Linear, reflétez l'avancement de l'ingénierie dans Asana, et éliminez les réunions de réconciliation entre outils.",
     "keywords": [
-      "Asana Linear integration",
-      "Asana Linear sync",
-      "product engineering alignment",
-      "connect Asana and Linear",
-      "Asana Linear automation",
-      "project management engineering sync"
+      "intégration Asana Linear",
+      "synchronisation Asana Linear",
+      "alignement produit et ingénierie",
+      "connecter Asana et Linear",
+      "automatisation Asana Linear",
+      "synchronisation gestion de projet et ingénierie"
     ],
-    "intro": "Product teams often live in Asana for its project planning capabilities while engineering teams prefer Linear for its speed and developer-centric workflow. The gap between the two creates a constant synchronization problem — product managers manually copy specs into Linear issues, engineers close Linear issues but Asana still shows tasks as open, and leadership lacks a unified view of what is shipped versus what is planned.\n\nGAIA bridges Asana and Linear so product decisions automatically flow into engineering backlogs and engineering progress automatically surfaces in product timelines. When a product manager marks an Asana task as ready for engineering, GAIA creates the corresponding Linear issue with full context. When engineers close a Linear issue, GAIA updates the Asana task status so the product roadmap stays accurate.\n\nThis integration is built for product-engineering teams who want to keep their preferred tools while eliminating the coordination overhead that comes from running two disconnected systems.",
+    "intro": "Les équipes produit vivent souvent dans Asana pour ses capacités de planification, tandis que l'ingénierie préfère Linear pour sa rapidité et son workflow centré développeur. L'écart entre les deux crée un problème de synchronisation permanent — les chefs de produit copient manuellement les specs en tickets Linear, les ingénieurs closent des tickets mais Asana affiche toujours les tâches ouvertes, et la direction manque d'une vision unifiée du livré face au planifié.\n\nGAIA relie Asana et Linear pour que les décisions produit alimentent automatiquement les backlogs d'ingénierie et que l'avancement remonte dans les plannings produit. Lorsqu'un chef de produit marque une tâche Asana prête pour l'ingénierie, GAIA crée le ticket Linear correspondant avec tout le contexte. Lorsque les ingénieurs closent un ticket, GAIA met à jour le statut Asana pour une feuille de route toujours exacte.\n\nCette intégration est conçue pour les équipes produit-ingénierie qui veulent garder leurs outils favoris tout en éliminant le surcoût de coordination de deux systèmes déconnectés.",
     "useCases": [
       {
-        "title": "Create Linear issues from Asana tasks",
-        "description": "When a product manager marks an Asana task as Ready for Engineering, GAIA automatically creates a Linear issue in the appropriate team's backlog with the task title, description, and any attached specs."
+        "title": "Créer des tickets Linear depuis les tâches Asana",
+        "description": "Lorsqu'un chef de produit marque une tâche Asana Prête pour l'ingénierie, GAIA crée automatiquement un ticket dans le backlog de la bonne équipe, avec titre, description et specs jointes."
       },
       {
-        "title": "Reflect engineering progress in product timelines",
-        "description": "When a Linear issue moves to In Progress or Done, GAIA updates the corresponding Asana task status so product managers see accurate engineering progress without needing to check Linear directly."
+        "title": "Refléter l'avancement dans les plannings produit",
+        "description": "Lorsqu'un ticket Linear passe en cours ou en terminé, GAIA met à jour le statut de la tâche Asana correspondante pour un avancement exact sans consulter Linear."
       },
       {
-        "title": "Sync sprint cycles to Asana milestones",
-        "description": "GAIA maps Linear sprint timelines to Asana milestone dates, giving the product team visibility into engineering cadences and ensuring release planning reflects what engineering can realistically deliver."
+        "title": "Synchroniser les cycles de sprint vers les jalons Asana",
+        "description": "GAIA associe les calendriers de sprint Linear aux dates de jalons Asana, donnant à l'équipe produit une visibilité sur les cadences d'ingénierie et une planification réaliste."
       },
       {
-        "title": "Bug escalation from Linear to Asana",
-        "description": "When a high-priority bug is filed in Linear, GAIA creates a corresponding Asana task for the product team, prompting them to assess customer impact and reprioritize the roadmap if necessary."
+        "title": "Escalader les bugs vers Asana depuis Linear",
+        "description": "Lorsqu'un bug prioritaire est déposé dans Linear, GAIA crée une tâche Asana pour l'équipe produit, l'invitant à évaluer l'impact client et à reprioriser la feuille de route si nécessaire."
       },
       {
-        "title": "Blocked issue alerts across teams",
-        "description": "When a Linear issue is blocked waiting on product decisions, GAIA creates an Asana task for the responsible product manager with context and a deadline, preventing engineering from stalling silently."
+        "title": "Alertes de blocages entre équipes",
+        "description": "Lorsqu'un ticket Linear est bloqué en attente de décisions produit, GAIA crée une tâche Asana pour le chef de produit responsable, avec contexte et échéance, pour éviter un enlisement silencieux."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Asana and Linear to GAIA",
-        "description": "Authorize GAIA to access your Asana workspace and Linear organization. Configure which Asana projects map to which Linear teams and how statuses correspond between the two systems."
+        "step": "Connectez Asana et Linear à GAIA",
+        "description": "Autorisez GAIA à accéder à votre espace Asana et à votre organisation Linear. Configurez les projets Asana correspondant aux équipes Linear et la correspondance des statuts."
       },
       {
-        "step": "Define trigger conditions and field mappings",
-        "description": "Set the conditions that trigger syncs — such as an Asana task reaching a specific section or a Linear issue changing state — and map fields like priority, assignee, and description between platforms."
+        "step": "Définissez les déclencheurs et correspondances",
+        "description": "Définissez les conditions déclencheuses — tâche Asana atteignant une section précise, ticket Linear changeant d'état — et associez priorité, assigné et description entre plateformes."
       },
       {
-        "step": "GAIA keeps product and engineering aligned",
-        "description": "GAIA monitors both platforms continuously and propagates changes in real time, so product managers and engineers always work from a shared, accurate understanding of project status."
+        "step": "GAIA garde produit et ingénierie alignés",
+        "description": "GAIA surveille les deux plateformes en continu et propage les changements en temps réel, pour une compréhension partagée et exacte de l'avancement."
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA sync Asana project sections to Linear cycles?",
-        "answer": "Yes. GAIA can map Asana project sections to Linear cycles or projects, and update issue assignments as tasks move through your Asana workflow stages."
+        "question": "GAIA synchronise-t-il les sections de projets Asana vers les cycles Linear ?",
+        "answer": "Oui. GAIA peut associer les sections de projets Asana aux cycles ou projets Linear, et mettre à jour les assignations à mesure que les tâches traversent votre workflow Asana."
       },
       {
-        "question": "What if the same feature is tracked differently in each tool?",
-        "answer": "You can define explicit mappings between Asana tasks and Linear issues by linking them manually the first time. After that, GAIA maintains the link and syncs updates automatically."
+        "question": "Et si une même fonctionnalité est suivie différemment dans chaque outil ?",
+        "answer": "Vous pouvez définir des correspondances explicites entre tâches Asana et tickets Linear en les reliant manuellement la première fois. Ensuite, GAIA maintient le lien et synchronise les mises à jour automatiquement."
       },
       {
-        "question": "Does GAIA sync Linear comments back to Asana?",
-        "answer": "GAIA can append a summary of Linear comment activity to the Asana task description or post it as a task comment, keeping product managers informed of engineering discussions without requiring Linear access."
+        "question": "GAIA synchronise-t-il les commentaires Linear vers Asana ?",
+        "answer": "GAIA peut ajouter un résumé de l'activité des commentaires Linear à la description de la tâche Asana ou le publier en commentaire, pour informer les chefs de produit sans accès Linear."
       }
     ]
   },
   "asana-figma": {
     "toolA": "Asana",
     "toolB": "Figma",
-    "tagline": "Link Figma design deliverables directly to Asana project tasks",
-    "metaTitle": "Intégration Asana + Figma : livrables design et tâches",
-    "metaDescription": "Asana + Figma avec GAIA : Joignez des fichiers Figma aux tâches Asana et suivez les validations de design, sans jamais quitter Asana.",
+    "tagline": "Reliez les livrables design Figma directement aux tâches des projets Asana",
+    "metaTitle": "Automatisation Asana + Figma — Connectez les livrables design aux tâches projet",
+    "metaDescription": "Reliez design et gestion de projet avec GAIA. Joignez automatiquement les fichiers Figma aux tâches Asana, notifiez les équipes quand les designs sont prêts à relire, et suivez les validations sans quitter Asana.",
     "keywords": [
-      "Asana Figma integration",
-      "Asana Figma automation",
-      "design project management",
-      "connect Asana and Figma",
-      "Figma design handoff Asana",
-      "design review workflow automation"
+      "intégration Asana Figma",
+      "automatisation Asana Figma",
+      "design et gestion de projet",
+      "connecter Asana et Figma",
+      "transfert design Figma vers Asana",
+      "automatisation du workflow de révision design"
     ],
-    "intro": "Design and project management workflows are tightly coupled but typically tracked in separate tools. Designers work in Figma while project managers track deliverables in Asana, and the handoff between them involves manual Figma link sharing, copy-pasted feedback, and status updates communicated through Slack threads or email chains.\n\nGAIA connects Asana and Figma so design progress and project timelines stay synchronized. When a designer marks a Figma file ready for review, GAIA can automatically update the linked Asana task and notify the relevant stakeholders. When an Asana task enters the design phase, GAIA can create a Figma file stub and link it back to the task so there is always a single source of truth for design deliverables.\n\nThis integration reduces coordination overhead between design and product teams, accelerates feedback loops, and ensures that design handoffs happen at the right stage of the project rather than after deadlines have already slipped.",
+    "intro": "Les workflows de design et de gestion de projet sont étroitement liés mais généralement suivis dans des outils distincts. Les designers travaillent dans Figma pendant que les chefs de projet suivent les livrables dans Asana, et le transfert entre les deux passe par des partages manuels de liens, des retours copiés-collés et des mises à jour communiquées dans des fils Slack ou des chaînes d'e-mails.\n\nGAIA relie Asana et Figma pour synchroniser l'avancement du design et les plannings. Lorsqu'un designer marque un fichier Figma prêt à relire, GAIA peut mettre à jour automatiquement la tâche Asana liée et notifier les parties concernées. Lorsqu'une tâche Asana entre en phase design, GAIA peut créer une ébauche de fichier Figma et la relier à la tâche, pour une source unique de vérité sur les livrables.\n\nCette intégration réduit la coordination entre design et produit, accélère les boucles de retour, et garantit que les transferts interviennent au bon stade du projet plutôt qu'après le dépassement des échéances.",
     "useCases": [
       {
-        "title": "Auto-attach Figma files to Asana tasks",
-        "description": "When a new Figma file is created for a project, GAIA automatically attaches the Figma link to the corresponding Asana task so team members always know where to find the latest design assets."
+        "title": "Joindre les fichiers Figma aux tâches Asana",
+        "description": "Lorsqu'un nouveau fichier Figma est créé pour un projet, GAIA joint automatiquement le lien à la tâche Asana correspondante pour retrouver facilement les derniers visuels."
       },
       {
-        "title": "Design-ready notifications in Asana",
-        "description": "When a designer updates a Figma file to a Ready for Review status, GAIA updates the linked Asana task stage and notifies the assigned reviewer so feedback begins without a separate Slack message."
+        "title": "Notifications de design prêt dans Asana",
+        "description": "Lorsqu'un designer passe un fichier Figma en Prêt à relire, GAIA met à jour l'étape de la tâche Asana liée et notifie le relecteur assigné, pour lancer le retour sans message Slack séparé."
       },
       {
-        "title": "Track design approval status",
-        "description": "GAIA monitors Figma comment activity and reflects approval or revision requests as Asana task comments, giving project managers a complete view of the design review lifecycle within their existing tool."
+        "title": "Suivre le statut des validations design",
+        "description": "GAIA suit l'activité des commentaires Figma et reflète les approbations ou demandes de révision en commentaires Asana, offrant aux chefs de projet une vision complète du cycle de révision dans leur outil habituel."
       },
       {
-        "title": "Trigger design tasks from Asana milestones",
-        "description": "When an Asana milestone is reached — such as a feature spec being approved — GAIA creates the corresponding design task in Asana and initializes a Figma file, ensuring design work begins at the right moment."
+        "title": "Déclencher les tâches design depuis les jalons Asana",
+        "description": "Lorsqu'un jalon Asana est atteint — par exemple une spec de fonctionnalité approuvée — GAIA crée la tâche design correspondante et initialise un fichier Figma, pour lancer le travail au bon moment."
       },
       {
-        "title": "Design handoff to development",
-        "description": "When a Figma design is marked approved, GAIA transitions the Asana task to a development-ready section and notifies the engineering assignee with the Figma link, making handoffs automatic and traceable."
+        "title": "Transfert du design vers le développement",
+        "description": "Lorsqu'un design Figma est marqué approuvé, GAIA fait passer la tâche Asana vers une section prête pour le développement et notifie l'assigné d'ingénierie avec le lien Figma, pour des transferts automatiques et traçables."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Asana and Figma to GAIA",
-        "description": "Authorize GAIA to access your Asana workspace and Figma account. Configure which Asana projects correspond to which Figma teams or projects."
+        "step": "Connectez Asana et Figma à GAIA",
+        "description": "Autorisez GAIA à accéder à votre espace Asana et à votre compte Figma. Configurez les projets Asana correspondant aux équipes ou projets Figma."
       },
       {
-        "step": "Map design stages to Asana task sections",
-        "description": "Define how Figma file statuses — In Progress, Ready for Review, Approved — map to Asana task sections or custom fields so status changes flow automatically."
+        "step": "Associez les étapes design aux sections Asana",
+        "description": "Définissez comment les statuts Figma — En cours, Prêt à relire, Approuvé — correspondent aux sections ou champs personnalisés Asana, pour une circulation automatique des statuts."
       },
       {
-        "step": "GAIA links design and project work",
-        "description": "GAIA monitors both platforms and propagates status changes, file links, and notifications in real time, so design progress is always visible within Asana."
+        "step": "GAIA relie design et travail projet",
+        "description": "GAIA surveille les deux plateformes et propage changements de statut, liens de fichiers et notifications en temps réel, pour un avancement design toujours visible dans Asana."
       }
     ],
     "faqs": [
       {
-        "question": "Can GAIA attach specific Figma frames rather than entire files?",
-        "answer": "Yes. You can configure GAIA to attach specific Figma frame or component links to Asana tasks, making it easier for reviewers to navigate directly to the relevant part of a complex design file."
+        "question": "GAIA peut-il joindre des cadres Figma précis plutôt que des fichiers entiers ?",
+        "answer": "Oui. Vous pouvez configurer GAIA pour joindre des liens de cadres ou composants précis aux tâches Asana, facilitant la navigation directe vers la partie concernée d'un fichier complexe."
       },
       {
-        "question": "Does GAIA sync Figma comments to Asana?",
-        "answer": "GAIA can summarize Figma comment threads and post them as Asana task comments, giving project managers visibility into design feedback without requiring a Figma account."
+        "question": "GAIA synchronise-t-il les commentaires Figma vers Asana ?",
+        "answer": "GAIA peut résumer les fils de commentaires Figma et les publier en commentaires Asana, offrant aux chefs de projet une visibilité sur les retours sans compte Figma."
       },
       {
-        "question": "What happens when a Figma file is updated after the design is approved?",
-        "answer": "GAIA can detect Figma file edits after approval and reopen the Asana review task or notify the team, ensuring that post-approval changes are not silently deployed without another review cycle."
+        "question": "Que se passe-t-il si un fichier est modifié après approbation ?",
+        "answer": "GAIA peut détecter les modifications post-approbation et rouvrir la tâche de révision Asana ou notifier l'équipe, pour éviter un déploiement silencieux sans nouveau cycle de révision."
       }
     ]
   },
   "asana-discord": {
     "toolA": "Asana",
     "toolB": "Discord",
-    "tagline": "Post Asana task updates to Discord team channels automatically",
-    "metaTitle": "Intégration Asana Discord : alertes de tâches et jalons",
-    "metaDescription": "Tenez l'équipe au courant sans relayer chaque tâche. GAIA publie les tâches terminées et jalons Asana sur Discord et signale les retards. Voir les étapes.",
+    "tagline": "Publiez automatiquement les mises à jour des tâches Asana dans vos salons Discord",
+    "metaTitle": "Automatisation Asana + Discord — Les actus projet sur votre serveur Discord",
+    "metaDescription": "Tenez votre communauté et votre équipe Discord informées avec GAIA. Publiez automatiquement les tâches terminées, les nouvelles assignations et les jalons dans vos salons pour un alignement constant.",
     "keywords": [
-      "Asana Discord integration",
-      "Asana Discord automation",
-      "project updates Discord",
-      "connect Asana and Discord",
-      "Asana Discord notifications",
-      "team project management Discord"
+      "intégration Asana Discord",
+      "automatisation Asana Discord",
+      "actus projet sur Discord",
+      "connecter Asana et Discord",
+      "notifications Asana Discord",
+      "gestion de projet d'équipe sur Discord"
     ],
-    "intro": "Teams that collaborate on Discord need project updates to come to them rather than requiring constant tab-switching to Asana. When task completions, new assignments, and missed deadlines live only inside Asana, Discord-first teams miss critical context and fall out of sync with project progress.\n\nGAIA connects Asana and Discord so the project events that matter most are automatically surfaced in the right Discord channels. Task completions appear in team channels, new assignments notify individuals in DMs, and milestone achievements trigger announcements to the whole server. Teams that live in Discord can stay fully informed about Asana project health without leaving their primary communication platform.\n\nThis integration works especially well for developer communities, gaming studios, and remote-first companies that use Discord as their primary team hub and Asana for structured project management.",
+    "intro": "Les équipes qui collaborent sur Discord veulent que les actus projet viennent à elles plutôt que de jongler sans cesse avec Asana. Quand les tâches terminées, les nouvelles assignations et les échéances manquées vivent uniquement dans Asana, les équipes centrées sur Discord manquent un contexte critique et se désynchronisent de l'avancement.\n\nGAIA relie Asana et Discord pour que les événements projet les plus importants remontent automatiquement dans les bons salons. Les tâches terminées apparaissent dans les salons d'équipe, les nouvelles assignations notifient chacun en message privé, et les jalons déclenchent des annonces à tout le serveur. Les équipes qui vivent dans Discord restent pleinement informées de la santé des projets sans quitter leur plateforme principale.\n\nCette intégration convient particulièrement aux communautés de développeurs, studios de jeux et entreprises à distance qui font de Discord leur hub central et d'Asana leur gestion de projet structurée.",
     "useCases": [
       {
-        "title": "Post task completions to team channels",
-        "description": "When a task is marked complete in Asana, GAIA posts a formatted update to the designated Discord channel, keeping the team informed of progress and giving completions the visibility they deserve."
+        "title": "Publier les tâches terminées dans les salons",
+        "description": "Lorsqu'une tâche est marquée terminée dans Asana, GAIA publie une mise à jour formatée dans le salon Discord désigné, informant l'équipe de l'avancement et donnant aux réalisations la visibilité méritée."
       },
       {
-        "title": "Notify assignees of new tasks via Discord DM",
-        "description": "When a task is assigned in Asana, GAIA sends a direct message to the assignee on Discord with the task title, description, due date, and a link to Asana, ensuring immediate awareness without email."
+        "title": "Notifier les assignés par message privé Discord",
+        "description": "Lorsqu'une tâche est assignée dans Asana, GAIA envoie un message privé à l'assigné sur Discord avec le titre, la description, l'échéance et un lien Asana, pour une prise de connaissance immédiate sans e-mail."
       },
       {
-        "title": "Announce project milestones",
-        "description": "When an Asana milestone is reached, GAIA posts a milestone announcement to the relevant Discord channel or server announcement channel, giving the whole team visibility into major project achievements."
+        "title": "Annoncer les jalons du projet",
+        "description": "Lorsqu'un jalon Asana est atteint, GAIA publie une annonce dans le salon Discord concerné ou le salon d'annonces du serveur, donnant à toute l'équipe une visibilité sur les grandes réalisations."
       },
       {
-        "title": "Overdue task alerts",
-        "description": "GAIA checks Asana daily for overdue tasks and posts a digest to the project manager's Discord DM or a dedicated alerts channel, ensuring nothing slips through without notice."
+        "title": "Alertes de tâches en retard",
+        "description": "GAIA vérifie chaque jour les tâches en retard dans Asana et publie un récapitulatif au chef de projet par message privé ou dans un salon d'alertes dédié, pour que rien ne passe inaperçu."
       },
       {
-        "title": "Daily standup digest",
-        "description": "Each morning GAIA posts a structured standup digest to a Discord channel listing tasks due today, tasks completed yesterday, and any blockers flagged in Asana, replacing manual standup preparation."
+        "title": "Résumé matinal de standup",
+        "description": "Chaque matin, GAIA publie dans un salon Discord un récapitulatif structuré : tâches dues aujourd'hui, tâches terminées hier et blocages signalés dans Asana, remplaçant la préparation manuelle du standup."
       }
     ],
     "howItWorks": [
       {
-        "step": "Connect Asana and Discord to GAIA",
-        "description": "Authorize GAIA to access your Asana workspace and your Discord server. Configure which Asana projects or teams map to which Discord channels."
+        "step": "Connectez Asana et Discord à GAIA",
+        "description": "Autorisez GAIA à accéder à votre espace Asana et à votre serveur Discord. Configurez les projets ou équipes Asana correspondant aux salons Discord."
       },
       {
-        "step": "Choose which events trigger Discord messages",
-        "description": "Select the Asana events — task creation, assignment, completion, overdue, milestone — that should generate Discord notifications, and specify the target channel or user for each event type."
+        "step": "Choisissez les événements déclencheurs",
+        "description": "Sélectionnez les événements Asana — création, assignation, complétion, retard, jalon — générateurs de notifications, et précisez le salon ou l'utilisateur cible de chaque type."
       },
       {
-        "step": "GAIA delivers real-time project updates",
-        "description": "GAIA monitors Asana continuously and posts formatted notifications to Discord as events occur, keeping your team informed without anyone checking Asana manually."
+        "step": "GAIA diffuse les actus projet en temps réel",
+        "description": "GAIA surveille Asana en continu et publie des notifications formatées dans Discord à mesure des événements, pour une équipe informée sans consultation manuelle d'Asana."
       }
     ],
     "faqs": [
       {
-        "question": "Can I create Asana tasks from Discord messages?",
-        "answer": "Yes. You can mention GAIA in a Discord message and ask it to create an Asana task with a specific title, assignee, and due date. GAIA will confirm the task creation and post the Asana link back to the channel."
+        "question": "Peut-on créer des tâches Asana depuis des messages Discord ?",
+        "answer": "Oui. Mentionnez GAIA dans un message Discord et demandez-lui de créer une tâche Asana avec un titre, un assigné et une échéance précis. GAIA confirmera la création et publiera le lien Asana dans le salon."
       },
       {
-        "question": "Can GAIA post to multiple Discord channels for different Asana projects?",
-        "answer": "Yes. You can configure per-project channel mappings so that updates from different Asana projects route to different Discord channels, keeping notifications organized and relevant."
+        "question": "GAIA peut-il publier dans plusieurs salons pour différents projets ?",
+        "answer": "Oui. Configurez des correspondances par projet pour que les actus de chaque projet Asana routent vers des salons distincts, gardant les notifications organisées et pertinentes."
       },
       {
-        "question": "Will GAIA create noise by posting every small Asana update?",
-        "answer": "No. You have full control over which event types generate Discord posts. Most teams configure GAIA to post only completions, milestone events, and overdue alerts to keep channels signal-rich."
+        "question": "GAIA va-t-il polluer les salons avec chaque petite mise à jour ?",
+        "answer": "Non. Vous contrôlez totalement les types d'événements publiés. La plupart des équipes configurent GAIA pour ne publier que les terminaisons, les jalons et les alertes de retard, pour des salons riches en signal."
       }
     ]
   },
