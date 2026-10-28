@@ -12,6 +12,7 @@ from pymongo.errors import BulkWriteError, DuplicateKeyError
 
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.db.repositories.approval_ledger import approval_ledger_repository
+from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.projects import project_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflows import workflow_repository
@@ -653,6 +654,10 @@ class TodoService:
         if not updated:
             raise ValueError(f"Todo {todo_id} not found")
 
+        if update.title is not None:
+            # A tracked todo's chat carries its title, as its tab and header name it.
+            await conversation_repository.retitle_todo_chats(user_id, [todo_id], update.title)
+
         try:
             await update_todo_embedding(todo_id, updated, user_id)
         except Exception as e:
@@ -758,6 +763,8 @@ class TodoService:
             succeeded.extend(plain_ids[:modified])
 
         if succeeded:
+            if update.title is not None:
+                await conversation_repository.retitle_todo_chats(user_id, succeeded, update.title)
             try:
                 updated_todos = await todo_repository.find_by_ids(user_id, request.todo_ids)
                 await asyncio.gather(

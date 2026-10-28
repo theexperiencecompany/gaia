@@ -1,31 +1,40 @@
 """E2E: a tracked todo's own hidden chat, from its run to the user opening it, on live infra.
 
-Real: the worker's run step, the chat's get-or-create on the real unique index,
-the executor lock and stream on Redis, the compiled executor and comms graphs on
-the Postgres checkpointer, the executor-thread reset, delivery (saved report,
-in-app notification, activity log) and the HTTP routes, all on real Mongo.
-Substituted: both graphs' model (scripted), the tool store (in memory), the
-memory engine and follow-up chip generator, and the WebSocket fan-out (recorded).
+Real: the worker's run step and task, the chat's get-or-create on the real unique
+index, the executor lock and stream on Redis, the compiled graphs on the Postgres
+checkpointer, the HIL ledger and its decision route, delivery and the HTTP routes,
+all on real Mongo. Substituted: both graphs' model (scripted), the tool store, the
+memory engine, the follow-up chip generator and the WebSocket fan-out (recorded).
 
-Not exercised: a real LLM choosing these calls, the ARQ lock/retry ladder above
-the run step (unit-tested in test_tracked_todo_tasks), and an approval resume.
+Not exercised: a real LLM, an ARQ worker picking jobs up (they are read off the
+real queue and run by the test), and the retry ladder (test_tracked_todo_tasks).
 """
 
 from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Callable, Iterator, Sequence
-from contextlib import AbstractAsyncContextManager, AsyncExitStack, asynccontextmanager
+from contextlib import (
+    AbstractAsyncContextManager,
+    AsyncExitStack,
+    asynccontextmanager,
+    contextmanager,
+)
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
+import re
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+from arq.connections import ArqRedis
 from bson import ObjectId
+from fastapi import FastAPI
 from httpx import AsyncClient
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 from langgraph.store.memory import InMemoryStore
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from pydantic import PrivateAttr
 import pytest
 
 from app.agents.core.background.todo_run import TodoRunFailedError
@@ -33,28 +42,42 @@ from app.agents.core.graph_builder import build_graph as build_graph_module
 from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
 from app.agents.core.graph_manager import GraphManager
 from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
+from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.memory import ReconcileOutcome
-from app.constants.todos import GAIA_TRACKED_LABEL, TodoActivityEvent
+from app.constants.todos import (
+    GAIA_TRACKED_LABEL,
+    TODO_CONVERSATION_MAX_MESSAGES,
+    TodoActivityEvent,
+)
 from app.core.stream_manager import stream_manager
 from app.core.websocket_manager import websocket_manager
 from app.db.mongodb import indexes
 from app.db.repositories.todos import todo_repository
 from app.memory.ingestion import RetainedMemory
+from app.models.hil_models import HILPreferences
 from app.models.integration_models import UserIntegrationCapabilities
 from app.models.memory_models import MemoryEntry
 from app.models.message_models import MessageRequestWithHistory
-from app.models.todo_models import TodoDocument
+from app.models.todo_models import TodoDocument, TodoUpdate
 from app.models.user_models import AuthenticatedUser
 from app.services.chat import stream as chat_stream
 from app.services.conversation_service import get_or_create_todo_conversation
 from app.services.tracked_todo_service import TrackedTodoService
+from app.utils.occurrence import occurrence_stamp
+from app.utils.redis_utils import RedisPoolManager
 from app.utils.timezone import Timezone
-from app.workers.tasks.tracked_todo_tasks import _execute_on_executor
+from app.workers.tasks.tracked_todo_tasks import (
+    _execute_on_executor,
+    execute_tracked_todo,
+    resume_tracked_todo,
+)
 from tests.conftest import FAKE_USER, FAKE_USER_2
 from tests.e2e._harness.background import drain_background_runs
 from tests.e2e._harness.graph_run import call
 from tests.e2e._harness.transcript import Transcript
 from tests.e2e.test_agent_chain import StreamingScriptedModel, streaming_model
+from tests.helpers import worker_redis_url
 
 pytestmark = pytest.mark.e2e
 
@@ -69,6 +92,7 @@ FOLLOW_UP_REPLY = "It is still green; nothing has failed since the last run."
 #: Pure and outside the executor's initial tools: reaching it runs the real
 #: retrieve -> bind -> call hop, and its card is the tool's own real output.
 FLOWCHART = {"description": "the deploy's three checks", "direction": "LR"}
+OWNED_COLLECTIONS = ("todos", "conversations", "notifications", "approval_ledger")
 
 
 def executor_run(report: str) -> list[Any]:
@@ -124,15 +148,18 @@ async def checkpointer(postgres_url: str) -> AsyncIterator[CheckpointerManager]:
 async def owner(mongo_db: AsyncIOMotorDatabase) -> AsyncIterator[AuthenticatedUser]:
     """Yield the HTTP client's user as a real Mongo user, with nothing of theirs left from a previous run."""
     user_id = FAKE_USER.user_id
-    for collection in ("todos", "conversations", "notifications"):
+    for collection in OWNED_COLLECTIONS:
         await mongo_db[collection].delete_many({"user_id": user_id})
     await mongo_db["users"].update_one(
         {"_id": ObjectId(user_id)},
-        {"$set": {"email": FAKE_USER.email, "name": FAKE_USER.name, "timezone": "UTC"}},
+        {
+            "$set": {"email": FAKE_USER.email, "name": FAKE_USER.name, "timezone": "UTC"},
+            "$unset": {"hil_preferences": ""},
+        },
         upsert=True,
     )
     yield FAKE_USER
-    for collection in ("todos", "conversations", "notifications"):
+    for collection in OWNED_COLLECTIONS:
         await mongo_db[collection].delete_many({"user_id": user_id})
 
 
@@ -215,6 +242,7 @@ def open_stack(
             )
         )
         memory.recall = AsyncMock(return_value=MagicMock(entries=[], episodes=[]))
+        memory.retain = AsyncMock()
         the_checkpointer = AsyncMock(return_value=checkpointer)
 
         async with AsyncExitStack() as stack:
@@ -554,3 +582,486 @@ class TestDeletingTheTodoDeletesItsChat:
             assert await stack.threads_of(conversation_id) == {}
         reopened = await client.post(f"/api/v1/todos/{todo_id}/conversation")
         assert reopened.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Edge cases: approvals, a busy chat, the message cap, renames, deletes, other users
+# ---------------------------------------------------------------------------
+
+#: Stands in for the approval id in a scripted redeem: the model reads the real one off its prompt.
+READ_APPROVAL_ID = "<the approval id in the prompt>"
+APPROVAL_READY = re.compile(r"APPROVAL_READY (\S+):")
+WAITING = "Waiting on your approval to draw the deploy's flowchart."
+DRAWN = "Drew the deploy's flowchart."
+RESUMED = "The flowchart is in; nothing else is left this run."
+#: A resume does no tool work of its own, so the completion nudge asks once more.
+NOTHING_PENDING = "Confirmed: the approved flowchart already ran; nothing is pending."
+SKIPPED = "Skipped the flowchart, as you declined it."
+RECHECK = "recheck the deploy right now"
+RECHECKED = "Rechecked: the deploy is still green."
+RENAMED = "Watch the production deploy"
+
+
+@dataclass
+class Hold:
+    """Model calls held open: reached once one is waiting, and let go together on release."""
+
+    reached: asyncio.Event = field(default_factory=asyncio.Event)
+    released: asyncio.Event = field(default_factory=asyncio.Event)
+
+
+class PromptReadingModel(StreamingScriptedModel):
+    """A scripted model that reads its prompt as a real one does: for an approval id, and to wait.
+
+    A redeem scripted with READ_APPROVAL_ID carries the id the ticket names; a
+    call whose prompt holds a held phrase waits for the test, the way a slow
+    model call keeps a run, and the chat's executor lock, held.
+    """
+
+    _holds: dict[str, Hold] = PrivateAttr(default_factory=dict)
+
+    def hold_calls_seeing(self, phrase: str) -> Hold:
+        self._holds[phrase] = Hold()
+        return self._holds[phrase]
+
+    async def _astream(
+        self, messages: list[BaseMessage], *args: Any, **kwargs: Any
+    ) -> AsyncIterator[Any]:
+        prompt = _prompt_text(messages)
+        for phrase, hold in self._holds.items():
+            if phrase in prompt:
+                hold.reached.set()
+                await hold.released.wait()
+        async for chunk in super()._astream(messages, *args, **kwargs):
+            yield chunk
+
+    def _generate(self, messages: list[BaseMessage], *args: Any, **kwargs: Any) -> Any:
+        result = super()._generate(messages, *args, **kwargs)
+        for tool_call in result.generations[0].message.tool_calls:
+            data = tool_call["args"].get("data")
+            if isinstance(data, dict) and data.get("id") == READ_APPROVAL_ID:
+                ticket = APPROVAL_READY.search(_prompt_text(messages))
+                assert ticket, "a redeem was scripted, but no APPROVAL_READY reached the model"
+                data["id"] = ticket.group(1)
+        return result
+
+
+def _prompt_text(messages: list[BaseMessage]) -> str:
+    return " ".join(str(m.content) for m in messages)
+
+
+def prompt_reading(script: Sequence[Any]) -> PromptReadingModel:
+    return PromptReadingModel(responses=streaming_model(script).responses)
+
+
+def gated_run(after_the_verdict: Sequence[Any]) -> PromptReadingModel:
+    """Script a run that proposes the gated flowchart and says it waits, then what follows the verdict."""
+    return prompt_reading(
+        [
+            call("retrieve_tools", {"exact_tool_names": ["create_flowchart"]}, call_id="tc_find"),
+            call("create_flowchart", FLOWCHART, call_id="tc_flow"),
+            WAITING,
+            *after_the_verdict,
+        ]
+    )
+
+
+def redeem() -> Any:
+    return call(
+        "execute",
+        {
+            "task_description": "draw the approved flowchart",
+            "tool_name": "approve",
+            "data": {"id": READ_APPROVAL_ID},
+        },
+        call_id="tc_redeem",
+    )
+
+
+@pytest.fixture
+async def worker_pool(redis_url: str) -> AsyncIterator[ArqRedis]:
+    """Install a real ArqRedis on the test's Redis as the worker pool, as enqueue and the run lock reach it."""
+    pool = ArqRedis.from_url(worker_redis_url(redis_url))
+    with patch.object(RedisPoolManager, "get_pool", AsyncMock(return_value=pool)):
+        yield pool
+    await pool.aclose()
+
+
+async def _ask_before(mongo_db: AsyncIOMotorDatabase, tool_name: str) -> None:
+    """Set the owner to be asked before every call of the tool, as their HIL settings would."""
+    await mongo_db["users"].update_one(
+        {"_id": ObjectId(FAKE_USER.user_id)},
+        {
+            "$set": {
+                "hil_preferences": HILPreferences(
+                    mode="always_ask", tool_overrides={tool_name: True}
+                ).model_dump()
+            }
+        },
+    )
+
+
+async def _only_approval(mongo_db: AsyncIOMotorDatabase) -> dict[str, Any]:
+    (row,) = await mongo_db["approval_ledger"].find({"user_id": FAKE_USER.user_id}).to_list(None)
+    return row
+
+
+async def _activity(todo_id: str) -> str:
+    todo = await todo_repository.get_by_id(todo_id)
+    assert todo is not None and todo.activity_content is not None
+    return todo.activity_content
+
+
+async def _queued_resumes(pool: ArqRedis) -> list[tuple[Any, ...]]:
+    return [tuple(j.args) for j in await pool.queued_jobs() if j.function == "resume_tracked_todo"]
+
+
+@contextmanager
+def _signed_in_as(test_app: FastAPI, user: AuthenticatedUser) -> Iterator[None]:
+    original = test_app.dependency_overrides[get_current_user]
+    test_app.dependency_overrides[get_current_user] = lambda: user
+    try:
+        yield
+    finally:
+        test_app.dependency_overrides[get_current_user] = original
+
+
+@pytest.mark.usefixtures("mongo_db")
+class TestAnApprovalTheRunWaitsOnStaysInTheTodosChat:
+    async def test_approving_runs_the_call_and_continues_the_run_in_its_chat_and_thread(
+        self,
+        open_stack: OpenStack,
+        owner: AuthenticatedUser,
+        mongo_db: AsyncIOMotorDatabase,
+        client: AsyncClient,
+        worker_pool: ArqRedis,
+    ) -> None:
+        """The ticket run is still going when the resume job lands, as with a real model: the resume waits its turn."""
+        await _ask_before(mongo_db, "create_flowchart")
+        todo_id = await _new_tracked_todo(owner)
+        executor = gated_run([redeem(), DRAWN, RESUMED, NOTHING_PENDING])
+
+        async with open_stack(executor=executor, comms=[NARRATED] * 3) as stack:
+            await _run(todo_id, owner)
+            conversation_id = (await _chat_of(mongo_db, todo_id))["conversation_id"]
+            row = await _only_approval(mongo_db)
+            parked = (await client.get(f"/api/v1/todos/{todo_id}")).json()["pending_approval"]
+            parked_threads = await stack.threads_of(conversation_id)
+
+            ticket_run = executor.hold_calls_seeing("APPROVAL_READY")
+            decided = await client.post(
+                f"/api/v1/approvals/{row['approval_id']}/decision", json={"decision": "approve"}
+            )
+            await ticket_run.reached.wait()
+            (enqueued,) = await _queued_resumes(worker_pool)
+            landed_mid_ticket_run = await resume_tracked_todo({}, *enqueued)
+            ticket_run.released.set()
+            await drain_background_runs()
+            (deferred,) = [job for job in await _queued_resumes(worker_pool) if job != enqueued]
+            resumed = await resume_tracked_todo({}, *deferred)
+            resumed_threads = await stack.threads_of(conversation_id)
+            after = (await client.get(f"/api/v1/todos/{todo_id}")).json()["pending_approval"]
+
+        # The approval belongs to the todo's chat, and the todo links to it there.
+        assert (row["conversation_id"], row["owner_run_type"], row["owner_id"]) == (
+            conversation_id,
+            "todo",
+            todo_id,
+        )
+        assert parked == {"approval_id": row["approval_id"], "conversation_id": conversation_id}
+        assert decided.json() == {"success": True, "reason": None, "status": "approved"}
+
+        # The approved call ran once, redeemed in the chat by the run the approval started.
+        ledger = await mongo_db["approval_ledger"].find_one({"approval_id": row["approval_id"]})
+        assert ledger is not None and ledger["state"] == "executed"
+        # The resume that landed while that run held the chat waited instead of failing.
+        assert landed_mid_ticket_run == f"resume_deferred:{todo_id} (executor busy)"
+        assert deferred == (todo_id, conversation_id, row["approval_id"], row["summary"], 1)
+        assert resumed == f"resumed:{todo_id}"
+        assert after is None
+
+        chat = await _chat_of(mongo_db, todo_id)
+        assert [m["response"] for m in chat["messages"]] == [
+            WAITING,
+            NARRATED,
+            f"{RESUMED}{NOTHING_PENDING}",
+        ]
+        assert "approve" in _card_tool_names(chat["messages"][1])
+        # Every leg continued the parked execution: no reset dropped its thread.
+        executor_thread = f"executor_{conversation_id}"
+        assert resumed_threads[executor_thread] == parked_threads[executor_thread]
+
+        activity = await _activity(todo_id)
+        assert activity.count(f"[{TodoActivityEvent.APPROVAL_GRANTED.value}]") == 1
+        assert f"[{TodoActivityEvent.RUN_FAILED.value}]" not in activity
+        assert activity.count(f"[{TodoActivityEvent.RUN_FINISHED.value}]") == 2
+
+    async def test_denying_reports_the_skip_in_the_chat_and_resumes_nothing(
+        self,
+        open_stack: OpenStack,
+        owner: AuthenticatedUser,
+        mongo_db: AsyncIOMotorDatabase,
+        client: AsyncClient,
+        worker_pool: ArqRedis,
+    ) -> None:
+        await _ask_before(mongo_db, "create_flowchart")
+        todo_id = await _new_tracked_todo(owner)
+
+        async with open_stack(executor=gated_run([SKIPPED]), comms=[NARRATED] * 2):
+            await _run(todo_id, owner)
+            row = await _only_approval(mongo_db)
+            decided = await client.post(
+                f"/api/v1/approvals/{row['approval_id']}/decision",
+                json={"decision": "deny", "feedback": "not this week"},
+            )
+            await drain_background_runs()
+
+        assert decided.json()["status"] == "denied"
+        ledger = await mongo_db["approval_ledger"].find_one({"approval_id": row["approval_id"]})
+        assert ledger is not None and ledger["state"] == "denied"
+        assert await worker_pool.queued_jobs() == []
+        # The run the verdict started told the chat what was skipped.
+        chat = await _chat_of(mongo_db, todo_id)
+        assert [m["response"] for m in chat["messages"]] == [WAITING, NARRATED]
+        assert (
+            f"[{TodoActivityEvent.APPROVAL_DENIED.value}] {row['approval_id']} ('not this week'): "
+            f"skipped {row['summary']}"
+        ) in await _activity(todo_id)
+
+
+@pytest.mark.usefixtures("mongo_db")
+class TestARunThatFindsItsChatBusyWaits:
+    async def test_a_scheduled_run_during_a_follow_up_is_skipped_not_failed(
+        self,
+        open_stack: OpenStack,
+        owner: AuthenticatedUser,
+        mongo_db: AsyncIOMotorDatabase,
+        client: AsyncClient,
+        worker_pool: ArqRedis,
+        real_redis: Any,
+    ) -> None:
+        """Regression: the scheduled run counted the user's own follow-up as a failed attempt and retried an hour later."""
+        due = datetime.now(UTC)
+        todo_id = (
+            await TrackedTodoService.create_tracked_todo(
+                owner.user_id, TITLE, schedule=TodoUpdate(scheduled_at=due)
+            )
+        ).id
+        conversation_id = (await client.post(f"/api/v1/todos/{todo_id}/conversation")).json()[
+            "conversation_id"
+        ]
+        # Twice: the recheck does no tool work, so the completion nudge asks once more.
+        executor = prompt_reading([RECHECKED, RECHECKED])
+        comms = [call("call_executor", {"task": RECHECK}, call_id="tc_exec"), "On it.", NARRATED]
+
+        async with open_stack(executor=executor, comms=comms):
+            follow_up = executor.hold_calls_seeing(RECHECK)
+            following_up = asyncio.create_task(
+                _follow_up(conversation_id, owner, "is it still green?")
+            )
+            await follow_up.reached.wait()
+            assert await real_redis.exists(f"{EXECUTOR_BUSY_PREFIX}{conversation_id}")
+            with patch(
+                "app.workers.tasks.tracked_todo_tasks.is_paid", AsyncMock(return_value=True)
+            ):
+                result = await execute_tracked_todo(
+                    {}, todo_id, scheduled_for=occurrence_stamp(due)
+                )
+            follow_up.released.set()
+            await following_up
+            await drain_background_runs()
+
+        assert result == f"skipped:{todo_id} (lock held)"
+        todo = await todo_repository.get_by_id(todo_id)
+        # Still due, so the safety net's next scan runs it; no attempt was spent.
+        assert todo is not None and todo.gaia_retry_count == 0
+        assert todo.scheduled_at is not None and todo.scheduled_at <= datetime.now(UTC)
+        activity = await _activity(todo_id)
+        assert f"[{TodoActivityEvent.RUN_SKIPPED.value}]" in activity
+        assert f"[{TodoActivityEvent.RUN_FAILED.value}]" not in activity
+        assert f"[{TodoActivityEvent.RETRY_SCHEDULED.value}]" not in activity
+        # The follow-up the user was having still answered them, in its chat.
+        messages = (await _chat_of(mongo_db, todo_id))["messages"]
+        assert [m["type"] for m in messages] == ["user", "bot", "bot"]
+        assert messages[-1]["response"] == NARRATED
+
+
+@pytest.mark.usefixtures("mongo_db")
+class TestTheChatKeepsOnlyItsNewestMessages:
+    async def test_a_full_chat_drops_its_oldest_message_for_the_report(
+        self, open_stack: OpenStack, owner: AuthenticatedUser, mongo_db: AsyncIOMotorDatabase
+    ) -> None:
+        todo_id = await _new_tracked_todo(owner)
+        conversation_id = await get_or_create_todo_conversation(owner.user_id, todo_id, TITLE)
+        seeded = [
+            {"type": "bot", "response": f"run {n}", "message_id": f"seed-{n}", "date": "2026"}
+            for n in range(TODO_CONVERSATION_MAX_MESSAGES)
+        ]
+        await mongo_db["conversations"].update_one(
+            {"conversation_id": conversation_id}, {"$set": {"messages": seeded}}
+        )
+
+        async with open_stack(executor=executor_run(REPORT), comms=[NARRATED]):
+            await _run(todo_id, owner)
+
+        messages = (await _chat_of(mongo_db, todo_id))["messages"]
+        assert len(messages) == TODO_CONVERSATION_MAX_MESSAGES
+        assert messages[0]["response"] == "run 1"
+        assert messages[-1]["response"] == REPORT
+
+
+@pytest.mark.usefixtures("mongo_db")
+class TestTheChatFollowsItsTodo:
+    async def test_renaming_the_todo_renames_its_chat(
+        self, owner: AuthenticatedUser, mongo_db: AsyncIOMotorDatabase, client: AsyncClient
+    ) -> None:
+        """Regression: the chat kept the todo's first title, so its tab still named the old one."""
+        todo_id = await _new_tracked_todo(owner)
+        conversation_id = (await client.post(f"/api/v1/todos/{todo_id}/conversation")).json()[
+            "conversation_id"
+        ]
+
+        renamed = await client.put(f"/api/v1/todos/{todo_id}", json={"title": RENAMED})
+
+        assert renamed.status_code == 200
+        synced = await client.post(
+            "/api/v1/conversations/batch-sync",
+            json={"conversations": [{"conversation_id": conversation_id}]},
+        )
+        (row,) = synced.json()["conversations"]
+        assert row["description"] == RENAMED
+
+    async def test_a_completed_todo_still_opens_its_chat_with_its_history(
+        self,
+        open_stack: OpenStack,
+        owner: AuthenticatedUser,
+        mongo_db: AsyncIOMotorDatabase,
+        client: AsyncClient,
+    ) -> None:
+        todo_id = await _new_tracked_todo(owner)
+        async with open_stack(executor=executor_run(REPORT), comms=[NARRATED]):
+            await _run(todo_id, owner)
+        conversation_id = (await _chat_of(mongo_db, todo_id))["conversation_id"]
+
+        completed = await client.put(f"/api/v1/todos/{todo_id}", json={"completed": True})
+        opened = await client.post(f"/api/v1/todos/{todo_id}/conversation")
+
+        assert completed.json()["completed"] is True
+        assert opened.json() == {"conversation_id": conversation_id}
+        assert [m["response"] for m in (await _chat_of(mongo_db, todo_id))["messages"]] == [REPORT]
+
+    async def test_starring_the_chat_never_lists_it(
+        self, owner: AuthenticatedUser, client: AsyncClient
+    ) -> None:
+        todo_id = await _new_tracked_todo(owner)
+        conversation_id = (await client.post(f"/api/v1/todos/{todo_id}/conversation")).json()[
+            "conversation_id"
+        ]
+
+        starred = await client.put(
+            f"/api/v1/conversations/{conversation_id}/star", json={"starred": True}
+        )
+        listed = await client.get("/api/v1/conversations", params={"limit": 50})
+
+        assert starred.status_code == 200
+        assert conversation_id not in [c["conversation_id"] for c in listed.json()["conversations"]]
+
+    async def test_a_run_the_user_is_not_told_of_still_keeps_its_report_in_the_chat(
+        self, open_stack: OpenStack, owner: AuthenticatedUser, mongo_db: AsyncIOMotorDatabase
+    ) -> None:
+        created = await TrackedTodoService.create_tracked_todo(
+            owner.user_id, TITLE, notify_on_run=False
+        )
+
+        async with open_stack(executor=executor_run(REPORT), comms=[NARRATED]):
+            await _run(created.id, owner)
+
+        assert [m["response"] for m in (await _chat_of(mongo_db, created.id))["messages"]] == [
+            REPORT
+        ]
+        assert await mongo_db["notifications"].count_documents({"user_id": owner.user_id}) == 0
+
+    async def test_a_run_comms_keeps_quiet_about_still_keeps_its_report_in_the_chat(
+        self, open_stack: OpenStack, owner: AuthenticatedUser, mongo_db: AsyncIOMotorDatabase
+    ) -> None:
+        todo_id = await _new_tracked_todo(owner)
+
+        async with open_stack(
+            executor=executor_run(REPORT), comms=["<SILENCE>nothing changed</SILENCE>"]
+        ):
+            await _run(todo_id, owner)
+
+        assert [m["response"] for m in (await _chat_of(mongo_db, todo_id))["messages"]] == [REPORT]
+        assert await mongo_db["notifications"].count_documents({"user_id": owner.user_id}) == 0
+        assert "kept quiet: nothing changed" in await _activity(todo_id)
+
+
+@pytest.mark.usefixtures("mongo_db")
+class TestNoChatOutlivesItsTodo:
+    async def test_bulk_deleting_a_parent_deletes_its_and_its_sub_todos_chats(
+        self, owner: AuthenticatedUser, mongo_db: AsyncIOMotorDatabase, client: AsyncClient
+    ) -> None:
+        parent = await _new_tracked_todo(owner)
+        child = (
+            await TrackedTodoService.create_tracked_todo(
+                owner.user_id, "Watch the migrations", parent_todo_id=parent
+            )
+        ).id
+        for todo_id in (parent, child):
+            assert (await client.post(f"/api/v1/todos/{todo_id}/conversation")).status_code == 200
+
+        deleted = await client.request("DELETE", "/api/v1/todos/bulk", json=[parent])
+
+        assert deleted.status_code == 200
+        assert set(deleted.json()["success"]) == {parent, child}
+        assert await mongo_db["conversations"].count_documents({"user_id": owner.user_id}) == 0
+
+    async def test_deleting_the_todo_mid_run_resurrects_no_chat(
+        self,
+        open_stack: OpenStack,
+        owner: AuthenticatedUser,
+        mongo_db: AsyncIOMotorDatabase,
+        client: AsyncClient,
+    ) -> None:
+        todo_id = await _new_tracked_todo(owner)
+        executor = prompt_reading(executor_run(REPORT))
+
+        async with open_stack(executor=executor, comms=[NARRATED]):
+            mid_run = executor.hold_calls_seeing("Bound 1 tools")
+            running = asyncio.create_task(_run(todo_id, owner))
+            await mid_run.reached.wait()
+            assert (await client.delete(f"/api/v1/todos/{todo_id}")).status_code == 204
+            mid_run.released.set()
+            await running
+
+        assert await mongo_db["conversations"].count_documents({"user_id": owner.user_id}) == 0
+        listed = await client.get("/api/v1/conversations", params={"limit": 50})
+        assert listed.json()["conversations"] == []
+
+    async def test_another_user_can_neither_read_nor_star_the_chat(
+        self,
+        owner: AuthenticatedUser,
+        mongo_db: AsyncIOMotorDatabase,
+        client: AsyncClient,
+        test_app: FastAPI,
+    ) -> None:
+        todo_id = await _new_tracked_todo(owner)
+        conversation_id = (await client.post(f"/api/v1/todos/{todo_id}/conversation")).json()[
+            "conversation_id"
+        ]
+
+        with _signed_in_as(test_app, FAKE_USER_2):
+            read = await client.get(f"/api/v1/conversations/{conversation_id}")
+            synced = await client.post(
+                "/api/v1/conversations/batch-sync",
+                json={"conversations": [{"conversation_id": conversation_id}]},
+            )
+            starred = await client.put(
+                f"/api/v1/conversations/{conversation_id}/star", json={"starred": True}
+            )
+
+        assert read.status_code == 404
+        assert synced.json()["conversations"] == []
+        assert starred.status_code == 404
+        chat = await _chat_of(mongo_db, todo_id)
+        assert not chat.get("starred")

@@ -120,6 +120,16 @@ def todo_chats() -> Iterator[AsyncMock]:
 
 
 @pytest.fixture(autouse=True)
+def retitled_chats() -> Iterator[AsyncMock]:
+    """Record the retitles of renamed todos' chats instead of reaching Mongo for them."""
+    with patch(
+        "app.services.todos.todo_service.conversation_repository.retitle_todo_chats",
+        new=AsyncMock(),
+    ) as retitled:
+        yield retitled
+
+
+@pytest.fixture(autouse=True)
 def _owners_are_users():
     """Answer the owner check the way the real users collection does."""
     with patch("app.utils.auth_utils.user_repository.get", new=users_get):
@@ -834,6 +844,30 @@ class TestUpdateTodo:
         assert result.sub_todo_count == 2
         mock_todo_repo.count_open_sub_todos.assert_awaited_once_with(FAKE_USER_ID, [FAKE_TODO_ID])
 
+    async def test_a_new_title_retitles_the_todos_chat(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, retitled_chats
+    ):
+        """Regression: the chat kept the todo's first title, so its tab still named the old one."""
+        edited = _make_todo_doc(todo_id=FAKE_TODO_ID, title="Watch production")
+        mock_todo_repo.update = AsyncMock(return_value=edited)
+
+        await TodoService.update_todo(
+            FAKE_TODO_ID, TodoUpdateRequest(title="Watch production"), FAKE_USER_ID
+        )
+
+        retitled_chats.assert_awaited_once_with(FAKE_USER_ID, [FAKE_TODO_ID], "Watch production")
+
+    async def test_an_edit_that_keeps_the_title_leaves_the_chat_alone(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, retitled_chats
+    ):
+        mock_todo_repo.update = AsyncMock(return_value=_make_todo_doc(todo_id=FAKE_TODO_ID))
+
+        await TodoService.update_todo(
+            FAKE_TODO_ID, TodoUpdateRequest(priority=Priority.HIGH), FAKE_USER_ID
+        )
+
+        retitled_chats.assert_not_awaited()
+
     async def test_a_tracked_todo_refuses_a_workflow_link(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
     ):
@@ -1266,6 +1300,17 @@ class TestBulkCompleteRunsTheTrackedLifecycle:
             "completed": True,
             "priority": Priority.HIGH,
         }
+
+    async def test_a_bulk_title_retitles_the_chats_of_the_todos_it_updated(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, retitled_chats
+    ):
+        mock_todo_repo.bulk_update = AsyncMock(return_value=1)
+        req = BulkUpdateRequest(todo_ids=["t", "u"], updates=TodoUpdateRequest(title="Renamed"))
+
+        await TodoService.bulk_update_todos(req, FAKE_USER_ID)
+
+        # Only the first one was modified, so only its chat is retitled.
+        retitled_chats.assert_awaited_once_with(FAKE_USER_ID, ["t"], "Renamed")
 
     async def test_only_tracked_todos_means_no_plain_write(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync

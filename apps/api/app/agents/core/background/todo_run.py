@@ -67,6 +67,10 @@ class TodoRunFailedError(RuntimeError):
     """The executor ended a tracked todo run in an error, or never finished it."""
 
 
+class ExecutorBusyError(TodoRunFailedError):
+    """Another executor run holds the todo's chat, so this run never started."""
+
+
 @dataclass(frozen=True)
 class TodoRunRequest:
     """One tracked todo run: whose, which todo, the brief, and the todo's chat it runs in."""
@@ -90,7 +94,7 @@ async def run_todo_on_executor(request: TodoRunRequest) -> None:
 
     lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
     if not await try_acquire_lock(lock_key, build_lock_value(stream_id, task_id)):
-        raise TodoRunFailedError(
+        raise ExecutorBusyError(
             f"the executor is already running in conversation {conversation_id}"
         )
 

@@ -969,6 +969,29 @@ class TestTrackedTodoChats:
         assert await repo.exists(foreign.conversation_id, user_id=foreign.user_id)
         assert await repo.delete_for_todos(user, ["todo-9"]) == []
 
+    async def test_retitling_todos_retitles_only_their_chats_and_marks_them_for_sync(self, repo):
+        user = _uid()
+        bound = _doc(user_id=user, todo_id="todo-1", description="Watch staging")
+        other = _doc(user_id=user, todo_id="todo-2", description="Watch canary")
+        chat = _doc(user_id=user, description="Watch staging")
+        foreign = _doc(user_id=_uid(), todo_id="todo-1", description="Watch staging")
+        for doc in (bound, other, chat, foreign):
+            await repo.create(doc)
+        before = await repo.get(bound.conversation_id, user_id=user)
+
+        await repo.retitle_todo_chats(user, ["todo-1"], "Watch production")
+
+        retitled = await repo.get(bound.conversation_id, user_id=user)
+        assert retitled is not None and before is not None
+        assert retitled.description == "Watch production"
+        # A client syncs a chat by updatedAt, so the new title must move it.
+        assert retitled.updatedAt is not None and retitled.updatedAt != before.updatedAt
+        for untouched in (other, chat):
+            kept = await repo.get(untouched.conversation_id, user_id=user)
+            assert kept is not None and kept.description == untouched.description
+        kept_foreign = await repo.get(foreign.conversation_id, user_id=foreign.user_id)
+        assert kept_foreign is not None and kept_foreign.description == "Watch staging"
+
 
 class TestWorkflowAndOnboarding:
     async def test_find_and_bind_workflow_conversation(self, repo):

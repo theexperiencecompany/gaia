@@ -14,6 +14,7 @@ import pytest
 from app.agents.core.background import session as sess, todo_run
 from app.agents.core.background.session import TodoRun, executor_abandoned
 from app.agents.core.background.todo_run import (
+    ExecutorBusyError,
     TodoRunFailedError,
     TodoRunRequest,
     _todo_run_configurable,
@@ -88,7 +89,7 @@ async def test_a_conversation_already_running_the_executor_is_refused_before_spa
     with (
         patch.object(todo_run, "try_acquire_lock", AsyncMock(return_value=False)),
         patch.object(todo_run, "run_executor_background", spawned),
-        pytest.raises(TodoRunFailedError, match="already running in conversation run-conv"),
+        pytest.raises(ExecutorBusyError, match="already running in conversation run-conv"),
     ):
         await run_todo_on_executor(replace(REQUEST, fresh_thread=True))
 

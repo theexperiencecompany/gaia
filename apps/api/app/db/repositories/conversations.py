@@ -662,14 +662,20 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
 
     async def delete_for_todos(self, user_id: str, todo_ids: Sequence[str]) -> list[str]:
         """Delete the chats bound to these todos, returning their ids for checkpoint cleanup."""
-        query: dict[str, object] = {
-            "user_id": user_id,
-            "todo_id": {"$in": list(todo_ids), "$type": "string"},
-        }
+        query = _todo_chats(user_id, todo_ids)
         ids = await self._distinct("conversation_id", query)
         if ids:
             await self._delete_many(query, scope=user_id)
         return ids
+
+    async def retitle_todo_chats(
+        self, user_id: str, todo_ids: Sequence[str], description: str
+    ) -> None:
+        """Give the chats bound to these todos their todo's new title."""
+        for conversation_id in await self._distinct(
+            "conversation_id", _todo_chats(user_id, todo_ids)
+        ):
+            await self._set_fields(conversation_id, user_id, {"description": description})
 
     async def find_updated_since(
         self, user_id: str, items: list[ConversationSyncItem]
@@ -833,6 +839,10 @@ conversation_repository = ConversationRepository()
 def _todo_binding(todo_id: str) -> dict[str, object]:
     # $type keeps the query inside the binding index's partial filter; a bare equality is not, and scans.
     return {"todo_id": {"$eq": todo_id, "$type": "string"}}
+
+
+def _todo_chats(user_id: str, todo_ids: Sequence[str]) -> dict[str, object]:
+    return {"user_id": user_id, "todo_id": {"$in": list(todo_ids), "$type": "string"}}
 
 
 def _waiting_for(message_id: str) -> dict[str, object]:

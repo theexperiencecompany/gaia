@@ -12,13 +12,17 @@ Handles:
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 import random
-from typing import cast
+from typing import NamedTuple, cast
 
 from arq import Retry
 from arq.connections import ArqRedis
 
 from app.agents.core.background.session import TodoRun
-from app.agents.core.background.todo_run import TodoRunRequest, run_todo_on_executor
+from app.agents.core.background.todo_run import (
+    ExecutorBusyError,
+    TodoRunRequest,
+    run_todo_on_executor,
+)
 from app.agents.core.background.todo_run_delivery import (
     FinishedTodoRun,
     finish_todo_run,
@@ -290,6 +294,9 @@ async def _execute_todo_with_retry(
         await _execute_on_executor(
             doc, user_data=user_data, user_tz=user_tz, origin=origin, coalesced=coalesced
         )
+    except ExecutorBusyError:
+        # Another run holds the todo's chat: wait as for a held run lock, never a spent attempt.
+        return await _handle_held_lock(todo_id, origin, list(coalesced))
     except Exception as exc:
         log.exception("tracked_todo.execution_failed", todo_id=todo_id, error=str(exc))
         new_retry_count = retry_count + 1
@@ -637,6 +644,15 @@ async def _execute_on_executor(
                 fresh_thread=True,
             )
         )
+    except ExecutorBusyError:
+        # A follow-up turn or an approval's run holds the chat: this run waits, it did not fail.
+        await record_activity(
+            todo_id,
+            user_id,
+            TodoActivityEvent.RUN_SKIPPED,
+            f"{woken_by} waits: another run is going in its chat",
+        )
+        raise
     except Exception as exc:
         await record_activity(
             todo_id,
@@ -646,6 +662,15 @@ async def _execute_on_executor(
         )
         raise
     log.info("tracked_todo.run_completed", todo_id=todo_id)
+
+
+class _ResumeJob(NamedTuple):
+    """A resume_tracked_todo job's arguments, in its enqueue order."""
+
+    todo_id: str
+    conversation_id: str
+    approval_id: str
+    receipt: str
 
 
 async def resume_tracked_todo(
@@ -664,31 +689,37 @@ async def resume_tracked_todo(
     reads that run's thread instead; the receipt it carries still says what ran.
     """
     log.set(todo_id=todo_id, approval_id=approval_id)
+    job = _ResumeJob(todo_id, conversation_id, approval_id, receipt)
     pool = await RedisPoolManager.get_pool()
     acquired = await pool.set(
         RUN_LOCK_KEY.format(todo_id=todo_id), "1", nx=True, ex=LOCK_TTL_SECONDS
     )
     if not acquired:
-        if attempt >= len(LOCK_DEFER_BACKOFF):
-            log.warning("tracked_todo.resume_lock_held", todo_id=todo_id)
-            return f"resume_dropped:{todo_id} (lock held)"
-        retry_at = datetime.now(UTC) + LOCK_DEFER_BACKOFF[attempt]
-        await enqueue_worker_job(
-            pool,
-            "resume_tracked_todo",
-            todo_id,
-            conversation_id,
-            approval_id,
-            receipt,
-            attempt + 1,
-            _defer_until=retry_at,
-        )
-        return f"resume_deferred:{todo_id} (lock held)"
+        return await _defer_resume(pool, job, attempt, reason="lock held")
 
     try:
         return await _resume_holding_lock(todo_id, conversation_id, approval_id, receipt)
+    except ExecutorBusyError:
+        # Another run holds the todo's chat (the approval's own ticket run, or a
+        # follow-up turn): the resume waits its turn, as for the todo's lock.
+        return await _defer_resume(pool, job, attempt, reason="executor busy")
     finally:
         await _release_run_lock(pool, todo_id)
+
+
+async def _defer_resume(pool: ArqRedis, job: _ResumeJob, attempt: int, *, reason: str) -> str:
+    """Re-enqueue the resume one backoff step later, or drop it loudly past the last step."""
+    if attempt >= len(LOCK_DEFER_BACKOFF):
+        log.warning("tracked_todo.resume_dropped", todo_id=job.todo_id, reason=reason)
+        return f"resume_dropped:{job.todo_id} ({reason})"
+    await enqueue_worker_job(
+        pool,
+        "resume_tracked_todo",
+        *job,
+        attempt + 1,
+        _defer_until=datetime.now(UTC) + LOCK_DEFER_BACKOFF[attempt],
+    )
+    return f"resume_deferred:{job.todo_id} ({reason})"
 
 
 async def _resume_holding_lock(
@@ -712,13 +743,6 @@ async def _resume_holding_lock(
     try:
         await enforce_daily_cost_budget(user_id, feature_key=TRIGGER_TODO_FEATURE_KEY)
 
-        await record_activity(
-            todo_id,
-            user_id,
-            TodoActivityEvent.APPROVAL_GRANTED,
-            f"{approval_id}: {receipt}; continuing the run in its own thread",
-        )
-
         message = (
             f"Approval {approval_id} was granted: {receipt} "
             "The action has run — verify with a read if you need certainty, "
@@ -736,6 +760,9 @@ async def _resume_holding_lock(
             )
         )
         return f"resumed:{todo_id}"
+    except ExecutorBusyError:
+        # Never started, so nothing failed: the caller defers the resume.
+        raise
     except Exception as exc:
         await record_activity(
             todo_id,
