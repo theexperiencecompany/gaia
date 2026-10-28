@@ -299,6 +299,37 @@ assert isinstance(_secrets_module.inject_infisical_secrets, MagicMock), (
     "hermetic fence broken: secrets.inject_infisical_secrets is not mocked"
 )
 
+#: The loop the cached Motor client was built on. Motor binds a client to the loop
+#: that created it, while this module keeps that client for the life of the process.
+_mongo_client_loop: asyncio.AbstractEventLoop | None = None
+
+
+@pytest.fixture(autouse=True)
+async def _mongo_client_follows_the_test_loop() -> None:
+    """Drop the cached Motor client whenever the running loop changes.
+
+    pytest builds a fresh loop per test, so the second test to touch Mongo reused a
+    client whose loop was already closed and died with "Event loop is closed" — a
+    flake that depended only on which test happened to run second in a worker.
+    """
+    global _mongo_client_loop
+    loop = asyncio.get_running_loop()
+    if _mongo_client_loop is loop:
+        return
+    mongo_collections = importlib.import_module("app.db.mongodb.collections")
+    mongo_module = importlib.import_module("app.db.mongodb.mongodb")
+    # init_mongodb is lru_cached: without clearing it the "new" instance is the old client.
+    mongo_module.init_mongodb.cache_clear()
+    mongo_collections._mongodb_instance = None
+    mongo_collections._collections_cache.clear()
+    if _USE_REAL_SERVICES:
+        # Same shape: one client for the process, built on whichever loop touched it
+        # first. Dropping it makes the `client` property rebuild on this loop.
+        redis_module = importlib.import_module("app.db.redis")
+        redis_module.redis_cache.redis = None
+    _mongo_client_loop = loop
+
+
 # Registers the PostHog provider the way production startup does, since the
 # test app's lifespan is a no-op; POSTHOG_PROJECT_TOKEN is blanked above so
 # the SILENT-strategy loader no-ops capture calls instead of raising KeyError.
