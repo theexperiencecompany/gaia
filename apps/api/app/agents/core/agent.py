@@ -8,7 +8,7 @@ Both share _core_agent_logic() for common setup (messages, graph, config).
 
 import asyncio
 from collections.abc import AsyncGenerator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 from typing import Any, Literal, cast
 from uuid import uuid4
@@ -327,10 +327,10 @@ async def call_agent(
                 request,
                 conversation_id,
                 user,
-                AgentRunOptions(
-                    usage_metadata_callback=options.usage_metadata_callback,
-                    source=options.source,
-                    presence=options.presence,
+                # The caller's options whole, only the trace stamped here: a field
+                # copied over by hand is a field a new option silently loses.
+                replace(
+                    options,
                     langfuse_trace_id=(
                         trace_id_for_message(ids.bot_message_id) if ids.bot_message_id else None
                     ),

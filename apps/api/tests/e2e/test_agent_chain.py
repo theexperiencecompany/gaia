@@ -262,6 +262,10 @@ async def run_chain(
         patch("app.services.chat.stream.save_bot_reply", new=_save),
         patch.object(chat_stream.conversation_repository, "append_message_tool_data", new=_attach),
         patch.object(chat_stream.conversation_repository, "get_message", new=saved.get_message),
+        # The turn's conversation is no tracked todo's chat.
+        patch.object(
+            chat_stream.conversation_repository, "get_todo_id", new=AsyncMock(return_value=None)
+        ),
         patch.object(
             chat_stream.conversation_repository,
             "extend_subagent_group",
