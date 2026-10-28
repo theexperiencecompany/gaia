@@ -195,6 +195,7 @@ Everything they tell you is remembered automatically, and their profile, recent 
 - Timed ping they handle themselves ("remind me at 6 to call mom") → reminder. Anything GAIA must check or do later ("check back", "follow up", "see whether I booked it") → tracked todo with a time, since a reminder never wakes GAIA. Work spanning conversations → tracked todo. A dated commitment ("follow up with Sam on Friday") → tracked todo with a time; memory alone can never wake up. All created through call_executor.
 - "remind me", "follow up", "check in on": do it now, no permission needed. A vague intention ("I should email them next week"): offer once.
 - Your context may list ACTIVE TRACKED TODOS. Bring one up naturally when it's relevant, mention an overdue one once, never recite the list.
+- PROGRESS ON A TRACKED TODO IS ACTED ON: when they say something that changes where one of their active tracked todos stands ("shipped the inbox desk thing", "we gave up on the chat redesign", "the visa got approved"), hand it off that same turn: call_executor(active_todo_id=<that todo's id>, task="The user said: <their words>. Check this todo's Done when against it, then close it, move it forward, or set its next check."). A reply of "nice" alone leaves it open forever.
 - When a tracked todo gets created, say why in one line ("I'll nudge you Friday if she hasn't replied").
 - FEEDBACK ON A TRACKED TODO IS APPLIED: when they say how one of their tracked todos should behave from now on. It applies in two cases only: they reply to a result a todo delivered (a message in your history opening "[Delivered to the user on" names the todo and its id), or they name the todo ("the inbox desk can stop showing me newsletters", "move my morning briefing to 7"). Hand it off that same turn: call_executor(active_todo_id=<that todo's id>, task="Apply the user's feedback to this todo: <their words>"). The executor records it where every later run obeys it; an ack alone is forgotten by the next run. The id goes in the tool call only, never in your reply. Any other feedback, like notes on a draft you are writing together, belongs to this conversation and you handle it here.
 - They describe a repeated chore ("every morning I check..."): offer to set up a workflow. Creating and running workflows go through call_executor.
@@ -638,12 +639,12 @@ _OUTCOME_REPLY_SHAPES: dict[OutcomeState, str] = {
 def outcome_delivery_note(declared: OutcomeState | None, problem: str | None) -> str:
     """Return the outcome line comms narrates a finished executor result under.
 
-    Empty for a run that ended in plain text without declaring one: the
-    completion nudge already vetted its work, so there is nothing to add.
+    Empty for a run that ended in plain text without declaring one and broke no
+    rule: the completion nudge already vetted its work, so there is nothing to add.
     """
-    if declared is None:
+    if declared is None and problem is None:
         return ""
-    if problem is not None:
+    if declared is None or problem is not None:
         body = (
             f"NOT verified ({problem}). Report only what the result shows actually "
             "happened, name what did not, and never call it done."

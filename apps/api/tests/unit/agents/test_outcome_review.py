@@ -7,7 +7,8 @@ from typing import Any
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 import pytest
 
-from app.agents.core.outcome_review import review_outcome, review_run
+from app.agents.core.outcome_review import review_outcome, review_run, todo_left_asleep
+from app.agents.prompts.todo_prompts import TODO_REARM_BRIEF
 from app.constants.agents import OutcomeState
 from app.constants.general import FINISH_TASK_NAME
 
@@ -149,3 +150,85 @@ class TestReviewRun:
         ]
 
         assert not review_run(thread).verified
+
+
+class TestATodoIsNeverLeftAsleep:
+    """Seen in real use: tracked todos created or run once with nothing to wake them stayed open forever."""
+
+    def test_a_todo_created_with_nothing_to_wake_it_is_flagged(self) -> None:
+        delegation = [
+            _task(),
+            *_call("create_tracked_todo", {"title": "hidden per-todo chat"}, "c1"),
+            *_finish("done"),
+        ]
+
+        assert todo_left_asleep(delegation) is not None
+        assert not review_outcome(delegation).verified
+
+    @pytest.mark.parametrize(
+        "arming",
+        [
+            ("subscribe_todo_to_trigger", {"todo_id": "t1", "trigger_name": "x"}),
+            ("update_tracked_todo", {"todo_id": "t1", "scheduled_at": "2026-11-03T09:00:00"}),
+            ("complete_tracked_todo", {"todo_id": "t1", "summary": "done"}),
+            ("bash", {"command": "run", "run_todo_id": "t1"}),
+        ],
+    )
+    def test_a_later_watch_schedule_completion_or_bound_run_arms_it(
+        self, arming: tuple[str, dict[str, Any]]
+    ) -> None:
+        name, args = arming
+        delegation = [
+            _task(),
+            *_call("create_tracked_todo", {"title": "t"}, "c1"),
+            *_call(name, args, "c2"),
+        ]
+
+        assert todo_left_asleep(delegation) is None
+
+    @pytest.mark.parametrize("key", ["scheduled_at", "recurrence", "gmail_thread_id"])
+    def test_a_todo_created_waking_on_its_own_is_fine(self, key: str) -> None:
+        delegation = [_task(), *_call("create_tracked_todo", {"title": "t", key: "x"}, "c1")]
+
+        assert todo_left_asleep(delegation) is None
+
+    def test_a_failed_arming_call_does_not_count(self) -> None:
+        delegation = [
+            _task(),
+            *_call("create_tracked_todo", {"title": "t"}, "c1"),
+            *_call("subscribe_todo_to_trigger", {"todo_id": "t1"}, "c2", error=True),
+        ]
+
+        assert todo_left_asleep(delegation) is not None
+
+    def test_two_unarmed_todos_need_two_arming_calls(self) -> None:
+        delegation = [
+            _task(),
+            *_call("create_tracked_todo", {"title": "a"}, "c1"),
+            *_call("create_tracked_todo", {"title": "b"}, "c2"),
+            *_call("subscribe_todo_to_trigger", {"todo_id": "a"}, "c3"),
+        ]
+
+        assert todo_left_asleep(delegation) is not None
+
+    def test_a_run_briefed_as_the_todo_s_last_look_must_close_or_rearm_it(self) -> None:
+        briefed = HumanMessage(content=f"Execute the scheduled task: ship it\n\n{TODO_REARM_BRIEF}")
+
+        asleep = [briefed, *_call("read", {"path": "canvas.md"}, "c1"), *_finish("ask")]
+        rearmed = [
+            briefed,
+            *_call("update_tracked_todo", {"todo_id": "t", "scheduled_at": "2026-11-10"}, "c1"),
+            *_finish("ask"),
+        ]
+
+        assert todo_left_asleep(asleep) is not None
+        assert todo_left_asleep(rearmed) is None
+
+    def test_an_unbriefed_run_that_creates_nothing_is_not_flagged(self) -> None:
+        assert todo_left_asleep([_task(), *_call("create_todo", {}, "c1")]) is None
+
+    def test_a_plain_text_ending_that_strands_a_todo_still_reports_why(self) -> None:
+        review = review_outcome([_task(), *_call("create_tracked_todo", {"title": "t"}, "c1")])
+
+        assert review.declared is None
+        assert review.problem is not None

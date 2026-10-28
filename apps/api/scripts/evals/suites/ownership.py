@@ -39,6 +39,8 @@ import uuid
 
 import httpx
 
+from app.constants.todos import CANVAS_DONE_WHEN_SECTION
+from app.services.canvas_markdown import section_body
 from scripts.evals.core.cases import load_case_files
 from scripts.evals.core.cost import EvalCostTracker, estimate_tokens
 from scripts.evals.core.dev_users import dev_client, provision
@@ -364,6 +366,7 @@ class OwnershipTransport(ChatStreamTransport):
                     or row.get("trigger_subscriptions")
                 ),
                 "recurring": bool(row.get("recurrence")),
+                "completed": bool(row.get("completed")),
             }
             for row in todos.json().get("data") or []
             if TRACKED_LABEL in (row.get("labels") or [])
@@ -378,6 +381,23 @@ class OwnershipTransport(ChatStreamTransport):
             for row in reminders.json()
         )
         return found
+
+    async def _tracked_ownership(
+        self, client: httpx.AsyncClient, followups: list[Followup]
+    ) -> bool:
+        """Every new tracked todo says what closes it, and an open one has something to wake it."""
+        tracked = [f for f in followups if f["id"].startswith(f"{TRACKED_TODO_KIND}:")]
+        if not tracked:
+            return False
+        for f in tracked:
+            todo_id = f["id"].split(":", 1)[1]
+            resp = await client.get(f"{API}/todos/{todo_id}/canvas")
+            resp.raise_for_status()
+            if not section_body(resp.json().get("content"), CANVAS_DONE_WHEN_SECTION):
+                return False
+            if not f["completed"] and not f["wake"]:
+                return False
+        return True
 
     async def _workflow_ids(self, client: httpx.AsyncClient) -> set[str]:
         resp = await client.get(f"{API}/workflows")
@@ -403,6 +423,14 @@ class OwnershipTransport(ChatStreamTransport):
             if key == "seeded_intact":
                 open_ids = {str(row["id"]) for row in open_todos}
                 state[key] = all(todo_id in open_ids for todo_id in seeded)
+            elif key == "tracked_open":
+                state[key] = sum(
+                    1
+                    for f in state["followups"]
+                    if f["id"].startswith(f"{TRACKED_TODO_KIND}:") and not f["completed"]
+                )
+            elif key == "tracked_ownership":
+                state[key] = await self._tracked_ownership(client, state["followups"])
             elif key == "followups_matching":
                 term = str(case.setup["verify"]["followups_containing"]).lower()
                 state[key] = sum(

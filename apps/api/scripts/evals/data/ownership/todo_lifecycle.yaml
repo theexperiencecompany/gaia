@@ -1,0 +1,102 @@
+# A tracked todo is a promise GAIA keeps until it is closed. Modelled on real
+# todos that stayed open forever after the work shipped: each one must say what
+# closes it (Done when) and have something that wakes GAIA to check, and news
+# about it in chat must close or move it in that turn. Nothing here names a
+# specific service: the evidence route is GAIA's to infer.
+
+- id: own-tl-track-feature
+  ticket: "Tracking a feature until live: Done when is set and something will wake GAIA to check."
+  prompt: "keep track of the hidden per-todo chat feature for me until it's live"
+  tags: [ownership, todo_lifecycle, creation]
+  expected:
+    category: todo_lifecycle
+    delegation: required
+    end_state: {tracked_ownership: true}
+    must_not_communicate: ["it's already live", "is live now"]
+    score: {gates: [delegation, end_state, must_not_communicate]}
+
+- id: own-tl-track-architecture
+  ticket: "Tracking an architecture change: it must say what done means and wake on its own."
+  prompt: "i'm reworking the inbox desk instructions so todo content is the source of truth. track it until it's done"
+  tags: [ownership, todo_lifecycle, creation]
+  expected:
+    category: todo_lifecycle
+    delegation: required
+    end_state: {tracked_ownership: true}
+    must_not_communicate: ["it's done", "all done"]
+    score: {gates: [delegation, end_state, must_not_communicate]}
+
+- id: own-tl-track-passport
+  ticket: "Tracking a life admin task: done when the passport arrives, with a next check."
+  prompt: "track my passport renewal until the new one arrives"
+  tags: [ownership, todo_lifecycle, creation]
+  expected:
+    category: todo_lifecycle
+    delegation: required
+    end_state: {tracked_ownership: true}
+    must_not_communicate: ["it arrived", "you have your passport"]
+    score: {gates: [delegation, end_state, must_not_communicate]}
+
+- id: own-tl-track-claim
+  ticket: "Tracking a claim until payout: Done when plus a wake source."
+  prompt: "keep tabs on my insurance claim until they pay out"
+  tags: [ownership, todo_lifecycle, creation]
+  expected:
+    category: todo_lifecycle
+    delegation: required
+    end_state: {tracked_ownership: true}
+    must_not_communicate: ["they paid", "claim is paid"]
+    score: {gates: [delegation, end_state, must_not_communicate]}
+
+- id: own-tl-shipped-closes
+  ticket: "The user says it shipped: the tracked todo is closed in that turn, not left open."
+  prompt: "track the inbox desk instructions rework until it ships"
+  tags: [ownership, todo_lifecycle, closing]
+  setup:
+    turns:
+      - "track the inbox desk instructions rework until it ships"
+      - "shipped the inbox desk instructions change today"
+  expected:
+    category: todo_lifecycle
+    end_state: {tracked_open: 0}
+    score: {gates: [end_state]}
+
+- id: own-tl-approved-closes
+  ticket: "Life news closes the matching todo: a visa approval ends the visa todo."
+  prompt: "track my visa application until it's approved"
+  setup:
+    turns:
+      - "track my visa application until it's approved"
+      - "my visa got approved!"
+  tags: [ownership, todo_lifecycle, closing]
+  expected:
+    category: todo_lifecycle
+    end_state: {tracked_open: 0}
+    score: {gates: [end_state]}
+
+- id: own-tl-dropped-closes
+  ticket: "A dropped project is closed too, not left open as stale work."
+  prompt: "track the chat redesign until it's live"
+  setup:
+    turns:
+      - "track the chat redesign until it's live"
+      - "we dropped the chat redesign, not doing it anymore"
+  tags: [ownership, todo_lifecycle, closing]
+  expected:
+    category: todo_lifecycle
+    end_state: {tracked_open: 0}
+    score: {gates: [end_state]}
+
+- id: own-tl-partial-moves
+  ticket: "Partial progress keeps it open but moves the next check: merged is not live."
+  prompt: "track the hidden per-todo chat until it's live for users"
+  setup:
+    turns:
+      - "track the hidden per-todo chat until it's live for users"
+      - "merged the per-todo chat change, the deploy is next week"
+  tags: [ownership, todo_lifecycle, partial]
+  expected:
+    category: todo_lifecycle
+    end_state: {tracked_open: 1, tracked_ownership: true}
+    must_not_communicate: ["is live now", "it's all done", "closed it"]
+    score: {gates: [end_state, must_not_communicate]}

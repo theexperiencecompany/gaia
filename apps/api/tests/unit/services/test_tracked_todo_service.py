@@ -15,6 +15,8 @@ import pytest
 from app.constants import todos as todo_constants
 from app.constants.todos import (
     ACTIVE_TRACKED_SUMMARY_LIMIT,
+    CANVAS_DONE_WHEN_SECTION,
+    CANVAS_EVIDENCE_SECTION,
     CANVAS_SECTIONS,
     GAIA_TRACKED_LABEL,
     INBOX_DESK_WATCH_WINDOW_SECONDS,
@@ -38,7 +40,7 @@ from app.models.trigger_subscription_models import (
     SubscriptionResolution,
     TriggerSubscription,
 )
-from app.services.canvas_markdown import normalize_canvas
+from app.services.canvas_markdown import normalize_canvas, section_body
 from app.services.todos import errors as todo_errors
 from app.services.todos.errors import SubTodoParentError
 from app.services.tracked_todo_service import (
@@ -390,6 +392,23 @@ class TestCreateTrackedTodo:
         for section in ("## Current State", "## Context", "## Learnings"):
             assert canvas.count(section) == 1
 
+    async def test_done_when_and_evidence_land_in_their_canvas_sections(self, mock_repo, mock_deps):
+        """Every run reads what closes the todo and where the proof will show up."""
+        mock_deps.create.return_value = _todo_response()
+
+        await TrackedTodoService.create_tracked_todo(
+            USER_ID,
+            "Hidden per-todo chat",
+            done_when=["the feature is live for users", " "],
+            evidence="the release notes on the changelog page",
+        )
+
+        canvas = mock_repo.update.await_args.kwargs["update"].canvas_content
+        assert section_body(canvas, CANVAS_DONE_WHEN_SECTION) == "- the feature is live for users"
+        assert section_body(canvas, CANVAS_EVIDENCE_SECTION) == (
+            "the release notes on the changelog page"
+        )
+
     async def test_a_clean_initial_canvas_sets_no_activity(self, mock_repo, mock_deps):
         mock_deps.create.return_value = _todo_response()
 
@@ -398,7 +417,9 @@ class TestCreateTrackedTodo:
         )
 
         update = mock_repo.update.await_args.kwargs["update"]
-        assert update.canvas_content.startswith("# T\n\n## Standing rules\n\n## Key Details\nk\n")
+        assert update.canvas_content.startswith(
+            "# T\n\n## Standing rules\n\n## Done when\n\n## Evidence\n\n## Key Details\nk\n"
+        )
         assert update.activity_content.count("\n") == 0  # only the creation marker
 
     async def test_creates_with_template_canvas_and_indexes(self, mock_repo, mock_deps):
@@ -845,8 +866,8 @@ class TestStartingCanvas:
         canvas = starting_canvas("Inbox desk", ["Brief me by 9", "Never send a draft"])
 
         assert canvas == template.replace(
-            "-->\n\n## Key Details",
-            "-->\n- Brief me by 9\n- Never send a draft\n\n## Key Details",
+            "-->\n\n## Done when",
+            "-->\n- Brief me by 9\n- Never send a draft\n\n## Done when",
             1,
         )
         assert normalize_canvas(canvas) == (canvas, None)
@@ -857,7 +878,7 @@ class TestStartingCanvas:
         canvas = starting_canvas("## Standing rules", ["Brief me by 9"])
 
         assert canvas == template.replace(
-            "-->\n\n## Key Details", "-->\n- Brief me by 9\n\n## Key Details", 1
+            "-->\n\n## Done when", "-->\n- Brief me by 9\n\n## Done when", 1
         )
 
 
@@ -1104,8 +1125,8 @@ class TestSingleton:
 
 
 _CLEAN_CANVAS = (
-    "# T\n\n## Standing rules\n\n## Key Details\nk\n\n## Current State\n\n## Context\n\n"
-    "## Learnings\n"
+    "# T\n\n## Standing rules\n\n## Done when\n\n## Evidence\n\n## Key Details\nk\n\n"
+    "## Current State\n\n## Context\n\n## Learnings\n"
 )
 
 

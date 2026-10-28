@@ -38,7 +38,7 @@ from langgraph.store.base import BaseStore
 from langgraph.types import RetryPolicy, Send
 from langgraph_bigtool.tools import get_default_retrieval_tool, get_store_arg
 
-from app.agents.core.outcome_review import outcome_unbacked
+from app.agents.core.outcome_review import leaves_a_todo_asleep, outcome_unbacked
 from app.agents.llm.client import (
     LLMInvokeOptions,
     _is_openai_wire,
@@ -822,7 +822,7 @@ def _should_continue(deps: _AgentDeps) -> Callable[..., str | Send | list[Send]]
                 _owes_playbook_decision(state)
                 or (
                     completion_nudges_spent(state) < MAX_COMPLETION_NUDGES
-                    and work_looks_unfinished(state)
+                    and (work_looks_unfinished(state) or leaves_a_todo_asleep(state))
                 )
             ):
                 return "nudge_continue"

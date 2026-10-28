@@ -159,9 +159,21 @@ class OutcomeState(StrEnum):
 #: The calls whose success backs a declared outcome (outcome_review.review_outcome).
 #: Only a tracked todo with a schedule or a recurrence wakes GAIA again; a
 #: reminder just notifies the user, so it backs done, never schedule.
-OUTCOME_TRACKED_TODO_TOOLS = frozenset({"create_tracked_todo", "update_tracked_todo"})
+OUTCOME_CREATE_TODO_TOOL = "create_tracked_todo"
+OUTCOME_TRACKED_TODO_TOOLS = frozenset({OUTCOME_CREATE_TODO_TOOL, "update_tracked_todo"})
 OUTCOME_SCHEDULE_ARGS = ("scheduled_at", "recurrence")
 OUTCOME_SUBSCRIBE_TOOL = "subscribe_todo_to_trigger"
+OUTCOME_COMPLETE_TOOL = "complete_tracked_todo"
+#: A tracked todo created with any of these wakes on its own (a schedule, a
+#: recurrence, or the watch a Gmail thread gets).
+TODO_SELF_WAKING_CREATE_ARGS = ("scheduled_at", "recurrence", "gmail_thread_id")
+#: A bash run bound to a todo subscribes it to that run's events.
+TODO_BOUND_BASH = ("bash", "run_todo_id")
+
+#: Opens the line in a tracked todo's run brief that says nothing will wake it
+#: after this run. outcome_review reads it off the task turn, so the brief and
+#: the check cannot drift apart on a string.
+TODO_REARM_TAG = "<todo_rearm>"
 
 
 #: What the executor brief tells the run each horizon demands before it may finish.

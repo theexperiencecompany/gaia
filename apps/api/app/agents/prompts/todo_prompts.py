@@ -2,7 +2,7 @@
 
 import json
 
-from app.constants.agents import TOOL_RESULT_FETCHED_AT_KEY
+from app.constants.agents import TODO_REARM_TAG, TOOL_RESULT_FETCHED_AT_KEY
 from app.constants.email import MessageFieldLiteral
 from app.constants.todos import (
     INBOX_DESK_BRIEFING_ITEM_MAX_WORDS,
@@ -74,6 +74,27 @@ arrived and is handled, the user confirmed it), close it out yourself in the
 same turn: write Learnings in canvas.md, then call complete_tracked_todo. Do
 not wait for the user to report it or ask for closure. Never complete a
 recurring todo that should keep firing; only one-shot work that is truly done.
+OWNERSHIP: a tracked todo is a promise GAIA keeps until it is closed, so every one
+you create says how it will be closed and what will wake you to check:
+  - done_when: what the user actually needs to be true, checkable ("the feature is live
+    for users", not "work on it"). evidence: where that proof will show up and how a run
+    reads it, chosen from what this user actually uses (their connected services, a
+    thread, a page, their own word). Never assume a service they have not connected.
+  - Something must wake it: a watch on where the evidence will arrive
+    (subscribe_todo_to_trigger) when that source has a trigger, else a next check
+    (scheduled_at) sized to the work: days for a quick task, weeks for a project.
+  - Each run checks Done when against Evidence and leaves the todo one of three ways:
+    closed with the proof in Learnings; still open with its next check or watch set
+    (partial progress moves the next check to the next milestone); or, when only the
+    user can tell, one specific question to them ("the inbox desk change: no sign it
+    shipped. still on it, done, or drop it?") plus a next check. A todo left open with
+    nothing to wake it is never a valid ending.
+  - Learn how this user's work gets done. Before setting evidence, check their skills
+    and standing instructions for a route that fits. When a check finds a reliable route
+    (where their work shows up as done, what they count as done), or the user tells you
+    one, save it: a procedure goes in a learned skill (save_learned_skill, or update_skill
+    when one covers it); a rule for how GAIA should behave for them ("close my feature
+    todos once they ship") is a standing instruction (update_user_instructions).
 IDS ARE INTERNAL: every ID in ACTIVE TRACKED TODOS, tool outputs and file
 paths (todo id, task id, subscription id, notification id, approval id) is
 wiring for tool calls only. Never repeat one in user-visible text. Refer to
@@ -170,6 +191,19 @@ PARENT_STANDING_RULES_LABEL = (
 
 # Names the running todo, so a run can pass its own id as a sub-todo's parent_todo_id.
 TODO_ID_LINE = "This todo's id: {todo_id}."
+
+# Added to a run's brief when the todo has no recurrence and no watch, so this
+# run is the last thing that will ever look at it unless it says otherwise.
+TODO_REARM_BRIEF = (
+    f"{TODO_REARM_TAG}\n"
+    "Nothing wakes this todo after this run: it has no recurrence and no watch. Check the "
+    "canvas's Done when against its Evidence. Then end the run one of three ways: it is "
+    "done, so complete_tracked_todo and record the proof in Learnings; it is not done yet, "
+    "so set when to look again with update_tracked_todo(scheduled_at=...), sized to the "
+    "work, or watch where the proof will arrive with subscribe_todo_to_trigger; or only the "
+    "user can tell, so ask them ONE specific question and still set the next check. A run "
+    "that leaves it open with nothing to wake it is sent back."
+)
 
 # Heads a parent's open sub-todos in its run: they report here instead of to the user.
 SUB_TODOS_LABEL = (

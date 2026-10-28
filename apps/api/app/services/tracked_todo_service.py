@@ -20,6 +20,8 @@ from datetime import UTC, datetime
 
 from app.constants.todos import (
     ACTIVE_TRACKED_SUMMARY_LIMIT,
+    CANVAS_DONE_WHEN_SECTION,
+    CANVAS_EVIDENCE_SECTION,
     CANVAS_STANDING_RULES_SECTION,
     EXECUTE_TRACKED_TODO_TASK,
     GAIA_TRACKED_LABEL,
@@ -35,7 +37,11 @@ from app.models.todo_models import (
     TodoResponse,
     TodoUpdate,
 )
-from app.services.canvas_markdown import canvas_problems, normalize_canvas
+from app.services.canvas_markdown import (
+    canvas_problems,
+    normalize_canvas,
+    with_section_appended,
+)
 from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
 from app.services.storage._vfs_common import folder_name
 from app.services.todo_activity import (
@@ -69,6 +75,12 @@ CANVAS_TEMPLATE = """# {title}
 ## Standing rules
 <!-- the user's instructions for how this todo behaves, one line each with the date given; every run obeys them over its defaults; never removed unless the user retracts one -->
 
+## Done when
+<!-- the checkable conditions that make this done, one per line; every run checks them before closing -->
+
+## Evidence
+<!-- where proof of each condition will show up and how to check it (a connected service, a thread, a page, the user's word) -->
+
 ## Key Details
 <!-- email addresses, thread IDs, calendar IDs, issue IDs: everything needed to take action -->
 
@@ -81,6 +93,17 @@ CANVAS_TEMPLATE = """# {title}
 ## Learnings
 <!-- written on completion: what worked, what did not, timing insights, reusable patterns -->
 """
+
+
+def _with_ownership(canvas: str, done_when: Sequence[str], evidence: str | None) -> str:
+    """Write the todo's done conditions and its evidence source into their sections."""
+    conditions = [c.strip() for c in done_when if c.strip()]
+    if conditions:
+        lines = "\n".join(f"- {c}" for c in conditions)
+        canvas = with_section_appended(canvas, CANVAS_DONE_WHEN_SECTION, lines)
+    if evidence and evidence.strip():
+        canvas = with_section_appended(canvas, CANVAS_EVIDENCE_SECTION, evidence.strip())
+    return canvas
 
 
 def starting_canvas(title: str, standing_rules: Sequence[str] = ()) -> str:
@@ -237,8 +260,10 @@ class TrackedTodoService:
         references: list[str] | None = None,
         parent_todo_id: str | None = None,
         schedule: TodoUpdate | None = None,
+        done_when: Sequence[str] = (),
+        evidence: str | None = None,
     ) -> TodoResponse:
-        """Create a todo with its canvas, activity and log, indexed in ChromaDB.
+        """Create a todo with its canvas (done_when / evidence in their sections), activity and log.
 
         schedule is saved with the insert; external_ref makes it that object's one open, watching
         todo; a sub-todo's runs reach the user only on request. Raises ExternalRefTakenError,
@@ -270,6 +295,7 @@ class TrackedTodoService:
         # Models still compose an "## Activity Log" (or skip a section) inside
         # initial_canvas; keep canvas.md in the template's shape from the first write.
         canvas_content, moved_activity = normalize_canvas(canvas_content)
+        canvas_content = _with_ownership(canvas_content, done_when, evidence)
         if problems := canvas_problems(canvas_content):
             raise CanvasShapeError(problems)
         result = await TodoService.create_todo(

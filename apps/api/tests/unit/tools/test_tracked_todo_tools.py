@@ -1912,6 +1912,8 @@ class TestCreateThreadTrackedTodo:
                 priority=Priority.HIGH,
                 notify_on_run=False,
                 gmail_thread_id="abc",
+                done_when=["Sam replied about the lease"],
+                evidence="a reply in the lease thread",
             )
         assert create.await_args.kwargs == {
             "user_id": "user-1",
@@ -1926,6 +1928,8 @@ class TestCreateThreadTrackedTodo:
             "references": None,
             "parent_todo_id": None,
             "schedule": None,
+            "done_when": ["Sam replied about the lease"],
+            "evidence": "a reply in the lease thread",
         }
 
     async def test_no_thread_id_means_no_ref(self):

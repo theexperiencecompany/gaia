@@ -220,6 +220,18 @@ async def create_tracked_todo(
         "ones found with search_todo_context. Every run of this todo reads their Learnings.",
     ] = None,
     parent_todo_id: Annotated[str | None, _PARENT_TODO_DESC] = None,
+    done_when: Annotated[
+        list[str] | None,
+        "The checkable conditions that make this todo done, one each, inferred from what "
+        "the user actually wants (e.g. 'the feature is live for users', not 'a PR exists'). "
+        "Every run checks them before closing. Set it on every tracked todo.",
+    ] = None,
+    evidence: Annotated[
+        str | None,
+        "Where proof of each condition will show up and how a run checks it: a connected "
+        "service and what to look for there, a thread, a page, or the user's word. Use the "
+        "user's own patterns (their skills and standing instructions) when one fits.",
+    ] = None,
 ) -> str:
     """
     Create a tracked todo: a GAIA-managed todo with a working-memory canvas.
@@ -312,6 +324,8 @@ async def create_tracked_todo(
             references=references,
             parent_todo_id=parent_todo_id,
             schedule=creation_update,
+            done_when=done_when or (),
+            evidence=evidence,
         )
     except (
         ExternalRefTakenError,

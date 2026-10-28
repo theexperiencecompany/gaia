@@ -496,6 +496,30 @@ class TestCompletionNudgeWiring:
         assert result["messages"][-1].content == "Finished."
 
     @pytest.mark.asyncio
+    async def test_a_plain_text_stop_that_strands_a_tracked_todo_is_nudged_once(self):
+        """A todo created with nothing to wake it is the forever-open todo; the run gets one chance to arm it."""
+        thread = [
+            HumanMessage(content="track the inbox desk change until it ships"),
+            AIMessage(
+                content="",
+                tool_calls=[{"name": "create_tracked_todo", "args": {"title": "t"}, "id": "c1"}],
+            ),
+            ToolMessage(content="created", tool_call_id="c1", name="create_tracked_todo"),
+        ]
+        graph = self._compile_executor(
+            BindableToolsFakeModel(
+                responses=[AIMessage(content="Tracking it."), AIMessage(content="Tracking it.")]
+            )
+        )
+
+        result = await graph.ainvoke(
+            {"messages": thread, "todos": []},
+            config={"configurable": {"thread_id": "nudge-asleep"}},
+        )
+
+        assert self._nudges(result) == [COMPLETION_NUDGE_MESSAGE]
+
+    @pytest.mark.asyncio
     async def test_done_declared_with_no_work_is_nudged_once(self):
         """The run grading itself is the failure: done with nothing run is sent back once."""
         graph = self._compile_executor(
