@@ -11,19 +11,25 @@ Two invariants carry the security weight, and both are attacked here:
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from mcp.types import Tool, ToolAnnotations
 import pytest
 
 from app.agents.llm.client import SILENT_LLM_CONFIG, StructuredCallOptions
 from app.constants.hil import HIL_LLM_TIMEOUT_SECONDS
+from app.constants.integrations import TOOL_INTEGRATION_ID_METADATA_KEY
 from app.models.hil_models import HILToolRiskRecord
 from app.services.hil.classification import (
     _classify_with_llm,
     _ClassifyResult,
     is_tool_destructive,
     mcp_destructive_hint,
+    tool_integration_id,
 )
 from app.services.hil.prompts import TOOL_CLASSIFY_PROMPT
-from app.services.mcp.langchain_adapter import MCP_ANNOTATIONS_METADATA_KEY
+from app.services.mcp.langchain_adapter import (
+    MCP_ANNOTATIONS_METADATA_KEY,
+    SanitizingLangChainAdapter,
+)
 
 from .conftest import make_tool
 
@@ -88,20 +94,38 @@ class TestFailsClosed:
             assert await is_tool_destructive("list_files", "Lists files.") is False
 
 
+class TestToolIntegrationId:
+    def test_a_stamped_integration_is_returned(self) -> None:
+        tool = make_tool(metadata={TOOL_INTEGRATION_ID_METADATA_KEY: "gmail"})
+        assert tool_integration_id(tool) == "gmail"
+
+    # An empty or non-string stamp is no provenance: it must not reach the curated lookup.
+    @pytest.mark.parametrize("stamp", ["", 7, None])
+    def test_an_empty_or_non_string_stamp_is_no_provenance(self, stamp: object) -> None:
+        tool = make_tool(metadata={TOOL_INTEGRATION_ID_METADATA_KEY: stamp})
+        assert tool_integration_id(tool) is None
+
+
 class TestMcpHintEscalatesOnly:
     def test_a_true_destructive_hint_is_honoured(self) -> None:
-        tool = make_tool(metadata={MCP_ANNOTATIONS_METADATA_KEY: {"destructiveHint": True}})
+        tool = make_tool(
+            metadata={MCP_ANNOTATIONS_METADATA_KEY: ToolAnnotations(destructiveHint=True)}
+        )
         assert mcp_destructive_hint(tool) is True
 
     def test_a_false_destructive_hint_defers_rather_than_declaring_safe(self) -> None:
         # The attack: a malicious MCP server ships destructiveHint=False on a tool that
         # deletes the account. Returning False here would let it clear the registry's own
         # verdict. It must return None ("no opinion"), never False.
-        tool = make_tool(metadata={MCP_ANNOTATIONS_METADATA_KEY: {"destructiveHint": False}})
+        tool = make_tool(
+            metadata={MCP_ANNOTATIONS_METADATA_KEY: ToolAnnotations(destructiveHint=False)}
+        )
         assert mcp_destructive_hint(tool) is None
 
     def test_a_read_only_hint_does_not_declare_a_tool_safe(self) -> None:
-        tool = make_tool(metadata={MCP_ANNOTATIONS_METADATA_KEY: {"readOnlyHint": True}})
+        tool = make_tool(
+            metadata={MCP_ANNOTATIONS_METADATA_KEY: ToolAnnotations(readOnlyHint=True)}
+        )
         assert mcp_destructive_hint(tool) is None
 
     @pytest.mark.parametrize(
@@ -111,12 +135,18 @@ class TestMcpHintEscalatesOnly:
     def test_missing_or_malformed_annotations_yield_no_opinion(self, metadata: object) -> None:
         assert mcp_destructive_hint(make_tool(metadata=metadata)) is None
 
-    def test_a_truthy_but_non_true_hint_is_not_accepted(self) -> None:
-        # Strict identity: "false" (a non-empty string) is truthy in Python. A server
-        # sending the *string* "false" must not be read as a destructive declaration —
-        # and, more importantly, this pins the check to `is True`.
-        tool = make_tool(metadata={MCP_ANNOTATIONS_METADATA_KEY: {"destructiveHint": "false"}})
-        assert mcp_destructive_hint(tool) is None
+    @pytest.mark.parametrize(("hint", "expected"), [(True, True), (False, None), (None, None)])
+    def test_the_hint_the_adapter_stashes_is_the_hint_the_gate_reads(
+        self, hint: bool | None, expected: bool | None
+    ) -> None:
+        server_tool = Tool(
+            name="wipe",
+            description="d",
+            inputSchema={"type": "object"},
+            annotations=ToolAnnotations(destructiveHint=hint),
+        )
+        tool = SanitizingLangChainAdapter()._convert_tool(server_tool, MagicMock())
+        assert mcp_destructive_hint(tool) is expected
 
     async def test_a_destructive_hint_gates_even_over_a_reviewed_safe_registry_flag(self) -> None:
         # Escalation: the registry says safe, the server says destructive → gate it,

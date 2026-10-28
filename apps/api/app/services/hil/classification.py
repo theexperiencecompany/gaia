@@ -18,6 +18,7 @@ Any failure resolves to destructive (fail closed).
 import hashlib
 
 from langchain_core.tools import BaseTool
+from mcp.types import ToolAnnotations
 from pydantic import BaseModel, Field
 
 from app.agents.llm.client import SILENT_LLM_CONFIG, StructuredCallOptions, ainvoke_structured
@@ -93,7 +94,7 @@ def mcp_destructive_hint(tool: BaseTool | None) -> bool | None:
     if not isinstance(metadata, dict):
         return None
     annotations = metadata.get(MCP_ANNOTATIONS_METADATA_KEY)
-    if isinstance(annotations, dict) and annotations.get("destructiveHint") is True:
+    if isinstance(annotations, ToolAnnotations) and annotations.destructiveHint is True:
         return True
     return None
 

@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, patch
 
 from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.tools import BaseTool
+from mcp.types import ToolAnnotations
 import pytest
 
 from app.constants.execute import EXECUTE_TOOL_NAME
@@ -164,7 +165,7 @@ class TestPolicyUnwrapsExecute:
         mcp_tool = make_tool(
             name="mcp_delete_workspace",
             description="Delete a workspace.",
-            metadata={MCP_ANNOTATIONS_METADATA_KEY: {"destructiveHint": True}},
+            metadata={MCP_ANNOTATIONS_METADATA_KEY: ToolAnnotations(destructiveHint=True)},
         )
         with (
             patch(
