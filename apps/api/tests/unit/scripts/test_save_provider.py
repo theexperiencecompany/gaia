@@ -3,6 +3,7 @@
 import socket
 
 import httpx
+from loguru import logger as loguru_logger
 import pytest
 import respx
 
@@ -13,6 +14,28 @@ from tests.helpers import InMemoryCredentialStore
 _PUBLIC_IP = "8.8.8.8"
 _OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions"
 _CHAT_COMPLETION = {"choices": [{"message": {"role": "assistant", "content": "OK"}}]}
+
+
+@pytest.fixture(autouse=True)
+def _no_stale_logs(capsys: pytest.CaptureFixture[str]) -> None:
+    """Flush and clear records queued by earlier tests before this one is captured.
+
+    The console sink is enqueue=True, so a previous test's line can land inside this
+    test's capture window and break an exact-output assertion.
+    """
+    loguru_logger.complete()
+    capsys.readouterr()
+
+
+def _captured(capsys: pytest.CaptureFixture[str]) -> tuple[str, str]:
+    """Drain loguru's queue, then read the captured streams.
+
+    The console sink is enqueue=True, so a background thread writes the line at some
+    later moment; reading first makes exact-output assertions race that thread.
+    """
+    loguru_logger.complete()
+    captured = capsys.readouterr()
+    return captured.out, captured.err
 
 
 @pytest.fixture(autouse=True)
@@ -61,7 +84,7 @@ async def test_custom_stores_the_key_from_the_environment(
         )
         assert await save_provider.run(argv) == 0
 
-    assert capsys.readouterr().out == (
+    assert _captured(capsys)[0] == (
         "Saved custom. Change it any time in Settings → Providers & Tools.\n"
     )
 
@@ -84,7 +107,7 @@ async def test_a_refused_endpoint_exits_non_zero_naming_why(
     code = await save_provider.run(["--provider", "custom", "--base-url", "ftp://gw"])
 
     assert code == 1
-    assert capsys.readouterr().err == (
+    assert _captured(capsys)[1] == (
         "Could not save custom: This URL looks private or unreachable — use a public endpoint "
         "or set OLLAMA_BASE_URL in your .env for local Ollama (unsupported URL scheme: 'ftp')\n"
     )
@@ -108,7 +131,7 @@ async def test_a_key_the_provider_rejects_saves_nothing_and_says_why(
 
     assert (b"Authorization", b"Bearer sk-bad") in route.calls.last.request.headers.raw
     assert code == 1
-    assert capsys.readouterr().err == (
+    assert _captured(capsys)[1] == (
         "Could not save openai: OpenAI rejected the key: Incorrect API key provided: [redacted].\n"
     )
     assert await resolve("openai") is None
@@ -136,9 +159,7 @@ async def test_help_describes_what_the_script_does(capsys: pytest.CaptureFixture
         await save_provider.run(["--help"])
 
     assert exit_info.value.code == 0
-    assert (
-        "Save one provider credential exactly as the setup wizard does" in capsys.readouterr().out
-    )
+    assert "Save one provider credential exactly as the setup wizard does" in _captured(capsys)[0]
 
 
 @pytest.mark.parametrize(
@@ -158,4 +179,4 @@ async def test_a_missing_or_unknown_provider_exits_with_usage(
         await save_provider.run(argv)
 
     assert exit_info.value.code == 2
-    assert complaint in capsys.readouterr().err
+    assert complaint in _captured(capsys)[1]
