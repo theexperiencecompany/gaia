@@ -945,6 +945,12 @@ def _fresh_redis_client() -> None:
     stale between tests. Rebuilding here keeps production's single-loop
     behavior.
     """
+    import redis.asyncio as redis
+
     from app.db.redis import _new_client, redis_cache
 
+    # A test that replaced the client (fakeredis, a mock) owns it; leave it alone.
+    current = redis_cache.redis
+    if current is not None and type(current) is not redis.Redis:
+        return
     redis_cache.redis = _new_client(redis_cache.redis_url) if redis_cache.redis_url else None
