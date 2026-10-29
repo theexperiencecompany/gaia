@@ -13,7 +13,7 @@ import uuid
 
 import pytest
 
-from app.constants.chat import CONVERSATION_MAX_RETAINED_PINS
+from app.constants import chat as chat_constants
 from app.db.repositories.cache import CachePolicy
 from app.db.repositories.conversations import ConversationRepository
 from app.models.chat_models import (
@@ -1116,6 +1116,8 @@ class TestHistoryTrimming:
 
     @pytest.mark.regression
     async def test_trimming_keeps_a_pinned_message_outside_the_window(self, repo):
+        # Read off the module, not imported: a module-level import of a constant this
+        # PR adds cannot collect on base, and a collection ERROR is not the red to prove.
         doc, ids = await self._seed(repo, 5)
         await repo.set_message_pinned(
             doc.conversation_id, user_id=doc.user_id, message_id=ids[0], pinned=True
@@ -1174,7 +1176,7 @@ class TestHistoryTrimming:
         """Pins outlive the window, so the pin count needs its own ceiling."""
         doc = _doc()
         await repo.create(doc)
-        kept = CONVERSATION_MAX_RETAINED_PINS + 10
+        kept = chat_constants.CONVERSATION_MAX_RETAINED_PINS + 10
         pinned_ids: list[str] = []
         for index in range(kept):
             added = await repo.append_messages(
@@ -1202,9 +1204,9 @@ class TestHistoryTrimming:
         stored = await repo.get(doc.conversation_id, user_id=doc.user_id)
         assert stored is not None
         pinned = [message.response for message in stored.messages if message.pinned]
-        assert len(pinned) == CONVERSATION_MAX_RETAINED_PINS
+        assert len(pinned) == chat_constants.CONVERSATION_MAX_RETAINED_PINS
         # The newest pins survive; the oldest fall out with the messages carrying them.
-        assert pinned[0] == f"p{kept - CONVERSATION_MAX_RETAINED_PINS}"
+        assert pinned[0] == f"p{kept - chat_constants.CONVERSATION_MAX_RETAINED_PINS}"
         assert [message.response for message in stored.messages][-3:] == [
             "tail0",
             "tail1",
