@@ -418,6 +418,7 @@ export const footerSections: LinkSection[] = [
   {
     title: "Product",
     links: [
+      { label: "Features", href: "/features" },
       { label: "Download", href: "/download" },
       { label: "Use Cases", href: "/use-cases" },
       { label: "Marketplace", href: "/marketplace" },
