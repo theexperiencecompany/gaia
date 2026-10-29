@@ -30,6 +30,16 @@ def _autouse_hil_approvals_collection() -> None:
     """
 
 
+@pytest.fixture(autouse=True)
+def _mongo_client_follows_the_test_loop() -> None:
+    """Neutralise the root client reset: this tier keeps one stack for the whole module.
+
+    The root fixture drops the process-wide Mongo and Redis clients between tests. The
+    API and worker here run in this process on the module's loop, so dropping their
+    clients leaves every browser job stuck at "no browser job started".
+    """
+
+
 @pytest.fixture(scope="session")
 def progress(pytestconfig: pytest.Config) -> Progress:
     return Progress(pytestconfig)
