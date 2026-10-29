@@ -92,6 +92,7 @@ class _LogFormats(TypedDict):
 
 class _LogConfig(TypedDict):
     level: str
+    enqueue: bool
     format_mode: str
     diagnose: bool
     backtrace: bool
@@ -215,6 +216,9 @@ def env_context() -> EnvContext:
 
 LOG_CONFIG: _LogConfig = {
     "level": os.getenv("LOG_LEVEL", "INFO"),
+    # Enqueued sinks hand each record to a background thread. Production wants that;
+    # tests must not, because they assert on the captured stream at a fixed instant.
+    "enqueue": os.getenv("LOG_ENQUEUE", "true").lower() == "true",
     # Set LOG_FORMAT=json in production Docker to emit newline-delimited JSON to
     # stdout. Promtail picks this up and ships it to Loki with zero parsing issues.
     # Default is "console" which keeps the colourised format for local development.
@@ -715,7 +719,7 @@ def configure_loguru() -> Logger:
             level=LOG_CONFIG["level"],
             backtrace=False,
             diagnose=False,
-            enqueue=True,
+            enqueue=LOG_CONFIG["enqueue"],
             catch=True,
         )
     else:
@@ -727,7 +731,7 @@ def configure_loguru() -> Logger:
             colorize=LOG_CONFIG["colorize"],
             backtrace=LOG_CONFIG["backtrace"],
             diagnose=LOG_CONFIG["diagnose"],
-            enqueue=True,
+            enqueue=LOG_CONFIG["enqueue"],
             catch=True,
         )
 
