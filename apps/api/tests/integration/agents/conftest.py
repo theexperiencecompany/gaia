@@ -171,9 +171,7 @@ _mongo_client_loop: asyncio.AbstractEventLoop | None = None
 async def _mongo_client_follows_the_test_loop() -> None:
     """Rebuild the process-wide Mongo and Redis clients when the loop changes.
 
-    Both bind a client to the loop that first used it and pytest gives every test a
-    fresh one. Scoped to this tier: tests that boot a stack in-process keep it for the
-    module and must not have its clients pulled out from under it.
+    Only this tier: tests that boot a stack in-process keep theirs for the module.
     """
     global _mongo_client_loop
     loop = asyncio.get_running_loop()
