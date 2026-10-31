@@ -51,7 +51,21 @@ os.environ.setdefault("AGENT_SECRET", "test-agent-secret-" + "x" * 32)  # pragma
 # setdefault-only — a test or export that sets them wins.
 os.environ.setdefault("CHROMADB_HOST", "localhost")
 os.environ.setdefault("CHROMADB_PORT", "8001")
-os.environ.setdefault("POSTGRES_URL", "postgresql://localhost:5432/gaia_test")
+# One test database: the fixtures dial DATABASE_URL, the app's engine POSTGRES_URL.
+# Either one set names it for both (selfhost-smoke exports only POSTGRES_URL); neither
+# defaults to the CI test container's (scripts/ci/test-services.sh exports both equal).
+os.environ.setdefault(
+    "DATABASE_URL",
+    os.environ.get(
+        "POSTGRES_URL",
+        "postgresql://gaia:gaia@localhost:5432/gaia_test",  # pragma: allowlist secret
+    ),
+)
+if os.environ.setdefault("POSTGRES_URL", os.environ["DATABASE_URL"]) != os.environ["DATABASE_URL"]:
+    raise RuntimeError(
+        "POSTGRES_URL and DATABASE_URL name different databases; the app would not see "
+        "the fixtures' data. Export one of them, or both equal."
+    )
 os.environ.setdefault("RABBITMQ_URL", "amqp://localhost:5672")
 os.environ.setdefault("E2B_DOMAIN", "e2b.local")
 os.environ.setdefault("BOT_SESSION_TOKEN_SECRET", "test-bot-session-secret-" + "x" * 16)

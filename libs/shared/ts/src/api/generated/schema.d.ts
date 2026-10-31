@@ -5142,6 +5142,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/todos/{todo_id}/conversation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open Todo Conversation Endpoint
+         * @description Return a tracked todo's own chat, creating it before its first run; it is never listed.
+         */
+        post: operations["todos_open_todo_conversation_endpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/todos/{todo_id}/subtasks": {
         parameters: {
             query?: never;
@@ -6856,6 +6876,8 @@ export interface components {
         BatchSyncResponse: {
             /** Conversations */
             conversations: components["schemas"]["ConversationSyncRow"][];
+            /** Missing */
+            missing: string[];
         };
         /**
          * BlobStoreKind
@@ -8027,6 +8049,8 @@ export interface components {
             /** Starred */
             starred?: boolean | null;
             system_purpose?: components["schemas"]["SystemPurpose"] | null;
+            /** Todo Id */
+            todo_id?: string | null;
             /** Updatedat */
             updatedAt?: string | null;
             /** User Id */
@@ -8166,6 +8190,8 @@ export interface components {
             /** Starred */
             starred: boolean | null;
             system_purpose: components["schemas"]["SystemPurpose"] | null;
+            /** Todo Id */
+            todo_id: string | null;
             /** Updatedat */
             updatedAt: string | null;
         };
@@ -11617,6 +11643,7 @@ export interface components {
             selectedWorkflow?: components["schemas"]["SelectedWorkflowDataInput"] | null;
             /** Subtype */
             subtype?: string | null;
+            todo_run_wake?: components["schemas"]["TodoRunWake"] | null;
             /** Tool Data */
             tool_data?: components["schemas"]["ToolDataEntry"][] | null;
             /** Toolcategory */
@@ -11678,6 +11705,7 @@ export interface components {
             selectedWorkflow?: components["schemas"]["SelectedWorkflowDataOutput"] | null;
             /** Subtype */
             subtype?: string | null;
+            todo_run_wake?: components["schemas"]["TodoRunWake"] | null;
             /** Tool Data */
             tool_data?: components["schemas"]["ToolDataEntry"][] | null;
             /** Toolcategory */
@@ -15054,6 +15082,14 @@ export interface components {
             content: string;
         };
         /**
+         * TodoConversationResponse
+         * @description The tracked todo's own chat, where its runs execute; kept out of the chat list.
+         */
+        TodoConversationResponse: {
+            /** Conversation Id */
+            conversation_id: string;
+        };
+        /**
          * TodoCounts
          * @description Dashboard/sidebar counts for a user's todos.
          */
@@ -15360,6 +15396,17 @@ export interface components {
              */
             workflow_id: string | null;
         };
+        /**
+         * TodoRunWake
+         * @description What woke one run of a tracked todo, shown on the user's side of its chat.
+         */
+        TodoRunWake: {
+            /** Approval Summary */
+            approval_summary: string | null;
+            kind: components["schemas"]["TodoWakeKind"];
+            /** Trigger Names */
+            trigger_names: string[];
+        };
         /** TodoStats */
         TodoStats: {
             /** By Priority */
@@ -15433,6 +15480,12 @@ export interface components {
             /** Workflow Id */
             workflow_id?: string | null;
         };
+        /**
+         * TodoWakeKind
+         * @description What woke a tracked todo's run: its schedule, a watched event, or an approval it waited on.
+         * @enum {string}
+         */
+        TodoWakeKind: "schedule" | "trigger" | "approval";
         /**
          * TodoWorkflowGenerationResponse
          * @description Result of asking for a todo's workflow to be generated.
@@ -17506,14 +17559,17 @@ export type SupportRequestSubmissionResponse = components['schemas']['SupportReq
 export type SupportRequestType = components['schemas']['SupportRequestType'];
 export type SystemPurpose = components['schemas']['SystemPurpose'];
 export type TodoCanvasResponse = components['schemas']['TodoCanvasResponse'];
+export type TodoConversationResponse = components['schemas']['TodoConversationResponse'];
 export type TodoCounts = components['schemas']['TodoCounts'];
 export type TodoistNewTaskCreatedConfig = components['schemas']['TodoistNewTaskCreatedConfig'];
 export type TodoLabelCount = components['schemas']['TodoLabelCount'];
 export type TodoListResponse = components['schemas']['TodoListResponse'];
 export type TodoModel = components['schemas']['TodoModel'];
 export type TodoResponse = components['schemas']['TodoResponse'];
+export type TodoRunWake = components['schemas']['TodoRunWake'];
 export type TodoStats = components['schemas']['TodoStats'];
 export type TodoUpdateRequest = components['schemas']['TodoUpdateRequest'];
+export type TodoWakeKind = components['schemas']['TodoWakeKind'];
 export type TodoWorkflowGenerationResponse = components['schemas']['TodoWorkflowGenerationResponse'];
 export type TodoWorkflowGenerationStatus = components['schemas']['TodoWorkflowGenerationStatus'];
 export type TodoWorkflowStatus = components['schemas']['TodoWorkflowStatus'];
@@ -31362,6 +31418,55 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TodoCanvasResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    todos_open_todo_conversation_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                todo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TodoConversationResponse"];
                 };
             };
             /** @description Unprocessable Entity */

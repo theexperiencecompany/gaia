@@ -9,6 +9,7 @@ import type React from "react";
 import { SidebarContent, SidebarFooter } from "@/components/ui/sidebar";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import CanvasViewer from "@/features/todo/components/CanvasViewer";
+import { OpenTodoChatButton } from "@/features/todo/components/OpenTodoChatButton";
 import { SubTodosSection } from "@/features/todo/components/SubTodosSection";
 import SubtaskManager from "@/features/todo/components/shared/SubtaskManager";
 import TodoFieldsRow from "@/features/todo/components/shared/TodoFieldsRow";
@@ -150,17 +151,20 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
             </span>
           </div>
 
-          <Button
-            type="button"
-            isIconOnly
-            color="danger"
-            size="sm"
-            variant="flat"
-            onPress={handleDelete}
-            aria-label="Delete todo"
-          >
-            <Delete02Icon className="size-5" />
-          </Button>
+          <div className="flex items-center gap-2">
+            {isTrackedTodo(todo) && <OpenTodoChatButton todoId={todo.id} />}
+            <Button
+              type="button"
+              isIconOnly
+              color="danger"
+              size="sm"
+              variant="flat"
+              onPress={handleDelete}
+              aria-label="Delete todo"
+            >
+              <Delete02Icon className="size-5" />
+            </Button>
+          </div>
         </div>
       </SidebarFooter>
     </div>

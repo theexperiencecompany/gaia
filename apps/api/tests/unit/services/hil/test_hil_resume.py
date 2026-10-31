@@ -105,6 +105,7 @@ class TestResumeTodo:
                 f"{MODULE}.enqueue_worker_job",
                 new=_fake_enqueue,
             ),
+            patch(f"{MODULE}.record_activity", new=AsyncMock()),
         ):
             await _resume_todo(_row(owner_run_type="todo", owner_id="todo-9"))
         # The parked conversation — never a fresh session. A fresh uuid would
@@ -143,6 +144,7 @@ class TestResumedEvent:
                 f"{MODULE}.enqueue_worker_job",
                 new=AsyncMock(),
             ),
+            patch(f"{MODULE}.record_activity", new=AsyncMock()),
             patch("app.services.hil.resume.capture") as capture,
         ):
             await _resume_todo(_row(owner_run_type="todo", owner_id="todo-9"))
@@ -239,6 +241,24 @@ class TestResumeRouting:
             seams.pool, "resume_tracked_todo", "todo-9", "conv-bg", "ap_bg1", "Send briefing"
         )
         seams.queue_workflow.assert_not_awaited()
+
+    async def test_a_todo_grant_is_logged_on_that_todo_at_the_decision(
+        self, seams: ResumeSeams
+    ) -> None:
+        """Logged here, under the resume claim, not by the resume job, which a busy chat defers and reruns."""
+        await resume_owner_after_approval(_row(owner_run_type="todo", owner_id="todo-9"))
+
+        seams.append_activity.assert_awaited_once_with(
+            "todo-9",
+            USER_ID,
+            TodoActivityEvent.APPROVAL_GRANTED,
+            "ap_bg1: Send briefing; continuing the run in its own thread",
+        )
+
+    async def test_a_workflow_grant_logs_nothing_on_a_todo(self, seams: ResumeSeams) -> None:
+        await resume_owner_after_approval(_row(owner_run_type="workflow", owner_id="wf-7"))
+
+        seams.append_activity.assert_not_awaited()
 
     async def test_a_workflow_owner_is_requeued_with_its_receipt_and_last_brief(
         self, seams: ResumeSeams

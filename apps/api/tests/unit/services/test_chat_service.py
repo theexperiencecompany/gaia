@@ -491,6 +491,19 @@ class TestRunChatStreamBackground:
             yield
 
     @pytest.fixture(autouse=True)
+    def _not_a_todos_chat(self) -> Iterator[None]:
+        """Stub the existing-conversation lookup of its tracked todo to "none".
+
+        A turn on an existing conversation reads which todo's chat it is (if any);
+        these tests are not about that binding and must not reach Mongo for it.
+        """
+        with patch(
+            "app.services.chat.stream.conversation_repository.get_todo_id",
+            new=AsyncMock(return_value=None),
+        ):
+            yield
+
+    @pytest.fixture(autouse=True)
     def _no_live_artifact_forwarder(self) -> Iterator[None]:
         """Force ArtifactForwarder onto its "Redis unavailable" fast path.
 

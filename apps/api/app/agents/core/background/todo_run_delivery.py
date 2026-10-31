@@ -1,10 +1,10 @@
 """Terminal delivery for a tracked todo's own background run.
 
-The run's conversation is a throwaway with no transport, so its result is never
-saved there: comms decides whether it is worth a message at all, the user's chat
-app gets it only if so, and activity.md records what happened either way. A step
-the todo store fails is finished by a durable job, keyed by the run, never by
-running the todo again.
+The run executes in its todo's chat, which result_delivery has already given the
+executor's report. What reaches the user's chat app is decided here: comms decides
+whether it is worth a message at all, and the chat app gets it only if so.
+activity.md records what happened either way. A step the todo store fails is
+finished by a durable job, keyed by the run, never by running the todo again.
 """
 
 import asyncio
@@ -14,7 +14,10 @@ from pydantic import BaseModel, ConfigDict
 from pymongo.errors import PyMongoError
 from redis.exceptions import RedisError
 
-from app.agents.core.background.comms_narrator import narrate_executor_result
+from app.agents.core.background.comms_narrator import (
+    narrate_executor_result,
+    record_executor_report,
+)
 from app.agents.core.background.session import ExecutorRun, TodoRun
 from app.agents.core.background.workflow_platform_delivery import deliver_result_to_platforms
 from app.agents.core.comms_directive import interpret_comms_output
@@ -111,6 +114,8 @@ async def deliver_todo_run_result(
     """
     log.set_ns("todo_delivery", todo_id=todo_run.todo_id, result_type=result_type)
     if result_type == "error":
+        # Not narrated, but the chat shows it, so the chat's next turn must know it.
+        await record_executor_report(run.conversation_id, result_text, result_type)
         return
     finished = FinishedTodoRun(
         run_id=run.stream_id,
@@ -206,11 +211,11 @@ async def _send_once(finished: FinishedTodoRun, user: AuthenticatedUser) -> tupl
         return None
 
     # Read now, not when the run started: the run itself may have turned it off.
-    resolution = (
-        await _narrate_and_send(finished, user, todo)
-        if todo.notify_on_run
-        else _not_sent(TodoRunDeliveryOutcome.NOTIFY_OFF)
-    )
+    if todo.notify_on_run:
+        resolution = await _narrate_and_send(finished, user, todo)
+    else:
+        await record_executor_report(finished.conversation_id, finished.result_text, "result")
+        resolution = _not_sent(TodoRunDeliveryOutcome.NOTIFY_OFF)
     log.set_ns("todo_delivery", outcome=resolution.outcome.value)
     # A worker has no request context: the explicit user id keeps the event off
     # an anonymous profile.

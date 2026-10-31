@@ -213,7 +213,7 @@ async def delete_all_conversations(user: AuthenticatedUser) -> DeleteAllConversa
     user_id = user.user_id
     # The repository returns the deleted ids so their (non-user-scoped) checkpoint
     # threads can be cleaned up afterwards.
-    conversation_ids = await conversation_repository.delete_all_for_user(user_id)
+    conversation_ids = await conversation_repository.delete_all_chats_for_user(user_id)
 
     if not conversation_ids:
         raise HTTPException(status_code=404, detail="No conversations found for the user")
@@ -238,8 +238,19 @@ async def delete_conversation(
             detail="Conversation not found or does not belong to the user",
         )
 
-    # Best-effort cleanup of the on-disk session dir. Mongo delete already
-    # succeeded; the ARQ prune task is the backstop if this fails.
+    await _cleanup_conversation_storage(user_id, conversation_id)
+
+    capture(UserId(user_id), ChatConversationDeleted(conversation_id=conversation_id))
+    return ConversationActionResponse(
+        message="Conversation deleted successfully",
+        conversation_id=conversation_id,
+    )
+
+
+async def _cleanup_conversation_storage(user_id: str, conversation_id: str) -> None:
+    """Clean up what outlives a deleted conversation's document, best-effort.
+
+    The ARQ prune task and the nightly checkpoint sweep are the backstops if a step fails."""
     if user_id:
         try:
             await delete_session_dir(user_id, conversation_id)
@@ -250,11 +261,37 @@ async def delete_conversation(
 
     await _cleanup_checkpoint_threads(conversation_id)
 
-    capture(UserId(user_id), ChatConversationDeleted(conversation_id=conversation_id))
-    return ConversationActionResponse(
-        message="Conversation deleted successfully",
-        conversation_id=conversation_id,
+
+async def get_or_create_todo_conversation(user_id: str, todo_id: str, title: str) -> str:
+    """Return the id of a tracked todo's chat, creating it on first use.
+
+    The chat is where the todo's runs execute and what its "Open chat" shows; it
+    is never listed (see the repository's _listed). A racing second create loses
+    on the unique (user_id, todo_id) index and reads the winner's chat instead.
+    """
+    if existing := await conversation_repository.find_todo_conversation_id(user_id, todo_id):
+        return existing
+    document = ConversationDocument(
+        user_id=user_id,
+        conversation_id=str(uuid4()),
+        description=title,
+        todo_id=todo_id,
+        createdAt=datetime.now(UTC).isoformat(),
     )
+    if await conversation_repository.try_create(document):
+        return document.conversation_id
+    winner = await conversation_repository.find_todo_conversation_id(user_id, todo_id)
+    if winner is None:
+        raise RuntimeError(
+            f"the chat of todo {todo_id} was claimed by a concurrent create but cannot be read"
+        )
+    return winner
+
+
+async def delete_todo_conversations(user_id: str, todo_ids: list[str]) -> None:
+    """Delete the chats of deleted tracked todos, with the storage each one left behind."""
+    for conversation_id in await conversation_repository.delete_for_todos(user_id, todo_ids):
+        await _cleanup_conversation_storage(user_id, conversation_id)
 
 
 async def update_messages(
@@ -444,7 +481,11 @@ async def batch_sync_conversations(
     if not request.conversations:
         return BatchSyncResponse()
 
-    documents = await conversation_repository.find_updated_since(user_id, request.conversations)
+    requested = [item.conversation_id for item in request.conversations]
+    documents, owned = await asyncio.gather(
+        conversation_repository.find_updated_since(user_id, request.conversations),
+        conversation_repository.owned_ids(user_id, requested),
+    )
 
     rows: list[ConversationSyncRow] = []
     for document in documents:
@@ -464,7 +505,10 @@ async def batch_sync_conversations(
                     user_id, document.conversation_id
                 ),
                 has_live_approval=document.has_live_approval,
+                todo_id=document.todo_id,
             )
         )
 
-    return BatchSyncResponse(conversations=rows)
+    return BatchSyncResponse(
+        conversations=rows, missing=[cid for cid in requested if cid not in owned]
+    )

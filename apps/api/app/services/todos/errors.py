@@ -94,3 +94,14 @@ class UnwatchedTodoKeptError(AppError):
             public={"todo_id": todo_id},
         )
         self.todo_id = todo_id
+
+
+class UntrackedTodoChatError(AppError):
+    """Raised (409) when a chat is asked of a todo GAIA does not track: only tracked todos run, so only they have one."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            message="Only a tracked todo has a chat",
+            status_code=HTTPStatus.CONFLICT,
+            code="todo_not_tracked",
+        )

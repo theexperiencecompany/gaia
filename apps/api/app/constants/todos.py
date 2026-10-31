@@ -81,6 +81,10 @@ PAUSED_TRIGGER_HOLD_TTL: Final[timedelta] = timedelta(days=30)
 # How much of a run's final report is kept in its activity.md entry.
 RUN_SUMMARY_ACTIVITY_CHARS: Final[int] = 200
 
+# A tracked todo's chat gains two messages every run (what woke it, then its report),
+# so each save caps it at its newest messages, keeping the document under MongoDB's 16MB limit.
+TODO_CONVERSATION_MAX_MESSAGES: Final[int] = 100
+
 # The durable job that finishes a run's delivery when the todo store failed it
 # in-process; keyed by the run and its undone step, so each has one job at a time.
 TODO_RUN_FINISH_TASK: Final[str] = "finish_tracked_todo_run"
@@ -108,6 +112,14 @@ class TodoRunDeliveryOutcome(StrEnum):
     INVALID_DIRECTIVE = "invalid_directive"
 
 
+class TodoWakeKind(StrEnum):
+    """What woke a tracked todo's run: its schedule, a watched event, or an approval it waited on."""
+
+    SCHEDULE = "schedule"
+    TRIGGER = "trigger"
+    APPROVAL = "approval"
+
+
 class TodoActivityEvent(StrEnum):
     """A lifecycle event code records in a tracked todo's activity.md, as "[event] detail"."""
 
@@ -129,6 +141,7 @@ class TodoActivityEvent(StrEnum):
     RUN_FINISHED = "run_finished"
     RUN_FAILED = "run_failed"
     RUN_SKIPPED = "run_skipped"
+    RUN_CANCELLED = "run_cancelled"
     RETRY_SCHEDULED = "retry_scheduled"
     MARKED_FAILED = "marked_failed"
     OCCURRENCE_GIVEN_UP = "occurrence_given_up"

@@ -34,7 +34,11 @@ from redis.exceptions import ConnectionError as RedisConnectionError, RedisError
 import time_machine
 
 from app.agents.core.background.session import TodoRun
-from app.agents.core.background.todo_run import TodoRunRequest
+from app.agents.core.background.todo_run import (
+    ExecutorBusyError,
+    TodoRunCancelledError,
+    TodoRunRequest,
+)
 from app.agents.prompts import todo_prompts
 from app.agents.prompts.todo_prompts import (
     DELIVERED_REPORT_FORM,
@@ -67,9 +71,11 @@ from app.constants.todos import (
     TODO_SCHEDULE_FIRE_GRACE,
     TRIGGER_TODO_FEATURE_KEY,
     TodoActivityEvent,
+    TodoWakeKind,
 )
 from app.constants.vfs import SYSTEM_USER_ID
 from app.db.repositories.todos import todo_repository
+from app.models.message_models import TodoRunWake
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
@@ -134,6 +140,7 @@ def _user_context(**fields: object) -> Callable[[str], AuthenticatedUser]:
 
 
 MODULE = "app.workers.tasks.tracked_todo_tasks"
+TODO_CHAT_ID = "todo-chat-1"
 LOAD_USER = "app.utils.auth_utils.load_user_context"
 KOLKATA = ZoneInfo("Asia/Kolkata")
 # A daytime clock: quiet hours are pinned by their own tests.
@@ -193,6 +200,15 @@ def _schedule_writes(repo: MagicMock) -> list[tuple[datetime | None, dict]]:
 
 
 @pytest.fixture(autouse=True)
+def todo_chat() -> Iterator[AsyncMock]:
+    """Give every run its todo's chat without Mongo; the chat's own get-or-create is tested elsewhere."""
+    with patch(
+        f"{MODULE}.get_or_create_todo_conversation", AsyncMock(return_value=TODO_CHAT_ID)
+    ) as chat:
+        yield chat
+
+
+@pytest.fixture(autouse=True)
 def activity() -> Iterator[AsyncMock]:
     """Capture every activity.md entry the worker records, as (todo_id, user_id, event, detail)."""
     with patch(f"{MODULE}.record_activity", AsyncMock(return_value=True)) as recorded:
@@ -222,6 +238,18 @@ def _recorded(activity: AsyncMock) -> list[tuple[TodoActivityEvent, str]]:
     """Return (event, detail) of every entry, after checking each landed on todo-1's owner."""
     assert {c.args[:2] for c in activity.await_args_list} <= {("todo-1", OWNER_ID)}
     return [(c.args[2], c.args[3]) for c in activity.await_args_list]
+
+
+def _starting_run(error: Exception | None = None) -> AsyncMock:
+    """Stand in for run_todo_on_executor as the real one goes: it starts once the chat is its own, then may fail."""
+
+    async def run(request: TodoRunRequest) -> None:
+        assert request.on_started is not None
+        await request.on_started()
+        if error is not None:
+            raise error
+
+    return AsyncMock(side_effect=run)
 
 
 def _updates(repo: MagicMock) -> list[dict]:
@@ -1113,7 +1141,7 @@ class TestExecuteTodoWithRetrySuccess:
     def _route_enqueue(self, route_enqueue_via_pool):
         return
 
-    async def _run(self, doc, *, tz="UTC", origin=None, rescheduled_meanwhile=False):
+    async def _run(self, doc, *, tz="UTC", origin=None, rescheduled_meanwhile=False, run=None):
         pool = _pool()
         repo = MagicMock()
         repo.get_by_id = AsyncMock(return_value=doc)
@@ -1122,7 +1150,7 @@ class TestExecuteTodoWithRetrySuccess:
         with (
             patch(f"{MODULE}.todo_repository", repo),
             patch("app.workers.tasks.todo_run_context.todo_repository", repo),
-            patch(f"{MODULE}._execute_on_executor", AsyncMock()),
+            patch(f"{MODULE}._execute_on_executor", run or AsyncMock()),
             patch(
                 LOAD_USER,
                 AsyncMock(side_effect=_user_context(timezone=tz)),
@@ -1147,6 +1175,22 @@ class TestExecuteTodoWithRetrySuccess:
         )
         repo.update.assert_not_awaited()
         pool.enqueue_job.assert_not_awaited()
+
+    async def test_a_run_the_user_stopped_is_its_own_outcome_and_the_schedule_moves_on(self):
+        """Regression: a stopped run read as a success. It is never retried: the user chose to stop it."""
+        anchor = datetime.now(UTC).replace(microsecond=0) - timedelta(days=2)
+        stopped = AsyncMock(side_effect=TodoRunCancelledError("the user stopped the run"))
+        result, repo, pool = await self._run(
+            _doc(scheduled_at=anchor, recurrence="daily", gaia_retry_count=1), run=stopped
+        )
+
+        assert result == "cancelled:todo-1"
+        ((expected, payload),) = _schedule_writes(repo)
+        assert expected == anchor
+        assert payload["gaia_retry_count"] == 0
+        assert payload["scheduled_at"] > datetime.now(UTC)
+        (queued,) = pool.enqueue_job.await_args_list
+        assert queued.kwargs["scheduled_for"] == occurrence_stamp(payload["scheduled_at"])
 
     async def test_recurring_success_moves_scheduled_at_forward_and_re_enqueues(self):
         anchor = datetime.now(UTC).replace(microsecond=0) - timedelta(days=2)
@@ -1228,17 +1272,18 @@ class TestExecuteTodoWithRetryFailure:
     def _route_enqueue(self, route_enqueue_via_pool):
         return
 
-    async def _run(self, doc, origin=None):
+    async def _run(self, doc, origin=None, error: Exception | None = None):
         pool = _pool()
         repo = MagicMock()
         repo.get_by_id = AsyncMock(return_value=doc)
         repo.update = AsyncMock()
         repo.add_labels = AsyncMock()
         mark_failed = AsyncMock()
+        failure = error or RuntimeError("boom")
         with (
             patch(f"{MODULE}.todo_repository", repo),
             patch("app.workers.tasks.todo_run_context.todo_repository", repo),
-            patch(f"{MODULE}._execute_on_executor", AsyncMock(side_effect=RuntimeError("boom"))),
+            patch(f"{MODULE}._execute_on_executor", AsyncMock(side_effect=failure)),
             patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="UTC"))),
             patch(f"{MODULE}._mark_todo_failed", mark_failed),
             patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
@@ -1311,6 +1356,27 @@ class TestExecuteTodoWithRetryFailure:
                 f"attempt 2 of {MAX_RETRY_ATTEMPTS} at {retry_at.isoformat()}",
             )
         ]
+
+    async def test_a_chat_busy_with_another_run_waits_and_costs_no_attempt(self):
+        """Regression: a scheduled run landing during the user's follow-up in the todo's chat burned a retry."""
+        busy = ExecutorBusyError("the executor is already running in conversation c")
+        result, repo, pool, mark_failed = await self._run(_doc(gaia_retry_count=0), error=busy)
+
+        assert result == "skipped:todo-1 (lock held)"
+        repo.update.assert_not_awaited()
+        pool.enqueue_job.assert_not_awaited()
+        mark_failed.assert_not_awaited()
+
+    async def test_a_triggered_run_finding_its_chat_busy_holds_its_event(self):
+        origin = TriggerOrigin(subscription_id="sub-1", trigger_name="gmail_new_message")
+        busy = ExecutorBusyError("the executor is already running in conversation c")
+        held = AsyncMock(return_value=True)
+        with patch(f"{MODULE}.buffer_todo_trigger_event", held):
+            result, repo, pool, _mf = await self._run(_doc(), origin, error=busy)
+
+        assert result == "held:todo-1 (lock held)"
+        held.assert_awaited_once_with("todo-1", origin)
+        repo.update.assert_not_awaited()
 
     async def test_final_attempt_marks_failed_and_stops_retrying(self):
         doc = _doc(gaia_retry_count=MAX_RETRY_ATTEMPTS - 1)
@@ -2509,7 +2575,7 @@ class TestTriggerEventsCoalesce:
 
     @contextmanager
     def _live(self, row: _TodoRow, run: AsyncMock | None = None) -> Iterator[AsyncMock]:
-        run = run or AsyncMock()
+        run = run or _starting_run()
         self.budget = AsyncMock()
         with (
             patch(f"{MODULE}.todo_repository", row),
@@ -2751,7 +2817,7 @@ class TestExecuteOnExecutor:
     """The worker hands the todo to the executor; comms is never in front of it."""
 
     def _patches(self, *, run=None):
-        self.run = run or AsyncMock()
+        self.run = run or _starting_run()
         self.timeline = AsyncMock(return_value=True)
         self.context = AsyncMock(return_value=TodoRunContext())
         return (
@@ -2803,6 +2869,37 @@ class TestExecuteOnExecutor:
 
         self.context.assert_awaited_once_with(doc)
 
+    async def test_a_scheduled_run_says_its_schedule_woke_it(self):
+        await self._execute()
+
+        assert self._request().wake == TodoRunWake(
+            kind=TodoWakeKind.SCHEDULE,
+            trigger_names=[],
+            approval_summary=None,
+        )
+
+    async def test_a_triggered_run_says_which_events_woke_it(self):
+        origin = TriggerOrigin(subscription_id="sub-1", trigger_name="gmail_new_message")
+        also = [
+            TriggerOrigin(subscription_id="sub-2", trigger_name="gmail_email_sent"),
+            TriggerOrigin(subscription_id="sub-1", trigger_name="gmail_new_message"),
+        ]
+        p1, p2, p3 = self._patches()
+        with p1, p2, p3:
+            await _execute_on_executor(
+                _doc(),
+                user_data=AuthenticatedUser(user_id=OWNER_ID),
+                user_tz=Timezone.utc(),
+                origin=origin,
+                coalesced=also,
+            )
+
+        assert self._request().wake == TodoRunWake(
+            kind=TodoWakeKind.TRIGGER,
+            trigger_names=["gmail_email_sent", "gmail_new_message"],
+            approval_summary=None,
+        )
+
     async def test_a_triggered_run_is_attributed_to_its_trigger(self):
         origin = TriggerOrigin(
             subscription_id="sub-1", trigger_name="gmail_new_message", payload={"thread_id": "t-1"}
@@ -2849,16 +2946,36 @@ class TestExecuteOnExecutor:
         task = run.await_args.args[0].task
         assert todo_prompts.INBOX_DESK_QUIET_HOURS_NOTE.format(local_time="23:00") in task
 
-    async def test_each_run_gets_a_fresh_conversation(self):
+    async def test_every_run_executes_in_the_todos_own_chat_on_a_fresh_thread(
+        self, todo_chat: AsyncMock
+    ) -> None:
+        """Regression: each run got a throwaway conversation, so nothing it did stayed for the user to open."""
         await self._execute()
-        first = self._request().conversation_id
         await self._execute()
 
-        assert self._request().conversation_id != first
+        assert [c.args for c in todo_chat.await_args_list] == [
+            (OWNER_ID, "todo-1", "Check the deploy"),
+            (OWNER_ID, "todo-1", "Check the deploy"),
+        ]
+        request = self._request()
+        assert request.conversation_id == TODO_CHAT_ID
+        # The chat is reused; the execution under it is not.
+        assert request.fresh_thread is True
+
+    async def test_a_chat_that_cannot_be_had_fails_the_run_before_it_starts(
+        self, todo_chat: AsyncMock
+    ) -> None:
+        todo_chat.side_effect = RuntimeError("mongo is down")
+
+        with pytest.raises(RuntimeError, match="mongo is down"):
+            await self._execute()
+
+        self.run.assert_not_awaited()
+        assert self._entries() == []
 
     async def test_a_failed_run_leaves_a_failure_entry_and_propagates(self):
         with pytest.raises(TimeoutError):
-            await self._execute(run=AsyncMock(side_effect=TimeoutError("executor stalled")))
+            await self._execute(run=_starting_run(TimeoutError("executor stalled")))
 
         _start, failed = self._entries()
         assert failed == "[run_failed] scheduled run failed (TimeoutError: executor stalled)"
@@ -2866,10 +2983,29 @@ class TestExecuteOnExecutor:
 
     async def test_a_long_failure_reason_is_cut_to_160_characters(self):
         with pytest.raises(RuntimeError):
-            await self._execute(run=AsyncMock(side_effect=RuntimeError("x" * 200)))
+            await self._execute(run=_starting_run(RuntimeError("x" * 200)))
 
         _start, failed = self._entries()
         assert failed == f"[run_failed] scheduled run failed (RuntimeError: {'x' * 160})"
+
+    async def test_a_run_the_user_stopped_is_recorded_as_stopped_not_failed(self):
+        stopped = _starting_run(TodoRunCancelledError("the user stopped the run"))
+        with pytest.raises(TodoRunCancelledError):
+            await self._execute(run=stopped)
+
+        _start, outcome = self._entries()
+        assert outcome == "[run_cancelled] scheduled run stopped by the user"
+        assert {c.args[:2] for c in self.timeline.call_args_list} == {("todo-1", OWNER_ID)}
+
+    async def test_a_chat_busy_with_another_run_is_recorded_as_a_wait_not_a_failure(self):
+        """Regression: the start entry was written before the chat's lock, so a run that never ran read as started."""
+        busy = AsyncMock(side_effect=ExecutorBusyError("the executor is already running"))
+        with pytest.raises(ExecutorBusyError):
+            await self._execute(run=busy)
+
+        (waited,) = self._entries()
+        assert waited == "[run_skipped] scheduled run waits: another run is going in its chat"
+        assert {c.args[:2] for c in self.timeline.call_args_list} == {("todo-1", OWNER_ID)}
 
 
 # ---------------------------------------------------------------------------
@@ -3186,11 +3322,22 @@ class TestResumeTrackedTodo:
         assert run.result == "resumed:todo-1"
         request = run.agent.await_args.args[0]
         assert request.conversation_id == "conv-parked"
+        # Its own thread too: a reset would drop the very thread it continues.
+        assert request.fresh_thread is False
         assert request.user is run.user
         assert request.todo_run == TodoRun(
             todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO
         )
         assert request.todo_title == "Check the deploy"
+
+    async def test_a_resume_says_the_approval_woke_it(self) -> None:
+        run = await self._resume("todo-1", "conv-parked", "ap_1", "Send briefing")
+
+        assert run.agent.await_args.args[0].wake == TodoRunWake(
+            kind=TodoWakeKind.APPROVAL,
+            trigger_names=[],
+            approval_summary="Send briefing",
+        )
 
     async def test_the_agent_is_told_the_granted_call_already_ran(self) -> None:
         """Without it the resumed run re-issues the approved action, a second send the user never approved."""
@@ -3215,14 +3362,11 @@ class TestResumeTrackedTodo:
         )
         run.pool.delete.assert_awaited_once_with("gaia_todo_exec:todo-1")
 
-    async def test_the_activity_log_records_the_granted_approval(self) -> None:
-        """The finish entry comes from the run's delivery step, which sees the result."""
+    async def test_a_resume_logs_no_grant_of_its_own(self) -> None:
+        """The decision logs the grant (resume_owner_after_approval), so a deferred resume never logs it twice."""
         run = await self._resume("todo-1", "conv-parked", "ap_1", "Send briefing")
 
-        assert run.entries() == [
-            "[approval_granted] ap_1: Send briefing; continuing the run in its own thread"
-        ]
-        assert {c.args[:2] for c in run.timeline.call_args_list} == {("todo-1", "user-7")}
+        assert run.entries() == []
 
     async def test_a_failed_resume_is_recorded_raised_and_releases_the_lock(self) -> None:
         run = self._build(agent=AsyncMock(side_effect=RuntimeError("model down")))
@@ -3230,6 +3374,15 @@ class TestResumeTrackedTodo:
             await resume_tracked_todo({}, "todo-1", "conv-parked", "ap_1", "Send briefing")
 
         assert run.entries()[-1] == "[run_failed] approval resume failed (RuntimeError: model down)"
+        assert run.timeline.call_args_list[-1].args[:2] == ("todo-1", "user-7")
+        run.pool.delete.assert_awaited_once_with("gaia_todo_exec:todo-1")
+
+    async def test_a_resume_the_user_stopped_is_recorded_as_stopped_not_failed(self) -> None:
+        stopped = AsyncMock(side_effect=TodoRunCancelledError("the user stopped the run"))
+        run = await self._resume("todo-1", "conv-parked", "ap_1", "Send briefing", agent=stopped)
+
+        assert run.result == "cancelled:todo-1"
+        assert run.entries() == ["[run_cancelled] approval resume stopped by the user"]
         assert run.timeline.call_args_list[-1].args[:2] == ("todo-1", "user-7")
         run.pool.delete.assert_awaited_once_with("gaia_todo_exec:todo-1")
 
@@ -3325,8 +3478,61 @@ class TestResumeTrackedTodo:
         run = await self._resume("todo-1", "conv-x", "ap_1", "r", exhausted, lock_acquired=False)
 
         assert run.result == "resume_dropped:todo-1 (lock held)"
+        # The grant entry promised the run would continue, so the todo says it did not.
+        assert run.entries() == [
+            "[run_skipped] ap_1: the run was not continued after the approval (lock held)"
+        ]
         run.enqueue.assert_not_awaited()
-        run.log.warning.assert_called_once_with("tracked_todo.resume_lock_held", todo_id="todo-1")
+        run.log.warning.assert_called_once_with(
+            "tracked_todo.resume_dropped", todo_id="todo-1", reason="lock held"
+        )
+
+    async def test_an_executor_busy_in_the_chat_defers_the_resume_one_backoff_step_later(
+        self,
+    ) -> None:
+        """Regression: the approval's ticket run holds the chat when the resume lands, and the resume failed the todo's run."""
+        busy = AsyncMock(side_effect=ExecutorBusyError("the executor is already running"))
+        before = datetime.now(UTC)
+        run = await self._resume("todo-1", "conv-x", "ap_1", "r", agent=busy)
+        after = datetime.now(UTC)
+
+        assert run.result == "resume_deferred:todo-1 (executor busy)"
+        assert run.entries() == []
+        assert run.enqueue.await_args.args == (
+            run.pool,
+            "resume_tracked_todo",
+            "todo-1",
+            "conv-x",
+            "ap_1",
+            "r",
+            1,
+        )
+        retry_at = run.enqueue.await_args.kwargs["_defer_until"]
+        assert before + LOCK_DEFER_BACKOFF[0] <= retry_at <= after + LOCK_DEFER_BACKOFF[0]
+        # The todo's own lock is released, or its retry would only find it held.
+        run.pool.delete.assert_awaited_once_with("gaia_todo_exec:todo-1")
+        # Waiting is not a failure: the busy error is on the event, not a warning line.
+        run.log.set_ns.assert_called_once_with(
+            "tracked_todo", resume_deferred_by="ExecutorBusyError"
+        )
+        run.log.warning.assert_not_called()
+
+    async def test_an_executor_busy_past_the_last_backoff_step_drops_loudly(self) -> None:
+        busy = AsyncMock(side_effect=ExecutorBusyError("the executor is already running"))
+        exhausted = len(LOCK_DEFER_BACKOFF)
+        run = await self._resume("todo-1", "conv-x", "ap_1", "r", exhausted, agent=busy)
+
+        assert run.result == "resume_dropped:todo-1 (executor busy)"
+        assert run.entries() == [
+            "[run_skipped] ap_1: the run was not continued after the approval (executor busy)"
+        ]
+        run.enqueue.assert_not_awaited()
+        run.log.warning.assert_called_once_with(
+            "tracked_todo.resume_dropped", todo_id="todo-1", reason="executor busy"
+        )
+        # The drop is written on the todo that was being resumed, for its owner.
+        run.repo.get_by_id.assert_awaited_with("todo-1")
+        assert [c.args[:2] for c in run.timeline.call_args_list] == [("todo-1", "user-7")]
 
 
 # ---------------------------------------------------------------------------

@@ -72,6 +72,7 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
         "test_hil_barrier_e2e.py",
         "test_hil_spawn_e2e.py",
         "test_todo_trigger_dispatch_e2e.py",
+        "test_tracked_todo_chat_e2e.py",
     }
     dir_root = Path(__file__).resolve().parent
     skip_items_without_real_services(

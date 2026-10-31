@@ -212,6 +212,8 @@ class _TurnContext:
     source: str | None
     presence: PresenceSnapshot | None
     usage_callback: UsageMetadataCallbackHandler
+    #: The tracked todo this conversation is the chat of, when it is one.
+    todo_id: str | None
 
 
 class _StreamState:
@@ -376,6 +378,10 @@ async def _run_chat_stream(
                 source=source,
                 presence=presence,
                 usage_callback=usage_callback,
+                # A new conversation is never a todo's chat: that is created only for its todo.
+                todo_id=None
+                if is_new_conversation
+                else await conversation_repository.get_todo_id(conversation_id, user_id=user_id),
             ),
             description_task,
             state,
@@ -716,6 +722,7 @@ async def _consume_agent_stream(
             usage_metadata_callback=turn.usage_callback,
             source=turn.source,
             presence=turn.presence,
+            active_todo_id=turn.todo_id,
         ),
         ids=StreamMessageIds(
             stream_id=stream_id,

@@ -14,6 +14,7 @@ import type { AttachedFileData } from "@/types/shared/fileTypes";
 import { MessageReactions } from "../MessageReactions";
 import ChatBubbleFilePreview from "./ChatBubbleFilePreview";
 import { ChatBubbleUserFooter } from "./ChatBubbleUserFooter";
+import { TodoRunWakeIndicator } from "./TodoRunWakeIndicator";
 
 const DEFAULT_FILE_DATA: AttachedFileData[] = [];
 
@@ -34,6 +35,7 @@ interface BubbleIndicatorsProps {
   toolCategory: ChatBubbleUserProps["toolCategory"];
   selectedWorkflow: ChatBubbleUserProps["selectedWorkflow"];
   selectedCalendarEvent: ChatBubbleUserProps["selectedCalendarEvent"];
+  todoRunWake: ChatBubbleUserProps["todo_run_wake"];
   replyToMessage: ChatBubbleUserProps["replyToMessage"];
 }
 
@@ -43,6 +45,7 @@ function BubbleIndicators({
   toolCategory,
   selectedWorkflow,
   selectedCalendarEvent,
+  todoRunWake,
   replyToMessage,
 }: BubbleIndicatorsProps) {
   return (
@@ -70,6 +73,12 @@ function BubbleIndicators({
         </div>
       )}
 
+      {todoRunWake && (
+        <div className="flex justify-end">
+          <TodoRunWakeIndicator wake={todoRunWake} />
+        </div>
+      )}
+
       {replyToMessage && (
         <div className="flex justify-end">
           <SelectedReplyIndicator
@@ -92,6 +101,7 @@ export default function ChatBubbleUser({
   toolCategory,
   selectedWorkflow,
   selectedCalendarEvent,
+  todo_run_wake,
   replyToMessage,
   queued,
   failed,
@@ -114,6 +124,7 @@ export default function ChatBubbleUser({
       selectedTool,
       selectedWorkflow,
       selectedCalendarEvent,
+      todoRunWake: todo_run_wake,
       fullWidth,
     });
 
@@ -140,6 +151,7 @@ export default function ChatBubbleUser({
               toolCategory={toolCategory}
               selectedWorkflow={selectedWorkflow}
               selectedCalendarEvent={selectedCalendarEvent}
+              todoRunWake={todo_run_wake}
               replyToMessage={replyToMessage}
             />
 

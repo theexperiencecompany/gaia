@@ -11,9 +11,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.services.checkpoint_thread_reset import ThreadReset, reset_conversation_threads
 from app.services.workflow.thread_reset import reset_workflow_threads
 
 MODULE = "app.services.workflow.thread_reset"
+RESET_MODULE = "app.services.checkpoint_thread_reset"
 
 CONV = "0d0dfd3d-8c0b-4a0b-9f7a-6a1b2c3d4e5f"
 OTHER_CONV = "9a9a9a9a-1111-2222-3333-444444444444"
@@ -103,6 +105,43 @@ def _deleted(checkpointer: MagicMock) -> set[str]:
     return {call.args[0] for call in checkpointer.adelete_thread.await_args_list}
 
 
+class TestKeepingTheConversationThread:
+    """A todo's chat keeps its own (comms) thread while the execution under it starts over."""
+
+    async def test_it_drops_the_execution_threads_and_spares_the_chats_own(self) -> None:
+        checkpointer = _checkpointer()
+        threads = {
+            CONV: False,
+            f"executor_{CONV}": False,
+            f"gmail_executor_{CONV}": False,
+            OTHER_CONV: False,
+        }
+
+        with patch(
+            f"{RESET_MODULE}.get_checkpointer_manager",
+            AsyncMock(return_value=_manager(threads, checkpointer)),
+        ):
+            result = await reset_conversation_threads(CONV, keep_conversation_thread=True)
+
+        assert _deleted(checkpointer) == {f"executor_{CONV}", f"gmail_executor_{CONV}"}
+        assert result == ThreadReset(reset=2, skipped_inflight=0)
+
+    async def test_a_chat_with_only_its_own_thread_resets_nothing(self) -> None:
+        checkpointer = _checkpointer()
+        cursor = _FakeCursor({CONV: False})
+
+        with patch(
+            f"{RESET_MODULE}.get_checkpointer_manager",
+            AsyncMock(return_value=_manager({}, checkpointer, cursor)),
+        ):
+            result = await reset_conversation_threads(CONV, keep_conversation_thread=True)
+
+        assert result == ThreadReset(reset=0, skipped_inflight=0)
+        checkpointer.adelete_thread.assert_not_awaited()
+        # Nothing to check for in-flight writes once the chat's own thread is set aside.
+        assert len(cursor.statements) == 1
+
+
 class TestThreadDerivation:
     async def test_it_deletes_only_the_threads_this_conversation_owns(self) -> None:
         checkpointer = _checkpointer()
@@ -121,7 +160,7 @@ class TestThreadDerivation:
 
         with (
             patch(
-                f"{MODULE}.get_checkpointer_manager",
+                f"{RESET_MODULE}.get_checkpointer_manager",
                 AsyncMock(return_value=_manager(threads, checkpointer)),
             ),
             patch(f"{MODULE}.conversation_repository") as conversations,
@@ -143,7 +182,7 @@ class TestThreadDerivation:
 
         with (
             patch(
-                f"{MODULE}.get_checkpointer_manager",
+                f"{RESET_MODULE}.get_checkpointer_manager",
                 AsyncMock(return_value=_manager(threads, checkpointer)),
             ),
             patch(f"{MODULE}.conversation_repository") as conversations,
@@ -162,7 +201,7 @@ class TestGuards:
         get_manager = AsyncMock(return_value=_manager(threads, checkpointer))
 
         with (
-            patch(f"{MODULE}.get_checkpointer_manager", get_manager),
+            patch(f"{RESET_MODULE}.get_checkpointer_manager", get_manager),
             patch(f"{MODULE}.conversation_repository") as conversations,
         ):
             conversations.is_workflow_execution = AsyncMock(return_value=False)
@@ -179,7 +218,7 @@ class TestGuards:
 
         with (
             patch(
-                f"{MODULE}.get_checkpointer_manager",
+                f"{RESET_MODULE}.get_checkpointer_manager",
                 AsyncMock(return_value=_manager(threads, checkpointer)),
             ),
             patch(f"{MODULE}.conversation_repository") as conversations,
@@ -200,7 +239,7 @@ class TestGuards:
         manager.pool = None
 
         with (
-            patch(f"{MODULE}.get_checkpointer_manager", AsyncMock(return_value=manager)),
+            patch(f"{RESET_MODULE}.get_checkpointer_manager", AsyncMock(return_value=manager)),
             patch(f"{MODULE}.conversation_repository") as conversations,
             patch(f"{MODULE}.log") as log,
         ):
@@ -218,7 +257,7 @@ class TestGuards:
 
         with (
             patch(
-                f"{MODULE}.get_checkpointer_manager",
+                f"{RESET_MODULE}.get_checkpointer_manager",
                 AsyncMock(return_value=_manager({}, checkpointer)),
             ),
             patch(f"{MODULE}.conversation_repository") as conversations,
@@ -260,7 +299,7 @@ class TestResetWideEvent:
 
         with (
             patch(
-                f"{MODULE}.get_checkpointer_manager",
+                f"{RESET_MODULE}.get_checkpointer_manager",
                 AsyncMock(return_value=_manager(threads, checkpointer)),
             ),
             patch(f"{MODULE}.conversation_repository") as conversations,
@@ -290,7 +329,7 @@ class TestTheQueriesItSends:
 
         with (
             patch(
-                f"{MODULE}.get_checkpointer_manager",
+                f"{RESET_MODULE}.get_checkpointer_manager",
                 AsyncMock(return_value=_manager({}, checkpointer, cursor)),
             ),
             patch(f"{MODULE}.conversation_repository") as conversations,
@@ -309,7 +348,7 @@ class TestTheQueriesItSends:
 
         with (
             patch(
-                f"{MODULE}.get_checkpointer_manager",
+                f"{RESET_MODULE}.get_checkpointer_manager",
                 AsyncMock(return_value=_manager({}, checkpointer, cursor)),
             ),
             patch(f"{MODULE}.conversation_repository") as conversations,
@@ -335,7 +374,7 @@ class TestTheQueriesItSends:
 
         with (
             patch(
-                f"{MODULE}.get_checkpointer_manager",
+                f"{RESET_MODULE}.get_checkpointer_manager",
                 AsyncMock(return_value=_manager(threads, checkpointer)),
             ),
             patch(f"{MODULE}.conversation_repository") as conversations,
@@ -361,7 +400,7 @@ class TestTheFailureWarning:
 
         with (
             patch(
-                f"{MODULE}.get_checkpointer_manager",
+                f"{RESET_MODULE}.get_checkpointer_manager",
                 AsyncMock(return_value=_manager({CONV: False}, checkpointer)),
             ),
             patch(f"{MODULE}.conversation_repository") as conversations,

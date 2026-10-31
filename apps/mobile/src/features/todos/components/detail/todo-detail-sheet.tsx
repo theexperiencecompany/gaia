@@ -3,6 +3,7 @@ import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { forwardRef, useImperativeHandle, useState } from "react";
 import { View } from "react-native";
 import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
+import { useOpenTodoChat } from "../../hooks/use-open-todo-chat";
 import type {
   Project,
   SubTask,
@@ -49,6 +50,8 @@ export const TodoDetailSheet = forwardRef<
   ) => {
     const [isOpen, setIsOpen] = useState(false);
     const [todo, setTodo] = useState<Todo | null>(null);
+    // The chat opens over the todos screen, so the sheet closes as it goes.
+    const { openChat, openingTodoId } = useOpenTodoChat(() => setIsOpen(false));
 
     useImperativeHandle(ref, () => ({
       open: (t: Todo) => {
@@ -212,6 +215,14 @@ export const TodoDetailSheet = forwardRef<
                   completed={todo.completed}
                   onToggleComplete={handleToggleComplete}
                   onDelete={handleDelete}
+                  chat={
+                    isTrackedTodo(todo)
+                      ? {
+                          onOpen: () => void openChat(todo.id),
+                          isOpening: openingTodoId === todo.id,
+                        }
+                      : undefined
+                  }
                 />
               </View>
             ) : (

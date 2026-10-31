@@ -25,6 +25,7 @@ from app.models.todo_models import (
     SubtaskCreateRequest,
     SubtaskUpdateRequest,
     TodoCanvasResponse,
+    TodoConversationResponse,
     TodoCounts,
     TodoLabelCount,
     TodoListParams,
@@ -42,6 +43,7 @@ from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
 from app.services.todo_activity import record_field_changes
 from app.services.todos.errors import TrackedTodoWorkflowError
+from app.services.todos.todo_conversation import open_todo_conversation
 from app.services.todos.todo_service import ProjectService, TodoService, todo_responses
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.workflow.service import WorkflowService
@@ -311,6 +313,18 @@ async def get_todo_canvas(
     if doc is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Todo not found")
     return TodoCanvasResponse(content=doc.canvas_content or "", activity=doc.activity_content or "")
+
+
+@router.post("/todos/{todo_id}/conversation")
+@tiered_rate_limit("todo_operations")
+async def open_todo_conversation_endpoint(
+    todo_id: str, user: Annotated[AuthenticatedUser, Depends(get_current_user)]
+) -> TodoConversationResponse:
+    """Return a tracked todo's own chat, creating it before its first run; it is never listed."""
+    log.set(user={"id": user.user_id}, todo={"operation": "open_conversation", "id": todo_id})
+    conversation_id = await open_todo_conversation(todo_id, user.user_id)
+    log.set_ns("todo", conversation_id=conversation_id)
+    return TodoConversationResponse(conversation_id=conversation_id)
 
 
 @router.put("/todos/{todo_id}", response_model=TodoResponse)

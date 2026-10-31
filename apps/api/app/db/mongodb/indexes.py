@@ -256,6 +256,17 @@ async def create_user_indexes() -> None:
         raise
 
 
+# One chat per tracked todo: the atomic backstop that makes a racing second create
+# (a run and an "Open chat" tap at once) fail, so the loser reads the winner's chat.
+# Only chats bound to a todo are in the filter. Shared with the contract suite.
+CONVERSATION_TODO_BINDING_KEYS: IndexKeys = [("user_id", 1), ("todo_id", 1)]
+CONVERSATION_TODO_BINDING_OPTIONS: IndexOptions = {
+    "unique": True,
+    "name": "user_todo_conversation_unique",
+    "partialFilterExpression": {"todo_id": {"$type": "string"}},
+}
+
+
 async def create_conversation_indexes() -> None:
     """Create indexes for conversations collection."""
     conversations_collection = get_async_collection("conversations")
@@ -278,6 +289,9 @@ async def create_conversation_indexes() -> None:
             # updatedAt is the only activity timestamp stored as a real BSON date —
             # createdAt is an ISO string and can't be range-queried efficiently.
             conversations_collection.create_index([("updatedAt", -1)]),
+            conversations_collection.create_index(
+                CONVERSATION_TODO_BINDING_KEYS, **CONVERSATION_TODO_BINDING_OPTIONS
+            ),
         )
 
     except Exception as e:

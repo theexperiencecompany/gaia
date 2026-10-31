@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field, StringConstraints
 from typing_extensions import TypedDict
 
 from app.constants.chat import MAX_MESSAGE_LENGTH
+from app.constants.todos import TodoWakeKind
 from app.constants.vfs import SAFE_PATH_ID_PATTERN
 from app.models.calendar_models import GoogleCalendarEventDateTime
 from app.models.workflow_models import WorkflowStep
@@ -35,6 +36,16 @@ class FileData(BaseModel):
     # mirrored. Server-owned and filled from MongoDB on the agent path only;
     # the upload response never carries it.
     sandbox_path: str | None = None
+
+
+class TodoRunWake(BaseModel):
+    """What woke one run of a tracked todo, shown on the user's side of its chat."""
+
+    kind: TodoWakeKind
+    #: The watched events that woke a TRIGGER run, deduplicated and sorted; empty otherwise.
+    trigger_names: list[str]
+    #: The call the user approved, for an APPROVAL run; None otherwise.
+    approval_summary: str | None
 
 
 class SelectedWorkflowData(BaseModel):

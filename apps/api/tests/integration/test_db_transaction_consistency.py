@@ -208,7 +208,7 @@ class TestConversationDeletionCleanup:
 
         with (
             patch(
-                "app.services.conversation_service.conversation_repository.delete_all_for_user",
+                "app.services.conversation_service.conversation_repository.delete_all_chats_for_user",
                 mock_delete_all,
             ),
             patch(
@@ -225,7 +225,7 @@ class TestConversationDeletionCleanup:
         """If the user has no conversations, bulk delete must raise 404."""
         with (
             patch(
-                "app.services.conversation_service.conversation_repository.delete_all_for_user",
+                "app.services.conversation_service.conversation_repository.delete_all_chats_for_user",
                 AsyncMock(return_value=[]),
             ),
             pytest.raises(HTTPException) as exc_info,
@@ -525,6 +525,8 @@ class TestBulkOperations:
             ),
             patch("app.services.todos.todo_service.delete_todo_embedding", AsyncMock()),
             patch("app.services.todos.todo_service.schedule_user_todos_sync", MagicMock()),
+            # Its chats' delete fails loud now; it reaches real Mongo, which this tier mocks.
+            patch("app.services.todos.todo_service.delete_todo_conversations", AsyncMock()),
         ):
             result = await TodoService.bulk_delete_todos(todo_ids, USER_ID)
 
@@ -555,6 +557,8 @@ class TestBulkOperations:
             ),
             patch("app.services.todos.todo_service.delete_todo_embedding", AsyncMock()),
             patch("app.services.todos.todo_service.schedule_user_todos_sync", MagicMock()),
+            # Its chats' delete fails loud now; it reaches real Mongo, which this tier mocks.
+            patch("app.services.todos.todo_service.delete_todo_conversations", AsyncMock()),
         ):
             result = await TodoService.bulk_delete_todos(todo_ids, USER_ID)
 

@@ -4,8 +4,9 @@ Live runs resume through the executor inbox (ticket redeem). Background runs
 have no live run to wake, so an approval must RE-ENQUEUE the owning work and a
 denial must leave a trace where the owner actually looks:
 
-- Tracked todos: re-enqueue the todo in its parked conversation; a denial is
-  recorded on the todo's activity log, which its next run reads.
+- Tracked todos: log the grant on the todo's activity and re-enqueue the todo
+  in its parked conversation; a denial is recorded on the same log, which its
+  next run reads.
 - Workflows: re-queue with the receipt in the trigger context, so the run
   continues with the approval in context and the trace in its conversation.
 
@@ -82,9 +83,15 @@ async def _resume_todo(row: ApprovalLedgerDocument) -> None:
     """Resume in the PARKED conversation so the receipt joins the run's own thread.
 
     The lock/defer machinery stays the arbiter of concurrency, exactly like a
-    scheduled fire.
+    scheduled fire. The grant is logged here, under the resume claim, because
+    the resume job itself may be deferred and run again.
     """
-
+    await record_activity(
+        row.owner_id,
+        row.user_id,
+        TodoActivityEvent.APPROVAL_GRANTED,
+        f"{row.approval_id}: {row.summary}; continuing the run in its own thread",
+    )
     pool = await RedisPoolManager.get_pool()
     await enqueue_worker_job(
         pool,

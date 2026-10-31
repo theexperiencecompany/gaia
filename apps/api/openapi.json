@@ -1362,10 +1362,18 @@
             },
             "title": "Conversations",
             "type": "array"
+          },
+          "missing": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing",
+            "type": "array"
           }
         },
         "required": [
-          "conversations"
+          "conversations",
+          "missing"
         ],
         "title": "BatchSyncResponse",
         "type": "object"
@@ -3790,6 +3798,17 @@
               }
             ]
           },
+          "todo_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Todo Id"
+          },
           "updatedAt": {
             "anyOf": [
               {
@@ -4207,6 +4226,17 @@
               }
             ]
           },
+          "todo_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Todo Id"
+          },
           "updatedAt": {
             "anyOf": [
               {
@@ -4232,7 +4262,8 @@
           "messages",
           "artifacts",
           "active_stream_id",
-          "has_live_approval"
+          "has_live_approval",
+          "todo_id"
         ],
         "title": "ConversationSyncRow",
         "type": "object"
@@ -11174,6 +11205,16 @@
             ],
             "title": "Subtype"
           },
+          "todo_run_wake": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TodoRunWake"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "toolCategory": {
             "anyOf": [
               {
@@ -11451,6 +11492,16 @@
               }
             ],
             "title": "Subtype"
+          },
+          "todo_run_wake": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TodoRunWake"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "toolCategory": {
             "anyOf": [
@@ -18349,6 +18400,20 @@
         "title": "TodoCanvasResponse",
         "type": "object"
       },
+      "TodoConversationResponse": {
+        "description": "The tracked todo's own chat, where its runs execute; kept out of the chat list.",
+        "properties": {
+          "conversation_id": {
+            "title": "Conversation Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation_id"
+        ],
+        "title": "TodoConversationResponse",
+        "type": "object"
+      },
       "TodoCounts": {
         "description": "Dashboard/sidebar counts for a user's todos.",
         "properties": {
@@ -18910,6 +18975,39 @@
         "title": "TodoResponse",
         "type": "object"
       },
+      "TodoRunWake": {
+        "description": "What woke one run of a tracked todo, shown on the user's side of its chat.",
+        "properties": {
+          "approval_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approval Summary"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/TodoWakeKind"
+          },
+          "trigger_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Trigger Names",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "trigger_names",
+          "approval_summary"
+        ],
+        "title": "TodoRunWake",
+        "type": "object"
+      },
       "TodoStats": {
         "properties": {
           "by_priority": {
@@ -19151,6 +19249,16 @@
         },
         "title": "TodoUpdateRequest",
         "type": "object"
+      },
+      "TodoWakeKind": {
+        "description": "What woke a tracked todo's run: its schedule, a watched event, or an approval it waited on.",
+        "enum": [
+          "schedule",
+          "trigger",
+          "approval"
+        ],
+        "title": "TodoWakeKind",
+        "type": "string"
       },
       "TodoWorkflowGenerationResponse": {
         "description": "Result of asking for a todo's workflow to be generated.",
@@ -41017,6 +41125,69 @@
           }
         },
         "summary": "Get Todo Canvas",
+        "tags": [
+          "Todos"
+        ]
+      }
+    },
+    "/api/v1/todos/{todo_id}/conversation": {
+      "post": {
+        "description": "Return a tracked todo's own chat, creating it before its first run; it is never listed.",
+        "operationId": "todos_open_todo_conversation_endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "todo_id",
+            "required": true,
+            "schema": {
+              "title": "Todo Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TodoConversationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Open Todo Conversation Endpoint",
         "tags": [
           "Todos"
         ]

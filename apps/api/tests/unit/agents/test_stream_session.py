@@ -13,6 +13,7 @@ from app.agents.core.background.session import (
     ExecutorRun,
     RunIdentity,
     RunKind,
+    TodoRun,
     claim_tool_output,
     create_session,
     get_or_create_session,
@@ -24,6 +25,9 @@ from app.agents.core.background.session import (
     teardown_session,
 )
 from app.models.user_models import AuthenticatedUser
+from app.models.workflow_models import TriggerType
+
+TODO_RUN = TodoRun(todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO)
 
 
 @pytest.fixture(autouse=True)
@@ -115,6 +119,24 @@ class TestOwnershipRule:
             workflow_id=workflow_id,
         )
         assert run.executor_owns_tool_data is owns
+
+    @pytest.mark.parametrize(("todo_run", "owns"), [(None, False), (TODO_RUN, True)])
+    def test_a_tracked_todos_live_run_streams_into_and_keeps_its_own_message(
+        self, todo_run, owns
+    ) -> None:
+        """No comms turn sits in front of a todo's run: nothing else would render or keep its cards."""
+        run = ExecutorRun(
+            stream_id="s1",
+            conversation_id="todo-chat",
+            user={"user_id": "u1"},
+            kind=RunKind.LIVE,
+            task_id="t1",
+            user_message_id=None,
+            todo_run=todo_run,
+        )
+        assert run.owns_stream is owns
+        assert run.executor_owns_tool_data is owns
+        assert run.render_message_id == ("t1" if owns else None)
 
     def test_is_queued_reflects_kind_not_stream_id(self) -> None:
         # The id prefix is cosmetic; behavior must key on RunKind only.

@@ -441,6 +441,31 @@ async def open_detached_stream(
     """
     # Equivalent under mutation: session.kind is only read as `is RunKind.LIVE` (hil/bridge).
     session = create_session(stream_id, RunKind.QUEUED)  # pragma: no mutate
+    await announce_detached_stream(
+        stream_id,
+        conversation_id=conversation_id,
+        user_id=user_id,
+        task_id=task_id,
+        bot_message_id=bot_message_id,
+        kind=kind,
+    )
+    return session
+
+
+async def announce_detached_stream(
+    stream_id: str,
+    *,
+    conversation_id: str,
+    user_id: str,
+    task_id: str | None,
+    bot_message_id: str | None,
+    kind: DetachedStreamKind,
+) -> None:
+    """Make a stream resumable in its conversation and tell the user's clients it started.
+
+    For a run whose session its caller already registered (a tracked todo's run);
+    open_detached_stream is this plus the session.
+    """
     await StreamManager.start_stream(
         stream_id=stream_id,
         conversation_id=conversation_id,
@@ -458,7 +483,6 @@ async def open_detached_stream(
                 "kind": kind.value,
             },
         )
-    return session
 
 
 async def close_detached_stream(stream_id: str, *, cancelled: bool) -> None:
@@ -468,6 +492,11 @@ async def close_detached_stream(stream_id: str, *, cancelled: bool) -> None:
     no [DONE] and no complete_stream.
     """
     teardown_session(stream_id)
+    await end_detached_stream(stream_id, cancelled=cancelled)
+
+
+async def end_detached_stream(stream_id: str, *, cancelled: bool) -> None:
+    """End a stream its run owns; a cancelled one closes silently (see close_detached_stream)."""
     if not cancelled:
         await StreamManager.publish_chunk(stream_id, "data: [DONE]\n\n")
         await StreamManager.complete_stream(stream_id)
