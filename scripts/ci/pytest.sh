@@ -307,6 +307,18 @@ cmd_flake_gate() {
   ci_endgroup
 
   if [ "$rerun" -eq 0 ]; then
+    # A rerun that passes is evidence the code is fine and the test is not. On a PR
+    # push that still fails the lane: a human is there, and the fix is to stabilise
+    # the test. In the merge queue (and on master) failing it costs a whole group
+    # run — 8-15 minutes — and it ejects a PR that just proved itself, so it warns
+    # instead. The tests are named in the annotation, so this is recorded, not
+    # hidden; flake rates are the thing to watch, not the individual ejection.
+    case "${GITHUB_EVENT_NAME:-}" in
+      merge_group|push)
+        printf '::warning::%s\n' "FLAKY TESTS (passed on rerun, not blocking this run): see the first-run traceback above" >&2
+        exit 0
+        ;;
+    esac
     printf '::error::%s\n' "FLAKY TESTS DETECTED — the following passed only on rerun:" >&2
     echo "       (see the first-run traceback above)"
     exit 1

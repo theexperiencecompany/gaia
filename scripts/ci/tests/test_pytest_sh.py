@@ -15,6 +15,8 @@ import shutil
 import subprocess
 import sys
 
+import pytest
+
 CI = Path(__file__).parent.parent
 
 
@@ -227,3 +229,51 @@ def test_flake_gate_reruns_from_a_cache_only_this_run_wrote(tmp_path: Path) -> N
     assert "--lf" in (tmp_path / "call-1").read_text().splitlines()
     assert not Path(first).is_relative_to(workspace)
     assert not Path(first).exists(), "the job-local cache outlived the gate"
+
+
+@pytest.mark.parametrize(
+    ("event", "expected"),
+    [
+        ("pull_request", 1),
+        ("workflow_dispatch", 1),
+        ("", 1),
+        ("merge_group", 0),
+        ("push", 0),
+    ],
+)
+def test_a_rerun_that_passes_only_fails_the_lane_on_a_pr(
+    tmp_path: Path, event: str, expected: int
+) -> None:
+    """The queue and master must not eject on a flake; a PR push still fails it.
+
+    A rerun-passing test proved the code is fine, but in the queue the failure costs
+    a whole group run and ejects a PR that just passed. On a PR a human is present and
+    the test should be stabilised, so the strict verdict stays where it can be acted on.
+    """
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    fake = tmp_path / "fake-pytest"
+    fake.write_text(FAKE_PYTEST)
+    fake.chmod(0o755)
+    env = {**os.environ, "REC": str(tmp_path)}
+    if event:
+        env["GITHUB_EVENT_NAME"] = event
+    else:
+        env.pop("GITHUB_EVENT_NAME", None)
+
+    result = subprocess.run(
+        ["bash", str(CI / "pytest.sh"), "flake-gate", str(fake), "tests"],
+        cwd=workspace,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+
+    assert result.returncode == expected
+    if expected == 0:
+        assert "::warning::" in result.stderr
+        assert "FLAKY TESTS DETECTED" not in result.stderr
+    else:
+        assert "FLAKY TESTS DETECTED" in result.stderr
