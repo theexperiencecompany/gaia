@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { todoApi } from "../api/todo-api";
 
 /**
@@ -10,19 +10,16 @@ export function useOpenTodoChat(onOpening?: () => void) {
   const router = useRouter();
   const [openingTodoId, setOpeningTodoId] = useState<string | null>(null);
 
-  const openChat = useCallback(
-    async (todoId: string) => {
-      setOpeningTodoId(todoId);
-      try {
-        const { conversation_id } = await todoApi.openTodoConversation(todoId);
+  const openChat = (todoId: string) => {
+    setOpeningTodoId(todoId);
+    return todoApi
+      .openTodoConversation(todoId)
+      .then(({ conversation_id }) => {
         onOpening?.();
         router.push(`/c/${conversation_id}` as never);
-      } finally {
-        setOpeningTodoId(null);
-      }
-    },
-    [onOpening, router],
-  );
+      })
+      .finally(() => setOpeningTodoId(null));
+  };
 
   return { openChat, openingTodoId };
 }

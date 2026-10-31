@@ -323,14 +323,17 @@ export const batchSyncConversations = async (
     ]);
 
     // A todo chat is never listed, so only asking about it shows a new run or its deletion.
-    const todoChatItems = localConversations
-      .filter((conv) => conv.todoId)
-      .map(
-        (conv): ConversationSyncItem => ({
-          conversation_id: conv.id,
-          last_updated: (conv.updatedAt || conv.createdAt).toISOString(),
-        }),
-      );
+    const todoChatItems = localConversations.flatMap(
+      (conv): ConversationSyncItem[] =>
+        conv.todoId
+          ? [
+              {
+                conversation_id: conv.id,
+                last_updated: (conv.updatedAt || conv.createdAt).toISOString(),
+              },
+            ]
+          : [],
+    );
 
     if (remoteConversations.length === 0 && todoChatItems.length === 0) {
       return;

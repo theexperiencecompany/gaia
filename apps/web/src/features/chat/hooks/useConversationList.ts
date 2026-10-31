@@ -37,11 +37,16 @@ export const useConversationList = () => {
   // identity — a fresh map() result per render caused an infinite effect loop.
   const list = useMemo(
     () =>
-      conversations
-        .filter((conv) => !conv.todoId)
-        .map((conv) =>
-          toConversationRow(conv, messagesByConversation[conv.id]?.length || 0),
-        ),
+      conversations.flatMap((conv) =>
+        conv.todoId
+          ? []
+          : [
+              toConversationRow(
+                conv,
+                messagesByConversation[conv.id]?.length || 0,
+              ),
+            ],
+      ),
     [conversations, messagesByConversation],
   );
 
