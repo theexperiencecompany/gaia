@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.27.0](https://github.com/theexperiencecompany/gaia/compare/web-v0.26.0...web-v0.27.0) (2026-10-31)
+
+
+### Features
+
+* **delivery:** presence-aware, one-place proactive messaging ([#1523](https://github.com/theexperiencecompany/gaia/issues/1523)) ([39887cf](https://github.com/theexperiencecompany/gaia/commit/39887cfe9e9fe0b6c7a1fe5daa916cf09eac2b2f))
+* **todos:** give every tracked todo its own chat, led by what woke each run ([#1561](https://github.com/theexperiencecompany/gaia/issues/1561)) ([7fa8464](https://github.com/theexperiencecompany/gaia/commit/7fa84648be37066f58b4929dc0f8a0c468d8f1f9))
+* **web:** the visible fixes from the heygaia.io audit ([#1539](https://github.com/theexperiencecompany/gaia/issues/1539)) ([fc67d3d](https://github.com/theexperiencecompany/gaia/commit/fc67d3d8301634b4cd807ab6e3a5ee8c18861bc1))
+
+
+### Bug Fixes
+
+* **seo:** every page description fits the snippet window, and the audit fails on warnings ([#1531](https://github.com/theexperiencecompany/gaia/issues/1531)) ([167d58c](https://github.com/theexperiencecompany/gaia/commit/167d58ca73ae927155e0c4abd5bc5159c3a45963))
+* **seo:** what an independent squirrelscan audit of heygaia.io found ([#1535](https://github.com/theexperiencecompany/gaia/issues/1535)) ([3724461](https://github.com/theexperiencecompany/gaia/commit/3724461e118da4b8a91b18a3260ff914c4c18763))
+* **web:** /contact form looped on re-render (React [#301](https://github.com/theexperiencecompany/gaia/issues/301)) ([#1537](https://github.com/theexperiencecompany/gaia/issues/1537)) ([5ffe91b](https://github.com/theexperiencecompany/gaia/commit/5ffe91b9811a91498ca06c3cc6711bcd832cbd90))
+* **web:** HttpOnly locale cookie (Security 96) ([#1559](https://github.com/theexperiencecompany/gaia/issues/1559)) ([b23ac96](https://github.com/theexperiencecompany/gaia/commit/b23ac96efc66ba07e6b37208c8bdafd6b48d72ce))
+* **web:** recover stale-deploy module errors behind the route error boundary ([#1485](https://github.com/theexperiencecompany/gaia/issues/1485)) ([2b2eb98](https://github.com/theexperiencecompany/gaia/commit/2b2eb984e644ce220e7232faf07f0808cbdca397))
+* **web:** restore /feed and stop serving source maps ([#1563](https://github.com/theexperiencecompany/gaia/issues/1563)) ([7243781](https://github.com/theexperiencecompany/gaia/commit/72437810b971d29c76730a9741f1286fda8351a2))
+
+
+### Performance Improvements
+
+* **web:** marketing pages stop loading the chat stack, PostHog SDK and OpenUI CSS ([#1540](https://github.com/theexperiencecompany/gaia/issues/1540)) ([63d885e](https://github.com/theexperiencecompany/gaia/commit/63d885e35fd2e27773213c4a2337097f75a91063))
+
 ## [0.26.0](https://github.com/theexperiencecompany/gaia/compare/web-v0.25.0...web-v0.26.0) (2026-10-26)
 
 

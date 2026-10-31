@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.10.0](https://github.com/theexperiencecompany/gaia/compare/mobile-v0.9.0...mobile-v0.10.0) (2026-10-31)
+
+
+### Features
+
+* **delivery:** presence-aware, one-place proactive messaging ([#1523](https://github.com/theexperiencecompany/gaia/issues/1523)) ([39887cf](https://github.com/theexperiencecompany/gaia/commit/39887cfe9e9fe0b6c7a1fe5daa916cf09eac2b2f))
+* **todos:** give every tracked todo its own chat, led by what woke each run ([#1561](https://github.com/theexperiencecompany/gaia/issues/1561)) ([7fa8464](https://github.com/theexperiencecompany/gaia/commit/7fa84648be37066f58b4929dc0f8a0c468d8f1f9))
+* **web:** the visible fixes from the heygaia.io audit ([#1539](https://github.com/theexperiencecompany/gaia/issues/1539)) ([fc67d3d](https://github.com/theexperiencecompany/gaia/commit/fc67d3d8301634b4cd807ab6e3a5ee8c18861bc1))
+
 ## [0.9.0](https://github.com/theexperiencecompany/gaia/compare/mobile-v0.8.1...mobile-v0.9.0) (2026-10-26)
 
 
