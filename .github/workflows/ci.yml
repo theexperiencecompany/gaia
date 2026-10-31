@@ -2341,9 +2341,11 @@ jobs:
     if: ${{ always() && needs.detect.result == 'success' && github.ref == 'refs/heads/master' }}
     uses: ./.github/workflows/build.yml
     # A called workflow's jobs get at most what the caller grants, and the
-    # workflow default here is read-only: docker-release tags and publishes.
+    # workflow default here is read-only: docker-release tags and publishes,
+    # and the orphan alert reads the commit's check-runs to name the cause.
     permissions: &release-permissions
       actions: read
+      checks: read
       contents: write
       packages: write
     with:
