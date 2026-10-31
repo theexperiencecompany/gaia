@@ -32,9 +32,25 @@ const intlMiddlewareDefaultOnly = createMiddleware({
   localeDetection: false,
 });
 
+/** next-intl's CookieAttributes type omits HttpOnly, so harden its Set-Cookie here. */
+function hardenLocaleCookie(response: NextResponse): NextResponse {
+  const cookies = response.headers.getSetCookie();
+  if (!cookies.some((cookie) => cookie.startsWith("NEXT_LOCALE="))) {
+    return response;
+  }
+  response.headers.delete("set-cookie");
+  for (const cookie of cookies) {
+    response.headers.append(
+      "set-cookie",
+      cookie.startsWith("NEXT_LOCALE=") ? `${cookie}; HttpOnly` : cookie,
+    );
+  }
+  return response;
+}
+
 function localeResponse(request: NextRequest): NextResponse {
   if (isTranslatedRoute(request.nextUrl.pathname)) {
-    return intlMiddleware(request);
+    return hardenLocaleCookie(intlMiddleware(request));
   }
   // For non-translated routes: still run middleware (needed for [locale]
   // routing) but force default locale — no locale prefix in URL.

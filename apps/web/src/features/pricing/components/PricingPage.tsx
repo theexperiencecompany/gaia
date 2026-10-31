@@ -17,7 +17,7 @@ import type { Plan } from "../api/pricingApi";
 import { FAQAccordion } from "./FAQAccordion";
 
 const EMPTY_PLANS: Plan[] = [];
-const PRICING_WALLPAPER = getImageDimensions(wallpapers.pricing.png);
+const PRICING_WALLPAPER = getImageDimensions(wallpapers.pricing.webp);
 
 interface PricingPageProps {
   initialPlans?: Plan[];
@@ -38,7 +38,7 @@ export default function PricingPage({
     <div className="relative flex min-h-screen w-full flex-col items-center justify-center pt-24 sm:pt-[30vh] lg:pt-[35vh]">
       <div className="absolute inset-0 top-0 z-0 h-[90vh] w-full">
         <Image
-          src={wallpapers.pricing.png}
+          src={wallpapers.pricing.webp}
           alt="GAIA Pricing page Wallpaper"
           sizes="100vw"
           priority

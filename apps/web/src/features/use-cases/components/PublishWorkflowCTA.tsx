@@ -2,7 +2,7 @@ import Image from "next/image";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { getImageDimensions } from "@/lib/imageDimensions";
 
-const BLUEPRINT = getImageDimensions("/images/wallpapers/blueprint.png");
+const BLUEPRINT = getImageDimensions("/images/wallpapers/blueprint.webp");
 
 export default function PublishWorkflowCTA() {
   const docsBaseUrl =
@@ -13,7 +13,7 @@ export default function PublishWorkflowCTA() {
   return (
     <div className="mx-auto mt-20 max-w-7xl rounded-4xl bg-black p-6 py-20 text-center relative overflow-hidden outline-zinc-900 outline-2">
       <Image
-        src={"/images/wallpapers/blueprint.png"}
+        src={"/images/wallpapers/blueprint.webp"}
         alt="Blueprint image"
         width={BLUEPRINT.width}
         height={BLUEPRINT.height}
