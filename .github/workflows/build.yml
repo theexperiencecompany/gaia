@@ -811,6 +811,10 @@ jobs:
     needs: [deployment-plan]
     if: always() && inputs.phase != 'build' && needs.deployment-plan.outputs.backend_orphaned == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # failing-checks reads this commit's check-runs to name the cause.
+      checks: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -824,16 +828,22 @@ jobs:
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
-          COLOR: "#ff6b6b"
-          MESSAGE: |
-            🚨 **Publish Without Deploy Detected**
-            **Commit:** `${{ github.sha }}`
-            **Branch:** ${{ github.ref_name }}
-            **Actor:** ${{ github.actor }}
-            **Backend images (api/voice-agent/bots) were published to GHCR (immutable tags) but the backend deploy did NOT run.** docker-release result: `${{ needs.deployment-plan.outputs.docker_release_result }}`.
-            `:latest` did not move — it is re-pointed only after a successful deploy — so restarts on the Swarm host keep the deployed build. But master is now ahead of production: the published images are sitting undeployed.
-            **To ship them:** fix the red lane and re-run the master workflow (or push a fix). `gh workflow run build.yml --ref master -f deployment_mode=deploy` redeploys only what `:latest` currently points at — the last successfully deployed build, not this run's images.
-        run: bash scripts/ci/deploy.sh notify
+          GH_TOKEN: ${{ github.token }}
+          STATE: deploy_blocked
+          SUBJECT: backend images published, prod did not get them
+          IMPACT: unchanged, still on the last deployed build. Nothing is broken; this build is not live.
+          ACTION: fix the red lane, then re-run the master run to ship this build.
+          CLEARS_WHEN: a master run's quality-gate goes green and its deploy runs.
+        run: |
+          set -euo pipefail
+          sha="${GITHUB_SHA:-$(git rev-parse HEAD)}"
+          # One API call. A failed lookup must not read as "nothing failed" —
+          # say the cause is unknown and keep the alert.
+          if ! cause=$(bash scripts/ci/deploy.sh failing-checks "$sha" 1); then
+            cause="check-run lookup failed on ${sha:0:8} — see this run's log"
+            echo "::warning::failing-checks lookup failed; the message states the cause as unknown"
+          fi
+          CAUSE="$cause" bash scripts/ci/deploy.sh notify
 
   # Trigger backend production deploy only when deploy plan allows it.
   trigger-deploy:
