@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.constants.cache import HANDOFF_NAME_CACHE_PREFIX, SUBAGENT_CACHE_PREFIX
+from app.constants.cache import SUBAGENT_CACHE_PREFIX
 from app.constants.chroma import CHROMA_TOOLS_STORE_COLLECTION
 from app.db.chroma.chroma_cleanup import cleanup_integration_chroma_data
 from tests.helpers import captured_wide_event
@@ -31,7 +31,6 @@ class TestCleanupIntegrationChromaData:
         assert [c.args[0] for c in cache.await_args_list] == [
             "chroma:indexed:mcp_example_com",
             f"{SUBAGENT_CACHE_PREFIX}:int-1",
-            f"{HANDOFF_NAME_CACHE_PREFIX}:int-1",
         ]
         # The wide event names the collection the tools actually live in, suffix included.
         assert event["vector"] == {

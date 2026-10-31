@@ -314,34 +314,6 @@ SCENARIOS: list[Scenario] = [
         ],
     ),
     Scenario(
-        key="SA",
-        title="$steps.<handoff> is not an address",
-        script=script(
-            _todo("drive a"),
-            write(
-                [
-                    {
-                        "id": "h",
-                        "handoff": "gmail",
-                        "steps": [
-                            {
-                                "id": "fetch",
-                                "tool": "GMAIL_FETCH_EMAILS",
-                                "args": {"max_results": 3},
-                            }
-                        ],
-                    },
-                    {
-                        "id": "add",
-                        "tool": "create_todo",
-                        "args": {"title": "$steps.h.fetch.subject"},
-                    },
-                ]
-            ),
-        ),
-        fires=[Fire("refused at the write", refused("addresses the handoff"), WHY_NO_PLAYBOOK)],
-    ),
-    Scenario(
         key="SD",
         title="one strike per run",
         script=script(
@@ -574,23 +546,6 @@ SCENARIOS: list[Scenario] = [
                 "discard heal_attempts_exhausted",
                 before=remember_playbook_id,
             ),
-        ],
-    ),
-    Scenario(
-        key="X20",
-        title="a handoff playbook through the todos subagent",
-        script=script(
-            tool("handoff", {"subagent_id": "todos", "task": script(_todo("via todos"))}),
-            write([{"id": "h", "handoff": "todos", "steps": [_add_step("via todos")]}]),
-        ),
-        fires=[
-            Fire(
-                "authored with a handoff step",
-                lambda observation, _ctx: observation.playbook is not None
-                and observation.playbook.has_handoff,
-                "handoff playbook",
-            ),
-            Fire("replays inside the subagent", replayed_ok, WHY_REPLAY_SUCCESS),
         ],
     ),
     Scenario(

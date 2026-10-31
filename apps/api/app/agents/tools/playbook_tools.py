@@ -18,7 +18,6 @@ from langgraph.prebuilt import InjectedState
 from pydantic import ValidationError
 from pydantic.v1 import ValidationError as LegacyValidationError
 
-from app.agents.core.background.executor_capture import drain_executor_tool_data
 from app.constants.agents import PLAYBOOK_REPLAYED_CALLS_KEY
 from app.constants.log_tags import LogTag
 from app.db.repositories.playbooks import playbook_repository
@@ -45,7 +44,6 @@ from app.services.workflow.playbook.parser import (
     validate_playbook,
 )
 from app.services.workflow.playbook.workflow_hash import workflow_hash
-from app.services.workflow.run_trace import build_trace
 from app.utils.workflow_utils import (
     WorkflowConfigError,
     error_response,
@@ -54,6 +52,10 @@ from app.utils.workflow_utils import (
     success_response,
 )
 from shared.py.wide_events import log
+
+#: The tool that loads an integration into a run; its integration_id is what a
+#: blocked-run claim is checked against.
+_ACTIVATE_INTEGRATION_TOOL = "activate_integration"
 
 
 def _render_location(location: tuple[int | str, ...]) -> str:
@@ -92,7 +94,7 @@ def _explain_validation_error(error: ValidationError | LegacyValidationError) ->
 def _answered_calls(state: Mapping[str, Any] | None) -> list[tuple[str, dict[str, Any], object]]:
     """Every tool call in the run's messages that has an answer: name, args, parsed answer.
 
-    Failed calls are kept, unlike the handoff record's successful-only lines
+    Failed calls are kept, unlike the call record's successful-only lines
     (``call_record.py``): a step frozen on a call that errored is precisely one
     of the things the validator has to catch. A call with no answer is one still
     in flight (this very tool call, in every real run) and is left out.
@@ -113,12 +115,12 @@ def _answered_calls(state: Mapping[str, Any] | None) -> list[tuple[str, dict[str
     return calls
 
 
-def _handoff_targets(state: Mapping[str, Any] | None) -> list[str]:
-    """The subagents this run handed off to, in order, each once.
+def _activated_integrations(state: Mapping[str, Any] | None) -> list[str]:
+    """The integrations this run activated, in order, each once.
 
-    A blocked-run claim is held to this: a subagent id is the integration it
-    fronts, so a run that never handed off to Slack cannot have been blocked on
-    Slack.
+    A blocked-run claim is held to this: activation is how a run reaches an
+    integration, and where an unconnected one shows its connect card, so a run
+    that never activated Slack cannot have been blocked on Slack.
     """
     if state is None:
         return []
@@ -126,10 +128,10 @@ def _handoff_targets(state: Mapping[str, Any] | None) -> list[str]:
     if not isinstance(messages, list):
         return []
     targets = [
-        (call.get("args") or {}).get("subagent_id")
+        (call.get("args") or {}).get("integration_id")
         for message in messages
         for call in getattr(message, "tool_calls", None) or []
-        if call.get("name") == "handoff"
+        if call.get("name") == _ACTIVATE_INTEGRATION_TOOL
     ]
     return [str(target) for target in dict.fromkeys(targets) if target]
 
@@ -166,44 +168,6 @@ def _answers_by_call_id(messages: list[object]) -> dict[str, object]:
     return answers
 
 
-def _subagent_results(config: RunnableConfig) -> list[RecordedResult]:
-    """The calls this run's subagents made, with their results, from the
-    stream's captured tool events.
-
-    A handoff's children are not in the executor's own state: the subagent ran
-    on its own graph, and the executor saw one message back. Its calls are
-    captured for the execution trace as they happen (``build_trace``), so the
-    validator reads them from there, digests and all, scoped to the subagent.
-    """
-    try:
-        stream_id = get_stream_id(config)
-    except WorkflowConfigError:
-        log.set_ns("playbook", subagent_calls=None)
-        return []
-    entries = drain_executor_tool_data(stream_id)
-    trace = build_trace(entries)
-    children = [call for call in trace if call.subagent is not None]
-    # On the wide event: how many calls the write could see in each scope. A
-    # child refused as "did not run" with zero here is a capture gap, not the
-    # model's fault.
-    log.set_ns(
-        "playbook",
-        capture_stream=stream_id,
-        captured_entries=len(entries),
-        traced_calls=len(trace),
-        subagent_calls=len(children),
-    )
-    return [
-        RecordedResult(
-            tool_name=call.tool_name,
-            args=call.args,
-            result=parse_result(call.result_digest),
-            subagent=call.subagent,
-        )
-        for call in children
-    ]
-
-
 def _replayed_results(config: RunnableConfig) -> list[RecordedResult]:
     """The calls a stopped replay made this fire, as results a write may freeze.
 
@@ -218,7 +182,6 @@ def _replayed_results(config: RunnableConfig) -> list[RecordedResult]:
             tool_name=call.tool_name,
             args=call.args,
             result=parse_result(call.result_digest),
-            subagent=call.subagent,
         )
         for call in replayed
     ]
@@ -233,7 +196,7 @@ def _run_results(state: Mapping[str, Any] | None) -> RunResults | None:
     that was never recorded. An empty list is NOT the same answer — it means the
     run really made no calls, and a playbook freezing calls is wrong.
 
-    Failed calls are kept, unlike the handoff record's successful-only lines
+    Failed calls are kept, unlike the call record's successful-only lines
     (``call_record.py``): a step frozen on a call that errored is precisely one
     of the things the validator has to catch.
     """
@@ -304,14 +267,13 @@ async def write_playbook(
 
         results = _run_results(state)
         if results is not None:
-            # The replay's calls come first: they ran before anything the agent
-            # did. The subagents' calls come last, in their own scopes.
-            results = [*_replayed_results(config), *results, *_subagent_results(config)]
+            # The replay's calls come first: they ran before anything the agent did.
+            results = [*_replayed_results(config), *results]
         # On the wide event because it is the one thing a rejected-or-accepted
         # write cannot show from its outcome: whether the run's own results
         # were in hand (None: no graph state reached the tool at all).
         log.set_ns("playbook", checked_against_calls=None if results is None else len(results))
-        validation = await validate_playbook(body, user_id, results)
+        validation = await validate_playbook(body, results)
         if not validation.valid:
             # The issues themselves, not just how many. A refused playbook is
             # diagnosed from the reason, and a count in a structured field that
@@ -445,13 +407,13 @@ async def _record_blocked_run(
     )
     if outcome.unrelated:
         # The run's own record says otherwise: neither the workflow's steps nor
-        # this run's handoffs involve what it named. Refused, not recorded, so
+        # this run's activations involve what it named. Refused, not recorded, so
         # the model re-decides with the integration it actually needed.
         named = ", ".join(outcome.unrelated)
         return error_response(
             "integration_not_in_run",
             f"{named} {'is' if len(outcome.unrelated) == 1 else 'are'} not part of this "
-            "workflow's steps and this run never handed off there. Name the integration "
+            "workflow's steps and this run never activated it. Name the integration "
             "the run actually needed, or decline with the kind that says why the "
             "sequence cannot hold.",
         )
@@ -590,7 +552,11 @@ async def _record_decline(
     workflow_id, user_id = workflow.id, workflow.user_id
     if kind in BLOCKED_DECLINE_KINDS:
         return await _record_blocked_run(
-            workflow_id, user_id, kind, integrations or [], used_by_run=_handoff_targets(state)
+            workflow_id,
+            user_id,
+            kind,
+            integrations or [],
+            used_by_run=_activated_integrations(state),
         )
     if kind is DeclineKind.NO_WORK_TODAY:
         # The claim is checked against the run's own record, not taken on

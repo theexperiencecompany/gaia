@@ -111,10 +111,10 @@ async def _resolve_mcp_tool(user_id: str | None, tool_name: str) -> ResolvedTool
             error_type=type(e).__name__,
         )
         return None
-    integration_id = mcp_client.find_integration(tool_name)
+    integration_id = await mcp_client.resolve_tool_owner(tool_name)
     if integration_id is None:
         return None
-    for tool in await mcp_client.get_tools(integration_id):
+    for tool in await mcp_client.tools_for(integration_id):
         if tool.name == tool_name:
             return ResolvedTool(
                 name=tool.name,

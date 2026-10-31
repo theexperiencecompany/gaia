@@ -14,6 +14,7 @@ import pytest
 from app.constants.mcp import MCP_TOOL_NAME_MAX_CHARS
 from app.utils.mcp_utils import (
     _CONNECTION_ERROR_PATTERNS,
+    gaia_tool_names,
     source_prefixed_tool_name,
     wrap_tool_with_null_filter,
     wrap_tools_with_null_filter,
@@ -256,6 +257,28 @@ class TestConnectionErrorPatterns:
     )
     def test_contains_key_patterns(self, expected: str) -> None:
         assert expected in _CONNECTION_ERROR_PATTERNS
+
+
+class TestGaiaToolNames:
+    def test_a_name_another_server_exposes_is_prefixed(self) -> None:
+        assert gaia_tool_names("PostHog", ["search", "query"], (), {"search"}) == {
+            "search": "posthog_search",
+            "query": "query",
+        }
+
+    def test_a_gaia_reserved_name_is_prefixed_without_any_other_server(self) -> None:
+        assert gaia_tool_names("Dodo Payments", ["execute"], {"execute"}, ()) == {
+            "execute": "dodo_payments_execute"
+        }
+
+    def test_an_unshared_unreserved_name_is_kept(self) -> None:
+        assert gaia_tool_names("PostHog", ["query"], {"execute"}, {"search"}) == {"query": "query"}
+
+    def test_a_prefixed_name_never_takes_a_name_the_server_already_uses(self) -> None:
+        assert gaia_tool_names("PostHog", ["search", "posthog_search"], (), {"search"}) == {
+            "search": "posthog_search_2",
+            "posthog_search": "posthog_search",
+        }
 
 
 class TestSourcePrefixedToolName:

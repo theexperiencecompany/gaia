@@ -8,7 +8,7 @@ production would reject it.
 
 from datetime import UTC, datetime
 import json
-from typing import Annotated, Any, ClassVar
+from typing import Annotated, Any
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from langchain_core.messages import AIMessage, ToolMessage
@@ -22,7 +22,6 @@ from app.agents.tools.playbook_tools import (
     _explain_validation_error,
     _replayed_results,
     _run_results,
-    _subagent_results,
     decline_playbook,
     disable_playbook,
     read_playbook,
@@ -48,12 +47,8 @@ from app.models.workflow_models import (
 )
 from app.services.workflow.integration_pause import PauseOutcome
 from app.services.workflow.playbook.parser import (
-    PlaybookValidation,
-    RunResults,
     dump_playbook,
-    validate_playbook,
 )
-from app.services.workflow.playbook.tool_space import SubagentTools
 from app.services.workflow.playbook.workflow_hash import workflow_hash
 
 TOOLS_MODULE = "app.agents.tools.playbook_tools"
@@ -281,44 +276,31 @@ class TestWritePlaybook:
             "args": {"calendar_id": "primary"},
         }
 
-    async def test_a_tool_step_nested_under_a_handoff_child_is_refused_not_dropped(
+    async def test_a_handoff_step_is_refused_not_dropped(
         self, store: _FakePlaybookStore, workflows: MagicMock
     ) -> None:
-        """Playbooks are depth-1: a handoff's children are plain tool calls, since an unenforced third level would vanish silently instead of running."""
-        deeper = [
+        """Unknown keys are dropped, so a handoff's calls would be stored as nothing unless refused by name."""
+        handoff = [
             {
+                "id": "mail",
+                "tool": "list_events",
                 "handoff": "gmail",
-                "steps": [
-                    {
-                        "id": "mail",
-                        "tool": "list_events",
-                        "args": {},
-                        "steps": [{"id": "deeper", "tool": "list_events", "args": {}}],
-                    }
-                ],
+                "steps": [{"id": "inner", "tool": "list_events", "args": {}}],
             }
         ]
         with (
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
             patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
             patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
-            patch(
-                f"{PARSER_MODULE}.resolve_subagent_tools",
-                AsyncMock(
-                    return_value=SubagentTools(
-                        tools=_FakeRegistry().get_tool_dict(), initial_tool_ids=[]
-                    )
-                ),
-            ),
         ):
-            result = await write_playbook.ainvoke({**NEW_ARGS, "steps": deeper}, config=_config())
+            result = await write_playbook.ainvoke({**NEW_ARGS, "steps": handoff}, config=_config())
 
         assert isinstance(result, str), "refused at the boundary, through handle_validation_error"
         parsed = json.loads(result)
         assert parsed["success"] is False
         assert parsed["error"] == "invalid_playbook"
-        assert "steps[0].steps[0]: " in parsed["message"]
-        assert "one level deep" in parsed["message"]
+        assert "steps[0]: " in parsed["message"]
+        assert "cannot carry handoff or steps" in parsed["message"]
         assert store.documents == {}
 
     async def test_playbook_failing_validation_writes_nothing(
@@ -363,10 +345,7 @@ class TestWritePlaybook:
         # approximation of it.
         steps: list[dict[str, Any]] = [
             {"id": "agenda", "tool": "list_events", "args": {"calendar_id": "primary"}},
-            {
-                "handoff": "gmail",
-                "steps": [{"id": "mail", "tool": "list_events", "args": {"calendar_id": "$now"}}],
-            },
+            {"id": "mail", "tool": "list_events", "args": {"calendar_id": "$now"}},
             {
                 "id": "written",
                 "tool": "list_events",
@@ -377,17 +356,6 @@ class TestWritePlaybook:
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
             patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
             patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
-            # A handoff's children are validated against that subagent's own
-            # space, which for an MCP integration is fetched from the user's
-            # client. Declared here rather than resolved from a live registry.
-            patch(
-                f"{PARSER_MODULE}.resolve_subagent_tools",
-                AsyncMock(
-                    return_value=SubagentTools(
-                        tools=_FakeRegistry().get_tool_dict(), initial_tool_ids=[]
-                    )
-                ),
-            ),
         ):
             result = await write_playbook.ainvoke({**NEW_ARGS, "steps": steps}, config=_config())
 
@@ -956,38 +924,6 @@ class TestPlaybookStorageDetails:
             + "; ".join(SIX_ISSUES)
         )
 
-    async def test_the_playbook_is_validated_for_the_user_whose_run_wrote_it(
-        self, store: _FakePlaybookStore, workflows: MagicMock
-    ) -> None:
-        """Tool existence is user-dependent (handoff children run in a subagent's space, MCP tools live on a user's own client), so validating for nobody would misjudge which steps can replay."""
-        seen: list[tuple[PlaybookBody, str]] = []
-
-        async def spying_validate(
-            body: PlaybookBody, user_id: str, results: RunResults | None = None
-        ) -> PlaybookValidation:
-            seen.append((body, user_id))
-            return await validate_playbook(body, user_id, results)
-
-        with (
-            patch(f"{TOOLS_MODULE}.playbook_repository", store),
-            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
-            patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
-            patch(f"{TOOLS_MODULE}.validate_playbook", spying_validate),
-        ):
-            result = await write_playbook.ainvoke(NEW_ARGS, config=_config())
-
-        assert result["success"] is True
-        assert seen == [
-            (
-                playbook_body_from_input(
-                    description="Read the day's events",
-                    steps=[PlaybookStepInput.model_validate(step) for step in NEW_STEPS],
-                    result_brief="Say what is on today.",
-                ),
-                USER_ID,
-            )
-        ]
-
 
 @pytest.mark.unit
 class TestReadPlaybookDetails:
@@ -1204,14 +1140,15 @@ class TestWritePlaybookBoundary:
                         {"id": "agenda", "tool": "list_events", "handoff": "gmail", "args": {}}
                     ],
                 },
-                "steps[0]: Value error, step agenda: set exactly one of 'tool' or 'handoff'",
+                "steps[0]: Value error, a step is one tool call and cannot carry handoff: list "
+                "every call the run made as its own step, in order",
             ),
             (
                 {"steps": NEW_STEPS},
                 "description: Field required; result_brief: Field required",
             ),
         ],
-        ids=["missing-description", "both-tool-and-handoff", "two-problems"],
+        ids=["missing-description", "a-handoff", "two-problems"],
     )
     async def test_arguments_that_miss_the_schema_come_back_as_a_readable_refusal(
         self,
@@ -1511,11 +1448,7 @@ class TestTheRunTheWriteIsCheckedAgainst:
                 {**NEW_ARGS, "steps": [FETCH_STEP], "state": state}, config=_config()
             )
 
-        # The capture telemetry (what the write could see in each scope) comes
-        # first; the count the validator was handed is its own line.
         assert call("playbook", checked_against_calls=2) in log.set_ns.call_args_list
-        captured = next(c.kwargs for c in log.set_ns.call_args_list if "subagent_calls" in c.kwargs)
-        assert captured["subagent_calls"] == 0
 
 
 PAUSE_TARGET = "app.services.workflow.integration_pause.pause_workflow_for_missing_integrations"
@@ -1595,23 +1528,23 @@ class TestBlockedDeclines:
     async def test_an_integration_the_run_never_used_is_refused_not_recorded(
         self, store: _FakePlaybookStore
     ) -> None:
-        """The run's own handoffs are the evidence; a claim they don't support is refused so the model names what it actually needed."""
+        """The run's own activations are the evidence; a claim they don't support is refused so the model names what it actually needed."""
         workflows = _FakeWorkflowStore()
-        # Two handoffs to gmail and one answer in between: the answered message
+        # Two activations of gmail and one answer in between: the answered message
         # carries no tool calls, and the target is listed once.
-        handed_off = AIMessage(
+        activated = AIMessage(
             content="",
             tool_calls=[
                 {
                     "id": "h1",
-                    "name": "handoff",
-                    "args": {"subagent_id": "gmail", "task": "read the inbox"},
+                    "name": "activate_integration",
+                    "args": {"integration_id": "gmail"},
                     "type": "tool_call",
                 },
                 {
                     "id": "h2",
-                    "name": "handoff",
-                    "args": {"subagent_id": "gmail", "task": "read it again"},
+                    "name": "activate_integration",
+                    "args": {"integration_id": "gmail"},
                     "type": "tool_call",
                 },
             ],
@@ -1630,7 +1563,7 @@ class TestBlockedDeclines:
                     "kind": "blocked_missing_integration",
                     "integrations": ["slack", "notion"],
                     "reason": "neither is connected",
-                    "state": {"messages": [handed_off, answered]},
+                    "state": {"messages": [activated, answered]},
                 },
                 config=_config(),
             )
@@ -1641,7 +1574,7 @@ class TestBlockedDeclines:
             "success": False,
             "error": "integration_not_in_run",
             "message": "slack, notion are not part of this workflow's steps and this run never "
-            "handed off there. Name the integration the run actually needed, or decline with "
+            "activated it. Name the integration the run actually needed, or decline with "
             "the kind that says why the sequence cannot hold.",
         }
         assert workflows.workflow.playbook_declines == 0
@@ -1969,7 +1902,6 @@ class TestAStoppedReplaysCallsCountAsThisRuns:
             tool_name="list_todos",
             args={"limit": 100},
             result_digest='{"todos": [{"id": "a"}]}',
-            subagent="todos",
         )
         config = {
             "configurable": {
@@ -1980,58 +1912,9 @@ class TestAStoppedReplaysCallsCountAsThisRuns:
 
         results = _replayed_results(config)
 
-        assert [(r.tool_name, r.args, r.result, r.subagent) for r in results] == [
-            ("list_todos", {"limit": 100}, {"todos": [{"id": "a"}]}, "todos")
+        assert [(r.tool_name, r.args, r.result) for r in results] == [
+            ("list_todos", {"limit": 100}, {"todos": [{"id": "a"}]})
         ]
-
-
-@pytest.mark.unit
-class TestSubagentResults:
-    """For a handoff's children, the write reads the stream's captured calls scoped to the subagent, with capture counts on the wide event."""
-
-    def test_a_run_without_a_stream_has_no_subagent_calls(self) -> None:
-        config: RunnableConfig = {"configurable": {"user_id": USER_ID, "workflow_id": WORKFLOW_ID}}
-        with (
-            patch(f"{TOOLS_MODULE}.drain_executor_tool_data") as drain,
-            patch(f"{TOOLS_MODULE}.log") as log,
-        ):
-            assert _subagent_results(config) == []
-        drain.assert_not_called()
-        assert log.set_ns.call_args_list == [call("playbook", subagent_calls=None)]
-
-    def test_the_streams_children_come_back_in_their_scope_and_are_counted(self) -> None:
-        child = RecordedCall(
-            tool_name="list_events",
-            args={"calendar_id": "primary"},
-            result_digest='{"events": [{"id": 0}]}',
-            subagent="gmail",
-        )
-        own = RecordedCall(tool_name="handoff", args={"subagent_id": "gmail"})
-        entries = [{"tool_name": "tool_calls_data"}, {"tool_name": "tool_calls_data"}]
-        with (
-            patch(f"{TOOLS_MODULE}.drain_executor_tool_data", return_value=entries) as drain,
-            patch(f"{TOOLS_MODULE}.build_trace", return_value=[own, child]) as trace,
-            patch(f"{TOOLS_MODULE}.log") as log,
-        ):
-            results = _subagent_results(_config())
-
-        drain.assert_called_once_with(RUN_ID)
-        trace.assert_called_once_with(entries)
-        assert [(r.tool_name, r.args, r.result, r.subagent) for r in results] == [
-            ("list_events", {"calendar_id": "primary"}, {"events": [{"id": 0}]}, "gmail")
-        ]
-        assert log.set_ns.call_args_list == [
-            call(
-                "playbook",
-                capture_stream=RUN_ID,
-                captured_entries=2,
-                traced_calls=2,
-                subagent_calls=1,
-            )
-        ]
-
-    def test_no_replay_means_no_extra_results(self) -> None:
-        assert _replayed_results(_config()) == []
 
 
 @pytest.mark.unit
@@ -2062,86 +1945,3 @@ async def test_a_shape_the_body_cannot_take_is_a_refusal_not_an_exception(
     assert "max_items" in result["message"]
     assert store.documents == {}
     log.error.assert_not_called()
-
-
-@pytest.mark.unit
-class TestASubagentsCallsReachTheValidator:
-    """A handoff's children are not in the executor's state; the write checks them against the subagent's own captured trace instead."""
-
-    STEPS: ClassVar[list[dict[str, Any]]] = [
-        {
-            "id": "h",
-            "handoff": "gmail",
-            "steps": [
-                {"id": "events", "tool": "list_events", "args": {"calendar_id": "primary"}},
-                {
-                    "id": "again",
-                    "tool": "list_events",
-                    "args": {"calendar_id": "$steps.events.owner"},
-                },
-            ],
-        }
-    ]
-
-    def _state(self) -> dict[str, Any]:
-        call = AIMessage(
-            content="",
-            tool_calls=[
-                {"id": "h1", "name": "handoff", "args": {"subagent_id": "gmail", "task": "go"}}
-            ],
-        )
-        return {"messages": [call, ToolMessage(content="done", tool_call_id="h1")]}
-
-    async def _write(
-        self, store: _FakePlaybookStore, workflows: MagicMock, trace: list[RecordedCall]
-    ) -> dict[str, Any]:
-        registry = _FakeRegistry()
-        with (
-            patch(f"{TOOLS_MODULE}.playbook_repository", store),
-            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
-            patch(f"{TOOLS_MODULE}.drain_executor_tool_data", return_value=[]),
-            patch(f"{TOOLS_MODULE}.build_trace", return_value=trace),
-            patch(f"{PARSER_MODULE}.get_tool_registry", return_value=registry),
-            patch(
-                f"{PARSER_MODULE}.resolve_subagent_tools",
-                AsyncMock(
-                    return_value=SubagentTools(tools=registry.get_tool_dict(), initial_tool_ids=[])
-                ),
-            ),
-        ):
-            result = await write_playbook.ainvoke(
-                {**NEW_ARGS, "steps": self.STEPS, "state": self._state()}, config=_config()
-            )
-        return result if isinstance(result, dict) else json.loads(result)
-
-    async def test_the_subagents_calls_reach_the_validator_and_a_childs_result_is_readable(
-        self, store: _FakePlaybookStore, workflows: MagicMock
-    ) -> None:
-        trace = [
-            RecordedCall(
-                tool_name="list_events",
-                args={"calendar_id": "primary"},
-                result_digest='{"owner": "a@b.com", "events": [{"id": 0}]}',
-                subagent="gmail",
-            ),
-            RecordedCall(
-                tool_name="list_events",
-                args={"calendar_id": "a@b.com"},
-                result_digest='{"owner": "a@b.com", "events": [{"id": 1}]}',
-                subagent="gmail",
-            ),
-        ]
-
-        result = await self._write(store, workflows, trace)
-
-        assert result["success"] is True, result
-        assert (WORKFLOW_ID, USER_ID) in store.documents
-
-    async def test_without_the_subagents_calls_the_children_are_refused(
-        self, store: _FakePlaybookStore, workflows: MagicMock
-    ) -> None:
-        result = await self._write(store, workflows, [])
-
-        assert result["success"] is False
-        assert result["error"] == "invalid_playbook"
-        assert "list_events did not run" in result["message"]

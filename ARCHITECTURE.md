@@ -29,10 +29,10 @@ GAIA's agent runtime is a **three-tier system**:
                       │  execute(...) / direct calls (in-context)
                       ▼
 ┌──────────────────────────────────────────────────────────────┐
-│  Subagents  (per-user MCP workers + spawned isolation)       │
-│  - One graph per custom/auth-required MCP integration only   │
+│  Subagents  (spawned isolation only)                         │
 │  - spawn_subagent workers for bulky isolated work            │
-│  - Provider/built-in integrations activate, never spawn      │
+│  - Every integration (incl. per-user MCP) activates in the   │
+│    executor; none runs as its own graph                      │
 │  - finish_task signal + memory node end-hook                 │
 └──────────────────────────────────────────────────────────────┘
 ```
@@ -78,7 +78,7 @@ The worker tier. Has access to **everything** that does work.
 
 ### Initial tool IDs (the executor's initial bind set)
 
-`activate_integration`, `handoff`, `execute`, `get_tool_schema`, `plan_tasks`, `update_tasks`, `read`, `bash`, `deep_research`, `list_running_subagents`, `message_subagent`, `cancel_subagent`, `read_manual`, `create_tracked_todo`, `update_tracked_todo`, `complete_tracked_todo`, `search_todo_context`, `list_tracked_todos`, `list_trigger_fields`, `subscribe_todo_to_trigger`, `unsubscribe_todo_from_trigger`, `save_learned_skill`, `update_skill`, `get_user_instructions`, `update_user_instructions`, `browser_task`, `write_playbook`, `decline_playbook`, `read_playbook`, `disable_playbook`, `add_device`, `approve_device_pairing`, `list_devices`, `run_on_device`.
+`activate_integration`, `execute`, `get_tool_schema`, `plan_tasks`, `update_tasks`, `read`, `bash`, `deep_research`, `list_running_subagents`, `message_subagent`, `cancel_subagent`, `read_manual`, `create_tracked_todo`, `update_tracked_todo`, `complete_tracked_todo`, `search_todo_context`, `list_tracked_todos`, `list_trigger_fields`, `subscribe_todo_to_trigger`, `unsubscribe_todo_from_trigger`, `save_learned_skill`, `update_skill`, `get_user_instructions`, `update_user_instructions`, `browser_task`, `write_playbook`, `decline_playbook`, `read_playbook`, `disable_playbook`, `add_device`, `approve_device_pairing`, `list_devices`, `run_on_device`.
 
 ### Handoff lifecycle (background, async)
 
@@ -125,14 +125,16 @@ One rule governs it:
 
 ---
 
-## 4. Subagents (per-user MCP workers)
+## 4. Integrations and subagents
 
-Provider and built-in integrations are NOT subagents: the executor loads them in-context via `activate_integration` and acts itself. Subagent graphs exist only where tools cannot load in-context — per-user MCP integrations (custom MCP connections and auth-required MCP, whose tools are issued per user) — plus `spawn_subagent` workers for bulky isolated work. `handoff` to any other id redirects to `activate_integration` at resolve time. **Spawned workers can never spawn sub-workers**: `create_subagent_middleware` force-disables the spawn middleware whatever a caller passes (only the executor carries `spawn_subagent`), and `handoff` is neither in a worker's tool space nor bindable by it (retrieval validates against the scoped set).
+No integration is a subagent. Every integration (Composio, built-in, no-auth platform MCP, auth-required platform MCP, and the user's own custom MCP connections) is loaded in-context with `activate_integration(integration_id)` and the executor acts itself. Integration tools are never bound to the model: they are execute-routed (`execute` → `resolver.resolve_tool`), and for MCP the resolver asks the user's `MCPClient` (`tools_for` / `resolve_tool_owner`), which reconnects from stored tokens when the tools are not warm in this process. Activating a per-user MCP gates on the connection (`integration_resolution.check_mcp_connection` renders the connect card), connects, preloads its tool schemas (all of them up to `MCP_PRELOAD_ALL_MAX`, the configured subset above it) and stamps the conversation so `retrieve_tools` searches its namespace. Tool names are unique per user: when two of a user's MCP servers expose the same name, the later one's tool is prefixed with its integration id at connect (`posthog_search`, `context7_search`). The only subagents are `spawn_subagent` workers for bulky or isolated work; they inherit the executor's bound tools and reach integration tools through the same `execute` path. **Spawned workers can never spawn sub-workers**: `create_subagent_middleware` force-disables the spawn middleware whatever a caller passes (only the executor carries `spawn_subagent`).
 
-### Delegation — one runner for spawn_subagent and handoff
+Historical conversations can still hold `handoff` tool calls and `agent_type: "handoff"` subagent frames; the clients keep rendering them, but nothing on the server emits them any more.
 
-- `apps/api/app/agents/core/subagents/delegation.py` — `Delegation` + `delegate()`: the ONE lifecycle of a delegated run. `spawn_subagent` and `handoff` only build a `Delegation` (`SubagentMiddleware.build_delegation`, `handoff_tools.build_handoff_delegation`); everything after is here: the checkpoint-thread claim in `RunningSubagents` (a held thread refuses the delegation), `subagent_start`/`subagent_end`, the drive loop, background dispatch, the inbox landing, the park and the resume.
-- **Background by default** (`background=True` on both tools): the tool returns an acknowledgement naming the subagent id (`subagent_row_id(tool_call_id)`, stable across replays) and the run continues as a detached task on **its own stream** (announced via `open_detached_stream`, folded into the dispatching turn's message). Its frames are saved into that message at the end (`append_message_tool_data`), and its result lands in `ExecutorInbox` as `SUBAGENT_RESULT` through `deliver_to_executor`, waking a rested executor. Its `RunningSubagents` record names its own stream and the stream that dispatched it, so stopping a stream (`running_registry.stop_stream`, the one path behind `POST /cancel-stream` and `cancel_executor`) stops every run it dispatched, however deep, even after the dispatching run ended; `cancel_executor([])` stops every live one. A run the user stopped lands nothing, so it cannot restart the executor they just stopped. The announcement carries `kind: "subagent"` (`DetachedStreamKind`): the web client (`useExecutorStream`) folds such a stream with `foldOwnToolData` (`@gaia/shared/chat`) — upserting only the subagent's own group and approval cards into the turn's message, never its text or status — so a card raised after the turn ended, and the resumed run's cards, render inline. `background=False` blocks inside the tool call and bubbles each HIL pause up to the executor (`resume_for_gate`).
+### Delegation — the spawn_subagent runner
+
+- `apps/api/app/agents/core/subagents/delegation.py` — `Delegation` + `delegate()`: the ONE lifecycle of a delegated run. `spawn_subagent` only builds a `Delegation` (`SubagentMiddleware.build_delegation`); everything after is here: the checkpoint-thread claim in `RunningSubagents` (a held thread refuses the delegation), `subagent_start`/`subagent_end`, the drive loop, background dispatch, the inbox landing, the park and the resume.
+- **Background by default** (`background=True`): the tool returns an acknowledgement naming the subagent id (`subagent_row_id(tool_call_id)`, stable across replays) and the run continues as a detached task on **its own stream** (announced via `open_detached_stream`, folded into the dispatching turn's message). Its frames are saved into that message at the end (`append_message_tool_data`), and its result lands in `ExecutorInbox` as `SUBAGENT_RESULT` through `deliver_to_executor`, waking a rested executor. Its `RunningSubagents` record names its own stream and the stream that dispatched it, so stopping a stream (`running_registry.stop_stream`, the one path behind `POST /cancel-stream` and `cancel_executor`) stops every run it dispatched, however deep, even after the dispatching run ended; `cancel_executor([])` stops every live one. A run the user stopped lands nothing, so it cannot restart the executor they just stopped. The announcement carries `kind: "subagent"` (`DetachedStreamKind`): the web client (`useExecutorStream`) folds such a stream with `foldOwnToolData` (`@gaia/shared/chat`) — upserting only the subagent's own group and approval cards into the turn's message, never its text or status — so a card raised after the turn ended, and the resumed run's cards, render inline. `background=False` blocks inside the tool call and bubbles each HIL pause up to the executor (`resume_for_gate`).
 - **Headless runs block.** A workflow/scheduled-todo run (`execution_mode == "background"`) or one with no stream delivers once, so `runs_in_background` sends it blocking; parallel calls in one AI message still run concurrently.
 - **Steering:** every run (blocking or background) is registered while it runs, so `message_subagent` reaches its `SubagentInbox` and `cancel_subagent` sets its `SubagentCancel` flag.
 - **HIL in a background run:** the run carries a `SubagentResumeItem` under configurable `subagent_resume`; the gate files it (and the thread) on every approval the run raises, with the normal card on the run's own stream. A gated call parks the run on its checkpointed thread (thread released, a park note lands in the inbox). The decision resumes it: `resolution._dispatch_decided` → `parked_resume.resume_parked_subagent` rebuilds the delegation by the tool's own builder (spawn: `spawner_of(executor graph)`) and claims the thread — a still-draining run's own park resumes on a decision that beat it. The sweep redispatches decided-unresumed subagent records like executor pauses. Ledger mode (`ENABLE_HIL_LEDGER`, on by default) never parks: the run gets `PENDING <id>` and finishes.
@@ -142,15 +144,17 @@ Provider and built-in integrations are NOT subagents: the executor loads them in
 - `apps/api/app/agents/core/subagents/__init__.py`
 - `apps/api/app/agents/core/subagents/registry.py` — `all_subagents()` and `get_subagent_by_id()`. **Single source of truth** that combines OAuth-derived subagents + builtins. Cached per catalog version (`CatalogCached`), so it rebuilds when the instance admin enables a Composio toolkit.
 - `apps/api/app/agents/core/subagents/builtin_subagents.py` — `BUILTIN_SUBAGENTS` (currently `docgen`, `gaia_knowledge_guide`). Excluded from the marketplace.
-- `apps/api/app/agents/core/subagents/base_subagent.py` — `SubAgentFactory.create_provider_subagent()`. Wires a scoped worker graph: scoped tool dict, `SubagentMiddleware`, todo tools, MCP/Composio tools, no end-hooks (memory learning runs once per comms turn, not per subagent), checkpointer, and the three pre-model hooks. Reached at runtime only for per-user MCP integrations, spawn workers, and dev direct-invocation.
-- `apps/api/app/agents/core/subagents/provider_subagents.py` — `create_subagent()` (provider graphs; kept for dev/tests — unreachable from `handoff`, which redirects those ids) and `create_subagent_for_user()` (per-user auth MCP; rebuilt on every handoff, no memoization). `register_subagent_providers()` registers lazy loaders.
-- `apps/api/app/agents/core/subagents/handoff_tools.py` — `@tool handoff(subagent_id, task, config, background=True)`. Per-user MCP only: resolving a provider or built-in id returns an `activate_integration` redirect instead of a graph. Resolves the worker via `_resolve_subagent()`, builds the delegation (`build_handoff_delegation`), applies its pre-dispatch refusals (foreign provider named in the task, parked subagent on the thread), then hands it to `delegation.delegate()`. Includes `_get_subagent_by_id` (Redis cached at `SUBAGENT_CACHE_PREFIX`), `_sanitize_task_user_reference` (replaces Gaia display name with service username), and `index_custom_mcp_as_subagent` (ChromaDB pointer docs so unactivated custom MCPs stay discoverable). Also exports `check_integration_connection()`.
+- `apps/api/app/agents/core/subagents/base_subagent.py` — `SubAgentFactory.create_provider_subagent()`. Wires a scoped worker graph: scoped tool dict, `SubagentMiddleware`, todo tools, Composio tools, no end-hooks (memory learning runs once per comms turn, not per subagent), checkpointer, and the three pre-model hooks. Reached at runtime only for spawn workers and dev direct-invocation.
+- `apps/api/app/agents/core/subagents/provider_subagents.py` — `create_subagent()` (provider graphs; kept for dev/tests). `register_subagent_providers()` registers lazy loaders.
+- `apps/api/app/agents/core/subagents/integration_resolution.py` — `get_integration_target()` (an integration id → its `Subagent` config or `CustomMcpSubagent`, Redis cached at `SUBAGENT_CACHE_PREFIX` with negative caching), `check_integration_connection()` (Composio/OAuth gate), `check_mcp_connection()` (auth-required platform MCP and custom MCP gate, renders the connect card) and `is_per_user_mcp()`.
+- `apps/api/app/agents/core/subagents/integration_activation.py` — `activate_integration`: connection gate, tool loading (Composio tools bind/preload from the registry; MCP tools preload from `MCPClient.tools_for`), context sections (static notes, standing instructions, account identity, skills) and the conversation stamp that scopes `retrieve_tools`.
+- `apps/api/app/services/mcp/custom_mcp_index.py` — `index_custom_mcp_as_subagent` writes the ChromaDB pointer docs that keep a not-yet-activated custom MCP discoverable through `retrieve_tools`; a hit renders as an `activate_integration` pointer.
 - `apps/api/app/agents/core/subagents/subagent_runner.py` — `SubagentExecutionContext`, `build_initial_messages` (seeds `[static_system, dynamic_stable, memory_recall?, human_task, current_time]` in canonical slot order — see §Context assembly), `execute_subagent_stream` (handles `messages`/`custom`/`updates` events; emits `subagent_start`/`subagent_end` lifecycle), `prepare_executor_execution` (builds executor context with `DIRECT EXECUTION HINT`).
 - `apps/api/app/agents/core/subagents/subagent_helpers.py` — `build_subagent_system_prompt` / `create_subagent_system_message`: the STATIC per-integration prompt only. Byte-identical across users so the implicit prompt cache hits; everything per-user is assembled separately (below).
 
 ### Context assembly (all five tiers)
 
-One module builds the per-run context for comms, the executor, MCP/spawned subagents and the workflow author. Tier differences are rows in a table, not divergent code paths.
+One module builds the per-run context for comms, the executor, spawned subagents and the workflow author. Tier differences are rows in a table, not divergent code paths.
 
 - `apps/api/app/agents/context/slots.py` — `PromptSlot`, the canonical message order `[static, dynamic_stable, onboarding, todo_context, background_executor, executor_status, browser_task, memory_recall, …conversation…, time]`, plus the marker read/write helpers. The two constraints that fix this order (Gemini's leading-contiguous system block; longest-common-prefix cache matching) are documented there.
 - `apps/api/app/agents/context/tiers.py` — `AgentTier`, the closed set of tiers a section declares applicability against.
@@ -181,8 +185,7 @@ Tests: `apps/api/tests/_harness/context_chain.py` produces the *effective* array
 ### Tools per integration
 
 - **Composio integrations** — `tool_registry.register_provider_tools(toolkit_name, space_name, specific_tools)` in `provider_subagents.py` loads their tools into the registry for activation; the executor runs them via `execute`. User OAuth token attached server-side via `@composio.tools.custom_tool`.
-- **MCP subagents (auth-required)** — live tools read from `MCPClient` (source of truth), not copied into a registry. `get_mcp_client(user_id)` in `apps/api/app/services/mcp/mcp_client.py`.
-- **Custom MCP subagents** — `_create_custom_mcp_subagent` in `provider_subagents.py` reads from `integrations_collection` in MongoDB. If `1 <= tool_count <= 10`, sets `use_direct_tools=True, disable_retrieve_tools=True` for low latency.
+- **MCP integrations (platform and custom)** — live tools read from the user's `MCPClient` (source of truth), not copied into the registry. `get_mcp_client(user_id)` in `apps/api/app/services/mcp/mcp_client.py`; `tools_for(integration_id)` returns them warm or reconnects, `resolve_tool_owner(tool_name)` finds which connected MCP exposes a name. Custom MCP definitions live in `integrations_collection` in MongoDB. Activation preloads every tool schema when a server exposes at most `MCP_PRELOAD_ALL_MAX` (`app/constants/mcp.py`) tools; the executor runs them via `execute`.
 - **Always-on tools for every subagent** (in `base_subagent.py::_build_scoped_tool_dict`): `search_memory`, `read`, `bash`, `web_search_tool`, `fetch_webpages`, `deep_research`, `update_integration_instructions` (its own integration's scope only, never global), and optionally `finish_task`.
 
 ### Subagent middleware
@@ -228,7 +231,7 @@ All five bots live in `apps/bots/`, share a unified command system in `libs/shar
 
 ### How a bot message reaches the agent
 
-Bot receives message → adapter builds `CommandContext` → unified `BotCommand` (`gaia.ts` etc.) → `GaiaClient` HTTP call to API → `apps/api/app/agents/core/agent.py::call_agent()` → comms graph → executor (→ per-user MCP workers where needed) → SSE stream back through `outbound-consumer.ts`.
+Bot receives message → adapter builds `CommandContext` → unified `BotCommand` (`gaia.ts` etc.) → `GaiaClient` HTTP call to API → `apps/api/app/agents/core/agent.py::call_agent()` → comms graph → executor → SSE stream back through `outbound-consumer.ts`.
 
 ---
 
@@ -362,7 +365,7 @@ A **PG-backed** memory engine projected to VFS as Markdown (`/workspace/memory/.
 
 ### 9.1b The execute proxy & code mode
 
-Integration tools (Composio + per-user MCP — the thousands) are **never bound** to the model. `retrieve_tools` returns their **schema docs**, and one proxy runs them:
+Integration tools (Composio + MCP — the thousands) are **never bound** to the model. `retrieve_tools` returns their **schema docs**, and one proxy runs them:
 
 - `apps/api/app/agents/tools/execute/dispatch.py` — `dispatch_tool(user_id, tool_name, data, config)`: the single resolve → validate (`args_schema`, stands in for provider constrained decoding) → invoke → analytics core. Instrumented: Prometheus `gaia_execute_dispatch_total{outcome}`, PostHog `tool:execute_failed` + `tool:used{via=execute|bound}` — invalid_args/ok is the migration's retries-per-successful-action health ratio.
 - `apps/api/app/agents/tools/execute/resolver.py` — name → BaseTool across the registry, the per-user `MCPClient`, and on-demand Composio catalog materialization (`get_tools_by_name`).
@@ -505,7 +508,7 @@ Integration tools (Composio + per-user MCP — the thousands) are **never bound*
 
 ## 14. MCP
 
-- `apps/api/app/services/mcp/mcp_client.py` — `MCPClient` (source of truth for live per-user MCP tools; owns the warm sessions). A server tool named like a GAIA tool (Dodo Payments' `execute`) is renamed `<integration>_<name>` at connect (`_rename_shadowing_tools`), else GAIA's tool shadows it unreachably; the adapter still calls the server by its own `mcp_name`.
+- `apps/api/app/services/mcp/mcp_client.py` — `MCPClient` (source of truth for live per-user MCP tools; owns the warm sessions). A server tool named like a GAIA tool (Dodo Payments' `execute`) is renamed `<integration>_<name>` at connect (`_rename_shadowing_tools`), else GAIA's tool shadows it unreachably; the same rename applies when another of the user's MCP servers already holds the name (`posthog_search` beside `context7_search`), so `execute` resolves one tool per name per user. The adapter still calls the server by its own `mcp_name`.
 - `apps/api/app/services/mcp/mcp_token_store.py` — `MCPTokenStore(user_id)` (stores OAuth tokens for auth-required MCP integrations).
 - `apps/api/app/constants/mcp.py` — `INSTACART_MCP_SERVER_URL`, `YELP_MCP_SERVER_URL`, etc.
 
@@ -600,8 +603,8 @@ A browser task is a background job, not a tool call the turn holds open. `browse
 |---|---|
 | Change the user-facing chat prompt / behavior | `apps/api/app/agents/core/graph_builder/build_graph.py` (comms) + `apps/api/app/agents/core/nodes/*` |
 | Make a new endpoint reachable without a subscription | `apps/api/app/api/v1/middleware/entitlement_allowlist.py` (add the prefix **with its reason**) |
-| Change the executor's tool set or handoff behavior | `apps/api/app/agents/core/graph_builder/build_graph.py` (executor) + `apps/api/app/agents/tools/executor_tool.py` |
-| Add a new integration subagent | `apps/api/app/config/oauth_config.py` (register `SubAgentConfig`) + `apps/api/app/agents/tools/integrations/<provider>_tool.py` + `apps/api/app/agents/core/subagents/provider_subagents.py` |
+| Change the executor's tool set | `apps/api/app/agents/core/graph_builder/build_graph.py` (executor) + `apps/api/app/agents/tools/executor_tool.py` |
+| Add a new integration | `apps/api/app/config/oauth_config.py` (register `SubAgentConfig`) + `apps/api/app/agents/tools/integrations/<provider>_tool.py` + `apps/api/app/agents/core/subagents/provider_subagents.py` |
 | Add a new tool the executor can use | `apps/api/app/agents/tools/<your_tool>.py` + register in `apps/api/app/agents/tools/core/registry.py` |
 | Change how integration tools run (the execute proxy / code mode) | `apps/api/app/agents/tools/execute/` + `apps/api/app/services/sandbox/execute_client.py` + `apps/api/app/api/v1/endpoints/sandbox_execute.py` |
 | Add a built-in skill | `apps/api/app/agents/skills/builtin/<skill_name>/SKILL.md` |

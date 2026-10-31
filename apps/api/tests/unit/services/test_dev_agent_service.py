@@ -23,7 +23,6 @@ from app.services.dev_agent_service import (
     _dev_base_configurable,
     _reject_pause,
     run_executor_direct,
-    run_subagent_direct,
 )
 from app.utils.errors import AppError
 
@@ -182,18 +181,6 @@ class TestTheModelADirectRunIsAskedFor:
 
         assert seams.build.call_args.kwargs["lane"].dev_option == DEV_MODEL_OPTIONS["glm-5.2"]
 
-    async def test_the_subagent_run_forwards_its_model(self) -> None:
-        ctx = SimpleNamespace(agent_name="gmail_agent", configurable={"thread_id": "t"})
-        with (
-            _direct_run(
-                "prepare_subagent_execution", (ctx, None, None), SubagentOutcome("ok")
-            ) as seams,
-            patch.object(settings, "DEV_DEFAULT_MODEL", None),
-        ):
-            await run_subagent_direct("dev@gaia.local", "gmail", "task", "conv-1", model="glm-5.2")
-
-        assert seams.build.call_args.kwargs["lane"].dev_option == DEV_MODEL_OPTIONS["glm-5.2"]
-
 
 class TestRunExecutorDirect:
     async def test_it_returns_the_executors_answer_on_the_prepared_thread(self) -> None:
@@ -250,70 +237,5 @@ class TestRunExecutorDirect:
             pytest.raises(AppError) as excinfo,
         ):
             await run_executor_direct("dev@gaia.local", "do it", "conv-1")
-
-        assert excinfo.value.status_code == 409
-
-
-class TestRunSubagentDirect:
-    async def test_it_returns_the_subagents_answer_on_the_prepared_thread(self) -> None:
-        ctx = SimpleNamespace(agent_name="gmail_agent", configurable={"thread_id": "sub-t"})
-        metadata = {"integration_id": "gmail"}
-        with _direct_run(
-            "prepare_subagent_execution", (ctx, metadata, None), SubagentOutcome("sent")
-        ) as seams:
-            response = await run_subagent_direct("dev@gaia.local", "gmail", "send it", "conv-1")
-
-        assert response == DevAgentRunResponse(
-            user_id="u1",
-            conversation_id="conv-1",
-            thread_id="sub-t",
-            agent="gmail_agent",
-            message="sent",
-        )
-        seams.prepare.assert_awaited_once_with(
-            subagent_id="gmail", task="send it", configurable=PARENT_CONFIGURABLE
-        )
-        seams.execute.assert_awaited_once_with(ctx, integration_metadata=metadata)
-        seams.dev_user.assert_awaited_once_with("dev@gaia.local")
-        assert seams.build.call_args.kwargs["identity"].agent_name == "dev_direct"
-
-    async def test_a_context_without_a_thread_reports_an_empty_thread_id(self) -> None:
-        ctx = SimpleNamespace(agent_name="gmail_agent", configurable={})
-        with _direct_run("prepare_subagent_execution", (ctx, None, None), SubagentOutcome("ok")):
-            response = await run_subagent_direct("dev@gaia.local", "gmail", "send it", "conv-1")
-
-        assert response.thread_id == ""
-
-    async def test_an_unrunnable_subagent_is_a_400_pointing_at_the_list(self) -> None:
-        with (
-            _direct_run(
-                "prepare_subagent_execution", (None, None, "not a subagent"), SubagentOutcome("")
-            ),
-            pytest.raises(AppError) as excinfo,
-        ):
-            await run_subagent_direct("dev@gaia.local", "nope", "send it", "conv-1")
-
-        assert excinfo.value.status_code == 400
-        assert excinfo.value.message == "Cannot run subagent 'nope'"
-        assert excinfo.value.why == "not a subagent"
-        assert excinfo.value.fix == "GET /api/v1/dev/subagents lists the runnable ids"
-
-    async def test_an_unrunnable_subagent_with_no_cause_still_says_why(self) -> None:
-        with (
-            _direct_run("prepare_subagent_execution", (None, None, None), SubagentOutcome("")),
-            pytest.raises(AppError) as excinfo,
-        ):
-            await run_subagent_direct("dev@gaia.local", "nope", "send it", "conv-1")
-
-        assert excinfo.value.why == "prepare_subagent_execution returned no context"
-
-    async def test_a_paused_subagent_run_is_a_409(self) -> None:
-        ctx = SimpleNamespace(agent_name="gmail_agent", configurable={"thread_id": "t"})
-        paused = SubagentOutcome(text="", interrupt={"type": "hil_approval", "approval_id": "a1"})
-        with (
-            _direct_run("prepare_subagent_execution", (ctx, None, None), paused),
-            pytest.raises(AppError) as excinfo,
-        ):
-            await run_subagent_direct("dev@gaia.local", "gmail", "send it", "conv-1")
 
         assert excinfo.value.status_code == 409

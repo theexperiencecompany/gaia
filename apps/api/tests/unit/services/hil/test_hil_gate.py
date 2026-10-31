@@ -8,6 +8,7 @@ that matter are the ones that make the tool *run* when it should not have:
 * a run whose identity is missing, so nothing gates it at all.
 """
 
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -22,6 +23,7 @@ from app.services.hil.approvals_store import approval_id_for
 from app.services.hil.bridge import ApprovalOutcome
 from app.services.hil.gate import (
     GateContext,
+    _integration_name_for,
     _judge,
     _outcome_from_record,
     decide_tool_call,
@@ -529,3 +531,62 @@ class TestAResumeWithNoDecision:
             "continue without it."
         )
         assert result.additional_kwargs[HIL_STATUS_KWARG] == "error"
+
+
+class TestTheApprovalCardNamesTheIntegration:
+    """A registry tool names its category; an MCP tool, which has none, names its server."""
+
+    @staticmethod
+    def _registry(category_name: str | None) -> SimpleNamespace:
+        return SimpleNamespace(
+            get_category_of_tool=lambda _name: "cat",
+            get_category=lambda _category: (
+                SimpleNamespace(integration_name=category_name) if category_name else None
+            ),
+        )
+
+    async def test_a_registry_tool_names_its_category_without_resolving_the_tool(self) -> None:
+        with (
+            patch(
+                f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=self._registry("Gmail"))
+            ),
+            patch(f"{MODULE}.gated_tool_object", new=AsyncMock()) as gated,
+        ):
+            name = await _integration_name_for(make_request(), USER_ID, "GMAIL_SEND_EMAIL")
+        assert name == "Gmail"
+        gated.assert_not_awaited()
+
+    async def test_an_mcp_tool_names_the_integration_stamped_on_it(self) -> None:
+        tool = make_tool(name="delete_item", metadata={"integration_id": "custom_srv"})
+        request = make_request(name="delete_item")
+        with (
+            patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=self._registry(None))),
+            patch(f"{MODULE}.gated_tool_object", new=AsyncMock(return_value=tool)) as gated,
+            patch(
+                f"{MODULE}.IntegrationResolver.resolve",
+                new=AsyncMock(return_value=SimpleNamespace(name="Acme Tracker")),
+            ) as resolve,
+        ):
+            name = await _integration_name_for(request, USER_ID, "delete_item")
+        assert name == "Acme Tracker"
+        gated.assert_awaited_once_with(request, USER_ID, "delete_item")
+        resolve.assert_awaited_once_with("custom_srv")
+
+    async def test_an_unresolvable_integration_still_names_its_id(self) -> None:
+        tool = make_tool(name="delete_item", metadata={"integration_id": "gone_srv"})
+        with (
+            patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=self._registry(None))),
+            patch(f"{MODULE}.gated_tool_object", new=AsyncMock(return_value=tool)),
+            patch(f"{MODULE}.IntegrationResolver.resolve", new=AsyncMock(return_value=None)),
+        ):
+            name = await _integration_name_for(make_request(), USER_ID, "delete_item")
+        assert name == "gone_srv"
+
+    async def test_a_tool_with_no_category_and_no_integration_names_nothing(self) -> None:
+        with (
+            patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=self._registry(None))),
+            patch(f"{MODULE}.gated_tool_object", new=AsyncMock(return_value=make_tool())),
+            patch(f"{MODULE}.IntegrationResolver.resolve", new=AsyncMock()) as resolve,
+        ):
+            assert await _integration_name_for(make_request(), USER_ID, "send_email") is None
+        resolve.assert_not_awaited()

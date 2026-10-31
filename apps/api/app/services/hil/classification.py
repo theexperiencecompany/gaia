@@ -7,8 +7,15 @@ Resolution order (first match wins):
    untrusted MCP server may flag danger but never clear it, so readOnlyHint and
    destructiveHint=False are ignored; a true hint gates even a reviewed-safe flag.
 3. The tool registry's flag — authoritative for internal tools and curated slugs.
+   Never read for an MCP tool: MCP tools are not in the registry, and a
+   same-named registry tool must not lend it its verdict.
 4. A cached Mongo classification for a previously-seen custom tool.
-5. A one-shot LLM classification, persisted to Mongo + the live registry.
+5. A one-shot LLM classification, persisted to Mongo (+ the live registry for
+   registry tools).
+
+Cached verdicts are keyed by :func:`classification_key`: the bare name for
+registry tools, ``mcp:<integration_id>:<tool_name>`` for MCP tools, so two
+servers exposing the same tool name never share a verdict.
 
 Any failure — registry unavailable, LLM error, or a tool absent from every
 source — resolves to destructive (fail closed).
@@ -21,6 +28,7 @@ from pydantic import BaseModel, Field
 
 from app.agents.llm.client import SILENT_LLM_CONFIG, StructuredCallOptions, ainvoke_structured
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
+from app.constants.execute import MCP_SHAPE_SCOPE_PREFIX
 from app.constants.hil import HIL_EXEMPT_TOOLS, HIL_LLM_TIMEOUT_SECONDS
 from app.constants.log_tags import LogTag
 from app.db.repositories.hil import hil_tool_risk_repository
@@ -40,12 +48,14 @@ async def is_tool_destructive(
     description: str = "",
     *,
     destructive_hint: bool | None = None,
+    mcp_integration_id: str | None = None,
 ) -> bool:
     """Return whether tool_name must be gated by HIL. Fails closed.
 
     destructive_hint is the caller-read MCP destructiveHint (see
     :func:mcp_destructive_hint); it escalates an otherwise-unclassified tool
-    to destructive without an LLM call.
+    to destructive without an LLM call. mcp_integration_id (see
+    :func:mcp_integration_id) scopes the cached verdict to that MCP server.
     """
     if tool_name in HIL_EXEMPT_TOOLS:
         return False
@@ -54,11 +64,15 @@ async def is_tool_destructive(
     if destructive_hint is True:
         return True
     try:
+        if mcp_integration_id is not None:
+            return await _classify_unknown_tool(
+                None, tool_name, classification_key(tool_name, mcp_integration_id), description
+            )
         registry = await get_tool_registry()
         flag = registry.is_tool_destructive(tool_name)
         if flag is not None:
             return flag
-        return await _classify_unknown_tool(registry, tool_name, description)
+        return await _classify_unknown_tool(registry, tool_name, tool_name, description)
     except Exception as e:
         # Fail closed: every failure mode (registry/LLM/Mongo down, unknown tool)
         # must gate rather than let a possibly-destructive call run unattended.
@@ -87,23 +101,50 @@ def mcp_destructive_hint(tool: BaseTool | None) -> bool | None:
     return None
 
 
-async def _classify_unknown_tool(registry: ToolRegistry, tool_name: str, description: str) -> bool:
-    """Resolve an unclassified custom tool from the Mongo cache, else the LLM."""
+def mcp_integration_id(tool: BaseTool | None) -> str | None:
+    """Return the MCP integration a tool came from, or None for a non-MCP tool.
+
+    Reads the provenance MCPClient stamps on every converted tool's metadata.
+    """
+    metadata = getattr(tool, "metadata", None)
+    if not isinstance(metadata, dict):
+        return None
+    integration_id = metadata.get("integration_id")
+    return integration_id if isinstance(integration_id, str) and integration_id else None
+
+
+def classification_key(tool_name: str, mcp_integration_id: str | None) -> str:
+    """Return the key a tool's cached verdict is stored under: MCP-scoped or the bare name."""
+    if mcp_integration_id is None:
+        return tool_name
+    return f"{MCP_SHAPE_SCOPE_PREFIX}{mcp_integration_id}:{tool_name}"
+
+
+async def _classify_unknown_tool(
+    registry: ToolRegistry | None, tool_name: str, key: str, description: str
+) -> bool:
+    """Resolve an unclassified custom tool from the Mongo cache, else the LLM.
+
+    registry is None for MCP tools, which live outside it; the Mongo cache under
+    key is then their only store.
+    """
     description_hash = _description_hash(description)
-    cached = await _cached_classification(tool_name, description_hash)
+    cached = await _cached_classification(key, description_hash)
     if cached is not None:
-        registry.mark_tool_destructive(tool_name, cached)
+        if registry is not None:
+            registry.mark_tool_destructive(tool_name, cached)
         return cached
 
     result = await _classify_with_llm(tool_name, description)
-    await _persist_classification(tool_name, description_hash, result)
-    registry.mark_tool_destructive(tool_name, result.is_destructive)
+    await _persist_classification(key, description_hash, result)
+    if registry is not None:
+        registry.mark_tool_destructive(tool_name, result.is_destructive)
     return result.is_destructive
 
 
-async def _cached_classification(tool_name: str, description_hash: str) -> bool | None:
+async def _cached_classification(key: str, description_hash: str) -> bool | None:
     """Return a prior classification for this exact tool+description, or None."""
-    record = await hil_tool_risk_repository.find_classification(tool_name, description_hash)
+    record = await hil_tool_risk_repository.find_classification(key, description_hash)
     return record.is_destructive if record else None
 
 
@@ -124,15 +165,13 @@ async def _classify_with_llm(tool_name: str, description: str) -> _ClassifyResul
     )
 
 
-async def _persist_classification(
-    tool_name: str, description_hash: str, result: _ClassifyResult
-) -> None:
+async def _persist_classification(key: str, description_hash: str, result: _ClassifyResult) -> None:
     """Cache the classification in Mongo so restarts/refreshes don't re-run the LLM.
 
     The description_hash key means only a changed description re-classifies.
     """
     record = HILToolRiskRecord(
-        tool_name=tool_name,
+        tool_name=key,
         description_hash=description_hash,
         is_destructive=result.is_destructive,
         rationale=result.rationale,

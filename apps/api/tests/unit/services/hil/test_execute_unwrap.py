@@ -16,6 +16,7 @@ import pytest
 from app.constants.execute import EXECUTE_TOOL_NAME
 from app.constants.hil import HIL_EXEMPT_TOOLS
 from app.models.hil_models import HILPreferences
+from app.services.hil.classification import _ClassifyResult
 from app.services.hil.policy import has_pausing_sibling, resolve_policy
 from app.services.hil.utils import unpack_tool_call
 from app.services.mcp.langchain_adapter import MCP_ANNOTATIONS_METADATA_KEY
@@ -29,6 +30,7 @@ from .conftest import (
 )
 
 MODULE = "app.services.hil.policy"
+CLASSIFICATION = "app.services.hil.classification"
 
 
 def execute_request(
@@ -177,6 +179,64 @@ class TestPolicyUnwrapsExecute:
             assert await resolve_policy(request, USER_ID, "mcp_delete_workspace") == "ask"
         assert classify.await_args.args[1] == "Delete a workspace."
         assert classify.await_args.kwargs["destructive_hint"] is True
+
+    async def test_mcp_tool_through_execute_classifies_under_its_server_scope(self) -> None:
+        """The real classifier, not a stub: no hint, so the LLM verdict decides, keyed per server."""
+        request = execute_request("delete_item", {"id": "i1"})
+        mcp_tool = make_tool(
+            name="delete_item",
+            description="Delete an item.",
+            metadata={"integration_id": "custom_srv"},
+        )
+        with (
+            patch(
+                f"{MODULE}.get_tool_registry",
+                new=AsyncMock(return_value=SimpleNamespace(get_tool_meta=lambda _name: None)),
+            ),
+            patch(f"{MODULE}.resolve_tool", new=resolver_returning(mcp_tool)),
+            patch(
+                f"{MODULE}.get_hil_preferences",
+                new=AsyncMock(return_value=HILPreferences(mode="always_ask")),
+            ),
+            patch(f"{CLASSIFICATION}.hil_tool_risk_repository") as repo,
+            patch(
+                f"{CLASSIFICATION}.ainvoke_structured",
+                new=AsyncMock(return_value=_ClassifyResult(is_destructive=True, rationale="del")),
+            ),
+        ):
+            repo.find_classification = AsyncMock(return_value=None)
+            repo.upsert_classification = AsyncMock()
+            assert await resolve_policy(request, USER_ID, "delete_item") == "ask"
+
+        assert repo.find_classification.await_args.args[0] == "mcp:custom_srv:delete_item"
+        assert repo.upsert_classification.await_args.args[0].tool_name == (
+            "mcp:custom_srv:delete_item"
+        )
+
+    async def test_mcp_destructive_hint_through_execute_gates_without_an_llm_call(self) -> None:
+        request = execute_request("drop_db", {})
+        mcp_tool = make_tool(
+            name="drop_db",
+            description="Drop the database.",
+            metadata={
+                "integration_id": "custom_srv",
+                MCP_ANNOTATIONS_METADATA_KEY: {"destructiveHint": True},
+            },
+        )
+        with (
+            patch(
+                f"{MODULE}.get_tool_registry",
+                new=AsyncMock(return_value=SimpleNamespace(get_tool_meta=lambda _name: None)),
+            ),
+            patch(f"{MODULE}.resolve_tool", new=resolver_returning(mcp_tool)),
+            patch(
+                f"{MODULE}.get_hil_preferences",
+                new=AsyncMock(return_value=HILPreferences(mode="always_ask")),
+            ),
+            patch(f"{CLASSIFICATION}.ainvoke_structured", new=AsyncMock()) as llm,
+        ):
+            assert await resolve_policy(request, USER_ID, "drop_db") == "ask"
+        assert llm.await_count == 0
 
     async def test_readonly_tool_through_execute_is_allowed(self) -> None:
         request = execute_request("GMAIL_FETCH_EMAILS", {"max_results": 5})

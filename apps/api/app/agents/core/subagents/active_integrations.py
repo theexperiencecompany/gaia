@@ -7,10 +7,10 @@ retrieve_tools for the rest" points at a dead end: discovery otherwise searches
 only the caller's own tool space.
 
 Storage only — namespace mapping lives with the reader. Stamped solely on the
-successful-activation path (which gates on the connection check), so a member
-implies the user is entitled to it; custom MCPs never stamp (they route to
-handoff instead). Every Redis absence degrades to "nothing active" with a
-warning rather than failing the caller.
+successful-activation path (which gates on the connection check). A stamp is
+not an entitlement: the reader still gates each user-owned (custom MCP)
+namespace on the user's own namespaces. Every Redis absence degrades to
+"nothing active" with a warning rather than failing the caller.
 """
 
 from app.constants.cache import ACTIVATION_ACTIVE_PREFIX, ACTIVATION_ACTIVE_TTL

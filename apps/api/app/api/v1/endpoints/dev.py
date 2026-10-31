@@ -16,16 +16,11 @@ from app.schemas.dev_schemas import (
     CreateDevUserRequest,
     DeleteDevUserResponse,
     DevAgentRunResponse,
-    DevSubagentInfo,
     RunDevAgentRequest,
     SeedDevDataRequest,
     SeedDevDataResponse,
 )
-from app.services.dev_agent_service import (
-    list_dev_subagents,
-    run_executor_direct,
-    run_subagent_direct,
-)
+from app.services.dev_agent_service import run_executor_direct
 from app.services.dev_service import (
     attach_dev_file,
     delete_dev_user,
@@ -96,17 +91,6 @@ async def attach_dev_conversation_file(
     return document
 
 
-@router.get("/subagents")
-async def list_subagents() -> list[DevSubagentInfo]:
-    """List every registered subagent. Only per-user MCP ones run via
-    POST /dev/subagents/{id}; provider ids answer with an activation
-    redirect, like production handoff does."""
-    log.set(dev={"operation": "list_subagents"})
-    subagents = list_dev_subagents()
-    log.set(dev={"count": len(subagents)})
-    return subagents
-
-
 @router.post("/executor")
 async def run_executor(payload: RunDevAgentRequest) -> DevAgentRunResponse:
     """Run the executor agent directly with a task, skipping the comms agent."""
@@ -128,16 +112,5 @@ async def run_executor(payload: RunDevAgentRequest) -> DevAgentRunResponse:
             message=f"agent did not converge: {e}",
             converged=False,
         )
-    log.set(dev={"user_id": result.user_id, "thread_id": result.thread_id})
-    return result
-
-
-@router.post("/subagents/{subagent_id}")
-async def run_subagent(subagent_id: str, payload: RunDevAgentRequest) -> DevAgentRunResponse:
-    """Run one subagent directly with a task, skipping comms and the executor."""
-    log.set(dev={"operation": "run_subagent", "email": payload.email, "subagent_id": subagent_id})
-    result = await run_subagent_direct(
-        payload.email, subagent_id, payload.task, payload.conversation_id, payload.model
-    )
     log.set(dev={"user_id": result.user_id, "thread_id": result.thread_id})
     return result

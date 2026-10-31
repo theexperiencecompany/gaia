@@ -15,10 +15,7 @@ in a separate dynamic-context system message placed AFTER this one.
 
 from typing import Final
 
-from app.agents.prompts.comms_prompts import COMMS_AGENT_PROMPT
-from app.agents.prompts.executor_activation_prompt import (
-    build_activation_executor_prompt,
-)
+from app.agents.prompts.comms_prompts import COMMS_AGENT_PROMPT, EXECUTOR_AGENT_PROMPT
 from app.agents.prompts.openui_prompts import OPENUI_INSTRUCTIONS
 from app.agents.prompts.user_instructions_prompts import INSTRUCTION_PRECEDENCE_RULES
 from app.agents.workspace.operational_docs import GAIA_CORE
@@ -160,15 +157,10 @@ def get_comms_static_prompt(source: str | None) -> str:
 # ``get_comms_static_prompt``.
 COMMS_PROMPT_TEMPLATE: Final[str] = COMMS_PROMPT_DEFAULT
 
-# Activation rewrite plus GAIA_CORE, appended (not interpolated) for a stable
-# provider cache. A stale anchor skips just that rewrite with a warning (never
-# raises: runs at import); anchor tests pin every rewrite in CI.
-_EXECUTOR_BASE: Final[str] = build_activation_executor_prompt()
-
 
 def get_executor_prompt() -> str:
-    """Return the static executor prompt (activation doctrine, always)."""
-    return _EXECUTOR_BASE + "\n\n" + INSTRUCTION_PRECEDENCE_RULES + "\n\n" + GAIA_CORE
+    """Return the static executor prompt; GAIA_CORE is appended, not interpolated, for a stable provider cache."""
+    return EXECUTOR_AGENT_PROMPT + "\n\n" + INSTRUCTION_PRECEDENCE_RULES + "\n\n" + GAIA_CORE
 
 
 EXECUTOR_PROMPT_TEMPLATE: Final[str] = get_executor_prompt()

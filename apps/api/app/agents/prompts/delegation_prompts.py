@@ -1,7 +1,7 @@
 """What the delegation runner tells the executor about a subagent it started.
 
 Tool results and inbox entries, read by the executor model and never shown to the
-user as-is. Shared by spawn_subagent and handoff, which run on the same runner.
+user as-is. Used by spawn_subagent's runner.
 """
 
 BACKGROUND_DELEGATION_ACK = (

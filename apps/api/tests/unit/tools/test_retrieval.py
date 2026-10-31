@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 from langgraph.store.base import SearchItem
 import pytest
 
+from app.agents.core.subagents.integration_resolution import CustomMcpSubagent
 from app.agents.tools.core import retrieval
 from app.models.integration_models import UserToolNamespaces
 from app.utils.log_identifiers import user_text_shape
@@ -548,10 +549,13 @@ class TestRetrieveToolsBinding:
                 exact_tool_names=["subagent:gmail"],
             )
 
-        # Discovery never returns subagents, so a subagent: name is reported
-        # unknown — never as a bind, and with no handoff pointer.
+        # A pointer-shaped name (here a legacy subagent: one) names an
+        # integration: never bound, and the model is pointed at activation.
         assert result["tools_to_bind"] == []
-        assert "subagent:gmail" in result["response_text"]
+        assert result["response_text"] == (
+            "gmail is an integration, not a tool, so nothing was bound for it: "
+            'call activate_integration(integration_id="gmail") to load its tools.'
+        )
         assert "handoff" not in result["response_text"]
 
     @pytest.mark.asyncio
@@ -822,22 +826,26 @@ class TestActivatedNamespaceDiscovery:
 
     @pytest.mark.asyncio
     async def test_unknown_active_id_is_dropped_with_warning(self):
-        """A stamped id the registry no longer knows never reaches the store."""
+        """A stamped id that no longer resolves never reaches the store."""
         from app.agents.tools.core import retrieval
 
-        with patch(
-            "app.agents.tools.core.retrieval.get_active",
-            new_callable=AsyncMock,
-            return_value={"deleted_integration"},
-        ) as get_active:
+        with (
+            patch(
+                "app.agents.tools.core.retrieval.get_active",
+                new_callable=AsyncMock,
+                return_value={"deleted_integration"},
+            ) as get_active,
+            patch.object(
+                retrieval, "get_integration_target", new=AsyncMock(return_value=None)
+            ) as get_target,
+        ):
             async with captured_wide_event() as event:
-                assert await retrieval._active_tool_spaces("c1") == set()
+                assert await retrieval._active_integration_targets("c1") == {}
 
         get_active.assert_awaited_once_with("c1")
+        get_target.assert_awaited_once_with("deleted_integration")
         (warning,) = event["warnings"]
-        assert warning["msg"].endswith(
-            "Activated integration unknown to the registry; not searching it"
-        )
+        assert warning["msg"].endswith("Activated integration no longer resolves; not searching it")
         assert warning["integration_id"] == "deleted_integration"
 
 
@@ -964,19 +972,19 @@ class TestActivatedNamespaceTools:
         assert "GITHUB_LIST_PULL_REQUESTS" in result["response"]
         assert not [e for e in result["response"] if e.startswith("subagent:")]
         body = json.loads(result["response_text"])
-        assert body["mcp_subagents"] == []
+        assert body["mcp_integrations"] == []
         assert body["new_integrations"] == []
         assert "handoff" not in result["response_text"]
 
     def test_mcp_pointer_in_subagents_namespace_survives(self):
-        """Custom MCP pointers are the one subagent surface: source=='custom' entries render as subagent: entries for handoff."""
+        """Custom MCP pointers (source=='custom') render as mcp_integration: entries the model activates."""
         from app.agents.tools.core.retrieval import _process_chroma_search_result
 
         item = self._delegated_hit("my-mcp", namespace=("subagents",))
         item.value = {"name": "My MCP", "source": "custom"}
         registry = MagicMock()
         result = _process_chroma_search_result([item], set(), registry, include_subagents=True)
-        assert [r["id"] for r in result] == ["subagent:my-mcp (My MCP)"]
+        assert [r["id"] for r in result] == ["mcp_integration:my-mcp (My MCP)"]
 
     def test_stale_provider_doc_in_subagents_namespace_dropped(self):
         """Docs with an unknown source (pre-removal provider entries that were re-tagged, never "custom" or "mcp") never surface, even though the namespace is searched."""
@@ -989,14 +997,14 @@ class TestActivatedNamespaceTools:
         assert result == []
 
     def test_static_mcp_pointer_in_subagents_namespace_survives(self):
-        """Static registry MCP pointers (source=='mcp', written by the seed) render as subagent: entries instead of being dropped as stale."""
+        """Static registry MCP pointers (source=='mcp', keyed "subagent:<id>" by the seed) render as mcp_integration:<id> entries."""
         from app.agents.tools.core.retrieval import _process_chroma_search_result
 
         item = self._delegated_hit("subagent:notes", namespace=("subagents",))
         item.value = {"name": "Notes", "source": "mcp", "integration_id": "notes"}
         registry = MagicMock()
         result = _process_chroma_search_result([item], set(), registry, include_subagents=True)
-        assert [r["id"] for r in result] == ["subagent:subagent:notes (Notes)"]
+        assert [r["id"] for r in result] == ["mcp_integration:notes (Notes)"]
 
     def test_legacy_pointer_without_source_is_treated_as_mcp(self):
         """Docs written before the source field existed carry no source; they are the static pointers the seed used to write, so they surface."""
@@ -1006,7 +1014,7 @@ class TestActivatedNamespaceTools:
         item.value = {"name": "Notes"}
         registry = MagicMock()
         result = _process_chroma_search_result([item], set(), registry, include_subagents=True)
-        assert [r["id"] for r in result] == ["subagent:subagent:notes (Notes)"]
+        assert [r["id"] for r in result] == ["mcp_integration:notes (Notes)"]
 
     @pytest.mark.asyncio
     async def test_public_hits_render_as_integration_entries(self):
@@ -1081,7 +1089,7 @@ class TestChromaHitsWithRealSearchItems:
         result = retrieval._process_chroma_search_result(
             [stale, pointer], set(), MagicMock(), include_subagents=True
         )
-        assert result == [{"id": "subagent:my-mcp (My MCP)", "score": 0.7}]
+        assert result == [{"id": "mcp_integration:my-mcp (My MCP)", "score": 0.7}]
 
     def test_pointers_are_skipped_for_a_scoped_agent_without_hiding_its_tools(self) -> None:
         hits = [
@@ -1108,7 +1116,7 @@ class TestChromaHitsWithRealSearchItems:
         result = retrieval._process_chroma_search_result(
             [corrupt, pointer], set(), MagicMock(), include_subagents=True
         )
-        assert result == [{"id": "subagent:my-mcp (My MCP)", "score": 0.7}]
+        assert result == [{"id": "mcp_integration:my-mcp (My MCP)", "score": 0.7}]
 
     def test_a_scoped_agent_sees_only_web_tools_from_general_without_losing_its_own(
         self,
@@ -1153,7 +1161,7 @@ class TestDiscoveryResponseGuidance:
     def test_pointer_entries_add_their_own_next_steps(self) -> None:
         text = retrieval._render_discovery_response(
             retrieval._RankedHits(
-                ["subagent:my-mcp (My MCP)", "integration:linear (Linear)"], 2, 25
+                ["mcp_integration:my-mcp (My MCP)", "integration:linear (Linear)"], 2, 25
             ),
             MagicMock(),
             {},
@@ -1162,21 +1170,22 @@ class TestDiscoveryResponseGuidance:
             False,
         )
         body = json.loads(text)
-        assert body["mcp_subagents"] == [{"id": "my-mcp", "name": "My MCP"}]
+        assert body["mcp_integrations"] == [{"id": "my-mcp", "name": "My MCP"}]
         assert body["new_integrations"] == [{"id": "linear", "name": "Linear"}]
         assert body["next"] == (
             "Load with retrieve_tools(exact_tool_names=[...]): internal tools bind and are "
             "called by name, integration tools (ALLCAPS) return schemas to run via execute "
-            "and are never bound. Integrations are not subagents: act on them yourself. "
-            "subagent: entries are per-user MCP integrations, the ONLY subagents: delegate "
-            'with handoff(subagent_id="<id>", task="..."). '
+            "and are never bound. Act on integrations yourself. "
+            "mcp_integrations are MCP integrations whose tools are not loaded yet: "
+            'call activate_integration(integration_id="<id>") to load one, then run '
+            "its tools yourself via execute. "
             "new_integrations are not connected yet: call activate_integration(id) anyway "
             "— that call is what shows the user the connect card."
         )
 
     def test_unnamed_pointers_carry_only_their_id(self) -> None:
         text = retrieval._render_discovery_response(
-            retrieval._RankedHits(["subagent:my-mcp", "integration:linear"], 2, 25),
+            retrieval._RankedHits(["mcp_integration:my-mcp", "integration:linear"], 2, 25),
             MagicMock(),
             {},
             None,
@@ -1184,7 +1193,7 @@ class TestDiscoveryResponseGuidance:
             False,
         )
         body = json.loads(text)
-        assert body["mcp_subagents"] == [{"id": "my-mcp"}]
+        assert body["mcp_integrations"] == [{"id": "my-mcp"}]
         assert body["new_integrations"] == [{"id": "linear"}]
 
 
@@ -1419,3 +1428,140 @@ class TestDiscoveryWithUnconnectedIntegrations:
             f"{retrieval._not_connected_line(_gmail(), False)}"
         )
         assert "search_matched_nothing" not in body
+
+
+_CUSTOM_MCP = CustomMcpSubagent(
+    id="abc123def456",
+    name="Acme MCP",
+    managed_by="mcp",
+    mcp_config={"server_url": "https://mcp.acme.dev/v1", "requires_auth": True},
+)
+
+
+@pytest.mark.unit
+class TestActivatedMcpIntegrations:
+    async def test_a_stamped_custom_mcp_resolves_to_its_url_derived_namespace(self) -> None:
+        get_server_url = AsyncMock(return_value="https://mcp.acme.dev/v1")
+        with patch.object(retrieval.IntegrationResolver, "get_server_url", new=get_server_url):
+            spaces = await retrieval._active_tool_spaces({_CUSTOM_MCP.id: _CUSTOM_MCP})
+
+        assert spaces == {"mcp.acme.dev/v1"}
+        get_server_url.assert_awaited_once_with(_CUSTOM_MCP.id)
+
+    async def test_a_stamped_platform_integration_resolves_to_its_tool_space(self) -> None:
+        github = retrieval.get_subagent_by_id("github")
+        assert github is not None
+
+        assert await retrieval._active_tool_spaces({"github": github}) == {github.config.tool_space}
+
+    def test_an_entitled_stamped_custom_namespace_is_searched(self) -> None:
+        store = MagicMock()
+        retrieval._build_search_tasks(
+            store,
+            "list invoices",
+            retrieval._RetrievalScope(user_id="u1", tool_space="general", include_subagents=False),
+            {"general", "mcp.acme.dev/v1"},
+            limit=10,
+            active_namespaces={"mcp.acme.dev/v1"},
+        )
+        assert store.asearch.call_args_list == [
+            call(("general",), query="list invoices", limit=10),
+            call(("mcp.acme.dev/v1",), query="list invoices", limit=10),
+        ]
+
+    async def test_a_stamped_namespace_the_user_is_not_entitled_to_is_never_searched(
+        self,
+    ) -> None:
+        """Another user's custom MCP namespace stays unsearched even when stamped: the stamp is not the entitlement."""
+        store = MagicMock()
+        async with captured_wide_event() as event:
+            retrieval._build_search_tasks(
+                store,
+                "list invoices",
+                retrieval._RetrievalScope(
+                    user_id="u1", tool_space="general", include_subagents=False
+                ),
+                {"general"},
+                limit=10,
+                active_namespaces={"mcp.other-user.dev"},
+            )
+        assert store.asearch.call_args_list == [call(("general",), query="list invoices", limit=10)]
+        (warning,) = event["warnings"]
+        assert warning["namespace"] == "mcp.other-user.dev"
+
+    async def test_only_activated_per_user_mcps_are_warmed_for_their_tool_names(self) -> None:
+        github = retrieval.get_subagent_by_id("github")
+        assert github is not None
+        mcp_client = MagicMock()
+        mcp_client._tools = {"warm_mcp": [SimpleNamespace(name="WARM_TOOL")]}
+        mcp_client.tools_for = AsyncMock(return_value=[SimpleNamespace(name="ACME_INVOICES")])
+
+        with patch.object(retrieval, "get_mcp_client", new=AsyncMock(return_value=mcp_client)):
+            names = await retrieval._user_mcp_tool_names(
+                "u1", {_CUSTOM_MCP.id: _CUSTOM_MCP, "github": github}
+            )
+
+        assert names == {"WARM_TOOL", "ACME_INVOICES"}
+        mcp_client.tools_for.assert_awaited_once_with(_CUSTOM_MCP.id)
+
+    async def test_without_an_activation_no_mcp_is_connected(self) -> None:
+        mcp_client = MagicMock()
+        mcp_client._tools = {"warm_mcp": [SimpleNamespace(name="WARM_TOOL")]}
+        mcp_client.tools_for = AsyncMock()
+
+        with patch.object(retrieval, "get_mcp_client", new=AsyncMock(return_value=mcp_client)):
+            assert await retrieval._user_mcp_tool_names("u1") == {"WARM_TOOL"}
+
+        mcp_client.tools_for.assert_not_awaited()
+
+    async def test_an_unreachable_activated_mcp_keeps_the_rest_and_warns(self) -> None:
+        mcp_client = MagicMock()
+        mcp_client._tools = {"warm_mcp": [SimpleNamespace(name="WARM_TOOL")]}
+        mcp_client.tools_for = AsyncMock(side_effect=ConnectionError("down"))
+
+        with patch.object(retrieval, "get_mcp_client", new=AsyncMock(return_value=mcp_client)):
+            async with captured_wide_event() as event:
+                names = await retrieval._user_mcp_tool_names("u1", {_CUSTOM_MCP.id: _CUSTOM_MCP})
+
+        assert names == {"WARM_TOOL"}
+        (warning,) = event["warnings"]
+        assert warning["integration_id"] == _CUSTOM_MCP.id
+        assert warning["error_type"] == "ConnectionError"
+
+
+@pytest.mark.unit
+class TestMcpIntegrationPointers:
+    def test_a_custom_mcp_pointer_renders_as_an_activate_integration_entry(self) -> None:
+        pointer = _search_item(
+            _CUSTOM_MCP.id, ("subagents",), 0.8, {"name": "Acme MCP", "source": "custom"}
+        )
+        (hit,) = retrieval._process_chroma_search_result(
+            [pointer], set(), MagicMock(), include_subagents=True
+        )
+        text = retrieval._render_discovery_response(
+            retrieval._RankedHits([hit["id"]], 1, 25), MagicMock(), {}, "invoices", (), False
+        )
+
+        body = json.loads(text)
+        assert body["mcp_integrations"] == [{"id": _CUSTOM_MCP.id, "name": "Acme MCP"}]
+        assert 'activate_integration(integration_id="<id>")' in body["next"]
+        assert "handoff" not in text
+        assert "subagent" not in text
+
+    def test_a_pointer_passed_as_a_tool_name_is_routed_to_activation(self) -> None:
+        triage = retrieval._triage_exact_names(
+            [f"mcp_integration:{_CUSTOM_MCP.id} (Acme MCP)", "TOOL_A"],
+            MagicMock(),
+            {"TOOL_A"},
+            {"TOOL_A"},
+            set(),
+            include_desktop=False,
+        )
+
+        assert triage.pointers == [_CUSTOM_MCP.id]
+        assert triage.validated == ["TOOL_A"]
+        assert triage.unknown == []
+        assert retrieval._binding_guidance([], {}, False, triage.pointers) == [
+            f"{_CUSTOM_MCP.id} is an integration, not a tool, so nothing was bound for it: "
+            f'call activate_integration(integration_id="{_CUSTOM_MCP.id}") to load its tools.'
+        ]

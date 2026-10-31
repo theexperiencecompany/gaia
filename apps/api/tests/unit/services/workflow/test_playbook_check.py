@@ -32,7 +32,6 @@ from app.constants.agents import PLAYBOOK_CHECK_TAG, PLAYBOOK_DECLINE_LIMIT
 from app.constants.log_tags import LogTag
 from app.models.playbook_models import (
     DeclineKind,
-    HandoffStep,
     PlaybookDocument,
     PlaybookRunOutcome,
     PlaybookRunStatus,
@@ -487,13 +486,6 @@ def test_the_heal_brief_demands_a_decision_even_when_no_more_calls_are_needed():
         assert "—" not in text
 
 
-def test_the_check_points_at_the_handoff_result_for_a_handoffs_nested_steps():
-    # A handoff step must carry the calls its subagent ran, and the only place
-    # the executor can copy them from is the handoff's own result record.
-    assert "record of the calls" in PLAYBOOK_CHECK_BRIEF
-    assert "nested steps" in PLAYBOOK_CHECK_BRIEF
-
-
 def test_the_tools_own_schema_carries_the_step_shape():
     """Regression: an opaque YAML string schema ("argument 2 is a string") let a live run invent a goal field three times running."""
     schema = write_playbook.tool_call_schema.model_json_schema()
@@ -503,14 +495,11 @@ def test_the_tools_own_schema_carries_the_step_shape():
     # an argument is what let a live run hallucinate "inbox-triage" as an id.
     assert "workflow_id" not in schema["properties"]
     step = schema["$defs"][PlaybookStepInput.__name__]
-    assert {"id", "tool", "args", "handoff", "steps"} <= set(step["properties"])
-
-    child_name = step["properties"]["steps"]["items"]["$ref"].rsplit("/", 1)[-1]
-    child = schema["$defs"][child_name]
-    assert {"id", "tool", "args"} <= set(child["properties"])
-    # Depth-1 by construction: the child cannot carry steps, so the schema has
-    # no self-$ref for a provider to mishandle.
-    assert "steps" not in child["properties"]
+    assert {"id", "tool", "args"} <= set(step["properties"])
+    assert step["required"] == ["tool"]
+    # Flat by construction: a step cannot carry steps, so the schema has no
+    # self-$ref for a provider to mishandle.
+    assert not {"handoff", "steps"} & set(step["properties"])
 
     # A key the schema never asked for is dropped, not refused: the shape rule
     # is the only thing worth failing a write over.
@@ -543,15 +532,8 @@ WRITTEN = '{"success": true, "data": {"playbook_id": "pb_1", "steps": 1}}'
 REFUSED = "Error: ValidationError: 1 validation error for write_playbook"
 
 
-def _frozen(*tools: str, handoff: str | None = None) -> PlaybookDocument:
-    if handoff:
-        steps = [
-            HandoffStep(
-                id="h", handoff=handoff, steps=[ToolStep(id=t, tool=t, args={}) for t in tools]
-            )
-        ]
-    else:
-        steps = [ToolStep(id=t, tool=t, args={}) for t in tools]
+def _frozen(*tools: str) -> PlaybookDocument:
+    steps = [ToolStep(id=t, tool=t, args={}) for t in tools]
     return PlaybookDocument(
         playbook_id="pb_1",
         workflow_id=WORKFLOW_ID,
@@ -594,13 +576,6 @@ class TestFrozenOnEmpty:
 
         assert frozen_on_empty(_frozen("GMAIL_FETCH_MESSAGES"), trace) is None
 
-    def test_handoff_children_are_inspected(self) -> None:
-        reason = frozen_on_empty(
-            _frozen("GMAIL_FETCH_MESSAGES", handoff="gmail"), [_call("GMAIL_FETCH_MESSAGES", EMPTY)]
-        )
-
-        assert reason is not None
-
     def test_a_frozen_tool_the_run_never_called_is_left_alone(self) -> None:
         assert (
             frozen_on_empty(_frozen("GMAIL_FETCH_MESSAGES"), [_call("list_todos", EMPTY)]) is None
@@ -637,9 +612,7 @@ class TestDistrustFreshPlaybook:
         record.assert_not_awaited()
 
     async def test_a_playbook_frozen_on_an_empty_result_is_recorded_suspect(self) -> None:
-        playbook = _frozen("GMAIL_FETCH_MESSAGES", handoff="gmail").model_copy(
-            update={"revision": 3}
-        )
+        playbook = _frozen("GMAIL_FETCH_MESSAGES").model_copy(update={"revision": 3})
         with (
             patch(
                 f"{MODULE}.playbook_repository.get_for_workflow", AsyncMock(return_value=playbook)

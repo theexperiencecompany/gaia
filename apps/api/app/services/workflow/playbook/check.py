@@ -5,7 +5,7 @@ replay. A playbook that ran cleanly has already answered the question, and
 re-asking would spend output tokens re-deciding it on every fire.
 """
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Sequence
 
 from app.agents.prompts.playbook_prompts import (
     PLAYBOOK_CHECK_BRIEF,
@@ -18,15 +18,7 @@ from app.constants.agents import PLAYBOOK_DECLINE_LIMIT
 from app.constants.log_tags import LogTag
 from app.db.repositories.playbooks import playbook_repository
 from app.db.repositories.workflows import workflow_repository
-from app.models.playbook_models import (
-    ForEachStep,
-    HandoffStep,
-    PlaybookDocument,
-    PlaybookRunOutcome,
-    PlaybookRunStatus,
-    PlaybookStep,
-    ToolStep,
-)
+from app.models.playbook_models import PlaybookDocument, PlaybookRunOutcome, PlaybookRunStatus
 from app.models.workflow_execution_models import RecordedCall, carries_no_data, parse_result
 from app.models.workflow_models import WorkflowDocument
 from app.services.workflow.playbook.lifecycle import HEAL_STATUSES
@@ -104,20 +96,11 @@ def frozen_on_empty(playbook: PlaybookDocument, trace: Sequence[RecordedCall]) -
     it" means carries_no_data, not an empty list; a write tool's own empty
     result attributes don't count as returning nothing.
     """
-    for step in _calls(playbook.steps):
+    for step in playbook.steps:
         call = next((c for c in reversed(trace) if c.tool_name == step.tool), None)
         if call is not None and carries_no_data(parse_result(call.result_digest)):
             return f"{step.tool} returned no items in the run that wrote this playbook"
     return None
-
-
-def _calls(steps: Sequence[PlaybookStep]) -> Iterator[ToolStep | ForEachStep]:
-    """Every call in the document, a handoff's children included."""
-    for step in steps:
-        if isinstance(step, HandoffStep):
-            yield from step.steps
-        else:
-            yield step
 
 
 def _wrote_a_playbook(trace: Sequence[RecordedCall]) -> bool:

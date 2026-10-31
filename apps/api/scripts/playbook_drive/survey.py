@@ -148,8 +148,6 @@ def _playbook(observation: Observation) -> str:
     if playbook is None:
         return "-"
     shape = "+".join(playbook.tools)
-    if playbook.has_handoff:
-        shape = f"handoff({shape})"
     if playbook.has_for_each:
         shape += " for_each"
     return shape

@@ -7,17 +7,14 @@ from typing import Any, cast
 from langchain_core.messages import ToolCall
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.tools.core.registry import UNKNOWN_TOOL_CATEGORY, ToolRegistry, get_tool_registry
 from app.agents.tools.execute.unwrap import ExecuteCallArgs, unwrap_execute_call
 from app.config.oauth_config import get_integration_by_id, get_integration_by_tool_slug
 from app.constants.agents import INTERNAL_AGENT_TAG_PATTERN
 from app.constants.browser import BROWSER_TOOL_CATEGORY
-from app.constants.cache import HANDOFF_NAME_CACHE_PREFIX
 from app.constants.log_tags import LogTag
 from app.constants.tool_labels import TOOL_DISPLAY_NAMES, humanize_tool_name
 from app.db.repositories.integrations import integration_repository
-from app.decorators.caching import Cacheable
 from app.models.chat_models import ToolDataEntry
 from app.models.oauth_models import OAuthIntegration
 from app.models.stream_events import (
@@ -50,12 +47,12 @@ class ToolCallView(BaseModel):
     id: str | None = None
 
 
-class HandoffCallArgs(BaseModel):
-    """The ``handoff`` tool's arguments, as far as the display path reads them."""
+class ActivateIntegrationCallArgs(BaseModel):
+    """The ``activate_integration`` tool's arguments, as far as the display path reads them."""
 
     model_config = ConfigDict(extra="ignore")
 
-    subagent_id: str | None = None
+    integration_id: str | None = None
 
 
 class IntegrationDisplayMetadata(BaseModel):
@@ -110,50 +107,6 @@ class IntegrationMetadata:
     icon_url: str | None = None
     integration_id: str | None = None
     name: str | None = None
-
-
-def parse_subagent_id(subagent_id: str) -> tuple[str, str | None]:
-    """Parse a subagent id into (clean_id, display_name) from 'subagent:Name [uuid]', 'subagent:id (Name)', or a bare id."""
-    clean = subagent_id.replace("subagent:", "").strip()
-
-    if " [" in clean:
-        name = clean.split(" [")[0].strip()
-        clean_id = clean.split("[")[1].rstrip("]")
-        return clean_id, name
-
-    if " (" in clean:
-        clean_id = clean.split(" (")[0].strip()
-        name = clean.split("(")[1].rstrip(")")
-        return clean_id, name
-
-    return clean, None
-
-
-@Cacheable(key_pattern=f"{HANDOFF_NAME_CACHE_PREFIX}:{{clean_id}}", ttl=3600)
-async def _lookup_custom_integration_name(clean_id: str) -> str | None:
-    """Look up custom integration name from MongoDB with caching."""
-    custom = await integration_repository.find_by_id_prefix(clean_id)
-    return custom.name if custom else None
-
-
-async def _resolve_handoff_display_name(subagent_id: str) -> str:
-    """Resolve human-readable display name for a subagent handoff."""
-    clean_id, parsed_name = parse_subagent_id(subagent_id)
-
-    if parsed_name:
-        return parsed_name
-
-    platform_subagent = get_subagent_by_id(clean_id)
-    if platform_subagent:
-        return platform_subagent.name
-
-    # @Cacheable erases the wrapped function's return type to Any (see
-    # app/decorators/caching.py); cast back to the real annotated contract.
-    cached_name = cast("str | None", await _lookup_custom_integration_name(clean_id))
-    if cached_name:
-        return cached_name
-
-    return clean_id.replace("_", " ").title()
 
 
 @dataclass(frozen=True)
@@ -234,9 +187,10 @@ async def format_tool_call_entry(
     is_core_tool = False  # set inside the non-special branch; safe default for short-circuits below
 
     if tool_name_raw in _SPECIAL_TOOLS:
-        tool_category, tool_display_name, show_category = await _special_tool_display(
-            tool_name_raw, call
-        )
+        tool_category, tool_display_name, show_category = _SPECIAL_TOOLS[tool_name_raw]
+        if tool_name_raw == "activate_integration" and not integration_id:
+            # The card names the integration being activated, custom MCPs included.
+            integration_id = ActivateIntegrationCallArgs.model_validate(call_args).integration_id
     else:
         tool_category, integration_id, is_core_tool = await _general_tool_category(
             tool_registry, tool_name_raw, integration_id, user_id
@@ -339,14 +293,13 @@ def format_browser_action_entry(
 
 # Special tools with custom display names and categories
 # Format: (category, display_name, show_category)
-_SPECIAL_TOOLS: dict[str, tuple[str, str | None, bool]] = {
+_SPECIAL_TOOLS: dict[str, tuple[str, str, bool]] = {
     "retrieve_tools": ("retrieve_tools", "Retrieve tools", False),
     "call_executor": ("executor", "Delegating to executor", False),
     "cancel_executor": ("cancel_executor", "Cancelling the task", False),
     "browser_step_done": (BROWSER_TOOL_CATEGORY, "Continuing the browser task", False),
     "stop_browser_task": (BROWSER_TOOL_CATEGORY, "Stopping the browser task", False),
     "tell_browser_task": (BROWSER_TOOL_CATEGORY, "Telling the browser task", False),
-    "handoff": ("handoff", None, False),  # message will be set from args
     "spawn_subagent": ("spawn_subagent", "Spawn subagent", False),
     "activate_integration": ("integrations", "Activating integration", False),
     "plan_tasks": ("plan_tasks", "Plan tasks", False),
@@ -356,19 +309,6 @@ _SPECIAL_TOOLS: dict[str, tuple[str, str | None, bool]] = {
     "update_tasks": ("plan_tasks", "Update tasks", False),
     "finish_task": ("finish_task", "Finish task", False),
 }
-
-
-async def _special_tool_display(
-    tool_name_raw: str, tool_call: ToolCallView
-) -> tuple[str, str | None, bool]:
-    """Category, display name and show_category for a tool in _SPECIAL_TOOLS."""
-    tool_category, tool_display_name, show_category = _SPECIAL_TOOLS[tool_name_raw]
-
-    if tool_name_raw == "handoff":
-        subagent_id = HandoffCallArgs.model_validate(tool_call.args).subagent_id or "subagent"
-        display_name = await _resolve_handoff_display_name(subagent_id)
-        tool_display_name = f"Handing off to {display_name}"
-    return tool_category, tool_display_name, show_category
 
 
 def _owning_integration(tool_name: str, registry_category: str) -> OAuthIntegration | None:

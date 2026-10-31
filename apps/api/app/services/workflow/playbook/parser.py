@@ -23,12 +23,11 @@ from pydantic import BaseModel, Field, ValidationError
 import yaml
 
 from app.agents.core.subagents.call_record import ARG_TRUNCATION_MARKER, is_error_envelope
-from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
+from app.agents.tools.core.registry import get_tool_registry
 from app.models.playbook_models import (
     TIME_KEY,
     AskSlot,
     ForEachStep,
-    HandoffStep,
     PlaybookBody,
     PlaybookStep,
     TimeSlot,
@@ -52,12 +51,7 @@ from app.services.workflow.playbook.time_layouts import (
     ISO_DATETIME_LAYOUT,
     detect_layout,
 )
-from app.services.workflow.playbook.tool_space import (
-    ToolSpace,
-    handoff_tool_space,
-    resolve_subagent_tools,
-    tool_space_denial,
-)
+from app.services.workflow.playbook.tool_space import ToolSpace, tool_space_denial
 
 _JSON_TYPE_TO_PYTHON: dict[str, tuple[type, ...]] = {
     "string": (str,),
@@ -92,10 +86,6 @@ class RecordedResult:
     tool_name: str
     args: Mapping[str, Any]
     result: object
-    #: The stable id of the subagent that made the call (``todos``), or
-    #: ``None`` for the executor's own — a step inside ``handoff: todos``
-    #: is matched only against that subagent's calls.
-    subagent: str | None = None
 
 
 #: The authoring run's calls, in call order. The order IS part of the matching
@@ -138,23 +128,17 @@ def dump_playbook(body: PlaybookBody) -> str:
 
 
 async def validate_playbook(
-    body: PlaybookBody, user_id: str, results: RunResults | None = None
+    body: PlaybookBody, results: RunResults | None = None
 ) -> PlaybookValidation:
     """Check a parsed playbook against the tools it would actually reach.
 
-    Fatal always: unknown tool, bad arg, or forward step reference. user_id
-    matters since tool existence is per-user (handoff subagent space, per-user
-    MCP tools). With results (the run's real calls), also flags an unused
-    tool, an empty/errored frozen call, or a bad $steps shape.
+    Fatal always: unknown tool, bad arg, or forward step reference. With
+    results (the run's real calls), also flags an unused tool, an
+    empty/errored frozen call, or a bad $steps shape.
     """
     registry = await get_tool_registry()
-    walk = _Walk(user_id=user_id, registry=registry, results=results)
-    await _check_steps(
-        body.steps,
-        "steps",
-        ToolSpace(tools=registry.get_tool_dict(), runtime=None, subagent_id=None),
-        walk,
-    )
+    walk = _Walk(results=results)
+    _check_steps(body.steps, "steps", ToolSpace(tools=registry.get_tool_dict()), walk)
     return PlaybookValidation(valid=not walk.issues, issues=walk.issues)
 
 
@@ -162,13 +146,7 @@ async def validate_playbook(
 class _Walk:
     """What one pass over the document accumulates, in document order."""
 
-    user_id: str
-    registry: ToolRegistry
     declared_steps: set[str] = field(default_factory=set)
-    #: The declared ids that are handoffs. A handoff records no result of its
-    #: own, so ``$steps.<handoff>...`` never resolves — seen live as
-    #: ``$steps.sweep.list.todos`` being accepted, then stopping the replay.
-    handoff_ids: set[str] = field(default_factory=set)
     issues: list[PlaybookIssue] = field(default_factory=list)
     #: The authoring run's calls, or ``None`` when there is no run to check
     #: against. ``None`` and an empty run are different: an empty run means
@@ -182,11 +160,9 @@ class _Walk:
     #: is one call; two steps matched to it would replay it twice and double a
     #: side effect the run performed once.
     consumed: set[int] = field(default_factory=set)
-    #: The subagent whose steps are being walked, ``None`` at the top level.
-    scope: str | None = None
 
 
-async def _check_steps(
+def _check_steps(
     steps: Sequence[PlaybookStep],
     path: str,
     space: ToolSpace,
@@ -194,32 +170,11 @@ async def _check_steps(
 ) -> None:
     """Walk the steps in document order so a reference can only resolve backwards.
 
-    declared_steps holds exactly what ran before this node. Descending into a
-    handoff switches tool space, exactly as the replay does. Checking a
-    subagent's children against the executor's registry refuses every
-    integration whose tools are fetched per user.
+    declared_steps holds exactly what ran before this node.
     """
     for index, step in enumerate(steps):
         here = f"{path}[{index}]"
-        if not isinstance(step, HandoffStep):
-            _check_tool_step(step, here, space, walk)
-        else:
-            if step.id:
-                walk.handoff_ids.add(step.id)
-            subagent = await resolve_subagent_tools(step.handoff, walk.user_id, walk.registry)
-            if subagent is None:
-                walk.issues.append(
-                    PlaybookIssue(
-                        where=here,
-                        problem=f"no subagent named {step.handoff!r} exists to hand off to",
-                    )
-                )
-            else:
-                # Playbooks are one level deep, so the scope outside a handoff
-                # is always the executor's own.
-                walk.scope = step.handoff
-                await _check_steps(step.steps, f"{here}.steps", handoff_tool_space(subagent), walk)
-                walk.scope = None
+        _check_tool_step(step, here, space, walk)
         if step.id:
             # The runner keys its record on the id, so a second step with the
             # same id would overwrite the first's result for every later $steps.
@@ -244,9 +199,6 @@ def _check_tool_step(
         walk.issues.append(PlaybookIssue(where=path, problem=denial))
         return
 
-    # Matched within the walk's scope: a top-level step against the executor's
-    # own calls, a handoff's child against that subagent's — seen live as
-    # $item.todo_id accepted over elements carrying id, then stopping the replay.
     recorded = (
         _check_recorded_call(step, tool_name, path, walk) if walk.results is not None else None
     )
@@ -342,7 +294,7 @@ def _unmatched_problem(tool_name: str, walk: _Walk) -> str:
     same_tool = [
         (index, call)
         for index, call in enumerate(walk.results or ())
-        if call.tool_name == tool_name and call.subagent == walk.scope
+        if call.tool_name == tool_name
     ]
     if not same_tool:
         return (
@@ -375,7 +327,6 @@ def _matched_call(step: ToolStep | ForEachStep, walk: _Walk) -> tuple[int, Recor
         (index, call)
         for index, call in enumerate(walk.results or ())
         if call.tool_name == step.tool
-        and call.subagent == walk.scope
         and index not in walk.consumed
         and all(
             key in call.args and _agrees(value, call.args[key]) for key, value in step.args.items()
@@ -486,8 +437,8 @@ def _check_step_reference(token: str, path: str, where: str, walk: _Walk) -> obj
         return _UNRESOLVED
     result = walk.step_results.get(step_id)
     if result is None:
-        # The step is declared but its own call was never matched (a handoff
-        # child, or a tool this run did not call — both already reported).
+        # The step is declared but its own call was never matched (a tool this
+        # run did not call, already reported).
         return _UNRESOLVED
     try:
         return resolve_step(token, path, walk.step_results)
@@ -622,7 +573,7 @@ def _check_item_placeholder(
 
 
 def _check_step_placeholder(match: re.Match[str], where: str, walk: _Walk) -> object:
-    """Check a $steps reference names a declared step, not a handoff.
+    """Check a $steps reference names a declared step.
 
     When the run is in hand, also resolves the value that step returned, or
     _UNRESOLVED. Other roots are never seen here — the tokenizer only matches
@@ -639,18 +590,6 @@ def _check_step_placeholder(match: re.Match[str], where: str, walk: _Walk) -> ob
             PlaybookIssue(
                 where=where,
                 problem=f"{token} points at a step that no earlier node declares",
-            )
-        )
-        return _UNRESOLVED
-    if name in walk.handoff_ids:
-        child = path.split(".")[1] if "." in path else "<child>"
-        walk.issues.append(
-            PlaybookIssue(
-                where=where,
-                problem=(
-                    f"{token} addresses the handoff {name!r}, which records no result of "
-                    f"its own; address the call inside it by its own id, $steps.{child}..."
-                ),
             )
         )
         return _UNRESOLVED

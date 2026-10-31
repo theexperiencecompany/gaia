@@ -72,7 +72,7 @@ Do NOT use when:
 - The task involves a third-party provider (activate it with activate_integration instead)
 - A single direct tool call suffices
 
-The subagent has full access to your currently bound tools (except handoff and spawn_subagent), and returns only the distilled result.
+The subagent has full access to your currently bound tools (except spawn_subagent), and returns only the distilled result.
 It does not inherit preloaded integration schemas: paste any it needs into its task, or let it re-discover them with retrieve_tools.
 Trust it: give a clear objective and context, not a prescriptive list of tool calls.
 

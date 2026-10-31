@@ -39,7 +39,6 @@ class PlaybookState(BaseModel):
     heal_attempts: int
     tools: list[str]
     has_for_each: bool
-    has_handoff: bool
 
 
 class WorkflowState(BaseModel):
@@ -150,8 +149,7 @@ class Store:
             suspect_streak=raw.get("suspect_streak", 0),
             heal_attempts=raw.get("heal_attempts", 0),
             tools=_tools(steps),
-            has_for_each=any(_has_key(steps, "for_each")),
-            has_handoff=any(_has_key(steps, "handoff")),
+            has_for_each=any(step.get("for_each") is not None for step in steps),
         )
 
     def workflow(self, workflow_id: str) -> WorkflowState:
@@ -252,16 +250,4 @@ def _message(entry: object) -> str:
 
 
 def _tools(steps: list[dict[str, Any]]) -> list[str]:
-    names: list[str] = []
-    for step in steps:
-        if step.get("handoff"):
-            names.extend(_tools(step.get("steps") or []))
-        elif step.get("tool"):
-            names.append(str(step["tool"]))
-    return names
-
-
-def _has_key(steps: list[dict[str, Any]], key: str) -> Iterator[bool]:
-    for step in steps:
-        yield step.get(key) is not None
-        yield from _has_key(step.get("steps") or [], key)
+    return [str(step["tool"]) for step in steps if step.get("tool")]

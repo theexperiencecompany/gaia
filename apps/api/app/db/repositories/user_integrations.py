@@ -61,6 +61,13 @@ class UserIntegrationsRepository(
         doc = await self.get_for_user(user_id, integration_id)
         return doc is not None and doc.status == "connected"
 
+    async def connected_integration_ids(self, user_id: str) -> list[str]:
+        return [
+            doc.integration_id
+            for doc in await self.list_for_user(user_id)
+            if doc.status == "connected"
+        ]
+
     async def has_connected_before(self, user_id: str, integration_id: str) -> bool:
         """Whether this user's record was ever connected; connected_at survives a later expiry or re-auth."""
         doc = await self.get_for_user(user_id, integration_id)

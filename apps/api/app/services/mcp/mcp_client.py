@@ -15,7 +15,7 @@ from collections.abc import Awaitable, Callable
 import re
 import secrets
 import time
-from typing import TypedDict, cast
+from typing import NamedTuple, TypedDict, cast
 import urllib.parse
 
 from langchain_core.tools import BaseTool
@@ -66,6 +66,10 @@ from app.services.integrations.user_integration_status import (
 from app.services.integrations.user_integrations import (
     invalidate_user_integration_caches,
 )
+from app.services.mcp.custom_mcp_index import (
+    CustomMcpIndexRequest,
+    index_custom_mcp_as_subagent,
+)
 from app.services.mcp.device_connector import DeviceConnector
 from app.services.mcp.mcp_client_pool import get_mcp_client_pool
 from app.services.mcp.mcp_token_store import MCPTokenStore
@@ -104,7 +108,7 @@ from app.utils.mcp_oauth_utils import (
     validate_pkce_support,
 )
 from app.utils.mcp_utils import (
-    source_prefixed_tool_name,
+    gaia_tool_names,
     wrap_tools_with_null_filter,
 )
 from app.utils.url_safety import assert_endpoint_url_allowed
@@ -127,7 +131,79 @@ from mcp.types import (
     ListResourceTemplatesResult,
     ReadResourceResult,
 )
-from shared.py.wide_events import McpContext, log, log_context
+from shared.py.wide_events import McpContext, log, log_context, spawn_logged_task
+
+# A live tool's server-side identity, stamped before any GAIA-side rename so a
+# later collision recompute can always derive the name from the original.
+_SERVER_NAME_KEY = "mcp_server_name"
+_SERVER_DESCRIPTION_KEY = "mcp_server_description"
+_SOURCE_NAME_KEY = "mcp_source_name"
+
+
+class _ServerToolNames(NamedTuple):
+    """One connected MCP integration's display name and its tools' server-side names."""
+
+    source_name: str
+    server_names: list[str]
+
+
+async def _reserved_tool_names() -> set[str]:
+    registry = await get_tool_registry()
+    return {*registry.get_tool_names(), *TICKET_NAMES}
+
+
+def _server_identity(tool: BaseTool) -> tuple[str, str]:
+    metadata = tool.metadata or {}
+    return str(metadata[_SERVER_NAME_KEY]), str(metadata[_SERVER_DESCRIPTION_KEY])
+
+
+def _apply_gaia_names(tools: list[BaseTool], names: dict[str, str]) -> dict[str, str]:
+    """Rename tools from their server identity per names; return server name -> new name for the prefixed ones."""
+    renamed: dict[str, str] = {}
+    for tool in tools:
+        server_name, server_description = _server_identity(tool)
+        tool.name = names[server_name]
+        if tool.name == server_name:
+            tool.description = server_description
+            continue
+        tool.description = (
+            MCP_RENAMED_TOOL_NOTE.format(original=server_name, renamed=tool.name)
+            + server_description
+        )
+        renamed[server_name] = tool.name
+    return renamed
+
+
+def _gaia_names_by_integration(
+    server_tools: dict[str, _ServerToolNames], reserved: set[str]
+) -> dict[str, dict[str, str]]:
+    """Per integration, server name -> GAIA name; a name another integration also exposes is prefixed on both."""
+    names: dict[str, dict[str, str]] = {}
+    for integration_id, own in server_tools.items():
+        shared = {
+            name
+            for other_id, other in server_tools.items()
+            if other_id != integration_id
+            for name in other.server_names
+        }
+        names[integration_id] = gaia_tool_names(own.source_name, own.server_names, reserved, shared)
+    return names
+
+
+def _shared_index_tools(
+    tools: list[BaseTool], server: _ServerToolNames, reserved: set[str]
+) -> list[BaseTool]:
+    """Return the tools as Chroma sees them: shared by every user, so renamed only for GAIA's reserved names."""
+    index_names = gaia_tool_names(server.source_name, server.server_names, reserved, shared=())
+    index_tools: list[BaseTool] = []
+    for tool in tools:
+        if tool.name == index_names[_server_identity(tool)[0]]:
+            index_tools.append(tool)
+            continue
+        index_tool = tool.model_copy()
+        _apply_gaia_names([index_tool], index_names)
+        index_tools.append(index_tool)
+    return index_tools
 
 
 class _OAuthErrorBody(BaseModel):
@@ -795,43 +871,62 @@ class MCPClient:
         )
         return raw_tools
 
-    @staticmethod
-    async def _rename_shadowing_tools(
-        raw_tools: list[BaseTool], source_name: str
-    ) -> dict[str, str]:
-        """Rename the server's tools a GAIA tool name would shadow; return original -> new name.
-
-        Done once here so every consumer (tool dicts, indexes, resolver) sees one name;
-        the adapter still calls the server by the tool's own mcp_name.
-        """
-        registry = await get_tool_registry()
-        reserved = {*registry.get_tool_names(), *TICKET_NAMES}
-        taken = reserved | {raw_tool.name for raw_tool in raw_tools}
-        renamed: dict[str, str] = {}
-        for raw_tool in raw_tools:
-            if raw_tool.name in reserved:
-                original = raw_tool.name
-                raw_tool.name = source_prefixed_tool_name(source_name, original, taken)
-                taken.add(raw_tool.name)
-                raw_tool.description = (
-                    MCP_RENAMED_TOOL_NOTE.format(original=original, renamed=raw_tool.name)
-                    + raw_tool.description
+    async def _user_server_tool_names(self) -> dict[str, _ServerToolNames]:
+        """Server-side tool names of the user's MCP integrations: warm ones from memory, other connected ones from Mongo."""
+        server_tools = {
+            integration_id: _ServerToolNames(
+                source_name=str((tools[0].metadata or {})[_SOURCE_NAME_KEY]),
+                server_names=[_server_identity(tool)[0] for tool in tools],
+            )
+            for integration_id, tools in self._tools.items()
+            if tools
+        }
+        cold_ids = [
+            integration_id
+            for integration_id in await user_integration_repository.connected_integration_ids(
+                self.user_id
+            )
+            if integration_id not in server_tools
+        ]
+        if not cold_ids:
+            return server_tools
+        records = await integration_repository.tools_for_integrations(cold_ids)
+        resolved = await asyncio.gather(
+            *(IntegrationResolver.resolve(record.integration_id) for record in records)
+        )
+        for record, integration in zip(records, resolved, strict=True):
+            # Composio integrations also store catalog tools; only MCP servers share a namespace here.
+            if integration is not None and integration.mcp_config is not None:
+                server_tools[record.integration_id] = _ServerToolNames(
+                    source_name=integration.name,
+                    server_names=[tool.name for tool in record.tools],
                 )
-                renamed[original] = raw_tool.name
-        return renamed
+        return server_tools
+
+    async def _gaia_tool_names(
+        self, joining: dict[str, _ServerToolNames], reserved: set[str]
+    ) -> dict[str, dict[str, str]]:
+        """GAIA-facing names for every user MCP integration, with joining overriding what is stored."""
+        server_tools = {**await self._user_server_tool_names(), **joining}
+        return _gaia_names_by_integration(server_tools, reserved)
+
+    def _rename_warm_tools(self, names: dict[str, dict[str, str]]) -> None:
+        for integration_id, tools in self._tools.items():
+            if integration_id in names:
+                _apply_gaia_names(tools, names[integration_id])
 
     @staticmethod
     def _stamp_tool_metadata(
         raw_tools: list[BaseTool],
         integration_id: str,
         server_url: str,
+        source_name: str,
     ) -> None:
-        """Attach provenance metadata to every converted tool.
+        """Attach provenance metadata to every converted tool, before any rename.
 
-        server_url goes to tools with mcp_ui metadata; integration_id is stamped
-        onto all of them so consumers can resolve tool → integration without the
-        global ToolRegistry. The registry no longer holds MCP tools; this
-        metadata is the single source of truth for the tool's provenance.
+        server_url goes to tools with mcp_ui metadata; integration_id and the
+        server identity are stamped onto all of them so consumers resolve
+        tool -> integration without the global ToolRegistry.
         """
         for raw_tool in raw_tools:
             if raw_tool.metadata and "mcp_ui" in raw_tool.metadata:
@@ -841,6 +936,9 @@ class MCPClient:
             if raw_tool.metadata is None:
                 raw_tool.metadata = {}
             raw_tool.metadata["integration_id"] = integration_id
+            raw_tool.metadata[_SERVER_NAME_KEY] = raw_tool.name
+            raw_tool.metadata[_SERVER_DESCRIPTION_KEY] = raw_tool.description
+            raw_tool.metadata[_SOURCE_NAME_KEY] = source_name
 
     def _make_evict_callback(self, iid: str) -> Callable[[], None]:
         """Build a callback that evicts a stale session after a connection error.
@@ -871,64 +969,13 @@ class MCPClient:
 
         return _reconnect_and_retry
 
-    async def _run_post_connect_tasks(
-        self,
-        resolved: ResolvedIntegration,
-        mcp_config: MCPConfig,
-        is_custom: bool,
-        integration_id: str,
-        tools: list[BaseTool],
+    @staticmethod
+    async def _await_logged(
+        integration_id: str, labelled: list[tuple[str, Awaitable[object]]]
     ) -> None:
-        """Run the post-connection DB operations concurrently (all independent)."""
-        # Awaitable, not Coroutine: update_user_integration_status is wrapped in
-        # @CacheInvalidator, whose decorator erases the coroutine type.
-        post_tasks: list[Awaitable[object]] = []
-
-        # 1. Store unauthenticated record if needed
-        if not mcp_config.requires_auth:
-            post_tasks.append(self.token_store.store_unauthenticated(integration_id))
-
-        # 2. Store tool metadata to MongoDB for frontend visibility
-        tool_metadata = [RawToolMetadata(name=t.name, description=t.description) for t in tools]
-        log.info(
-            f"{LogTag.MCP} Storing tools to MongoDB",
-            integration_id=integration_id,
-            tool_metadata_count=len(tool_metadata),
-        )
-        post_tasks.append(store_mcp_tools(integration_id, tool_metadata))
-
-        # Index integration tools in ChromaDB: custom MCPs use a URL-derived
-        # namespace and register a subagent doc; platform MCPs use tool_space
-        # (or id). Redis cache in index_tools_to_store dedupes across users.
-        if is_custom:
-            custom_doc = (
-                Integration.model_validate(resolved.custom_doc) if resolved.custom_doc else None
-            )
-            custom_name = custom_doc.name if custom_doc else None
-            custom_desc = custom_doc.description if custom_doc else None
-            post_tasks.append(
-                self._handle_custom_integration_connect(
-                    integration_id,
-                    mcp_config.server_url,
-                    tools,
-                    name=custom_name,
-                    description=custom_desc,
-                )
-            )
-        else:
-            post_tasks.append(self._index_platform_mcp_tools(integration_id, tools))
-
-        # 4. Update user integration status
-        post_tasks.append(update_user_integration_status(self.user_id, integration_id, "connected"))
-
-        post_task_labels = (
-            (["store_unauthenticated"] if not mcp_config.requires_auth else [])
-            + ["store_tools_mongo"]
-            + (["index_custom_chroma"] if is_custom else ["index_platform_chroma"])
-            + ["update_status_connected"]
-        )
-        results = await asyncio.gather(*post_tasks, return_exceptions=True)
-        for label, result in zip(post_task_labels, results):
+        """Run independent post-connect writes concurrently, logging each outcome."""
+        results = await asyncio.gather(*(task for _, task in labelled), return_exceptions=True)
+        for (label, _), result in zip(labelled, results, strict=True):
             if isinstance(result, Exception):
                 log.warning(
                     f"{LogTag.MCP} post-connect task failed",
@@ -943,6 +990,73 @@ class MCPClient:
                     integration_id=integration_id,
                     label=label,
                 )
+
+    async def _record_connection(self, mcp_config: MCPConfig, integration_id: str) -> None:
+        """Write the connection state; awaited because ensure_connected trusts the DB status."""
+        # Awaitable, not Coroutine: update_user_integration_status is wrapped in
+        # @CacheInvalidator, whose decorator erases the coroutine type.
+        labelled: list[tuple[str, Awaitable[object]]] = []
+        if not mcp_config.requires_auth:
+            labelled.append(
+                ("store_unauthenticated", self.token_store.store_unauthenticated(integration_id))
+            )
+        labelled.append(
+            (
+                "update_status_connected",
+                update_user_integration_status(self.user_id, integration_id, "connected"),
+            )
+        )
+        await self._await_logged(integration_id, labelled)
+
+    async def _persist_and_index_tools(
+        self,
+        resolved: ResolvedIntegration,
+        mcp_config: MCPConfig,
+        integration_id: str,
+        index_tools: list[BaseTool],
+    ) -> None:
+        """Store the server's tool names in Mongo and index the tools in Chroma (off the connect path)."""
+        # Mongo and Chroma are shared by every user of the integration, so they
+        # hold user-independent identities: server names in Mongo (collision
+        # naming is recomputed from them per user), GAIA-reserved renames only in Chroma.
+        tool_metadata = [
+            RawToolMetadata(name=server_name, description=server_description)
+            for server_name, server_description in map(_server_identity, index_tools)
+        ]
+        labelled: list[tuple[str, Awaitable[object]]] = [
+            ("store_tools_mongo", store_mcp_tools(integration_id, tool_metadata))
+        ]
+        # Custom MCPs use a URL-derived namespace and register a subagent doc;
+        # platform MCPs use tool_space. index_tools_to_store's Redis cache dedupes across users.
+        if resolved.source == "custom":
+            custom_doc = (
+                Integration.model_validate(resolved.custom_doc) if resolved.custom_doc else None
+            )
+            labelled.append(
+                (
+                    "index_custom_chroma",
+                    self._handle_custom_integration_connect(
+                        integration_id,
+                        mcp_config.server_url,
+                        index_tools,
+                        name=custom_doc.name if custom_doc else None,
+                        description=custom_doc.description if custom_doc else None,
+                    ),
+                )
+            )
+        else:
+            labelled.append(
+                (
+                    "index_platform_chroma",
+                    self._index_platform_mcp_tools(integration_id, index_tools),
+                )
+            )
+        await self._await_logged(integration_id, labelled)
+
+        # The status mutator's decorator invalidates before its write, which raced
+        # store_tools; bust once more now that tools are persisted so a concurrent
+        # read can't cache an empty-but-connected catalog for the TTL.
+        await invalidate_user_integration_caches(self.user_id)
 
     async def _handle_connect_failure(
         self,
@@ -1088,19 +1202,28 @@ class MCPClient:
             client = await self._open_session(integration_id, mcp_config)
 
             raw_tools = await self._convert_tools_safe(client, integration_id)
-            renamed_tools = await self._rename_shadowing_tools(raw_tools, resolved.name)
+            self._stamp_tool_metadata(
+                raw_tools, integration_id, mcp_config.server_url, resolved.name
+            )
+            joining = _ServerToolNames(
+                source_name=resolved.name, server_names=[tool.name for tool in raw_tools]
+            )
+            reserved = await _reserved_tool_names()
+            names = await self._gaia_tool_names({integration_id: joining}, reserved)
+            renamed_tools = _apply_gaia_names(raw_tools, names[integration_id])
+            index_tools = _shared_index_tools(raw_tools, joining, reserved)
 
             # CRITICAL: Wrap tools to filter None values before MCP invocation.
             # MCP servers expect optional params to be OMITTED, not sent as null.
             # Without this, Pydantic defaults (None) cause MCP validation errors.
-            self._stamp_tool_metadata(raw_tools, integration_id, mcp_config.server_url)
-
             tools = wrap_tools_with_null_filter(
                 raw_tools,
                 on_connection_error=self._make_evict_callback(integration_id),
                 reconnect_and_retry=self._make_reconnect_callback(integration_id),
             )
 
+            # A newly shared name prefixes the already-warm integration's tool too.
+            self._rename_warm_tools(names)
             self._clients[integration_id] = client
             self._tools[integration_id] = tools
 
@@ -1122,14 +1245,12 @@ class MCPClient:
                 renamed_tools=renamed_tools,
             )
 
-            await self._run_post_connect_tasks(
-                resolved, mcp_config, is_custom, integration_id, tools
+            await self._record_connection(mcp_config, integration_id)
+            spawn_logged_task(
+                "mcp_post_connect",
+                self._persist_and_index_tools(resolved, mcp_config, integration_id, index_tools),
+                integration_id=integration_id,
             )
-
-            # The status mutator's decorator invalidates before its write, racing
-            # store_tools above; bust once more now that tools are persisted so a
-            # concurrent read can't cache an empty-but-connected catalog for the TTL.
-            await invalidate_user_integration_caches(self.user_id)
 
             return tools
 
@@ -1233,12 +1354,6 @@ class MCPClient:
                         resolved_description = custom_doc.description
 
                 if resolved_name:
-                    # Local import to avoid circular dependency
-                    from app.agents.core.subagents.handoff_tools import (  # noqa: PLC0415 -- breaks circular dependency with the agent handoff tools module
-                        CustomMcpIndexRequest,
-                        index_custom_mcp_as_subagent,
-                    )
-
                     await index_custom_mcp_as_subagent(
                         store=store,
                         request=CustomMcpIndexRequest(
@@ -1953,6 +2068,9 @@ class MCPClient:
         # Wipe persistent auth artifacts (Mongo status, PG creds, DCR client,
         # Redis OAuth cache) via the shared teardown helper.
         await self._reset_to_disconnected(integration_id)
+        # A name this integration shared is no longer shared: drop the prefix it forced.
+        if self._tools:
+            self._rename_warm_tools(await self._gaia_tool_names({}, await _reserved_tool_names()))
 
         log.info(f"{LogTag.MCP} Disconnected MCP", integration_id=integration_id)
 
@@ -1991,6 +2109,24 @@ class MCPClient:
             for tool in tools:
                 if tool.name == tool_name:
                     return integration_id
+        return None
+
+    async def tools_for(self, integration_id: str) -> list[BaseTool]:
+        """Return the integration's live tools, reconnecting with stored credentials on a warm miss."""
+        if integration_id in self._tools:
+            return self._tools[integration_id]
+        return await self.ensure_connected(integration_id)
+
+    async def resolve_tool_owner(self, tool_name: str) -> str | None:
+        """Which of the user's connected MCP integrations exposes tool_name, connecting it if cold."""
+        warm_owner = self.find_integration(tool_name)
+        if warm_owner is not None:
+            return warm_owner
+        names = await self._gaia_tool_names({}, await _reserved_tool_names())
+        for integration_id, integration_names in names.items():
+            if tool_name in integration_names.values():
+                await self.tools_for(integration_id)
+                return integration_id
         return None
 
     def is_connected(self, integration_id: str) -> bool:

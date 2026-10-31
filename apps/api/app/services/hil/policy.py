@@ -25,7 +25,11 @@ from app.agents.tools.execute.unwrap import unwrap_execute_call
 from app.constants.hil import HIL_EXEMPT_TOOLS, HIL_PAUSING_TOOLS
 from app.constants.log_tags import LogTag
 from app.models.hil_models import HILPreferences
-from app.services.hil.classification import is_tool_destructive, mcp_destructive_hint
+from app.services.hil.classification import (
+    is_tool_destructive,
+    mcp_destructive_hint,
+    mcp_integration_id,
+)
 from app.services.hil.preferences import get_hil_preferences
 from app.services.hil.utils import current_tool_calls, raw_tool_call, tool_of, unpack_tool_call
 from shared.py.wide_events import log
@@ -158,6 +162,7 @@ async def is_gated(
         tool_name,
         getattr(tool, "description", "") or "",
         destructive_hint=mcp_destructive_hint(tool),
+        mcp_integration_id=mcp_integration_id(tool),
     )
 
 

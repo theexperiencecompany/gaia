@@ -402,7 +402,7 @@ def _dedupe_by_provider(items: list[_ConnectedIntegration]) -> list[_ConnectedIn
 
     A connected set can hold two ids for the same account (a legacy
     google_calendar beside today's googlecalendar) — rendering both once gave
-    the agent two handoff targets, one resolving to no subagent.
+    the agent two activation targets, one resolving to no integration.
     """
     by_provider: dict[str, _ConnectedIntegration] = {}
     for item in items:

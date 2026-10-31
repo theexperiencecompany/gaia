@@ -45,12 +45,10 @@ from app.models.playbook_models import (
     AskKind,
     AskSlot,
     ForEachStep,
-    HandoffStep,
     LocatedAsk,
     PlaybookAskAnswer,
     PlaybookAskFill,
     PlaybookDocument,
-    PlaybookHandoffStepInput,
     PlaybookStep,
     PlaybookStepInput,
     ToolStep,
@@ -80,7 +78,6 @@ from app.services.workflow.playbook.runner import (
     _render_asks,
     _render_element,
     _Run,
-    _run_handoff,
     _run_tool_step,
     _suspect_verdict,
     run_playbook,
@@ -96,10 +93,6 @@ from app.utils.timezone import Timezone
 from tests.factories import make_user_id
 
 MODULE = "app.services.workflow.playbook.runner"
-#: A handoff resolves its subagent inside tool_space, not the runner, so that is
-#: where the lookup is stubbed. Everything below it (the scoped tool dict) runs
-#: for real against the fake registry.
-TOOL_SPACE_MODULE = "app.services.workflow.playbook.tool_space"
 GATE = "app.services.hil.gate"
 
 #: A real ObjectId: the gated tool call captures analytics, and UserId refuses anything else.
@@ -130,9 +123,8 @@ def _tools(
                 {
                     "calendar_id": calendar_id,
                     "user": get_user_id(config),
-                    # Which scope the call ran under: a handoff's children must
-                    # reach the tool tagged as that subagent, and a top-level
-                    # step must not be tagged at all.
+                    # A replayed step runs as the executor's own call, never
+                    # tagged as some subagent's.
                     "subagent": (config.get("configurable") or {}).get("subagent_id"),
                 },
             )
@@ -158,51 +150,17 @@ def _tools(
     return {"list_events": list_events, "send_email": send_email, "file_notes": file_notes}
 
 
-class _FakeCategoryTool:
-    def __init__(self, tool_obj: BaseTool) -> None:
-        self.name = tool_obj.name
-        self.tool = tool_obj
-
-
-class _FakeCategory:
-    def __init__(self, space: str, tools: list[BaseTool]) -> None:
-        self.space = space
-        self.tools = [_FakeCategoryTool(t) for t in tools]
-
-
 class _FakeRegistry:
     """The tool registry seam: the runner reads tools from it, never builds them."""
 
-    def __init__(self, tools: dict[str, BaseTool], spaces: dict[str, list[str]] | None = None):
+    def __init__(self, tools: dict[str, BaseTool]):
         self._tools = tools
-        self._spaces = spaces or {}
 
     def get_tool_dict(self) -> dict[str, BaseTool]:
         return self._tools
 
     def get_category_of_tool(self, tool_name: str) -> str:
         return "calendar" if tool_name == "list_events" else "mail"
-
-    def get_category_by_space(self, space: str) -> _FakeCategory | None:
-        names = self._spaces.get(space)
-        if names is None:
-            return None
-        return _FakeCategory(space, [self._tools[name] for name in names])
-
-
-class _FakeSubagentConfig:
-    tool_space = "calendar"
-    include_finish_task = False
-    auto_bind_tools: ClassVar[list[str]] = []
-    use_direct_tools = True
-    disable_retrieve_tools = True
-
-
-class _FakeSubagent:
-    id = "calendar_agent"
-    managed_by = "internal"
-    mcp_config = None
-    config = _FakeSubagentConfig()
 
 
 def _playbook(steps: list[PlaybookStep]) -> PlaybookDocument:
@@ -269,7 +227,6 @@ def _gate_policy(policy: str) -> Iterator[AsyncMock]:
 class _Seams:
     """The mocked seams a test may hold on to; see _run."""
 
-    subagent: _FakeSubagent | None = None
     find_previous: AsyncMock | None = None
     llm: AsyncMock | None = None
 
@@ -289,11 +246,7 @@ async def _run(
     seams.llm instead. seams lets a test hold on to the mock it asserts on.
     """
     seams = seams or _Seams()
-    subagent, find_previous, llm = (
-        seams.subagent,
-        seams.find_previous,
-        seams.llm,
-    )
+    find_previous, llm = seams.find_previous, seams.llm
     if llm is None:
         llm = (
             AsyncMock(side_effect=[ask_fill, narration or _narration()])
@@ -305,14 +258,6 @@ async def _run(
         patch(
             f"{MODULE}.workflow_executions_repository.find_recent_with_trace",
             find_previous or AsyncMock(return_value=[]),
-        ),
-        # Keyed on the id, so a lookup that drops the handoff target resolves to
-        # nothing instead of quietly answering with the only subagent around.
-        patch(
-            f"{TOOL_SPACE_MODULE}.get_subagent_by_id",
-            lambda subagent_id: subagent
-            if subagent is not None and subagent_id == subagent.id
-            else None,
         ),
         # The test cares how many model calls happen and what they return, not
         # which lane served them.
@@ -591,106 +536,6 @@ async def test_a_step_result_is_addressable_by_the_next_step() -> None:
     await _run(playbook, registry)
 
     assert recorder.calls[1][1]["body"] == "Found 12 events"
-
-
-# --- handoffs --------------------------------------------------------------
-
-HANDOFF_PLAYBOOK = [
-    HandoffStep(
-        handoff="calendar_agent",
-        steps=[ToolStep(id="events", tool="list_events", args={"calendar_id": "primary"})],
-    )
-]
-
-
-async def test_a_handoff_child_runs_in_the_subagents_scoped_tool_space() -> None:
-    recorder = _Recorder()
-    registry = _FakeRegistry(_tools(recorder), spaces={"calendar": ["list_events"]})
-
-    result, _ = await _run(
-        _playbook(HANDOFF_PLAYBOOK), registry, seams=_Seams(subagent=_FakeSubagent())
-    )
-
-    assert result.ok is True, result.failure
-    assert [name for name, _ in recorder.calls] == ["list_events"]
-    assert [call.tool_name for call in result.trace] == ["handoff", "list_events"]
-    assert result.trace[1].subagent == "calendar_agent"
-
-
-async def test_a_handoff_child_calling_a_tool_outside_that_scope_fails_the_step() -> None:
-    """send_email exists at top level and is not in the calendar subagent's space."""
-    recorder = _Recorder()
-    registry = _FakeRegistry(_tools(recorder), spaces={"calendar": ["list_events"]})
-    playbook = _playbook(
-        [
-            HandoffStep(
-                handoff="calendar_agent",
-                steps=[ToolStep(id="mail", tool="send_email", args={"to": "x@example.com"})],
-            )
-        ]
-    )
-
-    result, _ = await _run(playbook, registry, seams=_Seams(subagent=_FakeSubagent()))
-
-    assert result.ok is False
-    assert recorder.calls == []
-    assert "send_email" in (result.failure or "")
-    assert [call.tool_name for call in result.trace] == ["handoff"]
-
-
-async def test_an_unknown_handoff_target_stops_the_run() -> None:
-    recorder = _Recorder()
-    registry = _FakeRegistry(_tools(recorder))
-
-    result, _ = await _run(_playbook(HANDOFF_PLAYBOOK), registry, seams=_Seams(subagent=None))
-
-    assert result.ok is False
-    assert "calendar_agent" in (result.failure or "")
-    assert recorder.calls == []
-
-
-class _FakeMcpSubagent(_FakeSubagent):
-    """The calendar subagent as an MCP integration: its live tools live on the user's client, not the registry."""
-
-    managed_by = "mcp"
-    mcp_config = object()
-
-
-async def test_a_handoff_child_may_run_a_tool_the_users_mcp_client_provides() -> None:
-    """Regression: a step accepted at write time (MCP tool in the space) was refused at replay as "outside the bound tool set" because the handoff bound only registry ids."""
-    recorder = _Recorder()
-    tools = _tools(recorder)
-    registry = _FakeRegistry(tools, spaces={"calendar": ["list_events"]})
-    playbook = _playbook(
-        [
-            HandoffStep(
-                handoff="calendar_agent",
-                steps=[ToolStep(id="mail", tool="send_email", args={"to": "x@example.com"})],
-            )
-        ]
-    )
-
-    connected_as: list[str] = []
-
-    async def mcp_client(user_id: str) -> MagicMock:
-        connected_as.append(user_id)
-        client = MagicMock()
-        client.ensure_connected = AsyncMock(return_value=[tools["send_email"]])
-        return client
-
-    with patch(f"{TOOL_SPACE_MODULE}.get_mcp_client", mcp_client):
-        result, _ = await _run(playbook, registry, seams=_Seams(subagent=_FakeMcpSubagent()))
-
-    assert result.ok is True, result.failure
-    assert [name for name, _ in recorder.calls] == ["send_email"]
-    assert [call.tool_name for call in result.trace] == ["handoff", "send_email"]
-    # An MCP subagent's tools live on the OWNER's client, so the playbook's user
-    # is what the handoff resolves against: anyone else's client answers with a
-    # different tool set, or with none, and the recorded step is refused.
-    assert connected_as == [USER_ID]
-
-
-# --- a step or the narration that raises ------------------------------------
 
 
 async def test_a_step_that_raises_stops_the_run_with_the_completed_steps_on_record() -> None:
@@ -1260,7 +1105,7 @@ class TestNarrationSections:
 
     async def test_the_still_to_run_section_starts_at_the_step_being_run(self) -> None:
         recorder = _Recorder()
-        registry = _FakeRegistry(_tools(recorder), spaces={"calendar": ["list_events"]})
+        registry = _FakeRegistry(_tools(recorder))
         playbook = _playbook(
             [
                 ToolStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
@@ -1269,24 +1114,18 @@ class TestNarrationSections:
                     tool="send_email",
                     args={"to": "$trigger.to", "body": _slot("Write the digest.")},
                 ),
-                HandoffStep(
-                    handoff="calendar_agent",
-                    steps=[ToolStep(id="more", tool="list_events", args={"calendar_id": "second"})],
-                ),
+                ToolStep(id="more", tool="list_events", args={"calendar_id": "second"}),
             ]
         )
 
         result, llm = await _run(
-            playbook,
-            registry,
-            ask_fill=_ask_fill({"mail.body": "Twelve today."}),
-            seams=_Seams(subagent=_FakeSubagent()),
+            playbook, registry, ask_fill=_ask_fill({"mail.body": "Twelve today."})
         )
 
         assert result.ok is True, result.failure
         # The ask fill fires at step 2, so step 1 already ran and stays listed.
         assert _prompt_block(_ask_prompt(llm), "still_to_run") == (
-            "mail (send_email)\nhandoff to calendar_agent\nmore (list_events)"
+            "mail (send_email)\nmore (list_events)"
         )
 
     async def test_a_playbook_with_no_slots_says_so_rather_than_leaving_it_blank(self) -> None:
@@ -1469,43 +1308,20 @@ class TestFailureReport:
 
     async def test_a_denied_tool_names_its_position_and_the_reason(self) -> None:
         recorder = _Recorder()
-        registry = _FakeRegistry(_tools(recorder), spaces={"calendar": ["list_events"]})
+        registry = _FakeRegistry(_tools(recorder))
         playbook = _playbook(
             [
-                HandoffStep(
-                    handoff="calendar_agent",
-                    steps=[ToolStep(id="mail", tool="send_email", args={"to": "x@example.com"})],
-                )
+                ToolStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
+                ToolStep(id="mine", tool="grep", args={"pattern": "x"}),
             ]
         )
 
-        result, _ = await _run(playbook, registry, seams=_Seams(subagent=_FakeSubagent()))
+        result, _ = await _run(playbook, registry)
 
         assert result.ok is False
-        assert result.failure == (
-            "Playbook stopped at step 2 (send_email): no tool named 'send_email' is available "
-            "in this run's tool space. Completed: nothing. Nothing after that step ran."
-        )
-
-    async def test_a_tool_outside_a_handoffs_bound_set_is_refused_by_position(self) -> None:
-        """A non-retrieving handoff may only run tools bound at startup; an always-available tool being 'in the space' is not the same as being bound."""
-        recorder = _Recorder()
-        registry = _FakeRegistry(_tools(recorder), spaces={"calendar": ["list_events"]})
-        playbook = _playbook(
-            [
-                HandoffStep(
-                    handoff="calendar_agent",
-                    steps=[ToolStep(id="mine", tool="grep", args={"pattern": "x"})],
-                )
-            ]
-        )
-
-        result, _ = await _run(playbook, registry, seams=_Seams(subagent=_FakeSubagent()))
-
-        assert result.ok is False
-        assert result.failure == (
-            "Playbook stopped at step 2 (grep): grep is outside the bound tool set of this "
-            "handoff, which cannot retrieve. Completed: nothing. Nothing after that step ran."
+        assert result.failure is not None
+        assert result.failure.startswith(
+            "Playbook stopped at step 2 (grep): no tool named 'grep' exists. Completed: "
         )
 
     async def test_a_stale_placeholder_names_its_position(self) -> None:
@@ -1533,18 +1349,6 @@ class TestFailureReport:
         assert result.ok is False
         assert result.failure.startswith(
             "Playbook stopped at step 1 (list_events): refused by the approval gate: "
-        )
-
-    async def test_an_unknown_handoff_target_names_its_position(self) -> None:
-        recorder = _Recorder()
-        registry = _FakeRegistry(_tools(recorder))
-
-        result, _ = await _run(_playbook(HANDOFF_PLAYBOOK), registry, seams=_Seams(subagent=None))
-
-        assert result.ok is False
-        assert result.failure == (
-            "Playbook stopped at step 1 (handoff): no subagent named 'calendar_agent' exists. "
-            "Completed: nothing. Nothing after that step ran."
         )
 
     async def test_the_report_quotes_every_step_that_had_already_run(self) -> None:
@@ -1576,8 +1380,8 @@ class TestTrace:
 
     The trace is what stops the fallback agent from repeating a side effect and
     what a later run's $last_run reads. A call recorded under the wrong
-    category, without its arguments, or with the handoff's identity missing is a
-    record that cannot be replayed or audited afterwards.
+    category or without its arguments is a record that cannot be replayed or
+    audited afterwards.
     """
 
     async def test_a_recorded_call_carries_its_category_and_arguments(self) -> None:
@@ -1597,35 +1401,6 @@ class TestTrace:
         # only against replayed calls, so a call recorded as an agent's is a
         # comparison that silently never happens.
         assert [call.replayed for call in result.trace] == [True, True]
-
-    async def test_a_handoff_is_recorded_as_the_delegation_it_was(self) -> None:
-        recorder = _Recorder()
-        registry = _FakeRegistry(_tools(recorder), spaces={"calendar": ["list_events"]})
-
-        result, _ = await _run(
-            _playbook(HANDOFF_PLAYBOOK), registry, seams=_Seams(subagent=_FakeSubagent())
-        )
-
-        assert result.ok is True, result.failure
-        assert result.trace[0].tool_name == "handoff"
-        assert result.trace[0].tool_category == "handoff"
-        assert result.trace[0].args == {"subagent_id": "calendar_agent"}
-
-    async def test_a_failing_call_is_recorded_with_its_error_and_its_subagent(self) -> None:
-        """A failed handoff-child call is recorded attributed to the subagent that ran it, not flattened to the executor level."""
-        recorder = _Recorder()
-        registry = _FakeRegistry(
-            _tools(recorder, failing="list_events"), spaces={"calendar": ["list_events"]}
-        )
-
-        result, _ = await _run(
-            _playbook(HANDOFF_PLAYBOOK), registry, seams=_Seams(subagent=_FakeSubagent())
-        )
-
-        assert result.ok is False
-        assert result.trace[1].tool_name == "list_events"
-        assert result.trace[1].subagent == "calendar_agent"
-        assert "calendar unavailable" in result.trace[1].result_digest
 
     async def test_a_result_that_cannot_be_recorded_stops_the_run_with_the_steps_before_it(
         self,
@@ -1667,27 +1442,21 @@ class TestTrace:
 
 
 class TestCallIdentity:
-    async def test_a_top_level_step_runs_untagged_and_a_handoff_child_runs_as_the_subagent(
-        self,
-    ) -> None:
-        """The subagent tag is behavioral: an untagged handoff child would reach the integration as the executor, not the recorded delegation."""
+    async def test_every_step_runs_as_the_executors_own_call(self) -> None:
+        """Integrations are reached by the executor itself, so no replayed call is tagged as a subagent's."""
         recorder = _Recorder()
-        registry = _FakeRegistry(_tools(recorder), spaces={"calendar": ["list_events"]})
+        registry = _FakeRegistry(_tools(recorder))
         playbook = _playbook(
             [
                 ToolStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
-                HandoffStep(
-                    handoff="calendar_agent",
-                    steps=[ToolStep(id="more", tool="list_events", args={"calendar_id": "second"})],
-                ),
+                ToolStep(id="more", tool="list_events", args={"calendar_id": "second"}),
             ]
         )
 
-        result, _ = await _run(playbook, registry, seams=_Seams(subagent=_FakeSubagent()))
+        result, _ = await _run(playbook, registry)
 
         assert result.ok is True, result.failure
-        assert recorder.calls[0][1]["subagent"] is None
-        assert recorder.calls[1][1]["subagent"] == "calendar_agent"
+        assert [call[1]["subagent"] for call in recorder.calls] == [None, None]
 
 
 # --- results that are not a plain string -----------------------------------
@@ -1817,37 +1586,6 @@ class TestNonStringResults:
         assert result.ok is True, result.failure
         assert "twelve events" in result.completed[0]
         assert "twelve events" in result.trace[0].result_digest
-
-
-async def test_a_handoff_child_can_carry_a_slot() -> None:
-    """A handoff child's slot fills from the whole parent playbook, keyed by the child's own id, not the handoff's."""
-    recorder = _Recorder()
-    registry = _FakeRegistry(_tools(recorder), spaces={"calendar": ["list_events"]})
-    playbook = _playbook(
-        [
-            HandoffStep(
-                handoff="calendar_agent",
-                steps=[
-                    ToolStep(
-                        id="more",
-                        tool="list_events",
-                        args={"calendar_id": _slot("Which calendar?")},
-                    )
-                ],
-            )
-        ]
-    )
-
-    result, llm = await _run(
-        playbook,
-        registry,
-        ask_fill=_ask_fill({"more.calendar_id": "primary"}),
-        seams=_Seams(subagent=_FakeSubagent()),
-    )
-
-    assert result.ok is True, result.failure
-    assert recorder.calls[0][1]["calendar_id"] == "primary"
-    assert _prompt_block(_ask_prompt(llm), "still_to_run") == "more (list_events)"
 
 
 def test_a_scripted_turn_is_a_bare_tool_call_and_nothing_else() -> None:
@@ -2427,10 +2165,10 @@ async def test_a_fill_that_omits_a_later_steps_key_stops_the_run_at_that_step() 
 # --- one fill per slotted step ----------------------------------------------
 
 
-async def test_a_handoff_childs_slot_is_filled_by_its_own_call_like_any_other() -> None:
-    """A handoff child's slot fill is not swept up by an earlier top-level fill; it fires at the child's own (last) step."""
+async def test_a_later_steps_slot_is_filled_by_its_own_call() -> None:
+    """A later step's slot fill is not swept up by an earlier fill; it fires at that step."""
     recorder = _Recorder()
-    registry = _FakeRegistry(_tools(recorder), spaces={"calendar": ["list_events"]})
+    registry = _FakeRegistry(_tools(recorder))
     playbook = _playbook(
         [
             ToolStep(
@@ -2443,15 +2181,10 @@ async def test_a_handoff_childs_slot_is_filled_by_its_own_call_like_any_other() 
                 tool="send_email",
                 args={"to": "$user.email", "body": _slot("Write the note.")},
             ),
-            HandoffStep(
-                handoff="calendar_agent",
-                steps=[
-                    ToolStep(
-                        id="more",
-                        tool="list_events",
-                        args={"calendar_id": _slot("Which calendar?")},
-                    )
-                ],
+            ToolStep(
+                id="more",
+                tool="list_events",
+                args={"calendar_id": _slot("Which calendar?")},
             ),
         ]
     )
@@ -2468,7 +2201,7 @@ async def test_a_handoff_childs_slot_is_filled_by_its_own_call_like_any_other() 
     result, llm = await _run(
         playbook,
         registry,
-        seams=_Seams(subagent=_FakeSubagent(), llm=fills),
+        seams=_Seams(llm=fills),
     )
 
     assert result.ok is True, result.failure
@@ -2782,27 +2515,17 @@ def _bare_run(registry: Any = None) -> _Run:
 class TestGuardsOnStatesTheModelsRuleOut:
     """Branches a valid document cannot currently reach, asserted directly.
 
-    PlaybookStep enforces exactly one of tool/handoff, a playbook
+    PlaybookStep enforces a non-empty tool, a playbook
     carries at least one step, and a run the record already distrusted returns
     before the narration is ever written. Each guard below is what happens when
-    one of those stops holding — a document written by an older schema, a
-    handoff whose children were dropped — and a guard nobody exercises is a
+    one of those stops holding — a document written by an older schema — and a
+    guard nobody exercises is a
     guard that has quietly stopped guarding.
     """
 
-    async def test_a_handoff_with_no_target_names_the_empty_id(self) -> None:
-        step = HandoffStep.model_construct(id="h", handoff="", steps=[])
-
-        with patch(f"{TOOL_SPACE_MODULE}.get_subagent_by_id", lambda subagent_id: None):
-            failure = await _run_handoff(_playbook(AGENDA_STEPS), step, _bare_run())
-
-        assert failure is not None
-        assert failure.label == "handoff"
-        assert failure.reason == "no subagent named '' exists"
-
     async def test_a_step_with_no_tool_names_the_empty_name(self) -> None:
         step = ToolStep.model_construct(id="s", tool="", args={})
-        space = ToolSpace(tools={}, runtime=None, subagent_id=None)
+        space = ToolSpace(tools={})
 
         failure = await _run_tool_step(_playbook(AGENDA_STEPS), step, _bare_run(), space)
 
@@ -3095,17 +2818,6 @@ class TestForEachShape:
         with pytest.raises(ValidationError):
             ToolStep(id="s", tool="send_email", args={}, max_items=5)
 
-    def test_the_stored_handoff_cannot_repeat(self) -> None:
-        """for_each repeats one call; a stored handoff is a subagent's whole recorded sequence, a different feature entirely."""
-        with pytest.raises(ValidationError):
-            HandoffStep(
-                id="h",
-                handoff="calendar_agent",
-                steps=[ToolStep(id="c", tool="list_events", args={})],
-                for_each="$steps.x.ids",
-                max_items=2,
-            )
-
     def test_the_ceiling_is_capped(self) -> None:
         with pytest.raises(ValidationError):
             ForEachStep(id="s", tool="send_email", args={}, for_each="$steps.x.ids", max_items=1000)
@@ -3117,16 +2829,6 @@ class TestForEachShape:
     def test_an_authored_ceiling_without_a_loop_is_refused_by_name(self) -> None:
         with pytest.raises(ValidationError, match="only means something with for_each"):
             PlaybookStepInput(id="s", tool="send_email", max_items=5)
-
-    def test_an_authored_handoff_cannot_repeat(self) -> None:
-        with pytest.raises(ValidationError, match="cannot sit on a handoff"):
-            PlaybookStepInput(
-                id="h",
-                handoff="calendar_agent",
-                steps=[PlaybookHandoffStepInput(id="c", tool="list_events")],
-                for_each="$steps.x.ids",
-                max_items=2,
-            )
 
 
 class TestAskAnswerShape:

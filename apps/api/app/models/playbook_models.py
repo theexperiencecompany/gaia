@@ -30,7 +30,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Annotated, Any, Self, TypeGuard, cast
+from typing import Annotated, Any, Self, TypeGuard
 import uuid
 
 from pydantic import (
@@ -473,8 +473,12 @@ class ForEachStep(_CallStep):
         return node
 
 
-def _call_shape(value: object) -> str:
-    """Which call variant a value is: the one that carries ``for_each``."""
+def _step_shape(value: object) -> str:
+    """Which variant a value is, read off its shape: the one that carries ``for_each``.
+
+    No ``kind`` key is stored or rendered: the documents already in Mongo and
+    the YAML the agent reads carry none, and the shape says it anyway.
+    """
     if isinstance(value, ForEachStep):
         return "for_each"
     if isinstance(value, ToolStep):
@@ -484,76 +488,14 @@ def _call_shape(value: object) -> str:
     return "tool"
 
 
-#: A handoff's child: a call, plain or repeating, never another handoff. Depth
-#: one is a property of this type, not of a validator.
-HandoffChild = Annotated[
-    Annotated[ToolStep, Tag("tool")] | Annotated[ForEachStep, Tag("for_each")],
-    Discriminator(_call_shape),
-]
-
-
-class HandoffStep(BaseModel):
-    """A delegation to a subagent, carrying the calls that subagent ran.
-
-    The children execute in that subagent's context, so the subagent's existing
-    tool space *is* the auth boundary; there is no separate binding rule.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    id: str = Field(default="", description=_STEP_ID_DESCRIPTION)
-    handoff: str = Field(min_length=1, description="Subagent id")
-    steps: list[HandoffChild] = Field(min_length=1, description="The calls that subagent ran")
-
-    @model_validator(mode="before")
-    @classmethod
-    def _read_legacy_nulls(cls, data: object) -> object:
-        return _nulls_are_unset(data)
-
-    @property
-    def label(self) -> str:
-        return self.id or self.handoff
-
-    def ask_slots(self, prefix: str) -> list[LocatedAsk]:
-        """The children's slots, each under its own label: a child's key names
-        the child, since that is the step the evaluator fills."""
-        del prefix  # a handoff has no slots of its own; its children key themselves
-        return [slot for child in self.steps for slot in child.ask_slots(child.label)]
-
-    def to_document(self) -> dict[str, Any]:
-        node: dict[str, Any] = {}
-        if self.id:
-            node["id"] = self.id
-        node["handoff"] = self.handoff
-        node["steps"] = [child.to_document() for child in self.steps]
-        return node
-
-
-def _step_shape(value: object) -> str:
-    """Which variant a value is, read off its shape.
-
-    No ``kind`` key is stored or rendered: the documents already in Mongo and
-    the YAML the agent reads carry none, and the shape says it anyway. A
-    ``handoff`` key is a handoff; a ``for_each`` key is a repeating call; the
-    rest is a plain call.
-    """
-    if isinstance(value, HandoffStep):
-        return "handoff"
-    if isinstance(value, Mapping) and value.get("handoff") is not None:
-        return "handoff"
-    return _call_shape(value)
-
-
 PlaybookStep = Annotated[
-    Annotated[ToolStep, Tag("tool")]
-    | Annotated[ForEachStep, Tag("for_each")]
-    | Annotated[HandoffStep, Tag("handoff")],
+    Annotated[ToolStep, Tag("tool")] | Annotated[ForEachStep, Tag("for_each")],
     Discriminator(_step_shape),
 ]
 
 
-def ask_slots(steps: Sequence[ToolStep | ForEachStep | HandoffStep]) -> list[LocatedAsk]:
-    """Every ask slot in a playbook, in execution order, handoff children included.
+def ask_slots(steps: Sequence[ToolStep | ForEachStep]) -> list[LocatedAsk]:
+    """Every ask slot in a playbook, in execution order.
 
     Keys are unique: step ids are unique (the validator refuses a repeat) and
     two slots in one step sit at two different argument paths.
@@ -686,80 +628,30 @@ class _CallInput(BaseModel):
         )
 
 
-class PlaybookHandoffStepInput(_CallInput):
-    """A tool call recorded inside a handoff, as the authoring tool takes it.
+#: Keys of the retired ``handoff`` step. Refused by name rather than dropped as
+#: unknown: dropping them would store the step without the calls it carried.
+_HANDOFF_KEYS = ("handoff", "steps")
 
-    Flat by design: playbooks are depth-1, so a handoff's children are always
-    calls. Modelling that here instead of reusing the step union keeps the
-    tool's JSON Schema free of the self-``$ref`` that several function-calling
-    providers mishandle.
-    """
 
-    tool: str = Field(description="Exact name of the tool this step calls")
+class PlaybookStepInput(_CallInput):
+    """One step as the authoring tool takes it: one tool call."""
+
+    tool: str = Field(min_length=1, description="Exact name of the tool this step calls")
 
     @model_validator(mode="before")
     @classmethod
-    def _flat_or_refused(cls, data: object) -> object:
-        # Lenient about unknown keys, but not these two: a child carrying its own
-        # steps/handoff nests delegation deeper than a playbook goes. Dropping it
-        # silently would store a playbook that runs only a fraction of what was written.
+    def _no_handoff(cls, data: object) -> object:
         if isinstance(data, Mapping):
-            nested = sorted(key for key in ("steps", "handoff") if key in data)
+            nested = sorted(key for key in _HANDOFF_KEYS if key in data)
             if nested:
                 raise ValueError(
-                    f"a handoff's child is one tool call and cannot carry {' or '.join(nested)}: "
-                    "playbooks are one level deep, so list the calls that subagent made "
-                    "as the handoff's own steps"
+                    f"a step is one tool call and cannot carry {' or '.join(nested)}: list "
+                    "every call the run made as its own step, in order"
                 )
         return data
 
     def to_step(self) -> ToolStep | ForEachStep:
         return self._call(self.tool)
-
-
-class PlaybookStepInput(_CallInput):
-    """One top-level step as the authoring tool takes it: a tool call, or a
-    handoff carrying the calls that subagent ran."""
-
-    tool: str | None = Field(
-        default=None, description="Exact name of the tool this step calls, for a tool step"
-    )
-    handoff: str | None = Field(
-        default=None, description="Subagent id, for a handoff step. Leave 'tool' unset."
-    )
-    steps: list[PlaybookHandoffStepInput] = Field(
-        default_factory=list,
-        description="The tool calls the handoff's subagent ran. Only a handoff carries these.",
-    )
-
-    @model_validator(mode="after")
-    def exactly_one_shape(self) -> Self:
-        """A model can send any combination; the executed types cannot hold one."""
-        where = self.id or "<unnamed>"
-        if bool(self.tool) == bool(self.handoff):
-            raise ValueError(f"step {where}: set exactly one of 'tool' or 'handoff'")
-        if self.handoff and not self.steps:
-            raise ValueError(
-                f"handoff {self.handoff}: carries no steps, so it would do nothing; list "
-                "the calls that subagent ran (its handoff result records them) in this "
-                "step's 'steps' field"
-            )
-        if self.handoff and self.for_each is not None:
-            raise ValueError(
-                f"step {where}: for_each repeats a single tool call, so it cannot sit on a "
-                "handoff; put it on the call inside the handoff that repeats"
-            )
-        if self.tool and self.steps:
-            raise ValueError(f"step {where}: only a handoff may carry nested steps")
-        return self
-
-    def to_step(self) -> ToolStep | ForEachStep | HandoffStep:
-        if self.handoff is not None:
-            return HandoffStep(
-                id=self.id, handoff=self.handoff, steps=[child.to_step() for child in self.steps]
-            )
-        # exactly_one_shape guarantees a tool when there is no handoff.
-        return self._call(cast(str, self.tool))
 
 
 def playbook_body_from_input(

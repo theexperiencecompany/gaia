@@ -10,7 +10,7 @@ This module provides the retrieve_tools function factory that supports:
 
 import asyncio
 from collections import Counter
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 import json
 from typing import (
@@ -29,6 +29,11 @@ from langgraph.store.base import BaseStore, SearchItem
 from pydantic import Field, TypeAdapter
 
 from app.agents.core.subagents.active_integrations import get_active
+from app.agents.core.subagents.integration_resolution import (
+    CustomMcpSubagent,
+    get_integration_target,
+    is_per_user_mcp,
+)
 from app.agents.core.subagents.registry import get_subagent_by_id, providers_named_in
 from app.agents.tools.core.registry import (
     DESKTOP_TOOL_CATEGORY,
@@ -46,10 +51,13 @@ from app.config.settings import settings
 from app.constants.execute import RETURNS_INLINE_MAX_CHARS
 from app.constants.log_tags import LogTag
 from app.db.chroma.public_integrations_store import search_public_integrations
+from app.helpers.namespace_utils import derive_integration_namespace
 from app.models.agent_models import AgentConfigurable, agent_configurable, get_user_id
 from app.models.chat_models import ConversationSource
 from app.models.integration_models import PublicIntegrationSearchHit
+from app.models.subagent_models import Subagent
 from app.override.langgraph_bigtool.utils import RetrieveToolsResult
+from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.integrations.integration_service import (
     get_user_available_tool_namespaces,
 )
@@ -65,9 +73,15 @@ from shared.py.wide_events import log
 
 WEBPAGE_TOOLS = [web_search_tool.name, fetch_webpages.name, deep_research.name]
 
-_SUBAGENT_PREFIX = "subagent:"
 _CHROMA_PREVIEW_SIZE = 10
 _INTEGRATION_PREFIX = "integration:"
+# Discovery pointer to an MCP integration (platform or custom) the model loads
+# with activate_integration; the ("subagents",) store namespace holds their docs.
+_MCP_INTEGRATION_PREFIX = "mcp_integration:"
+# chroma_tools_store keys static platform-MCP pointer docs "subagent:<id>".
+_STATIC_POINTER_KEY_PREFIX = "subagent:"
+_POINTER_PREFIXES = (_MCP_INTEGRATION_PREFIX, _INTEGRATION_PREFIX)
+_TargetIntegration: TypeAlias = Subagent | CustomMcpSubagent
 # How both schema-doc surfaces (startup preload, binding mode) tell the model to run them.
 _EXECUTE_DOCS_INSTRUCTION = (
     "They are NOT bound as callable tools — do NOT call them by name. Build `data` "
@@ -134,8 +148,9 @@ async def _unconnected_named_in(
 ) -> list[_UnconnectedIntegration]:
     """The provider integrations a discovery query names that the user has not connected.
 
-    Covers the integrations activate_integration itself gates on a connection;
-    per-user MCP integrations route through handoff instead.
+    Covers the integrations whose connection lives in the OAuth status map;
+    MCP integrations surface as activate_integration pointers instead, and that
+    call gates on their MCP token store.
     """
     if not user_id or not query:
         return []
@@ -234,12 +249,7 @@ async def split_startup_tools(
     declared_names: list[str] | None,
     mcp_tool_names: set[str] | None = None,
 ) -> tuple[list[str], list[str]]:
-    """``partition_startup_tools`` with registry and MCP names resolved.
-
-    The seam for run-time callers (handoff seeding, integration activation)
-    that hold no registry. Graph construction uses the pure partition
-    directly against the registry it already fetched.
-    """
+    """``partition_startup_tools`` with registry and MCP names resolved, for callers holding no registry."""
     if not declared_names:
         return [], []
     tool_registry = await get_tool_registry()
@@ -263,39 +273,15 @@ async def render_preload_block(user_id: str | None, preload_names: list[str]) ->
     return header + "\n\n" + "\n\n".join(docs)
 
 
-async def preloaded_startup_docs(user_id: str | None, integration_id: str) -> str:
-    """One integration's declared startup docs, or ``""`` when there are none.
+async def _user_mcp_tool_names(
+    user_id: str | None, active_targets: Mapping[str, _TargetIntegration] | None = None
+) -> set[str]:
+    """Tool names held by the user's MCPClient, plus those of MCPs activated in this conversation.
 
-    The handoff-seeding seam: the caller appends this to the static system
-    message so the run opens with its most-used tools' schemas in context —
-    no ``retrieve_tools`` round trip, no binding. ``use_direct_tools`` graphs
-    bind their space wholesale, so docs there would contradictorily describe
-    bound tools as uncallable — they get none.
-    """
-    subagent = get_subagent_by_id(integration_id)
-    if subagent is None:
-        return ""
-    if subagent.config.use_direct_tools:
-        return ""
-    declared = [
-        *(subagent.config.auto_bind_tools or []),
-        *(subagent.config.extra_initial_tools or []),
-    ]
-    if not declared:
-        return ""
-    _, preload = await split_startup_tools(user_id, declared)
-    return await render_preload_block(user_id, preload)
-
-
-async def _user_mcp_tool_names(user_id: str | None) -> set[str]:
-    """Tool names exposed by the user's live MCPClient.
-
-    The resilience rewrite moved per-user MCP tool storage out of the global
-    ToolRegistry, so `retrieve_tools` can't rely on `get_tool_names()` alone
-    for discovery filtering or binding validation. This helper supplies the
-    missing slice — read straight from the MCPClient that owns the live
-    connectors for `user_id`. Returns an empty set on any failure so the
-    surrounding logic degrades cleanly.
+    Per-user MCP tools live outside the global ToolRegistry. Only the
+    conversation's activated MCP integrations are (re)connected via
+    ``tools_for``; every other integration contributes only what is already
+    warm, so discovery never opens connections it was not asked for.
     """
     if not user_id:
         return set()
@@ -304,7 +290,6 @@ async def _user_mcp_tool_names(user_id: str | None) -> set[str]:
         names: set[str] = set()
         for integration_tools in mcp_client._tools.values():
             names.update(t.name for t in integration_tools)
-        return names
     except Exception as e:
         log.warning(
             f"{LogTag.TOOL} _user_mcp_tool_names failed",
@@ -312,6 +297,19 @@ async def _user_mcp_tool_names(user_id: str | None) -> set[str]:
             error_type=type(e).__name__,
         )
         return set()
+    for target in (active_targets or {}).values():
+        if not is_per_user_mcp(target):
+            continue
+        try:
+            names.update(t.name for t in await mcp_client.tools_for(target.id))
+        except Exception as e:
+            # One unreachable activated server must not blank discovery for the rest.
+            log.warning(
+                f"{LogTag.TOOL} Activated MCP integration unreachable; its tools are not listed",
+                integration_id=target.id,
+                error_type=type(e).__name__,
+            )
+    return names
 
 
 def _is_platform_tool_space(tool_space: str) -> bool:
@@ -486,6 +484,8 @@ class _BindingTriage:
     out_of_scope: list[str] = field(default_factory=list)
     # requested name -> canonical name, for the aliases we silently resolved
     renamed: dict[str, str] = field(default_factory=dict)
+    # integration ids of discovery pointers passed as tool names
+    pointers: list[str] = field(default_factory=list)
 
 
 class _RankedHits(NamedTuple):
@@ -580,25 +580,38 @@ async def _get_user_context(
     return user_namespaces, connected_integrations
 
 
-async def _active_tool_spaces(conversation_id: str | None) -> set[str]:
-    """Tool spaces activated in this conversation, or empty when none.
+async def _active_integration_targets(conversation_id: str | None) -> dict[str, _TargetIntegration]:
+    """Resolved targets of the integrations activated in this conversation.
 
-    Maps stamped integration ids through the registry; an id the registry no
-    longer knows is dropped with a warning rather than searched blind.
+    A stamped id that no longer resolves is dropped with a warning rather than searched blind.
     """
-    active = await get_active(conversation_id)
-    if not active:
-        return set()
-    spaces: set[str] = set()
-    for integration_id in active:
-        subagent = get_subagent_by_id(integration_id)
-        if subagent is not None and subagent.config.tool_space:
-            spaces.add(subagent.config.tool_space)
-        else:
+    targets: dict[str, _TargetIntegration] = {}
+    for integration_id in sorted(await get_active(conversation_id)):
+        target = await get_integration_target(integration_id)
+        if target is None:
             log.warning(
-                f"{LogTag.TOOL} Activated integration unknown to the registry; not searching it",
+                f"{LogTag.TOOL} Activated integration no longer resolves; not searching it",
                 integration_id=integration_id,
             )
+            continue
+        targets[integration_id] = target
+    return targets
+
+
+async def _target_tool_space(target: _TargetIntegration) -> str | None:
+    if isinstance(target, CustomMcpSubagent):
+        # The derivation get_user_available_tool_namespaces uses, so the entitlement gate matches.
+        server_url = await IntegrationResolver.get_server_url(target.id)
+        return derive_integration_namespace(target.id, server_url, is_custom=True)
+    return target.config.tool_space or None
+
+
+async def _active_tool_spaces(active_targets: Mapping[str, _TargetIntegration]) -> set[str]:
+    """Tool spaces of the conversation's activated integrations."""
+    spaces: set[str] = set()
+    for target in active_targets.values():
+        if tool_space := await _target_tool_space(target):
+            spaces.add(tool_space)
     return spaces
 
 
@@ -627,8 +640,8 @@ def _build_search_tasks(
         log.info(f"{LogTag.TOOL} Adding search for tool space", tool_space=tool_space)
         search_tasks.append(store.asearch((tool_space,), query=query, limit=limit))
     else:
-        # Caller is in a subagent whose namespace they don't own. This is
-        # unusual — usually it means a stale cache or a misrouted handoff.
+        # Caller is in a scoped agent whose namespace they don't own. This is
+        # unusual — usually it means a stale cache or a misrouted scope.
         # We refuse the search rather than leak another user's tool index.
         log.warning(
             f"{LogTag.TOOL} retrieve_tools refused search: tool_space not in user_namespaces",
@@ -642,11 +655,17 @@ def _build_search_tasks(
         log.info(f"{LogTag.TOOL} Adding search for general namespace (limited to 5 for core tools)")
         search_tasks.append(store.asearch(("general",), query=query, limit=5))
 
-    # Namespaces activated in-conversation join the search; membership is
-    # stamped only after a connection-checked activation, so it implies
-    # entitlement and skips the user_namespaces gate.
+    # Namespaces activated in-conversation join the search under the same
+    # entitlement gate: a stamp names an integration, not a right to its index,
+    # so a custom namespace is searched only when user_namespaces lists it.
     for namespace in sorted(active_namespaces or ()):
         if namespace in {tool_space, "general"}:
+            continue
+        if namespace not in user_namespaces and not _is_platform_tool_space(namespace):
+            log.warning(
+                f"{LogTag.TOOL} retrieve_tools refused activated namespace not in user_namespaces",
+                namespace=namespace,
+            )
             continue
         log.info(f"{LogTag.TOOL} Adding search for activated namespace", namespace=namespace)
         search_tasks.append(store.asearch((namespace,), query=query, limit=limit))
@@ -657,9 +676,9 @@ def _build_search_tasks(
         log.info(f"{LogTag.TOOL} Adding search for desktop namespace")
         search_tasks.append(store.asearch((DESKTOP_TOOL_SPACE,), query=query, limit=10))
 
-    # Only custom MCP integrations index a pointer doc here; surfacing it is
-    # what makes an unactivated custom MCP discoverable, so the model learns
-    # its id to hand off to.
+    # Only MCP integrations index a pointer doc here; surfacing it is what
+    # makes an unactivated MCP discoverable, so the model learns the id to
+    # pass to activate_integration.
     if scope.include_subagents:
         log.info(f"{LogTag.TOOL} Adding search for subagents namespace")
         search_tasks.append(store.asearch(("subagents",), query=query, limit=15))
@@ -674,8 +693,7 @@ def _process_public_integration_result(
     """Process public integration search results.
 
     These are integrations the user has NOT connected: they render as
-    ``integration:<id> (Name)`` entries (never ``subagent:`` — only per-user
-    MCP integrations run as subagents), so the model can activate them
+    ``integration:<id> (Name)`` entries, so the model can activate them
     directly, which is also what renders the connect card.
     """
     processed: list[ScoredToolHit] = []
@@ -692,8 +710,8 @@ def _process_public_integration_result(
     return processed
 
 
-def _subagent_pointer_hit(item: SearchItem) -> ScoredToolHit | None:
-    """The subagent: entry for a subagents-namespace pointer, or None for a stale doc.
+def _mcp_pointer_hit(item: SearchItem) -> ScoredToolHit | None:
+    """The mcp_integration: entry for a subagents-namespace pointer, or None for a stale doc.
 
     Pointers exist only for MCP integrations, static (source "mcp", the default
     for docs predating the field) or custom; anything else predates the index.
@@ -706,10 +724,14 @@ def _subagent_pointer_hit(item: SearchItem) -> ScoredToolHit | None:
     source = value.get("source", "mcp")
     if source not in ("custom", "mcp"):
         return None
-    tool_key = str(item.key)
+    integration_id = str(item.key).removeprefix(_STATIC_POINTER_KEY_PREFIX)
     name = value.get("name")
-    subagent_key = f"subagent:{tool_key} ({name})" if name else f"subagent:{tool_key}"
-    return ScoredToolHit(id=subagent_key, score=item.score)
+    entry = (
+        f"{_MCP_INTEGRATION_PREFIX}{integration_id} ({name})"
+        if name
+        else f"{_MCP_INTEGRATION_PREFIX}{integration_id}"
+    )
+    return ScoredToolHit(id=entry, score=item.score)
 
 
 def _is_delegated_elsewhere(
@@ -747,7 +769,7 @@ def _process_chroma_search_result(
         namespace = item.namespace if hasattr(item, "namespace") else None
 
         if namespace == ("subagents",):
-            if include_subagents and (hit := _subagent_pointer_hit(item)) is not None:
+            if include_subagents and (hit := _mcp_pointer_hit(item)) is not None:
                 processed.append(hit)
             continue
 
@@ -855,11 +877,21 @@ def _split_prefixed_entry(entry: str, prefix: str) -> tuple[str, str | None]:
     return tail, None
 
 
+def _pointer_integration_id(name: str) -> str | None:
+    """The integration id of a discovery pointer (or a legacy ``subagent:`` one), else None."""
+    for prefix in (*_POINTER_PREFIXES, _STATIC_POINTER_KEY_PREFIX):
+        if name.startswith(prefix):
+            entry_id, _ = _split_prefixed_entry(name, prefix)
+            # Legacy pointers wrapped the static "subagent:<id>" store key once more.
+            return entry_id.removeprefix(_STATIC_POINTER_KEY_PREFIX)
+    return None
+
+
 def _discovery_next_step(
     total_candidates: int,
     not_connected_lines: list[str],
     *,
-    has_mcp_subagents: bool,
+    has_mcp_integrations: bool,
     has_new_integrations: bool,
 ) -> dict[str, object]:
     """The payload's next instruction, plus the nothing-matched flag when it applies."""
@@ -881,13 +913,13 @@ def _discovery_next_step(
     steps = [
         "Load with retrieve_tools(exact_tool_names=[...]): internal tools bind "
         "and are called by name, integration tools (ALLCAPS) return schemas to "
-        "run via execute and are never bound. Integrations are not subagents: "
-        "act on them yourself."
+        "run via execute and are never bound. Act on integrations yourself."
     ]
-    if has_mcp_subagents:
+    if has_mcp_integrations:
         steps.append(
-            "subagent: entries are per-user MCP integrations, the ONLY "
-            'subagents: delegate with handoff(subagent_id="<id>", task="...").'
+            "mcp_integrations are MCP integrations whose tools are not loaded yet: "
+            'call activate_integration(integration_id="<id>") to load one, then run '
+            "its tools yourself via execute."
         )
     if has_new_integrations:
         steps.append(
@@ -908,22 +940,20 @@ def _render_discovery_response(
 ) -> str:
     """Render discovery hits as the JSON the model acts on.
 
-    Only real tools are listed, plus two narrow entry kinds: ``subagent:``
-    pointers to per-user MCP integrations (the sole subagent surface — their
-    tools live in per-user namespaces discovery never enters) and
-    ``integration:`` pointers to not-yet-connected integrations (activating
-    one renders its connect card). Provider and built-in integrations surface
-    as their tools, never as pointers. ``connected_integrations`` only labels
-    each tool entry with its source. ``not_connected`` lists provider
-    integrations the query names that the user has not connected; their
-    definitive line leads ``next``, whatever else the search matched.
+    Only real tools are listed, plus two pointer kinds the model passes to
+    activate_integration: ``mcp_integration:`` (MCP integrations, whose tools
+    live in namespaces discovery enters only once activated) and
+    ``integration:`` (not-yet-connected integrations; activating one renders
+    its connect card). ``connected_integrations`` only labels each tool entry
+    with its source. ``not_connected`` lists provider integrations the query
+    names that the user has not connected; their line leads ``next``.
     """
     bindable: list[str] = []
     mcp: list[tuple[str, str | None]] = []
     new: list[tuple[str, str | None]] = []
     for entry in hits.tools:
-        if entry.startswith(_SUBAGENT_PREFIX):
-            mcp.append(_split_prefixed_entry(entry, _SUBAGENT_PREFIX))
+        if entry.startswith(_MCP_INTEGRATION_PREFIX):
+            mcp.append(_split_prefixed_entry(entry, _MCP_INTEGRATION_PREFIX))
         elif entry.startswith(_INTEGRATION_PREFIX):
             new.append(_split_prefixed_entry(entry, _INTEGRATION_PREFIX))
         else:
@@ -948,7 +978,7 @@ def _render_discovery_response(
 
     payload: dict[str, object] = {
         "tools_to_bind": [_tool_entry(n) for n in bindable],
-        "mcp_subagents": [_id_entry(p) for p in mcp],
+        "mcp_integrations": [_id_entry(p) for p in mcp],
         "new_integrations": [_id_entry(p) for p in new],
     }
     if hits.total_candidates > hits.limit:
@@ -961,7 +991,7 @@ def _render_discovery_response(
         _discovery_next_step(
             hits.total_candidates,
             [_not_connected_line(integration, background) for integration in not_connected],
-            has_mcp_subagents=bool(mcp),
+            has_mcp_integrations=bool(mcp),
             has_new_integrations=bool(new),
         )
     )
@@ -990,11 +1020,10 @@ def _triage_exact_names(
     known_by_canonical = canonical_tool_name_map(bindable_set | mcp_tool_names)
     triage = _BindingTriage()
     for tool_name in exact_tool_names:
-        if tool_name.startswith(_SUBAGENT_PREFIX):
-            # subagent: entries are never bound — either a per-user MCP handled
-            # via handoff or a hallucination. Report unknown so the model
-            # re-discovers instead of echoing it back as a fake bind.
-            triage.unknown.append(tool_name)
+        if (integration_id := _pointer_integration_id(tool_name)) is not None:
+            # A discovery pointer names an integration, never a tool: it loads
+            # through activate_integration, so it is neither bound nor unknown.
+            triage.pointers.append(integration_id)
         elif (
             not include_desktop
             and tool_registry.get_category_of_tool(tool_name) == DESKTOP_TOOL_CATEGORY
@@ -1020,9 +1049,14 @@ def _binding_guidance(
     out_of_scope_tool_names: list[str],
     unconnected: dict[str, _UnconnectedIntegration],
     background: bool,
+    pointers: Sequence[str] = (),
 ) -> list[str]:
     """The lines telling the model which requested tools cannot run here, and why."""
-    guidance: list[str] = []
+    guidance: list[str] = [
+        f"{integration_id} is an integration, not a tool, so nothing was bound for it: "
+        f'call activate_integration(integration_id="{integration_id}") to load its tools.'
+        for integration_id in dict.fromkeys(pointers)
+    ]
     if out_of_scope_tool_names:
         guidance.append(
             "These tools are not available inside this subagent and cannot be "
@@ -1124,7 +1158,9 @@ async def _bind_exact_tools(
     # else an out-of-scope tool reports a fake bind the graph then rejects,
     # looping the model bind->reject.
     bindable_set = bindable_tool_names if bindable_tool_names is not None else global_tool_names
-    mcp_tool_names_set = await _user_mcp_tool_names(scope.user_id)
+    mcp_tool_names_set = await _user_mcp_tool_names(
+        scope.user_id, await _active_integration_targets(scope.conversation_id)
+    )
     triage = _triage_exact_names(
         exact_tool_names,
         tool_registry,
@@ -1183,7 +1219,9 @@ async def _bind_exact_tools(
     # Bind valid tools regardless; out-of-scope guidance stays in its own
     # list, since a name-vs-sentence filter re-emitted every proxied name
     # as NOT callable by name.
-    guidance = _binding_guidance(triage.out_of_scope, unconnected, scope.background)
+    guidance = _binding_guidance(
+        triage.out_of_scope, unconnected, scope.background, triage.pointers
+    )
     return RetrieveToolsResult(
         tools_to_bind=bound_tool_names,
         response=[*bound_tool_names, *proxied_names, *guidance],
@@ -1253,7 +1291,8 @@ async def _discover_tools(
     )
 
     # Build and execute search tasks
-    active_namespaces = await _active_tool_spaces(scope.conversation_id)
+    active_targets = await _active_integration_targets(scope.conversation_id)
+    active_namespaces = await _active_tool_spaces(active_targets)
     search_tasks = _build_search_tasks(
         store, query, scope, user_namespaces, limit, active_namespaces
     )
@@ -1264,7 +1303,9 @@ async def _discover_tools(
     # MCP tool names don't live in the global registry anymore (resilience
     # rewrite removed the per-user categories) — union with the live MCPClient
     # names so the discovery filter doesn't drop every PostHog/Notion/etc. hit.
-    available_tool_names_set = global_tool_names | await _user_mcp_tool_names(user_id)
+    available_tool_names_set = global_tool_names | await _user_mcp_tool_names(
+        user_id, active_targets
+    )
 
     stats = _search_hit_stats(results)
 
@@ -1411,8 +1452,7 @@ def get_retrieve_tools_function(
         # Return a corrective hint so the caller self-corrects next step.
         return RetrieveToolsResult(tools_to_bind=[], response=[_NO_USABLE_ARGUMENT_HINT])
 
-    # The LLM-facing docstring is a static constant: no subagent section,
-    # since the handoff tool's own description covers provider handoff.
+    # The LLM-facing docstring is a static constant.
     retrieve_tools.__doc__ = _RETRIEVE_TOOLS_BASE_DOC
 
     return retrieve_tools

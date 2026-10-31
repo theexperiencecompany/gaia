@@ -49,6 +49,7 @@ from app.models.integration_models import (
 )
 from app.models.mcp_config import MCPConfig, OAuthDiscovery, OidcTokenResponse
 from app.services.mcp import mcp_client
+from app.services.mcp.custom_mcp_index import CustomMcpIndexRequest
 from app.services.mcp.langchain_adapter import SanitizingLangChainAdapter
 from app.services.mcp.mcp_client import (
     DCRNotSupportedError,
@@ -172,6 +173,25 @@ def _mock_tool(name: str = "test_tool", description: str = "A test tool") -> Mag
     tool.description = description
     tool.metadata = {}
     return tool
+
+
+@pytest.fixture(autouse=True)
+def _no_persisted_mcp_state() -> Iterator[MagicMock]:
+    """Keep connect/disconnect hermetic: no other connected MCPs in Mongo, background post-connect not run."""
+
+    def _drop(operation: str, coro: Any, **context: Any) -> MagicMock:
+        coro.close()
+        return MagicMock()
+
+    with (
+        patch.object(
+            mcp_client.user_integration_repository,
+            "connected_integration_ids",
+            new=AsyncMock(return_value=[]),
+        ),
+        patch("app.services.mcp.mcp_client.spawn_logged_task", side_effect=_drop) as spawn,
+    ):
+        yield spawn
 
 
 # ---------------------------------------------------------------------------
@@ -4069,9 +4089,8 @@ class TestMCPClientHandleCustomIntegrationConnect:
             mock_store = MagicMock()
             mock_providers.aget = AsyncMock(return_value=mock_store)
 
-            # Mock the local import
             with patch(
-                "app.agents.core.subagents.handoff_tools.index_custom_mcp_as_subagent",
+                "app.services.mcp.mcp_client.index_custom_mcp_as_subagent",
                 new_callable=AsyncMock,
             ) as mock_subagent:
                 await client._handle_custom_integration_connect(
@@ -4107,10 +4126,6 @@ class TestMCPClientHandleCustomIntegrationConnect:
 
     async def test_the_indexed_request_carries_the_integrations_identity_verbatim(self):
         """A dropped server_url or tool list indexes a subagent that ranks for nothing and a handoff can never resolve."""
-        from app.agents.core.subagents.handoff_tools import (
-            CustomMcpIndexRequest,
-        )
-
         client = MCPClient(user_id=USER_ID)
         tools = [_mock_tool()]
 
@@ -4126,7 +4141,7 @@ class TestMCPClientHandleCustomIntegrationConnect:
             mock_providers.aget = AsyncMock(return_value=mock_store)
 
             with patch(
-                "app.agents.core.subagents.handoff_tools.index_custom_mcp_as_subagent",
+                "app.services.mcp.mcp_client.index_custom_mcp_as_subagent",
                 new_callable=AsyncMock,
             ) as mock_subagent:
                 await client._handle_custom_integration_connect(
@@ -4149,10 +4164,6 @@ class TestMCPClientHandleCustomIntegrationConnect:
 
     async def test_an_integration_with_no_description_indexes_an_empty_one(self):
         """A missing description becomes the empty string rather than travelling as None into the embedded text."""
-        from app.agents.core.subagents.handoff_tools import (
-            CustomMcpIndexRequest,
-        )
-
         client = MCPClient(user_id=USER_ID)
         tools = [_mock_tool()]
 
@@ -4167,7 +4178,7 @@ class TestMCPClientHandleCustomIntegrationConnect:
             mock_providers.aget = AsyncMock(return_value=MagicMock())
 
             with patch(
-                "app.agents.core.subagents.handoff_tools.index_custom_mcp_as_subagent",
+                "app.services.mcp.mcp_client.index_custom_mcp_as_subagent",
                 new_callable=AsyncMock,
             ) as mock_subagent:
                 await client._handle_custom_integration_connect(
@@ -4206,7 +4217,7 @@ class TestMCPClientHandleCustomIntegrationConnect:
             mock_resolver.resolve = AsyncMock(return_value=resolved)
 
             with patch(
-                "app.agents.core.subagents.handoff_tools.index_custom_mcp_as_subagent",
+                "app.services.mcp.mcp_client.index_custom_mcp_as_subagent",
                 new_callable=AsyncMock,
             ) as mock_subagent:
                 await client._handle_custom_integration_connect(
@@ -4371,28 +4382,36 @@ def _ok_response(body: dict[str, Any]) -> MagicMock:
 
 
 class TestStampToolMetadataExact:
-    def test_ui_tool_gets_server_url_and_every_tool_gets_integration_id(self):
-        ui_tool = _mock_tool("ui_tool")
+    def test_ui_tool_gets_server_url_and_every_tool_gets_integration_id_and_server_identity(self):
+        ui_tool = _mock_tool("ui_tool", "UI desc")
         ui_tool.metadata = {"mcp_ui": {"csp": "default-src 'self'"}}
-        plain_tool = _mock_tool("plain_tool")
+        plain_tool = _mock_tool("plain_tool", "Plain desc")
         plain_tool.metadata = None
 
-        MCPClient._stamp_tool_metadata([ui_tool, plain_tool], INTEGRATION_ID, SERVER_URL)
+        MCPClient._stamp_tool_metadata([ui_tool, plain_tool], INTEGRATION_ID, SERVER_URL, "PostHog")
 
         assert ui_tool.metadata == {
             "mcp_ui": {"csp": "default-src 'self'"},
             "mcp_server_url": SERVER_URL,
             "integration_id": INTEGRATION_ID,
+            "mcp_server_name": "ui_tool",
+            "mcp_server_description": "UI desc",
+            "mcp_source_name": "PostHog",
         }
-        assert plain_tool.metadata == {"integration_id": INTEGRATION_ID}
+        assert plain_tool.metadata == {
+            "integration_id": INTEGRATION_ID,
+            "mcp_server_name": "plain_tool",
+            "mcp_server_description": "Plain desc",
+            "mcp_source_name": "PostHog",
+        }
 
     def test_non_ui_tool_never_gets_server_url(self):
         tool = _mock_tool()
         tool.metadata = {}
 
-        MCPClient._stamp_tool_metadata([tool], INTEGRATION_ID, SERVER_URL)
+        MCPClient._stamp_tool_metadata([tool], INTEGRATION_ID, SERVER_URL, "PostHog")
 
-        assert tool.metadata == {"integration_id": INTEGRATION_ID}
+        assert "mcp_server_url" not in tool.metadata
 
 
 class TestOpenSessionExact:
@@ -4587,97 +4606,44 @@ class TestMakeCallbacksExact:
         assert result is sentinel
 
 
-class TestRunPostConnectTasksExact:
-    def _resolved(self) -> MagicMock:
-        resolved = MagicMock()
-        resolved.source = "platform"
-        resolved.custom_doc = None
-        return resolved
+def _stamped_tool(
+    name: str,
+    description: str = "A test tool",
+    source_name: str = "PostHog",
+    integration_id: str = INTEGRATION_ID,
+) -> MagicMock:
+    tool = _mock_tool(name, description)
+    MCPClient._stamp_tool_metadata([tool], integration_id, SERVER_URL, source_name)
+    return tool
 
-    async def test_unauthenticated_platform_runs_each_task_with_exact_args(self):
+
+class TestRecordConnectionExact:
+    async def test_unauthenticated_server_records_its_record_and_the_connected_status(self):
         client = MCPClient(user_id=USER_ID)
         client.token_store.store_unauthenticated = AsyncMock()
-        client._index_platform_mcp_tools = AsyncMock()
-        tools = [_mock_tool("t1", "desc1")]
 
         with (
-            patch(
-                "app.services.mcp.mcp_client.store_mcp_tools", new_callable=AsyncMock
-            ) as mock_store_tools,
             patch(
                 "app.services.mcp.mcp_client.update_user_integration_status",
                 new_callable=AsyncMock,
             ) as mock_status,
             patch("app.services.mcp.mcp_client.log") as mock_log,
         ):
-            await client._run_post_connect_tasks(
-                self._resolved(), _make_mcp_config(), False, INTEGRATION_ID, tools
-            )
+            await client._record_connection(_make_mcp_config(), INTEGRATION_ID)
 
         client.token_store.store_unauthenticated.assert_awaited_once_with(INTEGRATION_ID)
-        mock_store_tools.assert_awaited_once_with(
-            INTEGRATION_ID, [{"name": "t1", "description": "desc1"}]
-        )
-        client._index_platform_mcp_tools.assert_awaited_once_with(INTEGRATION_ID, tools)
         mock_status.assert_awaited_once_with(USER_ID, INTEGRATION_ID, "connected")
-
         ok_labels = [
             call.kwargs["label"]
             for call in mock_log.info.call_args_list
             if "post-connect task ok" in call.args[0]
         ]
-        assert ok_labels == [
-            "store_unauthenticated",
-            "store_tools_mongo",
-            "index_platform_chroma",
-            "update_status_connected",
-        ]
+        assert ok_labels == ["store_unauthenticated", "update_status_connected"]
 
-    async def test_custom_integration_routes_to_custom_handler_with_doc_fields(self):
-        resolved = MagicMock()
-        resolved.custom_doc = _custom_doc("Custom Name", "Custom Desc")
+    async def test_failing_write_logs_warning_with_its_label_only(self):
         client = MCPClient(user_id=USER_ID)
-        client.token_store.store_unauthenticated = AsyncMock()
-        client._handle_custom_integration_connect = AsyncMock()
-        tools = [_mock_tool()]
 
         with (
-            patch("app.services.mcp.mcp_client.store_mcp_tools", new_callable=AsyncMock),
-            patch(
-                "app.services.mcp.mcp_client.update_user_integration_status",
-                new_callable=AsyncMock,
-            ),
-            patch("app.services.mcp.mcp_client.log") as mock_log,
-        ):
-            await client._run_post_connect_tasks(
-                resolved, _make_mcp_config(server_url=SERVER_URL), True, INTEGRATION_ID, tools
-            )
-
-        client._handle_custom_integration_connect.assert_awaited_once_with(
-            INTEGRATION_ID, SERVER_URL, tools, name="Custom Name", description="Custom Desc"
-        )
-        # The labels are how a failed post-connect task is identified in the log;
-        # the custom path swaps exactly one of them for its own name.
-        ok_labels = [
-            call.kwargs["label"]
-            for call in mock_log.info.call_args_list
-            if "post-connect task ok" in call.args[0]
-        ]
-        assert ok_labels == [
-            "store_unauthenticated",
-            "store_tools_mongo",
-            "index_custom_chroma",
-            "update_status_connected",
-        ]
-
-    async def test_failing_post_task_logs_warning_with_its_label_only(self):
-        client = MCPClient(user_id=USER_ID)
-        client.token_store.store_unauthenticated = AsyncMock()
-        client._index_platform_mcp_tools = AsyncMock()
-        tools = [_mock_tool()]
-
-        with (
-            patch("app.services.mcp.mcp_client.store_mcp_tools", new_callable=AsyncMock),
             patch(
                 "app.services.mcp.mcp_client.update_user_integration_status",
                 new_callable=AsyncMock,
@@ -4685,19 +4651,122 @@ class TestRunPostConnectTasksExact:
             ),
             patch("app.services.mcp.mcp_client.log") as mock_log,
         ):
-            await client._run_post_connect_tasks(
-                self._resolved(), _make_mcp_config(), False, INTEGRATION_ID, tools
+            await client._record_connection(_make_mcp_config(requires_auth=True), INTEGRATION_ID)
+
+        mock_log.warning.assert_called_once_with(
+            f"{LogTag.MCP} post-connect task failed",
+            integration_id=INTEGRATION_ID,
+            label="update_status_connected",
+            error="status write failed",
+            error_type="Exception",
+        )
+
+
+class TestPersistAndIndexToolsExact:
+    def _resolved(self) -> MagicMock:
+        resolved = MagicMock()
+        resolved.source = "platform"
+        resolved.custom_doc = None
+        return resolved
+
+    async def test_stores_server_names_indexes_then_busts_the_user_caches_last(self):
+        """Mongo is shared by every user, so it holds the server's names, never one user's prefixed ones."""
+        client = MCPClient(user_id=USER_ID)
+        order: list[str] = []
+        client._index_platform_mcp_tools = AsyncMock(side_effect=lambda *_: order.append("index"))
+        tool = _stamped_tool("search", "Search events.")
+        tool.name = "posthog_search"
+
+        with (
+            patch(
+                "app.services.mcp.mcp_client.store_mcp_tools",
+                new_callable=AsyncMock,
+                side_effect=lambda *_: order.append("store"),
+            ) as mock_store_tools,
+            patch(
+                "app.services.mcp.mcp_client.invalidate_user_integration_caches",
+                new_callable=AsyncMock,
+                side_effect=lambda *_: order.append("invalidate"),
+            ) as mock_invalidate,
+            patch("app.services.mcp.mcp_client.log"),
+        ):
+            await client._persist_and_index_tools(
+                self._resolved(), _make_mcp_config(), INTEGRATION_ID, [tool]
             )
 
-        warnings = [c for c in mock_log.warning.call_args_list]
-        assert len(warnings) == 1
-        assert warnings[0].args[0] == f"{LogTag.MCP} post-connect task failed"
-        assert warnings[0].kwargs == {
-            "integration_id": INTEGRATION_ID,
-            "label": "update_status_connected",
-            "error": "status write failed",
-            "error_type": "Exception",
-        }
+        mock_store_tools.assert_awaited_once_with(
+            INTEGRATION_ID, [{"name": "search", "description": "Search events."}]
+        )
+        client._index_platform_mcp_tools.assert_awaited_once_with(INTEGRATION_ID, [tool])
+        mock_invalidate.assert_awaited_once_with(USER_ID)
+        assert order[-1] == "invalidate"
+
+    async def test_custom_integration_routes_to_custom_handler_with_doc_fields(self):
+        resolved = MagicMock()
+        resolved.source = "custom"
+        resolved.custom_doc = _custom_doc("Custom Name", "Custom Desc")
+        client = MCPClient(user_id=USER_ID)
+        client._handle_custom_integration_connect = AsyncMock()
+        tools = [_stamped_tool("t1")]
+
+        with (
+            patch("app.services.mcp.mcp_client.store_mcp_tools", new_callable=AsyncMock),
+            patch(
+                "app.services.mcp.mcp_client.invalidate_user_integration_caches",
+                new_callable=AsyncMock,
+            ),
+            patch("app.services.mcp.mcp_client.log") as mock_log,
+        ):
+            await client._persist_and_index_tools(
+                resolved, _make_mcp_config(server_url=SERVER_URL), INTEGRATION_ID, tools
+            )
+
+        client._handle_custom_integration_connect.assert_awaited_once_with(
+            INTEGRATION_ID, SERVER_URL, tools, name="Custom Name", description="Custom Desc"
+        )
+        ok_labels = [
+            call.kwargs["label"]
+            for call in mock_log.info.call_args_list
+            if "post-connect task ok" in call.args[0]
+        ]
+        assert ok_labels == ["store_tools_mongo", "index_custom_chroma"]
+
+    @pytest.mark.parametrize(
+        ("source", "label"),
+        [
+            ("custom", "index_custom_chroma"),
+            ("platform", "index_platform_chroma"),
+            ("Custom", "index_platform_chroma"),
+        ],
+    )
+    async def test_only_the_exact_custom_source_takes_the_custom_index_path(
+        self, source: str, label: str
+    ) -> None:
+        """The source picks which Chroma namespace the tools index into; getting it wrong hides a user's own server from retrieval."""
+        resolved = self._resolved()
+        resolved.source = source
+        client = MCPClient(user_id=USER_ID)
+        client._handle_custom_integration_connect = AsyncMock()
+        client._index_platform_mcp_tools = AsyncMock()
+
+        with (
+            patch("app.services.mcp.mcp_client.store_mcp_tools", new_callable=AsyncMock),
+            patch(
+                "app.services.mcp.mcp_client.invalidate_user_integration_caches",
+                new_callable=AsyncMock,
+            ),
+            patch("app.services.mcp.mcp_client.log") as mock_log,
+        ):
+            await client._persist_and_index_tools(
+                resolved, _make_mcp_config(), INTEGRATION_ID, [_stamped_tool("t1")]
+            )
+
+        ok_labels = [
+            call.kwargs["label"]
+            for call in mock_log.info.call_args_list
+            if "post-connect task ok" in call.args[0]
+        ]
+        assert ok_labels == ["store_tools_mongo", label]
 
 
 class TestHandleConnectFailureExact:
@@ -5191,10 +5260,22 @@ class TestExtractResponseSignal:
 
 @pytest.mark.usefixtures("core_tool_registry")
 class TestRenameShadowingTools:
+    @staticmethod
+    async def _apply_reserved_only(tools: list[MagicMock], source_name: str) -> dict[str, str]:
+        for tool in tools:
+            MCPClient._stamp_tool_metadata([tool], INTEGRATION_ID, SERVER_URL, source_name)
+        names = mcp_client.gaia_tool_names(
+            source_name,
+            [tool.name for tool in tools],
+            await mcp_client._reserved_tool_names(),
+            shared=(),
+        )
+        return mcp_client._apply_gaia_names(tools, names)
+
     async def test_a_tool_named_like_a_gaia_tool_is_renamed_and_told_its_old_name(self) -> None:
         shadowed = _mock_tool("execute", description="Run code.")
 
-        renamed = await MCPClient._rename_shadowing_tools([shadowed], "Dodo Payments")
+        renamed = await self._apply_reserved_only([shadowed], "Dodo Payments")
 
         assert renamed == {"execute": "dodo_payments_execute"}
         assert shadowed.name == "dodo_payments_execute"
@@ -5207,7 +5288,7 @@ class TestRenameShadowingTools:
         shadowed = _mock_tool("execute")
         own = _mock_tool("dodo_payments_execute")
 
-        renamed = await MCPClient._rename_shadowing_tools([shadowed, own], "Dodo Payments")
+        renamed = await self._apply_reserved_only([shadowed, own], "Dodo Payments")
 
         assert renamed == {"execute": "dodo_payments_execute_2"}
         assert own.name == "dodo_payments_execute"
@@ -5219,23 +5300,242 @@ class TestRenameShadowingTools:
             "app.services.mcp.mcp_client.get_tool_registry",
             new=AsyncMock(return_value=registry),
         ):
-            renamed = await MCPClient._rename_shadowing_tools(tools, "Acme")
+            renamed = await self._apply_reserved_only(tools, "Acme")
 
         assert renamed == {"grep": "acme_grep_2", "grep_2": "acme_grep_2_2"}
 
     async def test_the_reserved_ticket_names_are_renamed_too(self) -> None:
         ticket = _mock_tool("approve")
 
-        assert await MCPClient._rename_shadowing_tools([ticket], "Acme") == {
-            "approve": "acme_approve"
-        }
+        assert await self._apply_reserved_only([ticket], "Acme") == {"approve": "acme_approve"}
 
     async def test_a_tool_no_gaia_tool_shadows_is_left_alone(self) -> None:
         own = _mock_tool("search_docs", description="Search the docs.")
 
-        assert await MCPClient._rename_shadowing_tools([own], "Dodo Payments") == {}
+        assert await self._apply_reserved_only([own], "Dodo Payments") == {}
         assert own.name == "search_docs"
         assert own.description == "Search the docs."
+
+
+def _resolved_named(source_name: str) -> MagicMock:
+    resolved = MagicMock()
+    resolved.mcp_config = _make_mcp_config()
+    resolved.source = "platform"
+    resolved.custom_doc = None
+    resolved.name = source_name
+    return resolved
+
+
+def _serve(client: MCPClient, server_tools: list[MagicMock]) -> None:
+    """Make the client's next _do_connect open a fake session exposing server_tools."""
+    client._open_session = AsyncMock(return_value=AsyncMock())
+    client._convert_tools_safe = AsyncMock(return_value=server_tools)
+    client._record_connection = AsyncMock()
+
+
+@pytest.mark.usefixtures("core_tool_registry")
+class TestCrossMcpToolNameCollisions:
+    @pytest.fixture(autouse=True)
+    def _passthrough_wrap(self) -> Iterator[None]:
+        with (
+            patch(
+                "app.services.mcp.mcp_client.wrap_tools_with_null_filter",
+                side_effect=lambda tools, **_: tools,
+            ),
+            patch("app.services.mcp.mcp_client.log"),
+        ):
+            yield
+
+    @staticmethod
+    async def _connect(client: MCPClient, integration_id: str, resolved: MagicMock) -> None:
+        with patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver:
+            mock_resolver.resolve = AsyncMock(return_value=resolved)
+            await client._do_connect(integration_id)
+
+    async def _connect_in_order(self, order: list[str]) -> dict[str, list[str]]:
+        servers = {"posthog": ("PostHog", "search"), "context7": ("Context7", "search")}
+        client = MCPClient(user_id=USER_ID)
+        for integration_id in order:
+            source_name, tool_name = servers[integration_id]
+            _serve(client, [_mock_tool(tool_name), _mock_tool(f"{integration_id}_only")])
+            await self._connect(client, integration_id, _resolved_named(source_name))
+        return {iid: [t.name for t in tools] for iid, tools in client._tools.items()}
+
+    @pytest.mark.parametrize("order", [["posthog", "context7"], ["context7", "posthog"]])
+    async def test_a_shared_name_is_prefixed_on_both_servers_whichever_connects_first(
+        self, order: list[str]
+    ) -> None:
+        names = await self._connect_in_order(order)
+
+        assert names == {
+            "posthog": ["posthog_search", "posthog_only"],
+            "context7": ["context7_search", "context7_only"],
+        }
+
+    async def test_a_prefixed_tool_still_calls_the_server_by_its_own_name(self) -> None:
+        client = MCPClient(user_id=USER_ID)
+        client._tools["context7"] = [_stamped_tool("search", "Docs.", "Context7", "context7")]
+        tool = _mock_tool("search", "Events.")
+        _serve(client, [tool])
+
+        await self._connect(client, "posthog", _resolved_named("PostHog"))
+
+        assert tool.name == "posthog_search"
+        assert tool.metadata["mcp_server_name"] == "search"
+        assert tool.description == (
+            MCP_RENAMED_TOOL_NOTE.format(original="search", renamed="posthog_search") + "Events."
+        )
+
+    async def test_a_collision_with_a_cold_connected_server_comes_from_its_stored_names(
+        self,
+    ) -> None:
+        """Another replica holds the other server warm; this one must still prefix from Mongo."""
+        tool = _mock_tool("search")
+        client = MCPClient(user_id=USER_ID)
+        _serve(client, [tool])
+        resolved = _resolved_named("PostHog")
+        stored = MagicMock(integration_id="context7", tools=[MagicMock()])
+        stored.tools[0].name = "search"
+        context7 = MagicMock(mcp_config=_make_mcp_config())
+        context7.name = "Context7"
+
+        with (
+            patch.object(
+                mcp_client.user_integration_repository,
+                "connected_integration_ids",
+                new=AsyncMock(return_value=["posthog", "context7"]),
+            ),
+            patch.object(
+                mcp_client.integration_repository,
+                "tools_for_integrations",
+                new=AsyncMock(return_value=[stored]),
+            ),
+            patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
+        ):
+            mock_resolver.resolve = AsyncMock(
+                side_effect=lambda iid: resolved if iid == "posthog" else context7
+            )
+            await client._do_connect("posthog")
+
+        assert tool.name == "posthog_search"
+
+    async def test_disconnecting_one_server_drops_the_prefix_it_forced_on_the_other(
+        self,
+    ) -> None:
+        client = MCPClient(user_id=USER_ID)
+        client._tools["context7"] = [_stamped_tool("search", "Docs.", "Context7", "context7")]
+        client._tools["context7"][0].name = "context7_search"
+        client._tools["posthog"] = [_stamped_tool("search", "Events.", "PostHog", "posthog")]
+        client._revoke_tokens = AsyncMock()
+        client._reset_to_disconnected = AsyncMock()
+
+        with (
+            patch.object(mcp_client.integration_repository, "clear_tools", new=AsyncMock()),
+            patch("app.services.mcp.mcp_client.invalidate_mcp_tools_cache", new=AsyncMock()),
+            patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
+        ):
+            mock_resolver.resolve = AsyncMock(return_value=None)
+            await client.disconnect("posthog")
+
+        assert client._tools["context7"][0].name == "search"
+        assert client._tools["context7"][0].description == "Docs."
+
+
+class TestToolsForAndResolveToolOwner:
+    async def test_tools_for_a_warm_integration_never_touches_the_db(self) -> None:
+        client = MCPClient(user_id=USER_ID)
+        tools = [_stamped_tool("search")]
+        client._tools[INTEGRATION_ID] = tools
+        client.ensure_connected = AsyncMock()
+
+        assert await client.tools_for(INTEGRATION_ID) is tools
+        client.ensure_connected.assert_not_awaited()
+
+    async def test_tools_for_a_cold_integration_reconnects_it(self) -> None:
+        client = MCPClient(user_id=USER_ID)
+        tools = [_stamped_tool("search")]
+        client.ensure_connected = AsyncMock(return_value=tools)
+
+        assert await client.tools_for(INTEGRATION_ID) is tools
+        client.ensure_connected.assert_awaited_once_with(INTEGRATION_ID)
+
+    async def test_a_warm_owner_is_found_without_a_db_read(self) -> None:
+        client = MCPClient(user_id=USER_ID)
+        client._tools[INTEGRATION_ID] = [_stamped_tool("search")]
+
+        with patch.object(
+            mcp_client.user_integration_repository, "connected_integration_ids"
+        ) as connected:
+            assert await client.resolve_tool_owner("search") == INTEGRATION_ID
+        connected.assert_not_called()
+
+    @pytest.mark.usefixtures("core_tool_registry")
+    @pytest.mark.parametrize(
+        ("tool_name", "owner"),
+        [("posthog_search", "posthog"), ("context7_search", "context7"), ("search", None)],
+    )
+    async def test_a_cold_owner_is_found_from_stored_names_and_connected(
+        self, tool_name: str, owner: str | None
+    ) -> None:
+        """After a restart the activated MCP is cold; its collision-prefixed name must still resolve."""
+        client = MCPClient(user_id=USER_ID)
+        client.tools_for = AsyncMock(return_value=[])
+        records = []
+        for integration_id in ("posthog", "context7"):
+            record = MagicMock(integration_id=integration_id, tools=[MagicMock()])
+            record.tools[0].name = "search"
+            records.append(record)
+        resolved_by_id = {
+            "posthog": MagicMock(mcp_config=_make_mcp_config()),
+            "context7": MagicMock(mcp_config=_make_mcp_config()),
+        }
+        resolved_by_id["posthog"].name = "PostHog"
+        resolved_by_id["context7"].name = "Context7"
+
+        with (
+            patch.object(
+                mcp_client.user_integration_repository,
+                "connected_integration_ids",
+                new=AsyncMock(return_value=["posthog", "context7"]),
+            ),
+            patch.object(
+                mcp_client.integration_repository,
+                "tools_for_integrations",
+                new=AsyncMock(return_value=records),
+            ) as tools_for_integrations,
+            patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
+        ):
+            mock_resolver.resolve = AsyncMock(side_effect=resolved_by_id.__getitem__)
+            assert await client.resolve_tool_owner(tool_name) == owner
+
+        tools_for_integrations.assert_awaited_once_with(["posthog", "context7"])
+        if owner is None:
+            client.tools_for.assert_not_awaited()
+        else:
+            client.tools_for.assert_awaited_once_with(owner)
+
+    @pytest.mark.usefixtures("core_tool_registry")
+    async def test_a_connected_non_mcp_integration_never_owns_an_mcp_name(self) -> None:
+        client = MCPClient(user_id=USER_ID)
+        client.tools_for = AsyncMock(return_value=[])
+        record = MagicMock(integration_id="gmail", tools=[MagicMock()])
+        record.tools[0].name = "search"
+
+        with (
+            patch.object(
+                mcp_client.user_integration_repository,
+                "connected_integration_ids",
+                new=AsyncMock(return_value=["gmail"]),
+            ),
+            patch.object(
+                mcp_client.integration_repository,
+                "tools_for_integrations",
+                new=AsyncMock(return_value=[record]),
+            ),
+            patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
+        ):
+            mock_resolver.resolve = AsyncMock(return_value=MagicMock(mcp_config=None))
+            assert await client.resolve_tool_owner("search") is None
 
 
 @pytest.mark.usefixtures("core_tool_registry")
@@ -5255,25 +5555,23 @@ class TestDoConnectWiringExact:
         resolved.custom_doc = None
         return resolved
 
-    async def test_every_stage_is_handed_this_integration_and_its_config(self) -> None:
+    async def test_every_stage_is_handed_this_integration_and_its_config(
+        self, _no_persisted_mcp_state: MagicMock
+    ) -> None:
         """A stage that drops the resolved id connects the right server but stamps, indexes or persists against the wrong record, silently."""
         resolved = self._resolved_for()
+        resolved.name = "PostHog"
         client = MCPClient(user_id=USER_ID)
         session = AsyncMock()
         tools = [_mock_tool("t1")]
         client._open_session = AsyncMock(return_value=session)
         client._convert_tools_safe = AsyncMock(return_value=tools)
-        client._rename_shadowing_tools = AsyncMock(return_value={})
-        client._stamp_tool_metadata = MagicMock()
-        client._run_post_connect_tasks = AsyncMock()
+        client._record_connection = AsyncMock()
+        client._persist_and_index_tools = MagicMock(return_value=AsyncMock()())
 
         with (
             patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
             patch("app.services.mcp.mcp_client.wrap_tools_with_null_filter", return_value=tools),
-            patch(
-                "app.services.mcp.mcp_client.invalidate_user_integration_caches",
-                new_callable=AsyncMock,
-            ),
             patch("app.services.mcp.mcp_client.log"),
         ):
             mock_resolver.resolve = AsyncMock(return_value=resolved)
@@ -5282,39 +5580,40 @@ class TestDoConnectWiringExact:
         mock_resolver.resolve.assert_awaited_once_with(INTEGRATION_ID)
         client._open_session.assert_awaited_once_with(INTEGRATION_ID, resolved.mcp_config)
         client._convert_tools_safe.assert_awaited_once_with(session, INTEGRATION_ID)
-        client._rename_shadowing_tools.assert_awaited_once_with(tools, resolved.name)
-        client._stamp_tool_metadata.assert_called_once_with(tools, INTEGRATION_ID, SERVER_URL)
-        client._run_post_connect_tasks.assert_awaited_once_with(
-            resolved, resolved.mcp_config, False, INTEGRATION_ID, tools
+        assert tools[0].metadata["integration_id"] == INTEGRATION_ID
+        assert tools[0].metadata["mcp_source_name"] == "PostHog"
+        client._record_connection.assert_awaited_once_with(resolved.mcp_config, INTEGRATION_ID)
+        client._persist_and_index_tools.assert_called_once_with(
+            resolved, resolved.mcp_config, INTEGRATION_ID, tools
         )
 
-    @pytest.mark.parametrize(
-        ("source", "is_custom"), [("custom", True), ("platform", False), ("Custom", False)]
-    )
-    async def test_only_the_exact_custom_source_takes_the_custom_post_connect_path(
-        self, source: str, is_custom: bool
+    async def test_tool_persistence_and_indexing_run_off_the_connect_path(
+        self, _no_persisted_mcp_state: MagicMock
     ) -> None:
-        """is_custom picks which Chroma collection the tools index into; getting it wrong hides a user's own server from retrieval."""
-        resolved = self._resolved_for(source)
+        """Chroma indexing on the connect path made every cold activation wait for it."""
+        resolved = self._resolved_for()
         client = MCPClient(user_id=USER_ID)
         client._open_session = AsyncMock(return_value=AsyncMock())
-        client._convert_tools_safe = AsyncMock(return_value=[])
-        client._stamp_tool_metadata = MagicMock()
-        client._run_post_connect_tasks = AsyncMock()
+        client._convert_tools_safe = AsyncMock(return_value=[_mock_tool("t1")])
+        client._record_connection = AsyncMock()
 
         with (
             patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
-            patch("app.services.mcp.mcp_client.wrap_tools_with_null_filter", return_value=[]),
             patch(
-                "app.services.mcp.mcp_client.invalidate_user_integration_caches",
-                new_callable=AsyncMock,
+                "app.services.mcp.mcp_client.wrap_tools_with_null_filter",
+                side_effect=lambda tools, **_: tools,
             ),
+            patch("app.services.mcp.mcp_client.store_mcp_tools", new_callable=AsyncMock) as store,
             patch("app.services.mcp.mcp_client.log"),
         ):
             mock_resolver.resolve = AsyncMock(return_value=resolved)
             await client._do_connect(INTEGRATION_ID)
 
-        assert client._run_post_connect_tasks.await_args.args[2] is is_custom
+        store.assert_not_awaited()
+        operation, coro = _no_persisted_mcp_state.call_args.args
+        assert operation == "mcp_post_connect"
+        assert _no_persisted_mcp_state.call_args.kwargs == {"integration_id": INTEGRATION_ID}
+        assert coro.cr_code is MCPClient._persist_and_index_tools.__code__
 
     async def test_the_outbound_config_is_built_for_this_integration(self) -> None:
         client = MCPClient(user_id=USER_ID)
@@ -5403,11 +5702,9 @@ class TestDoConnectWiringExact:
             assert await wrap_kwargs["reconnect_and_retry"]("tool_x", {"a": 1}) is sentinel
         mock_rec.assert_awaited_once_with(INTEGRATION_ID, "tool_x", {"a": 1})
 
-        # Post-connect persistence runs on the wrapped tool list.
-        mock_store_tools.assert_awaited_once()
-        stored_metadata = mock_store_tools.await_args.args[1]
-        assert [entry["name"] for entry in stored_metadata] == ["w1", "w2"]
-        mock_inval.assert_awaited_once_with(USER_ID)
+        # Persistence is spawned off the connect path (the autouse fixture drops it).
+        mock_store_tools.assert_not_awaited()
+        mock_inval.assert_not_awaited()
         mock_log.set_ns.assert_called_once_with(
             "mcp",
             operation="connect",

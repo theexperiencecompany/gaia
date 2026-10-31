@@ -20,9 +20,12 @@ GAIA runs as a small graph of agents:
 - **Executor agent**: the generalist with the full tool registry. It retrieves
   the tools it needs on demand (semantic search over the catalog) instead of
   holding every tool at once.
-- **Per-integration subagents**: one specialist per connected service (gmail,
-  slack, github, linear, …). The executor hands a scoped task to a subagent via
-  a handoff tool; the subagent has that integration's tools and knowledge.
+- **Integrations**: every connected service (gmail, slack, github, linear, MCP
+  servers including the user's own custom MCP connections, …) is loaded by the
+  executor with `activate_integration`, which brings that integration's tools,
+  notes and skills into the executor's own context. The executor runs those
+  tools itself through `execute`; isolated or noisy work goes to
+  `spawn_subagent`.
 
 You don't see every tool until you retrieve it. That's by design. It keeps the
 context lean. Use `retrieve_tools` to discover and bind what a task needs.
@@ -51,8 +54,8 @@ instructions, tracked todos and memory.
 
 ## Integrations
 
-Each service the user connects becomes available as a subagent with its own
-tools. The connected list is summarized in your context ("Connected
+Each service the user connects becomes an integration with its own tools,
+loaded with `activate_integration`. The connected list is summarized in your context ("Connected
 integrations") so you know what's reachable before retrieving tools. Users
 manage connections on the integrations page.
 

@@ -75,10 +75,10 @@ class TestResolveTool:
         mcp_tool = MagicMock()
         mcp_tool.name = "NOTION_MCP_SEARCH"
         client = MagicMock()
-        client.find_integration.return_value = "notion-mcp"
-        # get_tools is async on the real MCPClient — a sync mock here hid a
+        client.resolve_tool_owner = AsyncMock(return_value="notion-mcp")
+        # tools_for is async on the real MCPClient — a sync mock here hid a
         # missing await that mypy caught; keep the mock faithful.
-        client.get_tools = AsyncMock(return_value=[mcp_tool])
+        client.tools_for = AsyncMock(return_value=[mcp_tool])
         with (
             patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=_registry_with({}))),
             patch(f"{MODULE}.get_mcp_client", new=AsyncMock(return_value=client)),
@@ -94,7 +94,7 @@ class TestResolveTool:
         catalog_tool = MagicMock()
         catalog_tool.name = "ASANA_CREATE_TASK"
         client = MagicMock()
-        client.find_integration.return_value = None
+        client.resolve_tool_owner = AsyncMock(return_value=None)
         service = MagicMock()
         service.get_tools_by_name = AsyncMock(return_value=[catalog_tool])
         with (
@@ -111,7 +111,7 @@ class TestResolveTool:
     async def test_a_catalog_miss_is_remembered_instead_of_re_asked(self) -> None:
         """Resolution sits on the tool-call critical path — the HIL gate resolves a name twice before the call may run, plus once per sibling, and the approvals node replays."""
         client = MagicMock()
-        client.find_integration.return_value = None
+        client.resolve_tool_owner = AsyncMock(return_value=None)
         service = MagicMock()
         service.get_tools_by_name = AsyncMock(return_value=[])
         with (
@@ -128,7 +128,7 @@ class TestResolveTool:
     async def test_a_hung_catalog_lookup_gives_up_instead_of_stalling_the_turn(self) -> None:
         """A degraded Composio must fail this one resolution, not hold the gate — and therefore the whole turn — open for as long as it takes to answer."""
         client = MagicMock()
-        client.find_integration.return_value = None
+        client.resolve_tool_owner = AsyncMock(return_value=None)
         service = MagicMock()
 
         async def never_returns(_names: list[str]) -> list[MagicMock]:
@@ -147,7 +147,7 @@ class TestResolveTool:
 
     async def test_non_catalog_shaped_unknown_never_hits_composio(self) -> None:
         client = MagicMock()
-        client.find_integration.return_value = None
+        client.resolve_tool_owner = AsyncMock(return_value=None)
         service = MagicMock()
         service.get_tools_by_name = AsyncMock(return_value=[])
         with (
@@ -221,11 +221,13 @@ class TestMcpResolution:
         wanted, other = MagicMock(), MagicMock()
         wanted.name, other.name = "NOTION_MCP_SEARCH", "LINEAR_MCP_SEARCH"
         client = MagicMock()
-        client.find_integration.side_effect = {
-            "NOTION_MCP_SEARCH": "notion-mcp",
-            "LINEAR_MCP_SEARCH": "linear-mcp",
-        }.get
-        client.get_tools = AsyncMock(
+        client.resolve_tool_owner = AsyncMock(
+            side_effect={
+                "NOTION_MCP_SEARCH": "notion-mcp",
+                "LINEAR_MCP_SEARCH": "linear-mcp",
+            }.get
+        )
+        client.tools_for = AsyncMock(
             side_effect=lambda integration_id: {"notion-mcp": [wanted], "linear-mcp": [other]}[
                 integration_id
             ]
@@ -237,6 +239,9 @@ class TestMcpResolution:
         ):
             resolved = await resolver.resolve_tool("u1", "NOTION_MCP_SEARCH")
         get_client.assert_awaited_once_with(user_id="u1")
+        client.resolve_tool_owner.assert_awaited_once_with("NOTION_MCP_SEARCH")
+        # tools_for, not the warm-only get_tools: after a restart the owner is cold.
+        client.tools_for.assert_awaited_once_with("notion-mcp")
         assert resolved == ResolvedTool(
             "NOTION_MCP_SEARCH", wanted, is_integration=True, shape_scope="mcp:notion-mcp"
         )
@@ -261,7 +266,7 @@ class TestMcpResolution:
 class TestCatalogMaterialization:
     async def test_a_full_miss_cache_starts_over_so_an_evicted_slug_is_asked_again(self) -> None:
         client = MagicMock()
-        client.find_integration.return_value = None
+        client.resolve_tool_owner = AsyncMock(return_value=None)
         service = MagicMock()
         service.get_tools_by_name = AsyncMock(return_value=[])
         with (
@@ -278,7 +283,7 @@ class TestCatalogMaterialization:
 
     async def test_the_catalog_is_asked_for_exactly_the_named_slug(self) -> None:
         client = MagicMock()
-        client.find_integration.return_value = None
+        client.resolve_tool_owner = AsyncMock(return_value=None)
         service = MagicMock()
         service.get_tools_by_name = AsyncMock(return_value=[])
         with (

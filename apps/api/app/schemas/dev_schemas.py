@@ -94,12 +94,3 @@ class DevAgentRunResponse(BaseModel):
     every 500 as infrastructure would otherwise exclude these from its accuracy
     and quietly flatter the agent.
     """
-
-
-class DevSubagentInfo(BaseModel):
-    """A subagent id/name pair accepted by the direct-run endpoint."""
-
-    id: str
-    name: str
-    short_name: str | None = None
-    agent_name: str

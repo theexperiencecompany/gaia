@@ -5,7 +5,7 @@ doubled seams, since what is under test is which run gets rebuilt and resumed.
 """
 
 from collections.abc import Iterator
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -32,13 +32,12 @@ PARENT: AgentConfigurable = {
 }
 
 
-def _recipe(kind: SubagentKind, integration_id: str = "") -> SubagentResumeItem:
+def _recipe(kind: SubagentKind) -> SubagentResumeItem:
     return {
         "kind": kind,
         "tool_call_id": "call-spawn",
         "task": "draw the flowchart",
         "context": "the user's notes",
-        "integration_id": integration_id,
         "inherited_tool_names": ["create_flowchart"],
         "parent_configurable": PARENT,
     }
@@ -87,34 +86,19 @@ class TestResumeParkedSubagent:
             {"status": "approved", "feedback": None, "scope": "once", "approval_id": "appr-1"},
         )
 
-    async def test_an_mcp_handoff_is_rebuilt_by_the_handoff_builder(
+    async def test_a_retired_handoff_recipe_is_refused_rather_than_rebuilt_as_a_spawn(
         self, fake_redis: Any, resume: AsyncMock
     ) -> None:
-        built = MagicMock(name="mcp-delegation")
-        with patch(
-            f"{MODULE}.build_handoff_delegation", new=AsyncMock(return_value=built)
-        ) as build:
-            await resume_parked_subagent(
-                _decided(_recipe(SubagentKind.MCP, integration_id="linear-mcp"))
-            )
-
-        build.assert_awaited_once_with("linear-mcp", "draw the flowchart", PARENT, "call-spawn")
-        assert resume.await_args.args[0] is built
-
-    async def test_a_handoff_that_can_no_longer_be_built_raises_its_reason(
-        self, fake_redis: Any, resume: AsyncMock
-    ) -> None:
+        recipe = _recipe(SubagentKind.SPAWN)
+        # A record parked by the removed handoff tool still carries kind "mcp".
+        recipe["kind"] = cast(SubagentKind, "mcp")
         with (
-            patch(
-                f"{MODULE}.build_handoff_delegation",
-                new=AsyncMock(return_value="linear-mcp is no longer connected"),
-            ),
-            pytest.raises(SubagentResumeError, match="linear-mcp is no longer connected"),
+            patch(f"{MODULE}.GraphManager.get_graph", new=AsyncMock()) as get_graph,
+            pytest.raises(SubagentResumeError, match="'mcp'"),
         ):
-            await resume_parked_subagent(
-                _decided(_recipe(SubagentKind.MCP, integration_id="linear-mcp"))
-            )
+            await resume_parked_subagent(_decided(recipe))
 
+        get_graph.assert_not_awaited()
         resume.assert_not_awaited()
 
     async def test_a_thread_still_held_by_a_live_run_is_left_to_that_run(
@@ -130,19 +114,26 @@ class TestResumeParkedSubagent:
                 started_at="",
             )
         )
-        with patch(f"{MODULE}.build_handoff_delegation", new=AsyncMock()) as build:
-            resumed = await resume_parked_subagent(_decided(_recipe(SubagentKind.MCP)))
+        with patch(f"{MODULE}.GraphManager.get_graph", new=AsyncMock()) as get_graph:
+            resumed = await resume_parked_subagent(_decided(_recipe(SubagentKind.SPAWN)))
 
         assert resumed is False
-        build.assert_not_awaited()
+        get_graph.assert_not_awaited()
         resume.assert_not_awaited()
 
     async def test_the_answer_is_whether_resume_background_could_claim_the_thread(
         self, fake_redis: Any, resume: AsyncMock
     ) -> None:
         resume.return_value = False
-        with patch(f"{MODULE}.build_handoff_delegation", new=AsyncMock(return_value=MagicMock())):
-            resumed = await resume_parked_subagent(_decided(_recipe(SubagentKind.MCP), thread=None))
+        spawner = MagicMock()
+        spawner.build_delegation = AsyncMock(return_value=MagicMock())
+        with (
+            patch(f"{MODULE}.GraphManager.get_graph", new=AsyncMock()),
+            patch(f"{MODULE}.spawner_of", return_value=spawner),
+        ):
+            resumed = await resume_parked_subagent(
+                _decided(_recipe(SubagentKind.SPAWN), thread=None)
+            )
 
         assert resumed is False
         resume.assert_awaited_once()

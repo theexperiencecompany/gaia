@@ -472,6 +472,23 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
         )
         return slice_.tools if slice_ is not None else []
 
+    async def tools_for_integrations(
+        self, integration_ids: list[str]
+    ) -> list[IntegrationToolsRecord]:
+        """Return the stored tools of those integration_ids that have any, in one read."""
+        return await self._aggregate(
+            [
+                {
+                    "$match": {
+                        "integration_id": {"$in": integration_ids},
+                        "tools": {"$exists": True, "$ne": []},
+                    }
+                },
+                {"$project": {"integration_id": 1, "tools": 1, "name": 1, "icon_url": 1}},
+            ],
+            IntegrationToolsRecord,
+        )
+
     async def tools_stub_ids(self) -> list[str]:
         """Ids whose only document is a tools-only stub (never a full Integration)."""
         return await self._distinct("integration_id", _TOOLS_STUB_FILTER)

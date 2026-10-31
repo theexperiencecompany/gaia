@@ -59,6 +59,7 @@ from app.services.hil.bridge import (
     recall_declined_call,
     remember_declined_call,
 )
+from app.services.hil.classification import mcp_integration_id
 from app.services.hil.fingerprint import approval_fingerprint
 from app.services.hil.intent import (
     AutoContext,
@@ -93,6 +94,7 @@ from app.services.hil.utils import (
     tool_schema,
     unpack_tool_call,
 )
+from app.services.integrations.integration_resolver import IntegrationResolver
 from app.utils.general_utils import clip_text
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.hil import HilDecisionSubmitted
@@ -262,7 +264,7 @@ async def _decide_ledger(
             return _same_run_refusal_message(call, denied)
         deny_note = _prior_denial_note(denied)
 
-        integration_name = await _integration_name_for(call.name)
+        integration_name = await _integration_name_for(request, context.user_id, call.name)
         summary = build_summary(call.name, call.args, integration_name, call.account)
         # Owner is the worker thread, stable across runs: subagent threads read
         # "<integration>_<conversation>", the executor "executor_<...>", so a
@@ -419,7 +421,7 @@ async def _decide(
         if invalid is not None:
             return invalid
 
-        integration_name = await _integration_name_for(call.name)
+        integration_name = await _integration_name_for(request, context.user_id, call.name)
         summary = build_summary(call.name, call.args, integration_name, call.account)
 
         decision: IntentDecision | None = None
@@ -667,7 +669,7 @@ async def _auto_ledger_verdict(
     """Let auto mode settle a ledger-path call, or say why it still needs the user."""
     if policy != "auto":
         return _AutoVerdict()
-    integration_name = await _integration_name_for(call.name)
+    integration_name = await _integration_name_for(request, context.user_id, call.name)
     summary = build_summary(call.name, call.args, integration_name, call.account)
     decision = await _judge(request, context, call, None, summary)
     if decision is None:
@@ -835,7 +837,16 @@ def _tool_message(call: GatedCall, content: str, status: HILToolMessageStatus) -
     )
 
 
-async def _integration_name_for(tool_name: str) -> str | None:
+async def _integration_name_for(
+    request: ToolCallRequest, user_id: str, tool_name: str
+) -> str | None:
+    """Name the approval card's integration: the registry category, else the MCP server."""
     registry = await get_tool_registry()
     category = registry.get_category(registry.get_category_of_tool(tool_name))
-    return category.integration_name if category else None
+    if category is not None:
+        return category.integration_name
+    integration_id = mcp_integration_id(await gated_tool_object(request, user_id, tool_name))
+    if integration_id is None:
+        return None
+    resolved = await IntegrationResolver.resolve(integration_id)
+    return resolved.name if resolved else integration_id

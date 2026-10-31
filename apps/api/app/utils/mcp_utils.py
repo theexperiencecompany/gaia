@@ -5,7 +5,7 @@ Contains helper functions for MCP client operations including
 PKCE generation, tool wrapping, and schema handling.
 """
 
-from collections.abc import Awaitable, Callable, Collection, Iterable
+from collections.abc import Awaitable, Callable, Collection, Iterable, Sequence
 from functools import wraps
 import inspect
 import re
@@ -48,6 +48,29 @@ def source_prefixed_tool_name(source_name: str, tool_name: str, taken: Collectio
         if name not in taken:
             return name
         attempt += 1
+
+
+def gaia_tool_names(
+    source_name: str,
+    server_names: Sequence[str],
+    reserved: Collection[str],
+    shared: Collection[str],
+) -> dict[str, str]:
+    """Map each server tool name to its GAIA-facing name.
+
+    A name is source-prefixed iff GAIA reserves it or another of the user's MCP
+    servers exposes it (shared), so the result never depends on connect order.
+    """
+    clashing = {name for name in server_names if name in reserved or name in shared}
+    taken = {*reserved, *(set(server_names) - clashing)}
+    names: dict[str, str] = {}
+    for name in server_names:
+        if name in clashing:
+            names[name] = source_prefixed_tool_name(source_name, name, taken)
+            taken.add(names[name])
+        else:
+            names[name] = name
+    return names
 
 
 _CONNECTION_ERROR_PATTERNS = (

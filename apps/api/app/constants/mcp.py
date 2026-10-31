@@ -57,3 +57,10 @@ MCP_RENAMED_TOOL_NOTE = (
     "other tools may refer to it as {original}. Here it is named {renamed}; always call "
     "it as {renamed}.\n\n"
 )
+
+
+# activate_integration preloads every schema of an MCP exposing at most this many
+# tools; above it only the configured startup tools, the rest via retrieve_tools.
+MCP_PRELOAD_ALL_MAX = 10
+# Skills a user saved for a custom MCP are keyed by this agent name plus its id.
+CUSTOM_MCP_AGENT_NAME_PREFIX = "custom_mcp_"

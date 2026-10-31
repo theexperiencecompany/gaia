@@ -129,10 +129,14 @@ class HilToolRiskRepository(MongoRepository[HILToolRiskRecord, HILToolRiskUpdate
     cache_policy = None
 
     async def find_classification(
-        self, tool_name: str, description_hash: str
+        self, key: str, description_hash: str
     ) -> HILToolRiskRecord | None:
-        """Return the stored verdict for this exact tool+description, or None."""
-        return await self._find_one({"tool_name": tool_name, "description_hash": description_hash})
+        """Return the stored verdict for this exact tool+description, or None.
+
+        key is classification.classification_key: the bare name, or
+        ``mcp:<integration_id>:<tool_name>`` for an MCP tool.
+        """
+        return await self._find_one({"tool_name": key, "description_hash": description_hash})
 
     async def upsert_classification(self, record: HILToolRiskRecord) -> None:
         """Store (or refresh) the verdict, keyed by tool+description.

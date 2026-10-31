@@ -12,7 +12,9 @@ wiring unit tests cannot:
 * the integration tools themselves are NOT bound — their schemas arrive as
   docs in the activation reply — so a follow-up direct call IS rejected as
   unbound (the model must run them via execute).
-* a per-user MCP id is routed to handoff by the tool running inside the graph.
+* a per-user MCP activates in-context with nothing bound, and the executor's
+  real execute proxy runs one of its tools on the next turn through the
+  user's MCP client.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -27,13 +29,16 @@ from app.agents.core.graph_builder.build_graph import (
     EXECUTOR_INITIAL_TOOL_IDS,
     build_executor_graph,
 )
-from app.agents.core.subagents.handoff_tools import CustomMcpSubagent
+from app.agents.core.subagents.integration_resolution import CustomMcpSubagent
+from app.agents.tools.execute.execute_tool import execute
 from app.agents.tools.todo_tools import TODO_TOOL_NAMES
+from app.models.hil_models import HILPreferences
 from tests.helpers import BindableToolsFakeModel
 
 _ACTIVATION_MOD = "app.agents.core.subagents.integration_activation"
 _BUILD_MOD = "app.agents.core.graph_builder.build_graph"
-_HANDOFF_MOD = "app.agents.core.subagents.handoff_tools"
+_RESOLVER_MOD = "app.agents.tools.execute.resolver"
+_DISPATCH_MOD = "app.agents.tools.execute.dispatch"
 
 
 def _stub_tool(name: str):
@@ -48,10 +53,10 @@ def _stub_tool(name: str):
 def _stub_registry(extra_tools: tuple[str, ...] = ()) -> MagicMock:
     """Build a registry whose tool_dict holds the executor's initial tools plus extras.
 
-    The graph injects handoff / activate_integration / todo tools itself, so
-    those are left out and overwritten with the real ones.
+    The graph injects activate_integration / todo tools itself, so those are
+    left out and overwritten with the real ones.
     """
-    injected_by_graph = {"handoff", "activate_integration"} | TODO_TOOL_NAMES
+    injected_by_graph = {"activate_integration"} | TODO_TOOL_NAMES
     names = [n for n in EXECUTOR_INITIAL_TOOL_IDS if n not in injected_by_graph]
     tool_dict = {n: _stub_tool(n) for n in [*names, *extra_tools]}
     registry = MagicMock()
@@ -122,7 +127,7 @@ class TestActivationThroughRealExecutorGraph:
             p2,
             p3,
             p4,
-            patch(f"{_ACTIVATION_MOD}._get_subagent_by_id", new=AsyncMock(return_value=gmail)),
+            patch(f"{_ACTIVATION_MOD}.get_integration_target", new=AsyncMock(return_value=gmail)),
             patch(
                 f"{_ACTIVATION_MOD}.check_integration_connection", new=AsyncMock(return_value=None)
             ),
@@ -184,7 +189,7 @@ class TestActivationThroughRealExecutorGraph:
             p2,
             p3,
             p4,
-            patch(f"{_ACTIVATION_MOD}._get_subagent_by_id", new=AsyncMock(return_value=gmail)),
+            patch(f"{_ACTIVATION_MOD}.get_integration_target", new=AsyncMock(return_value=gmail)),
             patch(
                 f"{_ACTIVATION_MOD}.check_integration_connection", new=AsyncMock(return_value=None)
             ),
@@ -212,46 +217,19 @@ class TestActivationThroughRealExecutorGraph:
         assert sent, "gmail_send call vanished instead of being rejected"
         assert "is not bound" in sent.text, sent.text
 
-    async def test_per_user_mcp_is_routed_to_handoff(self) -> None:
-        model = BindableToolsFakeModel(
-            responses=[
-                AIMessage(
-                    content="",
-                    tool_calls=[
-                        {
-                            "name": "activate_integration",
-                            "args": {"integration_id": "abc123"},
-                            "id": "a1",
-                        }
-                    ],
-                ),
-                AIMessage(content="ok"),
-            ]
-        )
-        registry = _stub_registry()
-        custom = CustomMcpSubagent(id="abc123", name="My MCP", managed_by="mcp", mcp_config={})
+    async def test_a_custom_mcp_activates_and_execute_runs_its_tool_next_turn(self) -> None:
+        """No per-user graph: the executor's own execute proxy reaches the MCP tool by user."""
 
-        p1, p2, p3, p4 = _run_executor(model, registry)
-        with (
-            p1,
-            p2,
-            p3,
-            p4,
-            patch(f"{_ACTIVATION_MOD}._get_subagent_by_id", new=AsyncMock(return_value=custom)),
-            patch(f"{_ACTIVATION_MOD}._activate_tools", new=AsyncMock()) as activate_tools,
-        ):
-            async with build_executor_graph(chat_llm=model, in_memory_checkpointer=True) as graph:
-                result = await graph.ainvoke(
-                    {"messages": [HumanMessage(content="use my mcp")]},
-                    config={"configurable": {"thread_id": str(uuid4()), "user_id": str(uuid4())}},
-                )
+        @lc_tool
+        async def lookup_paper(query: str) -> str:
+            """Look up a paper."""
+            return f"paper:{query}"
 
-        activation = _tool_message_for(result, "a1")
-        assert activation and "handoff(" in activation.text
-        activate_tools.assert_not_awaited()
-
-    async def test_handoff_runs_when_the_agent_follows_the_redirect(self) -> None:
-        """The other half of the redirect: handoff must actually work."""
+        mcp_client = MagicMock()
+        mcp_client.tools_for = AsyncMock(return_value=[lookup_paper])
+        mcp_client.get_tools = AsyncMock(return_value=[lookup_paper])
+        mcp_client.find_integration = MagicMock(return_value="abc123")
+        mcp_client.resolve_tool_owner = AsyncMock(return_value="abc123")
 
         model = BindableToolsFakeModel(
             responses=[
@@ -269,9 +247,13 @@ class TestActivationThroughRealExecutorGraph:
                     content="",
                     tool_calls=[
                         {
-                            "name": "handoff",
-                            "args": {"subagent_id": "abc123", "task": "do the thing"},
-                            "id": "h1",
+                            "name": "execute",
+                            "args": {
+                                "task_description": "Looking up the paper",
+                                "tool_name": "lookup_paper",
+                                "data": {"query": "attention"},
+                            },
+                            "id": "e1",
                         }
                     ],
                 ),
@@ -279,11 +261,13 @@ class TestActivationThroughRealExecutorGraph:
             ]
         )
         registry = _stub_registry()
-        custom = CustomMcpSubagent(id="abc123", name="My MCP", managed_by="mcp", mcp_config={})
-
-        # Short-circuit handoff at its resolution seam: a returned error string is
-        # proof its body executed, without building a real per-user graph here.
-        resolved = AsyncMock(return_value=(None, None, "SUBAGENT_RAN::abc123"))
+        # The real proxy, not a stub: the point is that it resolves the MCP tool.
+        registry.get_tool_dict.return_value["execute"] = execute
+        resolver_registry = MagicMock()
+        resolver_registry.get_tool_meta.return_value = None
+        resolver_registry.get_tool_names.return_value = []
+        custom = CustomMcpSubagent(id="abc123", name="Scholar", managed_by="mcp", mcp_config={})
+        docs = "1 integration tool(s) preloaded below.\n## lookup_paper"
 
         p1, p2, p3, p4 = _run_executor(model, registry)
         with (
@@ -291,20 +275,36 @@ class TestActivationThroughRealExecutorGraph:
             p2,
             p3,
             p4,
-            patch(f"{_ACTIVATION_MOD}._get_subagent_by_id", new=AsyncMock(return_value=custom)),
-            patch(f"{_HANDOFF_MOD}.prepare_subagent_execution", new=resolved),
+            patch(f"{_ACTIVATION_MOD}.get_integration_target", new=AsyncMock(return_value=custom)),
+            patch(f"{_ACTIVATION_MOD}.check_mcp_connection", new=AsyncMock(return_value=None)),
+            patch(f"{_ACTIVATION_MOD}.get_mcp_client", new=AsyncMock(return_value=mcp_client)),
+            patch(f"{_ACTIVATION_MOD}.render_preload_block", new=AsyncMock(return_value=docs)),
+            patch(f"{_ACTIVATION_MOD}._has_several_accounts", new=AsyncMock(return_value=False)),
+            patch(f"{_ACTIVATION_MOD}._activation_context", new=AsyncMock(return_value="")),
+            patch(
+                f"{_RESOLVER_MOD}.get_tool_registry",
+                new=AsyncMock(return_value=resolver_registry),
+            ),
+            patch(f"{_RESOLVER_MOD}.get_mcp_client", new=AsyncMock(return_value=mcp_client)),
+            patch(f"{_DISPATCH_MOD}.record_observed_shape", new=AsyncMock()),
+            patch(f"{_DISPATCH_MOD}.capture"),
+            patch(
+                "app.services.hil.policy.get_hil_preferences",
+                new=AsyncMock(return_value=HILPreferences()),
+            ),
         ):
             async with build_executor_graph(chat_llm=model, in_memory_checkpointer=True) as graph:
                 result = await graph.ainvoke(
-                    {"messages": [HumanMessage(content="use my mcp")]},
+                    {"messages": [HumanMessage(content="find the attention paper")]},
                     config={"configurable": {"thread_id": str(uuid4()), "user_id": str(uuid4())}},
                 )
 
         activation = _tool_message_for(result, "a1")
-        assert activation and "handoff(" in activation.text
+        assert activation and "is now active with 1 tools" in activation.text
+        assert "## lookup_paper" in activation.text
+        assert "handoff" not in activation.text
+        mcp_client.tools_for.assert_any_await("abc123")
 
-        handed_off = _tool_message_for(result, "h1")
-        assert handed_off, "handoff never ran — the redirect points at an unreachable tool"
-        assert "is not bound" not in handed_off.text, handed_off.text
-        assert "SUBAGENT_RAN::abc123" in handed_off.text
-        resolved.assert_awaited_once()
+        ran = _tool_message_for(result, "e1")
+        assert ran, "execute never answered — the activated MCP tool was unreachable"
+        assert "paper:attention" in ran.text, ran.text

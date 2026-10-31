@@ -18,8 +18,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from langchain_core.runnables import RunnableConfig
 import pytest
 
+from app.agents.core.subagents.integration_resolution import CustomMcpSubagent
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.models.integration_models import UserToolNamespaces
+from app.services.integrations.integration_resolver import IntegrationResolver
 
 
 def _fake_tool(name: str, description: str = "test tool"):
@@ -231,3 +233,97 @@ class TestRetrieveToolsCrossUserIsolation:
         assert res_a["tools_to_bind"] == [] and res_b["tools_to_bind"] == [], (
             "MCP tools are proxied through execute, never bound"
         )
+
+
+_ACME = CustomMcpSubagent(
+    id="abc123def456",
+    name="Acme MCP",
+    managed_by="mcp",
+    mcp_config={"server_url": "https://mcp.acme.dev/v1", "requires_auth": True},
+)
+_ACME_NAMESPACE = "mcp.acme.dev/v1"
+
+
+async def _discover_with_activated_acme(user_namespaces: set[str]) -> tuple[dict, list, MagicMock]:
+    """Discovery in a conversation that activated Acme, against a cold MCPClient."""
+    searched: list[tuple[str, ...]] = []
+
+    async def fake_asearch(namespace: tuple[str, ...], query: str = "", limit: int = 25) -> list:
+        searched.append(namespace)
+        if namespace == (_ACME_NAMESPACE,):
+            return [_fake_search_item("ACME_LIST_INVOICES", namespace)]
+        return []
+
+    store = MagicMock()
+    store.asearch = fake_asearch
+    client = _fake_mcp_client({})
+    client.tools_for = AsyncMock(return_value=[_fake_tool("ACME_LIST_INVOICES")])
+    registry = MagicMock()
+    registry.get_tool_names = MagicMock(return_value=[])
+    registry.get_category_of_tool = MagicMock(return_value="")
+    registry.get_category = MagicMock(return_value=None)
+    registry.get_tool_meta = MagicMock(return_value=None)
+
+    with (
+        patch("app.agents.tools.core.retrieval.get_mcp_client", new=AsyncMock(return_value=client)),
+        patch(
+            "app.agents.tools.core.retrieval.get_tool_registry",
+            new=AsyncMock(return_value=registry),
+        ),
+        patch(
+            "app.agents.tools.core.retrieval.get_user_available_tool_namespaces",
+            new=AsyncMock(return_value=UserToolNamespaces(namespaces=user_namespaces)),
+        ),
+        patch(
+            "app.agents.tools.core.retrieval._resolve_connected_subagents",
+            new=AsyncMock(return_value={}),
+        ),
+        patch(
+            "app.agents.tools.core.retrieval.get_active",
+            new=AsyncMock(return_value={_ACME.id}),
+        ),
+        patch(
+            "app.agents.tools.core.retrieval.get_integration_target",
+            new=AsyncMock(return_value=_ACME),
+        ),
+        patch.object(
+            IntegrationResolver,
+            "get_server_url",
+            new=AsyncMock(return_value="https://mcp.acme.dev/v1"),
+        ),
+        patch(
+            "app.agents.tools.core.retrieval.search_public_integrations",
+            new=AsyncMock(return_value=[]),
+        ),
+    ):
+        retrieve_tools = get_retrieve_tools_function(tool_space="general")
+        result = await retrieve_tools(
+            store=store,
+            config=RunnableConfig(
+                configurable={"user_id": "user-a", "conversation_id": "c1", "thread_id": "c1"},
+                metadata={"user_id": "user-a"},
+            ),
+            query="list acme invoices",
+            exact_tool_names=[],
+        )
+    return result, searched, client
+
+
+@pytest.mark.integration
+class TestRetrieveToolsActivatedCustomMcp:
+    async def test_an_activated_custom_mcp_is_searched_and_warmed_when_entitled(self):
+        """The long tail of an activated custom MCP is discoverable even on a cold MCPClient."""
+        result, searched, client = await _discover_with_activated_acme(
+            {"general", "subagents", _ACME_NAMESPACE}
+        )
+
+        assert (_ACME_NAMESPACE,) in searched
+        client.tools_for.assert_awaited_once_with(_ACME.id)
+        assert "ACME_LIST_INVOICES" in result["response"]
+
+    async def test_a_stamped_custom_namespace_the_user_does_not_own_is_not_searched(self):
+        """A stamp is not an entitlement: without the namespace in user_namespaces it is never searched."""
+        result, searched, _ = await _discover_with_activated_acme({"general", "subagents"})
+
+        assert (_ACME_NAMESPACE,) not in searched
+        assert "ACME_LIST_INVOICES" not in result["response"]
