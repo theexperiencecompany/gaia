@@ -60,9 +60,10 @@ export default async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // `connect` (src/app/connect) is a locale-invariant page with its own
-  // analytics-free layout; next-intl must not rewrite it into the [locale] tree.
-  // `feed` is a route handler at src/app/feed; without this it is rewritten to
-  // /[locale]/feed and 404s (feed.xml 301s here, so the feed must resolve).
-  matcher: ["/((?!api|connect|feed|_next|_vercel|sitemap|ingest|.*\\..*).*)", "/"],
+  // `connect` and `feed` are route handlers outside [locale]; next-intl must
+  // not rewrite them (feed.xml 301s to /feed, which must resolve).
+  matcher: [
+    "/((?!api|connect|feed|_next|_vercel|sitemap|ingest|.*\\..*).*)",
+    "/",
+  ],
 };
