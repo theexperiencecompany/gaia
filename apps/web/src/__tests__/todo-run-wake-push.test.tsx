@@ -33,8 +33,6 @@ import { useStreamStore } from "@/stores/streamStore";
 
 const CONVERSATION_ID = "todo-chat-1";
 const WAKE = {
-  todo_id: "todo-1",
-  todo_title: "Watch the staging deploy",
   kind: "schedule",
   trigger_names: [],
   approval_summary: null,

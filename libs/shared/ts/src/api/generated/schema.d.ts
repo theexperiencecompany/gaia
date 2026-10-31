@@ -15404,10 +15404,6 @@ export interface components {
             /** Approval Summary */
             approval_summary: string | null;
             kind: components["schemas"]["TodoWakeKind"];
-            /** Todo Id */
-            todo_id: string;
-            /** Todo Title */
-            todo_title: string;
             /** Trigger Names */
             trigger_names: string[];
         };

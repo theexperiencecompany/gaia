@@ -41,8 +41,6 @@ class FileData(BaseModel):
 class TodoRunWake(BaseModel):
     """What woke one run of a tracked todo, shown on the user's side of its chat."""
 
-    todo_id: str
-    todo_title: str
     kind: TodoWakeKind
     #: The watched events that woke a TRIGGER run, deduplicated and sorted; empty otherwise.
     trigger_names: list[str]

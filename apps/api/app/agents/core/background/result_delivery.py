@@ -173,9 +173,9 @@ async def _record_todo_run_report(
 async def record_todo_run_wake(
     conversation_id: str, user: AuthenticatedUser, wake: TodoRunWake
 ) -> None:
-    """Lead a tracked todo's run with what woke it, on the user's side of its chat, and show an open chat.
+    """Lead a tracked todo's run with what woke it, on the user's side of its chat.
 
-    As a workflow run's trigger card does; a failed save leaves the run to go ahead."""
+    Pushed as conversation.new_message so an open chat shows it live; a failed save lets the run go ahead."""
     message = MessageModel(
         type="user",
         response="",

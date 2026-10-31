@@ -18992,14 +18992,6 @@
           "kind": {
             "$ref": "#/components/schemas/TodoWakeKind"
           },
-          "todo_id": {
-            "title": "Todo Id",
-            "type": "string"
-          },
-          "todo_title": {
-            "title": "Todo Title",
-            "type": "string"
-          },
           "trigger_names": {
             "items": {
               "type": "string"
@@ -19009,8 +19001,6 @@
           }
         },
         "required": [
-          "todo_id",
-          "todo_title",
           "kind",
           "trigger_names",
           "approval_summary"

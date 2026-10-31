@@ -68,8 +68,6 @@ describe("postApprovalDecision", () => {
 describe("fetchConversation", () => {
   it("carries what woke a tracked todo's run onto its user message", async () => {
     const wake = {
-      todo_id: "todo-1",
-      todo_title: "Watch the staging deploy",
       kind: "schedule",
       trigger_names: [],
       approval_summary: null,

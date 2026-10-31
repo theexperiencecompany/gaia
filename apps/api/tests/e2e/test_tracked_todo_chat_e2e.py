@@ -380,8 +380,6 @@ class TestARunLandsInTheTodosOwnChat:
         wake, report = chat["messages"]
         assert (wake["type"], wake["response"]) == ("user", "")
         assert wake["todo_run_wake"] == {
-            "todo_id": todo_id,
-            "todo_title": TITLE,
             "kind": TodoWakeKind.SCHEDULE.value,
             "trigger_names": [],
             "approval_summary": None,

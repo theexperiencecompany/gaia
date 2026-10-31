@@ -32,8 +32,6 @@ from app.services.checkpoint_thread_reset import ThreadReset
 pytestmark = pytest.mark.unit
 
 WAKE = TodoRunWake(
-    todo_id="todo-1",
-    todo_title="Watch the deploy",
     kind=TodoWakeKind.SCHEDULE,
     trigger_names=[],
     approval_summary=None,

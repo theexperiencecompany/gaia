@@ -175,8 +175,6 @@ def _request() -> TodoRunRequest:
         conversation_id="run-conv-1",
         fresh_thread=False,
         wake=TodoRunWake(
-            todo_id=TODO_ID,
-            todo_title="Watch the staging deploy",
             kind=TodoWakeKind.SCHEDULE,
             trigger_names=[],
             approval_summary=None,

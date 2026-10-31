@@ -4,12 +4,9 @@ import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TodoRunWakeIndicator } from "@/features/chat/components/bubbles/user/TodoRunWakeIndicator";
 import { mapStoredMessageToConversationMessage } from "@/features/chat/hooks/useConversation";
-import { triggerEventLabel } from "@/features/todo/utils/todoRunWake";
 import type { IMessage } from "@/lib/db/chatDb";
 
 const WAKE: TodoRunWake = {
-  todo_id: "todo-1",
-  todo_title: "Watch the staging deploy",
   kind: "schedule",
   trigger_names: [],
   approval_summary: null,
@@ -20,14 +17,6 @@ afterEach(() => {
 });
 
 describe("what woke a tracked todo's run", () => {
-  it("words the events that woke it, not trigger ids", () => {
-    expect(triggerEventLabel("gmail_new_message")).toBe("on new emails");
-  });
-
-  it("falls back to the trigger id it has no words for", () => {
-    expect(triggerEventLabel("acme_widget_moved")).toBe("on acme_widget_moved");
-  });
-
   it("carries a stored wake to the user bubble", () => {
     const stored: IMessage = {
       id: "m-1",

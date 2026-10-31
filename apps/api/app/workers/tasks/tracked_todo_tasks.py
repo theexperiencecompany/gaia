@@ -610,21 +610,15 @@ def _woken_by(origin: TriggerOrigin | None, coalesced: Sequence[TriggerOrigin]) 
     return f"run on {1 + len(coalesced)} events ({names})"
 
 
-def _wake(
-    doc: TodoDocument, origin: TriggerOrigin | None, coalesced: Sequence[TriggerOrigin]
-) -> TodoRunWake:
+def _wake(origin: TriggerOrigin | None, coalesced: Sequence[TriggerOrigin]) -> TodoRunWake:
     """Say what woke a run, for the user's side of the todo's chat."""
     if origin is None:
         return TodoRunWake(
-            todo_id=doc.id,
-            todo_title=doc.title,
             kind=TodoWakeKind.SCHEDULE,
             trigger_names=[],
             approval_summary=None,
         )
     return TodoRunWake(
-        todo_id=doc.id,
-        todo_title=doc.title,
         kind=TodoWakeKind.TRIGGER,
         trigger_names=_event_names(origin, coalesced),
         approval_summary=None,
@@ -669,7 +663,7 @@ async def _execute_on_executor(
                 task=prompt,
                 conversation_id=conversation_id,
                 fresh_thread=True,
-                wake=_wake(doc, origin, coalesced),
+                wake=_wake(origin, coalesced),
                 on_started=partial(
                     record_activity,
                     todo_id,
@@ -739,9 +733,15 @@ async def resume_tracked_todo(
 
     try:
         return await _resume_holding_lock(todo_id, conversation_id, approval_id, receipt)
-    except ExecutorBusyError:
+    except ExecutorBusyError as busy:
         # Another run holds the todo's chat (the approval's own ticket run, or a
         # follow-up turn): the resume waits its turn, as for the todo's lock.
+        log.warning(
+            "tracked_todo.resume_deferred",
+            todo_id=todo_id,
+            reason="executor busy",
+            error_type=type(busy).__name__,
+        )
         return await _defer_resume(pool, job, attempt, reason="executor busy")
     finally:
         await _release_run_lock(pool, todo_id)
@@ -806,8 +806,6 @@ async def _resume_holding_lock(
                 conversation_id=conversation_id,
                 fresh_thread=False,
                 wake=TodoRunWake(
-                    todo_id=todo_id,
-                    todo_title=doc.title,
                     kind=TodoWakeKind.APPROVAL,
                     trigger_names=[],
                     approval_summary=receipt,

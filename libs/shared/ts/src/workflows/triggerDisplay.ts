@@ -1,15 +1,18 @@
 /**
  * Trigger Display Registry (display-only, no handlers)
  *
- * Pure, static lookup for trigger display info (label, integrationId).
- * Safe to import from the landing tree — does NOT pull any handler code
- * (no React components, no HeroUI, no integration UI logic).
+ * Pure, static lookup for trigger display info (label, integrationId), shared by
+ * web and mobile. Pulls no handler code (no React components, no HeroUI).
  *
- * Keep in sync with the handlers in ./handlers/*. When a handler's
- * `getDisplayInfo` output changes, update the corresponding entry here.
+ * Keep in sync with web's handlers in apps/web/src/features/workflows/triggers/handlers/*.
+ * When a handler's `getDisplayInfo` output changes, update the corresponding entry here.
  */
 
-import type { TriggerConfigDraft } from "./types";
+/** The fields of a trigger config the display entries read. */
+export interface TriggerDisplayConfig {
+  type: string;
+  trigger_name?: string | null;
+}
 
 export interface TriggerDisplayInfo {
   label: string;
@@ -18,7 +21,7 @@ export interface TriggerDisplayInfo {
 
 interface TriggerDisplayEntry {
   triggerSlugs: string[];
-  getDisplayInfo: (config: TriggerConfigDraft) => TriggerDisplayInfo;
+  getDisplayInfo: (config: TriggerDisplayConfig) => TriggerDisplayInfo;
 }
 
 // =============================================================================
@@ -36,8 +39,7 @@ const displayEntries: TriggerDisplayEntry[] = [
   {
     triggerSlugs: ["calendar_event_created", "calendar_event_starting_soon"],
     getDisplayInfo: (config) => {
-      const triggerName =
-        (config as { trigger_name?: string }).trigger_name || config.type;
+      const triggerName = config.trigger_name || config.type;
       return {
         label:
           triggerName === "calendar_event_starting_soon"
@@ -55,8 +57,7 @@ const displayEntries: TriggerDisplayEntry[] = [
       "github_issue_added",
     ],
     getDisplayInfo: (config) => {
-      const triggerSlug =
-        (config as { trigger_name?: string }).trigger_name || config.type;
+      const triggerSlug = config.trigger_name || config.type;
       const map = {
         github_commit_event: "on new commit",
         github_pr_event: "on PR update",
@@ -91,8 +92,7 @@ const displayEntries: TriggerDisplayEntry[] = [
       "google_docs_document_updated",
     ],
     getDisplayInfo: (config) => {
-      const triggerName =
-        (config as { trigger_name?: string }).trigger_name || config.type;
+      const triggerName = config.trigger_name || config.type;
       let label = "on new document";
       if (triggerName === "google_docs_document_deleted")
         label = "on document deleted";
@@ -107,8 +107,7 @@ const displayEntries: TriggerDisplayEntry[] = [
   {
     triggerSlugs: ["google_sheets_new_row", "google_sheets_new_sheet"],
     getDisplayInfo: (config) => {
-      const triggerName =
-        (config as { trigger_name?: string }).trigger_name || config.type;
+      const triggerName = config.trigger_name || config.type;
       return {
         label:
           triggerName === "google_sheets_new_row"
@@ -125,8 +124,7 @@ const displayEntries: TriggerDisplayEntry[] = [
       "linear_comment_added",
     ],
     getDisplayInfo: (config) => {
-      const triggerName =
-        (config as { trigger_name?: string }).trigger_name || config.type;
+      const triggerName = config.trigger_name || config.type;
       let label = "on linear event";
       if (triggerName === "linear_issue_created") label = "on new issue";
       if (triggerName === "linear_issue_updated") label = "on issue updated";
@@ -151,8 +149,7 @@ const displayEntries: TriggerDisplayEntry[] = [
       "notion_page_content_updated",
     ],
     getDisplayInfo: (config) => {
-      const triggerName =
-        (config as { trigger_name?: string }).trigger_name || config.type;
+      const triggerName = config.trigger_name || config.type;
       let label = "on notion event";
       if (triggerName === "notion_new_page_in_db") label = "on new page in db";
       if (triggerName === "notion_page_updated") label = "on page updated";
@@ -174,8 +171,7 @@ const displayEntries: TriggerDisplayEntry[] = [
   {
     triggerSlugs: ["slack_new_message", "slack_channel_created"],
     getDisplayInfo: (config) => {
-      const triggerName =
-        (config as { trigger_name?: string }).trigger_name || config.type;
+      const triggerName = config.trigger_name || config.type;
       return {
         label:
           triggerName === "slack_channel_created"
@@ -207,7 +203,7 @@ for (const entry of displayEntries) {
 
 export function getTriggerDisplayInfoBySlug(
   slug: string,
-  config: TriggerConfigDraft,
+  config: TriggerDisplayConfig,
 ): TriggerDisplayInfo | undefined {
   const entry = slugToDisplayEntry.get(slug);
   if (!entry) return undefined;

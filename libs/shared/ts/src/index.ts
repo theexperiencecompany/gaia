@@ -258,7 +258,6 @@ export type {
   TodoApiClient,
   TodoStore,
   TodoStoreHook,
-  TriggerEventLabel,
   WorkflowGenerateResult,
   WorkflowStatusCacheEntry,
   WorkflowStatusResult,
@@ -465,6 +464,8 @@ export {
 export type {
   BuiltinTriggerMeta,
   IntegrationTriggerGroup,
+  TriggerDisplayConfig,
+  TriggerDisplayInfo,
   TriggerFieldSchema,
   TriggerSchema,
 } from "./workflows";
@@ -474,6 +475,7 @@ export {
   findTriggerSchema,
   formatIntegrationLabel,
   getSchemaFieldEntries,
+  getTriggerDisplayInfoBySlug,
   getTriggerLogoKey,
   groupTriggerSchemasByIntegration,
 } from "./workflows";

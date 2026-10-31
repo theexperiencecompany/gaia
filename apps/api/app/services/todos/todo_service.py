@@ -397,6 +397,28 @@ def _drop_completion_fields(update: TodoUpdate) -> TodoUpdate:
     return TodoUpdate(**fields)
 
 
+async def _complete_if_tracked(todo_id: str, user_id: str, update: TodoUpdate) -> TodoUpdate:
+    """Complete a tracked todo through tracked_todo_service, then return update without its completion fields.
+
+    That service archives the canvas and sets the completion fields itself, so they are
+    stripped here and the update neither re-trips the guard nor clobbers vfs_path.
+    """
+    existing = await todo_repository.get(todo_id, user_id=user_id)
+    if not (existing and existing.vfs_path):
+        return update
+    try:
+        from app.services.tracked_todo_service import (  # noqa: PLC0415 -- tracked_todo_service imports this module at module level, so a top-level import back would be circular
+            tracked_todo_service,
+        )
+
+        await tracked_todo_service.complete_tracked_todo(
+            todo_id, user_id, summary="Completed via UI"
+        )
+    except Exception as e:
+        log.warning("tracked_todo.ui_complete_failed", todo_id=todo_id, error=str(e))
+    return _drop_completion_fields(update)
+
+
 class TodoService:
     """Persistence + caching live in the todos/projects repositories; this layer holds orchestration only."""
 
@@ -615,23 +637,8 @@ class TodoService:
         if update.completed is not None:
             update.completed_at = datetime.now(UTC) if update.completed else None
 
-        # A tracked todo (has a VFS canvas) must complete via tracked_todo_service first —
-        # it archives the canvas and sets the completion fields itself — then those fields
-        # are stripped here so this update doesn't re-trip the guard or clobber vfs_path.
         if update.completed is True:
-            existing = await todo_repository.get(todo_id, user_id=user_id)
-            if existing and existing.vfs_path:
-                try:
-                    from app.services.tracked_todo_service import (  # noqa: PLC0415 -- tracked_todo_service imports this module at module level, so a top-level import back would be circular
-                        tracked_todo_service,
-                    )
-
-                    await tracked_todo_service.complete_tracked_todo(
-                        todo_id, user_id, summary="Completed via UI"
-                    )
-                except Exception as e:
-                    log.warning("tracked_todo.ui_complete_failed", todo_id=todo_id, error=str(e))
-                update = _drop_completion_fields(update)
+            update = await _complete_if_tracked(todo_id, user_id, update)
 
         if update.title is not None:
             # A tracked todo's chat carries its title, as its tab and header name it. First,

@@ -2873,8 +2873,6 @@ class TestExecuteOnExecutor:
         await self._execute()
 
         assert self._request().wake == TodoRunWake(
-            todo_id="todo-1",
-            todo_title="Check the deploy",
             kind=TodoWakeKind.SCHEDULE,
             trigger_names=[],
             approval_summary=None,
@@ -2897,8 +2895,6 @@ class TestExecuteOnExecutor:
             )
 
         assert self._request().wake == TodoRunWake(
-            todo_id="todo-1",
-            todo_title="Check the deploy",
             kind=TodoWakeKind.TRIGGER,
             trigger_names=["gmail_email_sent", "gmail_new_message"],
             approval_summary=None,
@@ -3336,8 +3332,6 @@ class TestResumeTrackedTodo:
         run = await self._resume("todo-1", "conv-parked", "ap_1", "Send briefing")
 
         assert run.agent.await_args.args[0].wake == TodoRunWake(
-            todo_id="todo-1",
-            todo_title="Check the deploy",
             kind=TodoWakeKind.APPROVAL,
             trigger_names=[],
             approval_summary="Send briefing",
