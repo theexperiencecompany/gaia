@@ -108,6 +108,18 @@ jobs:
           du -h apps/web/.open-next/worker.js 2>/dev/null | awk '{print "worker size:", $1, $2}' || true
           du -sh apps/web/.open-next/assets/* 2>/dev/null | head -n 5 || du -sh apps/web/.open-next/assets 2>/dev/null | head -n 5 || true
 
+      - name: Remove source maps from the deployed bundle
+        if: steps.inputs.outputs.build != 'false'
+        # Sentry uploads the maps during cf:build; the deployed artifact must
+        # not serve them. deleteSourcemapsAfterUpload is a no-op under
+        # Turbopack, and the live site served the full sourcesContent, so drop
+        # them here and fail if any survive.
+        run: |
+          maps=$(find apps/web/.open-next -name '*.map' -type f | wc -l)
+          find apps/web/.open-next -name '*.map' -type f -delete
+          remaining=$(find apps/web/.open-next -name '*.map' -type f | wc -l)
+          echo "source maps removed: $maps (remaining: $remaining)"
+          test "$remaining" -eq 0
       - name: Verify prerendered detail pages
         if: steps.inputs.outputs.build != 'false'
         # A notFound() during prerender keeps the build green but ships a 404
