@@ -1,8 +1,11 @@
 import { ApiError } from "@gaia/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { postApprovalDecision } from "./chat-api";
+import { fetchConversation, postApprovalDecision } from "./chat-api";
 
-const { postMock } = vi.hoisted(() => ({ postMock: vi.fn() }));
+const { getMock, postMock } = vi.hoisted(() => ({
+  getMock: vi.fn(),
+  postMock: vi.fn(),
+}));
 
 vi.mock("@/features/auth/utils/auth-storage", () => ({
   getAuthToken: vi.fn().mockResolvedValue("test-token"),
@@ -13,7 +16,7 @@ vi.mock("@/lib/api", async () => {
     await vi.importActual<typeof import("@gaia/shared")>("@gaia/shared");
   return {
     ApiError: actual.ApiError,
-    apiService: { post: postMock },
+    apiService: { get: getMock, post: postMock },
     API_BASE_URL: "http://test.local/api/v1",
   };
 });
@@ -59,5 +62,42 @@ describe("postApprovalDecision", () => {
     await expect(
       postApprovalDecision("appr-1", { decision: "approve" }),
     ).rejects.toBeInstanceOf(ApiError);
+  });
+});
+
+describe("fetchConversation", () => {
+  it("carries what woke a tracked todo's run onto its user message", async () => {
+    const wake = {
+      todo_id: "todo-1",
+      todo_title: "Watch the staging deploy",
+      kind: "schedule",
+      trigger_names: [],
+      approval_summary: null,
+    };
+    getMock.mockResolvedValue({
+      _id: "c",
+      user_id: "u",
+      conversation_id: "todo-chat",
+      description: "Watch the staging deploy",
+      is_system_generated: true,
+      system_purpose: null,
+      is_unread: false,
+      createdAt: "2026-10-31T14:05:00Z",
+      messages: [
+        {
+          type: "user",
+          response: "",
+          date: "2026-10-31T14:05:00Z",
+          message_id: "m-1",
+          fileIds: [],
+          fileData: [],
+          todo_run_wake: wake,
+        },
+      ],
+    });
+
+    const conversation = await fetchConversation("todo-chat");
+
+    expect(conversation?.messages[0]?.todoRunWake).toEqual(wake);
   });
 });

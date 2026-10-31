@@ -4,6 +4,7 @@
  * Extends the tools message schema to produce the full message shape.
  */
 
+import type { TodoRunWake } from "@shared/api/generated";
 import type { SelectedCalendarEventData } from "@/stores/composerStore.types";
 import type { TodoProgressData } from "@/types/features/todoProgressTypes";
 import type { ImageData, MemoryData } from "@/types/features/toolDataTypes";
@@ -41,6 +42,8 @@ export const BASE_MESSAGE_SCHEMA = {
     | SelectedCalendarEventData
     | null
     | undefined,
+  // What woke a tracked todo's run: the user's side of that run in the todo's chat.
+  todo_run_wake: undefined as TodoRunWake | null | undefined,
   isConvoSystemGenerated: undefined as boolean | undefined,
   follow_up_actions: undefined as string[] | undefined,
   // Set by the backend when a turn died with no response text — drives the

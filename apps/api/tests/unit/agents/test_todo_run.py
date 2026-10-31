@@ -23,12 +23,21 @@ from app.agents.core.background.todo_run import (
 )
 from app.agents.llm.lane import AgentRole
 from app.constants.streaming import DetachedStreamKind
+from app.constants.todos import TodoWakeKind
+from app.models.message_models import TodoRunWake
 from app.models.user_models import AuthenticatedUser, OnboardingSubdocument
 from app.models.workflow_models import TriggerType
 from app.services.checkpoint_thread_reset import ThreadReset
 
 pytestmark = pytest.mark.unit
 
+WAKE = TodoRunWake(
+    todo_id="todo-1",
+    todo_title="Watch the deploy",
+    kind=TodoWakeKind.SCHEDULE,
+    trigger_names=[],
+    approval_summary=None,
+)
 REQUEST = TodoRunRequest(
     user=AuthenticatedUser(user_id="user-1"),
     todo_run=TodoRun(todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO),
@@ -36,6 +45,7 @@ REQUEST = TodoRunRequest(
     task="Execute the following scheduled task: Watch the deploy",
     conversation_id="run-conv",
     fresh_thread=False,
+    wake=WAKE,
 )
 
 
@@ -56,6 +66,7 @@ class _Seams:
             side_effect=lambda *a, **k: order.append("reset") or ThreadReset(2, 0)
         )
         self.release = AsyncMock()
+        self.wake = AsyncMock(side_effect=lambda *a, **k: order.append("wake"))
         self.stream_manager = MagicMock()
         self.stream_manager.is_cancelled = AsyncMock(return_value=False)
 
@@ -68,6 +79,7 @@ def seams() -> Iterator[_Seams]:
         stack.enter_context(patch.object(todo_run, "end_detached_stream", found.end))
         stack.enter_context(patch.object(todo_run, "reset_conversation_threads", found.reset))
         stack.enter_context(patch.object(todo_run, "release_lock_if_owned", found.release))
+        stack.enter_context(patch.object(todo_run, "record_todo_run_wake", found.wake))
         stack.enter_context(patch.object(todo_run, "StreamManager", found.stream_manager))
         stack.enter_context(
             patch.object(
@@ -114,8 +126,31 @@ async def test_the_run_reports_its_start_only_once_the_chat_is_its_own(seams: _S
     ):
         await run_todo_on_executor(replace(REQUEST, on_started=started))
 
-    assert seams.order == ["started", "announce", "run", "end"]
+    assert seams.order == ["started", "wake", "announce", "run", "end"]
     started.assert_awaited_once()
+
+
+async def test_the_chat_shows_what_woke_the_run_before_the_run_streams(seams: _Seams) -> None:
+    """Regression: a run's report stood alone in the chat, with nothing on the user's side saying why it ran."""
+    run = _recording_run(seams.order)
+    with (
+        patch.object(todo_run, "try_acquire_lock", AsyncMock(return_value=True)),
+        patch.object(todo_run, "run_executor_background", run),
+    ):
+        await run_todo_on_executor(REQUEST)
+
+    assert seams.order == ["wake", "announce", "run", "end"]
+    seams.wake.assert_awaited_once_with("run-conv", REQUEST.user, WAKE)
+
+
+async def test_a_run_that_finds_its_chat_busy_shows_no_wake(seams: _Seams) -> None:
+    with (
+        patch.object(todo_run, "try_acquire_lock", AsyncMock(return_value=False)),
+        pytest.raises(ExecutorBusyError),
+    ):
+        await run_todo_on_executor(REQUEST)
+
+    seams.wake.assert_not_awaited()
 
 
 async def test_a_run_that_never_finishes_is_stopped_before_the_attempt_fails(
@@ -160,7 +195,7 @@ class TestTheStreamInTheTodosChat:
 
         # Ended only once the run (delivery included) is over: a client reading the
         # chat at [DONE] must find the report already saved.
-        assert seams.order == ["announce", "run", "end"]
+        assert seams.order == ["wake", "announce", "run", "end"]
         dispatched = run.await_args.kwargs["run"]
         announced = seams.announce.await_args
         assert announced.args == (dispatched.stream_id,)

@@ -6,6 +6,8 @@ export type {
 } from "./apiClient";
 export type { HttpAdapter, RequestOptions } from "./createTodoApi";
 export { createTodoApi } from "./createTodoApi";
+export type { TriggerEventLabel } from "./runWake";
+export { describeTodoRunWake } from "./runWake";
 export type {
   CreateTodoStoreOptions,
   NotifyAdapter,

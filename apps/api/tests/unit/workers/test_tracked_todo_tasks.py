@@ -71,9 +71,11 @@ from app.constants.todos import (
     TODO_SCHEDULE_FIRE_GRACE,
     TRIGGER_TODO_FEATURE_KEY,
     TodoActivityEvent,
+    TodoWakeKind,
 )
 from app.constants.vfs import SYSTEM_USER_ID
 from app.db.repositories.todos import todo_repository
+from app.models.message_models import TodoRunWake
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
@@ -2867,6 +2869,41 @@ class TestExecuteOnExecutor:
 
         self.context.assert_awaited_once_with(doc)
 
+    async def test_a_scheduled_run_says_its_schedule_woke_it(self):
+        await self._execute()
+
+        assert self._request().wake == TodoRunWake(
+            todo_id="todo-1",
+            todo_title="Check the deploy",
+            kind=TodoWakeKind.SCHEDULE,
+            trigger_names=[],
+            approval_summary=None,
+        )
+
+    async def test_a_triggered_run_says_which_events_woke_it(self):
+        origin = TriggerOrigin(subscription_id="sub-1", trigger_name="gmail_new_message")
+        also = [
+            TriggerOrigin(subscription_id="sub-2", trigger_name="gmail_email_sent"),
+            TriggerOrigin(subscription_id="sub-1", trigger_name="gmail_new_message"),
+        ]
+        p1, p2, p3 = self._patches()
+        with p1, p2, p3:
+            await _execute_on_executor(
+                _doc(),
+                user_data=AuthenticatedUser(user_id=OWNER_ID),
+                user_tz=Timezone.utc(),
+                origin=origin,
+                coalesced=also,
+            )
+
+        assert self._request().wake == TodoRunWake(
+            todo_id="todo-1",
+            todo_title="Check the deploy",
+            kind=TodoWakeKind.TRIGGER,
+            trigger_names=["gmail_email_sent", "gmail_new_message"],
+            approval_summary=None,
+        )
+
     async def test_a_triggered_run_is_attributed_to_its_trigger(self):
         origin = TriggerOrigin(
             subscription_id="sub-1", trigger_name="gmail_new_message", payload={"thread_id": "t-1"}
@@ -3294,6 +3331,17 @@ class TestResumeTrackedTodo:
             todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO
         )
         assert request.todo_title == "Check the deploy"
+
+    async def test_a_resume_says_the_approval_woke_it(self) -> None:
+        run = await self._resume("todo-1", "conv-parked", "ap_1", "Send briefing")
+
+        assert run.agent.await_args.args[0].wake == TodoRunWake(
+            todo_id="todo-1",
+            todo_title="Check the deploy",
+            kind=TodoWakeKind.APPROVAL,
+            trigger_names=[],
+            approval_summary="Send briefing",
+        )
 
     async def test_the_agent_is_told_the_granted_call_already_ran(self) -> None:
         """Without it the resumed run re-issues the approved action, a second send the user never approved."""

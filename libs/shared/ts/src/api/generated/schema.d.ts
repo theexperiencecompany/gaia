@@ -11643,6 +11643,7 @@ export interface components {
             selectedWorkflow?: components["schemas"]["SelectedWorkflowDataInput"] | null;
             /** Subtype */
             subtype?: string | null;
+            todo_run_wake?: components["schemas"]["TodoRunWake"] | null;
             /** Tool Data */
             tool_data?: components["schemas"]["ToolDataEntry"][] | null;
             /** Toolcategory */
@@ -11704,6 +11705,7 @@ export interface components {
             selectedWorkflow?: components["schemas"]["SelectedWorkflowDataOutput"] | null;
             /** Subtype */
             subtype?: string | null;
+            todo_run_wake?: components["schemas"]["TodoRunWake"] | null;
             /** Tool Data */
             tool_data?: components["schemas"]["ToolDataEntry"][] | null;
             /** Toolcategory */
@@ -15394,6 +15396,21 @@ export interface components {
              */
             workflow_id: string | null;
         };
+        /**
+         * TodoRunWake
+         * @description What woke one run of a tracked todo, shown on the user's side of its chat.
+         */
+        TodoRunWake: {
+            /** Approval Summary */
+            approval_summary: string | null;
+            kind: components["schemas"]["TodoWakeKind"];
+            /** Todo Id */
+            todo_id: string;
+            /** Todo Title */
+            todo_title: string;
+            /** Trigger Names */
+            trigger_names: string[];
+        };
         /** TodoStats */
         TodoStats: {
             /** By Priority */
@@ -15467,6 +15484,12 @@ export interface components {
             /** Workflow Id */
             workflow_id?: string | null;
         };
+        /**
+         * TodoWakeKind
+         * @description What woke a tracked todo's run: its schedule, a watched event, or an approval it waited on.
+         * @enum {string}
+         */
+        TodoWakeKind: "schedule" | "trigger" | "approval";
         /**
          * TodoWorkflowGenerationResponse
          * @description Result of asking for a todo's workflow to be generated.
@@ -17547,8 +17570,10 @@ export type TodoLabelCount = components['schemas']['TodoLabelCount'];
 export type TodoListResponse = components['schemas']['TodoListResponse'];
 export type TodoModel = components['schemas']['TodoModel'];
 export type TodoResponse = components['schemas']['TodoResponse'];
+export type TodoRunWake = components['schemas']['TodoRunWake'];
 export type TodoStats = components['schemas']['TodoStats'];
 export type TodoUpdateRequest = components['schemas']['TodoUpdateRequest'];
+export type TodoWakeKind = components['schemas']['TodoWakeKind'];
 export type TodoWorkflowGenerationResponse = components['schemas']['TodoWorkflowGenerationResponse'];
 export type TodoWorkflowGenerationStatus = components['schemas']['TodoWorkflowGenerationStatus'];
 export type TodoWorkflowStatus = components['schemas']['TodoWorkflowStatus'];

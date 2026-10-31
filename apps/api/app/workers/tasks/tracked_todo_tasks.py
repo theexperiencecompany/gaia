@@ -48,10 +48,12 @@ from app.constants.todos import (
     TODO_SCHEDULE_FIRE_GRACE,
     TRIGGER_TODO_FEATURE_KEY,
     TodoActivityEvent,
+    TodoWakeKind,
 )
 from app.db.repositories.todos import todo_repository
 from app.decorators import enforce_daily_cost_budget
 from app.decorators.entitlements import capture_paywall_block, is_paid
+from app.models.message_models import TodoRunWake
 from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
@@ -594,14 +596,39 @@ def _fires_current_schedule(doc: TodoDocument, armed_for: datetime | None) -> bo
     return occurrence_stamp(doc.scheduled_at) == occurrence_stamp(armed_for)
 
 
+def _event_names(origin: TriggerOrigin, coalesced: Sequence[TriggerOrigin]) -> list[str]:
+    return sorted({event.trigger_name for event in [origin, *coalesced]})
+
+
 def _woken_by(origin: TriggerOrigin | None, coalesced: Sequence[TriggerOrigin]) -> str:
     """Name what woke a run, for its activity.md entries."""
     if origin is None:
         return "scheduled run"
     if not coalesced:
         return f"run on {origin.trigger_name}"
-    names = ", ".join(sorted({event.trigger_name for event in [origin, *coalesced]}))
+    names = ", ".join(_event_names(origin, coalesced))
     return f"run on {1 + len(coalesced)} events ({names})"
+
+
+def _wake(
+    doc: TodoDocument, origin: TriggerOrigin | None, coalesced: Sequence[TriggerOrigin]
+) -> TodoRunWake:
+    """Say what woke a run, for the user's side of the todo's chat."""
+    if origin is None:
+        return TodoRunWake(
+            todo_id=doc.id,
+            todo_title=doc.title,
+            kind=TodoWakeKind.SCHEDULE,
+            trigger_names=[],
+            approval_summary=None,
+        )
+    return TodoRunWake(
+        todo_id=doc.id,
+        todo_title=doc.title,
+        kind=TodoWakeKind.TRIGGER,
+        trigger_names=_event_names(origin, coalesced),
+        approval_summary=None,
+    )
 
 
 def _trigger_type(origin: TriggerOrigin | None) -> TriggerType:
@@ -642,6 +669,7 @@ async def _execute_on_executor(
                 task=prompt,
                 conversation_id=conversation_id,
                 fresh_thread=True,
+                wake=_wake(doc, origin, coalesced),
                 on_started=partial(
                     record_activity,
                     todo_id,
@@ -777,6 +805,13 @@ async def _resume_holding_lock(
                 task=message,
                 conversation_id=conversation_id,
                 fresh_thread=False,
+                wake=TodoRunWake(
+                    todo_id=todo_id,
+                    todo_title=doc.title,
+                    kind=TodoWakeKind.APPROVAL,
+                    trigger_names=[],
+                    approval_summary=receipt,
+                ),
             )
         )
         return f"resumed:{todo_id}"

@@ -32,6 +32,7 @@ from app.agents.core.background.executor_queue import (
     try_acquire_lock,
 )
 from app.agents.core.background.executor_runner import run_executor_background
+from app.agents.core.background.result_delivery import record_todo_run_wake
 from app.agents.core.background.session import (
     ExecutorRun,
     RunIdentity,
@@ -55,6 +56,7 @@ from app.helpers.agent_helpers import (
 )
 from app.models.agent_config import AgentConfigurable
 from app.models.agent_models import agent_user_context
+from app.models.message_models import TodoRunWake
 from app.models.user_models import AuthenticatedUser
 from app.services.checkpoint_thread_reset import reset_conversation_threads
 from app.utils.background_tasks import spawn_background_task
@@ -88,6 +90,8 @@ class TodoRunRequest:
     #: A new run starts from an empty executor thread; an approval resume
     #: continues the thread the parked run left.
     fresh_thread: bool
+    #: What woke the run, shown on the user's side of the chat before it streams.
+    wake: TodoRunWake
     #: Awaited once the chat's executor lock is this run's, so a run that finds
     #: the chat busy never reads as started.
     on_started: Callable[[], Awaitable[object]] | None = None
@@ -112,6 +116,8 @@ async def run_todo_on_executor(request: TodoRunRequest) -> None:
         # Under the lock: no other executor can be writing the threads it drops.
         if request.fresh_thread:
             await _reset_executor_threads(conversation_id)
+        # Before the stream, so the chat reads what woke the run, then the run.
+        await record_todo_run_wake(conversation_id, request.user, request.wake)
         await announce_detached_stream(
             stream_id,
             conversation_id=conversation_id,

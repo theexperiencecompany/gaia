@@ -1,3 +1,4 @@
+import type { TodoRunWake } from "@shared/api/generated";
 import { useCallback, useEffect } from "react";
 import type { TypedToolDataEntry } from "@/config/registries/toolRegistry";
 import {
@@ -12,15 +13,14 @@ import { useChatStore } from "@/stores/chatStore";
 import { useStreamStore } from "@/stores/streamStore";
 
 /**
- * WebSocket payload for background executor notifications.
- * Delivered when an executor (live or queued) completes and generates
- * a notification as a NEW bot message.
+ * WebSocket payload for a message saved outside the open turn: a background
+ * executor's NEW bot message, or the user-side wake that leads a tracked todo's run.
  */
 interface BgMessageEvent {
   type: "conversation.new_message";
   conversation_id: string;
   message: {
-    type: "bot";
+    type: "bot" | "user";
     response: string;
     message_id: string;
     date: string;
@@ -31,6 +31,7 @@ interface BgMessageEvent {
     error?: string;
     tool_data?: TypedToolDataEntry[];
     follow_up_actions?: string[];
+    todo_run_wake?: TodoRunWake;
     replyToMessage?: {
       id: string;
       content: string;
@@ -54,11 +55,12 @@ export function useBgMessageWebSocket() {
     if (!conversation_id || !message?.message_id) {
       return;
     }
+    const isBotReply = message.type === "bot";
 
     // Remove streaming placeholder (id === task_id) if one exists in the store.
     // The placeholder was created by useExecutorStream for live tool progress;
     // now the final message is here, so the placeholder is no longer needed.
-    if (message.task_id) {
+    if (isBotReply && message.task_id) {
       const state = useChatStore.getState();
       const msgs = state.messagesByConversation[conversation_id] ?? [];
       const hasPlaceholder = msgs.some((m) => m.id === message.task_id);
@@ -72,7 +74,7 @@ export function useBgMessageWebSocket() {
       id: message.message_id,
       conversationId: conversation_id,
       content: message.response,
-      role: "assistant",
+      role: isBotReply ? "assistant" : "user",
       status: "sent",
       createdAt: new Date(message.date),
       updatedAt: new Date(message.date),
@@ -83,13 +85,14 @@ export function useBgMessageWebSocket() {
       error: message.error ?? null,
       follow_up_actions: message.follow_up_actions ?? null,
       replyToMessageData: message.replyToMessage ?? null,
+      todoRunWake: message.todo_run_wake ?? null,
     };
 
     // Persist to IndexedDB (dbEventEmitter syncs to store automatically). When
     // this matches a queued executor placeholder (keyed by task_id, from
     // useExecutorStream), replace it atomically so no duplicate is left behind.
     try {
-      if (message.task_id) {
+      if (isBotReply && message.task_id) {
         await db.replaceMessage(message.task_id, iMessage);
       } else {
         await db.putMessage(iMessage);
@@ -101,7 +104,7 @@ export function useBgMessageWebSocket() {
     // Also update store directly for immediate render if viewing this conversation
     if (isViewingConversation(conversation_id)) {
       useChatStore.getState().addOrUpdateMessage(iMessage);
-    } else {
+    } else if (isBotReply) {
       // A background result landing in a conversation the user isn't viewing
       // surfaces as unread in the sidebar (cleared by ChatPage's mark-as-read).
       markConversationUnread(conversation_id);
@@ -111,7 +114,10 @@ export function useBgMessageWebSocket() {
     // store, so loading hands off to the rendered result in the same frame — no
     // flash of "loading gone" before the result appears.
     const stream = useStreamStore.getState();
-    if (stream.sessions[conversation_id]?.phase === "awaiting_executor") {
+    if (
+      isBotReply &&
+      stream.sessions[conversation_id]?.phase === "awaiting_executor"
+    ) {
       stream.endSession(conversation_id);
     }
     streamLog("ws", "conversation.new_message", {

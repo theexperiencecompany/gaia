@@ -1,3 +1,4 @@
+import type { TodoRunWake } from "@shared/api/generated";
 import Dexie, { type IndexableType, type Table } from "dexie";
 import { EventEmitter } from "events";
 import type { MessageReaction } from "@/config/registries/baseMessageRegistry";
@@ -56,6 +57,7 @@ export interface IMessage {
   workflowId?: string | null;
   selectedWorkflow?: WorkflowData | null;
   selectedCalendarEvent?: SelectedCalendarEventData | null;
+  todoRunWake?: TodoRunWake | null;
 
   // Rich content data from BaseMessageData
   tool_data?: TypedToolDataEntry[] | null;

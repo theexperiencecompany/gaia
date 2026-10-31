@@ -11205,6 +11205,16 @@
             ],
             "title": "Subtype"
           },
+          "todo_run_wake": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TodoRunWake"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "toolCategory": {
             "anyOf": [
               {
@@ -11482,6 +11492,16 @@
               }
             ],
             "title": "Subtype"
+          },
+          "todo_run_wake": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TodoRunWake"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "toolCategory": {
             "anyOf": [
@@ -18955,6 +18975,49 @@
         "title": "TodoResponse",
         "type": "object"
       },
+      "TodoRunWake": {
+        "description": "What woke one run of a tracked todo, shown on the user's side of its chat.",
+        "properties": {
+          "approval_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approval Summary"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/TodoWakeKind"
+          },
+          "todo_id": {
+            "title": "Todo Id",
+            "type": "string"
+          },
+          "todo_title": {
+            "title": "Todo Title",
+            "type": "string"
+          },
+          "trigger_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Trigger Names",
+            "type": "array"
+          }
+        },
+        "required": [
+          "todo_id",
+          "todo_title",
+          "kind",
+          "trigger_names",
+          "approval_summary"
+        ],
+        "title": "TodoRunWake",
+        "type": "object"
+      },
       "TodoStats": {
         "properties": {
           "by_priority": {
@@ -19196,6 +19259,16 @@
         },
         "title": "TodoUpdateRequest",
         "type": "object"
+      },
+      "TodoWakeKind": {
+        "description": "What woke a tracked todo's run: its schedule, a watched event, or an approval it waited on.",
+        "enum": [
+          "schedule",
+          "trigger",
+          "approval"
+        ],
+        "title": "TodoWakeKind",
+        "type": "string"
       },
       "TodoWorkflowGenerationResponse": {
         "description": "Result of asking for a todo's workflow to be generated.",

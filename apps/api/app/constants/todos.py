@@ -112,6 +112,14 @@ class TodoRunDeliveryOutcome(StrEnum):
     INVALID_DIRECTIVE = "invalid_directive"
 
 
+class TodoWakeKind(StrEnum):
+    """What woke a tracked todo's run: its schedule, a watched event, or an approval it waited on."""
+
+    SCHEDULE = "schedule"
+    TRIGGER = "trigger"
+    APPROVAL = "approval"
+
+
 class TodoActivityEvent(StrEnum):
     """A lifecycle event code records in a tracked todo's activity.md, as "[event] detail"."""
 

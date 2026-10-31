@@ -50,8 +50,9 @@ from app.constants import todos as todo_constants
 from app.constants.agents import AgentTag
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
-from app.constants.todos import TodoActivityEvent
+from app.constants.todos import TodoActivityEvent, TodoWakeKind
 from app.models.chat_models import ConversationSource
+from app.models.message_models import TodoRunWake
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
@@ -173,6 +174,13 @@ def _request() -> TodoRunRequest:
         task="Execute the following scheduled task: Watch the staging deploy",
         conversation_id="run-conv-1",
         fresh_thread=False,
+        wake=TodoRunWake(
+            todo_id=TODO_ID,
+            todo_title="Watch the staging deploy",
+            kind=TodoWakeKind.SCHEDULE,
+            trigger_names=[],
+            approval_summary=None,
+        ),
     )
 
 

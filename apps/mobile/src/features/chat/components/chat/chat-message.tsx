@@ -29,6 +29,7 @@ import type { MessageActionConfig } from "./message-action-sheet";
 import { MessageReactions } from "./message-reactions";
 import { MessageReplyQuote } from "./message-reply-quote";
 import { ThinkingBubble } from "./thinking-bubble";
+import { TodoRunWakeIndicator } from "./todo-run-wake-indicator";
 
 const EMOJI_ONLY_REGEX = /^[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\s]+$/u;
 
@@ -180,6 +181,9 @@ function UserChatMessage({
         <View
           style={{ flexDirection: "column", gap: spacing.xs, maxWidth: "80%" }}
         >
+          {message.todoRunWake && (
+            <TodoRunWakeIndicator wake={message.todoRunWake} />
+          )}
           {message.replyToMessage && (
             <MessageReplyQuote
               replyToMessage={message.replyToMessage}

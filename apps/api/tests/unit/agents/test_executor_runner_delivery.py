@@ -518,7 +518,7 @@ class TestPersistCancelledRun:
     async def test_a_bot_reply_keeps_the_conversations_cap(self) -> None:
         bot_message = MessageModel(type="bot", response="hi")
         with patch.object(rd, "update_messages", new_callable=AsyncMock) as save:
-            await rd._save_bot_message("conv-1", AuthenticatedUser(user_id=USER_ID), bot_message)
+            await rd._save_message("conv-1", AuthenticatedUser(user_id=USER_ID), bot_message)
 
         assert save.await_args.kwargs["max_messages"] == CONVERSATION_MAX_MESSAGES
 
@@ -574,11 +574,11 @@ class TestDeliveryLatency:
             await rd._narrate_result(_run(), "raw", "final", "")
         assert _narration_count("success") == before + 1
 
-    async def test_save_bot_message_records_span(self) -> None:
+    async def test_save_message_records_span(self) -> None:
         before = _persist_count("save_bot_message")
         bot_message = MessageModel(type="bot", response="hi", date="2026-01-01")
         with patch.object(rd, "update_messages", new_callable=AsyncMock):
-            assert await rd._save_bot_message("conv-1", {"user_id": USER_ID}, bot_message) is True
+            assert await rd._save_message("conv-1", {"user_id": USER_ID}, bot_message) is True
         assert _persist_count("save_bot_message") == before + 1
 
     async def test_cancelled_persist_records_exact_seconds(self) -> None:
@@ -594,7 +594,7 @@ class TestDeliveryLatency:
             await rd.persist_cancelled_run(run, CARDS)
         assert REGISTRY.get_sample_value("delivery_persist_seconds_sum", labels) == before + 0.75
 
-    async def test_save_bot_message_records_exact_seconds(self) -> None:
+    async def test_save_message_records_exact_seconds(self) -> None:
         labels = {"op": "save_bot_message"}
         before = REGISTRY.get_sample_value("delivery_persist_seconds_sum", labels) or 0.0
         bot_message = MessageModel(type="bot", response="hi", date="2026-01-01")
@@ -602,7 +602,7 @@ class TestDeliveryLatency:
             patch.object(rd, "update_messages", new_callable=AsyncMock),
             patch.object(rd.time, "perf_counter", side_effect=[7.0, 7.25]),
         ):
-            assert await rd._save_bot_message("conv-1", {"user_id": USER_ID}, bot_message) is True
+            assert await rd._save_message("conv-1", {"user_id": USER_ID}, bot_message) is True
         assert REGISTRY.get_sample_value("delivery_persist_seconds_sum", labels) == before + 0.25
 
     async def test_narration_records_exact_seconds(self) -> None:

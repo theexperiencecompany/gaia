@@ -114,6 +114,7 @@ const mapApiMessagesToStored = (
       pinned: message.pinned ?? false,
       selectedCalendarEvent: message.selectedCalendarEvent,
       selectedWorkflow: message.selectedWorkflow,
+      todoRunWake: message.todo_run_wake ?? null,
       replyToMessageId: message.replyToMessage?.id ?? null,
       replyToMessageData: message.replyToMessage ?? null,
       kind: message.kind ?? null,

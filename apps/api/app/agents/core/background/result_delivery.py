@@ -61,7 +61,7 @@ from app.models.chat_models import (
     UpdateMessagesRequest,
 )
 from app.models.hil_models import HILApprovalStatus
-from app.models.message_models import ReplyToMessageData
+from app.models.message_models import ReplyToMessageData, TodoRunWake
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
 from app.services.conversation_service import update_messages
@@ -150,7 +150,7 @@ async def _record_todo_run_report(
         message_id=run.render_message_id,
         tool_data=tool_data or None,
     )
-    if not await _save_bot_message(
+    if not await _save_message(
         run.conversation_id, run.user, bot_message, max_messages=TODO_CONVERSATION_MAX_MESSAGES
     ):
         return
@@ -167,6 +167,39 @@ async def _record_todo_run_report(
         bot_message=bot_message,
         notification_text=bot_message.response,
         tool_data=bot_message.tool_data,
+    )
+
+
+async def record_todo_run_wake(
+    conversation_id: str, user: AuthenticatedUser, wake: TodoRunWake
+) -> None:
+    """Lead a tracked todo's run with what woke it, on the user's side of its chat, and show an open chat.
+
+    As a workflow run's trigger card does; a failed save leaves the run to go ahead."""
+    message = MessageModel(
+        type="user",
+        response="",
+        date=datetime.now(UTC).isoformat(),
+        message_id=str(uuid4()),
+        todo_run_wake=wake,
+    )
+    if not await _save_message(
+        conversation_id, user, message, max_messages=TODO_CONVERSATION_MAX_MESSAGES
+    ):
+        return
+    await _broadcast_message(
+        user.user_id,
+        {
+            "type": "conversation.new_message",
+            "conversation_id": conversation_id,
+            "message": {
+                "type": "user",
+                "response": "",
+                "message_id": message.message_id,
+                "date": message.date,
+                "todo_run_wake": wake.model_dump(mode="json"),
+            },
+        },
     )
 
 
@@ -256,7 +289,7 @@ async def deliver_message_to_conversation(
     )
     bot_message.message_id = str(uuid4())
 
-    if not await _save_bot_message(conversation_id, user, bot_message):
+    if not await _save_message(conversation_id, user, bot_message):
         return None
 
     source = await _get_conversation_source(conversation_id, user_id)
@@ -381,7 +414,7 @@ async def _narrate_and_deliver(
     fresh_append, tool_data = await _resolve_append_mode(
         run, bot_message, tool_data, is_hil_resume=is_hil_resume
     )
-    if fresh_append and not await _save_bot_message(run.conversation_id, run.user, bot_message):
+    if fresh_append and not await _save_message(run.conversation_id, run.user, bot_message):
         return None, None
 
     # The bot message is already saved above, for the notification's "View Results".
@@ -696,20 +729,20 @@ async def _resolve_append_mode(
     return True, tool_data
 
 
-async def _save_bot_message(
+async def _save_message(
     conversation_id: str,
     user: AuthenticatedUser,
-    bot_message: MessageModel,
+    message: MessageModel,
     *,
     max_messages: int = CONVERSATION_MAX_MESSAGES,
 ) -> bool:
-    """Append the bot message, keeping the conversation's newest max_messages; False when it wasn't saved."""
+    """Append the message, keeping the conversation's newest max_messages; False when it wasn't saved."""
     persist_start = time.perf_counter()
     try:
         await update_messages(
             UpdateMessagesRequest(
                 conversation_id=conversation_id,
-                messages=[bot_message],
+                messages=[message],
             ),
             user=user,
             max_messages=max_messages,
