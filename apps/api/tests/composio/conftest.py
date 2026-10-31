@@ -81,14 +81,3 @@ def mock_composio_client():
     composio.tools.custom_tool.side_effect = custom_tool_decorator
     composio._registered_tools = registered_tools
     return composio
-
-
-# Declares the real keys these tests may use so the root hermetic fence
-# (tests/conftest.py) does not blank them; set at import time, before the
-# session fence runs.
-import os
-
-os.environ.setdefault(
-    "HERMETIC_ALLOW_KEYS",
-    "COMPOSIO_KEY,COMPOSIO_WEBHOOK_SECRET",
-)

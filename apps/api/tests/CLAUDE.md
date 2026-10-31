@@ -89,15 +89,18 @@ Exceptions are explicit declarations, never accidents:
 
 - The harness's own fake values (`WORKOS_API_KEY`, `MCP_ENCRYPTION_KEY`,
   `AGENT_SECRET`) survive by allowlist.
-- A live-credential tier declares the keys it legitimately needs by setting
-  `HERMETIC_ALLOW_KEYS` (comma-separated) in its conftest at import time —
-  e.g. `tests/composio/conftest.py` declares `COMPOSIO_KEY,
-  COMPOSIO_WEBHOOK_SECRET`; `tests/model_onboarding/conftest.py` declares
-  `OPENROUTER_API_KEY`. Nothing else survives the fence.
+- A live-credential tier declares the keys it legitimately needs in
+  `HERMETIC_ALLOW_KEYS` (comma-separated) on the command that starts it —
+  `nx run api:test:composio` declares `COMPOSIO_KEY,COMPOSIO_WEBHOOK_SECRET`;
+  `nx run api:test:model-onboarding` declares the model keys. A declared key is
+  read from the shell, else from `apps/api/.env`. Nothing else survives the fence.
+- The fence runs in `tests/offline_env.py`, before any app import: the settings
+  singleton binds at import, so a fence in a conftest is too late. A test run
+  never reads `apps/api/.env` otherwise (`PYTHON_DOTENV_DISABLED`).
 
 Never hardcode real secrets in tests; never read a `~` path (the fence owns
 env, fixtures own paths). If a test needs a key, declare it via
-`HERMETIC_ALLOW_KEYS` in the tier's conftest — with a comment saying why the
+`HERMETIC_ALLOW_KEYS` on the tier's nx target — with a comment saying why the
 live value is genuinely required.
 
 ## Browser automation

@@ -7,11 +7,13 @@ import os
 from pathlib import Path
 import tomllib
 
+from dotenv import load_dotenv
 import httpx
 
 from .types import PriceBook, ProviderHealth, ProviderPrice
 
 CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.toml"
+APP_ENV_PATH = Path(__file__).resolve().parents[3] / ".env"
 
 _DEFAULT_LANE = "custom"
 
@@ -51,16 +53,11 @@ def _env_or_empty(*names: str) -> str:
 
 
 def _load_app_env() -> None:
-    """Seed process env from apps/api/.env (provider keys live there)."""
-    env_path = Path(__file__).resolve().parents[3] / ".env"
-    if not env_path.exists():
-        return
-    for line in env_path.read_text().splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        os.environ.setdefault(key.strip(), value.strip())
+    """Seed process env from apps/api/.env (provider keys live there), as the app does.
+
+    Through dotenv, so PYTHON_DOTENV_DISABLED (set by the test suite) keeps it out of a test run.
+    """
+    load_dotenv(APP_ENV_PATH, override=False)
 
 
 def load_config(path: Path = CONFIG_PATH) -> EvalConfig:

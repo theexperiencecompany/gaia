@@ -14,7 +14,6 @@ import contextlib
 from contextlib import asynccontextmanager
 import importlib
 import os
-import re
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -49,7 +48,10 @@ _hypothesis_settings.load_profile(os.getenv("HYPOTHESIS_PROFILE", "default"))
 
 # Env fence + Infisical patch, shared with scripts/export_openapi.py. Imported
 # here (not at the top) because it must run before any app module loads.
-import tests.offline_env  # isort: skip  # noqa: F401 -- imported for its side effects
+from tests.offline_env import (  # isort: skip -- imported first, for its side effects
+    CREDENTIAL_ENV_RE,
+    declared_keys,
+)
 
 # Imported after the env setup above: document models extend MongoDocument,
 # pulling in app.config.settings which instantiates settings at import
@@ -310,29 +312,6 @@ _posthog_module.init_posthog()
 # Hermetic environment fence
 # ---------------------------------------------------------------------------
 
-# Any env var whose name matches these fragments could carry a real credential
-# from a developer's .env or shell. Blank them all at session start so lazy
-# providers, direct os.environ reads, and subprocesses never see a live key.
-_CREDENTIAL_ENV_RE = re.compile(r"(API_KEY|TOKEN|SECRET|_KEY|_SECRET)")
-
-# Keys the harness provisions with fake values at import time: test
-# fixtures, not developer secrets, backing code paths the suite exercises.
-# Blanking them would break the suite, not make it safer.
-_HERMETIC_ALLOWLIST = frozenset({"WORKOS_API_KEY", "MCP_ENCRYPTION_KEY", "AGENT_SECRET"})
-
-# Live-credential tiers declare the keys their tests need via
-# HERMETIC_ALLOW_KEYS (comma-separated) in their own conftest, before the
-# session fence runs; nothing survives the fence by accident, only by declaration.
-_HERMETIC_ALLOW_ENV = "HERMETIC_ALLOW_KEYS"
-
-
-def _hermetic_allowed_keys() -> frozenset[str]:
-    declared = {
-        key.strip() for key in os.environ.get(_HERMETIC_ALLOW_ENV, "").split(",") if key.strip()
-    }
-    return _HERMETIC_ALLOWLIST | declared
-
-
 # Keys that must be PRESENT (non-empty) but never real: three unit modules
 # construct (but never invoke) real ChatGoogleGenerativeAI clients whose
 # pydantic validation reads GOOGLE_API_KEY directly, so a fake satisfies it.
@@ -395,16 +374,15 @@ def _apply_tz() -> None:
 def _hermetic_environment() -> Iterator[None]:
     """Fence every test run from real-credential env vars.
 
-    Blanked keys are set to "" rather than popped: settings.py calls
-    load_dotenv(override=False) at import, which re-injects .env values for
-    keys absent from os.environ — an empty present key blocks that, so a
-    get_settings.cache_clear() reload (see _create_test_app) sees no secrets.
+    Blanked keys are set to "" rather than popped, so a get_settings.cache_clear()
+    reload (see _create_test_app) reads them as unset rather than from anywhere else.
     """
     snapshot = os.environ.copy()
-    allowed = _hermetic_allowed_keys()
+    allowed = declared_keys()
     try:
+        # Again, for a key a test module set at import; offline_env already fenced the rest.
         for key in list(os.environ):
-            if _CREDENTIAL_ENV_RE.search(key) and key not in allowed:
+            if CREDENTIAL_ENV_RE.search(key) and key not in allowed:
                 os.environ[key] = ""
         # After the blanking pass: fake keys must survive it (they match the
         # regex), and must be deterministic regardless of the developer's .env.

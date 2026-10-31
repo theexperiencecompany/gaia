@@ -8,7 +8,45 @@ so the environment has to be in place first.
 """
 
 import os
+from pathlib import Path
+import re
 from unittest.mock import patch
+
+from dotenv import dotenv_values
+
+# ---- The credential fence: before any app import, so the settings singleton never
+# binds a developer's key, from apps/api/.env or the shell. ----
+
+#: A name carrying any of these may hold a real credential.
+CREDENTIAL_ENV_RE = re.compile(r"(API_KEY|TOKEN|SECRET|_KEY|_SECRET)")
+#: The harness's own fake values, set below: fixtures, not developer secrets.
+HARNESS_KEYS = frozenset({"WORKOS_API_KEY", "MCP_ENCRYPTION_KEY", "AGENT_SECRET"})
+#: A live-credential run names the keys it needs here when it starts (comma-separated).
+ALLOW_KEYS_ENV = "HERMETIC_ALLOW_KEYS"
+_DOTENV = Path(__file__).resolve().parents[1] / ".env"
+
+
+def declared_keys() -> frozenset[str]:
+    """Return the keys this run may use: the harness's own and any its launch declared."""
+    declared = {k.strip() for k in os.environ.get(ALLOW_KEYS_ENV, "").split(",") if k.strip()}
+    return HARNESS_KEYS | declared
+
+
+def _fence_credentials() -> None:
+    declared = declared_keys()
+    # A declared key may come from apps/api/.env, which nothing else in a test run reads.
+    from_dotenv = dotenv_values(_DOTENV) if _DOTENV.is_file() else {}
+    for key in declared:
+        if not os.environ.get(key) and from_dotenv.get(key):
+            os.environ[key] = str(from_dotenv[key])
+    for key in list(os.environ):
+        if CREDENTIAL_ENV_RE.search(key) and key not in declared:
+            os.environ[key] = ""
+
+
+# Settings call load_dotenv() at import; this makes it a no-op for the whole run.
+os.environ["PYTHON_DOTENV_DISABLED"] = "1"
+_fence_credentials()
 
 os.environ["ENV"] = "development"
 # A dev .env's DEV_AUTH_BYPASS_EMAIL would short-circuit WorkOSAuthMiddleware here too.
