@@ -527,7 +527,7 @@ function ChatDemoWindow() {
           <div className="h-3 w-3 cursor-pointer rounded-full bg-zinc-700 transition-colors hover:bg-green-500" />
           <div className="flex justify-center flex-1">
             <a
-              className="ml-4 text-center text-[11px] text-zinc-500 hover:text-primary w-fit"
+              className="ml-4 w-fit py-1.5 text-center text-xs text-zinc-500 hover:text-primary"
               target="_blank"
               rel="noopener noreferrer"
               href={`https://${appConfig.site.domain}`}
@@ -614,7 +614,6 @@ function ChatDemoWindow() {
                               <Link href="/signup">
                                 <RaisedButton
                                   color={"#00bbff"}
-                                  className="text-black!"
                                   onClick={() => {
                                     track("cta:get_started_clicked", {
                                       location: "chat_demo",

@@ -15,19 +15,19 @@
     "export airtable records to sheets",
     "sync airtable records and sheets both ways"
   ],
-  "intro": "Airtable is where structured work lives: pipelines, inventories, content calendars, applicant trackers. But executives, clients, and finance teams live in Google Sheets. Today the bridge between them is a manual CSV export that is stale the moment it downloads, plus version chaos when five people annotate five different copies.\n\nGAIA keeps Airtable and Google Sheets in step without exports. New or changed records in Airtable appear as rows in the right sheet automatically, with columns mapped to your fields. Updates can flow the other way too: edits in Sheets write back to Airtable records, so the sheet becomes a safe editing surface for people who never open Airtable.\n\nReporting gets simpler as a side effect. Build pivot tables, charts, and dashboards in Sheets on data that refreshes itself, while Airtable stays the system of record with views, permissions, and linked records intact.",
+  "intro": "Airtable is where structured work lives: pipelines, inventories, content calendars, applicant trackers. But executives, clients, and finance teams live in Google Sheets. Today the bridge between them is a manual CSV export that is stale the moment it downloads, plus version chaos when five people annotate five different copies.\n\nGAIA keeps the base and the spreadsheet in step without exports. New or changed Airtable records appear as rows in the right sheet automatically, with columns mapped to your fields. Updates can flow the other way too: edits in the sheet write back to the matching records, so the sheet becomes a safe editing surface for people who never open the base.\n\nReporting gets simpler as a side effect. Build pivot tables, charts, and dashboards on data that refreshes itself, while the base stays the system of record with views, permissions, and linked records intact.",
   "useCases": [
     {
       "title": "Append new Airtable records as sheet rows",
-      "description": "When a record is created in Airtable, by form, automation, or teammate, GAIA appends it as a row in the mapped Google Sheet with fields in the right columns. Intake pipelines stay visible to sheet-only stakeholders."
+      "description": "When a record is created, by form, automation, or teammate, GAIA appends it as a row in the mapped sheet with fields in the right columns. Intake pipelines stay visible to sheet-only stakeholders."
     },
     {
       "title": "Sync record updates to existing rows",
-      "description": "When a status, owner, or date field changes in Airtable, GAIA updates the matching row instead of duplicating it. Sheets always reflect the current state of the base."
+      "description": "When a status, owner, or date field changes, GAIA updates the matching row instead of duplicating it. The sheet always reflects the current state of the base."
     },
     {
       "title": "Log form and intake responses for review",
-      "description": "Airtable form submissions land in a review sheet where teammates without Airtable seats can triage, comment, and approve. Approved rows write back to Airtable with one confirmation."
+      "description": "Form submissions land in a review sheet where teammates without Airtable seats can triage, comment, and approve. Approved rows write back to the base with one confirmation."
     },
     {
       "title": "Scheduled snapshots for reporting",
@@ -35,7 +35,7 @@
     },
     {
       "title": "Build live dashboards on synced data",
-      "description": "Point Sheets charts and pivot tables at the synced tab and they refresh as Airtable changes. Leadership gets dashboards without extra seats, logins, or stale exports."
+      "description": "Point spreadsheet charts and pivot tables at the synced tab and they refresh as the base changes. Leadership gets dashboards without extra seats, logins, or stale exports."
     }
   ],
   "howItWorks": [
@@ -45,7 +45,7 @@
     },
     {
       "step": "Map bases, views, and fields to sheets",
-      "description": "Choose which Airtable view syncs to which sheet tab and match fields to columns. GAIA writes linked records as readable names, not record IDs."
+      "description": "Choose which view syncs to which sheet tab and match fields to columns. GAIA writes linked records as readable names, not record IDs."
     },
     {
       "step": "GAIA syncs rows and records continuously",
@@ -55,22 +55,22 @@
   "faqs": [
     {
       "question": "How do I sync Airtable to Google Sheets automatically?",
-      "answer": "Connect both tools to GAIA, pick the Airtable view and the destination sheet tab, and map fields to columns once. New records append as rows and field changes update the matching row, with no further exports."
+      "answer": "Connect both tools to GAIA, pick the view and the destination sheet tab, and map fields to columns once. New records append as rows and field changes update the matching row, with no further exports."
     },
     {
       "question": "Does GAIA update existing rows or only add new ones?",
-      "answer": "Both. GAIA matches rows to Airtable records by a key field you choose, such as record ID or email. New records append new rows while changes to existing records update the matched row in place."
+      "answer": "Both. GAIA matches rows to records by a key field you choose, such as record ID or email. New records append new rows while changes to existing records update the matched row in place."
     },
     {
-      "question": "Can I sync only a filtered Airtable view instead of the whole base?",
-      "answer": "Yes. Point GAIA at a specific view and only records passing that view's filters sync to Sheets. Different views can feed different tabs for different audiences."
+      "question": "Can I sync only a filtered view instead of the whole base?",
+      "answer": "Yes. Point GAIA at a specific view and only records passing that view's filters sync to the spreadsheet. Different views can feed different tabs for different audiences."
     },
     {
-      "question": "Can edits in Google Sheets update Airtable records?",
-      "answer": "Yes. With sync in both directions enabled through triggers, edits to mapped columns write back to the matched Airtable record. You control which columns are editable so formula and rollup territory stays protected."
+      "question": "Can edits made in a sheet update the original records?",
+      "answer": "Yes. With sync in both directions enabled through triggers, edits to mapped columns write back to the matched record. You control which columns are editable so formula and rollup territory stays protected."
     },
     {
-      "question": "How do linked records and attachments appear in Sheets?",
+      "question": "How do linked records and attachments appear in the sheet?",
       "answer": "Linked records sync as readable names, not cryptic record IDs, and GAIA can include attachment URLs in a dedicated column. Rollups and formulas sync as their computed values at sync time."
     }
   ]

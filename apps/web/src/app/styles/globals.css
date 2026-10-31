@@ -1227,6 +1227,20 @@
   transform-origin: bottom;
 }
 
+/* Landing chat-demo controls draw at 20-36px like the real apps; an invisible 44px square keeps each a full-size tap target. */
+.chat-demo-tap {
+  position: relative;
+}
+.chat-demo-tap::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+}
+
 /* Landing bots-showcase typing-indicator dots */
 @keyframes chat-demo-typing {
   0%,
@@ -1246,7 +1260,7 @@
    otherwise the window can't be dragged from the top and double-clicking it
    won't zoom (macOS only treats `-webkit-app-region: drag` rectangles as the
    title bar). Applied to the header in the Electron+macOS shell only
-   (see (main)/layout.tsx). Interactive descendants opt back out so buttons,
+   (see components/layouts/MainLayoutShell.tsx). Interactive descendants opt back out so buttons,
    links and inputs stay clickable. */
 .electron-drag {
   -webkit-app-region: drag;

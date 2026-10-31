@@ -32,7 +32,7 @@ describe("best hub guide links", () => {
     }
   });
 
-  it("names each alternative guide by its tool, not a repeated phrase", () => {
+  it("names each alternative guide by its tool, and no two share a label", () => {
     const alternatives = ["Airtable", "Akiflow", "Any.do", "Asana"].map(
       (name) => ({ slug: name.toLowerCase(), name }),
     );
@@ -42,10 +42,12 @@ describe("best hub guide links", () => {
     const guideTexts = anchors(html)
       .filter(({ href }) => href.startsWith("/alternative-to/"))
       .map(({ text }) => text.toLowerCase());
-    const words = guideTexts.flatMap((text) => text.split(/\s+/));
-    const repeated = words.filter(
-      (word, index) => words.indexOf(word) !== index,
-    );
-    expect(repeated).toEqual([]);
+    // The bare tool name is already the text of the page body's link to the
+    // tool, so each guide carries "alternatives" to keep the two distinct for
+    // screen readers. What the label must never lose is the tool itself.
+    for (const { name } of alternatives) {
+      expect(guideTexts).toContain(`${name.toLowerCase()} alternatives`);
+    }
+    expect(new Set(guideTexts).size).toBe(guideTexts.length);
   });
 });

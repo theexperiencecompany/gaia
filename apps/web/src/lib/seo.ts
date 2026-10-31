@@ -26,8 +26,10 @@ import {
   ADVERTISED_PRO_MONTHLY,
   ADVERTISED_PRO_MONTHLY_PRICE,
 } from "@/features/pricing/advertisedPrice";
+import { localizePath } from "@/i18n/config";
 
 const SITE_URL = "https://heygaia.io";
+const GLOSSARY_PATH = "/learn";
 
 export function getSiteUrl(): string {
   return SITE_URL;
@@ -58,12 +60,14 @@ export const siteConfig = {
       role: "Founder & CEO",
       twitter: "https://twitter.com/aryanranderiya",
       linkedin: "https://www.linkedin.com/in/aryanranderiya/",
+      github: "https://github.com/aryanranderiya",
     },
     {
       name: "Dhruv Maradiya",
       role: "Founder & CTO",
       twitter: "https://twitter.com/dhruvmaradiya",
       linkedin: "https://www.linkedin.com/in/dhruvmaradiya/",
+      github: "https://github.com/dhruv-maradiya",
     },
   ],
 } as const;
@@ -84,17 +88,46 @@ export interface PersonProfile {
   readonly sameAs?: readonly (string | undefined)[];
 }
 
-/** A person with a stable @id on the about page, so the same author on several pages is one entity. */
-function generatePersonSchema({
-  name,
-  jobTitle,
-  url,
-  sameAs = [],
-}: PersonProfile): Person {
+function personSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .replaceAll(/[^a-z0-9]+/g, "-")
+    .replaceAll(/^-|-$/g, "");
+}
+
+/**
+ * The canonical profile for a known person. Every page names the founders, so
+ * the founder data is the single source: a blog byline cannot drift to a
+ * different `url` or `sameAs` set than the Organization's founders array.
+ */
+function canonicalPersonProfile(profile: PersonProfile): PersonProfile {
+  const slug = personSlug(profile.name);
+  const founder = siteConfig.founders.find(
+    (candidate) => personSlug(candidate.name) === slug,
+  );
+  if (founder) {
+    return {
+      name: founder.name,
+      jobTitle: founder.role,
+      url: founder.linkedin,
+      sameAs: [founder.twitter, founder.linkedin, founder.github],
+    };
+  }
+  return {
+    name: profile.name,
+    jobTitle: profile.jobTitle,
+    url: profile.url,
+    sameAs: profile.sameAs ?? [],
+  };
+}
+
+/** A person with a stable site-level @id, so the same author on several pages is one entity. */
+export function generatePersonSchema(profile: PersonProfile): Person {
+  const { name, jobTitle, url, sameAs = [] } = canonicalPersonProfile(profile);
   const profiles = sameAs.filter((link): link is string => Boolean(link));
   return {
     "@type": "Person",
-    "@id": `${SITE_URL}/about#${name.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-")}`,
+    "@id": `${SITE_URL}/#person-${personSlug(name)}`,
     name,
     ...(jobTitle && { jobTitle }),
     ...(url && { url }),
@@ -107,7 +140,7 @@ function founderSchema(founder: (typeof siteConfig.founders)[number]): Person {
     name: founder.name,
     jobTitle: founder.role,
     url: founder.linkedin,
-    sameAs: [founder.twitter, founder.linkedin],
+    sameAs: [founder.twitter, founder.linkedin, founder.github],
   });
 }
 
@@ -378,15 +411,19 @@ export function generateWebSiteSchema(): WithContext<WebSite> {
   };
 }
 
-/**
- * Generate WebPage structured data (JSON-LD)
- */
+/** When the content a page shows was published and last changed; the sitemap lastmod reads the same date. */
+export interface ContentDates {
+  readonly published: string;
+  readonly modified: string;
+}
+
+/** WebPage JSON-LD; dates only when the content has them, never the render time. */
 export function generateWebPageSchema(
   title: string,
   description: string,
   url: string,
   breadcrumbs?: Array<{ name: string; url: string }>,
-  publishedDate?: string,
+  dates?: ContentDates,
 ): WithContext<WebPage> {
   const schema: WithContext<WebPage> = {
     "@context": "https://schema.org",
@@ -395,8 +432,10 @@ export function generateWebPageSchema(
     description,
     url,
     author: organizationRef,
-    datePublished: publishedDate ?? "2025-01-01",
-    dateModified: new Date().toISOString().split("T")[0],
+    ...(dates && {
+      datePublished: dates.published,
+      dateModified: dates.modified,
+    }),
     isPartOf: websiteRef,
   };
 
@@ -618,24 +657,33 @@ export function generateAboutPageSchema(): WithContext<AboutPage> {
   };
 }
 
-/**
- * Generate DefinedTerm structured data for glossary entries (JSON-LD)
- */
-export function generateDefinedTermSchema(
-  term: string,
-  definition: string,
-  url: string,
-): WithContext<DefinedTerm> {
+/** A glossary term in one locale: each translation is its own entity, identified by its own page. */
+export function generateDefinedTermSchema({
+  term,
+  definition,
+  path,
+  locale,
+}: {
+  readonly term: string;
+  readonly definition: string;
+  readonly path: string;
+  readonly locale: string;
+}): WithContext<DefinedTerm> {
+  const url = `${SITE_URL}${localizePath(path, locale)}`;
+  const glossaryUrl = `${SITE_URL}${localizePath(GLOSSARY_PATH, locale)}`;
   return {
     "@context": "https://schema.org",
     "@type": "DefinedTerm",
+    "@id": `${url}#term`,
     name: term,
     description: definition,
     url,
     inDefinedTermSet: {
       "@type": "DefinedTermSet",
+      "@id": `${glossaryUrl}#glossary`,
       name: "GAIA AI Glossary",
-      url: `${siteConfig.url}/learn`,
+      url: glossaryUrl,
+      inLanguage: locale,
     },
   };
 }

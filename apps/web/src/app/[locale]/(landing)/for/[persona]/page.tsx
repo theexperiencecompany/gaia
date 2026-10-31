@@ -5,6 +5,7 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import type { ComponentType } from "react";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
+import { PageBreadcrumbs } from "@/components/seo/PageBreadcrumbs";
 import { RelatedComparisonsGrid } from "@/components/seo/RelatedComparisonsGrid";
 import { SiteLink } from "@/components/seo/SiteLink";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
@@ -436,20 +437,14 @@ export default async function PersonaPage({ params }: PageProps) {
       />
 
       <article className="mx-auto max-w-4xl px-6 pt-36 pb-24">
-        {/* Breadcrumb */}
-        <nav className="mb-8 text-sm text-zinc-500">
-          <SiteLink href="/" className="hover:text-zinc-300">
-            {t("common.home")}
-          </SiteLink>
-          <span className="mx-2">/</span>
-          <SiteLink href="/for" className="hover:text-zinc-300">
-            {t("personas.breadcrumb")}
-          </SiteLink>
-          <span className="mx-2">/</span>
-          <span className="text-zinc-300">
-            {t("personas.ai_assistant_for", { role: data.role })}
-          </span>
-        </nav>
+        <PageBreadcrumbs
+          className="mb-8"
+          items={[
+            { label: t("common.home"), href: "/" },
+            { label: t("personas.breadcrumb"), href: "/for" },
+            { label: t("personas.ai_assistant_for", { role: data.role }) },
+          ]}
+        />
 
         {/* Hero */}
         <header className="mb-16">

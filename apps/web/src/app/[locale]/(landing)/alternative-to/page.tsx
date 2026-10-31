@@ -64,11 +64,9 @@ const CATEGORY_ORDER: AlternativeData["category"][] = [
 
 function AlternativeCard({
   alt,
-  title,
   fitLabel,
 }: {
   readonly alt: AlternativeData;
-  readonly title: string;
   readonly fitLabel: string;
 }) {
   return (
@@ -102,19 +100,21 @@ function AlternativeCard({
         </div>
       </div>
       <h3 className="text-lg font-medium text-white transition-colors group-hover:text-primary">
-        {title}
+        {alt.name}
       </h3>
       <p className="text-sm text-zinc-500">{alt.tagline}</p>
-      <div className="mt-auto flex items-center gap-1.5 pt-2">
+      <div
+        className="mt-auto flex items-center gap-1.5 pt-2"
+        role="img"
+        aria-label={`${fitLabel}: ${alt.gaiaFitScore}/5`}
+      >
         {[0, 1, 2, 3, 4].map((i) => (
           <span
             key={`pip-${i}`}
             className={`inline-block h-2 w-2 rounded-full ${i < alt.gaiaFitScore ? "bg-emerald-400" : "bg-zinc-700"}`}
           />
         ))}
-        <span className="ml-1 text-xs text-zinc-500">
-          {alt.gaiaFitScore}/5 {fitLabel}
-        </span>
+        <span className="ml-1 text-xs text-zinc-500">{alt.gaiaFitScore}/5</span>
       </div>
     </SiteLink>
   );
@@ -188,7 +188,6 @@ export default async function AlternativesHubPage({ params }: PageProps) {
                     <AlternativeCard
                       key={alt.slug}
                       alt={alt}
-                      title={t("best_name_alternative", { name: alt.name })}
                       fitLabel={t("fit_score")}
                     />
                   ))}

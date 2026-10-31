@@ -15,41 +15,41 @@
     "link Figma files to tasks",
     "connect Todoist and Figma"
   ],
-  "intro": "Design work lives in Figma — components, prototypes, and iterations accumulate across files and projects. But the feedback, revisions, and handoff tasks that design work generates need to be tracked somewhere more structured than Figma comments, which get buried as the file evolves. Designers often end up with a long list of revision requests scattered across Figma comment threads that are difficult to prioritize and even harder to mark as complete.\n\nGAIA connects Figma and Todoist so design feedback becomes actionable tasks and tracked work stays linked to the files it relates to. When a stakeholder leaves a comment on a Figma file, GAIA can capture it as a Todoist task assigned to the designer responsible for that component. When a Todoist task is linked to a Figma frame, GAIA surfaces the file link in the task so designers can jump directly to the relevant canvas without hunting through projects.\n\nThis integration is valuable for product designers managing feedback from multiple stakeholders across several files, for design teams using Todoist to coordinate shared work, and for design leads who want visibility into revision backlogs without subscribing to Figma comment notifications that overwhelm the inbox.",
+  "intro": "Design work lives in Figma — components, prototypes, and iterations accumulate across files and projects. But the feedback, revisions, and handoff tasks that design work generates need to be tracked somewhere more structured than file comments, which get buried as the file evolves. Designers often end up with a long list of revision requests scattered across comment threads that are difficult to prioritize and even harder to mark as complete.\n\nGAIA connects the two so design feedback becomes actionable tasks and tracked work stays linked to the files it relates to. When a stakeholder leaves a comment on a Figma file, GAIA can capture it as a Todoist task assigned to the designer responsible for that component. When a task is linked to a frame, GAIA surfaces the file link in the task so designers can jump directly to the relevant canvas without hunting through projects.\n\nThis integration is valuable for product designers managing feedback from multiple stakeholders across several files, for design teams using Todoist to coordinate shared work, and for design leads who want visibility into revision backlogs without subscribing to comment notifications that overwhelm the inbox.",
   "useCases": [
     {
       "title": "Convert Figma comments to Todoist tasks",
-      "description": "When a stakeholder leaves a revision comment on a Figma file, GAIA creates a Todoist task with the comment text, the file and frame link, and the commenter name so nothing slips through."
+      "description": "When a stakeholder leaves a revision comment on a file, GAIA creates a task with the comment text, the file and frame link, and the commenter name so nothing slips through."
     },
     {
       "title": "Link Figma frames to Todoist design tasks",
-      "description": "GAIA attaches the relevant Figma frame URL to Todoist design tasks so designers can open the exact frame that needs work with one click rather than navigating through the file."
+      "description": "GAIA attaches the relevant frame URL to design tasks so designers can open the exact frame that needs work with one click rather than navigating through the file."
     },
     {
       "title": "Design handoff checklist",
-      "description": "When a Figma file is marked ready for development, GAIA creates a handoff checklist in Todoist, export assets, update component documentation, notify the engineering team, so handoffs are consistent."
+      "description": "When a file is marked ready for development, GAIA creates a handoff checklist, export assets, update component documentation, notify the engineering team, so handoffs are consistent."
     },
     {
       "title": "Revision round tracking",
-      "description": "GAIA tracks open Figma comments and their linked Todoist tasks, alerting the designer when revision tasks are overdue so feedback does not age unaddressed."
+      "description": "GAIA tracks open comments and their linked tasks, alerting the designer when revision tasks are overdue so feedback does not age unaddressed."
     },
     {
       "title": "Component audit task generation",
-      "description": "When a Figma library component is updated, GAIA creates Todoist tasks to review screens that use the component, ensuring all affected designs are updated as part of the library change."
+      "description": "When a library component is updated, GAIA creates tasks to review screens that use the component, ensuring all affected designs are updated as part of the library change."
     }
   ],
   "howItWorks": [
     {
       "step": "Connect Todoist and Figma to GAIA",
-      "description": "Authenticate your Todoist account and your Figma account in GAIA's settings. Select the Figma projects and files you want GAIA to monitor for comments and changes."
+      "description": "Authenticate both accounts in GAIA's settings. Select the Figma projects and files you want GAIA to monitor for comments and changes."
     },
     {
       "step": "Configure comment and task rules",
-      "description": "Specify which comment types should create Todoist tasks, which Todoist project receives design tasks, and whether all comments or only those with specific tags trigger task creation."
+      "description": "Specify which comment types should create tasks, which project receives design tasks, and whether all comments or only those with specific tags trigger task creation."
     },
     {
       "step": "GAIA bridges design feedback and task management",
-      "description": "GAIA monitors Figma for new comments and task-relevant activity, creates Todoist tasks automatically, and maintains the link between tasks and frames throughout the revision cycle."
+      "description": "GAIA monitors for new comments and task-relevant activity, creates tasks automatically, and maintains the link between tasks and frames throughout the revision cycle."
     }
   ],
   "faqs": [
@@ -58,16 +58,16 @@
       "answer": "You can configure GAIA to capture all comments or only those that meet criteria such as containing specific tags, being left by certain people, or being unresolved after a set time."
     },
     {
-      "question": "Can GAIA resolve the Figma comment when the Todoist task is completed?",
-      "answer": "Yes. When you mark the linked Todoist task complete, GAIA can automatically resolve the corresponding Figma comment so your comment thread stays clean."
+      "question": "Can GAIA resolve the comment when the Todoist task is completed?",
+      "answer": "Yes. When you mark the linked task complete, GAIA can automatically resolve the corresponding comment so your comment thread stays clean."
     },
     {
-      "question": "Does GAIA work with Figma's branching feature?",
+      "question": "Does GAIA work with the branching feature?",
       "answer": "GAIA monitors both main files and branches. Tasks created from branch comments are linked to the branch frame URL and tagged to distinguish them from main file tasks."
     },
     {
       "question": "Can multiple designers on a team use this integration?",
-      "answer": "Yes. Each designer connects their own accounts and GAIA routes Figma comment tasks to the designer assigned to the relevant frame or component."
+      "answer": "Yes. Each designer connects their own accounts and GAIA routes comment tasks to the designer assigned to the relevant frame or component."
     }
   ]
 }

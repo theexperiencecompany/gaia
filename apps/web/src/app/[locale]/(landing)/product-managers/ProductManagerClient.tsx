@@ -26,7 +26,7 @@ const SlackIcon = () => (
     src="/images/icons/slack.svg"
     width={14}
     height={14}
-    alt="Slack"
+    alt=""
     className="opacity-70"
   />
 );
@@ -85,7 +85,7 @@ export default function ProductManagerClient() {
           <GetStartedButton
             text="See it in action"
             btnColor="#000000"
-            classname="text-white! text-base h-12 rounded-2xl"
+            classname="text-base h-12 rounded-2xl"
           />
         </m.div>
       </section>

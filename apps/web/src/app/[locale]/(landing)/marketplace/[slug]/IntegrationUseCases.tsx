@@ -8,7 +8,6 @@ interface IntegrationUseCasesProps {
 }
 
 export function IntegrationUseCases({ integration }: IntegrationUseCasesProps) {
-  const { name } = integration;
   const useCases = integration.content?.useCases ?? [];
   if (useCases.length === 0) return null;
 
@@ -16,12 +15,12 @@ export function IntegrationUseCases({ integration }: IntegrationUseCasesProps) {
     <section className="rounded-3xl bg-zinc-900/50 backdrop-blur-md p-8 space-y-6">
       <div>
         <h2 className="text-2xl font-medium text-foreground mb-2">
-          What you can do with GAIA + {name}
+          What you can do with GAIA
         </h2>
         <p className="text-zinc-400 text-sm leading-relaxed">
-          GAIA connects to {name} via MCP (Model Context Protocol) and exposes
-          every action as a natural-language command. Tell GAIA what you want
-          and it handles the rest, automatically.
+          GAIA connects to it via MCP (Model Context Protocol) and exposes every
+          action as a natural-language command. Tell GAIA what you want and it
+          handles the rest, automatically.
         </p>
       </div>
       <ul className="space-y-3">

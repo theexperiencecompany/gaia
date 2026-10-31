@@ -1,4 +1,4 @@
-"""Contract tests for SupportRequestsRepository (user-scoped, string UUID _id)."""
+"""Contract tests for SupportRequestsRepository (global, string UUID _id, user-filtered listings)."""
 
 from __future__ import annotations
 
@@ -45,20 +45,23 @@ class TestSupportRequestsRepository:
         assert created.id == rid  # caller-minted UUID is the _id, not an ObjectId
         assert created.updated_at is not None  # base stamps updated_at on insert
 
-        fetched = await repo.get(rid, user_id="u")
+        fetched = await repo.get(rid)
         assert fetched is not None and fetched.ticket_id == created.ticket_id
 
-    async def test_get_is_user_scoped(self, repo):
-        rid = uuid.uuid4().hex
-        await repo.create(_req(id=rid, user_id="owner"))
-        assert await repo.get(rid, user_id="intruder") is None
-
-    async def test_delete_rolls_back_and_is_scoped(self, repo):
+    async def test_delete_rolls_back(self, repo):
         rid = uuid.uuid4().hex
         await repo.create(_req(id=rid, user_id="u"))
-        assert await repo.delete(rid, user_id="other") is False  # scope guards delete
-        assert await repo.delete(rid, user_id="u") is True
-        assert await repo.get(rid, user_id="u") is None
+        assert await repo.delete(rid) is True
+        assert await repo.get(rid) is None
+        assert await repo.delete(rid) is False
+
+    async def test_a_visitor_ticket_has_no_user_and_is_in_no_users_listing(self, repo):
+        rid = uuid.uuid4().hex
+        await repo.create(_req(id=rid, user_id=None, user_email="visitor@example.com"))
+
+        fetched = await repo.get(rid)
+        assert fetched is not None and fetched.user_id is None
+        assert await repo.page_for_user("u", skip=0, limit=10) == []
 
     async def test_page_newest_first_and_status_filter(self, repo):
         await repo.create(_req(user_id="u", created_at=datetime(2026, 1, 1, tzinfo=UTC)))

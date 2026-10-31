@@ -74,7 +74,7 @@ export function SidebarPromo({
       )}
 
       <RaisedButton
-        className={`w-full rounded-xl! text-black! ${isCollapsed ? "" : "mt-2"}`}
+        className={`w-full rounded-xl! ${isCollapsed ? "" : "mt-2"}`}
         color="#00bbff"
         size={"sm"}
         onClick={onUpgrade}

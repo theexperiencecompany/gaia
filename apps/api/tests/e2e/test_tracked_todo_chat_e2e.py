@@ -45,6 +45,7 @@ from app.agents.core.graph_manager import GraphManager
 from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
+from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.memory import ReconcileOutcome
 from app.constants.todos import (
     GAIA_TRACKED_LABEL,
@@ -844,7 +845,8 @@ class TestAnApprovalTheRunWaitsOnStaysInTheTodosChat:
         assert [m["response"] for m in chat["messages"]] == [
             WAITING,
             NARRATED,
-            f"{RESUMED}{NOTHING_PENDING}",
+            # Two model messages, so two bubbles (HeldReplies, app/agents/core/held_replies.py).
+            f"{RESUMED}{NEW_MESSAGE_BREAKER}{NOTHING_PENDING}",
         ]
         assert "approve" in _card_tool_names(chat["messages"][1])
         # Every leg continued the parked execution: no reset dropped its thread.

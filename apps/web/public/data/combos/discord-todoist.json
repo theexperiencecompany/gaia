@@ -14,29 +14,29 @@
     "discord todoist workflow",
     "gaia discord todoist"
   ],
-  "intro": "Action items surface constantly in Discord conversations — a feature request in the feedback channel, a bug flagged in support, a task someone volunteers for in a thread. Without a way to capture these, they get buried under new messages and forgotten.\n\nGAIA lets anyone on your Discord server create a Todoist task with a simple command or reaction. Tasks are added to the right project with assignee and due date already set, so nothing falls through the cracks and Todoist stays the single source of truth for what needs to get done.",
+  "intro": "Action items surface constantly in Discord conversations — a feature request in the feedback channel, a bug flagged in support, a task someone volunteers for in a thread. Without a way to capture these, they get buried under new messages and forgotten.\n\nGAIA lets anyone on your server create a Todoist task with a simple command or reaction. Tasks are added to the right project with assignee and due date already set, so nothing falls through the cracks and Todoist stays the single source of truth for what needs to get done.",
   "useCases": [
     {
       "title": "Capture action items from Discord with a reaction",
-      "description": "When a team member reacts to a Discord message with a designated emoji, GAIA creates a Todoist task from that message. The task includes a link back to the Discord message for full context."
+      "description": "When a team member reacts to a message with a designated emoji, GAIA creates a task from it. The task includes a link back to the original message for full context."
     },
     {
-      "title": "Create tasks via Discord slash command",
-      "description": "Team members type a GAIA command in any Discord channel to create a Todoist task on the spot. They can specify the project, due date, and assignee without ever leaving Discord."
+      "title": "Create tasks via slash command",
+      "description": "Team members type a GAIA command in any channel to create a task on the spot. They can specify the project, due date, and assignee without ever leaving Discord."
     },
     {
       "title": "Route channel-specific messages to Todoist projects",
-      "description": "Messages in your Discord bug-report or feature-request channels are automatically converted into Todoist tasks in the corresponding project. Triage happens without manual data entry."
+      "description": "Messages in your bug-report or feature-request channels are automatically converted into tasks in the corresponding project. Triage happens without manual data entry."
     },
     {
       "title": "Post Todoist task completions back to Discord",
-      "description": "When a Todoist task is completed, GAIA posts a brief update to the originating Discord channel. The team sees progress in context without checking Todoist separately."
+      "description": "When a task is completed, GAIA posts a brief update to the originating channel. The team sees progress in context without checking the task list separately."
     }
   ],
   "howItWorks": [
     {
       "step": "Connect Discord and Todoist to GAIA",
-      "description": "Authorize GAIA with your Discord server and your Todoist account. Map Discord channels to Todoist projects so tasks land in the right place."
+      "description": "Authorize GAIA with your Discord server and your Todoist account. Map channels to projects so tasks land in the right place."
     },
     {
       "step": "Choose capture triggers",
@@ -44,17 +44,17 @@
     },
     {
       "step": "GAIA captures and tracks tasks automatically",
-      "description": "GAIA monitors Discord for your configured triggers and creates Todoist tasks automatically. Completions flow back to Discord so the whole team stays informed."
+      "description": "GAIA monitors for your configured triggers and creates tasks automatically. Completions flow back to the originating channel so the whole team stays informed."
     }
   ],
   "faqs": [
     {
       "question": "Do Discord members need a Todoist account to create tasks?",
-      "answer": "No. Discord members trigger task creation through GAIA's Discord bot. Only the GAIA account connected to Todoist needs a valid Todoist login."
+      "answer": "No. Members trigger task creation through GAIA's bot. Only the connected GAIA account needs a valid login for the task app."
     },
     {
-      "question": "Can I assign tasks to specific Todoist projects based on the Discord channel?",
-      "answer": "Yes. GAIA's channel-to-project mapping lets you route tasks from different Discord channels into separate Todoist projects automatically. You configure the mapping once in GAIA's settings."
+      "question": "Can I assign tasks to specific projects based on the channel?",
+      "answer": "Yes. GAIA's channel-to-project mapping lets you route tasks from different channels into separate projects automatically. You configure the mapping once in GAIA's settings."
     },
     {
       "question": "Will GAIA create duplicate tasks if the same message is reacted to twice?",

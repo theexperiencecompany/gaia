@@ -7,6 +7,7 @@ import FAQAccordion from "@/components/seo/FAQAccordion";
 import SectionHeader from "@/features/landing/components/demo/founders-demo/SectionHeader";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import PersonaSEOSection from "@/features/landing/components/sections/PersonaSEOSection";
+import NumberedSteps from "@/features/landing/components/shared/NumberedSteps";
 import { OPEN_SOURCE_FAQS, SELF_HOST_STEPS } from "./openSourceContent";
 
 const HOSTED_ASSISTANTS = [
@@ -286,25 +287,19 @@ export default function OpenSourceAIClient() {
           integrations={[{ id: "github", label: "GitHub" }]}
         />
         <div className="w-full max-w-3xl">
-          <ol className="space-y-4 text-left">
-            {SELF_HOST_STEPS.map((step, index) => (
-              <li
-                key={step.name}
-                className="flex items-start gap-4 rounded-2xl bg-zinc-800/60 p-5"
-              >
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-400/10 text-sm font-semibold text-emerald-400">
-                  {index + 1}
-                </span>
-                <div>
-                  <p className="mb-1 font-semibold text-white">{step.name}</p>
-                  <p className="text-sm leading-relaxed text-zinc-400">
-                    {step.text}
-                  </p>
-                </div>
-              </li>
-            ))}
-          </ol>
-          <div className="mt-6 flex items-center gap-4">
+          <NumberedSteps
+            steps={SELF_HOST_STEPS.map((step) => ({
+              name: step.name,
+              body: step.text,
+            }))}
+          />
+          <div className="mt-6 flex flex-wrap items-center gap-4">
+            <Link
+              href="/cli"
+              className="inline-flex items-center gap-2 rounded-2xl bg-zinc-800 px-5 py-3 text-sm font-medium text-white transition hover:bg-zinc-700"
+            >
+              Install guide
+            </Link>
             <Link
               href="https://github.com/theexperiencecompany/gaia"
               className="inline-flex items-center gap-2 rounded-2xl bg-zinc-800 px-5 py-3 text-sm font-medium text-white transition hover:bg-zinc-700"

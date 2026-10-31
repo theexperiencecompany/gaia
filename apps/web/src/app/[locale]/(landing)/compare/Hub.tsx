@@ -1,0 +1,163 @@
+import Image from "next/image";
+import { getTranslations, setRequestLocale } from "next-intl/server";
+import { HubPagination } from "@/components/seo/HubPagination";
+import JsonLd from "@/components/seo/JsonLd";
+import { SiteLink } from "@/components/seo/SiteLink";
+import {
+  CATEGORY_ORDER,
+  COMPARISON_CATEGORIES,
+} from "@/features/comparisons/data/categories";
+import { getTranslatedComparisons } from "@/features/comparisons/data/getTranslatedComparison";
+import FinalSection from "@/features/landing/components/sections/FinalSection";
+import { hubPageCount, hubPageSlice } from "@/lib/hubPagination";
+import {
+  generateBreadcrumbSchema,
+  generateItemListSchema,
+  generateWebPageSchema,
+  siteConfig,
+} from "@/lib/seo";
+
+interface ComparisonsHubProps {
+  readonly locale: string;
+  readonly page: number;
+}
+
+export async function ComparisonsHub({ locale, page }: ComparisonsHubProps) {
+  setRequestLocale(locale);
+  const [t, comparisons] = await Promise.all([
+    getTranslations({ locale, namespace: "comparisons" }),
+    getTranslatedComparisons(locale),
+  ]);
+
+  const webPageSchema = generateWebPageSchema(
+    t("hub_title"),
+    t("hub_subtitle"),
+    `${siteConfig.url}/compare`,
+    [
+      { name: "Home", url: siteConfig.url },
+      { name: t("breadcrumb"), url: `${siteConfig.url}/compare` },
+    ],
+  );
+
+  const breadcrumbSchema = generateBreadcrumbSchema([
+    { name: "Home", url: siteConfig.url },
+    { name: t("breadcrumb"), url: `${siteConfig.url}/compare` },
+  ]);
+
+  const itemListSchema = generateItemListSchema(
+    comparisons.map((c) => ({
+      name: `${t("gaia_vs", { name: c.name })}`,
+      url: `${siteConfig.url}/compare/${c.slug}`,
+    })),
+  );
+
+  // Group comparisons by category, in the hub's usual order, then page through
+  // that order: each page is a contiguous chunk of the list the hub has always
+  // shown instead of a slice scattered across categories.
+  const byCategory: Record<string, typeof comparisons> = {};
+  for (const comparison of comparisons) {
+    const category = COMPARISON_CATEGORIES[comparison.slug] ?? "Other";
+    if (!byCategory[category]) {
+      byCategory[category] = [];
+    }
+    byCategory[category].push(comparison);
+  }
+
+  const allCategories = [
+    ...CATEGORY_ORDER.filter((cat) => byCategory[cat]),
+    ...(byCategory.Other ? ["Other"] : []),
+  ];
+  const orderedComparisons = allCategories.flatMap((cat) => byCategory[cat]);
+
+  // Only the current page's comparisons are serialized: the full list is paged
+  // so neither the HTML nor the RSC flight payload carries every card.
+  const totalPages = hubPageCount(orderedComparisons.length);
+  const currentPage = Math.min(Math.max(page, 1), totalPages);
+  const pageComparisons = hubPageSlice(orderedComparisons, currentPage);
+
+  const grouped: Record<string, typeof comparisons> = {};
+  for (const comparison of pageComparisons) {
+    const category = COMPARISON_CATEGORIES[comparison.slug] ?? "Other";
+    if (!grouped[category]) {
+      grouped[category] = [];
+    }
+    grouped[category].push(comparison);
+  }
+
+  const orderedCategories = allCategories.filter((cat) => grouped[cat]);
+
+  return (
+    <>
+      <JsonLd data={[webPageSchema, breadcrumbSchema, itemListSchema]} />
+
+      <div className="mx-auto max-w-5xl px-6 pt-36 pb-24">
+        <header className="mb-16 text-center">
+          <h1 className="mb-4 font-serif text-5xl font-normal text-white md:text-6xl">
+            {t("hub_title")}
+          </h1>
+          <p className="mx-auto max-w-2xl text-xl text-zinc-400">
+            {t("hub_subtitle")}
+          </p>
+        </header>
+
+        {orderedCategories.map((category) => (
+          <div key={category} className="mb-14">
+            <h2 className="mb-6 border-b border-zinc-700 pb-3 text-xl font-semibold text-zinc-300">
+              {category}
+            </h2>
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {grouped[category].map((comparison) => (
+                <SiteLink
+                  key={comparison.slug}
+                  href={`/compare/${comparison.slug}`}
+                  className="group flex flex-col gap-3 rounded-3xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
+                >
+                  <div className="flex items-center -space-x-2">
+                    <div
+                      className="relative flex h-9 w-9 items-center justify-center p-0"
+                      style={{ rotate: "-9deg", zIndex: 1 }}
+                    >
+                      <Image
+                        src="/images/logos/macos.webp"
+                        alt="GAIA"
+                        width={50}
+                        height={50}
+                      />
+                    </div>
+                    <div
+                      className="relative flex h-8 w-8 items-center justify-center rounded-md overflow-hidden p-0"
+                      style={{ rotate: "9deg", zIndex: 0 }}
+                    >
+                      <Image
+                        src={`https://www.google.com/s2/favicons?domain=${comparison.domain}&sz=128`}
+                        alt={comparison.name}
+                        width={40}
+                        height={40}
+                        unoptimized
+                      />
+                    </div>
+                  </div>
+                  <h3 className="text-lg font-medium text-white transition-colors group-hover:text-primary">
+                    {t("gaia_vs", { name: comparison.name })}
+                  </h3>
+                  <p className="text-sm text-zinc-500">{comparison.tagline}</p>
+                  <p className="line-clamp-2 text-sm leading-relaxed text-zinc-400">
+                    {comparison.description}
+                  </p>
+                </SiteLink>
+              ))}
+            </div>
+          </div>
+        ))}
+
+        <HubPagination
+          pathname="/compare"
+          page={currentPage}
+          totalPages={totalPages}
+        />
+      </div>
+
+      <FinalSection />
+    </>
+  );
+}

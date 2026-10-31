@@ -2037,7 +2037,7 @@ class TestHoldSilentChunk:
 
         _hold_silent_chunk((HumanMessage(content="typed by the user", id="h1"), {}), True, acc)
 
-        assert acc.message_texts == {}
+        assert acc.held.texts == {}
 
     def test_an_ai_chunk_is_held_under_its_message_id(self):
         acc = _SilentAccumulators()
@@ -2045,7 +2045,7 @@ class TestHoldSilentChunk:
         _hold_silent_chunk((AIMessageChunk(content="half ", id="m1"), {}), True, acc)
         _hold_silent_chunk((AIMessageChunk(content="a reply", id="m1"), {}), True, acc)
 
-        assert acc.message_texts == {"m1": "half a reply"}
+        assert acc.held.texts == {"m1": "half a reply"}
 
     def test_a_chunk_marked_silent_is_dropped(self):
         """Follow-up-action generation rides the same stream and must never land in the user-visible reply."""
@@ -2055,7 +2055,7 @@ class TestHoldSilentChunk:
             (AIMessageChunk(content="internal", id="m1"), {"silent": True}), True, acc
         )
 
-        assert acc.message_texts == {}
+        assert acc.held.texts == {}
 
 
 # ---------------------------------------------------------------------------

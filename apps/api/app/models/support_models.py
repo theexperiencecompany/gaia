@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-from app.db.repositories.base import UserScopedDocument
+from app.db.repositories.base import MongoDocument
 
 
 class SupportRequestType(str, Enum):
@@ -14,6 +14,14 @@ class SupportRequestType(str, Enum):
 
     SUPPORT = "support"
     FEATURE = "feature"
+
+
+class SupportRequestSource(str, Enum):
+    """Which form a support request came in through, stored in its metadata."""
+
+    WEB_FORM = "web_form"
+    WEB_FORM_WITH_IMAGES = "web_form_with_images"
+    PUBLIC_CONTACT_FORM = "public_contact_form"
 
 
 class SupportRequestStatus(str, Enum):
@@ -57,12 +65,26 @@ class SupportRequestCreate(BaseModel):
     )
 
 
+class PublicSupportRequestCreate(SupportRequestCreate):
+    """A contact-form request that may come from a visitor with no GAIA session."""
+
+    email: EmailStr | None = Field(
+        None, description="Where to reply; required unless the caller is signed in with an email"
+    )
+    name: str | None = Field(None, max_length=100, description="Optional name to address")
+    turnstile_token: str = Field(
+        ..., min_length=1, max_length=2048, description="Cloudflare Turnstile response token"
+    )
+
+
 class SupportRequestResponse(BaseModel):
     """Response model for support requests."""
 
     id: str = Field(..., description="Unique identifier for the support request")
     ticket_id: str = Field(..., description="Human-readable ticket ID")
-    user_id: str = Field(..., description="ID of the user who created the request")
+    user_id: str | None = Field(
+        ..., description="ID of the user who created the request; null for a visitor"
+    )
     user_email: str = Field(..., description="Email of the user who created the request")
     user_name: str | None = Field(None, description="Name of the user who created the request")
     type: SupportRequestType = Field(..., description="Type of request")
@@ -146,13 +168,16 @@ class SupportEmailNotification(BaseModel):
     attachments: list[SupportAttachment] = []
 
 
-class SupportRequestDocument(UserScopedDocument):
+class SupportRequestDocument(MongoDocument):
     """A support request as stored in the ``support_requests`` collection.
 
-    User-scoped; ``id`` is a caller-minted UUID stored as the Mongo ``_id``
-    (string, not ObjectId). ``updated_at`` is stamped by the base on every write.
+    ``id`` is a caller-minted UUID stored as the Mongo ``_id`` (string, not
+    ObjectId). ``user_id`` is None for a visitor who wrote in without an account.
+    ``updated_at`` is stamped by the base on every write.
     """
 
+    # Defaulted: the base drops None fields on insert, so a visitor's row has no user_id key.
+    user_id: str | None = None
     ticket_id: str
     user_email: str
     user_name: str | None = None

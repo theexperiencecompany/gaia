@@ -1,5 +1,8 @@
 """Agent-specific integration test fixtures."""
 
+import asyncio
+import importlib
+import os
 from typing import Any
 from unittest.mock import patch
 from uuid import uuid4
@@ -159,3 +162,33 @@ def real_agent_config() -> dict:
 def fake_llm() -> FakeMessagesListChatModel:
     """Build a FakeMessagesListChatModel pre-loaded with a single plain-text response."""
     return create_fake_llm(["Fake response"])
+
+
+#: Loop the cached Mongo client was built on.
+_mongo_client_loop: asyncio.AbstractEventLoop | None = None
+
+
+@pytest.fixture(autouse=True)
+async def _mongo_client_follows_the_test_loop() -> None:
+    """Rebuild the process-wide Mongo and Redis clients when the loop changes.
+
+    Only this tier: tests that boot a stack in-process keep theirs for the module.
+    """
+    # Hermetic runs are fenced, not loop-bound: the Mongo accessor is a MagicMock and
+    # Redis is an in-process fake, so there is nothing stale to replace and nothing to
+    # pull out from under the fence.
+    if os.environ.get("USE_REAL_SERVICES", "0") != "1":
+        return
+    global _mongo_client_loop
+    loop = asyncio.get_running_loop()
+    if _mongo_client_loop is loop:
+        return
+    mongo_collections = importlib.import_module("app.db.mongodb.collections")
+    mongo_module = importlib.import_module("app.db.mongodb.mongodb")
+    # init_mongodb is lru_cached: without clearing it the "new" instance is the old client.
+    mongo_module.init_mongodb.cache_clear()
+    mongo_collections._mongodb_instance = None
+    mongo_collections._collections_cache.clear()
+    redis_module = importlib.import_module("app.db.redis")
+    redis_module.redis_cache.redis = None
+    _mongo_client_loop = loop

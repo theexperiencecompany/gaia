@@ -9,32 +9,33 @@ import {
   TwitterIcon,
   WhatsappIcon,
 } from "@/components/shared/icons";
+import { siteConfig } from "@/lib/seo";
 
 import GetStartedButton from "../shared/GetStartedButton";
 import { TextSoftBlurIn } from "../shared/TextSoftBlurIn";
 
 const SOCIAL_LINKS = [
   {
-    href: "https://twitter.com/trygaia",
-    ariaLabel: "Twitter",
+    href: siteConfig.links.twitter,
+    ariaLabel: "GAIA on X",
     icon: <TwitterIcon width={20} height={20} aria-hidden="true" />,
     label: "Twitter",
   },
   {
-    href: "https://whatsapp.heygaia.io",
-    ariaLabel: "WhatsApp",
+    href: siteConfig.links.whatsapp,
+    ariaLabel: "GAIA on WhatsApp",
     icon: <WhatsappIcon width={20} height={20} aria-hidden="true" />,
     label: "WhatsApp",
   },
   {
-    href: "https://discord.heygaia.io",
-    ariaLabel: "Discord",
+    href: siteConfig.links.discord,
+    ariaLabel: "GAIA on Discord",
     icon: <DiscordIcon width={20} height={20} aria-hidden="true" />,
     label: "Discord",
   },
   {
-    href: "https://github.com/theexperiencecompany/gaia",
-    ariaLabel: "GitHub",
+    href: siteConfig.links.repo,
+    ariaLabel: "GAIA on GitHub",
     icon: <Github width={20} height={20} aria-hidden="true" />,
     label: "GitHub",
   },
@@ -51,9 +52,10 @@ export default function FinalSection({
         <Image
           src="/images/wallpapers/creation_of_adam.png"
           alt=""
-          fill
+          width={1672}
+          height={941}
           sizes="100vw"
-          className="z-0 object-cover object-center"
+          className="absolute inset-0 z-0 h-full w-full object-cover object-center"
         />
         {/* Legibility scrim over the Earth photo. */}
         <div className="pointer-events-none absolute inset-0 z-10 bg-black/30" />
@@ -74,7 +76,7 @@ export default function FinalSection({
 
           <GetStartedButton
             btnColor="#00bbff"
-            classname="w-full max-w-xs sm:w-auto text-black! text-sm sm:text-lg h-9 sm:h-12 px-6 rounded-xl hover:scale-105"
+            classname="w-full max-w-xs sm:w-auto text-sm sm:text-lg h-9 sm:h-12 px-6 rounded-xl hover:scale-105"
             text="Get Started"
           />
 

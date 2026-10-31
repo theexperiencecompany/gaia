@@ -15,15 +15,15 @@
     "connect Gmail and GitHub",
     "GitHub issue from email"
   ],
-  "intro": "Bug reports arrive by email. Feature requests come from clients over email threads. Yet your engineering workflow lives entirely in GitHub. The gap between these two worlds creates a tedious manual loop: copy the email, open GitHub, create an issue, paste the details, and remember to update both sides when progress is made.\n\nGAIA eliminates this translation layer by connecting Gmail and GitHub directly. When a client emails a bug report or a stakeholder sends a feature request, GAIA can create a properly formatted GitHub issue with the right labels, assignees, and milestones extracted from the email context. Conversely, when pull requests are opened, reviewed, or merged, GAIA can route structured summaries to relevant inboxes so non-technical stakeholders stay informed without needing GitHub access.\n\nThis integration is particularly valuable for teams where product managers, client-facing staff, and engineers need to collaborate across the email-to-code divide without losing context or creating duplicated effort.",
+  "intro": "Bug reports arrive by email. Feature requests come from clients over email threads. Yet your engineering workflow lives entirely in GitHub. The gap between these two worlds creates a tedious manual loop: copy the email, open GitHub, create an issue, paste the details, and remember to update both sides when progress is made.\n\nGAIA eliminates this translation layer by connecting Gmail to your repositories directly. When a client emails a bug report or a stakeholder sends a feature request, GAIA can create a properly formatted issue with the right labels, assignees, and milestones extracted from the email context. Conversely, when pull requests are opened, reviewed, or merged, GAIA can route structured summaries to relevant inboxes so non-technical stakeholders stay informed without needing repository access.\n\nThis integration is particularly valuable for teams where product managers, client-facing staff, and engineers need to collaborate across the email-to-code divide without losing context or creating duplicated effort.",
   "useCases": [
     {
       "title": "Create GitHub issues from bug report emails",
-      "description": "When a client or teammate emails a bug report, GAIA parses the email, extracts the key details, steps to reproduce, environment, severity, and creates a formatted GitHub issue in the correct repository with appropriate labels. The original sender is referenced in the issue body so engineers have full context."
+      "description": "When a client or teammate emails a bug report, GAIA parses the email, extracts the key details, steps to reproduce, environment, severity, and creates a formatted issue in the correct repository with appropriate labels. The original sender is referenced in the issue body so engineers have full context."
     },
     {
       "title": "Feature request pipeline from email to backlog",
-      "description": "Product feedback and feature requests sent by email are automatically converted into GitHub issues tagged as feature requests and added to the relevant project backlog. GAIA extracts the core request and formats it as a user story so engineers can act on it immediately."
+      "description": "Product feedback and feature requests sent by email are automatically converted into issues tagged as feature requests and added to the relevant project backlog. GAIA extracts the core request and formats it as a user story so engineers can act on it immediately."
     },
     {
       "title": "PR status notifications for non-technical stakeholders",
@@ -31,11 +31,11 @@
     },
     {
       "title": "Release notification emails",
-      "description": "When a new GitHub release is published, GAIA composes and sends a formatted release summary email to your distribution list, including changelog highlights, known issues, and upgrade notes, keeping clients and internal teams informed automatically."
+      "description": "When a new release is published, GAIA composes and sends a formatted release summary email to your distribution list, including changelog highlights, known issues, and upgrade notes, keeping clients and internal teams informed automatically."
     },
     {
       "title": "Email-triggered issue comments",
-      "description": "When a stakeholder replies to a GitHub notification email with a comment or update, GAIA posts their reply as a comment on the original GitHub issue so the conversation stays unified in the engineering workflow."
+      "description": "When a stakeholder replies to a notification email with a comment or update, GAIA posts their reply as a comment on the original issue so the conversation stays unified in the engineering workflow."
     }
   ],
   "howItWorks": [
@@ -45,17 +45,17 @@
     },
     {
       "step": "Configure your routing rules",
-      "description": "Tell GAIA which email senders, labels, or keywords should trigger issue creation, which repositories to target, and which GitHub events should send email notifications. You can specify assignees, labels, and milestones as part of the rules."
+      "description": "Tell GAIA which email senders, labels, or keywords should trigger issue creation, which repositories to target, and which repository events should send email notifications. You can specify assignees, labels, and milestones as part of the rules."
     },
     {
-      "step": "GAIA automates the email-to-GitHub workflow",
-      "description": "Once configured, GAIA monitors Gmail and GitHub continuously, creating issues from qualifying emails and dispatching notifications for relevant GitHub events without any manual intervention."
+      "step": "GAIA automates the email-to-issue workflow",
+      "description": "Once configured, GAIA monitors the inbox and repositories continuously, creating issues from qualifying emails and dispatching notifications for relevant events without any manual intervention."
     }
   ],
   "faqs": [
     {
       "question": "Can GAIA create issues in specific repositories based on email content?",
-      "answer": "Yes. You can set up rules that route emails to different repositories based on sender, subject keywords, Gmail labels, or AI classification of the email content. For example, emails about your mobile app can go to the mobile-app repo while API-related emails go to the backend repo."
+      "answer": "Yes. You can set up rules that route emails to different repositories based on sender, subject keywords, labels, or AI classification of the email content. For example, emails about your mobile app can go to the mobile-app repo while API-related emails go to the backend repo."
     },
     {
       "question": "Will GAIA avoid creating duplicate issues if the same bug is emailed twice?",
@@ -63,7 +63,7 @@
     },
     {
       "question": "Can GAIA handle GitHub notifications I already receive in Gmail?",
-      "answer": "Yes. GAIA can parse GitHub's native notification emails and enrich them — summarizing long PR review threads, extracting action items, or routing specific notifications to teammates — rather than just letting them accumulate in your inbox."
+      "answer": "Yes. GAIA can parse the native notification emails and enrich them — summarizing long PR review threads, extracting action items, or routing specific notifications to teammates — rather than just letting them accumulate in your inbox."
     }
   ]
 }

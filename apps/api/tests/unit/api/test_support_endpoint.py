@@ -4,20 +4,31 @@ Covers the MAX_PAGE_NUMBER page bound on the my-requests list and the
 happy path with the service faked.
 """
 
+from collections.abc import Iterator
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
+from urllib.parse import parse_qs
 
 from fastapi import FastAPI
+import httpx
 from httpx import ASGITransport, AsyncClient
+from limits.storage import MemoryStorage
+from limits.strategies import FixedWindowRateLimiter
 import pytest
+import respx
 
 from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
     get_current_user as _get_current_user_dep,
+    get_optional_user,
 )
 from app.api.v1.endpoints.support import router
+from app.api.v1.middleware.rate_limiter import limiter
 from app.config.settings import settings
 from app.constants.general import MAX_PAGE_NUMBER
+from app.constants.turnstile import TURNSTILE_SITEVERIFY_URL
 from app.models.support_models import (
+    SupportRequestDocument,
     SupportRequestSubmissionResponse,
     SupportRequestType,
 )
@@ -327,3 +338,231 @@ class TestSubmitSupportRequestLogPins:
         assert resp.status_code == 401
         assert resp.json()["detail"] == "User authentication required"
         _ = test_app
+
+
+PUBLIC_ENDPOINT = "/api/v1/support/requests/public"
+VISITOR_IP = "198.51.100.7"
+# Cloudflare's documented always-pass test secret; siteverify's answer is mocked.
+TURNSTILE_TEST_SECRET = "1x0000000000000000000000000000000AA"
+SERVICE = "app.services.support_service"
+
+
+def _public_body(**overrides: object) -> dict[str, object]:
+    body: dict[str, object] = {
+        "type": "support",
+        "title": "Cannot sign in",
+        "description": "The login page loops forever",
+        "email": "visitor@example.com",
+        "name": "Vis Itor",
+        "turnstile_token": "tok-from-widget",
+    }
+    body.update(overrides)
+    return {key: value for key, value in body.items() if value is not _OMIT}
+
+
+_OMIT = object()
+
+
+def _visitor_client(app: FastAPI, ip: str = VISITOR_IP) -> AsyncClient:
+    transport = ASGITransport(app=app, raise_app_exceptions=False, client=(ip, 41000))
+    return AsyncClient(transport=transport, base_url="http://test")  # NOSONAR
+
+
+@pytest.fixture
+def turnstile_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "TURNSTILE_SECRET_KEY", TURNSTILE_TEST_SECRET)
+
+
+@pytest.fixture
+def pipeline() -> Iterator[SimpleNamespace]:
+    """Run the real support pipeline with only its repository and email sends faked."""
+    repo = AsyncMock()
+
+    async def _create(doc: SupportRequestDocument) -> SupportRequestDocument:
+        doc.updated_at = doc.created_at
+        return doc
+
+    repo.create.side_effect = _create
+    with (
+        patch(f"{SERVICE}.support_request_repository", repo),
+        patch(f"{SERVICE}.send_support_team_notification", new_callable=AsyncMock) as team,
+        patch(f"{SERVICE}.send_support_to_user_email", new_callable=AsyncMock) as user,
+        patch(f"{SUPPORT_ENDPOINT}.capture") as capture,
+    ):
+        yield SimpleNamespace(repo=repo, team=team, user=user, capture=capture)
+
+
+def _siteverify(success: bool, *codes: str) -> respx.Route:
+    return respx.post(TURNSTILE_SITEVERIFY_URL).mock(
+        return_value=httpx.Response(200, json={"success": success, "error-codes": list(codes)})
+    )
+
+
+@pytest.mark.usefixtures("turnstile_secret")
+class TestSubmitPublicSupportRequest:
+    """POST /api/v1/support/requests/public — no session, Turnstile-gated, per-IP limited."""
+
+    @respx.mock
+    async def test_a_visitor_with_a_valid_token_files_a_ticket_through_the_shared_pipeline(
+        self, test_app: FastAPI, pipeline: SimpleNamespace
+    ) -> None:
+        siteverify = _siteverify(True)
+
+        with patch(f"{SUPPORT_ENDPOINT}.log") as event_log:
+            async with _visitor_client(test_app) as client:
+                resp = await client.post(PUBLIC_ENDPOINT, json=_public_body())
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["success"] is True
+        assert resp.json()["support_request"]["user_id"] is None
+        sent = parse_qs(siteverify.calls.last.request.content.decode())
+        assert sent["response"] == ["tok-from-widget"]
+        assert sent["remoteip"] == [VISITOR_IP]
+        stored: SupportRequestDocument = pipeline.repo.create.await_args.args[0]
+        assert stored.user_id is None
+        assert stored.user_email == "visitor@example.com"
+        assert stored.user_name == "Vis Itor"
+        assert stored.metadata["source"] == "public_contact_form"
+        assert stored.id is not None and len(stored.id) == 36
+        notification = pipeline.user.await_args.args[0]
+        assert notification.user_email == "visitor@example.com"
+        pipeline.team.assert_awaited_once()
+        pipeline.capture.assert_not_called()
+        event_log.set.assert_any_call(
+            operation="submit_public_support_request",
+            category=SupportRequestType.SUPPORT,
+            signed_in=False,
+        )
+        event_log.set.assert_any_call(ticket_id=resp.json()["ticket_id"], outcome="success")
+
+    @respx.mock
+    async def test_a_rejected_token_files_nothing(
+        self, test_app: FastAPI, pipeline: SimpleNamespace
+    ) -> None:
+        _siteverify(False, "invalid-input-response")
+
+        async with _visitor_client(test_app) as client:
+            resp = await client.post(PUBLIC_ENDPOINT, json=_public_body(turnstile_token="forged"))
+
+        assert resp.status_code == 400
+        assert resp.json()["code"] == "turnstile_verification_failed"
+        assert resp.json()["message"] == "We could not verify that you are human"
+        pipeline.repo.create.assert_not_awaited()
+        pipeline.user.assert_not_awaited()
+
+    @respx.mock
+    async def test_a_missing_token_is_refused_before_cloudflare_is_asked(
+        self, test_app: FastAPI, pipeline: SimpleNamespace
+    ) -> None:
+        siteverify = _siteverify(True)
+
+        async with _visitor_client(test_app) as client:
+            missing = await client.post(PUBLIC_ENDPOINT, json=_public_body(turnstile_token=_OMIT))
+            empty = await client.post(PUBLIC_ENDPOINT, json=_public_body(turnstile_token=""))
+
+        assert (missing.status_code, empty.status_code) == (422, 422)
+        assert not siteverify.called
+        pipeline.repo.create.assert_not_awaited()
+
+    @respx.mock
+    async def test_a_siteverify_timeout_is_an_explicit_503_and_files_nothing(
+        self, test_app: FastAPI, pipeline: SimpleNamespace
+    ) -> None:
+        respx.post(TURNSTILE_SITEVERIFY_URL).mock(side_effect=httpx.ReadTimeout("slow"))
+
+        async with _visitor_client(test_app) as client:
+            resp = await client.post(PUBLIC_ENDPOINT, json=_public_body())
+
+        assert resp.status_code == 503
+        assert resp.json()["code"] == "turnstile_unavailable"
+        pipeline.repo.create.assert_not_awaited()
+
+    @respx.mock
+    async def test_an_unset_secret_is_an_explicit_503_and_files_nothing(
+        self, test_app: FastAPI, pipeline: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "TURNSTILE_SECRET_KEY", None)
+        siteverify = _siteverify(True)
+
+        async with _visitor_client(test_app) as client:
+            resp = await client.post(PUBLIC_ENDPOINT, json=_public_body())
+
+        assert resp.status_code == 503
+        assert resp.json()["code"] == "turnstile_unavailable"
+        assert not siteverify.called
+        pipeline.repo.create.assert_not_awaited()
+
+    @respx.mock
+    async def test_a_visitor_without_an_email_is_refused_without_spending_the_token(
+        self, test_app: FastAPI, pipeline: SimpleNamespace
+    ) -> None:
+        siteverify = _siteverify(True)
+
+        async with _visitor_client(test_app) as client:
+            resp = await client.post(PUBLIC_ENDPOINT, json=_public_body(email=_OMIT))
+
+        assert resp.status_code == 422
+        assert resp.json()["code"] == "contact_email_required"
+        assert resp.json()["message"] == "An email address is required so we can reply"
+        assert resp.json()["fix"] == "Add your email address to the form"
+        assert not siteverify.called
+        pipeline.repo.create.assert_not_awaited()
+
+    @respx.mock
+    async def test_a_signed_in_caller_is_attributed_to_their_user_id(
+        self, test_app: FastAPI, pipeline: SimpleNamespace
+    ) -> None:
+        _siteverify(True)
+        no_email = AuthenticatedUser(user_id=FAKE_USER.user_id, name="Signed In")
+        test_app.dependency_overrides[get_optional_user] = lambda: no_email
+        try:
+            with patch(f"{SUPPORT_ENDPOINT}.log") as event_log:
+                async with _visitor_client(test_app) as client:
+                    resp = await client.post(PUBLIC_ENDPOINT, json=_public_body(name=_OMIT))
+        finally:
+            test_app.dependency_overrides.pop(get_optional_user, None)
+
+        assert resp.status_code == 200, resp.text
+        stored: SupportRequestDocument = pipeline.repo.create.await_args.args[0]
+        assert stored.user_id == FAKE_USER.user_id
+        assert stored.user_email == "visitor@example.com"
+        assert stored.user_name == "Signed In"
+        event_log.set.assert_any_call(
+            operation="submit_public_support_request",
+            category=SupportRequestType.SUPPORT,
+            signed_in=True,
+        )
+        pipeline.capture.assert_called_once_with(
+            UserId(FAKE_USER.user_id),
+            SupportFormSubmitted(
+                request_type="support",
+                title_length=len("Cannot sign in"),
+                description_length=len("The login page loops forever"),
+                attachment_count=0,
+            ),
+        )
+
+    @respx.mock
+    async def test_the_hourly_limit_is_counted_per_client_ip(
+        self,
+        test_app: FastAPI,
+        pipeline: SimpleNamespace,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        storage = MemoryStorage()
+        monkeypatch.setattr(limiter, "enabled", True)
+        monkeypatch.setattr(limiter, "_storage", storage)
+        monkeypatch.setattr(limiter, "_limiter", FixedWindowRateLimiter(storage))
+        _siteverify(True)
+
+        async with _visitor_client(test_app, "198.51.100.1") as first_ip:
+            statuses = [
+                (await first_ip.post(PUBLIC_ENDPOINT, json=_public_body())).status_code
+                for _ in range(6)
+            ]
+        async with _visitor_client(test_app, "198.51.100.2") as second_ip:
+            other = await second_ip.post(PUBLIC_ENDPOINT, json=_public_body())
+
+        assert statuses == [200, 200, 200, 200, 200, 429]
+        assert other.status_code == 200
+        assert pipeline.repo.create.await_count == 6

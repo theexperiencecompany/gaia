@@ -40,6 +40,7 @@ from app.agents.prompts.comms_prompts import (
     PLATFORM_DELIVERY_NOTE,
     SILENCE_NOTE,
 )
+from app.constants.chat import CONVERSATION_MAX_MESSAGES
 from app.constants.comms import CommsDirectiveKind
 from app.constants.executor import (
     EXECUTOR_NARRATION_FAILED_ERROR_MESSAGE,
@@ -201,7 +202,9 @@ async def persist_cancelled_run(run: ExecutorRun, tool_data: list[ToolDataEntry]
             ),
             user=run.user,
             # A tracked todo's chat is reused by every run, so a stopped one is capped too.
-            max_messages=TODO_CONVERSATION_MAX_MESSAGES if run.todo_run else None,
+            max_messages=TODO_CONVERSATION_MAX_MESSAGES
+            if run.todo_run
+            else CONVERSATION_MAX_MESSAGES,
         )
     except HTTPException as e:
         if e.status_code == 404:  # conversation deleted mid-run — expected, not an error
@@ -698,12 +701,9 @@ async def _save_bot_message(
     user: AuthenticatedUser,
     bot_message: MessageModel,
     *,
-    max_messages: int | None = None,
+    max_messages: int = CONVERSATION_MAX_MESSAGES,
 ) -> bool:
-    """Append the bot message to the conversation; False when it wasn't saved.
-
-    max_messages caps a conversation reused by every run at its newest messages.
-    """
+    """Append the bot message, keeping the conversation's newest max_messages; False when it wasn't saved."""
     persist_start = time.perf_counter()
     try:
         await update_messages(

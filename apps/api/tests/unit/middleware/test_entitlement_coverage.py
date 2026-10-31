@@ -207,6 +207,7 @@ def test_allowlist_snapshot(gated_app: FastAPI) -> None:
         "/api/v1/support/rate-limit-status",
         "/api/v1/support/requests",
         "/api/v1/support/requests/my",
+        "/api/v1/support/requests/public",
         "/api/v1/support/requests/with-attachments",
         "/api/v1/user/first-steps",
         "/api/v1/user/first-steps/collapse",

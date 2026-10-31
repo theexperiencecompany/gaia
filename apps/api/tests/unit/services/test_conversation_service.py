@@ -9,6 +9,7 @@ repository's own behaviour (user-scoping, source persistence, message stripping,
 pin semantics) is covered by the real-DB contract suite.
 """
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException
@@ -617,3 +618,29 @@ class TestRequireOwnedConversation:
             "CONVERSATION_NOT_FOUND",
             "Conversation not found",
         )
+
+
+class TestConversationSizeCap:
+    """A chat thread is one Mongo document; past 16MB it can never be written again."""
+
+    async def test_a_chat_append_caps_history_by_default(self, monkeypatch) -> None:
+        from app.constants.chat import CONVERSATION_MAX_MESSAGES
+        from app.services import conversation_service
+
+        seen: dict[str, object] = {}
+
+        async def record(conversation_id: str, **kwargs: object) -> list[str]:
+            seen.update(kwargs)
+            return ["m1"]
+
+        monkeypatch.setattr(conversation_service.conversation_repository, "append_messages", record)
+
+        await conversation_service.update_messages(
+            UpdateMessagesRequest(
+                conversation_id="c1",
+                messages=[MessageModel(type="user", message="hi", response="", message_id="m1")],
+            ),
+            user=SimpleNamespace(user_id="u1"),
+        )
+
+        assert seen["max_messages"] == CONVERSATION_MAX_MESSAGES

@@ -5,10 +5,11 @@ import ComparisonTable from "@/components/seo/ComparisonTable";
 import DocsGuidesSection from "@/components/seo/DocsGuidesSection";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
+import { PageBreadcrumbs } from "@/components/seo/PageBreadcrumbs";
 import { ProseParagraphs } from "@/components/seo/ProseParagraphs";
 import { SiteLink } from "@/components/seo/SiteLink";
 import { getTranslatedAlternative } from "@/features/alternatives/data/getTranslatedAlternative";
-import { COMPARISON_CATEGORIES } from "@/features/comparisons/data/categories";
+import { comparisonCategoryOf } from "@/features/comparisons/data/comparisonCategories";
 import { getAllComparisonSlugs } from "@/features/comparisons/data/comparisonsData";
 import {
   getTranslatedComparison,
@@ -20,6 +21,7 @@ import { getTranslatedPersona } from "@/features/personas/data/getTranslatedPers
 import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
 import { isRedirectedPath } from "@/lib/canonicalLinks";
 import { COMPARE_DOCS_LINKS } from "@/lib/docs-links";
+import { relatedInGroup } from "@/lib/relatedInGroup";
 import { prerenderedMarketingParams } from "@/lib/selfhost";
 import {
   generateBreadcrumbSchema,
@@ -88,13 +90,12 @@ export default async function ComparisonPage({ params }: PageProps) {
     alternativeData !== undefined &&
     !isRedirectedPath(`/alternative-to/${slug}`);
 
-  const currentCategory = COMPARISON_CATEGORIES[slug] ?? "Other";
-  const relatedComparisons = allComparisons
-    .filter(
-      (c) =>
-        c.slug !== slug && COMPARISON_CATEGORIES[c.slug] === currentCategory,
-    )
-    .slice(0, 3);
+  const currentCategory = comparisonCategoryOf({ slug });
+  const relatedComparisons = relatedInGroup(
+    allComparisons,
+    slug,
+    comparisonCategoryOf,
+  );
 
   const relatedPersonaData = (
     await Promise.all(
@@ -142,20 +143,14 @@ export default async function ComparisonPage({ params }: PageProps) {
       />
 
       <article className="mx-auto max-w-4xl px-6 pt-36 pb-24">
-        {/* Breadcrumb */}
-        <nav className="mb-8 text-sm text-zinc-500">
-          <SiteLink href="/" className="hover:text-zinc-300">
-            {t("common.home")}
-          </SiteLink>
-          <span className="mx-2">/</span>
-          <SiteLink href="/compare" className="hover:text-zinc-300">
-            {t("comparisons.breadcrumb")}
-          </SiteLink>
-          <span className="mx-2">/</span>
-          <span className="text-zinc-300">
-            {t("comparisons.gaia_vs", { name: data.name })}
-          </span>
-        </nav>
+        <PageBreadcrumbs
+          className="mb-8"
+          items={[
+            { label: t("common.home"), href: "/" },
+            { label: t("comparisons.breadcrumb"), href: "/compare" },
+            { label: t("comparisons.gaia_vs", { name: data.name }) },
+          ]}
+        />
 
         {/* Hero */}
         <header className="mb-16">

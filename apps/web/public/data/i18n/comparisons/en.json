@@ -1459,7 +1459,7 @@
     ]
   },
   "chatgpt-teams": {
-    "name": "ChatGPT",
+    "name": "ChatGPT Teams",
     "tagline": "OpenAI's conversational AI",
     "description": "ChatGPT excels at conversation but waits for your prompts. GAIA proactively manages your workflow, automates tasks, and orchestrates tools autonomously.",
     "metaTitle": "ChatGPT Teams Alternative for Proactive Productivity — GAIA vs ChatGPT Teams",

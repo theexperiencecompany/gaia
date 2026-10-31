@@ -223,6 +223,18 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
 
         assert seams.send.await_args.kwargs["notification_text"] == message
 
+    @pytest.mark.regression
+    async def test_a_silence_tag_inside_the_message_never_reaches_the_chat_app(self) -> None:
+        """Live: a daily check-in wrote its recap and its silence in one bubble, and both were sent."""
+        message = "Alex still needs a reply; the inbox fix remains unpushed."
+        narrated = (
+            f"{message} <SILENCE>Pending actions already noted.</SILENCE>{NEW_MESSAGE_BREAKER}"
+        )
+        with _seams(todo=_todo(), narrated=narrated) as seams:
+            await run_todo_on_executor(_request())
+
+        assert seams.send.await_args.kwargs["notification_text"].strip() == message
+
     async def test_the_executors_own_report_is_kept_in_the_todos_chat(self) -> None:
         """Regression: the run's conversation was a throwaway, so nothing the run did was left to open."""
         broadcast = AsyncMock()

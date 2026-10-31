@@ -5023,6 +5023,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/support/requests/public": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit a contact request without signing in
+         * @description Create a support or feature request from the public contact form. Verifies a Cloudflare Turnstile token and is rate-limited per client IP.
+         */
+        post: operations["support_submit_public_support_request"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/support/requests/with-attachments": {
         parameters: {
             query?: never;
@@ -13251,6 +13271,39 @@ export interface components {
             tools?: components["schemas"]["IntegrationTool"][];
         };
         /**
+         * PublicSupportRequestCreate
+         * @description A contact-form request that may come from a visitor with no GAIA session.
+         */
+        PublicSupportRequestCreate: {
+            /**
+             * Description
+             * @description Detailed description
+             */
+            description: string;
+            /**
+             * Email
+             * @description Where to reply; required unless the caller is signed in with an email
+             */
+            email?: string | null;
+            /**
+             * Name
+             * @description Optional name to address
+             */
+            name?: string | null;
+            /**
+             * Title
+             * @description Title of the request
+             */
+            title: string;
+            /**
+             * Turnstile Token
+             * @description Cloudflare Turnstile response token
+             */
+            turnstile_token: string;
+            /** @description Type of request (support or feature) */
+            type: components["schemas"]["SupportRequestType"];
+        };
+        /**
          * PublicWorkflowCard
          * @description One marketplace card, as the community, explore and related lists emit it.
          *
@@ -14966,9 +15019,9 @@ export interface components {
             user_email: string;
             /**
              * User Id
-             * @description ID of the user who created the request
+             * @description ID of the user who created the request; null for a visitor
              */
-            user_id: string;
+            user_id: string | null;
             /**
              * User Name
              * @description Name of the user who created the request
@@ -17387,6 +17440,7 @@ export type ProviderTestFailure = components['schemas']['ProviderTestFailure'];
 export type ProviderTestResponse = components['schemas']['ProviderTestResponse'];
 export type PublicHoloCardResponse = components['schemas']['PublicHoloCardResponse'];
 export type PublicIntegrationDetailResponse = components['schemas']['PublicIntegrationDetailResponse'];
+export type PublicSupportRequestCreate = components['schemas']['PublicSupportRequestCreate'];
 export type PublicWorkflowCard = components['schemas']['PublicWorkflowCard'];
 export type PublicWorkflowsResponse = components['schemas']['PublicWorkflowsResponse'];
 export type PublicWorkflowStep = components['schemas']['PublicWorkflowStep'];
@@ -30925,6 +30979,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SupportRequestListResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    support_submit_public_support_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublicSupportRequestCreate"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportRequestSubmissionResponse"];
                 };
             };
             /** @description Unprocessable Entity */

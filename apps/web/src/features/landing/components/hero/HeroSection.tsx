@@ -34,7 +34,7 @@ export default function HeroSection({
               className="group inline-flex items-center gap-2 text-[13px] hover:bg-white/20 rounded-full px-1 py-1 transition hover:scale-105"
             >
               <span
-                className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+                className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold uppercase tracking-[0.12em] ${
                   isDark ? "bg-white text-black" : "bg-black text-white"
                 }`}
               >
@@ -99,31 +99,31 @@ export default function HeroSection({
               <SiteLink href={"/bots"}>
                 <Image
                   src="/images/icons/macos/whatsapp.webp"
-                  alt="WhatsApp"
+                  alt="WhatsApp logo"
                   className="inline-block size-7 rotate-12 hover:scale-105 transition-transform ml-2"
-                  width={100}
-                  height={100}
+                  width={28}
+                  height={28}
                 />
                 <Image
                   src="/images/icons/macos/slack.webp"
-                  alt="Slack"
+                  alt="Slack logo"
                   className="inline-block size-7 -rotate-12 hover:scale-105 transition-transform"
-                  width={100}
-                  height={100}
+                  width={28}
+                  height={28}
                 />
                 <Image
                   src="/images/icons/macos/discord.webp"
-                  alt="Discord"
+                  alt="Discord logo"
                   className="inline-block size-7 rotate-12 hover:scale-105 transition-transform"
-                  width={100}
-                  height={100}
+                  width={28}
+                  height={28}
                 />
                 <Image
                   src="/images/icons/macos/telegram.webp"
-                  alt="Telegram"
+                  alt="Telegram logo"
                   className="inline-block size-7 -rotate-12 hover:scale-105 transition-transform mr-1"
-                  width={100}
-                  height={100}
+                  width={28}
+                  height={28}
                 />
               </SiteLink>
               <span>or use the web app.</span>
@@ -134,11 +134,7 @@ export default function HeroSection({
           <SoftBlurInBlock immediate delay={0.55}>
             <GetStartedButton
               btnColor={isDark ? "#00bbff" : "#000000"}
-              classname={
-                isDark
-                  ? "text-black! px-1 hover:scale-105"
-                  : "text-white! px-1 hover:scale-105"
-              }
+              classname="px-1 hover:scale-105"
               text={
                 <div className="flex items-center gap-1.5">
                   Sign Up <CircleArrowRight02Icon width={20} height={20} />

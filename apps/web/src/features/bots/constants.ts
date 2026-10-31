@@ -42,7 +42,7 @@ export const BOTS: BotConfig[] = [
       external: true,
     },
     secondaryAction: {
-      label: "Join Community",
+      label: "Join Discord server",
       href: "https://discord.heygaia.io",
       external: true,
     },
@@ -54,12 +54,12 @@ export const BOTS: BotConfig[] = [
     description:
       "Just open a chat with @heygaia_bot and start talking. No setup, no group required. It's just you and GAIA.",
     primaryAction: {
-      label: "Start Chatting",
+      label: "Open in Telegram",
       href: BOT_LINKS.telegram,
       external: true,
     },
     secondaryAction: {
-      label: "Read the Docs",
+      label: "Telegram docs",
       href: "https://docs.heygaia.io/bots/telegram",
       external: true,
     },
@@ -82,12 +82,12 @@ export const BOTS: BotConfig[] = [
     description:
       "Talk to GAIA on the app already on your phone. Ask questions, delegate tasks. No new accounts, no new habits.",
     primaryAction: {
-      label: "Start Chatting",
+      label: "Open in WhatsApp",
       href: BOT_LINKS.whatsapp,
       external: true,
     },
     secondaryAction: {
-      label: "Join Community",
+      label: "WhatsApp community",
       href: "https://whatsapp.heygaia.io",
       external: true,
     },
@@ -103,7 +103,7 @@ export const BOTS: BotConfig[] = [
       href: BOT_LINKS.imessage,
     },
     secondaryAction: {
-      label: "Read the Docs",
+      label: "iMessage docs",
       href: "https://docs.heygaia.io/guides/imessage-bot",
       external: true,
     },

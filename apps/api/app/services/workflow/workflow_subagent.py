@@ -32,6 +32,7 @@ from langgraph.types import StreamWriter
 from app.agents.context.assemble import assemble_context
 from app.agents.context.section_context import SectionContext, SectionScope
 from app.agents.context.tiers import AgentTier
+from app.agents.core.held_replies import HeldReplies
 from app.agents.core.subagents.base_subagent import SubAgentFactory, SubAgentToolConfig
 from app.agents.llm.client import init_llm
 from app.agents.prompts.subagent_prompts import WORKFLOW_AGENT_SYSTEM_PROMPT
@@ -342,17 +343,15 @@ class WorkflowSubagentRunner:
     def _consume_message_chunk(
         payload: tuple[BaseMessage, StreamChunkMetadata],
         stream_writer: StreamWriter | None,
-        complete_message: str,
-    ) -> str:
-        """Fold one messages-mode event into the running assistant text."""
+        held: HeldReplies,
+    ) -> None:
+        """Fold one messages-mode event into the held assistant text."""
         metadata: StreamChunkMetadata
         chunk, metadata = payload
         if metadata.get("silent"):
-            return complete_message
+            return
         if chunk and isinstance(chunk, AIMessageChunk):
-            content = chunk.text() if hasattr(chunk, "text") else str(chunk.content)
-            if content:
-                return complete_message + content
+            held.hold(chunk, metadata)
         elif chunk and isinstance(chunk, ToolMessage):
             if stream_writer:
                 stream_writer(
@@ -363,7 +362,6 @@ class WorkflowSubagentRunner:
                         }
                     }
                 )
-        return complete_message
 
     @staticmethod
     async def _stream_turn(
@@ -379,7 +377,7 @@ class WorkflowSubagentRunner:
         when the model exhausted its step budget without producing a final answer,
         signalling the caller to force a finalize instead of crashing.
         """
-        complete_message = ""
+        held = HeldReplies()
         try:
             async for event in subagent_graph.astream(
                 state,
@@ -397,15 +395,13 @@ class WorkflowSubagentRunner:
                         payload, stream_writer, emitted_tool_calls
                     )
                 elif stream_mode == "messages":
-                    complete_message = WorkflowSubagentRunner._consume_message_chunk(
-                        payload, stream_writer, complete_message
-                    )
+                    WorkflowSubagentRunner._consume_message_chunk(payload, stream_writer, held)
                 elif stream_mode == "custom" and stream_writer:
                     stream_writer(payload)
         except GraphRecursionError:
-            return complete_message, True
+            return held.reply_text(), True
 
-        return complete_message, False
+        return held.reply_text(), False
 
     @staticmethod
     async def _draft_correction_needed(text: str) -> str | None:

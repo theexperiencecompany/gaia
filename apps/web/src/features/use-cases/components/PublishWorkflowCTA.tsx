@@ -1,5 +1,8 @@
 import Image from "next/image";
 import { RaisedButton } from "@/components/ui/raised-button";
+import { getImageDimensions } from "@/lib/imageDimensions";
+
+const BLUEPRINT = getImageDimensions("/images/wallpapers/blueprint.png");
 
 export default function PublishWorkflowCTA() {
   const docsBaseUrl =
@@ -10,16 +13,17 @@ export default function PublishWorkflowCTA() {
   return (
     <div className="mx-auto mt-20 max-w-7xl rounded-4xl bg-black p-6 py-20 text-center relative overflow-hidden outline-zinc-900 outline-2">
       <Image
-        fill
         src={"/images/wallpapers/blueprint.png"}
         alt="Blueprint image"
+        width={BLUEPRINT.width}
+        height={BLUEPRINT.height}
         sizes="(min-width: 1280px) 1232px, calc(100vw - 3rem)"
-        className="object-cover  z-0 opacity-50 blur-[3px]"
+        className="absolute inset-0 z-0 h-full w-full object-cover opacity-50 blur-[3px]"
       />
       <div className="mx-auto space-y-1">
-        <h3 className="font-serif text-6xl font-normal text-foreground relative z-[1]">
+        <h2 className="font-serif text-6xl font-normal text-foreground relative z-[1]">
           Publish Your Own Workflow
-        </h3>
+        </h2>
         <p className="text-zinc-400 relative z-[1]">
           Build and share your automation ideas with the GAIA community
         </p>
@@ -28,7 +32,7 @@ export default function PublishWorkflowCTA() {
           target="_blank"
           rel="noopener noreferrer"
         >
-          <RaisedButton color="#00bbff" className="mt-5 text-black!">
+          <RaisedButton color="#00bbff" className="mt-5">
             Learn How
           </RaisedButton>
         </a>

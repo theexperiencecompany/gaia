@@ -101,7 +101,6 @@ describe("IntegrationRelatedIntegrations SSR", () => {
         <IntegrationRelatedIntegrations
           currentSlug="slack"
           category="productivity"
-          integrationName="Slack"
           initialIntegrations={RELATED}
         />
       </Providers>,
@@ -120,7 +119,6 @@ describe("IntegrationRelatedWorkflows SSR", () => {
       <Providers>
         <IntegrationRelatedWorkflows
           integrationId="slack"
-          integrationName="Slack"
           variant="section"
           initialWorkflows={WORKFLOWS}
         />

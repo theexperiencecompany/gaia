@@ -18,51 +18,51 @@
   "useCases": [
     {
       "title": "Project briefs from Asana to Notion",
-      "description": "When a new Asana project is created, GAIA generates a corresponding Notion project brief page with goals, stakeholders, and timeline extracted from the Asana project description."
+      "description": "When a new project is created, GAIA generates a corresponding brief page with goals, stakeholders, and timeline extracted from the project description."
     },
     {
       "title": "Milestone documentation",
-      "description": "When Asana milestones are reached, GAIA creates Notion documentation entries capturing what was delivered, decisions made, and lessons learned."
+      "description": "When milestones are reached, GAIA creates documentation entries capturing what was delivered, decisions made, and lessons learned."
     },
     {
       "title": "Asana task status in Notion",
-      "description": "Notion project pages show live Asana task completion percentages, giving stakeholders project health visibility in the tool they already use."
+      "description": "Project pages show live task completion percentages, giving stakeholders project health visibility in the tool they already use."
     },
     {
       "title": "Project retrospective generation",
-      "description": "At project completion, GAIA compiles Asana task history into a structured Notion retrospective template covering what went well, what didn't, and key learnings."
+      "description": "At project completion, GAIA compiles task history into a structured retrospective template covering what went well, what didn't, and key learnings."
     },
     {
       "title": "Resource documentation sync",
-      "description": "Files and documents linked in Asana tasks are automatically referenced in the corresponding Notion project page, creating a unified resource hub."
+      "description": "Files and documents linked in tasks are automatically referenced in the corresponding project page, creating a unified resource hub."
     }
   ],
   "howItWorks": [
     {
       "step": "Connect Asana and Notion to GAIA",
-      "description": "Authorize GAIA with your Asana workspace and Notion account. Select which projects to sync."
+      "description": "Authorize GAIA with your workspace and account. Select which projects to sync."
     },
     {
-      "step": "Map Asana projects to Notion sections",
+      "step": "Map projects to documentation sections",
       "description": "Define which Notion section receives documentation for each Asana project or project type. GAIA handles all the content creation and updates."
     },
     {
       "step": "Maintain living project documentation",
-      "description": "As Asana project status evolves, Notion documentation stays current automatically. Your knowledge base reflects project reality without manual maintenance."
+      "description": "As project status evolves, the documentation stays current automatically. Your knowledge base reflects project reality without manual maintenance."
     }
   ],
   "faqs": [
     {
-      "question": "Can GAIA sync Asana custom fields to Notion database properties?",
-      "answer": "Yes. Asana custom fields (like budget, client name, or phase) map to Notion database properties, preserving all project metadata in your knowledge base."
+      "question": "Can GAIA sync custom fields to database properties?",
+      "answer": "Yes. Custom fields (like budget, client name, or phase) map to database properties, preserving all project metadata in your knowledge base."
     },
     {
       "question": "Does GAIA work with Asana portfolios?",
-      "answer": "Yes. GAIA can create Notion pages for Asana portfolios that aggregate status across all included projects, giving leadership a portfolio-level view in Notion."
+      "answer": "Yes. GAIA can create pages for portfolios that aggregate status across all included projects, giving leadership a portfolio-level view in the documentation space."
     },
     {
-      "question": "Can Notion documents link back to the source Asana tasks?",
-      "answer": "Yes. GAIA includes the Asana task or project URL in every Notion entry it creates, so readers can navigate directly to the source for full task history."
+      "question": "Can Notion documents link back to the source tasks?",
+      "answer": "Yes. GAIA includes the task or project URL in every entry it creates, so readers can navigate directly to the source for full task history."
     }
   ]
 }

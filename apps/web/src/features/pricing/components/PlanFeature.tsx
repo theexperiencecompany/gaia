@@ -5,6 +5,7 @@ import {
   BOT_PLATFORMS,
   type BotPlatform,
 } from "@/config/botPlatforms";
+import { getImageDimensions } from "@/lib/imageDimensions";
 
 const PLATFORM_BY_LABEL = new Map<string, BotPlatform>(
   BOT_PLATFORMS.map((platform) => [BOT_PLATFORM_LABELS[platform], platform]),
@@ -90,21 +91,26 @@ function PlatformIcons({ platforms }: PlatformIconsProps) {
       title={label}
       className="-space-x-1 ml-1.5 inline-flex h-5 items-center align-middle leading-none"
     >
-      {platforms.map((platform, index) => (
-        <span
-          key={platform}
-          className={`relative block size-5 ${FAN_ROTATIONS[platforms.length]?.[index] ?? "rotate-0"} ${STACK_ORDER[index] ?? "z-0"}`}
-        >
-          <Image
-            src={BOT_PLATFORM_ICONS[platform]}
-            alt=""
-            fill
-            sizes="48px"
-            aria-hidden
-            className="object-contain drop-shadow-[0_1px_2px_rgba(0,0,0,0.55)] transition hover:-translate-y-0.5 hover:scale-110"
-          />
-        </span>
-      ))}
+      {platforms.map((platform, index) => {
+        const icon = getImageDimensions(BOT_PLATFORM_ICONS[platform]);
+
+        return (
+          <span
+            key={platform}
+            className={`relative block size-5 ${FAN_ROTATIONS[platforms.length]?.[index] ?? "rotate-0"} ${STACK_ORDER[index] ?? "z-0"}`}
+          >
+            <Image
+              src={BOT_PLATFORM_ICONS[platform]}
+              alt=""
+              width={icon.width}
+              height={icon.height}
+              sizes="48px"
+              aria-hidden
+              className="absolute inset-0 h-full w-full object-contain drop-shadow-[0_1px_2px_rgba(0,0,0,0.55)] transition hover:-translate-y-0.5 hover:scale-110"
+            />
+          </span>
+        );
+      })}
     </span>
   );
 }

@@ -12,12 +12,18 @@ import {
   type FeatureData,
   getFeatureBySlug,
 } from "@/features/landing/data/featuresData";
+import { getImageDimensions } from "@/lib/imageDimensions";
+
 import { FeatureDemoWrapper } from "./FeatureDemoWrapper";
 import { FeatureIcon } from "./FeatureIcon";
 
 interface Props {
   feature: FeatureData;
 }
+
+const HERO_WALLPAPER = getImageDimensions(
+  "/images/wallpapers/bands_gradient_1.webp",
+);
 
 const ease = [0.22, 1, 0.36, 1] as const;
 
@@ -55,9 +61,10 @@ export function FeatureDetailClient({ feature }: Props) {
         <Image
           src="/images/wallpapers/bands_gradient_1.webp"
           alt=""
-          fill
+          width={HERO_WALLPAPER.width}
+          height={HERO_WALLPAPER.height}
           sizes="100vw"
-          className="object-cover pointer-events-none select-none"
+          className="pointer-events-none absolute inset-0 h-full w-full object-cover select-none"
           priority
         />
         {/* Fade into page bg at the bottom */}
@@ -67,7 +74,7 @@ export function FeatureDetailClient({ feature }: Props) {
         <div className="relative z-10 px-6">
           <Link
             href="/features"
-            className="text-xs text-zinc-500 hover:text-zinc-300 flex items-center gap-1 transition-colors"
+            className="flex items-center gap-1 py-1 text-xs text-zinc-500 transition-colors hover:text-zinc-300"
           >
             <CircleArrowLeft02Icon width={16} height={16} /> All features
           </Link>
@@ -108,7 +115,7 @@ export function FeatureDetailClient({ feature }: Props) {
             <GetStartedButton
               text="Get started"
               btnColor="#000000"
-              classname="text-white! text-base h-12 rounded-2xl"
+              classname="text-base h-12 rounded-2xl"
             />
           </m.div>
         </section>

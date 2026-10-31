@@ -53,6 +53,12 @@ CAPABILITY_REQUIREMENTS: tuple[CapabilityRequirement, ...] = (
         unused_otherwise=True,
     ),
     CapabilityRequirement(
+        capability="gaia_support: the public contact form's bot check",
+        applies=lambda profile: profile.gaia_support,
+        keys=("TURNSTILE_SECRET_KEY",),
+        unused_otherwise=True,
+    ),
+    CapabilityRequirement(
         capability="blob_store=cloudinary",
         applies=lambda profile: profile.blob_store is BlobStoreKind.CLOUDINARY,
         keys=("CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET"),

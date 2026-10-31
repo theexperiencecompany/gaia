@@ -1,11 +1,11 @@
 "use client";
 
-import { BreadcrumbItem, Breadcrumbs } from "@heroui/react";
 import Image from "next/image";
 import { useEffect } from "react";
 import type { Article, BreadcrumbList, WithContext } from "schema-dts";
 
 import JsonLd from "@/components/seo/JsonLd";
+import { PageBreadcrumbs } from "@/components/seo/PageBreadcrumbs";
 import { GrainOverlay } from "@/components/ui/GrainOverlay";
 import { BlogCard } from "@/features/blog/components/BlogCard";
 import BlogMetadata from "@/features/blog/components/BlogMetadata";
@@ -54,12 +54,10 @@ export default function BlogPostClient({
       <div className="min-h-screen w-full pt-28">
         {/* Centered header */}
         <div className="mx-auto mb-10 flex max-w-3xl flex-col items-center space-y-10 px-5">
-          <div className="flex w-full justify-center text-foreground-400">
-            <Breadcrumbs>
-              <BreadcrumbItem href="/blog">Blog</BreadcrumbItem>
-              <BreadcrumbItem>{blog.category}</BreadcrumbItem>
-            </Breadcrumbs>
-          </div>
+          <PageBreadcrumbs
+            className="flex w-full justify-center"
+            items={[{ label: "Blog", href: "/blog" }, { label: blog.category }]}
+          />
 
           {blog.image && (
             <div className="relative w-full">
@@ -110,7 +108,12 @@ export default function BlogPostClient({
             <h2 className="mb-8 text-2xl font-medium">Suggested Posts</h2>
             <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
               {suggestedPosts.map((post) => (
-                <BlogCard key={post.slug} blog={post} variant="small" />
+                <BlogCard
+                  key={post.slug}
+                  blog={post}
+                  variant="small"
+                  titleAs="h3"
+                />
               ))}
             </div>
           </div>

@@ -105,14 +105,22 @@ export function getLuminance(rgb: { r: number; g: number; b: number }): number {
   return 0.2126 * R + 0.7152 * G + 0.0722 * B;
 }
 
-/**
- * Determine contrasting text color (black or white) based on background luminance
- * @param luminance Background color luminance
- * @returns "#ffffff" for dark backgrounds, "#000000" for light backgrounds
- */
+/** WCAG 2.x contrast ratio between two relative luminances, from 1 to 21. */
+export function getContrastRatio(a: number, b: number): number {
+  const lighter = Math.max(a, b);
+  const darker = Math.min(a, b);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+const BLACK_LUMINANCE = 0;
+const WHITE_LUMINANCE = 1;
+
+/** Pick black or white text, whichever has the higher WCAG contrast on the background. */
 export function getContrastColor(luminance: number): string {
-  // WCAG 2.0 contrast threshold (simplified)
-  return luminance > 0.5 ? "#000000" : "#ffffff";
+  return getContrastRatio(luminance, BLACK_LUMINANCE) >=
+    getContrastRatio(luminance, WHITE_LUMINANCE)
+    ? "#000000"
+    : "#ffffff";
 }
 
 /**

@@ -14,10 +14,12 @@ import remarkSupersub from "remark-supersub";
 
 import CodeBlock from "@/features/chat/components/code-block/CodeBlock";
 import CustomAnchor from "@/features/chat/components/code-block/CustomAnchor";
+import { getImageDimensions } from "@/lib/imageDimensions";
 import { cn } from "@/lib/utils";
 import { useImageDialog } from "@/stores/uiStore";
 
 import { slugifyHeading } from "../utils/parseHeadings";
+import { rehypeSplitMarkdownSections } from "../utils/splitMarkdownSections";
 
 function extractText(node: React.ReactNode): string {
   if (typeof node === "string") return node;
@@ -100,16 +102,22 @@ export default function MarkdownWrapper({ content }: { content: string }) {
             <p className="my-5 leading-[1.8] first:mt-0 last:mb-0" {...props} />
           ),
           li: ({ ...props }) => <li className="leading-[1.7]" {...props} />,
-          img: ({ ...props }) => (
-            <Image
-              width={500}
-              height={500}
-              alt="image"
-              className="mx-auto my-8 cursor-pointer rounded-xl bg-zinc-900 object-contain transition hover:opacity-80"
-              src={props.src as string}
-              onClick={() => openDialog(props.src as string)}
-            />
-          ),
+          img: ({ alt, src, title }) => {
+            const imageSrc = src as string;
+            const { width, height } = getImageDimensions(imageSrc);
+
+            return (
+              <Image
+                width={width}
+                height={height}
+                alt={alt ?? ""}
+                title={title}
+                className="mx-auto my-8 h-[500px] w-[500px] cursor-pointer rounded-xl bg-zinc-900 object-contain transition hover:opacity-80"
+                src={imageSrc}
+                onClick={() => openDialog(imageSrc)}
+              />
+            );
+          },
           pre: ({ ...props }) => (
             <pre className="my-8 font-serif! text-wrap" {...props} />
           ),
@@ -148,7 +156,7 @@ export default function MarkdownWrapper({ content }: { content: string }) {
           remarkSmartypants,
           remarkSupersub,
         ]}
-        rehypePlugins={[rehypeKatex]}
+        rehypePlugins={[rehypeKatex, rehypeSplitMarkdownSections]}
       >
         {content}
       </ReactMarkdown>

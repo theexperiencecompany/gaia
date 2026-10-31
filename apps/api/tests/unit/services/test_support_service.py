@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 import re
 from typing import Any
-from unittest.mock import ANY, AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from fastapi import HTTPException, UploadFile
 import pytest
@@ -477,7 +477,9 @@ class TestCreateSupportRequest:
 
         assert exc_info.value.status_code == 500
         assert "email" in exc_info.value.detail.lower()
-        mock_support_repo.delete.assert_awaited_once_with(ANY, user_id=USER_ID)
+        created = mock_support_repo.create.await_args.args[0]
+        assert created.id is not None
+        mock_support_repo.delete.assert_awaited_once_with(created.id)
 
     async def test_email_failure_rollback_fails_still_raises_500(
         self,
@@ -547,7 +549,8 @@ class TestCreateSupportRequest:
                         )
 
         assert exc_info.value.status_code == 500
-        mock_support_repo.delete.assert_awaited_once()
+        created = mock_support_repo.create.await_args.args[0]
+        mock_support_repo.delete.assert_awaited_once_with(created.id)
 
     async def test_unexpected_error_rollback_failure_still_raises_500(
         self,
@@ -1070,7 +1073,8 @@ class TestCreateSupportRequestWithAttachments:
 
         assert exc_info.value.status_code == 500
         mock_delete_files.assert_awaited_once()
-        mock_support_repo.delete.assert_awaited_once()
+        created = mock_support_repo.create.await_args.args[0]
+        mock_support_repo.delete.assert_awaited_once_with(created.id)
 
     async def test_unexpected_error_cleanup_failures_still_raises_500(
         self,
@@ -1440,7 +1444,7 @@ class TestRollbackCreatedRequest:
         with patch("app.services.support_service.log") as log:
             await _rollback_created_request("GAIA-1", "req-1", USER_ID, RuntimeError("boom"))
 
-        mock_support_repo.delete.assert_awaited_once_with("req-1", user_id=USER_ID)
+        mock_support_repo.delete.assert_awaited_once_with("req-1")
         log.info.assert_called_once_with(
             "Successfully rolled back support request from database", ticket_id="GAIA-1"
         )
@@ -1641,8 +1645,7 @@ class TestCreateSupportRequestLogPins:
         # The rollback helper received the generated ticket/request ids.
         mock_support_repo.delete.assert_awaited_once()
         delete_args = mock_support_repo.delete.await_args
-        assert delete_args.args[0] == delete_args.kwargs.get("request_id", delete_args.args[0])
-        assert delete_args.kwargs["user_id"] == USER_ID
+        assert delete_args.kwargs == {}
         # _send_support_email_notifications logs its own failure first; find
         # the support-service-level call by name rather than assuming index 0.
         ticket_id = next(

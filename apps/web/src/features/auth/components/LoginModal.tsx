@@ -122,7 +122,7 @@ function SignInButton({ isLocalAuth, onLocalSignIn }: SignInButtonProps) {
   return (
     <RaisedButton
       color="#00bbff"
-      className="text-md w-full text-primary-foreground!"
+      className="text-md w-full"
       onClick={() => {
         track("navigation:cta_clicked", {
           location: "login_modal",

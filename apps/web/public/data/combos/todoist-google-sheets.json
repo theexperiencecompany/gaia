@@ -15,7 +15,7 @@
     "todoist sheets automation",
     "todoist productivity report sheets"
   ],
-  "intro": "Todoist knows what you finished, but proving it means screenshots or manual logs. Managers ask for weekly summaries, freelancers need billable-task records, and teams want cycle-time data, all locked inside the task list.\n\nGAIA pipes Todoist into Google Sheets automatically. Completed tasks append to a log sheet with project, labels, dates, and priority fields, ready for pivot tables. The reverse works too: rows added to a sheet, new leads, content ideas, bug reports, become Todoist tasks with fields mapped to titles, projects, and due dates.\n\nThe result is a personal analytics layer on top of Todoist plus a bulk-entry path for work captured anywhere else. Your task list stays the place work happens, and Sheets becomes the place work gets measured.",
+  "intro": "Todoist knows what you finished, but proving it means screenshots or manual logs. Managers ask for weekly summaries, freelancers need billable-task records, and teams want cycle-time data, all locked inside the task list.\n\nGAIA pipes Todoist into Google Sheets automatically. Completed tasks append to a log sheet with project, labels, dates, and priority fields, ready for pivot tables. The reverse works too: rows added to a sheet, new leads, content ideas, bug reports, become tasks with fields mapped to titles, projects, and due dates.\n\nThe result is a personal analytics layer on top of the task list plus a bulk-entry path for work captured anywhere else. Your tasks stay the place work happens, and Sheets becomes the place work gets measured.",
   "useCases": [
     {
       "title": "Auto-log completed tasks to Sheets",
@@ -27,47 +27,47 @@
     },
     {
       "title": "Create tasks from sheet rows",
-      "description": "New rows in a tracked tab become Todoist tasks with columns mapped to title, project, priority, and due date. Content calendars and lead lists convert to action directly."
+      "description": "New rows in a tracked tab become tasks with columns mapped to title, project, priority, and due date. Content calendars and lead lists convert to action directly."
     },
     {
       "title": "Track estimates against actuals",
-      "description": "Log estimated versus actual completion data per task and chart accuracy over time in Sheets. Planning gets measurably better each quarter."
+      "description": "Log estimated versus actual completion data per task and chart accuracy over time in the sheet. Planning gets measurably better each quarter."
     },
     {
       "title": "Bulk-import backlogs from spreadsheets",
-      "description": "Migrating from another tool or planning a project in Sheets? GAIA converts each row into a task in the right project, preserving order, labels, and dates."
+      "description": "When migrating from another tool or planning a project in a spreadsheet, GAIA converts each row into a task in the right project, preserving order, labels, and dates."
     }
   ],
   "howItWorks": [
     {
       "step": "Connect Todoist and Google Sheets to GAIA",
-      "description": "Authorize GAIA with your Todoist account and Google account. Choose which projects log to Sheets and which tabs create tasks."
+      "description": "Authorize GAIA with both accounts. Choose which projects log to the spreadsheet and which tabs create tasks."
     },
     {
       "step": "Map fields to columns once",
-      "description": "Match Todoist fields like project, labels, priority, and due date to sheet columns. GAIA remembers the mapping for every future sync."
+      "description": "Match task fields like project, labels, priority, and due date to sheet columns. GAIA remembers the mapping for every future sync."
     },
     {
       "step": "GAIA logs completions and creates tasks",
-      "description": "Finished tasks append to the log on their own while new sheet rows arrive in Todoist as tasks. Both directions run without babysitting."
+      "description": "Finished tasks append to the log on their own while new sheet rows arrive as tasks. Both directions run without babysitting."
     }
   ],
   "faqs": [
     {
       "question": "Can GAIA automatically log my completed Todoist tasks?",
-      "answer": "Yes. Connect Todoist and pick a log spreadsheet. Every completed task appends a row with project, labels, dates, and priority, so your history builds itself."
+      "answer": "Yes. Connect your account and pick a log spreadsheet. Every completed task appends a row with project, labels, dates, and priority, so your history builds itself."
     },
     {
-      "question": "What Todoist fields appear in the sheet?",
+      "question": "Which task fields appear in the sheet?",
       "answer": "Task title, project, section, labels, priority, due date, creation date, and completion timestamp. You choose the column order once and GAIA keeps it for every row."
     },
     {
-      "question": "Can new rows in Google Sheets become Todoist tasks?",
+      "question": "Can new rows in a sheet become tasks?",
       "answer": "Yes. Map columns to task fields and each new row creates a task in the project you chose, with priority and due date set from the sheet values."
     },
     {
       "question": "Can I log only certain projects and not everything?",
-      "answer": "Yes. Select exactly which Todoist projects feed the log. Personal tasks stay private while work projects sync for reporting."
+      "answer": "Yes. Select exactly which projects feed the log. Personal tasks stay private while work projects sync for reporting."
     },
     {
       "question": "Does GAIA handle recurring tasks in the log?",

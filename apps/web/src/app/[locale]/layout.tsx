@@ -5,17 +5,12 @@ import { setRequestLocale } from "next-intl/server";
 import { type ReactNode, Suspense } from "react";
 import { defaultFont, getAllFontVariables } from "@/app/fonts";
 import { AgentationProvider } from "@/components/dev/AgentationProvider";
-import JsonLd from "@/components/seo/JsonLd";
 import { ChunkErrorRecovery } from "@/components/shared/ChunkErrorRecovery";
 import { prerenderedLocales } from "@/i18n/prerenderedLocales";
 import { routing } from "@/i18n/routing";
 import AnalyticsLayout from "@/layouts/AnalyticsLayout";
 import RootProviders from "@/layouts/RootProviders";
-import {
-  generateOrganizationSchema,
-  generateWebSiteSchema,
-  siteConfig,
-} from "@/lib/seo";
+import { siteConfig } from "@/lib/seo";
 
 const OG_LOCALE_MAP: Record<string, string> = {
   en: "en_US",
@@ -183,7 +178,7 @@ export default async function LocaleLayout({ children, params }: Props) {
           rel="alternate"
           type="application/rss+xml"
           title="GAIA RSS Feed"
-          href="/feed.xml"
+          href="/feed"
         />
         <link
           rel="alternate"
@@ -200,10 +195,6 @@ export default async function LocaleLayout({ children, params }: Props) {
             </RootProviders>
           </div>
         </NextIntlClientProvider>
-
-        <JsonLd
-          data={[generateOrganizationSchema(), generateWebSiteSchema()]}
-        />
 
         <ChunkErrorRecovery />
         <AnalyticsLayout />

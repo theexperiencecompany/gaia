@@ -299,6 +299,7 @@ assert isinstance(_secrets_module.inject_infisical_secrets, MagicMock), (
     "hermetic fence broken: secrets.inject_infisical_secrets is not mocked"
 )
 
+
 # Registers the PostHog provider the way production startup does, since the
 # test app's lifespan is a no-op; POSTHOG_PROJECT_TOKEN is blanked above so
 # the SILENT-strategy loader no-ops capture calls instead of raising KeyError.

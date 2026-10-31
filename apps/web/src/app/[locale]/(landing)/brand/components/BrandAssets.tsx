@@ -23,7 +23,7 @@ export function BrandAssets() {
                 { format: ".svg", path: "/brand/gaia_logo.svg" },
                 { format: ".png", path: "/brand/gaia_logo.png" },
               ]}
-              imageAlt="GAIA Logo"
+              imageAlt="The GAIA logo mark on a dark background"
             />
           </div>
         </div>

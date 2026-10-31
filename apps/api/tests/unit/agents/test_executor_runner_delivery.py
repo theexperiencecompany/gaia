@@ -28,12 +28,14 @@ from app.agents.core.background import (
 from app.agents.core.background.session import (
     ExecutorRun,
     RunKind,
+    TodoRun,
 )
 from app.agents.prompts.comms_prompts import (
     INTERACTIVE_DELIVERY_NOTE,
     PLATFORM_DELIVERY_NOTE,
     SILENCE_NOTE,
 )
+from app.constants.chat import CONVERSATION_MAX_MESSAGES
 from app.constants.executor import (
     EXECUTOR_NARRATION_FAILED_ERROR_MESSAGE,
     EXECUTOR_NARRATION_FAILED_MESSAGE,
@@ -41,10 +43,12 @@ from app.constants.executor import (
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.log_tags import LogTag
+from app.constants.todos import TODO_CONVERSATION_MAX_MESSAGES
 from app.models.chat_models import ConversationSource, MessageModel, ToolDataEntry
 from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
 from app.models.message_models import ReplyToMessageData
 from app.models.user_models import AuthenticatedUser
+from app.models.workflow_models import TriggerType
 from app.services.delivery.chat_channel import InApp
 from shared.py.analytics import Dedupe, UserId
 from shared.py.analytics.catalog.agents import AgentRunCompleted, AgentRunFailed, AgentRunStarted
@@ -486,6 +490,37 @@ class TestPersistCancelledRun:
         assert saved.tool_data and saved.tool_data[0]["tool_name"] == "tool_calls_data"
         narrate.assert_not_awaited()  # the run was stopped — no re-voicing
         ws.assert_not_awaited()  # no re-broadcast of already-streamed data
+
+    @pytest.mark.parametrize(
+        ("todo_run", "cap"),
+        [
+            (None, CONVERSATION_MAX_MESSAGES),
+            (
+                TodoRun(todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO),
+                TODO_CONVERSATION_MAX_MESSAGES,
+            ),
+        ],
+        ids=["chat", "todo-chat"],
+    )
+    async def test_a_stopped_runs_cards_keep_the_conversations_cap(
+        self, todo_run: TodoRun | None, cap: int
+    ) -> None:
+        """Regression: an explicit None for a plain chat switched off the cap every conversation has."""
+        run = replace(
+            _run(RunKind.QUEUED, stream_id="queued_s1", task_id="task-9"), todo_run=todo_run
+        )
+
+        with patch.object(rd, "update_messages", new_callable=AsyncMock) as save:
+            await rd.persist_cancelled_run(run, CARDS)
+
+        assert save.await_args.kwargs["max_messages"] == cap
+
+    async def test_a_bot_reply_keeps_the_conversations_cap(self) -> None:
+        bot_message = MessageModel(type="bot", response="hi")
+        with patch.object(rd, "update_messages", new_callable=AsyncMock) as save:
+            await rd._save_bot_message("conv-1", AuthenticatedUser(user_id=USER_ID), bot_message)
+
+        assert save.await_args.kwargs["max_messages"] == CONVERSATION_MAX_MESSAGES
 
     async def test_no_cards_writes_nothing(self) -> None:
         run = _run(RunKind.QUEUED, stream_id="queued_s1", task_id="task-9")

@@ -112,7 +112,7 @@ export function FeaturesGrid({ children }: { children?: ReactNode }) {
           <GetStartedButton
             text="Get started"
             btnColor="#000000"
-            classname="text-white! text-base h-12 rounded-2xl"
+            classname="text-base h-12 rounded-2xl"
           />
         </m.div>
       </section>

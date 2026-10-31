@@ -7,6 +7,7 @@ from fastapi import HTTPException, status
 from psycopg_pool import AsyncConnectionPool
 
 from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_manager
+from app.constants.chat import CONVERSATION_MAX_MESSAGES
 from app.constants.error_codes import CONVERSATION_NOT_FOUND
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
@@ -294,12 +295,15 @@ async def delete_todo_conversations(user_id: str, todo_ids: list[str]) -> None:
 
 
 async def update_messages(
-    request: UpdateMessagesRequest, user: AuthenticatedUser, max_messages: int | None = None
+    request: UpdateMessagesRequest,
+    user: AuthenticatedUser,
+    max_messages: int | None = CONVERSATION_MAX_MESSAGES,
 ) -> UpdateMessagesResponse:
-    """Append messages to a conversation.
+    """Append messages to a conversation, keeping the newest max_messages.
 
-    max_messages caps stored history to the most recent N (via $slice) so
-    per-workflow threads can't outgrow MongoDB's 16MB document limit.
+    A conversation is one Mongo document: past 16MB every later append is
+    rejected and the thread can never be written again. The cap is the $slice
+    the workflow threads already used, now defaulting for every writer.
     """
     user_id = user.user_id
     message_ids = await conversation_repository.append_messages(

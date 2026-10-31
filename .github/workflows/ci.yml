@@ -1531,6 +1531,11 @@ jobs:
         env:
           AFFECTED_TS_PROJECTS: ${{ needs.detect.outputs.typescript_projects }}
           NX_PARALLEL: ${{ steps.par.outputs.nx }}
+          # The gate builds the same HTML a deploy does: without these, links,
+          # the Turnstile widget and analytics markup disappear from the audit.
+          NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${{ vars.NEXT_PUBLIC_TURNSTILE_SITE_KEY }}
+          NEXT_PUBLIC_DISCORD_CLIENT_ID: ${{ vars.NEXT_PUBLIC_DISCORD_CLIENT_ID }}
+          NEXT_PUBLIC_SLACK_CLIENT_ID: ${{ vars.NEXT_PUBLIC_SLACK_CLIENT_ID }}
         run: |
           echo "::group::env"
           echo "nproc=$(nproc) NX_PARALLEL=$NX_PARALLEL"
@@ -1568,6 +1573,10 @@ jobs:
         if: needs.detect.outputs.has_seo == 'true'
         continue-on-error: true
         shell: python3 scripts/ci/verdict.py check -- bash --noprofile --norc -eo pipefail {0}
+        env:
+          NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${{ vars.NEXT_PUBLIC_TURNSTILE_SITE_KEY }}
+          NEXT_PUBLIC_DISCORD_CLIENT_ID: ${{ vars.NEXT_PUBLIC_DISCORD_CLIENT_ID }}
+          NEXT_PUBLIC_SLACK_CLIENT_ID: ${{ vars.NEXT_PUBLIC_SLACK_CLIENT_ID }}
         run: bash scripts/ci/smoke-web.sh audit-build
       - *upload-verdict-so-far
       - name: Post one commit status per check

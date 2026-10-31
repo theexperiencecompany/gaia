@@ -2,38 +2,22 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type { Metadata } from "next";
-import { createTranslator } from "next-intl";
 import type * as NextIntlServer from "next-intl/server";
 import { describe, expect, it, vi } from "vitest";
 
 import { locales } from "@/i18n/config";
 import { isTranslatedPath } from "@/i18n/translatedRoutes";
 import { siteConfig } from "@/lib/seo";
-
-const request = vi.hoisted(() => ({ locale: "en" }));
+import { intlRequest } from "./helpers/nextIntlServer";
 
 /** The request context next-intl reads from inside generateMetadata, answered for the locale under test. */
-vi.mock("next-intl/server", async (importOriginal) => ({
-  ...(await importOriginal<typeof NextIntlServer>()),
-  getLocale: async () => request.locale,
-  setRequestLocale: (locale: string) => {
-    request.locale = locale;
-  },
-  getTranslations: async (
-    options?: string | { locale?: string; namespace?: string },
-  ) => {
-    const { locale = request.locale, namespace } =
-      typeof options === "string" ? { namespace: options } : (options ?? {});
-    return createTranslator({
-      locale,
-      messages: readJson(path.join(MESSAGES_DIR, `${locale}.json`)),
-      namespace,
-    });
-  },
-}));
+vi.mock("next-intl/server", async (importOriginal) =>
+  (await import("./helpers/nextIntlServer")).mockNextIntlServer(
+    importOriginal<typeof NextIntlServer>,
+  ),
+);
 
 const DATA_DIR = path.join(process.cwd(), "public", "data");
-const MESSAGES_DIR = path.join(process.cwd(), "src", "messages");
 const SNIPPET = path.join(process.cwd(), "src", "config", "seoSnippet.json");
 const FAMILIES = [
   "comparisons",
@@ -48,7 +32,11 @@ const OVERLAY_DIR: Partial<Record<(typeof FAMILIES)[number], string>> = {
   combos: "integrations",
 };
 /** Pages built from live API data; integrationMeta and useCaseMeta tests pin their description templates. */
-const API_BACKED = new Set(["marketplace/[slug]", "use-cases/[slug]"]);
+const API_BACKED = new Set([
+  "marketplace/[slug]",
+  "marketplace/page/[page]",
+  "use-cases/[slug]",
+]);
 
 type Meta = { metaTitle?: string; metaDescription?: string };
 type Params = Record<string, string>;
@@ -166,7 +154,7 @@ async function renderAllPages(): Promise<RenderedPage[]> {
       page.metadata || !isTranslatedPath(`/${route}`) ? ["en"] : locales;
     for (const locale of servedIn) {
       for (const params of paramSets) {
-        request.locale = locale;
+        intlRequest.locale = locale;
         const metadata =
           page.metadata ??
           (await page.generateMetadata?.({

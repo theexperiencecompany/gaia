@@ -31,7 +31,7 @@ OpenAI caps tools at around 128 per request. We weren't even close to that numbe
 
 ---
 
-### The Naive Approach: Manual Tool Search
+## The Naive Approach: Manual Tool Search
 
 Our first attempt was tool search. We'd list every available tool name in the system prompt, then give the model a `search_tool` function. When it needed something, it would call `search_tool("gmail send email")`, we'd look it up, bind it dynamically, and return it.
 
@@ -43,7 +43,7 @@ LLMs don't follow strict naming conventions when you have hundreds of options. T
 
 We tried it anyway. It worked for 20 tools. At 50, it started breaking. At 200, it was unusable.
 
-![Untitled diagram-2025-11-11-183124.png](/images/blog/how-tool-calling-works/Untitled_diagram-2025-11-11-183124.png)
+![Flowchart of the failed approach: the system prompt lists every tool name, and a search_tool call without an exact name match ends in a Tool Not Found error](/images/blog/how-tool-calling-works/Untitled_diagram-2025-11-11-183124.png)
 
 ### The Breakthrough: Semantic Tool Retrieval
 
@@ -60,7 +60,7 @@ The difference was immediate. Context window usage dropped substantially. The mo
 
 And because retrieval is fast, latency actually _improved_ compared to loading everything upfront.
 
-![Untitled diagram-2025-11-11-183144.png](/images/blog/how-tool-calling-works/Untitled_diagram-2025-11-11-183144.png)
+![Flowchart of semantic tool retrieval: the ToolRegistry indexes custom and Composio tools into a ChromaDB vector store, which is searched semantically and the matches bound to the main agent](/images/blog/how-tool-calling-works/Untitled_diagram-2025-11-11-183144.png)
 
 ---
 
@@ -77,7 +77,7 @@ It handles:
 
 The registry is the single source of truth for what tools exist and how to access them. When the executor needs a tool, it queries the registry. When a user connects a new integration, the registry indexes it immediately.
 
-![Untitled diagram-2025-11-11-183214.png](/images/blog/how-tool-calling-works/Untitled_diagram-2025-11-11-183214.png)
+![Flowchart of the full architecture: the main agent retrieves tools from the registry's vector store and hands execution off to sub-agents such as the Gmail and Notion agents](/images/blog/how-tool-calling-works/Untitled_diagram-2025-11-11-183214.png)
 
 ### The Three-Layer Architecture
 

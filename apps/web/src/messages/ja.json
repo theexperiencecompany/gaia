@@ -10,7 +10,8 @@
     "dont_see_your_tool": "お探しのツールが見つかりませんか？",
     "view_comparisons": "比較を見る",
     "get_started": "始める",
-    "docs_guides": "ドキュメントのガイド"
+    "docs_guides": "ドキュメントのガイド",
+    "section_nav_label": "セクションへ移動"
   },
   "alternatives": {
     "breadcrumb": "代替",
@@ -71,7 +72,12 @@
     "hub_title": "GAIAの比較",
     "hub_subtitle": "正直で詳細な比較で、適切なAI生産性ツールを選ぶお手伝いをします。GAIAが優れている点と、他のツールが適している場合を確認しましょう。",
     "hub_meta_title": "AIアシスタント比較：GAIA vs ChatGPT・Motionほか",
-    "hub_meta_description": "GAIAとChatGPT、Gemini、Claude、Motion、n8n、Zapier、Reclaimなどの比較をご覧ください。正直で詳細な比較で適切なAI生産性ツールを選びましょう。"
+    "hub_meta_description": "GAIAとChatGPT、Gemini、Claude、Motion、n8n、Zapier、Reclaimなどの比較をご覧ください。正直で詳細な比較で適切なAI生産性ツールを選びましょう。",
+    "all_category_comparisons": "{category}の比較をすべて見る（{count}件）",
+    "category_page_title": "{category}の比較",
+    "category_page_subtitle": "{category}の{count}ツールとGAIAを項目ごとに比べ、それぞれが合う場面を示します。",
+    "category_meta_title": "{category}ツールの比較：GAIAと{count}製品を項目ごとに検証",
+    "category_meta_description": "{category}の{count}ツールとGAIAを、機能、料金、向いている使い方で項目ごとに比較します。あなたに合うツール選びにお役立てください。各ツールの強みと、GAIAが先回りして手伝える場面もわかります。"
   },
   "automate": {
     "breadcrumb": "自動化",
@@ -92,7 +98,13 @@
     "hub_meta_description": "240以上の自動化コンボを検索しましょう。Gmail + Slack、Notion + Todoist、GitHub + Linearなどを接続 — GAIAがツール間のワークフローを自動的に処理します。",
     "combos_count": "{count}件の自動化コンボ",
     "dont_see_your_combo": "コンボが見つかりませんか？",
-    "dont_see_your_combo_desc": "完全なインテグレーションマーケットプレイスを閲覧するか、MCPを通じて任意のツールを接続してください。"
+    "dont_see_your_combo_desc": "完全なインテグレーションマーケットプレイスを閲覧するか、MCPを通じて任意のツールを接続してください。",
+    "more_automations_with": "<app>{name}</app>のその他の自動化",
+    "all_app_automations": "{app}の自動化をすべて見る（{count}件）",
+    "app_page_title": "{app}の自動化",
+    "app_page_subtitle": "GAIAが{app}をほかのツールとつなぐ方法と、その間で代わりにこなす作業をすべて紹介します。",
+    "app_meta_title": "{app}の自動化：GAIAでできる{count}件のワークフロー",
+    "app_meta_description": "GAIAが{app}をほかのツールとつなぐ{count}件の自動化を紹介します。それぞれが代わりにこなす作業と使い方を、コード不要でわかりやすくまとめました。"
   },
   "glossary": {
     "breadcrumb": "用語集",
@@ -116,7 +128,11 @@
     "category_calendar": "カレンダー & 時間管理",
     "category_task_management": "タスク管理",
     "category_knowledge_management": "ナレッジ & ノート",
-    "category_development": "開発 & インテグレーション"
+    "category_development": "開発 & インテグレーション",
+    "all_category_terms": "{category}の用語をすべて見る（{count}件）",
+    "category_page_subtitle": "{category}の用語{count}件をやさしく解説し、GAIAがそれぞれをどう活かすかを紹介します。",
+    "category_meta_title": "{category}の用語集：{count}語をやさしく解説",
+    "category_meta_description": "{category}に関する{count}の用語を、専門知識がなくてもわかる言葉でやさしく解説します。GAIAのような先回りするAIアシスタントでの使われ方も紹介します。"
   },
   "marketplace": {
     "breadcrumb": "マーケットプレイス"

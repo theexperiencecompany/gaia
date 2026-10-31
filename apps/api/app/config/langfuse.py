@@ -18,12 +18,27 @@ from langfuse.langchain import CallbackHandler
 from opentelemetry.sdk.trace import TracerProvider
 
 from app.config.settings import settings
-from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
+from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from shared.py.wide_events import log
 
 # Not an SDK timeout: auth_check retries internally and takes ~120s against
 # an unreachable host regardless of the value passed (measured at 2s and 5s).
 LANGFUSE_AUTH_CHECK_WAIT_SECONDS = 5
+
+# The SDK's 5s budget is shared by serialization and every retry, so a flapping
+# collector spent it before the request left and reported a 0.3s read timeout.
+LANGFUSE_EXPORT_TIMEOUT_SECONDS = 10
+
+# 512 spans of LLM payloads overflows the collector's ingress (413), which never
+# succeeds on retry. 128 fits.
+LANGFUSE_FLUSH_AT = 128
+
+# Langfuse 4.6.1 discards the flush_at argument when LANGFUSE_FLUSH_AT is unset
+# and falls back to 512 spans, so the variable is the only knob that works.
+LANGFUSE_FLUSH_AT_ENV = "LANGFUSE_FLUSH_AT"
+
+# The lazy-provider key this module registers; the key is part of the contract.
+LANGFUSE_PROVIDER_NAME = "langfuse"
 
 
 def _langfuse_configured() -> bool:
@@ -42,8 +57,13 @@ def _langfuse_configured() -> bool:
     )
 
 
+def _configure_export_env() -> None:
+    """Set the batch-size variable the SDK actually reads; its kwarg is ignored when unset."""
+    os.environ.setdefault(LANGFUSE_FLUSH_AT_ENV, str(LANGFUSE_FLUSH_AT))
+
+
 @lazy_provider(
-    name="langfuse",
+    name=LANGFUSE_PROVIDER_NAME,
     required_keys=[
         settings.LANGFUSE_PUBLIC_KEY,
         settings.LANGFUSE_SECRET_KEY,
@@ -65,6 +85,7 @@ def init_langfuse() -> Langfuse:
     # SDK's `environment` kwarg never reaches the OTel Resource; the env var is
     # the path it reads instead. Both are set deliberately.
     os.environ["LANGFUSE_TRACING_ENVIRONMENT"] = settings.ENV
+    _configure_export_env()
     # Isolated TracerProvider (langfuse's "Option C"): falling back to Sentry's
     # global provider drops per-trace attributes (session_id, user_id) —
     # confirmed via prod/dev trace comparison. Orphaned-looking spans are the trade-off.
@@ -74,6 +95,8 @@ def init_langfuse() -> Langfuse:
         host=settings.LANGFUSE_HOST,
         environment=settings.ENV,
         tracer_provider=TracerProvider(),
+        timeout=LANGFUSE_EXPORT_TIMEOUT_SECONDS,
+        flush_at=LANGFUSE_FLUSH_AT,
     )
     # Diagnostic only — a Langfuse outage costs a bounded wait, not the SDK's
     # full retry budget. Daemon so a still-running check can't block shutdown.
@@ -121,6 +144,10 @@ def build_langfuse_callback() -> CallbackHandler | None:
     """LangChain callback bound to the global client, or None if disabled."""
     if not _langfuse_configured():
         return None
+    # The handler resolves the process-wide client by public key. Initialize it
+    # first, or the SDK creates one with its own defaults and our export budget
+    # (timeout, batch size) never applies.
+    providers.get(LANGFUSE_PROVIDER_NAME)
     return CallbackHandler()
 
 

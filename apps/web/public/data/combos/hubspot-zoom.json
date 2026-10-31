@@ -15,55 +15,55 @@
     "connect HubSpot and Zoom",
     "Zoom meeting HubSpot activity"
   ],
-  "intro": "Sales reps conduct dozens of Zoom calls every week, but those calls rarely make it into HubSpot automatically. Activity timelines go stale, call notes sit in personal documents rather than the CRM, and follow-up commitments made on the call are forgotten because the rep moved straight to the next meeting without logging the outcome.\n\nGAIA connects HubSpot and Zoom so every sales call is captured in the CRM automatically. When a Zoom meeting includes a HubSpot contact, GAIA logs the call as a CRM activity and generates a summary from the transcript. Committed action items become HubSpot tasks, and key conversation points are attached to the deal record so anyone on the account team can get up to speed without listening to the recording.\n\nThis integration is built for sales teams that want complete CRM activity timelines, managers who need call visibility without listening to recordings, and account teams who need to hand off deals with full conversation context.",
+  "intro": "Sales reps conduct dozens of Zoom calls every week, but those calls rarely reach the CRM automatically. Activity timelines go stale, call notes sit in personal documents, and follow-up commitments made on the call are forgotten because the rep moved straight to the next meeting without logging the outcome.\n\nGAIA connects HubSpot and Zoom so every sales call is captured automatically. When a meeting includes a known contact, GAIA logs the call as a CRM activity and generates a summary from the transcript. Committed action items become tasks, and key conversation points are attached to the deal record so anyone on the account team can get up to speed without listening to the recording.\n\nThis integration is built for sales teams that want complete CRM activity timelines, managers who need call visibility without listening to recordings, and account teams who need to hand off deals with full conversation context.",
   "useCases": [
     {
       "title": "Log Zoom calls as HubSpot activities automatically",
-      "description": "When a Zoom meeting includes a HubSpot contact's email address, GAIA logs the call as a meeting activity on the contact and deal record, including the call duration, attendees, and a link to the recording."
+      "description": "When a meeting includes a contact's email address, GAIA logs the call as a meeting activity on the contact and deal record, including the call duration, attendees, and a link to the recording."
     },
     {
       "title": "Post call summaries to HubSpot deal records",
-      "description": "After a Zoom call, GAIA generates a structured summary from the meeting transcript and posts it to the linked HubSpot deal record as a note, giving the entire account team immediate access to call outcomes."
+      "description": "After a call, GAIA generates a structured summary from the meeting transcript and posts it to the linked deal record as a note, giving the entire account team immediate access to call outcomes."
     },
     {
       "title": "Create follow-up tasks from action items",
-      "description": "GAIA analyzes Zoom call transcripts for commitments and action items, send a proposal, schedule a demo, loop in a technical contact, and creates corresponding HubSpot tasks with due dates for the responsible rep."
+      "description": "GAIA analyzes call transcripts for commitments and action items (send a proposal, schedule a demo, loop in a technical contact) and creates corresponding tasks with due dates for the responsible rep."
     },
     {
       "title": "Advance deal stage from call outcomes",
-      "description": "When a Zoom call summary indicates a specific outcome, verbal agreement, request for contract, demo completed, GAIA can advance the HubSpot deal to the next pipeline stage automatically."
+      "description": "When a call summary indicates a specific outcome (verbal agreement, request for contract, demo completed), GAIA can advance the deal to the next pipeline stage automatically."
     },
     {
       "title": "Manager call coaching alerts",
-      "description": "GAIA monitors Zoom call summaries for coaching signals, long monologues, no next steps agreed, competitor mentions, and creates a HubSpot task for the sales manager to review the recording and provide feedback."
+      "description": "GAIA monitors call summaries for coaching signals (long monologues, no next steps agreed, competitor mentions) and creates a task for the sales manager to review the recording and provide feedback."
     }
   ],
   "howItWorks": [
     {
       "step": "Connect HubSpot and Zoom to GAIA",
-      "description": "Authorize GAIA to access your HubSpot portal and Zoom account. GAIA matches Zoom meeting attendees to HubSpot contact records by email address."
+      "description": "Authorize GAIA to access your HubSpot portal and Zoom account. GAIA matches meeting attendees to contact records by email address."
     },
     {
       "step": "Configure logging rules and follow-up templates",
-      "description": "Define which Zoom meetings should be logged to HubSpot, by attendee domain, meeting type, or calendar invitation, and set the task templates GAIA creates from call action items."
+      "description": "Define which meetings should be logged, by attendee domain, meeting type, or calendar invitation, and set the task templates GAIA creates from call action items."
     },
     {
       "step": "GAIA logs every call and drives follow-through",
-      "description": "GAIA monitors Zoom for completed meetings, logs them to HubSpot, generates summaries, and creates follow-up tasks automatically so your CRM reflects every sales conversation and every commitment made."
+      "description": "GAIA monitors for completed meetings, logs them to the CRM, generates summaries, and creates follow-up tasks automatically so the timeline reflects every sales conversation and every commitment made."
     }
   ],
   "faqs": [
     {
       "question": "Does GAIA require Zoom cloud recording for call logging?",
-      "answer": "Basic call logging — duration, attendees, date — works without recording. Generating call summaries and extracting action items requires Zoom transcription or cloud recording to be enabled on the meeting."
+      "answer": "Basic call logging — duration, attendees, date — works without recording. Generating call summaries and extracting action items requires transcription or cloud recording to be enabled on the meeting."
     },
     {
-      "question": "Can GAIA match Zoom calls to the correct HubSpot deal when a contact has multiple open deals?",
+      "question": "Can GAIA match calls to the correct deal when a contact has multiple open deals?",
       "answer": "Yes. GAIA uses the deal currently in an active stage for the contact by default, and you can configure it to prompt the rep to confirm the deal association when ambiguity exists."
     },
     {
-      "question": "Can managers access Zoom call summaries for their reps from HubSpot?",
-      "answer": "Yes. Call summaries are logged as HubSpot note activities on the deal or contact record, so anyone with CRM access — including managers and account team members — can read the summary without accessing Zoom."
+      "question": "Can managers access call summaries for their reps from HubSpot?",
+      "answer": "Yes. Call summaries are logged as note activities on the deal or contact record, so anyone with CRM access — including managers and account team members — can read the summary without needing access to the meeting account."
     }
   ]
 }

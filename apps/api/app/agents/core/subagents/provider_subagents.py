@@ -363,6 +363,11 @@ def register_subagent_providers(integration_ids: list[str] | None = None) -> int
         if integration_ids is not None and subagent.id not in integration_ids:
             continue
 
+        # An unavailable integration is listed but not dialable; registering it
+        # makes startup connect to an endpoint that cannot answer.
+        if not subagent.available:
+            continue
+
         # Skip auth-required MCP integrations - they are created on-the-fly
         # via create_subagent_for_user() when the handoff tool is invoked
         if (

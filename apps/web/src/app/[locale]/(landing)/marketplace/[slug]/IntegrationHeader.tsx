@@ -41,11 +41,7 @@ function AddButton({
 }: AddButtonProps) {
   if (alreadyHasIntegration) {
     return (
-      <RaisedButton
-        color="#00bbff"
-        className="shrink-0 text-black!"
-        onClick={onView}
-      >
+      <RaisedButton color="#00bbff" className="shrink-0" onClick={onView}>
         View Integration
       </RaisedButton>
     );
@@ -53,7 +49,7 @@ function AddButton({
   return (
     <RaisedButton
       color="#00bbff"
-      className="shrink-0 text-black!"
+      className="shrink-0"
       onClick={onAdd}
       disabled={isAdding || isAdded}
     >
@@ -67,7 +63,7 @@ export function IntegrationHeader({
   ...addButtonProps
 }: IntegrationHeaderProps) {
   return (
-    <div className="flex w-full items-start justify-between gap-2">
+    <div className="flex w-full flex-col items-start justify-between gap-4 sm:flex-row sm:gap-2">
       <div className="flex-1 space-y-2">
         <div className="flex items-center gap-4">
           <div className="flex max-w-12 min-w-12 min-h-12 max-h-12 items-center justify-center rounded-lg overflow-hidden">
