@@ -41,7 +41,14 @@ from app.agents.prompts.workflow_prompts import (
     WORKFLOW_AUTO_NOTIFY_SECTION,
     WORKFLOW_SILENT_NOTIFY_SECTION,
 )
-from app.constants.agents import DONE_EVIDENCE_RULE, AgentTag, wrap_agent_payload
+from app.constants.agents import (
+    DONE_EVIDENCE_RULE,
+    IRREVERSIBLE_APPROVED_BRIEF,
+    IRREVERSIBLE_UNAPPROVED_BRIEF,
+    TIME_HORIZON_BRIEF,
+    AgentTag,
+    wrap_agent_payload,
+)
 from app.constants.general import (
     EXECUTOR_INTEGRATION_ID,
     EXECUTOR_THREAD_PREFIX,
@@ -66,6 +73,7 @@ from app.models.agent_models import (
     run_analytics_context,
 )
 from app.models.hil_models import HilInterruptPayload, HilResumeDecision
+from app.models.ownership_models import ExecutorIntent
 from app.models.stream_events import ReasoningPayload, ToolOutputPayload
 from app.services.chat.chunks import normalize_custom_event
 from app.services.files import FileService
@@ -763,6 +771,23 @@ def paused_approval_ids(payload: HilInterruptPayload) -> tuple[str, ...]:
     return (str(single),) if single else ()
 
 
+def _render_intent(intent: ExecutorIntent) -> str:
+    lines = [
+        f"Outcome the user actually wants: {intent.desired_outcome.strip()}",
+        f"Time horizon: {TIME_HORIZON_BRIEF[intent.time_horizon]}",
+    ]
+    defaults = [d.strip() for d in intent.defaults_assumed if d.strip()]
+    if defaults:
+        lines.append("Defaults assumed (name them in your report):")
+        lines.extend(f"- {d}" for d in defaults)
+    lines.append(
+        IRREVERSIBLE_APPROVED_BRIEF
+        if intent.irreversible_approved
+        else IRREVERSIBLE_UNAPPROVED_BRIEF
+    )
+    return "\n".join(lines)
+
+
 def compose_executor_brief(
     task: str,
     acceptance_criteria: list[str],
@@ -770,8 +795,9 @@ def compose_executor_brief(
     verbatim_request: str | None = None,
     last_run: str | None = None,
     playbook_check: str | None = None,
+    intent: ExecutorIntent | None = None,
 ) -> str:
-    """Fold the definition-of-done (and verbatim request, previous run) into the brief.
+    """Fold the intent, definition-of-done (and verbatim request, previous run) into the brief.
 
     last_run is a workflow's rendered previous run — its memory now that
     checkpoint threads drop before each fire. playbook_check rides in the brief
@@ -785,6 +811,8 @@ def compose_executor_brief(
     parts.append(task)
     if last_run:
         parts.append(last_run.strip())
+    if intent is not None:
+        parts.append(_render_intent(intent))
     if criteria:
         lines = "\n".join(f"- {c}" for c in criteria)
         parts.append(

@@ -35,7 +35,7 @@ RUN_STARTED = "- 2026-10-01T08:00:03+00:00 [run_started] scheduled run (conversa
 RUN_FINISHED = "- 2026-10-01T08:04:10+00:00 [run_finished] result sent on telegram"
 
 VALID_CANVAS = (
-    "# Fix the thing\n\n## Standing rules\n\n## Key Details\nk\n\n## Current State\nopen\n\n"
+    "# Fix the thing\n\n## Standing rules\n\n## Done when\n\n## Evidence\n\n## Key Details\nk\n\n## Current State\nopen\n\n"
     "## Context\n\n## Learnings\n"
 )
 OBSERVATIONS = (
@@ -257,7 +257,9 @@ class TestWriteFile:
         )
 
         written = canvas.await_args.args[2]
-        assert written.startswith("# new\n\n## Standing rules\n\n## Key Details\nk")
+        assert written.startswith(
+            "# new\n\n## Standing rules\n\n## Done when\n\n## Evidence\n\n## Key Details\nk"
+        )
         for section in ("## Current State", "## Context", "## Learnings"):
             assert written.count(section) == 1
 
@@ -298,7 +300,7 @@ class TestWriteFile:
         assert refusal == (
             'Error: canvas.md was not saved: merge the 2 "## Learnings" sections into one; '
             'move the dated "### YYYY-MM-DD" entries into activity.md. The canvas keeps one '
-            "section each for Standing rules, Key Details, Current State, Context, Learnings (plus any of "
+            "section each for Standing rules, Done when, Evidence, Key Details, Current State, Context, Learnings (plus any of "
             "your own); dated entries and run logs belong in activity.md."
         )
 

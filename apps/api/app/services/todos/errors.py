@@ -94,3 +94,14 @@ class UnwatchedTodoKeptError(AppError):
             public={"todo_id": todo_id},
         )
         self.todo_id = todo_id
+
+
+class TodoNotFoundError(ValueError):
+    """Raised when no todo of this user has the id; carries the id so a caller can point at the one meant.
+
+    A ValueError, as the plain one it replaces: every route already maps that to its 4xx.
+    """
+
+    def __init__(self, todo_id: str) -> None:
+        super().__init__(f"Todo {todo_id} not found")
+        self.todo_id = todo_id

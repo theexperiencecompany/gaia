@@ -47,6 +47,7 @@ from app.agents.prompts.todo_prompts import (
     PARENT_STANDING_RULES_LABEL,
     SILENT_RUN_GUIDANCE,
     SUB_TODOS_LABEL,
+    TODO_REARM_BRIEF,
     TRIGGERED_RELEVANCE_GUIDANCE,
 )
 from app.constants import todos as todo_constants
@@ -1627,8 +1628,16 @@ class TestBuildExecutionPrompt:
         assert _prompt(_doc(title="Ship it")) == (
             "Execute the following scheduled task: Ship it\n\n"
             "This todo's id: todo-1.\n\n"
+            f"{TODO_REARM_BRIEF}\n\n"
             f"{DELIVERED_RESULT_GUIDANCE}"
         )
+
+    def test_a_todo_that_wakes_on_its_own_gets_no_rearm_brief(self):
+        assert TODO_REARM_BRIEF not in _prompt(_doc(title="Brief me", recurrence="daily"))
+
+    def test_a_todo_with_nothing_to_wake_it_is_told_this_run_is_its_last_look(self):
+        """Seen in real use: one-shot todos ran once, set no next check, and stayed open forever."""
+        assert TODO_REARM_BRIEF in _prompt(_doc(title="Ship it"))
 
     def test_a_triggered_run_is_told_its_own_id_too(self):
         """A run links a sub-todo to itself with parent_todo_id, so it must know its own id."""
@@ -1662,6 +1671,7 @@ class TestBuildExecutionPrompt:
             "sub-todo states",
             "Recent activity (activity.md):\n- 2026-09-01T09:00:00+00:00 started",
             "past stuff",
+            TODO_REARM_BRIEF,
             # Last on purpose: the delivery contract is what the model should still
             # have in view when it writes the message this section is about.
             DELIVERED_RESULT_GUIDANCE,
@@ -1678,7 +1688,12 @@ class TestBuildExecutionPrompt:
         assert "- entry 1999" in prompt
         assert "- entry 0\n" not in prompt
         assert "older entries omitted" in prompt
-        assert len(prompt) < ACTIVITY_PROMPT_TAIL_CHARS + 300 + len(DELIVERED_RESULT_GUIDANCE)
+        assert len(prompt) < (
+            ACTIVITY_PROMPT_TAIL_CHARS
+            + 300
+            + len(DELIVERED_RESULT_GUIDANCE)
+            + len(TODO_REARM_BRIEF)
+        )
 
     def test_a_truncated_activity_carries_the_full_exact_label(self):
         """The marker is appended to the label, not substituted — a dropped or reworded marker hides the cut."""

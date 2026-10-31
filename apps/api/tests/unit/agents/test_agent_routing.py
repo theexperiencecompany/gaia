@@ -9,7 +9,7 @@ that have or don't have tool_calls on the last AIMessage.
 
 from unittest.mock import AsyncMock, patch
 
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool
 import pytest
 
@@ -409,11 +409,22 @@ class TestCompletionNudgeWiring:
         assert result["messages"][-1].content == "Here you go."
 
     @staticmethod
-    def _finish() -> AIMessage:
+    def _finish(outcome: str | None = "blocked") -> AIMessage:
+        args: dict[str, str] = {"result": "ok"}
+        if outcome is not None:
+            args["outcome"] = outcome
         return AIMessage(
             content="",
-            tool_calls=[{"name": FINISH_TASK_NAME, "args": {"result": "ok"}, "id": "f1"}],
+            tool_calls=[{"name": FINISH_TASK_NAME, "args": args, "id": "f1"}],
         )
+
+    @staticmethod
+    def _worked_thread() -> list[AnyMessage]:
+        return [
+            HumanMessage(content="triage my inbox"),
+            AIMessage(content="", tool_calls=[{"name": "dummy_tool", "args": {}, "id": "c1"}]),
+            ToolMessage(content="ok", tool_call_id="c1", name="dummy_tool"),
+        ]
 
     @pytest.mark.asyncio
     async def test_finishing_a_briefed_run_without_deciding_is_nudged_once(self):
@@ -458,26 +469,82 @@ class TestCompletionNudgeWiring:
 
     @pytest.mark.asyncio
     async def test_a_finished_run_is_not_taxed_with_a_nudge(self):
-        """Done work (no open todo, tool-call floor met) must end on the first reply, not pay an extra call."""
+        """Done work declared done must end on the first finish, not pay an extra call."""
+        graph = self._compile_executor(BindableToolsFakeModel(responses=[self._finish("done")]))
+
+        result = await graph.ainvoke(
+            {"messages": self._worked_thread(), "todos": []},
+            config={"configurable": {"thread_id": "nudge-4"}},
+        )
+
+        assert self._nudges(result) == []
+        assert result["messages"][-1].name == FINISH_TASK_NAME
+
+    @pytest.mark.asyncio
+    async def test_a_plain_text_stop_after_work_is_not_taxed(self):
+        """A plain-text stop declares nothing, so only the work check applies to it."""
         graph = self._compile_executor(
             BindableToolsFakeModel(responses=[AIMessage(content="Finished.")])
         )
 
         result = await graph.ainvoke(
-            {
-                "messages": [
-                    HumanMessage(content="triage my inbox"),
-                    AIMessage(content=""),
-                    ToolMessage(content="ok", tool_call_id="c1"),
-                    AIMessage(content=""),
-                    ToolMessage(content="ok", tool_call_id="c2"),
-                ],
-                "todos": [],
-            },
-            config={"configurable": {"thread_id": "nudge-4"}},
+            {"messages": self._worked_thread(), "todos": []},
+            config={"configurable": {"thread_id": "nudge-5"}},
         )
 
         assert self._nudges(result) == []
+        assert result["messages"][-1].content == "Finished."
+
+    @pytest.mark.asyncio
+    async def test_a_plain_text_stop_that_strands_a_tracked_todo_is_nudged_once(self):
+        """A todo created with nothing to wake it is the forever-open todo; the run gets one chance to arm it."""
+        thread = [
+            HumanMessage(content="track the inbox desk change until it ships"),
+            AIMessage(
+                content="",
+                tool_calls=[{"name": "create_tracked_todo", "args": {"title": "t"}, "id": "c1"}],
+            ),
+            ToolMessage(content="created", tool_call_id="c1", name="create_tracked_todo"),
+        ]
+        graph = self._compile_executor(
+            BindableToolsFakeModel(
+                responses=[AIMessage(content="Tracking it."), AIMessage(content="Tracking it.")]
+            )
+        )
+
+        result = await graph.ainvoke(
+            {"messages": thread, "todos": []},
+            config={"configurable": {"thread_id": "nudge-asleep"}},
+        )
+
+        assert self._nudges(result) == [COMPLETION_NUDGE_MESSAGE]
+
+    @pytest.mark.asyncio
+    async def test_done_declared_with_no_work_is_nudged_once(self):
+        """The run grading itself is the failure: done with nothing run is sent back once."""
+        graph = self._compile_executor(
+            BindableToolsFakeModel(responses=[self._finish("done"), self._finish("done")])
+        )
+
+        result = await graph.ainvoke(
+            {"messages": [HumanMessage(content="triage my inbox")]},
+            config={"configurable": {"thread_id": "nudge-6"}},
+        )
+
+        assert self._nudges(result) == [COMPLETION_NUDGE_MESSAGE]
+
+    @pytest.mark.asyncio
+    async def test_a_finish_without_an_outcome_is_nudged_once(self):
+        graph = self._compile_executor(
+            BindableToolsFakeModel(responses=[self._finish(None), self._finish("blocked")])
+        )
+
+        result = await graph.ainvoke(
+            {"messages": [HumanMessage(content="triage my inbox")]},
+            config={"configurable": {"thread_id": "nudge-7"}},
+        )
+
+        assert self._nudges(result) == [COMPLETION_NUDGE_MESSAGE]
 
     def test_the_sync_graph_path_nudges_too(self):
         """Sync invoke uses the nudge node's sync twin; an async-only wiring leaves dev/script callers unguarded."""

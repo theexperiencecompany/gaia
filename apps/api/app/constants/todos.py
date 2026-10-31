@@ -20,6 +20,10 @@ ONBOARDING_LABEL: Final[str] = "onboarding"
 # without creating a circular dependency.
 GAIA_TRACKED_LABEL: Final[str] = "gaia-tracked"
 
+# How many characters an unknown todo id may differ from a real one and still be
+# offered as the one meant: a model copying sibling ObjectIds swaps one or two.
+MAX_MISCOPIED_ID_CHARS: Final[int] = 4
+
 # Label added by the worker when a tracked todo exhausts its retry budget — the
 # execution path skips todos carrying it until the user manually resets.
 FAILED_LABEL: Final[str] = "failed"
@@ -143,10 +147,15 @@ class TodoActivityEvent(StrEnum):
 # (dated "### YYYY-MM-DD" entries, any run log) belongs in activity.md, never here.
 CANVAS_STANDING_RULES_SECTION: Final[str] = "Standing rules"
 CANVAS_KEY_DETAILS_SECTION: Final[str] = "Key Details"
+# What makes the todo done, and where the proof will show up: what every run checks against.
+CANVAS_DONE_WHEN_SECTION: Final[str] = "Done when"
+CANVAS_EVIDENCE_SECTION: Final[str] = "Evidence"
 CANVAS_CURRENT_STATE_SECTION: Final[str] = "Current State"
 CANVAS_LEARNINGS_SECTION: Final[str] = "Learnings"
 CANVAS_SECTIONS: Final[tuple[str, ...]] = (
     CANVAS_STANDING_RULES_SECTION,
+    CANVAS_DONE_WHEN_SECTION,
+    CANVAS_EVIDENCE_SECTION,
     CANVAS_KEY_DETAILS_SECTION,
     CANVAS_CURRENT_STATE_SECTION,
     "Context",

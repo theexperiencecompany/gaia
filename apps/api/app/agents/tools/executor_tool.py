@@ -14,6 +14,7 @@ from uuid import uuid4
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
+from app.agents.core.background.confirmation_gate import spend_confirmation
 from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.executor_progress import drop_progress
 from app.agents.core.background.executor_queue import (
@@ -34,6 +35,7 @@ from app.agents.core.background.session import (
     mark_executor_spawned,
 )
 from app.agents.core.subagents.subagent_runner import compose_executor_brief
+from app.constants.agents import TimeHorizon
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.chat import ConversationSource
 from app.constants.general import CALL_EXECUTOR_NAME
@@ -43,6 +45,7 @@ from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable, agent_configurable
+from app.models.ownership_models import ExecutorIntent
 from app.services.browser.chat_task import stop_report
 from app.services.browser.job_stop import requester_chat, stop_chat_jobs
 from app.services.hil.ledger_decide import cancel_ledger_approvals
@@ -107,6 +110,28 @@ async def call_executor(
         "executor a concrete target so it doesn't stop after one step. NEVER "
         "omit: even a single-step ask needs a concrete done state.",
     ],
+    desired_outcome: Annotated[
+        str,
+        "What the user actually wants in the end, in one line, beyond the literal "
+        "ask (e.g. 'never misses the visa filing deadline').",
+    ],
+    time_horizon: Annotated[
+        TimeHorizon,
+        "one_shot (done in this run), deadline (must happen by a date) or ongoing "
+        "(needs attention over days). Deadline and ongoing work must leave a "
+        "follow-up that wakes on its own.",
+    ],
+    defaults_assumed: Annotated[
+        list[str] | None,
+        "Every safe default you picked for a missing detail (e.g. '3pm for this "
+        "afternoon'), so the result names it. Omit when none.",
+    ] = None,
+    irreversible_approved: Annotated[
+        bool,
+        "True only when the user's own message already said yes to the exact delete, "
+        "bulk change, send or post this task performs. False makes the executor "
+        "prepare it and ask.",
+    ] = False,
     active_todo_id: Annotated[
         str | None,
         "Optional tracked-todo ID to BIND this executor run to. When set, "
@@ -181,6 +206,13 @@ async def call_executor(
         verbatim_request=base_configurable.get("user_request"),
         last_run=last_run,
         playbook_check=playbook_check,
+        intent=ExecutorIntent(
+            desired_outcome=desired_outcome,
+            time_horizon=time_horizon,
+            defaults_assumed=tuple(defaults_assumed or ()),
+            irreversible_approved=irreversible_approved
+            and await spend_confirmation(conversation_id),
+        ),
     )
 
     try:

@@ -4,6 +4,8 @@ from typing import Final, Literal
 
 from typing_extensions import TypedDict
 
+from app.constants.general import FINISH_TASK_NAME
+
 
 class LLMProviderName(StrEnum):
     """Logical provider names, keying the catalog in app/constants/providers.py.
@@ -192,15 +194,20 @@ RECURSION_WRAPUP_MIN_STEPS = 6
 # instead let each delegation inherit the previous one's nudges.
 MAX_COMPLETION_NUDGES = 1
 # Tool results that prove no work happened: discovery-only or failed calls.
-COMPLETION_NON_WORK_TOOLS = frozenset({"retrieve_tools"})
+# finish_task is how a run ends, not work it did: counting it would let a run
+# that only declared itself finished pass for one that did something.
+COMPLETION_NON_WORK_TOOLS = frozenset({"retrieve_tools", FINISH_TASK_NAME})
 COMPLETION_NUDGE_MESSAGE = (
     "[System: before you finish, every part of the task must actually be done "
     "and confirmed with tools, not assumed. If anything is still pending, not yet "
     "verified, or an action you described but did not take, do it now. Nothing "
     "runs after your reply ends, so never tell the user you are still working or "
     "that more results are coming ('hang tight', 'still digging'): either do the "
-    "work now with tools, or state plainly what you got and what failed. If you "
-    "are genuinely finished, reply with your complete final result.]"
+    "work now with tools, or state plainly what you got and what failed. Then "
+    "finish with finish_task: your complete final result and its outcome, backed "
+    "by this run's tool calls (done: the work ran; schedule: a tracked todo "
+    "with a schedule or recurrence was set; subscribe: the trigger watch was set). "
+    "Anything else is ask or blocked.]"
 )
 # A plain-text stop that PROMISES future work is never valid: the run is over the
 # moment the reply ends, so "hang tight" is a lie. Lowercase substrings matched

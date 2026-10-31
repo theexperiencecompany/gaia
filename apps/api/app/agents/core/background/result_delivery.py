@@ -111,6 +111,7 @@ async def deliver_result(
     returned_note: str = "",
     *,
     tool_data: list[ToolDataEntry] | None,
+    outcome_note: str = "",
 ) -> tuple[str | None, str | None]:
     """Narrate a finished executor run through comms, persist it, and deliver it.
 
@@ -123,7 +124,9 @@ async def deliver_result(
         if run.todo_run is not None:
             await deliver_todo_run_result(run, run.todo_run, result_text, result_type)
             return None, None
-        return await _narrate_and_deliver(run, result_text, result_type, tool_data, returned_note)
+        return await _narrate_and_deliver(
+            run, result_text + outcome_note, result_type, tool_data, returned_note
+        )
     except Exception as e:  # delivery is best-effort, never propagates
         log.error(f"{LogTag.AGENT} Background notification delivery failed", error=str(e))
         return None, None

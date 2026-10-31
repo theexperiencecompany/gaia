@@ -208,7 +208,9 @@ class TestCompletedRouting:
 
         await er._finalize_executor_run(run, TASK, "result", "final")
 
-        boundaries.deliver.assert_awaited_once_with(run, "result", "final", CARD_NOTE, tool_data=[])
+        boundaries.deliver.assert_awaited_once_with(
+            run, "result", "final", CARD_NOTE, tool_data=[], outcome_note=""
+        )
         # A completed run narrates and delivers — it never records a cancellation.
         boundaries.record_cancel.assert_not_awaited()
         boundaries.persist_cancelled.assert_not_awaited()

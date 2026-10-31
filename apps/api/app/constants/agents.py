@@ -137,6 +137,67 @@ DONE_EVIDENCE_RULE = (
     "only by a tool call in this run. A memory, or an earlier run of the same task, never meets it."
 )
 
+
+class TimeHorizon(StrEnum):
+    """How long a delegated request needs attention; comms sets it on call_executor."""
+
+    ONE_SHOT = "one_shot"
+    DEADLINE = "deadline"
+    ONGOING = "ongoing"
+
+
+class OutcomeState(StrEnum):
+    """How an executor run left the user's request, declared on finish_task."""
+
+    DONE = "done"
+    SCHEDULE = "schedule"
+    SUBSCRIBE = "subscribe"
+    ASK = "ask"
+    BLOCKED = "blocked"
+
+
+#: The calls whose success backs a declared outcome (outcome_review.review_outcome).
+#: Only a tracked todo with a schedule or a recurrence wakes GAIA again; a
+#: reminder just notifies the user, so it backs done, never schedule.
+OUTCOME_CREATE_TODO_TOOL = "create_tracked_todo"
+OUTCOME_TRACKED_TODO_TOOLS = frozenset({OUTCOME_CREATE_TODO_TOOL, "update_tracked_todo"})
+OUTCOME_SCHEDULE_ARGS = ("scheduled_at", "recurrence")
+OUTCOME_SUBSCRIBE_TOOL = "subscribe_todo_to_trigger"
+OUTCOME_COMPLETE_TOOL = "complete_tracked_todo"
+#: A tracked todo created with any of these wakes on its own (a schedule, a
+#: recurrence, or the watch a Gmail thread gets).
+TODO_SELF_WAKING_CREATE_ARGS = ("scheduled_at", "recurrence", "gmail_thread_id")
+#: A bash run bound to a todo subscribes it to that run's events.
+TODO_BOUND_BASH = ("bash", "run_todo_id")
+
+#: Opens the line in a tracked todo's run brief that says nothing will wake it
+#: after this run. outcome_review reads it off the task turn, so the brief and
+#: the check cannot drift apart on a string.
+TODO_REARM_TAG = "<todo_rearm>"
+
+
+#: What the executor brief tells the run each horizon demands before it may finish.
+TIME_HORIZON_BRIEF: dict[TimeHorizon, str] = {
+    TimeHorizon.ONE_SHOT: "one_shot: finish it in this run.",
+    TimeHorizon.DEADLINE: (
+        "deadline: unless it is fully done in this run, leave a tracked todo scheduled "
+        "to wake you before the date."
+    ),
+    TimeHorizon.ONGOING: (
+        "ongoing: it needs attention after this run. Leave a tracked todo with a schedule, "
+        "recurrence or trigger watch before you finish."
+    ),
+}
+
+IRREVERSIBLE_APPROVED_BRIEF = (
+    "Irreversible actions: the user approved them for this request. Do exactly what was "
+    "approved, nothing broader."
+)
+IRREVERSIBLE_UNAPPROVED_BRIEF = (
+    "Irreversible actions: NOT approved. Deleting, bulk-changing, sending or posting needs the "
+    "user's yes first: prepare it (the draft, the exact items) and finish with outcome ask."
+)
+
 #: The tag both playbook briefs open with. The executor's graph loop reads it
 #: off the task turn to know the run owes a decision, so the briefs and the
 #: gate cannot drift apart on a string.

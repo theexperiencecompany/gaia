@@ -1,11 +1,14 @@
-"""Finish task tool for subagent completion.
+"""Finish task tool: how a subagent, and the executor, end a run.
 
 The tool name MUST match `FINISH_TASK_NAME` in `app.constants.general` —
 the bigtool router and subagent runner key off that constant.
 """
 
+from typing import Annotated
+
 from langchain_core.tools import tool
 
+from app.constants.agents import OutcomeState
 from app.constants.general import FINISH_TASK_NAME
 
 
@@ -19,7 +22,19 @@ from app.constants.general import FINISH_TASK_NAME
         "the parent only sees what you put here."
     )
 )
-async def finish_task(result: str) -> str:
+async def finish_task(
+    result: str,
+    outcome: Annotated[
+        OutcomeState | None,
+        "Where the request stands. done: the outcome is met by tool calls in this run. "
+        "schedule: a tracked todo with a schedule or recurrence set in this run will wake "
+        "GAIA to pick it up later (a reminder only pings the user and does not count). subscribe: a trigger watch set in this run will. ask: it needs the "
+        "user's decision or approval (put the one question in result). blocked: it "
+        "cannot proceed (put the reason and what would unblock it in result). The "
+        "executor always sets it.",
+    ] = None,
+) -> str:
+    del outcome  # read off the tool call by the run's outcome review, not returned
     return result
 
 

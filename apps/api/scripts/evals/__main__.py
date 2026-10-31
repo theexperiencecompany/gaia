@@ -44,6 +44,7 @@ def _load_suites() -> None:
         "comms",
         "safety",
         "hil",
+        "ownership",
         "hil_judge",
         "hil_reply",
         "longmemeval",

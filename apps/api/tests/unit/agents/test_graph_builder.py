@@ -18,6 +18,7 @@ from app.agents.core.graph_builder.build_graph import build_executor_graph
 from app.agents.middleware.factory import SubagentStackOptions
 from app.agents.middleware.subagent import SubagentMiddleware, spawner_of
 from app.constants.db import LANGGRAPH_SETUP_LOCK_ID
+from app.constants.general import FINISH_TASK_NAME
 
 _MOD = "app.agents.core.graph_builder.build_graph"
 _CM_MOD = "app.agents.core.graph_builder.checkpointer_manager"
@@ -584,7 +585,7 @@ class TestBuildExecutorGraph:
         assert "handoff" in registry
 
     async def test_activate_integration_leads_the_initial_tool_set(self):
-        """activate_integration leads; the full initial set (handoff included) follows."""
+        """activate_integration leads, finish_task follows; the full initial set (handoff included) after."""
         from app.agents.core.graph_builder.build_graph import EXECUTOR_INITIAL_TOOL_IDS
 
         with ExitStack() as stack:
@@ -596,7 +597,7 @@ class TestBuildExecutorGraph:
 
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
 
-        expected = ["activate_integration", *EXECUTOR_INITIAL_TOOL_IDS]
+        expected = ["activate_integration", FINISH_TASK_NAME, *EXECUTOR_INITIAL_TOOL_IDS]
         assert kwargs["tools_config"].initial_tool_ids == expected
 
     async def test_no_join_tool_bound(self):
@@ -673,6 +674,7 @@ class TestBuildExecutorGraph:
             # one name survives. activate_integration leads unconditionally.
             assert kwargs["tools_config"].initial_tool_ids == [
                 "activate_integration",
+                "finish_task",
                 "handoff",
                 "execute",
                 "get_tool_schema",

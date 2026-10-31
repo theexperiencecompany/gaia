@@ -19,12 +19,20 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool
 import pytest
 
+from app.agents.core.background.confirmation_gate import record_confirmation_asked
 from app.agents.core.background.executor_channel import ExecutorInbox
+from app.agents.core.background.executor_queue import release_lock_if_owned
 from app.agents.core.background.running_registry import RunningSubagents
 from app.agents.core.background.session import get_session, teardown_session
+from app.agents.core.subagents.subagent_runner import compose_executor_brief
 from app.agents.tools import executor_tool
 from app.agents.tools.executor_tool import call_executor, cancel_executor, tools
-from app.constants.agents import DONE_EVIDENCE_RULE, AgentTag
+from app.constants.agents import (
+    IRREVERSIBLE_APPROVED_BRIEF,
+    IRREVERSIBLE_UNAPPROVED_BRIEF,
+    AgentTag,
+    TimeHorizon,
+)
 from app.constants.browser import BrowserSessionStatus
 from app.constants.cache import (
     EXECUTOR_BUSY_PREFIX,
@@ -39,6 +47,7 @@ from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
 from app.db.repositories.playbooks import playbook_repository
 from app.models.agent_models import InboxEntry, RunningSubagent
+from app.models.ownership_models import ExecutorIntent
 from app.models.playbook_models import PlaybookDocument, PlaybookRunStatus, ToolStep
 from app.schemas.browser import BrowserResultSnapshot
 from app.schemas.browser_job import BrowserJobFinished, BrowserJobState, BrowserJobStatus
@@ -71,20 +80,27 @@ run_call_executor = tool_function(call_executor)
 run_cancel_executor = tool_function(cancel_executor)
 
 
+#: What call_executor_with sends for the intent fields a test does not care about.
+DEFAULT_TEST_INTENT = ExecutorIntent(
+    desired_outcome="the task is done", time_horizon=TimeHorizon.ONE_SHOT
+)
+
+
 async def call_executor_with(
     config: RunnableConfig,
     task: str,
     acceptance_criteria: list[str] | None = None,
     **kwargs: Any,
 ) -> str:
-    """Call call_executor with the now-required acceptance_criteria provided.
+    """Call call_executor with its required brief fields provided.
 
-    The tool schema requires acceptance_criteria (never omit); tests that don't
-    care about it pass a generic checklist so they exercise the dispatch path,
-    not the schema default.
+    Tests that don't care about them pass generic values so they exercise the
+    dispatch path, not the schema.
     """
     if acceptance_criteria is None:
         acceptance_criteria = []
+    kwargs.setdefault("desired_outcome", DEFAULT_TEST_INTENT.desired_outcome)
+    kwargs.setdefault("time_horizon", DEFAULT_TEST_INTENT.time_horizon)
     return await run_call_executor(
         config=config,
         task=task,
@@ -218,6 +234,38 @@ def broadcast(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
 # ── call_executor: dispatch ──────────────────────────────────────────
 
 
+class TestIrreversibleApprovalNeedsAnAsk:
+    """The approval flag counts only as the answer to a confirmation GAIA asked for."""
+
+    async def _dispatched_brief(self, spawned_runs: list[dict[str, Any]]) -> str:
+        await call_executor_with(
+            config=config_for(), task="delete all 3 todos", irreversible_approved=True
+        )
+        await drain_background_tasks()
+        return str(spawned_runs[-1]["task"])
+
+    async def test_the_first_request_is_never_its_own_approval(
+        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
+    ) -> None:
+        """Seen live on gpt-5.6-luna: comms set the flag on "delete all my todos" and they were gone."""
+        brief = await self._dispatched_brief(spawned_runs)
+
+        assert IRREVERSIBLE_UNAPPROVED_BRIEF in brief
+        assert IRREVERSIBLE_APPROVED_BRIEF not in brief
+
+    async def test_a_yes_to_gaia_s_question_is_approval_once(
+        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
+    ) -> None:
+        await record_confirmation_asked(CONVERSATION_ID)
+
+        first = await self._dispatched_brief(spawned_runs)
+        await release_lock_if_owned(CONVERSATION_ID, "stream-1", spawned_runs[-1]["run"].task_id)
+        second = await self._dispatched_brief(spawned_runs)
+
+        assert IRREVERSIBLE_APPROVED_BRIEF in first
+        assert IRREVERSIBLE_UNAPPROVED_BRIEF in second
+
+
 class TestCallExecutorDispatch:
     async def test_spawns_executor_and_reports_its_task_id(
         self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
@@ -227,7 +275,9 @@ class TestCallExecutorDispatch:
 
         assert len(spawned_runs) == 1
         run = spawned_runs[0]["run"]
-        assert spawned_runs[0]["task"] == "check my calendar"
+        assert spawned_runs[0]["task"] == compose_executor_brief(
+            "check my calendar", [], intent=DEFAULT_TEST_INTENT
+        )
         assert run.task_id == task_id_from(response)
         assert run.stream_id == "stream-1"
         assert run.conversation_id == CONVERSATION_ID
@@ -365,9 +415,8 @@ class TestCallExecutorLockContention:
         assert entries == [
             InboxEntry(
                 id=handed_id,
-                text=(
-                    "second\n\nDefinition of done (every item must be true before you "
-                    f"finish):\n- the draft is saved\n{DONE_EVIDENCE_RULE}"
+                text=compose_executor_brief(
+                    "second", ["the draft is saved"], intent=DEFAULT_TEST_INTENT
                 ),
                 tag=AgentTag.USER_INTERJECTION,
             )

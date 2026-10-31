@@ -21,6 +21,7 @@ from app.agents.prompts.todo_prompts import (
     SANDBOX_RUN_EVENT_GUIDANCE,
     SILENT_RUN_GUIDANCE,
     TODO_ID_LINE,
+    TODO_REARM_BRIEF,
     TRIGGERED_RELEVANCE_GUIDANCE,
 )
 from app.constants.todos import ACTIVITY_PROMPT_TAIL_CHARS, TRIGGER_EVENTS_PROMPT_MAX_CHARS
@@ -162,5 +163,7 @@ def build_execution_prompt(
         prompt_parts.append(f"{label}:\n{tail}")
     if context.learnings:
         prompt_parts.append(context.learnings)
+    if not (doc.recurrence or doc.trigger_subscriptions):
+        prompt_parts.append(TODO_REARM_BRIEF)
     prompt_parts.append(delivery_guidance(doc))
     return "\n\n".join(prompt_parts)

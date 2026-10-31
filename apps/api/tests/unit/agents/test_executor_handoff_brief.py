@@ -16,7 +16,16 @@ import pytest
 from app.agents.core.subagents.subagent_runner import compose_executor_brief
 from app.agents.prompts.playbook_prompts import PLAYBOOK_CHECK_BRIEF
 from app.agents.tools.executor_tool import call_executor
-from app.constants.agents import DONE_EVIDENCE_RULE, AgentTag, wrap_agent_payload
+from app.constants.agents import (
+    DONE_EVIDENCE_RULE,
+    IRREVERSIBLE_APPROVED_BRIEF,
+    IRREVERSIBLE_UNAPPROVED_BRIEF,
+    TIME_HORIZON_BRIEF,
+    AgentTag,
+    TimeHorizon,
+    wrap_agent_payload,
+)
+from app.models.ownership_models import ExecutorIntent
 from tests.helpers import load_llm_stub_module
 
 
@@ -80,8 +89,64 @@ class TestComposeTaskBrief:
         )
 
 
+class TestIntentInTheBrief:
+    def test_the_intent_sits_between_the_task_and_the_definition_of_done(self):
+        out = compose_executor_brief(
+            "remind me friday about the visa documents",
+            ["a reminder fires friday"],
+            intent=ExecutorIntent(
+                desired_outcome="never misses the visa filing",
+                time_horizon=TimeHorizon.DEADLINE,
+                defaults_assumed=("9am for friday",),
+            ),
+        )
+
+        assert out == (
+            "remind me friday about the visa documents"
+            "\n\n"
+            "Outcome the user actually wants: never misses the visa filing\n"
+            f"Time horizon: {TIME_HORIZON_BRIEF[TimeHorizon.DEADLINE]}\n"
+            "Defaults assumed (name them in your report):\n- 9am for friday\n"
+            f"{IRREVERSIBLE_UNAPPROVED_BRIEF}"
+            "\n\n"
+            "Definition of done (every item must be true before you finish):\n"
+            f"- a reminder fires friday\n{DONE_EVIDENCE_RULE}"
+        )
+
+    def test_an_approved_irreversible_action_says_so(self):
+        out = compose_executor_brief(
+            "delete all 4 todos",
+            ["no todos remain"],
+            intent=ExecutorIntent(
+                desired_outcome="a clean todo list",
+                time_horizon=TimeHorizon.ONE_SHOT,
+                irreversible_approved=True,
+            ),
+        )
+
+        assert IRREVERSIBLE_APPROVED_BRIEF in out
+        assert IRREVERSIBLE_UNAPPROVED_BRIEF not in out
+
+    async def test_call_executor_carries_the_intent_into_the_dispatched_brief(self):
+        dispatched = await _dispatched_brief(
+            {
+                "task": "check back tomorrow on the lisbon flights",
+                "acceptance_criteria": ["a check-in fires tomorrow evening"],
+                "desired_outcome": "the lisbon flights get booked",
+                "time_horizon": "ongoing",
+                "defaults_assumed": ["6pm for evening"],
+            },
+            {"thread_id": "conv-1"},
+        )
+
+        assert "Outcome the user actually wants: the lisbon flights get booked" in dispatched
+        assert TIME_HORIZON_BRIEF[TimeHorizon.ONGOING] in dispatched
+        assert "- 6pm for evening" in dispatched
+
+
 async def _dispatched_brief(tool_args: dict, configurable: dict) -> str:
     """Invoke call_executor and return the brief it handed to _dispatch_executor."""
+    tool_args = {"desired_outcome": "it is done", "time_horizon": "one_shot", **tool_args}
     with patch(
         "app.agents.tools.executor_tool._dispatch_executor",
         new=AsyncMock(return_value="Task accepted"),

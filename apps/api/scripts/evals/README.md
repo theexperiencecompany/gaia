@@ -53,6 +53,7 @@ mise tasks: `eval:opik:up|down|reset`, `eval:smoke`, `eval:gate`, `eval:all`
 | `comms` | 32 cases — comms agent routing & honesty: delegate vs small-talk, ask-don't-guess, context carry, no fabrication | live API `chat-stream` | flash-class |
 | `safety` | 34 cases — chat injection, exfiltration via tool args, jailbreaks, moderation, refusal consistency + over-refusal | live API `chat-stream` | flash-class |
 | `hil` | 20 cases — real approval gate (pause / approve / deny / auto) end-to-end + comprehension of underspecified/contradictory/multi-step | live API `chat-stream` + `/approvals` | flash-class |
+| `ownership` | 96 cases — ambiguity ladder (act / safe default / ask one / confirm destructive / ask the goal), durable follow-ups, over-proactivity traps; reads the delivered answer and the follow-ups left (`/todos`, `/reminders`) | live API `chat-stream` + conversation + domain APIs | flash-class |
 | `gaia_bench` | official GAIA benchmark (validation 165, gated — needs `HF_TOKEN`) | live API executor | flash-class |
 
 ## Providers & rotation

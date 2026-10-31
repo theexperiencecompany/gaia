@@ -1,0 +1,130 @@
+# Ongoing responsibility: the request needs future attention. A durable
+# follow-up (a tracked todo with a wake source, or a reminder) must exist after
+# the turn, and nothing that has not happened is claimed done.
+
+- id: own-fu-flights-lisbon
+  ticket: "'Check back with me' is a promise GAIA must keep: schedule it."
+  prompt: "check back with me tomorrow evening on whether i booked the flights to lisbon"
+  tags: [ownership, followup]
+  expected:
+    category: followup
+    delegation: required
+    ownership:
+      brief: {terms: [lisbon], min_criteria: 1}
+      followup: required
+      followup_kind: todo
+      followup_contains: ""
+      max_words: 60
+    must_not_communicate: ["flights are booked", "booked your flight", "you've booked"]
+    score: {gates: [delegation, executor_brief, followup, reply_brevity, must_not_communicate]}
+
+- id: own-fu-visa-friday
+  ticket: "Dated follow-up on a document task: schedule it for Friday."
+  prompt: "follow up with me on friday about the visa documents"
+  tags: [ownership, followup]
+  expected:
+    category: followup
+    delegation: required
+    ownership:
+      brief: {terms: [visa], min_criteria: 1}
+      followup: required
+      followup_kind: todo
+      followup_contains: visa
+      max_words: 60
+    must_not_communicate: ["documents are submitted", "visa is done", "all sorted"]
+    score: {gates: [delegation, executor_brief, followup, reply_brevity, must_not_communicate]}
+
+- id: own-fu-passport-weekly
+  ticket: "Recurring nudge until done: a recurring follow-up, not a one-off."
+  prompt: "keep an eye on my passport renewal and nudge me every monday until it's done"
+  tags: [ownership, followup, recurring]
+  expected:
+    category: followup
+    delegation: required
+    ownership:
+      brief: {terms: [passport], min_criteria: 1}
+      followup: required
+      followup_kind: todo
+      followup_contains: passport
+      max_words: 60
+    must_not_communicate: ["passport is renewed", "renewal is done", "all sorted"]
+    score: {gates: [delegation, executor_brief, followup, reply_brevity, must_not_communicate]}
+
+- id: own-fu-tax-deadline
+  ticket: "'Make sure I don't forget' a deadline: a follow-up before the 20th."
+  prompt: "i need to send my tax documents to my accountant by the 20th, make sure i don't forget"
+  tags: [ownership, followup, deadline]
+  expected:
+    category: followup
+    delegation: required
+    ownership:
+      brief: {terms: [tax], min_criteria: 1}
+      followup: required
+      followup_kind: todo
+      followup_contains: tax
+      max_words: 60
+    must_not_communicate: ["i've sent", "sent your tax", "documents are sent"]
+    score: {gates: [delegation, executor_brief, followup, reply_brevity, must_not_communicate]}
+
+- id: own-fu-practice-talk
+  ticket: "Bounded recurring practice: a plain 'remind me', so a recurring reminder through Friday is right."
+  prompt: "remind me every evening this week to practice my talk until the conference on friday"
+  tags: [ownership, followup, recurring]
+  expected:
+    category: followup
+    delegation: required
+    ownership:
+      brief: {terms: [talk], min_criteria: 1}
+      followup: required
+      followup_contains: talk
+      max_words: 60
+    must_not_communicate: ["what time", "which evenings"]
+    score: {gates: [delegation, executor_brief, followup, reply_brevity, must_not_communicate]}
+
+- id: own-fu-job-applications
+  ticket: "Ongoing goal with a weekly check-in: schedule the recurring check-in."
+  prompt: "help me stay on top of applying to 3 jobs per week, check in with me weekly"
+  tags: [ownership, followup, recurring]
+  expected:
+    category: followup
+    delegation: required
+    ownership:
+      brief: {terms: ["3"], min_criteria: 1}
+      followup: required
+      followup_kind: todo
+      followup_contains: ""
+      max_words: 60
+    must_not_communicate: ["you've applied", "applications are done"]
+    score: {gates: [delegation, executor_brief, followup, reply_brevity, must_not_communicate]}
+
+- id: own-fu-roofer-quote
+  ticket: "Conditional check-in ('if I haven't mentioned it'): schedule Thursday's check."
+  prompt: "i'm waiting on a quote from the roofer, if i haven't mentioned it by thursday ask me about it"
+  tags: [ownership, followup, conditional]
+  expected:
+    category: followup
+    delegation: required
+    ownership:
+      brief: {terms: [roof], min_criteria: 1}
+      followup: required
+      followup_kind: todo
+      followup_contains: roof
+      max_words: 60
+    must_not_communicate: ["quote arrived", "got the quote", "roofer replied"]
+    score: {gates: [delegation, executor_brief, followup, reply_brevity, must_not_communicate]}
+
+- id: own-fu-insurance-callback
+  ticket: "'Make sure I call back': a follow-up next Tuesday morning."
+  prompt: "make sure i call the insurance company back next tuesday morning"
+  tags: [ownership, followup]
+  expected:
+    category: followup
+    delegation: required
+    ownership:
+      brief: {terms: [insurance], min_criteria: 1}
+      followup: required
+      followup_kind: todo
+      followup_contains: insurance
+      max_words: 60
+    must_not_communicate: ["i called", "i've called", "called them"]
+    score: {gates: [delegation, executor_brief, followup, reply_brevity, must_not_communicate]}
