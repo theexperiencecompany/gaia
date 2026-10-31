@@ -3383,6 +3383,7 @@ class TestResumeTrackedTodo:
 
         assert run.result == "cancelled:todo-1"
         assert run.entries() == ["[run_cancelled] approval resume stopped by the user"]
+        assert run.timeline.call_args_list[-1].args[:2] == ("todo-1", "user-7")
         run.pool.delete.assert_awaited_once_with("gaia_todo_exec:todo-1")
 
     async def test_a_long_resume_failure_is_cut_to_160_characters(self) -> None:
