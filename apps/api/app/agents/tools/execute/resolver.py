@@ -18,6 +18,7 @@ from typing import NamedTuple
 from langchain_core.tools import BaseTool
 
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
+from app.config.oauth_config import get_integration_by_tool_slug
 from app.constants.execute import (
     COMPOSIO_CATALOG_LOOKUP_TIMEOUT_SECONDS,
     GLOBAL_SHAPE_SCOPE,
@@ -25,6 +26,7 @@ from app.constants.execute import (
     TICKET_NAMES,
     UNKNOWN_CATALOG_SLUG_CACHE_MAX,
 )
+from app.constants.integrations import TOOL_INTEGRATION_ID_METADATA_KEY
 from app.constants.log_tags import LogTag
 from app.services.composio.composio_service import get_composio_service
 from app.services.mcp.mcp_client import get_mcp_client
@@ -138,6 +140,7 @@ async def _materialize_composio_tool(tool_name: str) -> ResolvedTool | None:
         tools = await get_composio_service().get_tools_by_name([tool_name])
     for tool in tools:
         if tool.name == tool_name:
+            _stamp_integration(tool)
             _materialized_composio_tools[tool_name] = tool
             log.info(
                 f"{LogTag.TOOL} execute resolver: materialized catalog tool on demand",
@@ -148,3 +151,14 @@ async def _materialize_composio_tool(tool_name: str) -> ResolvedTool | None:
         _unknown_composio_slugs.clear()
     _unknown_composio_slugs.add(tool_name)
     return None
+
+
+def _stamp_integration(tool: BaseTool) -> None:
+    """Record which integration a catalog tool came from, as MCP tools carry theirs.
+
+    Outside the registry this is the only provenance the HIL gate can review the
+    tool by; the slug is mapped here, where the tool is known to be Composio's.
+    """
+    integration = get_integration_by_tool_slug(tool.name)
+    if integration is not None:
+        tool.metadata = {**(tool.metadata or {}), TOOL_INTEGRATION_ID_METADATA_KEY: integration.id}
