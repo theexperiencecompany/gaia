@@ -36,7 +36,7 @@ constraints = [
     { name = "multidict", specifier = ">=6.9.1" },
     { name = "nltk", specifier = ">=3.9.4" },
     { name = "pillow", specifier = ">=13.0.0" },
-    { name = "pyasn1", specifier = ">=0.6.4" },
+    { name = "pyasn1", specifier = ">=0.6.5" },
     { name = "pygments", specifier = ">=2.20.0" },
     { name = "pyjwt", specifier = ">=2.15.1" },
     { name = "pyopenssl", specifier = ">=26.0.0" },
@@ -5905,11 +5905,11 @@ wheels = [
 
 [[package]]
 name = "pyasn1"
-version = "0.6.4"
+version = "0.6.5"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/a4/9a/23310166d960def5897e91fe20e5b724601b02a22e84ba1f94232c0b7f67/pyasn1-0.6.4.tar.gz", hash = "sha256:9c447d8431c947fe4c8febc4ed9e760bc29011a5b01e5c74b67025bd9fb8ce81", size = 151262, upload-time = "2026-07-09T01:12:33.988Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/88/7e/3c0da41061a2021cac7cd524fd57092adbe5b515e8bf9005702e366802e2/pyasn1-0.6.5.tar.gz", hash = "sha256:6b11616a6bcf3a40e635f082bb232fa57b5e0dd7f517bd7ddd69ec3794508a47", size = 155152, upload-time = "2026-10-27T06:32:49.125Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/9a/3b/6163796d69c3977d1e4287bea4a6979161cbbdd170ebb430511e8e1999ce/pyasn1-0.6.4-py3-none-any.whl", hash = "sha256:deda9277cfd454080ec40b207fb6df82206a3a2688735233cdcd8d3d565f088b", size = 84410, upload-time = "2026-07-09T01:12:32.92Z" },
+    { url = "https://files.pythonhosted.org/packages/19/1f/3eefd5c84c35cae44549ce1c7f7e58f7945b34f5a6bce07a135438522073/pyasn1-0.6.5-py3-none-any.whl", hash = "sha256:4017b0fce125096b8573b39c989fdb1a4b19cf761e683398184550fea0e66587", size = 84807, upload-time = "2026-10-27T06:32:48.045Z" },
 ]
 
 [[package]]
@@ -6415,6 +6415,7 @@ dependencies = [
     { name = "pyobjc-framework-photos", marker = "(platform_release >= '15.0' and sys_platform != 'darwin') or (platform_release >= '15' and sys_platform == 'darwin')" },
     { name = "pyobjc-framework-photosui", marker = "(platform_release >= '15.0' and sys_platform != 'darwin') or (platform_release >= '15' and sys_platform == 'darwin')" },
     { name = "pyobjc-framework-preferencepanes" },
+    { name = "pyobjc-framework-pubsub", marker = "platform_release >= '9' and platform_release < '18' and sys_platform == 'darwin'" },
     { name = "pyobjc-framework-pushkit", marker = "(platform_release >= '19.0' and sys_platform != 'darwin') or (platform_release >= '19' and sys_platform == 'darwin')" },
     { name = "pyobjc-framework-quartz" },
     { name = "pyobjc-framework-quicklookthumbnailing", marker = "(platform_release >= '19.0' and sys_platform != 'darwin') or (platform_release >= '19' and sys_platform == 'darwin')" },
@@ -8496,6 +8497,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/4e/d4/5d1a70360ad674ecfe8b6fefc692136957953412fd9bfbd67a48bbbd976e/pyobjc_framework_preferencepanes-12.2.2.tar.gz", hash = "sha256:e47004e4ef195d7a7076766e30abfd0e197e430191e1f1d35c3e6b4af9b15114", size = 25376, upload-time = "2026-08-11T19:45:11.869Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a0/cd/405b9647b6ae476b6bb7d7870177c50e28f6131cbc4ca3bacd23143b90c3/pyobjc_framework_preferencepanes-12.2.2-py2.py3-none-any.whl", hash = "sha256:dcaee255acf5944c1fba2b2de6d35961b02d37de4a76cfe43c254a2f8a6a2ad6", size = 4830, upload-time = "2026-08-11T19:40:12.461Z" },
+]
+
+[[package]]
+name = "pyobjc-framework-pubsub"
+version = "12.2.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pyobjc-core" },
+    { name = "pyobjc-framework-cocoa" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3d/39/e1bbc399bf210046fac5d594149c067a2c3bf13f98bd8f53a5a63123e728/pyobjc_framework_pubsub-12.2.2.tar.gz", hash = "sha256:c23af3059ab7108c0173f39c994b15c79e59cdc1a62e50ba4bfbbdaf80b38a40", size = 15007, upload-time = "2026-08-11T19:45:12.515Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f3/e7/12a8abb39dadc3ff86f5976316da44e3b770349c296b1078db84a2f851aa/pyobjc_framework_pubsub-12.2.2-py2.py3-none-any.whl", hash = "sha256:57bfdf6cc4d640cc0e8741c32e8124c613f4886fae489020a894e57b7d3abf6f", size = 4391, upload-time = "2026-08-11T19:40:13.463Z" },
 ]
 
 [[package]]
