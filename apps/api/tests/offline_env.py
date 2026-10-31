@@ -27,6 +27,9 @@ os.environ["COMPOSIO_AUTH_CONFIG_OVERRIDES"] = "{}"
 os.environ["ENABLE_CODE_MODE"] = "false"
 # The HIL ledger ships ON too; barrier-path tests opt out via hil_barrier_mode.
 os.environ["ENABLE_HIL_LEDGER"] = "true"
+# The console sink enqueues to a background thread, which only races the tests that
+# assert on captured stdout/stderr. Write inline instead.
+os.environ["LOG_ENQUEUE"] = "false"
 os.environ.setdefault(
     "MONGO_DB",
     "mongodb://localhost:27017/gaia_test?serverSelectionTimeoutMS=100&connectTimeoutMS=100",
@@ -48,7 +51,13 @@ os.environ.setdefault("AGENT_SECRET", "test-agent-secret-" + "x" * 32)  # pragma
 # setdefault-only — a test or export that sets them wins.
 os.environ.setdefault("CHROMADB_HOST", "localhost")
 os.environ.setdefault("CHROMADB_PORT", "8001")
-os.environ.setdefault("POSTGRES_URL", "postgresql://localhost:5432/gaia_test")
+# One test database: the fixtures dial DATABASE_URL, the app's engine POSTGRES_URL.
+# Defaults to the CI test container's (scripts/ci/test-services.sh).
+os.environ.setdefault(
+    "DATABASE_URL",
+    "postgresql://gaia:gaia@localhost:5432/gaia_test",  # pragma: allowlist secret
+)
+os.environ["POSTGRES_URL"] = os.environ["DATABASE_URL"]
 os.environ.setdefault("RABBITMQ_URL", "amqp://localhost:5672")
 os.environ.setdefault("E2B_DOMAIN", "e2b.local")
 os.environ.setdefault("BOT_SESSION_TOKEN_SECRET", "test-bot-session-secret-" + "x" * 16)

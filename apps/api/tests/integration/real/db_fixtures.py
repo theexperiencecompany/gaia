@@ -43,10 +43,8 @@ def redis_url() -> str:
 
 @pytest.fixture(scope="session")
 def postgres_url() -> str:
-    return os.environ.get(
-        "DATABASE_URL",
-        "postgresql://gaia:gaia@localhost:5432/gaia_test",  # pragma: allowlist secret
-    )
+    # Always set: tests/offline_env.py defaults it before any test module loads.
+    return os.environ["DATABASE_URL"]
 
 
 # ---------------------------------------------------------------------------

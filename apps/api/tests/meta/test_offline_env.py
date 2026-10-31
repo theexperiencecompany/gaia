@@ -34,3 +34,9 @@ def test_the_settings_singleton_was_built_behind_the_fence() -> None:
     assert settings.HOST == "http://localhost:8000"
     assert not settings.POSTHOG_PROJECT_TOKEN
     assert not settings.LANGFUSE_PUBLIC_KEY
+
+
+def test_the_app_and_the_fixtures_share_one_test_database() -> None:
+    """Regression: the fixtures read DATABASE_URL and the app POSTGRES_URL, so a local run setting one had no app engine."""
+    assert os.environ["DATABASE_URL"]
+    assert os.environ["DATABASE_URL"] == settings.POSTGRES_URL
