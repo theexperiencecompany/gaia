@@ -392,58 +392,29 @@ _notify_state_color() {
 # cannot do without is required here rather than defaulted: a missing one is
 # template drift, and an empty slot would send a message that says nothing.
 _notify_state_message() {
+  local glyph title cause_label clears_required=false
   case "$STATE" in
-    deploy_blocked)
-      : "${IMPACT:?IMPACT is required for STATE=deploy_blocked}"
-      : "${CAUSE:?CAUSE is required for STATE=deploy_blocked}"
-      : "${ACTION:?ACTION is required for STATE=deploy_blocked}"
-      : "${CLEARS_WHEN:?CLEARS_WHEN is required for STATE=deploy_blocked}"
-      _notify_headline "⛔" "DEPLOY BLOCKED"
-      _notify_block "Prod" "$IMPACT"
-      echo
-      _notify_block "Cause" "$CAUSE"
-      _notify_block "Do" "$ACTION"
-      _notify_block "Clears when" "$CLEARS_WHEN"
-      ;;
-    deploy_failed)
-      : "${IMPACT:?IMPACT is required for STATE=deploy_failed}"
-      : "${CAUSE:?CAUSE is required for STATE=deploy_failed}"
-      : "${ACTION:?ACTION is required for STATE=deploy_failed}"
-      : "${CLEARS_WHEN:?CLEARS_WHEN is required for STATE=deploy_failed}"
-      _notify_headline "❌" "DEPLOY FAILED"
-      _notify_block "Prod" "$IMPACT"
-      echo
-      _notify_block "Cause" "$CAUSE"
-      _notify_block "Do" "$ACTION"
-      _notify_block "Clears when" "$CLEARS_WHEN"
-      ;;
-    deploy_succeeded)
-      : "${IMPACT:?IMPACT is required for STATE=deploy_succeeded}"
-      : "${CAUSE:?CAUSE is required for STATE=deploy_succeeded}"
-      : "${ACTION:?ACTION is required for STATE=deploy_succeeded}"
-      _notify_headline "✅" "DEPLOY SUCCEEDED"
-      _notify_block "Prod" "$IMPACT"
-      echo
-      # CAUSE is the antecedent: why this deploy happened, i.e. what shipped.
-      _notify_block "Shipped" "$CAUSE"
-      _notify_block "Do" "$ACTION"
-      _notify_block "Clears when" "${CLEARS_WHEN:-}"
-      ;;
-    recovered)
-      : "${IMPACT:?IMPACT is required for STATE=recovered}"
-      : "${CAUSE:?CAUSE is required for STATE=recovered}"
-      : "${ACTION:?ACTION is required for STATE=recovered}"
-      _notify_headline "🟢" "RECOVERED"
-      _notify_block "Prod" "$IMPACT"
-      echo
-      _notify_block "Cause" "$CAUSE"
-      _notify_block "Do" "$ACTION"
-      _notify_block "Clears when" "${CLEARS_WHEN:-}"
-      ;;
-    *)
-      ci_die "deploy notify: unknown STATE '$STATE' (deploy_blocked|deploy_failed|deploy_succeeded|recovered)"
-      ;;
+    deploy_blocked) glyph="⛔"; title="DEPLOY BLOCKED"; cause_label="Cause"; clears_required=true ;;
+    deploy_failed) glyph="❌"; title="DEPLOY FAILED"; cause_label="Cause"; clears_required=true ;;
+    deploy_succeeded) glyph="✅"; title="DEPLOY SUCCEEDED"; cause_label="Shipped" ;;
+    recovered) glyph="🟢"; title="RECOVERED"; cause_label="Cause" ;;
+    *) ci_die "deploy notify: unknown STATE '$STATE' (deploy_blocked|deploy_failed|deploy_succeeded|recovered)" ;;
   esac
+
+  # Required, not defaulted: a missing field is template drift, and an empty slot
+  # sends a message that says nothing.
+  : "${IMPACT:?IMPACT is required for STATE=$STATE}"
+  : "${CAUSE:?CAUSE is required for STATE=$STATE}"
+  : "${ACTION:?ACTION is required for STATE=$STATE}"
+  [[ "$clears_required" = false ]] || : "${CLEARS_WHEN:?CLEARS_WHEN is required for STATE=$STATE}"
+
+  _notify_headline "$glyph" "$title"
+  _notify_block "Prod" "$IMPACT"
+  echo
+  # CAUSE is the antecedent: for a success it is what shipped.
+  _notify_block "$cause_label" "$CAUSE"
+  _notify_block "Do" "$ACTION"
+  _notify_block "Clears when" "${CLEARS_WHEN:-}"
 }
 
 cmd_notify() {
