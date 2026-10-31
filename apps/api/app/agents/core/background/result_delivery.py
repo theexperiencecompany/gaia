@@ -91,9 +91,10 @@ class _DeliveryTarget:
     conversation_id: str
     task_id: str | None
     emit_task_id: bool
-    show_reply_quote: bool
-    user_message_id: str | None
-    user_msg_content: str
+    # No reply quote unless a run answers a user message it can quote.
+    show_reply_quote: bool = False
+    user_message_id: str | None = None
+    user_msg_content: str = ""
 
 
 @dataclass(frozen=True)
@@ -160,9 +161,6 @@ async def _record_todo_run_report(
             conversation_id=run.conversation_id,
             task_id=run.task_id,
             emit_task_id=True,
-            show_reply_quote=False,
-            user_message_id=None,
-            user_msg_content="",
         ),
         bot_message=bot_message,
         notification_text=bot_message.response,
@@ -298,9 +296,6 @@ async def deliver_message_to_conversation(
         conversation_id=conversation_id,
         task_id=None,
         emit_task_id=False,
-        show_reply_quote=False,
-        user_message_id=None,
-        user_msg_content="",
     )
     if is_bot_platform(source):
         delivered = await deliver_message_to_platform(

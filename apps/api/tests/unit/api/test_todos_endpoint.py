@@ -717,11 +717,16 @@ class TestOpenTodoConversation:
             ) as get,
             patch(f"{self.SERVICE}.get_or_create_todo_conversation", new=chat),
             patch(f"{self.SERVICE}.capture") as captured,
+            patch(f"{TODOS_ENDPOINT}.log") as log,
         ):
             resp = await client.post(f"/api/v1/todos/{self.TODO_ID}/conversation")
 
         assert resp.status_code == 200
         assert resp.json() == {"conversation_id": "conv-todo"}
+        log.set.assert_called_once_with(
+            user={"id": self.OWNER}, todo={"operation": "open_conversation", "id": self.TODO_ID}
+        )
+        log.set_ns.assert_called_once_with("todo", conversation_id="conv-todo")
         # Only the caller's own todo: another user's id reads as missing.
         get.assert_awaited_once_with(self.TODO_ID, user_id=self.OWNER)
         chat.assert_awaited_once_with(self.OWNER, self.TODO_ID, "Watch it")
@@ -739,7 +744,10 @@ class TestOpenTodoConversation:
             resp = await client.post(f"/api/v1/todos/{self.TODO_ID}/conversation")
 
         assert resp.status_code == 409
-        assert resp.json()["code"] == "todo_not_tracked"
+        assert (resp.json()["code"], resp.json()["message"]) == (
+            "todo_not_tracked",
+            "Only a tracked todo has a chat",
+        )
         chat.assert_not_awaited()
 
     async def test_a_todo_that_is_not_the_callers_is_404(self, client: AsyncClient) -> None:
@@ -751,7 +759,7 @@ class TestOpenTodoConversation:
             resp = await client.post(f"/api/v1/todos/{self.TODO_ID}/conversation")
 
         assert resp.status_code == 404
-        assert resp.json()["code"] == "todo_not_found"
+        assert (resp.json()["code"], resp.json()["message"]) == ("todo_not_found", "Todo not found")
         chat.assert_not_awaited()
 
 

@@ -2995,6 +2995,7 @@ class TestExecuteOnExecutor:
 
         _start, outcome = self._entries()
         assert outcome == "[run_cancelled] scheduled run stopped by the user"
+        assert {c.args[:2] for c in self.timeline.call_args_list} == {("todo-1", OWNER_ID)}
 
     async def test_a_chat_busy_with_another_run_is_recorded_as_a_wait_not_a_failure(self):
         """Regression: the start entry was written before the chat's lock, so a run that never ran read as started."""
@@ -3004,6 +3005,7 @@ class TestExecuteOnExecutor:
 
         (waited,) = self._entries()
         assert waited == "[run_skipped] scheduled run waits: another run is going in its chat"
+        assert {c.args[:2] for c in self.timeline.call_args_list} == {("todo-1", OWNER_ID)}
 
 
 # ---------------------------------------------------------------------------
@@ -3508,6 +3510,11 @@ class TestResumeTrackedTodo:
         assert before + LOCK_DEFER_BACKOFF[0] <= retry_at <= after + LOCK_DEFER_BACKOFF[0]
         # The todo's own lock is released, or its retry would only find it held.
         run.pool.delete.assert_awaited_once_with("gaia_todo_exec:todo-1")
+        # Waiting is not a failure: the busy error is on the event, not a warning line.
+        run.log.set_ns.assert_called_once_with(
+            "tracked_todo", resume_deferred_by="ExecutorBusyError"
+        )
+        run.log.warning.assert_not_called()
 
     async def test_an_executor_busy_past_the_last_backoff_step_drops_loudly(self) -> None:
         busy = AsyncMock(side_effect=ExecutorBusyError("the executor is already running"))
@@ -3522,6 +3529,9 @@ class TestResumeTrackedTodo:
         run.log.warning.assert_called_once_with(
             "tracked_todo.resume_dropped", todo_id="todo-1", reason="executor busy"
         )
+        # The drop is written on the todo that was being resumed, for its owner.
+        run.repo.get_by_id.assert_awaited_with("todo-1")
+        assert [c.args[:2] for c in run.timeline.call_args_list] == [("todo-1", "user-7")]
 
 
 # ---------------------------------------------------------------------------

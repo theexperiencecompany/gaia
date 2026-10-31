@@ -736,12 +736,7 @@ async def resume_tracked_todo(
     except ExecutorBusyError as busy:
         # Another run holds the todo's chat (the approval's own ticket run, or a
         # follow-up turn): the resume waits its turn, as for the todo's lock.
-        log.warning(
-            "tracked_todo.resume_deferred",
-            todo_id=todo_id,
-            reason="executor busy",
-            error_type=type(busy).__name__,
-        )
+        log.set_ns("tracked_todo", resume_deferred_by=type(busy).__name__)
         return await _defer_resume(pool, job, attempt, reason="executor busy")
     finally:
         await _release_run_lock(pool, todo_id)

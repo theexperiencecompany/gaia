@@ -383,6 +383,15 @@ class TestInPlaceWritesUnderACachePolicy:
         assert fetched is not None and fetched.messages[0].tool_data is not None
         assert fetched.messages[0].tool_data[0]["data"]["duration_ms"] == 1200
 
+    async def test_deleting_a_todos_chats_evicts_the_cached_chat(self, cached_repo):
+        doc = _doc(todo_id="todo-1")
+        await cached_repo.create(doc)
+        assert await cached_repo.get(doc.conversation_id, user_id=doc.user_id) is not None
+
+        await cached_repo.delete_for_todos(doc.user_id, ["todo-1"])
+
+        assert await cached_repo.get(doc.conversation_id, user_id=doc.user_id) is None
+
 
 class TestMessages:
     async def test_append_returns_ids_and_persists(self, repo):

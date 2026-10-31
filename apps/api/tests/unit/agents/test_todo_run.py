@@ -22,6 +22,7 @@ from app.agents.core.background.todo_run import (
     run_todo_on_executor,
 )
 from app.agents.llm.lane import AgentRole
+from app.constants.log_tags import LogTag
 from app.constants.streaming import DetachedStreamKind
 from app.constants.todos import TodoWakeKind
 from app.models.message_models import TodoRunWake
@@ -214,14 +215,23 @@ class TestTheStreamInTheTodosChat:
     ) -> None:
         """Regression: a stopped run returned as if it finished, so the worker logged no outcome and moved on as a success."""
         seams.stream_manager.is_cancelled = AsyncMock(return_value=True)
+        run = AsyncMock()
         with (
             patch.object(todo_run, "try_acquire_lock", AsyncMock(return_value=True)),
-            patch.object(todo_run, "run_executor_background", AsyncMock()),
-            pytest.raises(TodoRunCancelledError),
+            patch.object(todo_run, "run_executor_background", run),
+            pytest.raises(
+                TodoRunCancelledError, match="the user stopped the run in conversation run-conv"
+            ),
         ):
             await run_todo_on_executor(REQUEST)
 
         assert seams.end.await_args.kwargs == {"cancelled": True}
+        # Both reads ask about this run's own stream, not another one.
+        stream_id = run.await_args.kwargs["run"].stream_id
+        assert [c.args for c in seams.stream_manager.is_cancelled.await_args_list] == [
+            (stream_id,),
+            (stream_id,),
+        ]
 
     async def test_a_failed_announce_frees_the_lock_and_runs_nothing(self, seams: _Seams) -> None:
         """Regression guard: the lock is taken before any run owns it, so nothing else would free it."""
@@ -249,11 +259,30 @@ class TestTheExecutorThreadReset:
         with (
             patch.object(todo_run, "try_acquire_lock", AsyncMock(return_value=True)),
             patch.object(todo_run, "run_executor_background", run),
+            patch.object(todo_run, "log") as log,
         ):
             await run_todo_on_executor(replace(REQUEST, fresh_thread=True))
 
         seams.reset.assert_awaited_once_with("run-conv", keep_conversation_thread=True)
         assert seams.order.index("reset") < seams.order.index("run")
+        log.set_ns.assert_any_call("tracked_todo", threads_reset=2, threads_skipped_inflight=0)
+        log.warning.assert_not_called()
+
+    async def test_with_no_checkpointer_the_reset_is_skipped_loudly(self, seams: _Seams) -> None:
+        """A dev box has no Postgres checkpointer, so there is no persisted thread to replay."""
+        seams.reset.side_effect = None
+        seams.reset.return_value = None
+        with (
+            patch.object(todo_run, "try_acquire_lock", AsyncMock(return_value=True)),
+            patch.object(todo_run, "run_executor_background", AsyncMock()),
+            patch.object(todo_run, "log") as log,
+        ):
+            await run_todo_on_executor(replace(REQUEST, fresh_thread=True))
+
+        log.warning.assert_called_once_with(
+            f"{LogTag.TODO} Todo chat executor-thread reset skipped — no checkpointer pool",
+            conversation_id="run-conv",
+        )
 
     async def test_an_approval_resume_continues_the_thread_it_parked(self, seams: _Seams) -> None:
         with (

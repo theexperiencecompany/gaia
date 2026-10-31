@@ -686,7 +686,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         """Return the id of the chat bound to a tracked todo, or None before its first open or run."""
         row = await self._find_one_projected(
             {"user_id": user_id, **_todo_binding(todo_id)},
-            {"_id": 0, "conversation_id": 1},
+            # Equivalent under mutation: any truthy flag projects the field, and the row ignores _id.
+            {"_id": 0, "conversation_id": 1},  # pragma: no mutate
             _ConversationIdRow,
         )
         return None if row is None else row.conversation_id
@@ -695,7 +696,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         """Return the tracked todo this conversation belongs to, or None for any other chat."""
         row = await self._find_one_projected(
             {"conversation_id": conversation_id, "user_id": user_id},
-            {"_id": 0, "todo_id": 1},
+            # Equivalent under mutation: any truthy flag projects the field, and the row ignores _id.
+            {"_id": 0, "todo_id": 1},  # pragma: no mutate
             _TodoBindingRow,
         )
         return None if row is None else row.todo_id

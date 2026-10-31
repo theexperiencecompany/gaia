@@ -1105,14 +1105,40 @@ class TestUpdateTodo:
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
     ):
         tracked = _make_todo_doc(todo_id=FAKE_TODO_ID, vfs_path="/users/u/todos/t")
-        mock_todo_repo.get = AsyncMock(return_value=tracked)
+
+        async def owners_todo(todo_id: str, *, user_id: str) -> TodoDocument | None:
+            return tracked if (todo_id, user_id) == (FAKE_TODO_ID, FAKE_USER_ID) else None
+
+        mock_todo_repo.get = AsyncMock(side_effect=owners_todo)
         mock_todo_repo.update = AsyncMock(return_value=tracked)
         with patch("app.services.tracked_todo_service.tracked_todo_service") as mock_tracked:
             mock_tracked.complete_tracked_todo = AsyncMock(return_value=True)
             await TodoService.update_todo(
                 FAKE_TODO_ID, TodoUpdateRequest(completed=True), FAKE_USER_ID
             )
-            mock_tracked.complete_tracked_todo.assert_awaited_once()
+            mock_tracked.complete_tracked_todo.assert_awaited_once_with(
+                FAKE_TODO_ID, FAKE_USER_ID, summary="Completed via UI"
+            )
+        # That service sets the completion itself, so nothing is left for this update to write.
+        mock_todo_repo.update.assert_not_awaited()
+
+    async def test_a_failed_tracked_completion_is_a_warning_naming_the_todo(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        tracked = _make_todo_doc(todo_id=FAKE_TODO_ID, vfs_path="/users/u/todos/t")
+        mock_todo_repo.get = AsyncMock(return_value=tracked)
+        mock_todo_repo.update = AsyncMock(return_value=tracked)
+        with (
+            patch("app.services.tracked_todo_service.tracked_todo_service") as mock_tracked,
+            patch("app.services.todos.todo_service.log") as log,
+        ):
+            mock_tracked.complete_tracked_todo = AsyncMock(side_effect=RuntimeError("vfs down"))
+            await TodoService.update_todo(
+                FAKE_TODO_ID, TodoUpdateRequest(completed=True), FAKE_USER_ID
+            )
+        log.warning.assert_called_once_with(
+            "tracked_todo.ui_complete_failed", todo_id=FAKE_TODO_ID, error="vfs down"
+        )
 
 
 class TestDeleteTodo:
