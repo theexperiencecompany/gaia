@@ -215,7 +215,9 @@ def test_flake_gate_reruns_from_a_cache_only_this_run_wrote(tmp_path: Path) -> N
     result = subprocess.run(
         ["bash", str(CI / "pytest.sh"), "flake-gate", str(fake), "tests"],
         cwd=workspace,
-        env={**os.environ, "REC": str(tmp_path)},
+        # Pin the event: the gate is strict on a PR and lenient in the queue/master,
+        # and this test is about the rerun cache, so it must not inherit the CI event.
+        env={**os.environ, "REC": str(tmp_path), "GITHUB_EVENT_NAME": "pull_request"},
         capture_output=True,
         text=True,
         timeout=60,
