@@ -11,6 +11,7 @@ Handles:
 
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
+from functools import partial
 import random
 from typing import NamedTuple, cast
 
@@ -20,6 +21,7 @@ from arq.connections import ArqRedis
 from app.agents.core.background.session import TodoRun
 from app.agents.core.background.todo_run import (
     ExecutorBusyError,
+    TodoRunCancelledError,
     TodoRunRequest,
     run_todo_on_executor,
 )
@@ -290,6 +292,7 @@ async def _execute_todo_with_retry(
         await open_trigger_window(trigger_window(doc))
         await enforce_daily_cost_budget(user_id, feature_key=TRIGGER_TODO_FEATURE_KEY)
 
+    outcome = "success"
     try:
         await _execute_on_executor(
             doc, user_data=user_data, user_tz=user_tz, origin=origin, coalesced=coalesced
@@ -297,6 +300,9 @@ async def _execute_todo_with_retry(
     except ExecutorBusyError:
         # Another run holds the todo's chat: wait as for a held run lock, never a spent attempt.
         return await _handle_held_lock(todo_id, origin, list(coalesced))
+    except TodoRunCancelledError:
+        # The user chose to stop it: never retried, and the schedule moves on as after a finish.
+        outcome = "cancelled"
     except Exception as exc:
         log.exception("tracked_todo.execution_failed", todo_id=todo_id, error=str(exc))
         new_retry_count = retry_count + 1
@@ -318,7 +324,7 @@ async def _execute_todo_with_retry(
         await todo_repository.update(
             todo_id, user_id=user_id, update=TodoUpdate(gaia_retry_count=0)
         )
-    return f"success:{todo_id}"
+    return f"{outcome}:{todo_id}"
 
 
 async def _schedule_retry(
@@ -627,12 +633,6 @@ async def _execute_on_executor(
     # place; run_todo_on_executor starts each run on an empty executor thread.
     conversation_id = await get_or_create_todo_conversation(doc.user_id, todo_id, doc.title)
     woken_by = _woken_by(origin, coalesced)
-    await record_activity(
-        todo_id,
-        user_id,
-        TodoActivityEvent.RUN_STARTED,
-        f"{woken_by} (conversation {conversation_id[:8]})",
-    )
     try:
         await run_todo_on_executor(
             TodoRunRequest(
@@ -642,6 +642,13 @@ async def _execute_on_executor(
                 task=prompt,
                 conversation_id=conversation_id,
                 fresh_thread=True,
+                on_started=partial(
+                    record_activity,
+                    todo_id,
+                    user_id,
+                    TodoActivityEvent.RUN_STARTED,
+                    f"{woken_by} (conversation {conversation_id[:8]})",
+                ),
             )
         )
     except ExecutorBusyError:
@@ -651,6 +658,11 @@ async def _execute_on_executor(
             user_id,
             TodoActivityEvent.RUN_SKIPPED,
             f"{woken_by} waits: another run is going in its chat",
+        )
+        raise
+    except TodoRunCancelledError:
+        await record_activity(
+            todo_id, user_id, TodoActivityEvent.RUN_CANCELLED, f"{woken_by} stopped by the user"
         )
         raise
     except Exception as exc:
@@ -711,6 +723,14 @@ async def _defer_resume(pool: ArqRedis, job: _ResumeJob, attempt: int, *, reason
     """Re-enqueue the resume one backoff step later, or drop it loudly past the last step."""
     if attempt >= len(LOCK_DEFER_BACKOFF):
         log.warning("tracked_todo.resume_dropped", todo_id=job.todo_id, reason=reason)
+        # The grant entry said the run continues; the todo's log must say it did not.
+        if doc := await todo_repository.get_by_id(job.todo_id):
+            await record_activity(
+                doc.id,
+                doc.user_id,
+                TodoActivityEvent.RUN_SKIPPED,
+                f"{job.approval_id}: the run was not continued after the approval ({reason})",
+            )
         return f"resume_dropped:{job.todo_id} ({reason})"
     await enqueue_worker_job(
         pool,
@@ -763,6 +783,11 @@ async def _resume_holding_lock(
     except ExecutorBusyError:
         # Never started, so nothing failed: the caller defers the resume.
         raise
+    except TodoRunCancelledError:
+        await record_activity(
+            todo_id, user_id, TodoActivityEvent.RUN_CANCELLED, "approval resume stopped by the user"
+        )
+        return f"cancelled:{todo_id}"
     except Exception as exc:
         await record_activity(
             todo_id,

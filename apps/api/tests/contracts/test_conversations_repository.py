@@ -1159,6 +1159,21 @@ class TestActivitySignal:
         cutoff = datetime.now(UTC) - timedelta(days=1)
         assert await repo.has_activity_since(doc.user_id, cutoff) is False
 
+    async def test_a_tracked_todos_chat_does_not_count(self, repo):
+        """Regression: every run of a tracked todo saves its report in the todo's chat, so a user whose todos ran never went dormant."""
+        doc = _doc(todo_id="todo-1")
+        await repo.create(doc)
+        await repo.append_messages(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            messages=[MessageModel(type="bot", response="the deploy is green")],
+        )
+
+        cutoff = datetime.now(UTC) - timedelta(days=1)
+        assert await repo.has_activity_since(doc.user_id, cutoff) is False
+        # Nor is it a chat the user had: nurture's "used chat" and the new-user guidance read this.
+        assert await repo.count_non_onboarding(doc.user_id) == 0
+
     async def test_a_system_generated_conversation_does_not_count(self, repo):
         """A system-generated conversation's own updatedAt must not count, or a user's automation vouches for them as active forever."""
         doc = _doc()

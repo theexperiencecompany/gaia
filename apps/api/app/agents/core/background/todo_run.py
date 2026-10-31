@@ -12,6 +12,7 @@ never from a replayed checkpoint. Only an approval resume continues the thread.
 """
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 import time
 from typing import cast
@@ -67,8 +68,12 @@ class TodoRunFailedError(RuntimeError):
     """The executor ended a tracked todo run in an error, or never finished it."""
 
 
-class ExecutorBusyError(TodoRunFailedError):
+class ExecutorBusyError(RuntimeError):
     """Another executor run holds the todo's chat, so this run never started."""
+
+
+class TodoRunCancelledError(RuntimeError):
+    """The user stopped the run from its chat before it finished."""
 
 
 @dataclass(frozen=True)
@@ -83,6 +88,9 @@ class TodoRunRequest:
     #: A new run starts from an empty executor thread; an approval resume
     #: continues the thread the parked run left.
     fresh_thread: bool
+    #: Awaited once the chat's executor lock is this run's, so a run that finds
+    #: the chat busy never reads as started.
+    on_started: Callable[[], Awaitable[object]] | None = None
 
 
 async def run_todo_on_executor(request: TodoRunRequest) -> None:
@@ -98,11 +106,12 @@ async def run_todo_on_executor(request: TodoRunRequest) -> None:
             f"the executor is already running in conversation {conversation_id}"
         )
 
-    # Under the lock: no other executor can be writing the threads it drops.
-    if request.fresh_thread:
-        await _reset_executor_threads(conversation_id)
-
     try:
+        if request.on_started is not None:
+            await request.on_started()
+        # Under the lock: no other executor can be writing the threads it drops.
+        if request.fresh_thread:
+            await _reset_executor_threads(conversation_id)
         await announce_detached_stream(
             stream_id,
             conversation_id=conversation_id,
@@ -151,6 +160,10 @@ async def run_todo_on_executor(request: TodoRunRequest) -> None:
             run_task.cancel()
             await asyncio.wait({run_task})
             raise TodoRunFailedError(reason) from None
+        if await StreamManager.is_cancelled(stream_id):
+            raise TodoRunCancelledError(
+                f"the user stopped the run in conversation {conversation_id}"
+            )
         if failure := executor_failure(stream_id):
             raise TodoRunFailedError(failure)
     finally:
@@ -160,22 +173,10 @@ async def run_todo_on_executor(request: TodoRunRequest) -> None:
 
 
 async def _reset_executor_threads(conversation_id: str) -> None:
-    """Drop the executor threads earlier runs and follow-ups left, keeping the chat's own thread.
-
-    A failed reset is not a failed run: it degrades to a run that also reads the
-    previous one's thread, so it is reported and the run goes ahead.
-    """
-    try:
-        result = await reset_conversation_threads(conversation_id, keep_conversation_thread=True)
-    except Exception as e:
-        log.warning(
-            f"{LogTag.TODO} Todo chat executor-thread reset failed — run continues the old thread",
-            conversation_id=conversation_id,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        return
+    """Drop the executor threads earlier runs and follow-ups left, keeping the chat's own thread."""
+    result = await reset_conversation_threads(conversation_id, keep_conversation_thread=True)
     if result is None:
+        # No Postgres checkpointer (a dev box): there is no persisted thread to replay.
         log.warning(
             f"{LogTag.TODO} Todo chat executor-thread reset skipped — no checkpointer pool",
             conversation_id=conversation_id,

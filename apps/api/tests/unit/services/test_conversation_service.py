@@ -226,7 +226,7 @@ class TestDeleteConversation:
         assert exc_info.value.status_code == 404
 
     async def test_delete_all_cleans_up_each_conversation(self, mock_repo, test_user):
-        mock_repo.delete_all_for_user.return_value = ["conv_1", "conv_2"]
+        mock_repo.delete_all_chats_for_user.return_value = ["conv_1", "conv_2"]
         cleanup = AsyncMock()
         with (
             patch.object(conversation_service, "_cleanup_checkpoint_threads", new=cleanup),
@@ -238,7 +238,7 @@ class TestDeleteConversation:
         mock_capture.assert_called_once_with(UserId(USER_ID), ChatConversationDeleted(count=2))
 
     async def test_delete_all_raises_404_when_none(self, mock_repo, test_user):
-        mock_repo.delete_all_for_user.return_value = []
+        mock_repo.delete_all_chats_for_user.return_value = []
         with pytest.raises(HTTPException) as exc_info:
             await delete_all_conversations(test_user)
         assert exc_info.value.status_code == 404

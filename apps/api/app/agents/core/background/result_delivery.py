@@ -137,12 +137,9 @@ async def _record_todo_run_report(
     result_type: str,
     tool_data: list[ToolDataEntry] | None,
 ) -> None:
-    """Keep a tracked todo's run in its chat: the executor's own report and cards, not a retelling.
+    """Save the executor's own report and cards in the todo's chat, under the placeholder its stream rendered.
 
-    Saved under the placeholder id the live stream rendered into, then pushed so an
-    open chat swaps the placeholder for it. A failed save leaves the delivery to go
-    ahead: the user's message does not depend on the record.
-    """
+    A failed save leaves delivery to go ahead: the user's message does not depend on the record."""
     failed = result_type == "error"
     bot_message = MessageModel(
         type="bot",
@@ -203,6 +200,8 @@ async def persist_cancelled_run(run: ExecutorRun, tool_data: list[ToolDataEntry]
                 messages=[bot_message],
             ),
             user=run.user,
+            # A tracked todo's chat is reused by every run, so a stopped one is capped too.
+            max_messages=TODO_CONVERSATION_MAX_MESSAGES if run.todo_run else None,
         )
     except HTTPException as e:
         if e.status_code == 404:  # conversation deleted mid-run — expected, not an error

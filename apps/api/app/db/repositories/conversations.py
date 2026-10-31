@@ -123,6 +123,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             {
                 "user_id": user_id,
                 "is_onboarding_demo": {"$ne": True},
+                # A tracked todo's chat is its runs' log, not a chat the user had.
+                "todo_id": None,
             }
         )
 
@@ -142,6 +144,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                     # own updatedAt bumps would let a user's automation vouch for
                     # them as "active" forever, defeating the dormancy sweep.
                     "is_system_generated": {"$ne": True},
+                    # Same for a tracked todo's chat, bumped by every run's report.
+                    "todo_id": None,
                     "$or": [
                         {"updatedAt": {"$gte": since}},
                         {"createdAt": {"$gte": since.isoformat()}},
@@ -167,6 +171,15 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                 }
             )
             > 0
+        )
+
+    async def owned_ids(self, user_id: str, conversation_ids: Sequence[str]) -> set[str]:
+        """Which of these conversation ids the user owns."""
+        return set(
+            await self._distinct(
+                "conversation_id",
+                {"user_id": user_id, "conversation_id": {"$in": list(conversation_ids)}},
+            )
         )
 
     async def exists(self, conversation_id: str, *, user_id: str) -> bool:
@@ -754,6 +767,13 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         """
         ids = await self._distinct("conversation_id", {"user_id": user_id})
         await self._delete_many({"user_id": user_id}, scope=user_id)
+        return ids
+
+    async def delete_all_chats_for_user(self, user_id: str) -> list[str]:
+        """Delete the user's chats, keeping each tracked todo's, which goes only with its todo."""
+        query = {"user_id": user_id, "todo_id": None}
+        ids = await self._distinct("conversation_id", query)
+        await self._delete_many(query, scope=user_id)
         return ids
 
     async def delete_onboarding_demos(self, user_id: str) -> int:

@@ -16,6 +16,7 @@ import asyncio
 from collections.abc import AsyncIterator, Callable, Iterator, Sequence
 from contextlib import (
     AbstractAsyncContextManager,
+    AbstractContextManager,
     AsyncExitStack,
     asynccontextmanager,
     contextmanager,
@@ -55,6 +56,7 @@ from app.core.websocket_manager import websocket_manager
 from app.db.mongodb import indexes
 from app.db.repositories.todos import todo_repository
 from app.memory.ingestion import RetainedMemory
+from app.models.chat_models import ConversationModel
 from app.models.hil_models import HILPreferences
 from app.models.integration_models import UserIntegrationCapabilities
 from app.models.memory_models import MemoryEntry
@@ -62,7 +64,10 @@ from app.models.message_models import MessageRequestWithHistory
 from app.models.todo_models import TodoDocument, TodoUpdate
 from app.models.user_models import AuthenticatedUser
 from app.services.chat import stream as chat_stream
-from app.services.conversation_service import get_or_create_todo_conversation
+from app.services.conversation_service import (
+    create_conversation_service,
+    get_or_create_todo_conversation,
+)
 from app.services.tracked_todo_service import TrackedTodoService
 from app.utils.occurrence import occurrence_stamp
 from app.utils.redis_utils import RedisPoolManager
@@ -553,11 +558,55 @@ class TestWhatTheUserSeesOutlivesTheExecutionState:
         prompt = " ".join(str(m.content) for m in stack.comms_model.chat_messages_log[-1])
         assert "ACTIVE TODO" in prompt
         assert f"id: {todo_id}" in prompt
+
         saved = (await _chat_of(mongo_db, todo_id))["messages"]
         assert [(m["type"], m["response"]) for m in saved][-2:] == [
             ("user", "is it still green?"),
             ("bot", FOLLOW_UP_REPLY),
         ]
+
+
+@pytest.mark.usefixtures("mongo_db")
+class TestAFollowUpKnowsTheRunsAboveIt:
+    @pytest.mark.parametrize("notify_on_run", [True, False], ids=["told", "not-told"])
+    async def test_a_follow_up_is_shown_the_report_the_chat_shows(
+        self,
+        open_stack: OpenStack,
+        owner: AuthenticatedUser,
+        mongo_db: AsyncIOMotorDatabase,
+        notify_on_run: bool,
+    ) -> None:
+        """Regression: a run the user was not told of left its report only in the chat's history, so asking about it got an answer that never saw it."""
+        todo_id = (
+            await TrackedTodoService.create_tracked_todo(
+                owner.user_id, TITLE, notify_on_run=notify_on_run
+            )
+        ).id
+        comms = [NARRATED, FOLLOW_UP_REPLY] if notify_on_run else [FOLLOW_UP_REPLY]
+
+        async with open_stack(executor=executor_run(REPORT), comms=comms) as stack:
+            await _run(todo_id, owner)
+            conversation_id = (await _chat_of(mongo_db, todo_id))["conversation_id"]
+            await _follow_up(conversation_id, owner, "what did the second check find?")
+
+        prompt = " ".join(str(m.content) for m in stack.comms_model.chat_messages_log[-1])
+        assert REPORT in prompt
+
+    async def test_a_follow_up_is_shown_the_failure_the_chat_shows(
+        self, open_stack: OpenStack, owner: AuthenticatedUser, mongo_db: AsyncIOMotorDatabase
+    ) -> None:
+        todo_id = await _new_tracked_todo(owner)
+
+        async with open_stack(executor=FailingModel(responses=[])):
+            with pytest.raises(TodoRunFailedError):
+                await _run(todo_id, owner)
+        chat = await _chat_of(mongo_db, todo_id)
+        (failed,) = chat["messages"]
+        async with open_stack(executor=[], comms=[FOLLOW_UP_REPLY]) as stack:
+            await _follow_up(chat["conversation_id"], owner, "why did it fail?")
+
+        prompt = " ".join(str(m.content) for m in stack.comms_model.chat_messages_log[-1])
+        assert failed["error"] in prompt
 
 
 @pytest.mark.usefixtures("mongo_db")
@@ -582,6 +631,12 @@ class TestDeletingTheTodoDeletesItsChat:
             assert await stack.threads_of(conversation_id) == {}
         reopened = await client.post(f"/api/v1/todos/{todo_id}/conversation")
         assert reopened.status_code == 404
+        # The chat is never in the listed set a client diffs, so its sync is what tells it.
+        synced = await client.post(
+            "/api/v1/conversations/batch-sync",
+            json={"conversations": [{"conversation_id": conversation_id}]},
+        )
+        assert synced.json() == {"conversations": [], "missing": [conversation_id]}
 
 
 # ---------------------------------------------------------------------------
@@ -714,6 +769,11 @@ async def _activity(todo_id: str) -> str:
 
 async def _queued_resumes(pool: ArqRedis) -> list[tuple[Any, ...]]:
     return [tuple(j.args) for j in await pool.queued_jobs() if j.function == "resume_tracked_todo"]
+
+
+def _paid() -> AbstractContextManager[AsyncMock]:
+    """Let the worker's paid-only gate pass: the plan read is off this path."""
+    return patch("app.workers.tasks.tracked_todo_tasks.is_paid", AsyncMock(return_value=True))
 
 
 @contextmanager
@@ -861,9 +921,7 @@ class TestARunThatFindsItsChatBusyWaits:
             )
             await follow_up.reached.wait()
             assert await real_redis.exists(f"{EXECUTOR_BUSY_PREFIX}{conversation_id}")
-            with patch(
-                "app.workers.tasks.tracked_todo_tasks.is_paid", AsyncMock(return_value=True)
-            ):
+            with _paid():
                 result = await execute_tracked_todo(
                     {}, todo_id, scheduled_for=occurrence_stamp(due)
                 )
@@ -884,6 +942,63 @@ class TestARunThatFindsItsChatBusyWaits:
         messages = (await _chat_of(mongo_db, todo_id))["messages"]
         assert [m["type"] for m in messages] == ["user", "bot", "bot"]
         assert messages[-1]["response"] == NARRATED
+
+
+@pytest.mark.usefixtures("mongo_db")
+class TestStoppingARunFromItsChat:
+    async def test_a_stopped_run_is_logged_stopped_keeps_its_cards_and_is_not_a_success(
+        self,
+        open_stack: OpenStack,
+        owner: AuthenticatedUser,
+        mongo_db: AsyncIOMotorDatabase,
+        client: AsyncClient,
+        worker_pool: ArqRedis,
+    ) -> None:
+        """Regression: Stop ended the run as a silent success: no outcome logged, nothing delivered, schedule moved on as done."""
+        due = datetime.now(UTC)
+        todo_id = (
+            await TrackedTodoService.create_tracked_todo(
+                owner.user_id, TITLE, schedule=TodoUpdate(scheduled_at=due)
+            )
+        ).id
+        conversation_id = await get_or_create_todo_conversation(owner.user_id, todo_id, TITLE)
+        full = [
+            {"type": "bot", "response": f"run {n}", "message_id": f"seed-{n}", "date": "2026"}
+            for n in range(TODO_CONVERSATION_MAX_MESSAGES)
+        ]
+        await mongo_db["conversations"].update_one(
+            {"conversation_id": conversation_id}, {"$set": {"messages": full}}
+        )
+        executor = prompt_reading(executor_run(REPORT))
+
+        async with open_stack(executor=executor, comms=[NARRATED]) as stack:
+            # The call after the card: its prompt is the first to hold the flowchart's output.
+            after_the_card = executor.hold_calls_seeing(f"direction: {FLOWCHART['direction']}")
+            with _paid():
+                running = asyncio.create_task(
+                    execute_tracked_todo({}, todo_id, scheduled_for=occurrence_stamp(due))
+                )
+                await after_the_card.reached.wait()
+                (started,) = stack.pushed_of("executor.stream_started")
+                stopped = await client.post(f"/api/v1/cancel-stream/{started['stream_id']}")
+                after_the_card.released.set()
+                result = await running
+
+        assert stopped.json()["success"] is True
+        assert result == f"cancelled:{todo_id}"
+        activity = await _activity(todo_id)
+        assert f"[{TodoActivityEvent.RUN_CANCELLED.value}] scheduled run stopped by the user" in (
+            activity
+        )
+        assert f"[{TodoActivityEvent.RUN_FINISHED.value}]" not in activity
+        assert f"[{TodoActivityEvent.RETRY_SCHEDULED.value}]" not in activity
+        # Nothing reached the user: they stopped it.
+        assert await mongo_db["notifications"].count_documents({"user_id": owner.user_id}) == 0
+        # The cards it already streamed stay in the chat, which stays capped.
+        messages = (await _chat_of(mongo_db, todo_id))["messages"]
+        assert len(messages) == TODO_CONVERSATION_MAX_MESSAGES
+        assert messages[-1]["message_id"] == started["task_id"]
+        assert "create_flowchart" in _card_tool_names(messages[-1])
 
 
 @pytest.mark.usefixtures("mongo_db")
@@ -1037,6 +1152,27 @@ class TestNoChatOutlivesItsTodo:
         assert await mongo_db["conversations"].count_documents({"user_id": owner.user_id}) == 0
         listed = await client.get("/api/v1/conversations", params={"limit": 50})
         assert listed.json()["conversations"] == []
+
+    async def test_deleting_all_chats_keeps_the_todos_chats(
+        self, owner: AuthenticatedUser, mongo_db: AsyncIOMotorDatabase, client: AsyncClient
+    ) -> None:
+        """Regression: "Delete all conversations" also wiped every hidden todo chat, mid-run or awaiting an approval."""
+        todo_id = await _new_tracked_todo(owner)
+        todo_chat = (await client.post(f"/api/v1/todos/{todo_id}/conversation")).json()[
+            "conversation_id"
+        ]
+
+        nothing_listed = await client.delete("/api/v1/conversations")
+        await create_conversation_service(
+            ConversationModel(conversation_id=str(uuid4()), description="a chat"), owner
+        )
+        deleted = await client.delete("/api/v1/conversations")
+
+        # The sidebar was empty, so there was nothing to delete.
+        assert nothing_listed.status_code == 404
+        assert deleted.status_code == 200
+        (kept,) = await mongo_db["conversations"].find({"user_id": owner.user_id}).to_list(None)
+        assert kept["conversation_id"] == todo_chat
 
     async def test_another_user_can_neither_read_nor_star_the_chat(
         self,

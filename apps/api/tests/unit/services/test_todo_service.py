@@ -857,6 +857,20 @@ class TestUpdateTodo:
 
         retitled_chats.assert_awaited_once_with(FAKE_USER_ID, [FAKE_TODO_ID], "Watch production")
 
+    async def test_a_chat_that_cannot_be_retitled_fails_the_rename_before_it_is_saved(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, retitled_chats
+    ):
+        """Regression: the todo was saved first, so a failed retitle answered 500 for a saved rename and skipped its sync."""
+        mock_todo_repo.update = AsyncMock(return_value=_make_todo_doc(todo_id=FAKE_TODO_ID))
+        retitled_chats.side_effect = RuntimeError("mongo is down")
+
+        with pytest.raises(RuntimeError, match="mongo is down"):
+            await TodoService.update_todo(
+                FAKE_TODO_ID, TodoUpdateRequest(title="Watch production"), FAKE_USER_ID
+            )
+
+        mock_todo_repo.update.assert_not_awaited()
+
     async def test_an_edit_that_keeps_the_title_leaves_the_chat_alone(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, retitled_chats
     ):
@@ -1181,25 +1195,32 @@ class TestDeleteTodo:
 
         todo_chats.assert_awaited_once_with(FAKE_USER_ID, [FAKE_TODO_ID])
 
-    async def test_a_chat_that_cannot_be_deleted_does_not_undo_the_todos_delete(
+    async def test_a_chat_that_cannot_be_deleted_keeps_the_todo_and_fails_the_delete(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, todo_chats
     ):
+        """Regression: a failed chat delete was only logged, orphaning the chat and the user's follow-ups in it."""
         mock_todo_repo.get = AsyncMock(return_value=_make_todo_doc(todo_id=FAKE_TODO_ID))
         mock_todo_repo.delete = AsyncMock(return_value=True)
         todo_chats.side_effect = RuntimeError("mongo is down")
 
-        async with captured_wide_event() as event:
+        with pytest.raises(RuntimeError, match="mongo is down"):
             await TodoService.delete_todo(FAKE_TODO_ID, FAKE_USER_ID)
 
-        mock_todo_repo.delete.assert_awaited_once()
-        assert event["warnings"] == [
-            {
-                "msg": "todo.chat_delete_failed",
-                "todo_ids": [FAKE_TODO_ID],
-                "error": "mongo is down",
-                "error_type": "RuntimeError",
-            }
-        ]
+        # Still there, so a retry deletes both.
+        mock_todo_repo.delete.assert_not_awaited()
+
+    async def test_a_bulk_delete_whose_chats_cannot_be_deleted_keeps_the_todos(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, todo_chats
+    ):
+        mock_todo_repo.find_by_ids = AsyncMock(return_value=[_make_todo_doc(todo_id="a")])
+        mock_todo_repo.find_sub_todos = AsyncMock(return_value=[])
+        mock_todo_repo.bulk_delete = AsyncMock(return_value=1)
+        todo_chats.side_effect = RuntimeError("mongo is down")
+
+        with pytest.raises(RuntimeError, match="mongo is down"):
+            await TodoService.bulk_delete_todos(["a"], FAKE_USER_ID)
+
+        mock_todo_repo.bulk_delete.assert_not_awaited()
 
 
 class TestDeletingAParentDeletesItsSubTodos:
@@ -1301,16 +1322,18 @@ class TestBulkCompleteRunsTheTrackedLifecycle:
             "priority": Priority.HIGH,
         }
 
-    async def test_a_bulk_title_retitles_the_chats_of_the_todos_it_updated(
+    async def test_a_bulk_title_retitles_the_todos_chats_before_any_todo_is_written(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, retitled_chats
     ):
-        mock_todo_repo.bulk_update = AsyncMock(return_value=1)
+        mock_todo_repo.bulk_update = AsyncMock(return_value=2)
+        retitled_chats.side_effect = RuntimeError("mongo is down")
         req = BulkUpdateRequest(todo_ids=["t", "u"], updates=TodoUpdateRequest(title="Renamed"))
 
-        await TodoService.bulk_update_todos(req, FAKE_USER_ID)
+        with pytest.raises(RuntimeError, match="mongo is down"):
+            await TodoService.bulk_update_todos(req, FAKE_USER_ID)
 
-        # Only the first one was modified, so only its chat is retitled.
-        retitled_chats.assert_awaited_once_with(FAKE_USER_ID, ["t"], "Renamed")
+        retitled_chats.assert_awaited_once_with(FAKE_USER_ID, ["t", "u"], "Renamed")
+        mock_todo_repo.bulk_update.assert_not_awaited()
 
     async def test_only_tracked_todos_means_no_plain_write(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync

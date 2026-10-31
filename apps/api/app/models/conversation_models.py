@@ -280,6 +280,9 @@ class BatchSyncResponse(ResponseModel):
     """The conversations a client's sync request found stale."""
 
     conversations: list[ConversationSyncRow] = Field(default_factory=list)
+    # Requested ids the user has no conversation for: a client drops them, as it
+    # cannot learn of a deleted chat that is never listed (a tracked todo's).
+    missing: list[str] = Field(default_factory=list)
 
 
 class ConversationActionResponse(BaseModel):

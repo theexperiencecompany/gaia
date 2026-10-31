@@ -212,7 +212,7 @@ async def delete_all_conversations(user: AuthenticatedUser) -> DeleteAllConversa
     user_id = user.user_id
     # The repository returns the deleted ids so their (non-user-scoped) checkpoint
     # threads can be cleaned up afterwards.
-    conversation_ids = await conversation_repository.delete_all_for_user(user_id)
+    conversation_ids = await conversation_repository.delete_all_chats_for_user(user_id)
 
     if not conversation_ids:
         raise HTTPException(status_code=404, detail="No conversations found for the user")
@@ -247,11 +247,9 @@ async def delete_conversation(
 
 
 async def _cleanup_conversation_storage(user_id: str, conversation_id: str) -> None:
-    """Best-effort cleanup of what outlives a deleted conversation's document.
+    """Clean up what outlives a deleted conversation's document, best-effort.
 
-    The Mongo delete already succeeded; the ARQ prune task and the nightly
-    checkpoint sweep are the backstops if either step fails.
-    """
+    The ARQ prune task and the nightly checkpoint sweep are the backstops if a step fails."""
     if user_id:
         try:
             await delete_session_dir(user_id, conversation_id)
@@ -479,7 +477,11 @@ async def batch_sync_conversations(
     if not request.conversations:
         return BatchSyncResponse()
 
-    documents = await conversation_repository.find_updated_since(user_id, request.conversations)
+    requested = [item.conversation_id for item in request.conversations]
+    documents, owned = await asyncio.gather(
+        conversation_repository.find_updated_since(user_id, request.conversations),
+        conversation_repository.owned_ids(user_id, requested),
+    )
 
     rows: list[ConversationSyncRow] = []
     for document in documents:
@@ -503,4 +505,6 @@ async def batch_sync_conversations(
             )
         )
 
-    return BatchSyncResponse(conversations=rows)
+    return BatchSyncResponse(
+        conversations=rows, missing=[cid for cid in requested if cid not in owned]
+    )

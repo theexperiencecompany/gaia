@@ -6856,6 +6856,8 @@ export interface components {
         BatchSyncResponse: {
             /** Conversations */
             conversations: components["schemas"]["ConversationSyncRow"][];
+            /** Missing */
+            missing: string[];
         };
         /**
          * BlobStoreKind

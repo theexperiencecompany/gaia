@@ -1362,10 +1362,18 @@
             },
             "title": "Conversations",
             "type": "array"
+          },
+          "missing": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing",
+            "type": "array"
           }
         },
         "required": [
-          "conversations"
+          "conversations",
+          "missing"
         ],
         "title": "BatchSyncResponse",
         "type": "object"

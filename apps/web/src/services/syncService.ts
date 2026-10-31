@@ -321,14 +321,24 @@ export const batchSyncConversations = async (
       db.getAllConversations(),
     ]);
 
-    if (remoteConversations.length === 0) {
+    // A todo chat is never listed, so only asking about it shows a new run or its deletion.
+    const todoChatItems = localConversations
+      .filter((conv) => conv.todoId)
+      .map(
+        (conv): ConversationSyncItem => ({
+          conversation_id: conv.id,
+          last_updated: (conv.updatedAt || conv.createdAt).toISOString(),
+        }),
+      );
+
+    if (remoteConversations.length === 0 && todoChatItems.length === 0) {
       return;
     }
 
-    const staleItems = identifyStaleConversations(
-      localConversations,
-      remoteConversations,
-    );
+    const staleItems = [
+      ...identifyStaleConversations(localConversations, remoteConversations),
+      ...todoChatItems,
+    ];
 
     // Identify conversations that exist locally but were deleted on the server
     const deletedConversationIds = identifyDeletedConversations(
@@ -345,8 +355,12 @@ export const batchSyncConversations = async (
       return;
     }
 
-    const { conversations: freshConversations } =
+    const { conversations: freshConversations, missing } =
       await chatApi.batchSyncConversations(staleItems, origin);
+
+    if (missing.length > 0) {
+      await db.deleteConversationsAndMessagesBulk(missing);
+    }
 
     if (freshConversations.length === 0) {
       return;

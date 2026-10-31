@@ -78,19 +78,6 @@ from shared.py.analytics.catalog.todos import (
 from shared.py.wide_events import log, spawn_logged_task
 
 
-async def _delete_todo_chats(user_id: str, todo_ids: list[str]) -> None:
-    """Delete the chats of todos just deleted; a failure leaves only unreachable chats, so it is reported, not raised."""
-    try:
-        await delete_todo_conversations(user_id, todo_ids)
-    except Exception as e:
-        log.warning(
-            "todo.chat_delete_failed",
-            todo_ids=todo_ids,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-
-
 async def _get_workflow_categories_for_todos(
     todos: list[TodoDocument], user_id: str
 ) -> dict[str, list[str]]:
@@ -646,6 +633,11 @@ class TodoService:
                     log.warning("tracked_todo.ui_complete_failed", todo_id=todo_id, error=str(e))
                 update = _drop_completion_fields(update)
 
+        if update.title is not None:
+            # A tracked todo's chat carries its title, as its tab and header name it. First,
+            # so a failure here saves nothing rather than half a rename.
+            await conversation_repository.retitle_todo_chats(user_id, [todo_id], update.title)
+
         async with _watching_refs_to_reopen(
             user_id, [todo_id], reopening=update.completed is False
         ):
@@ -653,10 +645,6 @@ class TodoService:
 
         if not updated:
             raise ValueError(f"Todo {todo_id} not found")
-
-        if update.title is not None:
-            # A tracked todo's chat carries its title, as its tab and header name it.
-            await conversation_repository.retitle_todo_chats(user_id, [todo_id], update.title)
 
         try:
             await update_todo_embedding(todo_id, updated, user_id)
@@ -715,6 +703,8 @@ class TodoService:
             except Exception as e:
                 log.warning("todo.canvas_embedding_delete_failed", todo_id=todo_id, error=str(e))
 
+        # Before the todo: a failed chat delete keeps the todo, so a retry deletes both.
+        await delete_todo_conversations(user_id, [todo_id])
         if not await todo_repository.delete(todo_id, user_id=user_id):
             raise ValueError(f"Todo {todo_id} not found")
 
@@ -722,8 +712,6 @@ class TodoService:
             await delete_todo_embedding(todo_id)
         except Exception as e:
             log.warning("todo.index_remove_failed", todo_id=todo_id, error=str(e))
-
-        await _delete_todo_chats(user_id, [todo_id])
 
         schedule_user_todos_sync(user_id)
         capture(UserId(user_id), TodosDeleted(todo_id=todo_id))
@@ -740,6 +728,12 @@ class TodoService:
         if not update.model_fields_set:
             return BulkOperationResponse(
                 success=[], failed=[], total=len(request.todo_ids), message="No updates provided"
+            )
+
+        if update.title is not None:
+            # As in the single update: the chats first, so a failure renames nothing.
+            await conversation_repository.retitle_todo_chats(
+                user_id, request.todo_ids, update.title
             )
 
         completion = _TrackedCompletion(completed=[], failed=[], plain=request.todo_ids)
@@ -763,8 +757,6 @@ class TodoService:
             succeeded.extend(plain_ids[:modified])
 
         if succeeded:
-            if update.title is not None:
-                await conversation_repository.retitle_todo_chats(user_id, succeeded, update.title)
             try:
                 updated_todos = await todo_repository.find_by_ids(user_id, request.todo_ids)
                 await asyncio.gather(
@@ -798,6 +790,8 @@ class TodoService:
                 except Exception as e:
                     log.warning("todo.canvas_embedding_delete_failed", todo_id=doc.id, error=str(e))
 
+        # As in the single delete: chats first, so a failure keeps their todos.
+        await delete_todo_conversations(user_id, [todo.id for todo in todos_to_delete])
         deleted = await todo_repository.bulk_delete(user_id, todo_ids)
 
         if deleted > 0:
@@ -806,7 +800,6 @@ class TodoService:
                     await delete_todo_embedding(todo.id)
                 except Exception as e:
                     log.warning("todo.index_remove_failed", todo_id=todo.id, error=str(e))
-            await _delete_todo_chats(user_id, [todo.id for todo in todos_to_delete])
             schedule_user_todos_sync(user_id)
             capture(UserId(user_id), TodosDeleted(count=deleted))
 

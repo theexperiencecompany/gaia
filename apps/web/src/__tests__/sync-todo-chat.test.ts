@@ -29,6 +29,30 @@ vi.mock("@/stores/streamStore", () => ({
 
 const LONG_AGO = new Date("2026-01-01T00:00:00Z");
 
+const LISTED = {
+  conversation_id: "listed",
+  user_id: "u1",
+  description: "listed",
+  starred: null,
+  is_system_generated: null,
+  system_purpose: null,
+  is_unread: null,
+  source: null,
+  has_live_approval: null,
+  createdAt: LONG_AGO.toISOString(),
+  updatedAt: LONG_AGO.toISOString(),
+};
+
+function listing(conversations: (typeof LISTED)[]) {
+  return {
+    conversations,
+    total: conversations.length,
+    page: 1,
+    limit: 50,
+    total_pages: 1,
+  };
+}
+
 function local(id: string, overrides: Partial<IConversation> = {}) {
   return {
     id,
@@ -76,6 +100,37 @@ describe("syncing a tracked todo's chat", () => {
 
     expect(db.deleteConversationsAndMessagesBulk).toHaveBeenCalledWith([
       "deleted-on-server",
+    ]);
+  });
+
+  it("asks the server about every local todo chat and drops the ones it no longer has", async () => {
+    vi.mocked(chatApi.fetchConversations).mockResolvedValue(listing([]));
+    vi.mocked(db.getAllConversations).mockResolvedValue([
+      local("kept-todo-chat", { todoId: "todo-1" }),
+      local("deleted-todo-chat", { todoId: "todo-2" }),
+    ]);
+    vi.mocked(chatApi.batchSyncConversations).mockResolvedValue({
+      conversations: [],
+      missing: ["deleted-todo-chat"],
+    });
+
+    await batchSyncConversations();
+
+    expect(chatApi.batchSyncConversations).toHaveBeenCalledWith(
+      [
+        {
+          conversation_id: "kept-todo-chat",
+          last_updated: LONG_AGO.toISOString(),
+        },
+        {
+          conversation_id: "deleted-todo-chat",
+          last_updated: LONG_AGO.toISOString(),
+        },
+      ],
+      {},
+    );
+    expect(db.deleteConversationsAndMessagesBulk).toHaveBeenCalledWith([
+      "deleted-todo-chat",
     ]);
   });
 
