@@ -76,14 +76,6 @@
       "require_cmd": ["uv", "node"]
     },
     {
-      "name": "selfhost-bundle-lock",
-      "nx": "lint-mixed:selfhost-bundle-lock",
-      "ci_check": "selfhost-bundle-lock",
-      "heavy": false,
-      "timeout_s": 60,
-      "require_cmd": ["node"]
-    },
-    {
       "name": "analytics-check",
       "nx": "lint-mixed:analytics-check",
       "heavy": false,

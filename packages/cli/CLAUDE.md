@@ -104,7 +104,7 @@ The CLI prints a warning line for each of the last two when set. Images come fro
 
 ## Release
 
-`publish-cli.yml`'s `publish-binaries` job runs `release.sh selfhost-bundle` (`VERSION`, `RELEASE_TAG`) before npm publishes, so the `cli-v<version>` release carries the bundle `gaia up` and `gaia update` download. `DRY_RUN=1` builds the bundle and names the upload without making it. The bundle is exactly the files `selfhost-bundle.json` lists, at the hashes it records: release-please only watches `packages/cli`, so that lock is what makes a self-host change release a CLI version. Regenerate it with `mise selfhost:lock` (the commit hook does it for you); a stale lock fails CI and fails the bundle build.
+`publish-cli.yml`'s `publish-binaries` job runs `release.sh selfhost-bundle` (`VERSION`, `RELEASE_TAG`) before npm publishes, so the `cli-v<version>` release carries the bundle `gaia up` and `gaia update` download. `DRY_RUN=1` builds the bundle and names the upload without making it.
 
 ## Architecture
 

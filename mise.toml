@@ -539,10 +539,6 @@ run = "cd packages/cli && pnpm vitest run"
 description = "Regenerate the CLI's vendored API config schema (packages/cli/src/lib/api-config-schema.generated.json) from the API's settings groups and capability table — CI's api-schema lane fails when it drifts"
 run = "node scripts/ci/checks.mjs cli-config-schema --write"
 
-[tasks."selfhost:lock"]
-description = "Regenerate packages/cli/selfhost-bundle.json (each self-host bundle file and its sha256) — a bundle change is then a CLI change, which release-please releases; CI fails when it drifts"
-run = "node scripts/ci/checks.mjs selfhost-bundle-lock --write"
-
 [tasks."deploy:templates"]
 description = "Regenerate the one-click deploy templates (deploy/coolify/gaia.yaml, render.yaml, deploy/proxy.Dockerfile) from the self-host compose file, its Caddyfile and the CLI's machine secrets — CI's api-schema lane fails when they drift"
 run = "node scripts/ci/checks.mjs deploy-templates --write"

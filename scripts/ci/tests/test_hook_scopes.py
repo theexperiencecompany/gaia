@@ -23,7 +23,6 @@ PRE_COMMIT = REPO_ROOT / ".pre-commit-config.yaml"
 HOOK_TASKS = {
     "api-types": "lint-mixed:api-schema",
     "analytics-types": "lint-mixed:analytics-catalog",
-    "selfhost-bundle-lock": "lint-mixed:selfhost-bundle-lock",
 }
 # Every check reads the CI harness (nx.json's ciHarness); a hook has no reason to.
 HARNESS_PATTERNS = {

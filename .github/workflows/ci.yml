@@ -818,13 +818,6 @@ jobs:
         if: contains(fromJSON(needs.detect.outputs.tasks), 'lint-mixed:deploy-templates') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'deploy-templates')
         run: node scripts/ci/checks.mjs deploy-templates
       - *upload-verdict-so-far
-      - name: selfhost-bundle-lock — the CLI's lock names the self-host bundle as it is
-        id: selfhost-bundle-lock
-        continue-on-error: true
-        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
-        if: contains(fromJSON(needs.detect.outputs.tasks), 'lint-mixed:selfhost-bundle-lock') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'selfhost-bundle-lock')
-        run: node scripts/ci/checks.mjs selfhost-bundle-lock
-      - *upload-verdict-so-far
 
       # Every check from here to its join below only reads the tree (the four
       # above regenerate tracked files in place, so they run first and alone).
@@ -1055,7 +1048,6 @@ jobs:
             analytics-catalog=${{ steps.analytics-catalog.outcome }}
             cli-config-schema=${{ steps.cli-config-schema.outcome }}
             deploy-templates=${{ steps.deploy-templates.outcome }}
-            selfhost-bundle-lock=${{ steps.selfhost-bundle-lock.outcome }}
             api-schema-types=${{ steps.api-schema-types.outcome }}
             observability-evlog-tests=${{ steps.observability-evlog-tests.outcome }}
             observability-map=${{ steps.observability-map.outcome }}

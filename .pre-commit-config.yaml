@@ -105,17 +105,6 @@ repos:
         files: '^libs/shared/py/analytics/|^libs/shared/ts/src/analytics/generated/|^uv\.lock$|^scripts/ci/checks\.mjs$'
         pass_filenames: false
 
-      - id: selfhost-bundle-lock
-        name: the CLI's self-host bundle lock up to date
-        entry: >-
-          bash -c 'set -e; mise run selfhost:lock; if [ -n "$(git status --porcelain --
-          packages/cli/selfhost-bundle.json)" ]; then echo "selfhost-bundle-lock regenerated
-          and staged"; git add -- packages/cli/selfhost-bundle.json; else echo
-          "selfhost-bundle-lock: already in sync"; fi'
-        language: system
-        files: '^infra/docker/docker-compose\.(selfhost|sandbox|bot-[^/]+)\.yml$|^infra/docker/selfhost/|^infra/docker/seccomp-mongo\.json$|^packages/cli/selfhost-bundle\.json$|^scripts/ci/checks\.mjs$|^scripts/ci/lib/generated-artifacts\.mjs$'
-        pass_filenames: false
-
       - id: generate-changelog-pages
         name: Generate changelog sub-pages from release-notes.mdx
         entry: bash -c 'node docs/scripts/generate-changelog-pages.js && git add docs/release-notes.mdx docs/release-notes/'
