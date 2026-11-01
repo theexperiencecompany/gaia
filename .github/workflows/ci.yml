@@ -2011,7 +2011,7 @@ jobs:
       - name: Check the persistent shared builder exists (the box)
         if: startsWith(runner.name, 'gaia-home-')
         run: docker buildx inspect gaia-ci >/dev/null || { echo "::error::gaia-ci builder missing — run setup.sh from the private gaia-infra repo (self-hosted-runner/setup.sh)"; exit 1; }
-      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         if: ${{ !startsWith(runner.name, 'gaia-home-') }}
       # In the merge queue, rebuild only when the image inputs changed:
       # Dockerfile, Python deps, ignore files. Code-only changes rebuild the
