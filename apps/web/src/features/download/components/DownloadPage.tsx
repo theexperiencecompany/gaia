@@ -87,6 +87,7 @@ function DownloadSectionLayout({
             alt={imageAlt}
             className={imageClassName}
             priority={imagePriority}
+            sizes="(max-width: 768px) 100vw, 512px"
           />
         </div>
 

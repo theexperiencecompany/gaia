@@ -51,25 +51,27 @@ export default function ProgressiveImage({
           priority so it never competes with the LCP image (the webp) for
           bandwidth — even on priority heroes. This keeps the quality upgrade
           without pushing out Largest Contentful Paint. */}
-      <NextImage
-        src={pngSrc}
-        alt={`${alt} png`}
-        width={width}
-        height={height}
-        sizes={sizes}
-        loading="lazy"
-        fetchPriority="low"
-        onLoad={() => setLoaded(true)}
-        style={{
-          width: "100%",
-          height: "100%",
-          objectFit: "cover",
-          position: "absolute",
-          top: 0,
-          left: 0,
-        }}
-        className={`${className} transition-opacity ${loaded ? "opacity-100" : "opacity-0"}`}
-      />
+      {pngSrc !== webpSrc && (
+        <NextImage
+          src={pngSrc}
+          alt={`${alt} png`}
+          width={width}
+          height={height}
+          sizes={sizes}
+          loading="lazy"
+          fetchPriority="low"
+          onLoad={() => setLoaded(true)}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            position: "absolute",
+            top: 0,
+            left: 0,
+          }}
+          className={`${className} transition-opacity ${loaded ? "opacity-100" : "opacity-0"}`}
+        />
+      )}
     </div>
   );
 }

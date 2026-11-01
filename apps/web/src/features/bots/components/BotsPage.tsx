@@ -58,7 +58,7 @@ function BotCard({
         <div className="relative h-15 w-15 shrink-0 group-hover:scale-110 group-hover:-rotate-10 transition duration-100">
           <Image
             src={icon}
-            alt={name}
+            alt=""
             width={256}
             height={256}
             className="h-full w-full object-contain"
