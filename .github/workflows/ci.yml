@@ -778,9 +778,9 @@ jobs:
         with:
           path: .mypy_cache
           key: mypy-${{ runner.os }}-${{ hashFiles('uv.lock') }}-${{ github.sha }}
+          # Same uv.lock only: a cache built against other dependencies serves their types.
           restore-keys: |
             mypy-${{ runner.os }}-${{ hashFiles('uv.lock') }}-
-            mypy-${{ runner.os }}-
 
       - name: mypy — api + voice-agent + shared + lint tooling + CI scripts (staged-strict)
         id: mypy

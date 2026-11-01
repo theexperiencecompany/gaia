@@ -22,6 +22,7 @@ import subprocess
 import sys
 
 import pytest
+import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 PLAN_SCRIPT = REPO_ROOT / "scripts" / "ci" / "mutation.py"
@@ -410,3 +411,12 @@ def test_a_services_shard_says_so_in_its_check_name(harness: PlanRun) -> None:
     _, outputs = harness([_entry("app/db/repositories/users.py", [CONTRACT_TEST], [1])])
 
     assert _matrix(outputs)[0]["label"] == "app/db/repositories/users.py (services)"
+
+
+def test_the_matrix_runs_as_many_shards_at_once_as_the_plan_makes() -> None:
+    """More shards than max-parallel queue behind each other; fewer leave runners idle."""
+    workflow = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text())
+    assert workflow["jobs"]["test-mutation"]["strategy"]["max-parallel"] == MAX_SHARDS
+    # runner.py sizes the box's services pool for one wave of them.
+    runner = (REPO_ROOT / "scripts" / "ci" / "runner.py").read_text()
+    assert re.search(rf"^MUTATION_WAVE = {MAX_SHARDS}$", runner, re.MULTILINE)

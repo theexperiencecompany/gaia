@@ -215,3 +215,47 @@ def test_the_quality_gate_requires_the_job_that_runs_them(workflow: dict[str, An
     # branch-protection target fails when test-python does.
     gate = workflow["jobs"]["quality-gate"]
     assert "test-python" in gate["needs"]
+
+
+# Test trees that never run in a CI slice, and why. Anything else outside every
+# slice is a directory someone added that CI silently never runs.
+OUTSIDE_THE_SLICES = {
+    "tests/composio/": "live Composio accounts; `nx run api:test:composio`",
+    "tests/model_onboarding/": "live model providers; deselected by -m in every slice",
+}
+
+
+def _under(path: str, root: str) -> bool:
+    return path == root or path.startswith(root.rstrip("/") + "/")
+
+
+def _slice_owns(path: str, slice_def: dict[str, Any]) -> bool:
+    ignored = [arg.removeprefix("--ignore=") for arg in str(slice_def.get("ignore", "")).split()]
+    return any(_under(path, p) for p in str(slice_def["paths"]).split()) and not any(
+        _under(path, i) for i in ignored
+    )
+
+
+def test_every_api_test_file_runs_in_a_slice() -> None:
+    slices = json.loads((REPO_ROOT / "scripts" / "ci" / "lib" / "test-slices.json").read_text())[
+        "slices"
+    ]
+    listed = subprocess.run(
+        ["git", "ls-files", "apps/api/tests"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split()
+    tests = [
+        p.removeprefix("apps/api/")
+        for p in listed
+        if Path(p).name.startswith("test_") and p.endswith(".py")
+    ]
+    orphans = [
+        t
+        for t in tests
+        if not t.startswith(tuple(OUTSIDE_THE_SLICES))
+        and not any(_slice_owns(t, s) for s in slices)
+    ]
+    assert orphans == [], "no test-slices.json slice runs these; add their directory to one"

@@ -43,6 +43,8 @@
 #   sync-uv-lock         Re-lock uv.lock on the open release PR branch: the api
 #                        version bump changes the lock, which release-please
 #                        does not touch, so the release PR's uv-lock check fails.
+#   missing-latest       Print the image groups (apps, bots) any of whose repos
+#                        has no :latest in GHCR yet, so build.yml builds them.
 #
 # Env contract:
 #   resolve-image-tags    VERSION_SCHEME, APPS_RELEASE_OUTCOME,
@@ -75,6 +77,7 @@
 #                         WORKER_NAME (all optional; no token = manual steps).
 #   sync-uv-lock          RELEASE_BRANCH (required); a checkout whose origin
 #                         push credentials can update that branch; uv on PATH.
+#   missing-latest        docker logged in to GHCR.
 set -euo pipefail
 
 # shellcheck source=scripts/ci/lib/log.sh
@@ -457,6 +460,22 @@ cmd_connect_binaries() {
 # that commit's gaia, gaia-web and self-host bot :<sha> images, so build.yml
 # publishes them for a release commit even when nx sees none of them as
 # affected (a CLI-only release).
+# A repo whose :latest does not exist yet (first-time bootstrap) forces its
+# group's build even when nx sees nothing affected.
+cmd_missing_latest() {
+  local group repo
+  local -a repos
+  for group in apps bots; do
+    if [ "$group" = apps ]; then repos=("${APPS_IMAGE_REPOS[@]}"); else repos=("${BOTS_IMAGE_REPOS[@]}"); fi
+    for repo in "${repos[@]}"; do
+      if ! docker manifest inspect "$GHCR_NAMESPACE/$repo:latest" >/dev/null 2>&1; then
+        echo "$group"
+        break
+      fi
+    done
+  done
+}
+
 cmd_cli_release_images() {
 
   : "${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
@@ -767,6 +786,7 @@ main() {
     selfhost-bundle)      cmd_selfhost_bundle "$@" ;;
     disable-cf-builds)    cmd_disable_cf_builds "$@" ;;
     sync-uv-lock)         cmd_sync_uv_lock "$@" ;;
+    missing-latest)       cmd_missing_latest "$@" ;;
     *)
       echo "release.sh: unknown subcommand '${sub}'" >&2
       usage

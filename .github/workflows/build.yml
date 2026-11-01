@@ -191,29 +191,17 @@ jobs:
           bots=$BOTS
           web=$WEB
 
-          # Force build if images don't exist in GHCR yet (first-time bootstrap).
-          # Only check on master branch to avoid unnecessary builds on feature branches.
+          # Force a group's build when one of its images has no :latest in GHCR
+          # yet (first-time bootstrap); the repos come from lib/image-repos.sh.
           if [ "${{ github.ref }}" = "refs/heads/master" ]; then
-            image_missing() {
-              ! docker manifest inspect "$1" > /dev/null 2>&1
-            }
-
-            if [ "$api" = "false" ]; then
-              if image_missing "ghcr.io/theexperiencecompany/gaia:latest" || image_missing "ghcr.io/theexperiencecompany/gaia-voice-agent:latest"; then
-                echo "⚠️ API/voice-agent image missing from GHCR — forcing build"
-                api=true
-              fi
+            missing="$(bash scripts/ci/release.sh missing-latest)"
+            if [[ "$missing" == *apps* && "$api" = "false" ]]; then
+              echo "⚠️ An apps image is missing from GHCR — forcing build"
+              api=true
             fi
-
-            if [ "$bots" = "false" ]; then
-               if image_missing "ghcr.io/theexperiencecompany/gaia-bot-discord:latest" || \
-                  image_missing "ghcr.io/theexperiencecompany/gaia-bot-slack:latest" || \
-                  image_missing "ghcr.io/theexperiencecompany/gaia-bot-telegram:latest" || \
-                  image_missing "ghcr.io/theexperiencecompany/gaia-bot-whatsapp:latest" || \
-                  image_missing "ghcr.io/theexperiencecompany/gaia-bot-imessage:latest"; then
-                echo "⚠️ Bot image(s) missing from GHCR — forcing build"
-                bots=true
-              fi
+            if [[ "$missing" == *bots* && "$bots" = "false" ]]; then
+              echo "⚠️ A bot image is missing from GHCR — forcing build"
+              bots=true
             fi
           fi
 
