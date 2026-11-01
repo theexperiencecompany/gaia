@@ -73,6 +73,9 @@ SET_PRIMARY_INTEGRATION_ACCOUNT_TOOL: Final = "set_primary_integration_account"
 DISCONNECT_INTEGRATION_TOOL: Final = "disconnect_integration"
 # Starts a connect, an added account or a reconnect (ConnectMode).
 CONNECT_INTEGRATION_TOOL: Final = "connect_integration"
+# Tool metadata key naming the integration a tool was resolved from (MCP connect,
+# on-demand Composio materialization) — provenance read by the HIL classifier.
+TOOL_INTEGRATION_ID_METADATA_KEY: Final = "integration_id"
 # A nickname replaces the account's label in the UI and the agent's context.
 MAX_ACCOUNT_NICKNAME_LENGTH: Final = 60
 # Query param the OAuth callback carries an AccountConnectOutcome in.

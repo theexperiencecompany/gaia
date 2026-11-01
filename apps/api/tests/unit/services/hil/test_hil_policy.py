@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock, patch
 from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.messages import ToolCall
 from langchain_core.tools import BaseTool
+from mcp.types import ToolAnnotations
 import pytest
 
 from app.constants.execute import EXECUTE_TOOL_NAME
@@ -53,7 +54,7 @@ def _proxied(real_name: str, proxy: BaseTool | None = None) -> ToolCallRequest:
     )
 
 
-_HINTED = {MCP_ANNOTATIONS_METADATA_KEY: {"destructiveHint": True}}
+_HINTED = {MCP_ANNOTATIONS_METADATA_KEY: ToolAnnotations(destructiveHint=True)}
 
 
 @pytest.fixture(autouse=True)
@@ -287,7 +288,7 @@ class TestHasPausingSibling:
         sibling = make_tool(
             name="mcp_wipe",
             description="Tidy up the workspace.",
-            metadata={MCP_ANNOTATIONS_METADATA_KEY: {"destructiveHint": True}},
+            metadata={MCP_ANNOTATIONS_METADATA_KEY: ToolAnnotations(destructiveHint=True)},
         )
         state_messages = [
             ai_message_with_calls(
@@ -325,7 +326,7 @@ class TestHasPausingSibling:
         sibling = make_tool(
             name="notion_mcp_delete_page",
             description="Remove a page.",
-            metadata={MCP_ANNOTATIONS_METADATA_KEY: {"destructiveHint": True}},
+            metadata={MCP_ANNOTATIONS_METADATA_KEY: ToolAnnotations(destructiveHint=True)},
         )
         state_messages = [
             ai_message_with_calls(
