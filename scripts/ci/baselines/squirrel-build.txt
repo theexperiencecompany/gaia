@@ -30,5 +30,4 @@ score:Images=92
 score:Links=90
 score:Performance=70
 score:Security=96
-score:URL Structure=99
 security/csp=1
