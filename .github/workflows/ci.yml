@@ -231,17 +231,6 @@ jobs:
           MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
         run: bash scripts/ci/changes.sh base
 
-      - name: Reuse checks whose inputs did not change since their last pass
-        id: reuse
-        if: github.event_name == 'pull_request'
-        # Through env, never inline: the head branch name is PR-author controlled.
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_BRANCH: ${{ github.head_ref }}
-          PR_BASE: ${{ steps.base.outputs.base_ref }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: python3 scripts/ci/verdict.py reuse-plan --repo "$GITHUB_REPOSITORY" --workflow ci.yml --branch "$PR_BRANCH" --base "$PR_BASE" --head-sha "$PR_HEAD_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" --event "$GITHUB_EVENT_NAME"
-
       - uses: nrwl/nx-set-shas@afb73a62d26e41464e9254689e1fd6122ee683c1 # v5.0.1
         with:
           main-branch-name: master
@@ -256,6 +245,18 @@ jobs:
         run: bash scripts/ci/pytest.sh slices >> "$GITHUB_OUTPUT"
 
       - uses: ./.github/actions/setup-node-pnpm
+
+      # After the install: it asks nx whether anything a check reads changed since its last pass.
+      - name: Reuse checks whose inputs did not change since their last pass
+        id: reuse
+        if: github.event_name == 'pull_request'
+        # Through env, never inline: the head branch name is PR-author controlled.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_BRANCH: ${{ github.head_ref }}
+          PR_BASE: ${{ steps.base.outputs.base_ref }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python3 scripts/ci/verdict.py reuse-plan --repo "$GITHUB_REPOSITORY" --workflow ci.yml --branch "$PR_BRANCH" --base "$PR_BASE" --head-sha "$PR_HEAD_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" --event "$GITHUB_EVENT_NAME"
 
       - name: Ask nx which checks this change reaches
         id: affected

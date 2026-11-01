@@ -16,6 +16,7 @@ import subprocess
 import sys
 
 import pytest
+from sandbox import VERDICT_FILES
 
 CI = Path(__file__).parent.parent
 
@@ -31,9 +32,7 @@ def _repo(tmp_path: Path) -> Path:
     (scripts / "lib").mkdir(parents=True)
     for name in (
         "pytest.sh",
-        "verdict.py",
-        "lib/github.py",
-        "lib/output_findings.py",
+        *VERDICT_FILES,
         "lib/log.sh",
         "lib/cpu-slots.sh",
         "lib/runner-host.sh",

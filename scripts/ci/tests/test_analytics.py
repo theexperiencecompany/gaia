@@ -26,6 +26,7 @@ import sys
 from types import ModuleType
 from typing import Any
 
+from lib import nx_affected
 import pytest
 import yaml
 
@@ -865,24 +866,23 @@ LANES = CI.parent / "dev" / "verify-lanes.json"
 WORKFLOW = CI.parent.parent / ".github" / "workflows" / "ci.yml"
 
 
-def test_the_lane_scope_is_the_files_that_define_the_contract() -> None:
-    lanes = json.loads(LANES.read_text())["lanes"]
-    scope = next(lane["scope"] for lane in lanes if lane["name"] == "analytics-check")
-    for path in (
-        "libs/shared/py/analytics/catalog/chat.py",
-        "libs/shared/ts/src/analytics/generated/analytics-catalog.json",
-        "config/posthog/project.json",
-        "config/posthog/actions.json",
-        "scripts/ci/analytics.py",
-    ):
-        assert re.search(scope, path), path
-    for path in ("apps/web/src/app/page.tsx", "libs/shared/py/analytics/client.py"):
-        assert not re.search(scope, path), path
+@pytest.mark.parametrize(
+    ("path", "runs"),
+    [
+        ("libs/shared/py/analytics/catalog/chat.py", True),
+        ("libs/shared/ts/src/analytics/generated/analytics-catalog.json", True),
+        ("config/posthog/project.json", True),
+        ("config/posthog/actions.json", True),
+        ("scripts/ci/analytics.py", True),
+        ("apps/web/src/app/page.tsx", False),
+        ("libs/shared/py/analytics/client.py", False),
+    ],
+)
+def test_the_check_runs_on_the_files_that_define_the_contract(path: str, runs: bool) -> None:
+    assert ("lint-mixed:analytics-check" in nx_affected.select(["--files", path]).tasks) is runs
 
 
-def test_the_ci_check_syncs_on_master_checks_the_rest_against_master_and_reads_the_lane_scope() -> (
-    None
-):
+def test_the_ci_check_syncs_on_master_and_checks_the_rest_against_master() -> None:
     workflow = yaml.safe_load(WORKFLOW.read_text())
     steps = workflow["jobs"]["lint-mixed"]["steps"]
     sync, check = [s for s in steps if "analytics.py" in str(s.get("run", ""))]

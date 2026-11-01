@@ -28,6 +28,10 @@ import subprocess
 import sys
 import time
 
+# The lane table's `nx` tasks are answered by the same module CI's detect asks.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ci"))
+from lib import nx_affected
+
 SCHEMA_VERSION = 1
 LANES_FILE = Path(__file__).resolve().parent / "verify-lanes.json"
 LOG_ROOT = "verify-logs"
@@ -40,7 +44,9 @@ def eprint(*args: str) -> None:
 @dataclass
 class Lane:
     name: str
-    scope_re: re.Pattern[str]
+    # The nx task that decides the lane, as in CI; a lane without one is scoped by its regex.
+    nx: str | None
+    scope_re: re.Pattern[str] | None
     heavy: bool
     timeout_s: int
     require_cmd: list[str]
@@ -78,7 +84,8 @@ def load_lanes(path: Path) -> list[Lane]:
             lanes.append(
                 Lane(
                     name=name,
-                    scope_re=re.compile(row["scope"]),
+                    nx=row.get("nx"),
+                    scope_re=None if row.get("nx") else re.compile(row["scope"]),
                     heavy=bool(row["heavy"]),
                     timeout_s=int(row["timeout_s"]),
                     require_cmd=list(row.get("require_cmd", [])),
@@ -239,6 +246,18 @@ def main() -> int:
         )
     say(f"ci:local: base={base} changed_files={len(files)} lanes_total={len(lanes)}")
 
+    reached = (
+        nx_affected.select(["--files", *files]).tasks
+        if files and any(ln.nx for ln in lanes)
+        else {}
+    )
+
+    def matching(ln: Lane) -> list[str]:
+        if ln.nx:
+            return [r["file"] for r in reached.get(ln.nx, []) if r.get("file")]
+        assert ln.scope_re is not None
+        return [f for f in files if ln.scope_re.search(f)]
+
     selected: list[tuple[Lane, list[str]]] = []
     skipped_pre: list[tuple[Lane, str]] = []
     for ln in lanes:
@@ -252,12 +271,12 @@ def main() -> int:
             if ln.heavy and not args.with_heavy:
                 skipped_pre.append((ln, "heavy (use --with-heavy)"))
                 continue
-            matched = [f for f in files if ln.scope_re.search(f)]
+            matched = matching(ln)
             if not matched and not args.all:
                 skipped_pre.append((ln, "unchanged"))
                 continue
         else:
-            matched = [f for f in files if ln.scope_re.search(f)]
+            matched = matching(ln)
         missing_tools = [c for c in ln.require_cmd if not shutil.which(c)]
         if missing_tools:
             skipped_pre.append((ln, f"missing tool(s): {','.join(missing_tools)}"))

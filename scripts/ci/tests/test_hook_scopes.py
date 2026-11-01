@@ -1,9 +1,8 @@
-"""Every lane's scope regex selects exactly the files its Nx task's inputs do.
+"""A prek hook that regenerates a check's output watches exactly the files that check's nx task reads.
 
-CI runs a check when nx says its task is affected, while verdict.py
-reuse-plan and gaia_verify still read the lane's regex. A file one side sees
-and the other misses either runs a check nothing changed or reuses a pass a
-change invalidated.
+prek needs a literal `files:` regex, so the hook carries a copy of what nx
+knows. A file the hook misses commits a stale artifact that CI then fails; a
+file only the hook sees regenerates for nothing.
 """
 
 from __future__ import annotations
@@ -16,12 +15,16 @@ import re
 import subprocess
 
 import pytest
+import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-LANES = json.loads((REPO_ROOT / "scripts" / "dev" / "verify-lanes.json").read_text())["lanes"]
-NX_LANES = [lane for lane in LANES if "nx" in lane]
-# Every check reads the CI harness (nx.json's ciHarness); reuse-plan's
-# GLOBAL_INVALIDATORS already covers it, so no lane regex names it.
+PRE_COMMIT = REPO_ROOT / ".pre-commit-config.yaml"
+# The hooks that regenerate a check's artifact, and the task that checks it.
+HOOK_TASKS = {
+    "api-types": "lint-mixed:api-schema",
+    "analytics-types": "lint-mixed:analytics-catalog",
+}
+# Every check reads the CI harness (nx.json's ciHarness); a hook has no reason to.
 HARNESS_PATTERNS = {
     p.removeprefix("{workspaceRoot}/")
     for p in json.loads((REPO_ROOT / "nx.json").read_text())["namedInputs"]["ciHarness"]
@@ -49,7 +52,7 @@ def tracked() -> list[str]:
 
 @pytest.fixture(scope="module")
 def nx_files(tracked: list[str]) -> dict[str, set[str]]:
-    targets = sorted({lane["nx"].split(":", 1)[1] for lane in NX_LANES})
+    targets = sorted({task.split(":", 1)[1] for task in HOOK_TASKS.values()})
     out = subprocess.run(
         [
             "pnpm",
@@ -79,12 +82,19 @@ def nx_files(tracked: list[str]) -> dict[str, set[str]]:
     return files
 
 
-@pytest.mark.parametrize("lane", NX_LANES, ids=[lane["name"] for lane in NX_LANES])
-def test_scope_matches_nx_inputs(
-    lane: dict[str, str], tracked: list[str], nx_files: dict[str, set[str]]
+def _hook_files(hook_id: str) -> str:
+    config = yaml.safe_load(PRE_COMMIT.read_text(encoding="utf-8"))
+    (hook,) = [h for repo in config["repos"] for h in repo.get("hooks", []) if h["id"] == hook_id]
+    return str(hook["files"])
+
+
+@pytest.mark.parametrize(("hook_id", "task"), sorted(HOOK_TASKS.items()))
+def test_hook_watches_what_the_check_reads(
+    hook_id: str, task: str, tracked: list[str], nx_files: dict[str, set[str]]
 ) -> None:
-    scope = re.compile(lane["scope"])
-    by_regex = {f for f in tracked if scope.search(f)} - NX_IMPLICIT_INPUTS
-    by_nx = nx_files[lane["nx"]]
-    assert sorted(by_regex - by_nx) == [], f"only the scope regex selects these for {lane['nx']}"
-    assert sorted(by_nx - by_regex) == [], f"only the {lane['nx']} inputs select these"
+    files = re.compile(_hook_files(hook_id))
+    by_hook = {f for f in tracked if files.search(f)} - NX_IMPLICIT_INPUTS
+    assert sorted(by_hook - nx_files[task]) == [], f"only the {hook_id} hook selects these"
+    assert sorted(nx_files[task] - by_hook) == [], (
+        f"only {task}'s inputs select these; add them to the hook"
+    )

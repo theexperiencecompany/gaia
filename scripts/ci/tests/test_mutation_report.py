@@ -24,6 +24,7 @@ import sys
 
 from doc_shape import mapping, sequence
 import pytest
+from sandbox import VERDICT_FILES
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 from lib import mutation_report as report_lib
@@ -346,9 +347,7 @@ def _sandbox(tmp_path: Path, mutmut_behaviour: str) -> Path:
     (scripts_ci / "lib").mkdir(parents=True)
     for source, name in (
         (MUTATION_PY, "mutation.py"),
-        (REPO_ROOT / "scripts" / "ci" / "verdict.py", "verdict.py"),
-        (REPO_ROOT / "scripts" / "ci" / "lib" / "github.py", "lib/github.py"),
-        (REPO_ROOT / "scripts" / "ci" / "lib" / "output_findings.py", "lib/output_findings.py"),
+        *((REPO_ROOT / "scripts" / "ci" / name, name) for name in VERDICT_FILES),
         (LOG_LIB, "lib/log.sh"),
         (CPU_SLOTS_LIB, "lib/cpu-slots.sh"),
         (REPO_ROOT / "scripts" / "ci" / "lib" / "runner-host.sh", "lib/runner-host.sh"),
