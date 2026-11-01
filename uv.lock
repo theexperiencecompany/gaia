@@ -1987,7 +1987,7 @@ wheels = [
 
 [[package]]
 name = "gaia"
-version = "0.25.0"
+version = "0.26.0"
 source = { virtual = "apps/api" }
 dependencies = [
     { name = "aiohttp" },

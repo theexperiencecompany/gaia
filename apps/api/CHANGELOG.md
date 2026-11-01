@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.26.0](https://github.com/theexperiencecompany/gaia/compare/api-v0.25.0...api-v0.26.0) (2026-11-01)
+
+
+### Features
+
+* **delivery:** presence-aware, one-place proactive messaging ([#1523](https://github.com/theexperiencecompany/gaia/issues/1523)) ([39887cf](https://github.com/theexperiencecompany/gaia/commit/39887cfe9e9fe0b6c7a1fe5daa916cf09eac2b2f))
+* **todos:** give every tracked todo its own chat, led by what woke each run ([#1561](https://github.com/theexperiencecompany/gaia/issues/1561)) ([7fa8464](https://github.com/theexperiencecompany/gaia/commit/7fa84648be37066f58b4929dc0f8a0c468d8f1f9))
+* **web:** the visible fixes from the heygaia.io audit ([#1539](https://github.com/theexperiencecompany/gaia/issues/1539)) ([fc67d3d](https://github.com/theexperiencecompany/gaia/commit/fc67d3d8301634b4cd807ab6e3a5ee8c18861bc1))
+
+
+### Bug Fixes
+
+* **agents:** keep directive tags and tool narration out of replies ([#1547](https://github.com/theexperiencecompany/gaia/issues/1547)) ([15b8b3f](https://github.com/theexperiencecompany/gaia/commit/15b8b3f4730d936ca4cc2d5e0115ce3f9d627a91))
+* **api:** keep rate limiting up during a Redis outage instead of crashing every request ([#1498](https://github.com/theexperiencecompany/gaia/issues/1498)) ([bee2e4d](https://github.com/theexperiencecompany/gaia/commit/bee2e4d02fe0f9091de556d45861293b4eec65dc))
+* **chat:** cap conversation history so a thread can't outgrow Mongo ([#1551](https://github.com/theexperiencecompany/gaia/issues/1551)) ([c98a708](https://github.com/theexperiencecompany/gaia/commit/c98a7089334e0f9d48771c657617113a1026534d))
+* **deps:** bump litellm to 1.103 for GHSA-g5ff-637f-6q2m and CVE-2026-114612 ([1167f77](https://github.com/theexperiencecompany/gaia/commit/1167f7700ecf76468510aa56928a81f40066a6ca))
+* **deps:** bump litellm to 1.103 for two security advisories ([#1555](https://github.com/theexperiencecompany/gaia/issues/1555)) ([1167f77](https://github.com/theexperiencecompany/gaia/commit/1167f7700ecf76468510aa56928a81f40066a6ca))
+* **integrations:** standalone auth URLs for OAuth MCP reconnect (GAIA-712) ([#1476](https://github.com/theexperiencecompany/gaia/issues/1476)) ([c1213b5](https://github.com/theexperiencecompany/gaia/commit/c1213b54b49bc0fc5a56c48f3bcbff1185e4fd74))
+* **integrations:** stop dialing two Composio servers we do not own ([#1536](https://github.com/theexperiencecompany/gaia/issues/1536)) ([7de1209](https://github.com/theexperiencecompany/gaia/commit/7de12097437ff282f6715b16a3ba05422d6bd72d))
+* **llm:** fall back to the JSON-schema lane when a structured reply is malformed ([#1511](https://github.com/theexperiencecompany/gaia/issues/1511)) ([d3b6f99](https://github.com/theexperiencecompany/gaia/commit/d3b6f99ccbf45203c048c63c29af3608c8934ed3))
+* **llm:** retry and fall back on raw transient httpx errors ([#1495](https://github.com/theexperiencecompany/gaia/issues/1495)) ([85936f5](https://github.com/theexperiencecompany/gaia/commit/85936f572d9f1a889e96d3cc9c01d93bf3e08692))
+* **memory:** let recall report its handled embedding failures ([#1497](https://github.com/theexperiencecompany/gaia/issues/1497)) ([ddf468f](https://github.com/theexperiencecompany/gaia/commit/ddf468f28d482a9e746b10681bd8c728b383ba87))
+* **observability:** keep trace-export failures visible instead of muting the logger ([#1510](https://github.com/theexperiencecompany/gaia/issues/1510)) ([0c9f065](https://github.com/theexperiencecompany/gaia/commit/0c9f065ad559a8c06c7d802a66838365fedbf810))
+* **payments:** accept the payment fields Dodo sends as null ([#1488](https://github.com/theexperiencecompany/gaia/issues/1488)) ([685b784](https://github.com/theexperiencecompany/gaia/commit/685b78455b0a94489e85e607d457ea3a74bf07a8))
+* **payments:** let a stuck webhook claim expire before the retries do ([#1542](https://github.com/theexperiencecompany/gaia/issues/1542)) ([32fc77f](https://github.com/theexperiencecompany/gaia/commit/32fc77fea5d2b55824a5ed3075fa80d24c17992c))
+* **sandbox:** treat bash command timeouts as an expected outcome ([#1487](https://github.com/theexperiencecompany/gaia/issues/1487)) ([0b6ea26](https://github.com/theexperiencecompany/gaia/commit/0b6ea26666c0a01969dc227b525dd4d1fbeb2315))
+* **sentry:** attribute the wide event's user and group messages by their shape ([#1509](https://github.com/theexperiencecompany/gaia/issues/1509)) ([b0c311b](https://github.com/theexperiencecompany/gaia/commit/b0c311bac51f8fa89a72d3eb90ea35146fa3b1d2))
+* **sentry:** stop forwarding mcp_use's own error lines to Sentry ([#1496](https://github.com/theexperiencecompany/gaia/issues/1496)) ([0e952fd](https://github.com/theexperiencecompany/gaia/commit/0e952fdb75b3335cda9648b05450715d63b7118c))
+* **workflows:** resolve the Gmail fetch session from the replay's conversation_id ([#1494](https://github.com/theexperiencecompany/gaia/issues/1494)) ([ad0d919](https://github.com/theexperiencecompany/gaia/commit/ad0d919d730227b2862b8e0188a3dad64d8009b5))
+
 ## [0.25.0](https://github.com/theexperiencecompany/gaia/compare/api-v0.24.0...api-v0.25.0) (2026-10-26)
 
 
