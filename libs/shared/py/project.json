@@ -13,11 +13,7 @@
         "cwd": "{projectRoot}"
       },
       "cache": true,
-      "inputs": [
-        "default",
-        "{workspaceRoot}/libs/shared/py/pyproject.toml",
-        "{workspaceRoot}/apps/api/pyproject.toml"
-      ]
+      "inputs": ["default", "{workspaceRoot}/libs/pyproject.toml", "python"]
     },
     "format": {
       "executor": "nx:run-commands",

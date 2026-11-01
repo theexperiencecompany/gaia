@@ -23,7 +23,7 @@
       "inputs": [
         "default",
         "{workspaceRoot}/apps/api/pyproject.toml",
-        "{workspaceRoot}/apps/api/uv.lock",
+        "python",
         "{workspaceRoot}/libs/shared/py/**/*",
         "^production"
       ],
@@ -74,7 +74,7 @@
         "default",
         "{workspaceRoot}/apps/api/pyproject.toml",
         "{workspaceRoot}/apps/api/ruff.toml",
-        "{workspaceRoot}/apps/api/uv.lock",
+        "python",
         "{workspaceRoot}/libs/shared/py/**/*",
         "^production"
       ],
@@ -119,7 +119,7 @@
       "inputs": [
         "default",
         "{workspaceRoot}/apps/api/pyproject.toml",
-        "{workspaceRoot}/apps/api/uv.lock",
+        "python",
         "{workspaceRoot}/libs/shared/py/**/*",
         "^production"
       ],
@@ -145,7 +145,8 @@
         "{projectRoot}/app/**/*",
         "{projectRoot}/tests/**/*",
         "{projectRoot}/pyproject.toml",
-        "{projectRoot}/pytest.ini"
+        "{projectRoot}/pytest.ini",
+        "python"
       ]
     },
     "test:real": {
@@ -176,7 +177,8 @@
         "{projectRoot}/tests/contracts/**/*",
         "{projectRoot}/tests/conftest.py",
         "{projectRoot}/tests/factories.py",
-        "{projectRoot}/tests/helpers.py"
+        "{projectRoot}/tests/helpers.py",
+        "python"
       ]
     },
     "test:composio": {
@@ -219,7 +221,8 @@
         "{projectRoot}/tests/unit/**/*",
         "{projectRoot}/tests/conftest.py",
         "{projectRoot}/tests/factories.py",
-        "{projectRoot}/tests/helpers.py"
+        "{projectRoot}/tests/helpers.py",
+        "python"
       ]
     },
     "test:integration": {
@@ -234,7 +237,8 @@
         "{projectRoot}/tests/integration/**/*",
         "{projectRoot}/tests/conftest.py",
         "{projectRoot}/tests/factories.py",
-        "{projectRoot}/tests/helpers.py"
+        "{projectRoot}/tests/helpers.py",
+        "python"
       ]
     },
     "test:e2e": {

@@ -68,7 +68,7 @@
       "inputs": [
         "default",
         "{workspaceRoot}/apps/voice-agent/pyproject.toml",
-        "{workspaceRoot}/uv.lock",
+        "python",
         "{workspaceRoot}/libs/shared/py/**/*",
         "^production"
       ]
@@ -83,8 +83,7 @@
       "inputs": [
         "default",
         "{workspaceRoot}/apps/voice-agent/pyproject.toml",
-        "{workspaceRoot}/uv.lock",
-        "{workspaceRoot}/pyproject.toml",
+        "python",
         "{workspaceRoot}/libs/shared/py/**/*",
         "^production"
       ],

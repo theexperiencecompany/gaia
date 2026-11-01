@@ -15,12 +15,7 @@
       "!{projectRoot}/**/*.test.ts"
     ],
     "typecheck": ["default", { "env": "GAIA_TS_CHECKER" }],
-    "python": [
-      "{workspaceRoot}/pyproject.toml",
-      "{workspaceRoot}/uv.lock",
-      "{workspaceRoot}/apps/api/pyproject.toml",
-      "{workspaceRoot}/libs/shared/py/**/*"
-    ]
+    "python": ["{workspaceRoot}/pyproject.toml", "{workspaceRoot}/uv.lock"]
   },
   "targetDefaults": {
     "sync": {
@@ -133,7 +128,8 @@
   "analytics": false,
   "pluginsConfig": {
     "@nx/js": {
-      "analyzeSourceFiles": false
+      "analyzeSourceFiles": false,
+      "projectsAffectedByDependencyUpdates": "auto"
     }
   }
 }
