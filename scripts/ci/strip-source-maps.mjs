@@ -11,8 +11,8 @@ import path from "node:path";
 
 const root = process.argv[2] ?? "apps/web/.open-next/assets";
 const EXTENSIONS = /\.(?:js|mjs|css)$/;
-const LINE_COMMENT = /\/\/# sourceMappingURL=\S+/g;
-const BLOCK_COMMENT = /\/\*# sourceMappingURL=[^*]*\*\//g;
+const LINE_COMMENT = /\/\/# sourceMappingURL=\S+[ \t]*$/gm;
+const BLOCK_COMMENT = /\/\*# sourceMappingURL=[^*]*\*\/[ \t]*$/gm;
 
 let stripped = 0;
 let scanned = 0;
