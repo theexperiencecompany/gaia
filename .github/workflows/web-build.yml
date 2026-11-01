@@ -121,6 +121,13 @@ jobs:
           remaining=$(find apps/web/.open-next -name '*.map' -type f | wc -l)
           echo "source maps removed: $maps (remaining: $remaining)"
           test "$remaining" -eq 0
+          find apps/web/.open-next \( -name '*.js' -o -name '*.mjs' \) -type f -exec sed -i \
+            -e 's|//# sourceMappingURL=[^[:space:]]*||g' \
+            -e 's|/\*# sourceMappingURL=[^*]*\*/||g' {} +
+          if grep -rIl 'sourceMappingURL' apps/web/.open-next; then
+            echo "sourceMappingURL comments remain in the bundle" >&2
+            exit 1
+          fi
       - name: Verify prerendered detail pages
         if: steps.inputs.outputs.build != 'false'
         # A notFound() during prerender keeps the build green but ships a 404
