@@ -640,8 +640,7 @@ jobs:
         continue-on-error: true
         shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: contains(fromJSON(needs.detect.outputs.tasks), 'api:type-check') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'mypy-api')
-        working-directory: apps/api
-        run: uv run --frozen --group backend --group dev mypy app --ignore-missing-imports
+        run: uv run --project apps/api --frozen --group backend --group dev mypy apps/api/app --ignore-missing-imports
       - *upload-verdict-so-far
 
       - name: mypy-shared — libs/shared/py, under the API's environment
@@ -663,8 +662,7 @@ jobs:
         continue-on-error: true
         shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: contains(fromJSON(needs.detect.outputs.tasks), 'voice-agent:type-check') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'mypy-voice-agent')
-        working-directory: apps/voice-agent
-        run: UV_PROJECT_ENVIRONMENT=../../.venv-voice-agent uv run --frozen --group dev mypy src --ignore-missing-imports --cache-dir "${MYPY_CACHE_DIR:-.mypy_cache}/voice-agent"
+        run: UV_PROJECT_ENVIRONMENT=.venv-voice-agent uv run --project apps/voice-agent --frozen --group dev mypy apps/voice-agent/src --ignore-missing-imports --cache-dir "${MYPY_CACHE_DIR:-.mypy_cache}/voice-agent"
       - *upload-verdict-so-far
 
       # scripts/ci has two bases, because that is how the code runs: entrypoints

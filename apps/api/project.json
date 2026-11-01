@@ -125,8 +125,7 @@
     "type-check": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uv run --frozen --group backend --group dev mypy app --ignore-missing-imports",
-        "cwd": "{projectRoot}"
+        "command": "uv run --project apps/api --frozen --group backend --group dev mypy apps/api/app --ignore-missing-imports"
       },
       "cache": true,
       "inputs": [
@@ -138,9 +137,6 @@
         {
           "externalDependencies": []
         }
-      ],
-      "outputs": [
-        "{projectRoot}/.mypy_cache"
       ]
     },
     "worker": {

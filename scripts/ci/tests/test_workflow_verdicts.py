@@ -491,3 +491,21 @@ def test_a_partial_upload_overwrites_the_jobs_own_artifact(workflow: dict[str, A
                 continue
             given = str(step["with"]["name"]).replace("${{ github.job }}", name)
             assert given in finals, f"{name}: partial upload {given!r} is not one of {finals}"
+
+
+@pytest.mark.parametrize(
+    "path", sorted((REPO_ROOT / ".github" / "workflows").glob("*.yml")), ids=lambda p: p.name
+)
+def test_a_steps_shell_script_resolves_from_its_working_directory(path: Path) -> None:
+    """A relative verdict.py under working-directory: apps/api failed to open, and the check read as red."""
+    unresolved = []
+    for job_id, job in (mapping(yaml.safe_load(path.read_text())).get("jobs") or {}).items():
+        default = ((job.get("defaults") or {}).get("run") or {}).get("working-directory", ".")
+        for step in job.get("steps", []):
+            script = re.match(r"python3 (\S+\.py)", str(step.get("shell", "")))
+            cwd = REPO_ROOT / str(step.get("working-directory", default))
+            if script and not (cwd / script.group(1)).is_file():
+                unresolved.append(
+                    f"{job_id}/{step.get('id') or step.get('name')}: {script.group(1)}"
+                )
+    assert unresolved == []
