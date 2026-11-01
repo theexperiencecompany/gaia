@@ -165,3 +165,15 @@ def test_a_version_that_is_not_the_release_publishes_nothing(
     assert result.returncode != 0
     assert calls == []
     assert not list(out_dir.glob("*.tar.gz")) if out_dir.exists() else True
+
+
+def test_a_file_that_differs_from_the_lock_builds_no_bundle(tmp_path: Path) -> None:
+    """The bundle is what the CLI's lock names; a file edited without `mise selfhost:lock` would ship unreleased."""
+    lock = json.loads((REPO_ROOT / "packages/cli/selfhost-bundle.json").read_text())
+    lock["files"]["infra/docker/selfhost/Caddyfile"] = "0" * 64
+    stale = tmp_path / "stale-lock.json"
+    stale.write_text(json.dumps(lock))
+    result, _, out_dir = _run(tmp_path, VERSION="0.7.0", SELFHOST_BUNDLE_LOCK=str(stale))
+    assert result.returncode != 0
+    assert "infra/docker/selfhost/Caddyfile differs from" in result.stdout + result.stderr
+    assert not list(out_dir.glob("*.tar.gz"))

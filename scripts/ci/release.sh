@@ -78,7 +78,9 @@
 #   selfhost-bundle       VERSION (required); OUT_DIR (optional, default
 #                         dist/selfhost); RELEASE_TAG (optional: cli-v<VERSION>,
 #                         uploads; needs GH_TOKEN contents:write); DRY_RUN=1
-#                         builds and names the upload without making it.
+#                         builds and names the upload without making it;
+#                         SELFHOST_BUNDLE_LOCK (tests; default
+#                         packages/cli/selfhost-bundle.json).
 #   disable-cf-builds     CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID,
 #                         WORKER_NAME (all optional; no token = manual steps).
 #   sync-uv-lock          RELEASE_BRANCH (required); a checkout whose origin
@@ -731,13 +733,8 @@ cmd_selfhost_bots_manifest() {
 # compose files (the stack, the code-sandbox and bot overrides) and the files
 # they mount or extend. Never docker-compose.build.yml: building needs the
 # whole source tree, which a bundle install does not have.
-SELFHOST_BUNDLE_GLOBS=(
-  infra/docker/docker-compose.selfhost.yml
-  infra/docker/docker-compose.sandbox.yml
-  "infra/docker/docker-compose.bot-*.yml"
-  "infra/docker/selfhost/*"
-  infra/docker/seccomp-mongo.json
-)
+# The bundle's files and their sha256 live in packages/cli/selfhost-bundle.json,
+# kept by `checks.mjs selfhost-bundle-lock`, so a bundle change is a CLI release.
 SELFHOST_BUNDLE_MANIFEST="gaia-selfhost.json"
 
 # Builds gaia-selfhost-<version>.tar.gz (+ .sha256) from the checked-out tree;
@@ -759,15 +756,16 @@ cmd_selfhost_bundle() {
   out_dir="$(cd "$out_dir" && pwd)"
   staging="$(mktemp -d)"
 
-  local pattern file files=()
-  for pattern in "${SELFHOST_BUNDLE_GLOBS[@]}"; do
-    local matched=0
-    # shellcheck disable=SC2086 # the pattern is a glob on purpose
-    for file in $(cd "$root" && compgen -G "$pattern"); do
-      files+=("$file")
-      matched=1
-    done
-    ((matched)) || ci_die "selfhost-bundle: nothing matches $pattern"
+  local lock="${SELFHOST_BUNDLE_LOCK:-$root/packages/cli/selfhost-bundle.json}"
+  local listed file files=() want got
+  listed="$(jq -r '.files | keys[]' "$lock")"
+  [[ -n "$listed" ]] || ci_die "selfhost-bundle: $lock lists no files"
+  for file in $listed; do
+    want="$(jq -r --arg f "$file" '.files[$f]' "$lock")"
+    got="$(sha256sum "$root/$file" | cut -d' ' -f1)"
+    [[ "$got" == "$want" ]] ||
+      ci_die "selfhost-bundle: $file differs from $lock — run \`mise selfhost:lock\`"
+    files+=("$file")
   done
   for file in "${files[@]}"; do
     mkdir -p "$staging/$(dirname "$file")"

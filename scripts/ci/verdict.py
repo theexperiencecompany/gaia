@@ -1467,6 +1467,7 @@ CHECK_AREAS: dict[str, Area] = {
             "analytics-catalog",
             "cli-config-schema",
             "deploy-templates",
+            "selfhost-bundle-lock",
             "analytics-sync",
             "analytics-check",
             "observability-evlog-tests",

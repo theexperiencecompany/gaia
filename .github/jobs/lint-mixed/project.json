@@ -201,6 +201,27 @@
           "externalDependencies": []
         }
       ]
+    },
+    "selfhost-bundle-lock": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/ci/checks.mjs selfhost-bundle-lock"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/infra/docker/docker-compose.selfhost.yml",
+        "{workspaceRoot}/infra/docker/docker-compose.sandbox.yml",
+        "{workspaceRoot}/infra/docker/docker-compose.bot-*.yml",
+        "{workspaceRoot}/infra/docker/selfhost/**/*",
+        "{workspaceRoot}/infra/docker/seccomp-mongo.json",
+        "{workspaceRoot}/packages/cli/selfhost-bundle.json",
+        "{workspaceRoot}/scripts/ci/checks.mjs",
+        "{workspaceRoot}/scripts/ci/lib/generated-artifacts.mjs",
+        "ciHarness",
+        {
+          "externalDependencies": []
+        }
+      ]
     }
   }
 }

@@ -47,6 +47,12 @@
  *                       file, its Caddyfile and the CLI's machine secrets
  *                       (lib/deploy_templates.py), then fail if any differs
  *                       from what is committed. --write is `mise deploy:templates`.
+ *   selfhost-bundle-lock [--write]
+ *                       Regenerate packages/cli/selfhost-bundle.json (every
+ *                       self-host bundle file and its sha256), then fail if it
+ *                       differs from what is committed: a bundle change is then
+ *                       a CLI change, which is what release-please releases.
+ *                       --write is `mise selfhost:lock`.
  *   doc-comments        Fail on a JSDoc block that narrates (>6 lines) or
  *                       restates its declaration/@param, a run of more than
  *                       3 // lines, or a banner inside a body. The TS half of
@@ -84,6 +90,7 @@ import {
   cmdApiSchema,
   cmdCliConfigSchema,
   cmdDeployTemplates,
+  cmdSelfhostBundleLock,
 } from "./lib/generated-artifacts.mjs";
 import { runEvlogMapBots } from "./lib/evlog-map-bots.mjs";
 import {
@@ -949,6 +956,7 @@ function usage() {
       "  analytics-catalog [--write]            regenerate the analytics catalog JSON + TS event types, fail on drift",
       "  cli-config-schema [--write]            regenerate the CLI's vendored config schema, fail on drift",
       "  deploy-templates [--write]             regenerate the Coolify/Render templates from the compose file, fail on drift",
+      "  selfhost-bundle-lock [--write]         regenerate packages/cli/selfhost-bundle.json from the bundle's files, fail on drift",
       "  doc-comments                           no narrating / restating JSDoc, comment runs, or in-body banners",
       "  api-client-imports                     no raw mobile API client import outside apps/mobile/src/lib",
     ].join("\n"),
@@ -1044,6 +1052,9 @@ function cmdFrameworkPair() {
       break;
     case "deploy-templates":
       cmdDeployTemplates(rest);
+      break;
+    case "selfhost-bundle-lock":
+      cmdSelfhostBundleLock(rest);
       break;
     case "doc-comments":
       cmdDocComments(rest);
