@@ -841,13 +841,7 @@ jobs:
         continue-on-error: true
         shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: ${{ contains(fromJSON(needs.detect.outputs.tasks), 'lint-python:ignore-staleness') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'ignore-staleness') }}
-        run: |
-          FILES=$(scripts/ci/changes.sh files py toml lock)
-          if [ -z "$FILES" ]; then
-            echo "Escape-hatch staleness: skipped (no changed Python files)"
-            exit 0
-          fi
-          python3 tools/lints/check_ignore_staleness.py
+        run: python3 tools/lints/check_ignore_staleness.py
       - *upload-verdict-so-far
 
 
@@ -1273,28 +1267,14 @@ jobs:
         continue-on-error: true
         shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: ${{ contains(fromJSON(needs.detect.outputs.tasks), 'repo-policy:suppression-hygiene') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'suppression-hygiene') }}
-        run: |
-          FILES=$(scripts/ci/changes.sh files py toml lock ts tsx js jsx mjs cjs json jsonc css yaml)
-          if [ -z "$FILES" ]; then
-            echo "Suppression hygiene: skipped (no changed Python or TypeScript files)"
-            exit 0
-          fi
-          python3 tools/lints/check_suppressions.py
+        run: python3 tools/lints/check_suppressions.py
       - *upload-verdict-so-far
       - name: tool-pins — hooks and CI run the same tool versions
         id: tool-pins
         continue-on-error: true
         shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: ${{ contains(fromJSON(needs.detect.outputs.tasks), 'repo-policy:tool-pins') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'tool-pins') }}
-        # check_tool_pins reads the workflow files themselves, so this is the
-        # one check that must NOT drop yml from its scoping.
-        run: |
-          FILES=$(scripts/ci/changes.sh files py toml lock ts tsx js jsx mjs cjs json jsonc css yaml yml)
-          if [ -z "$FILES" ]; then
-            echo "Tool pins: skipped (no changed workflow or language files)"
-            exit 0
-          fi
-          python3 tools/lints/check_tool_pins.py
+        run: python3 tools/lints/check_tool_pins.py
       - *upload-verdict-so-far
 
       # Only the events that bring new commits, scanned as a range. A merge

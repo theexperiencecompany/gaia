@@ -322,3 +322,47 @@ def test_a_rerun_that_passes_only_fails_the_lane_on_a_pr(
         assert "FLAKY TESTS DETECTED" not in result.stderr
     else:
         assert "FLAKY TESTS DETECTED" in result.stderr
+
+
+def test_regression_proof_proves_a_module_marked_through_pytestmark(tmp_path: Path) -> None:
+    """The lane's own advice names pytestmark, yet a decorator grep skipped such a file."""
+    root = _repo(tmp_path)
+    (root / "apps" / "api" / "tests" / "test_pinned.py").write_text(
+        "import pytest\n\npytestmark = pytest.mark.regression\n\n\ndef test_bug():\n    assert True\n"
+    )
+    _git(root, "-c", "user.email=t@t", "-c", "user.name=t", "add", "-A")
+    _git(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "pin")
+    subprocess.run(
+        ["bash", str(root / "scripts" / "ci" / "pytest.sh"), "regression-proof", "HEAD~1"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    # The fixture has no API venv, so the run stops after selection; what matters is that it got there.
+    verdict = _verdicts(tmp_path).get("regression-proof", {})
+    assert verdict.get("status") != "skip", verdict
+
+
+def _flake_gate_on_exit(tmp_path: Path, code: int, **env: str) -> int:
+    fake = tmp_path / "fake-pytest"
+    fake.write_text(f"#!/usr/bin/env bash\nexit {code}\n")
+    fake.chmod(0o755)
+    return subprocess.run(
+        ["bash", str(CI / "pytest.sh"), "flake-gate", str(fake)],
+        env={**os.environ, **env},
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    ).returncode
+
+
+def test_flake_gate_fails_a_full_run_that_collected_nothing(tmp_path: Path) -> None:
+    """A whole slice or -m schemathesis collecting nothing is a broken path or marker, not a pass."""
+    assert _flake_gate_on_exit(tmp_path, 5) != 0
+
+
+def test_flake_gate_passes_a_selection_the_markers_deselected(tmp_path: Path) -> None:
+    assert _flake_gate_on_exit(tmp_path, 5, FLAKE_GATE_SELECTION="1") == 0

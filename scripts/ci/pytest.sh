@@ -26,7 +26,9 @@
 # Env contract:
 #   slice             SLICE_NAME, SLICE_PATHS, XDIST_N (all required);
 #                     SLICE_IGNORE, COVERAGE, COV_CONTEXT, RUNNER_TEMP.
-#   flake-gate        none — the arguments ARE the pytest command line.
+#   flake-gate        FLAKE_GATE_SELECTION=1 when a test-impact selection chose the
+#                     tests (an empty run then passes); the arguments ARE the
+#                     pytest command line.
 #   regression-proof  none, but needs a fetch-depth: 0 checkout (it does
 #                     `git worktree add <base>`) and a synced .venv in the main
 #                     checkout (setup-python-test-env leaves one).
@@ -170,7 +172,8 @@ cmd_slice() {
   # path above all: that is the run whose findings somebody has to go read.
   local rc=0
   set +e
-  /usr/bin/time -v bash "$SCRIPT_DIR/pytest.sh" flake-gate \
+  FLAKE_GATE_SELECTION="$([ "$SELECTION" = "FILE" ] && echo 1)" \
+    /usr/bin/time -v bash "$SCRIPT_DIR/pytest.sh" flake-gate \
     uv run --frozen pytest -n "$N_SLOTS" --dist worksteal \
     "${TARGETS[@]}" ${EXTRA[@]+"${EXTRA[@]}"} \
     -m 'not composio and not model_onboarding and not schemathesis' \
@@ -256,16 +259,17 @@ cmd_flake_gate() {
     exit 0
   fi
 
-  # pytest exit 5 is "nothing collected", not "something failed" — the same
-  # meaning `regression-proof` already relies on below. A slice legitimately
-  # collects nothing when the PR's diff touches none of its directories, which
-  # is normal for a small stacked PR: #1175's three-file diff left unit-a empty
-  # and the rerun then reported "genuine failure, exit code 4" for a lane that
-  # had no work. Announced rather than silent, because the other way to collect
-  # nothing is a selector that is broken, and that must not read as a pass.
+  # pytest exit 5 is "nothing collected". Only a test-impact selection can be
+  # legitimately empty here (its tests all deselected by the slice's -m); a
+  # whole slice or a marker run that collects nothing has a broken path or
+  # marker, and passing it is how `-m schemathesis` could print OK unrun.
   if [ "$first" -eq 5 ]; then
-    printf '::notice::%s\n' "No tests collected for this slice — the diff touches none of its paths. Passing; if you expected tests here, the selection is what to check." >&2
-    exit 0
+    if [ "${FLAKE_GATE_SELECTION:-}" = "1" ]; then
+      printf '::notice::%s\n' "The selected tests were all deselected by this slice's markers. Passing; if you expected tests here, the selection is what to check." >&2
+      exit 0
+    fi
+    echo "::error::pytest collected no tests — a slice path or -m marker matches nothing" >&2
+    exit 5
   fi
 
   # pytest-cov exits 1 on a coverage-threshold miss even when every test
@@ -376,32 +380,6 @@ cmd_regression_proof() {
 
   git worktree add --detach "$WT" "$BASE" >/dev/null
 
-  # Only files that actually claim to pin a bug are worth running here, and
-  # importing just those keeps an unrelated file's collection error from
-  # aborting the run.
-  #
-  # Anchored on the DECORATOR, not on any mention of it. A plain substring match
-  # enlists a file that merely names the marker in prose: it picked up
-  # tests/unit/agents/test_llm_helper_output_cap.py, which holds no marked test
-  # but whose docstring spells the decorator out while explaining this very lane
-  # — the file documenting the trap tripped it. The lane then ran that file on
-  # base, where the symbol under test does not exist, and reported an ERROR.
-  # This stays a pre-filter; the authoritative selection is pytest's own
-  # `-m regression` below, which reports "nothing collected" (exit 5) if the
-  # grep were ever over-eager again.
-  local regression_files=()
-  for f in "${changed[@]}"; do
-    if grep -qE '^[[:space:]]*@pytest\.mark\.regression' "$REPO_ROOT/$f"; then
-      regression_files+=("$f")
-    fi
-  done
-  if [ "${#regression_files[@]}" -eq 0 ]; then
-    ci_verdict --lane regression-proof --status skip \
-      --summary "no @pytest.mark.regression tests in this diff — nothing to prove"
-    exit 0
-  fi
-  echo "regression-proof: ${#regression_files[@]} file(s) with regression-marked tests:"
-  printf '  %s\n' "${regression_files[@]}"
 
   # Overlay the PR's WHOLE test tree and pytest.ini, not just the changed files.
   # The boundary that makes this meaningful is tests-vs-product: the harness
@@ -460,7 +438,10 @@ cmd_regression_proof() {
   # prove it once: in the PR that introduces it. Paths are repo-root-relative from
   # git diff; node ids are made relative to apps/api for pytest.
   local select_args=() base_copy SELECTED
-  for f in "${regression_files[@]}"; do
+  # verdict.py parses each changed file for its marked tests (decorator, class,
+  # pytestmark, pytest.param), so only the tests that claim to pin a bug run, and
+  # an unrelated file's collection error cannot abort the lane.
+  for f in "${changed[@]}"; do
     base_copy="$(mktemp -p "$BASE_COPIES")"
     if git -C "$REPO_ROOT" show "$BASE:$f" > "$base_copy" 2>/dev/null; then
       select_args+=("$API_DIR/${f#apps/api/}" "$base_copy")
@@ -502,11 +483,12 @@ cmd_regression_proof() {
   rc=$?
   set -e
 
-  # pytest exit 5 = nothing collected: no regression-marked tests in this diff.
+  # Exit 5: verdict.py named marked tests that pytest's own `-m regression` then
+  # did not collect. The two disagree, so nothing was proven.
   if [ "$rc" -eq 5 ]; then
-    ci_verdict --lane regression-proof --status skip \
-      --summary "no @pytest.mark.regression tests among the changed files — nothing to prove"
-    exit 0
+    ci_verdict_die --lane regression-proof --status fail \
+      --summary "pytest collected none of the ${#new_regression_ids[@]} regression test(s) verdict.py selected" \
+      --advice "The mark is on something pytest -m regression does not see; put it on the test, its class, pytestmark, or a pytest.param case."
   fi
 
   # No report at all means pytest never ran (missing interpreter, unwritable path,

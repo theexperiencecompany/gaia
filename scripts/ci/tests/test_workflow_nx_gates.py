@@ -168,6 +168,8 @@ def test_a_lane_check_is_gated_on_its_lane_task(lane: dict[str, str], jobs: dict
         ("uv.lock", "voice-agent:docker:build"),
         ("apps/bots/Dockerfile", "bot-discord:docker:build"),
         ("libs/shared/ts/src/index.ts", "bot-slack:docker:build"),
+        # A deleted file is a change: a per-file-ignores entry for it goes stale.
+        ("apps/api/app/gone_module.py", "lint-python:ignore-staleness"),
     ],
 )
 def test_detect_selects(path: str, task: str) -> None:
