@@ -276,8 +276,8 @@ def class_demand() -> dict[RunnerClass, int]:
     slices = records(json.loads(TEST_SLICES_JSON.read_text()), "slices")
     with_services = sum(1 for s in slices if field_of(s, "services", str) == "true")
     return {
-        # detect, lint-node, lint-python, lint-mixed, python-audit, scan
-        RunnerClass.LIGHT: 6,
+        # detect, lint-node, lint-python, lint-mixed, repo-policy, python-audit, scan
+        RunnerClass.LIGHT: 7,
         # probe, ts-build-test, docker-image, plus the slices that need no services
         RunnerClass.HEAVY: 3 + len(slices) - with_services,
         # the slices that need services (test-python, test-python-engines), test-mutation's wave

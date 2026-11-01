@@ -14,21 +14,15 @@
 #   py-source                Like `files py`, but drops the paths the Python
 #                            tools exclude in a full scan (tests, scripts,
 #                            migrations, …). Same three-state contract.
-#   docker-inputs            Does this PR touch anything the api image build
-#                            depends on? Writes build=true|false to
-#                            $GITHUB_OUTPUT.
-#   selfhost-inputs          Does this PR touch what a self-hoster runs (the
-#                            CLI, self-host compose, app images, setup/auth)?
-#                            Writes build=true|false to $GITHUB_OUTPUT.
 #   web-inputs               Does this change touch anything the web Worker
 #                            bundle depends on? Same output, for deploy-web.
-#   seo-inputs               Does this change touch what the web app renders
-#                            (the web inputs) or what audits it (the SEO
-#                            audit, squirrel, their config and baseline)? Same
-#                            output, for ci.yml's seo check.
 #   desktop-inputs           Does this change touch anything the packaged
 #                            desktop app depends on? Same output, for
 #                            desktop-pr-build.
+#   affected                 Which CI tasks does this change reach? Asks
+#                            `nx affected --explain` (lib/nx_affected.py) and
+#                            writes tasks, projects and typescript_projects to
+#                            $GITHUB_OUTPUT. Every task on a dispatch.
 #
 # `base` — WHY THIS EXISTS. For a PR in a native GitHub stack, the
 # `pull_request` event payload carries the STACK'S TRUNK as base.ref, not the
@@ -60,10 +54,9 @@
 #   else                                <tool> $FILES           # PR, diff-scoped
 #   fi
 #
-# Workflow files (.yml) belong ONLY in the ci.yml `detect` job's
-# superset detect lists, never in a lane's scoping list: a workflow-only PR
-# must light the lanes up (so CI changes get validated) while every lane
-# self-skips when its own ext list matches nothing.
+# Workflow files (.yml) belong in a lane's extension list only when that check
+# reads them (tool-pins). A workflow-only PR still validates CI itself because
+# the checks that read .github name it in their nx inputs (.github/jobs/).
 #
 # Diff accuracy note: the merge-base ("...") diff requires the base ref to be
 # present locally, so PR lanes that consume `files` must checkout with
@@ -83,11 +76,10 @@
 #   base-rev       GAIA_PR_BASE or GITHUB_BASE_REF.
 #   files          GAIA_PR_BASE, GITHUB_BASE_REF, GITHUB_ACTIONS, NX_BASE (local).
 #   py-source      as `files`; also reads pyproject.toml from the repo root.
-#   docker-inputs  BASE_BRANCH (the RESOLVED base, not github.base_ref), GITHUB_OUTPUT.
-#   selfhost-inputs  BASE_BRANCH (github.base_ref), GITHUB_OUTPUT.
 #   web-inputs     BASE_BRANCH (a branch or a merge_group base sha), GITHUB_OUTPUT.
-#   seo-inputs     BASE_BRANCH (a branch or a merge_group base sha), GITHUB_OUTPUT.
 #   desktop-inputs BASE_BRANCH (a branch or a merge_group base sha), GITHUB_OUTPUT.
+#   affected       GITHUB_EVENT_NAME, GAIA_PR_BASE (pull_request, merge_group),
+#                  NX_BASE and NX_HEAD (nrwl/nx-set-shas, on a push), GITHUB_OUTPUT.
 set -euo pipefail
 
 # shellcheck source=scripts/ci/lib/log.sh
@@ -290,32 +282,6 @@ for line in filter(None, sys.stdin.read().splitlines()):
 '
 }
 
-cmd_docker_inputs() {
-
-  BASE_BRANCH="${BASE_BRANCH:?BASE_BRANCH is required (github.base_ref)}"
-  IMAGE_INPUTS=(
-    apps/api/Dockerfile
-    .dockerignore
-    uv.lock
-    pyproject.toml
-    apps/api/pyproject.toml
-    libs/pyproject.toml
-    # The pin gate that keeps the browsers stage honest lives in here now.
-    scripts/ci/audit.sh
-    # The per-Dockerfile ignore file decides what enters the build CONTEXT, so
-    # editing it changes the image as surely as editing the Dockerfile — a
-    # newly-excluded path silently drops out of the layer while this said
-    # "image inputs unchanged" and skipped the build. The ROOT .dockerignore was
-    # listed from the start; apps/api/Dockerfile.dockerignore, which is the one
-    # BuildKit actually reads for this image, was not. A glob, so a second
-    # image's ignore file is covered the day it is added, not the day someone
-    # notices it is missing.
-    '*Dockerfile.dockerignore'
-  )
-
-  _inputs_changed "image" "$BASE_BRANCH" "${IMAGE_INPUTS[@]}"
-}
-
 # The paths the web Worker bundle is built from. deploy-web's `push` trigger
 # filters on the same list (scripts/ci/tests/test_changes.py holds them equal);
 # a pull_request or merge_group run builds whenever one of them changed, so its
@@ -330,23 +296,6 @@ WEB_INPUTS=(
 cmd_web_inputs() {
   BASE_BRANCH="${BASE_BRANCH:?BASE_BRANCH is required (the base branch or merge_group base sha)}"
   _inputs_changed "web bundle" "$BASE_BRANCH" "${WEB_INPUTS[@]}"
-}
-
-# What the SEO audit judges, and what judges it: a change to the audit is proven
-# on the PR that makes it.
-SEO_INPUTS=(
-  "${WEB_INPUTS[@]}"
-  scripts/ci/smoke-web.sh
-  scripts/ci/lib/seo_audit.py
-  scripts/ci/lib/squirrel.py
-  scripts/ci/lib/origin_proxy.py
-  scripts/ci/baselines/squirrel-build.txt
-  config/squirrel.toml
-)
-
-cmd_seo_inputs() {
-  BASE_BRANCH="${BASE_BRANCH:?BASE_BRANCH is required (the base branch or merge_group base sha)}"
-  _inputs_changed "SEO audit" "$BASE_BRANCH" "${SEO_INPUTS[@]}"
 }
 
 # The paths the packaged desktop app is built from. Web is left out on purpose
@@ -364,33 +313,24 @@ cmd_desktop_inputs() {
   _inputs_changed "desktop app" "$BASE_BRANCH" "${DESKTOP_INPUTS[@]}"
 }
 
-# Does this PR touch what a self-hoster runs? The self-host end-to-end lane boots
-# the whole stack through the CLI, so it is scoped to the CLI, the self-host
-# compose files, the two app images and the setup/auth/member surfaces it drives.
-cmd_selfhost_inputs() {
-  BASE_BRANCH="${BASE_BRANCH:?BASE_BRANCH is required (github.base_ref)}"
-  SELFHOST_INPUTS=(
-    packages/cli
-    infra/docker/docker-compose.selfhost.yml
-    infra/docker/docker-compose.build.yml
-    infra/docker/docker-compose.sandbox.yml
-    infra/docker/selfhost
-    apps/api/Dockerfile
-    apps/web/Dockerfile
-    apps/api/app/api/v1/endpoints/setup.py
-    apps/api/app/api/v1/endpoints/auth_local.py
-    apps/api/app/api/v1/endpoints/members.py
-    apps/api/app/api/v1/endpoints/readiness.py
-    apps/api/app/api/v1/endpoints/blob.py
-    apps/web/src/features/setup-wizard
-    apps/web/src/features/auth
-    apps/web/e2e/selfhost
-    apps/web/playwright.selfhost.config.ts
-    tools/llm-stub
-    scripts/ci/selfhost.sh
-    .github/workflows/selfhost-smoke.yml
-  )
-  _inputs_changed "self-host" "$BASE_BRANCH" "${SELFHOST_INPUTS[@]}"
+# A PR and a merge group measure from the base `base` resolved, like `files`:
+# nx-set-shas reads the event payload, which names a stack's trunk, and on a
+# merge group would charge the PR with the group queued ahead of it.
+cmd_affected() {
+  local event="${GITHUB_EVENT_NAME:?GITHUB_EVENT_NAME is required}" base
+  case "$event" in
+    workflow_dispatch)
+      python3 "$(dirname "$0")/lib/nx_affected.py" --all
+      ;;
+    pull_request | merge_group)
+      base="$(git merge-base "$(cmd_base_rev)" HEAD)"
+      python3 "$(dirname "$0")/lib/nx_affected.py" --base "$base" --head HEAD
+      ;;
+    *)
+      python3 "$(dirname "$0")/lib/nx_affected.py" \
+        --base "${NX_BASE:?NX_BASE is required (nrwl/nx-set-shas)}" --head "${NX_HEAD:-HEAD}"
+      ;;
+  esac
 }
 
 # Write build=true|false: did anything under <paths> change against <base>?
@@ -414,7 +354,7 @@ _inputs_changed() {
 }
 
 usage() {
-  sed -n '2,31p' "$0" >&2
+  sed -n '2,25p' "$0" >&2
 }
 
 main() {
@@ -425,11 +365,9 @@ main() {
     base-rev)      cmd_base_rev "$@" ;;
     files)         cmd_files "$@" ;;
     py-source)     cmd_py_source "$@" ;;
-    docker-inputs) cmd_docker_inputs "$@" ;;
-    selfhost-inputs) cmd_selfhost_inputs "$@" ;;
     web-inputs)    cmd_web_inputs "$@" ;;
-    seo-inputs)    cmd_seo_inputs "$@" ;;
     desktop-inputs) cmd_desktop_inputs "$@" ;;
+    affected)      cmd_affected "$@" ;;
     *)
       echo "changes.sh: unknown subcommand '${sub}'" >&2
       usage

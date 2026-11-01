@@ -14,7 +14,7 @@ which ran 52 jobs per PR push between them, 24 of them for under a minute of
 work behind a runner's setup.
 
 - **Tiers.** A PR push runs the fast tier: `select-runner`, `detect`,
-  `lint-node`, `lint-python`, `lint-mixed`, `ts-build-test`, the `unit-a` and
+  `lint-node`, `lint-python`, `lint-mixed`, `repo-policy`, `ts-build-test`, the `unit-a` and
   `unit-b` slices, `test-mutation` on the changed modules (a survivor found
   only in the queue is an ejection plus a fix round), `quality-gate`. The merge
   queue (`merge_group`), master and dispatch run the full tier on top: the
@@ -25,7 +25,7 @@ work behind a runner's setup.
   run once per merge, not once per push. `detect` decides the tier
   (`tier` output) and `pytest.sh slices` cuts the slice matrix to it.
 - **Grouped jobs.** Each check inside `lint-node`, `lint-python`,
-  `lint-mixed`, `scan`, `python-audit` and `ts-build-test` is its own
+  `lint-mixed`, `repo-policy`, `scan`, `python-audit` and `ts-build-test` is its own
   `continue-on-error` step with an `id`, listed once in the job's `CHECKS`
   YAML anchor. That list feeds `verdict.py post-statuses` (one `ci / <area> / <check>`
   commit status per check, linked to the job, its area from `CHECK_AREAS` in
@@ -52,7 +52,7 @@ Every pool is routed the same way:
    jobs or more — the 20-job cap is hit; override with the
    `CI_HOSTED_QUEUE_THRESHOLD` repo variable — to `gaia-home`, and only when it
    has an idle listener for every job of the pool (`class_demand` in
-   `runner.py`: light 6, heavy 5, services 9, handed out services first). A
+   `runner.py`: light 7, heavy 5, services 9, handed out services first). A
    busy box is never queued on; a new lane in a pool raises its count.
 3. With both saturated, to `CI_BLACKSMITH_LABEL` (unset: stay queued on GitHub).
 
@@ -144,14 +144,26 @@ to check is `gh pr view --json mergeable`. Keep the branch merged with
 Four layers, from cheap to precise, all decided in the one `detect` job:
 
 1. **The tier** — a PR push never starts a full-tier job (see above).
-2. **Affected projects and path signals** — `nx show projects --affected`
-   (via `nrwl/nx-set-shas`, base `master`) computes the affected project lists
-   that gate jobs and scope their `-p` arguments; `has_api_schema`,
-   `has_analytics`, `has_alert_rules` and `has_go` are path-scoped. A job or
-   check skipped this way counts as PASSING; a failed `detect` fails the
-   gate. A workflow-only (`.yml`) PR lights the lint jobs up so changes to CI
-   itself get validated, but each check self-skips via its own narrower
-   `changes.sh files` list — check lists NEVER include yml.
+2. **Affected nx tasks** — `changes.sh affected` asks `nx affected
+   --explain` once (base: the PR's merge-base with `base_ref`, or
+   `nrwl/nx-set-shas` on every other event; every task on a dispatch). Every
+   ci.yml job that gates on files is an nx project under `.github/jobs/<job>/`,
+   one target per check, and a target's `inputs` ARE the files that check
+   reads. `detect` publishes `tasks` (`<project>:<target>`) and `projects`; a
+   job runs on `contains(fromJSON(needs.detect.outputs.projects), '<job>')`
+   and a check on `contains(fromJSON(needs.detect.outputs.tasks),
+   '<job>:<check>')`. Code projects gate the same way (`api:test` opens the
+   Python slices, `gaia-connect:check`, `alert-rules:check`), and
+   `typescript_projects` lists the TS projects whose `build` or `test` is
+   affected. There is no path regex in ci.yml: to change what runs a check,
+   change its target's inputs. `scripts/ci/tests/test_workflow_nx_gates.py`
+   fails on a gate naming a task nx is never asked about and on a check with
+   no gate; `test_check_scopes.py` holds every lane's `verify-lanes.json` scope
+   equal to its task's inputs; `test_nx_affected.py` pins what the manifests
+   and lockfiles select. Only `repo-policy`'s gitleaks runs on every change.
+   A job or check skipped this way counts as PASSING; a failed `detect` fails
+   the gate. A workflow-only (`.yml`) PR runs exactly the checks whose inputs
+   name `.github` (harness-tests, tool-pins).
 3. **`scripts/ci/changes.sh files` inside checks** — scopes each tool to the
    exact changed files. Contract: prints `__FULL__` (push/dispatch → full
    scan), nothing (no relevant changes → skip & pass), or one path per line.

@@ -25,7 +25,10 @@
         "{workspaceRoot}/apps/api/pyproject.toml",
         "python",
         "{workspaceRoot}/libs/shared/py/**/*",
-        "^production"
+        "^production",
+        {
+          "externalDependencies": []
+        }
       ],
       "outputs": []
     },
@@ -50,7 +53,10 @@
       "cache": true,
       "inputs": [
         "{projectRoot}/pyproject.toml",
-        "{projectRoot}/uv.lock"
+        "{projectRoot}/uv.lock",
+        {
+          "externalDependencies": []
+        }
       ],
       "outputs": [
         "{projectRoot}/.venv"
@@ -76,7 +82,10 @@
         "{workspaceRoot}/apps/api/ruff.toml",
         "python",
         "{workspaceRoot}/libs/shared/py/**/*",
-        "^production"
+        "^production",
+        {
+          "externalDependencies": []
+        }
       ],
       "outputs": []
     },
@@ -106,7 +115,10 @@
       "inputs": [
         "default",
         "{workspaceRoot}/apps/api/pyproject.toml",
-        "{workspaceRoot}/apps/api/ruff.toml"
+        "{workspaceRoot}/apps/api/ruff.toml",
+        {
+          "externalDependencies": []
+        }
       ]
     },
     "type-check": {
@@ -121,7 +133,10 @@
         "{workspaceRoot}/apps/api/pyproject.toml",
         "python",
         "{workspaceRoot}/libs/shared/py/**/*",
-        "^production"
+        "^production",
+        {
+          "externalDependencies": []
+        }
       ],
       "outputs": [
         "{projectRoot}/.mypy_cache"
@@ -146,7 +161,11 @@
         "{projectRoot}/tests/**/*",
         "{projectRoot}/pyproject.toml",
         "{projectRoot}/pytest.ini",
-        "python"
+        "python",
+        "^production",
+        {
+          "externalDependencies": []
+        }
       ]
     },
     "test:real": {
@@ -178,7 +197,11 @@
         "{projectRoot}/tests/conftest.py",
         "{projectRoot}/tests/factories.py",
         "{projectRoot}/tests/helpers.py",
-        "python"
+        "python",
+        "^production",
+        {
+          "externalDependencies": []
+        }
       ]
     },
     "test:composio": {
@@ -206,7 +229,10 @@
       "cache": true,
       "inputs": [
         "{projectRoot}/tests/meta/**/*",
-        "{projectRoot}/tests/conftest.py"
+        "{projectRoot}/tests/conftest.py",
+        {
+          "externalDependencies": []
+        }
       ]
     },
     "test:unit": {
@@ -222,7 +248,11 @@
         "{projectRoot}/tests/conftest.py",
         "{projectRoot}/tests/factories.py",
         "{projectRoot}/tests/helpers.py",
-        "python"
+        "python",
+        "^production",
+        {
+          "externalDependencies": []
+        }
       ]
     },
     "test:integration": {
@@ -238,7 +268,11 @@
         "{projectRoot}/tests/conftest.py",
         "{projectRoot}/tests/factories.py",
         "{projectRoot}/tests/helpers.py",
-        "python"
+        "python",
+        "^production",
+        {
+          "externalDependencies": []
+        }
       ]
     },
     "test:e2e": {

@@ -5,12 +5,11 @@ so three places have to agree on what can change them: the prek hook that
 regenerates on commit, the local lane table, and the CI job that fails on
 drift. They did not — the hook and the lane both ignored `apps/api/pyproject.toml`
 and `uv.lock`, so a FastAPI or Pydantic bump changed the generated document
-with nothing regenerating or checking it, and CI's api-schema lane keyed off
-nx-affected, which a manifest-only bump need not move either.
+with nothing regenerating or checking it.
 
 The lane table is the source of truth. The hook copies the regex (prek needs a
-literal) and this test fails if the copy drifts; the workflow greps it straight
-out of the file.
+literal) and this test fails if the copy drifts; CI's lint-mixed:api-schema
+task names the same files as nx inputs, held equal by test_check_scopes.py.
 """
 
 from __future__ import annotations
@@ -20,14 +19,12 @@ from pathlib import Path
 import re
 from typing import Any
 
-from doc_shape import mapping
 import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 LANES = REPO_ROOT / "scripts" / "dev" / "verify-lanes.json"
 PRE_COMMIT = REPO_ROOT / ".pre-commit-config.yaml"
-WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 LANE = "api-schema"
 HOOK = "api-types"
 
@@ -47,11 +44,6 @@ def scope() -> str:
 def hook() -> dict[str, Any]:
     config = yaml.safe_load(PRE_COMMIT.read_text(encoding="utf-8"))
     return next(h for repo in config["repos"] for h in repo.get("hooks", []) if h["id"] == HOOK)
-
-
-@pytest.fixture(scope="module")
-def workflow() -> dict[str, Any]:
-    return mapping(yaml.safe_load(WORKFLOW.read_text(encoding="utf-8")))
 
 
 @pytest.mark.parametrize("manifest", DEPENDENCY_MANIFESTS)
@@ -91,20 +83,3 @@ def test_the_prek_hook_names_what_it_regenerated(hook: dict[str, Any]) -> None:
     """The hook re-stages build outputs; silence there looks like an unrelated diff."""
     assert "regenerated and staged" in hook["entry"]
     assert "git add" in hook["entry"]
-
-
-def test_the_ci_lane_reads_the_scope_from_the_lane_table(workflow: dict[str, Any]) -> None:
-    """Grepping the same file is what keeps CI from becoming a fourth opinion."""
-    detect = next(
-        step for step in workflow["jobs"]["detect"]["steps"] if step.get("id") == "affected"
-    )
-    assert "verify-lanes.json" in detect["run"]
-    assert f"'{LANE}'" in detect["run"]
-    assert "has_api_schema=" in detect["run"]
-    assert workflow["jobs"]["detect"]["outputs"]["has_api_schema"]
-
-
-def test_the_api_schema_check_is_gated_on_that_signal(workflow: dict[str, Any]) -> None:
-    """Without this the check still rides on nx-affected alone."""
-    (step,) = [s for s in workflow["jobs"]["lint-mixed"]["steps"] if s.get("id") == LANE]
-    assert "needs.detect.outputs.has_api_schema == 'true'" in step["if"]

@@ -1,0 +1,137 @@
+{
+  "name": "lint-python",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "root": ".github/jobs/lint-python",
+  "metadata": {
+    "description": "The checks ci.yml's lint-python job runs, one target each. A target's inputs are the files its check reads, so `nx affected` decides which of them a change runs; the commands live in the job."
+  },
+  "targets": {
+    "ruff": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{workspaceRoot}/**/*.py",
+        "{workspaceRoot}/**/pyproject.toml",
+        "{workspaceRoot}/**/ruff.toml",
+        {
+          "externalDependencies": []
+        }
+      ]
+    },
+    "custom-lints": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{workspaceRoot}/**/*.py",
+        "{workspaceRoot}/tools/lints/**/*",
+        {
+          "externalDependencies": []
+        }
+      ]
+    },
+    "lint-imports": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{workspaceRoot}/apps/api/app/**/*.py",
+        "{workspaceRoot}/apps/api/pyproject.toml",
+        {
+          "externalDependencies": []
+        }
+      ]
+    },
+    "ignore-whys": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{workspaceRoot}/**/pyproject.toml",
+        "{workspaceRoot}/tools/lints/check_ignore_whys.py",
+        {
+          "externalDependencies": []
+        }
+      ]
+    },
+    "plr-complexity": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{workspaceRoot}/**/*.py",
+        "{workspaceRoot}/tools/lints/check_plr_complexity.py",
+        "{workspaceRoot}/tools/lints/plr_complexity_baseline.txt",
+        {
+          "externalDependencies": []
+        }
+      ]
+    },
+    "typed-boundaries": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{workspaceRoot}/**/*.py",
+        "{workspaceRoot}/tools/lints/check_typed_boundaries.py",
+        "{workspaceRoot}/tools/lints/typed_boundaries_baseline.txt",
+        "{workspaceRoot}/tools/lints/_ratchet.py",
+        "{workspaceRoot}/tools/lints/_common.py",
+        {
+          "externalDependencies": []
+        }
+      ]
+    },
+    "xenon": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{workspaceRoot}/**/*.py",
+        "{workspaceRoot}/pyproject.toml",
+        {
+          "externalDependencies": []
+        }
+      ]
+    },
+    "interrogate": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{workspaceRoot}/**/*.py",
+        "{workspaceRoot}/pyproject.toml",
+        {
+          "externalDependencies": []
+        }
+      ]
+    },
+    "bandit": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{workspaceRoot}/**/*.py",
+        "{workspaceRoot}/pyproject.toml",
+        {
+          "externalDependencies": []
+        }
+      ]
+    },
+    "mypy": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{workspaceRoot}/**/*.py",
+        "{workspaceRoot}/**/pyproject.toml",
+        "{workspaceRoot}/uv.lock",
+        {
+          "externalDependencies": []
+        }
+      ]
+    },
+    "ignore-staleness": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{workspaceRoot}/**/*.py",
+        "{workspaceRoot}/**/pyproject.toml",
+        "{workspaceRoot}/tools/lints/**/*",
+        {
+          "externalDependencies": []
+        }
+      ]
+    },
+    "uv-lock": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{workspaceRoot}/**/uv.lock",
+        "{workspaceRoot}/**/pyproject.toml",
+        {
+          "externalDependencies": []
+        }
+      ]
+    }
+  }
+}

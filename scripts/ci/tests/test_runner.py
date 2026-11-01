@@ -128,7 +128,7 @@ def idle_home(count: int, busy: int = 0) -> list[dict[str, object]]:
 def test_a_saturated_github_queue_overflows_every_class_to_a_box_that_fits_them(
     github: FakeGitHub,
 ) -> None:
-    pool(github, *idle_home(20, busy=2))  # services 9 + heavy 5 + light 6
+    pool(github, *idle_home(sum(ci_class_demand().values()), busy=2))
     saturate(github)
     out = select(github, BLACKSMITH_LABEL=BLACKSMITH)
     assert out["light"] == out["heavy"] == out["services"] == HOME

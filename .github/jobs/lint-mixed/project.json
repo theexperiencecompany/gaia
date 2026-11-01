@@ -1,0 +1,164 @@
+{
+  "name": "lint-mixed",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "root": ".github/jobs/lint-mixed",
+  "metadata": {
+    "description": "The checks ci.yml's lint-mixed job runs, one target each. A target's inputs are the files its check reads, so `nx affected` decides which of them a change runs; the commands live in the job."
+  },
+  "targets": {
+    "api-schema": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{workspaceRoot}/apps/api/app/**/*.py",
+        "{workspaceRoot}/libs/shared/py/**/*.py",
+        "{workspaceRoot}/apps/api/scripts/export_openapi.py",
+        "{workspaceRoot}/apps/api/scripts/openapi_contract.py",
+        "{workspaceRoot}/apps/api/tests/offline_env.py",
+        "{workspaceRoot}/apps/api/pyproject.toml",
+        "{workspaceRoot}/apps/api/openapi.json",
+        "{workspaceRoot}/uv.lock",
+        "{workspaceRoot}/libs/shared/ts/src/api/generated/**/*",
+        "{workspaceRoot}/scripts/ci/checks.mjs",
+        "{workspaceRoot}/package.json",
+        {
+          "externalDependencies": []
+        }
+      ]
+    },
+    "analytics-catalog": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{workspaceRoot}/libs/shared/py/analytics/**/*",
+        "{workspaceRoot}/libs/shared/ts/src/analytics/generated/**/*",
+        "{workspaceRoot}/uv.lock",
+        "{workspaceRoot}/scripts/ci/checks.mjs",
+        {
+          "externalDependencies": []
+        }
+      ]
+    },
+    "cli-config-schema": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{workspaceRoot}/apps/api/app/config/**/*",
+        "{workspaceRoot}/apps/api/scripts/dump_config_schema.py",
+        "{workspaceRoot}/packages/cli/src/lib/api-config-schema.generated.json",
+        "{workspaceRoot}/scripts/ci/checks.mjs",
+        {
+          "externalDependencies": []
+        }
+      ]
+    },
+    "deploy-templates": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{workspaceRoot}/infra/docker/docker-compose.selfhost.yml",
+        "{workspaceRoot}/infra/docker/selfhost/Caddyfile",
+        "{workspaceRoot}/packages/cli/src/lib/machine-secrets.json",
+        "{workspaceRoot}/deploy/coolify/gaia.yaml",
+        "{workspaceRoot}/deploy/proxy.Dockerfile",
+        "{workspaceRoot}/render.yaml",
+        "{workspaceRoot}/scripts/ci/lib/deploy_templates.py",
+        "{workspaceRoot}/scripts/ci/checks.mjs",
+        {
+          "externalDependencies": []
+        }
+      ]
+    },
+    "analytics-check": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{workspaceRoot}/libs/shared/py/analytics/catalog/**/*",
+        "{workspaceRoot}/libs/shared/ts/src/analytics/generated/**/*",
+        "{workspaceRoot}/config/posthog/**/*",
+        "{workspaceRoot}/scripts/ci/analytics.py",
+        {
+          "externalDependencies": []
+        }
+      ]
+    },
+    "api-schema-types": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{workspaceRoot}/**/*.{ts,tsx}",
+        "{workspaceRoot}/apps/api/openapi.json",
+        "{workspaceRoot}/config/api-schema-baseline.json",
+        {
+          "externalDependencies": []
+        }
+      ]
+    },
+    "observability-evlog-tests": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{workspaceRoot}/**/*.py",
+        "{workspaceRoot}/tools/evlog_map/**/*",
+        "{workspaceRoot}/tools/logcheck/**/*",
+        {
+          "externalDependencies": []
+        }
+      ]
+    },
+    "observability-map": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{workspaceRoot}/**/*.py",
+        "{workspaceRoot}/apps/bots/**/*",
+        "{workspaceRoot}/libs/shared/ts/**/*",
+        {
+          "externalDependencies": []
+        }
+      ]
+    },
+    "observability-ratchet": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{workspaceRoot}/**/*.py",
+        {
+          "externalDependencies": []
+        }
+      ]
+    },
+    "observability-bots": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{workspaceRoot}/apps/bots/**/*.ts",
+        "{workspaceRoot}/libs/shared/ts/**/*.ts",
+        {
+          "externalDependencies": []
+        }
+      ]
+    },
+    "wide-event-conformance": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{workspaceRoot}/**/*.{py,ts,tsx}",
+        {
+          "externalDependencies": []
+        }
+      ]
+    },
+    "dead-code": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{workspaceRoot}/**/*.{ts,tsx,py}",
+        "{workspaceRoot}/**/package.json",
+        "{workspaceRoot}/**/pyproject.toml",
+        {
+          "externalDependencies": []
+        }
+      ]
+    },
+    "harness-tests": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{workspaceRoot}/**/*",
+        "!{workspaceRoot}/**/*.md",
+        "!{workspaceRoot}/**/*.mdx",
+        {
+          "externalDependencies": []
+        }
+      ]
+    }
+  }
+}

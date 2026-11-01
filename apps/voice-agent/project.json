@@ -41,7 +41,10 @@
       "cache": true,
       "inputs": [
         "{projectRoot}/pyproject.toml",
-        "{workspaceRoot}/uv.lock"
+        "{workspaceRoot}/uv.lock",
+        {
+          "externalDependencies": []
+        }
       ]
     },
     "dev": {
@@ -70,7 +73,10 @@
         "{workspaceRoot}/apps/voice-agent/pyproject.toml",
         "python",
         "{workspaceRoot}/libs/shared/py/**/*",
-        "^production"
+        "^production",
+        {
+          "externalDependencies": []
+        }
       ]
     },
     "type-check": {
@@ -85,7 +91,10 @@
         "{workspaceRoot}/apps/voice-agent/pyproject.toml",
         "python",
         "{workspaceRoot}/libs/shared/py/**/*",
-        "^production"
+        "^production",
+        {
+          "externalDependencies": []
+        }
       ],
       "outputs": [
         "{projectRoot}/.mypy_cache"

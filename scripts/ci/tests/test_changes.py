@@ -8,17 +8,12 @@ green PR on a broken tree:
 
 * `files` must print `__FULL__` and nothing else on a push, or every scoped
   lane reports "no changed files — skipping" on the one branch that needs
-  scanning;
-* `docker-inputs` must notice `apps/api/Dockerfile.dockerignore`. It decides
-  what enters the build CONTEXT, so a newly-excluded path drops out of the
-  image — while the lane said "image inputs unchanged" and skipped the build.
+  scanning.
 """
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
-import re
 import subprocess
 
 import pytest
@@ -54,7 +49,7 @@ def repo(tmp_path: Path) -> Path:
     (root / "app.py").write_text("x = 1\n")
     _git(root, "add", "-A")
     _git(root, "commit", "-qm", "base")
-    # A real `origin`: `docker-inputs` fetches it before diffing, so a repo with
+    # A real `origin`: the `*-inputs` subcommands fetch it before diffing, so a repo with
     # only a remote-tracking ref would fail on the fetch rather than exercise
     # the diff.
     origin = tmp_path / "origin.git"
@@ -68,80 +63,6 @@ def repo(tmp_path: Path) -> Path:
     _git(root, "push", "-q", "origin", "master")
     _git(root, "checkout", "-qb", "feature")
     return root
-
-
-def _docker_inputs(repo: Path, tmp_path: Path) -> str:
-    out = tmp_path / "gh_output"
-    out.write_text("")
-    proc = subprocess.run(
-        ["bash", str(SCRIPT), "docker-inputs"],
-        cwd=repo,
-        env={**GIT_ENV, "BASE_BRANCH": "master", "GITHUB_OUTPUT": str(out)},
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert proc.returncode == 0, proc.stderr
-    return out.read_text()
-
-
-def test_a_dockerignore_change_rebuilds_the_image(repo: Path, tmp_path: Path) -> None:
-    (repo / "apps/api/Dockerfile.dockerignore").write_text("base\n**/tests\n")
-    _git(repo, "commit", "-aqm", "narrow the build context")
-    assert "build=true" in _docker_inputs(repo, tmp_path)
-
-
-def test_the_root_dockerignore_still_rebuilds_the_image(repo: Path, tmp_path: Path) -> None:
-    (repo / ".dockerignore").write_text("base\nnode_modules\n")
-    _git(repo, "commit", "-aqm", "root ignore")
-    assert "build=true" in _docker_inputs(repo, tmp_path)
-
-
-def test_an_unrelated_change_skips_the_build(repo: Path, tmp_path: Path) -> None:
-    # The control: without this the test above would pass on a script that
-    # answered build=true unconditionally.
-    (repo / "app.py").write_text("x = 2\n")
-    _git(repo, "commit", "-aqm", "unrelated")
-    assert "build=false" in _docker_inputs(repo, tmp_path)
-
-
-def _selfhost_inputs(repo: Path, tmp_path: Path) -> str:
-    out = tmp_path / "gh_output"
-    out.write_text("")
-    proc = subprocess.run(
-        ["bash", str(SCRIPT), "selfhost-inputs"],
-        cwd=repo,
-        env={**GIT_ENV, "BASE_BRANCH": "master", "GITHUB_OUTPUT": str(out)},
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert proc.returncode == 0, proc.stderr
-    return out.read_text()
-
-
-def test_a_cli_change_runs_the_selfhost_e2e(repo: Path, tmp_path: Path) -> None:
-    path = repo / "packages/cli/src/commands/up/flow.ts"
-    path.parent.mkdir(parents=True)
-    path.write_text("export {};\n")
-    _git(repo, "add", "-A")
-    _git(repo, "commit", "-qm", "cli change")
-    assert "build=true" in _selfhost_inputs(repo, tmp_path)
-
-
-def test_a_selfhost_compose_change_runs_the_selfhost_e2e(repo: Path, tmp_path: Path) -> None:
-    path = repo / "infra/docker/docker-compose.selfhost.yml"
-    path.parent.mkdir(parents=True)
-    path.write_text("services: {}\n")
-    _git(repo, "add", "-A")
-    _git(repo, "commit", "-qm", "compose change")
-    assert "build=true" in _selfhost_inputs(repo, tmp_path)
-
-
-def test_an_unrelated_change_skips_the_selfhost_e2e(repo: Path, tmp_path: Path) -> None:
-    (repo / "app.py").write_text("x = 2\n")
-    _git(repo, "commit", "-aqm", "unrelated")
-    assert "build=false" in _selfhost_inputs(repo, tmp_path)
 
 
 def test_files_prints_only_the_full_sentinel_on_a_push(repo: Path) -> None:
@@ -404,19 +325,6 @@ def test_base_rev_refuses_a_base_it_cannot_resolve(repo: Path) -> None:
     assert "no-such-branch" in proc.stderr
 
 
-def test_docker_inputs_on_a_merge_group_diffs_against_the_group_base(
-    repo: Path, tmp_path: Path
-) -> None:
-    ahead = _queue(repo)
-    out = tmp_path / "gh_output"
-    out.write_text("")
-
-    proc = _run(repo, "docker-inputs", BASE_BRANCH=ahead, GITHUB_OUTPUT=str(out))
-
-    assert proc.returncode == 0, proc.stderr
-    assert "build=false" in out.read_text()
-
-
 # ---------------------------------------------------------------------------
 # web-inputs: deploy-web's build is a required pre-merge check, so it runs on
 # every PR and decides for itself whether the bundle's inputs moved.
@@ -455,59 +363,6 @@ def test_web_inputs_match_the_deploy_trigger() -> None:
     listed = [line.strip() for line in body[: body.index(")")].splitlines()[1:] if line.strip()]
     expected = [p if p.endswith(".yml") else f"{p}/**" for p in listed]
     assert triggers["push"]["paths"] == expected
-
-
-# ---------------------------------------------------------------------------
-# seo-inputs: the SEO audit of the production build runs when what it renders,
-# or what judges it, changed.
-# ---------------------------------------------------------------------------
-
-
-def _seo_inputs(repo: Path, tmp_path: Path) -> str:
-    out = tmp_path / "seo_output"
-    out.write_text("")
-    proc = _run(repo, "seo-inputs", BASE_BRANCH="master", GITHUB_OUTPUT=str(out))
-    assert proc.returncode == 0, proc.stderr
-    return out.read_text()
-
-
-@pytest.mark.parametrize(
-    "rel",
-    [
-        "apps/web/src/app/page.tsx",
-        "libs/shared/ts/src/seo.ts",
-        "config/squirrel.toml",
-        "scripts/ci/baselines/squirrel-build.txt",
-        "scripts/ci/lib/squirrel.py",
-        "scripts/ci/lib/seo_audit.py",
-    ],
-)
-def test_a_rendered_output_or_audit_change_runs_the_seo_audit(
-    repo: Path, tmp_path: Path, rel: str
-) -> None:
-    _commit(repo, rel)
-    assert "build=true" in _seo_inputs(repo, tmp_path)
-
-
-def test_a_change_the_site_cannot_render_skips_the_seo_audit(repo: Path, tmp_path: Path) -> None:
-    _commit(repo, "apps/api/app/main.py")
-    assert "build=false" in _seo_inputs(repo, tmp_path)
-
-
-def test_seo_inputs_match_the_local_lane_scope() -> None:
-    # `mise ci:local` picks the seo lane by its scope; it must see what CI sees.
-    lanes = json.loads((CI.parent.parent / "scripts/dev/verify-lanes.json").read_text())["lanes"]
-    scope = re.compile(next(lane for lane in lanes if lane["name"] == "seo")["scope"])
-    script = SCRIPT.read_text()
-    body = script[script.index("SEO_INPUTS=(") :]
-    listed = [line.strip() for line in body[: body.index("\n)")].splitlines()[1:] if line.strip()]
-    web = script[script.index("WEB_INPUTS=(") :]
-    paths = [p for p in listed if not p.startswith('"$')]
-    paths += [line.strip() for line in web[: web.index(")")].splitlines()[1:] if line.strip()]
-    for path in paths:
-        probe = f"{path}/x" if not Path(path).suffix else path
-        assert scope.search(probe), f"the seo lane's scope misses {path}"
-    assert not scope.search("apps/api/app/main.py")
 
 
 # ---------------------------------------------------------------------------

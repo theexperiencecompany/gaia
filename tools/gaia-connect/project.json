@@ -1,0 +1,26 @@
+{
+  "name": "gaia-connect",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "root": "tools/gaia-connect",
+  "projectType": "application",
+  "tags": ["scope:go"],
+  "targets": {
+    "check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "cd tools/gaia-connect && go vet ./... && go test ./...",
+          "bash scripts/ci/release.sh connect-cross-check"
+        ],
+        "parallel": false
+      },
+      "inputs": [
+        "default",
+        "{workspaceRoot}/scripts/ci/release.sh",
+        {
+          "externalDependencies": []
+        }
+      ]
+    }
+  }
+}

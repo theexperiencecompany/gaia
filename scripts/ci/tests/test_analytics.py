@@ -900,12 +900,9 @@ def test_the_ci_check_syncs_on_master_checks_the_rest_against_master_and_reads_t
     assert "default_branch" in sync["if"]
     assert sync["env"]["POSTHOG_PERSONAL_API_KEY"] == secret
     for step in (sync, check):
-        assert "has_analytics" in step["if"]
+        assert "'lint-mixed:analytics-check'" in step["if"]
     # Dependabot runs get no repo secrets: the check skips rather than failing.
     assert "dependabot[bot]" in check["if"]
-    (detect,) = [s for s in workflow["jobs"]["detect"]["steps"] if s.get("id") == "affected"]
-    assert "l.name === 'analytics-check'" in detect["run"]
-    assert "has_analytics=$ANALYTICS" in detect["run"]
 
 
 class _CheckedProject(_LoopProject):

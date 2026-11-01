@@ -1,4 +1,4 @@
-"""Pin which projects nx marks affected for each kind of change.
+"""Pin which projects' tasks nx marks affected for each kind of change.
 
 CI opens and closes whole lanes on this answer, so a wrong nx.json or
 project.json input skips tests silently. uv.lock once selected voice-agent
@@ -39,16 +39,24 @@ PNPM_OVERRIDES_BUMP = "97a05f7e7c"  # #1565: package.json overrides + pnpm-lock.
 UV_LOCK_BUMP = "d980793bca"  # #1564: pyproject.toml + uv.lock
 
 
-def affected(*args: str) -> set[str]:
+# The code projects' own targets; the .github/jobs projects are pinned by test_check_scopes.
+CODE_TARGETS = ("build", "lint", "test", "type-check")
+
+
+def affected_tasks(*args: str) -> set[str]:
     out = subprocess.run(
-        ["pnpm", "exec", "nx", "show", "projects", "--affected", "--json", *args],
+        ["pnpm", "exec", "nx", "affected", "-t", *CODE_TARGETS, "--explain=stdout", *args],
         cwd=REPO_ROOT,
         env={**os.environ, "NX_NO_CLOUD": "true", "NX_DAEMON": "false"},
         capture_output=True,
         text=True,
         check=True,
     ).stdout
-    return set(json.loads(out[out.index("[") :]))
+    return set(json.loads(out[out.index("{") :])["affected"])
+
+
+def affected(*args: str) -> set[str]:
+    return {task.split(":", 1)[0] for task in affected_tasks(*args)}
 
 
 @pytest.mark.parametrize(
@@ -63,7 +71,7 @@ def affected(*args: str) -> set[str]:
         ("apps/api/pyproject.toml", {"api"}),
         ("apps/api/app/main.py", {"api"}),
         ("apps/voice-agent/pyproject.toml", {"voice-agent"}),
-        ("docs/introduction.mdx", {"docs"}),
+        ("docs/introduction.mdx", set()),
     ],
 )
 def test_changed_file_selects_its_projects(path: str, expected: set[str]) -> None:
@@ -76,3 +84,17 @@ def test_changed_file_selects_its_projects(path: str, expected: set[str]) -> Non
 )
 def test_dependency_bump_selects_one_language(commit: str, expected: set[str]) -> None:
     assert affected(f"--base={commit}^", f"--head={commit}") == expected
+
+
+@pytest.mark.parametrize(
+    ("path", "task"),
+    [
+        ("libs/shared/py/__init__.py", "api:test"),
+        ("libs/pyproject.toml", "api:test"),
+        ("uv.lock", "api:test"),
+        ("libs/shared/ts/src/index.ts", "web:test"),
+        ("libs/shared/ts/src/index.ts", "web:type-check"),
+    ],
+)
+def test_dependency_change_reaches_dependent_task(path: str, task: str) -> None:
+    assert task in affected_tasks(f"--files={path}")

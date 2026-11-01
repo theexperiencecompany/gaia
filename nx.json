@@ -9,10 +9,15 @@
   "useDaemonProcess": false,
   "defaultBase": "master",
   "namedInputs": {
-    "default": ["{projectRoot}/**/*"],
+    "default": [
+      "{projectRoot}/**/*",
+      "!{projectRoot}/**/README.md",
+      "!{projectRoot}/**/CLAUDE.md",
+      "!{projectRoot}/**/AGENTS.md"
+    ],
     "production": [
-      "!{projectRoot}/**/*.spec.ts",
-      "!{projectRoot}/**/*.test.ts"
+      "default",
+      "!{projectRoot}/**/*.{spec,test}.{ts,tsx,js,jsx}"
     ],
     "typecheck": ["default", { "env": "GAIA_TS_CHECKER" }],
     "python": ["{workspaceRoot}/pyproject.toml", "{workspaceRoot}/uv.lock"]
@@ -23,6 +28,7 @@
     },
     "build": {
       "cache": true,
+      "inputs": ["production", "^production"],
       "dependsOn": ["sync", "^build"]
     },
     "test": {

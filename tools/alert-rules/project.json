@@ -1,0 +1,22 @@
+{
+  "name": "alert-rules",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "root": "tools/alert-rules",
+  "projectType": "library",
+  "targets": {
+    "check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash tools/alert-rules/verify.sh"
+      },
+      "inputs": [
+        "default",
+        "{workspaceRoot}/infra/docker/observability/grafana/provisioning/alerting/**/*",
+        "{workspaceRoot}/config/pint.hcl",
+        {
+          "externalDependencies": []
+        }
+      ]
+    }
+  }
+}
