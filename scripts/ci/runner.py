@@ -688,10 +688,11 @@ def cmd_requeue_stranded(_args: list[str]) -> int:
             ok(f"requeue-stranded: runners labelled '{label}' are online — nothing is stranded")
             return 0
         case HomeState.UNKNOWN:
+            # Touch nothing, but fail: a sweep that cannot see the runners has not done its job.
             warn(
                 "requeue-stranded: the runners API could not be probed — not touching any run on an unknown"
             )
-            return 0
+            return 1
     failed = 0
     for run_id in _requeue_candidates(gh, repo):
         stranded = _stranded_job(gh, repo, run_id, label, limit)

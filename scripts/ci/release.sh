@@ -45,6 +45,12 @@
 #                        does not touch, so the release PR's uv-lock check fails.
 #   missing-latest       Print the image groups (apps, bots) any of whose repos
 #                        has no :latest in GHCR yet, so build.yml builds them.
+#   desktop-tag          Print the desktop release tag release-please's
+#                        manifest names (desktop-v<apps/desktop>).
+#   mark-desktop-latest  Mark that release Latest once its latest*.yml updater
+#                        files are attached; electron-updater resolves Latest.
+#   wait-quality-gate    Wait for ci.yml's quality gate on RELEASE_TAG's commit;
+#                        fail when it failed. Desktop installers wait on it.
 #
 # Env contract:
 #   resolve-image-tags    VERSION_SCHEME, APPS_RELEASE_OUTCOME,
@@ -78,6 +84,10 @@
 #   sync-uv-lock          RELEASE_BRANCH (required); a checkout whose origin
 #                         push credentials can update that branch; uv on PATH.
 #   missing-latest        docker logged in to GHCR.
+#   mark-desktop-latest   GITHUB_REPOSITORY, GH_TOKEN (contents: write).
+#   wait-quality-gate     RELEASE_TAG, GITHUB_REPOSITORY, GH_TOKEN (actions: read), a
+#                         checkout holding the tag; GATE_WAIT_SECONDS (1800),
+#                         GATE_POLL_SECONDS (30).
 set -euo pipefail
 
 # shellcheck source=scripts/ci/lib/log.sh
@@ -226,7 +236,8 @@ cmd_promote_latest() {
 # back to the caller — so any attempt to pick "our" run out of the recent list
 # is a guess that a concurrent dispatch (a manual catch-up publish during a
 # release, say) silently breaks. Instead this waits on the outcome that
-# actually matters and that no other run can fake: the version being on npm.
+# actually matters and that no other run can fake: the version on npm and its
+# release carrying the self-host bundle.
 # Run identity never enters into it.
 cmd_dispatch_cli_publish() {
 
@@ -260,6 +271,14 @@ cmd_dispatch_cli_publish() {
     return 1
   }
 
+  # npm alone is not the whole release: publish-cli.yml also attaches the
+  # self-host bundle and gaia-connect binaries and pins the images, before npm.
+  # A version published by hand has npm and none of those, so both are waited on.
+  released() {
+    published &&
+      gh release view "$TAG" --json assets --jq '.assets[].name' | grep -q '^gaia-selfhost-'
+  }
+
   # Counts publish runs that have not finished yet — any run, not just one we
   # started. It only ever makes us wait longer, never mistake someone else's
   # result for ours. A failed read fails here: read as 0, one API blip made a
@@ -269,8 +288,8 @@ cmd_dispatch_cli_publish() {
       --jq '[.[] | select(.status != "completed")] | length'
   }
 
-  if published; then
-    ci_ok "${PACKAGE}@${VERSION} is already on npm — nothing to dispatch."
+  if released; then
+    ci_ok "${PACKAGE}@${VERSION} is on npm and ${TAG} has its self-host bundle — nothing to dispatch."
     return 0
   fi
 
@@ -285,7 +304,7 @@ cmd_dispatch_cli_publish() {
   while ((SECONDS < deadline)); do
     sleep "$POLL_SECONDS"
 
-    if published; then
+    if released; then
       ci_ok "${PACKAGE}@${VERSION} published."
       return 0
     fi
@@ -301,11 +320,11 @@ cmd_dispatch_cli_publish() {
       # We watched a publish run start and finish. Still absent once the
       # registry read has had time to catch up, that is a failed publish,
       # reported now rather than at the timeout.
-      if published_after_lag; then
+      if published_after_lag && released; then
         ci_ok "${PACKAGE}@${VERSION} published."
         return 0
       fi
-      ci_die "Publish finished but ${PACKAGE}@${VERSION} is not on npm. See ${runs_url}"
+      ci_die "Publish finished but ${PACKAGE}@${VERSION} is not on npm with ${TAG}'s self-host bundle attached. See ${runs_url}"
     fi
   done
 
@@ -476,6 +495,27 @@ cmd_missing_latest() {
   done
 }
 
+RELEASE_MANIFEST="$(dirname "$0")/../../config/.release-please-manifest.json"
+
+cmd_desktop_tag() {
+  echo "desktop-v$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["apps/desktop"])' "$RELEASE_MANIFEST")"
+}
+
+# Every non-desktop release takes Latest by default, and electron-updater reads
+# Latest, so the desktop release is put back; never before its updater files
+# exist, or the app's update check 404s until the installers land.
+cmd_mark_desktop_latest() {
+  local tag assets
+  tag="$(cmd_desktop_tag)"
+  assets="$(gh release view "$tag" --repo "${GITHUB_REPOSITORY:?}" --json assets --jq '.assets[].name')"
+  if ! grep -qE '^latest.*\.yml$' <<< "$assets"; then
+    ci_ok "$tag has no updater files yet — desktop-release marks it Latest after the upload"
+    return 0
+  fi
+  gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --latest
+  ci_ok "$tag is Latest"
+}
+
 cmd_cli_release_images() {
 
   : "${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
@@ -529,6 +569,23 @@ ci_quality_gate() {
     verdict=failed
   fi
   echo "$verdict"
+}
+
+cmd_wait_quality_gate() {
+  : "${RELEASE_TAG:?RELEASE_TAG is required}"
+  local sha gate deadline=$((SECONDS + ${GATE_WAIT_SECONDS:-1800}))
+  sha="$(git rev-parse "$RELEASE_TAG^{commit}")"
+  while :; do
+    gate=$(ci_quality_gate "$sha" push) ||
+      ci_die "could not read ci.yml's runs for $sha from the Actions API (GH_TOKEN needs actions:read)."
+    case "$gate" in
+      passed) ci_ok "ci.yml's quality gate passed on $sha ($RELEASE_TAG)"; return 0 ;;
+      failed) ci_die "ci.yml's quality gate failed on $sha ($RELEASE_TAG); a release commit must pass it. Fix master and cut the release from a green commit." ;;
+    esac
+    ((SECONDS >= deadline)) && ci_die "Timed out waiting for ci.yml's quality gate on $sha ($RELEASE_TAG); a run cancelled by a newer push needs a re-run."
+    echo "Waiting for ci.yml's quality gate on $sha"
+    sleep "${GATE_POLL_SECONDS:-30}"
+  done
 }
 
 cmd_pin_selfhost_release() {
@@ -787,6 +844,9 @@ main() {
     disable-cf-builds)    cmd_disable_cf_builds "$@" ;;
     sync-uv-lock)         cmd_sync_uv_lock "$@" ;;
     missing-latest)       cmd_missing_latest "$@" ;;
+    desktop-tag)          cmd_desktop_tag "$@" ;;
+    mark-desktop-latest)  cmd_mark_desktop_latest "$@" ;;
+    wait-quality-gate)    cmd_wait_quality_gate "$@" ;;
     *)
       echo "release.sh: unknown subcommand '${sub}'" >&2
       usage

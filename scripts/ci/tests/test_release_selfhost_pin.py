@@ -499,3 +499,33 @@ def test_a_bot_without_an_arm64_build_fails_loud_and_tags_nothing(workspace: Pat
     assert result.returncode != 0
     assert "gaia-bot-discord" in result.stderr
     assert _created(workspace) == []
+
+
+# --- wait-quality-gate: desktop installers ship only from a green commit ------
+
+
+def _tag_head(workspace: Path, tag: str = "desktop-v9.9.9") -> str:
+    _git(workspace / "repo", "tag", tag)
+    return tag
+
+
+def test_desktop_installers_publish_once_the_release_commit_passed(workspace: Path) -> None:
+    tag = _tag_head(workspace)
+    result = _run(
+        workspace, "wait-quality-gate", env_extra={"RELEASE_TAG": tag, "GATE_POLL_SECONDS": "0"}
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_desktop_installers_never_publish_from_a_red_commit(workspace: Path) -> None:
+    """desktop-release shipped installers without asking whether the release commit was green."""
+    tag = _tag_head(workspace)
+    red = GitHubState(main_runs={1: {"quality-gate": ("completed", "failure")}})
+    result = _run(
+        workspace,
+        "wait-quality-gate",
+        github=red,
+        env_extra={"RELEASE_TAG": tag, "GATE_POLL_SECONDS": "0"},
+    )
+    assert result.returncode != 0
+    assert "quality gate failed" in result.stderr + result.stdout
