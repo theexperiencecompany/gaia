@@ -73,9 +73,13 @@ jobs:
 
       # Trusted publishing exchanges this job's OIDC token for a short-lived
       # npm credential, so no NPM_TOKEN is stored or rotated anywhere. It
-      # requires npm >= 11.5.1, newer than the npm bundled with Node 22.
-      - name: Upgrade npm for trusted publishing
-        run: npm install -g npm@latest
+      # requires npm >= 11.5.1, which the .node-version Node bundles (24.22.1:
+      # npm 11.19.1); this fails loud if a Node pin ever ships an older one.
+      - name: Check npm supports trusted publishing
+        run: |
+          v="$(npm --version)"
+          [ "$(printf '%s\n' 11.5.1 "$v" | sort -V | head -n1)" = 11.5.1 ] \
+            || { echo "::error::npm $v is older than 11.5.1, which trusted publishing needs"; exit 1; }
 
       # Normalize manual inputs into reusable step outputs.
       - name: Resolve release inputs

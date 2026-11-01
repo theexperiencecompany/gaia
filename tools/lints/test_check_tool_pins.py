@@ -472,3 +472,24 @@ def test_pnpm_action_setup_explicit_version_fails(
     monkeypatch.setattr(check_tool_pins, "REPO_ROOT", tmp_path)
     _rc, _out, err = _run(capsys)
     assert "pnpm/action-setup pins version 10.17.1 explicitly" in err
+
+
+@pytest.mark.parametrize(
+    ("line", "flagged"),
+    [
+        ("      - uses: actions/checkout@v5", True),
+        ("      - uses: actions/checkout@main", True),
+        ("      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1", False),
+        ("      - uses: ./.github/actions/setup-uv", False),
+        ("    uses: ./.github/workflows/web-build.yml", False),
+        ("        uses: docker://semgrep/semgrep@sha256:" + "b" * 64, False),
+    ],
+)
+def test_an_action_is_pinned_by_commit_sha(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, line: str, flagged: bool
+) -> None:
+    """A tag can move under us; react-doctor.yml shipped actions/checkout@v5 past this lint."""
+    workflow = tmp_path / "w.yml"
+    workflow.write_text(f"jobs:\n  j:\n    steps:\n{line}\n")
+    monkeypatch.setattr(check_tool_pins, "ACTION_SURFACES", (workflow,))
+    assert bool(check_tool_pins._unpinned_action_violations()) is flagged

@@ -610,7 +610,7 @@ run = "bash scripts/ci/audit.sh pnpm"
 
 [tasks."audit:deps:test"]
 description = "Unit tests for the CI shell gates (runner.py, audit.sh, ...)"
-run = "uv run --no-project --with pytest pytest scripts/ci -q"
+run = "uv run --frozen --isolated --only-group harness pytest scripts/ci -q"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PRE-COMMIT HOOKS

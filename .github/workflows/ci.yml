@@ -1002,7 +1002,7 @@ jobs:
           HARNESS_WORKERS: "4"
           CHECK: |
             python3 scripts/ci/runner.py with-slots "$HARNESS_WORKERS" -- \
-              uv run --no-project --isolated --with pytest --with pytest-xdist --with defusedxml --with pyyaml \
+              uv run --frozen --isolated --only-group harness \
               pytest tools/lints tools/llm-stub scripts/ci scripts/dev -q --durations=10 -n "$HARNESS_WORKERS" --dist loadfile
         run: python3 scripts/ci/runner.py spawn harness-tests -- bash -eo pipefail -c "$CHECK"
       - name: Start api-schema-types in the background

@@ -61,6 +61,14 @@ PNPM_LOCK = REPO_ROOT / "pnpm-lock.yaml"
 IGNORE_STALENESS = REPO_ROOT / "tools/lints/check_ignore_staleness.py"
 UV_LOCK = REPO_ROOT / "uv.lock"
 SETUP_UV = REPO_ROOT / ".github/actions/setup-uv/action.yml"
+ACTION_SURFACES = (
+    *sorted((REPO_ROOT / ".github/workflows").glob("*.yml")),
+    *sorted((REPO_ROOT / ".github/actions").glob("*/action.yml")),
+)
+# A remote action or reusable workflow pinned by a full commit SHA; a local one
+# (./…) and a digest-pinned docker:// image need no pin of their own.
+_USES = re.compile(r"^\s*(?:-\s+)?uses:\s*(\S+)")
+_PINNED_USES = re.compile(r"^(?:\./|docker://\S+@sha256:[0-9a-f]{64}$|[^@\s]+@[0-9a-f]{40}$)")
 # Node is derived, not repeated: .node-version is the single declaration and
 # every consumer reads it. These are the surfaces that must reference the file
 # rather than restate the version.
@@ -728,6 +736,23 @@ def _rust_violations() -> list[Violation]:
     return out + _stray_violations("rust", _RUST_LITERALS, {ROOT_MISE.resolve()})
 
 
+def _unpinned_action_violations() -> list[Violation]:
+    out = []
+    for surface in ACTION_SURFACES:
+        for n, line in enumerate(surface.read_text(encoding="utf-8").splitlines(), 1):
+            match = _USES.match(line)
+            if match and not _PINNED_USES.match(match.group(1)):
+                out.append(
+                    Violation(
+                        path=surface,
+                        line=n,
+                        detail=f"{match.group(1)} is pinned by a tag, which can move",
+                        fix="pin the full commit SHA with the tag as a trailing comment (`@<sha> # vX.Y.Z`)",
+                    )
+                )
+    return out
+
+
 def main(argv: list[str]) -> int:
     """Report every drift from EXPECTED or .node-version; return the exit code."""
     del argv
@@ -753,6 +778,7 @@ def main(argv: list[str]) -> int:
     violations.extend(_rust_violations())
     violations.extend(_stray_version_file_violations())
     violations.extend(_eas_cli_violations())
+    violations.extend(_unpinned_action_violations())
 
     if violations:
         report_rule(RULE, WHY, DOC, violations)
