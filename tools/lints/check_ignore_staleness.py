@@ -144,11 +144,13 @@ def fires(entry: Entry) -> bool:
     # failing (uvx could not build its environment, bad config). Treating that
     # as "no findings" reported a live entry as stale on a runner whose uv
     # cache was root-owned. Fail loud instead.
-    if r.returncode not in (0, 1):
-        raise RuntimeError(f"ruff failed (exit {r.returncode}) on {path}: {r.stderr.strip()}")
     # concise output: one "path:line:col: RULE msg" line per finding. Success
     # also prints to stdout ("All checks passed!"), so match finding shapes only.
-    return any(_FINDING_RE.match(line) for line in r.stdout.splitlines())
+    found = any(_FINDING_RE.match(line) for line in r.stdout.splitlines())
+    # uv exits 1 too when it cannot start ruff (no lockfile), so 1 without a finding is a failure.
+    if r.returncode not in (0, 1) or (r.returncode == 1 and not found):
+        raise RuntimeError(f"ruff failed (exit {r.returncode}) on {path}: {r.stderr.strip()}")
+    return found
 
 
 def main(argv: list[str]) -> int:
