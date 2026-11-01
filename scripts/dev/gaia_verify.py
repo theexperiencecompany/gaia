@@ -90,7 +90,9 @@ def load_lanes(path: Path) -> list[Lane]:
                     timeout_s=int(row["timeout_s"]),
                     require_cmd=list(row.get("require_cmd", [])),
                     require_env=list(row.get("require_env", [])),
-                    command=row["command"],
+                    # A lane with an nx task runs it: the command lives in the task, as CI's step runs it.
+                    command=row.get("command")
+                    or f"pnpm exec nx run {row['nx']} --output-style=stream-without-prefixes",
                 )
             )
         except Exception as exc:

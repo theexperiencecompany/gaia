@@ -7,7 +7,11 @@
   },
   "targets": {
     "seo": {
-      "executor": "nx:noop",
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/smoke-web.sh audit-build"
+      },
+      "cache": false,
       "inputs": [
         "{workspaceRoot}/apps/web/**/*",
         "{workspaceRoot}/libs/shared/ts/**/*",

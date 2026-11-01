@@ -234,3 +234,40 @@ def test_a_check_lists_its_config_before_its_source_globs() -> None:
             assert kinds == sorted(kinds), (
                 f"{path.parent.name}:{target} lists a config input after a source glob"
             )
+
+
+def _runnable_targets() -> dict[str, dict[str, str]]:
+    out = {}
+    for path in nx_affected.JOBS_DIR.glob("*/project.json"):
+        project = json.loads(path.read_text())
+        for target, spec in project["targets"].items():
+            if spec.get("executor") == "nx:run-commands":
+                out[f"{project['name']}:{target}"] = spec["options"]
+    return out
+
+
+@pytest.mark.parametrize("task", sorted(_runnable_targets()))
+def test_the_ci_step_runs_its_tasks_command(task: str, jobs: dict[str, Any]) -> None:
+    """One command per check: CI's step and `nx run` (what mise ci:local runs) must be the same line."""
+    options = _runnable_targets()[task]
+    steps = [
+        s for job in jobs.values() for s in job.get("steps", [])
+        if f"'{task}'" in str(s.get("if", "")) and "run" in s
+    ]  # fmt: skip
+    # A background check's step spawns its CHECK; the command is that, not the spawn.
+    ran = [
+        (
+            str((s.get("env") or {}).get("CHECK", "")).strip()
+            if "runner.py spawn" in s["run"]
+            else s["run"].strip(),
+            s.get("working-directory"),
+        )
+        for s in steps
+    ]
+    assert ran == [(options["command"], options.get("cwd"))]
+
+
+def test_a_lane_with_a_runnable_task_has_no_command_of_its_own() -> None:
+    runnable = _runnable_targets()
+    doubled = [lane["name"] for lane in LANES if lane.get("nx") in runnable and "command" in lane]
+    assert doubled == [], "verify-lanes.json repeats a command its nx task already holds"

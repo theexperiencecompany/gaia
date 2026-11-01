@@ -19,7 +19,11 @@
       ]
     },
     "custom-lints": {
-      "executor": "nx:noop",
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python3 tools/lints/run.py apps/api/app apps/api/tests"
+      },
+      "cache": false,
       "inputs": [
         "{workspaceRoot}/tools/lints/**/*",
         "ciHarness",
@@ -30,7 +34,12 @@
       ]
     },
     "lint-imports": {
-      "executor": "nx:noop",
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run --frozen --no-build --isolated --only-group lint lint-imports --no-cache",
+        "cwd": "apps/api"
+      },
+      "cache": false,
       "inputs": [
         "{workspaceRoot}/apps/api/app/**/*.py",
         "{workspaceRoot}/apps/api/pyproject.toml",
@@ -41,7 +50,11 @@
       ]
     },
     "ignore-whys": {
-      "executor": "nx:noop",
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python3 tools/lints/check_ignore_whys.py"
+      },
+      "cache": false,
       "inputs": [
         "{workspaceRoot}/**/pyproject.toml",
         "{workspaceRoot}/tools/lints/check_ignore_whys.py",
@@ -52,7 +65,11 @@
       ]
     },
     "plr-complexity": {
-      "executor": "nx:noop",
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python3 tools/lints/check_plr_complexity.py"
+      },
+      "cache": false,
       "inputs": [
         "{workspaceRoot}/tools/lints/check_plr_complexity.py",
         "{workspaceRoot}/tools/lints/plr_complexity_baseline.txt",
@@ -64,7 +81,11 @@
       ]
     },
     "typed-boundaries": {
-      "executor": "nx:noop",
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python3 tools/lints/check_typed_boundaries.py"
+      },
+      "cache": false,
       "inputs": [
         "{workspaceRoot}/tools/lints/check_typed_boundaries.py",
         "{workspaceRoot}/tools/lints/typed_boundaries_baseline.txt",
@@ -123,7 +144,11 @@
       ]
     },
     "ignore-staleness": {
-      "executor": "nx:noop",
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python3 tools/lints/check_ignore_staleness.py"
+      },
+      "cache": false,
       "inputs": [
         "{workspaceRoot}/**/pyproject.toml",
         "{workspaceRoot}/tools/lints/**/*",
@@ -135,7 +160,11 @@
       ]
     },
     "uv-lock": {
-      "executor": "nx:noop",
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/audit.sh uv-lock"
+      },
+      "cache": false,
       "inputs": [
         "{workspaceRoot}/**/uv.lock",
         "{workspaceRoot}/**/pyproject.toml",

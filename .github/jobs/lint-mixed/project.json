@@ -7,7 +7,11 @@
   },
   "targets": {
     "api-schema": {
-      "executor": "nx:noop",
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/ci/checks.mjs api-schema"
+      },
+      "cache": false,
       "inputs": [
         "{workspaceRoot}/apps/api/app/**/*.py",
         "{workspaceRoot}/libs/shared/py/**/*.py",
@@ -27,7 +31,11 @@
       ]
     },
     "analytics-catalog": {
-      "executor": "nx:noop",
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/ci/checks.mjs analytics-catalog"
+      },
+      "cache": false,
       "inputs": [
         "{workspaceRoot}/libs/shared/py/analytics/**/*",
         "{workspaceRoot}/libs/shared/ts/src/analytics/generated/**/*",
@@ -40,7 +48,11 @@
       ]
     },
     "cli-config-schema": {
-      "executor": "nx:noop",
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/ci/checks.mjs cli-config-schema"
+      },
+      "cache": false,
       "inputs": [
         "{workspaceRoot}/apps/api/app/config/**/*",
         "{workspaceRoot}/apps/api/scripts/dump_config_schema.py",
@@ -53,7 +65,11 @@
       ]
     },
     "deploy-templates": {
-      "executor": "nx:noop",
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/ci/checks.mjs deploy-templates"
+      },
+      "cache": false,
       "inputs": [
         "{workspaceRoot}/infra/docker/docker-compose.selfhost.yml",
         "{workspaceRoot}/infra/docker/selfhost/Caddyfile",
@@ -83,7 +99,11 @@
       ]
     },
     "api-schema-types": {
-      "executor": "nx:noop",
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/ci/checks.mjs api-schema-types"
+      },
+      "cache": false,
       "inputs": [
         "{workspaceRoot}/apps/api/openapi.json",
         "ciHarness",
@@ -94,7 +114,11 @@
       ]
     },
     "observability-evlog-tests": {
-      "executor": "nx:noop",
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run --frozen --no-build --isolated --only-group harness pytest tools/evlog_map tools/logcheck -q"
+      },
+      "cache": false,
       "inputs": [
         "{workspaceRoot}/tools/evlog_map/**/*",
         "{workspaceRoot}/tools/logcheck/**/*",
@@ -139,7 +163,11 @@
       ]
     },
     "wide-event-conformance": {
-      "executor": "nx:noop",
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python3 scripts/ci/wide-event-conformance/run.py --show-capture"
+      },
+      "cache": false,
       "inputs": [
         "ciHarness",
         "{workspaceRoot}/**/*.{py,ts,tsx}",

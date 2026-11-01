@@ -96,7 +96,11 @@
       ]
     },
     "pnpm-audit": {
-      "executor": "nx:noop",
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/audit.sh pnpm"
+      },
+      "cache": false,
       "inputs": [
         "{workspaceRoot}/pnpm-lock.yaml",
         "{workspaceRoot}/**/package.json",

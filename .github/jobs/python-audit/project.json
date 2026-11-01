@@ -7,7 +7,11 @@
   },
   "targets": {
     "import-cost": {
-      "executor": "nx:noop",
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python3 tools/lints/check_import_cost.py --report"
+      },
+      "cache": false,
       "inputs": [
         "{workspaceRoot}/apps/api/app/constants/**/*",
         "{workspaceRoot}/apps/api/app/config/**/*",
@@ -24,7 +28,11 @@
       ]
     },
     "pip-audit": {
-      "executor": "nx:noop",
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/audit.sh pip"
+      },
+      "cache": false,
       "inputs": [
         "{workspaceRoot}/uv.lock",
         "{workspaceRoot}/pyproject.toml",

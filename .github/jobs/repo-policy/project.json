@@ -7,7 +7,11 @@
   },
   "targets": {
     "suppression-hygiene": {
-      "executor": "nx:noop",
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python3 tools/lints/check_suppressions.py"
+      },
+      "cache": false,
       "inputs": [
         "ciHarness",
         "{workspaceRoot}/**/*.{py,toml,lock,ts,tsx,js,jsx,mjs,cjs,json,jsonc,css,yaml}",
@@ -17,7 +21,11 @@
       ]
     },
     "tool-pins": {
-      "executor": "nx:noop",
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python3 tools/lints/check_tool_pins.py"
+      },
+      "cache": false,
       "inputs": [
         "{workspaceRoot}/**/*",
         "!{workspaceRoot}/**/*.md",

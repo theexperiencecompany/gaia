@@ -1,5 +1,5 @@
 {
-  "$comment": "GAIA verify lanes — local mirror of CI quality gates (.github/workflows/ci.yml). name matches the CI job/step (rows may be step-granular). ci_check = the ci.yml check (one step of a grouped job, posted as the `ci / <area> / <check>` commit status) that runs this lane on a PR push; `verdict.py reuse-plan` reuses a check's last pass on the PR while nx would not select its task for what changed since, so a lane without ci_check (or without nx) always runs. Only fast-tier checks carry one: reuse applies to pull_request runs only, and the audits and the live PostHog check are never reused. nx = the Nx task whose inputs decide whether this lane runs, in CI, in `verdict.py reuse-plan` and in `mise ci:local` alike (.github/jobs/<job>/project.json, or a real project for gaia-connect and alert-rules). A lane with no nx task has scope instead: a Python regex over changed paths; it runs if ANY file matches (--all overrides). heavy=true needs --with-heavy. timeout_s hard cap; expiry -> status=timeout (exit 2). require_cmd: any missing -> skipped(missing-tool). require_env: an unset credential skips the lane in automatic selection (reason printed), while --only <lane> still runs it so it fails loud. command runs at repo root — keep byte-parity with the CI job's own repro line. Edit a workflow lane and this file in the SAME commit. INTENTIONALLY NOT MIRRORED (CI-only): build, build-images, coverage (combines the unit/integration/bridge slices; fail-under 80 on master, report-only on PRs), docker-image, regression-proof, validate-release-manifest, test-harness-tools, test-python (the full pytest suite is CI's job; locally run files with `mise test:one`), trivy-scan (advisory), changelog-sync (auto-fix PR job). Known deltas: alert-rules needs locally installed pint/promtool (CI pins v0.87.0/v3.1.0 from release tarballs); whole-repo scopes are stricter than CI's changed-file scoping (safe direction). Post-merge note: master pinned bandit/xenon/interrogate and split ignore-ratchet into ignore-whys + ignore-staleness + tool-pins (2026-08 merge of origin/master).",
+  "$comment": "GAIA verify lanes — local mirror of CI quality gates (.github/workflows/ci.yml). name matches the CI job/step (rows may be step-granular). ci_check = the ci.yml check (one step of a grouped job, posted as the `ci / <area> / <check>` commit status) that runs this lane on a PR push; `verdict.py reuse-plan` reuses a check's last pass on the PR while nx would not select its task for what changed since, so a lane without ci_check (or without nx) always runs. Only fast-tier checks carry one: reuse applies to pull_request runs only, and the audits and the live PostHog check are never reused. nx = the Nx task whose inputs decide whether this lane runs, in CI, in `verdict.py reuse-plan` and in `mise ci:local` alike (.github/jobs/<job>/project.json, or a real project for gaia-connect and alert-rules). A lane with no nx task has scope instead: a Python regex over changed paths; it runs if ANY file matches (--all overrides). heavy=true needs --with-heavy. timeout_s hard cap; expiry -> status=timeout (exit 2). require_cmd: any missing -> skipped(missing-tool). require_env: an unset credential skips the lane in automatic selection (reason printed), while --only <lane> still runs it so it fails loud. command runs at repo root; a lane whose nx task is runnable has none, and ci:local runs `nx run <task>`, the line CI's step runs (test_workflow_nx_gates.py holds the two equal). Edit a workflow lane and this file in the SAME commit. INTENTIONALLY NOT MIRRORED (CI-only): build, build-images, coverage (combines the unit/integration/bridge slices; fail-under 80 on master, report-only on PRs), docker-image, regression-proof, validate-release-manifest, test-harness-tools, test-python (the full pytest suite is CI's job; locally run files with `mise test:one`), trivy-scan (advisory), changelog-sync (auto-fix PR job). Known deltas: alert-rules needs locally installed pint/promtool (CI pins v0.87.0/v3.1.0 from release tarballs); whole-repo scopes are stricter than CI's changed-file scoping (safe direction). Post-merge note: master pinned bandit/xenon/interrogate and split ignore-ratchet into ignore-whys + ignore-staleness + tool-pins (2026-08 merge of origin/master).",
   "schema_version": 1,
   "lanes": [
     {
@@ -54,8 +54,7 @@
       "$comment": "The generated API contract's lane. What can change it is lint-mixed:api-schema's nx inputs (.github/jobs/lint-mixed/project.json): a FastAPI/Pydantic bump changes the output with no route edit, so the manifests count. The prek `api-types` hook's `files:` regex copies them; scripts/ci/tests/test_hook_scopes.py holds the two equal.",
       "heavy": false,
       "timeout_s": 300,
-      "require_cmd": ["uv", "node"],
-      "command": "node scripts/ci/checks.mjs api-schema"
+      "require_cmd": ["uv", "node"]
     },
     {
       "name": "analytics-catalog",
@@ -63,8 +62,7 @@
       "ci_check": "analytics-catalog",
       "heavy": false,
       "timeout_s": 300,
-      "require_cmd": ["uv", "node"],
-      "command": "node scripts/ci/checks.mjs analytics-catalog"
+      "require_cmd": ["uv", "node"]
     },
     {
       "name": "cli-config-schema",
@@ -72,8 +70,7 @@
       "ci_check": "cli-config-schema",
       "heavy": false,
       "timeout_s": 300,
-      "require_cmd": ["uv", "node"],
-      "command": "node scripts/ci/checks.mjs cli-config-schema"
+      "require_cmd": ["uv", "node"]
     },
     {
       "name": "deploy-templates",
@@ -81,8 +78,7 @@
       "ci_check": "deploy-templates",
       "heavy": false,
       "timeout_s": 300,
-      "require_cmd": ["uv", "node"],
-      "command": "node scripts/ci/checks.mjs deploy-templates"
+      "require_cmd": ["uv", "node"]
     },
     {
       "name": "analytics-check",
@@ -108,8 +104,7 @@
       "ci_check": "api-schema-types",
       "heavy": false,
       "timeout_s": 120,
-      "require_cmd": ["node"],
-      "command": "node scripts/ci/checks.mjs api-schema-types"
+      "require_cmd": ["node"]
     },
     {
       "name": "components-per-file",
@@ -161,8 +156,7 @@
       "ci_check": "suppression-hygiene",
       "heavy": false,
       "timeout_s": 120,
-      "require_cmd": [],
-      "command": "python3 tools/lints/check_suppressions.py"
+      "require_cmd": []
     },
     {
       "name": "dead-code",
@@ -197,8 +191,7 @@
       "ci_check": "custom-lints",
       "heavy": false,
       "timeout_s": 120,
-      "require_cmd": [],
-      "command": "python3 tools/lints/run.py apps/api/app apps/api/tests"
+      "require_cmd": []
     },
     {
       "name": "lint-imports",
@@ -206,8 +199,7 @@
       "ci_check": "lint-imports",
       "heavy": false,
       "timeout_s": 300,
-      "require_cmd": ["uvx"],
-      "command": "cd apps/api && uv run --frozen --no-build --isolated --only-group lint lint-imports --no-cache"
+      "require_cmd": ["uvx"]
     },
     {
       "name": "plr-complexity",
@@ -215,8 +207,7 @@
       "ci_check": "plr-complexity",
       "heavy": false,
       "timeout_s": 120,
-      "require_cmd": [],
-      "command": "python3 tools/lints/check_plr_complexity.py"
+      "require_cmd": []
     },
     {
       "name": "typed-boundaries",
@@ -224,8 +215,7 @@
       "ci_check": "typed-boundaries",
       "heavy": false,
       "timeout_s": 120,
-      "require_cmd": [],
-      "command": "python3 tools/lints/check_typed_boundaries.py"
+      "require_cmd": []
     },
     {
       "name": "import-cost",
@@ -233,8 +223,7 @@
       "$comment": "Imports the real modules in fresh subprocesses, so it needs the synced venv; --report matches the CI step, which measures without gating until the base layers stop importing upward.",
       "heavy": true,
       "timeout_s": 900,
-      "require_cmd": [],
-      "command": "python3 tools/lints/check_import_cost.py --report"
+      "require_cmd": []
     },
     {
       "name": "ignore-whys",
@@ -242,8 +231,7 @@
       "ci_check": "ignore-whys",
       "heavy": false,
       "timeout_s": 120,
-      "require_cmd": [],
-      "command": "python3 tools/lints/check_ignore_whys.py"
+      "require_cmd": []
     },
     {
       "name": "ignore-staleness",
@@ -251,8 +239,7 @@
       "ci_check": "ignore-staleness",
       "heavy": false,
       "timeout_s": 120,
-      "require_cmd": [],
-      "command": "python3 tools/lints/check_ignore_staleness.py"
+      "require_cmd": []
     },
     {
       "name": "tool-pins",
@@ -260,8 +247,7 @@
       "ci_check": "tool-pins",
       "heavy": false,
       "timeout_s": 120,
-      "require_cmd": [],
-      "command": "python3 tools/lints/check_tool_pins.py"
+      "require_cmd": []
     },
     {
       "name": "uv-lock",
@@ -269,8 +255,7 @@
       "ci_check": "uv-lock",
       "heavy": false,
       "timeout_s": 300,
-      "require_cmd": ["uv"],
-      "command": "bash scripts/ci/audit.sh uv-lock"
+      "require_cmd": ["uv"]
     },
     {
       "name": "interrogate",
@@ -304,8 +289,7 @@
       "nx": "python-audit:pip-audit",
       "heavy": true,
       "timeout_s": 600,
-      "require_cmd": ["uv"],
-      "command": "bash scripts/ci/audit.sh pip"
+      "require_cmd": ["uv"]
     },
     {
       "name": "observability-evlog-tests",
@@ -313,8 +297,7 @@
       "ci_check": "observability-evlog-tests",
       "heavy": false,
       "timeout_s": 300,
-      "require_cmd": [],
-      "command": "uv run --frozen --no-build --isolated --only-group harness pytest tools/evlog_map tools/logcheck -q"
+      "require_cmd": []
     },
     {
       "name": "observability-map",
@@ -340,8 +323,7 @@
       "ci_check": "wide-event-conformance",
       "heavy": false,
       "timeout_s": 300,
-      "require_cmd": [],
-      "command": "python3 scripts/ci/wide-event-conformance/run.py --show-capture"
+      "require_cmd": []
     },
     {
       "name": "alert-rules",
@@ -390,8 +372,7 @@
       "$comment": "ts-build-test's seo check: the sitemap crawl and the squirrelscan ratchet (scripts/ci/baselines/squirrel-build.txt) against this checkout's production web build. scope mirrors changes.sh SEO_INPUTS (held equal by scripts/ci/tests/test_changes.py). Known delta: apps/web/mise.toml sets NEXT_PUBLIC_API_BASE_URL to the local API inside the build, whose prerender then cannot reach it; run it with node and pnpm on PATH ahead of mise's shims and NEXT_PUBLIC_API_BASE_URL=https://api.heygaia.io/api/v1/.",
       "heavy": true,
       "timeout_s": 1800,
-      "require_cmd": ["node", "pnpm", "curl", "openssl"],
-      "command": "bash scripts/ci/smoke-web.sh audit-build"
+      "require_cmd": ["node", "pnpm", "curl", "openssl"]
     }
   ]
 }
