@@ -214,10 +214,8 @@ const nextConfig = {
     ...(process.env.NODE_ENV === "development" ? ["dev.ts", "dev.tsx"] : []),
   ],
   async headers() {
-    // ISR hub pages are served with s-maxage only: browsers get no max-age to
-    // revalidate on, and Cloudflare is free to rewrite the HTML (which drops
-    // the validators squirrel looks for). Scope the fix to those routes; the
-    // static landing pages already send max-age=0, and app routes must keep
+    // ISR hub pages send s-maxage only; browsers need max-age and a validator.
+    // Scope it to those routes: static pages already pass, app routes need
     // their private/no-store headers.
     const marketingHubs = ["alternative-to", "automate", "compare", "learn", "for"];
     const buildLastModified = new Date().toUTCString();
