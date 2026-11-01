@@ -20,6 +20,7 @@
         "{workspaceRoot}/libs/shared/ts/src/api/generated/**/*",
         "{workspaceRoot}/scripts/ci/checks.mjs",
         "{workspaceRoot}/package.json",
+        "ciHarness",
         {
           "externalDependencies": []
         }
@@ -32,6 +33,7 @@
         "{workspaceRoot}/libs/shared/ts/src/analytics/generated/**/*",
         "{workspaceRoot}/uv.lock",
         "{workspaceRoot}/scripts/ci/checks.mjs",
+        "ciHarness",
         {
           "externalDependencies": []
         }
@@ -44,6 +46,7 @@
         "{workspaceRoot}/apps/api/scripts/dump_config_schema.py",
         "{workspaceRoot}/packages/cli/src/lib/api-config-schema.generated.json",
         "{workspaceRoot}/scripts/ci/checks.mjs",
+        "ciHarness",
         {
           "externalDependencies": []
         }
@@ -60,6 +63,7 @@
         "{workspaceRoot}/render.yaml",
         "{workspaceRoot}/scripts/ci/lib/deploy_templates.py",
         "{workspaceRoot}/scripts/ci/checks.mjs",
+        "ciHarness",
         {
           "externalDependencies": []
         }
@@ -72,6 +76,7 @@
         "{workspaceRoot}/libs/shared/ts/src/analytics/generated/**/*",
         "{workspaceRoot}/config/posthog/**/*",
         "{workspaceRoot}/scripts/ci/analytics.py",
+        "ciHarness",
         {
           "externalDependencies": []
         }
@@ -82,7 +87,7 @@
       "inputs": [
         "{workspaceRoot}/**/*.{ts,tsx}",
         "{workspaceRoot}/apps/api/openapi.json",
-        "{workspaceRoot}/config/api-schema-baseline.json",
+        "ciHarness",
         {
           "externalDependencies": []
         }
@@ -94,6 +99,7 @@
         "{workspaceRoot}/**/*.py",
         "{workspaceRoot}/tools/evlog_map/**/*",
         "{workspaceRoot}/tools/logcheck/**/*",
+        "ciHarness",
         {
           "externalDependencies": []
         }
@@ -105,6 +111,7 @@
         "{workspaceRoot}/**/*.py",
         "{workspaceRoot}/apps/bots/**/*",
         "{workspaceRoot}/libs/shared/ts/**/*",
+        "ciHarness",
         {
           "externalDependencies": []
         }
@@ -114,6 +121,7 @@
       "executor": "nx:noop",
       "inputs": [
         "{workspaceRoot}/**/*.py",
+        "ciHarness",
         {
           "externalDependencies": []
         }
@@ -124,6 +132,7 @@
       "inputs": [
         "{workspaceRoot}/apps/bots/**/*.ts",
         "{workspaceRoot}/libs/shared/ts/**/*.ts",
+        "ciHarness",
         {
           "externalDependencies": []
         }
@@ -133,6 +142,7 @@
       "executor": "nx:noop",
       "inputs": [
         "{workspaceRoot}/**/*.{py,ts,tsx}",
+        "ciHarness",
         {
           "externalDependencies": []
         }
@@ -144,6 +154,9 @@
         "{workspaceRoot}/**/*.{ts,tsx,py}",
         "{workspaceRoot}/**/package.json",
         "{workspaceRoot}/**/pyproject.toml",
+        "{workspaceRoot}/scripts/dead-code-check.sh",
+        "{workspaceRoot}/config/knip.config.ts",
+        "ciHarness",
         {
           "externalDependencies": []
         }
@@ -155,6 +168,7 @@
         "{workspaceRoot}/**/*",
         "!{workspaceRoot}/**/*.md",
         "!{workspaceRoot}/**/*.mdx",
+        "ciHarness",
         {
           "externalDependencies": []
         }

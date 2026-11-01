@@ -11,6 +11,7 @@
       "inputs": [
         "{workspaceRoot}/**/*.py",
         "{workspaceRoot}/apps/api/tests/**/*",
+        "ciHarness",
         {
           "externalDependencies": []
         }

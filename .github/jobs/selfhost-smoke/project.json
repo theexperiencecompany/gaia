@@ -28,6 +28,7 @@
         "{workspaceRoot}/apps/web/playwright.selfhost.config.ts",
         "{workspaceRoot}/scripts/ci/selfhost.sh",
         "{workspaceRoot}/.github/workflows/selfhost-smoke.yml",
+        "ciHarness",
         {
           "externalDependencies": []
         }

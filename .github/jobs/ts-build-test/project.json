@@ -19,6 +19,7 @@
         "{workspaceRoot}/scripts/ci/lib/origin_proxy.py",
         "{workspaceRoot}/scripts/ci/baselines/squirrel-build.txt",
         "{workspaceRoot}/config/squirrel.toml",
+        "ciHarness",
         {
           "externalDependencies": []
         }

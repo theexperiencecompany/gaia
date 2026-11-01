@@ -10,6 +10,8 @@
       "executor": "nx:noop",
       "inputs": [
         "{workspaceRoot}/**/*.py",
+        "{workspaceRoot}/tools/semgrep/**/*",
+        "ciHarness",
         {
           "externalDependencies": []
         }
@@ -25,6 +27,7 @@
         "{workspaceRoot}/**/go.mod",
         "{workspaceRoot}/**/go.sum",
         "{workspaceRoot}/**/*Dockerfile*",
+        "ciHarness",
         {
           "externalDependencies": []
         }

@@ -10,6 +10,9 @@
       "executor": "nx:noop",
       "inputs": [
         "{workspaceRoot}/**/*.{ts,tsx,js,jsx,mjs,cjs,json,jsonc,css}",
+        "{workspaceRoot}/biome.json",
+        "{workspaceRoot}/config/biome-rules/**/*",
+        "ciHarness",
         {
           "externalDependencies": []
         }
@@ -21,6 +24,9 @@
         "{workspaceRoot}/**/*.{ts,tsx,js,jsx,json}",
         "{workspaceRoot}/pnpm-lock.yaml",
         "{workspaceRoot}/packages/**/*",
+        "{workspaceRoot}/config/.syncpackrc.json",
+        "{workspaceRoot}/config/.npmpackagejsonlintrc.json",
+        "ciHarness",
         {
           "externalDependencies": []
         }
@@ -30,6 +36,9 @@
       "executor": "nx:noop",
       "inputs": [
         "{workspaceRoot}/**/*.{ts,tsx,js,jsx}",
+        "{workspaceRoot}/biome.json",
+        "{workspaceRoot}/config/biome-rules/**/*",
+        "ciHarness",
         {
           "externalDependencies": []
         }
@@ -39,6 +48,7 @@
       "executor": "nx:noop",
       "inputs": [
         "{workspaceRoot}/**/*.{ts,tsx,js,jsx,mjs,cjs}",
+        "ciHarness",
         {
           "externalDependencies": []
         }
@@ -48,6 +58,7 @@
       "executor": "nx:noop",
       "inputs": [
         "{workspaceRoot}/**/*.{ts,tsx,js}",
+        "ciHarness",
         {
           "externalDependencies": []
         }
@@ -57,6 +68,7 @@
       "executor": "nx:noop",
       "inputs": [
         "{workspaceRoot}/**/*.{ts,tsx,js,jsx,mjs,cjs}",
+        "ciHarness",
         {
           "externalDependencies": []
         }
@@ -66,6 +78,7 @@
       "executor": "nx:noop",
       "inputs": [
         "{workspaceRoot}/**/*.tsx",
+        "ciHarness",
         {
           "externalDependencies": []
         }
@@ -76,6 +89,7 @@
       "inputs": [
         "{workspaceRoot}/packages/cli/**/*",
         "{workspaceRoot}/pnpm-lock.yaml",
+        "ciHarness",
         {
           "externalDependencies": []
         }
@@ -87,6 +101,7 @@
         "{workspaceRoot}/pnpm-lock.yaml",
         "{workspaceRoot}/**/package.json",
         "{workspaceRoot}/config/pnpm-audit-allowlist.json",
+        "ciHarness",
         {
           "externalDependencies": []
         }
@@ -96,8 +111,9 @@
       "executor": "nx:noop",
       "inputs": [
         "{workspaceRoot}/**/*.{ts,tsx,js,jsx}",
-        "{workspaceRoot}/tsconfig*",
         "{workspaceRoot}/nx.json",
+        "{workspaceRoot}/**/tsconfig*.json",
+        "ciHarness",
         {
           "externalDependencies": []
         }
@@ -107,6 +123,8 @@
       "executor": "nx:noop",
       "inputs": [
         "{workspaceRoot}/**/*.{ts,tsx,js,jsx,py}",
+        "{workspaceRoot}/config/.jscpd.json",
+        "ciHarness",
         {
           "externalDependencies": []
         }

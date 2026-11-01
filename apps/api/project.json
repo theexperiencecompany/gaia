@@ -53,10 +53,7 @@
       "cache": true,
       "inputs": [
         "{projectRoot}/pyproject.toml",
-        "{projectRoot}/uv.lock",
-        {
-          "externalDependencies": []
-        }
+        "{workspaceRoot}/uv.lock"
       ],
       "outputs": [
         "{projectRoot}/.venv"
@@ -79,7 +76,6 @@
       "inputs": [
         "default",
         "{workspaceRoot}/apps/api/pyproject.toml",
-        "{workspaceRoot}/apps/api/ruff.toml",
         "python",
         "{workspaceRoot}/libs/shared/py/**/*",
         "^production",
@@ -115,7 +111,6 @@
       "inputs": [
         "default",
         "{workspaceRoot}/apps/api/pyproject.toml",
-        "{workspaceRoot}/apps/api/ruff.toml",
         {
           "externalDependencies": []
         }

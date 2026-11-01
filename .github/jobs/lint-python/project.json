@@ -12,6 +12,7 @@
         "{workspaceRoot}/**/*.py",
         "{workspaceRoot}/**/pyproject.toml",
         "{workspaceRoot}/**/ruff.toml",
+        "ciHarness",
         {
           "externalDependencies": []
         }
@@ -22,6 +23,7 @@
       "inputs": [
         "{workspaceRoot}/**/*.py",
         "{workspaceRoot}/tools/lints/**/*",
+        "ciHarness",
         {
           "externalDependencies": []
         }
@@ -32,6 +34,7 @@
       "inputs": [
         "{workspaceRoot}/apps/api/app/**/*.py",
         "{workspaceRoot}/apps/api/pyproject.toml",
+        "ciHarness",
         {
           "externalDependencies": []
         }
@@ -42,6 +45,7 @@
       "inputs": [
         "{workspaceRoot}/**/pyproject.toml",
         "{workspaceRoot}/tools/lints/check_ignore_whys.py",
+        "ciHarness",
         {
           "externalDependencies": []
         }
@@ -53,6 +57,7 @@
         "{workspaceRoot}/**/*.py",
         "{workspaceRoot}/tools/lints/check_plr_complexity.py",
         "{workspaceRoot}/tools/lints/plr_complexity_baseline.txt",
+        "ciHarness",
         {
           "externalDependencies": []
         }
@@ -66,6 +71,7 @@
         "{workspaceRoot}/tools/lints/typed_boundaries_baseline.txt",
         "{workspaceRoot}/tools/lints/_ratchet.py",
         "{workspaceRoot}/tools/lints/_common.py",
+        "ciHarness",
         {
           "externalDependencies": []
         }
@@ -76,6 +82,7 @@
       "inputs": [
         "{workspaceRoot}/**/*.py",
         "{workspaceRoot}/pyproject.toml",
+        "ciHarness",
         {
           "externalDependencies": []
         }
@@ -86,6 +93,7 @@
       "inputs": [
         "{workspaceRoot}/**/*.py",
         "{workspaceRoot}/pyproject.toml",
+        "ciHarness",
         {
           "externalDependencies": []
         }
@@ -96,6 +104,7 @@
       "inputs": [
         "{workspaceRoot}/**/*.py",
         "{workspaceRoot}/pyproject.toml",
+        "ciHarness",
         {
           "externalDependencies": []
         }
@@ -107,6 +116,7 @@
         "{workspaceRoot}/**/*.py",
         "{workspaceRoot}/**/pyproject.toml",
         "{workspaceRoot}/uv.lock",
+        "ciHarness",
         {
           "externalDependencies": []
         }
@@ -118,6 +128,7 @@
         "{workspaceRoot}/**/*.py",
         "{workspaceRoot}/**/pyproject.toml",
         "{workspaceRoot}/tools/lints/**/*",
+        "ciHarness",
         {
           "externalDependencies": []
         }
@@ -128,6 +139,7 @@
       "inputs": [
         "{workspaceRoot}/**/uv.lock",
         "{workspaceRoot}/**/pyproject.toml",
+        "ciHarness",
         {
           "externalDependencies": []
         }

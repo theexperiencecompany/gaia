@@ -10,6 +10,7 @@
       "executor": "nx:noop",
       "inputs": [
         "{workspaceRoot}/**/*.{py,toml,lock,ts,tsx,js,jsx,mjs,cjs,json,jsonc,css,yaml}",
+        "ciHarness",
         {
           "externalDependencies": []
         }
@@ -21,6 +22,7 @@
         "{workspaceRoot}/**/*",
         "!{workspaceRoot}/**/*.md",
         "!{workspaceRoot}/**/*.mdx",
+        "ciHarness",
         {
           "externalDependencies": []
         }

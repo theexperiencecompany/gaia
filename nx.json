@@ -20,7 +20,13 @@
       "!{projectRoot}/**/*.{spec,test}.{ts,tsx,js,jsx}"
     ],
     "typecheck": ["default", { "env": "GAIA_TS_CHECKER" }],
-    "python": ["{workspaceRoot}/pyproject.toml", "{workspaceRoot}/uv.lock"]
+    "python": ["{workspaceRoot}/pyproject.toml", "{workspaceRoot}/uv.lock"],
+    "ciHarness": [
+      "{workspaceRoot}/scripts/ci/**/*",
+      "!{workspaceRoot}/scripts/ci/**/*.md",
+      "{workspaceRoot}/.github/workflows/ci.yml",
+      "{workspaceRoot}/.github/actions/**/*"
+    ]
   },
   "targetDefaults": {
     "sync": {

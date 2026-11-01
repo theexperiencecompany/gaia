@@ -20,6 +20,12 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 LANES = json.loads((REPO_ROOT / "scripts" / "dev" / "verify-lanes.json").read_text())["lanes"]
 NX_LANES = [lane for lane in LANES if "nx" in lane]
+# Every check reads the CI harness (nx.json's ciHarness); reuse-plan's
+# GLOBAL_INVALIDATORS already covers it, so no lane regex names it.
+HARNESS_PATTERNS = {
+    p.removeprefix("{workspaceRoot}/")
+    for p in json.loads((REPO_ROOT / "nx.json").read_text())["namedInputs"]["ciHarness"]
+}
 # nx makes these an input of every task; no lane regex names them.
 NX_IMPLICIT_INPUTS = {".gitignore", ".nxignore", "nx.json", "tsconfig.base.json", "tsconfig.json"}
 
@@ -66,7 +72,9 @@ def nx_files(tracked: list[str]) -> dict[str, set[str]]:
     files: dict[str, set[str]] = defaultdict(set)
     for task, reasons in affected.items():
         files[task] |= {
-            r["file"] for r in reasons if r["kind"] == "input-file"
+            r["file"]
+            for r in reasons
+            if r["kind"] == "input-file" and r.get("pattern") not in HARNESS_PATTERNS
         } - NX_IMPLICIT_INPUTS
     return files
 

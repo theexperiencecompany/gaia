@@ -18,6 +18,7 @@
         "{workspaceRoot}/libs/pyproject.toml",
         "{workspaceRoot}/scripts/ci/audit.sh",
         "{workspaceRoot}/apps/api/app/constants/memory.py",
+        "ciHarness",
         {
           "externalDependencies": []
         }

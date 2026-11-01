@@ -17,6 +17,7 @@
         "{workspaceRoot}/apps/api/app/worker.py",
         "{workspaceRoot}/apps/api/tests/conftest.py",
         "{workspaceRoot}/tools/lints/check_import_cost.py",
+        "ciHarness",
         {
           "externalDependencies": []
         }
@@ -27,6 +28,7 @@
       "inputs": [
         "{workspaceRoot}/uv.lock",
         "{workspaceRoot}/pyproject.toml",
+        "ciHarness",
         {
           "externalDependencies": []
         }
