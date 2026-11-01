@@ -322,14 +322,16 @@ rule/why/exact-fix/doc-pointer on failure (see `tools/lints/`).
   `apps/web/.next/cache` in ci.yml ts-build-test + desktop-pr-build prepare).
 - `nx.json` `defaultBase` is `master` (the single base branch). CI passes
   explicit bases; `defaultBase` matters for local `nx affected` / mise tasks.
-- Versions are pinned where a trusted SHA/number was resolvable (nx 22.7.7 in
-  nx.json `installation`, uv 0.10.6 (same as the Dockerfiles), `uvx ruff@<uv.lock version>` in the ruff
-  lane, pnpm/action-setup + docker/login-action by SHA).
-  `actions/checkout`/`setup-node`/`cache`/`nx-set-shas` still float on major
-  tags — pin them from a machine with GitHub API access.
+- Every tool version has one declaration: Node in `.node-version`, pnpm in
+  `package.json#packageManager`, Python in `.python-version`, the Python lint
+  and audit tools in the root `pyproject.toml`'s `lint` group (locked in
+  `uv.lock`, run with `uv run --frozen --no-build --isolated --only-group lint`),
+  biome in `pnpm-lock.yaml`, and every remote action by commit SHA.
+  `tools/lints/check_tool_pins.py` fails on a second copy (a `uvx tool@x`, an
+  action on a tag).
 - Never run a linter unpinned in a lane: ruff 0.16.0 shipped new rules
   (ISC004, RUF036) four minutes before a scheduled run and turned the lane
-  red with zero code changes. Pin to the uv.lock version; bump deliberately.
+  red with zero code changes. Bump a lint-group pin deliberately and re-lock.
 - Test-service images are digest-pinned (`tag@sha256:...`) in
   `scripts/ci/lib/service-images.sh`, the ONLY place a service image
   reference may appear; the tag part is a readability label, the digest is

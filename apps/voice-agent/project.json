@@ -3,7 +3,8 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
   "tags": [
-    "scope:python"
+    "scope:python",
+    "release:apps"
   ],
   "root": "apps/voice-agent",
   "sourceRoot": "apps/voice-agent/src",

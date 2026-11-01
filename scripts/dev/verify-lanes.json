@@ -180,7 +180,7 @@
       "heavy": false,
       "timeout_s": 180,
       "require_cmd": [],
-      "command": "uvx --no-build ruff@0.14.13 check . && uvx --no-build ruff@0.14.13 format --check ."
+      "command": "uv run --frozen --no-build --isolated --only-group lint ruff check . && uv run --frozen --no-build --isolated --only-group lint ruff format --check ."
     },
     {
       "name": "python-mypy",
@@ -207,7 +207,7 @@
       "heavy": false,
       "timeout_s": 300,
       "require_cmd": ["uvx"],
-      "command": "cd apps/api && uvx --no-build --from import-linter==2.6 lint-imports --no-cache"
+      "command": "cd apps/api && uv run --frozen --no-build --isolated --only-group lint lint-imports --no-cache"
     },
     {
       "name": "plr-complexity",
@@ -279,7 +279,7 @@
       "heavy": false,
       "timeout_s": 180,
       "require_cmd": [],
-      "command": "uvx --no-build interrogate==1.7.0 -c pyproject.toml apps/api apps/voice-agent libs/shared/py"
+      "command": "uv run --frozen --no-build --isolated --only-group lint interrogate -c pyproject.toml apps/api apps/voice-agent libs/shared/py"
     },
     {
       "name": "xenon",
@@ -288,7 +288,7 @@
       "heavy": false,
       "timeout_s": 180,
       "require_cmd": [],
-      "command": "uvx --no-build xenon==0.9.3 --max-absolute F --max-modules E --max-average B apps/api apps/voice-agent libs/shared/py -e 'apps/api/tests/**' -e 'apps/api/scripts/**' -e 'libs/shared/py/tests/**'"
+      "command": "uv run --frozen --no-build --isolated --only-group lint xenon --max-absolute F --max-modules E --max-average B apps/api apps/voice-agent libs/shared/py -e 'apps/api/tests/**' -e 'apps/api/scripts/**' -e 'libs/shared/py/tests/**'"
     },
     {
       "name": "bandit",
@@ -297,7 +297,7 @@
       "heavy": false,
       "timeout_s": 300,
       "require_cmd": [],
-      "command": "FILES=$(scripts/ci/changes.sh py-source); if [ \"$FILES\" = \"__FULL__\" ]; then uvx --no-build bandit@1.9.4 -c pyproject.toml -r apps/api/app apps/voice-agent/src libs/shared/py --severity-level low --confidence-level low; elif [ -z \"$FILES\" ]; then echo \"bandit: no changed Python source\"; else uvx --no-build bandit@1.9.4 -c pyproject.toml $FILES --severity-level low --confidence-level low; fi"
+      "command": "FILES=$(scripts/ci/changes.sh py-source); if [ \"$FILES\" = \"__FULL__\" ]; then uv run --frozen --no-build --isolated --only-group lint bandit -c pyproject.toml -r apps/api/app apps/voice-agent/src libs/shared/py --severity-level low --confidence-level low; elif [ -z \"$FILES\" ]; then echo \"bandit: no changed Python source\"; else uv run --frozen --no-build --isolated --only-group lint bandit -c pyproject.toml $FILES --severity-level low --confidence-level low; fi"
     },
     {
       "name": "pip-audit",
@@ -314,7 +314,7 @@
       "heavy": false,
       "timeout_s": 300,
       "require_cmd": [],
-      "command": "uvx --no-build pytest@9.1.1 tools/evlog_map tools/logcheck -q"
+      "command": "uv run --frozen --no-build --isolated --only-group harness pytest tools/evlog_map tools/logcheck -q"
     },
     {
       "name": "observability-map",

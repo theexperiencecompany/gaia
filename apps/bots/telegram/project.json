@@ -4,7 +4,7 @@
   "root": "apps/bots/telegram",
   "sourceRoot": "apps/bots/telegram/src",
   "projectType": "application",
-  "tags": ["scope:typescript"],
+  "tags": ["scope:typescript", "release:bots"],
   "release": {
     "docker": {
       "repositoryName": "theexperiencecompany/gaia-bot-telegram"

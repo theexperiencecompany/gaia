@@ -4,7 +4,7 @@
   "root": "apps/bots/discord",
   "sourceRoot": "apps/bots/discord/src",
   "projectType": "application",
-  "tags": ["scope:typescript"],
+  "tags": ["scope:typescript", "release:bots"],
   "release": {
     "docker": {
       "repositoryName": "theexperiencecompany/gaia-bot-discord"

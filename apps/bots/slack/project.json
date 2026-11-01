@@ -4,7 +4,7 @@
   "root": "apps/bots/slack",
   "sourceRoot": "apps/bots/slack/src",
   "projectType": "application",
-  "tags": ["scope:typescript"],
+  "tags": ["scope:typescript", "release:bots"],
   "release": {
     "docker": {
       "repositoryName": "theexperiencecompany/gaia-bot-slack"

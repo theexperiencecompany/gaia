@@ -9,7 +9,8 @@
   ],
   "projectType": "application",
   "tags": [
-    "scope:python"
+    "scope:python",
+    "release:apps"
   ],
   "release": {
     "docker": {

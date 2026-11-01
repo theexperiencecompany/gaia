@@ -4,7 +4,7 @@
   "root": "apps/bots/imessage",
   "sourceRoot": "apps/bots/imessage/src",
   "projectType": "application",
-  "tags": ["scope:typescript"],
+  "tags": ["scope:typescript", "release:bots"],
   "release": {
     "docker": {
       "repositoryName": "theexperiencecompany/gaia-bot-imessage"

@@ -12,7 +12,7 @@
     "lint": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uvx ruff@0.14.13 check .",
+        "command": "uv run --frozen --no-build --isolated --only-group lint ruff check .",
         "cwd": "{projectRoot}"
       },
       "cache": true,
@@ -28,7 +28,7 @@
     "format": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uvx ruff@0.14.13 format .",
+        "command": "uv run --frozen --no-build --isolated --only-group lint ruff format .",
         "cwd": "{projectRoot}"
       }
     }

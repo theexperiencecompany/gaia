@@ -1,19 +1,23 @@
-# Ruff/mypy/bandit/pip-audit pins are REQUIRED on this surface by
-# tools/lints/check_tool_pins.py (EXPECTED table) — even though the root
-# .pre-commit-config.yaml also gates them repo-wide at identical versions.
-# Do not remove: the guard fails without these blocks.
+# Ruff, bandit and pip-audit run from the root pyproject's lint group (uv.lock),
+# the version CI and mise run; tools/lints/check_tool_pins.py fails on a uvx copy.
 # Commit-time only; the pre-push stage belongs to the root ci:local hook.
 default_stages: [pre-commit]
 
 repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.13
+  - repo: local
     hooks:
       - id: ruff
-        args: [--fix, --exit-non-zero-on-fix]
+        name: ruff check
+        entry: uv run --frozen --no-build --isolated --only-group lint ruff check --force-exclude --fix --exit-non-zero-on-fix
+        language: system
+        types_or: [python, pyi]
         stages: [pre-commit]
         priority: 0
       - id: ruff-format
+        name: ruff format
+        entry: uv run --frozen --no-build --isolated --only-group lint ruff format --force-exclude
+        language: system
+        types_or: [python, pyi]
         stages: [pre-commit]
         priority: 0
 
@@ -28,7 +32,7 @@ repos:
         language: system
         # Load [tool.bandit] skips from the root pyproject.toml — bandit's config
         # discovery only looks in the hook cwd (apps/api), which has no section.
-        entry: bash -c "uvx --no-build bandit@1.9.4 -c \"$(git rev-parse --show-toplevel)/pyproject.toml\" -r app --exclude app/agents/prompts"
+        entry: bash -c "uv run --frozen --no-build --isolated --only-group lint bandit -c \"$(git rev-parse --show-toplevel)/pyproject.toml\" -r app --exclude app/agents/prompts"
         types: [python]
         pass_filenames: false
         priority: 0
@@ -36,7 +40,7 @@ repos:
       - id: pip-audit
         name: Pip Audit
         language: system
-        entry: bash -c "uv export --no-dev --frozen --no-emit-header 2>/dev/null | uvx --no-build pip-audit@2.10.1 --disable-pip --no-deps -r /dev/stdin"
+        entry: bash -c "uv export --no-dev --frozen --no-emit-header 2>/dev/null | uv run --frozen --no-build --isolated --only-group lint pip-audit --disable-pip --no-deps -r /dev/stdin"
         pass_filenames: false
         priority: 0
 

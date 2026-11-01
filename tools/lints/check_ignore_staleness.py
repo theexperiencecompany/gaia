@@ -16,7 +16,7 @@ Pattern globs (``**/tests/**`` …) are skipped deliberately: they are category
 policy ("tests may use asserts"), not per-file debt, and cannot be classified
 by single-path reruns.
 
-Requires ``uvx`` (uses the repo-pinned ruff). Stdlib otherwise.
+Requires ``uv`` (runs the ruff the lint group locks). Stdlib otherwise.
 
 Usage::
 
@@ -48,10 +48,16 @@ _HERE = Path(__file__).resolve().parent
 REPO_ROOT = _HERE.parents[1]
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 
+# The ruff the root pyproject's lint group locks, as every other ruff runs.
 _RUFF = [
-    "uvx",
+    "uv",
+    "run",
+    "--frozen",
     "--no-build",
-    "ruff@0.14.13",
+    "--isolated",
+    "--only-group",
+    "lint",
+    "ruff",
     "check",
     "--no-cache",
     "--output-format",

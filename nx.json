@@ -99,10 +99,10 @@
     },
     "groups": {
       "apps": {
-        "projects": ["api", "voice-agent"],
+        "projects": ["tag:release:apps"],
         "projectsRelationship": "independent",
         "docker": {
-          "groupPreVersionCommand": "npx nx run-many -t docker:build -p api,voice-agent --parallel --skipNxCache",
+          "groupPreVersionCommand": "npx nx run-many -t docker:build -p tag:release:apps --parallel --skipNxCache",
           "skipVersionActions": true,
           "registryUrl": "ghcr.io"
         },
@@ -111,16 +111,10 @@
         }
       },
       "bots": {
-        "projects": [
-          "bot-discord",
-          "bot-slack",
-          "bot-telegram",
-          "bot-whatsapp",
-          "bot-imessage"
-        ],
+        "projects": ["tag:release:bots"],
         "projectsRelationship": "fixed",
         "docker": {
-          "groupPreVersionCommand": "npx nx run-many -t docker:build -p bot-discord,bot-slack,bot-telegram,bot-whatsapp,bot-imessage --parallel --skipNxCache",
+          "groupPreVersionCommand": "npx nx run-many -t docker:build -p tag:release:bots --parallel --skipNxCache",
           "skipVersionActions": true,
           "registryUrl": "ghcr.io"
         },

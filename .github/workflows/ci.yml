@@ -641,13 +641,13 @@ jobs:
           if [ "$FILES" = "__FULL__" ]; then
             # Whole repo, not a list of roots: a new app or lib is covered the
             # moment it exists. Exclusions live in [tool.ruff] extend-exclude.
-            uvx --no-build ruff@0.14.13 check .
-            uvx --no-build ruff@0.14.13 format --check .
+            uv run --frozen --no-build --isolated --only-group lint ruff check .
+            uv run --frozen --no-build --isolated --only-group lint ruff format --check .
           elif [ -z "$FILES" ]; then
             echo "No matching changed files — skipping."
           else
-            uvx --no-build ruff@0.14.13 check $FILES
-            uvx --no-build ruff@0.14.13 format --check $FILES
+            uv run --frozen --no-build --isolated --only-group lint ruff check $FILES
+            uv run --frozen --no-build --isolated --only-group lint ruff format --check $FILES
           fi
           echo "::endgroup::"
       - *upload-verdict-so-far
@@ -671,7 +671,7 @@ jobs:
         # --no-cache is load-bearing: grimp's on-disk cache drops function-scope
         # imports, so a cached run analyses a subset of the graph.
         working-directory: apps/api
-        run: uvx --no-build --from import-linter==2.6 lint-imports --no-cache
+        run: uv run --frozen --no-build --isolated --only-group lint lint-imports --no-cache
       - *upload-verdict-so-far
 
       - name: ignore-whys — every ruff/mypy escape hatch carries a why
@@ -708,7 +708,7 @@ jobs:
         run: |
           FILES=$(scripts/ci/changes.sh py-source)
           if [ "$FILES" = "__FULL__" ]; then
-            uvx xenon==0.9.3 \
+            uv run --frozen --no-build --isolated --only-group lint xenon \
               --max-absolute F \
               --max-modules E \
               --max-average B \
@@ -719,7 +719,7 @@ jobs:
           elif [ -z "$FILES" ]; then
             echo "No matching changed files — skipping."
           else
-            uvx xenon==0.9.3 \
+            uv run --frozen --no-build --isolated --only-group lint xenon \
               --max-absolute F \
               --max-modules E \
               --max-average B \
@@ -735,11 +735,11 @@ jobs:
         run: |
           FILES=$(scripts/ci/changes.sh py-source)
           if [ "$FILES" = "__FULL__" ]; then
-            uvx interrogate==1.7.0 -c pyproject.toml apps/api apps/voice-agent libs/shared/py
+            uv run --frozen --no-build --isolated --only-group lint interrogate -c pyproject.toml apps/api apps/voice-agent libs/shared/py
           elif [ -z "$FILES" ]; then
             echo "No matching changed files — skipping."
           else
-            uvx interrogate==1.7.0 -c pyproject.toml $FILES
+            uv run --frozen --no-build --isolated --only-group lint interrogate -c pyproject.toml $FILES
           fi
       - *upload-verdict-so-far
 
@@ -751,11 +751,11 @@ jobs:
         run: |
           FILES=$(scripts/ci/changes.sh py-source)
           if [ "$FILES" = "__FULL__" ]; then
-            uvx --no-build bandit@1.9.4 -c pyproject.toml -r apps/api/app apps/voice-agent/src libs/shared/py --severity-level low --confidence-level low
+            uv run --frozen --no-build --isolated --only-group lint bandit -c pyproject.toml -r apps/api/app apps/voice-agent/src libs/shared/py --severity-level low --confidence-level low
           elif [ -z "$FILES" ]; then
             echo "No matching changed files — skipping."
           else
-            uvx --no-build bandit@1.9.4 -c pyproject.toml $FILES --severity-level low --confidence-level low
+            uv run --frozen --no-build --isolated --only-group lint bandit -c pyproject.toml $FILES --severity-level low --confidence-level low
           fi
       - *upload-verdict-so-far
 
@@ -1021,7 +1021,7 @@ jobs:
         if: contains(fromJSON(needs.detect.outputs.tasks), 'lint-mixed:observability-evlog-tests') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'observability-evlog-tests')
         env:
           CHECK: |
-            uvx --no-build pytest@9.1.1 tools/evlog_map tools/logcheck -q
+            uv run --frozen --no-build --isolated --only-group harness pytest tools/evlog_map tools/logcheck -q
         run: python3 scripts/ci/runner.py spawn observability-evlog-tests -- bash -eo pipefail -c "$CHECK"
 
       # --min-score 100 gates BOTH quality and discovery: an empty map scores 0,
