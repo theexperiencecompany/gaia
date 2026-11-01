@@ -312,6 +312,11 @@ def test_a_superseded_master_run_is_force_cancelled_so_its_always_jobs_never_run
         r"/actions/workflows/ci.yml/runs$",
         Reply(200, {"workflow_runs": [{"id": 90, "status": "in_progress"}]}),
     )
+    github.on(
+        "GET",
+        r"/runs/90/jobs$",
+        Reply(200, {"jobs": [{"name": "lint-node", "status": "in_progress"}]}),
+    )
     github.on("POST", r"/runs/\d+/force-cancel$", Reply(202, {}))
     proc = run_runner(
         "cancel-superseded",
@@ -325,6 +330,32 @@ def test_a_superseded_master_run_is_force_cancelled_so_its_always_jobs_never_run
     assert proc.returncode == 0, proc.stderr
     posts = [r.path for r in github.requests if r.method == "POST"]
     assert posts == ["/repos/theexperiencecompany/gaia/actions/runs/90/force-cancel"]
+
+
+def test_a_superseded_master_run_mid_deploy_is_left_to_finish(github: FakeGitHub) -> None:
+    """A cancelled wrangler deploy leaves production's R2 cache half-filled; the newer run deploys after it."""
+    github.on(
+        "GET",
+        r"/actions/workflows/ci.yml/runs$",
+        Reply(200, {"workflow_runs": [{"id": 90, "status": "in_progress"}]}),
+    )
+    github.on(
+        "GET",
+        r"/runs/90/jobs$",
+        Reply(200, {"jobs": [{"name": "deploy-web / deploy-production", "status": "in_progress"}]}),
+    )
+    github.on("POST", r"/runs/\d+/force-cancel$", Reply(202, {}))
+    proc = run_runner(
+        "cancel-superseded",
+        env=github.env(
+            GITHUB_RUN_ID="100",
+            GITHUB_WORKFLOW_REF="theexperiencecompany/gaia/.github/workflows/ci.yml@refs/heads/master",
+            GITHUB_REF_NAME="master",
+            GITHUB_EVENT_NAME="push",
+        ),
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert [r for r in github.requests if r.method == "POST"] == []
 
 
 def test_a_run_that_cannot_be_cancelled_is_a_warning_not_a_failure(github: FakeGitHub) -> None:

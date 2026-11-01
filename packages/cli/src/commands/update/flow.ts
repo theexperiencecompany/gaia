@@ -19,6 +19,7 @@ import {
   readPinnedGaiaVersion,
 } from "../../lib/env-writer.js";
 import type { ReleaseImageGap } from "../../lib/image-availability.js";
+import { detectSetupMode } from "../../lib/install-root.js";
 import { pinReleaseImages, releaseGitTag } from "../../lib/release.js";
 import {
   checkoutOwnedFiles,
@@ -163,7 +164,10 @@ export async function applyReleaseUpdate(
     plan.repoPath,
     plan.layout.files,
   );
-  await moveLegacySelfhostSettings(plan.repoPath);
+  await moveLegacySelfhostSettings(
+    plan.repoPath,
+    await detectSetupMode(plan.repoPath),
+  );
   pinReleaseImages(plan.repoPath, plan.toVersion);
 
   report.onStage("start");
@@ -205,7 +209,7 @@ export async function applyGitUpdate(
 ): Promise<number> {
   report.onStage("pull");
   await git(repoPath, ["pull", "--ff-only"]);
-  await moveLegacySelfhostSettings(repoPath);
+  await moveLegacySelfhostSettings(repoPath, await detectSetupMode(repoPath));
   report.onStage("download");
   const { startedServices } = await startServices(
     repoPath,

@@ -146,6 +146,8 @@ export async function checkPortConflicts(
   mode: SetupMode,
   overrides: Record<number, number> = {},
   domain?: string,
+  /** The install's compose env file, as the user would type it; none without an install. */
+  envFile?: string,
 ): Promise<CheckResult> {
   const base: Pick<CheckResult, "id" | "label" | "severity"> = {
     id: "port-conflict",
@@ -195,8 +197,8 @@ export async function checkPortConflicts(
     detail,
     fix:
       mode === "selfhost"
-        ? "Free the port or re-run 'gaia up' with --web-port (or set WEB_HOST_PORT in packages/cli/selfhost/.env)."
-        : "Free the port or set its *_HOST_PORT override in infra/docker/.env.",
+        ? `Free the port or re-run 'gaia up' with --web-port${envFile ? ` (or set WEB_HOST_PORT in ${envFile})` : ""}.`
+        : `Free the port${envFile ? ` or set its *_HOST_PORT override in ${envFile}` : ""}.`,
   };
 }
 

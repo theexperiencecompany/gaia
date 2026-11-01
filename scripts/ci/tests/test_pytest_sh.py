@@ -210,7 +210,32 @@ def _suite_argv(tmp_path: Path, sha: str) -> list[str]:
 
 
 def _suite_seed(tmp_path: Path, sha: str) -> list[str]:
-    return [a for a in _suite_argv(tmp_path, sha) if a.startswith("--randomly-seed")]
+    return [
+        a
+        for a in _suite_argv(tmp_path, sha)
+        if a.startswith(("--randomly-seed", "--hypothesis-seed"))
+    ]
+
+
+def test_the_gaia_shared_suite_runs_under_the_api_pytest_config(tmp_path: Path) -> None:
+    """libs/ has no pytest config, so run from apps/api the suite lost --strict-markers and the timeout."""
+    root = _repo(tmp_path)
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "uv").write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$PWD" "$@" > "$REC"\n')
+    (bin_dir / "uv").chmod(0o755)
+    rec = tmp_path / "argv"
+    subprocess.run(
+        ["bash", str(root / "scripts" / "ci" / "pytest.sh"), "shared-suite"],
+        cwd=root,
+        env={**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "REC": str(rec)},
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    cwd, *argv = rec.read_text().splitlines()
+    config = Path(cwd) / argv[argv.index("-c") + 1]
+    assert config.resolve() == (root / "apps" / "api" / "pytest.ini").resolve()
 
 
 GNU_TIME = (
@@ -222,11 +247,16 @@ GNU_TIME = (
 @pytest.mark.skipif(
     not GNU_TIME, reason="the slice runs pytest under GNU time -v, as CI's Linux runners have"
 )
-def test_the_test_order_is_seeded_by_the_commit(tmp_path: Path) -> None:
-    """Unseeded, pytest-randomly shuffled every run, so a commit's order-dependent failure came and went."""
+def test_the_test_order_and_examples_are_seeded_by_the_commit(tmp_path: Path) -> None:
+    """Unseeded, the order and master's Hypothesis draw changed every run, so a failure came and went."""
     sha = "0a1b2c3d" + "0" * 32
-    assert _suite_seed(tmp_path, sha) == [f"--randomly-seed={int(sha[:8], 16)}"]
-    assert _suite_seed(tmp_path, "f" * 40) == [f"--randomly-seed={int('f' * 8, 16)}"]
+    seed = int(sha[:8], 16)
+    assert _suite_seed(tmp_path, sha) == [f"--randomly-seed={seed}", f"--hypothesis-seed={seed}"]
+    other = int("f" * 8, 16)
+    assert _suite_seed(tmp_path, "f" * 40) == [
+        f"--randomly-seed={other}",
+        f"--hypothesis-seed={other}",
+    ]
 
 
 # --- flake-gate: pytest-rerunfailures reruns a failure once, in its worker ----

@@ -6,7 +6,7 @@ import {
   type SetupMode,
 } from "./env-parser.js";
 import { needsLocalCertificate } from "./local-certificate.js";
-import { apiEnvPath, DEV_DOCKER_DIR, selfhostDir } from "./paths.js";
+import { DEV_DOCKER_DIR, selfhostDir } from "./paths.js";
 
 export interface EnvValues {
   [key: string]: string;
@@ -241,41 +241,27 @@ export interface SelfhostComposeSettings {
 /** Compose profile that runs the bundled single-origin proxy. */
 const SELFHOST_PROXY_PROFILE = "proxy";
 
-/** MONGO_DB's host per mode, for an apps/api/.env written before SETUP_MODE existed. */
-const MONGO_URI_PREFIX_BY_MODE: Record<SetupMode, string> = {
-  selfhost: "mongodb://mongo:",
-  developer: "mongodb://localhost:",
-};
-
-const SETUP_MODES: readonly SetupMode[] = ["selfhost", "developer"];
-
-/** The mode apps/api/.env records; null when there is no .env or it does not say. */
-export function detectSetupMode(repoPath: string): SetupMode | null {
-  const envPath = apiEnvPath(repoPath);
-  if (!fs.existsSync(envPath)) return null;
-  const values = parseEnvFileValues(fs.readFileSync(envPath, "utf-8"));
-  const recordedMode = SETUP_MODES.find((mode) => mode === values.SETUP_MODE);
-  if (recordedMode) return recordedMode;
-  const mongoUri = values.MONGO_DB ?? "";
-  return (
-    SETUP_MODES.find((mode) =>
-      mongoUri.startsWith(MONGO_URI_PREFIX_BY_MODE[mode]),
-    ) ?? null
-  );
-}
-
-/** The compose env file: beside the self-host stack, or beside the developer stack in a developer checkout. */
-function dockerComposeEnvPath(repoRoot: string): string {
-  const composeDir =
-    detectSetupMode(repoRoot) === "developer"
-      ? path.join(repoRoot, DEV_DOCKER_DIR)
-      : selfhostDir(repoRoot);
-  return path.join(composeDir, ".env");
+/**
+ * The compose env file: beside the developer stack for a developer setup,
+ * beside the self-host stack otherwise. A reader that names no mode takes the
+ * one this install already has.
+ */
+export function dockerComposeEnvPath(
+  repoRoot: string,
+  mode?: SetupMode,
+): string {
+  const developer = path.join(repoRoot, DEV_DOCKER_DIR, ".env");
+  const selfhost = path.join(selfhostDir(repoRoot), ".env");
+  if (mode === "developer") return developer;
+  if (mode === "selfhost") return selfhost;
+  return !fs.existsSync(selfhost) && fs.existsSync(developer)
+    ? developer
+    : selfhost;
 }
 
 /** The values in the compose env file; empty when the file does not exist. */
-function readDockerComposeEnv(repoRoot: string): EnvValues {
-  const envPath = dockerComposeEnvPath(repoRoot);
+function readDockerComposeEnv(repoRoot: string, mode?: SetupMode): EnvValues {
+  const envPath = dockerComposeEnvPath(repoRoot, mode);
   return fs.existsSync(envPath)
     ? parseEnvFileValues(fs.readFileSync(envPath, "utf-8"))
     : {};
@@ -312,8 +298,9 @@ export function readPinnedGaiaVersion(repoRoot: string): string {
 function writeDockerComposeEnvValues(
   repoRoot: string,
   values: EnvValues,
+  mode?: SetupMode,
 ): void {
-  const envPath = dockerComposeEnvPath(repoRoot);
+  const envPath = dockerComposeEnvPath(repoRoot, mode);
   backupIfExists(envPath);
 
   const lines: string[] = [
@@ -329,16 +316,17 @@ function writeDockerComposeEnvValues(
   writeFileOwnerOnly(envPath, lines.join("\n"));
 }
 
-/** Set one key in the compose env file, keeping every other value. */
+/** Set one key in a self-host install's compose env file, keeping every other value. */
 export function setDockerComposeEnvValue(
   repoRoot: string,
   key: string,
   value: string,
 ): void {
-  writeDockerComposeEnvValues(repoRoot, {
-    ...readDockerComposeEnv(repoRoot),
-    [key]: value,
-  });
+  writeDockerComposeEnvValues(
+    repoRoot,
+    { ...readDockerComposeEnv(repoRoot, "selfhost"), [key]: value },
+    "selfhost",
+  );
 }
 
 export function writeDockerComposeEnv(
@@ -350,7 +338,7 @@ export function writeDockerComposeEnv(
   // Merge-don't-clobber, so a rerun never erases a prior port or domain. The
   // retired NEXT_PUBLIC_APP_URL (the image calls a same-origin /api/v1) is dropped.
   const { NEXT_PUBLIC_APP_URL: _retired, ...merged }: EnvValues =
-    readDockerComposeEnv(repoRoot);
+    readDockerComposeEnv(repoRoot, mode);
 
   for (const [original, replacement] of Object.entries(portOverrides)) {
     const origPort = Number(original);
@@ -378,7 +366,7 @@ export function writeDockerComposeEnv(
     }
   }
 
-  writeDockerComposeEnvValues(repoRoot, merged);
+  writeDockerComposeEnvValues(repoRoot, merged, mode);
 }
 
 /**

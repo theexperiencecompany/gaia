@@ -13,11 +13,6 @@ export function homeRelative(
     : filePath;
 }
 
-/** The API env file `gaia up` / `gaia setup` write; a checkout without it is unconfigured. */
-export function apiEnvPath(repoPath: string): string {
-  return path.join(repoPath, "apps", "api", ".env");
-}
-
 /** The self-host stack's base compose file, the first `-f` of every self-host compose call. */
 export const SELFHOST_COMPOSE_FILE = "docker-compose.selfhost.yml";
 

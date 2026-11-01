@@ -1536,8 +1536,9 @@ jobs:
         with:
           clean: ${{ !startsWith(runner.name, 'gaia-home-') }}
           persist-credentials: false
-          # PR selection diffs against the merge-base (depth 200 reaches it);
-          # the merge queue's regression-proof needs the group's base commit.
+          # PR selection diffs from the impact map's commit, which test_impact.py
+          # fetches when depth 200 does not reach it; the merge queue's
+          # regression-proof needs the group's base commit.
           fetch-depth: ${{ !(startsWith(runner.name, 'gaia-home-') || github.event_name == 'merge_group') && (github.event_name == 'pull_request' && 200 || 1) || 0 }}
       - uses: ./.github/actions/setup-python-test-env
         with:

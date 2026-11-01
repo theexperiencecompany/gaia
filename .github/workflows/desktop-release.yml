@@ -144,7 +144,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      actions: read # the quality gate's runs
+      actions: write # read the quality gate's runs, and re-run one a newer push cancelled
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

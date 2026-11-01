@@ -478,7 +478,13 @@ def _changed_since_the_maps(map_paths: list[str], scratch: Path) -> list[str] | 
     changed: set[str] = set()
     for path in map_paths:
         sha = json.loads(Path(path).read_text()).get("meta", {}).get("sha")
-        if not sha or _git("cat-file", "-e", f"{sha}^{{commit}}") is None:
+        if not sha:
+            return None
+        # A shallow runner checkout may predate the map's commit; a diff needs only its tree.
+        if _git("cat-file", "-e", f"{sha}^{{commit}}") is None and (
+            _git("fetch", "--no-tags", "--depth=1", "origin", sha) is None
+            or _git("cat-file", "-e", f"{sha}^{{commit}}") is None
+        ):
             return None
         diff = _git("diff", "--name-only", sha, "HEAD")
         if diff is None:
@@ -514,7 +520,11 @@ def cmd_select(args: argparse.Namespace) -> int:
         found = _changed_since_the_maps(map_paths, out.parent / "changed-files.txt")
         if found is None:
             out.write_text(f"{ALL_MARKER}\n")
-            _emit(slice_name, "all", "ran ALL (the map's commit is not in this checkout)")
+            _emit(slice_name, "all", "ran ALL (the map's commit could not be fetched)")
+            print(
+                f"::warning::test impact ({slice_name}): the map's commit could not be fetched, "
+                "so this slice ran every test instead of the ones the change reaches"
+            )
             return 0
         changed = found
 

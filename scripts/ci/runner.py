@@ -748,6 +748,21 @@ def _cancel(gh: GitHub, repo: str, run_id: int, why: str) -> None:
     ok(f"cancelled {why} run {run_id}")
 
 
+# A production deploy is never cancelled mid-flight: a cancelled wrangler deploy
+# leaves R2's prerendered cache half-filled. The newer run deploys after it,
+# queued behind the deploy job's own concurrency group.
+DEPLOY_JOB_PREFIX = "deploy-web"
+
+
+def _deploying(gh: GitHub, repo: str, run_id: int) -> bool:
+    jobs = gh.collect(f"repos/{repo}/actions/runs/{run_id}/jobs?filter=latest&per_page=100", "jobs")
+    return any(
+        field_of(job, "name", str).startswith(DEPLOY_JOB_PREFIX)
+        and field_of(job, "status", str) == "in_progress"
+        for job in jobs
+    )
+
+
 def _cancel_superseded_branch_runs(gh: GitHub, repo: str, run_id: int) -> None:
     workflow, branch = workflow_file(), head_branch()
     query = urllib.parse.urlencode(
@@ -762,6 +777,9 @@ def _cancel_superseded_branch_runs(gh: GitHub, repo: str, run_id: int) -> None:
     if not older:
         ok(f"no superseded {workflow} runs on {branch}")
     for old in older:
+        if os.environ.get("GITHUB_EVENT_NAME") == "push" and _deploying(gh, repo, old):
+            ok(f"run {old} is deploying to production: left to finish, this run deploys after it")
+            continue
         _cancel(gh, repo, old, "superseded")
 
 

@@ -50,11 +50,20 @@ esac
 # by the real jq, so the script's jq expressions are exercised too.
 GH_STUB = """#!/usr/bin/env bash
 set -euo pipefail
+# A re-run is recorded, and the run then judges the commit as a fresh run would.
+if [[ "$1" == "api" && "$2" == "-X" && "$3" == "POST" ]]; then
+  echo "POST $4" >> "$GH_CALLS"
+  id="${4#*/actions/runs/}"
+  echo '{"jobs":[{"name":"quality-gate","status":"completed","conclusion":"success"}]}' \\
+    > "$GH_FIXTURES/jobs-${id%%/*}.json"
+  exit 0
+fi
 [[ "$1" == "api" && "$3" == "--jq" ]] || { echo "gh stub: unexpected $*" >&2; exit 1; }
 echo "$2" >> "$GH_CALLS"
 case "$2" in
   */actions/workflows/ci.yml/runs\\?*) file="$GH_FIXTURES/runs-${2##*event=}.json" ;;
   */actions/runs/*/jobs*) id="${2#*/actions/runs/}"; file="$GH_FIXTURES/jobs-${id%%/*}.json" ;;
+  */actions/runs/*) file="$GH_FIXTURES/run-${2##*/}.json" ;;
   *) echo "gh stub: unexpected path $2" >&2; exit 1 ;;
 esac
 jq -r "$4" "$file"
@@ -529,3 +538,57 @@ def test_desktop_installers_never_publish_from_a_red_commit(workspace: Path) -> 
     )
     assert result.returncode != 0
     assert "quality gate failed" in result.stderr + result.stdout
+
+
+# ── wait-quality-gate (the desktop release) ─────────────────────────────────
+
+
+def _wait(
+    workspace: Path, main_runs: MainRuns, *, run_states: dict[int, JobState] | None = None
+) -> subprocess.CompletedProcess[str]:
+    repo = workspace / "repo"
+    if not _git(repo, "tag", "--list", "desktop-v0.6.0"):
+        _git(repo, "tag", "desktop-v0.6.0")
+    for run_id, (status, conclusion) in (run_states or {}).items():
+        (workspace / "gh" / f"run-{run_id}.json").write_text(
+            json.dumps({"status": status, "conclusion": conclusion})
+        )
+    return _run(
+        workspace,
+        "wait-quality-gate",
+        github=GitHubState(main_runs=main_runs),
+        env_extra={
+            "RELEASE_TAG": "desktop-v0.6.0",
+            "GATE_POLL_SECONDS": "0",
+            "GATE_WAIT_SECONDS": "5",
+        },
+    )
+
+
+def _posts(workspace: Path) -> list[str]:
+    calls = (workspace / "gh-calls.txt").read_text().splitlines()
+    return [c for c in calls if c.startswith("POST ")]
+
+
+def test_a_release_run_a_newer_push_cancelled_is_re_run_not_failed(workspace: Path) -> None:
+    """A merge right after a release force-cancels its run; failing would leave the installers unpublished."""
+    result = _wait(workspace, {7: {"quality-gate": ("completed", "cancelled")}})
+    assert result.returncode == 0, result.stderr
+    assert _posts(workspace) == ["POST repos/theexperiencecompany/gaia/actions/runs/7/rerun"]
+
+
+def test_a_run_cancelled_before_it_created_its_gate_is_re_run(workspace: Path) -> None:
+    result = _wait(
+        workspace,
+        {7: {"lint-node": ("completed", "cancelled")}},
+        run_states={7: ("completed", "cancelled")},
+    )
+    assert result.returncode == 0, result.stderr
+    assert _posts(workspace) == ["POST repos/theexperiencecompany/gaia/actions/runs/7/rerun"]
+
+
+def test_a_release_whose_gate_failed_is_refused_without_a_re_run(workspace: Path) -> None:
+    result = _wait(workspace, {7: {"quality-gate": ("completed", "failure")}})
+    assert result.returncode != 0
+    assert "quality gate failed" in result.stderr
+    assert _posts(workspace) == []

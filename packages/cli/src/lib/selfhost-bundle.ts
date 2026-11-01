@@ -21,6 +21,7 @@ import {
   digestForAsset,
   downloadBytes,
 } from "./download.js";
+import type { SetupMode } from "./env-parser.js";
 import { GAIA_VERSION_ENV_KEY } from "./env-writer.js";
 import {
   currentSelfhostDir,
@@ -196,11 +197,14 @@ const SELFHOST_SETTINGS_FILES = [".env", ".env.bak"];
 /**
  * Carry an install's compose settings from the pre-move folder into the current
  * one once its compose files are there; a file already in the current folder
- * wins, and a pre-move folder left empty is removed.
+ * wins, and a pre-move folder left empty is removed. A developer setup keeps
+ * its .env beside the developer stack.
  */
 export async function moveLegacySelfhostSettings(
   installDir: string,
+  mode: SetupMode | null,
 ): Promise<void> {
+  if (mode === "developer") return;
   const current = currentSelfhostDir(installDir);
   if (!fs.existsSync(path.join(current, SELFHOST_COMPOSE_FILE))) return;
   const legacy = path.join(installDir, LEGACY_SELFHOST_DIR);

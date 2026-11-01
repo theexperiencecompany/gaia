@@ -143,11 +143,12 @@ cmd_slice() {
   export PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
   EXTRA+=(-p asyncio -p xdist -p timeout -p pytest_mock -p randomly -p pytest_rerunfailures
           -p hypothesis.extra.pytestplugin -p respx.plugin -p time_machine -p anyio.pytest_plugin -p pytest_check)
-  # One shuffle per commit: unseeded, pytest-randomly reordered every run, so an
-  # order-dependent failure came and went on the same commit. The seed is in
-  # pytest's header; `--randomly-seed=<n>` replays the order locally.
+  # One shuffle, and on master one Hypothesis draw, per commit: unseeded, both
+  # changed every run, so a failure came and went on the same commit. The seed
+  # is in pytest's header; `--randomly-seed=<n> --hypothesis-seed=<n>` replays it.
   local SEED_SHA="${GITHUB_SHA:-$(git rev-parse HEAD)}"
-  EXTRA+=("--randomly-seed=$((16#${SEED_SHA:0:8}))")
+  local SEED=$((16#${SEED_SHA:0:8}))
+  EXTRA+=("--randomly-seed=$SEED" "--hypothesis-seed=$SEED")
   # Coverage only where something reads it: the master gate and the test-impact
   # map. A PR run is report-only by design (selection makes the total
   # meaningless), and tracing costs ~35 CPU-points per lane — pure waste there.
@@ -216,7 +217,9 @@ cmd_slice() {
 # rootdir and ini intact.
 cmd_shared_suite() {
   cd "$REPO_ROOT/apps/api"
-  uv run --frozen pytest ../../libs/shared/py/tests \
+  # libs/ has no pytest config of its own: -c gives the suite apps/api's
+  # markers, --strict-markers, timeout and warning filters.
+  uv run --frozen pytest -c pytest.ini ../../libs/shared/py/tests \
     --tb=short -q
   ci_ok "gaia-shared tests: OK"
 }

@@ -50,8 +50,9 @@ jobs:
   deploy-production:
     name: deploy-production
     if: github.ref == 'refs/heads/master'
-    # Two deploys never overlap. A newer master push still cancels this run
-    # (runner.py cancel-superseded); its own run's nx base keeps the change.
+    # Two deploys never overlap, and none is cancelled mid-flight: a newer
+    # master push leaves a run whose deploy has started (runner.py
+    # cancel-superseded) and deploys after it, queued on this group.
     concurrency:
       group: deploy-web-production
       cancel-in-progress: false

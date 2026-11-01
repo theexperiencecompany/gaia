@@ -207,3 +207,43 @@ describe("the compose env file each install reads", () => {
     expect(readDockerComposePortOverrides(root)).toEqual({ 3000: 3100 });
   });
 });
+
+describe("the compose env file a developer setup keeps", () => {
+  const dirs: string[] = [];
+
+  afterEach(() => {
+    for (const dir of dirs.splice(0)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  function checkout(files: Record<string, string>): string {
+    const dir = mkdtempSync(path.join(tmpdir(), "gaia-dev-env-"));
+    dirs.push(dir);
+    for (const [file, contents] of Object.entries(files)) {
+      mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
+      writeFileSync(path.join(dir, file), contents);
+    }
+    return dir;
+  }
+
+  it("reads it when apps/api/.env names no mode (an Atlas MONGO_DB)", () => {
+    const root = checkout({
+      "apps/api/.env": "MONGO_DB=mongodb+srv://cluster.example.net/gaia\n",
+      "packages/cli/selfhost/docker-compose.selfhost.yml": "",
+      "infra/docker/.env": "POSTGRES_HOST_PORT=5433\n",
+    });
+    expect(readDockerComposePortOverrides(root)).toEqual({ 5432: 5433 });
+  });
+
+  it("writes a developer's ports beside the developer stack", () => {
+    const root = checkout({
+      "packages/cli/selfhost/docker-compose.selfhost.yml": "",
+      "infra/docker/docker-compose.yml": "",
+    });
+    writeDockerComposeEnv(root, { 5432: 5433 }, "developer");
+    expect(
+      readFileSync(path.join(root, "infra", "docker", ".env"), "utf-8"),
+    ).toMatch(/^POSTGRES_HOST_PORT=5433$/m);
+  });
+});

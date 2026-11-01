@@ -26,9 +26,9 @@ from posthog import Posthog
 import pytest
 from starlette.types import Receive, Scope, Send
 
-# CI: "ci" (25 examples, PRs) and "ci-full" (200, master), derandomized so a
-# commit draws one example set; "default" explores locally. differing_executors:
-# mutmut's in-process runner reinstantiates the @given class per mutant.
+# "ci" (PRs, queue) is derandomized so the queue reproduces the PR's verdict; "ci-full"
+# (master) explores, seeded per commit by pytest.sh's --hypothesis-seed.
+# differing_executors: mutmut's in-process runner reinstantiates the @given class.
 _hypothesis_settings.register_profile(
     "ci",
     max_examples=25,
@@ -41,7 +41,6 @@ _hypothesis_settings.register_profile(
     "ci-full",
     max_examples=200,
     deadline=None,
-    derandomize=True,
     database=None,
     suppress_health_check=[HealthCheck.differing_executors],
 )

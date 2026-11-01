@@ -50,7 +50,8 @@
 #   mark-desktop-latest  Mark that release Latest once its latest*.yml updater
 #                        files are attached; electron-updater resolves Latest.
 #   wait-quality-gate    Wait for ci.yml's quality gate on RELEASE_TAG's commit;
-#                        fail when it failed. Desktop installers wait on it.
+#                        fail when it failed, re-run a run a newer push
+#                        cancelled. Desktop installers wait on it.
 #
 # Env contract:
 #   resolve-image-tags    VERSION_SCHEME, APPS_RELEASE_OUTCOME,
@@ -85,7 +86,7 @@
 #                         push credentials can update that branch; uv on PATH.
 #   missing-latest        docker logged in to GHCR.
 #   mark-desktop-latest   GITHUB_REPOSITORY, GH_TOKEN (contents: write).
-#   wait-quality-gate     RELEASE_TAG, GITHUB_REPOSITORY, GH_TOKEN (actions: read), a
+#   wait-quality-gate     RELEASE_TAG, GITHUB_REPOSITORY, GH_TOKEN (actions: write, to re-run a cancelled run), a
 #                         checkout holding the tag; GATE_WAIT_SECONDS (1800),
 #                         GATE_POLL_SECONDS (30).
 set -euo pipefail
@@ -543,13 +544,15 @@ cmd_cli_release_images() {
 # tagged until all exist, so a timeout never leaves a partial set. Idempotent:
 # an existing v<version> tag is kept, because an install may already run it.
 # ci.yml's quality-gate verdict across the runs on <sha> of the given events:
-# passed when any run's gate succeeded, failed when every run's gate finished
-# otherwise, pending while one is still running or no run exists yet.
+# passed when any run's gate succeeded; failed when every run finished and a
+# gate failed; "cancelled <run ids>" when every run finished and each was
+# cancelled (a newer master push force-cancels the run before or during its
+# gate); pending while one is still running or no run exists yet.
 ci_quality_gate() {
   local sha="$1"
   shift
   local api="repos/${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}/actions"
-  local event event_runs run_ids="" run_id state verdict=pending finished=0 running=0
+  local event event_runs run_ids="" run_id state verdict=pending finished=0 running=0 cancelled=""
   # Called inside $(...), where errexit does not reach: every gh call returns
   # its own failure so the caller can die on it.
   for event in "$@"; do
@@ -559,14 +562,23 @@ ci_quality_gate() {
   for run_id in $run_ids; do
     state=$(gh api "$api/runs/$run_id/jobs?filter=latest&per_page=100" \
       --jq '.jobs[] | select(.name == "quality-gate") | "\(.status) \(.conclusion)"') || return 1
+    # A force-cancelled run may never have created its gate job.
+    if [[ -z "$state" ]]; then
+      state=$(gh api "$api/runs/$run_id" --jq '"\(.status) \(.conclusion)"') || return 1
+    fi
     case "$state" in
       "completed success") verdict=passed ;;
+      "completed cancelled") cancelled+=" $run_id" ;;
       completed\ *) finished=1 ;;
       *) running=1 ;;
     esac
   done
-  if [[ "$verdict" != passed ]] && ((finished == 1 && running == 0)); then
-    verdict=failed
+  if [[ "$verdict" != passed ]] && ((running == 0)); then
+    if ((finished == 1)); then
+      verdict=failed
+    elif [[ -n "$cancelled" ]]; then
+      verdict="cancelled$cancelled"
+    fi
   fi
   echo "$verdict"
 }
@@ -581,8 +593,16 @@ cmd_wait_quality_gate() {
     case "$gate" in
       passed) ci_ok "ci.yml's quality gate passed on $sha ($RELEASE_TAG)"; return 0 ;;
       failed) ci_die "ci.yml's quality gate failed on $sha ($RELEASE_TAG); a release commit must pass it. Fix master and cut the release from a green commit." ;;
+      cancelled*)
+        # A merge right after the release superseded its run; the release still needs its own verdict.
+        local run_id
+        for run_id in ${gate#cancelled}; do
+          gh api -X POST "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/rerun" >/dev/null ||
+            ci_die "could not re-run ci.yml run $run_id, cancelled before it judged $sha (GH_TOKEN needs actions:write)."
+          echo "Re-ran ci.yml run $run_id, which a newer master push cancelled before it judged $sha"
+        done ;;
     esac
-    ((SECONDS >= deadline)) && ci_die "Timed out waiting for ci.yml's quality gate on $sha ($RELEASE_TAG); a run cancelled by a newer push needs a re-run."
+    ((SECONDS >= deadline)) && ci_die "Timed out waiting for ci.yml's quality gate on $sha ($RELEASE_TAG)."
     echo "Waiting for ci.yml's quality gate on $sha"
     sleep "${GATE_POLL_SECONDS:-30}"
   done
