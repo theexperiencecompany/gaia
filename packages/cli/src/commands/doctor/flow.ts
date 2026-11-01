@@ -118,7 +118,7 @@ export async function runDoctorChecks(
   // 1. Docker usable by this user.
   add(await checkDockerDaemon(dockerAccess));
 
-  // 1b. Host port conflicts (respects infra/docker/.env overrides).
+  // 1b. Host port conflicts (respects the compose env file's overrides).
   add(
     dockerAccess === "ready"
       ? await checkPortConflicts(

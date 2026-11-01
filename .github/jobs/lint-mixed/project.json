@@ -71,8 +71,8 @@
       },
       "cache": false,
       "inputs": [
-        "{workspaceRoot}/infra/docker/docker-compose.selfhost.yml",
-        "{workspaceRoot}/infra/docker/selfhost/Caddyfile",
+        "{workspaceRoot}/packages/cli/selfhost/docker-compose.selfhost.yml",
+        "{workspaceRoot}/packages/cli/selfhost/Caddyfile",
         "{workspaceRoot}/packages/cli/src/lib/machine-secrets.json",
         "{workspaceRoot}/deploy/coolify/gaia.yaml",
         "{workspaceRoot}/deploy/proxy.Dockerfile",

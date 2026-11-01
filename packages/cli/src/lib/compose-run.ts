@@ -31,7 +31,7 @@ export interface ComposeRunResult {
 
 export interface ComposeRunOptions {
   cwd: string;
-  /** Extra environment; it outranks infra/docker/.env in compose interpolation. */
+  /** Extra environment; it outranks the compose env file in compose interpolation. */
   env?: Record<string, string>;
   timeoutMs?: number;
   /** Log file name stem, e.g. "compose-up". */

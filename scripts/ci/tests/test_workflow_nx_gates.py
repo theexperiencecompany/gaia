@@ -159,7 +159,7 @@ def test_a_lane_check_is_gated_on_its_lane_task(lane: dict[str, str], jobs: dict
         ("config/squirrel.toml", "ts-build-test:seo"),
         ("libs/shared/ts/src/index.ts", "ts-build-test:seo"),
         ("packages/cli/src/index.ts", "selfhost-smoke:e2e"),
-        ("infra/docker/docker-compose.selfhost.yml", "selfhost-smoke:e2e"),
+        ("packages/cli/selfhost/docker-compose.selfhost.yml", "selfhost-smoke:e2e"),
         # The web bundle syncs the wake-word runtime and bundles shared-typescript.
         ("libs/wake-word/src/web/runtime.ts", "web:build"),
         ("libs/shared/ts/src/index.ts", "web:build"),

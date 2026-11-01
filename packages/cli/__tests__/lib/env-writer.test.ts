@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  readDockerComposePortOverrides,
   writeDockerComposeEnv,
   writeEnvFile,
   writeWebEnvFile,
@@ -33,7 +34,9 @@ describe("env-writer file permissions", () => {
     // Mirror a real clone's layout: the writers expect these directories.
     mkdirSync(path.join(dir, "apps", "api"), { recursive: true });
     mkdirSync(path.join(dir, "apps", "web"), { recursive: true });
-    mkdirSync(path.join(dir, "infra", "docker"), { recursive: true });
+    mkdirSync(path.join(dir, "packages", "cli", "selfhost"), {
+      recursive: true,
+    });
     dirs.push(dir);
     return dir;
   }
@@ -96,21 +99,33 @@ describe("env-writer file permissions", () => {
     expect(modeOf(`${webEnvPath}.bak`)).toBe(OWNER_ONLY);
   });
 
-  it("creates infra/docker/.env owner-only on first write", () => {
+  it("creates the compose env file owner-only on first write", () => {
     const repo = makeRepo();
 
     writeDockerComposeEnv(repo, { 5432: 5433 }, "selfhost");
 
-    const composeEnvPath = path.join(repo, "infra", "docker", ".env");
+    const composeEnvPath = path.join(
+      repo,
+      "packages",
+      "cli",
+      "selfhost",
+      ".env",
+    );
     expect(modeOf(composeEnvPath)).toBe(OWNER_ONLY);
     expect(readFileSync(composeEnvPath, "utf-8")).toContain(
       "POSTGRES_HOST_PORT=5433",
     );
   });
 
-  it("tightens infra/docker/.env and its backup on rewrite", () => {
+  it("tightens the compose env file and its backup on rewrite", () => {
     const repo = makeRepo();
-    const composeEnvPath = path.join(repo, "infra", "docker", ".env");
+    const composeEnvPath = path.join(
+      repo,
+      "packages",
+      "cli",
+      "selfhost",
+      ".env",
+    );
     writeDockerComposeEnv(repo, {}, undefined);
 
     writeDockerComposeEnv(repo, { 3000: 3001 }, "selfhost");
@@ -120,7 +135,13 @@ describe("env-writer file permissions", () => {
   });
   it("tells Caddy to issue a local certificate for a domain no public CA certifies", () => {
     const repo = makeRepo();
-    const composeEnvPath = path.join(repo, "infra", "docker", ".env");
+    const composeEnvPath = path.join(
+      repo,
+      "packages",
+      "cli",
+      "selfhost",
+      ".env",
+    );
 
     writeDockerComposeEnv(repo, {}, "selfhost", {
       dockerSocketGid: 999,
@@ -137,5 +158,52 @@ describe("env-writer file permissions", () => {
     const publicEnv = readFileSync(composeEnvPath, "utf-8");
     expect(publicEnv).toContain("GAIA_DOMAIN=gaia.example.com");
     expect(publicEnv).not.toContain("GAIA_CADDY_GLOBAL_OPTIONS");
+  });
+});
+
+describe("the compose env file each install reads", () => {
+  const dirs: string[] = [];
+
+  afterEach(() => {
+    for (const dir of dirs.splice(0)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  function install(files: Record<string, string>): string {
+    const dir = mkdtempSync(path.join(tmpdir(), "gaia-compose-env-"));
+    dirs.push(dir);
+    for (const [file, contents] of Object.entries(files)) {
+      mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
+      writeFileSync(path.join(dir, file), contents);
+    }
+    return dir;
+  }
+
+  it("reads a self-host install's ports from beside its compose files", () => {
+    const root = install({
+      "apps/api/.env": "SETUP_MODE=selfhost\n",
+      "packages/cli/selfhost/docker-compose.selfhost.yml": "",
+      "packages/cli/selfhost/.env": "WEB_HOST_PORT=3100\n",
+    });
+    expect(readDockerComposePortOverrides(root)).toEqual({ 3000: 3100 });
+  });
+
+  it("reads an install not yet moved by gaia update from infra/docker", () => {
+    const root = install({
+      "apps/api/.env": "SETUP_MODE=selfhost\n",
+      "infra/docker/docker-compose.selfhost.yml": "",
+      "infra/docker/.env": "WEB_HOST_PORT=3100\n",
+    });
+    expect(readDockerComposePortOverrides(root)).toEqual({ 3000: 3100 });
+  });
+
+  it("keeps a developer checkout's ports beside the developer stack", () => {
+    const root = install({
+      "apps/api/.env": "SETUP_MODE=developer\n",
+      "packages/cli/selfhost/docker-compose.selfhost.yml": "",
+      "infra/docker/.env": "WEB_HOST_PORT=3100\n",
+    });
+    expect(readDockerComposePortOverrides(root)).toEqual({ 3000: 3100 });
   });
 });

@@ -9,8 +9,8 @@
  * @module lib/llm-flags
  */
 
-import * as path from "node:path";
 import { runCommand } from "./child-process.js";
+import { selfhostDir } from "./paths.js";
 import { selfhostComposeArgs } from "./service-starter.js";
 
 /** Every chat provider the API serves (LLMProviderName in apps/api/app/constants/llm.py). */
@@ -136,7 +136,7 @@ export async function saveLlmProvider(
   repoPath: string,
   flags: LlmFlags & { llmProvider: LlmProvider },
 ): Promise<void> {
-  const dockerDir = path.join(repoPath, "infra/docker");
+  const dockerDir = selfhostDir(repoPath);
   try {
     await runCommand(
       "docker",

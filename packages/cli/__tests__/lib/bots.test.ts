@@ -139,8 +139,8 @@ describe("writeBotsEnv", () => {
 });
 
 describe("botComposeFile", () => {
-  it("names a file that exists in infra/docker for every bot", () => {
-    const dockerDir = path.resolve(__dirname, "../../../../infra/docker");
+  it("names a file that exists in the self-host folder for every bot", () => {
+    const dockerDir = path.resolve(__dirname, "../../selfhost");
     for (const bot of SELFHOST_BOTS) {
       expect(() =>
         statSync(path.join(dockerDir, botComposeFile(bot))),

@@ -22,6 +22,11 @@ import {
   downloadBytes,
 } from "./download.js";
 import { GAIA_VERSION_ENV_KEY } from "./env-writer.js";
+import {
+  currentSelfhostDir,
+  LEGACY_SELFHOST_DIR,
+  SELFHOST_COMPOSE_FILE,
+} from "./paths.js";
 import { releaseGitTag } from "./release.js";
 import { releaseImageTag } from "./version.js";
 
@@ -183,6 +188,28 @@ export async function placeBundle(
     await fsp.rename(path.join(stagingDir, file), target);
   }
   await fsp.rm(stagingDir, { recursive: true, force: true });
+}
+
+/** The settings an install kept beside its compose files, which no bundle owns. */
+const SELFHOST_SETTINGS_FILES = [".env", ".env.bak"];
+
+/**
+ * Carry an install's compose settings from the pre-move folder into the current
+ * one once its compose files are there; a file already in the current folder
+ * wins, and a pre-move folder left empty is removed.
+ */
+export async function moveLegacySelfhostSettings(
+  installDir: string,
+): Promise<void> {
+  const current = currentSelfhostDir(installDir);
+  if (!fs.existsSync(path.join(current, SELFHOST_COMPOSE_FILE))) return;
+  const legacy = path.join(installDir, LEGACY_SELFHOST_DIR);
+  for (const name of SELFHOST_SETTINGS_FILES) {
+    const from = path.join(legacy, name);
+    const to = path.join(current, name);
+    if (fs.existsSync(from) && !fs.existsSync(to)) await fsp.rename(from, to);
+  }
+  await pruneEmptyParents(installDir, legacy);
 }
 
 /** A release's bundle, downloaded, verified and unpacked beside the install, ready to place. */

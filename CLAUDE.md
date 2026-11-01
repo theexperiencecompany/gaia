@@ -437,7 +437,7 @@ nx docker:build api
 nx docker:build voice-agent
 ```
 
-**Self-host releases ship with the CLI.** `publish-cli.yml`, dispatched with a `cli-vX.Y.Z` (or `cli-vX.Y.Z-beta.N`) tag, attaches the self-host bundle and the `gaia connect` binaries to that GitHub Release, pins the release commit's images (`gaia`, `gaia-web`, `gaia-bot-*`) as `v<version>`, then publishes `@heygaia/cli` to npm — dist-tag `beta` for a beta, `latest` otherwise. `build.yml`'s `release_images` input publishes images from a non-master ref for a beta. `gaia up` pulls exactly the tag its CLI version names.
+**Self-host releases ship with the CLI.** `publish-cli.yml`, dispatched with a `cli-vX.Y.Z` (or `cli-vX.Y.Z-beta.N`) tag, attaches the self-host bundle and the `gaia connect` binaries to that GitHub Release, pins the release commit's images (`gaia`, `gaia-web`, `gaia-bot-*`) as `v<version>`, then publishes `@heygaia/cli` to npm — dist-tag `beta` for a beta, `latest` otherwise. `build.yml`'s `release_images` input publishes images from a non-master ref for a beta. `gaia up` pulls exactly the tag its CLI version names. The self-host files live in `packages/cli/selfhost/`, so a change to them is a CLI change and release-please releases it as the next CLI version.
 
 ## Markdown Files
 

@@ -8,25 +8,15 @@ import * as fs from "fs";
 import * as path from "path";
 import { readConfig, updateConfig } from "./config.js";
 import type { SetupMode } from "./env-parser.js";
-import { parseEnvFileValues } from "./env-writer.js";
-import { homeRelative } from "./paths.js";
+import { detectSetupMode } from "./env-writer.js";
+import { apiEnvPath, homeRelative } from "./paths.js";
 import { BUNDLE_MANIFEST } from "./selfhost-bundle.js";
+
+export { detectSetupMode } from "./env-writer.js";
+export { apiEnvPath } from "./paths.js";
 
 /** The file whose presence marks a directory as a GAIA checkout. */
 const CHECKOUT_MARKER = "apps/api/app/config/settings_validator.py";
-
-/** MONGO_DB's host per mode, for an apps/api/.env written before SETUP_MODE existed. */
-const MONGO_URI_PREFIX_BY_MODE: Record<SetupMode, string> = {
-  selfhost: "mongodb://mongo:",
-  developer: "mongodb://localhost:",
-};
-
-const SETUP_MODES: readonly SetupMode[] = ["selfhost", "developer"];
-
-/** The API env file `gaia up` / `gaia setup` write; a checkout without it is unconfigured. */
-export function apiEnvPath(repoPath: string): string {
-  return path.join(repoPath, "apps", "api", ".env");
-}
 
 /** A source checkout: what the developer commands (init, setup, dev) need. */
 export function isGaiaCheckout(dir: string): boolean {
@@ -45,24 +35,6 @@ export function assertBuildableInstall(repoPath: string): void {
 /** A self-host install: a release's setup files (the bundle) or a source checkout. */
 export function isGaiaInstall(dir: string): boolean {
   return fs.existsSync(path.join(dir, BUNDLE_MANIFEST)) || isGaiaCheckout(dir);
-}
-
-/** The mode apps/api/.env records; null when there is no .env or it does not say. */
-export async function detectSetupMode(
-  repoPath: string,
-): Promise<SetupMode | null> {
-  const envPath = apiEnvPath(repoPath);
-  if (!fs.existsSync(envPath)) return null;
-  const values = parseEnvFileValues(fs.readFileSync(envPath, "utf-8"));
-  const recorded = values.SETUP_MODE;
-  const recordedMode = SETUP_MODES.find((mode) => mode === recorded);
-  if (recordedMode) return recordedMode;
-  const mongoUri = values.MONGO_DB ?? "";
-  return (
-    SETUP_MODES.find((mode) =>
-      mongoUri.startsWith(MONGO_URI_PREFIX_BY_MODE[mode]),
-    ) ?? null
-  );
 }
 
 /**

@@ -9,10 +9,7 @@ import {
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  KEPT_SETTINGS_FILES,
-  removeInstallFiles,
-} from "../../src/commands/uninstall/flow.js";
+import { removeInstallFiles } from "../../src/commands/uninstall/flow.js";
 import { composeDownArgs } from "../../src/lib/service-starter.js";
 
 describe("composeDownArgs", () => {
@@ -49,20 +46,21 @@ describe("removeInstallFiles", () => {
     }
   });
 
-  function makeInstall(): string {
+  /** An install whose compose files and their .env sit in composeDir (the current layout, or the pre-move one). */
+  function makeInstall(composeDir = "packages/cli/selfhost"): string {
     const root = mkdtempSync(path.join(tmpdir(), "gaia-uninstall-"));
     dirs.push(root);
     const install = path.join(root, "gaia");
-    for (const dir of ["apps/api", "apps/web", "infra/docker/selfhost"]) {
+    for (const dir of ["apps/api", "apps/web", composeDir]) {
       mkdirSync(path.join(install, dir), { recursive: true });
     }
     for (const file of [
       "apps/api/.env",
       "apps/api/.env.bak",
       "apps/web/.env",
-      "infra/docker/.env",
-      "infra/docker/docker-compose.selfhost.yml",
-      "infra/docker/selfhost/Caddyfile",
+      `${composeDir}/.env`,
+      `${composeDir}/docker-compose.selfhost.yml`,
+      `${composeDir}/Caddyfile`,
       "selfhost-manifest.json",
     ]) {
       writeFileSync(path.join(install, file), "x");
@@ -83,12 +81,22 @@ describe("removeInstallFiles", () => {
 
     removeInstallFiles(install, { keepSettings: true });
 
-    expect(readdirSync(install).sort()).toEqual(["apps", "infra"]);
+    expect(readdirSync(install).sort()).toEqual(["apps", "packages"]);
     expect(readdirSync(path.join(install, "apps"))).toEqual(["api"]);
     expect(readdirSync(path.join(install, "apps", "api"))).toEqual([".env"]);
+    expect(
+      readdirSync(path.join(install, "packages", "cli", "selfhost")),
+    ).toEqual([".env"]);
+  });
+
+  it("keeps the compose settings of an install not yet moved by gaia update", () => {
+    const install = makeInstall("infra/docker");
+
+    removeInstallFiles(install, { keepSettings: true });
+
+    expect(readdirSync(install).sort()).toEqual(["apps", "infra"]);
     expect(readdirSync(path.join(install, "infra", "docker"))).toEqual([
       ".env",
     ]);
-    expect(KEPT_SETTINGS_FILES).toEqual(["apps/api/.env", "infra/docker/.env"]);
   });
 });

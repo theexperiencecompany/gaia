@@ -6,6 +6,7 @@ import {
   type SetupMode,
 } from "./env-parser.js";
 import { needsLocalCertificate } from "./local-certificate.js";
+import { apiEnvPath, DEV_DOCKER_DIR, selfhostDir } from "./paths.js";
 
 export interface EnvValues {
   [key: string]: string;
@@ -229,7 +230,7 @@ const DOCKER_PORT_VAR_TO_PORT: Record<string, number> = Object.fromEntries(
 /** A domain to serve GAIA at, or false (`gaia up --no-domain`) to stop serving the one an earlier run set. */
 export type DomainFlag = string | false;
 
-/** Self-host values for infra/docker/.env beyond port mappings. */
+/** Self-host values for the compose env file beyond port mappings. */
 export interface SelfhostComposeSettings {
   /** Group of the Docker socket inside containers (sandbox group_add). */
   dockerSocketGid: number;
@@ -240,11 +241,39 @@ export interface SelfhostComposeSettings {
 /** Compose profile that runs the bundled single-origin proxy. */
 const SELFHOST_PROXY_PROFILE = "proxy";
 
-function dockerComposeEnvPath(repoRoot: string): string {
-  return path.join(repoRoot, "infra", "docker", ".env");
+/** MONGO_DB's host per mode, for an apps/api/.env written before SETUP_MODE existed. */
+const MONGO_URI_PREFIX_BY_MODE: Record<SetupMode, string> = {
+  selfhost: "mongodb://mongo:",
+  developer: "mongodb://localhost:",
+};
+
+const SETUP_MODES: readonly SetupMode[] = ["selfhost", "developer"];
+
+/** The mode apps/api/.env records; null when there is no .env or it does not say. */
+export function detectSetupMode(repoPath: string): SetupMode | null {
+  const envPath = apiEnvPath(repoPath);
+  if (!fs.existsSync(envPath)) return null;
+  const values = parseEnvFileValues(fs.readFileSync(envPath, "utf-8"));
+  const recordedMode = SETUP_MODES.find((mode) => mode === values.SETUP_MODE);
+  if (recordedMode) return recordedMode;
+  const mongoUri = values.MONGO_DB ?? "";
+  return (
+    SETUP_MODES.find((mode) =>
+      mongoUri.startsWith(MONGO_URI_PREFIX_BY_MODE[mode]),
+    ) ?? null
+  );
 }
 
-/** The values in infra/docker/.env; empty when the file does not exist. */
+/** The compose env file: beside the self-host stack, or beside the developer stack in a developer checkout. */
+function dockerComposeEnvPath(repoRoot: string): string {
+  const composeDir =
+    detectSetupMode(repoRoot) === "developer"
+      ? path.join(repoRoot, DEV_DOCKER_DIR)
+      : selfhostDir(repoRoot);
+  return path.join(composeDir, ".env");
+}
+
+/** The values in the compose env file; empty when the file does not exist. */
 function readDockerComposeEnv(repoRoot: string): EnvValues {
   const envPath = dockerComposeEnvPath(repoRoot);
   return fs.existsSync(envPath)
@@ -252,17 +281,17 @@ function readDockerComposeEnv(repoRoot: string): EnvValues {
     : {};
 }
 
-/** The infra/docker/.env key that pins every GAIA app image to one tag. */
+/** The compose env file's key that pins every GAIA app image to one tag. */
 export const GAIA_VERSION_ENV_KEY = "GAIA_VERSION";
 
-/** The image tag compose runs when infra/docker/.env pins no GAIA_VERSION. */
+/** The image tag compose runs when the compose env file pins no GAIA_VERSION. */
 const UNPINNED_IMAGE_TAG = "latest";
 
 /** The GAIA image tag the install runs today. */
-/** infra/docker/.env key holding the domain `gaia up --domain` serves GAIA at. */
+/** Compose env file key holding the domain `gaia up --domain` serves GAIA at. */
 const GAIA_DOMAIN_ENV_KEY = "GAIA_DOMAIN";
 
-/** infra/docker/.env key for Caddy's global options (the Caddyfile's first block). */
+/** Compose env file key for Caddy's global options (the Caddyfile's first block). */
 const CADDY_GLOBAL_OPTIONS_ENV_KEY = "GAIA_CADDY_GLOBAL_OPTIONS";
 
 /** Caddy global option: issue every certificate from Caddy's own local authority. */
@@ -279,7 +308,7 @@ export function readPinnedGaiaVersion(repoRoot: string): string {
   );
 }
 
-/** Replace infra/docker/.env with these values, keeping the previous file as .env.bak. */
+/** Replace the compose env file with these values, keeping the previous file as .env.bak. */
 function writeDockerComposeEnvValues(
   repoRoot: string,
   values: EnvValues,
@@ -300,7 +329,7 @@ function writeDockerComposeEnvValues(
   writeFileOwnerOnly(envPath, lines.join("\n"));
 }
 
-/** Set one key in infra/docker/.env, keeping every other value. */
+/** Set one key in the compose env file, keeping every other value. */
 export function setDockerComposeEnvValue(
   repoRoot: string,
   key: string,
@@ -379,12 +408,7 @@ export function portOverridesToDockerEnv(
  * and the .env override mechanism only works with variable substitution syntax.
  */
 export function patchDockerComposePorts(repoRoot: string): void {
-  const composePath = path.join(
-    repoRoot,
-    "infra",
-    "docker",
-    "docker-compose.yml",
-  );
+  const composePath = path.join(repoRoot, DEV_DOCKER_DIR, "docker-compose.yml");
   if (!fs.existsSync(composePath)) return;
 
   let content = fs.readFileSync(composePath, "utf-8");
@@ -436,7 +460,7 @@ export function patchDockerComposePorts(repoRoot: string): void {
 export function readDockerComposePortOverrides(
   repoRoot: string,
 ): Record<number, number> {
-  const envPath = path.join(repoRoot, "infra", "docker", ".env");
+  const envPath = dockerComposeEnvPath(repoRoot);
   const overrides: Record<number, number> = {};
 
   if (!fs.existsSync(envPath)) {

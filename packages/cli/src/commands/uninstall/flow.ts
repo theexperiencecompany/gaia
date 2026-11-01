@@ -54,7 +54,12 @@ export const UNINSTALL_OUTCOME_KEY = "uninstallOutcome";
 export const UNINSTALL_BACKUP_DIR = path.join(os.homedir(), "gaia-backups");
 
 /** The settings kept with kept data: the secrets and passwords its volumes were made with. */
-export const KEPT_SETTINGS_FILES = ["apps/api/.env", "infra/docker/.env"];
+/** packages/cli/selfhost/.env is where an install keeps them since the move; infra/docker/.env before it. */
+export const KEPT_SETTINGS_FILES = [
+  "apps/api/.env",
+  "packages/cli/selfhost/.env",
+  "infra/docker/.env",
+];
 
 export const CLI_REMOVE_COMMAND = "npm rm -g @heygaia/cli";
 

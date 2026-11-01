@@ -732,11 +732,12 @@ cmd_selfhost_bots_manifest() {
 # they mount or extend. Never docker-compose.build.yml: building needs the
 # whole source tree, which a bundle install does not have.
 SELFHOST_BUNDLE_GLOBS=(
-  infra/docker/docker-compose.selfhost.yml
-  infra/docker/docker-compose.sandbox.yml
-  "infra/docker/docker-compose.bot-*.yml"
-  "infra/docker/selfhost/*"
-  infra/docker/seccomp-mongo.json
+  packages/cli/selfhost/docker-compose.selfhost.yml
+  packages/cli/selfhost/docker-compose.sandbox.yml
+  "packages/cli/selfhost/docker-compose.bot-*.yml"
+  packages/cli/selfhost/Caddyfile
+  packages/cli/selfhost/bot.yml
+  packages/cli/selfhost/seccomp-mongo.json
 )
 SELFHOST_BUNDLE_MANIFEST="gaia-selfhost.json"
 
