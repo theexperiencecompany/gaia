@@ -26,13 +26,23 @@ from posthog import Posthog
 import pytest
 from starlette.types import Receive, Scope, Send
 
-# Hypothesis profiles: PR lanes select "ci" (25 examples) to keep feedback
-# short; master/local keep "default" (200). suppress differing_executors
-# since mutmut's in-process runner reinstantiates the @given class per mutant.
+# CI: "ci" (25 examples, PRs) and "ci-full" (200, master), derandomized so a
+# commit draws one example set; "default" explores locally. differing_executors:
+# mutmut's in-process runner reinstantiates the @given class per mutant.
 _hypothesis_settings.register_profile(
     "ci",
     max_examples=25,
     deadline=None,
+    derandomize=True,
+    database=None,
+    suppress_health_check=[HealthCheck.differing_executors],
+)
+_hypothesis_settings.register_profile(
+    "ci-full",
+    max_examples=200,
+    deadline=None,
+    derandomize=True,
+    database=None,
     suppress_health_check=[HealthCheck.differing_executors],
 )
 _hypothesis_settings.register_profile(

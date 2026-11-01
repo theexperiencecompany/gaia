@@ -1763,11 +1763,6 @@ jobs:
       - name: Select impacted tests
         id: impact
         if: github.event_name == 'pull_request' && env.SLICE_NAME != 'bridge' && env.SLICE_NAME != 'browser'
-        env:
-          # The slice's paths and its ignores TOGETHER say what it runs.
-          # The resolved base, not github.base_ref: the payload names the
-          # stack's trunk on a stacked PR.
-          BASE_REF: ${{ needs.detect.outputs.base_ref }}
         run: python3 scripts/ci/test_impact.py select
       # --cov-fail-under=0: pyproject's fail_under=80 is the COMBINED gate,
       # enforced by the coverage job; one slice alone cannot reach it.
@@ -1782,7 +1777,7 @@ jobs:
           COVERAGE: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && '1' || '' }}
           COVERAGE_FILE: .coverage.${{ matrix.slice }}
           COV_CONTEXT: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && 'test' || '' }}
-          HYPOTHESIS_PROFILE: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'ci' || 'default' }}
+          HYPOTHESIS_PROFILE: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'ci' || 'ci-full' }}
           # serial lanes get -n 0 (the expression engine treats the string "0"
           # as falsy, hence the explicit flag); the box gets its static share,
           # a GitHub-hosted runner the count detected on the VM it landed on.
@@ -2024,6 +2019,8 @@ jobs:
     env:
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
       SHARD_POOL: ${{ fromJSON(needs.detect.outputs.mutation_shard_defs)[matrix.shard].pool }}
+      # A mutant is killed or not by the same examples on every run.
+      HYPOTHESIS_PROFILE: ci
     # Above the step timeout below, so a slow shard is failed by the step (which
     # keeps its log artifact) rather than cancelled by the job (which retains
     # nothing).

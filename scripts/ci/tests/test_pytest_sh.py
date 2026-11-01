@@ -109,10 +109,12 @@ STALE_JUNIT = """\
 """
 
 
-def _run_slice(tmp_path: Path, root: Path) -> subprocess.CompletedProcess[str]:
+def _run_slice(
+    tmp_path: Path, root: Path, uv_stub: str = UV_STUB, **extra_env: str
+) -> subprocess.CompletedProcess[str]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
-    for name, body in (("uv", UV_STUB), ("stdbuf", STDBUF_STUB)):
+    for name, body in (("uv", uv_stub), ("stdbuf", STDBUF_STUB)):
         stub = bin_dir / name
         stub.write_text(body)
         stub.chmod(0o755)
@@ -125,6 +127,7 @@ def _run_slice(tmp_path: Path, root: Path) -> subprocess.CompletedProcess[str]:
         SLICE_NAME="unit-a",
         SLICE_PATHS="tests/unit",
         XDIST_N="2",
+        **extra_env,
     )
     return subprocess.run(
         ["bash", str(root / "scripts" / "ci" / "pytest.sh"), "slice"],
@@ -183,6 +186,46 @@ def test_slice_never_reports_from_an_earlier_jobs_junit(tmp_path: Path) -> None:
     verdict = _verdicts(tmp_path)["test-python/unit-a"]
     assert "test_from_another_job" not in json.dumps(verdict), verdict
     assert verdict["status"] == "error"
+
+
+# Records the suite's argv instead of running it.
+RECORDING_UV_STUB = f"""\
+#!/usr/bin/env bash
+if [ "$2" = "--no-project" ]; then shift 2; exec {sys.executable} "$@"; fi
+printf '%s\\n' "$@" > "$REC/suite-argv"
+exit 2
+"""
+
+
+def _suite_seed(tmp_path: Path, sha: str) -> list[str]:
+    rec = tmp_path / f"rec-{sha}"
+    rec.mkdir()
+    _run_slice(
+        tmp_path,
+        _repo_with_selector(tmp_path / sha),
+        RECORDING_UV_STUB,
+        REC=str(rec),
+        GITHUB_SHA=sha,
+    )
+    return [
+        a for a in (rec / "suite-argv").read_text().splitlines() if a.startswith("--randomly-seed")
+    ]
+
+
+GNU_TIME = (
+    subprocess.run(["/usr/bin/time", "-v", "true"], capture_output=True, check=False).returncode
+    == 0
+)
+
+
+@pytest.mark.skipif(
+    not GNU_TIME, reason="the slice runs pytest under GNU time -v, as CI's Linux runners have"
+)
+def test_the_test_order_is_seeded_by_the_commit(tmp_path: Path) -> None:
+    """Unseeded, pytest-randomly shuffled every run, so a commit's order-dependent failure came and went."""
+    sha = "0a1b2c3d" + "0" * 32
+    assert _suite_seed(tmp_path, sha) == [f"--randomly-seed={int(sha[:8], 16)}"]
+    assert _suite_seed(tmp_path, "f" * 40) == [f"--randomly-seed={int('f' * 8, 16)}"]
 
 
 # --- flake-gate: the rerun replays this run's failures, nobody else's ---------
