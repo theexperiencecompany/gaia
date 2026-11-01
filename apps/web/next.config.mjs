@@ -214,8 +214,26 @@ const nextConfig = {
     ...(process.env.NODE_ENV === "development" ? ["dev.ts", "dev.tsx"] : []),
   ],
   async headers() {
+    // ISR hub pages are served with s-maxage only: browsers get no max-age to
+    // revalidate on, and Cloudflare is free to rewrite the HTML (which drops
+    // the validators squirrel looks for). Scope the fix to those routes; the
+    // static landing pages already send max-age=0, and app routes must keep
+    // their private/no-store headers.
+    const marketingHubs = ["alternative-to", "automate", "compare", "learn", "for"];
+    const buildLastModified = new Date().toUTCString();
     return [
       ...NEXT_SECURITY_HEADER_RULES,
+      {
+        source: `/:locale(de|es|fr|ja|ko|pt-BR)?/(${marketingHubs.join("|")})/:path*`,
+        headers: [
+          {
+            key: "Cache-Control",
+            value:
+              "public, max-age=0, s-maxage=3600, stale-while-revalidate=86400",
+          },
+          { key: "Last-Modified", value: buildLastModified },
+        ],
+      },
       // /_next/static/*: intentionally NOT setting a custom Cache-Control here.
       // Next content-hashes chunk filenames in prod, so its default immutable
       // headers are correct; in dev, Turbopack reuses filenames across rebuilds, so a custom long-cache header would pin a stale bundle and break hot reloads.
