@@ -229,100 +229,66 @@ def test_the_test_order_is_seeded_by_the_commit(tmp_path: Path) -> None:
     assert _suite_seed(tmp_path, "f" * 40) == [f"--randomly-seed={int('f' * 8, 16)}"]
 
 
-# --- flake-gate: the rerun replays this run's failures, nobody else's ---------
+# --- flake-gate: pytest-rerunfailures reruns a failure once, in its worker ----
 
-# Records each invocation's argv, one file per call; the first call fails.
-FAKE_PYTEST = """\
-#!/usr/bin/env bash
-n=$(ls "$REC"/call-* 2>/dev/null | wc -l | tr -d ' ')
-printf '%s\\n' "$@" > "$REC/call-$n"
-[ "$n" -gt 0 ]
+# Fails on its first run in a fresh directory and passes on the rerun: a flake.
+FLAKY_TEST = """\
+from pathlib import Path
+
+
+def test_flaky(tmp_path_factory):
+    marker = Path(__file__).with_suffix(".ran")
+    if not marker.exists():
+        marker.write_text("1")
+        raise AssertionError("first run")
 """
 
 
-def _cache_dir_of(call: Path) -> str:
-    args = call.read_text().splitlines()
-    overrides = [args[i + 1] for i, arg in enumerate(args[:-1]) if arg == "-o"]
-    dirs = [o.removeprefix("cache_dir=") for o in overrides if o.startswith("cache_dir=")]
-    assert len(dirs) == 1, f"no single cache_dir override in {args}"
-    return dirs[0]
-
-
-def test_flake_gate_reruns_from_a_cache_only_this_run_wrote(tmp_path: Path) -> None:
-    """`--lf` against the workspace's shared .pytest_cache replays an earlier job's failures."""
-    workspace = tmp_path / "workspace"
-    (workspace / ".pytest_cache").mkdir(parents=True)
-    fake = tmp_path / "fake-pytest"
-    fake.write_text(FAKE_PYTEST)
-    fake.chmod(0o755)
-
-    result = subprocess.run(
-        ["bash", str(CI / "pytest.sh"), "flake-gate", str(fake), "tests"],
-        cwd=workspace,
-        # Pin the event: the gate is strict on a PR and lenient in the queue/master,
-        # and this test is about the rerun cache, so it must not inherit the CI event.
-        env={**os.environ, "REC": str(tmp_path), "GITHUB_EVENT_NAME": "pull_request"},
+def _flake_gate_on(tmp_path: Path, test_body: str, event: str) -> subprocess.CompletedProcess[str]:
+    tests = tmp_path / "suite"
+    tests.mkdir()
+    (tests / "test_it.py").write_text(test_body)
+    env = {k: v for k, v in os.environ.items() if k != "GITHUB_EVENT_NAME"}
+    if event:
+        env["GITHUB_EVENT_NAME"] = event
+    return subprocess.run(
+        [
+            "bash",
+            str(CI / "pytest.sh"),
+            "flake-gate",
+            sys.executable,
+            "-m",
+            "pytest",
+            "-p",
+            "no:cacheprovider",
+            str(tests),
+        ],
+        cwd=tmp_path,
+        env=env,
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=120,
         check=False,
     )
-
-    assert result.returncode == 1
-    assert "FLAKY TESTS DETECTED" in result.stderr
-    first, rerun = _cache_dir_of(tmp_path / "call-0"), _cache_dir_of(tmp_path / "call-1")
-    assert first == rerun
-    assert "--lf" in (tmp_path / "call-1").read_text().splitlines()
-    assert not Path(first).is_relative_to(workspace)
-    assert not Path(first).exists(), "the job-local cache outlived the gate"
 
 
 @pytest.mark.parametrize(
     ("event", "expected"),
-    [
-        ("pull_request", 1),
-        ("workflow_dispatch", 1),
-        ("", 1),
-        ("merge_group", 0),
-        ("push", 0),
-    ],
+    [("pull_request", 1), ("workflow_dispatch", 1), ("", 1), ("merge_group", 0), ("push", 0)],
 )
-def test_a_rerun_that_passes_only_fails_the_lane_on_a_pr(
+def test_a_test_that_passes_only_on_its_rerun_fails_the_lane_on_a_pr(
     tmp_path: Path, event: str, expected: int
 ) -> None:
-    """The queue and master must not eject on a flake; a PR push still fails it.
+    """The queue and master must not eject on a flake; a PR push, with a human there, still fails it."""
+    result = _flake_gate_on(tmp_path, FLAKY_TEST, event)
+    assert result.returncode == expected, result.stdout + result.stderr
+    assert "FLAKY" in result.stderr
 
-    A rerun-passing test proved the code is fine, but in the queue the failure costs
-    a whole group run and ejects a PR that just passed. On a PR a human is present and
-    the test should be stabilised, so the strict verdict stays where it can be acted on.
-    """
-    workspace = tmp_path / "workspace"
-    workspace.mkdir()
-    fake = tmp_path / "fake-pytest"
-    fake.write_text(FAKE_PYTEST)
-    fake.chmod(0o755)
-    env = {**os.environ, "REC": str(tmp_path)}
-    if event:
-        env["GITHUB_EVENT_NAME"] = event
-    else:
-        env.pop("GITHUB_EVENT_NAME", None)
 
-    result = subprocess.run(
-        ["bash", str(CI / "pytest.sh"), "flake-gate", str(fake), "tests"],
-        cwd=workspace,
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=60,
-        check=False,
-    )
-
-    assert result.returncode == expected
-    if expected == 0:
-        assert "::warning::" in result.stderr
-        assert "FLAKY TESTS DETECTED" not in result.stderr
-    else:
-        assert "FLAKY TESTS DETECTED" in result.stderr
+def test_a_test_that_fails_twice_is_a_genuine_failure(tmp_path: Path) -> None:
+    result = _flake_gate_on(tmp_path, "def test_broken():\n    assert False\n", "merge_group")
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "FLAKY" not in result.stderr
 
 
 def test_regression_proof_proves_a_module_marked_through_pytestmark(tmp_path: Path) -> None:
