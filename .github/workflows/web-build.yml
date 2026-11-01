@@ -121,6 +121,9 @@ jobs:
           remaining=$(find apps/web/.open-next -name '*.map' -type f | wc -l)
           echo "source maps removed: $maps (remaining: $remaining)"
           test "$remaining" -eq 0
+          # Only the served static assets; server bundles and third-party code
+          # mention the string legitimately.
+          node scripts/ci/strip-source-maps.mjs apps/web/.open-next/assets
       - name: Verify prerendered detail pages
         if: steps.inputs.outputs.build != 'false'
         # A notFound() during prerender keeps the build green but ships a 404

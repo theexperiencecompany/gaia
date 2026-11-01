@@ -217,7 +217,7 @@ const nextConfig = {
     // ISR hub pages send s-maxage only; browsers need max-age and a validator.
     // Scope it to those routes: static pages already pass, app routes need
     // their private/no-store headers.
-    const marketingHubs = ["alternative-to", "automate", "compare", "learn", "for"];
+    const marketingHubs = ["alternative-to", "automate", "compare", "learn", "for", "blog", "use-cases"];
     const buildLastModified = new Date().toUTCString();
     return [
       ...NEXT_SECURITY_HEADER_RULES,

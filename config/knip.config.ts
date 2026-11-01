@@ -97,6 +97,9 @@ const config: KnipConfig = {
     // imported as modules — so knip reads them as unused files.
     "scripts/ci/wide-event-conformance/emit_typescript.ts",
 
+    // Deploy workflow helper: run by node from web-build.yml, never imported.
+    "scripts/ci/strip-source-maps.mjs",
+
     // Agent skill templates (not app code, used by Claude Code skill system)
     ".agents/skills/**",
     ".claude/skills/**",
