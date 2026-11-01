@@ -7,7 +7,11 @@
   },
   "targets": {
     "ruff": {
-      "executor": "nx:noop",
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/changes.sh scoped --task lint-python:ruff --ext py --full . -- uv run --frozen --no-build --isolated --only-group lint ruff check && bash scripts/ci/changes.sh scoped --task lint-python:ruff --ext py --full . -- uv run --frozen --no-build --isolated --only-group lint ruff format --check"
+      },
+      "cache": false,
       "inputs": [
         "{workspaceRoot}/**/pyproject.toml",
         "{workspaceRoot}/**/ruff.toml",
@@ -41,9 +45,9 @@
       },
       "cache": false,
       "inputs": [
-        "{workspaceRoot}/apps/api/app/**/*.py",
         "{workspaceRoot}/apps/api/pyproject.toml",
         "ciHarness",
+        "{workspaceRoot}/apps/api/app/**/*.py",
         {
           "externalDependencies": []
         }
@@ -99,33 +103,51 @@
       ]
     },
     "xenon": {
-      "executor": "nx:noop",
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/changes.sh scoped --task lint-python:xenon --py-source --full \"apps/api apps/voice-agent libs/shared/py -e apps/api/tests/** -e apps/api/scripts/** -e libs/shared/py/tests/**\" -- uv run --frozen --no-build --isolated --only-group lint xenon --max-absolute F --max-modules E --max-average B"
+      },
+      "cache": false,
       "inputs": [
         "{workspaceRoot}/pyproject.toml",
         "ciHarness",
-        "{workspaceRoot}/**/*.py",
+        "{workspaceRoot}/apps/api/**/*.py",
+        "{workspaceRoot}/apps/voice-agent/**/*.py",
+        "{workspaceRoot}/libs/shared/py/**/*.py",
         {
           "externalDependencies": []
         }
       ]
     },
     "interrogate": {
-      "executor": "nx:noop",
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/changes.sh scoped --task lint-python:interrogate --py-source --full \"apps/api apps/voice-agent libs/shared/py\" -- uv run --frozen --no-build --isolated --only-group lint interrogate -c pyproject.toml"
+      },
+      "cache": false,
       "inputs": [
         "{workspaceRoot}/pyproject.toml",
         "ciHarness",
-        "{workspaceRoot}/**/*.py",
+        "{workspaceRoot}/apps/api/**/*.py",
+        "{workspaceRoot}/apps/voice-agent/**/*.py",
+        "{workspaceRoot}/libs/shared/py/**/*.py",
         {
           "externalDependencies": []
         }
       ]
     },
     "bandit": {
-      "executor": "nx:noop",
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/changes.sh scoped --task lint-python:bandit --py-source --full \"-r apps/api/app apps/voice-agent/src libs/shared/py\" -- uv run --frozen --no-build --isolated --only-group lint bandit -c pyproject.toml --severity-level low --confidence-level low"
+      },
+      "cache": false,
       "inputs": [
         "{workspaceRoot}/pyproject.toml",
         "ciHarness",
-        "{workspaceRoot}/**/*.py",
+        "{workspaceRoot}/apps/api/app/**/*.py",
+        "{workspaceRoot}/apps/voice-agent/src/**/*.py",
+        "{workspaceRoot}/libs/shared/py/**/*.py",
         {
           "externalDependencies": []
         }

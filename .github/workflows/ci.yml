@@ -190,9 +190,10 @@ jobs:
       # in `tasks`. typescript_projects: the TS projects whose build or test is.
       tasks: ${{ steps.affected.outputs.tasks }}
       projects: ${{ steps.affected.outputs.projects }}
-      # The tasks nx reached through their config or the CI harness, not a
-      # source file: `changes.sh files --task` scans the whole tree for them.
-      full_scan: ${{ steps.affected.outputs.full_scan }}
+      # Each task's changed files that nx matched to its inputs, or __FULL__
+      # when nx reached it through config or the CI harness:
+      # `changes.sh files --task` hands a check exactly these.
+      task_files: ${{ steps.affected.outputs.task_files }}
       typescript_projects: ${{ steps.affected.outputs.typescript_projects }}
       # The test-python matrices, from the one slice definition
       # (scripts/ci/lib/test-slices.json), cut to this run's tier.
@@ -329,7 +330,7 @@ jobs:
     # The base every scoped step in this job diffs against. Job-level because a
     # workflow-level `env:` cannot read `needs`.
     env:
-      FULL_SCAN_TASKS: ${{ needs.detect.outputs.full_scan }}
+      TASK_FILES: ${{ needs.detect.outputs.task_files }}
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
     # The checks run serially except jscpd; type-check alone was capped at 15.
     timeout-minutes: 30
@@ -448,15 +449,7 @@ jobs:
         continue-on-error: true
         shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: contains(fromJSON(needs.detect.outputs.tasks), 'lint-node:file-size') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'file-size')
-        run: |
-          FILES=$(scripts/ci/changes.sh files --task lint-node:file-size ts tsx js jsx mjs cjs)
-          if [ "$FILES" = "__FULL__" ]; then
-            pnpm run quality:size
-          elif [ -z "$FILES" ]; then
-            echo "No matching changed files — skipping."
-          else
-            CHANGED_FILES="$FILES" node scripts/ci/checks.mjs file-sizes
-          fi
+        run: bash scripts/ci/changes.sh scoped --task lint-node:file-size --ext "ts tsx js jsx mjs cjs" --env -- node scripts/ci/checks.mjs file-sizes
       - *upload-verdict-so-far
 
       - name: types-location — types live in dedicated *.types.ts files
@@ -464,15 +457,7 @@ jobs:
         continue-on-error: true
         shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: contains(fromJSON(needs.detect.outputs.tasks), 'lint-node:types-location') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'types-location')
-        run: |
-          FILES=$(scripts/ci/changes.sh files --task lint-node:types-location ts tsx)
-          if [ "$FILES" = "__FULL__" ]; then
-            node scripts/ci/checks.mjs types-location --enforce
-          elif [ -z "$FILES" ]; then
-            echo "No matching changed files — skipping."
-          else
-            CHANGED_FILES="$FILES" node scripts/ci/checks.mjs types-location --enforce
-          fi
+        run: bash scripts/ci/changes.sh scoped --task lint-node:types-location --ext "ts tsx" --env -- node scripts/ci/checks.mjs types-location --enforce
       - *upload-verdict-so-far
 
       - name: doc-comments — JSDoc and line comments state the contract
@@ -480,15 +465,7 @@ jobs:
         continue-on-error: true
         shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: contains(fromJSON(needs.detect.outputs.tasks), 'lint-node:doc-comments') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'doc-comments')
-        run: |
-          FILES=$(scripts/ci/changes.sh files --task lint-node:doc-comments ts tsx js jsx mjs cjs)
-          if [ "$FILES" = "__FULL__" ]; then
-            node scripts/ci/checks.mjs doc-comments
-          elif [ -z "$FILES" ]; then
-            echo "No matching changed files — skipping."
-          else
-            CHANGED_FILES="$FILES" node scripts/ci/checks.mjs doc-comments
-          fi
+        run: bash scripts/ci/changes.sh scoped --task lint-node:doc-comments --ext "ts tsx js jsx mjs cjs" --env -- node scripts/ci/checks.mjs doc-comments
       - *upload-verdict-so-far
 
       - name: components-per-file — at most 2 React components per file
@@ -496,15 +473,7 @@ jobs:
         continue-on-error: true
         shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: contains(fromJSON(needs.detect.outputs.tasks), 'lint-node:components-per-file') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'components-per-file')
-        run: |
-          FILES=$(scripts/ci/changes.sh files --task lint-node:components-per-file tsx)
-          if [ "$FILES" = "__FULL__" ]; then
-            pnpm run quality:components
-          elif [ -z "$FILES" ]; then
-            echo "No matching changed files — skipping."
-          else
-            CHANGED_FILES="$FILES" node scripts/ci/checks.mjs components-per-file
-          fi
+        run: bash scripts/ci/changes.sh scoped --task lint-node:components-per-file --ext tsx --env -- node scripts/ci/checks.mjs components-per-file
       - *upload-verdict-so-far
 
       - name: package-hygiene — publint and are-the-types-wrong on packages/cli
@@ -608,7 +577,7 @@ jobs:
     if: ${{ !cancelled() && (contains(fromJSON(needs.detect.outputs.projects), 'lint-python') || contains(fromJSON(needs.detect.outputs.tasks), 'alert-rules:check')) }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.light) }}
     env:
-      FULL_SCAN_TASKS: ${{ needs.detect.outputs.full_scan }}
+      TASK_FILES: ${{ needs.detect.outputs.task_files }}
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
     # mypy alone was capped at 20, the static tools at 20.
     timeout-minutes: 35
@@ -640,21 +609,7 @@ jobs:
         if: contains(fromJSON(needs.detect.outputs.tasks), 'lint-python:ruff') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'ruff')
         # Pinned to the uv.lock ruff version — bump both together. Unpinned, a
         # ruff release can flip this check red with zero code changes.
-        run: |
-          echo "::group::ruff check + format --check"
-          FILES=$(scripts/ci/changes.sh files --task lint-python:ruff py)
-          if [ "$FILES" = "__FULL__" ]; then
-            # Whole repo, not a list of roots: a new app or lib is covered the
-            # moment it exists. Exclusions live in [tool.ruff] extend-exclude.
-            uv run --frozen --no-build --isolated --only-group lint ruff check .
-            uv run --frozen --no-build --isolated --only-group lint ruff format --check .
-          elif [ -z "$FILES" ]; then
-            echo "No matching changed files — skipping."
-          else
-            uv run --frozen --no-build --isolated --only-group lint ruff check $FILES
-            uv run --frozen --no-build --isolated --only-group lint ruff format --check $FILES
-          fi
-          echo "::endgroup::"
+        run: bash scripts/ci/changes.sh scoped --task lint-python:ruff --ext py --full . -- uv run --frozen --no-build --isolated --only-group lint ruff check && bash scripts/ci/changes.sh scoped --task lint-python:ruff --ext py --full . -- uv run --frozen --no-build --isolated --only-group lint ruff format --check
       - *upload-verdict-so-far
 
       - name: custom-lints — route contract, service classes, wide events, docstring + comment content
@@ -710,26 +665,7 @@ jobs:
         continue-on-error: true
         shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: contains(fromJSON(needs.detect.outputs.tasks), 'lint-python:xenon') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'xenon')
-        run: |
-          FILES=$(scripts/ci/changes.sh py-source --task lint-python:xenon)
-          if [ "$FILES" = "__FULL__" ]; then
-            uv run --frozen --no-build --isolated --only-group lint xenon \
-              --max-absolute F \
-              --max-modules E \
-              --max-average B \
-              apps/api apps/voice-agent libs/shared/py \
-              -e 'apps/api/tests/**' \
-              -e 'apps/api/scripts/**' \
-              -e 'libs/shared/py/tests/**'
-          elif [ -z "$FILES" ]; then
-            echo "No matching changed files — skipping."
-          else
-            uv run --frozen --no-build --isolated --only-group lint xenon \
-              --max-absolute F \
-              --max-modules E \
-              --max-average B \
-              $FILES
-          fi
+        run: bash scripts/ci/changes.sh scoped --task lint-python:xenon --py-source --full "apps/api apps/voice-agent libs/shared/py -e apps/api/tests/** -e apps/api/scripts/** -e libs/shared/py/tests/**" -- uv run --frozen --no-build --isolated --only-group lint xenon --max-absolute F --max-modules E --max-average B
       - *upload-verdict-so-far
 
       - name: interrogate — docstring coverage on the public API surface
@@ -737,15 +673,7 @@ jobs:
         continue-on-error: true
         shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: contains(fromJSON(needs.detect.outputs.tasks), 'lint-python:interrogate') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'interrogate')
-        run: |
-          FILES=$(scripts/ci/changes.sh py-source --task lint-python:interrogate)
-          if [ "$FILES" = "__FULL__" ]; then
-            uv run --frozen --no-build --isolated --only-group lint interrogate -c pyproject.toml apps/api apps/voice-agent libs/shared/py
-          elif [ -z "$FILES" ]; then
-            echo "No matching changed files — skipping."
-          else
-            uv run --frozen --no-build --isolated --only-group lint interrogate -c pyproject.toml $FILES
-          fi
+        run: bash scripts/ci/changes.sh scoped --task lint-python:interrogate --py-source --full "apps/api apps/voice-agent libs/shared/py" -- uv run --frozen --no-build --isolated --only-group lint interrogate -c pyproject.toml
       - *upload-verdict-so-far
 
       - name: bandit — security scan (zero-warning policy)
@@ -753,15 +681,7 @@ jobs:
         continue-on-error: true
         shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: contains(fromJSON(needs.detect.outputs.tasks), 'lint-python:bandit') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'bandit')
-        run: |
-          FILES=$(scripts/ci/changes.sh py-source --task lint-python:bandit)
-          if [ "$FILES" = "__FULL__" ]; then
-            uv run --frozen --no-build --isolated --only-group lint bandit -c pyproject.toml -r apps/api/app apps/voice-agent/src libs/shared/py --severity-level low --confidence-level low
-          elif [ -z "$FILES" ]; then
-            echo "No matching changed files — skipping."
-          else
-            uv run --frozen --no-build --isolated --only-group lint bandit -c pyproject.toml $FILES --severity-level low --confidence-level low
-          fi
+        run: bash scripts/ci/changes.sh scoped --task lint-python:bandit --py-source --full "-r apps/api/app apps/voice-agent/src libs/shared/py" -- uv run --frozen --no-build --isolated --only-group lint bandit -c pyproject.toml --severity-level low --confidence-level low
       - *upload-verdict-so-far
 
       # One cache dir per runner instance, keyed by RUNNER_NAME: two mypy runs
@@ -932,7 +852,7 @@ jobs:
     if: ${{ !cancelled() && (contains(fromJSON(needs.detect.outputs.projects), 'lint-mixed') || contains(fromJSON(needs.detect.outputs.tasks), 'gaia-connect:check')) }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.light) }}
     env:
-      FULL_SCAN_TASKS: ${{ needs.detect.outputs.full_scan }}
+      TASK_FILES: ${{ needs.detect.outputs.task_files }}
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
     timeout-minutes: 35
     permissions:
@@ -1254,7 +1174,7 @@ jobs:
     if: ${{ !cancelled() && needs.detect.outputs.tier != '' }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.light) }}
     env:
-      FULL_SCAN_TASKS: ${{ needs.detect.outputs.full_scan }}
+      TASK_FILES: ${{ needs.detect.outputs.task_files }}
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
     timeout-minutes: 10
     permissions:

@@ -11,15 +11,23 @@
 #                            diff against the base goes through it.
 #   files [--task <t>] <ext> [<ext> ...]
 #                            The changed files for a lane to scope to, filtered
-#                            to those extensions; __FULL__ when nx reached task
-#                            <t> through its config. See the contract below.
+#                            to those extensions. With --task, only those nx
+#                            matched to <t>'s inputs ($TASK_FILES from detect,
+#                            else nx asked), and __FULL__ when nx reached <t>
+#                            through its config. See the contract below.
 #   py-source [--task <t>]   Like `files py`, but drops the paths the Python
 #                            tools exclude in a full scan (tests, scripts,
 #                            migrations, …). Same three-state contract.
+#   scoped --task <t> (--ext "<exts>" | --py-source) [--env | --full "<args>"] -- <cmd…>
+#                            Run <cmd> over what `files` / `py-source` answer:
+#                            the changed files appended (or as $CHANGED_FILES
+#                            with --env), the --full args on a full scan, and
+#                            nothing at all when no file it reads changed.
 #   affected                 Which CI tasks does this change reach? Asks
 #                            `nx affected --explain` (lib/nx_affected.py) and
-#                            writes tasks, projects, typescript_projects and
-#                            release_groups to $GITHUB_OUTPUT. Every task on a
+#                            writes tasks, projects, task_files,
+#                            typescript_projects and release_groups to
+#                            $GITHUB_OUTPUT. Every task on a
 #                            dispatch, unless --since-last-success.
 #
 # `base` — WHY THIS EXISTS. For a PR in a native GitHub stack, the
@@ -159,17 +167,10 @@ cmd_files() {
 
   FULL_SENTINEL="__FULL__"
 
-  # --task <project:target>: when detect's nx answer reached that check through
-  # its config or the CI harness rather than a source file ($FULL_SCAN_TASKS,
-  # detect's full_scan), the change touches none of the files it would be
-  # scoped to, so it scans the whole tree.
+  local task=""
   if [[ "${1:-}" == "--task" ]]; then
-    local task="${2:?changes.sh files --task needs a project:target}"
+    task="${2:?changes.sh files --task needs a project:target}"
     shift 2
-    if [[ "${FULL_SCAN_TASKS:-}" == *"\"$task\""* ]]; then
-      printf '%s\n' "$FULL_SENTINEL"
-      exit 0
-    fi
   fi
 
   # Push / non-PR event inside CI: no base ref to diff against → signal full scan.
@@ -235,6 +236,27 @@ cmd_files() {
   # path fails the test — turning one dead symlink into a hard lane failure.
   local REV
   REV="$(_base_rev "$BASE")"
+
+  # --task <project:target>: the changed files nx matched to that task's
+  # inputs (detect's $TASK_FILES, else nx asked here), so a tool is handed only
+  # what its check reads; __FULL__ when nx reached it through config instead.
+  if [[ -n "$task" ]]; then
+    local scoped
+    scoped="$(python3 "$(dirname "$0")/lib/nx_affected.py" --files-for "$task" \
+      --base "$(git merge-base "$REV" HEAD)")"
+    if [[ "$scoped" == "$FULL_SENTINEL" ]]; then
+      printf '%s\n' "$FULL_SENTINEL"
+      exit 0
+    fi
+    printf '%s\n' "$scoped" | { grep -E "$ext_regex" || true; } \
+      | while IFS= read -r f; do
+          if [[ -f "$f" ]]; then
+            printf '%s\n' "$f"
+          fi
+        done
+    return 0
+  fi
+
   git diff --name-only --diff-filter=ACMR "${REV}...HEAD" \
     | { grep -E "$ext_regex" || true; } \
     | while IFS= read -r f; do
@@ -291,6 +313,44 @@ for line in filter(None, sys.stdin.read().splitlines()):
 '
 }
 
+# One check's whole step: every lane used to spell out the three states of
+# `files` in its own shell block.
+cmd_scoped() {
+  local task="" exts="" source="files" mode="args" full=""
+  while (($#)); do
+    case "$1" in
+      --task) task="$2"; shift 2 ;;
+      --ext) exts="$2"; shift 2 ;;
+      --py-source) source="py-source"; shift ;;
+      --env) mode="env"; shift ;;
+      --full) full="$2"; shift 2 ;;
+      --) shift; break ;;
+      *) echo "changes.sh scoped: unknown flag $1" >&2; exit 2 ;;
+    esac
+  done
+  (($#)) || { echo "changes.sh scoped: no command after --" >&2; exit 2; }
+  local files
+  if [[ "$source" == py-source ]]; then
+    files="$(cmd_py_source --task "${task:?--task is required}")"
+  else
+    # shellcheck disable=SC2086 # --ext is a space-separated extension list
+    files="$(cmd_files --task "${task:?--task is required}" ${exts:?--ext or --py-source is required})"
+  fi
+  # The lists split on whitespace, never glob: xenon's `-e apps/api/tests/**` is a pattern for xenon.
+  set -f
+  if [[ "$files" == "__FULL__" ]]; then
+    # shellcheck disable=SC2086 # --full is the full scan's argument list
+    exec "$@" $full
+  elif [[ -z "$files" ]]; then
+    ci_ok "$task: no file it reads changed — nothing to check"
+  elif [[ "$mode" == env ]]; then
+    CHANGED_FILES="$files" exec "$@"
+  else
+    # shellcheck disable=SC2086 # one path per line, none with spaces
+    exec "$@" $files
+  fi
+}
+
 # A PR and a merge group measure from the base `base` resolved, like `files`:
 # nx-set-shas reads the event payload, which names a stack's trunk, and on a
 # merge group would charge the PR with the group queued ahead of it.
@@ -315,7 +375,7 @@ cmd_affected() {
 }
 
 usage() {
-  sed -n '2,23p' "$0" >&2
+  sed -n '2,31p' "$0" >&2
 }
 
 main() {
@@ -327,6 +387,7 @@ main() {
     files)         cmd_files "$@" ;;
     py-source)     cmd_py_source "$@" ;;
     affected)      cmd_affected "$@" ;;
+    scoped)        cmd_scoped "$@" ;;
     *)
       echo "changes.sh: unknown subcommand '${sub}'" >&2
       usage

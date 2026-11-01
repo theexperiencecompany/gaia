@@ -208,18 +208,33 @@ def test_release_groups_name_the_images_to_publish(path: str, groups: list[str])
 
 
 @pytest.mark.parametrize(
-    ("path", "task", "full"),
+    ("path", "task", "files"),
     [
         # ruff's config changed: every file is re-linted, not the zero .py files the diff holds.
-        ("pyproject.toml", "lint-python:ruff", True),
-        ("biome.json", "lint-node:biome", True),
-        ("apps/api/app/main.py", "lint-python:ruff", False),
+        ("pyproject.toml", "lint-python:ruff", nx_affected.FULL_SCAN),
+        ("biome.json", "lint-node:biome", nx_affected.FULL_SCAN),
+        # tsconfig*.json is a config glob, not a source one: every file is type-checked again.
+        ("apps/web/tsconfig.json", "lint-node:ts-type-check", nx_affected.FULL_SCAN),
+        ("apps/api/app/main.py", "lint-python:ruff", ["apps/api/app/main.py"]),
+        # interrogate scans the three packages; a lint tool outside them failed its 80% bar.
+        ("tools/lints/_common.py", "lint-python:interrogate", None),
+        ("apps/api/app/main.py", "lint-python:bandit", ["apps/api/app/main.py"]),
+        ("apps/api/tests/conftest.py", "lint-python:bandit", None),
     ],
 )
-def test_a_check_reached_through_its_config_scans_everything(
-    path: str, task: str, full: bool
+def test_a_check_is_handed_the_changed_files_it_reads(
+    path: str, task: str, files: str | list[str] | None
 ) -> None:
-    assert (task in nx_affected.full_scan(nx_affected.select([f"--files={path}"]))) is full
+    assert nx_affected.task_files(nx_affected.select([f"--files={path}"])).get(task) == files
+
+
+def test_a_list_too_long_to_carry_is_a_full_scan() -> None:
+    reasons = [
+        {"kind": "input-file", "file": f"f{n}.py", "pattern": "**/*.py"}
+        for n in range(nx_affected.SCOPED_FILES_MAX + 1)
+    ]
+    selection = nx_affected.Selection(tasks={"lint-python:ruff": reasons})
+    assert nx_affected.task_files(selection) == {"lint-python:ruff": nx_affected.FULL_SCAN}
 
 
 def test_a_check_lists_its_config_before_its_source_globs() -> None:
@@ -227,9 +242,9 @@ def test_a_check_lists_its_config_before_its_source_globs() -> None:
     for path in nx_affected.JOBS_DIR.glob("*/project.json"):
         for target, spec in json.loads(path.read_text())["targets"].items():
             kinds = [
-                "src" if str(i).startswith("{workspaceRoot}/**/*.") else "cfg"
+                "src" if nx_affected.SOURCE_GLOB.search(i) else "cfg"
                 for i in spec["inputs"]
-                if isinstance(i, str)
+                if isinstance(i, str) and not i.startswith("!")
             ]
             assert kinds == sorted(kinds), (
                 f"{path.parent.name}:{target} lists a config input after a source glob"

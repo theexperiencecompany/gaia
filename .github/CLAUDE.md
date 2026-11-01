@@ -167,6 +167,10 @@ Four layers, from cheap to precise, all decided in the one `detect` job:
 3. **`scripts/ci/changes.sh files` inside checks** — scopes each tool to the
    exact changed files. Contract: prints `__FULL__` (push/dispatch → full
    scan), nothing (no relevant changes → skip & pass), or one path per line.
+   With `--task`, the paths are the ones nx matched to that task's inputs
+   (`detect`'s `task_files`; ci:local passes the same), so a check is never
+   handed a file outside what it reads, and `__FULL__` when nx reached the
+   task through its config or the CI harness.
    The base is `detect`'s `base_ref`: the PR's real parent, or on a merge
    group the commit the group was built on (`merge_group.base_sha` — for the
    second PR in the queue that is the first PR's group commit, not master).

@@ -253,6 +253,11 @@ def main() -> int:
         if files and any(ln.nx for ln in lanes)
         else {}
     )
+    # The lanes' changes.sh reads the same per-task file lists detect publishes in CI.
+    lane_env = {
+        **os.environ,
+        "TASK_FILES": json.dumps(nx_affected.task_files(nx_affected.Selection(tasks=reached))),
+    }
 
     def matching(ln: Lane) -> list[str]:
         if ln.nx:
@@ -330,6 +335,7 @@ def main() -> int:
                     shell=True,
                     check=False,
                     cwd=root,
+                    env=lane_env,
                     stdout=logfh,
                     stderr=subprocess.STDOUT,
                     timeout=ln.timeout_s,

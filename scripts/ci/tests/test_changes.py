@@ -328,14 +328,71 @@ def test_files_for_a_task_nx_marked_for_a_full_scan_is_full(repo: Path) -> None:
     """A config change selects the check but changes none of the files it reads; scoping it to them skipped it."""
     proc = _run(
         repo, "files", "--task", "lint-python:ruff", "py", GAIA_PR_BASE="master",
-        FULL_SCAN_TASKS='["lint-python:ruff"]',
+        TASK_FILES='{"lint-python:ruff": "__FULL__"}',
     )  # fmt: skip
     assert proc.stdout.strip() == "__FULL__", proc.stderr
 
 
-def test_files_for_a_task_scoped_to_its_sources_stays_scoped(repo: Path) -> None:
+def test_files_for_a_task_are_the_files_nx_matched_to_it(repo: Path) -> None:
+    """A changed file outside the task's inputs (tools/ for interrogate) is not handed to its tool."""
+    (repo / "app.py").write_text("x = 5\n")
+    (repo / "tool.py").write_text("y = 5\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "two py changes")
     proc = _run(
-        repo, "files", "--task", "lint-python:ruff", "py", GAIA_PR_BASE="master",
-        FULL_SCAN_TASKS='["lint-node:biome"]',
+        repo, "files", "--task", "lint-python:interrogate", "py", GAIA_PR_BASE="master",
+        TASK_FILES='{"lint-python:interrogate": ["app.py", "gone.py"]}',
     )  # fmt: skip
-    assert proc.stdout.strip() != "__FULL__", proc.stderr
+    assert proc.stdout.split() == ["app.py"], proc.stderr
+
+
+# scoped: one line runs a check over the changed files, the whole tree, or nothing.
+
+
+def _scoped(repo: Path, *flags: str, **env: str) -> list[str]:
+    proc = _run(
+        repo,
+        "scoped",
+        *flags,
+        "--",
+        "bash",
+        "-c",
+        'printf "args:%s\\n" "$@"; printf "env:%s\\n" "${CHANGED_FILES:-}"',
+        "_",
+        **env,
+    )
+    assert proc.returncode == 0, proc.stderr
+    return proc.stdout.splitlines()
+
+
+def test_scoped_appends_the_changed_files(repo: Path) -> None:
+    (repo / "app.py").write_text("x = 3\n")
+    _git(repo, "commit", "-aqm", "py change")
+    out = _scoped(
+        repo, "--task", "lint-python:ruff", "--ext", "py", GAIA_PR_BASE="master",
+        TASK_FILES='{"lint-python:ruff": ["app.py"]}',
+    )  # fmt: skip
+    assert "args:app.py" in out
+
+
+def test_scoped_hands_the_files_through_the_environment(repo: Path) -> None:
+    (repo / "app.py").write_text("x = 4\n")
+    _git(repo, "commit", "-aqm", "py change")
+    out = _scoped(
+        repo, "--task", "t", "--ext", "py", "--env", GAIA_PR_BASE="master",
+        TASK_FILES='{"t": ["app.py"]}',
+    )  # fmt: skip
+    assert "env:app.py" in out and "args:app.py" not in out
+
+
+def test_scoped_runs_the_whole_tree_on_a_full_scan(repo: Path) -> None:
+    out = _scoped(
+        repo, "--task", "lint-python:ruff", "--ext", "py", "--full", ". extra", GAIA_PR_BASE="master",
+        TASK_FILES='{"lint-python:ruff": "__FULL__"}',
+    )  # fmt: skip
+    assert out[:2] == ["args:.", "args:extra"]
+
+
+def test_scoped_runs_nothing_when_no_file_it_reads_changed(repo: Path) -> None:
+    out = _scoped(repo, "--task", "t", "--ext", "ts", GAIA_PR_BASE="master", TASK_FILES="{}")
+    assert not [line for line in out if line.startswith("args:")]

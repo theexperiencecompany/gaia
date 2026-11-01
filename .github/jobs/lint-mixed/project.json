@@ -13,8 +13,6 @@
       },
       "cache": false,
       "inputs": [
-        "{workspaceRoot}/apps/api/app/**/*.py",
-        "{workspaceRoot}/libs/shared/py/**/*.py",
         "{workspaceRoot}/apps/api/scripts/export_openapi.py",
         "{workspaceRoot}/apps/api/scripts/openapi_contract.py",
         "{workspaceRoot}/apps/api/tests/offline_env.py",
@@ -25,6 +23,8 @@
         "{workspaceRoot}/scripts/ci/checks.mjs",
         "{workspaceRoot}/package.json",
         "ciHarness",
+        "{workspaceRoot}/apps/api/app/**/*.py",
+        "{workspaceRoot}/libs/shared/py/**/*.py",
         {
           "externalDependencies": []
         }
@@ -154,9 +154,9 @@
     "observability-bots": {
       "executor": "nx:noop",
       "inputs": [
+        "ciHarness",
         "{workspaceRoot}/apps/bots/**/*.ts",
         "{workspaceRoot}/libs/shared/ts/**/*.ts",
-        "ciHarness",
         {
           "externalDependencies": []
         }

@@ -45,7 +45,11 @@
       ]
     },
     "file-size": {
-      "executor": "nx:noop",
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/changes.sh scoped --task lint-node:file-size --ext \"ts tsx js jsx mjs cjs\" --env -- node scripts/ci/checks.mjs file-sizes"
+      },
+      "cache": false,
       "inputs": [
         "ciHarness",
         "{workspaceRoot}/**/*.{ts,tsx,js,jsx,mjs,cjs}",
@@ -55,7 +59,11 @@
       ]
     },
     "types-location": {
-      "executor": "nx:noop",
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/changes.sh scoped --task lint-node:types-location --ext \"ts tsx\" --env -- node scripts/ci/checks.mjs types-location --enforce"
+      },
+      "cache": false,
       "inputs": [
         "ciHarness",
         "{workspaceRoot}/**/*.{ts,tsx,js}",
@@ -65,7 +73,11 @@
       ]
     },
     "doc-comments": {
-      "executor": "nx:noop",
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/changes.sh scoped --task lint-node:doc-comments --ext \"ts tsx js jsx mjs cjs\" --env -- node scripts/ci/checks.mjs doc-comments"
+      },
+      "cache": false,
       "inputs": [
         "ciHarness",
         "{workspaceRoot}/**/*.{ts,tsx,js,jsx,mjs,cjs}",
@@ -75,7 +87,11 @@
       ]
     },
     "components-per-file": {
-      "executor": "nx:noop",
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/changes.sh scoped --task lint-node:components-per-file --ext tsx --env -- node scripts/ci/checks.mjs components-per-file"
+      },
+      "cache": false,
       "inputs": [
         "ciHarness",
         "{workspaceRoot}/**/*.tsx",

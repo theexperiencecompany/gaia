@@ -35,8 +35,7 @@
       "ci_check": "file-size",
       "heavy": false,
       "timeout_s": 120,
-      "require_cmd": [],
-      "command": "pnpm run quality:size"
+      "require_cmd": []
     },
     {
       "name": "types-location",
@@ -44,8 +43,7 @@
       "ci_check": "types-location",
       "heavy": false,
       "timeout_s": 120,
-      "require_cmd": [],
-      "command": "node scripts/ci/checks.mjs types-location --enforce"
+      "require_cmd": []
     },
     {
       "name": "api-schema",
@@ -95,8 +93,7 @@
       "ci_check": "doc-comments",
       "heavy": false,
       "timeout_s": 120,
-      "require_cmd": ["node"],
-      "command": "node scripts/ci/checks.mjs doc-comments"
+      "require_cmd": ["node"]
     },
     {
       "name": "api-schema-types",
@@ -112,8 +109,7 @@
       "ci_check": "components-per-file",
       "heavy": false,
       "timeout_s": 120,
-      "require_cmd": [],
-      "command": "pnpm run quality:components"
+      "require_cmd": []
     },
     {
       "name": "duplicates",
@@ -173,8 +169,7 @@
       "ci_check": "ruff",
       "heavy": false,
       "timeout_s": 180,
-      "require_cmd": [],
-      "command": "uv run --frozen --no-build --isolated --only-group lint ruff check . && uv run --frozen --no-build --isolated --only-group lint ruff format --check ."
+      "require_cmd": []
     },
     {
       "name": "python-mypy",
@@ -263,8 +258,7 @@
       "ci_check": "interrogate",
       "heavy": false,
       "timeout_s": 180,
-      "require_cmd": [],
-      "command": "uv run --frozen --no-build --isolated --only-group lint interrogate -c pyproject.toml apps/api apps/voice-agent libs/shared/py"
+      "require_cmd": []
     },
     {
       "name": "xenon",
@@ -272,8 +266,7 @@
       "ci_check": "xenon",
       "heavy": false,
       "timeout_s": 180,
-      "require_cmd": [],
-      "command": "uv run --frozen --no-build --isolated --only-group lint xenon --max-absolute F --max-modules E --max-average B apps/api apps/voice-agent libs/shared/py -e 'apps/api/tests/**' -e 'apps/api/scripts/**' -e 'libs/shared/py/tests/**'"
+      "require_cmd": []
     },
     {
       "name": "bandit",
@@ -281,8 +274,7 @@
       "ci_check": "bandit",
       "heavy": false,
       "timeout_s": 300,
-      "require_cmd": [],
-      "command": "FILES=$(scripts/ci/changes.sh py-source); if [ \"$FILES\" = \"__FULL__\" ]; then uv run --frozen --no-build --isolated --only-group lint bandit -c pyproject.toml -r apps/api/app apps/voice-agent/src libs/shared/py --severity-level low --confidence-level low; elif [ -z \"$FILES\" ]; then echo \"bandit: no changed Python source\"; else uv run --frozen --no-build --isolated --only-group lint bandit -c pyproject.toml $FILES --severity-level low --confidence-level low; fi"
+      "require_cmd": []
     },
     {
       "name": "pip-audit",

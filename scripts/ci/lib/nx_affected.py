@@ -14,6 +14,7 @@ from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 
@@ -27,6 +28,14 @@ CODE_TARGETS = ("build", "check", "docker:build", "test")
 NX_JSON = REPO_ROOT / "nx.json"
 TYPESCRIPT_BUILD_TARGETS = {"build", "test"}
 TYPESCRIPT = "tag:scope:typescript"
+# changes.sh files' sentinel for "scan the whole tree".
+FULL_SCAN = "__FULL__"
+# A source input names files by extension (apps/api/**/*.py, **/*.{ts,tsx});
+# a config input names one file (pyproject.toml) or a whole tree (scripts/ci/**/*).
+SOURCE_GLOB = re.compile(r"(?:^|/)\*\.(\w+|\{[\w,]+\})$")
+# Past this many files a scoped list costs more to carry in detect's outputs
+# (1 MB per job) than a full scan costs to run.
+SCOPED_FILES_MAX = 300
 
 
 @dataclass(frozen=True)
@@ -112,19 +121,24 @@ def release_groups(selection: Selection) -> list[str]:
     )
 
 
-def full_scan(selection: Selection) -> list[str]:
-    """Name the tasks nx reached through something other than their source files.
+def task_files(selection: Selection) -> dict[str, str | list[str]]:
+    """Map each affected task to the changed files it reads, or FULL_SCAN.
 
-    A config, manifest or CI-harness change selects a check without changing
-    any file it would be scoped to, so that check must scan the whole tree.
+    A task reached through a config, manifest or the CI harness rather than a
+    source glob changed no file it would be scoped to, so it scans the whole
+    tree; so does one whose list outgrows SCOPED_FILES_MAX.
     """
-    return sorted(
-        task
-        for task, reasons in selection.tasks.items()
-        if any(
-            r.get("kind") != "input-file" or not str(r.get("pattern", "")).startswith("**/*.")
-            for r in reasons
-        )
+    scoped: dict[str, str | list[str]] = {}
+    for task, reasons in selection.tasks.items():
+        files = sorted(r["file"] for r in reasons if _is_source(r))
+        whole = len(files) < len(reasons) or len(files) > SCOPED_FILES_MAX
+        scoped[task] = FULL_SCAN if whole else files
+    return scoped
+
+
+def _is_source(reason: dict[str, str]) -> bool:
+    return reason.get("kind") == "input-file" and bool(
+        SOURCE_GLOB.search(reason.get("pattern", ""))
     )
 
 
@@ -140,6 +154,11 @@ def main() -> int:
     scope.add_argument("--all", action="store_true", help="every task, as on a dispatch")
     scope.add_argument("--base", help="the revision the change is measured from")
     parser.add_argument("--head", default="HEAD")
+    parser.add_argument(
+        "--files-for",
+        metavar="TASK",
+        help="print one task's files, or FULL_SCAN; read from $TASK_FILES (detect's) when set",
+    )
     opts = parser.parse_args()
 
     range_args = (
@@ -148,13 +167,22 @@ def main() -> int:
         if opts.all
         else [f"--base={opts.base}", f"--head={opts.head}"]
     )
+    if opts.files_for:
+        published = os.environ.get("TASK_FILES")
+        scoped = json.loads(published) if published else task_files(select(range_args))
+        entry = scoped.get(opts.files_for, [])
+        sys.stdout.write(
+            f"{entry}\n" if isinstance(entry, str) else "".join(f"{f}\n" for f in entry)
+        )
+        return 0
+
     selection = select(range_args)
     outputs = {
         "tasks": json.dumps(sorted(selection.tasks)),
         "projects": json.dumps(selection.projects),
         "typescript_projects": typescript_projects(selection),
         "release_groups": json.dumps(release_groups(selection)),
-        "full_scan": json.dumps(full_scan(selection)),
+        "task_files": json.dumps(task_files(selection)),
     }
     lines = "".join(f"{key}={value}\n" for key, value in outputs.items())
     sink = os.environ.get("GITHUB_OUTPUT")
