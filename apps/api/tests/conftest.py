@@ -41,6 +41,8 @@ _hypothesis_settings.register_profile(
     "ci-full",
     max_examples=200,
     deadline=None,
+    # Explicit: under CI=true a new profile inherits Hypothesis's built-in "ci", which derandomizes.
+    derandomize=False,
     database=None,
     suppress_health_check=[HealthCheck.differing_executors],
 )
