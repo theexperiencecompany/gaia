@@ -19,10 +19,12 @@ import sys
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 JOBS_DIR = REPO_ROOT / ".github" / "jobs"
-# The code projects' targets ci.yml gates on: api:test opens the Python slices,
-# gaia-connect:check and alert-rules:check their steps, and a TypeScript
-# project's build or test task puts it in ts-build-test.
-CODE_TARGETS = ("build", "check", "test")
+# The code projects' targets the workflows gate on: api:test opens the Python
+# slices, gaia-connect:check and alert-rules:check their steps, a TypeScript
+# project's build or test task puts it in ts-build-test, and docker:build is
+# the image build.yml publishes.
+CODE_TARGETS = ("build", "check", "docker:build", "test")
+NX_JSON = REPO_ROOT / "nx.json"
 TYPESCRIPT_BUILD_TARGETS = {"build", "test"}
 TYPESCRIPT = "tag:scope:typescript"
 
@@ -90,6 +92,13 @@ def typescript_projects(selection: Selection) -> str:
     return ",".join(sorted(built.intersection(tagged)))
 
 
+def release_groups(selection: Selection) -> list[str]:
+    """Name the nx.json release groups with an affected image, the images build.yml publishes."""
+    groups = json.loads(NX_JSON.read_text())["release"]["groups"]
+    built = {_project(task) for task in selection.tasks if _target(task) == "docker:build"}
+    return sorted(name for name, group in groups.items() if built.intersection(group["projects"]))
+
+
 def _first_reason(reasons: list[dict[str, str]]) -> str:
     first = reasons[0]
     more = f" (+{len(reasons) - 1} more)" if len(reasons) > 1 else ""
@@ -115,6 +124,7 @@ def main() -> int:
         "tasks": json.dumps(sorted(selection.tasks)),
         "projects": json.dumps(selection.projects),
         "typescript_projects": typescript_projects(selection),
+        "release_groups": json.dumps(release_groups(selection)),
     }
     lines = "".join(f"{key}={value}\n" for key, value in outputs.items())
     sink = os.environ.get("GITHUB_OUTPUT")

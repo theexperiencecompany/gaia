@@ -1,0 +1,23 @@
+{
+  "name": "web-build",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "root": ".github/jobs/web-build",
+  "metadata": {
+    "description": "What ci.yml's web-build job reads beyond the web app itself, which web:build's own inputs and dependencies cover."
+  },
+  "targets": {
+    "bundle": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{workspaceRoot}/.github/workflows/web-build.yml",
+        "{workspaceRoot}/.github/workflows/deploy-web.yml",
+        "{workspaceRoot}/scripts/ci/smoke-worker.sh",
+        "{workspaceRoot}/.github/actions/setup-node-pnpm/**/*",
+        "{workspaceRoot}/.github/actions/restore-nextjs-cache/**/*",
+        {
+          "externalDependencies": []
+        }
+      ]
+    }
+  }
+}

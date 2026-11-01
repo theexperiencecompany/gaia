@@ -17,7 +17,6 @@ from pathlib import Path
 import subprocess
 
 import pytest
-import yaml
 
 CI = Path(__file__).resolve().parent.parent
 SCRIPT = CI / "changes.sh"
@@ -323,89 +322,3 @@ def test_base_rev_refuses_a_base_it_cannot_resolve(repo: Path) -> None:
 
     assert proc.returncode != 0
     assert "no-such-branch" in proc.stderr
-
-
-# ---------------------------------------------------------------------------
-# web-inputs: deploy-web's build is a required pre-merge check, so it runs on
-# every PR and decides for itself whether the bundle's inputs moved.
-# ---------------------------------------------------------------------------
-
-
-def _web_inputs(repo: Path, tmp_path: Path) -> str:
-    out = tmp_path / "web_output"
-    out.write_text("")
-    proc = _run(repo, "web-inputs", BASE_BRANCH="master", GITHUB_OUTPUT=str(out))
-    assert proc.returncode == 0, proc.stderr
-    return out.read_text()
-
-
-def test_a_web_change_builds_the_bundle(repo: Path, tmp_path: Path) -> None:
-    (repo / "apps/web").mkdir(parents=True)
-    (repo / "apps/web/page.tsx").write_text("x\n")
-    _git(repo, "add", "-A")
-    _git(repo, "commit", "-qm", "web")
-    assert "build=true" in _web_inputs(repo, tmp_path)
-
-
-def test_a_change_outside_the_web_inputs_skips_the_bundle(repo: Path, tmp_path: Path) -> None:
-    (repo / "app.py").write_text("x = 3\n")
-    _git(repo, "commit", "-aqm", "api only")
-    assert "build=false" in _web_inputs(repo, tmp_path)
-
-
-def test_web_inputs_match_the_deploy_trigger() -> None:
-    # The push trigger and the pre-merge decision must agree, or the merge queue
-    # passes a web change that master then deploys untested — or the reverse.
-    workflow = yaml.safe_load((CI.parent.parent / ".github/workflows/deploy-web.yml").read_text())
-    triggers = workflow[True] if True in workflow else workflow["on"]
-    script = SCRIPT.read_text()
-    body = script[script.index("WEB_INPUTS=(") :]
-    listed = [line.strip() for line in body[: body.index(")")].splitlines()[1:] if line.strip()]
-    expected = [p if p.endswith(".yml") else f"{p}/**" for p in listed]
-    assert triggers["push"]["paths"] == expected
-
-
-# ---------------------------------------------------------------------------
-# desktop-inputs: desktop-pr-build runs on every PR and merge group and decides
-# for itself whether the packaged app's inputs moved, so a merge group that
-# touches no desktop path skips in seconds instead of packaging three OSes.
-# ---------------------------------------------------------------------------
-
-
-def _desktop_inputs(repo: Path, tmp_path: Path) -> str:
-    out = tmp_path / "desktop_output"
-    out.write_text("")
-    proc = _run(repo, "desktop-inputs", BASE_BRANCH="master", GITHUB_OUTPUT=str(out))
-    assert proc.returncode == 0, proc.stderr
-    return out.read_text()
-
-
-def _commit(repo: Path, rel: str) -> None:
-    path = repo / rel
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("x\n")
-    _git(repo, "add", "-A")
-    _git(repo, "commit", "-qm", rel)
-
-
-@pytest.mark.parametrize(
-    "rel",
-    [
-        "apps/desktop/src/main.ts",
-        "libs/shared/ts/src/bots/x.ts",
-        ".github/workflows/desktop-pr-build.yml",
-    ],
-)
-def test_a_desktop_input_change_packages_the_app(repo: Path, tmp_path: Path, rel: str) -> None:
-    _commit(repo, rel)
-    assert "build=true" in _desktop_inputs(repo, tmp_path)
-
-
-@pytest.mark.parametrize(
-    "rel", ["apps/web/page.tsx", "libs/shared/ts/src/api/generated/schema.d.ts"]
-)
-def test_a_change_the_packaged_app_cannot_see_skips_it(
-    repo: Path, tmp_path: Path, rel: str
-) -> None:
-    _commit(repo, rel)
-    assert "build=false" in _desktop_inputs(repo, tmp_path)

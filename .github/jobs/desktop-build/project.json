@@ -1,0 +1,21 @@
+{
+  "name": "desktop-build",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "root": ".github/jobs/desktop-build",
+  "metadata": {
+    "description": "What ci.yml's desktop-build job reads beyond the desktop app, which desktop:build's own inputs and dependencies cover."
+  },
+  "targets": {
+    "package": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{workspaceRoot}/.github/workflows/desktop-pr-build.yml",
+        "{workspaceRoot}/.github/actions/setup-node-pnpm/**/*",
+        "{workspaceRoot}/.github/actions/restore-nextjs-cache/**/*",
+        {
+          "externalDependencies": []
+        }
+      ]
+    }
+  }
+}

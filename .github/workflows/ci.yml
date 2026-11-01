@@ -1527,6 +1527,26 @@ jobs:
           status: ${{ job.status }}
           name: ts-build-test
 
+  # ── web-build: the Cloudflare Worker bundle, built and booted in workerd ──
+  # On a master push it builds under the production environment and uploads the
+  # bundle deploy-web ships from this same run.
+  web-build:
+    needs: [detect]
+    if: ${{ !cancelled() && (contains(fromJSON(needs.detect.outputs.tasks), 'web:build') || contains(fromJSON(needs.detect.outputs.tasks), 'web-build:bundle')) }}
+    uses: ./.github/workflows/web-build.yml
+    permissions:
+      contents: read
+      deployments: write
+    secrets: inherit # pragma: allowlist secret
+
+  # ── desktop-build: package the Electron app (Linux on a PR, every OS after) ─
+  desktop-build:
+    needs: [detect]
+    if: ${{ !cancelled() && (contains(fromJSON(needs.detect.outputs.tasks), 'desktop:build') || contains(fromJSON(needs.detect.outputs.tasks), 'desktop-build:package')) }}
+    uses: ./.github/workflows/desktop-pr-build.yml
+    permissions:
+      contents: read
+
   # ── scan: Python SAST and the filesystem vulnerability scan ──────────────
   scan:
     name: scan
@@ -2163,6 +2183,8 @@ jobs:
       - coverage
       - docker-image
       - test-mutation
+      - web-build
+      - desktop-build
       # changelog-sync deliberately excluded: non-blocking, it opens a fix PR.
     # Required status check: it must report in seconds, so it rides the same
     # control-plane runner as the dispatcher, and it never waits on anything.
@@ -2202,7 +2224,7 @@ jobs:
           # the family the shards report under and how many detect planned, so
           # a shard cancelled before its upload cannot be spoken for by another.
           EXPECT: >-
-            select-runner@result-only=${{ needs.select-runner.result }},detect=${{ needs.detect.result }},probe@result-only=${{ needs.probe.result }},lint-node=${{ needs.lint-node.result }},lint-python=${{ needs.lint-python.result }},lint-mixed=${{ needs.lint-mixed.result }},repo-policy=${{ needs.repo-policy.result }},python-audit=${{ needs.python-audit.result }},ts-build-test=${{ needs.ts-build-test.result }},scan=${{ needs.scan.result }},obscura-bin=${{ needs.obscura-bin.result }},test-python=${{ needs.test-python.result }},test-python-engines@test-python/browser=${{ needs.test-python-engines.result }},coverage=${{ needs.coverage.result }},docker-image=${{ needs.docker-image.result }},test-mutation@mutation*${{ needs.detect.outputs.mutation_count }}=${{ needs.test-mutation.result }}
+            select-runner@result-only=${{ needs.select-runner.result }},detect=${{ needs.detect.result }},probe@result-only=${{ needs.probe.result }},lint-node=${{ needs.lint-node.result }},lint-python=${{ needs.lint-python.result }},lint-mixed=${{ needs.lint-mixed.result }},repo-policy=${{ needs.repo-policy.result }},python-audit=${{ needs.python-audit.result }},ts-build-test=${{ needs.ts-build-test.result }},scan=${{ needs.scan.result }},obscura-bin=${{ needs.obscura-bin.result }},test-python=${{ needs.test-python.result }},test-python-engines@test-python/browser=${{ needs.test-python-engines.result }},coverage=${{ needs.coverage.result }},docker-image=${{ needs.docker-image.result }},test-mutation@mutation*${{ needs.detect.outputs.mutation_count }}=${{ needs.test-mutation.result }},web-build=${{ needs.web-build.result }},desktop-build=${{ needs.desktop-build.result }}
         run: python3 scripts/ci/verdict.py consolidate "$RUNNER_TEMP/verdicts" --expect "$EXPECT" --out "$RUNNER_TEMP/gate-verdict"
       # Its own directory: the one above holds every lane's verdict, which this
       # job does not own.
@@ -2291,4 +2313,17 @@ jobs:
       grafana_image_tag: ${{ needs.build-images.outputs.grafana_tag }}
       web_image_tag: ${{ needs.build-images.outputs.web_tag }}
       docker_release_result: ${{ needs.build-images.outputs.docker_release_result }}
+    secrets: inherit # pragma: allowlist secret
+
+  # ── Master only: ship the web bundle web-build built, behind the gate ─────
+  # A red gate or a failed build deploys nothing, and the run stays red, so the
+  # next master run's nx base still holds the web change and ships it then.
+  deploy-web:
+    needs: [quality-gate, web-build]
+    if: ${{ always() && github.ref == 'refs/heads/master' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.quality-gate.result == 'success' && needs.web-build.result == 'success' }}
+    uses: ./.github/workflows/deploy-web.yml
+    permissions:
+      contents: read
+      deployments: write
+      actions: read # IndexNow reads earlier runs' deploy jobs
     secrets: inherit # pragma: allowlist secret

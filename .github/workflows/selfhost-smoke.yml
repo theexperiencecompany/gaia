@@ -8,7 +8,7 @@ name: Self-host smoke
 # `custom` provider, and a Playwright journey through setup, chat, tools,
 # uploads, invites, roles, readiness and the code sandbox
 # (scripts/ci/selfhost.sh + apps/web/e2e/selfhost). It runs on PRs that touch
-# what a self-hoster runs (changes.sh selfhost-inputs) and on dispatch.
+# what a self-hoster runs (nx task selfhost-smoke:e2e) and on dispatch.
 # No `branches:` filter on pull_request: it matches the PR's base, so it would
 # exempt every stacked PR (see CLAUDE.md, Skipped / Non-Gated Lanes).
 on:

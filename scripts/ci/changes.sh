@@ -14,15 +14,11 @@
 #   py-source                Like `files py`, but drops the paths the Python
 #                            tools exclude in a full scan (tests, scripts,
 #                            migrations, …). Same three-state contract.
-#   web-inputs               Does this change touch anything the web Worker
-#                            bundle depends on? Same output, for deploy-web.
-#   desktop-inputs           Does this change touch anything the packaged
-#                            desktop app depends on? Same output, for
-#                            desktop-pr-build.
 #   affected                 Which CI tasks does this change reach? Asks
 #                            `nx affected --explain` (lib/nx_affected.py) and
-#                            writes tasks, projects and typescript_projects to
-#                            $GITHUB_OUTPUT. Every task on a dispatch.
+#                            writes tasks, projects, typescript_projects and
+#                            release_groups to $GITHUB_OUTPUT. Every task on a
+#                            dispatch, unless --since-last-success.
 #
 # `base` — WHY THIS EXISTS. For a PR in a native GitHub stack, the
 # `pull_request` event payload carries the STACK'S TRUNK as base.ref, not the
@@ -76,8 +72,6 @@
 #   base-rev       GAIA_PR_BASE or GITHUB_BASE_REF.
 #   files          GAIA_PR_BASE, GITHUB_BASE_REF, GITHUB_ACTIONS, NX_BASE (local).
 #   py-source      as `files`; also reads pyproject.toml from the repo root.
-#   web-inputs     BASE_BRANCH (a branch or a merge_group base sha), GITHUB_OUTPUT.
-#   desktop-inputs BASE_BRANCH (a branch or a merge_group base sha), GITHUB_OUTPUT.
 #   affected       GITHUB_EVENT_NAME, GAIA_PR_BASE (pull_request, merge_group),
 #                  NX_BASE and NX_HEAD (nrwl/nx-set-shas, on a push), GITHUB_OUTPUT.
 set -euo pipefail
@@ -282,42 +276,14 @@ for line in filter(None, sys.stdin.read().splitlines()):
 '
 }
 
-# The paths the web Worker bundle is built from. deploy-web's `push` trigger
-# filters on the same list (scripts/ci/tests/test_changes.py holds them equal);
-# a pull_request or merge_group run builds whenever one of them changed, so its
-# required check reports on every PR instead of going missing on most of them.
-WEB_INPUTS=(
-  apps/web
-  libs/shared/ts
-  .github/workflows/deploy-web.yml
-  .github/workflows/web-build.yml
-)
-
-cmd_web_inputs() {
-  BASE_BRANCH="${BASE_BRANCH:?BASE_BRANCH is required (the base branch or merge_group base sha)}"
-  _inputs_changed "web bundle" "$BASE_BRANCH" "${WEB_INPUTS[@]}"
-}
-
-# The paths the packaged desktop app is built from. Web is left out on purpose
-# (high churn, its own gates), and so are the generated API types: `export type`
-# only, erased at compile time, so they cannot change a packaged binary.
-DESKTOP_INPUTS=(
-  apps/desktop
-  libs/shared/ts
-  ':!libs/shared/ts/src/api/generated'
-  .github/workflows/desktop-pr-build.yml
-)
-
-cmd_desktop_inputs() {
-  BASE_BRANCH="${BASE_BRANCH:?BASE_BRANCH is required (the base branch or merge_group base sha)}"
-  _inputs_changed "desktop app" "$BASE_BRANCH" "${DESKTOP_INPUTS[@]}"
-}
-
 # A PR and a merge group measure from the base `base` resolved, like `files`:
 # nx-set-shas reads the event payload, which names a stack's trunk, and on a
 # merge group would charge the PR with the group queued ahead of it.
 cmd_affected() {
   local event="${GITHUB_EVENT_NAME:?GITHUB_EVENT_NAME is required}" base
+  # build.yml measures every event from nx-set-shas: a dispatched redeploy
+  # ships what changed since the last good run, not every image.
+  [[ "${1:-}" == "--since-last-success" ]] && event=push
   case "$event" in
     workflow_dispatch)
       python3 "$(dirname "$0")/lib/nx_affected.py" --all
@@ -333,28 +299,8 @@ cmd_affected() {
   esac
 }
 
-# Write build=true|false: did anything under <paths> change against <base>?
-_inputs_changed() {
-  local what="$1" base="$2" rev changed
-  shift 2
-  # No --depth: it re-shallows the box's persistent workspace, and the next
-  # checkout then re-unshallows from GitHub (100 s).
-  git fetch -q --no-tags origin "$base"
-  rev="$(_base_rev "$base")"
-  changed="$(git diff --name-only "$rev" HEAD -- "$@")"
-
-  if [[ -n "$changed" ]]; then
-    echo "build=true" >> "$GITHUB_OUTPUT"
-    echo "$what inputs changed:"
-    echo "$changed"
-  else
-    echo "build=false" >> "$GITHUB_OUTPUT"
-    echo "$what inputs unchanged against $rev — skipping the build"
-  fi
-}
-
 usage() {
-  sed -n '2,25p' "$0" >&2
+  sed -n '2,21p' "$0" >&2
 }
 
 main() {
@@ -365,8 +311,6 @@ main() {
     base-rev)      cmd_base_rev "$@" ;;
     files)         cmd_files "$@" ;;
     py-source)     cmd_py_source "$@" ;;
-    web-inputs)    cmd_web_inputs "$@" ;;
-    desktop-inputs) cmd_desktop_inputs "$@" ;;
     affected)      cmd_affected "$@" ;;
     *)
       echo "changes.sh: unknown subcommand '${sub}'" >&2

@@ -156,6 +156,18 @@ def test_a_lane_check_is_gated_on_its_lane_task(lane: dict[str, str], jobs: dict
         ("libs/shared/ts/src/index.ts", "ts-build-test:seo"),
         ("packages/cli/src/index.ts", "selfhost-smoke:e2e"),
         ("infra/docker/docker-compose.selfhost.yml", "selfhost-smoke:e2e"),
+        # The web bundle syncs the wake-word runtime and bundles shared-typescript.
+        ("libs/wake-word/src/web/runtime.ts", "web:build"),
+        ("libs/shared/ts/src/index.ts", "web:build"),
+        ("scripts/ci/smoke-worker.sh", "web-build:bundle"),
+        ("apps/desktop/src/main/index.ts", "desktop:build"),
+        ("apps/web/src/app/page.tsx", "desktop:build"),
+        (".github/workflows/desktop-pr-build.yml", "desktop-build:package"),
+        # The images build.yml publishes: the Python lockfile and the bots' shared Dockerfile.
+        ("uv.lock", "api:docker:build"),
+        ("uv.lock", "voice-agent:docker:build"),
+        ("apps/bots/Dockerfile", "bot-discord:docker:build"),
+        ("libs/shared/ts/src/index.ts", "bot-slack:docker:build"),
     ],
 )
 def test_detect_selects(path: str, task: str) -> None:
@@ -170,6 +182,10 @@ def test_detect_selects(path: str, task: str) -> None:
         ("apps/api/app/main.py", "ts-build-test:seo"),
         ("pnpm-lock.yaml", "api:test"),
         ("apps/api/app/main.py", "selfhost-smoke:e2e"),
+        ("apps/api/app/main.py", "web:build"),
+        ("scripts/ci/deploy.sh", "desktop-build:package"),
+        ("apps/api/CLAUDE.md", "api:docker:build"),
+        ("pnpm-lock.yaml", "api:docker:build"),
     ],
 )
 def test_detect_leaves_out(path: str, task: str) -> None:
@@ -179,3 +195,11 @@ def test_detect_leaves_out(path: str, task: str) -> None:
 @pytest.mark.parametrize("path", ["README.md", "docs/introduction.mdx", "apps/api/CLAUDE.md"])
 def test_detect_selects_nothing_for_prose(path: str) -> None:
     assert nx_affected.select([f"--files={path}"]).tasks == {}
+
+
+@pytest.mark.parametrize(
+    ("path", "groups"),
+    [("uv.lock", ["apps"]), ("apps/bots/Dockerfile", ["bots"]), ("apps/api/CLAUDE.md", [])],
+)
+def test_release_groups_name_the_images_to_publish(path: str, groups: list[str]) -> None:
+    assert nx_affected.release_groups(nx_affected.select([f"--files={path}"])) == groups

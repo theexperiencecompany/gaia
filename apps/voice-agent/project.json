@@ -26,7 +26,12 @@
       "cache": false,
       "inputs": [
         "production",
-        "^production"
+        "^production",
+        "python",
+        "{workspaceRoot}/.dockerignore",
+        {
+          "externalDependencies": []
+        }
       ]
     },
     "sync": {

@@ -35,6 +35,7 @@
       "dependsOn": ["^build"],
       "inputs": [
         "typecheck",
+        "^production",
         {
           "env": "NEXT_PUBLIC_API_BASE_URL"
         },
@@ -117,6 +118,9 @@
         "command": "pnpm vitest run --config vitest.config.ts",
         "cwd": "{projectRoot}"
       }
+    },
+    "docker:build": {
+      "inputs": ["production", "^production", "{workspaceRoot}/.dockerignore"]
     }
   }
 }
