@@ -14,7 +14,6 @@ a11y/duplicate-id-aria=3
 ax/token-weight=98
 content/keyword-stuffing=1
 content/word-count=15
-core/meta-title=2
 images/image-file-size=6
 images/optimized=5
 links/orphan-pages=10
