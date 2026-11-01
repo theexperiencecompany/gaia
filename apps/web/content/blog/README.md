@@ -14,7 +14,7 @@ date: "2025-11-02"
 authors:
   - name: "Aryan"
     role: "Founder & CEO"
-    avatar: "https://github.com/aryanranderiya.png"
+    avatar: "https://avatars.githubusercontent.com/u/64796509?v=4"
     linkedin: "https://linkedin.com/in/aryanranderiya"
     twitter: "https://twitter.com/aryanranderiya"
     github: "https://github.com/aryanranderiya"
