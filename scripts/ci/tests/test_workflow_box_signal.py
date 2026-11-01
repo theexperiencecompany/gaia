@@ -18,6 +18,7 @@ import re
 import subprocess
 
 import pytest
+import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SCRIPTS_CI = REPO_ROOT / "scripts" / "ci"
@@ -80,3 +81,30 @@ def test_ci_on_the_box_reads_the_runner_name(runner_name: str, on_the_box: bool)
         check=False,
     )
     assert (proc.returncode == 0) is on_the_box
+
+
+def test_runner_py_names_the_same_box_prefix_as_the_shell() -> None:
+    runner = (SCRIPTS_CI / "runner.py").read_text()
+    assert re.search(
+        rf'^BOX_RUNNER_NAME_PREFIX = "{re.escape(_box_prefix_from_shell())}"$', runner, re.MULTILINE
+    )
+
+
+def test_every_home_label_is_runner_pys() -> None:
+    """ci-health and the selector name the box's runner label too; a renamed label left them watching nothing."""
+    (label,) = re.findall(
+        r'^DEFAULT_HOME_LABEL = "([^"]+)"$', (SCRIPTS_CI / "runner.py").read_text(), re.MULTILINE
+    )
+    health = yaml.safe_load((REPO_ROOT / ".github/workflows/ci-health.yml").read_text())
+    expected = [
+        s["env"]["EXPECTED"]
+        for job in health["jobs"].values()
+        for s in job["steps"]
+        if "EXPECTED" in s.get("env", {})
+    ]
+    assert expected == [label]
+    selector = yaml.safe_load((REPO_ROOT / ".github/actions/select-runner/action.yml").read_text())
+    defaults = {
+        name: spec.get("default") for name, spec in selector["inputs"].items() if "label" in name
+    }
+    assert set(filter(None, defaults.values())) <= {label}, defaults

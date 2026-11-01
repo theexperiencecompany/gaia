@@ -7,6 +7,7 @@ import {
   bundleAssetUrls,
   checkoutOwnedFiles,
   fetchBundle,
+  moveLegacySelfhostSettings,
   placeBundle,
   readBundleManifest,
   releaseSourceNotes,
@@ -266,5 +267,44 @@ describe("releaseSourceNotes", () => {
       "Installing GAIA v0.7.0-beta.3's images, not v0.7.0-beta.4's (GAIA_VERSION)",
       "Setup files from http://host.orb.internal:8790 (GAIA_BUNDLE_BASE_URL)",
     ]);
+  });
+});
+
+describe("moveLegacySelfhostSettings", () => {
+  let checkout: string;
+
+  beforeEach(() => {
+    checkout = fs.mkdtempSync(path.join(os.tmpdir(), "gaia-settings-move-"));
+    for (const [file, contents] of Object.entries({
+      "packages/cli/selfhost/docker-compose.selfhost.yml": "",
+      "infra/docker/docker-compose.yml": "",
+      "infra/docker/.env": "POSTGRES_HOST_PORT=5433\n",
+    })) {
+      fs.mkdirSync(path.dirname(path.join(checkout, file)), {
+        recursive: true,
+      });
+      fs.writeFileSync(path.join(checkout, file), contents);
+    }
+  });
+
+  afterEach(() => fs.rmSync(checkout, { recursive: true, force: true }));
+
+  it("carries a self-host install's settings into the moved folder", async () => {
+    await moveLegacySelfhostSettings(checkout, "selfhost");
+    expect(
+      fs.readFileSync(
+        path.join(checkout, "packages/cli/selfhost/.env"),
+        "utf-8",
+      ),
+    ).toBe("POSTGRES_HOST_PORT=5433\n");
+    expect(fs.existsSync(path.join(checkout, "infra/docker/.env"))).toBe(false);
+  });
+
+  it("leaves a developer checkout's settings beside the developer stack", async () => {
+    await moveLegacySelfhostSettings(checkout, "developer");
+    expect(fs.existsSync(path.join(checkout, "infra/docker/.env"))).toBe(true);
+    expect(
+      fs.existsSync(path.join(checkout, "packages/cli/selfhost/.env")),
+    ).toBe(false);
   });
 });

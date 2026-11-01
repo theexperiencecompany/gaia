@@ -9,6 +9,7 @@
  * @module commands/doctor/flow
  */
 
+import * as path from "node:path";
 import { readConfig } from "../../lib/config.js";
 import {
   COMPOSE_PROJECT_BY_MODE,
@@ -22,6 +23,7 @@ import {
 } from "../../lib/endpoints.js";
 import type { SetupMode } from "../../lib/env-parser.js";
 import {
+  dockerComposeEnvPath,
   readDockerComposePortOverrides,
   readGaiaDomain,
 } from "../../lib/env-writer.js";
@@ -118,13 +120,19 @@ export async function runDoctorChecks(
   // 1. Docker usable by this user.
   add(await checkDockerDaemon(dockerAccess));
 
-  // 1b. Host port conflicts (respects infra/docker/.env overrides).
+  // 1b. Host port conflicts (respects the compose env file's overrides).
   add(
     dockerAccess === "ready"
       ? await checkPortConflicts(
           ctx.mode ?? "selfhost",
           ctx.overrides,
           ctx.domain,
+          ctx.repoPath
+            ? path.relative(
+                ctx.repoPath,
+                dockerComposeEnvPath(ctx.repoPath, ctx.mode ?? "selfhost"),
+              )
+            : undefined,
         )
       : {
           id: "port-conflict",

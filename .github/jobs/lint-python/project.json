@@ -1,0 +1,206 @@
+{
+  "name": "lint-python",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "root": ".github/jobs/lint-python",
+  "metadata": {
+    "description": "The checks ci.yml's lint-python job runs, one target each. A target's inputs are the files its check reads, so `nx affected` decides which of them a change runs; the commands live in the job."
+  },
+  "targets": {
+    "ruff": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/changes.sh scoped --task lint-python:ruff --ext py --full . -- uv run --frozen --no-build --isolated --only-group lint ruff check && bash scripts/ci/changes.sh scoped --task lint-python:ruff --ext py --full . -- uv run --frozen --no-build --isolated --only-group lint ruff format --check"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/**/pyproject.toml",
+        "{workspaceRoot}/**/ruff.toml",
+        "ciHarness",
+        "{workspaceRoot}/**/*.py",
+        {
+          "externalDependencies": []
+        }
+      ]
+    },
+    "custom-lints": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python3 tools/lints/run.py apps/api/app apps/api/tests"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/tools/lints/**/*",
+        "ciHarness",
+        "{workspaceRoot}/**/*.py",
+        {
+          "externalDependencies": []
+        }
+      ]
+    },
+    "lint-imports": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run --frozen --no-build --isolated --only-group lint lint-imports --no-cache",
+        "cwd": "apps/api"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/apps/api/pyproject.toml",
+        "ciHarness",
+        "{workspaceRoot}/apps/api/app/**/*.py",
+        {
+          "externalDependencies": []
+        }
+      ]
+    },
+    "ignore-whys": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python3 tools/lints/check_ignore_whys.py"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/**/pyproject.toml",
+        "{workspaceRoot}/tools/lints/check_ignore_whys.py",
+        "ciHarness",
+        {
+          "externalDependencies": []
+        }
+      ]
+    },
+    "plr-complexity": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python3 tools/lints/check_plr_complexity.py"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/tools/lints/check_plr_complexity.py",
+        "{workspaceRoot}/tools/lints/plr_complexity_baseline.txt",
+        "ciHarness",
+        "{workspaceRoot}/**/*.py",
+        {
+          "externalDependencies": []
+        }
+      ]
+    },
+    "typed-boundaries": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python3 tools/lints/check_typed_boundaries.py"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/tools/lints/check_typed_boundaries.py",
+        "{workspaceRoot}/tools/lints/typed_boundaries_baseline.txt",
+        "{workspaceRoot}/tools/lints/_ratchet.py",
+        "{workspaceRoot}/tools/lints/_common.py",
+        "ciHarness",
+        "{workspaceRoot}/**/*.py",
+        {
+          "externalDependencies": []
+        }
+      ]
+    },
+    "xenon": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/changes.sh scoped --task lint-python:xenon --py-source --full \"apps/api apps/voice-agent libs/shared/py -e apps/api/tests/** -e apps/api/scripts/** -e libs/shared/py/tests/**\" -- uv run --frozen --no-build --isolated --only-group lint xenon --max-absolute F --max-modules E --max-average B"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/pyproject.toml",
+        "ciHarness",
+        "{workspaceRoot}/apps/api/**/*.py",
+        "{workspaceRoot}/apps/voice-agent/**/*.py",
+        "{workspaceRoot}/libs/shared/py/**/*.py",
+        {
+          "externalDependencies": []
+        }
+      ]
+    },
+    "interrogate": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/changes.sh scoped --task lint-python:interrogate --py-source --full \"apps/api apps/voice-agent libs/shared/py\" -- uv run --frozen --no-build --isolated --only-group lint interrogate -c pyproject.toml"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/pyproject.toml",
+        "ciHarness",
+        "{workspaceRoot}/apps/api/**/*.py",
+        "{workspaceRoot}/apps/voice-agent/**/*.py",
+        "{workspaceRoot}/libs/shared/py/**/*.py",
+        {
+          "externalDependencies": []
+        }
+      ]
+    },
+    "bandit": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/changes.sh scoped --task lint-python:bandit --py-source --full \"-r apps/api/app apps/voice-agent/src libs/shared/py\" -- uv run --frozen --no-build --isolated --only-group lint bandit -c pyproject.toml --severity-level low --confidence-level low"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/pyproject.toml",
+        "ciHarness",
+        "{workspaceRoot}/apps/api/app/**/*.py",
+        "{workspaceRoot}/apps/voice-agent/src/**/*.py",
+        "{workspaceRoot}/libs/shared/py/**/*.py",
+        {
+          "externalDependencies": []
+        }
+      ]
+    },
+    "mypy": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run --project apps/api --frozen --group backend --group dev mypy tools/lints --ignore-missing-imports && MYPYPATH=scripts/ci:scripts/ci/tests uv run --project apps/api --frozen --group backend --group dev mypy --explicit-package-bases scripts/ci --ignore-missing-imports --cache-dir \"${MYPY_CACHE_DIR:-.mypy_cache}/scripts-ci\""
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/pyproject.toml",
+        "{workspaceRoot}/apps/api/pyproject.toml",
+        "{workspaceRoot}/uv.lock",
+        "ciHarness",
+        "{workspaceRoot}/tools/lints/**/*.py",
+        "{workspaceRoot}/scripts/ci/**/*.py",
+        {
+          "externalDependencies": []
+        }
+      ]
+    },
+    "ignore-staleness": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python3 tools/lints/check_ignore_staleness.py"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/**/pyproject.toml",
+        "{workspaceRoot}/tools/lints/**/*",
+        "ciHarness",
+        "{workspaceRoot}/**/*.py",
+        {
+          "externalDependencies": []
+        }
+      ]
+    },
+    "uv-lock": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/audit.sh uv-lock"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/**/uv.lock",
+        "{workspaceRoot}/**/pyproject.toml",
+        "ciHarness",
+        {
+          "externalDependencies": []
+        }
+      ]
+    }
+  }
+}

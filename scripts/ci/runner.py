@@ -276,8 +276,8 @@ def class_demand() -> dict[RunnerClass, int]:
     slices = records(json.loads(TEST_SLICES_JSON.read_text()), "slices")
     with_services = sum(1 for s in slices if field_of(s, "services", str) == "true")
     return {
-        # detect, lint-node, lint-python, lint-mixed, python-audit, scan
-        RunnerClass.LIGHT: 6,
+        # detect, lint-node, lint-python, lint-mixed, repo-policy, python-audit, scan
+        RunnerClass.LIGHT: 7,
         # probe, ts-build-test, docker-image, plus the slices that need no services
         RunnerClass.HEAVY: 3 + len(slices) - with_services,
         # the slices that need services (test-python, test-python-engines), test-mutation's wave
@@ -688,10 +688,11 @@ def cmd_requeue_stranded(_args: list[str]) -> int:
             ok(f"requeue-stranded: runners labelled '{label}' are online — nothing is stranded")
             return 0
         case HomeState.UNKNOWN:
+            # Touch nothing, but fail: a sweep that cannot see the runners has not done its job.
             warn(
                 "requeue-stranded: the runners API could not be probed — not touching any run on an unknown"
             )
-            return 0
+            return 1
     failed = 0
     for run_id in _requeue_candidates(gh, repo):
         stranded = _stranded_job(gh, repo, run_id, label, limit)
@@ -747,6 +748,21 @@ def _cancel(gh: GitHub, repo: str, run_id: int, why: str) -> None:
     ok(f"cancelled {why} run {run_id}")
 
 
+# A production deploy is never cancelled mid-flight: a cancelled wrangler deploy
+# leaves R2's prerendered cache half-filled. The newer run deploys after it,
+# queued behind the deploy job's own concurrency group.
+DEPLOY_JOB_PREFIX = "deploy-web"
+
+
+def _deploying(gh: GitHub, repo: str, run_id: int) -> bool:
+    jobs = gh.collect(f"repos/{repo}/actions/runs/{run_id}/jobs?filter=latest&per_page=100", "jobs")
+    return any(
+        field_of(job, "name", str).startswith(DEPLOY_JOB_PREFIX)
+        and field_of(job, "status", str) == "in_progress"
+        for job in jobs
+    )
+
+
 def _cancel_superseded_branch_runs(gh: GitHub, repo: str, run_id: int) -> None:
     workflow, branch = workflow_file(), head_branch()
     query = urllib.parse.urlencode(
@@ -761,6 +777,9 @@ def _cancel_superseded_branch_runs(gh: GitHub, repo: str, run_id: int) -> None:
     if not older:
         ok(f"no superseded {workflow} runs on {branch}")
     for old in older:
+        if os.environ.get("GITHUB_EVENT_NAME") == "push" and _deploying(gh, repo, old):
+            ok(f"run {old} is deploying to production: left to finish, this run deploys after it")
+            continue
         _cancel(gh, repo, old, "superseded")
 
 

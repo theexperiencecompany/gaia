@@ -869,3 +869,28 @@ exclude = [
   "scripts",
   ".agents",
 ]
+
+# The CI harness tests' own deps (ci.yml harness-tests), locked here so the lane never resolves "latest".
+[dependency-groups]
+harness = [
+  "pytest>=9.1.1",
+  "pytest-xdist>=3.8.0",
+  "defusedxml>=0.7.1",
+  "pyyaml>=6.0.3",
+  # Pinned in apps/api's dev group; the one workspace lock gives both the same.
+  "pytest-rerunfailures",
+]
+# The Python lint and audit tools CI, the hooks and mise run, at the one version
+# each: run them with `uv run --frozen --no-build --isolated --only-group lint`.
+# Exact pins, so a re-lock never moves a linter; bump one here and re-lock.
+lint = [
+  "ruff==0.14.13",
+  "bandit==1.9.4",
+  "interrogate==1.7.0",
+  "xenon==0.9.3",
+  "import-linter==2.6",
+  "pip-audit==2.10.1",
+  # Not run from this group (mypy needs each app's environment), but the one
+  # workspace lock resolves one mypy, so this pins theirs.
+  "mypy==1.19.1",
+]

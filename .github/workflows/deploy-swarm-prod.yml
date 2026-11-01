@@ -335,14 +335,18 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Roll back app stack
+        id: rollback
         env:
           ROLLBACK_MODE: ${{ inputs.rollback_mode }}
           IMAGE_DIGEST: ${{ inputs.image_digest }}
         shell: bash
         run: |
+          # An assignment, not `for svc in $(…)`: a failed docker call (or no
+          # matching service) then fails the step instead of rolling back nothing.
           if [ "$ROLLBACK_MODE" = "last" ]; then
-            for svc in $(docker --context prod stack services gaia-prod --format '{{.Name}}' \
-              | grep -E 'gaia-backend|arq_worker|embedding-sidecar|voice-agent-worker|discord-bot|slack-bot|telegram-bot|whatsapp-bot|imessage-bot'); do
+            services="$(docker --context prod stack services gaia-prod --format '{{.Name}}' \
+              | grep -E 'gaia-backend|arq_worker|embedding-sidecar|voice-agent-worker|discord-bot|slack-bot|telegram-bot|whatsapp-bot|imessage-bot')"
+            for svc in $services; do
               echo "Rolling back $svc..."
               docker --context prod service rollback "$svc"
             done
@@ -350,32 +354,29 @@ jobs:
             [ -z "$IMAGE_DIGEST" ] && echo "image_digest required for digest mode" && exit 1
             # Every service running the gaia image — a partial pin would leave
             # the remainder on a different build than the :latest alias claims.
-            docker --context prod service update --image "$IMAGE_DIGEST" gaia-prod_gaia-backend
-            docker --context prod service update --image "$IMAGE_DIGEST" gaia-prod_arq_worker
-            docker --context prod service update --image "$IMAGE_DIGEST" gaia-prod_embedding-sidecar
+            services="gaia-prod_gaia-backend gaia-prod_arq_worker gaia-prod_embedding-sidecar"
+            for svc in $services; do
+              docker --context prod service update --image "$IMAGE_DIGEST" "$svc"
+            done
           fi
+          echo "services=${services//$'\n'/ }" >> "$GITHUB_OUTPUT"
 
       - name: Wait for rollback convergence
         id: converge
         env:
-          ROLLBACK_MODE: ${{ inputs.rollback_mode }}
+          SERVICES: ${{ steps.rollback.outputs.services }}
         shell: bash
         run: |
-          if [ "$ROLLBACK_MODE" = "last" ]; then
-            SERVICES=$(docker --context prod stack services gaia-prod --format '{{.Name}}' \
-              | grep -E 'gaia-backend|arq_worker|embedding-sidecar|voice-agent-worker|discord-bot|slack-bot|telegram-bot|whatsapp-bot|imessage-bot')
-          else
-            SERVICES="gaia-prod_gaia-backend gaia-prod_arq_worker gaia-prod_embedding-sidecar"
-          fi
           echo "Waiting for services to stabilise (up to 3 minutes): $SERVICES"
           DEADLINE=$(( $(date +%s) + 180 ))
           while true; do
             pending=()
             for svc in $SERVICES; do
+              # awk counts 0 without failing; a docker error still fails the step.
               running=$(docker --context prod service ps "$svc" \
                 --filter desired-state=running \
-                --format '{{.CurrentState}}' 2>/dev/null | grep -c "^Running" || true)
-              [ "${running:-0}" -lt 1 ] && pending+=("$svc")
+                --format '{{.CurrentState}}' | awk '/^Running/ {n++} END {print n+0}')
+              [ "$running" -lt 1 ] && pending+=("$svc")
             done
             if [ "${#pending[@]}" -eq 0 ]; then
               echo "All services are running"

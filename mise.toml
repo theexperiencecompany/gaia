@@ -520,8 +520,8 @@ description = "Run Python unit tests only (no services, fast)"
 run = "cd apps/api && USE_REAL_SERVICES=0 uv run --group backend --group dev pytest tests/unit --tb=short -q"
 
 [tasks."test:typescript"]
-description = "Run JS/TS tests via Nx"
-run = "nx run-many -t test --parallel=3"
+description = "Run JS/TS tests via Nx (the TypeScript projects only; `mise test` adds the API suite)"
+run = "nx run-many -t test --projects tag:scope:typescript --parallel=3"
 
 [tasks."test:bots"]
 description = "Test all bots (Discord, Slack, Telegram, WhatsApp)"
@@ -586,11 +586,11 @@ run = "nx affected -t format --parallel=3"
 # `python3 tools/lints/check_tool_pins.py` enforces that.
 [tasks."lint:py"]
 description = "Whole-repo Python lint + format check — CI's exact ruff command (covers scripts/, tools/)"
-run = "uvx --no-build ruff@0.14.13 check . && uvx --no-build ruff@0.14.13 format --check ."
+run = "uv run --frozen --no-build --isolated --only-group lint ruff check . && uv run --frozen --no-build --isolated --only-group lint ruff format --check ."
 
 [tasks."lint:py:fix"]
 description = "Whole-repo Python autofix + format — CI's exact ruff command"
-run = "uvx --no-build ruff@0.14.13 check --fix . && uvx --no-build ruff@0.14.13 format ."
+run = "uv run --frozen --no-build --isolated --only-group lint ruff check --fix . && uv run --frozen --no-build --isolated --only-group lint ruff format ."
 
 [tasks."type-check"]
 description = "Type-check all apps (parallel with caching)"
@@ -610,7 +610,7 @@ run = "bash scripts/ci/audit.sh pnpm"
 
 [tasks."audit:deps:test"]
 description = "Unit tests for the CI shell gates (runner.py, audit.sh, ...)"
-run = "uv run --no-project --with pytest pytest scripts/ci -q"
+run = "uv run --frozen --isolated --only-group harness pytest scripts/ci -q"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PRE-COMMIT HOOKS

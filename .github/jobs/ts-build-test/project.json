@@ -1,0 +1,33 @@
+{
+  "name": "ts-build-test",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "root": ".github/jobs/ts-build-test",
+  "metadata": {
+    "description": "The checks ci.yml's ts-build-test job runs, one target each. A target's inputs are the files its check reads, so `nx affected` decides which of them a change runs; the commands live in the job."
+  },
+  "targets": {
+    "seo": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/smoke-web.sh audit-build"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/apps/web/**/*",
+        "{workspaceRoot}/libs/shared/ts/**/*",
+        "{workspaceRoot}/.github/workflows/deploy-web.yml",
+        "{workspaceRoot}/.github/workflows/web-build.yml",
+        "{workspaceRoot}/scripts/ci/smoke-web.sh",
+        "{workspaceRoot}/scripts/ci/lib/seo_audit.py",
+        "{workspaceRoot}/scripts/ci/lib/squirrel.py",
+        "{workspaceRoot}/scripts/ci/lib/origin_proxy.py",
+        "{workspaceRoot}/scripts/ci/baselines/squirrel-build.txt",
+        "{workspaceRoot}/config/squirrel.toml",
+        "ciHarness",
+        {
+          "externalDependencies": []
+        }
+      ]
+    }
+  }
+}

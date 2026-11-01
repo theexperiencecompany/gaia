@@ -9,7 +9,8 @@
   ],
   "projectType": "application",
   "tags": [
-    "scope:python"
+    "scope:python",
+    "release:apps"
   ],
   "release": {
     "docker": {
@@ -23,9 +24,12 @@
       "inputs": [
         "default",
         "{workspaceRoot}/apps/api/pyproject.toml",
-        "{workspaceRoot}/apps/api/uv.lock",
+        "python",
         "{workspaceRoot}/libs/shared/py/**/*",
-        "^production"
+        "^production",
+        {
+          "externalDependencies": []
+        }
       ],
       "outputs": []
     },
@@ -38,7 +42,12 @@
       "cache": false,
       "inputs": [
         "production",
-        "^production"
+        "^production",
+        "python",
+        "{workspaceRoot}/.dockerignore",
+        {
+          "externalDependencies": []
+        }
       ]
     },
     "sync": {
@@ -50,7 +59,7 @@
       "cache": true,
       "inputs": [
         "{projectRoot}/pyproject.toml",
-        "{projectRoot}/uv.lock"
+        "{workspaceRoot}/uv.lock"
       ],
       "outputs": [
         "{projectRoot}/.venv"
@@ -73,10 +82,12 @@
       "inputs": [
         "default",
         "{workspaceRoot}/apps/api/pyproject.toml",
-        "{workspaceRoot}/apps/api/ruff.toml",
-        "{workspaceRoot}/apps/api/uv.lock",
+        "python",
         "{workspaceRoot}/libs/shared/py/**/*",
-        "^production"
+        "^production",
+        {
+          "externalDependencies": []
+        }
       ],
       "outputs": []
     },
@@ -106,25 +117,26 @@
       "inputs": [
         "default",
         "{workspaceRoot}/apps/api/pyproject.toml",
-        "{workspaceRoot}/apps/api/ruff.toml"
+        {
+          "externalDependencies": []
+        }
       ]
     },
     "type-check": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uv run --group backend --group dev mypy app --ignore-missing-imports",
-        "cwd": "{projectRoot}"
+        "command": "uv run --project apps/api --frozen --group backend --group dev mypy apps/api/app --ignore-missing-imports"
       },
       "cache": true,
       "inputs": [
         "default",
         "{workspaceRoot}/apps/api/pyproject.toml",
-        "{workspaceRoot}/apps/api/uv.lock",
+        "python",
         "{workspaceRoot}/libs/shared/py/**/*",
-        "^production"
-      ],
-      "outputs": [
-        "{projectRoot}/.mypy_cache"
+        "^production",
+        {
+          "externalDependencies": []
+        }
       ]
     },
     "worker": {
@@ -145,7 +157,12 @@
         "{projectRoot}/app/**/*",
         "{projectRoot}/tests/**/*",
         "{projectRoot}/pyproject.toml",
-        "{projectRoot}/pytest.ini"
+        "{projectRoot}/pytest.ini",
+        "python",
+        "^production",
+        {
+          "externalDependencies": []
+        }
       ]
     },
     "test:real": {
@@ -176,7 +193,12 @@
         "{projectRoot}/tests/contracts/**/*",
         "{projectRoot}/tests/conftest.py",
         "{projectRoot}/tests/factories.py",
-        "{projectRoot}/tests/helpers.py"
+        "{projectRoot}/tests/helpers.py",
+        "python",
+        "^production",
+        {
+          "externalDependencies": []
+        }
       ]
     },
     "test:composio": {
@@ -204,7 +226,10 @@
       "cache": true,
       "inputs": [
         "{projectRoot}/tests/meta/**/*",
-        "{projectRoot}/tests/conftest.py"
+        "{projectRoot}/tests/conftest.py",
+        {
+          "externalDependencies": []
+        }
       ]
     },
     "test:unit": {
@@ -219,7 +244,12 @@
         "{projectRoot}/tests/unit/**/*",
         "{projectRoot}/tests/conftest.py",
         "{projectRoot}/tests/factories.py",
-        "{projectRoot}/tests/helpers.py"
+        "{projectRoot}/tests/helpers.py",
+        "python",
+        "^production",
+        {
+          "externalDependencies": []
+        }
       ]
     },
     "test:integration": {
@@ -234,7 +264,12 @@
         "{projectRoot}/tests/integration/**/*",
         "{projectRoot}/tests/conftest.py",
         "{projectRoot}/tests/factories.py",
-        "{projectRoot}/tests/helpers.py"
+        "{projectRoot}/tests/helpers.py",
+        "python",
+        "^production",
+        {
+          "externalDependencies": []
+        }
       ]
     },
     "test:e2e": {

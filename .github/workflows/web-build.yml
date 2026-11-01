@@ -1,31 +1,13 @@
 name: Web build
 
 # Builds the OpenNext Cloudflare Worker bundle and boots it in workerd, so a web
-# change that would break production cannot enter master. Every PR and merge
-# group runs it; deploy-web.yml calls it on a master push and ships the
-# `open-next` artifact it uploads there. Its own workflow so that the
-# production deploy job, which only a push runs, is not a Skipped row on every
-# PR.
+# change that would break production cannot enter master. ci.yml calls it
+# whenever nx says web:build (or this workflow) is affected, behind its
+# quality-gate; on a master push the build takes the production environment and
+# uploads the `open-next` artifact deploy-web.yml ships from the same run.
 
 on:
-  # No paths filter on the pre-merge events: a check a paths filter left
-  # unreported blocks every PR that does not touch the web. The job decides for
-  # itself instead (`changes.sh web-inputs`) and passes in seconds when nothing
-  # it builds from changed.
-  pull_request:
-  merge_group:
   workflow_call:
-
-# A PR ref and a merge-group ref are unique to that PR or group. The event is in
-# the group so a call from deploy-web.yml never shares one with a PR run.
-concurrency:
-  group: web-build-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: false
-
-permissions:
-  contents: read
-  # The production environment deploy-web.yml's call builds under.
-  deployments: write
 
 jobs:
   cf-build:
@@ -39,28 +21,16 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # The pre-merge events diff against their base below.
-          fetch-depth: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && '0' || '1' }}
+          fetch-depth: 1
           persist-credentials: false
 
-      - name: Decide whether the web bundle's inputs changed
-        id: inputs
-        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
-        env:
-          # A merge group's base is the commit it was built on, not master's tip.
-          BASE_BRANCH: ${{ github.event.merge_group.base_sha || github.base_ref }}
-        run: bash scripts/ci/changes.sh web-inputs
-
       - name: Mark build start
-        if: steps.inputs.outputs.build != 'false'
         id: t0
         run: echo "epoch=$(date +%s)" >> "$GITHUB_OUTPUT"
 
       - uses: ./.github/actions/setup-node-pnpm
-        if: steps.inputs.outputs.build != 'false'
 
       - uses: ./.github/actions/restore-nextjs-cache
-        if: steps.inputs.outputs.build != 'false'
 
       # No Nx cache here: `cf:build` is a plain `pnpm --filter ./apps/web
       # cf:build` script — no nx command runs, so the restore (~42s), the
@@ -73,7 +43,6 @@ jobs:
       # runtime override on Workers (wrangler.jsonc has no [vars]), so the
       # bundle that deploy-prod ships MUST be built with the prod API URL.
       - name: Build Cloudflare bundle
-        if: steps.inputs.outputs.build != 'false'
         env:
           NEXT_PUBLIC_API_BASE_URL: https://api.heygaia.io/api/v1/
           NEXT_PUBLIC_DISCORD_CLIENT_ID: ${{ vars.NEXT_PUBLIC_DISCORD_CLIENT_ID }}
@@ -109,7 +78,6 @@ jobs:
           du -sh apps/web/.open-next/assets/* 2>/dev/null | head -n 5 || du -sh apps/web/.open-next/assets 2>/dev/null | head -n 5 || true
 
       - name: Remove source maps from the deployed bundle
-        if: steps.inputs.outputs.build != 'false'
         # Sentry uploads the maps during cf:build; the deployed artifact must
         # not serve them. deleteSourcemapsAfterUpload is a no-op under
         # Turbopack, and the live site served the full sourcesContent, so drop
@@ -122,14 +90,12 @@ jobs:
           echo "source maps removed: $maps (remaining: $remaining)"
           test "$remaining" -eq 0
       - name: Verify prerendered detail pages
-        if: steps.inputs.outputs.build != 'false'
         # A notFound() during prerender keeps the build green but ships a 404
         # for a fallback:false page (learn/compare/automate) that populateCache
         # would then upload to R2 as the canonical response. Fail here instead.
         run: pnpm --filter ./apps/web verify-prerender
 
       - name: Verify landing pages load no app-only code
-        if: steps.inputs.outputs.build != 'false'
         # The chat stack, the PostHog SDK and the OpenUI stylesheet slow every
         # marketing page without failing anything; the eager bundle is checked here.
         run: pnpm --filter ./apps/web verify-landing-bundle
@@ -141,7 +107,6 @@ jobs:
       # The browser half drives the runner image's Google Chrome, so no
       # Playwright browser download.
       - name: Smoke the built worker (real routes must render and hydrate)
-        if: steps.inputs.outputs.build != 'false'
         run: bash scripts/ci/smoke-worker.sh
 
       - name: Upload bundle artifact
@@ -155,7 +120,7 @@ jobs:
           retention-days: 3
 
       - name: Report build duration
-        if: always() && steps.inputs.outputs.build != 'false'
+        if: always()
         run: |
           end=$(date +%s)
           start=${{ steps.t0.outputs.epoch }}
@@ -171,3 +136,10 @@ jobs:
           echo "::error title=Cloudflare build failed::pnpm --filter ./apps/web cf:build failed — see logs above"
           echo "### ❌ Build failed" >> "$GITHUB_STEP_SUMMARY"
           echo "Check the \"Build Cloudflare bundle\" step for the error." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          status: ${{ job.status }}
+          name: web-build

@@ -4,16 +4,18 @@ Docker Compose configuration for all GAIA environments.
 
 ## Files
 
+The self-host stack lives in `packages/cli/selfhost/`, not here: release-please releases the CLI only for changes under `packages/cli`, and the self-host bundle ships with each CLI release. This folder keeps the developer and simulation stacks.
+
 | File | Purpose |
 |---|---|
 | `docker-compose.yml` | Local development — profile-gated app services, infra always on |
 | `docker-compose.prod.yml` | **Moved** — production compose now lives in the private `theexperiencecompany/gaia-infra` repo (this repo is public; prod topology is not) |
-| `docker-compose.selfhost.yml` | Self-hosting (project `gaia-selfhost`) — image-only: pulls multi-arch `ghcr.io/theexperiencecompany/gaia` + `gaia-web`, all pinned to `GAIA_VERSION`; Caddy `proxy` profile is the single published port |
-| `docker-compose.build.yml` | Self-host override that builds the app images from this checkout (`gaia up --build`) |
-| `docker-compose.sandbox.yml` | Self-host override for the local code sandbox (`gaia up --code-sandbox`): mounts the Docker socket into the backend |
-| `docker-compose.bot-{discord,slack,telegram}.yml` + `selfhost/bot.yml` | One override per self-host bot, added by `gaia bots add` (`ENV: selfhost`, `GAIA_API_URL=http://gaia-backend:8000`) |
+| `../../packages/cli/selfhost/docker-compose.selfhost.yml` | Self-hosting (project `gaia-selfhost`) — image-only: pulls multi-arch `ghcr.io/theexperiencecompany/gaia` + `gaia-web`, all pinned to `GAIA_VERSION`; Caddy `proxy` profile is the single published port |
+| `../../packages/cli/selfhost/docker-compose.build.yml` | Self-host override that builds the app images from this checkout (`gaia up --build`) |
+| `../../packages/cli/selfhost/docker-compose.sandbox.yml` | Self-host override for the local code sandbox (`gaia up --code-sandbox`): mounts the Docker socket into the backend |
+| `../../packages/cli/selfhost/docker-compose.bot-{discord,slack,telegram}.yml` + `bot.yml` | One override per self-host bot, added by `gaia bots add` (`ENV: selfhost`, `GAIA_API_URL=http://gaia-backend:8000`) |
 | `docker-compose.sim.yml` | `mise dev:vm --sim` override pointing the dockered API at the scripted LLM stub |
-| `selfhost/Caddyfile` | Self-host proxy: `/api/v1/*` and `/health/ready` → backend, everything else → web (`GAIA_BACKEND_UPSTREAM` / `GAIA_WEB_UPSTREAM` override the upstreams); HTTPS when `GAIA_DOMAIN` is set, with plain-HTTP `localhost` always answering for the CLI's readiness probe; `GAIA_CADDY_GLOBAL_OPTIONS=local_certs` for a domain no public CA will certify |
+| `../../packages/cli/selfhost/Caddyfile` | Self-host proxy: `/api/v1/*` and `/health/ready` → backend, everything else → web (`GAIA_BACKEND_UPSTREAM` / `GAIA_WEB_UPSTREAM` override the upstreams); HTTPS when `GAIA_DOMAIN` is set, with plain-HTTP `localhost` always answering for the CLI's readiness probe; `GAIA_CADDY_GLOBAL_OPTIONS=local_certs` for a domain no public CA will certify |
 | `../../deploy/` | One-click deploy templates: `proxy.Dockerfile` (Caddyfile baked in), `coolify/gaia.yaml`, `digitalocean/`, and `render.yaml` at the repo root; all but `digitalocean/` are generated (`mise deploy:templates`) |
 | `observability/` | Config files for Prometheus, Loki, Promtail, Grafana, Blackbox — see `observability/CLAUDE.md` before adding or editing an alert rule |
 
@@ -67,7 +69,7 @@ docker compose --profile all up -d       # everything
 
 # Production — compose lives in gaia-infra (private); CI deploys it via Swarm
 
-# Self-hosting (gaia up writes COMPOSE_PROFILES=proxy to .env; without it nothing is published)
+# Self-hosting, from packages/cli/selfhost/ (gaia up writes COMPOSE_PROFILES=proxy to its .env; without it nothing is published)
 docker compose -f docker-compose.selfhost.yml --profile proxy up -d
 docker compose -f docker-compose.selfhost.yml -f docker-compose.build.yml --profile proxy up -d --build  # from source
 ```

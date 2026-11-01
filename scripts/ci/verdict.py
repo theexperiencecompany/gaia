@@ -93,7 +93,7 @@ import subprocess
 import sys
 from typing import NamedTuple, TypedDict
 
-from lib import output_findings
+from lib import nx_affected, output_findings
 from lib.github import GitHub, GitHubError, Json, field_of, records, text_of
 from lib.output_findings import Finding
 
@@ -1441,6 +1441,9 @@ CHECK_AREAS: dict[str, Area] = {
         (
             "ruff",
             "mypy",
+            "mypy-api",
+            "mypy-shared",
+            "mypy-voice-agent",
             "custom-lints",
             "lint-imports",
             "bandit",
@@ -1594,9 +1597,10 @@ def cmd_post_statuses(args: list[str]) -> int:
 # A push used to re-run every check its PR touched against the base, even when
 # the push changed nothing a check reads: the last commit on #1307 touched four
 # Python files and still rebuilt the web app, re-ran knip, jscpd and the TS
-# checks. A check's last PASS on this PR still holds when nothing in its scope
-# (the lane table's `scope` regexes, unioned per `ci_check`) and nothing in CI or
-# tooling changed between that pass's head commit and this one. `detect`
+# checks. A check's last PASS on this PR still holds when nx would not select
+# its task (the lane table's `nx`) for what changed between that pass's head and
+# this one, head and base both: the same answer detect gates the check on, so a
+# file the check reads, its config and the CI harness all rerun it. `detect`
 # computes the plan, each reusable step skips on it, and `step-outcomes` reads
 # the skip as a pass. Anything unreadable means no reuse: the only safe
 # direction here is running more.
@@ -1610,13 +1614,6 @@ def cmd_post_statuses(args: list[str]) -> int:
 
 LANES_FILE = REPO_ROOT / "scripts" / "dev" / "verify-lanes.json"
 
-# A change here can alter any check's verdict without touching its scope: the
-# workflows and composites, the CI and lint tooling, and every config manifest.
-GLOBAL_INVALIDATORS = re.compile(
-    r"^(\.github/|\.config/|scripts/|tools/|config/|patches/)"
-    r"|^[^/]+$"
-    r"|(^|/)(pyproject\.toml|package\.json|project\.json|tsconfig[^/]*\.json|biome\.jsonc?|uv\.lock|pnpm-lock\.yaml)$"
-)
 REUSE_LOOKBACK_RUNS = 30
 # The annotation each run's plan leaves on its `detect` job naming the base tip
 # it validated, so a later run can diff base movement too: a pull_request run
@@ -1628,12 +1625,18 @@ DETECT_JOB = "detect"
 PROVEN_DESCRIPTION = re.compile(r"^(passed|reused)\b")
 
 
-def _check_scopes(lanes_file: Path) -> dict[str, list[re.Pattern[str]]]:
-    scopes: dict[str, list[re.Pattern[str]]] = defaultdict(list)
-    for lane in json.loads(lanes_file.read_text())["lanes"]:
-        if lane.get("ci_check"):
-            scopes[lane["ci_check"]].append(re.compile(lane["scope"]))
-    return dict(scopes)
+def _check_tasks(lanes_file: Path) -> dict[str, str]:
+    """Map each reusable check to the nx task that decides it; a check with no task always runs."""
+    return {
+        lane["ci_check"]: lane["nx"]
+        for lane in json.loads(lanes_file.read_text())["lanes"]
+        if lane.get("ci_check") and lane.get("nx")
+    }
+
+
+def _affected_tasks(changed: list[str]) -> dict[str, list[dict[str, str]]]:
+    """Return the nx tasks a set of changed files reaches, each with why."""
+    return nx_affected.select(["--files", *changed]).tasks if changed else {}
 
 
 def _changed_between(anchor: str, head: str) -> list[str] | None:
@@ -1752,36 +1755,48 @@ def _reuse_anchors(gh: GitHub, pr: _PrRuns, wanted: set[str]) -> dict[str, _Anch
 
 def _reuse_note(
     check: str,
+    task: str,
     anchor: _Anchor | None,
-    head_sha: str,
-    current_base: str,
-    scopes: list[re.Pattern[str]],
+    affected: dict[tuple[str, str], dict[str, list[dict[str, str]]] | None],
 ) -> str | None:
     """Return why `check` is reused, or None (printing why it runs)."""
     if anchor is None:
         print(f"  {check + ':':<28} runs — no earlier pass on this PR")
         return None
-    head_changes = _changed_between(anchor.head_sha, head_sha)
-    base_changes = _changed_between(anchor.base_sha, current_base)
-    if head_changes is None or base_changes is None:
+    reached = affected[(anchor.head_sha, anchor.base_sha)]
+    if reached is None:
         print(f"  {check + ':':<28} runs — run {anchor.run_id}'s commits are not in the checkout")
         return None
-    hit = next(
-        (
-            path
-            for path in head_changes + base_changes
-            if GLOBAL_INVALIDATORS.search(path) or any(rx.search(path) for rx in scopes)
-        ),
-        None,
-    )
-    if hit:
-        print(f"  {check + ':':<28} runs — {hit} changed since run {anchor.run_id}")
+    if task in reached:
+        why = reached[task][0]
+        print(
+            f"  {check + ':':<28} runs — {why.get('file') or why['kind']} changed since run {anchor.run_id}"
+        )
         return None
     note = (
         f"passed at {anchor.head_sha[:12]} in run {anchor.run_id}; nothing it reads changed since"
     )
     print(f"  {check + ':':<28} REUSED — {note}")
     return note
+
+
+def _affected_since(
+    anchors: dict[str, _Anchor], head_sha: str, current_base: str
+) -> dict[tuple[str, str], dict[str, list[dict[str, str]]] | None]:
+    """Ask nx once per anchor what changed since it, on the head and the base; None when undiffable."""
+    out: dict[tuple[str, str], dict[str, list[dict[str, str]]] | None] = {}
+    for anchor in anchors.values():
+        key = (anchor.head_sha, anchor.base_sha)
+        if key in out:
+            continue
+        head_changes = _changed_between(anchor.head_sha, head_sha)
+        base_changes = _changed_between(anchor.base_sha, current_base)
+        out[key] = (
+            None
+            if head_changes is None or base_changes is None
+            else _affected_tasks(sorted(set(head_changes + base_changes)))
+        )
+    return out
 
 
 def cmd_reuse_plan(args: list[str]) -> int:
@@ -1811,21 +1826,20 @@ def cmd_reuse_plan(args: list[str]) -> int:
             f"{current_base or 'unknown'} — every check runs"
         )
     else:
-        scopes = _check_scopes(opts.lanes)
+        tasks = _check_tasks(opts.lanes)
         try:
             anchors = _reuse_anchors(
                 GitHub.from_env(),
                 _PrRuns(opts.repo, opts.workflow, opts.branch, opts.base, opts.run_id),
-                set(scopes),
+                set(tasks),
             )
         except GitHubError as err:
             # Unreadable means no proof of an earlier pass; running more is the safe side.
             print(f"reuse-plan: earlier runs are unreadable ({err}) — every check runs")
             anchors = {}
-        for check in sorted(scopes):
-            note = _reuse_note(
-                check, anchors.get(check), opts.head_sha, current_base, scopes[check]
-            )
+        affected = _affected_since(anchors, opts.head_sha, current_base)
+        for check in sorted(tasks):
+            note = _reuse_note(check, tasks[check], anchors.get(check), affected)
             if note:
                 reused[check] = note
 

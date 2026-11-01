@@ -16,9 +16,13 @@ so the gate reports nothing until the re-run's own gate does.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 import subprocess
 
 from github_fake import FakeGitHub, Reply, Request, ago, run_runner, runner
+import yaml
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 HOME = ["self-hosted", "gaia-home"]
 RUN = r"/actions/runs/77$"
@@ -95,7 +99,8 @@ def test_an_online_home_runner_means_nothing_is_stranded(github: FakeGitHub) -> 
     assert proc.returncode == 0
 
 
-def test_an_unknown_runner_probe_touches_nothing(github: FakeGitHub) -> None:
+def test_an_unknown_runner_probe_touches_nothing_and_fails(github: FakeGitHub) -> None:
+    """A sweep that cannot see the runners cannot do its job; green hid a 403 on every sweep."""
     proc = sweep(
         github,
         Scenario(
@@ -105,7 +110,14 @@ def test_an_unknown_runner_probe_touches_nothing(github: FakeGitHub) -> None:
     )
 
     assert github.posts() == []
-    assert proc.returncode == 0
+    assert proc.returncode != 0
+
+
+def test_the_sweep_runs_with_the_token_that_can_list_runners() -> None:
+    """github.token cannot list self-hosted runners, so every probe came back 403."""
+    workflow = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "ci-requeue.yml").read_text())
+    (step,) = [s for s in workflow["jobs"]["requeue"]["steps"] if "run" in s]
+    assert "secrets.HOMELAB_GH_PAT" in step["env"]["GITHUB_TOKEN"]
 
 
 def test_a_first_attempt_is_left_to_its_own_watchdog(github: FakeGitHub) -> None:

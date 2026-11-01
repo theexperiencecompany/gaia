@@ -1,0 +1,46 @@
+{
+  "name": "python-audit",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "root": ".github/jobs/python-audit",
+  "metadata": {
+    "description": "The checks ci.yml's python-audit job runs, one target each. A target's inputs are the files its check reads, so `nx affected` decides which of them a change runs; the commands live in the job."
+  },
+  "targets": {
+    "import-cost": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python3 tools/lints/check_import_cost.py --report"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/apps/api/app/constants/**/*",
+        "{workspaceRoot}/apps/api/app/config/**/*",
+        "{workspaceRoot}/apps/api/app/utils/**/*",
+        "{workspaceRoot}/apps/api/app/models/**/*",
+        "{workspaceRoot}/apps/api/app/main.py",
+        "{workspaceRoot}/apps/api/app/worker.py",
+        "{workspaceRoot}/apps/api/tests/conftest.py",
+        "{workspaceRoot}/tools/lints/check_import_cost.py",
+        "ciHarness",
+        {
+          "externalDependencies": []
+        }
+      ]
+    },
+    "pip-audit": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/audit.sh pip"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/uv.lock",
+        "{workspaceRoot}/pyproject.toml",
+        "ciHarness",
+        {
+          "externalDependencies": []
+        }
+      ]
+    }
+  }
+}

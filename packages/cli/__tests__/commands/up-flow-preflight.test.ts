@@ -4,9 +4,11 @@ import * as path from "node:path";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const install = mkdtempSync(path.join(tmpdir(), "gaia-up-preflight-"));
-mkdirSync(path.join(install, "infra", "docker"), { recursive: true });
+mkdirSync(path.join(install, "packages", "cli", "selfhost"), {
+  recursive: true,
+});
 writeFileSync(
-  path.join(install, "infra", "docker", ".env"),
+  path.join(install, "packages", "cli", "selfhost", ".env"),
   "GAIA_VERSION=v0.7.0\n",
 );
 
@@ -68,7 +70,7 @@ vi.mock("../../src/lib/domain-reachability.js", () => ({
 vi.mock("../../src/lib/image-availability.js", () => ({
   findReleaseImageGap: async () => null,
 }));
-// Settings are saved as the real setup saves the ports: into infra/docker/.env.
+// Settings are saved as the real setup saves the ports: into the compose env file.
 vi.mock("../../src/lib/env-setup.js", async () => {
   const { writeDockerComposeEnv } = await import("../../src/lib/env-writer.js");
   return {
@@ -119,7 +121,7 @@ function preflight(store: ReturnType<typeof createStore>): RunStep | undefined {
 beforeEach(() => {
   vi.clearAllMocks();
   writeFileSync(
-    path.join(install, "infra", "docker", ".env"),
+    path.join(install, "packages", "cli", "selfhost", ".env"),
     "GAIA_VERSION=v0.7.0\n",
   );
   fakes.checkModePorts.mockImplementation(async (mode, planned) =>

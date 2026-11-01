@@ -231,7 +231,7 @@ cmd_pip() {
   for id in "${PIP_AUDIT_IGNORED[@]}"; do ignore+=(--ignore-vuln "$id"); done
   # pip-audit exits 1 whenever it found anything; the verdict is decided below.
   set +e
-  uvx --no-build pip-audit==2.10.1 --strict --skip-editable --disable-pip "${ignore[@]}" \
+  uv run --frozen --no-build --isolated --only-group lint pip-audit --strict --skip-editable --disable-pip "${ignore[@]}" \
     -r "$tmp/requirements.txt" -f json -o "$tmp/audit.json" 2> "$tmp/audit.err"
   pip_exit=$?
   set -e
@@ -345,8 +345,8 @@ cmd_model_pin() {
 
 cmd_alert_rule_tools() {
 
-  PINT_VERSION="0.87.0"
-  PROMETHEUS_VERSION="3.1.0"
+  # shellcheck source=tools/alert-rules/tool-versions.env
+  source "$(dirname "$0")/../../tools/alert-rules/tool-versions.env"
 
   BIN="${RUNNER_TEMP:?RUNNER_TEMP is required}/bin"
   WORK="$(mktemp -d "${RUNNER_TEMP}/alert-rule-tools.XXXXXX")"

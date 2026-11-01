@@ -276,7 +276,7 @@ services:
       # Required for Linux kernel 7.x: block rseq (ENOSYS) so TCMalloc falls
       # back from per-CPU caches to a safe path. Using rseq on kernel 7.x causes
       # a SIGSEGV in mongo:8's TCMalloc ~30s after startup (SERVER-121912).
-      - seccomp:seccomp-mongo.json
+      - seccomp:../../packages/cli/selfhost/seccomp-mongo.json
     ports:
       - "${MONGO_HOST_PORT:-27017}:27017"
     healthcheck:

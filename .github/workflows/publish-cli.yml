@@ -62,20 +62,19 @@ jobs:
           persist-credentials: false
 
       # Install Node toolchain for build/publish.
-      - name: Setup pnpm
-        uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6.0.2
-
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.1
+      - uses: ./.github/actions/setup-node-pnpm
         with:
-          node-version-file: ".node-version"
           registry-url: "https://registry.npmjs.org"
 
       # Trusted publishing exchanges this job's OIDC token for a short-lived
       # npm credential, so no NPM_TOKEN is stored or rotated anywhere. It
-      # requires npm >= 11.5.1, newer than the npm bundled with Node 22.
-      - name: Upgrade npm for trusted publishing
-        run: npm install -g npm@latest
+      # requires npm >= 11.5.1, which the .node-version Node bundles (24.22.1:
+      # npm 11.19.1); this fails loud if a Node pin ever ships an older one.
+      - name: Check npm supports trusted publishing
+        run: |
+          v="$(npm --version)"
+          [ "$(printf '%s\n' 11.5.1 "$v" | sort -V | head -n1)" = 11.5.1 ] \
+            || { echo "::error::npm $v is older than 11.5.1, which trusted publishing needs"; exit 1; }
 
       # Normalize manual inputs into reusable step outputs.
       - name: Resolve release inputs
@@ -101,11 +100,6 @@ jobs:
         run: node scripts/ci/release.mjs verify-cli --tag "$RELEASE_TAG" --version "$RELEASE_VERSION"
 
       # Build only when publish is actually required.
-      - name: Install dependencies
-        if: steps.verify.outputs.should_publish == 'true'
-        run: pnpm install --frozen-lockfile
-        working-directory: packages/cli
-
       - name: Build
         if: steps.verify.outputs.should_publish == 'true'
         run: pnpm run build

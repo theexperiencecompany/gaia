@@ -32,10 +32,10 @@ let server: http.Server | null = null;
 /** A self-host install whose web port is `port` and whose images are pinned to `version`. */
 function install(port: number, version = "v0.6.0"): string {
   fs.mkdirSync(path.join(root, "apps/api"), { recursive: true });
-  fs.mkdirSync(path.join(root, "infra/docker"), { recursive: true });
+  fs.mkdirSync(path.join(root, "packages/cli/selfhost"), { recursive: true });
   fs.writeFileSync(path.join(root, "apps/api/.env"), "SETUP_MODE=selfhost\n");
   fs.writeFileSync(
-    path.join(root, "infra/docker/.env"),
+    path.join(root, "packages/cli/selfhost/.env"),
     `WEB_HOST_PORT=${port}\nGAIA_DOMAIN=gaia.test\nGAIA_VERSION=${version}\n`,
   );
   findInstallRoot.mockReturnValue(root);

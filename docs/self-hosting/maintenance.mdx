@@ -79,7 +79,7 @@ Redis, ChromaDB and RabbitMQ are not backed up. They rebuild on their own.
 </Accordion>
 
 <Accordion title="Backing up without the CLI">
-  Run from `infra/docker/`. Keep the stamp format so `gaia restore --from` finds the files.
+  Run from `packages/cli/selfhost/`. Keep the stamp format so `gaia restore --from` finds the files.
 
   ```bash
   mkdir -p backups
@@ -143,7 +143,7 @@ This moves you to the GAIA release your CLI ships. Your data, `.env` files and `
   curl -fsSL https://github.com/theexperiencecompany/gaia/releases/download/cli-v$V/gaia-selfhost-$V.tar.gz | tar -xz
   ```
 
-  Delete any file the old `gaia-selfhost.json` listed that the new one doesn't. Set `GAIA_VERSION=v0.7.0` in `infra/docker/.env`, then from `infra/docker/`:
+  Delete any file the old `gaia-selfhost.json` listed that the new one doesn't. Set `GAIA_VERSION=v0.7.0` in `packages/cli/selfhost/.env`, then from `infra/docker/`:
 
   ```bash
   docker compose -f docker-compose.selfhost.yml pull
@@ -152,7 +152,7 @@ This moves you to the GAIA release your CLI ships. Your data, `.env` files and `
 </Accordion>
 
 <Accordion title="More about updates">
-  `gaia update` checks the download against its checksum, swaps in the new setup files (removing any the release dropped), pins `GAIA_VERSION` in `infra/docker/.env`, restarts, and prints the old and new version.
+  `gaia update` checks the download against its checksum, swaps in the new setup files (removing any the release dropped), pins `GAIA_VERSION` in `packages/cli/selfhost/.env`, restarts, and prints the old and new version.
 
   An install made by an older `gaia up` is a git checkout. Its next `gaia update` converts it: tracked files and `.git` are removed, and your `.env` files and `backups/` stay. A checkout on a branch, or with local edits, is refused and pointed at `gaia update --git`. Contributors use `gaia update --git` to pull and rebuild from source.
 

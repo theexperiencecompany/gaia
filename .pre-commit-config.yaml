@@ -35,26 +35,30 @@ repos:
       - id: detect-private-key
         priority: 0
 
-  # Ruff is version-sensitive: rule promotions between releases flip previously
-  # clean files. Pin ALL surfaces to the same version and bump them together —
-  # this rev, CI's pin (.github/workflows/ci.yml), and the ruff entry
-  # in the root uv.lock. See #1063 for the drift this caused.
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.13
+  # Ruff is version-sensitive (#1063): every surface runs the one the root
+  # pyproject's lint group locks, so there is no second pin to bump.
+  - repo: local
     hooks:
       - id: ruff-check
+        name: ruff check
         # Autofix at commit time — parity with the biome hook below. A fix
         # fails the commit so the corrected files get re-staged.
-        args: [--fix, --exit-non-zero-on-fix]
+        entry: uv run --frozen --no-build --isolated --only-group lint ruff check --force-exclude --fix --exit-non-zero-on-fix
+        language: system
+        types_or: [python, pyi]
         priority: 0
       - id: ruff-format
+        name: ruff format
+        entry: uv run --frozen --no-build --isolated --only-group lint ruff format --force-exclude
+        language: system
+        types_or: [python, pyi]
         priority: 0
 
   - repo: local
     hooks:
       - id: lint-imports
         name: import-linter (app.constants/app.config/app.utils stay leaves)
-        entry: bash -c 'cd apps/api && uvx --no-build --from import-linter==2.6 lint-imports --no-cache'
+        entry: bash -c 'cd apps/api && uv run --frozen --no-build --isolated --only-group lint lint-imports --no-cache'
         language: system
         files: '^apps/api/(app/.*\.py|pyproject\.toml)$'
         pass_filenames: false
@@ -87,7 +91,7 @@ repos:
           "$regenerated"; git add -- $regenerated; else echo "api-types: already in sync";
           fi'
         language: system
-        files: '^apps/api/app/.*\.py$|^apps/api/scripts/(export_openapi|openapi_contract)\.py$|^apps/api/tests/offline_env\.py$|^apps/api/pyproject\.toml$|^apps/api/openapi\.json$|^uv\.lock$|^libs/shared/ts/src/api/generated/|^scripts/ci/checks\.mjs$|^package\.json$'
+        files: '^apps/api/app/.*\.py$|^libs/shared/py/.*\.py$|^apps/api/scripts/(export_openapi|openapi_contract)\.py$|^apps/api/tests/offline_env\.py$|^apps/api/pyproject\.toml$|^apps/api/openapi\.json$|^uv\.lock$|^libs/shared/ts/src/api/generated/|^scripts/ci/checks\.mjs$|^package\.json$'
         pass_filenames: false
 
       - id: analytics-types

@@ -215,7 +215,7 @@ $ gaia doctor
 
 ## Port Conflict Handling
 
-If a port GAIA needs is taken, `gaia up` names the program holding it and moves GAIA to the next free port, saying so. In a script without `--yes` it stops instead and names the `--web-port` to pass. Ports you chose — `--web-port`, or 80 and 443 for `--domain` — never move: `gaia up` stops and says what holds them. The choice is saved to `infra/docker/.env` and reused by `gaia start`, `gaia logs` and `gaia status`.
+If a port GAIA needs is taken, `gaia up` names the program holding it and moves GAIA to the next free port, saying so. In a script without `--yes` it stops instead and names the `--web-port` to pass. Ports you chose — `--web-port`, or 80 and 443 for `--domain` — never move: `gaia up` stops and says what holds them. The choice is saved to `packages/cli/selfhost/.env` and reused by `gaia start`, `gaia logs` and `gaia status`.
 
 ---
 
@@ -229,7 +229,7 @@ gaia update --version v0.7.0  # move to another release: its images and its cli-
 gaia update --git           # contributors: pull your branch and rebuild from source
 ```
 
-Each CLI version ships one tested GAIA release. `gaia update` downloads and checks that release, pulls its images, swaps in its setup files, pins `GAIA_VERSION` in `infra/docker/.env` and restarts. If the download or pull fails, nothing changes. Volumes, `.env` files and `backups/` stay. To get a newer GAIA, update the CLI first, then run `gaia update`.
+Each CLI version ships one tested GAIA release. `gaia update` downloads and checks that release, pulls its images, swaps in its setup files, pins `GAIA_VERSION` in `packages/cli/selfhost/.env` and restarts. If the download or pull fails, nothing changes. Volumes, `.env` files and `backups/` stay. To get a newer GAIA, update the CLI first, then run `gaia update`.
 
 Installs from an older `gaia up` are converted on their next update. See [Upgrades](/self-hosting/maintenance#upgrades).
 

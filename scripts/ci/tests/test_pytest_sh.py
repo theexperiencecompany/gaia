@@ -16,6 +16,7 @@ import subprocess
 import sys
 
 import pytest
+from sandbox import VERDICT_FILES
 
 CI = Path(__file__).parent.parent
 
@@ -31,9 +32,7 @@ def _repo(tmp_path: Path) -> Path:
     (scripts / "lib").mkdir(parents=True)
     for name in (
         "pytest.sh",
-        "verdict.py",
-        "lib/github.py",
-        "lib/output_findings.py",
+        *VERDICT_FILES,
         "lib/log.sh",
         "lib/cpu-slots.sh",
         "lib/runner-host.sh",
@@ -109,10 +108,12 @@ STALE_JUNIT = """\
 """
 
 
-def _run_slice(tmp_path: Path, root: Path) -> subprocess.CompletedProcess[str]:
+def _run_slice(
+    tmp_path: Path, root: Path, uv_stub: str = UV_STUB, **extra_env: str
+) -> subprocess.CompletedProcess[str]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
-    for name, body in (("uv", UV_STUB), ("stdbuf", STDBUF_STUB)):
+    for name, body in (("uv", uv_stub), ("stdbuf", STDBUF_STUB)):
         stub = bin_dir / name
         stub.write_text(body)
         stub.chmod(0o755)
@@ -125,6 +126,7 @@ def _run_slice(tmp_path: Path, root: Path) -> subprocess.CompletedProcess[str]:
         SLICE_NAME="unit-a",
         SLICE_PATHS="tests/unit",
         XDIST_N="2",
+        **extra_env,
     )
     return subprocess.run(
         ["bash", str(root / "scripts" / "ci" / "pytest.sh"), "slice"],
@@ -185,97 +187,188 @@ def test_slice_never_reports_from_an_earlier_jobs_junit(tmp_path: Path) -> None:
     assert verdict["status"] == "error"
 
 
-# --- flake-gate: the rerun replays this run's failures, nobody else's ---------
-
-# Records each invocation's argv, one file per call; the first call fails.
-FAKE_PYTEST = """\
+# Records the suite's argv instead of running it.
+RECORDING_UV_STUB = f"""\
 #!/usr/bin/env bash
-n=$(ls "$REC"/call-* 2>/dev/null | wc -l | tr -d ' ')
-printf '%s\\n' "$@" > "$REC/call-$n"
-[ "$n" -gt 0 ]
+if [ "$2" = "--no-project" ]; then shift 2; exec {sys.executable} "$@"; fi
+printf '%s\\n' "$@" > "$REC/suite-argv"
+exit 2
 """
 
 
-def _cache_dir_of(call: Path) -> str:
-    args = call.read_text().splitlines()
-    overrides = [args[i + 1] for i, arg in enumerate(args[:-1]) if arg == "-o"]
-    dirs = [o.removeprefix("cache_dir=") for o in overrides if o.startswith("cache_dir=")]
-    assert len(dirs) == 1, f"no single cache_dir override in {args}"
-    return dirs[0]
+def _suite_argv(tmp_path: Path, sha: str) -> list[str]:
+    rec = tmp_path / f"rec-{sha}"
+    rec.mkdir()
+    _run_slice(
+        tmp_path,
+        _repo_with_selector(tmp_path / sha),
+        RECORDING_UV_STUB,
+        REC=str(rec),
+        GITHUB_SHA=sha,
+    )
+    return (rec / "suite-argv").read_text().splitlines()
 
 
-def test_flake_gate_reruns_from_a_cache_only_this_run_wrote(tmp_path: Path) -> None:
-    """`--lf` against the workspace's shared .pytest_cache replays an earlier job's failures."""
-    workspace = tmp_path / "workspace"
-    (workspace / ".pytest_cache").mkdir(parents=True)
-    fake = tmp_path / "fake-pytest"
-    fake.write_text(FAKE_PYTEST)
-    fake.chmod(0o755)
+def _suite_seed(tmp_path: Path, sha: str) -> list[str]:
+    return [
+        a
+        for a in _suite_argv(tmp_path, sha)
+        if a.startswith(("--randomly-seed", "--hypothesis-seed"))
+    ]
 
-    result = subprocess.run(
-        ["bash", str(CI / "pytest.sh"), "flake-gate", str(fake), "tests"],
-        cwd=workspace,
-        # Pin the event: the gate is strict on a PR and lenient in the queue/master,
-        # and this test is about the rerun cache, so it must not inherit the CI event.
-        env={**os.environ, "REC": str(tmp_path), "GITHUB_EVENT_NAME": "pull_request"},
+
+def test_the_gaia_shared_suite_runs_under_the_api_pytest_config(tmp_path: Path) -> None:
+    """libs/ has no pytest config, so run from apps/api the suite lost --strict-markers and the timeout."""
+    root = _repo(tmp_path)
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "uv").write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$PWD" "$@" > "$REC"\n')
+    (bin_dir / "uv").chmod(0o755)
+    rec = tmp_path / "argv"
+    subprocess.run(
+        ["bash", str(root / "scripts" / "ci" / "pytest.sh"), "shared-suite"],
+        cwd=root,
+        env={**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "REC": str(rec)},
         capture_output=True,
         text=True,
-        timeout=60,
+        check=True,
+    )
+    cwd, *argv = rec.read_text().splitlines()
+    config = Path(cwd) / argv[argv.index("-c") + 1]
+    assert config.resolve() == (root / "apps" / "api" / "pytest.ini").resolve()
+
+
+GNU_TIME = (
+    subprocess.run(["/usr/bin/time", "-v", "true"], capture_output=True, check=False).returncode
+    == 0
+)
+
+
+@pytest.mark.skipif(
+    not GNU_TIME, reason="the slice runs pytest under GNU time -v, as CI's Linux runners have"
+)
+def test_the_test_order_and_examples_are_seeded_by_the_commit(tmp_path: Path) -> None:
+    """Unseeded, the order and master's Hypothesis draw changed every run, so a failure came and went."""
+    sha = "0a1b2c3d" + "0" * 32
+    seed = int(sha[:8], 16)
+    assert _suite_seed(tmp_path, sha) == [f"--randomly-seed={seed}", f"--hypothesis-seed={seed}"]
+    other = int("f" * 8, 16)
+    assert _suite_seed(tmp_path, "f" * 40) == [
+        f"--randomly-seed={other}",
+        f"--hypothesis-seed={other}",
+    ]
+
+
+# --- flake-gate: pytest-rerunfailures reruns a failure once, in its worker ----
+
+# Fails on its first run in a fresh directory and passes on the rerun: a flake.
+FLAKY_TEST = """\
+from pathlib import Path
+
+
+def test_flaky(tmp_path_factory):
+    marker = Path(__file__).with_suffix(".ran")
+    if not marker.exists():
+        marker.write_text("1")
+        raise AssertionError("first run")
+"""
+
+
+def _flake_gate_on(tmp_path: Path, test_body: str, event: str) -> subprocess.CompletedProcess[str]:
+    tests = tmp_path / "suite"
+    tests.mkdir()
+    (tests / "test_it.py").write_text(test_body)
+    env = {k: v for k, v in os.environ.items() if k != "GITHUB_EVENT_NAME"}
+    if event:
+        env["GITHUB_EVENT_NAME"] = event
+    return subprocess.run(
+        [
+            "bash",
+            str(CI / "pytest.sh"),
+            "flake-gate",
+            sys.executable,
+            "-m",
+            "pytest",
+            "-p",
+            "no:cacheprovider",
+            str(tests),
+        ],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
         check=False,
     )
-
-    assert result.returncode == 1
-    assert "FLAKY TESTS DETECTED" in result.stderr
-    first, rerun = _cache_dir_of(tmp_path / "call-0"), _cache_dir_of(tmp_path / "call-1")
-    assert first == rerun
-    assert "--lf" in (tmp_path / "call-1").read_text().splitlines()
-    assert not Path(first).is_relative_to(workspace)
-    assert not Path(first).exists(), "the job-local cache outlived the gate"
 
 
 @pytest.mark.parametrize(
     ("event", "expected"),
-    [
-        ("pull_request", 1),
-        ("workflow_dispatch", 1),
-        ("", 1),
-        ("merge_group", 0),
-        ("push", 0),
-    ],
+    [("pull_request", 1), ("workflow_dispatch", 1), ("", 1), ("merge_group", 0), ("push", 0)],
 )
-def test_a_rerun_that_passes_only_fails_the_lane_on_a_pr(
+def test_a_test_that_passes_only_on_its_rerun_fails_the_lane_on_a_pr(
     tmp_path: Path, event: str, expected: int
 ) -> None:
-    """The queue and master must not eject on a flake; a PR push still fails it.
+    """The queue and master must not eject on a flake; a PR push, with a human there, still fails it."""
+    result = _flake_gate_on(tmp_path, FLAKY_TEST, event)
+    assert result.returncode == expected, result.stdout + result.stderr
+    assert "FLAKY" in result.stderr
 
-    A rerun-passing test proved the code is fine, but in the queue the failure costs
-    a whole group run and ejects a PR that just passed. On a PR a human is present and
-    the test should be stabilised, so the strict verdict stays where it can be acted on.
-    """
-    workspace = tmp_path / "workspace"
-    workspace.mkdir()
-    fake = tmp_path / "fake-pytest"
-    fake.write_text(FAKE_PYTEST)
-    fake.chmod(0o755)
-    env = {**os.environ, "REC": str(tmp_path)}
-    if event:
-        env["GITHUB_EVENT_NAME"] = event
-    else:
-        env.pop("GITHUB_EVENT_NAME", None)
 
-    result = subprocess.run(
-        ["bash", str(CI / "pytest.sh"), "flake-gate", str(fake), "tests"],
-        cwd=workspace,
-        env=env,
+def test_a_test_that_fails_twice_is_a_genuine_failure(tmp_path: Path) -> None:
+    result = _flake_gate_on(tmp_path, "def test_broken():\n    assert False\n", "merge_group")
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "FLAKY" not in result.stderr
+
+
+def test_regression_proof_proves_a_module_marked_through_pytestmark(tmp_path: Path) -> None:
+    """The lane's own advice names pytestmark, yet a decorator grep skipped such a file."""
+    root = _repo(tmp_path)
+    (root / "apps" / "api" / "tests" / "test_pinned.py").write_text(
+        "import pytest\n\npytestmark = pytest.mark.regression\n\n\ndef test_bug():\n    assert True\n"
+    )
+    _git(root, "-c", "user.email=t@t", "-c", "user.name=t", "add", "-A")
+    _git(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "pin")
+    subprocess.run(
+        ["bash", str(root / "scripts" / "ci" / "pytest.sh"), "regression-proof", "HEAD~1"],
+        cwd=root,
         capture_output=True,
         text=True,
         timeout=60,
         check=False,
     )
+    # The fixture has no API venv, so the run stops after selection; what matters is that it got there.
+    verdict = _verdicts(tmp_path).get("regression-proof", {})
+    assert verdict.get("status") != "skip", verdict
 
-    assert result.returncode == expected
-    if expected == 0:
-        assert "::warning::" in result.stderr
-        assert "FLAKY TESTS DETECTED" not in result.stderr
-    else:
-        assert "FLAKY TESTS DETECTED" in result.stderr
+
+def _flake_gate_on_exit(tmp_path: Path, code: int, **env: str) -> int:
+    fake = tmp_path / "fake-pytest"
+    fake.write_text(f"#!/usr/bin/env bash\nexit {code}\n")
+    fake.chmod(0o755)
+    return subprocess.run(
+        ["bash", str(CI / "pytest.sh"), "flake-gate", str(fake)],
+        env={**os.environ, **env},
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    ).returncode
+
+
+def test_flake_gate_fails_a_full_run_that_collected_nothing(tmp_path: Path) -> None:
+    """A whole slice or -m schemathesis collecting nothing is a broken path or marker, not a pass."""
+    assert _flake_gate_on_exit(tmp_path, 5) != 0
+
+
+def test_flake_gate_passes_a_selection_the_markers_deselected(tmp_path: Path) -> None:
+    assert _flake_gate_on_exit(tmp_path, 5, FLAKE_GATE_SELECTION="1") == 0
+
+
+@pytest.mark.skipif(
+    not GNU_TIME, reason="the slice runs pytest under GNU time -v, as CI's Linux runners have"
+)
+def test_the_slice_takes_its_markers_and_timeout_from_pytest_ini(tmp_path: Path) -> None:
+    """It overrode addopts and restated -m and --timeout, a second copy pytest.ini could drift from."""
+    argv = _suite_argv(tmp_path, "c" * 40)
+    assert not [a for a in argv if a.startswith(("--override-ini", "--timeout")) or a == "-m"], argv

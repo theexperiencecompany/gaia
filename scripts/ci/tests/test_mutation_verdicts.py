@@ -25,6 +25,7 @@ import sys
 
 from doc_shape import mapping
 import pytest
+from sandbox import VERDICT_FILES
 
 CI = Path(__file__).resolve().parent.parent
 MUTATION = CI / "mutation.py"
@@ -183,9 +184,7 @@ def _sandbox(tmp_path: Path) -> Path:
     (scripts / "lib").mkdir(parents=True)
     for name in (
         MUTATION.name,
-        "verdict.py",
-        "lib/github.py",
-        "lib/output_findings.py",
+        *VERDICT_FILES,
         "lib/log.sh",
         "lib/cpu-slots.sh",
         "lib/runner-host.sh",

@@ -53,8 +53,8 @@ format = "uv run --group dev ruff format ."
 mypy = "uv run --group backend --group dev mypy app --ignore-missing-imports"
 schema = "uvx schemathesis run http://localhost:8000/openapi.json"
 "schema.write" = "uvx schemathesis run http://localhost:8000/openapi.json --report-junit-path report.xml"
-bandit = "uvx --no-build bandit@1.9.4 -r app"
-pip_audit = "uv export --no-dev --frozen --no-emit-header | uvx --no-build pip-audit@2.10.1 --disable-pip --no-deps -r /dev/stdin"
+bandit = "uv run --frozen --no-build --isolated --only-group lint bandit -r app"
+pip_audit = "uv export --no-dev --frozen --no-emit-header | uv run --frozen --no-build --isolated --only-group lint pip-audit --disable-pip --no-deps -r /dev/stdin"
 detect_secrets = "uvx detect-secrets scan --all-files"  # pragma: allowlist secret
 
 
@@ -118,6 +118,7 @@ dev = [
   "pika>=1.4.1",
   "pytest-randomly>=4.1.0",
   "pytest-timeout>=2.4.0",
+  "pytest-rerunfailures==16.7",
   "time-machine>=3.3.1",
   "schemathesis>=4.25.0",
   "hypothesis>=6.165.2",

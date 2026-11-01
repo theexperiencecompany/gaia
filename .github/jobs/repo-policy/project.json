@@ -1,0 +1,40 @@
+{
+  "name": "repo-policy",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "root": ".github/jobs/repo-policy",
+  "metadata": {
+    "description": "The checks ci.yml's repo-policy job runs, one target each. A target's inputs are the files its check reads, so `nx affected` decides which of them a change runs; the commands live in the job."
+  },
+  "targets": {
+    "suppression-hygiene": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python3 tools/lints/check_suppressions.py"
+      },
+      "cache": false,
+      "inputs": [
+        "ciHarness",
+        "{workspaceRoot}/**/*.{py,toml,lock,ts,tsx,js,jsx,mjs,cjs,json,jsonc,css,yaml}",
+        {
+          "externalDependencies": []
+        }
+      ]
+    },
+    "tool-pins": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python3 tools/lints/check_tool_pins.py"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/**/*",
+        "!{workspaceRoot}/**/*.md",
+        "!{workspaceRoot}/**/*.mdx",
+        "ciHarness",
+        {
+          "externalDependencies": []
+        }
+      ]
+    }
+  }
+}

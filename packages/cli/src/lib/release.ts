@@ -1,5 +1,5 @@
 /**
- * The GAIA release a CLI version installs: the git tag its infra/docker comes
+ * The GAIA release a CLI version installs: the git tag its self-host files come
  * from and the image tag compose pins. `gaia up` and `gaia update` both go
  * through here, so a fresh install and an update land on the same release.
  * @module lib/release
@@ -61,7 +61,7 @@ const LS_REMOTE_NO_MATCH = 2;
 const RELEASE_IMAGE_TAG_RE = /^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/;
 
 /**
- * The git tag whose infra/docker matches a release's images.
+ * The git tag whose self-host files match a release's images.
  * @throws Error when the image tag is not a release (`latest`, a commit sha).
  */
 export function releaseGitTag(imageTag: string): string {
@@ -100,7 +100,7 @@ async function assertReleaseTagPublished(
   );
 }
 
-/** Pin every GAIA app image in infra/docker/.env to one tag. */
+/** Pin every GAIA app image in the compose env file to one tag. */
 export function pinReleaseImages(repoPath: string, imageTag: string): void {
   setDockerComposeEnvValue(repoPath, GAIA_VERSION_ENV_KEY, imageTag);
 }

@@ -31,7 +31,11 @@ import {
 } from "../../lib/docker-access.js";
 import { copyEnvFileOwnerOnly } from "../../lib/env-writer.js";
 import { apiEnvPath, findInstallRoot } from "../../lib/install-root.js";
-import { homeRelative } from "../../lib/paths.js";
+import {
+  homeRelative,
+  SELFHOST_COMPOSE_FILE,
+  selfhostDir,
+} from "../../lib/paths.js";
 import { VOLUME_BACKUPS, type VolumeFile } from "../../lib/volume-backups.js";
 
 /** The compose services whose databases a backup dumps. */
@@ -57,7 +61,7 @@ export interface BackupResult extends BackupFileSet {
   warnings: string[];
 }
 
-/** Exact shell one-liners shown in `--help` / docs, run from infra/docker/. */
+/** Exact shell one-liners shown in `--help` / docs, run from the install's packages/cli/selfhost/. */
 export function getBackupCommands(
   outputDir: string,
   stamp = backupStamp(),
@@ -92,10 +96,6 @@ function commandFailure(error: unknown): string {
   return stderr.split("\n").at(-1) || (error as Error).message;
 }
 
-function resolveDockerDir(repoPath: string): string {
-  return path.join(repoPath, "infra", "docker");
-}
-
 export function resolveBackupOutputDir(
   repoPath: string,
   outputDir?: string,
@@ -114,8 +114,8 @@ export async function runBackup(
     );
   }
 
-  const dockerDir = resolveDockerDir(repoPath);
-  const composeFile = path.join(dockerDir, "docker-compose.selfhost.yml");
+  const dockerDir = selfhostDir(repoPath);
+  const composeFile = path.join(dockerDir, SELFHOST_COMPOSE_FILE);
   if (!fs.existsSync(composeFile)) {
     throw new Error(
       `${homeRelative(repoPath)} is missing its setup files, so it can't be backed up.\nRun 'gaia up' to restore them.`,
@@ -293,7 +293,7 @@ function composeExecArgs(service: string, command: string[]): string[] {
   return [
     "compose",
     "-f",
-    "docker-compose.selfhost.yml",
+    SELFHOST_COMPOSE_FILE,
     "exec",
     "-T",
     service,

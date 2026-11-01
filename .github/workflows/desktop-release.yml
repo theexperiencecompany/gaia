@@ -51,19 +51,7 @@ jobs:
       # Checkout source for package/build tooling.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # Install Node package manager + runtime.
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10 # v6.0.10
-        # No `version:` on purpose — the action reads package.json's
-        # packageManager, which is the one place the pnpm version is declared.
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.1
-        with:
-          node-version-file: ".node-version"
-          cache: "pnpm"
-          cache-dependency-path: pnpm-lock.yaml
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup-node-pnpm
 
       # Keep desktop package version aligned with release tag before packaging.
       # On a manual dispatch the tag comes from the `tag` input (backfill path);
@@ -156,7 +144,13 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write # read the quality gate's runs, and re-run one a newer push cancelled
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The tags, so the release tag resolves to its commit.
+          fetch-depth: 0
+          persist-credentials: false
       - name: Resolve release tag
         id: tag
         env:
@@ -167,13 +161,15 @@ jobs:
           set -euo pipefail
           TAG="$RELEASE_TAG"
           [ -n "$TAG" ] || TAG="$INPUT_TAG"
-          if [ -z "$TAG" ]; then
-            TAG=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 50 --json tagName \
-              | jq -r '[.[] | select(.tagName | startswith("desktop-v"))][0].tagName // empty')
-          fi
-          [ -n "$TAG" ] || { echo "::error::No desktop release tag to publish to (no release event, no tag input, no desktop-* release found)"; exit 1; }
+          [ -n "$TAG" ] || TAG="$(bash scripts/ci/release.sh desktop-tag)"
           echo "Publishing installers to $TAG"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for ci.yml's quality gate on the release commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+        run: bash scripts/ci/release.sh wait-quality-gate
 
       - name: Download installer artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -198,14 +194,7 @@ jobs:
           # --clobber makes re-runs idempotent (a partial first attempt's
           # assets are replaced instead of failing the whole publish).
           gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber "${FILES[@]}"
-          # Mark Latest only when this IS the newest desktop release — a
-          # backfill for an older tag must not steal Latest from a newer one
-          # (electron-updater resolves /releases/latest).
-          NEWEST=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 50 --json tagName \
-            | jq -r '[.[] | select(.tagName | startswith("desktop-v"))][0].tagName // empty')
-          if [ "$TAG" = "$NEWEST" ]; then
-            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --latest
-          else
-            echo "::notice::Not marking $TAG as Latest — newest desktop release is $NEWEST"
-          fi
+          # Latest goes to the manifest's desktop release, so a backfill for an
+          # older tag never steals it (electron-updater resolves /releases/latest).
+          bash scripts/ci/release.sh mark-desktop-latest
           echo "### ✅ Installers published to $TAG (${#FILES[@]} files)" >> "$GITHUB_STEP_SUMMARY"

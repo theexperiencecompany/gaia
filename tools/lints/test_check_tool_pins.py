@@ -19,78 +19,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import check_tool_pins
 import pytest
 
-PRE_COMMIT_YAML = """\
-repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.13
-    hooks:
-      - id: ruff
-  - repo: local
-    hooks:
-      - id: bandit
-        entry: bash -c "uvx --no-build bandit@1.9.4 -r app"
-      - id: pip-audit
-        entry: bash -c "uv export --frozen | uvx --no-build pip-audit@2.10.1"
-      - id: gaia-mypy
-        entry: bash -c 'uvx --no-build mypy@1.19.1 "$@"' --
-"""
-
-CI_WORKFLOW_YML = """\
-jobs:
-  python-ruff:
-    steps:
-      - name: Ruff lint
-        run: |
-          uvx --no-build ruff@0.14.13 check .
-  python-interrogate:
-    steps:
-      - name: Docstring coverage
-        run: |
-          uvx interrogate==1.7.0 -c pyproject.toml apps/api
-  python-xenon:
-    steps:
-      - name: Complexity scan
-        run: |
-          uvx xenon==0.9.3 --max-absolute F apps/api
-  python-bandit:
-    steps:
-      - name: Bandit security scan
-        run: |
-          uvx --no-build bandit@1.9.4 -c pyproject.toml -r apps/api/app
-  python-pip-audit:
-    steps:
-      - name: pip-audit
-        run: |
-          uvx --no-build pip-audit==2.10.1 --strict
-"""
-
-
-UV_LOCK_TOML = """\
-[[package]]
-name = "mypy"
-version = "1.19.1"
-
-[[package]]
-name = "ruff"
-version = "0.14.13"
-"""
-
-
-@pytest.fixture
-def pinned_surfaces(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Path]:
-    """Fixture surfaces carrying every EXPECTED pin, as module constants."""
-    files = {
-        "PRE_COMMIT": tmp_path / "pre-commit-config.yaml",
-        "CI_WORKFLOW": tmp_path / "ci.yml",
-        "UV_LOCK": tmp_path / "uv.lock",
-    }
-    files["PRE_COMMIT"].write_text(PRE_COMMIT_YAML, encoding="utf-8")
-    files["CI_WORKFLOW"].write_text(CI_WORKFLOW_YML, encoding="utf-8")
-    files["UV_LOCK"].write_text(UV_LOCK_TOML, encoding="utf-8")
-    for name, path in files.items():
-        monkeypatch.setattr(check_tool_pins, name, path)
-    return files
-
 
 def _run(capsys: pytest.CaptureFixture[str]) -> tuple[int, str, str]:
     rc = check_tool_pins.main([])
@@ -110,75 +38,34 @@ def test_real_tree_is_consistent() -> None:
     assert result.returncode == 0, result.stderr
 
 
-def test_consistent_pins_return_0(
-    pinned_surfaces: dict[str, Path], capsys: pytest.CaptureFixture[str]
-) -> None:
-    # The patched files must be what the guard read — without this, a broken
-    # monkeypatch would silently pass against the real tree instead.
-    assert all(path.exists() for path in pinned_surfaces.values())
-    rc, out, err = _run(capsys)
-    assert rc == 0, err
-    assert "OK" in out
-
-
-def test_deleted_pin_mentioned_in_comment_fails(
-    pinned_surfaces: dict[str, Path], capsys: pytest.CaptureFixture[str]
-) -> None:
-    """The real pin is gone; only the comment still names it.
-
-    The old whole-file substring search was satisfied by that comment alone —
-    this is the spoof that must fail.
-    """
-    pinned_surfaces["CI_WORKFLOW"].write_text(
-        CI_WORKFLOW_YML.replace(
-            "uvx --no-build ruff@0.14.13 check .",
-            "          # uvx --no-build ruff@0.14.13 check .",
-        ),
-        encoding="utf-8",
-    )
-    rc, out, err = _run(capsys)
-    assert rc == 1
-    assert "ruff is not pinned to 0.14.13" in err
-    assert "ci.yml" in err
-    assert "1 unpinned tool invocation" in err
+LINT_PYPROJECT = """\
+[dependency-groups]
+lint = ["ruff==0.14.13", "import-linter==2.6", "bandit==1.9.4"]
+"""
 
 
 @pytest.mark.parametrize(
-    "run_block",
+    ("line", "flagged"),
     [
-        # A full-line comment names the pin; the invocation itself is unpinned.
-        "          # ruff@0.14.13\n          uvx --no-build ruff check .",
-        # The only mention rides a trailing comment on an unpinned invocation.
-        "          uvx --no-build ruff check .  # ruff@0.14.13",
+        ("          uvx --no-build ruff@0.14.13 check .", True),
+        ("          uvx --no-build --from import-linter==2.6 lint-imports --no-cache", True),
+        ('        entry: bash -c "uvx --no-build bandit@1.9.4 -r app"', True),
+        ("          uv run --frozen --no-build --isolated --only-group lint ruff check .", False),
+        ("          # uvx --no-build ruff@0.14.13 check .", False),
+        ("          uvx --no-build some-other-tool@1.0.0", False),
     ],
 )
-def test_comment_only_mention_never_satisfies(
-    pinned_surfaces: dict[str, Path],
-    capsys: pytest.CaptureFixture[str],
-    run_block: str,
+def test_a_locked_tool_run_through_uvx_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, line: str, flagged: bool
 ) -> None:
-    pinned_surfaces["CI_WORKFLOW"].write_text(
-        CI_WORKFLOW_YML.replace("          uvx --no-build ruff@0.14.13 check .", run_block),
-        encoding="utf-8",
-    )
-    rc, out, err = _run(capsys)
-    assert rc == 1
-    assert "ruff is not pinned to 0.14.13" in err
-
-
-def test_real_pin_with_trailing_comment_still_counts(
-    pinned_surfaces: dict[str, Path], capsys: pytest.CaptureFixture[str]
-) -> None:
-    """Cutting each line at its first ``#`` must not discard a genuine pin."""
-    pinned_surfaces["CI_WORKFLOW"].write_text(
-        CI_WORKFLOW_YML.replace(
-            "uvx --no-build ruff@0.14.13 check .",
-            "uvx --no-build ruff@0.14.13 check .  # pinned — bump with EXPECTED",
-        ),
-        encoding="utf-8",
-    )
-    rc, out, err = _run(capsys)
-    assert rc == 0, err
+    """Uvx names its own version, a second pin beside the lint group's: the drift #1063 was."""
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(LINT_PYPROJECT, encoding="utf-8")
+    surface = tmp_path / "ci.yml"
+    surface.write_text(f"jobs:\n  j:\n    steps:\n      - run: |\n{line}\n", encoding="utf-8")
+    monkeypatch.setattr(check_tool_pins, "ROOT_PYPROJECT", pyproject)
+    monkeypatch.setattr(check_tool_pins, "UVX_SURFACES", (surface,))
+    assert bool(check_tool_pins._uvx_violations()) is flagged
 
 
 @pytest.mark.parametrize(
@@ -472,3 +359,24 @@ def test_pnpm_action_setup_explicit_version_fails(
     monkeypatch.setattr(check_tool_pins, "REPO_ROOT", tmp_path)
     _rc, _out, err = _run(capsys)
     assert "pnpm/action-setup pins version 10.17.1 explicitly" in err
+
+
+@pytest.mark.parametrize(
+    ("line", "flagged"),
+    [
+        ("      - uses: actions/checkout@v5", True),
+        ("      - uses: actions/checkout@main", True),
+        ("      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1", False),
+        ("      - uses: ./.github/actions/setup-uv", False),
+        ("    uses: ./.github/workflows/web-build.yml", False),
+        ("        uses: docker://semgrep/semgrep@sha256:" + "b" * 64, False),
+    ],
+)
+def test_an_action_is_pinned_by_commit_sha(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, line: str, flagged: bool
+) -> None:
+    """A tag can move under us; react-doctor.yml shipped actions/checkout@v5 past this lint."""
+    workflow = tmp_path / "w.yml"
+    workflow.write_text(f"jobs:\n  j:\n    steps:\n{line}\n")
+    monkeypatch.setattr(check_tool_pins, "ACTION_SURFACES", (workflow,))
+    assert bool(check_tool_pins._unpinned_action_violations()) is flagged

@@ -1,0 +1,37 @@
+{
+  "name": "scan",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "root": ".github/jobs/scan",
+  "metadata": {
+    "description": "The checks ci.yml's scan job runs, one target each. A target's inputs are the files its check reads, so `nx affected` decides which of them a change runs; the commands live in the job."
+  },
+  "targets": {
+    "semgrep": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{workspaceRoot}/tools/semgrep/**/*",
+        "ciHarness",
+        "{workspaceRoot}/**/*.py",
+        {
+          "externalDependencies": []
+        }
+      ]
+    },
+    "trivy": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{workspaceRoot}/**/pnpm-lock.yaml",
+        "{workspaceRoot}/**/package.json",
+        "{workspaceRoot}/**/uv.lock",
+        "{workspaceRoot}/**/pyproject.toml",
+        "{workspaceRoot}/**/go.mod",
+        "{workspaceRoot}/**/go.sum",
+        "{workspaceRoot}/**/*Dockerfile*",
+        "ciHarness",
+        {
+          "externalDependencies": []
+        }
+      ]
+    }
+  }
+}

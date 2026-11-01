@@ -8,21 +8,15 @@ green PR on a broken tree:
 
 * `files` must print `__FULL__` and nothing else on a push, or every scoped
   lane reports "no changed files — skipping" on the one branch that needs
-  scanning;
-* `docker-inputs` must notice `apps/api/Dockerfile.dockerignore`. It decides
-  what enters the build CONTEXT, so a newly-excluded path drops out of the
-  image — while the lane said "image inputs unchanged" and skipped the build.
+  scanning.
 """
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
-import re
 import subprocess
 
 import pytest
-import yaml
 
 CI = Path(__file__).resolve().parent.parent
 SCRIPT = CI / "changes.sh"
@@ -54,7 +48,7 @@ def repo(tmp_path: Path) -> Path:
     (root / "app.py").write_text("x = 1\n")
     _git(root, "add", "-A")
     _git(root, "commit", "-qm", "base")
-    # A real `origin`: `docker-inputs` fetches it before diffing, so a repo with
+    # A real `origin`: the `*-inputs` subcommands fetch it before diffing, so a repo with
     # only a remote-tracking ref would fail on the fetch rather than exercise
     # the diff.
     origin = tmp_path / "origin.git"
@@ -68,80 +62,6 @@ def repo(tmp_path: Path) -> Path:
     _git(root, "push", "-q", "origin", "master")
     _git(root, "checkout", "-qb", "feature")
     return root
-
-
-def _docker_inputs(repo: Path, tmp_path: Path) -> str:
-    out = tmp_path / "gh_output"
-    out.write_text("")
-    proc = subprocess.run(
-        ["bash", str(SCRIPT), "docker-inputs"],
-        cwd=repo,
-        env={**GIT_ENV, "BASE_BRANCH": "master", "GITHUB_OUTPUT": str(out)},
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert proc.returncode == 0, proc.stderr
-    return out.read_text()
-
-
-def test_a_dockerignore_change_rebuilds_the_image(repo: Path, tmp_path: Path) -> None:
-    (repo / "apps/api/Dockerfile.dockerignore").write_text("base\n**/tests\n")
-    _git(repo, "commit", "-aqm", "narrow the build context")
-    assert "build=true" in _docker_inputs(repo, tmp_path)
-
-
-def test_the_root_dockerignore_still_rebuilds_the_image(repo: Path, tmp_path: Path) -> None:
-    (repo / ".dockerignore").write_text("base\nnode_modules\n")
-    _git(repo, "commit", "-aqm", "root ignore")
-    assert "build=true" in _docker_inputs(repo, tmp_path)
-
-
-def test_an_unrelated_change_skips_the_build(repo: Path, tmp_path: Path) -> None:
-    # The control: without this the test above would pass on a script that
-    # answered build=true unconditionally.
-    (repo / "app.py").write_text("x = 2\n")
-    _git(repo, "commit", "-aqm", "unrelated")
-    assert "build=false" in _docker_inputs(repo, tmp_path)
-
-
-def _selfhost_inputs(repo: Path, tmp_path: Path) -> str:
-    out = tmp_path / "gh_output"
-    out.write_text("")
-    proc = subprocess.run(
-        ["bash", str(SCRIPT), "selfhost-inputs"],
-        cwd=repo,
-        env={**GIT_ENV, "BASE_BRANCH": "master", "GITHUB_OUTPUT": str(out)},
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert proc.returncode == 0, proc.stderr
-    return out.read_text()
-
-
-def test_a_cli_change_runs_the_selfhost_e2e(repo: Path, tmp_path: Path) -> None:
-    path = repo / "packages/cli/src/commands/up/flow.ts"
-    path.parent.mkdir(parents=True)
-    path.write_text("export {};\n")
-    _git(repo, "add", "-A")
-    _git(repo, "commit", "-qm", "cli change")
-    assert "build=true" in _selfhost_inputs(repo, tmp_path)
-
-
-def test_a_selfhost_compose_change_runs_the_selfhost_e2e(repo: Path, tmp_path: Path) -> None:
-    path = repo / "infra/docker/docker-compose.selfhost.yml"
-    path.parent.mkdir(parents=True)
-    path.write_text("services: {}\n")
-    _git(repo, "add", "-A")
-    _git(repo, "commit", "-qm", "compose change")
-    assert "build=true" in _selfhost_inputs(repo, tmp_path)
-
-
-def test_an_unrelated_change_skips_the_selfhost_e2e(repo: Path, tmp_path: Path) -> None:
-    (repo / "app.py").write_text("x = 2\n")
-    _git(repo, "commit", "-aqm", "unrelated")
-    assert "build=false" in _selfhost_inputs(repo, tmp_path)
 
 
 def test_files_prints_only_the_full_sentinel_on_a_push(repo: Path) -> None:
@@ -404,153 +324,75 @@ def test_base_rev_refuses_a_base_it_cannot_resolve(repo: Path) -> None:
     assert "no-such-branch" in proc.stderr
 
 
-def test_docker_inputs_on_a_merge_group_diffs_against_the_group_base(
-    repo: Path, tmp_path: Path
-) -> None:
-    ahead = _queue(repo)
-    out = tmp_path / "gh_output"
-    out.write_text("")
+def test_files_for_a_task_nx_marked_for_a_full_scan_is_full(repo: Path) -> None:
+    """A config change selects the check but changes none of the files it reads; scoping it to them skipped it."""
+    proc = _run(
+        repo, "files", "--task", "lint-python:ruff", "py", GAIA_PR_BASE="master",
+        TASK_FILES='{"lint-python:ruff": "__FULL__"}',
+    )  # fmt: skip
+    assert proc.stdout.strip() == "__FULL__", proc.stderr
 
-    proc = _run(repo, "docker-inputs", BASE_BRANCH=ahead, GITHUB_OUTPUT=str(out))
 
+def test_files_for_a_task_are_the_files_nx_matched_to_it(repo: Path) -> None:
+    """A changed file outside the task's inputs (tools/ for interrogate) is not handed to its tool."""
+    (repo / "app.py").write_text("x = 5\n")
+    (repo / "tool.py").write_text("y = 5\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "two py changes")
+    proc = _run(
+        repo, "files", "--task", "lint-python:interrogate", "py", GAIA_PR_BASE="master",
+        TASK_FILES='{"lint-python:interrogate": ["app.py", "gone.py"]}',
+    )  # fmt: skip
+    assert proc.stdout.split() == ["app.py"], proc.stderr
+
+
+# scoped: one line runs a check over the changed files, the whole tree, or nothing.
+
+
+def _scoped(repo: Path, *flags: str, **env: str) -> list[str]:
+    proc = _run(
+        repo,
+        "scoped",
+        *flags,
+        "--",
+        "bash",
+        "-c",
+        'printf "args:%s\\n" "$@"; printf "env:%s\\n" "${CHANGED_FILES:-}"',
+        "_",
+        **env,
+    )
     assert proc.returncode == 0, proc.stderr
-    assert "build=false" in out.read_text()
+    return proc.stdout.splitlines()
 
 
-# ---------------------------------------------------------------------------
-# web-inputs: deploy-web's build is a required pre-merge check, so it runs on
-# every PR and decides for itself whether the bundle's inputs moved.
-# ---------------------------------------------------------------------------
-
-
-def _web_inputs(repo: Path, tmp_path: Path) -> str:
-    out = tmp_path / "web_output"
-    out.write_text("")
-    proc = _run(repo, "web-inputs", BASE_BRANCH="master", GITHUB_OUTPUT=str(out))
-    assert proc.returncode == 0, proc.stderr
-    return out.read_text()
-
-
-def test_a_web_change_builds_the_bundle(repo: Path, tmp_path: Path) -> None:
-    (repo / "apps/web").mkdir(parents=True)
-    (repo / "apps/web/page.tsx").write_text("x\n")
-    _git(repo, "add", "-A")
-    _git(repo, "commit", "-qm", "web")
-    assert "build=true" in _web_inputs(repo, tmp_path)
-
-
-def test_a_change_outside_the_web_inputs_skips_the_bundle(repo: Path, tmp_path: Path) -> None:
+def test_scoped_appends_the_changed_files(repo: Path) -> None:
     (repo / "app.py").write_text("x = 3\n")
-    _git(repo, "commit", "-aqm", "api only")
-    assert "build=false" in _web_inputs(repo, tmp_path)
+    _git(repo, "commit", "-aqm", "py change")
+    out = _scoped(
+        repo, "--task", "lint-python:ruff", "--ext", "py", GAIA_PR_BASE="master",
+        TASK_FILES='{"lint-python:ruff": ["app.py"]}',
+    )  # fmt: skip
+    assert "args:app.py" in out
 
 
-def test_web_inputs_match_the_deploy_trigger() -> None:
-    # The push trigger and the pre-merge decision must agree, or the merge queue
-    # passes a web change that master then deploys untested — or the reverse.
-    workflow = yaml.safe_load((CI.parent.parent / ".github/workflows/deploy-web.yml").read_text())
-    triggers = workflow[True] if True in workflow else workflow["on"]
-    script = SCRIPT.read_text()
-    body = script[script.index("WEB_INPUTS=(") :]
-    listed = [line.strip() for line in body[: body.index(")")].splitlines()[1:] if line.strip()]
-    expected = [p if p.endswith(".yml") else f"{p}/**" for p in listed]
-    assert triggers["push"]["paths"] == expected
+def test_scoped_hands_the_files_through_the_environment(repo: Path) -> None:
+    (repo / "app.py").write_text("x = 4\n")
+    _git(repo, "commit", "-aqm", "py change")
+    out = _scoped(
+        repo, "--task", "t", "--ext", "py", "--env", GAIA_PR_BASE="master",
+        TASK_FILES='{"t": ["app.py"]}',
+    )  # fmt: skip
+    assert "env:app.py" in out and "args:app.py" not in out
 
 
-# ---------------------------------------------------------------------------
-# seo-inputs: the SEO audit of the production build runs when what it renders,
-# or what judges it, changed.
-# ---------------------------------------------------------------------------
+def test_scoped_runs_the_whole_tree_on_a_full_scan(repo: Path) -> None:
+    out = _scoped(
+        repo, "--task", "lint-python:ruff", "--ext", "py", "--full", ". extra", GAIA_PR_BASE="master",
+        TASK_FILES='{"lint-python:ruff": "__FULL__"}',
+    )  # fmt: skip
+    assert out[:2] == ["args:.", "args:extra"]
 
 
-def _seo_inputs(repo: Path, tmp_path: Path) -> str:
-    out = tmp_path / "seo_output"
-    out.write_text("")
-    proc = _run(repo, "seo-inputs", BASE_BRANCH="master", GITHUB_OUTPUT=str(out))
-    assert proc.returncode == 0, proc.stderr
-    return out.read_text()
-
-
-@pytest.mark.parametrize(
-    "rel",
-    [
-        "apps/web/src/app/page.tsx",
-        "libs/shared/ts/src/seo.ts",
-        "config/squirrel.toml",
-        "scripts/ci/baselines/squirrel-build.txt",
-        "scripts/ci/lib/squirrel.py",
-        "scripts/ci/lib/seo_audit.py",
-    ],
-)
-def test_a_rendered_output_or_audit_change_runs_the_seo_audit(
-    repo: Path, tmp_path: Path, rel: str
-) -> None:
-    _commit(repo, rel)
-    assert "build=true" in _seo_inputs(repo, tmp_path)
-
-
-def test_a_change_the_site_cannot_render_skips_the_seo_audit(repo: Path, tmp_path: Path) -> None:
-    _commit(repo, "apps/api/app/main.py")
-    assert "build=false" in _seo_inputs(repo, tmp_path)
-
-
-def test_seo_inputs_match_the_local_lane_scope() -> None:
-    # `mise ci:local` picks the seo lane by its scope; it must see what CI sees.
-    lanes = json.loads((CI.parent.parent / "scripts/dev/verify-lanes.json").read_text())["lanes"]
-    scope = re.compile(next(lane for lane in lanes if lane["name"] == "seo")["scope"])
-    script = SCRIPT.read_text()
-    body = script[script.index("SEO_INPUTS=(") :]
-    listed = [line.strip() for line in body[: body.index("\n)")].splitlines()[1:] if line.strip()]
-    web = script[script.index("WEB_INPUTS=(") :]
-    paths = [p for p in listed if not p.startswith('"$')]
-    paths += [line.strip() for line in web[: web.index(")")].splitlines()[1:] if line.strip()]
-    for path in paths:
-        probe = f"{path}/x" if not Path(path).suffix else path
-        assert scope.search(probe), f"the seo lane's scope misses {path}"
-    assert not scope.search("apps/api/app/main.py")
-
-
-# ---------------------------------------------------------------------------
-# desktop-inputs: desktop-pr-build runs on every PR and merge group and decides
-# for itself whether the packaged app's inputs moved, so a merge group that
-# touches no desktop path skips in seconds instead of packaging three OSes.
-# ---------------------------------------------------------------------------
-
-
-def _desktop_inputs(repo: Path, tmp_path: Path) -> str:
-    out = tmp_path / "desktop_output"
-    out.write_text("")
-    proc = _run(repo, "desktop-inputs", BASE_BRANCH="master", GITHUB_OUTPUT=str(out))
-    assert proc.returncode == 0, proc.stderr
-    return out.read_text()
-
-
-def _commit(repo: Path, rel: str) -> None:
-    path = repo / rel
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("x\n")
-    _git(repo, "add", "-A")
-    _git(repo, "commit", "-qm", rel)
-
-
-@pytest.mark.parametrize(
-    "rel",
-    [
-        "apps/desktop/src/main.ts",
-        "libs/shared/ts/src/bots/x.ts",
-        ".github/workflows/desktop-pr-build.yml",
-    ],
-)
-def test_a_desktop_input_change_packages_the_app(repo: Path, tmp_path: Path, rel: str) -> None:
-    _commit(repo, rel)
-    assert "build=true" in _desktop_inputs(repo, tmp_path)
-
-
-@pytest.mark.parametrize(
-    "rel", ["apps/web/page.tsx", "libs/shared/ts/src/api/generated/schema.d.ts"]
-)
-def test_a_change_the_packaged_app_cannot_see_skips_it(
-    repo: Path, tmp_path: Path, rel: str
-) -> None:
-    _commit(repo, rel)
-    assert "build=false" in _desktop_inputs(repo, tmp_path)
+def test_scoped_runs_nothing_when_no_file_it_reads_changed(repo: Path) -> None:
+    out = _scoped(repo, "--task", "t", "--ext", "ts", GAIA_PR_BASE="master", TASK_FILES="{}")
+    assert not [line for line in out if line.startswith("args:")]

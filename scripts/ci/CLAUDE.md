@@ -18,7 +18,7 @@ lane without grepping the workflow first.
 | Running the Python suite | `pytest.sh` | `slices`, `slice`, `flake-gate`, `regression-proof` |
 | Is the suite strong enough | `mutation.py` | `matrix`, `plan`, `shard`, `module`, `local`, `replay` |
 | Which tests a diff can reach | `test_impact.py` | `record`, `select`, `fetch`, `selection-path` |
-| What this PR changed | `changes.sh` | `base`, `base-rev`, `files`, `py-source`, `docker-inputs`, `selfhost-inputs`, `web-inputs`, `seo-inputs`, `desktop-inputs` |
+| What this PR changed | `changes.sh` | `base`, `base-rev`, `files`, `py-source`, `affected` |
 | The self-host stack an end-to-end lane boots and drives | `selfhost.sh` | `prepare`, `stub`, `up`, `mongo`, `logs` |
 | Standing dependency + pin gates | `audit.sh` | `pnpm`, `pip`, `playwright-pin`, `model-pin`, `alert-rule-tools`, `evlog` |
 | Static hygiene over the TS/JS surface | `checks.mjs` | `file-sizes`, `components-per-file`, `types-location`, `duplication`, `evlog-map-bots`, `api-schema`, `analytics-catalog`, `api-schema-types`, `api-client-imports`, `cli-config-schema`, `deploy-templates`, `doc-comments` |
@@ -198,9 +198,9 @@ inline script metadata, as `verdict.py` does), `#!/usr/bin/env python3`, fully t
 and dispatches `sys.argv[1]` into `cmd_<sub>` functions like `verdict.py`. It
 imports its `lib/` modules as `from lib import x` (the script's directory is on
 `sys.path`) instead of shelling out to them, so data crosses as dataclasses, and
-every external call that can fail either raises or is checked. `scripts/ci` is
-not in the `python-mypy` lane's paths, so check a changed entrypoint with
-`mypy --strict` run from `scripts/ci`.
+every external call that can fail either raises or is checked. The
+`python-mypy` lane checks `scripts/ci`, but not strictly, so check a changed
+entrypoint with `mypy --strict` run from `scripts/ci` as well.
 
 ## Conventions every bash script here follows
 

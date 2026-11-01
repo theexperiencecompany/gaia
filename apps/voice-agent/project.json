@@ -3,7 +3,8 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
   "tags": [
-    "scope:python"
+    "scope:python",
+    "release:apps"
   ],
   "root": "apps/voice-agent",
   "sourceRoot": "apps/voice-agent/src",
@@ -26,7 +27,12 @@
       "cache": false,
       "inputs": [
         "production",
-        "^production"
+        "^production",
+        "python",
+        "{workspaceRoot}/.dockerignore",
+        {
+          "externalDependencies": []
+        }
       ]
     },
     "sync": {
@@ -41,7 +47,10 @@
       "cache": true,
       "inputs": [
         "{projectRoot}/pyproject.toml",
-        "{workspaceRoot}/uv.lock"
+        "{workspaceRoot}/uv.lock",
+        {
+          "externalDependencies": []
+        }
       ]
     },
     "dev": {
@@ -68,28 +77,29 @@
       "inputs": [
         "default",
         "{workspaceRoot}/apps/voice-agent/pyproject.toml",
-        "{workspaceRoot}/uv.lock",
+        "python",
         "{workspaceRoot}/libs/shared/py/**/*",
-        "^production"
+        "^production",
+        {
+          "externalDependencies": []
+        }
       ]
     },
     "type-check": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "UV_PROJECT_ENVIRONMENT=../../.venv-voice-agent uv run --group dev mypy src --ignore-missing-imports",
-        "cwd": "{projectRoot}"
+        "command": "UV_PROJECT_ENVIRONMENT=.venv-voice-agent uv run --project apps/voice-agent --frozen --group dev mypy apps/voice-agent/src --ignore-missing-imports --cache-dir \"${MYPY_CACHE_DIR:-.mypy_cache}/voice-agent\""
       },
       "cache": true,
       "inputs": [
         "default",
         "{workspaceRoot}/apps/voice-agent/pyproject.toml",
-        "{workspaceRoot}/uv.lock",
-        "{workspaceRoot}/pyproject.toml",
+        "python",
         "{workspaceRoot}/libs/shared/py/**/*",
-        "^production"
-      ],
-      "outputs": [
-        "{projectRoot}/.mypy_cache"
+        "^production",
+        {
+          "externalDependencies": []
+        }
       ]
     },
     "format": {

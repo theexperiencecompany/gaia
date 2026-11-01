@@ -531,7 +531,7 @@ function plannedLocalName(
 }
 
 /**
- * Where the install now serves GAIA: infra/docker/.env holds this run's port
+ * Where the install now serves GAIA: the compose env file holds this run's port
  * flags and every earlier run's choice (a domain's port 80), as compose reads it.
  */
 function servedAt(targetPath: string): {

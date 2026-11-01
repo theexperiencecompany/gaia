@@ -5,42 +5,33 @@ so three places have to agree on what can change them: the prek hook that
 regenerates on commit, the local lane table, and the CI job that fails on
 drift. They did not — the hook and the lane both ignored `apps/api/pyproject.toml`
 and `uv.lock`, so a FastAPI or Pydantic bump changed the generated document
-with nothing regenerating or checking it, and CI's api-schema lane keyed off
-nx-affected, which a manifest-only bump need not move either.
+with nothing regenerating or checking it.
 
-The lane table is the source of truth. The hook copies the regex (prek needs a
-literal) and this test fails if the copy drifts; the workflow greps it straight
-out of the file.
+The source of truth is the lint-mixed:api-schema nx task's inputs: CI gates the
+check on it, and the hook's literal regex (prek needs one) is held equal to it
+by test_hook_scopes.py.
 """
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
-import re
 from typing import Any
 
-from doc_shape import mapping
+from lib import nx_affected
 import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-LANES = REPO_ROOT / "scripts" / "dev" / "verify-lanes.json"
 PRE_COMMIT = REPO_ROOT / ".pre-commit-config.yaml"
-WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
-LANE = "api-schema"
+TASK = "lint-mixed:api-schema"
 HOOK = "api-types"
 
 # A bump to either one re-generates the document without touching a route.
 DEPENDENCY_MANIFESTS = ("apps/api/pyproject.toml", "uv.lock")
 
 
-@pytest.fixture(scope="module")
-def scope() -> str:
-    lanes = json.loads(LANES.read_text(encoding="utf-8"))["lanes"]
-    scope = next(lane["scope"] for lane in lanes if lane["name"] == LANE)
-    assert isinstance(scope, str), f"{LANE} scope is not a string: {scope!r}"
-    return scope
+def _reaches(path: str) -> bool:
+    return TASK in nx_affected.select(["--files", path]).tasks
 
 
 @pytest.fixture(scope="module")
@@ -49,62 +40,36 @@ def hook() -> dict[str, Any]:
     return next(h for repo in config["repos"] for h in repo.get("hooks", []) if h["id"] == HOOK)
 
 
-@pytest.fixture(scope="module")
-def workflow() -> dict[str, Any]:
-    return mapping(yaml.safe_load(WORKFLOW.read_text(encoding="utf-8")))
-
-
 @pytest.mark.parametrize("manifest", DEPENDENCY_MANIFESTS)
-def test_the_scope_covers_the_dependency_manifests(scope: str, manifest: str) -> None:
+def test_a_dependency_manifest_reruns_the_check(manifest: str) -> None:
     """A FastAPI/Pydantic bump changes the generated output with no route edit."""
-    assert re.search(scope, manifest), f"{manifest} is not in the {LANE} scope: {scope}"
+    assert _reaches(manifest)
 
 
-def test_the_scope_covers_the_sources_it_generates_from(scope: str) -> None:
-    """The route code, the exporter and the artifacts themselves."""
-    for path in (
+@pytest.mark.parametrize(
+    "path",
+    [
         "apps/api/app/api/v1/endpoints/todos.py",
+        "libs/shared/py/analytics/catalog/__init__.py",
         "apps/api/scripts/export_openapi.py",
         "apps/api/scripts/openapi_contract.py",
         "apps/api/openapi.json",
         "libs/shared/ts/src/api/generated/schema.d.ts",
         "scripts/ci/checks.mjs",
-    ):
-        assert re.search(scope, path), f"{path} is not in the {LANE} scope"
+    ],
+)
+def test_a_source_it_generates_from_reruns_the_check(path: str) -> None:
+    """The route code, the shared models it imports, the exporter and the artifacts themselves."""
+    assert _reaches(path)
 
 
-def test_the_scope_skips_what_cannot_change_the_document(scope: str) -> None:
+@pytest.mark.parametrize("path", ["apps/web/src/app/page.tsx", "docs/release-notes.mdx"])
+def test_what_cannot_change_the_document_does_not(path: str) -> None:
     """Scoping is only useful while it still says no."""
-    for path in ("apps/web/src/app/page.tsx", "docs/release-notes.mdx"):
-        assert not re.search(scope, path), f"{path} should not trigger the {LANE} lane"
-
-
-def test_the_prek_hook_carries_the_same_scope(scope: str, hook: dict[str, Any]) -> None:
-    """Compare the literal copy, since prek cannot derive the scope."""
-    assert hook["files"] == scope, (
-        f"the {HOOK} hook's files: drifted from the {LANE} lane's scope in "
-        f"{LANES.name} — copy it across:\n  hook: {hook['files']}\n  lane: {scope}"
-    )
+    assert not _reaches(path)
 
 
 def test_the_prek_hook_names_what_it_regenerated(hook: dict[str, Any]) -> None:
     """The hook re-stages build outputs; silence there looks like an unrelated diff."""
     assert "regenerated and staged" in hook["entry"]
     assert "git add" in hook["entry"]
-
-
-def test_the_ci_lane_reads_the_scope_from_the_lane_table(workflow: dict[str, Any]) -> None:
-    """Grepping the same file is what keeps CI from becoming a fourth opinion."""
-    detect = next(
-        step for step in workflow["jobs"]["detect"]["steps"] if step.get("id") == "affected"
-    )
-    assert "verify-lanes.json" in detect["run"]
-    assert f"'{LANE}'" in detect["run"]
-    assert "has_api_schema=" in detect["run"]
-    assert workflow["jobs"]["detect"]["outputs"]["has_api_schema"]
-
-
-def test_the_api_schema_check_is_gated_on_that_signal(workflow: dict[str, Any]) -> None:
-    """Without this the check still rides on nx-affected alone."""
-    (step,) = [s for s in workflow["jobs"]["lint-mixed"]["steps"] if s.get("id") == LANE]
-    assert "needs.detect.outputs.has_api_schema == 'true'" in step["if"]

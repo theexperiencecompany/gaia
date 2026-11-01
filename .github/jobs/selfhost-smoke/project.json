@@ -1,0 +1,34 @@
+{
+  "name": "selfhost-smoke",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "root": ".github/jobs/selfhost-smoke",
+  "metadata": {
+    "description": "The checks selfhost-smoke.yml's jobs run, one target each. A target's inputs are the files its check reads, so `nx affected` decides which of them a change runs; the commands live in the workflow."
+  },
+  "targets": {
+    "e2e": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{workspaceRoot}/packages/cli/**/*",
+        "{workspaceRoot}/apps/web/src/features/setup-wizard/**/*",
+        "{workspaceRoot}/apps/web/src/features/auth/**/*",
+        "{workspaceRoot}/apps/web/e2e/selfhost/**/*",
+        "{workspaceRoot}/tools/llm-stub/**/*",
+        "{workspaceRoot}/apps/api/Dockerfile",
+        "{workspaceRoot}/apps/web/Dockerfile",
+        "{workspaceRoot}/apps/api/app/api/v1/endpoints/setup.py",
+        "{workspaceRoot}/apps/api/app/api/v1/endpoints/auth_local.py",
+        "{workspaceRoot}/apps/api/app/api/v1/endpoints/members.py",
+        "{workspaceRoot}/apps/api/app/api/v1/endpoints/readiness.py",
+        "{workspaceRoot}/apps/api/app/api/v1/endpoints/blob.py",
+        "{workspaceRoot}/apps/web/playwright.selfhost.config.ts",
+        "{workspaceRoot}/scripts/ci/selfhost.sh",
+        "{workspaceRoot}/.github/workflows/selfhost-smoke.yml",
+        "ciHarness",
+        {
+          "externalDependencies": []
+        }
+      ]
+    }
+  }
+}

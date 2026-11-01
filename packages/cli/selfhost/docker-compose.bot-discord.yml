@@ -3,7 +3,7 @@
 services:
   bot-discord:
     extends:
-      file: selfhost/bot.yml
+      file: bot.yml
       service: bot
     image: ghcr.io/theexperiencecompany/gaia-bot-discord:${GAIA_VERSION:-latest}
     depends_on:

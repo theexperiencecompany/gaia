@@ -69,7 +69,7 @@ One-command self-hosted setup: checks prerequisites (installing Docker on apt-ba
 
 ### `gaia update`
 
-Moves the install to the GAIA release this CLI version ships: downloads and verifies its setup-file bundle, pulls its `v<version>` images (nothing changes if either fails), swaps the setup files in (removing ones the release dropped), pins `GAIA_VERSION` in `infra/docker/.env`, restarts, and prints what changed. Volumes, `.env` files and `backups/` are kept. An install that is a git checkout made by an older `gaia up` (a release tag, detached, no local edits) moves to the bundle layout on its next update; a checkout on a branch or with local edits is refused and pointed at `--git`.
+Moves the install to the GAIA release this CLI version ships: downloads and verifies its setup-file bundle, pulls its `v<version>` images (nothing changes if either fails), swaps the setup files in (removing ones the release dropped), pins `GAIA_VERSION` in `packages/cli/selfhost/.env`, restarts, and prints what changed. Volumes, `.env` files and `backups/` are kept. An install that is a git checkout made by an older `gaia up` (a release tag, detached, no local edits) moves to the bundle layout on its next update; a checkout on a branch or with local edits is refused and pointed at `--git`.
 
 | Flag | Description |
 |------|-------------|
@@ -133,7 +133,7 @@ Shows health and latency for the services, plus every dependency the API reports
 
 ## Port Overrides
 
-When port conflicts are detected, overrides are written to `infra/docker/.env`. In self-host mode only the proxy port (`WEB_HOST_PORT`, plus `HTTPS_HOST_PORT` with a domain) is published.
+When port conflicts are detected, overrides are written to `packages/cli/selfhost/.env`. In self-host mode only the proxy port (`WEB_HOST_PORT`, plus `HTTPS_HOST_PORT` with a domain) is published.
 
 ## Development
 

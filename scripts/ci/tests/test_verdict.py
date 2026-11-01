@@ -702,11 +702,31 @@ def _run_of(req: Request) -> int:
 
 REUSE_LANES = {
     "lanes": [
-        {"name": "biome", "ci_check": "biome", "scope": r"\.(ts|tsx)$"},
-        {"name": "python-ruff", "ci_check": "ruff", "scope": r"\.py$"},
-        {"name": "py-tests", "scope": r"\.py$"},
+        {"name": "biome", "ci_check": "biome", "nx": "lint-node:biome"},
+        {"name": "python-ruff", "ci_check": "ruff", "nx": "lint-python:ruff"},
+        {"name": "py-tests", "nx": "api:test"},
     ]
 }
+
+
+def _nx_stand_in(changed: list[str]) -> dict[str, list[dict[str, str]]]:
+    """Answer as nx would for these lanes; the real file-to-task mapping is pinned in test_workflow_nx_gates."""
+    reached: dict[str, list[dict[str, str]]] = {}
+    for path in changed:
+        tasks = (
+            ["lint-node:biome", "lint-python:ruff"]
+            if path.startswith(".github/")
+            else ["lint-node:biome"]
+            if path.endswith(".ts")
+            else ["lint-python:ruff"]
+            if path.endswith(".py")
+            else []
+        )
+        for task in tasks:
+            reached.setdefault(task, []).append({"kind": "input-file", "file": path})
+    return reached
+
+
 PASSED = {"biome": "passed", "ruff": "passed"}
 
 
@@ -752,6 +772,7 @@ def reuse_pr(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> _Pr:
     _git(repo, "checkout", "-q", "-b", "pr")
     head = _commit(repo, "apps/api/x.py", "one")
     monkeypatch.setattr(verdict, "REPO_ROOT", repo)
+    monkeypatch.setattr(verdict, "_affected_tasks", _nx_stand_in)
     return _Pr(repo, base, head)
 
 
@@ -857,6 +878,13 @@ def _plan(
     assert verdict.cmd_reuse_plan(argv) == 0
     fields = dict(line.split("=", 1) for line in out.read_text().splitlines())
     return mapping(json.loads(fields["reused"]))
+
+
+def test_reuse_asks_the_nx_that_gates_the_checks() -> None:
+    """The stand-in above is only honest while the real answer agrees with it."""
+    reached = verdict._affected_tasks(["apps/api/app/main.py"])
+    assert "lint-python:ruff" in reached
+    assert "lint-node:biome" not in reached
 
 
 def test_a_lane_whose_scope_did_not_change_since_its_pass_is_reused(

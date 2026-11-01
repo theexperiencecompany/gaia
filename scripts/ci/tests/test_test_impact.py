@@ -22,7 +22,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 from pathlib import Path
+import subprocess
 import sys
 from types import ModuleType
 from typing import Any
@@ -405,3 +407,145 @@ def test_fetch_json_shape_matches_the_real_api(tmp_path: Path) -> None:
     assert run["event"] == "push"
     assert run["head_repository"]["full_name"] == REPO
     assert isinstance(run["id"], int)
+
+
+def _git_in(root: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", *args], cwd=root, check=True, capture_output=True, text=True
+    ).stdout.strip()
+
+
+def test_a_test_added_on_master_after_the_map_is_selected(tmp_path: Path) -> None:
+    """The map at A knows nothing of the test master added at B, so diffing from B dropped it."""
+    origin = tmp_path / "origin.git"
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "master", str(origin)], check=True)
+    root = tmp_path / "repo"
+    api = root / "apps" / "api"
+    (api / "app").mkdir(parents=True)
+    (api / "tests" / "unit").mkdir(parents=True)
+    (api / "app" / "foo.py").write_text("x = 1\n")
+    (api / "tests" / "unit" / "test_foo.py").write_text("def test_foo():\n    pass\n")
+    _git_in(root, "init", "-q", "-b", "master")
+    _git_in(root, "-c", "user.email=t@t", "-c", "user.name=t", "add", "-A")
+    _git_in(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "A")
+    map_sha = _git_in(root, "rev-parse", "HEAD")
+    (api / "tests" / "unit" / "test_new.py").write_text("def test_new():\n    pass\n")
+    _git_in(root, "add", "-A")
+    _git_in(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "B")
+    _git_in(root, "remote", "add", "origin", str(origin))
+    _git_in(root, "push", "-q", "origin", "master")
+    _git_in(root, "checkout", "-qb", "pr")
+    (api / "app" / "foo.py").write_text("x = 2\n")
+    _git_in(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qam", "C")
+
+    impact_map = tmp_path / "map.json"
+    impact_map.write_text(
+        json.dumps(
+            {
+                "meta": {"sha": map_sha, "slice": "unit-a", "version": 1},
+                "files": {"app/foo.py": ["tests/unit/test_foo.py::test_foo"]},
+                # Unrelated tests, so one selected test stays under ALL_THRESHOLD.
+                "test_files": {
+                    "tests/unit/test_foo.py": ["tests/unit/test_foo.py::test_foo"],
+                    **{
+                        f"tests/unit/test_o{i}.py": [f"tests/unit/test_o{i}.py::t"]
+                        for i in range(9)
+                    },
+                },
+            }
+        )
+    )
+    out = tmp_path / "selected.txt"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(CI / "test_impact.py"),
+            "select",
+            "--slice",
+            "unit-a",
+            "--map",
+            str(impact_map),
+            "--out",
+            str(out),
+            "--repo-root",
+            str(api),
+        ],
+        cwd=root,
+        env={**os.environ, "BASE_REF": "master", "SLICE_PATHS": "tests/unit"},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "tests/unit/test_new.py" in out.read_text(), out.read_text()
+
+
+def test_a_map_commit_outside_a_shallow_checkout_is_fetched_not_given_up_on(tmp_path: Path) -> None:
+    """A depth-limited runner checkout lacked the map's commit, and selection quietly ran ALL."""
+    origin = tmp_path / "origin.git"
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "master", str(origin)], check=True)
+    # GitHub serves any reachable commit by its SHA; a local bare repo does only when asked.
+    _git_in(origin, "config", "uploadpack.allowReachableSHA1InWant", "true")
+    seed = tmp_path / "seed"
+    api = seed / "apps" / "api"
+    (api / "app").mkdir(parents=True)
+    (api / "tests" / "unit").mkdir(parents=True)
+    (api / "app" / "foo.py").write_text("x = 1\n")
+    (api / "tests" / "unit" / "test_foo.py").write_text("def test_foo():\n    pass\n")
+    ident = ["-c", "user.email=t@t", "-c", "user.name=t"]
+    _git_in(seed, "init", "-q", "-b", "master")
+    _git_in(seed, "add", "-A")
+    _git_in(seed, *ident, "commit", "-qm", "A")
+    map_sha = _git_in(seed, "rev-parse", "HEAD")
+    (api / "tests" / "unit" / "test_new.py").write_text("def test_new():\n    pass\n")
+    _git_in(seed, "add", "-A")
+    _git_in(seed, *ident, "commit", "-qm", "B")
+    _git_in(seed, "push", "-q", str(origin), "master")
+    root = tmp_path / "repo"
+    subprocess.run(["git", "clone", "-q", "--depth=1", f"file://{origin}", str(root)], check=True)
+    (root / "apps" / "api" / "app" / "foo.py").write_text("x = 2\n")
+    _git_in(root, *ident, "commit", "-qam", "C")
+
+    impact_map = tmp_path / "map.json"
+    impact_map.write_text(
+        json.dumps(
+            {
+                "meta": {"sha": map_sha, "slice": "unit-a", "version": 1},
+                "files": {"app/foo.py": ["tests/unit/test_foo.py::test_foo"]},
+                "test_files": {
+                    "tests/unit/test_foo.py": ["tests/unit/test_foo.py::test_foo"],
+                    **{
+                        f"tests/unit/test_o{i}.py": [f"tests/unit/test_o{i}.py::t"]
+                        for i in range(9)
+                    },
+                },
+            }
+        )
+    )
+    out = tmp_path / "selected.txt"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(CI / "test_impact.py"),
+            "select",
+            "--slice",
+            "unit-a",
+            "--map",
+            str(impact_map),
+            "--out",
+            str(out),
+            "--repo-root",
+            str(root / "apps" / "api"),
+        ],
+        cwd=root,
+        env={**os.environ, "SLICE_PATHS": "tests/unit"},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    selected = out.read_text().split()
+    assert "tests/unit/test_foo.py::test_foo" in selected, result.stdout
+    assert "ALL" not in selected

@@ -3,7 +3,7 @@
  *
  * Default (release) mode moves an install to the GAIA release this CLI ships:
  * that release's setup files (the bundle) replace the install's, GAIA_VERSION
- * in infra/docker/.env is pinned to the matching image tag, the images are
+ * in the compose env file is pinned to the matching image tag, the images are
  * pulled and the stack restarts. An install `gaia up` once made as a git
  * checkout moves to release files the same way: its tracked files and .git go,
  * the settings and backups beside them stay. `--git` keeps the developer path:
@@ -19,9 +19,11 @@ import {
   readPinnedGaiaVersion,
 } from "../../lib/env-writer.js";
 import type { ReleaseImageGap } from "../../lib/image-availability.js";
+import { detectSetupMode } from "../../lib/install-root.js";
 import { pinReleaseImages, releaseGitTag } from "../../lib/release.js";
 import {
   checkoutOwnedFiles,
+  moveLegacySelfhostSettings,
   placeBundle,
   readBundleManifest,
   stageBundle,
@@ -40,7 +42,12 @@ import type {
 } from "./flow.types.js";
 
 /** Paths whose change matters for a self-host deploy. */
-export const WATCH_PATHS = ["apps/web", "apps/api", "infra/docker"] as const;
+export const WATCH_PATHS = [
+  "apps/web",
+  "apps/api",
+  "infra/docker",
+  "packages/cli/selfhost",
+] as const;
 
 /**
  * Offer an update only when the target is a newer release whose images exist
@@ -157,6 +164,10 @@ export async function applyReleaseUpdate(
     plan.repoPath,
     plan.layout.files,
   );
+  await moveLegacySelfhostSettings(
+    plan.repoPath,
+    await detectSetupMode(plan.repoPath),
+  );
   pinReleaseImages(plan.repoPath, plan.toVersion);
 
   report.onStage("start");
@@ -198,6 +209,7 @@ export async function applyGitUpdate(
 ): Promise<number> {
   report.onStage("pull");
   await git(repoPath, ["pull", "--ff-only"]);
+  await moveLegacySelfhostSettings(repoPath, await detectSetupMode(repoPath));
   report.onStage("download");
   const { startedServices } = await startServices(
     repoPath,

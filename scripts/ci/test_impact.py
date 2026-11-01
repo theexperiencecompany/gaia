@@ -20,8 +20,8 @@ Four subcommands:
       slice.
 
   select
-      Diff the PR against its merge-base and write the slice's selection file
-      — either a list of pytest node ids or the single line ``ALL``.
+      Diff HEAD against the commit the map was recorded at and write the
+      slice's selection file — a list of pytest node ids or the line ``ALL``.
 
   selection-path
       Print where that file lives, so `pytest.sh slice` reads it without
@@ -30,7 +30,7 @@ Four subcommands:
       workspace can never narrow a later run; apps/api/.test-impact off one.
 
 `fetch` and `select` read their inputs from the environment (SLICE_NAME,
-SLICE_PATHS, SLICE_IGNORE, BASE_REF, MAP_DIR, TEST_IMPACT_ENABLED,
+SLICE_PATHS, SLICE_IGNORE, MAP_DIR, TEST_IMPACT_ENABLED,
 GITHUB_REPOSITORY) so a workflow step stays one command
 line; every input also has an explicit flag, which is how the tests drive it.
 
@@ -42,10 +42,10 @@ Off switch: TEST_IMPACT_ENABLED=0 (or false) makes `fetch` download nothing and
 `select` write ALL, so a full run on a branch is one env var away when a
 selection looks wrong.
 
-Staleness: a map older than the PR's merge-base is still valid because
-selection is by file, not by revision. What an old map can miss is coverage
-that only exists after a refactor, and every shape of that (new file, moved
-file, changed conftest, changed dependency) is one of the ALL fallbacks.
+Staleness: the diff runs from the map's own commit, so whatever master changed
+after the map was recorded (a new test, a moved file) is part of the change and
+selected like the PR's own edits. Any of the newest trusted maps is therefore
+sound; an older one only selects more.
 
 Map schema (JSON):
   {"meta": {"sha": ..., "slice": ..., "version": 1},
@@ -469,23 +469,29 @@ def _git(*argv: str) -> str | None:
     return proc.stdout if proc.returncode == 0 else None
 
 
-def _changed_since_merge_base(base_ref: str, scratch: Path) -> list[str] | None:
-    """Return the PR's own diff, or None when the merge-base cannot be resolved.
+def _changed_since_the_maps(map_paths: list[str], scratch: Path) -> list[str] | None:
+    """Return every file that differs from what the maps were recorded at, or None when unknowable.
 
-    The merge-base, not the base tip: we only want what this PR changed. No
-    --depth on the fetch — on the box's persistent workspace a depth-limited
-    fetch marks the repo shallow again, and the next checkout pays a full
-    re-unshallow from GitHub (measured 104 s per job).
+    From the map's commit, not the merge-base: a test master added after the
+    map was recorded is in no map, so only a diff that spans it selects it.
     """
-    _git("fetch", "--no-tags", "origin", base_ref)
-    merge_base = _git("merge-base", f"origin/{base_ref}", "HEAD")
-    if not merge_base or not merge_base.strip():
-        return None
-    diff = _git("diff", "--name-only", merge_base.strip(), "HEAD")
-    if diff is None:
-        return None
-    scratch.write_text(diff)
-    return [line for line in diff.splitlines() if line.strip()]
+    changed: set[str] = set()
+    for path in map_paths:
+        sha = json.loads(Path(path).read_text()).get("meta", {}).get("sha")
+        if not sha:
+            return None
+        # A shallow runner checkout may predate the map's commit; a diff needs only its tree.
+        if _git("cat-file", "-e", f"{sha}^{{commit}}") is None and (
+            _git("fetch", "--no-tags", "--depth=1", "origin", sha) is None
+            or _git("cat-file", "-e", f"{sha}^{{commit}}") is None
+        ):
+            return None
+        diff = _git("diff", "--name-only", sha, "HEAD")
+        if diff is None:
+            return None
+        changed |= {line for line in diff.splitlines() if line.strip()}
+    scratch.write_text("".join(f"{f}\n" for f in sorted(changed)))
+    return sorted(changed)
 
 
 def cmd_select(args: argparse.Namespace) -> int:
@@ -511,14 +517,13 @@ def cmd_select(args: argparse.Namespace) -> int:
     if args.changed:
         changed = [line for line in Path(args.changed).read_text().splitlines() if line.strip()]
     else:
-        base_ref = os.environ.get("BASE_REF") or "master"
-        found = _changed_since_merge_base(base_ref, out.parent / "changed-files.txt")
+        found = _changed_since_the_maps(map_paths, out.parent / "changed-files.txt")
         if found is None:
             out.write_text(f"{ALL_MARKER}\n")
-            _emit(
-                slice_name,
-                "all",
-                f"ran ALL (no merge-base with origin/{base_ref} — shallow checkout?)",
+            _emit(slice_name, "all", "ran ALL (the map's commit could not be fetched)")
+            print(
+                f"::warning::test impact ({slice_name}): the map's commit could not be fetched, "
+                "so this slice ran every test instead of the ones the change reaches"
             )
             return 0
         changed = found
@@ -705,7 +710,7 @@ def build_parser() -> argparse.ArgumentParser:
     sel = sub.add_parser("select", help="impact map + diff -> node ids")
     sel.add_argument("--slice", default="", help="defaults to $SLICE_NAME")
     sel.add_argument("--map", action="append", help="defaults to $MAP_DIR/<artifact>.json")
-    sel.add_argument("--changed", help="defaults to the diff against the merge-base")
+    sel.add_argument("--changed", help="defaults to the diff from the map's commit")
     sel.add_argument("--out", help="defaults to the path `selection-path` prints")
     sel.add_argument("--repo-root", default="apps/api", help="for existence checks")
     sel.add_argument(

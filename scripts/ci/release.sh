@@ -43,6 +43,15 @@
 #   sync-uv-lock         Re-lock uv.lock on the open release PR branch: the api
 #                        version bump changes the lock, which release-please
 #                        does not touch, so the release PR's uv-lock check fails.
+#   missing-latest       Print the image groups (apps, bots) any of whose repos
+#                        has no :latest in GHCR yet, so build.yml builds them.
+#   desktop-tag          Print the desktop release tag release-please's
+#                        manifest names (desktop-v<apps/desktop>).
+#   mark-desktop-latest  Mark that release Latest once its latest*.yml updater
+#                        files are attached; electron-updater resolves Latest.
+#   wait-quality-gate    Wait for ci.yml's quality gate on RELEASE_TAG's commit;
+#                        fail when it failed, re-run a run a newer push
+#                        cancelled. Desktop installers wait on it.
 #
 # Env contract:
 #   resolve-image-tags    VERSION_SCHEME, APPS_RELEASE_OUTCOME,
@@ -75,6 +84,11 @@
 #                         WORKER_NAME (all optional; no token = manual steps).
 #   sync-uv-lock          RELEASE_BRANCH (required); a checkout whose origin
 #                         push credentials can update that branch; uv on PATH.
+#   missing-latest        docker logged in to GHCR.
+#   mark-desktop-latest   GITHUB_REPOSITORY, GH_TOKEN (contents: write).
+#   wait-quality-gate     RELEASE_TAG, GITHUB_REPOSITORY, GH_TOKEN (actions: write, to re-run a cancelled run), a
+#                         checkout holding the tag; GATE_WAIT_SECONDS (1800),
+#                         GATE_POLL_SECONDS (30).
 set -euo pipefail
 
 # shellcheck source=scripts/ci/lib/log.sh
@@ -223,7 +237,8 @@ cmd_promote_latest() {
 # back to the caller — so any attempt to pick "our" run out of the recent list
 # is a guess that a concurrent dispatch (a manual catch-up publish during a
 # release, say) silently breaks. Instead this waits on the outcome that
-# actually matters and that no other run can fake: the version being on npm.
+# actually matters and that no other run can fake: the version on npm and its
+# release carrying the self-host bundle.
 # Run identity never enters into it.
 cmd_dispatch_cli_publish() {
 
@@ -257,6 +272,14 @@ cmd_dispatch_cli_publish() {
     return 1
   }
 
+  # npm alone is not the whole release: publish-cli.yml also attaches the
+  # self-host bundle and gaia-connect binaries and pins the images, before npm.
+  # A version published by hand has npm and none of those, so both are waited on.
+  released() {
+    published &&
+      gh release view "$TAG" --json assets --jq '.assets[].name' | grep -q '^gaia-selfhost-'
+  }
+
   # Counts publish runs that have not finished yet — any run, not just one we
   # started. It only ever makes us wait longer, never mistake someone else's
   # result for ours. A failed read fails here: read as 0, one API blip made a
@@ -266,8 +289,8 @@ cmd_dispatch_cli_publish() {
       --jq '[.[] | select(.status != "completed")] | length'
   }
 
-  if published; then
-    ci_ok "${PACKAGE}@${VERSION} is already on npm — nothing to dispatch."
+  if released; then
+    ci_ok "${PACKAGE}@${VERSION} is on npm and ${TAG} has its self-host bundle — nothing to dispatch."
     return 0
   fi
 
@@ -282,7 +305,7 @@ cmd_dispatch_cli_publish() {
   while ((SECONDS < deadline)); do
     sleep "$POLL_SECONDS"
 
-    if published; then
+    if released; then
       ci_ok "${PACKAGE}@${VERSION} published."
       return 0
     fi
@@ -298,11 +321,11 @@ cmd_dispatch_cli_publish() {
       # We watched a publish run start and finish. Still absent once the
       # registry read has had time to catch up, that is a failed publish,
       # reported now rather than at the timeout.
-      if published_after_lag; then
+      if published_after_lag && released; then
         ci_ok "${PACKAGE}@${VERSION} published."
         return 0
       fi
-      ci_die "Publish finished but ${PACKAGE}@${VERSION} is not on npm. See ${runs_url}"
+      ci_die "Publish finished but ${PACKAGE}@${VERSION} is not on npm with ${TAG}'s self-host bundle attached. See ${runs_url}"
     fi
   done
 
@@ -457,6 +480,43 @@ cmd_connect_binaries() {
 # that commit's gaia, gaia-web and self-host bot :<sha> images, so build.yml
 # publishes them for a release commit even when nx sees none of them as
 # affected (a CLI-only release).
+# A repo whose :latest does not exist yet (first-time bootstrap) forces its
+# group's build even when nx sees nothing affected.
+cmd_missing_latest() {
+  local group repo
+  local -a repos
+  for group in apps bots; do
+    if [ "$group" = apps ]; then repos=("${APPS_IMAGE_REPOS[@]}"); else repos=("${BOTS_IMAGE_REPOS[@]}"); fi
+    for repo in "${repos[@]}"; do
+      if ! docker manifest inspect "$GHCR_NAMESPACE/$repo:latest" >/dev/null 2>&1; then
+        echo "$group"
+        break
+      fi
+    done
+  done
+}
+
+RELEASE_MANIFEST="$(dirname "$0")/../../config/.release-please-manifest.json"
+
+cmd_desktop_tag() {
+  echo "desktop-v$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["apps/desktop"])' "$RELEASE_MANIFEST")"
+}
+
+# Every non-desktop release takes Latest by default, and electron-updater reads
+# Latest, so the desktop release is put back; never before its updater files
+# exist, or the app's update check 404s until the installers land.
+cmd_mark_desktop_latest() {
+  local tag assets
+  tag="$(cmd_desktop_tag)"
+  assets="$(gh release view "$tag" --repo "${GITHUB_REPOSITORY:?}" --json assets --jq '.assets[].name')"
+  if ! grep -qE '^latest.*\.yml$' <<< "$assets"; then
+    ci_ok "$tag has no updater files yet — desktop-release marks it Latest after the upload"
+    return 0
+  fi
+  gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --latest
+  ci_ok "$tag is Latest"
+}
+
 cmd_cli_release_images() {
 
   : "${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
@@ -484,13 +544,15 @@ cmd_cli_release_images() {
 # tagged until all exist, so a timeout never leaves a partial set. Idempotent:
 # an existing v<version> tag is kept, because an install may already run it.
 # ci.yml's quality-gate verdict across the runs on <sha> of the given events:
-# passed when any run's gate succeeded, failed when every run's gate finished
-# otherwise, pending while one is still running or no run exists yet.
+# passed when any run's gate succeeded; failed when every run finished and a
+# gate failed; "cancelled <run ids>" when every run finished and each was
+# cancelled (a newer master push force-cancels the run before or during its
+# gate); pending while one is still running or no run exists yet.
 ci_quality_gate() {
   local sha="$1"
   shift
   local api="repos/${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}/actions"
-  local event event_runs run_ids="" run_id state verdict=pending finished=0 running=0
+  local event event_runs run_ids="" run_id state verdict=pending finished=0 running=0 cancelled=""
   # Called inside $(...), where errexit does not reach: every gh call returns
   # its own failure so the caller can die on it.
   for event in "$@"; do
@@ -500,16 +562,50 @@ ci_quality_gate() {
   for run_id in $run_ids; do
     state=$(gh api "$api/runs/$run_id/jobs?filter=latest&per_page=100" \
       --jq '.jobs[] | select(.name == "quality-gate") | "\(.status) \(.conclusion)"') || return 1
+    # A force-cancelled run may never have created its gate job.
+    if [[ -z "$state" ]]; then
+      state=$(gh api "$api/runs/$run_id" --jq '"\(.status) \(.conclusion)"') || return 1
+    fi
     case "$state" in
       "completed success") verdict=passed ;;
+      "completed cancelled") cancelled+=" $run_id" ;;
       completed\ *) finished=1 ;;
       *) running=1 ;;
     esac
   done
-  if [[ "$verdict" != passed ]] && ((finished == 1 && running == 0)); then
-    verdict=failed
+  if [[ "$verdict" != passed ]] && ((running == 0)); then
+    if ((finished == 1)); then
+      verdict=failed
+    elif [[ -n "$cancelled" ]]; then
+      verdict="cancelled$cancelled"
+    fi
   fi
   echo "$verdict"
+}
+
+cmd_wait_quality_gate() {
+  : "${RELEASE_TAG:?RELEASE_TAG is required}"
+  local sha gate deadline=$((SECONDS + ${GATE_WAIT_SECONDS:-1800}))
+  sha="$(git rev-parse "$RELEASE_TAG^{commit}")"
+  while :; do
+    gate=$(ci_quality_gate "$sha" push) ||
+      ci_die "could not read ci.yml's runs for $sha from the Actions API (GH_TOKEN needs actions:read)."
+    case "$gate" in
+      passed) ci_ok "ci.yml's quality gate passed on $sha ($RELEASE_TAG)"; return 0 ;;
+      failed) ci_die "ci.yml's quality gate failed on $sha ($RELEASE_TAG); a release commit must pass it. Fix master and cut the release from a green commit." ;;
+      cancelled*)
+        # A merge right after the release superseded its run; the release still needs its own verdict.
+        local run_id
+        for run_id in ${gate#cancelled}; do
+          gh api -X POST "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/rerun" >/dev/null ||
+            ci_die "could not re-run ci.yml run $run_id, cancelled before it judged $sha (GH_TOKEN needs actions:write)."
+          echo "Re-ran ci.yml run $run_id, which a newer master push cancelled before it judged $sha"
+        done ;;
+    esac
+    ((SECONDS >= deadline)) && ci_die "Timed out waiting for ci.yml's quality gate on $sha ($RELEASE_TAG)."
+    echo "Waiting for ci.yml's quality gate on $sha"
+    sleep "${GATE_POLL_SECONDS:-30}"
+  done
 }
 
 cmd_pin_selfhost_release() {
@@ -656,11 +752,12 @@ cmd_selfhost_bots_manifest() {
 # they mount or extend. Never docker-compose.build.yml: building needs the
 # whole source tree, which a bundle install does not have.
 SELFHOST_BUNDLE_GLOBS=(
-  infra/docker/docker-compose.selfhost.yml
-  infra/docker/docker-compose.sandbox.yml
-  "infra/docker/docker-compose.bot-*.yml"
-  "infra/docker/selfhost/*"
-  infra/docker/seccomp-mongo.json
+  packages/cli/selfhost/docker-compose.selfhost.yml
+  packages/cli/selfhost/docker-compose.sandbox.yml
+  "packages/cli/selfhost/docker-compose.bot-*.yml"
+  packages/cli/selfhost/Caddyfile
+  packages/cli/selfhost/bot.yml
+  packages/cli/selfhost/seccomp-mongo.json
 )
 SELFHOST_BUNDLE_MANIFEST="gaia-selfhost.json"
 
@@ -767,6 +864,10 @@ main() {
     selfhost-bundle)      cmd_selfhost_bundle "$@" ;;
     disable-cf-builds)    cmd_disable_cf_builds "$@" ;;
     sync-uv-lock)         cmd_sync_uv_lock "$@" ;;
+    missing-latest)       cmd_missing_latest "$@" ;;
+    desktop-tag)          cmd_desktop_tag "$@" ;;
+    mark-desktop-latest)  cmd_mark_desktop_latest "$@" ;;
+    wait-quality-gate)    cmd_wait_quality_gate "$@" ;;
     *)
       echo "release.sh: unknown subcommand '${sub}'" >&2
       usage

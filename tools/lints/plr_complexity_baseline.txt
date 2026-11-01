@@ -72,8 +72,6 @@ libs/wake-word/training/src/synthesize.py	PLR0913
 libs/wake-word/training/src/train.py	PLR0913
 libs/wake-word/training/src/validate.py	PLR0913
 scripts/ci/wide-event-conformance/run.py	PLR0912	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)
-scripts/dev/gaia_verify.py	PLR0912	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)
-scripts/dev/gaia_verify.py	PLR0915	deferred-until=2026-10-15; docstring/comment-only cleanup (#1223) touched the file; no code changed, complexity untouched (decided 2026-09-14)
 scripts/dev/pr_comments.py	PLR0912
 scripts/dev/pr_comments.py	PLR0915
 scripts/dev/tests/test_pr_comments.py	PLR0915
