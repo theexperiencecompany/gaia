@@ -255,52 +255,52 @@
     "competitor_prices": 1
   },
   {
-    "file": "i18n/alternatives/pt-BR.json",
+    "file": "i18n/alternatives/pt-br.json",
     "path": ["airtable", "faqs", 1, "answer"],
     "competitor_prices": 1
   },
   {
-    "file": "i18n/alternatives/pt-BR.json",
+    "file": "i18n/alternatives/pt-br.json",
     "path": ["airtable", "painPoints", 0],
     "competitor_prices": 1
   },
   {
-    "file": "i18n/alternatives/pt-BR.json",
+    "file": "i18n/alternatives/pt-br.json",
     "path": ["airtable", "whyPeopleLook"],
     "competitor_prices": 1
   },
   {
-    "file": "i18n/alternatives/pt-BR.json",
+    "file": "i18n/alternatives/pt-br.json",
     "path": ["chatgpt", "comparisonRows", 5, "competitor"],
     "competitor_prices": 1
   },
   {
-    "file": "i18n/alternatives/pt-BR.json",
+    "file": "i18n/alternatives/pt-br.json",
     "path": ["chatgpt", "faqs", 2, "answer"],
     "competitor_prices": 1
   },
   {
-    "file": "i18n/alternatives/pt-BR.json",
+    "file": "i18n/alternatives/pt-br.json",
     "path": ["notion", "comparisonRows", 5, "competitor"],
     "competitor_prices": 1
   },
   {
-    "file": "i18n/alternatives/pt-BR.json",
+    "file": "i18n/alternatives/pt-br.json",
     "path": ["notion-ai", "faqs", 1, "answer"],
     "competitor_prices": 1
   },
   {
-    "file": "i18n/alternatives/pt-BR.json",
+    "file": "i18n/alternatives/pt-br.json",
     "path": ["notion-ai", "painPoints", 0],
     "competitor_prices": 1
   },
   {
-    "file": "i18n/alternatives/pt-BR.json",
+    "file": "i18n/alternatives/pt-br.json",
     "path": ["notion-ai", "whyPeopleLook"],
     "competitor_prices": 1
   },
   {
-    "file": "i18n/alternatives/pt-BR.json",
+    "file": "i18n/alternatives/pt-br.json",
     "path": ["sunsama", "painPoints", 0],
     "competitor_prices": 1
   },
@@ -460,22 +460,22 @@
     "competitor_prices": 1
   },
   {
-    "file": "i18n/comparisons/pt-BR.json",
+    "file": "i18n/comparisons/pt-br.json",
     "path": ["airtable", "faqs", 2, "answer"],
     "competitor_prices": 1
   },
   {
-    "file": "i18n/comparisons/pt-BR.json",
+    "file": "i18n/comparisons/pt-br.json",
     "path": ["airtable", "faqs", 5, "answer"],
     "competitor_prices": 1
   },
   {
-    "file": "i18n/comparisons/pt-BR.json",
+    "file": "i18n/comparisons/pt-br.json",
     "path": ["airtable", "intro"],
     "competitor_prices": 1
   },
   {
-    "file": "i18n/comparisons/pt-BR.json",
+    "file": "i18n/comparisons/pt-br.json",
     "path": ["airtable", "rows", 11, "competitor"],
     "competitor_prices": 1
   }
