@@ -296,20 +296,20 @@ describe("generateDefinedTermSchema", () => {
 
   it("makes each translation its own entity, on its own page", () => {
     const english = termIn("en");
-    const portuguese = termIn("pt-BR");
+    const portuguese = termIn("pt-br");
 
     expect(english).toMatchObject({
       "@id": "https://heygaia.io/learn/agent-loop#term",
       url: "https://heygaia.io/learn/agent-loop",
     });
     expect(portuguese).toMatchObject({
-      "@id": "https://heygaia.io/pt-BR/learn/agent-loop#term",
-      url: "https://heygaia.io/pt-BR/learn/agent-loop",
+      "@id": "https://heygaia.io/pt-br/learn/agent-loop#term",
+      url: "https://heygaia.io/pt-br/learn/agent-loop",
     });
     expect(portuguese.inDefinedTermSet).toMatchObject({
-      "@id": "https://heygaia.io/pt-BR/learn#glossary",
-      url: "https://heygaia.io/pt-BR/learn",
-      inLanguage: "pt-BR",
+      "@id": "https://heygaia.io/pt-br/learn#glossary",
+      url: "https://heygaia.io/pt-br/learn",
+      inLanguage: "pt-br",
     });
   });
 });

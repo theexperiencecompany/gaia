@@ -222,7 +222,7 @@ const nextConfig = {
     return [
       ...NEXT_SECURITY_HEADER_RULES,
       {
-        source: `/:locale(de|es|fr|ja|ko|pt-BR)?/(${marketingHubs.join("|")})/:path*`,
+        source: `/:locale(de|es|fr|ja|ko|pt-br)?/(${marketingHubs.join("|")})/:path*`,
         headers: [
           {
             key: "Cache-Control",
