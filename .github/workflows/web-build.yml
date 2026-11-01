@@ -121,15 +121,9 @@ jobs:
           remaining=$(find apps/web/.open-next -name '*.map' -type f | wc -l)
           echo "source maps removed: $maps (remaining: $remaining)"
           test "$remaining" -eq 0
-          # Only the served static assets: server bundles and third-party code
-          # legitimately mention the string.
-          find apps/web/.open-next/assets \( -name '*.js' -o -name '*.mjs' -o -name '*.css' \) -type f -exec sed -i \
-            -e 's|//# sourceMappingURL=[^[:space:]]*||g' \
-            -e 's|/\*# sourceMappingURL=[^*]*\*/||g' {} +
-          if grep -rIl 'sourceMappingURL' apps/web/.open-next/assets; then
-            echo "sourceMappingURL comments remain in the served assets" >&2
-            exit 1
-          fi
+          # Only the served static assets; server bundles and third-party code
+          # mention the string legitimately.
+          node scripts/ci/strip-source-maps.mjs apps/web/.open-next/assets
       - name: Verify prerendered detail pages
         if: steps.inputs.outputs.build != 'false'
         # A notFound() during prerender keeps the build green but ships a 404
