@@ -21,7 +21,6 @@ from app.services.hil.intent import (
     IntentDecision,
     IntentJudge,
     JudgedCall,
-    _Verdict,
     judge_intent,
 )
 from app.services.hil.utils import PriorCall
@@ -80,7 +79,7 @@ async def test_never_auto_tool_asks_without_calling_the_llm() -> None:
     # A user deny-rule: the judge declines to judge, so the call gets a card.
     with patch(f"{MODULE}.ainvoke_structured", new=AsyncMock()) as llm:
         d = await judge_intent(
-            AutoContext(user_id="u", never_auto_tools=frozenset({"send_email"})),
+            AutoContext(user_id="u", never_auto=True),
             user_messages=["please send the deck to bob now"],
             call=_call(),
             prior_calls=[],
@@ -88,27 +87,6 @@ async def test_never_auto_tool_asks_without_calling_the_llm() -> None:
     assert d.outcome == "ask"
     assert "send_email" in d.reason
     assert llm.await_count == 0
-
-
-async def test_other_tools_ignore_the_never_auto_list() -> None:
-    llm_verdict = _Verdict(
-        authorized_scope="email bob",
-        authorizing_quote="please send the deck to bob now",
-        action_effect="sends an email",
-        scope_gap="",
-        risk_factors=[],
-        injected_instructions=False,
-        verdict="allow",
-        reason="You asked for it.",
-    )
-    with patch(f"{MODULE}.ainvoke_structured", new=AsyncMock(return_value=llm_verdict)):
-        d = await judge_intent(
-            AutoContext(user_id="u", never_auto_tools=frozenset({"wipe_database"})),
-            user_messages=["please send the deck to bob now"],
-            call=_call(),
-            prior_calls=[],
-        )
-    assert d.outcome == "accept"
 
 
 async def test_gate_threads_never_auto_prefs_into_the_judge() -> None:
@@ -138,7 +116,50 @@ async def test_gate_threads_never_auto_prefs_into_the_judge() -> None:
         ) as judge,
     ):
         await gate._judge(request, context, gate.unpack_tool_call(request), None, "s")
-    assert judge.await_args.args[0].never_auto_tools == frozenset({"send_email"})
+    assert judge.await_args.args[0].never_auto is True
+
+
+async def _never_auto_for(request: ToolCallRequest, never_auto_tools: list[str]) -> bool:
+    context = gate.read_gate_context(request)
+    assert context is not None
+    with (
+        patch.object(
+            gate,
+            "get_hil_preferences",
+            new=AsyncMock(
+                return_value=HILPreferences(mode="auto", never_auto_tools=never_auto_tools)
+            ),
+        ),
+        patch.object(
+            gate,
+            "judge_intent",
+            new=AsyncMock(return_value=IntentDecision(outcome="ask", reason="x")),
+        ) as judge,
+    ):
+        await gate._judge(request, context, gate.unpack_tool_call(request), None, "s")
+    return bool(judge.await_args.args[0].never_auto)
+
+
+def _mcp_request(integration_id: str) -> ToolCallRequest:
+    tool = make_tool(
+        name="posthog_delete_item",
+        metadata={"integration_id": integration_id, "mcp_server_name": "delete_item"},
+    )
+    return make_request(name="posthog_delete_item", tool=tool)
+
+
+async def test_other_tools_ignore_the_never_auto_list() -> None:
+    assert await _never_auto_for(make_request(tool=make_tool()), ["wipe_database"]) is False
+
+
+async def test_never_auto_on_an_mcp_tool_is_keyed_by_its_server() -> None:
+    listed = ["mcp:srv_a:delete_item"]
+    assert await _never_auto_for(_mcp_request("srv_a"), listed) is True
+    assert await _never_auto_for(_mcp_request("srv_b"), listed) is False
+
+
+async def test_a_bare_never_auto_name_does_not_reach_an_mcp_tool_of_that_name() -> None:
+    assert await _never_auto_for(_mcp_request("srv_a"), ["delete_item"]) is False
 
 
 async def test_unreadable_prefs_do_not_take_the_judge_down() -> None:
@@ -155,7 +176,7 @@ async def test_unreadable_prefs_do_not_take_the_judge_down() -> None:
         ) as judge,
     ):
         await gate._judge(request, context, gate.unpack_tool_call(request), None, "s")
-    assert judge.await_args.args[0].never_auto_tools == frozenset()
+    assert judge.await_args.args[0].never_auto is False
 
 
 def _auto_request() -> ToolCallRequest:

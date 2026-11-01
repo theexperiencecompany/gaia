@@ -76,9 +76,9 @@ def ctx_with(snap: Any) -> Any:
 class TestFinishedSubagentIsNotDrivenTwice:
     """Bug: _parked_interrupt returned None for both a finished and a never-run thread.
 
-    On an executor resume, a completed blocking handoff was re-invoked from scratch,
+    On an executor resume, a completed blocking subagent run was re-invoked from scratch,
     repeating every side effect its subagent had already caused. Trigger: one AI message
-    with handoff(...) plus a gated tool — the handoff completes, the gated tool pauses,
+    with spawn_subagent(...) plus a gated tool — the subagent completes, the gated tool pauses,
     and LangGraph re-runs the whole node on resume.
     """
 
@@ -94,8 +94,8 @@ class TestFinishedSubagentIsNotDrivenTwice:
         assert outcome.text == "Bob is bob@example.com"
 
     async def test_a_thread_that_never_ran_is_still_started_normally(self) -> None:
-        # The other half of the fix: recovering a never-run thread would mean the handoff
-        # silently never happens.
+        # The other half of the fix: recovering a never-run thread would mean the subagent
+        # silently never runs.
         assert await recover_from_checkpoint(ctx_with(snapshot())) is None
 
     async def test_a_parked_thread_is_still_recovered_as_a_pause(self) -> None:
@@ -138,7 +138,7 @@ class TestExemptToolsAreNeverGated:
     """The join tool is gone, but the regression coverage stays: HIL_EXEMPT_TOOLS must keep covering every bound orchestration tool, or the gate sends one to the LLM destructive classifier, which fails CLOSED."""
 
     def test_the_join_tool_is_exempt(self) -> None:
-        assert {"handoff", "spawn_subagent"} <= HIL_EXEMPT_TOOLS
+        assert "spawn_subagent" in HIL_EXEMPT_TOOLS
 
     async def test_the_gate_runs_it_without_resolving_any_policy(self) -> None:
         ran = False
@@ -149,7 +149,7 @@ class TestExemptToolsAreNeverGated:
             return ToolMessage(content="collected", tool_call_id="call-1")
 
         with patch(f"{GATE}.resolve_policy", new=AsyncMock()) as policy:
-            result = await run_through_gate(make_request(name="handoff"), handler)
+            result = await run_through_gate(make_request(name="spawn_subagent"), handler)
 
         assert ran is True
         assert result.content == "collected"
@@ -162,7 +162,7 @@ class TestExemptToolsAreNeverGated:
 
 
 class TestExemptSiblingsThatPauseSuppressAutoApproval:
-    """Bug: the sibling guard skipped every exempt tool, but handoff is exempt AND can pause.
+    """Bug: the sibling guard skipped every exempt tool, but spawn_subagent is exempt AND can pause.
 
     A gated tool sharing a message with one of them auto-ran, then ran a SECOND time when the pause
     re-ran the whole node.
@@ -182,7 +182,7 @@ class TestExemptSiblingsThatPauseSuppressAutoApproval:
         ):
             yield
 
-    @pytest.mark.parametrize("pausing_tool", ["handoff", "spawn_subagent"])
+    @pytest.mark.parametrize("pausing_tool", sorted(HIL_PAUSING_TOOLS))
     async def test_a_pausing_sibling_blocks_auto_approval(self, pausing_tool: str) -> None:
         request = make_request(
             call_id="call-1",
@@ -196,7 +196,7 @@ class TestExemptSiblingsThatPauseSuppressAutoApproval:
 
         assert await has_pausing_sibling(request, USER_ID, "call-1") is True
 
-    @pytest.mark.parametrize("delegation_tool", ["handoff", "spawn_subagent"])
+    @pytest.mark.parametrize("delegation_tool", sorted(HIL_PAUSING_TOOLS))
     async def test_a_background_delegation_sibling_does_not_block(
         self, delegation_tool: str
     ) -> None:
@@ -241,7 +241,7 @@ class TestExemptSiblingsThatPauseSuppressAutoApproval:
             messages=[
                 ai_message_with_calls(
                     {"id": "call-1", "name": "send_email", "args": {}},
-                    {"id": "call-2", "name": "handoff", "args": {"background": False}},
+                    {"id": "call-2", "name": "spawn_subagent", "args": {"background": False}},
                 )
             ],
         )

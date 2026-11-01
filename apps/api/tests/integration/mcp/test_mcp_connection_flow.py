@@ -264,10 +264,6 @@ class TestMCPConnectionFlow:
 
     @patch("app.services.mcp.mcp_client.delete_cache", new_callable=AsyncMock)
     @patch(
-        "app.services.mcp.mcp_client.integration_repository.clear_tools",
-        new_callable=AsyncMock,
-    )
-    @patch(
         "app.services.mcp.mcp_client.update_user_integration_status",
         new=AsyncMock(),
     )
@@ -275,7 +271,7 @@ class TestMCPConnectionFlow:
         "app.services.mcp.mcp_client.IntegrationResolver.resolve",
         new=AsyncMock(return_value=None),
     )
-    async def test_disconnect_removes_client_from_pool(self, mock_clear_tools, mock_delete_cache):
+    async def test_disconnect_removes_client_from_pool(self, mock_delete_cache):
         client = _build_client_with_no_auth("user-disconnect")
 
         # Pre-populate state as if connect() had already run

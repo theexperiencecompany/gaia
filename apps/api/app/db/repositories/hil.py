@@ -133,8 +133,7 @@ class HilToolRiskRepository(MongoRepository[HILToolRiskRecord, HILToolRiskUpdate
     ) -> HILToolRiskRecord | None:
         """Return the stored verdict for this exact tool+description, or None.
 
-        key is classification.classification_key: the bare name, or
-        ``mcp:<integration_id>:<tool_name>`` for an MCP tool.
+        key is hil_tool_key: the bare name, or mcp:<integration_id>:<server_name>.
         """
         return await self._find_one({"tool_name": key, "description_hash": description_hash})
 

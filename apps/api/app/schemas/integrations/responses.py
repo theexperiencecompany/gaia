@@ -85,6 +85,12 @@ class IntegrationTool(BaseModel):
     destructive: bool = False
 
 
+class IntegrationToolApproval(IntegrationTool):
+    approval_key: str = Field(
+        description="Key the user's per-tool approval override is stored under; send it back unchanged."
+    )
+
+
 class IntegrationResponse(CamelModel, CloneCountMixin):
     """Integration details for API responses."""
 
@@ -170,7 +176,7 @@ class IntegrationToolsResponse(CamelModel, ResponseModel):
     """Full tool list for a single integration (catalog data, on demand)."""
 
     integration_id: str
-    tools: list[IntegrationTool] = []
+    tools: list[IntegrationToolApproval] = []
     count: int = 0
 
 

@@ -1,7 +1,7 @@
 """Resolve the tools a playbook step is allowed to name.
 
 Every step runs against the executor's registry. Integration tools (Composio,
-MCP, custom MCP) are reached through ``execute``, which resolves them per user
+MCP, custom MCP) are reached through execute, which resolves them per user
 at call time, so the registry is the whole space. The validator and the replay
 runner both answer "may this step run" here, so they cannot disagree.
 """

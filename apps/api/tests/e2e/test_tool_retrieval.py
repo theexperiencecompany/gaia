@@ -114,7 +114,8 @@ class TestWhatTheModelIsActuallyHanded:
         bound = run.model_bound_tools()
 
         assert bound, "the model was handed no tools at all"
-        assert "handoff" in bound and "plan_tasks" in bound
+        assert "activate_integration" in bound and "plan_tasks" in bound
+        assert "handoff" not in bound
 
     async def test_retrieve_tools_is_bound_or_nothing_could_ever_be_retrieved(self):
         async with executor_graph(["hi"]) as graph:
@@ -276,7 +277,7 @@ class TestRetrievalContract:
             f"the correction never reached the model: {response!r}"
         )
 
-    async def test_binding_a_subagent_name_is_rejected_and_sends_the_model_back_to_discovery(self):
+    async def test_binding_a_legacy_pointer_is_rejected_and_points_at_activation(self):
         """A subagent: entry is never bindable; echoing it back as bound would loop the model bind->reject."""
         async with executor_graph([retrieve("subagent:gmail"), "ok"]) as graph:
             run = await run_graph(graph, "check my mail")
@@ -284,8 +285,8 @@ class TestRetrievalContract:
         assert run.bound_tools() == []
         assert run.results_from(SELECT_NODE) == [
             (
-                "Not found, nothing bound: subagent:gmail. Do not retry these names; "
-                "run retrieve_tools(query=...) to find what actually exists."
+                "gmail is an integration, not a tool, so nothing was bound for it: "
+                'call activate_integration(integration_id="gmail") to load its tools.'
             )
         ]
 

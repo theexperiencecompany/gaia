@@ -29,6 +29,7 @@ from app.agents.core.integration_capabilities import (
     get_user_integration_capabilities,
 )
 from app.config.settings import settings
+from app.constants.cache import MCP_TOOLS_CACHE_KEY
 from app.constants.integrations import MAX_ACCOUNTS_PER_INTEGRATION
 from app.helpers.mcp_helpers import get_api_base_url
 from app.models.integration_models import (
@@ -1792,7 +1793,7 @@ class TestDeleteCustomIntegration:
                 new_callable=AsyncMock,
             ) as deregister,
             patch(
-                "app.services.integrations.custom_crud.delete_cache",
+                "app.services.mcp.mcp_tools_service.delete_cache",
                 new_callable=AsyncMock,
             ) as delete_cache,
             patch(
@@ -1865,7 +1866,7 @@ class TestDeleteCustomIntegration:
         # every user is still busted.
         seams.remove_public.assert_not_called()
         seams.delete_pattern.assert_not_called()
-        seams.delete_cache.assert_awaited_once_with("mcp:tools:all")
+        seams.delete_cache.assert_awaited_once_with(MCP_TOOLS_CACHE_KEY)
         # Chroma namespace cleanup runs against the OLD stored URL.
         seams.chroma.assert_awaited_once_with(CUSTOM_INTEGRATION_ID, SERVER_URL)
         # Not a device server: no daemon teardown.

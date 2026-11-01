@@ -3,12 +3,14 @@
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.models.integration_models import McpToolsRollupEntry
+from app.models.integration_models import McpToolsRollupEntry, StoredIntegrationTool
 from app.models.tools_models import ToolsCategoryResponse, ToolsListResponse
+from app.services.hil.tool_key import MCPToolIdentity, hil_tool_key
 from app.services.tools.tools_service import (
     _build_tools_response,
     get_available_tools,
     get_integration_name,
+    get_integration_tool_list,
     get_tool_categories,
     get_tools_by_category,
 )
@@ -644,3 +646,47 @@ class TestLockedAndFilteredTools:
         result = await self._build([{"integration_id": "m1", "status": "connected"}], global_mcp)
         assert result.total_count == 1
         assert result.tools[0].name == "valid"
+
+
+# ---------------------------------------------------------------------------
+# get_integration_tool_list — the approval key each per-tool switch writes
+# ---------------------------------------------------------------------------
+
+
+class TestIntegrationToolApprovalKey:
+    """The settings switch sends this key back unchanged, so it must be the key the gate reads."""
+
+    async def test_a_registry_tool_keys_by_its_bare_name(self):
+        category = _mock_category(tools=[_mock_tool("GMAIL_SEND_EMAIL")])
+        category.tools[0].destructive = True
+        category.tools[0].tool.description = "Send an email"
+        registry = MagicMock()
+        registry.get_all_category_objects.return_value = {"gmail": category}
+        with patch(
+            "app.services.tools.tools_service.get_tool_registry",
+            new=AsyncMock(return_value=registry),
+        ):
+            (tool,) = await get_integration_tool_list("gmail")
+
+        assert tool.approval_key == "GMAIL_SEND_EMAIL"
+
+    async def test_an_mcp_tool_keys_by_its_server_and_its_name_there(self):
+        registry = MagicMock()
+        registry.get_all_category_objects.return_value = {}
+        stored = [StoredIntegrationTool(name="delete_item", description="Delete one item")]
+        with (
+            patch(
+                "app.services.tools.tools_service.get_tool_registry",
+                new=AsyncMock(return_value=registry),
+            ),
+            patch(
+                "app.services.tools.tools_service.get_integration_tools",
+                new=AsyncMock(return_value=stored),
+            ),
+        ):
+            (tool,) = await get_integration_tool_list("posthog")
+
+        assert tool.approval_key == hil_tool_key(
+            "delete_item", MCPToolIdentity(integration_id="posthog", server_name="delete_item")
+        )
+        assert tool.approval_key == "mcp:posthog:delete_item"

@@ -69,11 +69,6 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
             }
         )
 
-    async def find_by_id_prefix(self, prefix: str) -> Integration | None:
-        """Resolve a partial integration_id (case-insensitive prefix) to an integration."""
-        escaped = re.escape(prefix)
-        return await self._find_one({"integration_id": {"$regex": f"^{escaped}", "$options": "i"}})
-
     async def find_custom_by_ids(self, integration_ids: list[str]) -> list[Integration]:
         """Custom-source integrations among the given ids (a user's added customs)."""
         return await self._find({"integration_id": {"$in": integration_ids}, "source": "custom"})
@@ -360,15 +355,6 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
         )
         return matched > 0
 
-    async def clear_tools(self, integration_id: str) -> None:
-        """Drop the stored tool metadata (on disconnect) so ghost tools don't linger."""
-        await self._apply_raw_update_unfetched(
-            {"integration_id": integration_id},
-            {"$unset": {"tools": ""}},
-            scope=REPO_GLOBAL_SCOPE,
-            doc_id=integration_id,
-        )
-
     async def ensure_unique_slug(self, name: str, category: str, integration_id: str) -> str:
         """Return a marketplace slug unique across published integrations.
 
@@ -471,23 +457,6 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
             {"integration_id": integration_id}, {"tools": 1}, IntegrationToolsSlice
         )
         return slice_.tools if slice_ is not None else []
-
-    async def tools_for_integrations(
-        self, integration_ids: list[str]
-    ) -> list[IntegrationToolsRecord]:
-        """Return the stored tools of those integration_ids that have any, in one read."""
-        return await self._aggregate(
-            [
-                {
-                    "$match": {
-                        "integration_id": {"$in": integration_ids},
-                        "tools": {"$exists": True, "$ne": []},
-                    }
-                },
-                {"$project": {"integration_id": 1, "tools": 1, "name": 1, "icon_url": 1}},
-            ],
-            IntegrationToolsRecord,
-        )
 
     async def tools_stub_ids(self) -> list[str]:
         """Ids whose only document is a tools-only stub (never a full Integration)."""

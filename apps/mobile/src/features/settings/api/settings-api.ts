@@ -11,7 +11,7 @@ export type {
   UsageHistoryEntry,
 } from "@gaia/shared/api/generated";
 
-import type { HilPreferences } from "@gaia/shared/chat";
+import type { HilPreferences, HilPreferencesUpdate } from "@gaia/shared/chat";
 import { INSTRUCTIONS_CONFLICT_CODE } from "@gaia/shared/constants/instructions";
 import type { UsageSummary } from "@gaia/shared/types";
 import type { SaveInstructionsResult } from "@/features/settings/types";
@@ -141,19 +141,18 @@ export const settingsApi = {
     return apiService.get<HilPreferences>("/approvals/preferences");
   },
 
-  updateHilPreferences(
-    payload: Partial<HilPreferences>,
-  ): Promise<HilPreferences> {
+  updateHilPreferences(payload: HilPreferencesUpdate): Promise<HilPreferences> {
     return apiService.put<HilPreferences>("/approvals/preferences", payload);
   },
 
   // ask: true = always ask, false = never ask, null = clear override (use default).
+  // approvalKey is the server-issued HIL key (tool_overrides key / approval_key).
   setToolOverride(
-    toolName: string,
+    approvalKey: string,
     ask: boolean | null,
   ): Promise<HilPreferences> {
     return apiService.put<HilPreferences>(
-      `/approvals/tools/${encodeURIComponent(toolName)}`,
+      `/approvals/tools/${encodeURIComponent(approvalKey)}`,
       { ask },
     );
   },

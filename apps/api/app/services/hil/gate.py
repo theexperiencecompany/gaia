@@ -59,7 +59,6 @@ from app.services.hil.bridge import (
     recall_declined_call,
     remember_declined_call,
 )
-from app.services.hil.classification import mcp_integration_id
 from app.services.hil.fingerprint import approval_fingerprint
 from app.services.hil.intent import (
     AutoContext,
@@ -72,6 +71,7 @@ from app.services.hil.intent import (
 from app.services.hil.jev_judge import JevIntentJudge
 from app.services.hil.policy import (
     GatingPolicy,
+    gated_tool_key,
     gated_tool_object,
     has_pausing_sibling,
     resolve_policy,
@@ -84,6 +84,7 @@ from app.services.hil.prompts import (
     TIMEOUT_TEMPLATE,
     UNPAUSABLE_DENIAL_TEMPLATE,
 )
+from app.services.hil.tool_key import hil_tool_key, mcp_tool_identity
 from app.services.hil.utils import (
     GatedCall,
     approval_window_label,
@@ -280,6 +281,7 @@ async def _decide_ledger(
                 user_id=context.user_id,
                 fingerprint=fingerprint,
                 tool_name=call.name,
+                tool_key=await gated_tool_key(request, context.user_id, call.name),
                 args=call.args,
                 account=call.account,
                 summary=summary,
@@ -405,7 +407,7 @@ async def _decide(
         # decline shadow the very decision the user just gave.
         record = await get_approval(approval_id)
         if record is not None and record.status.settled:
-            return await _apply(record, context, call)
+            return await _apply(record, request, context, call)
 
         # A RETRY of something the user already declined this turn. Re-asking is the loop
         # we want to kill (the executor never learns its subagent was declined, so it
@@ -481,7 +483,7 @@ async def _decide(
 
 
 async def _apply(
-    record: HILApprovalRecord, context: GateContext, call: GatedCall
+    record: HILApprovalRecord, request: ToolCallRequest, context: GateContext, call: GatedCall
 ) -> ToolMessage | None:
     """Turn a settled record into the call's fate: None runs it, a message blocks it.
 
@@ -493,7 +495,8 @@ async def _apply(
     )
     if outcome.status == HILApprovalStatus.APPROVED:
         if outcome.scope == "always_tool":
-            await set_tool_override(context.user_id, call.name, False)
+            tool_key = await gated_tool_key(request, context.user_id, call.name)
+            await set_tool_override(context.user_id, tool_key, False)
         return None
 
     # Remember an explicit decline so a retry of the same call this turn is auto-denied
@@ -523,17 +526,19 @@ async def _judge(
         log.info(f"{LogTag.HIL} not auto-approving : a sibling call may pause", name=call.name)
         return None
     history = await _auto_history(context.user_id, call.name)
-    never_auto = await _never_auto_tools(context.user_id)
+    tool = await gated_tool_object(request, context.user_id, call.name)
+    never_auto = hil_tool_key(call.name, mcp_tool_identity(tool)) in await _never_auto_tools(
+        context.user_id
+    )
     judge = None
     if await is_jev_judge_enabled(context.user_id):
         # JEV classifies first, LLM stays as its transport-failure fallback.
         judge = JevIntentJudge()
-    tool = await gated_tool_object(request, context.user_id, call.name)
     decision = await judge_intent(
         AutoContext(
             user_id=context.user_id,
             history=history,
-            never_auto_tools=never_auto,
+            never_auto=never_auto,
         ),
         user_messages=context.user_messages,
         judge=judge,
@@ -845,8 +850,8 @@ async def _integration_name_for(
     category = registry.get_category(registry.get_category_of_tool(tool_name))
     if category is not None:
         return category.integration_name
-    integration_id = mcp_integration_id(await gated_tool_object(request, user_id, tool_name))
-    if integration_id is None:
+    mcp_tool = mcp_tool_identity(await gated_tool_object(request, user_id, tool_name))
+    if mcp_tool is None:
         return None
-    resolved = await IntegrationResolver.resolve(integration_id)
-    return resolved.name if resolved else integration_id
+    resolved = await IntegrationResolver.resolve(mcp_tool.integration_id)
+    return resolved.name if resolved else mcp_tool.integration_id

@@ -40,7 +40,6 @@ from app.helpers.agent_helpers import (
     execute_graph_streaming,
 )
 from app.models.mcp_app_models import McpUiMetadata
-from app.utils.agent_utils import IntegrationDisplayMetadata
 from tests.helpers import ScriptedGraph
 
 HELPERS = "app.helpers.agent_helpers"
@@ -366,75 +365,6 @@ async def test_tool_call_frames_emit_one_entry_per_new_call_in_order() -> None:
             "user_id": "user-1",
         },
     )
-
-
-@pytest.mark.asyncio
-async def test_tool_call_frames_resolve_handoff_display_metadata() -> None:
-    formatter = _RecordingFormatter([{"tool_name": "handoff_card"}])
-    handoff_metadata = IntegrationDisplayMetadata(
-        icon_url="https://cdn/gh.png",
-        integration_id="github",
-        integration_name="GitHub",
-    )
-    msg = AIMessage.model_construct(
-        content="", tool_calls=[_tc("call_1", name="handoff", args={"subagent_id": "gh-1"})]
-    )
-
-    with (
-        patch(f"{HELPERS}.format_tool_call_entry", formatter),
-        patch(
-            f"{HELPERS}.get_handoff_metadata", AsyncMock(return_value=handoff_metadata)
-        ) as lookup,
-    ):
-        frames = await _drain(_stream_tool_call_frames(msg, set(), {}, "user-1"))
-
-    assert frames == [_sse({"tool_data": {"tool_name": "handoff_card"}})]
-    lookup.assert_awaited_once_with("gh-1")
-    assert formatter.calls == [
-        (
-            (_tc("call_1", name="handoff", args={"subagent_id": "gh-1"}),),
-            {
-                "icon_url": "https://cdn/gh.png",
-                "integration_id": "github",
-                "integration_name": "GitHub",
-                "user_id": "user-1",
-            },
-        )
-    ]
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "tool_call",
-    [
-        pytest.param(
-            _tc("call_1", name="search_web", args={"subagent_id": "gh-1"}), id="not-a-handoff"
-        ),
-        pytest.param(_tc("call_1", name="handoff"), id="handoff-without-args"),
-        pytest.param(_tc("call_1", name="handoff", args={}), id="handoff-with-empty-args"),
-    ],
-)
-async def test_tool_call_frames_look_up_no_handoff_metadata_for(tool_call: dict[str, Any]) -> None:
-    formatter = _RecordingFormatter([{"tool_name": "card"}])
-
-    with (
-        patch(f"{HELPERS}.format_tool_call_entry", formatter),
-        patch(f"{HELPERS}.get_handoff_metadata", AsyncMock()) as lookup,
-    ):
-        frames = await _drain(
-            _stream_tool_call_frames(
-                AIMessage.model_construct(content="", tool_calls=[tool_call]), set(), {}, "user-1"
-            )
-        )
-
-    assert frames == [_sse({"tool_data": {"tool_name": "card"}})]
-    lookup.assert_not_awaited()
-    assert formatter.calls[0][1] == {
-        "icon_url": None,
-        "integration_id": None,
-        "integration_name": None,
-        "user_id": "user-1",
-    }
 
 
 @pytest.mark.asyncio

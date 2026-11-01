@@ -507,7 +507,7 @@ def test_the_tools_own_schema_carries_the_step_shape():
         {"id": "agenda", "tool": "list_events", "goal": "read the events"}
     )
     assert not hasattr(step_input, "goal")
-    with pytest.raises(ValidationError, match="exactly one of"):
+    with pytest.raises(ValidationError, match=r"tool\s+Field required"):
         PlaybookStepInput.model_validate({"id": "agenda", "goal": "read the events"})
 
 

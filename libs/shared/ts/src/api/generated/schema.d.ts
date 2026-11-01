@@ -111,6 +111,8 @@ export interface paths {
         /**
          * Set Tool Approval
          * @description Set (``ask`` true/false) or clear (``ask`` null) one tool's approval override.
+         *
+         *     tool_name is the HIL tool key the client was given (an MCP tool's is server-scoped).
          */
         put: operations["approvals_set_tool_approval"];
         post?: never;
@@ -10052,10 +10054,33 @@ export interface components {
             mode: "always_allow" | "always_ask" | "auto";
             /** Never Auto Tools */
             never_auto_tools: string[];
+            /**
+             * Tool Labels
+             * @description Display label for every key in tool_overrides and never_auto_tools.
+             */
+            tool_labels: {
+                [key: string]: components["schemas"]["HILToolKeyLabel"];
+            };
             /** Tool Overrides */
             tool_overrides: {
                 [key: string]: boolean;
             };
+        };
+        /**
+         * HILToolKeyLabel
+         * @description What a stored HIL tool key names, for display: clients send the key back unchanged.
+         */
+        HILToolKeyLabel: {
+            /**
+             * Integration Name
+             * @description The integration the tool belongs to, when known.
+             */
+            integration_name: string | null;
+            /**
+             * Tool Name
+             * @description The tool's own name (an MCP tool's name on its server).
+             */
+            tool_name: string;
         };
         /**
          * HistoryFeatureUsage
@@ -10528,6 +10553,23 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** IntegrationToolApproval */
+        IntegrationToolApproval: {
+            /**
+             * Approval Key
+             * @description Key the user's per-tool approval override is stored under; send it back unchanged.
+             */
+            approval_key: string;
+            /** Description */
+            description?: string | null;
+            /**
+             * Destructive
+             * @default false
+             */
+            destructive?: boolean;
+            /** Name */
+            name: string;
+        };
         /**
          * IntegrationToolsResponse
          * @description Full tool list for a single integration (catalog data, on demand).
@@ -10544,7 +10586,7 @@ export interface components {
              * Tools
              * @default []
              */
-            tools: components["schemas"]["IntegrationTool"][];
+            tools: components["schemas"]["IntegrationToolApproval"][];
         };
         /**
          * InviteCreatedResponse
@@ -17238,6 +17280,7 @@ export type HandoffDecisionResponse = components['schemas']['HandoffDecisionResp
 export type HandoffStatus = components['schemas']['HandoffStatus'];
 export type HealthResponse = components['schemas']['HealthResponse'];
 export type HILPreferencesResponse = components['schemas']['HILPreferencesResponse'];
+export type HILToolKeyLabel = components['schemas']['HILToolKeyLabel'];
 export type HistoryFeatureUsage = components['schemas']['HistoryFeatureUsage'];
 export type HistoryUsagePeriod = components['schemas']['HistoryUsagePeriod'];
 export type ImageData = components['schemas']['ImageData'];
@@ -17265,6 +17308,7 @@ export type IntegrationsConfigResponse = components['schemas']['IntegrationsConf
 export type IntegrationStatusesResponse = components['schemas']['IntegrationStatusesResponse'];
 export type IntegrationSuccessResponse = components['schemas']['IntegrationSuccessResponse'];
 export type IntegrationTool = components['schemas']['IntegrationTool'];
+export type IntegrationToolApproval = components['schemas']['IntegrationToolApproval'];
 export type IntegrationToolsResponse = components['schemas']['IntegrationToolsResponse'];
 export type InviteCreatedResponse = components['schemas']['InviteCreatedResponse'];
 export type InviteResponse = components['schemas']['InviteResponse'];

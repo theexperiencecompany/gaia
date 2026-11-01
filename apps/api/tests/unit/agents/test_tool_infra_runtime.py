@@ -1029,7 +1029,6 @@ def _scoped_provider_tools() -> tuple[dict[str, BaseTool], list[str]]:
     return build_scoped_tool_dict(
         tool_registry=_DummyRegistry([normal_tool], {"normal_tool": normal_tool}),
         tool_space="provider_space",
-        mcp_tools=None,
         include_finish_task=True,
     )
 
@@ -1179,7 +1178,7 @@ class TestDiscoveryResponseIsIndentedJson:
 
 
 class TestDiscoveryHasNoProviderSubagentSurface:
-    """Discovery returns real tools plus two narrow entry kinds: subagent: pointers to per-user MCP integrations (the sole subagent surface) and integration: pointers to not-yet-connected integrations.
+    """Discovery returns real tools plus two pointer kinds for activate_integration: mcp_integration: (per-user MCP integrations) and integration: (not-yet-connected integrations).
 
     Provider and built-in integrations surface as tools, never as pointers.
     """
@@ -1190,19 +1189,21 @@ class TestDiscoveryHasNoProviderSubagentSurface:
             options=_DiscoveryOptions(categories={"web_search_tool": "search"}),
         )
 
-        assert payload["mcp_subagents"] == []
+        assert payload["mcp_integrations"] == []
         assert payload["new_integrations"] == []
+        assert "mcp_subagents" not in payload
         assert "subagents_builtin" not in payload
         assert "subagents_connected" not in payload
         assert "subagents_needing_connection" not in payload
         assert "handoff" not in payload["next"]
 
     def test_mcp_entries_land_in_the_mcp_bucket(self) -> None:
-        payload = _render(["subagent:my-mcp (My MCP)"])
+        payload = _render(["mcp_integration:my-mcp (My MCP)"])
 
-        assert payload["mcp_subagents"] == [{"id": "my-mcp", "name": "My MCP"}]
+        assert payload["mcp_integrations"] == [{"id": "my-mcp", "name": "My MCP"}]
         assert [t["name"] for t in payload["tools_to_bind"]] == []
-        assert "handoff" in payload["next"]
+        assert "activate_integration" in payload["next"]
+        assert "handoff" not in payload["next"]
 
     def test_integration_entries_land_in_the_new_bucket(self) -> None:
         payload = _render(["integration:linear (Linear)"])
@@ -1299,8 +1300,7 @@ class TestDiscoveryZeroMatchSignal:
         assert _render(["x"], options=_DiscoveryOptions(total_candidates=1))["next"] == (
             "Load with retrieve_tools(exact_tool_names=[...]): internal tools bind "
             "and are called by name, integration tools (ALLCAPS) return schemas to "
-            "run via execute and are never bound. Integrations are not subagents: "
-            "act on them yourself."
+            "run via execute and are never bound. Act on integrations yourself."
         )
 
 

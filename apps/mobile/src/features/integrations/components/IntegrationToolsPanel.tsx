@@ -2,14 +2,14 @@ import { useMemo } from "react";
 import { View } from "react-native";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
-import type { IntegrationTool } from "../types";
+import type { IntegrationToolApproval } from "../types";
 import {
   IntegrationToolApprovals,
   type ToolEntry,
 } from "./IntegrationToolApprovals";
 
 interface IntegrationToolsPanelProps {
-  tools: IntegrationTool[];
+  tools: IntegrationToolApproval[];
   /**
    * Optional category prefix to strip from each tool name before display.
    * Mirrors the web sidebar which removes e.g. "Notion " from
@@ -61,7 +61,12 @@ export function IntegrationToolsPanel({
       const label = prefixRegex
         ? formatted.replace(prefixRegex, "").trim() || formatted
         : formatted;
-      return { name: tool.name, label, destructive: tool.destructive ?? false };
+      return {
+        name: tool.name,
+        label,
+        destructive: tool.destructive ?? false,
+        approvalKey: tool.approval_key,
+      };
     });
   }, [tools, categoryPrefix]);
 

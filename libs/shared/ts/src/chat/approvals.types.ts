@@ -11,7 +11,11 @@
  * - `auto` — an intent judge runs actions that match what the user asked for,
  *   and pauses for approval on anything that deviates or is unclear.
  */
-import type { BatchDecisionItem } from "../api/generated";
+import type {
+  BatchDecisionItem,
+  HILPreferencesResponse,
+  UpdateHILPreferencesRequest,
+} from "../api/generated";
 
 export type {
   BatchApprovalDecisionResponse,
@@ -22,16 +26,15 @@ export type {
 export type HilMode = "always_allow" | "always_ask" | "auto";
 
 /**
- * Per-user HIL preferences. `tool_overrides` defines which tools need approval
- * (tool name -> needs-approval), overriding the default destructive
- * classification; a tool absent from the map uses that default. The same gated
- * set applies in both `always_ask` and `auto` — the mode only decides whether
- * the user is asked or the intent judge decides.
+ * Per-user HIL preferences. `tool_overrides` maps a HIL tool key to
+ * needs-approval, overriding the destructive default. A key is a registry
+ * tool's bare name or an MCP tool's `mcp:<integration_id>:<name>`; clients read
+ * it from the server (`approval_key`, `tool_labels`) and send it back unchanged.
  */
-export interface HilPreferences {
-  mode: HilMode;
-  tool_overrides: Record<string, boolean>;
-}
+export type HilPreferences = HILPreferencesResponse;
+
+/** Body of PUT /approvals/preferences; omitted fields are left unchanged. */
+export type HilPreferencesUpdate = UpdateHILPreferencesRequest;
 
 export type ApprovalStatus =
   | "pending"

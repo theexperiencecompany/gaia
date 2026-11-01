@@ -240,7 +240,10 @@ class TestProcessChromaSearchResult:
         registry.get_category_of_tool.return_value = None
 
         result = _process_chroma_search_result(
-            [item], {"GMAIL_SEND"}, registry, include_subagents=True
+            [item],
+            {"GMAIL_SEND"},
+            registry,
+            retrieval._HitFilter(include_subagents=True, user_namespaces=set()),
         )
         assert len(result) == 1
         assert result[0]["id"] == "GMAIL_SEND"
@@ -253,7 +256,10 @@ class TestProcessChromaSearchResult:
         registry.get_category_of_tool.return_value = None
 
         result = _process_chroma_search_result(
-            [item], {"GMAIL_SEND"}, registry, include_subagents=True
+            [item],
+            {"GMAIL_SEND"},
+            registry,
+            retrieval._HitFilter(include_subagents=True, user_namespaces=set()),
         )
         assert len(result) == 0
 
@@ -269,8 +275,9 @@ class TestProcessChromaSearchResult:
             [item],
             {"create_todo"},
             registry,
-            include_subagents=False,
-            tool_space="gmail",
+            retrieval._HitFilter(
+                include_subagents=False, user_namespaces=set(), tool_space="gmail"
+            ),
         )
         assert len(result) == 0
 
@@ -289,8 +296,9 @@ class TestProcessChromaSearchResult:
             [item],
             {webpage_tool},
             registry,
-            include_subagents=False,
-            tool_space="gmail",
+            retrieval._HitFilter(
+                include_subagents=False, user_namespaces=set(), tool_space="gmail"
+            ),
         )
         assert len(result) == 1
 
@@ -305,7 +313,10 @@ class TestProcessChromaSearchResult:
         registry.get_category.return_value = category
 
         result = _process_chroma_search_result(
-            [item], {"GMAIL_SEND"}, registry, include_subagents=True
+            [item],
+            {"GMAIL_SEND"},
+            registry,
+            retrieval._HitFilter(include_subagents=True, user_namespaces=set()),
         )
         assert len(result) == 0
 
@@ -322,7 +333,12 @@ class TestProcessSearchResults:
 
         registry = MagicMock()
         results = [RuntimeError("search fail"), []]
-        processed = await _process_search_results(results, set(), registry, include_subagents=False)
+        processed = await _process_search_results(
+            results,
+            set(),
+            registry,
+            retrieval._HitFilter(include_subagents=False, user_namespaces=set()),
+        )
         assert processed == []
 
     @pytest.mark.asyncio
@@ -331,7 +347,10 @@ class TestProcessSearchResults:
 
         registry = MagicMock()
         processed = await _process_search_results(
-            [[], None], set(), registry, include_subagents=False
+            [[], None],
+            set(),
+            registry,
+            retrieval._HitFilter(include_subagents=False, user_namespaces=set()),
         )
         assert processed == []
 
@@ -342,7 +361,10 @@ class TestProcessSearchResults:
         registry = MagicMock()
         public_results = [{"integration_id": "abc", "name": "App", "relevance_score": 0.9}]
         processed = await _process_search_results(
-            [public_results], set(), registry, include_subagents=True
+            [public_results],
+            set(),
+            registry,
+            retrieval._HitFilter(include_subagents=True, user_namespaces=set()),
         )
         assert [r["id"] for r in processed] == ["integration:abc (App)"]
 
@@ -881,8 +903,9 @@ class TestActivatedNamespaceTools:
             [self._delegated_hit()],
             {"GITHUB_LIST_PULL_REQUESTS"},
             self._delegated_registry(),
-            include_subagents=True,
-            active_namespaces={"github"},
+            retrieval._HitFilter(
+                include_subagents=True, user_namespaces=set(), active_namespaces={"github"}
+            ),
         )
         assert [r["id"] for r in result] == ["GITHUB_LIST_PULL_REQUESTS"]
 
@@ -893,8 +916,9 @@ class TestActivatedNamespaceTools:
             [self._delegated_hit()],
             {"GITHUB_LIST_PULL_REQUESTS"},
             self._delegated_registry(),
-            include_subagents=True,
-            active_namespaces={"gmail"},
+            retrieval._HitFilter(
+                include_subagents=True, user_namespaces=set(), active_namespaces={"gmail"}
+            ),
         )
         assert result == []
 
@@ -905,8 +929,9 @@ class TestActivatedNamespaceTools:
             [self._delegated_hit()],
             {"GITHUB_LIST_PULL_REQUESTS"},
             self._delegated_registry(),
-            include_subagents=True,
-            active_namespaces=set(),
+            retrieval._HitFilter(
+                include_subagents=True, user_namespaces=set(), active_namespaces=set()
+            ),
         )
         assert result == []
 
@@ -981,9 +1006,14 @@ class TestActivatedNamespaceTools:
         from app.agents.tools.core.retrieval import _process_chroma_search_result
 
         item = self._delegated_hit("my-mcp", namespace=("subagents",))
-        item.value = {"name": "My MCP", "source": "custom"}
+        item.value = {"name": "My MCP", "source": "custom", "tool_namespace": "my-mcp.dev"}
         registry = MagicMock()
-        result = _process_chroma_search_result([item], set(), registry, include_subagents=True)
+        result = _process_chroma_search_result(
+            [item],
+            set(),
+            registry,
+            retrieval._HitFilter(include_subagents=True, user_namespaces={"my-mcp.dev"}),
+        )
         assert [r["id"] for r in result] == ["mcp_integration:my-mcp (My MCP)"]
 
     def test_stale_provider_doc_in_subagents_namespace_dropped(self):
@@ -993,7 +1023,12 @@ class TestActivatedNamespaceTools:
         item = self._delegated_hit("github", namespace=("subagents",))
         item.value = {"name": "GitHub", "source": "provider"}
         registry = MagicMock()
-        result = _process_chroma_search_result([item], {"github"}, registry, include_subagents=True)
+        result = _process_chroma_search_result(
+            [item],
+            {"github"},
+            registry,
+            retrieval._HitFilter(include_subagents=True, user_namespaces=set()),
+        )
         assert result == []
 
     def test_static_mcp_pointer_in_subagents_namespace_survives(self):
@@ -1003,7 +1038,12 @@ class TestActivatedNamespaceTools:
         item = self._delegated_hit("subagent:notes", namespace=("subagents",))
         item.value = {"name": "Notes", "source": "mcp", "integration_id": "notes"}
         registry = MagicMock()
-        result = _process_chroma_search_result([item], set(), registry, include_subagents=True)
+        result = _process_chroma_search_result(
+            [item],
+            set(),
+            registry,
+            retrieval._HitFilter(include_subagents=True, user_namespaces=set()),
+        )
         assert [r["id"] for r in result] == ["mcp_integration:notes (Notes)"]
 
     def test_legacy_pointer_without_source_is_treated_as_mcp(self):
@@ -1013,7 +1053,12 @@ class TestActivatedNamespaceTools:
         item = self._delegated_hit("subagent:notes", namespace=("subagents",))
         item.value = {"name": "Notes"}
         registry = MagicMock()
-        result = _process_chroma_search_result([item], set(), registry, include_subagents=True)
+        result = _process_chroma_search_result(
+            [item],
+            set(),
+            registry,
+            retrieval._HitFilter(include_subagents=True, user_namespaces=set()),
+        )
         assert [r["id"] for r in result] == ["mcp_integration:notes (Notes)"]
 
     @pytest.mark.asyncio
@@ -1023,7 +1068,12 @@ class TestActivatedNamespaceTools:
 
         registry = MagicMock()
         public = [{"integration_id": "linear", "name": "Linear", "relevance_score": 0.7}]
-        processed = await _process_search_results([public], set(), registry, include_subagents=True)
+        processed = await _process_search_results(
+            [public],
+            set(),
+            registry,
+            retrieval._HitFilter(include_subagents=True, user_namespaces=set()),
+        )
         assert processed == [{"id": "integration:linear (Linear)", "score": 0.7}]
 
 
@@ -1084,10 +1134,16 @@ class TestChromaHitsWithRealSearchItems:
             "github", ("subagents",), value={"name": "GitHub", "source": "provider"}
         )
         pointer = _search_item(
-            "my-mcp", ("subagents",), 0.7, {"name": "My MCP", "source": "custom"}
+            "my-mcp",
+            ("subagents",),
+            0.7,
+            {"name": "My MCP", "source": "custom", "tool_namespace": "my-mcp.dev"},
         )
         result = retrieval._process_chroma_search_result(
-            [stale, pointer], set(), MagicMock(), include_subagents=True
+            [stale, pointer],
+            set(),
+            MagicMock(),
+            retrieval._HitFilter(include_subagents=True, user_namespaces={"my-mcp.dev"}),
         )
         assert result == [{"id": "mcp_integration:my-mcp (My MCP)", "score": 0.7}]
 
@@ -1097,7 +1153,10 @@ class TestChromaHitsWithRealSearchItems:
             _search_item("GMAIL_SEND_EMAIL", ("gmail",), 0.8),
         ]
         result = retrieval._process_chroma_search_result(
-            hits, {"GMAIL_SEND_EMAIL"}, MagicMock(), include_subagents=False
+            hits,
+            {"GMAIL_SEND_EMAIL"},
+            MagicMock(),
+            retrieval._HitFilter(include_subagents=False, user_namespaces=set()),
         )
         assert result == [{"id": "GMAIL_SEND_EMAIL", "score": 0.8}]
 
@@ -1114,7 +1173,10 @@ class TestChromaHitsWithRealSearchItems:
         )
         pointer = _search_item("my-mcp", ("subagents",), 0.7, {"name": "My MCP", "source": "mcp"})
         result = retrieval._process_chroma_search_result(
-            [corrupt, pointer], set(), MagicMock(), include_subagents=True
+            [corrupt, pointer],
+            set(),
+            MagicMock(),
+            retrieval._HitFilter(include_subagents=True, user_namespaces=set()),
         )
         assert result == [{"id": "mcp_integration:my-mcp (My MCP)", "score": 0.7}]
 
@@ -1132,8 +1194,9 @@ class TestChromaHitsWithRealSearchItems:
             hits,
             {"create_todo", retrieval.WEBPAGE_TOOLS[0], "GMAIL_SEND_EMAIL"},
             registry,
-            include_subagents=False,
-            tool_space="gmail",
+            retrieval._HitFilter(
+                include_subagents=False, user_namespaces=set(), tool_space="gmail"
+            ),
         )
         assert [hit["id"] for hit in result] == [retrieval.WEBPAGE_TOOLS[0], "GMAIL_SEND_EMAIL"]
 
@@ -1151,7 +1214,7 @@ class TestChromaHitsWithRealSearchItems:
             hits,
             {"GITHUB_LIST_PULL_REQUESTS", "GMAIL_SEND_EMAIL"},
             registry,
-            include_subagents=True,
+            retrieval._HitFilter(include_subagents=True, user_namespaces=set()),
         )
         assert result == [{"id": "GMAIL_SEND_EMAIL", "score": 0.8}]
 
@@ -1436,6 +1499,8 @@ _CUSTOM_MCP = CustomMcpSubagent(
     managed_by="mcp",
     mcp_config={"server_url": "https://mcp.acme.dev/v1", "requires_auth": True},
 )
+_OWN_NAMESPACE = "mcp.acme.dev/v1"
+_OTHER_NAMESPACE = "mcp.rival.dev"
 
 
 @pytest.mark.unit
@@ -1533,10 +1598,16 @@ class TestActivatedMcpIntegrations:
 class TestMcpIntegrationPointers:
     def test_a_custom_mcp_pointer_renders_as_an_activate_integration_entry(self) -> None:
         pointer = _search_item(
-            _CUSTOM_MCP.id, ("subagents",), 0.8, {"name": "Acme MCP", "source": "custom"}
+            _CUSTOM_MCP.id,
+            ("subagents",),
+            0.8,
+            {"name": "Acme MCP", "source": "custom", "tool_namespace": _OWN_NAMESPACE},
         )
         (hit,) = retrieval._process_chroma_search_result(
-            [pointer], set(), MagicMock(), include_subagents=True
+            [pointer],
+            set(),
+            MagicMock(),
+            retrieval._HitFilter(include_subagents=True, user_namespaces={_OWN_NAMESPACE}),
         )
         text = retrieval._render_discovery_response(
             retrieval._RankedHits([hit["id"]], 1, 25), MagicMock(), {}, "invoices", (), False
@@ -1565,3 +1636,96 @@ class TestMcpIntegrationPointers:
             f"{_CUSTOM_MCP.id} is an integration, not a tool, so nothing was bound for it: "
             f'call activate_integration(integration_id="{_CUSTOM_MCP.id}") to load its tools.'
         ]
+
+
+async def _discovered_pointers(
+    user_namespaces: set[str], pointers: list[SearchItem]
+) -> tuple[list[str], list[dict[str, object]]]:
+    """Run discovery for a user holding user_namespaces; return its mcp_integration: entries."""
+
+    async def fake_asearch(
+        namespace: tuple[str, ...], query: str = "", limit: int = 25
+    ) -> list[SearchItem]:
+        return pointers if namespace == ("subagents",) else []
+
+    store = MagicMock()
+    store.asearch = fake_asearch
+    registry = MagicMock()
+    registry.get_tool_names.return_value = []
+    registry.get_tool_meta.return_value = None
+    with (
+        patch.object(retrieval, "get_tool_registry", new=AsyncMock(return_value=registry)),
+        patch.object(
+            retrieval, "_get_user_context", new=AsyncMock(return_value=(user_namespaces, {}))
+        ),
+        patch.object(retrieval, "get_active", new=AsyncMock(return_value=set())),
+        patch.object(retrieval, "_user_mcp_tool_names", new=AsyncMock(return_value=set())),
+        patch.object(retrieval, "_unconnected_named_in", new=AsyncMock(return_value=[])),
+        patch.object(retrieval, "search_public_integrations", new=AsyncMock(return_value=[])),
+    ):
+        fn = retrieval.get_retrieve_tools_function(tool_space="general")
+        async with captured_wide_event() as event:
+            result = await fn(
+                store=store,
+                config={"configurable": {"user_id": "user-b", "conversation_id": "c1"}},
+                query="list invoices",
+                exact_tool_names=[],
+            )
+    entries = [e for e in result["response"] if e.startswith("mcp_integration:")]
+    return entries, event.get("warnings", [])
+
+
+@pytest.mark.unit
+class TestCustomMcpPointerEntitlement:
+    async def test_another_users_custom_pointer_is_not_returned(self) -> None:
+        pointer = _search_item(
+            "rival1234567",
+            ("subagents",),
+            0.9,
+            {"name": "Rival MCP", "source": "custom", "tool_namespace": _OTHER_NAMESPACE},
+        )
+
+        entries, _ = await _discovered_pointers({"general", "subagents", _OWN_NAMESPACE}, [pointer])
+
+        assert entries == []
+
+    async def test_the_users_own_custom_pointer_is_returned(self) -> None:
+        pointer = _search_item(
+            _CUSTOM_MCP.id,
+            ("subagents",),
+            0.9,
+            {"name": "Acme MCP", "source": "custom", "tool_namespace": _OWN_NAMESPACE},
+        )
+
+        entries, _ = await _discovered_pointers({"general", "subagents", _OWN_NAMESPACE}, [pointer])
+
+        assert entries == [f"mcp_integration:{_CUSTOM_MCP.id} (Acme MCP)"]
+
+    async def test_a_platform_pointer_is_returned_without_its_namespace_in_user_namespaces(
+        self,
+    ) -> None:
+        pointer = _search_item(
+            "subagent:notes",
+            ("subagents",),
+            0.9,
+            {"name": "Notes", "source": "mcp", "tool_namespace": "notes"},
+        )
+
+        entries, _ = await _discovered_pointers({"general", "subagents"}, [pointer])
+
+        assert entries == ["mcp_integration:notes (Notes)"]
+
+    async def test_a_custom_pointer_without_a_tool_namespace_is_dropped_with_a_warning(
+        self,
+    ) -> None:
+        legacy = _search_item(
+            "legacy123456", ("subagents",), 0.9, {"name": "Legacy MCP", "source": "custom"}
+        )
+
+        entries, warnings = await _discovered_pointers(
+            {"general", "subagents", _OWN_NAMESPACE}, [legacy]
+        )
+
+        assert entries == []
+        (warning,) = [w for w in warnings if w["msg"].endswith("no tool_namespace; dropped")]
+        assert warning["integration_id"] == "legacy123456"

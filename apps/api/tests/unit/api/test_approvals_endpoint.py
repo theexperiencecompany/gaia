@@ -5,7 +5,9 @@ read/update routes. Service layer is mocked; HTTP status codes, response
 shapes, payload forwarding, and the AppError status mapping are verified.
 """
 
-from unittest.mock import AsyncMock, patch
+from collections.abc import Iterator
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
 import pytest
@@ -23,7 +25,35 @@ from app.services.hil.resolution import (
 APPROVALS_BASE = "/api/v1/approvals"
 USER_ID = "507f1f77bcf86cd799439011"
 
+PREFERENCES_MODULE = "app.services.hil.preferences"
+
 pytestmark = pytest.mark.usefixtures("hil_barrier_mode")
+
+
+@pytest.fixture(autouse=True)
+def label_sources() -> Iterator[SimpleNamespace]:
+    """Stub the two lookups tool_key_labels makes: the tool registry and the resolver."""
+    registry = MagicMock()
+    registry.get_category_of_tool = MagicMock(side_effect=lambda name: f"cat:{name}")
+    registry.get_category = MagicMock(
+        side_effect=lambda category: (
+            SimpleNamespace(integration_name="Gmail")
+            if category == "cat:GMAIL_SEND_EMAIL"
+            else None
+        )
+    )
+    with (
+        patch(f"{PREFERENCES_MODULE}.get_tool_registry", new=AsyncMock(return_value=registry)),
+        patch(
+            f"{PREFERENCES_MODULE}.IntegrationResolver.resolve",
+            new=AsyncMock(
+                side_effect=lambda iid: SimpleNamespace(name="PostHog")
+                if iid == "posthog"
+                else None
+            ),
+        ) as resolve,
+    ):
+        yield SimpleNamespace(registry=registry, resolve=resolve)
 
 
 def _prefs(
@@ -227,6 +257,27 @@ class TestGetPreferences:
         assert body["tool_overrides"] == {"email_send": True}
 
     @patch("app.api.v1.endpoints.approvals.get_hil_preferences", new_callable=AsyncMock)
+    async def test_every_rule_key_comes_back_with_its_display_label(
+        self, mock_get: AsyncMock, client: AsyncClient, label_sources: SimpleNamespace
+    ):
+        mock_get.return_value = HILPreferences(
+            mode="always_ask",
+            tool_overrides={"mcp:posthog:delete_item": False, "GMAIL_SEND_EMAIL": True},
+            never_auto_tools=["mcp:gone_srv:wipe"],
+        )
+        resp = await client.get(f"{APPROVALS_BASE}/preferences")
+        assert resp.status_code == 200
+        assert resp.json()["tool_labels"] == {
+            "mcp:posthog:delete_item": {"integration_name": "PostHog", "tool_name": "delete_item"},
+            "GMAIL_SEND_EMAIL": {"integration_name": "Gmail", "tool_name": "GMAIL_SEND_EMAIL"},
+            "mcp:gone_srv:wipe": {"integration_name": None, "tool_name": "wipe"},
+        }
+        assert sorted(c.args[0] for c in label_sources.resolve.await_args_list) == [
+            "gone_srv",
+            "posthog",
+        ]
+
+    @patch("app.api.v1.endpoints.approvals.get_hil_preferences", new_callable=AsyncMock)
     async def test_service_error_is_500(self, mock_get: AsyncMock, client: AsyncClient):
         mock_get.side_effect = Exception("mongo down")
         resp = await client.get(f"{APPROVALS_BASE}/preferences")
@@ -315,6 +366,20 @@ class TestSetToolOverride:
         assert resp.status_code == 200
         assert resp.json()["tool_overrides"] == {"email_send": True}
         mock_set.assert_awaited_once_with(USER_ID, "email_send", True)
+
+    @patch("app.api.v1.endpoints.approvals.set_tool_override", new_callable=AsyncMock)
+    async def test_a_server_scoped_key_is_stored_exactly_as_sent(
+        self, mock_set: AsyncMock, client: AsyncClient
+    ):
+        mock_set.return_value = _prefs(tool_overrides={"mcp:posthog:delete_item": False})
+        resp = await client.put(
+            f"{APPROVALS_BASE}/tools/mcp:posthog:delete_item", json={"ask": False}
+        )
+        assert resp.status_code == 200
+        assert resp.json()["tool_labels"] == {
+            "mcp:posthog:delete_item": {"integration_name": "PostHog", "tool_name": "delete_item"}
+        }
+        mock_set.assert_awaited_once_with(USER_ID, "mcp:posthog:delete_item", False)
 
     @patch("app.api.v1.endpoints.approvals.set_tool_override", new_callable=AsyncMock)
     async def test_clear_override(self, mock_set: AsyncMock, client: AsyncClient):

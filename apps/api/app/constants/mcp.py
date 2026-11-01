@@ -64,3 +64,9 @@ MCP_RENAMED_TOOL_NOTE = (
 MCP_PRELOAD_ALL_MAX = 10
 # Skills a user saved for a custom MCP are keyed by this agent name plus its id.
 CUSTOM_MCP_AGENT_NAME_PREFIX = "custom_mcp_"
+
+# Keys MCPClient stamps on every converted tool's metadata: the integration it came
+# from and its name on its own server, before any GAIA-side collision rename. The
+# HIL tool key (app/services/hil/tool_key.py) is built from both.
+MCP_INTEGRATION_ID_METADATA_KEY = "integration_id"
+MCP_SERVER_NAME_METADATA_KEY = "mcp_server_name"

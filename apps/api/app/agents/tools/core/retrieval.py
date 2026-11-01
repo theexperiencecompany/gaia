@@ -453,6 +453,7 @@ class _SubagentPointerValue(TypedDict, total=False):
 
     name: str
     source: str
+    tool_namespace: str
 
 
 class _DiscoveredTool(TypedDict):
@@ -473,6 +474,20 @@ class _RetrievalScope:
     include_desktop: bool = False
     background: bool = False
     conversation_id: str | None = None
+
+
+@dataclass(frozen=True)
+class _HitFilter:
+    """Which store hits one discovery search may surface.
+
+    user_namespaces are the tool namespaces the caller is entitled to; a custom
+    MCP pointer outside them never surfaces.
+    """
+
+    include_subagents: bool
+    user_namespaces: set[str]
+    tool_space: str = "general"
+    active_namespaces: set[str] | None = None
 
 
 @dataclass
@@ -710,11 +725,13 @@ def _process_public_integration_result(
     return processed
 
 
-def _mcp_pointer_hit(item: SearchItem) -> ScoredToolHit | None:
+def _mcp_pointer_hit(item: SearchItem, user_namespaces: set[str]) -> ScoredToolHit | None:
     """The mcp_integration: entry for a subagents-namespace pointer, or None for a stale doc.
 
     Pointers exist only for MCP integrations, static (source "mcp", the default
     for docs predating the field) or custom; anything else predates the index.
+    The namespace is shared by every user, so a custom pointer surfaces only
+    when its tool_namespace is one the caller is entitled to.
     """
     # value is unpickled from the store: the dict annotation is a claim, not a check.
     raw_value: object = item.value
@@ -725,6 +742,17 @@ def _mcp_pointer_hit(item: SearchItem) -> ScoredToolHit | None:
     if source not in ("custom", "mcp"):
         return None
     integration_id = str(item.key).removeprefix(_STATIC_POINTER_KEY_PREFIX)
+    if source == "custom":
+        tool_namespace = value.get("tool_namespace")
+        if tool_namespace is None:
+            # Written before the field existed: ownership is unknown, so it never surfaces.
+            log.warning(
+                f"{LogTag.TOOL} Custom MCP pointer has no tool_namespace; dropped",
+                integration_id=integration_id,
+            )
+            return None
+        if tool_namespace not in user_namespaces:
+            return None
     name = value.get("name")
     entry = (
         f"{_MCP_INTEGRATION_PREFIX}{integration_id} ({name})"
@@ -757,9 +785,7 @@ def _process_chroma_search_result(
     result: list[SearchItem],
     available_tool_names: set[str],
     tool_registry: ToolRegistry,
-    include_subagents: bool,
-    tool_space: str = "general",
-    active_namespaces: set[str] | None = None,
+    hit_filter: _HitFilter,
 ) -> list[ScoredToolHit]:
     """Process Chroma store search results."""
     processed: list[ScoredToolHit] = []
@@ -769,15 +795,24 @@ def _process_chroma_search_result(
         namespace = item.namespace if hasattr(item, "namespace") else None
 
         if namespace == ("subagents",):
-            if include_subagents and (hit := _mcp_pointer_hit(item)) is not None:
+            if (
+                hit_filter.include_subagents
+                and (hit := _mcp_pointer_hit(item, hit_filter.user_namespaces)) is not None
+            ):
                 processed.append(hit)
             continue
 
         # Subagents see only the webpage tools of the general namespace.
-        if namespace == ("general",) and tool_space != "general" and tool_key not in WEBPAGE_TOOLS:
+        if (
+            namespace == ("general",)
+            and hit_filter.tool_space != "general"
+            and tool_key not in WEBPAGE_TOOLS
+        ):
             continue
 
-        if include_subagents and _is_delegated_elsewhere(item, tool_registry, active_namespaces):
+        if hit_filter.include_subagents and _is_delegated_elsewhere(
+            item, tool_registry, hit_filter.active_namespaces
+        ):
             continue
 
         if tool_key in available_tool_names:
@@ -790,9 +825,7 @@ async def _process_search_results(
     results: list[SearchTaskResult | BaseException],
     available_tool_names: set[str],
     tool_registry: ToolRegistry,
-    include_subagents: bool,
-    tool_space: str = "general",
-    active_namespaces: set[str] | None = None,
+    hit_filter: _HitFilter,
 ) -> list[ScoredToolHit]:
     """Process all search results and return unified list."""
     all_results: list[ScoredToolHit] = []
@@ -823,7 +856,7 @@ async def _process_search_results(
                 log.debug(
                     f"{LogTag.TOOL} Chroma search raw hits",
                     task_index=idx,
-                    tool_space=tool_space,
+                    tool_space=hit_filter.tool_space,
                     hit_count=len(result),
                     preview=preview,
                 )
@@ -834,12 +867,7 @@ async def _process_search_results(
                     error_type=type(e).__name__,
                 )
             processed = _process_chroma_search_result(
-                items,
-                available_tool_names,
-                tool_registry,
-                include_subagents,
-                tool_space,
-                active_namespaces,
+                items, available_tool_names, tool_registry, hit_filter
             )
 
         all_results.extend(processed)
@@ -1313,9 +1341,12 @@ async def _discover_tools(
         results,
         available_tool_names_set,
         tool_registry,
-        scope.include_subagents,
-        tool_space,
-        active_namespaces,
+        _HitFilter(
+            include_subagents=scope.include_subagents,
+            user_namespaces=user_namespaces,
+            tool_space=tool_space,
+            active_namespaces=active_namespaces,
+        ),
     )
 
     final_tools = _deduplicate_and_sort(all_results, limit)

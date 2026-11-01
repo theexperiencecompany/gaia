@@ -200,7 +200,6 @@ class TestGateContext:
             tool_call_id="handoff-1",
             task="triage the inbox",
             context="",
-            integration_id="",
             inherited_tool_names=[],
             parent_configurable={"user_id": USER_ID},
         )
@@ -557,7 +556,10 @@ class TestTheApprovalCardNamesTheIntegration:
         gated.assert_not_awaited()
 
     async def test_an_mcp_tool_names_the_integration_stamped_on_it(self) -> None:
-        tool = make_tool(name="delete_item", metadata={"integration_id": "custom_srv"})
+        tool = make_tool(
+            name="delete_item",
+            metadata={"integration_id": "custom_srv", "mcp_server_name": "delete_item"},
+        )
         request = make_request(name="delete_item")
         with (
             patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=self._registry(None))),
@@ -573,7 +575,10 @@ class TestTheApprovalCardNamesTheIntegration:
         resolve.assert_awaited_once_with("custom_srv")
 
     async def test_an_unresolvable_integration_still_names_its_id(self) -> None:
-        tool = make_tool(name="delete_item", metadata={"integration_id": "gone_srv"})
+        tool = make_tool(
+            name="delete_item",
+            metadata={"integration_id": "gone_srv", "mcp_server_name": "delete_item"},
+        )
         with (
             patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=self._registry(None))),
             patch(f"{MODULE}.gated_tool_object", new=AsyncMock(return_value=tool)),

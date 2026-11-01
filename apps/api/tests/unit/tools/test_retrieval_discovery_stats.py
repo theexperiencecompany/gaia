@@ -1,5 +1,6 @@
 """retrieve_tools discovery mode: search failures, the hit counts it reports, and what it searches."""
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
@@ -81,7 +82,9 @@ async def _discover(
     registry.get_tool_names.return_value = []
     registry.get_category_of_tool.return_value = None
 
-    async def _mcp_names(user_id: str | None) -> set[str]:
+    async def _mcp_names(
+        user_id: str | None, _active_targets: Mapping[str, object] | None = None
+    ) -> set[str]:
         return mcp_names_for.get(user_id or "", set())
 
     with (

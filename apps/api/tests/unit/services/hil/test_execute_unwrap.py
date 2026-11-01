@@ -186,7 +186,7 @@ class TestPolicyUnwrapsExecute:
         mcp_tool = make_tool(
             name="delete_item",
             description="Delete an item.",
-            metadata={"integration_id": "custom_srv"},
+            metadata={"integration_id": "custom_srv", "mcp_server_name": "delete_item"},
         )
         with (
             patch(
@@ -220,6 +220,7 @@ class TestPolicyUnwrapsExecute:
             description="Drop the database.",
             metadata={
                 "integration_id": "custom_srv",
+                "mcp_server_name": "drop_db",
                 MCP_ANNOTATIONS_METADATA_KEY: {"destructiveHint": True},
             },
         )

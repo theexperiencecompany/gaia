@@ -42,7 +42,7 @@ export function useIntegrationPermissions(
 
   const asks = useCallback(
     (tool: IntegrationToolEntry) =>
-      toolAsks(prefs, tool.name, tool.destructive),
+      toolAsks(prefs, tool.approvalKey, tool.destructive),
     [prefs],
   );
 
@@ -70,12 +70,13 @@ export function useIntegrationPermissions(
       () => tools.filter((tool) => asks(tool)).length,
       [tools, asks],
     ),
-    toggle: (tool, next) => setToolApproval(tool.name, next, tool.destructive),
+    toggle: (tool, next) =>
+      setToolApproval(tool.approvalKey, next, tool.destructive),
     deviations: deviating.length,
     resetToDefaults: () =>
       setToolApprovals(
         deviating.map((tool) => ({
-          name: tool.name,
+          approvalKey: tool.approvalKey,
           ask: tool.destructive,
           destructive: tool.destructive,
         })),

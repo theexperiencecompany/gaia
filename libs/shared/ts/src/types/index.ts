@@ -12,6 +12,7 @@ export type {
   IntegrationStatusRecord,
   IntegrationStatusValue,
   IntegrationTool,
+  IntegrationToolApproval,
   IntegrationToolsResponse,
   MarketplaceIntegration,
   MyIntegrationItem,

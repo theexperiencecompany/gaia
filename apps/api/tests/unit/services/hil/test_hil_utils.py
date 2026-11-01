@@ -250,7 +250,6 @@ class TestThePendingApprovalRecord:
             tool_call_id="handoff-1",
             task="triage the inbox",
             context="",
-            integration_id="",
             inherited_tool_names=["gmail_send"],
             parent_configurable={"user_id": "u1"},
         )

@@ -1,8 +1,9 @@
-"""Index a connected custom MCP into the store's ``subagents`` namespace for discovery."""
+"""Index a connected custom MCP into the store's subagents namespace for discovery."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Protocol
 
-from langchain_core.tools import BaseTool
 from langgraph.store.base import BaseStore, PutOp
 
 from app.constants.log_tags import LogTag
@@ -10,6 +11,16 @@ from app.helpers.namespace_utils import derive_integration_namespace
 from shared.py.wide_events import log
 
 SUBAGENTS_NAMESPACE = ("subagents",)
+
+
+class IndexedToolSummary(Protocol):
+    """What the pointer description reads from a tool: a live BaseTool or its stored metadata."""
+
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def description(self) -> str | None: ...
 
 
 @dataclass(frozen=True)
@@ -30,7 +41,7 @@ class CustomMcpIndexRequest:
     name: str
     description: str
     server_url: str | None = None
-    tools: list[BaseTool] | None = None
+    tools: Sequence[IndexedToolSummary] | None = None
 
 
 async def index_custom_mcp_as_subagent(
@@ -48,7 +59,7 @@ async def index_custom_mcp_as_subagent(
     if description:
         parts.append(f"{description}.")
     if tools:
-        summaries = []
+        summaries: list[str] = []
         for t in tools:
             first_line = (t.description or "").strip().splitlines()
             summary = first_line[0][:120] if first_line else ""

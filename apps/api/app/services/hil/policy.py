@@ -25,12 +25,9 @@ from app.agents.tools.execute.unwrap import unwrap_execute_call
 from app.constants.hil import HIL_EXEMPT_TOOLS, HIL_PAUSING_TOOLS
 from app.constants.log_tags import LogTag
 from app.models.hil_models import HILPreferences
-from app.services.hil.classification import (
-    is_tool_destructive,
-    mcp_destructive_hint,
-    mcp_integration_id,
-)
+from app.services.hil.classification import is_tool_destructive, mcp_destructive_hint
 from app.services.hil.preferences import get_hil_preferences
+from app.services.hil.tool_key import hil_tool_key, mcp_tool_identity
 from app.services.hil.utils import current_tool_calls, raw_tool_call, tool_of, unpack_tool_call
 from shared.py.wide_events import log
 
@@ -121,6 +118,17 @@ async def _real_tool(user_id: str, tool_name: str) -> BaseTool | None:
     return resolved.tool if resolved else None
 
 
+async def gated_tool_key(request: ToolCallRequest, user_id: str, tool_name: str) -> str:
+    """Return the HIL key of the real tool behind a gated call (see tool_key)."""
+    tool = await gated_tool_object(request, user_id, tool_name)
+    return hil_tool_key(tool_name, mcp_tool_identity(tool))
+
+
+async def resolved_tool_key(user_id: str, tool_name: str) -> str:
+    """Return the HIL key of the live tool a name resolves to, for callers without a request."""
+    return hil_tool_key(tool_name, mcp_tool_identity(await _real_tool(user_id, tool_name)))
+
+
 async def resolve_policy(request: ToolCallRequest, user_id: str, tool_name: str) -> GatingPolicy:
     """Resolve the user's mode plus the gated set into one decision.
 
@@ -155,14 +163,15 @@ async def is_gated(
     """
     if await asks_every_time(tool_name, args):
         return True
-    override = prefs.tool_overrides.get(tool_name)
+    mcp_tool = mcp_tool_identity(tool)
+    override = prefs.tool_overrides.get(hil_tool_key(tool_name, mcp_tool))
     if override is not None:
         return override
     return await is_tool_destructive(
         tool_name,
         getattr(tool, "description", "") or "",
         destructive_hint=mcp_destructive_hint(tool),
-        mcp_integration_id=mcp_integration_id(tool),
+        mcp_tool=mcp_tool,
     )
 
 

@@ -1,11 +1,9 @@
 """End-to-end: integration activation through the REAL executor graph.
 
 These build the production executor graph (create_agent, the real middleware
-stack, the real selected_tool_ids channel) with only the model and the two I/O
-seams (store, checkpointer) replaced, plus activate_integration's external
-lookups stubbed so the run is deterministic and offline. What they prove is the
-wiring unit tests cannot:
-
+stack, the real selected_tool_ids channel) with only the model, the two I/O
+seams (store, checkpointer) and activate_integration's external lookups
+replaced, so the run is deterministic and offline. They prove wiring unit tests cannot:
 * activate_integration's Command(selected_tool_ids=...) still binds the
   integration's INTERNAL helpers for the model's NEXT turn in the compiled
   graph, so a follow-up call is not rejected as unbound.
@@ -20,6 +18,7 @@ wiring unit tests cannot:
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+from bson import ObjectId
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool as lc_tool
 from langgraph.store.memory import InMemoryStore
@@ -29,6 +28,7 @@ from app.agents.core.graph_builder.build_graph import (
     EXECUTOR_INITIAL_TOOL_IDS,
     build_executor_graph,
 )
+from app.agents.core.subagents.integration_activation import ActivatedTools
 from app.agents.core.subagents.integration_resolution import CustomMcpSubagent
 from app.agents.tools.execute.execute_tool import execute
 from app.agents.tools.todo_tools import TODO_TOOL_NAMES
@@ -133,14 +133,16 @@ class TestActivationThroughRealExecutorGraph:
             ),
             patch(
                 f"{_ACTIVATION_MOD}._activate_tools",
-                new=AsyncMock(return_value=(1, ["helper_tool"], [], "")),
+                new=AsyncMock(return_value=ActivatedTools(1, ["helper_tool"], [], "")),
             ),
             patch(f"{_ACTIVATION_MOD}._activation_context", new=AsyncMock(return_value="")),
         ):
             async with build_executor_graph(chat_llm=model, in_memory_checkpointer=True) as graph:
                 result = await graph.ainvoke(
                     {"messages": [HumanMessage(content="send an email")]},
-                    config={"configurable": {"thread_id": str(uuid4()), "user_id": str(uuid4())}},
+                    config={
+                        "configurable": {"thread_id": str(uuid4()), "user_id": str(ObjectId())}
+                    },
                 )
 
         activation = _tool_message_for(result, "a1")
@@ -195,14 +197,16 @@ class TestActivationThroughRealExecutorGraph:
             ),
             patch(
                 f"{_ACTIVATION_MOD}._activate_tools",
-                new=AsyncMock(return_value=(1, [], ["gmail_send"], docs)),
+                new=AsyncMock(return_value=ActivatedTools(1, [], ["gmail_send"], docs)),
             ),
             patch(f"{_ACTIVATION_MOD}._activation_context", new=AsyncMock(return_value="")),
         ):
             async with build_executor_graph(chat_llm=model, in_memory_checkpointer=True) as graph:
                 result = await graph.ainvoke(
                     {"messages": [HumanMessage(content="send an email")]},
-                    config={"configurable": {"thread_id": str(uuid4()), "user_id": str(uuid4())}},
+                    config={
+                        "configurable": {"thread_id": str(uuid4()), "user_id": str(ObjectId())}
+                    },
                 )
 
         activation = _tool_message_for(result, "a1")
@@ -296,7 +300,9 @@ class TestActivationThroughRealExecutorGraph:
             async with build_executor_graph(chat_llm=model, in_memory_checkpointer=True) as graph:
                 result = await graph.ainvoke(
                     {"messages": [HumanMessage(content="find the attention paper")]},
-                    config={"configurable": {"thread_id": str(uuid4()), "user_id": str(uuid4())}},
+                    config={
+                        "configurable": {"thread_id": str(uuid4()), "user_id": str(ObjectId())}
+                    },
                 )
 
         activation = _tool_message_for(result, "a1")

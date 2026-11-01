@@ -67,6 +67,7 @@ def _row(**overrides: Any) -> MagicMock:
     row.conversation_id = "conv-1"
     row.user_id = USER_ID
     row.tool_name = "GMAIL_SEND_EMAIL"
+    row.tool_key = "GMAIL_SEND_EMAIL"
     row.args = {"to": "b@x"}
     row.summary = "Send it"
     row.state = LedgerState.PENDING
@@ -2190,6 +2191,22 @@ class TestDecideLedgerAlwaysToolScope:
     async def test_an_approved_always_tap_turns_the_tools_ask_off(self) -> None:
         override = await self._decide(_repo(_row()), decision="approve", scope="always_tool")
         override.assert_awaited_once_with(USER_ID, "GMAIL_SEND_EMAIL", False)
+
+    async def test_an_always_tap_on_an_mcp_tool_writes_its_server_scoped_key(self) -> None:
+        row = _row(tool_name="posthog_delete_item", tool_key="mcp:srv_a:delete_item")
+        override = await self._decide(_repo(row), decision="approve", scope="always_tool")
+        override.assert_awaited_once_with(USER_ID, "mcp:srv_a:delete_item", False)
+
+    async def test_a_row_registered_before_tool_keys_resolves_the_key_from_the_live_tool(
+        self,
+    ) -> None:
+        row = _row(tool_name="delete_item", tool_key=None)
+        with patch(
+            f"{MODULE}.resolved_tool_key", new=AsyncMock(return_value="mcp:srv_a:delete_item")
+        ) as resolve:
+            override = await self._decide(_repo(row), decision="approve", scope="always_tool")
+        resolve.assert_awaited_once_with(USER_ID, "delete_item")
+        override.assert_awaited_once_with(USER_ID, "mcp:srv_a:delete_item", False)
 
     async def test_a_denied_always_tap_leaves_the_ask_on(self) -> None:
         override = await self._decide(_repo(_row()), decision="deny", scope="always_tool")

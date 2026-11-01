@@ -423,7 +423,7 @@ class TestAutoBind:
         async with captured_wide_event() as event:
             activated = await _activate_tools(subagent)
 
-        assert activated == ActivatedTools(0, [], ["GMAIL_FETCH_MESSAGES"], "")
+        assert activated == ActivatedTools(40, [], ["GMAIL_FETCH_MESSAGES"], "")
         assert {
             "msg": f"{LogTag.AGENT} Activation preloaded tools but rendered no docs",
             "integration": "gmail",

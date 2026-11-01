@@ -1,12 +1,10 @@
-"""The composed chain: comms -> executor -> subagent, over ONE stream.
+"""The composed chain: comms -> executor, over ONE stream.
 
-Only composition breaks these: one Redis subscription must see all three
-tiers (call_executor's detached task, and every subagent it hands off to,
-publish to the same stream_id); a tier's card must render before its own
-result and a subagent's work must sit inside its start/end frames; a tool
-call's subagent_id must survive two re-emission hops; tool_call_id is the
-only join at any tier; and the comms turn is saved once, with the executor's
-cards pushed onto that already-saved message while the executor still runs.
+Only composition breaks these: one Redis subscription must see both tiers
+(call_executor's detached task publishes to the same stream_id); a tier's
+card must render before its own result; tool_call_id is the only join at any
+tier; and the comms turn is saved once, with the executor's cards pushed onto
+that already-saved message while the executor still runs.
 
 Everything from the comms model to Redis is real production code; the doubles
 are listed on :func:run_chain, each one an external service, never a step in
@@ -24,7 +22,7 @@ from uuid import uuid4
 
 import fakeredis.aioredis
 from langchain_core.callbacks import AsyncCallbackManagerForLLMRun
-from langchain_core.messages import AIMessageChunk, BaseMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessageChunk, BaseMessage
 from langchain_core.outputs import ChatGenerationChunk
 from langgraph.store.memory import InMemoryStore
 import pytest
@@ -32,10 +30,8 @@ import pytest
 from app.agents.core.graph_builder import build_graph as build_graph_module
 from app.agents.core.graph_manager import GraphManager
 from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
-from app.agents.core.subagents.provider_subagents import register_subagent_providers
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.memory import ReconcileOutcome
-from app.core.lazy_loader import providers
 from app.core.stream_manager import stream_manager
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
@@ -52,19 +48,13 @@ from app.services.delivery.chat_channel import InApp
 from tests.e2e._harness.background import drain_background_runs
 from tests.e2e._harness.graph_run import RecordingFakeModel, call, scripted_model
 from tests.e2e._harness.saved_messages import SavedToolData
-from tests.e2e._harness.transcript import UNKNOWN, Transcript
+from tests.e2e._harness.transcript import Transcript
 
 pytestmark = pytest.mark.e2e
 
 USER = AuthenticatedUser(
     user_id="6812f0b3c9a14e2b7d5a91cc", email="chain@test.local", name="Test User"
 )
-
-#: A builtin subagent (managed_by="internal": no OAuth/Composio needed) built by
-#: the real SubAgentFactory. Auto-binds fetch_webpages, a real tool whose body
-#: runs for real — only its HTTP fetch is doubled.
-SUBAGENT_ID = "gaia_knowledge_guide"
-SUBAGENT_AGENT = "gaia_knowledge_guide_agent"
 
 FOLLOW_UP_NODE = "app.agents.core.nodes.follow_up_actions_node"
 
@@ -146,8 +136,6 @@ class ChainRun:
     delivered: list[tuple[str, str]] = field(default_factory=list)
     #: The executor tier's scripted model — every prompt each of its runs was shown.
     executor_model: StreamingScriptedModel | None = None
-    #: The handed-off subagent's scripted model, when the chain reaches one.
-    subagent_model: StreamingScriptedModel | None = None
     #: Every stream announced over ``executor.stream_started``, in order — a
     #: background subagent's own, and any detached executor run's.
     announced: list[dict[str, Any]] = field(default_factory=list)
@@ -178,15 +166,13 @@ async def run_chain(
     *,
     comms: Sequence[Any],
     executor: Sequence[Any],
-    subagent: Sequence[Any] | None = None,
-    fetch_webpage: Any = None,
 ) -> ChainRun:
     """Drive one full turn through the real orchestrator and read the stream back.
 
-    comms/executor/subagent are scripted_model scripts, one entry per model call. Doubled, all
+    comms/executor are scripted_model scripts, one entry per model call. Doubled, all
     off the chain: tools store + checkpointer (exact_tool_names never searches), Mongo writes
     and reads (recorded; assertion targets), deliver_result, the memory engine and follow-up
-    generator (as graph_run.comms_graph doubles them), and fetch_webpage's HTTP GET only.
+    generator (as graph_run.comms_graph doubles them).
     """
     conversation_id = str(uuid4())
     stream_id = str(uuid4())
@@ -230,19 +216,6 @@ async def run_chain(
         run.delivered.append((text, result_type))
         return text, "executor-message-1"
 
-    # The provider registry is process-wide with no reset between tests — without
-    # a fresh loader per run, the first test's subagent graph (and its script)
-    # would be reused by every later test in the session.
-    if subagent is not None:
-        register_subagent_providers([SUBAGENT_ID])
-
-    async def _resolve_registered_graph(
-        subagent_id: str, user_id: str | None
-    ) -> tuple[Any, str, str, bool]:
-        """Bypass the MCP-only resolve guard: this scenario proves the 3-tier streaming plumbing, not resolution policy (pinned in unit tests)."""
-        graph = await providers.aget(SUBAGENT_AGENT)
-        return graph, SUBAGENT_AGENT, SUBAGENT_ID, False
-
     patches = [
         patch.object(
             build_graph_module, "get_tools_store", AsyncMock(return_value=InMemoryStore())
@@ -274,10 +247,6 @@ async def run_chain(
             new=AsyncMock(return_value=[]),
         ),
         patch(
-            "app.agents.core.subagents.handoff_tools.list_parked_subagents_for_conversation",
-            new=AsyncMock(return_value=[]),
-        ),
-        patch(
             "app.agents.core.subagents.base_subagent.get_tools_store",
             new=AsyncMock(return_value=InMemoryStore()),
         ),
@@ -291,23 +260,6 @@ async def run_chain(
             new=AsyncMock(return_value=InApp(reason="no_chat_app")),
         ),
     ]
-    if subagent is not None:
-        run.subagent_model = streaming_model(subagent)
-        patches.append(
-            patch(
-                "app.agents.core.subagents.provider_subagents.init_llm",
-                return_value=run.subagent_model,
-            )
-        )
-        patches.append(
-            patch(
-                "app.agents.core.subagents.handoff_tools._resolve_subagent",
-                new=_resolve_registered_graph,
-            )
-        )
-    if fetch_webpage is not None:
-        patches.append(patch("app.agents.tools.webpage_tool.fetch_webpage", new=fetch_webpage))
-
     try:
         async with AsyncExitStack() as stack:
             for patcher in patches:
@@ -354,8 +306,6 @@ async def run_chain(
         # A leaked busy lock survives 30 minutes and does not error — it queues
         # the NEXT test's executor onto its own stream id.
         await redis_cache.delete(f"{EXECUTOR_BUSY_PREFIX}{conversation_id}")
-        if subagent is not None:
-            await providers.areset(SUBAGENT_AGENT)
 
     await _read_what_the_client_saw(run)
     return run
@@ -388,6 +338,10 @@ def executor_flowchart_script() -> list[Any]:
         call("create_flowchart", FLOWCHART_ARGS, call_id="tc_flow"),
         "Drew the flowchart.",
     ]
+
+
+def comms_delegating_script(task: str = "explain the executor") -> list[Any]:
+    return [call("call_executor", {"task": task}, call_id="tc_exec"), "Looking that up."]
 
 
 class TestCommsToExecutor:
@@ -584,281 +538,3 @@ class TestFeedbackOnATrackedTodo:
         assert f"🎯 ACTIVE TODO (this run is bound to this todo)\n   id: {self.DESK.id}\n" in seen
         assert "Its Standing rules are the user's instructions for this todo" in seen
         assert task in seen
-
-
-# ---------------------------------------------------------------------------
-# Scenario 3 — comms -> executor -> subagent
-# ---------------------------------------------------------------------------
-
-HANDOFF_ARGS = {"subagent_id": SUBAGENT_ID, "task": "what does GAIA's executor do?"}
-PAGE_URL = "https://docs.gaia.test/executor"
-
-
-def comms_delegating_script(task: str = "explain the executor") -> list[Any]:
-    return [call("call_executor", {"task": task}, call_id="tc_exec"), "Looking that up."]
-
-
-SUBAGENT_ANSWER = "GAIA's executor runs delegated work in the background."
-
-
-def executor_handoff_script() -> list[Any]:
-    # Two runs: the live turn hands off and answers; the landing wakes a collection
-    # run that answers twice (once more after the completion guard's nudge). A
-    # missing entry cycles the script back to the handoff.
-    return [
-        call("handoff", HANDOFF_ARGS, call_id="tc_handoff"),
-        "Handed it to the knowledge guide.",
-        "The executor runs delegated work.",
-        "The executor runs delegated work.",
-    ]
-
-
-def subagent_fetch_script() -> list[Any]:
-    return [
-        call("fetch_webpages", {"urls": [PAGE_URL]}, call_id="tc_fetch"),
-        SUBAGENT_ANSWER,
-    ]
-
-
-def fetched_page(text: str = "The executor is GAIA's worker tier.") -> AsyncMock:
-    return AsyncMock(return_value=text)
-
-
-class TestExecutorToSubagent:
-    async def test_all_three_tiers_reach_the_client(self) -> None:
-        """Comms and the executor share the turn's stream; the background subagent publishes on its own."""
-        run = await run_chain(
-            "explain the executor",
-            comms=comms_delegating_script(),
-            executor=executor_handoff_script(),
-            subagent=subagent_fetch_script(),
-            fetch_webpage=fetched_page(),
-        )
-
-        assert run.transcript.tool_names() == ["call_executor", "handoff", "fetch_webpages"]
-        assert run.by_stream[run.stream_id].tool_names() == ["call_executor", "handoff"]
-        assert run.transcript.subagent_ids() != []
-
-    async def test_the_subagents_own_stream_folds_into_the_turns_message(self) -> None:
-        """The subagent outlives the turn, so it streams on a stream of its own that the client folds into the turn's message."""
-        run = await run_chain(
-            "explain the executor",
-            comms=comms_delegating_script(),
-            executor=executor_handoff_script(),
-            subagent=subagent_fetch_script(),
-            fetch_webpage=fetched_page(),
-        )
-
-        row_id = run.transcript.subagent_ids()[0]
-        (announced,) = [payload for payload in run.announced if payload["task_id"] == row_id]
-        assert announced["bot_message_id"] == run.saved[0]["bot_message_id"]
-        assert run.by_stream[str(announced["stream_id"])].tool_names() == ["fetch_webpages"]
-
-    async def test_the_subagents_tool_call_carries_its_subagent_id(self) -> None:
-        """The frontend routes on subagent_id alone — untagged, the card would render at the turn's root instead of inside the subagent."""
-        run = await run_chain(
-            "explain the executor",
-            comms=comms_delegating_script(),
-            executor=executor_handoff_script(),
-            subagent=subagent_fetch_script(),
-            fetch_webpage=fetched_page(),
-        )
-
-        row_id = run.transcript.subagent_ids()[0]
-        assert run.transcript.tool_call("fetch_webpages").subagent_id == row_id
-        assert run.transcript.tool_call("handoff").subagent_id is None
-
-    async def test_the_subagents_result_joins_its_call_inside_the_group(self) -> None:
-        run = await run_chain(
-            "explain the executor",
-            comms=comms_delegating_script(),
-            executor=executor_handoff_script(),
-            subagent=subagent_fetch_script(),
-            fetch_webpage=fetched_page("The executor is GAIA's worker tier."),
-        )
-
-        row_id = run.transcript.subagent_ids()[0]
-        result = run.transcript.result_for("fetch_webpages")
-        assert result is not None
-        assert "The executor is GAIA's worker tier." in result
-        assert [
-            o.subagent_id for o in run.transcript.outputs() if o.tool_call_id == "tc_fetch"
-        ] == [row_id]
-
-    async def test_the_subagents_work_streams_inside_its_start_frame(self) -> None:
-        """The detached subagent outlives this turn, so only its start brackets the stream; its end reaches comms via the executor."""
-        run = await run_chain(
-            "explain the executor",
-            comms=comms_delegating_script(),
-            executor=executor_handoff_script(),
-            subagent=subagent_fetch_script(),
-            fetch_webpage=fetched_page(),
-        )
-
-        start = run.transcript.kinds().index("subagent_start")
-        fetch = run.transcript.tool_call("fetch_webpages").index
-        handoff = run.transcript.tool_call("handoff").index
-        assert handoff < start < fetch
-
-    async def test_a_chat_turn_handoff_returns_the_background_acknowledgement(self) -> None:
-        """A live turn backgrounds the handoff by default, and the acknowledgement names the id the executor steers it by."""
-        run = await run_chain(
-            "explain the executor",
-            comms=comms_delegating_script(),
-            executor=executor_handoff_script(),
-            subagent=subagent_fetch_script(),
-            fetch_webpage=fetched_page(),
-        )
-
-        row_id = run.transcript.subagent_ids()[0]
-        ack = run.transcript.result_for("handoff")
-        assert ack is not None
-        assert f"started in the background as subagent {row_id}" in ack
-        assert f'message_subagent(subagent_id="{row_id}"' in ack
-        assert f'cancel_subagent(subagent_id="{row_id}")' in ack
-
-    async def test_the_subagents_answer_lands_in_a_collection_run_that_delivers_it(self) -> None:
-        """The subagent's own text now reaches the executor through its inbox; nothing else carries it back."""
-        run = await run_chain(
-            "explain the executor",
-            comms=comms_delegating_script(),
-            executor=executor_handoff_script(),
-            subagent=subagent_fetch_script(),
-            fetch_webpage=fetched_page(),
-        )
-
-        assert run.executor_model is not None
-        shown = [
-            str(message.content)
-            for prompt in run.executor_model.prompts
-            for message in prompt
-            if isinstance(message, HumanMessage)
-        ]
-        row_id = run.transcript.subagent_ids()[0]
-        assert any(f"(subagent {row_id}): {SUBAGENT_ANSWER}" in text for text in shown), (
-            "the subagent's answer never reached the executor"
-        )
-        assert [result_type for _text, result_type in run.delivered] == ["final", "final"]
-        assert run.delivered[0][0] == "Handed it to the knowledge guide."
-
-    async def test_the_subagent_group_is_persisted_on_the_comms_message(self) -> None:
-        """A reload has to show the subagent's work nested, not flattened next to the executor's own cards."""
-        run = await run_chain(
-            "explain the executor",
-            comms=comms_delegating_script(),
-            executor=executor_handoff_script(),
-            subagent=subagent_fetch_script(),
-            fetch_webpage=fetched_page(),
-        )
-
-        (saved_on,) = [
-            call_["message_id"]
-            for call_ in run.attached
-            if any(entry["tool_name"] == "subagent_group" for entry in call_["entries"])
-        ]
-        assert saved_on == run.saved[0]["bot_message_id"]
-        group = next(
-            entry for entry in run.attached_entries() if entry["tool_name"] == "subagent_group"
-        )
-        assert group["data"]["subagent_id"] == run.transcript.subagent_ids()[0]
-
-        nested = {c["tool_name"]: c for c in group["data"]["tool_calls"]}
-
-        assert "fetch_webpages" in nested, f"subagent's work not in the group: {list(nested)}"
-        assert nested["fetch_webpages"]["tool_call_id"] == "tc_fetch"
-        # Settled, not running, on reload; the answer itself arrives as the
-        # executor's follow-up delivery (see the collection-run test above).
-        assert group["data"]["completed_at"] is not None
-
-
-# ---------------------------------------------------------------------------
-# Scenario 4 — an integration tool at the end of the chain
-# ---------------------------------------------------------------------------
-
-
-class TestIntegrationToolThroughTheChain:
-    """The executor cannot reach an integration tool directly; only a subagent can.
-
-    gaia_knowledge_guide auto-binds fetch_webpages unconditionally, making it the
-    one integration tool reachable in-process — the tool's real body runs, only
-    its HTTP GET is doubled. The Composio-hosted toolkits (gmail, github, slack,
-    todoist) are covered instead by test_integration_toolkits.py, which drives
-    their real proxy/auth seams; building one here would need a fabricated tool
-    list, so it wouldn't be the real tool.
-    """
-
-    async def test_the_tool_is_bound_without_a_retrieval_hop(self) -> None:
-        """auto_bind_tools promises the tool is usable on the subagent's first call — a silent no-op would surface as a bind rejection."""
-        run = await run_chain(
-            "explain the executor",
-            comms=comms_delegating_script(),
-            executor=executor_handoff_script(),
-            subagent=subagent_fetch_script(),
-            fetch_webpage=fetched_page(),
-        )
-
-        assert "retrieve_tools" not in run.transcript.tool_names()
-        # Read off the subagent's own next prompt, not the comms stream: the
-        # detached subagent's output frames may land after that turn closed.
-        assert run.subagent_model is not None
-        results = [
-            str(message.content)
-            for prompt in run.subagent_model.prompts
-            for message in prompt
-            if isinstance(message, ToolMessage) and message.name == "fetch_webpages"
-        ]
-        assert results, "the bound tool produced no result at all"
-        assert "The executor is GAIA's worker tier." in results[0]
-
-    async def test_the_tools_progress_events_reach_the_users_stream(self) -> None:
-        """Progress events cross the subagent driver, the executor driver and Redis — three hops that only exist in composition."""
-        run = await run_chain(
-            "explain the executor",
-            comms=comms_delegating_script(),
-            executor=executor_handoff_script(),
-            subagent=subagent_fetch_script(),
-            fetch_webpage=fetched_page(),
-        )
-
-        progress = run.transcript.of_kind("progress")
-        assert any(PAGE_URL in str(step) for step in progress)
-        assert "Fetching Complete!" in progress
-
-    async def test_the_native_card_payload_reaches_the_wire_unwrapped(self) -> None:
-        """Pins a known defect (same class as the plan's image_data gap, §6b): no envelope means the client renders nothing."""
-        run = await run_chain(
-            "explain the executor",
-            comms=comms_delegating_script(),
-            executor=executor_handoff_script(),
-            subagent=subagent_fetch_script(),
-            fetch_webpage=fetched_page("The executor is GAIA's worker tier."),
-        )
-
-        cards = [
-            frame
-            for frame in run.transcript.of_kind(UNKNOWN)
-            if isinstance(frame, dict) and "webpage_data" in frame
-        ]
-        assert len(cards) == 1
-        assert "The executor is GAIA's worker tier." in cards[0]["webpage_data"]
-        assert cards[0]["fetched_urls"] == [PAGE_URL]
-        # No envelope, so nothing in the turn's tool_data can carry it.
-        assert not any(
-            isinstance(entry, dict) and entry.get("tool_name") == "webpage_data"
-            for entry in run.transcript.of_kind("tool_data")
-        )
-
-    async def test_a_failed_fetch_still_completes_the_turn(self) -> None:
-        """The tool swallows a per-URL failure as progress; the chain must not take the whole turn down with it."""
-        run = await run_chain(
-            "explain the executor",
-            comms=comms_delegating_script(),
-            executor=executor_handoff_script(),
-            subagent=subagent_fetch_script(),
-            fetch_webpage=AsyncMock(side_effect=RuntimeError("host unreachable")),
-        )
-
-        assert any("host unreachable" in str(step) for step in run.transcript.of_kind("progress"))
-        assert run.transcript.is_done
-        assert run.transcript.final_text() == "Looking that up."
-        assert len(run.saved) == 1

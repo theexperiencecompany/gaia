@@ -14,7 +14,7 @@ import type {
   CommunitySearchParams,
   Integration,
   IntegrationCategoryValue,
-  IntegrationTool,
+  IntegrationToolApproval,
   IntegrationToolsResponse,
   MyIntegrationItem,
   MyIntegrationsResponse,
@@ -84,7 +84,7 @@ export async function fetchIntegrationStatuses(): Promise<
  */
 export async function getIntegrationTools(
   integrationId: string,
-): Promise<IntegrationTool[]> {
+): Promise<IntegrationToolApproval[]> {
   const response = await apiService.get<IntegrationToolsResponse>(
     `/integrations/${integrationId}/tools`,
   );

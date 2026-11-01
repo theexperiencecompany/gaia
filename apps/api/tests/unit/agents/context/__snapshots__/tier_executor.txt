@@ -298,9 +298,14 @@
       work to you (the executor) via `call_executor`.
     - **Executor (you)**: the generalist. You hold a few tools always and retrieve
       the rest on demand with `retrieve_tools`. Lean context is by design.
-    - **Per-integration tools**: every connected service (gmail,
-      slack, …) loads in-context via `activate_integration`, then you act
-      yourself with its tools. Integrations are never separate agents.
+    - **Per-integration tools**: every integration (Composio services like gmail
+      and slack, built-ins, platform MCP servers, and the user's own custom MCP
+      connections) loads in-context via `activate_integration`, then you act
+      yourself with its tools. Integration tools always run through `execute`.
+      When two of the user's MCP servers expose the same tool name, the later
+      one's copy is prefixed with its integration id (`posthog_search`,
+      `context7_search`). Integrations are never separate agents; for isolated or
+      noisy work, `spawn_subagent`.
     
     ## Your memory & state (three stores, never conflate them)
     

@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.models.hil_models import HILPreferences
 from app.models.user_models import AuthenticatedUser
 from app.schemas.hil_schemas import (
     ApprovalDecisionRequest,
@@ -21,6 +22,7 @@ from app.services.hil.ledger_decide import decide_ledger_batch, decide_ledger_ca
 from app.services.hil.preferences import (
     get_hil_preferences,
     set_tool_override,
+    tool_key_labels,
     update_hil_preferences,
 )
 from app.services.hil.resolution import (
@@ -33,6 +35,10 @@ from shared.py.analytics.catalog.properties import Identifier
 from shared.py.wide_events import log
 
 router = APIRouter(prefix="/approvals")
+
+
+async def _preferences_response(prefs: HILPreferences) -> HILPreferencesResponse:
+    return HILPreferencesResponse(**prefs.model_dump(), tool_labels=await tool_key_labels(prefs))
 
 
 @router.post("/{approval_id}/decision")
@@ -127,7 +133,7 @@ async def get_preferences(
     """Return the current user's HIL approval preferences."""
     log.set(user={"id": user.user_id}, hil={"operation": "get_preferences"})
     prefs = await get_hil_preferences(user.user_id)
-    return HILPreferencesResponse(**prefs.model_dump())
+    return await _preferences_response(prefs)
 
 
 @router.put("/preferences")
@@ -143,7 +149,7 @@ async def put_preferences(
         tool_overrides=payload.tool_overrides,
         never_auto_tools=payload.never_auto_tools,
     )
-    return HILPreferencesResponse(**prefs.model_dump())
+    return await _preferences_response(prefs)
 
 
 @router.put("/tools/{tool_name}")
@@ -152,10 +158,13 @@ async def set_tool_approval(
     payload: SetToolOverrideRequest,
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],
 ) -> HILPreferencesResponse:
-    """Set (``ask`` true/false) or clear (``ask`` null) one tool's approval override."""
+    """Set (``ask`` true/false) or clear (``ask`` null) one tool's approval override.
+
+    tool_name is the HIL tool key the client was given (an MCP tool's is server-scoped).
+    """
     log.set(
         user={"id": user.user_id},
         hil={"operation": "set_tool_override", "tool": tool_name, "ask": payload.ask},
     )
     prefs = await set_tool_override(user.user_id, tool_name, payload.ask)
-    return HILPreferencesResponse(**prefs.model_dump())
+    return await _preferences_response(prefs)

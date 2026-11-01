@@ -36,7 +36,9 @@ from app.constants.mcp import (
     GAIA_OAUTH_PRIVACY_PATH,
     GAIA_OAUTH_TOS_PATH,
     MAX_OAUTH_INVALID_SCOPE_DROPS,
+    MCP_INTEGRATION_ID_METADATA_KEY,
     MCP_RENAMED_TOOL_NOTE,
+    MCP_SERVER_NAME_METADATA_KEY,
 )
 from app.constants.providers import CredentialProviderName
 from app.core.lazy_loader import providers
@@ -75,7 +77,6 @@ from app.services.mcp.mcp_client_pool import get_mcp_client_pool
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.mcp.mcp_tools_service import (
     RawToolMetadata,
-    invalidate_mcp_tools_cache,
     store_mcp_tools,
 )
 from app.services.mcp.oauth_discovery import (
@@ -135,7 +136,6 @@ from shared.py.wide_events import McpContext, log, log_context, spawn_logged_tas
 
 # A live tool's server-side identity, stamped before any GAIA-side rename so a
 # later collision recompute can always derive the name from the original.
-_SERVER_NAME_KEY = "mcp_server_name"
 _SERVER_DESCRIPTION_KEY = "mcp_server_description"
 _SOURCE_NAME_KEY = "mcp_source_name"
 
@@ -154,7 +154,7 @@ async def _reserved_tool_names() -> set[str]:
 
 def _server_identity(tool: BaseTool) -> tuple[str, str]:
     metadata = tool.metadata or {}
-    return str(metadata[_SERVER_NAME_KEY]), str(metadata[_SERVER_DESCRIPTION_KEY])
+    return str(metadata[MCP_SERVER_NAME_METADATA_KEY]), str(metadata[_SERVER_DESCRIPTION_KEY])
 
 
 def _apply_gaia_names(tools: list[BaseTool], names: dict[str, str]) -> dict[str, str]:
@@ -881,16 +881,13 @@ class MCPClient:
             for integration_id, tools in self._tools.items()
             if tools
         }
-        cold_ids = [
-            integration_id
-            for integration_id in await user_integration_repository.connected_integration_ids(
-                self.user_id
-            )
-            if integration_id not in server_tools
+        records = [
+            record
+            for record in await user_integration_repository.tools_for_connected(self.user_id)
+            if record.integration_id not in server_tools
         ]
-        if not cold_ids:
+        if not records:
             return server_tools
-        records = await integration_repository.tools_for_integrations(cold_ids)
         resolved = await asyncio.gather(
             *(IntegrationResolver.resolve(record.integration_id) for record in records)
         )
@@ -935,8 +932,8 @@ class MCPClient:
         for raw_tool in raw_tools:
             if raw_tool.metadata is None:
                 raw_tool.metadata = {}
-            raw_tool.metadata["integration_id"] = integration_id
-            raw_tool.metadata[_SERVER_NAME_KEY] = raw_tool.name
+            raw_tool.metadata[MCP_INTEGRATION_ID_METADATA_KEY] = integration_id
+            raw_tool.metadata[MCP_SERVER_NAME_METADATA_KEY] = raw_tool.name
             raw_tool.metadata[_SERVER_DESCRIPTION_KEY] = raw_tool.description
             raw_tool.metadata[_SOURCE_NAME_KEY] = source_name
 
@@ -2034,18 +2031,8 @@ class MCPClient:
         if integration_id in self._tools:
             del self._tools[integration_id]
 
-        # Remove tool metadata from MongoDB so ghost tools don't appear
-        try:
-            await integration_repository.clear_tools(integration_id)
-            # Invalidate the global MCP tools Redis cache
-            await invalidate_mcp_tools_cache()
-        except Exception as e:
-            log.warning(
-                f"{LogTag.MCP} Failed to clear MongoDB tools for",
-                integration_id=integration_id,
-                error=str(e),
-                error_type=type(e).__name__,
-            )
+        # The stored tool list is the server's, shared by every user, so it stays: a
+        # reader scopes it to a user through user_integration_repository.tools_for_connected.
 
         # Invalidate ChromaDB namespace cache so tools are re-indexed on reconnect
         try:

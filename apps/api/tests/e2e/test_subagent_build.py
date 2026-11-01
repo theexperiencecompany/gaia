@@ -48,33 +48,33 @@ class TestScopedToolDict:
         self, registry
     ):
         """The precondition for everything below: until Composio registration runs, a provider's own tools simply are not there."""
-        scoped, _ = build_scoped_tool_dict(registry, "gmail", None, True)
+        scoped, _ = build_scoped_tool_dict(registry, "gmail", True)
 
         assert [name for name in GMAIL_AUTO_BIND if name in scoped] == []
 
     async def test_the_always_available_tools_are_still_present(self, registry):
         """A subagent always gets memory, file and shell access regardless of provider, so an empty provider category is not an empty toolset — the degradation stays invisible."""
-        scoped, _ = build_scoped_tool_dict(registry, "gmail", None, True)
+        scoped, _ = build_scoped_tool_dict(registry, "gmail", True)
 
         assert {"search_memory", "read", "bash"} <= set(scoped)
 
     async def test_a_subagent_can_save_only_integration_instructions(self, registry):
         """A subagent reads untrusted data (an inbox, a channel), so it may save its own integration's instructions but never the global ones every tier reads."""
-        scoped, _ = build_scoped_tool_dict(registry, "gmail", None, True)
+        scoped, _ = build_scoped_tool_dict(registry, "gmail", True)
 
         assert "update_integration_instructions" in scoped
         assert "get_user_instructions" in scoped
         assert "update_user_instructions" not in scoped
 
     async def test_finish_task_is_included_when_asked_for(self, registry):
-        scoped, initial = build_scoped_tool_dict(registry, "gmail", None, True)
+        scoped, initial = build_scoped_tool_dict(registry, "gmail", True)
 
         assert "finish_task" in scoped
         assert "finish_task" in initial
 
     async def test_the_execute_proxy_is_confined_to_this_subagent_s_tools(self, registry):
         """Execute resolves names globally, so the unscoped instance would let a Gmail subagent run any registered tool — the guard retrieve_tools returns ("They belong to the main executor") becomes advice it can route around."""
-        scoped, _ = build_scoped_tool_dict(registry, "gmail", None, True)
+        scoped, _ = build_scoped_tool_dict(registry, "gmail", True)
         scoped["a_tool_added_later"] = object()
 
         with patch(
@@ -92,7 +92,7 @@ class TestScopedToolDict:
 
     async def test_finish_task_is_absent_when_not_asked_for(self, registry):
         """Subagents that terminate on a plain reply must not be handed a tool that ends the run."""
-        scoped, initial = build_scoped_tool_dict(registry, "gmail", None, False)
+        scoped, initial = build_scoped_tool_dict(registry, "gmail", False)
 
         assert "finish_task" not in scoped
         assert "finish_task" not in initial

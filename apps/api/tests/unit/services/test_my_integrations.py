@@ -22,6 +22,7 @@ from app.models.runtime_models import InstanceSettingsDocument
 from app.schemas.integrations.responses import (
     IntegrationConfigItem,
     IntegrationsConfigResponse,
+    IntegrationToolApproval,
     MyIntegrationItem,
     MyIntegrationsResponse,
 )
@@ -486,7 +487,10 @@ class TestGetMyIntegrations:
 class TestGetIntegrationTools:
     async def test_platform_integration_always_readable(self, mock_deps: SimpleNamespace) -> None:
         mock_deps.resolve.return_value = SimpleNamespace(source="platform", custom_doc=None)
-        mock_deps.tools.return_value = [{"name": "a"}, {"name": "b"}]
+        mock_deps.tools.return_value = [
+            IntegrationToolApproval(name="a", approval_key="a"),
+            IntegrationToolApproval(name="b", approval_key="b"),
+        ]
 
         response = await get_integration_tools("github", USER_ID)
 

@@ -204,9 +204,7 @@ class TestDevRouterMounting:
     # every one must 404-when-unmounted; nothing else keeps them off prod.
     HIGH_BLAST_RADIUS_ROUTES: ClassVar[list[tuple[str, str, dict[str, str] | None]]] = [
         ("POST", "/api/v1/dev/executor", {"email": DEV_EMAIL, "task": "noop"}),
-        ("POST", "/api/v1/dev/subagents/some_agent", {"email": DEV_EMAIL, "task": "noop"}),
         ("POST", "/api/v1/dev/attachments", None),
-        ("GET", "/api/v1/dev/subagents", None),
         ("DELETE", "/api/v1/dev/users/dev@gaia.local", None),
     ]
 
@@ -228,7 +226,7 @@ class TestDevRouterMounting:
         assert response.status_code == 404
 
     async def test_privileged_routes_mounted_with_bypass(self, monkeypatch):
-        """With the bypass set, the executor + subagent routes must be registered and reach 200."""
+        """With the bypass set, the executor route must be registered and reach 200."""
         from app.config.settings import settings as app_settings
 
         monkeypatch.setattr(app_settings, "DEV_AUTH_BYPASS_EMAIL", DEV_EMAIL)
@@ -247,26 +245,15 @@ class TestDevRouterMounting:
                 new_callable=AsyncMock,
                 return_value=agent_result,
             ) as mock_exec,
-            patch(
-                "app.api.v1.endpoints.dev.run_subagent_direct",
-                new_callable=AsyncMock,
-                return_value=agent_result.model_copy(update={"agent": "some_agent"}),
-            ) as mock_sub,
         ):
             client = await _client(app)
             async with client:
                 exec_response = await client.post(
                     "/api/v1/dev/executor", json={"email": DEV_EMAIL, "task": "noop"}
                 )
-                sub_response = await client.post(
-                    "/api/v1/dev/subagents/some_agent",
-                    json={"email": DEV_EMAIL, "task": "noop"},
-                )
 
         assert exec_response.status_code == 200
-        assert sub_response.status_code == 200
         mock_exec.assert_awaited_once_with(DEV_EMAIL, "noop", None, None)
-        mock_sub.assert_awaited_once_with(DEV_EMAIL, "some_agent", "noop", None, None)
 
     async def test_seed_endpoint_forwards_payload(self, monkeypatch):
         from app.config.settings import settings as app_settings

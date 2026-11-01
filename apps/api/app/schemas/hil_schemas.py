@@ -65,8 +65,22 @@ class BatchApprovalDecisionResponse(BaseModel):
     outcomes: list[BatchDecisionOutcome]
 
 
+class HILToolKeyLabel(ResponseModel):
+    """What a stored HIL tool key names, for display: clients send the key back unchanged."""
+
+    integration_name: str | None = Field(
+        description="The integration the tool belongs to, when known."
+    )
+    tool_name: str = Field(description="The tool's own name (an MCP tool's name on its server).")
+
+
 class HILPreferencesResponse(ResponseModel, HILPreferences):
     """A user's HIL preferences as returned by the preferences endpoints."""
+
+    tool_labels: dict[str, HILToolKeyLabel] = Field(
+        default_factory=dict,
+        description="Display label for every key in tool_overrides and never_auto_tools.",
+    )
 
 
 class UpdateHILPreferencesRequest(BaseModel):

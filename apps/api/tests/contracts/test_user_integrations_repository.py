@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime, timedelta
+import uuid
 
+from motor.motor_asyncio import AsyncIOMotorCollection
 import pytest
 
 from app.agents.tools.integration_account_tools import rename_integration_account
@@ -390,3 +393,61 @@ class TestTheReadCache:
         await repo.set_account_nickname("u", "gmail", "acct_1", "Work")
 
         assert (await repo.get_for_user("v", "gmail")).accounts[0].nickname is None
+
+
+SeedIntegration = Callable[..., Awaitable[None]]
+
+
+@pytest.fixture
+async def seed_integration(raw_collection) -> AsyncIterator[SeedIntegration]:
+    """Seed the real gaia_test.integrations: a $lookup binds by collection name, not through the patched accessor."""
+    coll: AsyncIOMotorCollection = raw_collection.database["integrations"]
+    seeded: list[str] = []
+
+    async def _seed(integration_id: str, **fields: object) -> None:
+        await coll.insert_one({"integration_id": integration_id, **fields})
+        seeded.append(integration_id)
+
+    yield _seed
+    await coll.delete_many({"integration_id": {"$in": seeded}})
+
+
+class TestToolsForConnected:
+    """The stored tool list is the server's; this is the read that scopes it to one user."""
+
+    async def test_only_the_users_connected_integrations_are_returned(self, repo, seed_integration):
+        posthog, context7, linear = (f"{name}-{uuid.uuid4().hex}" for name in ("ph", "c7", "ln"))
+        await seed_integration(posthog, name="PostHog", tools=[{"name": "search"}])
+        await seed_integration(context7, name="Context7", tools=[{"name": "resolve"}])
+        await seed_integration(linear, name="Linear", tools=[{"name": "issues"}])
+        await repo.create(_ui("a", posthog, status="connected"))
+        await repo.create(_ui("a", context7, status="created"))
+        await repo.create(_ui("b", linear, status="connected"))
+
+        [record] = await repo.tools_for_connected("a")
+
+        assert record.integration_id == posthog
+        assert record.name == "PostHog"
+        assert [tool.name for tool in record.tools] == ["search"]
+
+    async def test_a_connected_integration_without_stored_tools_is_skipped(
+        self, repo, seed_integration
+    ):
+        bare, empty = f"bare-{uuid.uuid4().hex}", f"empty-{uuid.uuid4().hex}"
+        await seed_integration(bare, name="Bare")
+        await seed_integration(empty, name="Empty", tools=[])
+        await repo.create(_ui("a", bare, status="connected"))
+        await repo.create(_ui("a", empty, status="connected"))
+
+        assert await repo.tools_for_connected("a") == []
+
+    async def test_one_users_disconnect_leaves_anothers_tools(self, repo, seed_integration):
+        posthog = f"ph-{uuid.uuid4().hex}"
+        await seed_integration(posthog, name="PostHog", tools=[{"name": "search"}])
+        await repo.create(_ui("a", posthog, status="connected"))
+        await repo.create(_ui("b", posthog, status="connected"))
+
+        await repo.set_status("a", posthog, status="created")
+
+        assert await repo.tools_for_connected("a") == []
+        assert [r.integration_id for r in await repo.tools_for_connected("b")] == [posthog]

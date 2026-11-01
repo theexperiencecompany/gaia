@@ -7891,6 +7891,14 @@
             "title": "Never Auto Tools",
             "type": "array"
           },
+          "tool_labels": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/HILToolKeyLabel"
+            },
+            "description": "Display label for every key in tool_overrides and never_auto_tools.",
+            "title": "Tool Labels",
+            "type": "object"
+          },
           "tool_overrides": {
             "additionalProperties": {
               "type": "boolean"
@@ -7902,9 +7910,38 @@
         "required": [
           "mode",
           "tool_overrides",
-          "never_auto_tools"
+          "never_auto_tools",
+          "tool_labels"
         ],
         "title": "HILPreferencesResponse",
+        "type": "object"
+      },
+      "HILToolKeyLabel": {
+        "description": "What a stored HIL tool key names, for display: clients send the key back unchanged.",
+        "properties": {
+          "integration_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The integration the tool belongs to, when known.",
+            "title": "Integration Name"
+          },
+          "tool_name": {
+            "description": "The tool's own name (an MCP tool's name on its server).",
+            "title": "Tool Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "integration_name",
+          "tool_name"
+        ],
+        "title": "HILToolKeyLabel",
         "type": "object"
       },
       "HandoffDecision": {
@@ -9006,6 +9043,41 @@
         "title": "IntegrationTool",
         "type": "object"
       },
+      "IntegrationToolApproval": {
+        "properties": {
+          "approval_key": {
+            "description": "Key the user's per-tool approval override is stored under; send it back unchanged.",
+            "title": "Approval Key",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "destructive": {
+            "default": false,
+            "title": "Destructive",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "approval_key"
+        ],
+        "title": "IntegrationToolApproval",
+        "type": "object"
+      },
       "IntegrationToolsResponse": {
         "description": "Full tool list for a single integration (catalog data, on demand).",
         "properties": {
@@ -9021,7 +9093,7 @@
           "tools": {
             "default": [],
             "items": {
-              "$ref": "#/components/schemas/IntegrationTool"
+              "$ref": "#/components/schemas/IntegrationToolApproval"
             },
             "title": "Tools",
             "type": "array"
@@ -22687,7 +22759,7 @@
     },
     "/api/v1/approvals/tools/{tool_name}": {
       "put": {
-        "description": "Set (``ask`` true/false) or clear (``ask`` null) one tool's approval override.",
+        "description": "Set (``ask`` true/false) or clear (``ask`` null) one tool's approval override.\n\ntool_name is the HIL tool key the client was given (an MCP tool's is server-scoped).",
         "operationId": "approvals_set_tool_approval",
         "parameters": [
           {

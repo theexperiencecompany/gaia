@@ -159,6 +159,57 @@ class TestOverrides:
             assert await is_gated(prefs(list_files=False), "send_email", make_tool()) is True
 
 
+def _mcp_tool(name: str, *, integration_id: str, server_name: str | None = None) -> BaseTool:
+    return make_tool(
+        name=name,
+        metadata={"integration_id": integration_id, "mcp_server_name": server_name or name},
+    )
+
+
+class TestScopedOverrides:
+    """MCP overrides are keyed per server on the server's own tool name."""
+
+    async def test_an_override_on_one_server_does_not_apply_to_the_same_name_on_another(
+        self,
+    ) -> None:
+        overrides = HILPreferences(
+            mode="always_ask", tool_overrides={"mcp:srv_a:delete_item": False}
+        )
+        with patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=True)):
+            on_a = await is_gated(
+                overrides, "delete_item", _mcp_tool("delete_item", integration_id="srv_a")
+            )
+            on_b = await is_gated(
+                overrides, "delete_item", _mcp_tool("delete_item", integration_id="srv_b")
+            )
+        assert on_a is False
+        assert on_b is True
+
+    async def test_the_override_survives_a_collision_rename(self) -> None:
+        overrides = HILPreferences(
+            mode="always_ask", tool_overrides={"mcp:srv_a:delete_item": False}
+        )
+        renamed = _mcp_tool(
+            "posthog_delete_item", integration_id="srv_a", server_name="delete_item"
+        )
+        with patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=True)):
+            assert await is_gated(overrides, "posthog_delete_item", renamed) is False
+
+    async def test_a_bare_name_override_does_not_reach_an_mcp_tool_of_that_name(self) -> None:
+        with patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=True)):
+            gated = await is_gated(
+                prefs(delete_item=False),
+                "delete_item",
+                _mcp_tool("delete_item", integration_id="srv_a"),
+            )
+        assert gated is True
+
+    async def test_a_registry_tool_override_is_still_keyed_by_its_bare_name(self) -> None:
+        with patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=True)):
+            gated = await is_gated(prefs(GMAIL_SEND_EMAIL=False), "GMAIL_SEND_EMAIL", make_tool())
+        assert gated is False
+
+
 class TestPreferencesFailure:
     @pytest.mark.regression
     async def test_an_unreadable_store_asks_for_a_destructive_call(self) -> None:

@@ -23,7 +23,6 @@ from app.services.composio.instance_toolkits import (
 )
 from app.utils.agent_utils import (
     IntegrationDisplayMetadata,
-    ToolCallView,
     _general_tool_category,
     _registry_mcp_ui_metadata,
     _resolve_mcp_ui_metadata,

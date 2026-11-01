@@ -19,12 +19,11 @@ from app.models.hil_models import HILToolRiskRecord
 from app.services.hil.classification import (
     _classify_with_llm,
     _ClassifyResult,
-    classification_key,
     is_tool_destructive,
     mcp_destructive_hint,
-    mcp_integration_id,
 )
 from app.services.hil.prompts import TOOL_CLASSIFY_PROMPT
+from app.services.hil.tool_key import MCPToolIdentity
 from app.services.mcp.langchain_adapter import MCP_ANNOTATIONS_METADATA_KEY
 
 from .conftest import make_tool
@@ -268,30 +267,12 @@ class TestTheClassifierCallItself:
         )
 
 
+def _on(integration_id: str, server_name: str) -> MCPToolIdentity:
+    return MCPToolIdentity(integration_id=integration_id, server_name=server_name)
+
+
 class TestMcpVerdictsAreScopedToTheirServer:
     """Two MCP servers may expose the same tool name; neither may borrow the other's verdict."""
-
-    def test_the_key_is_the_bare_name_for_registry_tools_and_scoped_for_mcp(self) -> None:
-        assert classification_key("delete_item", None) == "delete_item"
-        assert classification_key("delete_item", "srv_a") == "mcp:srv_a:delete_item"
-
-    @pytest.mark.parametrize(
-        ("metadata", "expected"),
-        [
-            ({"integration_id": "srv_a"}, "srv_a"),
-            ({"integration_id": ""}, None),
-            ({"integration_id": 7}, None),
-            ({}, None),
-            (None, None),
-        ],
-    )
-    def test_the_integration_is_read_from_the_stamped_tool_metadata(
-        self, metadata: dict[str, object] | None, expected: str | None
-    ) -> None:
-        assert mcp_integration_id(make_tool(metadata=metadata)) == expected
-
-    def test_no_tool_has_no_integration(self) -> None:
-        assert mcp_integration_id(None) is None
 
     async def test_an_mcp_tool_never_borrows_a_same_named_registry_verdict(
         self, mongo: MagicMock
@@ -305,7 +286,7 @@ class TestMcpVerdictsAreScopedToTheirServer:
         )
         with patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry)):
             result = await is_tool_destructive(
-                "send_email", "Send an email.", mcp_integration_id="srv_a"
+                "send_email", "Send an email.", mcp_tool=_on("srv_a", "send_email")
             )
 
         assert result is True
@@ -320,12 +301,27 @@ class TestMcpVerdictsAreScopedToTheirServer:
             f"{MODULE}.ainvoke_structured",
             new=AsyncMock(return_value=_ClassifyResult(is_destructive=True, rationale="del")),
         ) as llm:
-            assert await is_tool_destructive("delete_item", "Deletes.", mcp_integration_id="srv_a")
+            assert await is_tool_destructive(
+                "delete_item", "Deletes.", mcp_tool=_on("srv_a", "delete_item")
+            )
 
         assert mongo.upsert_classification.await_args.args[0].tool_name == "mcp:srv_a:delete_item"
         # The LLM classifies the tool by its real name, not the storage key.
         _schema, prompt = llm.await_args.args
         assert prompt == TOOL_CLASSIFY_PROMPT.format(name="delete_item", description="Deletes.")
+
+    async def test_a_renamed_tools_verdict_is_keyed_on_its_server_side_name(
+        self, mongo: MagicMock
+    ) -> None:
+        with patch(
+            f"{MODULE}.ainvoke_structured",
+            new=AsyncMock(return_value=_ClassifyResult(is_destructive=True, rationale="del")),
+        ):
+            await is_tool_destructive(
+                "posthog_delete_item", "Deletes.", mcp_tool=_on("srv_a", "delete_item")
+            )
+
+        assert mongo.upsert_classification.await_args.args[0].tool_name == "mcp:srv_a:delete_item"
 
     async def test_one_servers_cached_verdict_is_not_reused_for_another(
         self, mongo: MagicMock
@@ -342,8 +338,12 @@ class TestMcpVerdictsAreScopedToTheirServer:
             f"{MODULE}.ainvoke_structured",
             new=AsyncMock(return_value=_ClassifyResult(is_destructive=True, rationale="del")),
         ) as llm:
-            on_a = await is_tool_destructive("delete_item", "Deletes.", mcp_integration_id="srv_a")
-            on_b = await is_tool_destructive("delete_item", "Deletes.", mcp_integration_id="srv_b")
+            on_a = await is_tool_destructive(
+                "delete_item", "Deletes.", mcp_tool=_on("srv_a", "delete_item")
+            )
+            on_b = await is_tool_destructive(
+                "delete_item", "Deletes.", mcp_tool=_on("srv_b", "delete_item")
+            )
 
         assert on_a is False
         assert on_b is True
@@ -352,4 +352,4 @@ class TestMcpVerdictsAreScopedToTheirServer:
     async def test_an_mcp_classification_failure_still_fails_closed(self) -> None:
         with patch(f"{MODULE}.hil_tool_risk_repository") as repo:
             repo.find_classification = AsyncMock(side_effect=ConnectionError("mongo down"))
-            assert await is_tool_destructive("x", "d", mcp_integration_id="srv_a") is True
+            assert await is_tool_destructive("x", "d", mcp_tool=_on("srv_a", "x")) is True

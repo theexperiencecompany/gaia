@@ -28,5 +28,15 @@ def _mock_ssrf_guard() -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True)
+def _no_other_connected_servers() -> Iterator[None]:
+    """Collision naming reads the user's other connected servers from Mongo; this suite has none."""
+    with patch(
+        "app.services.mcp.mcp_client.user_integration_repository.tools_for_connected",
+        new=AsyncMock(return_value=[]),
+    ):
+        yield
+
+
+@pytest.fixture(autouse=True)
 def _core_tool_registry(core_tool_registry: None) -> None:
     """Every connect in this suite renames its tools around GAIA's real core tool names."""

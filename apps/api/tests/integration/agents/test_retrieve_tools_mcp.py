@@ -12,16 +12,20 @@ MCPClient, and user A's tools never leak into user B's results.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.runnables import RunnableConfig
+from langgraph.store.base import PutOp, SearchItem
 import pytest
 
 from app.agents.core.subagents.integration_resolution import CustomMcpSubagent
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
+from app.helpers.namespace_utils import derive_integration_namespace
 from app.models.integration_models import UserToolNamespaces
 from app.services.integrations.integration_resolver import IntegrationResolver
+from app.services.mcp.custom_mcp_index import CustomMcpIndexRequest, index_custom_mcp_as_subagent
 
 
 def _fake_tool(name: str, description: str = "test tool"):
@@ -43,17 +47,23 @@ def _fake_search_item(key: str, namespace: tuple, score: float = 0.95):
 def _fake_mcp_client(integration_tools_map: dict[str, list[Any]]):
     """Build a MagicMock MCPClient whose _tools dict contains the given tools.
 
-    Models the two lookups the execute resolver performs (find_integration +
-    async get_tools) so proxied schema-doc rendering exercises the same
-    per-user scoping the name filters do.
+    Models the two lookups the execute resolver performs (resolve_tool_owner +
+    tools_for) so proxied schema-doc rendering exercises the same per-user
+    scoping the name filters do.
     """
     client = MagicMock()
     client._tools = integration_tools_map
-    client.find_integration = lambda name: next(
-        (iid for iid, tools in integration_tools_map.items() if any(t.name == name for t in tools)),
-        None,
+    client.resolve_tool_owner = AsyncMock(
+        side_effect=lambda name: next(
+            (
+                iid
+                for iid, tools in integration_tools_map.items()
+                if any(t.name == name for t in tools)
+            ),
+            None,
+        )
     )
-    client.get_tools = AsyncMock(side_effect=lambda iid: integration_tools_map.get(iid, []))
+    client.tools_for = AsyncMock(side_effect=lambda iid: integration_tools_map.get(iid, []))
     return client
 
 
@@ -327,3 +337,113 @@ class TestRetrieveToolsActivatedCustomMcp:
 
         assert (_ACME_NAMESPACE,) not in searched
         assert "ACME_LIST_INVOICES" not in result["response"]
+
+
+_CUSTOM_MCPS_BY_USER = {
+    "user-a": CustomMcpIndexRequest(
+        integration_id="aaa111aaa111",
+        name="Alpha Invoices",
+        description="Lists invoices",
+        server_url="https://mcp.alpha.dev/v1",
+    ),
+    "user-b": CustomMcpIndexRequest(
+        integration_id="bbb222bbb222",
+        name="Beta Invoices",
+        description="Lists invoices",
+        server_url="https://mcp.beta.dev/v1",
+    ),
+}
+
+
+async def _indexed_pointer_docs() -> list[SearchItem]:
+    """Both users' pointer docs, as the real indexer writes them into the shared namespace."""
+    store = MagicMock()
+    store.abatch = AsyncMock()
+    for request in _CUSTOM_MCPS_BY_USER.values():
+        await index_custom_mcp_as_subagent(store, request)
+    now = datetime.now(UTC)
+    ops: list[PutOp] = [op for call in store.abatch.await_args_list for op in call.args[0]]
+    return [
+        SearchItem(
+            namespace=op.namespace,
+            key=op.key,
+            value=op.value or {},
+            created_at=now,
+            updated_at=now,
+            score=0.9,
+        )
+        for op in ops
+    ]
+
+
+async def _namespaces_for(user_id: str) -> UserToolNamespaces:
+    own = _CUSTOM_MCPS_BY_USER[user_id]
+    return UserToolNamespaces(
+        namespaces={
+            "general",
+            "subagents",
+            derive_integration_namespace(own.integration_id, own.server_url, is_custom=True),
+        }
+    )
+
+
+@pytest.mark.integration
+class TestRetrieveToolsCustomMcpPointerIsolation:
+    async def test_each_user_sees_only_their_own_custom_mcp_pointer(self):
+        """The subagents namespace is shared; the pointer list each user gets is not."""
+        pointers = await _indexed_pointer_docs()
+
+        async def fake_asearch(namespace: tuple[str, ...], query: str = "", limit: int = 25):
+            return pointers if namespace == ("subagents",) else []
+
+        store = MagicMock()
+        store.asearch = fake_asearch
+        registry = MagicMock()
+        registry.get_tool_names = MagicMock(return_value=[])
+        registry.get_tool_meta = MagicMock(return_value=None)
+
+        with (
+            patch(
+                "app.agents.tools.core.retrieval.get_mcp_client",
+                new=AsyncMock(return_value=_fake_mcp_client({})),
+            ),
+            patch(
+                "app.agents.tools.core.retrieval.get_tool_registry",
+                new=AsyncMock(return_value=registry),
+            ),
+            patch(
+                "app.agents.tools.core.retrieval.get_user_available_tool_namespaces",
+                new=AsyncMock(side_effect=_namespaces_for),
+            ),
+            patch(
+                "app.agents.tools.core.retrieval._resolve_connected_subagents",
+                new=AsyncMock(return_value={}),
+            ),
+            patch(
+                "app.agents.tools.core.retrieval.get_active",
+                new=AsyncMock(return_value=set()),
+            ),
+            patch(
+                "app.agents.tools.core.retrieval._unconnected_named_in",
+                new=AsyncMock(return_value=[]),
+            ),
+            patch(
+                "app.agents.tools.core.retrieval.search_public_integrations",
+                new=AsyncMock(return_value=[]),
+            ),
+        ):
+            retrieve_tools = get_retrieve_tools_function(tool_space="general")
+            responses = {
+                user_id: (
+                    await retrieve_tools(
+                        store=store,
+                        config=_config(user_id),
+                        query="list invoices",
+                        exact_tool_names=[],
+                    )
+                )["response"]
+                for user_id in _CUSTOM_MCPS_BY_USER
+            }
+
+        assert responses["user-a"] == ["mcp_integration:aaa111aaa111 (Alpha Invoices)"]
+        assert responses["user-b"] == ["mcp_integration:bbb222bbb222 (Beta Invoices)"]

@@ -1123,8 +1123,6 @@ class TestWritePlaybookBoundary:
 
         step = schema["$defs"][PlaybookStepInput.__name__]
         assert step.get("additionalProperties") is not False
-        child_name = step["properties"]["steps"]["items"]["$ref"].rsplit("/", 1)[-1]
-        assert schema["$defs"][child_name].get("additionalProperties") is not False
 
     @pytest.mark.parametrize(
         ("arguments", "expected_problems"),

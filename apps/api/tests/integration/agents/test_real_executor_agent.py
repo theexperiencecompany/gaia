@@ -36,16 +36,16 @@ def _make_stub_tool(name: str):
 def _make_mock_tool_registry():
     """Return a minimal ToolRegistry-like mock with the attributes build_executor_graph accesses.
 
-    Stubs every non-handoff, non-todo tool in EXECUTOR_INITIAL_TOOL_IDS, so the
+    Stubs every non-todo tool in EXECUTOR_INITIAL_TOOL_IDS, so the
     test stays resilient to changes in the initial tool set (e.g. vfs_cmd being
     added or removed) without hard-coding specific tool names.
     """
     from app.agents.core.graph_builder.build_graph import EXECUTOR_INITIAL_TOOL_IDS
     from app.agents.tools.todo_tools import TODO_TOOL_NAMES
 
-    # Tools that build_executor_graph injects separately (handoff + todo tools)
-    # and therefore do NOT need to come from the ToolRegistry mock.
-    injected_by_graph = {"handoff"} | TODO_TOOL_NAMES
+    # Todo tools are injected by build_executor_graph itself, so they do NOT
+    # come from the ToolRegistry mock.
+    injected_by_graph = TODO_TOOL_NAMES
 
     tool_dict = {
         tid: _make_stub_tool(tid)
@@ -193,8 +193,8 @@ class TestExecutorGraphCompiles:
 class TestSelectToolsNode:
     """The initial tool IDs from build_executor_graph must land in the tool_dict passed to create_agent."""
 
-    async def test_handoff_included_in_tool_dict(self):
-        """Handoff tool must be registered in the compiled executor graph's DynamicToolNode."""
+    async def test_activate_integration_included_in_tool_dict(self):
+        """activate_integration must be registered in the compiled executor graph's DynamicToolNode."""
         from app.agents.core.graph_builder.build_graph import build_executor_graph
         from app.override.langgraph_bigtool.dynamic_tool_node import DynamicToolNode
 
@@ -243,10 +243,11 @@ class TestSelectToolsNode:
                 assert isinstance(underlying, DynamicToolNode), (
                     "The 'tools' node must be a DynamicToolNode"
                 )
-                assert "handoff" in underlying._tool_registry, (
-                    "handoff must be registered in the executor graph's DynamicToolNode "
-                    "tool registry; build_executor_graph is missing the handoff injection"
+                assert "activate_integration" in underlying._tool_registry, (
+                    "activate_integration must be registered in the executor graph's "
+                    "DynamicToolNode tool registry; build_executor_graph is missing its injection"
                 )
+                assert "handoff" not in underlying._tool_registry
 
     async def test_initial_tool_ids_are_registered(self):
         """All initial tool IDs must be present in the compiled graph's DynamicToolNode registry."""
@@ -299,10 +300,10 @@ class TestSelectToolsNode:
                 )
                 registered_tool_ids = set(underlying._tool_registry.keys())
 
-        # Todo tools are mocked to return [] here, so only handoff + mock registry
-        # tools are expected — read from mock_registry to avoid hardcoding.
+        # Todo tools are mocked to return [] here, so only activate_integration + mock
+        # registry tools are expected — read from mock_registry to avoid hardcoding.
         mock_provided = set(mock_registry.get_tool_dict.return_value.keys())
-        expected_in_registry = {"handoff"} | mock_provided
+        expected_in_registry = {"activate_integration"} | mock_provided
         missing = expected_in_registry - registered_tool_ids
         assert not missing, (
             f"The following initial tool IDs are missing from the executor graph's "

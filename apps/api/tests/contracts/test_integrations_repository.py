@@ -53,12 +53,6 @@ class TestIntegrationsRepository:
     async def test_get_missing_returns_none(self, repo):
         assert await repo.get(f"absent-{uuid.uuid4().hex}") is None
 
-    async def test_find_by_id_prefix_case_insensitive(self, repo):
-        iid = f"AbC-{uuid.uuid4().hex}"
-        await repo.create(_integration(iid, "Prefixed"))
-        found = await repo.find_by_id_prefix(iid[:5].lower())
-        assert found is not None and found.integration_id == iid
-
     async def test_find_by_id_prefix_or_name_matches_id_prefix(self, repo):
         iid = f"pref-{uuid.uuid4().hex}"
         await repo.create(_integration(iid, "SomeName"))
@@ -107,23 +101,13 @@ class TestIntegrationsRepository:
         await repo.increment_clone_count(iid)
         assert (await repo.get(iid)).clone_count == 2
 
-    async def test_set_mcp_auth_and_clear_tools(self, repo):
+    async def test_set_mcp_auth(self, repo):
         iid = f"auth-{uuid.uuid4().hex}"
-        await repo.create(
-            _integration(
-                iid,
-                "Auther",
-                tools=[{"name": "t1"}],
-            )
-        )
+        await repo.create(_integration(iid, "Auther"))
         assert await repo.set_mcp_auth(iid, True, "oauth") is True
         got = await repo.get(iid)
         assert got.mcp_config.requires_auth is True
         assert got.mcp_config.auth_type == "oauth"
-        assert got.tools  # tools present before clear
-
-        await repo.clear_tools(iid)
-        assert (await repo.get(iid)).tools == []
         # No such integration → no update.
         assert await repo.set_mcp_auth(f"absent-{uuid.uuid4().hex}", True, "oauth") is False
 

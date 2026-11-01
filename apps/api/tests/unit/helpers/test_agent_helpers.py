@@ -12,7 +12,6 @@ import pytest
 
 from app.agents.llm.lane import AgentRole, ModelLane
 from app.agents.llm.ttft import LLMTtftCallback
-from app.constants.cache import CUSTOM_INT_METADATA_TTL, HANDOFF_METADATA_CACHE_PREFIX
 from app.constants.llm import LLM_LABEL_METADATA_KEY, LLMProviderName
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import (
@@ -33,57 +32,15 @@ from app.helpers.agent_helpers import (
     build_initial_state,
     execute_graph_silent,
     execute_graph_streaming,
-    get_handoff_metadata,
     opens_thread,
     recent_user_messages,
 )
 from app.models.agent_models import run_analytics_context
-from app.models.integration_models import Integration
-from app.models.mcp_config import SubAgentConfig
 from app.models.payment_models import PlanType
 from app.models.presence_models import PresenceSnapshot
-from app.models.subagent_models import Subagent
-from app.utils.agent_utils import IntegrationDisplayMetadata
 from app.utils.stream_publishers import ExtractedToolData
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.context import AnalyticsContext, analytics_context, worker_context
-
-
-def _integration(integration_id: str, name: str, icon_url: str | None = None) -> Integration:
-    return Integration(
-        integration_id=integration_id,
-        name=name,
-        description="",
-        category="custom",
-        managed_by="mcp",
-        icon_url=icon_url,
-    )
-
-
-def _make_subagent(
-    subagent_id: str = "github",
-    short_name: str | None = "gh",
-    name: str = "GitHub",
-) -> Subagent:
-    """Build a real Subagent for handoff metadata tests."""
-    config = SubAgentConfig(
-        has_subagent=True,
-        agent_name=f"{subagent_id}_agent",
-        tool_space=f"{subagent_id}_space",
-        domain=subagent_id,
-        capabilities=f"{subagent_id} stuff",
-        use_cases=f"{subagent_id} use",
-        system_prompt=f"You are the {subagent_id} agent.",
-    )
-    return Subagent(
-        id=subagent_id,
-        name=name,
-        provider=subagent_id,
-        managed_by="composio",
-        config=config,
-        short_name=short_name,
-    )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -108,104 +65,6 @@ FAKE_USER = {
     "email": "test@example.com",
     "name": "Test User",
 }
-
-
-# ---------------------------------------------------------------------------
-# get_handoff_metadata
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-class TestGetHandoffMetadata:
-    @patch("app.helpers.agent_helpers.get_cache", new_callable=AsyncMock)
-    @patch("app.helpers.agent_helpers.get_subagent_by_id", return_value=None)
-    async def test_cache_hit_returns_cached(self, mock_lookup, mock_get_cache):
-        """Cache check happens after the registry lookup misses."""
-        mock_get_cache.return_value = IntegrationDisplayMetadata(integration_id="github")
-
-        result = await get_handoff_metadata("github")
-        assert result.integration_id == "github"
-
-    @patch("app.helpers.agent_helpers.get_cache", new_callable=AsyncMock)
-    @patch("app.helpers.agent_helpers.get_subagent_by_id", return_value=None)
-    async def test_cache_hit_empty_returns_empty(self, mock_lookup, mock_get_cache):
-        """Cached empty metadata means negative cache hit."""
-        mock_get_cache.return_value = IntegrationDisplayMetadata()
-
-        result = await get_handoff_metadata("nonexistent")
-        assert result == IntegrationDisplayMetadata()
-
-    @patch("app.helpers.agent_helpers.get_subagent_by_id")
-    async def test_platform_integration_match_by_id(self, mock_lookup):
-        mock_lookup.return_value = _make_subagent("github", "gh", "GitHub")
-
-        result = await get_handoff_metadata("github")
-        assert result.integration_id == "github"
-        assert result.integration_name == "GitHub"
-        assert result.icon_url is None
-
-    @patch("app.helpers.agent_helpers.get_subagent_by_id")
-    async def test_platform_integration_match_by_short_name(self, mock_lookup):
-        # The registry's get_subagent_by_id resolves short_name itself —
-        # the mock just returns the same Subagent regardless of input.
-        mock_lookup.return_value = _make_subagent("github", "gh", "GitHub")
-
-        result = await get_handoff_metadata("gh")
-        assert result.integration_name == "GitHub"
-
-    @patch("app.helpers.agent_helpers.set_cache", new_callable=AsyncMock)
-    @patch("app.helpers.agent_helpers.get_cache", new_callable=AsyncMock)
-    @patch("app.helpers.agent_helpers.integration_repository")
-    @patch("app.helpers.agent_helpers.get_subagent_by_id", return_value=None)
-    async def test_custom_integration_found_in_db(
-        self, mock_lookup, mock_repo, mock_get_cache, mock_set_cache
-    ):
-        mock_get_cache.return_value = None
-        mock_repo.find_by_id_prefix_or_name = AsyncMock(
-            return_value=_integration("custom_mymcp", "MyMCP", "https://icon.png")
-        )
-
-        result = await get_handoff_metadata("custom_mymcp")
-        expected = IntegrationDisplayMetadata(
-            icon_url="https://icon.png",
-            integration_id="custom_mymcp",
-            integration_name="MyMCP",
-        )
-        assert result == expected
-        cache_key = f"{HANDOFF_METADATA_CACHE_PREFIX}:custom_mymcp"
-        mock_get_cache.assert_awaited_once_with(cache_key, IntegrationDisplayMetadata)
-        mock_set_cache.assert_awaited_once_with(cache_key, expected, ttl=CUSTOM_INT_METADATA_TTL)
-
-    @patch("app.helpers.agent_helpers.set_cache", new_callable=AsyncMock)
-    @patch("app.helpers.agent_helpers.get_cache", new_callable=AsyncMock)
-    @patch("app.helpers.agent_helpers.integration_repository")
-    @patch("app.helpers.agent_helpers.get_subagent_by_id", return_value=None)
-    async def test_custom_integration_db_error_returns_empty(
-        self, mock_lookup, mock_repo, mock_get_cache, mock_set_cache
-    ):
-        mock_get_cache.return_value = None
-        mock_repo.find_by_id_prefix_or_name = AsyncMock(side_effect=Exception("DB failure"))
-
-        result = await get_handoff_metadata("broken")
-        assert result == IntegrationDisplayMetadata()
-
-    @patch("app.helpers.agent_helpers.set_cache", new_callable=AsyncMock)
-    @patch("app.helpers.agent_helpers.get_cache", new_callable=AsyncMock)
-    @patch("app.helpers.agent_helpers.integration_repository")
-    @patch("app.helpers.agent_helpers.get_subagent_by_id", return_value=None)
-    async def test_handoff_with_subagent_prefix(
-        self, mock_lookup, mock_repo, mock_get_cache, mock_set_cache
-    ):
-        """parse_subagent_id strips the 'subagent:' prefix before the registry lookup."""
-        mock_get_cache.return_value = None
-        mock_repo.find_by_id_prefix_or_name = AsyncMock(
-            return_value=_integration("custom_abc", "Custom")
-        )
-
-        result = await get_handoff_metadata("subagent:custom_abc")
-        assert result.integration_name == "Custom"
-        # parse_subagent_id strips "subagent:" → registry sees "custom_abc"
-        mock_lookup.assert_called_once_with("custom_abc")
 
 
 # ---------------------------------------------------------------------------
@@ -1142,37 +1001,6 @@ class TestExecuteGraphSilent:
         assert todo_entries[0]["data"] == {"executor": {"source": "executor", "todos": [_TODO_B]}}
 
     @patch("app.helpers.agent_helpers.format_tool_call_entry", new_callable=AsyncMock)
-    @patch("app.helpers.agent_helpers.get_handoff_metadata", new_callable=AsyncMock)
-    async def test_updates_handoff_tool_calls(self, mock_handoff, mock_format):
-        """Handoff tool calls on the agent node resolve + forward handoff metadata."""
-        mock_handoff.return_value = IntegrationDisplayMetadata(
-            icon_url="https://icon.png",
-            integration_id="github",
-        )
-        mock_format.return_value = {"tool_name": "handoff", "data": {}}
-
-        msg = AIMessage.model_construct(content="", tool_calls=None)
-        msg.tool_calls = [{"id": "tc1", "name": "handoff", "args": {"subagent_id": "github"}}]
-
-        events = [
-            ((), "updates", {"agent": {"messages": [msg]}}),
-        ]
-
-        graph = AsyncMock()
-        graph.astream = MagicMock(return_value=_async_iter(events))
-
-        _, tool_data = await execute_graph_silent(
-            graph,
-            {},
-            {"configurable": {"user_id": USER_ID}},
-        )
-
-        mock_handoff.assert_called_once_with("github")
-        # The resolved handoff metadata must be forwarded into the formatted entry.
-        assert mock_format.await_args.kwargs["integration_id"] == "github"
-        assert tool_data == [{"tool_name": "handoff", "data": {}}]
-
-    @patch("app.helpers.agent_helpers.format_tool_call_entry", new_callable=AsyncMock)
     async def test_updates_regular_tool_calls_thread_user_id(self, mock_format):
         """Non-handoff tool calls are formatted with the originating user_id."""
         mock_format.return_value = {"tool_name": "custom_tool", "data": {}}
@@ -1918,51 +1746,6 @@ class TestCollectSilentToolEntries:
 
         assert entries == [{"tool_name": "custom_tool"}]
         assert emitted == {"tc_real"}
-
-    @patch("app.helpers.agent_helpers.format_tool_call_entry", new_callable=AsyncMock)
-    @patch("app.helpers.agent_helpers.get_handoff_metadata", new_callable=AsyncMock)
-    async def test_a_handoff_with_no_named_subagent_resolves_no_metadata(
-        self, mock_handoff, mock_format
-    ):
-        """No args and empty args both mean "no subagent named yet", and neither may reach the registry."""
-        mock_format.return_value = {"tool_name": "handoff"}
-        no_args = AIMessage.model_construct(content="", tool_calls=None)
-        no_args.tool_calls = [{"id": "tc_a", "name": "handoff"}]
-        empty_args = AIMessage.model_construct(content="", tool_calls=None)
-        empty_args.tool_calls = [{"id": "tc_b", "name": "handoff", "args": {}}]
-        entries: list = []
-
-        await _collect_silent_tool_entries([no_args, empty_args], set(), entries, USER_ID)
-
-        mock_handoff.assert_not_awaited()
-        assert len(entries) == 2
-
-    @patch("app.helpers.agent_helpers.format_tool_call_entry", new_callable=AsyncMock)
-    @patch("app.helpers.agent_helpers.get_handoff_metadata", new_callable=AsyncMock)
-    async def test_handoff_metadata_reaches_the_formatter_field_by_field(
-        self, mock_handoff, mock_format
-    ):
-        """Each display field is forwarded under its own name — a crossed one would type-check fine since all three are str | None."""
-        mock_handoff.return_value = IntegrationDisplayMetadata(
-            icon_url="https://icon.png",
-            integration_id="github",
-            integration_name="GitHub",
-        )
-        mock_format.return_value = {"tool_name": "handoff"}
-        tool_call = {"id": "tc_h", "name": "handoff", "args": {"subagent_id": "github"}}
-        msg = AIMessage.model_construct(content="", tool_calls=None)
-        msg.tool_calls = [tool_call]
-
-        await _collect_silent_tool_entries([msg], set(), [], USER_ID)
-
-        mock_handoff.assert_awaited_once_with("github")
-        assert mock_format.await_args.args == (tool_call,)
-        assert mock_format.await_args.kwargs == {
-            "icon_url": "https://icon.png",
-            "integration_id": "github",
-            "integration_name": "GitHub",
-            "user_id": USER_ID,
-        }
 
 
 # ---------------------------------------------------------------------------

@@ -19,7 +19,8 @@ from app.constants.cache import ONE_DAY_TTL
 from app.constants.log_tags import LogTag
 from app.decorators.caching import Cacheable
 from app.models.tools_models import ToolInfo, ToolsCategoryResponse, ToolsListResponse
-from app.schemas.integrations.responses import IntegrationTool
+from app.schemas.integrations.responses import IntegrationToolApproval
+from app.services.hil.tool_key import MCPToolIdentity, hil_tool_key
 from app.services.integrations.user_integrations import (
     UserIntegrationRecord,
     get_user_integration_records,
@@ -246,13 +247,12 @@ async def get_tool_categories() -> dict[str, int]:
     return category_counts
 
 
-async def get_integration_tool_list(integration_id: str) -> list[IntegrationTool]:
-    """Return the full tool list for one integration from its source of truth.
+async def get_integration_tool_list(integration_id: str) -> list[IntegrationToolApproval]:
+    """Return one integration's tools from the registry catalog, else the MCP store.
 
-    The registry catalog covers Composio/platform toolkits, the MCP store covers
-    MCP/custom servers; the match is case-insensitive. destructive marks each
-    tool's HIL default from the curated set (empty for uncurated/MCP toolkits,
-    so those tools report False).
+    destructive is the curated HIL default (False for MCP tools). approval_key is
+    the key the gate reads the user's override under; stored MCP names are the
+    server's own names, which that key is built from.
     """
     destructive = integration_destructive_tools(integration_id) or set()
     tool_registry = await get_tool_registry()
@@ -260,23 +260,27 @@ async def get_integration_tool_list(integration_id: str) -> list[IntegrationTool
         if category_obj.internal or name.lower() != integration_id.lower():
             continue
         return [
-            IntegrationTool(
+            IntegrationToolApproval(
                 name=tool.name,
                 description=tool.tool.description,
                 # The registry stamped this from the same curated set at add time
                 # and is the single source of truth — it also carries LLM
                 # classifications written back via mark_tool_destructive.
                 destructive=bool(tool.destructive),
+                approval_key=hil_tool_key(tool.name, None),
             )
             for tool in category_obj.tools
         ]
 
     stored = await get_integration_tools(integration_id)
     return [
-        IntegrationTool(
+        IntegrationToolApproval(
             name=tool.name,
             description=tool.description,
             destructive=tool.name in destructive,
+            approval_key=hil_tool_key(
+                tool.name, MCPToolIdentity(integration_id=integration_id, server_name=tool.name)
+            ),
         )
         for tool in stored
         if tool.name

@@ -5,7 +5,12 @@ import { Alert } from "react-native";
 import { settingsApi } from "@/features/settings/api/settings-api";
 
 const HIL_PREFS_KEY = ["hil", "preferences"] as const;
-const EMPTY: HilPreferences = { mode: DEFAULT_HIL_MODE, tool_overrides: {} };
+const EMPTY: HilPreferences = {
+  mode: DEFAULT_HIL_MODE,
+  tool_overrides: {},
+  never_auto_tools: [],
+  tool_labels: {},
+};
 
 /**
  * Shared HIL preferences: the global approval mode plus per-tool overrides.
@@ -38,14 +43,19 @@ export function useHilPreferences() {
   });
 
   const overrideMutation = useMutation({
-    mutationFn: ({ name, ask }: { name: string; ask: boolean | null }) =>
-      settingsApi.setToolOverride(name, ask),
-    onMutate: async ({ name, ask }) => {
+    mutationFn: ({
+      approvalKey,
+      ask,
+    }: {
+      approvalKey: string;
+      ask: boolean | null;
+    }) => settingsApi.setToolOverride(approvalKey, ask),
+    onMutate: async ({ approvalKey, ask }) => {
       const previous = qc.getQueryData<HilPreferences>(HIL_PREFS_KEY);
       qc.setQueryData<HilPreferences>(HIL_PREFS_KEY, (p = EMPTY) => {
         const overrides = { ...p.tool_overrides };
-        if (ask === null) delete overrides[name];
-        else overrides[name] = ask;
+        if (ask === null) delete overrides[approvalKey];
+        else overrides[approvalKey] = ask;
         return { ...p, tool_overrides: overrides };
       });
       return { previous };
@@ -72,13 +82,13 @@ export function useHilPreferences() {
     },
     /** Set whether a tool needs approval, storing only diffs from its default. */
     setToolApproval: async (
-      name: string,
+      approvalKey: string,
       ask: boolean,
       destructive: boolean,
     ) => {
       try {
         await overrideMutation.mutateAsync({
-          name,
+          approvalKey,
           ask: toolOverrideValue(ask, destructive),
         });
       } catch {

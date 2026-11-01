@@ -14,7 +14,7 @@ import copy
 from datetime import UTC, datetime, timedelta
 import json
 from typing import Any, ClassVar
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, create_autospec, patch
 from urllib.parse import parse_qs, urlparse
 
 from langchain_core.tools import BaseTool
@@ -40,10 +40,13 @@ from app.config.settings import settings
 from app.constants.device_bridge import DEVICE_TRANSPORT
 from app.constants.log_tags import LogTag
 from app.constants.mcp import MCP_RENAMED_TOOL_NOTE
+from app.db.repositories.integrations import IntegrationsRepository
 from app.models.db_oauth import MCPAuthType, MCPCredential, MCPCredentialStatus
 from app.models.device import Device
 from app.models.integration_models import (
     Integration,
+    IntegrationToolsRecord,
+    StoredIntegrationTool,
     UserIntegrationDocument,
     UserIntegrationStatus,
 )
@@ -172,6 +175,14 @@ def _mock_tool(name: str = "test_tool", description: str = "A test tool") -> Mag
     tool.name = name
     tool.description = description
     tool.metadata = {}
+
+    def _model_copy() -> MagicMock:
+        # BaseTool.model_copy is shallow: the copy shares the original's metadata dict.
+        copied = _mock_tool(tool.name, tool.description)
+        copied.metadata = tool.metadata
+        return copied
+
+    tool.model_copy.side_effect = _model_copy
     return tool
 
 
@@ -186,7 +197,7 @@ def _no_persisted_mcp_state() -> Iterator[MagicMock]:
     with (
         patch.object(
             mcp_client.user_integration_repository,
-            "connected_integration_ids",
+            "tools_for_connected",
             new=AsyncMock(return_value=[]),
         ),
         patch("app.services.mcp.mcp_client.spawn_logged_task", side_effect=_drop) as spawn,
@@ -724,9 +735,6 @@ class TestMCPClientDisconnect:
                 "app.services.mcp.mcp_client.delete_cache",
                 new_callable=AsyncMock,
             ),
-            patch(
-                "app.services.mcp.mcp_client.invalidate_mcp_tools_cache", new_callable=AsyncMock
-            ) as mock_invalidate_tools,
             patch("app.services.mcp.mcp_client.integration_repository") as mock_repo,
             patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
             patch(
@@ -734,7 +742,6 @@ class TestMCPClientDisconnect:
                 new_callable=AsyncMock,
             ),
         ):
-            mock_repo.clear_tools = AsyncMock()
             mock_resolver.resolve = AsyncMock(return_value=None)
             client.token_store.get_oauth_discovery = AsyncMock(return_value=None)
             client.token_store.delete_credentials = AsyncMock()
@@ -744,8 +751,8 @@ class TestMCPClientDisconnect:
         assert INTEGRATION_ID not in client._clients
         assert INTEGRATION_ID not in client._tools
         mock_base.close_all_sessions.assert_awaited_once()
-        mock_repo.clear_tools.assert_awaited_once_with(INTEGRATION_ID)
-        mock_invalidate_tools.assert_awaited_once_with()
+        # The stored tool list is the server's, shared by every user: one user's disconnect never writes it.
+        assert mock_repo.mock_calls == []
 
     async def test_disconnect_handles_close_error(self):
         client = MCPClient(user_id=USER_ID)
@@ -756,15 +763,12 @@ class TestMCPClientDisconnect:
 
         with (
             patch("app.services.mcp.mcp_client.delete_cache", new_callable=AsyncMock),
-            patch("app.services.mcp.mcp_client.invalidate_mcp_tools_cache", new_callable=AsyncMock),
-            patch("app.services.mcp.mcp_client.integration_repository") as mock_repo,
             patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
             patch(
                 "app.services.mcp.mcp_client.update_user_integration_status",
                 new_callable=AsyncMock,
             ),
         ):
-            mock_repo.clear_tools = AsyncMock()
             mock_resolver.resolve = AsyncMock(return_value=None)
             client.token_store.get_oauth_discovery = AsyncMock(return_value=None)
             client.token_store.delete_credentials = AsyncMock()
@@ -779,15 +783,12 @@ class TestMCPClientDisconnect:
         client = MCPClient(user_id=USER_ID)
         with (
             patch("app.services.mcp.mcp_client.delete_cache", new_callable=AsyncMock),
-            patch("app.services.mcp.mcp_client.invalidate_mcp_tools_cache", new_callable=AsyncMock),
-            patch("app.services.mcp.mcp_client.integration_repository") as mock_repo,
             patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
             patch(
                 "app.services.mcp.mcp_client.update_user_integration_status",
                 new_callable=AsyncMock,
             ),
         ):
-            mock_repo.clear_tools = AsyncMock()
             mock_resolver.resolve = AsyncMock(return_value=None)
             client.token_store.get_oauth_discovery = AsyncMock(return_value=None)
             client.token_store.delete_credentials = AsyncMock()
@@ -5402,12 +5403,7 @@ class TestCrossMcpToolNameCollisions:
         with (
             patch.object(
                 mcp_client.user_integration_repository,
-                "connected_integration_ids",
-                new=AsyncMock(return_value=["posthog", "context7"]),
-            ),
-            patch.object(
-                mcp_client.integration_repository,
-                "tools_for_integrations",
+                "tools_for_connected",
                 new=AsyncMock(return_value=[stored]),
             ),
             patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
@@ -5429,11 +5425,7 @@ class TestCrossMcpToolNameCollisions:
         client._revoke_tokens = AsyncMock()
         client._reset_to_disconnected = AsyncMock()
 
-        with (
-            patch.object(mcp_client.integration_repository, "clear_tools", new=AsyncMock()),
-            patch("app.services.mcp.mcp_client.invalidate_mcp_tools_cache", new=AsyncMock()),
-            patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
-        ):
+        with patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver:
             mock_resolver.resolve = AsyncMock(return_value=None)
             await client.disconnect("posthog")
 
@@ -5464,7 +5456,7 @@ class TestToolsForAndResolveToolOwner:
         client._tools[INTEGRATION_ID] = [_stamped_tool("search")]
 
         with patch.object(
-            mcp_client.user_integration_repository, "connected_integration_ids"
+            mcp_client.user_integration_repository, "tools_for_connected"
         ) as connected:
             assert await client.resolve_tool_owner("search") == INTEGRATION_ID
         connected.assert_not_called()
@@ -5495,20 +5487,15 @@ class TestToolsForAndResolveToolOwner:
         with (
             patch.object(
                 mcp_client.user_integration_repository,
-                "connected_integration_ids",
-                new=AsyncMock(return_value=["posthog", "context7"]),
-            ),
-            patch.object(
-                mcp_client.integration_repository,
-                "tools_for_integrations",
+                "tools_for_connected",
                 new=AsyncMock(return_value=records),
-            ) as tools_for_integrations,
+            ) as tools_for_connected,
             patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
         ):
             mock_resolver.resolve = AsyncMock(side_effect=resolved_by_id.__getitem__)
             assert await client.resolve_tool_owner(tool_name) == owner
 
-        tools_for_integrations.assert_awaited_once_with(["posthog", "context7"])
+        tools_for_connected.assert_awaited_once_with(USER_ID)
         if owner is None:
             client.tools_for.assert_not_awaited()
         else:
@@ -5524,18 +5511,98 @@ class TestToolsForAndResolveToolOwner:
         with (
             patch.object(
                 mcp_client.user_integration_repository,
-                "connected_integration_ids",
-                new=AsyncMock(return_value=["gmail"]),
-            ),
-            patch.object(
-                mcp_client.integration_repository,
-                "tools_for_integrations",
+                "tools_for_connected",
                 new=AsyncMock(return_value=[record]),
             ),
             patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
         ):
             mock_resolver.resolve = AsyncMock(return_value=MagicMock(mcp_config=None))
             assert await client.resolve_tool_owner("search") is None
+
+
+class _SharedPosthogStore:
+    """One integrations document shared by two users, plus each user's connection status."""
+
+    def __init__(self, *connected_users: str) -> None:
+        self.server_tools = ["search"]
+        self.connected = {user_id: {"posthog"} for user_id in connected_users}
+
+    async def tools_for_connected(self, user_id: str) -> list[IntegrationToolsRecord]:
+        if "posthog" not in self.connected.get(user_id, set()):
+            return []
+        return [
+            IntegrationToolsRecord(
+                integration_id="posthog",
+                tools=[StoredIntegrationTool(name=name) for name in self.server_tools],
+            )
+        ]
+
+    async def set_status(self, user_id: str, integration_id: str, status: str) -> None:
+        if status != "connected":
+            self.connected[user_id].discard(integration_id)
+
+
+@pytest.mark.usefixtures("core_tool_registry")
+class TestOneUsersDisconnectLeavesTheSharedToolList:
+    """Seen on this branch: one user disconnecting posthog emptied its stored tools for every user."""
+
+    USER_A = "user_a"
+    USER_B = "user_b"
+
+    @pytest.fixture
+    def store(self) -> Iterator[_SharedPosthogStore]:
+        store = _SharedPosthogStore(self.USER_A, self.USER_B)
+        with (
+            patch.object(
+                mcp_client.user_integration_repository,
+                "tools_for_connected",
+                new=AsyncMock(side_effect=store.tools_for_connected),
+            ),
+            patch(
+                "app.services.mcp.mcp_client.update_user_integration_status",
+                new=AsyncMock(side_effect=store.set_status),
+            ),
+            patch("app.services.mcp.mcp_client.delete_cache", new_callable=AsyncMock),
+            patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
+        ):
+            mock_resolver.resolve = AsyncMock(return_value=_resolved_named("PostHog"))
+            yield store
+
+    async def _disconnect_a(self) -> MagicMock:
+        client = MCPClient(user_id=self.USER_A)
+        client._tools["posthog"] = [_stamped_tool("search", "Events.", "PostHog", "posthog")]
+        client._revoke_tokens = AsyncMock()
+        client.token_store.delete_credentials = AsyncMock()
+        client.token_store.delete_dcr_client = AsyncMock()
+        integrations = create_autospec(IntegrationsRepository, instance=True)
+        with patch.object(mcp_client, "integration_repository", integrations):
+            await client.disconnect("posthog")
+        return integrations
+
+    async def test_the_stored_tools_are_not_written(self, store: _SharedPosthogStore) -> None:
+        integrations = await self._disconnect_a()
+
+        assert integrations.mock_calls == []
+
+    async def test_another_users_cold_lookup_still_finds_the_tool(
+        self, store: _SharedPosthogStore
+    ) -> None:
+        await self._disconnect_a()
+        user_b = MCPClient(user_id=self.USER_B)
+        user_b.tools_for = AsyncMock(return_value=[])
+
+        assert await user_b.resolve_tool_owner("search") == "posthog"
+        user_b.tools_for.assert_awaited_once_with("posthog")
+
+    async def test_the_disconnected_user_no_longer_resolves_it(
+        self, store: _SharedPosthogStore
+    ) -> None:
+        await self._disconnect_a()
+        user_a = MCPClient(user_id=self.USER_A)
+        user_a.tools_for = AsyncMock(return_value=[])
+
+        assert await user_a.resolve_tool_owner("search") is None
+        user_a.tools_for.assert_not_awaited()
 
 
 @pytest.mark.usefixtures("core_tool_registry")

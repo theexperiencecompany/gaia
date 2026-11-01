@@ -1465,7 +1465,7 @@ class TestPrepareExecutorExecution:
 
         assert task == "find the roadmap page"
 
-    async def test_a_per_user_mcp_category_is_handed_off(self):
+    async def test_a_per_user_mcp_category_is_activated_in_context(self):
         notion = _mcp_subagent("notion-mcp", requires_auth=True)
 
         task = await self._task_for_category("notion-mcp", notion)
@@ -1474,8 +1474,8 @@ class TestPrepareExecutorExecution:
             "find the roadmap page\n\n"
             "DIRECT EXECUTION HINT: This request should be handled by 'notion-mcp'. "
             "Skip retrieve_tools discovery and directly "
-            'handoff(subagent_id="notion-mcp", task="...") with the full request, then '
-            "use its result for the user's request."
+            'call activate_integration(integration_id="notion-mcp"), then '
+            "act on the user's request yourself with its tools."
         )
 
     async def test_an_mcp_category_needing_no_sign_in_is_activated_in_context(self):

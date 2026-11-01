@@ -235,7 +235,8 @@ class AutoContext:
 
     user_id: str
     history: AutoHistory = AutoHistory()
-    never_auto_tools: frozenset[str] = frozenset()
+    # The user put this call's tool on their never-auto list (matched by HIL tool key).
+    never_auto: bool = False
 
 
 async def judge_intent(
@@ -262,7 +263,7 @@ async def judge_intent(
         )
         return IntentDecision("ask", _NO_REQUEST_REASON)
 
-    if call.tool_name in auto.never_auto_tools:
+    if auto.never_auto:
         return IntentDecision(
             "ask",
             f"{call.tool_name} is on your never-auto list, so it always asks.",

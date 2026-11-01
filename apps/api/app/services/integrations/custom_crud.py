@@ -13,7 +13,7 @@ from app.constants.log_tags import LogTag
 from app.db.chroma.chroma_cleanup import cleanup_integration_chroma_data
 from app.db.chroma.public_integrations_store import remove_public_integration
 from app.db.postgresql import get_db_session
-from app.db.redis import delete_cache, delete_cache_by_pattern
+from app.db.redis import delete_cache_by_pattern
 from app.db.repositories.integrations import integration_repository
 from app.db.repositories.user_integrations import user_integration_repository
 from app.helpers.integration_helpers import dedup_server_url_key
@@ -43,6 +43,7 @@ from app.services.mcp.mcp_client import (
     MCPClient,
 )
 from app.services.mcp.mcp_token_store import MCPTokenStore
+from app.services.mcp.mcp_tools_service import invalidate_mcp_tools_cache
 from app.utils.favicon_utils import fetch_favicon_from_url
 from app.utils.mcp_oauth_utils import OAuthDiscoveryError, OAuthSecurityError
 from shared.py.wide_events import log
@@ -265,12 +266,13 @@ async def _delete_owned_integration(doc: Integration, user_id: str, integration_
         )
 
     try:
-        await delete_cache("mcp:tools:all")
+        await invalidate_mcp_tools_cache()
     except Exception as e:
-        log.debug(
-            f"{LogTag.INTEGRATION} Cache deletion for mcp:tools:all failed",
+        log.warning(
+            f"{LogTag.INTEGRATION} Failed to invalidate the MCP tools cache",
             error=str(e),
             error_type=type(e).__name__,
+            integration_id=integration_id,
         )
 
     try:

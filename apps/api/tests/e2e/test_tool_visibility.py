@@ -134,26 +134,6 @@ class TestToolCallVisibility:
         assert call.message == "Delegating to executor"
         assert call.show_category is False
 
-    async def test_handoff_label_names_the_target_subagent(self):
-        """A handoff card must resolve the subagent id to a display name, not show it raw."""
-        transcript = await run_stream(
-            [
-                agent_update(
-                    AIMessage(
-                        content="",
-                        tool_calls=[
-                            _tool_call("handoff", {"subagent_id": "gmail", "task": "read inbox"})
-                        ],
-                    )
-                )
-            ]
-        )
-
-        call = transcript.tool_call("handoff")
-        assert call.category == "handoff"
-        assert call.message == "Handing off to Gmail"
-        assert call.args["subagent_id"] == "gmail"
-
     async def test_several_tool_calls_in_one_message_all_stream_in_order(self):
         """A model turn may carry more than one call; dropping any loses a card the user was shown."""
         transcript = await run_stream(

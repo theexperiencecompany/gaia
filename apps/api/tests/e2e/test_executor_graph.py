@@ -68,7 +68,7 @@ class TestToolsBoundFromTurnOne:
         [
             "plan_tasks",
             "update_tasks",
-            "handoff",
+            "activate_integration",
             "retrieve_tools",
             # spawn_subagent comes from the middleware stack, not
             # initial_tool_ids — it is the only tool here that depends on

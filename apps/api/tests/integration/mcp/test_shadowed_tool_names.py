@@ -1,7 +1,7 @@
 """An MCP server's tool named like a GAIA tool stays reachable, over the real MCP wire.
 
 Dodo Payments' server exposes execute, the name of GAIA's own execute proxy.
-The subagent's tool dict and the execute resolver both key on name, so GAIA's
+The executor's bound tools and the execute resolver both key on name, so GAIA's
 proxy silently replaced the server's tool and the model never saw it.
 """
 
@@ -14,14 +14,11 @@ from langchain_core.utils.function_calling import convert_to_openai_tool
 from mcp.server.fastmcp import FastMCP
 import pytest
 
-from app.agents.core.subagents.base_subagent import build_scoped_tool_dict
-from app.agents.tools.execute.execute_tool import execute as gaia_execute
 from app.agents.tools.execute.resolver import ResolvedTool
 from app.agents.tools.execute.schema_docs import render_tool_doc
 from app.agents.tools.execute.tool_info import tool_contract
-from app.constants.execute import EXECUTE_TOOL_NAME, RETURNS_INLINE_MAX_CHARS
+from app.constants.execute import RETURNS_INLINE_MAX_CHARS
 from app.models.mcp_config import MCPConfig
-from app.services.mcp import mcp_client as mcp_client_module
 from app.services.mcp.mcp_client import MCPClient
 from tests.helpers import serve_asgi
 
@@ -128,21 +125,3 @@ class TestShadowedToolNames:
             result = await renamed.ainvoke({"code": "again"})
 
         assert "ran:again" in str(result)
-
-    async def test_the_subagent_binds_both_the_server_tool_and_gaias_execute(
-        self, dodo_like_server_url: str
-    ) -> None:
-        _, tools = await _connect(dodo_like_server_url)
-        server_execute = next(t for t in tools if t.name == RENAMED_EXECUTE)
-
-        scoped, initial_ids = build_scoped_tool_dict(
-            await mcp_client_module.get_tool_registry(),
-            "dodo",
-            mcp_tools=tools,
-            include_finish_task=False,
-        )
-
-        assert scoped[RENAMED_EXECUTE] is server_execute
-        assert scoped[EXECUTE_TOOL_NAME].name == gaia_execute.name
-        assert scoped[EXECUTE_TOOL_NAME] is not server_execute
-        assert len(initial_ids) == len(set(initial_ids))
