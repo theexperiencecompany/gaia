@@ -39,7 +39,7 @@ PNPM_OVERRIDES_BUMP = "97a05f7e7c"  # #1565: package.json overrides + pnpm-lock.
 UV_LOCK_BUMP = "d980793bca"  # #1564: pyproject.toml + uv.lock
 
 
-# The code projects' own targets; the .github/jobs projects are pinned by test_check_scopes.
+# The code projects' own targets; the .github/jobs projects are pinned by test_workflow_nx_gates.
 CODE_TARGETS = ("build", "lint", "test", "type-check")
 
 

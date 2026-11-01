@@ -158,9 +158,9 @@ Four layers, from cheap to precise, all decided in the one `detect` job:
    affected. There is no path regex in ci.yml: to change what runs a check,
    change its target's inputs. `scripts/ci/tests/test_workflow_nx_gates.py`
    fails on a gate naming a task nx is never asked about and on a check with
-   no gate; `test_check_scopes.py` holds every lane's `verify-lanes.json` scope
-   equal to its task's inputs; `test_nx_affected.py` pins what the manifests
-   and lockfiles select. Only `repo-policy`'s gitleaks runs on every change.
+   no gate; `test_hook_scopes.py` holds the prek hooks that copy a check's
+   files (api-types, analytics-types) equal to its task's inputs;
+   `test_nx_affected.py` pins what the manifests and lockfiles select. Only `repo-policy`'s gitleaks runs on every change.
    A job or check skipped this way counts as PASSING; a failed `detect` fails
    the gate. A workflow-only (`.yml`) PR runs exactly the checks whose inputs
    name `.github` (harness-tests, tool-pins).
@@ -174,17 +174,16 @@ Four layers, from cheap to precise, all decided in the one `detect` job:
    Jobs using it need `fetch-depth: 0` checkouts.
 4. **`verdict.py reuse-plan` in `detect`** — across pushes to the same PR.
    A check whose last pass on this PR (same base, not a manual re-run) is still
-   valid — nothing in the union of its lanes' `verify-lanes.json` scopes and
-   nothing under `.github/`, `scripts/`, `tools/`, `config/`, `patches/`, the
-   repo root or any config manifest (`GLOBAL_INVALIDATORS` in verdict.py)
-   changed between that pass and this run, on the head OR on the base it was
-   merged into — is skipped and labelled `reused`. The pass is read from the
+   valid — nx would not select its task (the lane's `nx` in
+   `verify-lanes.json`) for what changed between that pass and this run, on the
+   head OR on the base it was merged into: the same answer layer 2 gates it on —
+   is skipped and labelled `reused`. The pass is read from the
    check's own `ci / <area> / <check>` commit status, never the job API (a failed
    `continue-on-error` step reports conclusion `success` there). Each plan
    annotates the base tip it validated on its `detect` job
    (`::notice title=reuse-plan base`); a run without that note never anchors.
-   A check needs `ci_check` in the lane table to be reusable; one without it
-   always runs. Anything the plan cannot read means no reuse.
+   A check needs `ci_check` and `nx` in the lane table to be reusable; one
+   without them always runs. `mise ci:local` picks lanes by the same nx tasks. Anything the plan cannot read means no reuse.
 
 **Fail loud is non-negotiable in detection code.** Never
 `nx ... 2>/dev/null || echo ""` — a broken nx invocation must fail the job.
