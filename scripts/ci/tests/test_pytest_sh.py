@@ -196,7 +196,7 @@ exit 2
 """
 
 
-def _suite_seed(tmp_path: Path, sha: str) -> list[str]:
+def _suite_argv(tmp_path: Path, sha: str) -> list[str]:
     rec = tmp_path / f"rec-{sha}"
     rec.mkdir()
     _run_slice(
@@ -206,9 +206,11 @@ def _suite_seed(tmp_path: Path, sha: str) -> list[str]:
         REC=str(rec),
         GITHUB_SHA=sha,
     )
-    return [
-        a for a in (rec / "suite-argv").read_text().splitlines() if a.startswith("--randomly-seed")
-    ]
+    return (rec / "suite-argv").read_text().splitlines()
+
+
+def _suite_seed(tmp_path: Path, sha: str) -> list[str]:
+    return [a for a in _suite_argv(tmp_path, sha) if a.startswith("--randomly-seed")]
 
 
 GNU_TIME = (
@@ -365,3 +367,12 @@ def test_flake_gate_fails_a_full_run_that_collected_nothing(tmp_path: Path) -> N
 
 def test_flake_gate_passes_a_selection_the_markers_deselected(tmp_path: Path) -> None:
     assert _flake_gate_on_exit(tmp_path, 5, FLAKE_GATE_SELECTION="1") == 0
+
+
+@pytest.mark.skipif(
+    not GNU_TIME, reason="the slice runs pytest under GNU time -v, as CI's Linux runners have"
+)
+def test_the_slice_takes_its_markers_and_timeout_from_pytest_ini(tmp_path: Path) -> None:
+    """It overrode addopts and restated -m and --timeout, a second copy pytest.ini could drift from."""
+    argv = _suite_argv(tmp_path, "c" * 40)
+    assert not [a for a in argv if a.startswith(("--override-ini", "--timeout")) or a == "-m"], argv

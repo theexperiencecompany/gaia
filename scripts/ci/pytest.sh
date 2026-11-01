@@ -176,8 +176,7 @@ cmd_slice() {
     /usr/bin/time -v bash "$SCRIPT_DIR/pytest.sh" flake-gate \
     uv run --frozen pytest -n "$N_SLOTS" --dist worksteal \
     "${TARGETS[@]}" ${EXTRA[@]+"${EXTRA[@]}"} \
-    -m 'not composio and not model_onboarding and not schemathesis' \
-    --tb=short -q --override-ini=addopts=--strict-markers --timeout=300 \
+    --tb=short -q \
     --junitxml="$JUNIT" --durations=30 2>&1 \
     | stdbuf -oL cut -c-20000 | tee "${SCRATCH}/pytest-${SLICE}.time"
   rc=${PIPESTATUS[0]}
@@ -218,7 +217,7 @@ cmd_slice() {
 cmd_shared_suite() {
   cd "$REPO_ROOT/apps/api"
   uv run --frozen pytest ../../libs/shared/py/tests \
-    --tb=short -q --override-ini=addopts=--strict-markers
+    --tb=short -q
   ci_ok "gaia-shared tests: OK"
 }
 

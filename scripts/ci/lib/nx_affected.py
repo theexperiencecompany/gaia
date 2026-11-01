@@ -96,7 +96,36 @@ def release_groups(selection: Selection) -> list[str]:
     """Name the nx.json release groups with an affected image, the images build.yml publishes."""
     groups = json.loads(NX_JSON.read_text())["release"]["groups"]
     built = {_project(task) for task in selection.tasks if _target(task) == "docker:build"}
-    return sorted(name for name, group in groups.items() if built.intersection(group["projects"]))
+    if not built:
+        return []
+
+    def members(patterns: list[str]) -> list[str]:
+        # nx resolves a group's projects (names or tag: patterns) the way -p does.
+        out = _json_after_banner(
+            _nx("show", "projects", "--projects", ",".join(patterns), "--json"), "["
+        )
+        assert isinstance(out, list)
+        return [str(p) for p in out]
+
+    return sorted(
+        name for name, group in groups.items() if built.intersection(members(group["projects"]))
+    )
+
+
+def full_scan(selection: Selection) -> list[str]:
+    """Name the tasks nx reached through something other than their source files.
+
+    A config, manifest or CI-harness change selects a check without changing
+    any file it would be scoped to, so that check must scan the whole tree.
+    """
+    return sorted(
+        task
+        for task, reasons in selection.tasks.items()
+        if any(
+            r.get("kind") != "input-file" or not str(r.get("pattern", "")).startswith("**/*.")
+            for r in reasons
+        )
+    )
 
 
 def _first_reason(reasons: list[dict[str, str]]) -> str:
@@ -125,6 +154,7 @@ def main() -> int:
         "projects": json.dumps(selection.projects),
         "typescript_projects": typescript_projects(selection),
         "release_groups": json.dumps(release_groups(selection)),
+        "full_scan": json.dumps(full_scan(selection)),
     }
     lines = "".join(f"{key}={value}\n" for key, value in outputs.items())
     sink = os.environ.get("GITHUB_OUTPUT")

@@ -9,9 +9,9 @@
     "semgrep": {
       "executor": "nx:noop",
       "inputs": [
-        "{workspaceRoot}/**/*.py",
         "{workspaceRoot}/tools/semgrep/**/*",
         "ciHarness",
+        "{workspaceRoot}/**/*.py",
         {
           "externalDependencies": []
         }

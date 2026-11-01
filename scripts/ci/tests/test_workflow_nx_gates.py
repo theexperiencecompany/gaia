@@ -205,3 +205,32 @@ def test_detect_selects_nothing_for_prose(path: str) -> None:
 )
 def test_release_groups_name_the_images_to_publish(path: str, groups: list[str]) -> None:
     assert nx_affected.release_groups(nx_affected.select([f"--files={path}"])) == groups
+
+
+@pytest.mark.parametrize(
+    ("path", "task", "full"),
+    [
+        # ruff's config changed: every file is re-linted, not the zero .py files the diff holds.
+        ("pyproject.toml", "lint-python:ruff", True),
+        ("biome.json", "lint-node:biome", True),
+        ("apps/api/app/main.py", "lint-python:ruff", False),
+    ],
+)
+def test_a_check_reached_through_its_config_scans_everything(
+    path: str, task: str, full: bool
+) -> None:
+    assert (task in nx_affected.full_scan(nx_affected.select([f"--files={path}"]))) is full
+
+
+def test_a_check_lists_its_config_before_its_source_globs() -> None:
+    """Nx names the first input a file matches; biome.json read as a source file scoped biome to itself."""
+    for path in nx_affected.JOBS_DIR.glob("*/project.json"):
+        for target, spec in json.loads(path.read_text())["targets"].items():
+            kinds = [
+                "src" if str(i).startswith("{workspaceRoot}/**/*.") else "cfg"
+                for i in spec["inputs"]
+                if isinstance(i, str)
+            ]
+            assert kinds == sorted(kinds), (
+                f"{path.parent.name}:{target} lists a config input after a source glob"
+            )

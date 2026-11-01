@@ -85,9 +85,9 @@
     "api-schema-types": {
       "executor": "nx:noop",
       "inputs": [
-        "{workspaceRoot}/**/*.{ts,tsx}",
         "{workspaceRoot}/apps/api/openapi.json",
         "ciHarness",
+        "{workspaceRoot}/**/*.{ts,tsx}",
         {
           "externalDependencies": []
         }
@@ -96,10 +96,10 @@
     "observability-evlog-tests": {
       "executor": "nx:noop",
       "inputs": [
-        "{workspaceRoot}/**/*.py",
         "{workspaceRoot}/tools/evlog_map/**/*",
         "{workspaceRoot}/tools/logcheck/**/*",
         "ciHarness",
+        "{workspaceRoot}/**/*.py",
         {
           "externalDependencies": []
         }
@@ -108,10 +108,10 @@
     "observability-map": {
       "executor": "nx:noop",
       "inputs": [
-        "{workspaceRoot}/**/*.py",
         "{workspaceRoot}/apps/bots/**/*",
         "{workspaceRoot}/libs/shared/ts/**/*",
         "ciHarness",
+        "{workspaceRoot}/**/*.py",
         {
           "externalDependencies": []
         }
@@ -120,8 +120,8 @@
     "observability-ratchet": {
       "executor": "nx:noop",
       "inputs": [
-        "{workspaceRoot}/**/*.py",
         "ciHarness",
+        "{workspaceRoot}/**/*.py",
         {
           "externalDependencies": []
         }
@@ -141,8 +141,8 @@
     "wide-event-conformance": {
       "executor": "nx:noop",
       "inputs": [
-        "{workspaceRoot}/**/*.{py,ts,tsx}",
         "ciHarness",
+        "{workspaceRoot}/**/*.{py,ts,tsx}",
         {
           "externalDependencies": []
         }
@@ -151,12 +151,12 @@
     "dead-code": {
       "executor": "nx:noop",
       "inputs": [
-        "{workspaceRoot}/**/*.{ts,tsx,py}",
         "{workspaceRoot}/**/package.json",
         "{workspaceRoot}/**/pyproject.toml",
         "{workspaceRoot}/scripts/dead-code-check.sh",
         "{workspaceRoot}/config/knip.config.ts",
         "ciHarness",
+        "{workspaceRoot}/**/*.{ts,tsx,py}",
         {
           "externalDependencies": []
         }

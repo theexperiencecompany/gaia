@@ -9,10 +9,10 @@
     "ruff": {
       "executor": "nx:noop",
       "inputs": [
-        "{workspaceRoot}/**/*.py",
         "{workspaceRoot}/**/pyproject.toml",
         "{workspaceRoot}/**/ruff.toml",
         "ciHarness",
+        "{workspaceRoot}/**/*.py",
         {
           "externalDependencies": []
         }
@@ -21,9 +21,9 @@
     "custom-lints": {
       "executor": "nx:noop",
       "inputs": [
-        "{workspaceRoot}/**/*.py",
         "{workspaceRoot}/tools/lints/**/*",
         "ciHarness",
+        "{workspaceRoot}/**/*.py",
         {
           "externalDependencies": []
         }
@@ -54,10 +54,10 @@
     "plr-complexity": {
       "executor": "nx:noop",
       "inputs": [
-        "{workspaceRoot}/**/*.py",
         "{workspaceRoot}/tools/lints/check_plr_complexity.py",
         "{workspaceRoot}/tools/lints/plr_complexity_baseline.txt",
         "ciHarness",
+        "{workspaceRoot}/**/*.py",
         {
           "externalDependencies": []
         }
@@ -66,12 +66,12 @@
     "typed-boundaries": {
       "executor": "nx:noop",
       "inputs": [
-        "{workspaceRoot}/**/*.py",
         "{workspaceRoot}/tools/lints/check_typed_boundaries.py",
         "{workspaceRoot}/tools/lints/typed_boundaries_baseline.txt",
         "{workspaceRoot}/tools/lints/_ratchet.py",
         "{workspaceRoot}/tools/lints/_common.py",
         "ciHarness",
+        "{workspaceRoot}/**/*.py",
         {
           "externalDependencies": []
         }
@@ -80,9 +80,9 @@
     "xenon": {
       "executor": "nx:noop",
       "inputs": [
-        "{workspaceRoot}/**/*.py",
         "{workspaceRoot}/pyproject.toml",
         "ciHarness",
+        "{workspaceRoot}/**/*.py",
         {
           "externalDependencies": []
         }
@@ -91,9 +91,9 @@
     "interrogate": {
       "executor": "nx:noop",
       "inputs": [
-        "{workspaceRoot}/**/*.py",
         "{workspaceRoot}/pyproject.toml",
         "ciHarness",
+        "{workspaceRoot}/**/*.py",
         {
           "externalDependencies": []
         }
@@ -102,9 +102,9 @@
     "bandit": {
       "executor": "nx:noop",
       "inputs": [
-        "{workspaceRoot}/**/*.py",
         "{workspaceRoot}/pyproject.toml",
         "ciHarness",
+        "{workspaceRoot}/**/*.py",
         {
           "externalDependencies": []
         }
@@ -113,10 +113,10 @@
     "mypy": {
       "executor": "nx:noop",
       "inputs": [
-        "{workspaceRoot}/**/*.py",
         "{workspaceRoot}/**/pyproject.toml",
         "{workspaceRoot}/uv.lock",
         "ciHarness",
+        "{workspaceRoot}/**/*.py",
         {
           "externalDependencies": []
         }
@@ -125,10 +125,10 @@
     "ignore-staleness": {
       "executor": "nx:noop",
       "inputs": [
-        "{workspaceRoot}/**/*.py",
         "{workspaceRoot}/**/pyproject.toml",
         "{workspaceRoot}/tools/lints/**/*",
         "ciHarness",
+        "{workspaceRoot}/**/*.py",
         {
           "externalDependencies": []
         }

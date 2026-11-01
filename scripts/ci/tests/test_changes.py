@@ -322,3 +322,20 @@ def test_base_rev_refuses_a_base_it_cannot_resolve(repo: Path) -> None:
 
     assert proc.returncode != 0
     assert "no-such-branch" in proc.stderr
+
+
+def test_files_for_a_task_nx_marked_for_a_full_scan_is_full(repo: Path) -> None:
+    """A config change selects the check but changes none of the files it reads; scoping it to them skipped it."""
+    proc = _run(
+        repo, "files", "--task", "lint-python:ruff", "py", GAIA_PR_BASE="master",
+        FULL_SCAN_TASKS='["lint-python:ruff"]',
+    )  # fmt: skip
+    assert proc.stdout.strip() == "__FULL__", proc.stderr
+
+
+def test_files_for_a_task_scoped_to_its_sources_stays_scoped(repo: Path) -> None:
+    proc = _run(
+        repo, "files", "--task", "lint-python:ruff", "py", GAIA_PR_BASE="master",
+        FULL_SCAN_TASKS='["lint-node:biome"]',
+    )  # fmt: skip
+    assert proc.stdout.strip() != "__FULL__", proc.stderr

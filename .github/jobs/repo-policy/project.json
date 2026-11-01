@@ -9,8 +9,8 @@
     "suppression-hygiene": {
       "executor": "nx:noop",
       "inputs": [
-        "{workspaceRoot}/**/*.{py,toml,lock,ts,tsx,js,jsx,mjs,cjs,json,jsonc,css,yaml}",
         "ciHarness",
+        "{workspaceRoot}/**/*.{py,toml,lock,ts,tsx,js,jsx,mjs,cjs,json,jsonc,css,yaml}",
         {
           "externalDependencies": []
         }

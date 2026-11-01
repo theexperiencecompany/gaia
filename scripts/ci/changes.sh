@@ -9,9 +9,11 @@
 #   base-rev                 The git revision $GAIA_PR_BASE names: origin/<branch>
 #                            for a branch, the commit itself for a sha. Every
 #                            diff against the base goes through it.
-#   files <ext> [<ext> ...]  The changed files for a lane to scope to, filtered
-#                            to those extensions. See the contract below.
-#   py-source                Like `files py`, but drops the paths the Python
+#   files [--task <t>] <ext> [<ext> ...]
+#                            The changed files for a lane to scope to, filtered
+#                            to those extensions; __FULL__ when nx reached task
+#                            <t> through its config. See the contract below.
+#   py-source [--task <t>]   Like `files py`, but drops the paths the Python
 #                            tools exclude in a full scan (tests, scripts,
 #                            migrations, …). Same three-state contract.
 #   affected                 Which CI tasks does this change reach? Asks
@@ -157,6 +159,19 @@ cmd_files() {
 
   FULL_SENTINEL="__FULL__"
 
+  # --task <project:target>: when detect's nx answer reached that check through
+  # its config or the CI harness rather than a source file ($FULL_SCAN_TASKS,
+  # detect's full_scan), the change touches none of the files it would be
+  # scoped to, so it scans the whole tree.
+  if [[ "${1:-}" == "--task" ]]; then
+    local task="${2:?changes.sh files --task needs a project:target}"
+    shift 2
+    if [[ "${FULL_SCAN_TASKS:-}" == *"\"$task\""* ]]; then
+      printf '%s\n' "$FULL_SENTINEL"
+      exit 0
+    fi
+  fi
+
   # Push / non-PR event inside CI: no base ref to diff against → signal full scan.
   # The GITHUB_ACTIONS guard matters: on a push to master, HEAD *is* origin/master,
   # so falling through to the base-ref diff below would compare the tree against
@@ -238,7 +253,7 @@ cmd_py_source() {
   # A subshell, so the `exit 0` cmd_files uses for its two sentinel states ends
   # the substitution rather than this script.
   local FILES
-  FILES="$(cmd_files py)"
+  FILES="$(cmd_files "$@" py)"
 
   if [[ "$FILES" == "__FULL__" || -z "$FILES" ]]; then
     printf '%s\n' "$FILES"
@@ -300,7 +315,7 @@ cmd_affected() {
 }
 
 usage() {
-  sed -n '2,21p' "$0" >&2
+  sed -n '2,23p' "$0" >&2
 }
 
 main() {

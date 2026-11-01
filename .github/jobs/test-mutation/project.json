@@ -9,9 +9,9 @@
     "test-mutation": {
       "executor": "nx:noop",
       "inputs": [
-        "{workspaceRoot}/**/*.py",
         "{workspaceRoot}/apps/api/tests/**/*",
         "ciHarness",
+        "{workspaceRoot}/**/*.py",
         {
           "externalDependencies": []
         }

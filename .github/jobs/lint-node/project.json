@@ -9,10 +9,10 @@
     "biome": {
       "executor": "nx:noop",
       "inputs": [
-        "{workspaceRoot}/**/*.{ts,tsx,js,jsx,mjs,cjs,json,jsonc,css}",
         "{workspaceRoot}/biome.json",
         "{workspaceRoot}/config/biome-rules/**/*",
         "ciHarness",
+        "{workspaceRoot}/**/*.{ts,tsx,js,jsx,mjs,cjs,json,jsonc,css}",
         {
           "externalDependencies": []
         }
@@ -21,12 +21,12 @@
     "deps": {
       "executor": "nx:noop",
       "inputs": [
-        "{workspaceRoot}/**/*.{ts,tsx,js,jsx,json}",
         "{workspaceRoot}/pnpm-lock.yaml",
         "{workspaceRoot}/packages/**/*",
         "{workspaceRoot}/config/.syncpackrc.json",
         "{workspaceRoot}/config/.npmpackagejsonlintrc.json",
         "ciHarness",
+        "{workspaceRoot}/**/*.{ts,tsx,js,jsx,json}",
         {
           "externalDependencies": []
         }
@@ -35,10 +35,10 @@
     "circular": {
       "executor": "nx:noop",
       "inputs": [
-        "{workspaceRoot}/**/*.{ts,tsx,js,jsx}",
         "{workspaceRoot}/biome.json",
         "{workspaceRoot}/config/biome-rules/**/*",
         "ciHarness",
+        "{workspaceRoot}/**/*.{ts,tsx,js,jsx}",
         {
           "externalDependencies": []
         }
@@ -47,8 +47,8 @@
     "file-size": {
       "executor": "nx:noop",
       "inputs": [
-        "{workspaceRoot}/**/*.{ts,tsx,js,jsx,mjs,cjs}",
         "ciHarness",
+        "{workspaceRoot}/**/*.{ts,tsx,js,jsx,mjs,cjs}",
         {
           "externalDependencies": []
         }
@@ -57,8 +57,8 @@
     "types-location": {
       "executor": "nx:noop",
       "inputs": [
-        "{workspaceRoot}/**/*.{ts,tsx,js}",
         "ciHarness",
+        "{workspaceRoot}/**/*.{ts,tsx,js}",
         {
           "externalDependencies": []
         }
@@ -67,8 +67,8 @@
     "doc-comments": {
       "executor": "nx:noop",
       "inputs": [
-        "{workspaceRoot}/**/*.{ts,tsx,js,jsx,mjs,cjs}",
         "ciHarness",
+        "{workspaceRoot}/**/*.{ts,tsx,js,jsx,mjs,cjs}",
         {
           "externalDependencies": []
         }
@@ -77,8 +77,8 @@
     "components-per-file": {
       "executor": "nx:noop",
       "inputs": [
-        "{workspaceRoot}/**/*.tsx",
         "ciHarness",
+        "{workspaceRoot}/**/*.tsx",
         {
           "externalDependencies": []
         }
@@ -110,10 +110,10 @@
     "ts-type-check": {
       "executor": "nx:noop",
       "inputs": [
-        "{workspaceRoot}/**/*.{ts,tsx,js,jsx}",
         "{workspaceRoot}/nx.json",
         "{workspaceRoot}/**/tsconfig*.json",
         "ciHarness",
+        "{workspaceRoot}/**/*.{ts,tsx,js,jsx}",
         {
           "externalDependencies": []
         }
@@ -122,9 +122,9 @@
     "duplicates": {
       "executor": "nx:noop",
       "inputs": [
-        "{workspaceRoot}/**/*.{ts,tsx,js,jsx,py}",
         "{workspaceRoot}/config/.jscpd.json",
         "ciHarness",
+        "{workspaceRoot}/**/*.{ts,tsx,js,jsx,py}",
         {
           "externalDependencies": []
         }
