@@ -253,11 +253,9 @@ def main() -> int:
         if files and any(ln.nx for ln in lanes)
         else {}
     )
-    # The lanes' changes.sh reads the same per-task file lists detect publishes in CI.
-    lane_env = {
-        **os.environ,
-        "TASK_FILES": json.dumps(nx_affected.task_files(nx_affected.Selection(tasks=reached))),
-    }
+    # A lane reads what detect publishes in CI (TASK_FILES, TYPE_CHECK_PROJECTS, …) from the same nx answer.
+    detected = nx_affected.outputs(nx_affected.Selection(tasks=reached))
+    lane_env = {**os.environ, **{key.upper(): value for key, value in detected.items()}}
 
     def matching(ln: Lane) -> list[str]:
         if ln.nx:

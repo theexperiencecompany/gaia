@@ -2,7 +2,6 @@
   "name": "gaia",
   "scripts": {
     "openui:gen-prompt": "tsx scripts/openui/generate-prompt.ts",
-    "quality:all": "pnpm run quality:lint && pnpm run quality:type && pnpm run quality:deps && pnpm run quality:circular && pnpm run quality:size && pnpm run quality:components && pnpm run quality:types-location && pnpm run quality:pkg-json && pnpm run quality:dead && pnpm run quality:publint && pnpm run quality:attw && pnpm run quality:py:ruff && pnpm run quality:py:mypy && pnpm run quality:py:interrogate && pnpm run quality:py:xenon",
     "quality:attw": "pnpm --filter @heygaia/cli build && attw --pack packages/cli --profile node16",
     "quality:circular": "biome lint --only=suspicious/noImportCycles apps/web/src apps/mobile/src apps/desktop/src apps/bots libs/shared/ts/src libs/wake-word/src packages/cli/src",
     "quality:components": "node scripts/ci/checks.mjs components-per-file",
@@ -18,19 +17,13 @@
     "quality:observability-bots": "node scripts/ci/checks.mjs evlog-map-bots --min-score 100",
     "quality:pkg-json": "npmPkgJsonLint . --configFile config/.npmpackagejsonlintrc.json --quiet",
     "quality:publint": "pnpm --filter @heygaia/cli build && publint packages/cli",
-    "quality:py:interrogate": "uv run --frozen --no-build --isolated --only-group lint interrogate -c pyproject.toml apps/api apps/voice-agent libs/shared/py",
-    "quality:py:mypy": "uv run --project apps/api --group backend --group dev mypy apps/api/app libs/shared/py --ignore-missing-imports && UV_PROJECT_ENVIRONMENT=.venv-voice-agent uv run --project apps/voice-agent --group dev mypy apps/voice-agent/src --ignore-missing-imports --cache-dir .mypy_cache/voice-agent",
-    "quality:py:ruff": "uv run --project apps/api --group dev ruff check apps/api apps/voice-agent libs/shared/py",
-    "quality:py:xenon": "uv run --frozen --no-build --isolated --only-group lint xenon --max-absolute F --max-modules E --max-average B apps/api apps/voice-agent libs/shared/py -e 'apps/api/tests/**' -e 'apps/api/scripts/**' -e 'libs/shared/py/tests/**'",
     "quality:size": "node scripts/ci/checks.mjs file-sizes",
-    "quality:type": "nx run-many -t type-check",
     "quality:types-location": "node scripts/ci/checks.mjs types-location",
     "tokens": "pnpm run tokens:export && pnpm run tokens:build",
     "tokens:build": "style-dictionary build",
     "tokens:check": "design.md export --format dtcg DESIGN.md | diff - config/design.tokens.json",
     "tokens:export": "design.md export --format dtcg DESIGN.md > config/design.tokens.json",
     "doctor": "npx react-doctor@0.9.12",
-    "quality:type:tsc": "GAIA_TS_CHECKER=tsc nx run-many -t type-check --exclude=api,voice-agent",
     "quality:framework-pair": "node scripts/ci/checks.mjs framework-pair"
   },
   "devDependencies": {

@@ -88,7 +88,7 @@
     "type-check": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "UV_PROJECT_ENVIRONMENT=../../.venv-voice-agent uv run --group dev mypy src --ignore-missing-imports",
+        "command": "UV_PROJECT_ENVIRONMENT=../../.venv-voice-agent uv run --frozen --group dev mypy src --ignore-missing-imports --cache-dir \"${MYPY_CACHE_DIR:-.mypy_cache}/voice-agent\"",
         "cwd": "{projectRoot}"
       },
       "cache": true,

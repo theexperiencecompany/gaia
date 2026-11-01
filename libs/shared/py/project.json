@@ -31,6 +31,21 @@
         "command": "uv run --frozen --no-build --isolated --only-group lint ruff format .",
         "cwd": "{projectRoot}"
       }
+    },
+    "type-check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run --project apps/api --frozen --group backend --group dev mypy libs/shared/py --ignore-missing-imports"
+      },
+      "cache": true,
+      "inputs": [
+        "default",
+        "{workspaceRoot}/apps/api/pyproject.toml",
+        "python",
+        {
+          "externalDependencies": []
+        }
+      ]
     }
   }
 }

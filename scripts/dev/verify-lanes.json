@@ -1,5 +1,5 @@
 {
-  "$comment": "GAIA verify lanes — local mirror of CI quality gates (.github/workflows/ci.yml). name matches the CI job/step (rows may be step-granular). ci_check = the ci.yml check (one step of a grouped job, posted as the `ci / <area> / <check>` commit status) that runs this lane on a PR push; `verdict.py reuse-plan` reuses a check's last pass on the PR while nx would not select its task for what changed since, so a lane without ci_check (or without nx) always runs. Only fast-tier checks carry one: reuse applies to pull_request runs only, and the audits and the live PostHog check are never reused. nx = the Nx task whose inputs decide whether this lane runs, in CI, in `verdict.py reuse-plan` and in `mise ci:local` alike (.github/jobs/<job>/project.json, or a real project for gaia-connect and alert-rules). A lane with no nx task has scope instead: a Python regex over changed paths; it runs if ANY file matches (--all overrides). heavy=true needs --with-heavy. timeout_s hard cap; expiry -> status=timeout (exit 2). require_cmd: any missing -> skipped(missing-tool). require_env: an unset credential skips the lane in automatic selection (reason printed), while --only <lane> still runs it so it fails loud. command runs at repo root; a lane whose nx task is runnable has none, and ci:local runs `nx run <task>`, the line CI's step runs (test_workflow_nx_gates.py holds the two equal). Edit a workflow lane and this file in the SAME commit. INTENTIONALLY NOT MIRRORED (CI-only): build, build-images, coverage (combines the unit/integration/bridge slices; fail-under 80 on master, report-only on PRs), docker-image, regression-proof, validate-release-manifest, test-harness-tools, test-python (the full pytest suite is CI's job; locally run files with `mise test:one`), trivy-scan (advisory), changelog-sync (auto-fix PR job). Known deltas: alert-rules needs locally installed pint/promtool (CI pins v0.87.0/v3.1.0 from release tarballs); whole-repo scopes are stricter than CI's changed-file scoping (safe direction). Post-merge note: master pinned bandit/xenon/interrogate and split ignore-ratchet into ignore-whys + ignore-staleness + tool-pins (2026-08 merge of origin/master).",
+  "$comment": "GAIA verify lanes \u2014 local mirror of CI quality gates (.github/workflows/ci.yml). name matches the CI job/step (rows may be step-granular). ci_check = the ci.yml check (one step of a grouped job, posted as the `ci / <area> / <check>` commit status) that runs this lane on a PR push; `verdict.py reuse-plan` reuses a check's last pass on the PR while nx would not select its task for what changed since, so a lane without ci_check (or without nx) always runs. Only fast-tier checks carry one: reuse applies to pull_request runs only, and the audits and the live PostHog check are never reused. nx = the Nx task whose inputs decide whether this lane runs, in CI, in `verdict.py reuse-plan` and in `mise ci:local` alike (.github/jobs/<job>/project.json, or a real project for gaia-connect and alert-rules). A lane with no nx task has scope instead: a Python regex over changed paths; it runs if ANY file matches (--all overrides). heavy=true needs --with-heavy. timeout_s hard cap; expiry -> status=timeout (exit 2). require_cmd: any missing -> skipped(missing-tool). require_env: an unset credential skips the lane in automatic selection (reason printed), while --only <lane> still runs it so it fails loud. command runs at repo root; a lane whose nx task is runnable has none, and ci:local runs `nx run <task>`, the line CI's step runs (test_workflow_nx_gates.py holds the two equal). Edit a workflow lane and this file in the SAME commit. INTENTIONALLY NOT MIRRORED (CI-only): build, build-images, coverage (combines the unit/integration/bridge slices; fail-under 80 on master, report-only on PRs), docker-image, regression-proof, validate-release-manifest, test-harness-tools, test-python (the full pytest suite is CI's job; locally run files with `mise test:one`), trivy-scan (advisory), changelog-sync (auto-fix PR job). Known deltas: alert-rules runs pint/promtool from docker images when they are not installed (same versions, tools/alert-rules/tool-versions.env); whole-repo scopes are stricter than CI's changed-file scoping (safe direction). Post-merge note: master pinned bandit/xenon/interrogate and split ignore-ratchet into ignore-whys + ignore-staleness + tool-pins (2026-08 merge of origin/master).",
   "schema_version": 1,
   "lanes": [
     {
@@ -8,8 +8,7 @@
       "ci_check": "biome",
       "heavy": false,
       "timeout_s": 300,
-      "require_cmd": [],
-      "command": "node scripts/ci/checks.mjs biome"
+      "require_cmd": []
     },
     {
       "name": "deps",
@@ -17,8 +16,7 @@
       "ci_check": "deps",
       "heavy": false,
       "timeout_s": 120,
-      "require_cmd": [],
-      "command": "pnpm run quality:deps && pnpm run quality:pkg-json"
+      "require_cmd": []
     },
     {
       "name": "circular",
@@ -26,8 +24,7 @@
       "ci_check": "circular",
       "heavy": false,
       "timeout_s": 180,
-      "require_cmd": [],
-      "command": "pnpm run quality:circular"
+      "require_cmd": []
     },
     {
       "name": "file-size",
@@ -126,8 +123,7 @@
       "ci_check": "package-hygiene",
       "heavy": false,
       "timeout_s": 600,
-      "require_cmd": [],
-      "command": "pnpm run quality:publint && pnpm run quality:attw"
+      "require_cmd": []
     },
     {
       "name": "go-connect",
@@ -143,8 +139,7 @@
       "ci_check": "type-check",
       "heavy": false,
       "timeout_s": 900,
-      "require_cmd": [],
-      "command": "pnpm exec nx run-many -t type-check --projects=web,desktop,mobile,cli,bot-discord,bot-slack,bot-telegram,bot-whatsapp,bot-imessage"
+      "require_cmd": []
     },
     {
       "name": "suppression-hygiene",
@@ -172,13 +167,36 @@
       "require_cmd": []
     },
     {
+      "name": "python-mypy-api",
+      "nx": "api:type-check",
+      "ci_check": "mypy-api",
+      "heavy": false,
+      "timeout_s": 900,
+      "require_cmd": []
+    },
+    {
+      "name": "python-mypy-shared",
+      "nx": "shared-python:type-check",
+      "ci_check": "mypy-shared",
+      "heavy": false,
+      "timeout_s": 900,
+      "require_cmd": []
+    },
+    {
+      "name": "python-mypy-voice-agent",
+      "nx": "voice-agent:type-check",
+      "ci_check": "mypy-voice-agent",
+      "heavy": false,
+      "timeout_s": 900,
+      "require_cmd": []
+    },
+    {
       "name": "python-mypy",
       "nx": "lint-python:mypy",
       "ci_check": "mypy",
       "heavy": false,
       "timeout_s": 900,
-      "require_cmd": [],
-      "command": "uv run --project apps/api --frozen --group backend --group dev mypy apps/api/app libs/shared/py tools/lints --ignore-missing-imports && python3 scripts/ci/runner.py heal-venv .venv-voice-agent && UV_PROJECT_ENVIRONMENT=.venv-voice-agent uv run --project apps/voice-agent --frozen --group dev mypy apps/voice-agent/src --ignore-missing-imports --cache-dir .mypy_cache/voice-agent && MYPYPATH=scripts/ci:scripts/ci/tests uv run --project apps/api --frozen --group backend --group dev mypy --explicit-package-bases scripts/ci --ignore-missing-imports --cache-dir .mypy_cache/scripts-ci"
+      "require_cmd": []
     },
     {
       "name": "custom-lints",
@@ -323,8 +341,7 @@
       "ci_check": "alert-rules",
       "heavy": true,
       "timeout_s": 600,
-      "require_cmd": ["pint", "promtool"],
-      "command": "uv run --no-build tools/alert-rules/extract_promql.py -o tools/alert-rules/gaia-rules.yaml --test-dir tools/alert-rules/tests && pint --no-color --offline --config config/pint.hcl lint tools/alert-rules/gaia-rules.yaml && promtool check rules tools/alert-rules/gaia-rules.yaml && promtool test rules tools/alert-rules/tests/*.yaml"
+      "require_cmd": []
     },
     {
       "name": "gitleaks",

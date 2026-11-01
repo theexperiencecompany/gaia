@@ -1441,6 +1441,9 @@ CHECK_AREAS: dict[str, Area] = {
         (
             "ruff",
             "mypy",
+            "mypy-api",
+            "mypy-shared",
+            "mypy-voice-agent",
             "custom-lints",
             "lint-imports",
             "bandit",

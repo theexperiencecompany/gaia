@@ -49,8 +49,7 @@ JOB_PROJECTS = {p.parent.name for p in nx_affected.JOBS_DIR.glob("*/project.json
 REQUESTED = set(nx_affected.job_targets()) | set(nx_affected.CODE_TARGETS)
 
 
-@pytest.fixture(scope="module")
-def jobs() -> dict[str, Any]:
+def _gating_jobs() -> dict[str, Any]:
     """Every job of every workflow that gates on detect's tasks, by job id."""
     found: dict[str, Any] = {}
     for path in sorted(WORKFLOWS.glob("*.yml")):
@@ -58,6 +57,11 @@ def jobs() -> dict[str, Any]:
         if "outputs.tasks" in text:
             found |= mapping(yaml.safe_load(text))["jobs"]
     return found
+
+
+@pytest.fixture(scope="module")
+def jobs() -> dict[str, Any]:
+    return _gating_jobs()
 
 
 def _gated_tasks(job: dict[str, Any]) -> list[tuple[str | None, str]]:
@@ -252,23 +256,44 @@ def test_a_check_lists_its_config_before_its_source_globs() -> None:
 
 
 def _runnable_targets() -> dict[str, dict[str, str]]:
+    """Every nx:run-commands target, its cwd resolved to the repo-relative path a step names."""
+    manifests = subprocess.run(
+        ["git", "ls-files", "*project.json"],
+        cwd=nx_affected.REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split()
     out = {}
-    for path in nx_affected.JOBS_DIR.glob("*/project.json"):
-        project = json.loads(path.read_text())
-        for target, spec in project["targets"].items():
-            if spec.get("executor") == "nx:run-commands":
-                out[f"{project['name']}:{target}"] = spec["options"]
+    for manifest in manifests:
+        project = json.loads((nx_affected.REPO_ROOT / manifest).read_text())
+        root = str(Path(manifest).parent)
+        for target, spec in project.get("targets", {}).items():
+            if spec.get("executor") == "nx:run-commands" and "command" in spec.get("options", {}):
+                options = dict(spec["options"])
+                if "cwd" in options:
+                    options["cwd"] = options["cwd"].replace("{projectRoot}", root)
+                out[f"{project['name']}:{target}"] = options
     return out
 
 
-@pytest.mark.parametrize("task", sorted(_runnable_targets()))
-def test_the_ci_step_runs_its_tasks_command(task: str, jobs: dict[str, Any]) -> None:
-    """One command per check: CI's step and `nx run` (what mise ci:local runs) must be the same line."""
-    options = _runnable_targets()[task]
-    steps = [
+def _gated_steps(jobs: dict[str, Any], task: str) -> list[dict[str, Any]]:
+    return [
         s for job in jobs.values() for s in job.get("steps", [])
         if f"'{task}'" in str(s.get("if", "")) and "run" in s
     ]  # fmt: skip
+
+
+def _ci_run_tasks() -> list[str]:
+    gating = _gating_jobs()
+    return sorted(t for t in _runnable_targets() if _gated_steps(gating, t))
+
+
+@pytest.mark.parametrize("task", _ci_run_tasks())
+def test_the_ci_step_runs_its_tasks_command(task: str, jobs: dict[str, Any]) -> None:
+    """One command per check: CI's step and `nx run` (what mise ci:local runs) must be the same line."""
+    options = _runnable_targets()[task]
+    steps = _gated_steps(jobs, task)
     # A background check's step spawns its CHECK; the command is that, not the spawn.
     ran = [
         (
@@ -279,7 +304,8 @@ def test_the_ci_step_runs_its_tasks_command(task: str, jobs: dict[str, Any]) -> 
         )
         for s in steps
     ]
-    assert ran == [(options["command"], options.get("cwd"))]
+    # Other steps on the same gate only prepare it (install pint, heal a venv).
+    assert ran.count((options["command"], options.get("cwd"))) == 1, ran
 
 
 def test_a_lane_with_a_runnable_task_has_no_command_of_its_own() -> None:

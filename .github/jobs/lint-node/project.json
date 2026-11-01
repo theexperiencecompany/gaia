@@ -7,7 +7,7 @@
   },
   "targets": {
     "biome": {
-      "executor": "nx:noop",
+      "executor": "nx:run-commands",
       "inputs": [
         "{workspaceRoot}/biome.json",
         "{workspaceRoot}/config/biome-rules/**/*",
@@ -16,10 +16,14 @@
         {
           "externalDependencies": []
         }
-      ]
+      ],
+      "options": {
+        "command": "bash scripts/ci/changes.sh scoped --task lint-node:biome --ext \"ts tsx js jsx json jsonc css\" --env -- node scripts/ci/checks.mjs biome"
+      },
+      "cache": false
     },
     "deps": {
-      "executor": "nx:noop",
+      "executor": "nx:run-commands",
       "inputs": [
         "{workspaceRoot}/pnpm-lock.yaml",
         "{workspaceRoot}/packages/**/*",
@@ -30,10 +34,14 @@
         {
           "externalDependencies": []
         }
-      ]
+      ],
+      "options": {
+        "command": "pnpm run quality:deps && pnpm run quality:pkg-json"
+      },
+      "cache": false
     },
     "circular": {
-      "executor": "nx:noop",
+      "executor": "nx:run-commands",
       "inputs": [
         "{workspaceRoot}/biome.json",
         "{workspaceRoot}/config/biome-rules/**/*",
@@ -42,7 +50,11 @@
         {
           "externalDependencies": []
         }
-      ]
+      ],
+      "options": {
+        "command": "pnpm run quality:circular"
+      },
+      "cache": false
     },
     "file-size": {
       "executor": "nx:run-commands",
@@ -101,7 +113,7 @@
       ]
     },
     "package-hygiene": {
-      "executor": "nx:noop",
+      "executor": "nx:run-commands",
       "inputs": [
         "{workspaceRoot}/packages/cli/**/*",
         "{workspaceRoot}/pnpm-lock.yaml",
@@ -109,7 +121,11 @@
         {
           "externalDependencies": []
         }
-      ]
+      ],
+      "options": {
+        "command": "pnpm run quality:publint && pnpm run quality:attw"
+      },
+      "cache": false
     },
     "pnpm-audit": {
       "executor": "nx:run-commands",
@@ -128,7 +144,7 @@
       ]
     },
     "ts-type-check": {
-      "executor": "nx:noop",
+      "executor": "nx:run-commands",
       "inputs": [
         "{workspaceRoot}/nx.json",
         "{workspaceRoot}/**/tsconfig*.json",
@@ -137,7 +153,11 @@
         {
           "externalDependencies": []
         }
-      ]
+      ],
+      "options": {
+        "command": "pnpm exec nx run-many -t type-check --projects=\"${TYPE_CHECK_PROJECTS:?no TypeScript project type-check is affected (detect and mise ci:local set it)}\""
+      },
+      "cache": false
     },
     "duplicates": {
       "executor": "nx:noop",

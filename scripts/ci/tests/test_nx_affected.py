@@ -68,7 +68,8 @@ def affected(*args: str) -> set[str]:
         ("pyproject.toml", PYTHON),
         ("libs/pyproject.toml", PYTHON),
         ("libs/shared/py/__init__.py", PYTHON),
-        ("apps/api/pyproject.toml", {"api"}),
+        # shared-python's mypy runs in the API's environment.
+        ("apps/api/pyproject.toml", {"api", "shared-python"}),
         ("apps/api/app/main.py", {"api"}),
         ("apps/voice-agent/pyproject.toml", {"voice-agent"}),
         ("docs/introduction.mdx", set()),

@@ -195,6 +195,8 @@ jobs:
       # `changes.sh files --task` hands a check exactly these.
       task_files: ${{ steps.affected.outputs.task_files }}
       typescript_projects: ${{ steps.affected.outputs.typescript_projects }}
+      # The TS projects whose type-check nx says is affected: lint-node runs exactly these.
+      type_check_projects: ${{ steps.affected.outputs.type_check_projects }}
       # The test-python matrices, from the one slice definition
       # (scripts/ci/lib/test-slices.json), cut to this run's tier.
       # Slice NAMES (the matrix value, so a job row reads `test-python
@@ -331,6 +333,7 @@ jobs:
     # workflow-level `env:` cannot read `needs`.
     env:
       TASK_FILES: ${{ needs.detect.outputs.task_files }}
+      TYPE_CHECK_PROJECTS: ${{ needs.detect.outputs.type_check_projects }}
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
     # The checks run serially except jscpd; type-check alone was capped at 15.
     timeout-minutes: 30
@@ -359,49 +362,7 @@ jobs:
         continue-on-error: true
         if: contains(fromJSON(needs.detect.outputs.tasks), 'lint-node:biome') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'biome')
         shell: python3 scripts/ci/verdict.py check -- bash --noprofile --norc -eo pipefail {0}
-        run: |
-          # shellcheck source=scripts/ci/lib/log.sh
-          source scripts/ci/lib/log.sh
-          echo "::group::Biome check"
-          # biome.json's `files.includes` is the one source of what biome checks;
-          # `checks.mjs biome` is the one decision, shared with `mise ci:local`.
-          FILES=$(scripts/ci/changes.sh files --task lint-node:biome ts tsx js jsx json jsonc css)
-          if [ "$FILES" = "__FULL__" ]; then
-            FILES=""
-            FULL=1
-          fi
-          if [ -z "$FILES" ] && [ -z "${FULL:-}" ]; then
-            echo "::endgroup::"
-            ci_verdict --lane lint-node/biome --status skip \
-              --summary "no changed TS/JS/JSON/CSS file biome.json includes"
-            exit 0
-          fi
-          # One run, captured then inspected — never `biome | grep -q`: grep
-          # closes the pipe on its first match, SIGPIPE-kills biome, and the
-          # false exit code under pipefail makes the gate below report a pass.
-          BIOME_STATUS=0
-          BIOME_OUT=$(CHANGED_FILES="$FILES" node scripts/ci/checks.mjs biome 2>&1) || BIOME_STATUS=$?
-          echo "$BIOME_OUT"
-          echo "::endgroup::"
-          # The exit code decides; the output only picks the summary line.
-          printf '%s\n' "$BIOME_OUT" \
-            | python3 scripts/ci/verdict.py collect --into "$RUNNER_TEMP/biome.jsonl"
-          FINDINGS=$(wc -l < "$RUNNER_TEMP/biome.jsonl" 2>/dev/null || echo 0)
-          case "$BIOME_OUT" in
-            *"suppressions/unused"*)
-              ci_verdict_die --lane lint-node/biome --status fail \
-                --summary "a dead biome-ignore no longer masks anything" \
-                --findings "$RUNNER_TEMP/biome.jsonl" \
-                --advice "Delete the suppression comment, or fix what it was suppressing." ;;
-          esac
-          if [ "$BIOME_STATUS" -ne 0 ]; then
-            ci_verdict_die --lane lint-node/biome --status fail \
-              --summary "biome reported $FINDINGS diagnostic(s) (exit $BIOME_STATUS)" \
-              --findings "$RUNNER_TEMP/biome.jsonl" \
-              --advice "Reproduce and auto-fix what is safe: pnpm exec biome check --write <paths>."
-          fi
-          ci_verdict --lane lint-node/biome --status pass \
-            --summary "biome: 0 errors, and no dead biome-ignore"
+        run: bash scripts/ci/changes.sh scoped --task lint-node:biome --ext "ts tsx js jsx json jsonc css" --env -- node scripts/ci/checks.mjs biome
       - &upload-verdict-so-far
         name: Upload the verdicts so far (a check above failed)
         if: always() && env.GAIA_VERDICT_PENDING == '1'
@@ -413,24 +374,13 @@ jobs:
 
       # syncpack, manypkg and npm-package-json-lint name a PACKAGE, not a line,
       # so `check --fallback` pins their output to the manifest the reader has
-      # to open anyway. All three always run.
+      # to open anyway.
       - name: deps — workspace packages agree on versions, topology and package.json shape
         id: deps
         continue-on-error: true
         shell: python3 scripts/ci/verdict.py check --fallback package.json -- bash -e {0}
         if: contains(fromJSON(needs.detect.outputs.tasks), 'lint-node:deps') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'deps')
-        run: |
-          rc=0
-          echo "::group::syncpack lint"
-          pnpm exec syncpack lint --config config/.syncpackrc.json || rc=1
-          echo "::endgroup::"
-          echo "::group::manypkg check"
-          pnpm exec manypkg check || rc=1
-          echo "::endgroup::"
-          echo "::group::package.json lint"
-          pnpm run quality:pkg-json || rc=1
-          echo "::endgroup::"
-          exit $rc
+        run: pnpm run quality:deps && pnpm run quality:pkg-json
       - *upload-verdict-so-far
 
       - name: circular — no circular imports (Biome)
@@ -438,10 +388,7 @@ jobs:
         continue-on-error: true
         shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: contains(fromJSON(needs.detect.outputs.tasks), 'lint-node:circular') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'circular')
-        run: |
-          echo "::group::biome lint --only=suspicious/noImportCycles"
-          pnpm run quality:circular
-          echo "::endgroup::"
+        run: pnpm run quality:circular
       - *upload-verdict-so-far
 
       - name: file-size — per-file line count (default 400, relaxed 700, hard cap 1200)
@@ -481,21 +428,7 @@ jobs:
         continue-on-error: true
         shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: contains(fromJSON(needs.detect.outputs.tasks), 'lint-node:package-hygiene') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'package-hygiene')
-        run: |
-          echo "::group::publint packages/cli"
-          pnpm run quality:publint
-          echo "::endgroup::"
-          echo "::group::attw packages/cli"
-          # Captured, then printed: under `bash -e` a failing substitution
-          # would exit before the output that explains it was shown.
-          rc=0
-          OUTPUT=$(pnpm run quality:attw 2>&1) || rc=$?
-          echo "$OUTPUT"
-          echo "::endgroup::"
-          if grep -q "This package does not contain types" <<<"$OUTPUT"; then
-            echo "attw: OK (packages/cli is a CLI binary — no exported types is expected)"
-          fi
-          exit $rc
+        run: pnpm run quality:publint && pnpm run quality:attw
       - *upload-verdict-so-far
 
       # Never reused: an advisory is published without any commit. On a PR and
@@ -511,21 +444,12 @@ jobs:
         run: bash scripts/ci/audit.sh pnpm
       - *upload-verdict-so-far
 
-      - name: type-check — strict tsrs across every TS workspace
+      - name: type-check — every TS project whose type-check nx says this change reaches
         id: type-check
         continue-on-error: true
         shell: python3 scripts/ci/verdict.py check -- bash -e {0}
-        if: contains(fromJSON(needs.detect.outputs.tasks), 'lint-node:ts-type-check') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'type-check')
-        run: |
-          echo "::group::nx type-check"
-          if [ -n "${GAIA_PR_BASE:-}" ]; then
-            # Python projects excluded: their type-check is mypy, which the
-            # lint-python job runs in its own environment.
-            pnpm exec nx affected -t type-check --base="$(bash scripts/ci/changes.sh base-rev)" --exclude=api,voice-agent
-          else
-            pnpm exec nx run-many -t type-check --projects=web,desktop,mobile,cli,bot-discord,bot-slack,bot-telegram,bot-whatsapp,bot-imessage
-          fi
-          echo "::endgroup::"
+        if: contains(fromJSON(needs.detect.outputs.tasks), 'lint-node:ts-type-check') && needs.detect.outputs.type_check_projects != '' && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'type-check')
+        run: pnpm exec nx run-many -t type-check --projects="${TYPE_CHECK_PROJECTS:?no TypeScript project type-check is affected (detect and mise ci:local set it)}"
       - *upload-verdict-so-far
 
       - name: duplicates — copy-paste detection (jscpd, fails over 3% on changed lines)
@@ -574,7 +498,7 @@ jobs:
   lint-python:
     name: lint-python
     needs: [select-runner, detect]
-    if: ${{ !cancelled() && (contains(fromJSON(needs.detect.outputs.projects), 'lint-python') || contains(fromJSON(needs.detect.outputs.tasks), 'alert-rules:check')) }}
+    if: ${{ !cancelled() && (contains(fromJSON(needs.detect.outputs.projects), 'lint-python') || contains(fromJSON(needs.detect.outputs.tasks), 'alert-rules:check') || contains(fromJSON(needs.detect.outputs.tasks), 'api:type-check') || contains(fromJSON(needs.detect.outputs.tasks), 'shared-python:type-check') || contains(fromJSON(needs.detect.outputs.tasks), 'voice-agent:type-check')) }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.light) }}
     env:
       TASK_FILES: ${{ needs.detect.outputs.task_files }}
@@ -596,7 +520,7 @@ jobs:
       # installs them, with the dep-marker skip on the box. No services, no
       # Node, no embedding models.
       - uses: ./.github/actions/setup-python-test-env
-        if: contains(fromJSON(needs.detect.outputs.projects), 'lint-python')
+        if: contains(fromJSON(needs.detect.outputs.projects), 'lint-python') || contains(fromJSON(needs.detect.outputs.tasks), 'api:type-check') || contains(fromJSON(needs.detect.outputs.tasks), 'shared-python:type-check') || contains(fromJSON(needs.detect.outputs.tasks), 'voice-agent:type-check')
         with:
           services: "false"
           node: "false"
@@ -690,7 +614,7 @@ jobs:
       # round-trip it through actions/cache (its post-save hung at 0 MB/s on
       # the box and cancelled a passing lane, run 37220487362).
       - name: Point mypy at this runner's persistent cache
-        if: contains(fromJSON(needs.detect.outputs.tasks), 'lint-python:mypy')
+        if: contains(fromJSON(needs.detect.outputs.tasks), 'api:type-check') || contains(fromJSON(needs.detect.outputs.tasks), 'shared-python:type-check') || contains(fromJSON(needs.detect.outputs.tasks), 'voice-agent:type-check') || contains(fromJSON(needs.detect.outputs.tasks), 'lint-python:mypy')
         run: |
           if [ -n "${RUNNER_LOCAL_CACHE:-}" ]; then
             echo "MYPY_CACHE_DIR=$RUNNER_LOCAL_CACHE/mypy/$RUNNER_NAME" >> "$GITHUB_ENV"
@@ -698,7 +622,7 @@ jobs:
             echo "MYPY_CACHE_DIR=$GITHUB_WORKSPACE/.mypy_cache" >> "$GITHUB_ENV"
           fi
       - name: Restore mypy incremental cache
-        if: contains(fromJSON(needs.detect.outputs.tasks), 'lint-python:mypy') && !startsWith(runner.name, 'gaia-home-')
+        if: (contains(fromJSON(needs.detect.outputs.tasks), 'api:type-check') || contains(fromJSON(needs.detect.outputs.tasks), 'shared-python:type-check') || contains(fromJSON(needs.detect.outputs.tasks), 'voice-agent:type-check') || contains(fromJSON(needs.detect.outputs.tasks), 'lint-python:mypy')) && !startsWith(runner.name, 'gaia-home-')
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .mypy_cache
@@ -707,60 +631,52 @@ jobs:
           restore-keys: |
             mypy-${{ runner.os }}-${{ hashFiles('uv.lock') }}-
 
-      - name: mypy — api + voice-agent + shared + lint tooling + CI scripts (staged-strict)
+      # mypy needs the whole module graph, so each Python project is one
+      # type-check task and runs whole when nx says it is affected. Still
+      # uncovered, deliberately and with the cost measured: apps/api/tests
+      # (759 errors), apps/api/scripts (45) and tools/llm-stub (27).
+      - name: mypy-api — apps/api/app (staged-strict)
+        id: mypy-api
+        continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
+        if: contains(fromJSON(needs.detect.outputs.tasks), 'api:type-check') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'mypy-api')
+        working-directory: apps/api
+        run: uv run --frozen --group backend --group dev mypy app --ignore-missing-imports
+      - *upload-verdict-so-far
+
+      - name: mypy-shared — libs/shared/py, under the API's environment
+        id: mypy-shared
+        continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
+        if: contains(fromJSON(needs.detect.outputs.tasks), 'shared-python:type-check') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'mypy-shared')
+        run: uv run --project apps/api --frozen --group backend --group dev mypy libs/shared/py --ignore-missing-imports
+      - *upload-verdict-so-far
+
+      # Its own venv and cache: uv run syncs exactly, so the shared .venv would lose the API's
+      # packages for the next job on this runner, and a shared cache crashed mypy's cache load.
+      # Under the API's environment livekit resolves only partly and reads as Any.
+      - name: Heal the voice-agent venv
+        if: contains(fromJSON(needs.detect.outputs.tasks), 'voice-agent:type-check') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'mypy-voice-agent')
+        run: python3 scripts/ci/runner.py heal-venv .venv-voice-agent
+      - name: mypy-voice-agent — apps/voice-agent/src, in its own environment
+        id: mypy-voice-agent
+        continue-on-error: true
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
+        if: contains(fromJSON(needs.detect.outputs.tasks), 'voice-agent:type-check') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'mypy-voice-agent')
+        working-directory: apps/voice-agent
+        run: UV_PROJECT_ENVIRONMENT=../../.venv-voice-agent uv run --frozen --group dev mypy src --ignore-missing-imports --cache-dir "${MYPY_CACHE_DIR:-.mypy_cache}/voice-agent"
+      - *upload-verdict-so-far
+
+      # scripts/ci has two bases, because that is how the code runs: entrypoints
+      # import `lib.*` from scripts/ci, and the harness tests import their fakes
+      # from scripts/ci/tests (pytest's rootdir insertion).
+      - name: mypy — the lint tooling and the CI scripts
         id: mypy
         continue-on-error: true
         shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: contains(fromJSON(needs.detect.outputs.tasks), 'lint-python:mypy') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'mypy')
-        run: |
-          echo "::group::mypy"
-          # mypy needs the whole module graph per project, so it can't be scoped
-          # to individual changed files. Still uncovered, deliberately and with
-          # the cost measured: apps/api/tests (759 errors), apps/api/scripts (45)
-          # and tools/llm-stub (27). On PRs only the changed project roots are
-          # checked; libs/shared/py is a dependency of both apps, so a change
-          # there pulls both in. voice-agent is checked in its own environment:
-          # under the API's, livekit resolves only partly and reads as Any.
-          FILES=$(scripts/ci/changes.sh files --task lint-python:mypy py)
-          API_TARGETS=""
-          VOICE=""
-          CI_SCRIPTS=""
-          if [ "$FILES" = "__FULL__" ]; then
-            API_TARGETS="apps/api/app libs/shared/py tools/lints"
-            VOICE=1
-            CI_SCRIPTS=1
-          elif [ -n "$FILES" ]; then
-            if grep -q '^libs/shared/py/' <<<"$FILES"; then
-              API_TARGETS="apps/api/app libs/shared/py"
-              VOICE=1
-            else
-              grep -q '^apps/api/' <<<"$FILES"         && API_TARGETS="apps/api/app"
-              grep -q '^apps/voice-agent/' <<<"$FILES" && VOICE=1
-            fi
-            grep -q '^tools/lints/' <<<"$FILES" && API_TARGETS="$API_TARGETS tools/lints"
-            grep -q '^scripts/ci/' <<<"$FILES" && CI_SCRIPTS=1
-          fi
-          if [ -z "$API_TARGETS" ] && [ -z "$VOICE" ] && [ -z "$CI_SCRIPTS" ]; then
-            echo "No tracked Python project changed — skipping."
-          fi
-          if [ -n "$API_TARGETS" ]; then
-            uv run --project apps/api --frozen --group backend --group dev mypy $API_TARGETS --ignore-missing-imports
-          fi
-          if [ -n "$VOICE" ]; then
-            # Its own venv and cache: uv run syncs exactly, so the shared .venv would lose the API's
-            # packages for the next job on this runner, and a shared cache crashed mypy's cache load.
-            python3 scripts/ci/runner.py heal-venv .venv-voice-agent
-            UV_PROJECT_ENVIRONMENT=.venv-voice-agent uv run --project apps/voice-agent --frozen --group dev mypy apps/voice-agent/src --ignore-missing-imports --cache-dir "${MYPY_CACHE_DIR:-.mypy_cache}/voice-agent"
-          fi
-          if [ -n "$CI_SCRIPTS" ]; then
-            # Two bases, because that is how the code runs: entrypoints import
-            # `lib.*` from scripts/ci, and the harness tests import their
-            # fakes from scripts/ci/tests (pytest's rootdir insertion).
-            MYPYPATH=scripts/ci:scripts/ci/tests uv run --project apps/api --frozen --group backend --group dev mypy --explicit-package-bases scripts/ci --ignore-missing-imports --cache-dir "${MYPY_CACHE_DIR:-.mypy_cache}/scripts-ci"
-          fi
-          echo "::endgroup::"
+        run: uv run --project apps/api --frozen --group backend --group dev mypy tools/lints --ignore-missing-imports && MYPYPATH=scripts/ci:scripts/ci/tests uv run --project apps/api --frozen --group backend --group dev mypy --explicit-package-bases scripts/ci --ignore-missing-imports --cache-dir "${MYPY_CACHE_DIR:-.mypy_cache}/scripts-ci"
       - *upload-verdict-so-far
-
 
       - name: ignore-staleness — per-file-ignores entries still mask a finding
         id: ignore-staleness
@@ -799,18 +715,7 @@ jobs:
         continue-on-error: true
         shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         if: contains(fromJSON(needs.detect.outputs.tasks), 'alert-rules:check') && !contains(fromJSON(needs.detect.outputs.reused_checks || '[]'), 'alert-rules')
-        run: |
-          echo "::group::extract (every rule matches the A/B/C shape and has a test)"
-          uv run --no-build tools/alert-rules/extract_promql.py -o tools/alert-rules/gaia-rules.yaml \
-            --test-dir tools/alert-rules/tests
-          echo "::endgroup::"
-          echo "::group::pint lint --offline"
-          pint --no-color --offline --config config/pint.hcl lint tools/alert-rules/gaia-rules.yaml
-          echo "::endgroup::"
-          echo "::group::promtool check rules"
-          promtool check rules tools/alert-rules/gaia-rules.yaml
-          echo "::endgroup::"
-          promtool test rules tools/alert-rules/tests/*.yaml
+        run: bash tools/alert-rules/verify.sh
       - *upload-verdict-so-far
 
       - name: Post one commit status per check
@@ -829,6 +734,9 @@ jobs:
             xenon=${{ steps.xenon.outcome }}
             interrogate=${{ steps.interrogate.outcome }}
             bandit=${{ steps.bandit.outcome }}
+            mypy-api=${{ steps.mypy-api.outcome }}
+            mypy-shared=${{ steps.mypy-shared.outcome }}
+            mypy-voice-agent=${{ steps.mypy-voice-agent.outcome }}
             mypy=${{ steps.mypy.outcome }}
             ignore-staleness=${{ steps.ignore-staleness.outcome }}
             uv-lock=${{ steps.uv-lock.outcome }}

@@ -115,7 +115,7 @@ Only after the code stops moving. Run the exact CI lanes, a few at a time (13 la
 ran out of memory on a 16 GB machine):
 
 ```bash
-mise ci:local --only python-mypy,python-ruff,custom-lints,lint-imports
+mise ci:local --only python-mypy,python-mypy-api,python-mypy-shared,python-mypy-voice-agent,python-ruff,custom-lints,lint-imports
 mise ci:local --only suppression-hygiene,ignore-whys,ignore-staleness,typed-boundaries,plr-complexity
 mise ci:local --only interrogate,xenon,file-size,observability-ratchet,wide-event-conformance,doc-comments
 mise ci:local --only package-hygiene,deps        # after any JS dependency change

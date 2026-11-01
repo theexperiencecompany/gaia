@@ -154,12 +154,18 @@
       ]
     },
     "mypy": {
-      "executor": "nx:noop",
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run --project apps/api --frozen --group backend --group dev mypy tools/lints --ignore-missing-imports && MYPYPATH=scripts/ci:scripts/ci/tests uv run --project apps/api --frozen --group backend --group dev mypy --explicit-package-bases scripts/ci --ignore-missing-imports --cache-dir \"${MYPY_CACHE_DIR:-.mypy_cache}/scripts-ci\""
+      },
+      "cache": false,
       "inputs": [
-        "{workspaceRoot}/**/pyproject.toml",
+        "{workspaceRoot}/pyproject.toml",
+        "{workspaceRoot}/apps/api/pyproject.toml",
         "{workspaceRoot}/uv.lock",
         "ciHarness",
-        "{workspaceRoot}/**/*.py",
+        "{workspaceRoot}/tools/lints/**/*.py",
+        "{workspaceRoot}/scripts/ci/**/*.py",
         {
           "externalDependencies": []
         }

@@ -198,9 +198,9 @@ inline script metadata, as `verdict.py` does), `#!/usr/bin/env python3`, fully t
 and dispatches `sys.argv[1]` into `cmd_<sub>` functions like `verdict.py`. It
 imports its `lib/` modules as `from lib import x` (the script's directory is on
 `sys.path`) instead of shelling out to them, so data crosses as dataclasses, and
-every external call that can fail either raises or is checked. `scripts/ci` is
-not in the `python-mypy` lane's paths, so check a changed entrypoint with
-`mypy --strict` run from `scripts/ci`.
+every external call that can fail either raises or is checked. The
+`python-mypy` lane checks `scripts/ci`, but not strictly, so check a changed
+entrypoint with `mypy --strict` run from `scripts/ci` as well.
 
 ## Conventions every bash script here follows
 

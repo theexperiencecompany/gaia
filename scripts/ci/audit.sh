@@ -345,8 +345,8 @@ cmd_model_pin() {
 
 cmd_alert_rule_tools() {
 
-  PINT_VERSION="0.87.0"
-  PROMETHEUS_VERSION="3.1.0"
+  # shellcheck source=tools/alert-rules/tool-versions.env
+  source "$(dirname "$0")/../../tools/alert-rules/tool-versions.env"
 
   BIN="${RUNNER_TEMP:?RUNNER_TEMP is required}/bin"
   WORK="$(mktemp -d "${RUNNER_TEMP}/alert-rule-tools.XXXXXX")"

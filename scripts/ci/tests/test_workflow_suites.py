@@ -11,9 +11,11 @@ only stop running here by someone editing THIS file, which a reviewer sees.
 
 from __future__ import annotations
 
+import configparser
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 from typing import Any
 
@@ -204,10 +206,18 @@ def test_the_slices_still_deselect_schemathesis(test_python: dict[str, Any]) -> 
     # The control for the test above: if the slices ever stopped deselecting
     # it, the separate step would be redundant rather than load-bearing, and
     # this file would be asserting something that no longer matters.
+    # pytest.ini's addopts is the one place it is deselected; a slice that set
+    # its own -m or addopts would silently drop it.
     slice_step = [s for s in _steps(test_python) if "pytest.sh slice" in str(s.get("run", ""))]
     assert slice_step, "no step runs the slice"
+    ini = configparser.ConfigParser()
+    ini.read(REPO_ROOT / "apps" / "api" / "pytest.ini")
+    assert "not schemathesis" in ini["pytest"]["addopts"]
     script = (REPO_ROOT / "scripts" / "ci" / "pytest.sh").read_text()
-    assert "not schemathesis" in script
+    cmd_slice = script[
+        script.index("cmd_slice() {") : script.index("\n}\n", script.index("cmd_slice() {"))
+    ]
+    assert not re.search(r"addopts|\s-m\s", cmd_slice)
 
 
 def test_the_quality_gate_requires_the_job_that_runs_them(workflow: dict[str, Any]) -> None:

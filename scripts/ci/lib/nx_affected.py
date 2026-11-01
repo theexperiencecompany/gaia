@@ -21,10 +21,11 @@ import sys
 REPO_ROOT = Path(__file__).resolve().parents[3]
 JOBS_DIR = REPO_ROOT / ".github" / "jobs"
 # The code projects' targets the workflows gate on: api:test opens the Python
-# slices, gaia-connect:check and alert-rules:check their steps, a TypeScript
-# project's build or test task puts it in ts-build-test, and docker:build is
+# slices, gaia-connect:check, alert-rules:check and each Python project's
+# type-check (mypy) their steps, a TypeScript project's build or test task puts
+# it in ts-build-test and its type-check in lint-node's, and docker:build is
 # the image build.yml publishes.
-CODE_TARGETS = ("build", "check", "docker:build", "test")
+CODE_TARGETS = ("build", "check", "docker:build", "test", "type-check")
 NX_JSON = REPO_ROOT / "nx.json"
 TYPESCRIPT_BUILD_TARGETS = {"build", "test"}
 TYPESCRIPT = "tag:scope:typescript"
@@ -92,13 +93,11 @@ def select(range_args: list[str]) -> Selection:
     return Selection(tasks=explained["affected"])
 
 
-def typescript_projects(selection: Selection) -> str:
+def typescript_projects(selection: Selection, targets: set[str]) -> str:
     tagged = _json_after_banner(_nx("show", "projects", "--projects", TYPESCRIPT, "--json"), "[")
     assert isinstance(tagged, list)
-    built = {
-        _project(task) for task in selection.tasks if _target(task) in TYPESCRIPT_BUILD_TARGETS
-    }
-    return ",".join(sorted(built.intersection(tagged)))
+    reached = {_project(task) for task in selection.tasks if _target(task) in targets}
+    return ",".join(sorted(reached.intersection(tagged)))
 
 
 def release_groups(selection: Selection) -> list[str]:
@@ -142,6 +141,18 @@ def _is_source(reason: dict[str, str]) -> bool:
     )
 
 
+def outputs(selection: Selection) -> dict[str, str]:
+    """Build detect's outputs; a lane reads each as the same name upper-cased, and ci:local sets them too."""
+    return {
+        "tasks": json.dumps(sorted(selection.tasks)),
+        "projects": json.dumps(selection.projects),
+        "typescript_projects": typescript_projects(selection, TYPESCRIPT_BUILD_TARGETS),
+        "type_check_projects": typescript_projects(selection, {"type-check"}),
+        "release_groups": json.dumps(release_groups(selection)),
+        "task_files": json.dumps(task_files(selection)),
+    }
+
+
 def _first_reason(reasons: list[dict[str, str]]) -> str:
     first = reasons[0]
     more = f" (+{len(reasons) - 1} more)" if len(reasons) > 1 else ""
@@ -168,8 +179,8 @@ def main() -> int:
         else [f"--base={opts.base}", f"--head={opts.head}"]
     )
     if opts.files_for:
-        published = os.environ.get("TASK_FILES")
-        scoped = json.loads(published) if published else task_files(select(range_args))
+        from_detect = os.environ.get("TASK_FILES")
+        scoped = json.loads(from_detect) if from_detect else task_files(select(range_args))
         entry = scoped.get(opts.files_for, [])
         sys.stdout.write(
             f"{entry}\n" if isinstance(entry, str) else "".join(f"{f}\n" for f in entry)
@@ -177,14 +188,8 @@ def main() -> int:
         return 0
 
     selection = select(range_args)
-    outputs = {
-        "tasks": json.dumps(sorted(selection.tasks)),
-        "projects": json.dumps(selection.projects),
-        "typescript_projects": typescript_projects(selection),
-        "release_groups": json.dumps(release_groups(selection)),
-        "task_files": json.dumps(task_files(selection)),
-    }
-    lines = "".join(f"{key}={value}\n" for key, value in outputs.items())
+    published = outputs(selection)
+    lines = "".join(f"{key}={value}\n" for key, value in published.items())
     sink = os.environ.get("GITHUB_OUTPUT")
     if sink:
         with open(sink, "a", encoding="utf-8") as out:
