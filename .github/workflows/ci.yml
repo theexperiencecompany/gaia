@@ -831,6 +831,8 @@ jobs:
           clean: ${{ !startsWith(runner.name, 'gaia-home-') }}
           fetch-depth: ${{ startsWith(runner.name, 'gaia-home-') && '0' || '1' }}
           persist-credentials: false
+      # post-statuses reads the job's checks from the nx graph.
+      - uses: ./.github/actions/setup-node-pnpm
       # Dataflow SAST bandit cannot do. A whole-directory scan, not diff-scoped:
       # a security check that only looks at touched files stops noticing the
       # rest. Rules come from the VENDORED pack (tools/semgrep/p-python.yaml),

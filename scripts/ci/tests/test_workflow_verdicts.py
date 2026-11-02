@@ -418,3 +418,22 @@ def test_a_steps_shell_script_resolves_from_its_working_directory(path: Path) ->
                     f"{job_id}/{step.get('id') or step.get('name')}: {script.group(1)}"
                 )
     assert unresolved == []
+
+
+def test_every_job_that_reads_the_checks_installs_node_first(workflow: dict[str, Any]) -> None:
+    """Regression: scan's post-statuses asks nx for the check list and found no pnpm (merge queue only)."""
+    for name, job in workflow["jobs"].items():
+        steps = job.get("steps", [])
+        readers = [
+            i for i, s in enumerate(steps)
+            if "verdict.py post-statuses" in str(s.get("run", ""))
+            or "runner.py run-job" in str(s.get("run", ""))
+        ]  # fmt: skip
+        if not readers:
+            continue
+        setups = [
+            i for i, s in enumerate(steps) if s.get("uses") == "./.github/actions/setup-node-pnpm"
+        ]
+        assert setups and setups[0] < readers[0], (
+            f"{name} asks nx for its checks before installing it"
+        )
