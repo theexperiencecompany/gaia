@@ -292,6 +292,32 @@ class TestExecuteToolCall:
         assert kwargs["data"] == {"to": "a"}
         assert kwargs["config"]["configurable"]["user_id"] == USER_ID
 
+    async def test_data_sent_as_a_json_encoded_object_is_dispatched_as_that_object(self) -> None:
+        # Captured from prod: the model JSON-encoded `data` (18 refused calls, 6 users).
+        with patch(f"{MODULE}.dispatch_tool", new=AsyncMock(return_value=_ok())) as dispatch:
+            await execute.ainvoke(
+                {
+                    "task_description": "Fetching last month's mail",
+                    "tool_name": "GMAIL_FETCH_MESSAGES",
+                    "data": '{"fields": ["id", "from"], "timeframe": "1m"}',
+                },
+                config=CONFIG,
+            )
+        assert dispatch.await_args.kwargs["data"] == {"fields": ["id", "from"], "timeframe": "1m"}
+
+    @pytest.mark.parametrize("data", ['["a", "b"]', "not json", "{broken"])
+    async def test_data_that_is_not_an_object_still_fails_the_args_schema(self, data: str) -> None:
+        with patch(f"{MODULE}.dispatch_tool", new=AsyncMock(return_value=_ok())) as dispatch:
+            with pytest.raises(ValidationError, match="data"):
+                await execute.ainvoke(
+                    {"task_description": "d", "tool_name": "GMAIL_SEND_EMAIL", "data": data},
+                    config=CONFIG,
+                )
+        dispatch.assert_not_awaited()
+
+    def test_the_schema_the_model_sees_still_asks_for_an_object(self) -> None:
+        assert execute.args["data"]["type"] == "object"
+
     async def test_a_tool_name_analytics_cannot_carry_fails_the_args_schema_before_dispatch(
         self,
     ) -> None:

@@ -1937,6 +1937,82 @@ class TestOneDecisionPerRun:
         assert result["message"].startswith("This run called create_todo, so the work happened")
         assert workflows.workflow.playbook_declines == 0
 
+    async def test_the_runs_own_bookkeeping_is_not_the_work(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        """Regression from prod (95 refused quiet-day declines): update_tasks and a refused write_playbook were counted as doing-calls."""
+        workflows = _FakeWorkflowStore()
+        bookkeeping = AIMessage(
+            content="",
+            tool_calls=[
+                {"id": "c1", "name": "plan_tasks", "args": {"tasks": []}, "type": "tool_call"},
+                {"id": "c2", "name": "update_tasks", "args": {"updates": []}, "type": "tool_call"},
+                {"id": "c3", "name": "write_playbook", "args": {}, "type": "tool_call"},
+                {
+                    "id": "c4",
+                    "name": "execute",
+                    "args": {
+                        "task_description": "Listing unread mail",
+                        "tool_name": "GMAIL_FETCH_MESSAGES",
+                        "data": {"timeframe": "1d"},
+                    },
+                    "type": "tool_call",
+                },
+            ],
+        )
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+        ):
+            result = await decline_playbook.ainvoke(
+                {
+                    "kind": "no_work_today",
+                    "reason": "only newsletters arrived",
+                    "state": {"messages": [bookkeeping]},
+                },
+                config=_config(),
+            )
+
+        assert result["success"] is True
+        assert result["data"] == {"declined": True, "counted": False}
+
+    async def test_a_doing_call_run_through_execute_is_work(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        workflows = _FakeWorkflowStore()
+        drafted = AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "c1",
+                    "name": "execute",
+                    "args": {
+                        "task_description": "Drafting a reply",
+                        "tool_name": "GMAIL_CREATE_EMAIL_DRAFT",
+                        "data": {"thread_id": "t1", "body": "Thanks"},
+                    },
+                    "type": "tool_call",
+                }
+            ],
+        )
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+        ):
+            result = await decline_playbook.ainvoke(
+                {
+                    "kind": "no_work_today",
+                    "reason": "nothing to do",
+                    "state": {"messages": [drafted]},
+                },
+                config=_config(),
+            )
+
+        assert result["error"] == "work_happened"
+        assert result["message"].startswith(
+            "This run called GMAIL_CREATE_EMAIL_DRAFT, so the work happened"
+        )
+
     async def test_a_quiet_day_is_not_a_verdict(self, store: _FakePlaybookStore) -> None:
         """No calls at all means nothing to act on; counting that would spend a seasonal workflow's limited decline chances on empty days."""
         workflows = _FakeWorkflowStore()

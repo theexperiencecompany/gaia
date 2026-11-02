@@ -6,6 +6,7 @@ from typing import Annotated
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, tool
+from pydantic import BeforeValidator
 
 from app.agents.tools.execute.dispatch import ToolSpace, dispatch_tool
 from app.constants.execute import RAN_AS_ACCOUNT_KEY
@@ -25,6 +26,18 @@ def _for_model(output: object, account: str | None) -> str:
     if isinstance(output, str):
         return f"{RAN_AS_ACCOUNT_KEY}: {account}\n{output}"
     return json.dumps({RAN_AS_ACCOUNT_KEY: account, "result": output}, default=str)
+
+
+def _decode_json_object(value: object) -> object:
+    """Read a JSON-encoded object as the object; anything else is left for the dict check to refuse."""
+    if isinstance(value, str):
+        try:
+            decoded = json.loads(value)
+        except json.JSONDecodeError:
+            return value
+        if isinstance(decoded, dict):
+            return decoded
+    return value
 
 
 def build_execute_tool(scoped_tools: Mapping[str, BaseTool] | None = None) -> BaseTool:
@@ -52,8 +65,10 @@ def build_execute_tool(scoped_tools: Mapping[str, BaseTool] | None = None) -> Ba
             Identifier,
             "Exact tool name to run, verbatim from retrieve_tools (e.g. 'GMAIL_SEND_EMAIL').",
         ],
+        # Models often JSON-encode this object; the decode keeps the schema an object.
         data: Annotated[
             dict[str, object],
+            BeforeValidator(_decode_json_object),
             "Arguments for tool_name, matching the args schema retrieve_tools showed. "
             "Pass {} when the tool takes no arguments.",
         ],

@@ -388,6 +388,55 @@ class TestResolveTimeframe:
         assert combined.startswith("after:")
         assert combined.endswith("is:unread")
 
+    @time_machine.travel(datetime(2026, 10, 20, 12, tzinfo=UTC), tick=False)
+    def test_any_count_of_days_weeks_months_resolves_to_its_window(self):
+        assert _timeframe_clause("14d", Timezone.utc()) == "after:2026/10/07 before:2026/10/21"
+        assert _timeframe_clause("2m", Timezone.utc()) == "after:2026/08/22 before:2026/10/21"
+
+    @pytest.mark.parametrize(
+        ("timeframe", "expected_max"),
+        [("2d", 100), ("5d", 200), ("14d", 400), ("30d", 500), ("2m", 500), ("this_week", 200)],
+    )
+    def test_default_cap_scales_with_the_window_length(self, timeframe: str, expected_max: int):
+        _, default_max = _resolve_timeframe(timeframe, None, Timezone.utc())
+        assert default_max == expected_max
+
+
+class TestFetchInputsModelsSend:
+    """Inputs captured from prod GMAIL_FETCH_MESSAGES/FETCH_THREAD calls that the schema refused."""
+
+    @pytest.mark.parametrize("timeframe", ["14d", "30d", "2d", "2m"])
+    def test_a_relative_timeframe_of_any_length_is_accepted(self, timeframe: str):
+        request = FetchMessagesInput.model_validate(
+            {"query": "invoice OR receipt", "timeframe": timeframe, "max_messages": 40}
+        )
+        assert request.timeframe == timeframe
+
+    @pytest.mark.parametrize("timeframe", ["24h", "this_month", "0d", "fortnight"])
+    def test_an_unsupported_timeframe_is_refused_naming_the_accepted_forms(self, timeframe: str):
+        with pytest.raises(ValueError, match=r"timeframe") as refused:
+            FetchMessagesInput.model_validate({"timeframe": timeframe})
+        assert "7d" in str(refused.value)
+
+    def test_the_field_names_models_reach_for_map_onto_the_projected_ones(self):
+        request = FetchMessagesInput.model_validate(
+            {
+                "timeframe": "1d",
+                "fields": ["message_id", "thread_id", "from", "subject", "date", "labelIds"],
+            }
+        )
+        assert request.fields == ["id", "threadId", "from", "subject", "time", "labels"]
+
+    def test_internal_date_spellings_mean_the_message_time(self):
+        thread = FetchThreadInput.model_validate(
+            {"thread_ids": ["t1"], "fields": ["from", "internalDate", "internal_date", "date"]}
+        )
+        assert thread.fields == ["from", "time"]
+
+    def test_an_unknown_field_is_still_refused(self):
+        with pytest.raises(ValueError, match="isImportant"):
+            FetchMessagesInput.model_validate({"fields": ["from", "isImportant"]})
+
 
 # ---------------------------------------------------------------------------
 # FETCH_MESSAGES — pagination, field shaping, offload

@@ -24,6 +24,7 @@ import yaml
 
 from app.agents.core.subagents.call_record import ARG_TRUNCATION_MARKER, is_error_envelope
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
+from app.constants.execute import EXECUTE_LABEL_ARG, EXECUTE_TOOL_NAME
 from app.models.playbook_models import (
     TIME_KEY,
     AskSlot,
@@ -371,6 +372,13 @@ def _matched_call(step: ToolStep | ForEachStep, walk: _Walk) -> tuple[int, Recor
     that agree, the LAST wins; a step agreeing with none is unmatched, and an
     already-consumed call is never offered again.
     """
+    # execute's card label is rewritten freely between the call and the write, and
+    # changes nothing the call does (prod: refused writes differing only in it).
+    deciding = {
+        key: value
+        for key, value in step.args.items()
+        if not (step.tool == EXECUTE_TOOL_NAME and key == EXECUTE_LABEL_ARG)
+    }
     agreeing = [
         (index, call)
         for index, call in enumerate(walk.results or ())
@@ -378,7 +386,7 @@ def _matched_call(step: ToolStep | ForEachStep, walk: _Walk) -> tuple[int, Recor
         and call.subagent == walk.scope
         and index not in walk.consumed
         and all(
-            key in call.args and _agrees(value, call.args[key]) for key, value in step.args.items()
+            key in call.args and _agrees(value, call.args[key]) for key, value in deciding.items()
         )
     ]
     return agreeing[-1] if agreeing else None
