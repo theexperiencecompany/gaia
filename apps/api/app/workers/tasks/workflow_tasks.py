@@ -26,6 +26,7 @@ from app.agents.prompts.workflow_prompts import (
     TODO_WORKFLOW_DESCRIPTION_TEMPLATE,
     TODO_WORKFLOW_PROMPT_TEMPLATE,
 )
+from app.agents.tools.run_record import read_run_record
 from app.api.v1.middleware.tiered_rate_limiter import (
     CostBudgetExceededException,
     RateLimitExceededException,
@@ -117,7 +118,6 @@ from app.services.workflow.playbook.runner import (
     run_playbook,
 )
 from app.services.workflow.playbook.workflow_hash import workflow_hash
-from app.services.workflow.run_trace import build_trace
 from app.services.workflow.scheduler import WorkflowScheduler, workflow_scheduler
 from app.services.workflow.service import WorkflowService
 from app.services.workflow.thread_reset import reset_workflow_threads
@@ -1778,8 +1778,8 @@ async def execute_workflow_as_chat(
             ),
         )
 
-        # The ordered entries (executor's and its subagents') this run emitted.
-        trace = build_trace(result.tool_data)
+        # Every tool call the run made, by any path, in the order each finished.
+        trace = await read_run_record(result.stream_id)
 
         return conversation_id, trace
 

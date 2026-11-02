@@ -496,6 +496,7 @@ async def prepare_subagent_execution(
             thread_id=subagent_thread_id,
             base_configurable=configurable,
             subagent_id=agent_name,
+            run_scope=subagent_id,
         ),
     )
     new_configurable = agent_configurable(subagent_config)

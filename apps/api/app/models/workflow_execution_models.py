@@ -275,6 +275,8 @@ class RecordedCall(BaseModel):
     #: check compares only against replayed calls: an agent run probes the same
     #: tool broadly, and its full result is not what the frozen call returned.
     replayed: bool = False
+    #: True when the tool raised instead of returning; result_digest holds the error.
+    failed: bool = False
 
 
 class WorkflowExecution(ResponseModel):

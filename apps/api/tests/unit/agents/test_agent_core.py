@@ -960,7 +960,8 @@ class TestCallAgentSilent:
                 user=_make_user(),
             )
 
-        assert result == SilentRunResult(message="Hello!", tool_data={"tool": "data"})
+        assert (result.message, result.tool_data) == ("Hello!", {"tool": "data"})
+        assert UUID(result.stream_id).version == 4
 
     @pytest.mark.asyncio
     async def test_the_detached_executors_tool_data_is_folded_onto_the_message(self):
@@ -1001,7 +1002,9 @@ class TestCallAgentSilent:
         execute.assert_awaited_once_with(FAKE_GRAPH, FAKE_STATE, config)
         wait.assert_awaited_once_with(stream_id, timeout=BACKGROUND_EXECUTOR_WAIT_TIMEOUT)
         drain.assert_called_once_with(stream_id)
-        assert result == SilentRunResult(message="Hello!", tool_data=[comms_entry, executor_entry])
+        assert result == SilentRunResult(
+            message="Hello!", tool_data=[comms_entry, executor_entry], stream_id=stream_id
+        )
 
     @pytest.mark.asyncio
     async def test_a_graph_failure_propagates_instead_of_becoming_a_result_string(self):

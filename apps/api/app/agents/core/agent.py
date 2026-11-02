@@ -429,6 +429,7 @@ async def call_agent_silent(
             return SilentRunResult(
                 message=complete_message,
                 tool_data=tool_data,
+                stream_id=stream_id,
             )
 
     except Exception as exc:

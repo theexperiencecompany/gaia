@@ -217,6 +217,8 @@ class SilentRunResult:
 
     message: str
     tool_data: list[ToolDataEntry]
+    #: The run's stream id, which keys its run record of every tool call it made.
+    stream_id: str
 
 
 @dataclass(frozen=True, slots=True)

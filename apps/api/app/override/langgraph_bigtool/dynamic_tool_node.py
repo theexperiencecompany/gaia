@@ -10,7 +10,7 @@ This module provides a ToolNode subclass that:
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from langchain_core.messages import AnyMessage, ToolCall, ToolMessage
 from langchain_core.runnables import RunnableConfig
@@ -31,6 +31,7 @@ from pydantic import BaseModel
 
 from app.agents.middleware.executor import MiddlewareExecutor
 from app.agents.tools.execute.unwrap import unwrap_execute_call
+from app.agents.tools.invocation import RecordingTool, invoke_tool
 from app.agents.workspace.offload import mark_offload, pop_offload_descriptor
 from app.constants.execute import EXECUTE_TOOL_NAME
 from app.constants.llm import (
@@ -240,6 +241,24 @@ class DynamicToolNode(ToolNode):
 
             return await super()._afunc(tool_input, config, runtime)
 
+    async def _execute_tool_async(
+        self,
+        request: ToolCallRequest,
+        input_type: Literal["list", "dict", "tool_calls"],
+        config: RunnableConfig,
+    ) -> ToolMessage | Command | list[Command | ToolMessage]:
+        """Run the parent ToolNode's own invocation, with the tool recording its call."""
+        return await super()._execute_tool_async(_recording(request), input_type, config)
+
+    def _execute_tool_sync(
+        self,
+        request: ToolCallRequest,
+        input_type: Literal["list", "dict", "tool_calls"],
+        config: RunnableConfig,
+    ) -> ToolMessage | Command | list[Command | ToolMessage]:
+        """Sync twin of _execute_tool_async."""
+        return super()._execute_tool_sync(_recording(request), input_type, config)
+
     def _needs_parent_routing(self, tool_name: str) -> bool:
         """Check if a tool needs parent ToolNode execution path.
 
@@ -343,7 +362,7 @@ class DynamicToolNode(ToolNode):
     ) -> ToolMessage | Command:
         """Invoke one tool via middleware; a middleware may swap the usual ToolMessage for a Command."""
 
-        async def invoke_tool(tc: dict[str, Any]) -> ToolMessage | Command:
+        async def invoke_call(tc: dict[str, Any]) -> ToolMessage | Command:
             name, call_id = tc["name"], tc["id"]
             resolved_tool = self.get_tool(name)
             if resolved_tool is None:
@@ -361,7 +380,7 @@ class DynamicToolNode(ToolNode):
             try:
                 # asyncio.timeout(None) applies no deadline — an exempt tool runs unbounded.
                 async with asyncio.timeout(bound):
-                    result = await resolved_tool.ainvoke(tool_input, config=config)
+                    result = await invoke_tool(resolved_tool, tool_input, config)
             except GraphBubbleUp:
                 # Control flow, not failure: a GraphInterrupt from a gated tool (or
                 # bubbled up by handoff's subagent graph) must reach the runtime to
@@ -406,7 +425,7 @@ class DynamicToolNode(ToolNode):
             state=state,
             config=config,
             store=store,
-            invoke_fn=invoke_tool,
+            invoke_fn=invoke_call,
         )
 
     def _coerce_middleware_state(
@@ -436,3 +455,10 @@ class DynamicToolNode(ToolNode):
             raw_state["messages"] = []
 
         return cast(State, raw_state)
+
+
+def _recording(request: ToolCallRequest) -> ToolCallRequest:
+    """Return the request with its tool swapped for one that records the call it runs."""
+    if request.tool is None:
+        return request
+    return request.override(tool=RecordingTool.wrapping(request.tool, request.tool_call["args"]))
