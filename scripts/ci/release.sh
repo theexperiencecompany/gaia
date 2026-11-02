@@ -583,6 +583,18 @@ ci_quality_gate() {
   echo "$verdict"
 }
 
+# A merge right after the release superseded its runs; the release still needs
+# its own verdict, so re-run each cancelled one (GH_TOKEN needs actions:write).
+rerun_cancelled_gate() {
+  local sha="$1" run_id
+  shift
+  for run_id in "$@"; do
+    gh api -X POST "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/rerun" >/dev/null ||
+      ci_die "could not re-run ci.yml run $run_id, cancelled before it judged $sha (GH_TOKEN needs actions:write)."
+    echo "Re-ran ci.yml run $run_id, which a newer master push cancelled before it judged $sha"
+  done
+}
+
 cmd_wait_quality_gate() {
   : "${RELEASE_TAG:?RELEASE_TAG is required}"
   local sha gate deadline=$((SECONDS + ${GATE_WAIT_SECONDS:-1800}))
@@ -593,14 +605,7 @@ cmd_wait_quality_gate() {
     case "$gate" in
       passed) ci_ok "ci.yml's quality gate passed on $sha ($RELEASE_TAG)"; return 0 ;;
       failed) ci_die "ci.yml's quality gate failed on $sha ($RELEASE_TAG); a release commit must pass it. Fix master and cut the release from a green commit." ;;
-      cancelled*)
-        # A merge right after the release superseded its run; the release still needs its own verdict.
-        local run_id
-        for run_id in ${gate#cancelled}; do
-          gh api -X POST "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/rerun" >/dev/null ||
-            ci_die "could not re-run ci.yml run $run_id, cancelled before it judged $sha (GH_TOKEN needs actions:write)."
-          echo "Re-ran ci.yml run $run_id, which a newer master push cancelled before it judged $sha"
-        done ;;
+      cancelled*) rerun_cancelled_gate "$sha" ${gate#cancelled} ;;
     esac
     ((SECONDS >= deadline)) && ci_die "Timed out waiting for ci.yml's quality gate on $sha ($RELEASE_TAG)."
     echo "Waiting for ci.yml's quality gate on $sha"
@@ -647,12 +652,13 @@ cmd_pin_selfhost_release() {
     done
     gate=$(ci_quality_gate "$SHA" "${gate_events[@]}") ||
       ci_die "could not read ci.yml's runs for $SHA from the Actions API (GH_TOKEN needs actions:read)."
-    if [[ "$gate" == failed ]]; then
-      ci_die "ci.yml's quality gate failed on $SHA; a release commit must pass it. Fix master and cut the release from a green commit."
-    fi
+    case "$gate" in
+      failed) ci_die "ci.yml's quality gate failed on $SHA; a release commit must pass it. Fix master and cut the release from a green commit." ;;
+      cancelled*) rerun_cancelled_gate "$SHA" ${gate#cancelled} ;;
+    esac
     [[ "$gate" == passed ]] && ((${#missing[@]} == 0)) && break
     if ((SECONDS >= deadline)); then
-      [[ "$gate" == passed ]] || ci_die "Timed out after ${wait_seconds}s waiting for ci.yml's quality gate to pass on $SHA (a run cancelled by a newer master push needs a re-run: gh run rerun <id>), then re-dispatch this publish."
+      [[ "$gate" == passed ]] || ci_die "Timed out after ${wait_seconds}s waiting for ci.yml's quality gate to pass on $SHA, then re-dispatch this publish."
       ci_die "Timed out after ${wait_seconds}s waiting for ${missing[*]}. build.yml publishes them for the release commit: re-run the master run for $SHA, then re-dispatch this publish."
     fi
     echo "Waiting for: quality gate ${gate}${missing[*]:+, ${missing[*]}}"

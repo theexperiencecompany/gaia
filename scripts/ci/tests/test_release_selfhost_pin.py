@@ -312,6 +312,25 @@ def test_a_gate_that_never_finishes_times_out_loud_and_tags_nothing(workspace: P
     assert _created(workspace) == []
 
 
+def test_a_cli_release_run_a_newer_push_cancelled_is_re_run_not_timed_out(
+    workspace: Path,
+) -> None:
+    """The desktop release re-ran a cancelled gate; the CLI pin waited out its timeout instead."""
+    sha = _head(workspace)
+    result = _pin(
+        workspace,
+        GitHubState(
+            present=_release_images(sha),
+            main_runs={7: {"quality-gate": ("completed", "cancelled")}},
+        ),
+        env_extra={"PIN_POLL_SECONDS": "0", "PIN_WAIT_SECONDS": "5"},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert _posts(workspace) == ["POST repos/theexperiencecompany/gaia/actions/runs/7/rerun"]
+    assert len(_created(workspace)) == len(RELEASE_REPOS)
+
+
 def test_a_commit_main_yml_never_ran_on_is_not_released(workspace: Path) -> None:
     sha = _head(workspace)
     result = _pin(

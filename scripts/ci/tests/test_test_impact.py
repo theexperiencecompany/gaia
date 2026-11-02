@@ -549,3 +549,52 @@ def test_a_map_commit_outside_a_shallow_checkout_is_fetched_not_given_up_on(tmp_
     selected = out.read_text().split()
     assert "tests/unit/test_foo.py::test_foo" in selected, result.stdout
     assert "ALL" not in selected
+
+
+def test_fetching_the_maps_commit_never_makes_a_full_checkout_shallow(tmp_path: Path) -> None:
+    """A --depth=1 fetch writes .git/shallow, and the persistent box's later merge-base diffs fail."""
+    origin = tmp_path / "origin.git"
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "master", str(origin)], check=True)
+    _git_in(origin, "config", "uploadpack.allowReachableSHA1InWant", "true")
+    seed = tmp_path / "seed"
+    api = seed / "apps" / "api"
+    (api / "app").mkdir(parents=True)
+    (api / "app" / "foo.py").write_text("x = 1\n")
+    ident = ["-c", "user.email=t@t", "-c", "user.name=t"]
+    _git_in(seed, "init", "-q", "-b", "master")
+    _git_in(seed, "add", "-A")
+    _git_in(seed, *ident, "commit", "-qm", "A")
+    _git_in(seed, "push", "-q", str(origin), "master")
+    root = tmp_path / "repo"
+    subprocess.run(["git", "clone", "-q", f"file://{origin}", str(root)], check=True)
+    # The map was recorded on a commit the checkout has never seen.
+    _git_in(seed, "checkout", "-qb", "later")
+    (api / "app" / "foo.py").write_text("x = 3\n")
+    _git_in(seed, *ident, "commit", "-qam", "M")
+    map_sha = _git_in(seed, "rev-parse", "HEAD")
+    _git_in(seed, "push", "-q", str(origin), "later")
+
+    impact_map = tmp_path / "map.json"
+    impact_map.write_text(
+        json.dumps(
+            {
+                "meta": {"sha": map_sha, "slice": "unit-a", "version": 1},
+                "files": {"app/foo.py": ["tests/unit/test_foo.py::test_foo"]},
+                "test_files": {"tests/unit/test_foo.py": ["tests/unit/test_foo.py::test_foo"]},
+            }
+        )
+    )
+    subprocess.run(
+        [
+            sys.executable, str(CI / "test_impact.py"), "select", "--slice", "unit-a",
+            "--map", str(impact_map), "--out", str(tmp_path / "selected.txt"),
+            "--repo-root", str(root / "apps" / "api"),
+        ],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=True,
+    )  # fmt: skip
+
+    assert _git_in(root, "cat-file", "-t", map_sha) == "commit"
+    assert not (root / ".git" / "shallow").exists()

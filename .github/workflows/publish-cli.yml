@@ -50,8 +50,9 @@ jobs:
       id-token: write
       # pin-selfhost-release tags the gaia / gaia-web / self-host bot images in GHCR.
       packages: write
-      # ...after reading ci.yml's quality gate on the release commit.
-      actions: read
+      # ...after reading ci.yml's quality gate on the release commit, and
+      # re-running it when a newer master push cancelled it first.
+      actions: write
     steps:
       # The release tag, not master HEAD: package.json, the build and the
       # image pin must all be the released commit.

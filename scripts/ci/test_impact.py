@@ -463,9 +463,19 @@ def _emit(slice_name: str, mode: str, summary: str) -> None:
             fh.write(f"{line}\n\n")
 
 
-def _git(*argv: str) -> str | None:
-    """Run git, returning stdout, or None when it fails (caller widens to ALL)."""
-    proc = subprocess.run(["git", *argv], capture_output=True, text=True, check=False)
+# Bounded like changes.sh's base fetch: a stalled connection fails in seconds, not at the job cap.
+FETCH = ("-c", "http.lowSpeedLimit=1000", "-c", "http.lowSpeedTime=20", "fetch", "--no-tags")
+FETCH_TIMEOUT_S = 60
+
+
+def _git(*argv: str, timeout: float | None = None) -> str | None:
+    """Run git, returning stdout, or None when it fails or times out (caller widens to ALL)."""
+    try:
+        proc = subprocess.run(
+            ["git", *argv], capture_output=True, text=True, check=False, timeout=timeout
+        )
+    except subprocess.TimeoutExpired:
+        return None
     return proc.stdout if proc.returncode == 0 else None
 
 
@@ -480,9 +490,10 @@ def _changed_since_the_maps(map_paths: list[str], scratch: Path) -> list[str] | 
         sha = json.loads(Path(path).read_text()).get("meta", {}).get("sha")
         if not sha:
             return None
-        # A shallow runner checkout may predate the map's commit; a diff needs only its tree.
+        # A runner checkout may predate the map's commit. Never --depth: it marks the
+        # box's persistent clone shallow and its later merge-base diffs fail.
         if _git("cat-file", "-e", f"{sha}^{{commit}}") is None and (
-            _git("fetch", "--no-tags", "--depth=1", "origin", sha) is None
+            _git(*FETCH, "origin", sha, timeout=FETCH_TIMEOUT_S) is None
             or _git("cat-file", "-e", f"{sha}^{{commit}}") is None
         ):
             return None
