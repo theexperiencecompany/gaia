@@ -415,7 +415,7 @@ class TestDevServiceLogic:
             ),
             patch.object(dev_service.user_repository, "complete_onboarding", mock_complete),
             patch.object(
-                dev_service.TodoService, "create_todo_with_workflow", new_callable=AsyncMock
+                dev_service.TodoService, "create_todo", new_callable=AsyncMock
             ) as mock_todo,
             patch.object(
                 dev_service, "create_conversation_service", new_callable=AsyncMock
@@ -614,7 +614,7 @@ class TestDevServiceLogic:
                 return_value=user,
             ),
             patch.object(
-                dev_service.TodoService, "create_todo_with_workflow", new_callable=AsyncMock
+                dev_service.TodoService, "create_todo", new_callable=AsyncMock
             ) as mock_todo,
         ):
             with pytest.raises(AppError) as exc:
@@ -642,7 +642,7 @@ class TestDevServiceLogic:
             ),
             patch.object(dev_service.user_repository, "complete_onboarding", AsyncMock()),
             patch.object(
-                dev_service.TodoService, "create_todo_with_workflow", new_callable=AsyncMock
+                dev_service.TodoService, "create_todo", new_callable=AsyncMock
             ) as mock_todo,
             patch.object(
                 dev_service, "create_conversation_service", new_callable=AsyncMock

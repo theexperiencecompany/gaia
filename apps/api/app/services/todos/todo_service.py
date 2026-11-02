@@ -75,7 +75,7 @@ from shared.py.analytics.catalog.todos import (
     TodosToggled,
     TodosUpdated,
 )
-from shared.py.wide_events import log, spawn_logged_task
+from shared.py.wide_events import log
 
 
 async def _get_workflow_categories_for_todos(
@@ -536,37 +536,6 @@ class TodoService:
             ),
         )
         return TodoResponse.from_document(created)
-
-    @classmethod
-    async def create_todo_with_workflow(cls, todo: TodoModel, user_id: str) -> TodoResponse:
-        """Create a classic todo and queue its workflow generation; tracked todos never take this path."""
-        if GAIA_TRACKED_LABEL in todo.labels:
-            raise TrackedTodoWorkflowError()
-        created = await cls.create_todo(todo, user_id)
-
-        # Fire-and-forget: generation must not block or fail the create.
-        try:
-            # Deferred import: workflow/ARQ enqueue stack loads only when generation is actually queued
-            from app.services.workflow.queue_service import (  # noqa: PLC0415 -- deferred
-                WorkflowQueueService,
-            )
-
-            spawn_logged_task(
-                "todo_workflow_generation",
-                WorkflowQueueService.queue_todo_workflow_generation(
-                    todo_id=created.id,
-                    user_id=user_id,
-                    title=todo.title,
-                    description=todo.description or "",
-                    origin="todo_auto",
-                ),
-                user={"id": user_id},
-                todo={"id": created.id},
-            )
-            log.info("todo.workflow_generation_queued", todo_id=created.id, title=todo.title)
-        except Exception as e:
-            log.warning("todo.workflow_queue_failed", title=todo.title, error=str(e))
-        return created
 
     @classmethod
     async def get_todo(cls, todo_id: str, user_id: str) -> TodoResponse:

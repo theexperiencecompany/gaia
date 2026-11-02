@@ -20,6 +20,7 @@ import { dockerAccessError, getDockerAccess } from "./docker-access.js";
 import type { SetupMode } from "./env-parser.js";
 import { portOverridesToDockerEnv } from "./env-writer.js";
 import { assertBuildableInstall, detectSetupMode } from "./install-root.js";
+import { DEV_DOCKER_DIR, SELFHOST_COMPOSE_FILE, selfhostDir } from "./paths.js";
 import {
   measurePull,
   readComposeServices,
@@ -47,7 +48,8 @@ export function composeDownArgs(options?: StopServicesOptions): string[] {
   ];
 }
 
-function getEnvFileArgs(dockerDir: string): string[] {
+/** `--env-file .env` when the compose folder has one (compose resolves it against the run's cwd). */
+export function getEnvFileArgs(dockerDir: string): string[] {
   const envPath = path.join(dockerDir, ".env");
   if (fs.existsSync(envPath)) {
     return ["--env-file", ".env"];
@@ -102,7 +104,7 @@ export function selfhostComposeFiles(
   options: { build?: boolean } = {},
 ): string[] {
   const config = readConfig();
-  const files = ["docker-compose.selfhost.yml"];
+  const files = [SELFHOST_COMPOSE_FILE];
   if (options.build) files.push("docker-compose.build.yml");
   if (config?.codeSandbox === true) files.push("docker-compose.sandbox.yml");
   files.push(...(config?.bots ?? []).map(botComposeFile));
@@ -179,7 +181,7 @@ export async function startServices(
 
   onStatus?.(options?.build ? "Building GAIA from source…" : "Starting GAIA…");
 
-  const dockerComposePath = path.join(repoPath, "infra/docker");
+  const dockerComposePath = selfhostDir(repoPath);
   const dockerEnv =
     portOverrides && Object.keys(portOverrides).length > 0
       ? portOverridesToDockerEnv(portOverrides)
@@ -274,7 +276,7 @@ export async function runSelfhostOneOff(
   command: string[],
   onLog?: (chunk: string) => void,
 ): Promise<void> {
-  const dockerComposePath = path.join(repoPath, "infra/docker");
+  const dockerComposePath = selfhostDir(repoPath);
   await runCommand(
     "docker",
     [
@@ -302,7 +304,7 @@ export async function pullSelfhostImages(
   version: string,
   onProgress?: StartProgress,
 ): Promise<void> {
-  const dockerComposePath = path.join(repoPath, "infra/docker");
+  const dockerComposePath = selfhostDir(repoPath);
   const composeArgs = [
     ...composeFileArgs(selfhostComposeFiles()),
     ...getEnvFileArgs(dockerComposePath),
@@ -311,7 +313,7 @@ export async function pullSelfhostImages(
     ...SELFHOST_APP_SERVICES,
     ...(readConfig()?.bots ?? []).map(botService),
   ];
-  // The shell environment outranks infra/docker/.env in compose interpolation.
+  // The shell environment outranks the compose env file in compose interpolation.
   const env = { GAIA_VERSION: version };
   await runCompose([...composeArgs, "pull", ...services], {
     cwd: dockerComposePath,
@@ -334,11 +336,14 @@ export async function stopServices(
   /** Each phase of compose's stop, for a step that shows its services; else onStatus gets its label. */
   onPhase?: (phase: ComposePhase) => void,
 ): Promise<void> {
-  const dockerComposePath = path.join(repoPath, "infra/docker");
   const [mode, access] = await Promise.all([
     detectSetupMode(repoPath),
     getDockerAccess(),
   ]);
+  const dockerComposePath =
+    mode === "selfhost"
+      ? selfhostDir(repoPath)
+      : path.join(repoPath, DEV_DOCKER_DIR);
   if (access === "ready") {
     onStatus?.("Stopping GAIA's containers…");
     const envArgs = getEnvFileArgs(dockerComposePath);

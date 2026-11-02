@@ -123,7 +123,7 @@ class TestCreateTodo:
     """Tests for the create_todo tool."""
 
     @patch(f"{MODULE}.current_stream_writer")
-    @patch(f"{MODULE}.TodoService.create_todo_with_workflow", new_callable=AsyncMock)
+    @patch(f"{MODULE}.TodoService.create_todo", new_callable=AsyncMock)
     async def test_happy_path(
         self,
         mock_service: AsyncMock,
@@ -147,8 +147,33 @@ class TestCreateTodo:
         assert created.title == "Buy groceries"
         assert owner == FAKE_USER_ID
 
+    @pytest.mark.parametrize("execution_mode", ["interactive", "background"])
+    async def test_creating_a_todo_never_generates_a_workflow(self, execution_mode: str) -> None:
+        """Workflows are generated only on the todo's Generate Workflow button, never on create."""
+        config = _make_config()
+        config["configurable"]["execution_mode"] = execution_mode
+        queue = AsyncMock(return_value=True)
+        with (
+            patch(f"{MODULE}.current_stream_writer", return_value=_writer_mock()),
+            patch(
+                "app.services.todos.todo_service.TodoService.create_todo",
+                new_callable=AsyncMock,
+                return_value=_make_todo_response(title="Call the bank"),
+            ),
+            patch(
+                "app.services.workflow.queue_service.WorkflowQueueService.queue_todo_workflow_generation",
+                queue,
+            ),
+        ):
+            from app.agents.tools.todo_tool import create_todo
+
+            result = await create_todo.coroutine(config=config, title="Call the bank")
+
+        assert result["todo"]["title"] == "Call the bank"
+        queue.assert_not_called()
+
     @patch(f"{MODULE}.current_stream_writer")
-    @patch(f"{MODULE}.TodoService.create_todo_with_workflow", new_callable=AsyncMock)
+    @patch(f"{MODULE}.TodoService.create_todo", new_callable=AsyncMock)
     async def test_service_failure_returns_error(
         self,
         mock_service: AsyncMock,
@@ -167,7 +192,7 @@ class TestCreateTodo:
         assert result["todo"] is None
 
     @patch(f"{MODULE}.current_stream_writer")
-    @patch(f"{MODULE}.TodoService.create_todo_with_workflow", new_callable=AsyncMock)
+    @patch(f"{MODULE}.TodoService.create_todo", new_callable=AsyncMock)
     async def test_with_all_optional_params(
         self,
         mock_service: AsyncMock,
@@ -197,7 +222,7 @@ class TestCreateTodo:
         assert result["todo"]["priority"] == Priority.HIGH
 
     @patch(f"{MODULE}.current_stream_writer")
-    @patch(f"{MODULE}.TodoService.create_todo_with_workflow", new_callable=AsyncMock)
+    @patch(f"{MODULE}.TodoService.create_todo", new_callable=AsyncMock)
     async def test_workflow_included_in_response(
         self,
         mock_service: AsyncMock,
@@ -1294,7 +1319,7 @@ class TestPriorityIsAnEnumInTheToolSchema:
 
         with (
             patch(f"{MODULE}.current_stream_writer"),
-            patch(f"{MODULE}.TodoService.create_todo_with_workflow", new=AsyncMock()) as svc,
+            patch(f"{MODULE}.TodoService.create_todo", new=AsyncMock()) as svc,
         ):
             with pytest.raises(ValidationError):
                 await create_todo.ainvoke(
