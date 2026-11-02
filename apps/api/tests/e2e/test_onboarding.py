@@ -158,13 +158,6 @@ class _UserStore:
     async def reset_onboarding(self, user_id: str) -> None:
         self.docs.get(user_id, {}).pop("onboarding", None)
 
-    async def set_onboarding_phase(self, user_id: str, phase: OnboardingPhase) -> bool:
-        sub = self._sub(user_id)
-        if sub is None:
-            return False
-        sub["phase"] = phase
-        return True
-
     async def set_bio_status(self, user_id: str, bio_status: Any) -> None:
         sub = self._sub(user_id)
         if sub is not None:

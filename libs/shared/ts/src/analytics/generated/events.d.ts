@@ -102,6 +102,7 @@ export type ServerEventName =
   | "onboarding:phase_completed"
   | "onboarding:reset"
   | "onboarding:social_profiles_confirmed"
+  | "onboarding:started"
   | "onboarding:writing_style_example_regenerated"
   | "onboarding:writing_style_saved"
   | "payment:checkout_started"
@@ -199,7 +200,6 @@ export type WebEventName =
   | "onboarding:checkout_retried"
   | "onboarding:restarted"
   | "onboarding:skipped"
-  | "onboarding:started"
   | "paywall:modal_viewed"
   | "pin:viewed"
   | "profile:link_copied"
@@ -1135,12 +1135,15 @@ export interface EventProperties {
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "needs": (string)[];
     "has_other_need": boolean;
+    "linked_platform"?: string;
   };
   "onboarding:phase_completed": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "phase": string;
+    "phase": "started" | "questions_answered" | "paywall_reached" | "paid_reveal_seen" | "first_chat_opened";
+    "needs"?: (string)[];
+    "has_other_need"?: boolean;
   };
   "onboarding:reset": {
     "actor": "user" | "agent";
@@ -1161,7 +1164,9 @@ export interface EventProperties {
     "platforms": (string)[];
   };
   "onboarding:started": {
-    "has_saved_state": boolean;
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
   };
   "onboarding:writing_style_example_regenerated": {
     "actor": "user" | "agent";

@@ -10,23 +10,36 @@
  * `/platform-links/imessage/connect`, and builds the `sms:` handoff from the
  * contact number that call returns. Skipping hands the same composed message
  * to the web chat instead.
+ *
+ * Opening the app is not the link: that lands when the user taps Start (or
+ * sends the text) there. The stage waits for it, polling the linked accounts,
+ * and only then submits onboarding, so the first conversation is composed
+ * knowing the link exists. The user can skip or pick another app meanwhile.
  */
 
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { type Dispatch, useCallback, useEffect, useState } from "react";
+import { type Dispatch, useCallback, useEffect, useRef, useState } from "react";
 import type { PhoneLinkTarget } from "@/components/shared/PhoneLinkModal";
 import { BOT_AUTH_COMMAND, type BotPlatform } from "@/config/botPlatforms";
 import { useBotLinks } from "@/features/bots/hooks/useBotLinks";
 import { api } from "@/lib/api/typed";
 import { toast } from "@/lib/toast";
-import { type LinkCodeResponse, mintLinkCode } from "../api/onboardingApi";
+import {
+  fetchPlatformLinks,
+  type LinkCodeResponse,
+  mintLinkCode,
+} from "../api/onboardingApi";
+import { PLATFORM_LINK_POLL_MS } from "../constants";
 import type { Action } from "../state/types";
 
 interface UseConnectPlatformReturn {
   connect: (platform: BotPlatform) => void;
   skip: () => void;
+  /** The platform whose link the stage is waiting on, once its app is open. */
+  awaitingPlatform: BotPlatform | null;
+  chooseAnother: () => void;
   phoneModalOpen: boolean;
   phoneTarget: PhoneLinkTarget | null;
   isSubmittingPhone: boolean;
@@ -53,6 +66,7 @@ function buildImessageHandoffLink(
  * the cached result survives a StrictMode remount.
  */
 const LINK_CODE_QUERY_KEY = ["onboarding", "platform-link-code"] as const;
+const PLATFORM_LINKS_QUERY_KEY = ["onboarding", "platform-links"] as const;
 
 export function useConnectPlatform(
   dispatch: Dispatch<Action>,
@@ -62,6 +76,9 @@ export function useConnectPlatform(
   const [phoneModalOpen, setPhoneModalOpen] = useState(false);
   const [phoneTarget, setPhoneTarget] = useState<PhoneLinkTarget | null>(null);
   const [isSubmittingPhone, setIsSubmittingPhone] = useState(false);
+  const [awaitingPlatform, setAwaitingPlatform] = useState<BotPlatform | null>(
+    null,
+  );
 
   // Minted on stage entry, not per click (window.open in a click handler must
   // be synchronous); a code outliving its TTL gets the bot's "link expired"
@@ -92,11 +109,35 @@ export function useConnectPlatform(
       }
       const url = linkCode?.links[platform] ?? botLinks?.[platform];
       if (url) window.open(url, "_blank", "noopener,noreferrer");
-      dispatch({ type: "platformConnected", platform });
-      onConfirmed();
+      setAwaitingPlatform(platform);
     },
-    [botLinks, dispatch, linkCode, onConfirmed],
+    [botLinks, linkCode],
   );
+
+  // Focus refetch catches the common case at once: the user taps Start, then
+  // switches back to this tab.
+  const { data: linkedAccounts } = useQuery({
+    queryKey: PLATFORM_LINKS_QUERY_KEY,
+    queryFn: fetchPlatformLinks,
+    enabled: awaitingPlatform !== null,
+    refetchInterval: PLATFORM_LINK_POLL_MS,
+    refetchOnWindowFocus: true,
+    staleTime: 0,
+  });
+  const linkLanded =
+    awaitingPlatform !== null &&
+    !!linkedAccounts?.platform_links[awaitingPlatform]?.platformUserId;
+
+  // A ref, not state: StrictMode re-runs the effect and onboarding must submit once.
+  const confirmedRef = useRef(false);
+  useEffect(() => {
+    if (!linkLanded || !awaitingPlatform || confirmedRef.current) return;
+    confirmedRef.current = true;
+    dispatch({ type: "platformConnected", platform: awaitingPlatform });
+    onConfirmed();
+  }, [linkLanded, awaitingPlatform, dispatch, onConfirmed]);
+
+  const chooseAnother = useCallback(() => setAwaitingPlatform(null), []);
 
   const submitPhone = useCallback(
     (phone: string) => {
@@ -135,17 +176,14 @@ export function useConnectPlatform(
     [linkCode],
   );
 
-  // The stage only advances once the modal is dismissed: advancing on the
-  // successful POST would unmount the modal before the user has read the
-  // number they are supposed to text.
+  // Waiting starts once the modal is dismissed: the user has to read the
+  // number they are supposed to text first.
   const closePhoneModal = useCallback(() => {
     const registered = phoneTarget !== null;
     setPhoneModalOpen(false);
     setPhoneTarget(null);
-    if (!registered) return;
-    dispatch({ type: "platformConnected", platform: "imessage" });
-    onConfirmed();
-  }, [dispatch, phoneTarget, onConfirmed]);
+    if (registered) setAwaitingPlatform("imessage");
+  }, [phoneTarget]);
 
   // Skipping just advances the wizard: the web no longer stages the composed
   // opener as the user's own turn (completion seeds GAIA's "Getting started"
@@ -158,6 +196,8 @@ export function useConnectPlatform(
   return {
     connect,
     skip,
+    awaitingPlatform,
+    chooseAnother,
     phoneModalOpen,
     phoneTarget,
     isSubmittingPhone,

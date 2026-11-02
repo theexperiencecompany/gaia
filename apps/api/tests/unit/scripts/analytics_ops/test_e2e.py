@@ -51,7 +51,14 @@ CLEAN: list[tuple[str, dict[str, object]]] = [
         "chat:conversation_created",
         {**WEB, "is_onboarding_demo": False, "is_system_generated": True},
     ),
-    ("onboarding:phase_completed", {**WEB, "phase": "getting_started"}),
+    ("onboarding:started", WEB),
+    (
+        "onboarding:phase_completed",
+        {**WEB, "phase": "questions_answered", "needs": ["inbox"], "has_other_need": False},
+    ),
+    ("onboarding:phase_completed", {**WEB, "phase": "paywall_reached"}),
+    ("onboarding:phase_completed", {**WEB, "phase": "paid_reveal_seen"}),
+    ("onboarding:phase_completed", {**WEB, "phase": "first_chat_opened"}),
     ("paywall:blocked", {**WEB, "feature": "/api/v1/chat-stream"}),
     (
         "subscription:activated",

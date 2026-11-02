@@ -54,7 +54,6 @@ class TestTheTaskOwnsNeitherThePhaseNorTheEvent:
         with patch("app.db.repositories.users.user_repository", repo):
             await process_onboarding_intelligence_task({}, USER)
 
-        repo.set_onboarding_phase.assert_not_awaited()
         repo.complete_onboarding.assert_not_awaited()
 
     async def test_no_completion_event_is_captured_here(self, pipeline: AsyncMock) -> None:

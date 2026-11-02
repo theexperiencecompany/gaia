@@ -4,24 +4,21 @@
  *
  * The server composes the platform opener ("Hi! I'm a founder. I could use
  * help with my inbox and my todos. Who are you?") from the stored profession
- * and needs. Those were only written by the final `POST /onboarding`, which
- * runs at the very end of the flow — so the link code minted on the platform
- * stage was composed from nulls and every handoff read "Hi! Who are you?".
+ * and needs. A failed save used to leave `preferencesPersisted` false with no
+ * way to retry: the one-tap link code was never minted and the user went on
+ * with their answers lost.
  */
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
+import { isAxiosError } from "axios";
+import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const saveOnboardingPreferences = vi.fn();
-const toastError = vi.fn();
+const saveOnboardingAnswers = vi.fn();
 
 vi.mock("@/features/onboarding/api/onboardingApi", () => ({
-  saveOnboardingPreferences: (...args: unknown[]) =>
-    saveOnboardingPreferences(...args),
-}));
-
-vi.mock("@/lib/toast", () => ({
-  toast: { error: (...args: unknown[]) => toastError(...args) },
+  saveOnboardingAnswers: (...args: unknown[]) => saveOnboardingAnswers(...args),
 }));
 
 import { FIELD_NAMES, questions } from "@/features/onboarding/constants";
@@ -37,11 +34,22 @@ const answered: OnboardingState = [
   { type: "submitNeeds" } as const,
 ].reduce(reducer, initialState);
 
-async function renderPersist(state: OnboardingState) {
+const badRequest = Object.assign(new Error("422"), {
+  isAxiosError: true,
+  response: { status: 422 },
+});
+
+function renderPersist(state: OnboardingState) {
   const dispatch = vi.fn();
-  const view = renderHook(() => useOnboardingPreferences(state, dispatch));
-  await act(async () => {
-    await Promise.resolve();
+  // Mutations retry immediately here; the policy under test is which errors retry.
+  const client = new QueryClient({
+    defaultOptions: { mutations: { retryDelay: 0 } },
+  });
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+  const view = renderHook(() => useOnboardingPreferences(state, dispatch), {
+    wrapper,
   });
   return { ...view, dispatch };
 }
@@ -49,11 +57,11 @@ async function renderPersist(state: OnboardingState) {
 describe("useOnboardingPreferences", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    saveOnboardingPreferences.mockResolvedValue({ success: true });
+    saveOnboardingAnswers.mockResolvedValue({ success: true });
     vi.spyOn(console, "error").mockImplementation(() => undefined);
   });
 
-  it("does not persist until both questions are answered", async () => {
+  it("does not save until both questions are answered", async () => {
     const afterQ1 = reducer(initialState, {
       type: "answer",
       field: FIELD_NAMES.PROFESSION,
@@ -61,36 +69,65 @@ describe("useOnboardingPreferences", () => {
     });
     expect(afterQ1.questionIndex).toBeLessThan(questions.length);
 
-    await renderPersist(afterQ1);
+    renderPersist(afterQ1);
+    await act(async () => Promise.resolve());
 
-    expect(saveOnboardingPreferences).not.toHaveBeenCalled();
+    expect(saveOnboardingAnswers).not.toHaveBeenCalled();
   });
 
-  it("PATCHes the exact profession and needs as soon as Q2 is confirmed", async () => {
-    const { dispatch } = await renderPersist(answered);
+  it("saves the exact profession and needs once, as soon as Q2 is confirmed", async () => {
+    const { dispatch } = renderPersist(answered);
 
-    expect(saveOnboardingPreferences).toHaveBeenCalledExactlyOnceWith({
-      profession: "founder",
-      needs: ["inbox", "tools"],
-    });
     await waitFor(() =>
       expect(dispatch).toHaveBeenCalledWith({ type: "preferencesPersisted" }),
     );
+    expect(saveOnboardingAnswers).toHaveBeenCalledExactlyOnceWith({
+      profession: "founder",
+      needs: ["inbox", "tools"],
+    });
   });
 
   it("does not re-send once the answers are already persisted", async () => {
-    await renderPersist({ ...answered, preferencesPersisted: true });
+    const { result } = renderPersist({
+      ...answered,
+      preferencesPersisted: true,
+    });
+    await act(async () => Promise.resolve());
 
-    expect(saveOnboardingPreferences).not.toHaveBeenCalled();
+    expect(saveOnboardingAnswers).not.toHaveBeenCalled();
+    expect(result.current.status).toBe("success");
   });
 
-  it("fails loud when the PATCH fails, and never marks the answers persisted", async () => {
-    saveOnboardingPreferences.mockRejectedValue(new Error("boom"));
+  it("retries a dropped connection before giving up", async () => {
+    saveOnboardingAnswers
+      .mockRejectedValueOnce(new Error("Network Error"))
+      .mockResolvedValueOnce({ success: true });
 
-    const { dispatch } = await renderPersist(answered);
+    const { dispatch } = renderPersist(answered);
 
-    await waitFor(() => expect(toastError).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(dispatch).toHaveBeenCalledWith({ type: "preferencesPersisted" }),
+    );
+    expect(saveOnboardingAnswers).toHaveBeenCalledTimes(2);
+  });
+
+  it("surfaces a failure that will not heal, and saves again only on the user's retry", async () => {
+    expect(isAxiosError(badRequest)).toBe(true);
+    saveOnboardingAnswers.mockRejectedValue(badRequest);
+
+    const { result, dispatch } = renderPersist(answered);
+
+    await waitFor(() => expect(result.current.status).toBe("error"));
+    expect(saveOnboardingAnswers).toHaveBeenCalledTimes(1);
     expect(dispatch).not.toHaveBeenCalledWith({ type: "preferencesPersisted" });
+
+    saveOnboardingAnswers.mockResolvedValue({ success: true });
+    act(() => result.current.retry());
+
+    await waitFor(() =>
+      expect(dispatch).toHaveBeenCalledWith({ type: "preferencesPersisted" }),
+    );
+    expect(saveOnboardingAnswers).toHaveBeenCalledTimes(2);
   });
 });
 

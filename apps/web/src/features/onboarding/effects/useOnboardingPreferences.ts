@@ -1,60 +1,71 @@
 "use client";
 
-import { type Dispatch, useEffect, useRef } from "react";
+import type { OnboardingAnswers } from "@shared/api/generated";
+import { type MutationStatus, useMutation } from "@tanstack/react-query";
+import { type Dispatch, useCallback, useEffect, useMemo, useRef } from "react";
 
-import { toast } from "@/lib/toast";
+import { shouldRetryQuery } from "@/lib/queryClient";
 
-import { saveOnboardingPreferences } from "../api/onboardingApi";
+import { saveOnboardingAnswers } from "../api/onboardingApi";
 import { FIELD_NAMES, questions } from "../constants";
 import type { Action, OnboardingState } from "../state/types";
 
+export interface AnswersSave {
+  status: MutationStatus;
+  retry: () => void;
+}
+
 /**
- * Persists Q1 (profession) and Q2 (needs) the moment Q2 is confirmed, several
- * stages before the flow's final `POST /onboarding` — the platform-link
- * opener is composed from these *stored* answers, so writing early is what
- * stops it degrading to a generic "Hi! Who are you?" on handoff.
- *
- * A failure is surfaced, not swallowed: `preferencesPersisted` stays false.
+ * Persists Q1 (profession) and Q2 (needs) the moment Q2 is confirmed: the
+ * platform-link opener and the first chat are composed from the stored answers.
+ * The wizard holds on the questions stage until this lands; a network or 5xx
+ * failure retries with backoff, and one that still fails waits on "Try again".
  */
 export function useOnboardingPreferences(
   state: OnboardingState,
   dispatch: Dispatch<Action>,
-): void {
-  const inFlightRef = useRef(false);
-
+): AnswersSave {
   const questionsComplete = state.questionIndex >= questions.length;
   const profession = state.responses[FIELD_NAMES.PROFESSION];
   const { selectedNeeds, preferencesPersisted, isRestarting } = state;
   const otherNeed = state.otherNeed.trim();
 
-  useEffect(() => {
-    if (!questionsComplete) return;
-    if (preferencesPersisted) return;
-    if (isRestarting) return;
-    if (inFlightRef.current) return;
-    if (!profession || (selectedNeeds.length === 0 && !otherNeed)) return;
-
-    inFlightRef.current = true;
-    saveOnboardingPreferences({
+  const answers = useMemo<OnboardingAnswers | null>(() => {
+    if (!profession || (selectedNeeds.length === 0 && !otherNeed)) return null;
+    return {
       profession,
       needs: selectedNeeds,
       ...(otherNeed ? { other_need: otherNeed } : {}),
-    })
-      .then(() => dispatch({ type: "preferencesPersisted" }))
-      .catch((error: unknown) => {
-        inFlightRef.current = false;
-        console.error("[onboarding] saving your answers failed:", error);
-        toast.error(
-          "We couldn't save your answers. Reload the page and try again.",
-        );
-      });
-  }, [
-    questionsComplete,
-    preferencesPersisted,
-    isRestarting,
-    profession,
-    selectedNeeds,
-    otherNeed,
-    dispatch,
-  ]);
+    };
+  }, [profession, selectedNeeds, otherNeed]);
+
+  const { mutate, status, reset } = useMutation({
+    mutationFn: (answers: OnboardingAnswers) => saveOnboardingAnswers(answers),
+    retry: shouldRetryQuery,
+    onSuccess: () => dispatch({ type: "preferencesPersisted" }),
+    onError: (error: unknown) => {
+      console.error("[onboarding] saving your answers failed:", error);
+    },
+  });
+
+  const pending = questionsComplete && !preferencesPersisted && !isRestarting;
+  const save = useCallback(() => {
+    if (pending && answers) mutate(answers);
+  }, [pending, answers, mutate]);
+
+  // A ref, not the mutation status: StrictMode re-runs the effect before the
+  // first mutate has re-rendered as pending, and the answers must go out once.
+  const autoSavedRef = useRef(false);
+  useEffect(() => {
+    if (isRestarting) {
+      autoSavedRef.current = false;
+      reset();
+      return;
+    }
+    if (!pending || !answers || autoSavedRef.current) return;
+    autoSavedRef.current = true;
+    save();
+  }, [isRestarting, pending, answers, save, reset]);
+
+  return { status: preferencesPersisted ? "success" : status, retry: save };
 }
