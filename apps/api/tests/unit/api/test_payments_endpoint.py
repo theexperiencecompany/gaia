@@ -662,6 +662,24 @@ class TestGetPaywall:
         assert response.json() == {"variant": "value_preview", "starting_jobs": ["Clear my inbox"]}
         get_paywall.assert_awaited_once_with(FAKE_USER.user_id)
 
+    async def test_wide_event_names_the_caller_and_the_operation(self, client: AsyncClient):
+        paywall = PaywallResponse(variant=OnboardingPaywallVariant.CLASSIC, starting_jobs=[])
+        with (
+            patch(
+                "app.api.v1.endpoints.payments.get_paywall",
+                new_callable=AsyncMock,
+                return_value=paywall,
+            ),
+            patch("app.api.v1.endpoints.payments.log") as mock_log,
+        ):
+            response = await client.get(PAYWALL_URL)
+
+        assert response.status_code == 200
+        mock_log.set.assert_called_once_with(
+            user={"id": FAKE_USER.user_id},
+            payment={"operation": "get_paywall"},
+        )
+
 
 class TestGetSubscriptionStatus:
     """Tests for the get subscription status endpoint."""
