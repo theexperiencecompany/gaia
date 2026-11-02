@@ -343,7 +343,7 @@ async def test_a_login_is_handed_to_the_user_and_then_reused_without_asking_agai
                     {
                         "request_human_takeover": {
                             "reason": "Sign in with your username and password. After that I'll read the page.",
-                            "category": "credentials",
+                            "category": "sign_in",
                         }
                     }
                 ]
