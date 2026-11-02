@@ -61,3 +61,19 @@ def test_an_unknown_subcommand_prints_the_usage(tmp_path: Path) -> None:
     proc = _run(tmp_path, "nope")
     assert proc.returncode == 2
     assert "audit | squirrel | audit-build | indexnow" in proc.stderr
+
+
+def test_the_free_port_it_picks_is_digits_under_force_color() -> None:
+    """Regression: run as an nx task (FORCE_COLOR set) the port came back ANSI-coloured and next start refused it."""
+    (line,) = [
+        ln for ln in SCRIPT.read_text().splitlines() if ln.strip().startswith('port="$(node -e')
+    ]
+    picker = line.strip().removeprefix('port="$(').removesuffix(')"')
+    proc = subprocess.run(
+        ["bash", "-c", picker],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "FORCE_COLOR": "1"},
+        check=True,
+    )
+    assert proc.stdout.isdigit(), repr(proc.stdout)
