@@ -8,7 +8,7 @@ This module provides a ToolNode subclass that:
 """
 
 import asyncio
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -30,6 +30,7 @@ from langgraph.runtime import Runtime
 from langgraph.store.base import BaseStore
 from langgraph.types import Command
 from pydantic import BaseModel, ValidationError
+from pydantic_core import ErrorDetails
 
 from app.agents.middleware.executor import MiddlewareExecutor
 from app.agents.tools.execute.unwrap import unwrap_execute_call
@@ -54,19 +55,20 @@ def format_tool_error(exc: Exception) -> str:
     type name is how the model tells a transient error from a permanent one.
     """
     if isinstance(exc, ToolInvocationError):
-        return (
-            f"Error: {type(exc).__name__}: '{exc.tool_name}' was not run, its arguments "
-            f"are invalid:\n{_invalid_argument_lines(exc)}\n"
-            "Nothing happened yet. Call it again with these arguments fixed."
-        )
+        errors = exc.filtered_errors if exc.filtered_errors is not None else exc.source.errors()
+        return _invalid_arguments_text(exc.tool_name, errors)
     return f"Error: {type(exc).__name__}: {exc}"
 
 
-def _invalid_argument_lines(exc: ToolInvocationError) -> str:
-    """One 'field: problem' line per model-controlled argument that failed validation."""
-    errors = exc.filtered_errors if exc.filtered_errors is not None else exc.source.errors()
-    return "\n".join(
+def _invalid_arguments_text(tool_name: str, errors: Sequence[ErrorDetails]) -> str:
+    """Name each model-controlled argument that failed validation, one 'field: problem' line each."""
+    lines = "\n".join(
         f"{'.'.join(str(part) for part in error['loc'])}: {error['msg']}" for error in errors
+    )
+    return (
+        f"Error: {ToolInvocationError.__name__}: '{tool_name}' was not run, its arguments "
+        f"are invalid:\n{lines}\n"
+        "Nothing happened yet. Call it again with these arguments fixed."
     )
 
 
@@ -393,14 +395,10 @@ class DynamicToolNode(ToolNode):
             except ValidationError as exc:
                 # Same translation the parent ToolNode path applies, so an invalid
                 # argument reads as a fixable call on both paths, not a failed run.
-                invocation_error = ToolInvocationError(
-                    name,
-                    exc,
-                    tc.get("args", {}),
-                    _filter_validation_errors(exc, self._injected_args.get(name)),
-                )
                 return ToolMessage(
-                    content=format_tool_error(invocation_error),
+                    content=_invalid_arguments_text(
+                        name, _filter_validation_errors(exc, self._injected_args.get(name))
+                    ),
                     tool_call_id=call_id,
                     name=name,
                     status="error",

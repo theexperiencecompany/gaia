@@ -9,7 +9,7 @@ executor and every wrap_tool_call hook consume as their view of graph state.
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import Annotated, Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain.agents.middleware import AgentMiddleware
@@ -17,7 +17,9 @@ from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
+from langgraph.prebuilt import InjectedStore
 from langgraph.runtime import Runtime
+from langgraph.store.base import BaseStore
 import pytest
 
 from app.agents.middleware.executor import MIDDLEWARE_FAILURE_TEMPLATE, MiddlewareExecutor
@@ -177,6 +179,14 @@ async def proxy(tool_name: str, data: dict[str, Any]) -> str:
     return f"ran {tool_name}"
 
 
+@tool
+async def files_a_ticket(
+    title: str, labels: list[int], store: Annotated[BaseStore, InjectedStore()]
+) -> str:
+    """File a ticket; never reached with invalid arguments."""
+    raise AssertionError("the tool ran with invalid arguments")
+
+
 def _real_node(*tools: Any) -> DynamicToolNode:
     registry = {t.name: t for t in tools}
     return DynamicToolNode(registry, middleware_executor=MiddlewareExecutor([_Passthrough()]))
@@ -218,7 +228,7 @@ class TestRealMiddlewarePath:
             _real_node(proxy), "execute", {"tool_name": "GMAIL_SEND_EMAIL", "data": {}}
         )
         assert message.name == "execute"
-        assert message.content.startswith(
+        assert message.text.startswith(
             "Error: TimeoutError: 'GMAIL_SEND_EMAIL' timed out after 0.03s."
         )
 
@@ -237,6 +247,25 @@ class TestRealMiddlewarePath:
         assert message.name == "breaks"
         assert message.content == "Error: ValueError: bad q"
 
+    async def test_invalid_arguments_come_back_as_a_fixable_call_naming_each_field(
+        self,
+    ) -> None:
+        """The model reads this text to retry: each field it controls, and only those, with its problem."""
+        message = await _run(_real_node(files_a_ticket), "files_a_ticket", {"labels": ["x"]})
+
+        assert message.status == "error"
+        assert message.tool_call_id == "call_1"
+        assert message.name == "files_a_ticket"
+        first, *fields, last = message.text.splitlines()
+        assert first == (
+            "Error: ToolInvocationError: 'files_a_ticket' was not run, its arguments are invalid:"
+        )
+        assert fields == [
+            "title: Field required",
+            "labels.0: Input should be a valid integer, unable to parse string as an integer",
+        ]
+        assert last == "Nothing happened yet. Call it again with these arguments fixed."
+
     async def test_an_unknown_tool_is_answered_on_its_own_call_id(self) -> None:
         message = await _run(_real_node(breaks), "ghost", {"query": "q"})
         assert message.content == "Tool 'ghost' not found"
@@ -252,7 +281,7 @@ def reports_its_analytics_context(query: str) -> str:
     return f"{query}:{current_analytics_context().model_dump_json()}"
 
 
-def _config_stamped() -> dict[str, Any]:
+def _config_stamped() -> RunnableConfig:
     return {"configurable": {"analytics_context": _STAMPED.model_dump(mode="json")}}
 
 
@@ -317,7 +346,7 @@ def reports_its_thread(query: str, config: RunnableConfig) -> str:
     return f"{query}:{config['configurable']['thread_id']}"
 
 
-def _config_with_thread() -> dict[str, Any]:
+def _config_with_thread() -> RunnableConfig:
     return {"configurable": {**_config_stamped()["configurable"], "thread_id": "thread-1"}}
 
 
@@ -368,7 +397,7 @@ class TestProductionStackFailsClosed:
         node = DynamicToolNode(
             {"send_email": send_email}, middleware_executor=MiddlewareExecutor(stack)
         )
-        config = {
+        config: RunnableConfig = {
             "configurable": {
                 "user_id": "user_1",
                 "thread_id": "thread_1",

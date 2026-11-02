@@ -468,15 +468,11 @@ apps/api/tests/unit/models/test_user_document_legacy_profession.py	call-arg
 apps/api/tests/unit/models/test_user_models.py	call-arg
 apps/api/tests/unit/models/test_user_models.py	list-item
 apps/api/tests/unit/models/test_workflow_models.py	arg-type
-apps/api/tests/unit/override/test_dynamic_tool_node.py	arg-type
-apps/api/tests/unit/override/test_dynamic_tool_node.py	union-attr
 apps/api/tests/unit/override/test_langgraph_bigtool.py	arg-type
 apps/api/tests/unit/override/test_langgraph_bigtool.py	list-item
 apps/api/tests/unit/override/test_langgraph_bigtool.py	typeddict-item
 apps/api/tests/unit/override/test_langgraph_bigtool.py	union-attr
 apps/api/tests/unit/override/test_langgraph_bigtool.py	unused-ignore
-apps/api/tests/unit/override/test_tool_execution_guards.py	arg-type
-apps/api/tests/unit/override/test_tool_execution_guards.py	union-attr
 apps/api/tests/unit/patches/test_browser_use_run_lock_patch.py	attr-defined
 apps/api/tests/unit/patches/test_composio_input_patch.py	attr-defined
 apps/api/tests/unit/patches/test_composio_langchain_patch.py	arg-type

@@ -82,6 +82,7 @@ class TestTimeoutGuard:
 
         result = await timeout_guarded_tool_call(_request("GMAIL_SEND_EMAIL"), never_returns)
 
+        assert isinstance(result, ToolMessage)
         assert "may or may not have" in result.content
         assert "Verify" in result.content
 
@@ -170,7 +171,8 @@ class TestTimeoutGuard:
         ):
             result = await timeout_guarded_tool_call(request, run_the_proxy)
 
-        body = json.loads(result.content)
+        assert isinstance(result, ToolMessage)
+        body = json.loads(result.text)
         assert body["error"] == "timeout"
         assert "GMAIL_SEND_EMAIL" in body["detail"]
         assert "verify" in body["next"].lower()
@@ -253,6 +255,7 @@ class TestTimeoutText:
 
     async def test_a_plain_timeout_names_the_tool_and_the_bound(self) -> None:
         result = await timeout_guarded_tool_call(_request("GMAIL_SEND_EMAIL"), _never_returns)
+        assert isinstance(result, ToolMessage)
         assert result.name == "GMAIL_SEND_EMAIL"
         assert result.content == (
             "Error: TimeoutError: 'GMAIL_SEND_EMAIL' timed out after 0.01s. The operation may "
@@ -261,8 +264,9 @@ class TestTimeoutText:
 
     async def test_a_proxied_timeout_names_the_real_tool_at_the_backstop_bound(self) -> None:
         result = await timeout_guarded_tool_call(_proxied("GMAIL_SEND_EMAIL"), _never_returns)
+        assert isinstance(result, ToolMessage)
         assert result.name == "execute"
-        assert result.content.startswith(
+        assert result.text.startswith(
             "Error: TimeoutError: 'GMAIL_SEND_EMAIL' timed out after 0.03s."
         )
 
@@ -280,6 +284,7 @@ class TestTimeoutText:
             raise TimeoutError
 
         result = await timeout_guarded_tool_call(_request("deep_research"), gives_up)
+        assert isinstance(result, ToolMessage)
         assert result.content == (
             "Error: TimeoutError: 'deep_research' timed out. The operation may or may not "
             "have completed on the provider side. Verify its effect before retrying."
