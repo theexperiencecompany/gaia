@@ -356,12 +356,10 @@ async def _register_client(
     client_metadata = OAuthClientMetadata(
         client_name=GAIA_OAUTH_CLIENT_NAME,
         redirect_uris=[AnyUrl(redirect_uri)],
-        grant_types=["authorization_code", "refresh_token"],
-        response_types=["code"],
         token_endpoint_auth_method="none",  # nosec B106 - OAuth spec literal, not a secret
         **branding,
     )
-    request = create_client_registration_request(
+    request = create_client_registration_request(  # pragma: no mutate — registration_endpoint is a dead fallback; URL and body pinned by tests
         as_metadata, client_metadata, registration_endpoint
     )
     try:

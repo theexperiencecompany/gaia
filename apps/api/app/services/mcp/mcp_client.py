@@ -595,7 +595,8 @@ class MCPClient:
         resolved = await asyncio.gather(
             *(IntegrationResolver.resolve(record.integration_id) for record in records)
         )
-        for record, integration in zip(records, resolved, strict=True):
+        # gather returns exactly one result per record, so zip's strict check can never trip
+        for record, integration in zip(records, resolved, strict=True):  # pragma: no mutate
             # Composio integrations also store catalog tools; only MCP servers share a namespace here.
             if integration is not None and integration.mcp_config is not None:
                 server_tools[record.integration_id] = ServerToolNames(
@@ -655,7 +656,8 @@ class MCPClient:
     ) -> None:
         """Run independent post-connect writes concurrently, logging each outcome."""
         results = await asyncio.gather(*(task for _, task in labelled), return_exceptions=True)
-        for (label, _), result in zip(labelled, results, strict=True):
+        # gather returns exactly one result per task, so zip's strict check can never trip
+        for (label, _), result in zip(labelled, results, strict=True):  # pragma: no mutate
             if isinstance(result, Exception):
                 log.warning(
                     f"{LogTag.MCP} post-connect task failed",
@@ -1080,7 +1082,7 @@ class MCPClient:
                 )
             except Exception as e:
                 is_auth_error = "401" in str(e) or "authentication" in str(e).lower()
-                terminal = is_terminal_auth_failure(e, refresh_attempted=False) or is_auth_error
+                terminal = is_terminal_auth_failure(e) or is_auth_error
                 log.error(
                     f"{LogTag.MCP} background connect after OAuth failed",
                     integration_id=integration_id,
@@ -1169,7 +1171,7 @@ class MCPClient:
         try:
             resolved = await IntegrationResolver.resolve(integration_id)
             if resolved and resolved.mcp_config:
-                server_url = resolved.mcp_config.server_url or ""
+                server_url = resolved.mcp_config.server_url
                 is_custom = resolved.source == "custom"
                 namespace = derive_integration_namespace(
                     integration_id, server_url, is_custom=is_custom
@@ -1238,9 +1240,10 @@ class MCPClient:
             if integration_id not in listed and integration_id not in self._tools
         )
         resolved = await asyncio.gather(*(IntegrationResolver.resolve(iid) for iid in candidates))
+        # gather returns exactly one result per candidate, so zip's strict check can never trip
         unlisted = [
             iid
-            for iid, integration in zip(candidates, resolved, strict=True)
+            for iid, integration in zip(candidates, resolved, strict=True)  # pragma: no mutate
             if integration is not None and integration.mcp_config is not None
         ]
         for integration_id in unlisted[:MCP_UNLISTED_CONNECT_MAX]:

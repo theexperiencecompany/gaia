@@ -312,12 +312,12 @@ async def _user_mcp_tools(
     for target in activated:
         try:
             live = await mcp_client.ensure_connected(target.id)
-        except Exception as e:
-            # One unreachable activated server must not blank discovery for the rest.
+        except Exception:
+            # One unreachable activated server must not blank discovery for the rest;
+            # log.warning stamps the handled exception as error/error_type.
             log.warning(
                 f"{LogTag.TOOL} Activated MCP integration unreachable; its tools are not listed",
                 integration_id=target.id,
-                error_type=type(e).__name__,
             )
             continue
         tools.names.update(t.name for t in live)

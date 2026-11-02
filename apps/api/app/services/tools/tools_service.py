@@ -20,7 +20,7 @@ from app.constants.log_tags import LogTag
 from app.decorators.caching import Cacheable
 from app.models.tools_models import ToolInfo, ToolsCategoryResponse, ToolsListResponse
 from app.schemas.integrations.responses import IntegrationToolApproval
-from app.services.hil.tool_key import MCPToolIdentity, hil_tool_key, mcp_tool_identity
+from app.services.hil.tool_key import MCPToolIdentity, hil_tool_key, mcp_tool_identity, mcp_tool_key
 from app.services.integrations.user_integrations import (
     UserIntegrationRecord,
     get_user_integration_records,
@@ -289,8 +289,8 @@ async def get_integration_tool_list(integration_id: str) -> list[IntegrationTool
             name=tool.name,
             description=tool.description,
             destructive=tool.name in destructive,
-            approval_key=hil_tool_key(
-                tool.name, MCPToolIdentity(integration_id=integration_id, server_name=tool.name)
+            approval_key=mcp_tool_key(
+                MCPToolIdentity(integration_id=integration_id, server_name=tool.name)
             ),
         )
         for tool in stored

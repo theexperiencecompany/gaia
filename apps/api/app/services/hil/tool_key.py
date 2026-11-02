@@ -41,11 +41,16 @@ def mcp_tool_identity(tool: BaseTool | None) -> MCPToolIdentity | None:
     return MCPToolIdentity(integration_id=integration_id, server_name=server_name)
 
 
+def mcp_tool_key(mcp_tool: MCPToolIdentity) -> str:
+    """Return the key an MCP tool's rules are stored under: its server and its name there."""
+    return f"{MCP_SHAPE_SCOPE_PREFIX}{mcp_tool.integration_id}:{mcp_tool.server_name}"
+
+
 def hil_tool_key(tool_name: str, mcp_tool: MCPToolIdentity | None) -> str:
     """Return the key a tool's override, never-auto rule and cached verdict are stored under."""
     if mcp_tool is None:
         return tool_name
-    return f"{MCP_SHAPE_SCOPE_PREFIX}{mcp_tool.integration_id}:{mcp_tool.server_name}"
+    return mcp_tool_key(mcp_tool)
 
 
 def parse_hil_tool_key(key: str) -> MCPToolIdentity | None:

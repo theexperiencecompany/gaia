@@ -28,7 +28,7 @@ from app.constants.log_tags import LogTag
 from app.db.repositories.hil import hil_tool_risk_repository
 from app.models.hil_models import HILToolRiskRecord
 from app.services.hil.prompts import TOOL_CLASSIFY_PROMPT
-from app.services.hil.tool_key import MCPToolIdentity, hil_tool_key
+from app.services.hil.tool_key import MCPToolIdentity, mcp_tool_key
 from app.services.mcp.langchain_adapter import MCP_ANNOTATIONS_METADATA_KEY
 from shared.py.wide_events import log
 
@@ -61,7 +61,7 @@ async def is_tool_destructive(
     try:
         if mcp_tool is not None:
             return await _classify_unknown_tool(
-                None, tool_name, hil_tool_key(tool_name, mcp_tool), description
+                None, tool_name, mcp_tool_key(mcp_tool), description
             )
         registry = await get_tool_registry()
         flag = registry.is_tool_destructive(tool_name)

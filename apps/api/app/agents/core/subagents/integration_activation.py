@@ -166,7 +166,8 @@ async def _activate_mcp_tools(user_id: str, target: Subagent | CustomMcpSubagent
         bind=[],
         preload=preload,
         docs=docs,
-        preload_capped=len(tools) > MCP_PRELOAD_ALL_MAX and not preload,
+        preload_capped=len(tools) > MCP_PRELOAD_ALL_MAX
+        and not preload,  # pragma: no mutate — `>=` is equivalent: at len == MAX every tool is preloaded
     )
 
 

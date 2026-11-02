@@ -280,6 +280,11 @@ class TestGaiaToolNames:
             "posthog_search": "posthog_search",
         }
 
+    def test_a_prefixed_name_never_takes_a_name_just_given_to_another_tool(self) -> None:
+        names = gaia_tool_names("src", ["a", "src_a", "a_2"], (), {"a", "a_2"})
+
+        assert names == {"a": "src_a_2", "src_a": "src_a", "a_2": "src_a_2_2"}
+
 
 class TestSourcePrefixedToolName:
     def test_prefixes_the_source_slug(self) -> None:

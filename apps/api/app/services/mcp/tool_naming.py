@@ -48,7 +48,9 @@ class MasterRename(NamedTuple):
 
 def master_rename(tool: StoredIntegrationTool) -> MasterRename | None:
     """Return the rename master stored for this entry, or None for an entry holding the server's own name."""
-    match = _MASTER_RENAME_NOTE.match(tool.description or "")
+    if tool.description is None:
+        return None
+    match = _MASTER_RENAME_NOTE.match(tool.description)
     if match is None or match.group("renamed") != tool.name:
         return None
     return MasterRename(original=match.group("original"), note_end=match.end())
