@@ -43,7 +43,7 @@ def _reminder(**overrides: object) -> ReminderDocument:
         "status": ReminderStatus.SCHEDULED,
     }
     data.update(overrides)
-    return ReminderDocument(**data)
+    return ReminderDocument.model_validate(data)
 
 
 @pytest.fixture
@@ -279,7 +279,7 @@ def _create_request(title: str = "Drink water", **overrides: object) -> CreateRe
         "scheduled_at": datetime(2099, 1, 1, 9, 0, tzinfo=UTC),
     }
     data.update(overrides)
-    return CreateReminderRequest(**data)
+    return CreateReminderRequest.model_validate(data)
 
 
 @pytest.fixture

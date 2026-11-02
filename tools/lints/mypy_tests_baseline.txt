@@ -22,7 +22,6 @@ apps/api/tests/contracts/test_browser_profiles_repository.py	misc
 apps/api/tests/contracts/test_conversations_repository.py	assignment
 apps/api/tests/contracts/test_folded_cards.py	list-item
 apps/api/tests/contracts/test_notifications_repository.py	arg-type
-apps/api/tests/contracts/test_reminders_repository.py	arg-type
 apps/api/tests/contracts/test_user_instructions_repository.py	assignment
 apps/api/tests/contracts/test_user_integrations_repository.py	arg-type
 apps/api/tests/contracts/test_workflows_repository.py	arg-type
