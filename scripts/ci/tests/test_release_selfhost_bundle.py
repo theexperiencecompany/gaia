@@ -76,14 +76,14 @@ def test_the_bundle_holds_the_manifest_and_the_files_it_names(tmp_path: Path) ->
     manifest = json.loads(members[MANIFEST])
     assert manifest["version"] == "v0.7.0-beta.4"
     assert sorted(members) == manifest["files"]
-    assert "infra/docker/docker-compose.selfhost.yml" in members
-    assert "infra/docker/selfhost/Caddyfile" in members
+    assert "packages/cli/selfhost/docker-compose.selfhost.yml" in members
+    assert "packages/cli/selfhost/Caddyfile" in members
     assert (
-        members["infra/docker/docker-compose.selfhost.yml"]
-        == (REPO_ROOT / "infra/docker/docker-compose.selfhost.yml").read_bytes()
+        members["packages/cli/selfhost/docker-compose.selfhost.yml"]
+        == (REPO_ROOT / "packages/cli/selfhost/docker-compose.selfhost.yml").read_bytes()
     )
     # Building from source needs the whole tree; a bundle install never builds.
-    assert "infra/docker/docker-compose.build.yml" not in members
+    assert "packages/cli/selfhost/docker-compose.build.yml" not in members
     assert not any(".env" in Path(name).name for name in members)
 
 
