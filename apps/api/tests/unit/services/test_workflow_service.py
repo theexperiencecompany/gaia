@@ -474,7 +474,7 @@ class TestWorkflowQueueServiceTodo:
         )
 
         args = mock_redis_pool.enqueue_job.call_args[0]
-        assert args[0] == "process_workflow_generation_task"
+        assert args == ("process_workflow_generation_task", "todo_x", USER_ID, "Title", "")
 
     async def test_queue_todo_generation_returns_false_when_job_none(self, mock_redis_pool):
         mock_redis_pool.enqueue_job.return_value = None
