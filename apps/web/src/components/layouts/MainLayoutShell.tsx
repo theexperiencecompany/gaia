@@ -9,6 +9,7 @@ import Sidebar from "@/components/layout/sidebar/MainSidebar";
 import RightSidebarSlot, {
   RightSidebarSlotProvider,
 } from "@/components/layout/sidebar/RightSidebarSlot";
+import { PaidShellOverlays } from "@/components/layouts/PaidShellOverlays";
 import {
   MAIN_CONTENT_ID,
   SkipToContentLink,
@@ -38,27 +39,6 @@ const UpgradeModal = nextDynamic(
     })),
   { ssr: false },
 );
-const CommandMenu = nextDynamic(
-  () => import("@/features/search/components/CommandMenu"),
-  { ssr: false },
-);
-
-const FirstStepsWidget = nextDynamic(
-  () =>
-    import("@/features/first-steps").then((m) => ({
-      default: m.FirstStepsWidget,
-    })),
-  { ssr: false },
-);
-
-const WhatsNewModal = nextDynamic(
-  () =>
-    import("@/features/whats-new/components/WhatsNewModal").then((m) => ({
-      default: m.WhatsNewModal,
-    })),
-  { ssr: false },
-);
-
 interface HeaderSidebarTriggerProps {
   className?: string;
 }
@@ -81,7 +61,6 @@ export function MainLayoutShell({ children }: { children: ReactNode }) {
   const { isMac } = usePlatform();
   const [defaultOpen, setDefaultOpen] = useState(true);
   const dragRef = useRef<HTMLDivElement>(null);
-  const [commandMenuOpen, setCommandMenuOpen] = useState(false);
   const billingEnabled = useDeployment().bills;
   const pathname = usePathname();
   // The paid app (sidebar, header, sync, the page itself) mounts only for an
@@ -224,19 +203,7 @@ export function MainLayoutShell({ children }: { children: ReactNode }) {
               user opened it themselves. Nothing to sell where billing is off. */}
             {billingEnabled && <UpgradeModal />}
 
-            {appSessionEnabled && (
-              <>
-                <WhatsNewModal />
-
-                {/* Activation checklist; hides itself on /onboarding and /dashboard */}
-                <FirstStepsWidget />
-
-                <CommandMenu
-                  open={commandMenuOpen}
-                  onOpenChange={setCommandMenuOpen}
-                />
-              </>
-            )}
+            {appSessionEnabled && <PaidShellOverlays />}
           </SidebarProvider>
         </RightSidebarSlotProvider>
       </TooltipProvider>
