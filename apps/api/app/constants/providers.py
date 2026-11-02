@@ -104,9 +104,8 @@ LLM_PROVIDER_PRIORITY: tuple[LLMProviderName, ...] = (
     LLMProviderName.CUSTOM,
 )
 
-# Production runs these on comms' own lane only, selected by name and on the
-# catalog model: never a default lane, a fallback, or a stored model choice.
-HOSTED_COMMS_ONLY_PROVIDERS: frozenset[LLMProviderName] = frozenset({LLMProviderName.OPENAI})
+# Production never runs these: every hosted lane, comms included, is OpenRouter or Gemini.
+HOSTED_EXCLUDED_PROVIDERS: frozenset[LLMProviderName] = frozenset({LLMProviderName.OPENAI})
 
 # Production's one-shot routing, never walked past. Memory sits on a different
 # provider from the graph so concurrent calls don't wipe each other's prompt cache.
@@ -430,7 +429,7 @@ __all__ = [
     "BuiltInOption",
     "CredentialProviderName",
     "FeatureSpec",
-    "HOSTED_COMMS_ONLY_PROVIDERS",
+    "HOSTED_EXCLUDED_PROVIDERS",
     "HOSTED_ONE_SHOT_PROVIDERS",
     "LLM_MODEL_PROFILES",
     "LLM_PROVIDER_PRIORITY",

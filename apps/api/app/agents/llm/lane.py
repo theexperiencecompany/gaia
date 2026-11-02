@@ -220,7 +220,7 @@ def _default_lane() -> ModelLane:
 
 
 def _comms_lane() -> ModelLane | None:
-    """Return comms' own direct-OpenAI lane, or None when OpenAI is not configured."""
+    """Return comms' own direct-OpenAI lane, or None when OpenAI is not configured (always, in production)."""
     if not provider_configured(LLMProviderName.OPENAI):
         return None
     return ModelLane(
@@ -288,7 +288,7 @@ async def resolve_lane(
 ) -> tuple[ModelLane, PlanType | None]:
     """Choose the single model. Returns the lane and the plan tier it was resolved from.
 
-    Comms runs its own lane on every plan, otherwise free runs the default model
+    Comms runs its own OpenAI lane where one is configured, otherwise free runs the default model
     and paid the paid model; a paid user past the monthly guard degrades to free.
     In development an explicit dev_option, else DEV_DEFAULT_MODEL, wins over all
     of it: every top-level run, not only chat, starts on it.

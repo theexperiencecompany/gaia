@@ -18,7 +18,6 @@ from app.agents.llm.client import (
     _build_default_llm,
     _build_gemini_one_shot,
     _build_openai_wire_one_shot,
-    _get_ordered_providers,
     chat_model,
     init_custom_llm,
     init_gemini_llm,
@@ -33,7 +32,6 @@ from app.agents.llm.client import (
 )
 from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.llm.lane import AgentRole, resolve_lane
-from app.agents.llm.types import ProviderLLM
 from app.constants.llm import (
     DEFAULT_MAX_TOKENS,
     HELPER_MAX_OUTPUT_TOKENS,
@@ -108,17 +106,22 @@ class TestProductionRoutingIsPinned:
         monkeypatch.setattr(client_module.settings, "GOOGLE_API_KEY", "g-key")
         monkeypatch.setattr(client_module.settings, "OPENAI_API_KEY", "sk-openai")
 
-    async def test_comms_runs_openai_gpt_5_6_luna(self) -> None:
+    @pytest.mark.regression
+    async def test_comms_runs_the_default_lane_not_openai_gaia_719(self) -> None:
         lane, _ = await resolve_lane(None, AgentRole.COMMS)
 
-        assert (lane.provider, lane.model, lane.reasoning) == ("openai", "gpt-5.6-luna", None)
+        assert (lane.provider, lane.model, lane.reasoning) == (
+            "openrouter",
+            "deepseek/deepseek-v4.1-flash-1017",
+            {"effort": "medium"},
+        )
 
-    async def test_executor_runs_openrouter_deepseek_at_medium_reasoning(self) -> None:
+    async def test_executor_runs_openrouter_deepseek_v4_1_at_medium_reasoning(self) -> None:
         lane, _ = await resolve_lane(None, AgentRole.EXECUTOR)
 
         assert (lane.provider, lane.model, lane.reasoning) == (
             "openrouter",
-            "deepseek/deepseek-v4-flash-0731",
+            "deepseek/deepseek-v4.1-flash-1017",
             {"effort": "medium"},
         )
 
@@ -129,20 +132,17 @@ class TestProductionRoutingIsPinned:
         assert fallback is not None
         assert (fallback.provider, fallback.model) == ("gemini", "gemini-3.1-flash-lite")
 
-    async def test_comms_falls_back_to_openrouter(self) -> None:
+    async def test_comms_falls_back_to_gemini_flash_lite(self) -> None:
         lane, _ = await resolve_lane(None, AgentRole.COMMS)
         fallback = lane.fallback()
 
         assert fallback is not None
-        assert (fallback.provider, fallback.model) == (
-            "openrouter",
-            "deepseek/deepseek-v4-flash-0731",
-        )
+        assert (fallback.provider, fallback.model) == ("gemini", "gemini-3.1-flash-lite")
 
     @pytest.mark.parametrize(
         ("use", "expected"),
         [
-            (ModelUse.HELPER, ("openrouter", "deepseek/deepseek-v4-flash-0731")),
+            (ModelUse.HELPER, ("openrouter", "deepseek/deepseek-v4.1-flash-1017")),
             (ModelUse.JUDGE, ("openrouter", "google/gemini-3.5-flash-lite")),
             (ModelUse.MEMORY, ("gemini", "gemini-3.1-flash-lite")),
             (ModelUse.VISION, ("gemini", "gemini-3.1-flash-lite")),
@@ -157,7 +157,7 @@ class TestProductionRoutingIsPinned:
         assert isinstance(judge, ChatOpenRouter)
         assert (judge.model_kwargs or {})["models"] == [
             "google/gemini-3.5-flash-lite",
-            "deepseek/deepseek-v4-flash-0731",
+            "deepseek/deepseek-v4.1-flash-1017",
         ]
 
     async def test_without_gemini_openai_is_never_the_executors_fallback(
@@ -171,33 +171,17 @@ class TestProductionRoutingIsPinned:
     async def test_without_openrouter_or_gemini_the_default_lane_stays_openrouter(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """OpenAI is comms-only in production; a missing OpenRouter key fails loud at load time."""
+        """Production never runs OpenAI; a missing OpenRouter key fails loud at load time."""
         monkeypatch.setattr(client_module.settings, "OPENROUTER_API_KEY", None)
         monkeypatch.setattr(client_module.settings, "GOOGLE_API_KEY", None)
 
         lane, _ = await resolve_lane(None, AgentRole.EXECUTOR)
 
-        assert (lane.provider, lane.model) == ("openrouter", "deepseek/deepseek-v4-flash-0731")
+        assert (lane.provider, lane.model) == ("openrouter", "deepseek/deepseek-v4.1-flash-1017")
 
-    def test_openai_is_registered_last_as_a_by_name_alternative(self) -> None:
-        available = {
-            LLMProviderName(name): cast(ProviderLLM, object())
-            for name in ("openai", "gemini", "openrouter")
-        }
-
-        ordered = _get_ordered_providers(available, None, True)
-
-        assert [p.name for p in ordered] == ["openrouter", "gemini", "openai"]
-
-    async def test_comms_ignores_a_stored_openai_model(self) -> None:
-        resolved_configs["openai"] = _config(api_key="sk-openai", model="gpt-4o")
-
-        lane, _ = await resolve_lane(None, AgentRole.COMMS)
-        llm = client_module.init_openai_llm().loader_func()
-
-        assert lane.model == "gpt-5.6-luna"
-        assert llm.default.model_name == "gpt-5.6-luna"
-        assert chat_model(LLMProviderName.OPENAI) == "gpt-5.6-luna"
+    @pytest.mark.regression
+    def test_a_configured_openai_key_serves_nothing_gaia_719(self) -> None:
+        assert not provider_configured(LLMProviderName.OPENAI)
 
     def test_a_missing_hosted_key_is_never_routed_around(
         self, monkeypatch: pytest.MonkeyPatch
