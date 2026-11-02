@@ -78,7 +78,7 @@ def test_the_agent_reads_whole_urls_as_text_with_no_judge() -> None:
     assert (options["use_vision"], options["use_judge"], options["flash_mode"]) == (
         False,
         False,
-        True,
+        False,
     )
 
 
