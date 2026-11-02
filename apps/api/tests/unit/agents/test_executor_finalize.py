@@ -146,7 +146,7 @@ class TestCancelledRouting:
         run = _run(RunKind.QUEUED)
         create_session("s1", RunKind.QUEUED)
 
-        await er._finalize_executor_run(run, TASK, "partial text", "final")
+        await er._finalize_executor_run(run, TASK, "partial text", "final", stopped=True)
 
         # Comms' context must record the cancellation regardless of card ownership.
         boundaries.record_cancel.assert_awaited_once_with(run.conversation_id, run.task_id, TASK)
@@ -169,7 +169,7 @@ class TestCancelledRouting:
         run = _run(RunKind.LIVE)
         create_session("s1", RunKind.LIVE)
 
-        await er._finalize_executor_run(run, TASK, "partial text", "final")
+        await er._finalize_executor_run(run, TASK, "partial text", "final", stopped=True)
 
         # Cards defer to comms, but the cancellation is still recorded for context.
         boundaries.record_cancel.assert_awaited_once_with(run.conversation_id, run.task_id, TASK)
@@ -183,7 +183,7 @@ class TestCancelledRouting:
         run = _run(RunKind.LIVE, workflow_id="wf-1")
         create_session("s1", RunKind.LIVE)
 
-        await er._finalize_executor_run(run, TASK, "", "final")
+        await er._finalize_executor_run(run, TASK, "", "final", stopped=True)
 
         boundaries.record_cancel.assert_awaited_once_with(run.conversation_id, run.task_id, TASK)
         boundaries.persist_cancelled.assert_awaited_once_with(run, [])
@@ -195,9 +195,59 @@ class TestCancelledRouting:
         boundaries.stream_manager.is_cancelled.return_value = True
         create_session("s1", RunKind.QUEUED)
 
-        await er._finalize_executor_run(_run(RunKind.QUEUED), TASK, "txt", "final")
+        await er._finalize_executor_run(_run(RunKind.QUEUED), TASK, "txt", "final", stopped=True)
 
         boundaries.note.assert_not_called()
+
+
+class TestACompletedResultIsNeverDiscarded:
+    """Regression for prod eefc68cc: Stop landed as the run finished, and the finished answer was thrown away."""
+
+    async def test_a_stop_that_lands_after_the_run_finished_still_delivers(
+        self, boundaries
+    ) -> None:
+        boundaries.stream_manager.is_cancelled.return_value = True
+        run = _run(RunKind.LIVE)
+        create_session("s1", RunKind.LIVE)
+
+        await er._finalize_executor_run(run, TASK, "the finished answer", "final", stopped=False)
+
+        boundaries.deliver.assert_awaited_once()
+        assert boundaries.deliver.await_args.args[1] == "the finished answer"
+        boundaries.record_cancel.assert_not_awaited()
+
+    async def test_a_run_the_stop_cut_short_is_still_recorded_as_cancelled(
+        self, boundaries
+    ) -> None:
+        boundaries.stream_manager.is_cancelled.return_value = True
+        run = _run(RunKind.LIVE)
+        create_session("s1", RunKind.LIVE)
+
+        await er._finalize_executor_run(run, TASK, "partial text", "final", stopped=True)
+
+        boundaries.deliver.assert_not_awaited()
+        boundaries.record_cancel.assert_awaited_once_with(run.conversation_id, run.task_id, TASK)
+
+    async def test_an_error_under_a_stop_counts_as_cut_short(self, boundaries) -> None:
+        """The stop is the likeliest cause of the error, so it is not reported as a failure."""
+        boundaries.stream_manager.is_cancelled.return_value = True
+        create_session("s1", RunKind.LIVE)
+
+        await er._finalize_executor_run(_run(RunKind.LIVE), TASK, "boom", "error")
+
+        boundaries.deliver.assert_not_awaited()
+        boundaries.record_cancel.assert_awaited_once()
+
+    async def test_a_waiter_that_timed_out_does_not_suppress_delivery(self, boundaries) -> None:
+        """Regression for prod 3ea230d3: a voice turn stopped waiting after 90s and a 7.7k-char result was dropped."""
+        create_session("s1", RunKind.LIVE)
+        mark_executor_spawned("s1")
+
+        assert await await_executor_done("s1", timeout=0.01) is False
+        await er._finalize_executor_run(_run(RunKind.LIVE), TASK, "the late answer", "final")
+
+        boundaries.deliver.assert_awaited_once()
+        assert boundaries.deliver.await_args.args[1] == "the late answer"
 
 
 class TestCompletedRouting:
@@ -350,7 +400,9 @@ class TestCancelStillCarriesHandedOverWork:
         )
 
         with patch.object(er, "run_executor_background", new_callable=AsyncMock) as spawn:
-            await er._finalize_executor_run(_run(RunKind.QUEUED), TASK, "partial", "final")
+            await er._finalize_executor_run(
+                _run(RunKind.QUEUED), TASK, "partial", "final", stopped=True
+            )
             await asyncio.sleep(0)
 
         boundaries.inbox_cls.assert_called_with("conv-1")
@@ -1008,7 +1060,7 @@ class TestTerminalRunMetrics:
         success_before = _counter("executor_run_total", {"status": "success", "queued": "true"})
 
         with patch.object(er.time, "perf_counter", return_value=1234.5):
-            await er._finalize_executor_run(run, TASK, "partial text", "final")
+            await er._finalize_executor_run(run, TASK, "partial text", "final", stopped=True)
 
         assert (
             _counter("executor_run_total", {"status": "cancelled", "queued": "true"}) == before + 1

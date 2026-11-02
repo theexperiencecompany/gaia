@@ -415,15 +415,18 @@ class TestAnExecutorThatNeverFinishes:
     failing, and says what was still running.
     """
 
-    async def test_a_timed_out_wait_marks_the_executor_failed_with_a_reason(self) -> None:
+    async def test_a_timed_out_wait_leaves_the_still_running_executor_free_to_deliver(
+        self,
+    ) -> None:
+        """The waiter only stops waiting; the run goes on and its result is delivered as its own message."""
         register_executor_capture("s1")
         sess.mark_executor_spawned("s1")
 
         finished = await await_executor_done("s1", timeout=0.01)
 
         assert finished is False
-        assert sess.executor_failed("s1") is True
-        assert "did not finish within" in (sess.executor_failure("s1") or "")
+        assert sess.executor_abandoned("s1") is False
+        assert sess.executor_failed("s1") is False
 
     async def test_a_timed_out_wait_names_the_tasks_still_running(self) -> None:
         register_executor_capture("s1")

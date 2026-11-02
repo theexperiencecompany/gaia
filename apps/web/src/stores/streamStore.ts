@@ -38,6 +38,9 @@ export interface TurnUiState {
   /** True from send until `main_response_complete` — the window where the
    *  composer is locked and sends are queued. */
   composerLocked: boolean;
+  /** Comms handed this turn to the background executor. Stop no longer applies:
+   *  the run finishes on its own and the user stops it by asking. */
+  executorHandedOff: boolean;
   loadingText: string;
   loadingTextKey: number;
   toolInfo?: ActiveToolInfo;
@@ -126,6 +129,7 @@ export const useStreamStore = create<StreamStore>()(
                 spinnerActive: true,
                 awaitingApproval: false,
                 composerLocked: true,
+                executorHandedOff: false,
                 loadingText: userMessage?.trim()
                   ? getRelevantThinkingMessage(userMessage)
                   : getRandomThinkingMessage(),
@@ -452,10 +456,14 @@ export const useActiveLoading = (): {
   };
 };
 
-/** True while the active conversation's composer must queue sends. */
+/** True while the active conversation's composer must queue sends or offer Stop. */
 export const useActiveComposerLocked = (): boolean => {
   const turn = useActiveTurn();
-  return turn != null && turn.phase !== "awaiting_executor";
+  return (
+    turn != null &&
+    turn.phase !== "awaiting_executor" &&
+    !turn.executorHandedOff
+  );
 };
 
 /** True only while the comms agent produces its INITIAL response — from send
