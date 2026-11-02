@@ -1,5 +1,6 @@
 """Unit tests for app/services/feature_flags.py."""
 
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -40,20 +41,20 @@ USER_ID = "64abc123def4567890abcdef"
 
 
 @pytest.fixture
-def mock_client() -> MagicMock:
+def mock_client() -> Iterator[MagicMock]:
     client = MagicMock()
     with patch("app.services.feature_flags._get_posthog_client", return_value=client):
         yield client
 
 
 @pytest.fixture
-def no_client() -> None:
+def no_client() -> Iterator[None]:
     with patch("app.services.feature_flags._get_posthog_client", return_value=None):
         yield
 
 
 @pytest.fixture
-def evaluated() -> MagicMock:
+def evaluated() -> Iterator[MagicMock]:
     with patch("app.services.feature_flags.capture") as mocked:
         yield mocked
 
@@ -447,7 +448,7 @@ class TestLogContract:
 
 
 def _user_with_choices(choices: dict[str, bool] | None) -> UserDocument:
-    return UserDocument(id=USER_ID, feature_flags=choices)
+    return UserDocument.model_validate({"id": USER_ID, "feature_flags": choices})
 
 
 def _posthog_serves(client: MagicMock, values: dict[str, object]) -> None:
@@ -462,7 +463,7 @@ def _queried_keys(client: MagicMock) -> list[str]:
 
 
 @pytest.fixture
-def stored_user() -> AsyncMock:
+def stored_user() -> Iterator[AsyncMock]:
     with patch("app.services.feature_flags.user_repository.get", new_callable=AsyncMock) as get:
         yield get
 
@@ -729,7 +730,7 @@ class TestWideEventCarriesTheValueInEffect:
 
 
 @pytest.fixture
-def stored_choice() -> AsyncMock:
+def stored_choice() -> Iterator[AsyncMock]:
     with patch(
         "app.services.feature_flags.user_repository.set_feature_flag", new_callable=AsyncMock
     ) as store:
