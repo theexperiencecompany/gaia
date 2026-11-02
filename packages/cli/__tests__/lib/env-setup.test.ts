@@ -68,6 +68,9 @@ describe("runEnvSetup env policy", () => {
     mkdirSync(path.join(dir, "apps", "api"), { recursive: true });
     mkdirSync(path.join(dir, "apps", "web"), { recursive: true });
     mkdirSync(path.join(dir, "infra", "docker"), { recursive: true });
+    mkdirSync(path.join(dir, "packages", "cli", "selfhost"), {
+      recursive: true,
+    });
     dirs.push(dir);
     return dir;
   }
@@ -263,7 +266,7 @@ describe("runEnvSetup env policy", () => {
     await runEnvSetup(makeHeadlessStore(), repo, "selfhost", { 3000: 4000 });
 
     const composeEnv = readFileSync(
-      path.join(repo, "infra", "docker", ".env"),
+      path.join(repo, "packages", "cli", "selfhost", ".env"),
       "utf-8",
     );
     expect(composeEnv).toMatch(/^WEB_HOST_PORT=4000$/m);
@@ -287,7 +290,7 @@ describe("runEnvSetup env policy", () => {
     );
 
     const composeEnv = readFileSync(
-      path.join(repo, "infra", "docker", ".env"),
+      path.join(repo, "packages", "cli", "selfhost", ".env"),
       "utf-8",
     );
     expect(composeEnv).toMatch(/^GAIA_DOMAIN=gaia\.example\.com$/m);
@@ -317,7 +320,7 @@ describe("runEnvSetup env policy", () => {
     );
 
     const composeEnv = readFileSync(
-      path.join(repo, "infra", "docker", ".env"),
+      path.join(repo, "packages", "cli", "selfhost", ".env"),
       "utf-8",
     );
     // A port back on its default leaves no key behind: compose's own default applies.
