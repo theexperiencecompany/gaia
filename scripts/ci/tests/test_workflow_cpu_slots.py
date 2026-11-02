@@ -92,7 +92,7 @@ def test_run_job_posts_each_check_the_moment_its_tasks_finish(
     ]
 
     def fake_run(tasks: list[str], parallel: int, wrap: Any, on_done: Any) -> bool:
-        on_done("ci:biome", {"status": "failure", "code": 1, "output": "a.ts:1:1 lint"})
+        on_done("ci:biome", {"status": "failure", "code": 1, "output": "biome found problems"})
         on_done("web:type-check", {"status": "success", "code": 0, "output": ""})
         seen_when_deps_finished.extend(posts)
         on_done("cli:type-check", {"status": "success", "code": 0, "output": ""})
@@ -108,6 +108,8 @@ def test_run_job_posts_each_check_the_moment_its_tasks_finish(
     monkeypatch.setenv("JOB_TASKS", json.dumps({"lint-node": [c.task for c in checks]}))
     monkeypatch.setenv("RESULTS_FILE", str(tmp_path / "results.json"))
     monkeypatch.setenv("NO_POST", "--no-post")
+    # CI sets REUSED for the whole job; a reused check would never be waited on.
+    monkeypatch.delenv("REUSED", raising=False)
 
     assert runner.cmd_run_job(["lint-node"]) == 1
     # biome posted before type-check's second task finished; type-check only once both had.

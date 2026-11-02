@@ -39,7 +39,7 @@ Subcommands:
     consolidate DIR --expect "job[@family][*planned-members][=job-result],…"
         The gate's verdict. Print the table every lane's JSON forms and exit 1
         if any lane failed, timed out, errored — or never reported at all.
-    pytest-verdict <junit.xml> --lane L [--path-prefix P] [--out DIR]
+    pytest-verdict <junit.xml> --lane L --exit-code N [--path-prefix P] [--out DIR]
         Turn a pytest JUnit report into a verdict: one finding per failed test,
         at its own file and line, with the assertion tail as the detail.
     regression-proof-select <pr_file> <base_file> [<pr_file> <base_file> ...]
@@ -964,14 +964,22 @@ def _read_junit(path: str, path_prefix: str = "") -> list[JUnitCase]:
 # ---------------------------------------------------------------------------
 
 
+def _failure_label(case: JUnitCase, accepted: bool) -> str:
+    """Name how a test went wrong: FLAKY when the flake gate's rerun passed it."""
+    if accepted:
+        return "FLAKY"
+    return "ERROR" if case.errored and not case.failed else "FAILED"
+
+
 def cmd_pytest_verdict(args: list[str]) -> int:
     """Emit a slice's verdict from the JUnit report it already wrote."""
     parser = _verdict_parser("pytest-verdict", default_lane="")
     parser.add_argument("junit")
     # The slice's own exit code: pytest can fail for reasons JUnit does not
     # record (a collection abort, the flake gate), and a verdict that says
-    # `pass` over a red step is worse than none.
-    parser.add_argument("--exit-code", type=int, default=0)
+    # `pass` over a red step is worse than none. Required: a failed JUnit under
+    # exit 0 means the flake gate accepted a rerun, which only the caller knows.
+    parser.add_argument("--exit-code", type=int, required=True)
     opts = parser.parse_args(args)
     if not opts.lane:
         parser.error("--lane is required")
@@ -988,15 +996,28 @@ def cmd_pytest_verdict(args: list[str]) -> int:
         return 0
 
     broken = [c for c in cases if c.failed or c.errored]
+    # The JUnit is the first run's: the flake gate's rerun writes none, so a
+    # failure it accepted is still recorded here under a step that exited 0.
+    accepted = bool(broken) and not opts.exit_code
     findings: list[Finding] = [
         {
             "file": c.file,
             "line": c.line,
-            "message": f"{'ERROR' if c.errored and not c.failed else 'FAILED'} {c.name}",
+            "message": f"{_failure_label(c, accepted)} {c.name}",
             "detail": c.detail,
         }
         for c in broken
     ]
+    if accepted:
+        report(
+            opts.lane,
+            Status.PASS,
+            f"{len(cases)} test(s) passed, {len(broken)} only on the flake gate's rerun",
+            findings=findings,
+            advice=["Stabilise the FLAKY tests: the first-run traceback is in the step's output."],
+            out_dir=opts.out,
+        )
+        return 0
     if broken:
         report(
             opts.lane,
@@ -1196,15 +1217,17 @@ def cmd_check(args: list[str]) -> int:
         return 0
     flag_pending_upload()
     if not lane_already_reported(opts.lane, opts.out):
-        report_failed_check(opts.lane, rc, output, opts.out, opts.fallback, opts.path_prefix)
+        findings = output_findings.read(
+            output, fallback=opts.fallback, path_prefix=opts.path_prefix
+        )
+        report_failed_check(opts.lane, rc, output, findings, opts.out)
     return rc
 
 
 def report_failed_check(
-    lane: str, rc: int, output: str, out: Path, fallback: str | None, path_prefix: str
+    lane: str, rc: int, output: str, findings: list[Finding], out: Path
 ) -> None:
-    """Write and announce a failed check's verdict, its findings read from what it printed."""
-    findings = output_findings.read(output, fallback=fallback, path_prefix=path_prefix)
+    """Write and announce a failed check's verdict from the findings read out of what it printed."""
     located = sum(1 for f in findings if f["file"])
     check = lane.rsplit("/", 1)[-1]
     summary = (
@@ -1342,7 +1365,6 @@ OUTCOME_STATUS: dict[str, tuple[str, str]] = {
 _UNKNOWN_OUTCOME = ("error", "reported no outcome")
 
 
-# nx's task results that mean the task ran and passed (a cache hit replays a pass).
 def job_outcomes(
     job: str, planned: set[str], results: dict[str, str], steps: dict[str, str]
 ) -> dict[str, str]:
@@ -1383,12 +1405,22 @@ def _this_job_url(gh: GitHub, repo: str, run_id: int, attempt: int) -> str | Non
     return field_of(mine[0], "html_url", str) if len(mine) == 1 else None
 
 
+def _one_line(finding: Finding) -> str:
+    message = " ".join(finding["message"].split())
+    # Most tools' lines already open with their location; a bare message gets one.
+    if not finding["file"] or finding["file"] in message:
+        return message
+    return f"{finding['file']}:{finding['line']} {message}"
+
+
 def _status_fields(
-    name: str, area: str, outcome: str, reused: dict[str, str], url: str
+    name: str, area: str, outcome: str, reused: dict[str, str], url: str, finding: str | None
 ) -> dict[str, str]:
     state, description = OUTCOME_STATUS.get(outcome, _UNKNOWN_OUTCOME)
     if outcome == "skipped" and name in reused:
         description = f"reused — {reused[name]}"
+    elif outcome == "failure" and finding:
+        description = f"failed — {finding}"
     return {
         "state": state,
         "context": status_context(name, area),
@@ -1398,7 +1430,11 @@ def _status_fields(
 
 
 def _post(
-    gh: GitHub, opts: argparse.Namespace, outcomes: dict[str, str], reused: dict[str, str]
+    gh: GitHub,
+    opts: argparse.Namespace,
+    outcomes: dict[str, str],
+    reused: dict[str, str],
+    findings: dict[str, str],
 ) -> bool:
     """Post one status per check; False when any did not land."""
     try:
@@ -1418,7 +1454,7 @@ def _post(
     endpoint = f"repos/{opts.repo}/statuses/{opts.sha}"
     lost: list[str] = []
     for name, outcome in outcomes.items():
-        fields = _status_fields(name, areas[name], outcome, reused, url)
+        fields = _status_fields(name, areas[name], outcome, reused, url, findings.get(name))
         try:
             gh.post(endpoint, fields)
         except GitHubError as err:
@@ -1429,6 +1465,35 @@ def _post(
     if lost:
         print(f"::error::post-statuses: {len(lost)} status(es) never landed: {', '.join(lost)}")
     return not lost
+
+
+def _report_failed_tasks(
+    job: str,
+    planned: set[str],
+    raw: dict[str, nx_affected.TaskResult],
+    known: dict[str, nx_affected.Check],
+) -> dict[str, str]:
+    """Write each failed task's verdict; return each failed check's first finding.
+
+    The PR's checks list shows that finding before the job's verdict uploads.
+    """
+    first_findings: dict[str, str] = {}
+    for task in sorted(planned):
+        result = raw.get(task)
+        if not result or result["status"] in nx_affected.PASSED:
+            continue
+        check = known[task]
+        lane = f"{job}/{check.check}"
+        findings = output_findings.read(
+            result["output"],
+            fallback=check.fallback,
+            path_prefix=f"{check.cwd}/" if check.cwd else "",
+        )
+        if findings:
+            first_findings.setdefault(str(check.check), _one_line(findings[0]))
+        if not lane_already_reported(lane, default_out_dir()):
+            report_failed_check(lane, result["code"], result["output"], findings, default_out_dir())
+    return first_findings
 
 
 def cmd_post_statuses(args: list[str]) -> int:
@@ -1473,23 +1538,7 @@ def cmd_post_statuses(args: list[str]) -> int:
     outcomes = job_outcomes(opts.job, planned, results, steps)
     if opts.check:
         planned = {task for task in planned if known[task].check == opts.check}
-    for task in sorted(planned):
-        result = raw.get(task)
-        lane = f"{opts.job}/{known[task].check}"
-        if (
-            result
-            and result["status"] not in nx_affected.PASSED
-            and not lane_already_reported(lane, default_out_dir())
-        ):
-            check = known[task]
-            report_failed_check(
-                lane,
-                result["code"],
-                result["output"],
-                default_out_dir(),
-                check.fallback,
-                f"{check.cwd}/" if check.cwd else "",
-            )
+    first_findings = _report_failed_tasks(opts.job, planned, raw, known)
 
     # Checks run-job already posted as they finished; their state cannot change since.
     posted_file = opts.results.with_suffix(".posted")
@@ -1503,7 +1552,7 @@ def cmd_post_statuses(args: list[str]) -> int:
     if not opts.no_post:
         if not (opts.repo and opts.sha and opts.run_id and opts.run_attempt):
             parser.error("--repo, --sha, --run-id and --run-attempt are required to post")
-        landed = _post(GitHub.from_env(), opts, to_post, reused)
+        landed = _post(GitHub.from_env(), opts, to_post, reused, first_findings)
     if opts.check:
         if landed and not opts.no_post:
             with posted_file.open("a") as handle:
