@@ -871,7 +871,7 @@ jobs:
         run: |
           rm -rf "$RUNNER_TEMP/trivy-src" && mkdir -p "$RUNNER_TEMP/trivy-src"
           git archive HEAD | tar -x -C "$RUNNER_TEMP/trivy-src"
-      - name: trivy — filesystem scan, CRITICAL and HIGH (advisory)
+      - name: trivy — filesystem scan, CRITICAL and HIGH
         id: trivy
         continue-on-error: true
         if: contains(fromJSON(needs.detect.outputs.job_tasks)['scan'], 'ci:trivy')
@@ -885,10 +885,8 @@ jobs:
           cache: ${{ !startsWith(runner.name, 'gaia-home-') }}
           cache-dir: ${{ env.TRIVY_DB_DIR }}
           skip-dirs: "node_modules,.venv,.nx,apps/web/.next,.mypy_cache,.pytest_cache"
-          # TODO: make blocking (exit-code:1) after chore/trivy-npm-audit lands
-          # Currently 25 HIGH from pnpm-lock (axios/tar/undici) would red every
-          # change; keep advisory until that PR merges, then flip to exit-code:1.
-          exit-code: "0"
+          trivyignores: ".trivyignore.yaml"
+          exit-code: "1"
           ignore-unfixed: false
       # Every status run-job did not post (a step's check, a skip, a lost post),
       # a verdict per failed check, then the job's.
