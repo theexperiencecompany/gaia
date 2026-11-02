@@ -1,10 +1,11 @@
-"""Drive one browser task: Jev first on the start page, then the Browser-Use agent steers and finishes.
+"""Drive one browser task: the Browser-Use agent steers and finishes, with Jev when the user turned it on.
 
-One long-lived Browser-Use Agent runs with Jev registered as its jev action
-(jev/tool.py JEV_DESCRIPTION says what Jev does). On a run with a page to
-start on, the Agent's initial action is a Jev burst there, so the first model
-call the agent makes already reads what Jev did; on a blank tab the agent
-moves first. The agent is the only finisher and the only answer writer. Every agent step and every Jev
+One long-lived Browser-Use Agent runs; with the user's BROWSER_JEV flag, Jev is
+registered as its jev action (jev/tool.py JEV_DESCRIPTION says what Jev does)
+and a run with a page to start on begins with a Jev burst there, so the first
+model call already reads what Jev did. Without it, the start page is opened
+and the agent acts alone; on a blank tab the agent moves first. The agent is
+the only finisher and the only answer writer. Every agent step and every Jev
 burst reaches the runner as one frame through RunHooks. A run resumed on the
 fallback engine carries the primary agent's state instead of a new Jev burst.
 """
@@ -13,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
+import contextlib
 from dataclasses import dataclass
 from functools import partial
 from itertools import compress
@@ -48,8 +50,8 @@ from app.services.browser.exceptions import (
     BrowserHandoffCancelled,
     BrowserUnavailableError,
 )
-from app.services.browser.jev.gateway import open_jev_client
-from app.services.browser.jev.loop import BurstContext, JevRunner
+from app.services.browser.jev.gateway import JevDecider, open_jev_client
+from app.services.browser.jev.loop import BurstContext, JevRunner, ValueWriter
 from app.services.browser.jev.page import JevPage
 from app.services.browser.jev.secrets import RunSecrets
 from app.services.browser.jev.tool import JEV_ACTION, JevDelegate, register_jev
@@ -243,7 +245,7 @@ class AgentRunSetup:
 
 
 class BrowserAgentRun:
-    """Run one Browser-Use Agent, with Jev as its first action and its fast operator."""
+    """Run one Browser-Use Agent, with Jev as its first action and fast operator when the run enables it."""
 
     def __init__(
         self,
@@ -294,7 +296,7 @@ class BrowserAgentRun:
             # The run's event says the model, not the browser, was unusable.
             log.set_ns("browser", llm_error=type(exc).__name__)
             raise
-        async with open_jev_client() as client:
+        async with contextlib.AsyncExitStack() as jev_scope:
             browser = GaiaBrowserSession(
                 cdp_url=self._session.cdp_url, user_id=self._user_id, engine=self._session.engine
             )
@@ -302,35 +304,10 @@ class BrowserAgentRun:
             browser.event_bus.on(BrowserConnectedEvent, self._on_connected)
             browser.event_bus.on(BrowserConnectedEvent, stalls.attach)
             browser.event_bus.on(NavigationCompleteEvent, stalls.on_navigation_complete)
-
-            def runner_for() -> JevRunner:
-                return JevRunner(
-                    page=self._page_for(self._agent.browser_session),
-                    client=client,
-                    text_model=text_model,
-                    run=BurstContext(
-                        ledger=self._ledger,
-                        secrets=self._secrets,
-                        stalls=stalls,
-                        should_stop=self._hooks.should_stop,
-                        user_waiting=self._hooks.user_waiting,
-                    ),
-                )
-
             switch_engine = (
                 partial(self._switch_engine, self._hooks.switch_engine)
                 if self._hooks.switch_engine is not None
                 else None
-            )
-            delegate = JevDelegate(
-                runner_for=runner_for,
-                emit=self._emit_burst,
-                on_engine_gap=(
-                    partial(switch_engine, EngineSwitchReason.SCRIPT_UNSUPPORTED)
-                    if switch_engine is not None
-                    else None
-                ),
-                secret_names=self._secrets.names,
             )
             tools = build_browser_tools(
                 solve_captcha=self._config.solve_captcha,
@@ -338,7 +315,9 @@ class BrowserAgentRun:
                 handle_takeover=self._takeover,
                 handle_engine_switch=switch_engine,
             )
-            register_jev(tools, delegate)
+            if self._config.jev:
+                client = await jev_scope.enter_async_context(open_jev_client())
+                register_jev(tools, self._jev_delegate(client, text_model, stalls, switch_engine))
             self._agent = Agent(
                 **agent_options(
                     task,
@@ -411,6 +390,40 @@ class BrowserAgentRun:
             return None
         return self._resumed_from.model_copy(
             update={"stopped": False, "paused": False, "consecutive_failures": 0}
+        )
+
+    def _jev_delegate(
+        self,
+        client: JevDecider,
+        text_model: ValueWriter,
+        stalls: StalledLoads,
+        switch_engine: Callable[[EngineSwitchReason], Awaitable[str]] | None,
+    ) -> JevDelegate:
+        """Return the jev action's delegate: each burst a JevRunner on the agent's own page."""
+
+        def runner_for() -> JevRunner:
+            return JevRunner(
+                page=self._page_for(self._agent.browser_session),
+                client=client,
+                text_model=text_model,
+                run=BurstContext(
+                    ledger=self._ledger,
+                    secrets=self._secrets,
+                    stalls=stalls,
+                    should_stop=self._hooks.should_stop,
+                    user_waiting=self._hooks.user_waiting,
+                ),
+            )
+
+        return JevDelegate(
+            runner_for=runner_for,
+            emit=self._emit_burst,
+            on_engine_gap=(
+                partial(switch_engine, EngineSwitchReason.SCRIPT_UNSUPPORTED)
+                if switch_engine is not None
+                else None
+            ),
+            secret_names=self._secrets.names,
         )
 
     def _page_for(self, browser_session: BrowserSession) -> JevPage:

@@ -358,18 +358,11 @@ BROWSER_CAPTCHA_SKIP_SOURCE = (
     "could not be opened."
 )
 
-# The agent's role around Jev, appended to Browser-Use's system prompt.
+# Appended to Browser-Use's system prompt; BROWSER_AGENT_JEV_ROLE when BROWSER_JEV registers Jev.
 # "Report only what the current page shows" made an agent back on a re-ordered
 # Hacker News drop its three opened stories as stale and quit (research3, 2026-10-02).
-BROWSER_AGENT_ROLE = (
-    "You supervise Jev, the fast page operator exposed as the `jev` action: its description "
-    "says what it does and what it leaves to you. When the task started on a page, your step "
-    "0 already ran Jev there on the part of the task that page is for; its report is in your "
-    "history. On a blank tab, your first step opens the page to start on. You are the only "
-    "one who finishes the task and the only one who writes the answer.\n"
-    "Each step, choose one:\n"
-    "1. The task is complete: call `done` with the answer. Report only what pages showed: "
-    "the current page, your reads and Jev's reports; copy titles, messages, numbers and URLs "
+_BROWSER_AGENT_ANSWER_RULE = (
+    "copy titles, messages, numbers and URLs "
     "exactly. A list that changes while you work keeps the items you already chose from it. "
     "Say plainly what was not done or could not be found. success=true means the user's "
     "request was carried out and the answer it asks for delivered; a gap in supporting detail, "
@@ -378,18 +371,49 @@ BROWSER_AGENT_ROLE = (
     "done, however honestly you explain why: the button or page it names does not exist (no "
     '"Buy now" button, so no order number), the site is unreachable (its address does not '
     "resolve), or the action was refused. This replaces any rule for success above.\n"
-    "2. Interactions remain on the page you are on (filling a form, searching and choosing): "
-    "call `jev` with a goal for that page and the done_when that page will show.\n"
-    "3. Anything else: do it yourself. Navigate to a URL you already know or go back, click "
-    "once, switch tabs, read or summarise a page with `extract` (to "
-    "read a linked page, navigate to its exact URL from Jev's report or a `find_elements` href, "
+)
+_BROWSER_AGENT_READS = (
+    "read or summarise a page with `extract` (to "
+    "read a linked page, navigate to its exact URL from {link_source}, "
     "then extract; never guess a URL), "
     "search a long page with `search_page`, count with `find_elements` (a CSS selector "
     "returns every match), never count by eye.\n"
+)
+_BROWSER_AGENT_CLOSING = (
     "Work through every part of the task before you finish: a part is reported as not done "
     "only after you tried it and it could not be done.\n"
     "Messages the user sends mid-task arrive as follow-up requests: "
     "weigh what each says against the task; it changes the task only where it says so."
+)
+BROWSER_AGENT_ROLE = (
+    "You carry out the task in the browser. When the task started on a page, your step 0 "
+    "already opened it. On a blank tab, your first step opens the page to start on. You "
+    "finish the task and write the answer.\n"
+    "Each step, choose one:\n"
+    "1. The task is complete: call `done` with the answer. Report only what pages showed: "
+    "the current page and your reads; "
+    + _BROWSER_AGENT_ANSWER_RULE
+    + "2. Otherwise act on the page yourself: navigate to a URL you already know or go back, "
+    "click, type, choose, switch tabs, "
+    + _BROWSER_AGENT_READS.format(link_source="a `find_elements` href")
+    + _BROWSER_AGENT_CLOSING
+)
+BROWSER_AGENT_JEV_ROLE = (
+    "You supervise Jev, the fast page operator exposed as the `jev` action: its description "
+    "says what it does and what it leaves to you. When the task started on a page, your step "
+    "0 already ran Jev there on the part of the task that page is for; its report is in your "
+    "history. On a blank tab, your first step opens the page to start on. You are the only "
+    "one who finishes the task and the only one who writes the answer.\n"
+    "Each step, choose one:\n"
+    "1. The task is complete: call `done` with the answer. Report only what pages showed: "
+    "the current page, your reads and Jev's reports; "
+    + _BROWSER_AGENT_ANSWER_RULE
+    + "2. Interactions remain on the page you are on (filling a form, searching and choosing): "
+    "call `jev` with a goal for that page and the done_when that page will show.\n"
+    "3. Anything else: do it yourself. Navigate to a URL you already know or go back, click "
+    "once, switch tabs, "
+    + _BROWSER_AGENT_READS.format(link_source="Jev's report or a `find_elements` href")
+    + _BROWSER_AGENT_CLOSING
 )
 
 #: Step 0's single-page objective, written without a model call: the part of the task its page is for.

@@ -225,6 +225,7 @@ def _runner(
             handoff_timeout_seconds=handoff_timeout,  # type: ignore[arg-type]  # as above
             stream_screenshots=stream_screenshots,
             solve_captcha=False,
+            jev=True,
         ),
         secrets=SECRETS,
         user_id=user_id,

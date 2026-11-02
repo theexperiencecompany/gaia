@@ -76,6 +76,7 @@ CONFIG = BrowserRunConfig(
     handoff_timeout_seconds=60,
     stream_screenshots=True,
     solve_captcha=False,
+    jev=True,
 )
 SECRET = "hunter2-secret"
 
@@ -1013,6 +1014,24 @@ class TestTools:
         await harness.run._on_step_end(agent)
 
         assert "cancelled" in agent.state.last_result[-1].error
+
+    async def test_a_run_without_jev_opens_no_gateway_and_offers_no_jev_action(
+        self, harness: _Harness, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def _never_opened() -> AsyncIterator[MagicMock]:
+            raise AssertionError("a run without Jev opened Jev's gateway")
+
+        monkeypatch.setattr(agent_run_mod, "open_jev_client", _never_opened)
+        harness.run._config = replace(CONFIG, jev=False, start_url="https://shop.test/")
+
+        outcome = await harness.run.execute("buy the ticket")
+
+        options = _Agent.built[-1].options
+        assert JEV_ACTION not in options["tools"].registry.registry.actions
+        assert options["initial_actions"] == [
+            {"navigate": {"url": "https://shop.test/", "new_tab": False}}
+        ]
+        assert outcome.success is True
 
     async def test_only_a_run_that_can_move_engines_offers_it_or_a_captcha_tool_when_asked(
         self, harness: _Harness

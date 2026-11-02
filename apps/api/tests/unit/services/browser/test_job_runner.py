@@ -437,11 +437,11 @@ def _install(
     h = Harness()
     final = result if result is not None else _result(BrowserSessionStatus.COMPLETED, True, "Done")
 
-    async def _obscura_off(flag: object, user_id: str | None, default: bool | None = None) -> bool:
+    async def _flags_off(flag: object, user_id: str | None, default: bool | None = None) -> bool:
         return False
 
-    # Chrome, the default engine, on the configured host; Obscura is an opt-in flag.
-    monkeypatch.setattr(jr, "is_enabled", _obscura_off)
+    # Chrome, the default engine, on the configured host, without Jev; both are opt-in flags.
+    monkeypatch.setattr(jr, "is_enabled", _flags_off)
     monkeypatch.setattr(jr.settings, "BROWSER_HOST_URL", PRIMARY_HOST)
     monkeypatch.setattr(jr.settings, "BROWSER_FALLBACK_HOST_URL", None)
     monkeypatch.setattr(jr, "publish_frame_to_job", h.publish)
@@ -1029,6 +1029,7 @@ async def test_runner_is_configured_from_settings_and_config(
         handoff_timeout_seconds=333,
         stream_screenshots=False,
         solve_captcha=False,
+        jev=False,
     )
     assert isinstance(kwargs.pop("secrets"), RunSecrets)
     assert kwargs == {
@@ -2334,7 +2335,7 @@ async def test_the_engine_is_the_users_own_obscura_choice(
 
     async def _is_enabled(flag: object, user_id: str | None, default: bool | None = None) -> bool:
         asked.append((flag, user_id))
-        return opted_in
+        return opted_in and flag is FeatureFlag.BROWSER_OBSCURA
 
     monkeypatch.setattr(jr, "is_enabled", _is_enabled)
     monkeypatch.setattr(jr.settings, "BROWSER_FALLBACK_HOST_URL", "http://chrome:8930")
@@ -2342,10 +2343,32 @@ async def test_the_engine_is_the_users_own_obscura_choice(
 
     event = await _run_event(h, _request(user_id=OTHER_USER_ID))
 
-    assert asked == [(FeatureFlag.BROWSER_OBSCURA, OTHER_USER_ID)]
+    assert (FeatureFlag.BROWSER_OBSCURA, OTHER_USER_ID) in asked
     assert h.session_kwargs["host_url"] == (PRIMARY_HOST if opted_in else "http://chrome:8930")
     # The engine the run is on is what the host reported for its session.
     assert event["browser"]["engine"] == engine
+
+
+@pytest.mark.parametrize("opted_in", [True, False])
+async def test_jev_operates_the_run_only_by_the_users_own_choice(
+    monkeypatch: pytest.MonkeyPatch, opted_in: bool
+) -> None:
+    h = _install(monkeypatch)
+    asked: list[tuple[object, str | None]] = []
+
+    async def _is_enabled(flag: object, user_id: str | None, default: bool | None = None) -> bool:
+        asked.append((flag, user_id))
+        return opted_in and flag is FeatureFlag.BROWSER_JEV
+
+    monkeypatch.setattr(jr, "is_enabled", _is_enabled)
+
+    event = await _run_event(h, _request(user_id=OTHER_USER_ID))
+
+    assert (FeatureFlag.BROWSER_JEV, OTHER_USER_ID) in asked
+    assert h.runner_kwargs["config"].jev is opted_in
+    # Jev's own choice, not the engine's: Obscura stays off.
+    assert h.session_kwargs["host_url"] == PRIMARY_HOST
+    assert event["browser"]["jev"] is opted_in
 
 
 async def test_a_credential_is_typed_only_on_the_site_named_for_it(

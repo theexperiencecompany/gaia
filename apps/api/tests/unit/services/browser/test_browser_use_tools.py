@@ -12,8 +12,10 @@ from pydantic import PrivateAttr
 import pytest
 
 from app.constants.browser import BROWSER_CODE_BOXES_TO_JEV, BrowserEngine
+from app.schemas.browser import BrowserAction
 from app.services.browser.browser_use_session import GaiaBrowserSession
 from app.services.browser.browser_use_tools import GaiaTools
+from app.services.browser.jev.tool import Bursts, JevDelegate, register_jev
 
 pytestmark = pytest.mark.unit
 
@@ -217,9 +219,24 @@ def _code_boxes(boxes: int = 8, *, container: str = "FORM", halves: bool = False
     return {10 + n: box for n, box in enumerate(b for h in holders for b in h.children_nodes)}
 
 
-async def _typed(browser_use: _BrowserUse, elements: dict[int, Any], index: int) -> ActionResult:
+def _no_bursts() -> Bursts:
+    raise AssertionError("typing into a box never runs Jev")
+
+
+async def _no_emit(actions: list[BrowserAction], url: str, title: str) -> None:
+    raise AssertionError("typing into a box never shows a burst")
+
+
+async def _typed(
+    browser_use: _BrowserUse, elements: dict[int, Any], index: int, *, jev: bool = True
+) -> ActionResult:
+    """Type one character into the element at index, on a run whose tools have jev or not."""
+    tools = GaiaTools()
+    if jev:
+        register_jev(tools, JevDelegate(runner_for=_no_bursts, emit=_no_emit))
     page = _Page("https://github.com/login/device", elements=elements)
-    return await _act("input", {"index": index, "text": "E"}, page)
+    action = _Actions(input={"index": index, "text": "E"})
+    return await tools.act(action=action, browser_session=page, sensitive_data=SECRETS)
 
 
 @pytest.mark.regression
@@ -263,6 +280,16 @@ async def test_a_field_beside_a_code_is_typed_as_asked(
     _adopt(next(iter(boxes.values())).parent_node, target)
 
     result = await _typed(browser_use, {**boxes, 3: target}, 3)
+
+    assert result.error is None
+    assert len(browser_use.calls) == 1
+
+
+async def test_a_run_without_jev_types_into_a_code_box_as_asked(
+    browser_use: _BrowserUse,
+) -> None:
+    """With BROWSER_JEV off there is no jev to hand the code to, so the agent's input runs."""
+    result = await _typed(browser_use, _code_boxes(), 11, jev=False)
 
     assert result.error is None
     assert len(browser_use.calls) == 1

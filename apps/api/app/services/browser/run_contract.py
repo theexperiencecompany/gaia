@@ -31,7 +31,7 @@ SwitchEngineFn = Callable[[EngineSwitchReason, str | None], Awaitable[str]]
 
 @dataclass(frozen=True)
 class BrowserRunConfig:
-    """One browser run's settings: the BROWSER_USE_* knobs, and the page it starts on."""
+    """One browser run's settings: the BROWSER_USE_* knobs, whether Jev operates pages, and the start page."""
 
     #: Browser-Use's step backstop; the run ends on the agent's own finish or a budget.
     max_steps: int
@@ -41,13 +41,15 @@ class BrowserRunConfig:
     handoff_timeout_seconds: int
     stream_screenshots: bool
     solve_captcha: bool
+    #: The user's BROWSER_JEV choice: Jev is registered and takes the first burst only when set.
+    jev: bool
     #: Opened before the first decision; Browser-Use's own find of a URL in the
     #: task gives up when the task names more than one.
     start_url: str | None = None
 
     @classmethod
-    def from_settings(cls, start_url: str | None) -> BrowserRunConfig:
-        """Return the deployment's run settings for a run starting at start_url."""
+    def from_settings(cls, start_url: str | None, *, jev: bool) -> BrowserRunConfig:
+        """Return the deployment's run settings for a run starting at start_url, with Jev or without."""
         return cls(
             max_steps=settings.BROWSER_USE_MAX_STEPS,
             max_actions_per_step=settings.BROWSER_USE_MAX_ACTIONS_PER_STEP,
@@ -56,6 +58,7 @@ class BrowserRunConfig:
             handoff_timeout_seconds=settings.BROWSER_USE_HANDOFF_TIMEOUT_SECONDS,
             stream_screenshots=settings.BROWSER_USE_STREAM_SCREENSHOTS,
             solve_captcha=settings.BROWSER_USE_SOLVE_CAPTCHA,
+            jev=jev,
             start_url=start_url,
         )
 

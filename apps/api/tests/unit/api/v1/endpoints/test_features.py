@@ -92,7 +92,16 @@ class TestListFeatures:
                     "enabled": False,
                     "available": True,
                     "unavailable_reason": None,
-                }
+                },
+                {
+                    "key": "BROWSER_JEV",
+                    "label": "Jev page operator",
+                    "description": FEATURE_FLAGS[FeatureFlag.BROWSER_JEV].user_toggle.description,
+                    "stage": "experimental",
+                    "enabled": False,
+                    "available": True,
+                    "unavailable_reason": None,
+                },
             ]
         }
 
@@ -115,10 +124,11 @@ class TestListFeatures:
         store.choices["BROWSER_OBSCURA"] = True
         posthog.flag_values["BROWSER_OBSCURA_KILL"] = True
 
-        [feature] = (await client.get(URL)).json()["features"]
+        obscura, jev = (await client.get(URL)).json()["features"]
 
-        assert (feature["enabled"], feature["available"]) == (False, False)
-        assert feature["unavailable_reason"] == KILL_SWITCH_REASON
+        assert (obscura["enabled"], obscura["available"]) == (False, False)
+        assert (jev["enabled"], jev["available"]) == (False, True)
+        assert obscura["unavailable_reason"] == KILL_SWITCH_REASON
 
 
 @pytest.mark.unit
@@ -133,7 +143,10 @@ class TestUpdateFeature:
         assert resp.json()["enabled"] is True
         assert store.choices == {"BROWSER_OBSCURA": True}
         listed = (await client.get(URL)).json()["features"]
-        assert [(f["key"], f["enabled"]) for f in listed] == [("BROWSER_OBSCURA", True)]
+        assert [(f["key"], f["enabled"]) for f in listed] == [
+            ("BROWSER_OBSCURA", True),
+            ("BROWSER_JEV", False),
+        ]
 
     async def test_the_choice_beats_a_rollout_that_says_otherwise(
         self, client: AsyncClient, store: _UserStore, posthog: MagicMock
@@ -220,7 +233,7 @@ class TestWideEvent:
             await list_features(user=FAKE_USER)
 
         assert event["user"] == {"id": USER_ID}
-        assert event["feature"] == {"operation": "list", "count": 1}
+        assert event["feature"] == {"operation": "list", "count": 2}
 
     async def test_a_toggle_records_the_flag_the_choice_and_what_was_stored(self) -> None:
         async with captured_wide_event() as event:
