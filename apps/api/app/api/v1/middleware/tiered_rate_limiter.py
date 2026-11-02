@@ -102,10 +102,14 @@ class CostBudgetExceededException(RateLimitExceededException):
         plan_required: str | None = None,
         reset_time: datetime | None = None,
         current_plan: str | None = None,
+        *,
+        message: str = "You've used today's AI usage allowance.",
+        period: RateLimitPeriod = RateLimitPeriod.DAY,
     ):
-        budget_message = "You've used today's AI usage allowance."
+        budget_message = message
         if plan_required:
             budget_message += f" Upgrade to {plan_required.capitalize()} for higher limits."
+        self.period = period
         super().__init__(
             feature, plan_required, reset_time, message=budget_message, current_plan=current_plan
         )

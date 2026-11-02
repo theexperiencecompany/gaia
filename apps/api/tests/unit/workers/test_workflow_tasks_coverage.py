@@ -64,7 +64,7 @@ async def _run_task(
         # autouse _subscription_active_by_default fixture — these guard tests
         # are about onboarding/budget, not that one.
         patch(
-            f"{MODULE}.enforce_daily_cost_budget",
+            f"{MODULE}.enforce_cost_budget",
             new_callable=AsyncMock,
             side_effect=budget_side_effect,
         ) as budget,

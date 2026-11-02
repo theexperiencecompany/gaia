@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-/** Regression: a payer at 100% of the monthly allowance read "you're cut off" and cancelled, though Pro never blocks at the monthly cap. */
+/** Regression: a payer at 100% of the monthly allowance saw only "100% used", with no word on what stops or until when. */
 import type { UsageSummary } from "@shared/types";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
@@ -23,18 +23,14 @@ function proSummary(monthlyPct: number, dailyPct = 10): UsageSummary {
 }
 
 describe("UsageView hero", () => {
-  it("says nothing is paused when Pro's monthly allowance is used up", () => {
+  it("says usage is paused until the reset when Pro's monthly allowance is used up", () => {
     render(
       <UsageView summary={proSummary(100)} history={[]} onUpgrade={vi.fn()} />,
     );
 
+    expect(screen.getByText(/^Paused until /)).toBeTruthy();
     expect(
-      screen.getByText("Priority allowance used for this month"),
-    ).toBeTruthy();
-    expect(
-      screen.getByText(
-        /Nothing is paused\. GAIA keeps working on the standard model/,
-      ),
+      screen.getByText(/Chat, workflows and tracked todos resume/),
     ).toBeTruthy();
     expect(screen.queryByText("of your monthly allowance used")).toBeNull();
   });
@@ -45,7 +41,9 @@ describe("UsageView hero", () => {
     );
 
     expect(
-      screen.getByText(/At 100%, GAIA switches to the standard model until/),
+      screen.getByText(
+        /At 100%, chat, workflows and tracked todos pause until/,
+      ),
     ).toBeTruthy();
   });
 

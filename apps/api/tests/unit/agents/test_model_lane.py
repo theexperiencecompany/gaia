@@ -8,49 +8,35 @@ serialization round trip.
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from redis.exceptions import DataError
 
 from app.agents.llm import client as client_module, dev_lane as dev_lane_module, lane as lane_module
 from app.agents.llm.lane import (
     AgentRole,
     ModelLane,
-    MonthlyBudgetStage,
-    _notify_monthly_budget_once,
-    _pro_monthly_budget_stage,
     dev_option,
     dev_option_for,
     inherits_lane,
     resolve_lane,
 )
-from app.config.rate_limits import RateLimitPeriod
 from app.config.settings import settings
-from app.constants.cache import COST_BUDGET_NEAR_NOTIFIED_KEY, COST_BUDGET_NOTIFIED_KEY
 from app.constants.llm import (
     COMMS_MODEL_NAME,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
     DEV_MODEL_OPTIONS,
-    MONTHLY_BUDGET_TTL_SECONDS,
     OPENROUTER_REASONING,
     PAID_COMMS_REASONING,
     PAID_MODEL_NAME,
     PAID_MODEL_PROVIDER,
-    PRO_MONTHLY_BUDGET_HEADS_UP_FRACTION,
-    PRO_MONTHLY_COST_BUDGET_USD,
     LLMProviderName,
     OpenRouterModelKwargs,
 )
 from app.constants.log_tags import LogTag
-from app.models.notification.notification_models import (
-    NotificationSourceEnum,
-    NotificationType,
-)
 from app.models.payment_models import PlanType
 from app.services.providers.provider_credentials_service import ProviderConfig, resolved_configs
 
@@ -69,25 +55,13 @@ USER = "u1"
 _A_ROUTING_PIN: OpenRouterModelKwargs = {"provider": {"only": ["minimax"]}}
 
 
-def _plan(
-    plan: PlanType, *, over_budget: bool = False, stage: MonthlyBudgetStage | None = None
-) -> Any:
-    """Patch the two external reads resolve_lane makes, keyed by user id."""
-    resolved_stage = stage or (
-        MonthlyBudgetStage.EXHAUSTED if over_budget else MonthlyBudgetStage.UNDER
-    )
+def _plan(plan: PlanType) -> Any:
+    """Patch the plan read resolve_lane makes, keyed by user id."""
 
     async def _cached_plan_type(user_id: str) -> PlanType:
         return {USER: plan}[user_id]
 
-    async def _stage(user_id: str) -> MonthlyBudgetStage:
-        return {USER: resolved_stage}[user_id]
-
-    return (
-        patch.object(lane_module.payment_service, "get_cached_plan_type", _cached_plan_type),
-        patch.object(lane_module, "_pro_monthly_budget_stage", _stage),
-        patch.object(lane_module, "spawn_background_task", lambda coro: coro.close()),
-    )
+    return patch.object(lane_module.payment_service, "get_cached_plan_type", _cached_plan_type)
 
 
 @contextmanager
@@ -104,11 +78,8 @@ def _distinct_reasoning_knobs() -> Iterator[None]:
         yield
 
 
-async def _resolve(
-    plan: PlanType, role: AgentRole = AgentRole.COMMS, *, over_budget: bool = False
-) -> ModelLane:
-    a, b, c = _plan(plan, over_budget=over_budget)
-    with a, b, c:
+async def _resolve(plan: PlanType, role: AgentRole = AgentRole.COMMS) -> ModelLane:
+    with _plan(plan):
         resolved, _ = await resolve_lane(USER, role)
     return resolved
 
@@ -149,9 +120,7 @@ class TestPlanRouting:
     ) -> None:
         """Every self-host user resolves to Pro; that must not route them to the hosted paid model."""
         monkeypatch.setattr(lane_module.settings, "ENV", "selfhost")
-        unreachable = AsyncMock(side_effect=AssertionError("no economic guard without plans"))
-        with patch.object(lane_module, "_pro_monthly_budget_stage", unreachable):
-            resolved, plan = await resolve_lane(USER, AgentRole.EXECUTOR)
+        resolved, plan = await resolve_lane(USER, AgentRole.EXECUTOR)
 
         assert plan is PlanType.PRO
         assert resolved == lane_module._default_lane()
@@ -193,323 +162,11 @@ class TestPlanRouting:
         assert log.warning.call_args.kwargs == {"error": "redis down"}
 
     async def test_the_resolved_plan_is_returned_for_the_budget_wall(self) -> None:
-        a, b, c = _plan(PlanType.PRO)
-        with a, b, c:
+        plan_patch = _plan(PlanType.PRO)
+        with plan_patch:
             _, plan = await resolve_lane(USER, AgentRole.COMMS)
 
         assert plan == PlanType.PRO
-
-
-class TestMonthlyEconomicGuard:
-    async def test_an_over_budget_paid_user_is_degraded_not_blocked(self) -> None:
-        resolved = await _resolve(PlanType.PRO, over_budget=True)
-
-        assert resolved.model == DEFAULT_MODEL_NAME
-        assert resolved.provider_pin is None
-
-    async def test_the_degraded_user_keeps_their_paid_tier(self) -> None:
-        """Only the model degrades — every other pro entitlement stays intact."""
-        a, b, c = _plan(PlanType.PRO, over_budget=True)
-        with a, b, c:
-            _, plan = await resolve_lane(USER, AgentRole.COMMS)
-
-        assert plan == PlanType.PRO
-
-    async def test_the_degrade_is_a_named_event_carrying_who_and_which_tier(self) -> None:
-        """pro_model_degraded must carry the user and tier, or nobody can tell who it hit."""
-        a, b, c = _plan(PlanType.PRO, over_budget=True)
-        with a, b, c, patch.object(lane_module, "log") as log:
-            await resolve_lane(USER, AgentRole.COMMS)
-
-        assert log.warning.call_args.args == ("pro_model_degraded",)
-        assert log.warning.call_args.kwargs == {
-            "event_name": "pro_model_degraded",
-            "user_id": USER,
-            "plan": PlanType.PRO.value,
-        }
-
-    async def test_a_user_under_the_guard_is_never_degraded(self) -> None:
-        assert (await _resolve(PlanType.PRO, over_budget=False)).model == PAID_MODEL_NAME
-
-    async def test_a_user_near_the_guard_keeps_the_paid_model(self) -> None:
-        a, b, c = _plan(PlanType.PRO, stage=MonthlyBudgetStage.NEAR)
-        with a, b, c:
-            resolved, _ = await resolve_lane(USER, AgentRole.COMMS)
-
-        assert resolved.model == PAID_MODEL_NAME
-
-
-def _spend(amount: float) -> Any:
-    """Patch the spend read with THIS month's cost for THIS user.
-
-    Keyed rather than a blanket return: the guard must read the right user's
-    month, and a lookup for anyone (or any window) else has to fail rather than
-    answer.
-    """
-
-    async def _get_cost(user_id: str, period: RateLimitPeriod) -> float:
-        return {(USER, RateLimitPeriod.MONTH): amount}[(user_id, period)]
-
-    return patch.object(lane_module, "get_cost", _get_cost)
-
-
-class TestTheMonthlySpendRead:
-    """The guard's own read; TestMonthlyEconomicGuard patches it out to test routing."""
-
-    async def test_spend_at_the_budget_crosses_the_guard(self) -> None:
-        with _spend(PRO_MONTHLY_COST_BUDGET_USD):
-            assert await _pro_monthly_budget_stage(USER) is MonthlyBudgetStage.EXHAUSTED
-
-    async def test_spend_just_below_the_budget_is_near_not_exhausted(self) -> None:
-        with _spend(PRO_MONTHLY_COST_BUDGET_USD - 0.01):
-            assert await _pro_monthly_budget_stage(USER) is MonthlyBudgetStage.NEAR
-
-    async def test_spend_at_the_heads_up_line_is_near(self) -> None:
-        with _spend(PRO_MONTHLY_COST_BUDGET_USD * PRO_MONTHLY_BUDGET_HEADS_UP_FRACTION):
-            assert await _pro_monthly_budget_stage(USER) is MonthlyBudgetStage.NEAR
-
-    async def test_spend_below_the_heads_up_line_is_under(self) -> None:
-        with _spend(PRO_MONTHLY_COST_BUDGET_USD * PRO_MONTHLY_BUDGET_HEADS_UP_FRACTION - 0.01):
-            assert await _pro_monthly_budget_stage(USER) is MonthlyBudgetStage.UNDER
-
-    async def test_a_read_failure_fails_open_and_keeps_the_paid_lane(self) -> None:
-        """A paying user is never degraded because the spend read broke."""
-        with patch.object(
-            lane_module, "get_cost", AsyncMock(side_effect=ConnectionError("redis down"))
-        ):
-            assert await _pro_monthly_budget_stage(USER) is MonthlyBudgetStage.UNDER
-
-    async def test_the_read_failure_is_reported_with_its_cause(self) -> None:
-        with (
-            patch.object(
-                lane_module, "get_cost", AsyncMock(side_effect=ConnectionError("redis down"))
-            ),
-            patch.object(lane_module, "log") as log,
-        ):
-            await _pro_monthly_budget_stage(USER)
-
-        assert log.warning.call_args.args == (
-            f"{LogTag.AGENT} Monthly budget read failed; keeping the paid lane",
-        )
-        assert log.warning.call_args.kwargs == {
-            "error": "redis down",
-            "error_type": "ConnectionError",
-        }
-
-
-class _FakeRedisSetNX:
-    """SET NX semantics, faithful on the two points this gate rests on.
-
-    A non-str value raises the way redis-py does (DataError) rather than
-    being stored: the marker has to be something Redis can actually hold, and a
-    fake that swallows anything would call a broken write a success. The TTL is
-    recorded because the notice is once *a month*, not once *ever*.
-    """
-
-    def __init__(self) -> None:
-        self.store: dict[str, str] = {}
-        self.ttl: dict[str, int | None] = {}
-
-    async def set(
-        self, key: str, value: str, *, nx: bool = False, ex: int | None = None
-    ) -> bool | None:
-        if not isinstance(value, str | bytes | int | float):
-            raise DataError(f"Invalid input of type {type(value).__name__}")
-        if nx and key in self.store:
-            return None
-        self.store[key] = value
-        self.ttl[key] = ex
-        return True
-
-
-#: A fixed month window, so the copy and the gate key are asserted against a
-#: value rather than against whatever the wall clock says today.
-WINDOW = "209901"
-RESET = datetime(2099, 2, 1, tzinfo=UTC)
-
-
-def _month_window() -> Any:
-    """Pin the two period-derived reads to the MONTH window.
-
-    Keyed on the period rather than a blanket return: both helpers treat every
-    non-DAY period as MONTH, so a blanket fake cannot tell "asked for the month"
-    from "asked for nothing" — and this notice is once a MONTH, named after the
-    month's reset date.
-    """
-    return (
-        patch.object(
-            lane_module,
-            "get_time_window_key",
-            lambda period: {RateLimitPeriod.MONTH: WINDOW}[period],
-        ),
-        patch.object(
-            lane_module, "get_reset_time", lambda period: {RateLimitPeriod.MONTH: RESET}[period]
-        ),
-    )
-
-
-class _Notice:
-    """Every patch the notice needs, as one context manager."""
-
-    def __init__(self, client: _FakeRedisSetNX | None = None, notify: Any = None) -> None:
-        self.client = _FakeRedisSetNX() if client is None else client
-        self.created = AsyncMock() if notify is None else notify
-        self._patches = [
-            patch.object(lane_module.redis_cache, "redis", self.client),
-            patch.object(lane_module.notification_service, "create_notification", self.created),
-            *_month_window(),
-        ]
-
-    def __enter__(self) -> "_Notice":
-        for p in self._patches:
-            p.start()
-        return self
-
-    def __exit__(self, *exc: object) -> None:
-        for p in reversed(self._patches):
-            p.stop()
-
-    @property
-    def request(self) -> Any:
-        return self.created.await_args_list[0].args[0]
-
-
-class TestDegradeNotice:
-    async def test_the_notice_fires_once_a_month_not_every_degraded_turn(self) -> None:
-        with _Notice() as notice:
-            await _notify_monthly_budget_once(USER, MonthlyBudgetStage.EXHAUSTED)
-            await _notify_monthly_budget_once(USER, MonthlyBudgetStage.EXHAUSTED)
-
-        assert notice.created.await_count == 1
-
-    async def test_the_gate_is_keyed_to_this_user_and_this_month(self) -> None:
-        """A key missing either part is a notice that fires for the wrong person or never fires again."""
-        with _Notice() as notice:
-            await _notify_monthly_budget_once(USER, MonthlyBudgetStage.EXHAUSTED)
-
-        assert list(notice.client.store) == [
-            COST_BUDGET_NOTIFIED_KEY.format(user_id=USER, window=WINDOW)
-        ]
-
-    async def test_the_gate_holds_a_marker_redis_can_actually_store(self) -> None:
-        with _Notice() as notice:
-            await _notify_monthly_budget_once(USER, MonthlyBudgetStage.EXHAUSTED)
-
-        assert list(notice.client.store.values()) == ["1"]
-
-    async def test_the_gate_expires_so_next_month_notifies_again(self) -> None:
-        with _Notice() as notice:
-            await _notify_monthly_budget_once(USER, MonthlyBudgetStage.EXHAUSTED)
-
-        assert list(notice.client.ttl.values()) == [MONTHLY_BUDGET_TTL_SECONDS]
-
-    async def test_each_user_gets_their_own_notice(self) -> None:
-        with _Notice() as notice:
-            await _notify_monthly_budget_once(USER, MonthlyBudgetStage.EXHAUSTED)
-            await _notify_monthly_budget_once("u2", MonthlyBudgetStage.EXHAUSTED)
-
-        assert [call.args[0].user_id for call in notice.created.await_args_list] == [USER, "u2"]
-
-    async def test_the_notice_is_an_informational_usage_limit_message(self) -> None:
-        with _Notice() as notice:
-            await _notify_monthly_budget_once(USER, MonthlyBudgetStage.EXHAUSTED)
-
-        assert notice.request.source == NotificationSourceEnum.USAGE_LIMIT
-        assert notice.request.type == NotificationType.INFO
-
-    async def test_the_notice_tells_the_user_what_happened_and_until_when(self) -> None:
-        """The copy has to say the model changed and name the date it comes back."""
-        with _Notice() as notice:
-            await _notify_monthly_budget_once(USER, MonthlyBudgetStage.EXHAUSTED)
-
-        assert notice.request.content.title == "Priority compute used for this month"
-        assert notice.request.content.body == (
-            "You've used this month's priority AI compute. GAIA keeps "
-            f"working on the standard model until {RESET:%b %d}."
-        )
-
-    async def test_no_redis_client_sends_nothing(self) -> None:
-        """Without the SET NX gate, the notice is skipped rather than sent on every degraded turn."""
-        with _Notice() as notice, patch.object(lane_module.redis_cache, "redis", None):
-            await _notify_monthly_budget_once(USER, MonthlyBudgetStage.EXHAUSTED)
-
-        notice.created.assert_not_awaited()
-
-    async def test_a_failed_notice_never_reaches_the_degraded_turn(self) -> None:
-        """The lane already degraded successfully; the notice is best-effort."""
-        with _Notice(notify=AsyncMock(side_effect=RuntimeError("mongo down"))):
-            await _notify_monthly_budget_once(USER, MonthlyBudgetStage.EXHAUSTED)
-
-    async def test_a_failed_notice_is_reported_with_its_cause(self) -> None:
-        with (
-            _Notice(notify=AsyncMock(side_effect=RuntimeError("mongo down"))),
-            patch.object(lane_module, "log") as log,
-        ):
-            await _notify_monthly_budget_once(USER, MonthlyBudgetStage.EXHAUSTED)
-
-        assert log.warning.call_args.args == (f"{LogTag.AGENT} Monthly budget notice failed",)
-        assert log.warning.call_args.kwargs == {
-            "stage": "exhausted",
-            "error": "mongo down",
-            "error_type": "RuntimeError",
-        }
-
-    async def test_the_degraded_turn_notifies_the_user_it_degraded(self) -> None:
-        """resolve_lane spawns the notice rather than awaiting it, so the turn is not held up by the write."""
-        spawned: list[Any] = []
-        plan, budget, _ = _plan(PlanType.PRO, over_budget=True)
-        with (
-            plan,
-            budget,
-            patch.object(lane_module, "spawn_background_task", spawned.append),
-            _Notice() as notice,
-        ):
-            await resolve_lane(USER, AgentRole.COMMS)
-            assert len(spawned) == 1
-            await spawned[0]
-
-        assert notice.request.user_id == USER
-
-    async def test_a_turn_near_the_guard_sends_the_heads_up(self) -> None:
-        spawned: list[Any] = []
-        plan, budget, _ = _plan(PlanType.PRO, stage=MonthlyBudgetStage.NEAR)
-        with (
-            plan,
-            budget,
-            patch.object(lane_module, "spawn_background_task", spawned.append),
-            _Notice() as notice,
-        ):
-            await resolve_lane(USER, AgentRole.COMMS)
-            assert len(spawned) == 1
-            await spawned[0]
-
-        assert notice.request.content.title == "Most of this month's priority compute is used"
-        assert notice.request.content.body == (
-            "When it runs out, GAIA keeps working on the standard model until "
-            f"{RESET:%b %d}. Nothing pauses."
-        )
-
-    async def test_a_turn_under_the_heads_up_line_sends_nothing(self) -> None:
-        spawned: list[Any] = []
-        plan, budget, _ = _plan(PlanType.PRO, stage=MonthlyBudgetStage.UNDER)
-        with plan, budget, patch.object(lane_module, "spawn_background_task", spawned.append):
-            await resolve_lane(USER, AgentRole.COMMS)
-
-        assert spawned == []
-
-    async def test_the_heads_up_and_the_degrade_notice_are_gated_separately(self) -> None:
-        """Sharing one gate would swallow the degrade notice for anyone who already got the heads-up."""
-        with _Notice() as notice:
-            await _notify_monthly_budget_once(USER, MonthlyBudgetStage.NEAR)
-            await _notify_monthly_budget_once(USER, MonthlyBudgetStage.EXHAUSTED)
-
-        assert sorted(notice.client.store) == sorted(
-            [
-                COST_BUDGET_NEAR_NOTIFIED_KEY.format(user_id=USER, window=WINDOW),
-                COST_BUDGET_NOTIFIED_KEY.format(user_id=USER, window=WINDOW),
-            ]
-        )
-        assert notice.created.await_count == 2
 
 
 class TestReasoningPerRole:
@@ -836,16 +493,9 @@ class TestCommsLane:
         # The effort is pinned on the client; a reasoning key would switch ChatOpenAI's wire.
         assert "reasoning" not in resolved.binding_keys()
 
-    async def test_an_over_budget_pro_user_keeps_comms_on_its_lane(self) -> None:
-        """The monthly guard degrades the work tiers; comms is already the cheap lane."""
-        with _openai_configured():
-            resolved = await _resolve(PlanType.PRO, AgentRole.COMMS, over_budget=True)
-
-        assert resolved.provider == LLMProviderName.OPENAI
-
     async def test_the_plan_is_still_resolved_for_the_budget_wall(self) -> None:
-        a, b, c = _plan(PlanType.PRO)
-        with a, b, c, _openai_configured():
+        plan_patch = _plan(PlanType.PRO)
+        with plan_patch, _openai_configured():
             _, plan = await resolve_lane(USER, AgentRole.COMMS)
 
         assert plan == PlanType.PRO

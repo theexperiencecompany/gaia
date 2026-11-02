@@ -21,9 +21,7 @@ from pydantic import TypeAdapter
 
 from app.agents.llm.client import chat_model, chat_route, provider_configured
 from app.agents.llm.dev_lane import dev_default_model_id, dev_default_option
-from app.config.rate_limits import RateLimitPeriod, get_reset_time, get_time_window_key
 from app.config.settings import settings
-from app.constants.cache import COST_BUDGET_NEAR_NOTIFIED_KEY, COST_BUDGET_NOTIFIED_KEY
 from app.constants.llm import (
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MAX_TOKENS,
@@ -31,13 +29,10 @@ from app.constants.llm import (
     DEV_MODEL_OPTIONS,
     MODEL_FIELD_ID,
     MODEL_KWARGS_FIELD_ID,
-    MONTHLY_BUDGET_TTL_SECONDS,
     OPENROUTER_REASONING,
     PAID_COMMS_REASONING,
     PAID_MODEL_NAME,
     PAID_MODEL_PROVIDER,
-    PRO_MONTHLY_BUDGET_HEADS_UP_FRACTION,
-    PRO_MONTHLY_COST_BUDGET_USD,
     PROVIDER_FIELD_ID,
     REASONING_FIELD_ID,
     DevModelOption,
@@ -47,18 +42,9 @@ from app.constants.llm import (
     OpenRouterReasoning,
 )
 from app.constants.log_tags import LogTag
-from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable
-from app.models.notification.notification_models import (
-    NotificationContent,
-    NotificationRequest,
-    NotificationSourceEnum,
-)
 from app.models.payment_models import PlanType
-from app.services.cost_budget import get_cost
-from app.services.notification_service import notification_service
 from app.services.payments.payment_service import payment_service
-from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import log
 
 #: Every configurable key a lane owns. These must be REPLACED wholesale on a lane
@@ -317,18 +303,6 @@ async def resolve_lane(
     if plan == PlanType.FREE or not settings.deployment.enforces_plans:
         return _default_lane(), plan
 
-    stage = await _pro_monthly_budget_stage(user_id)
-    if stage is not MonthlyBudgetStage.UNDER:
-        spawn_background_task(_notify_monthly_budget_once(user_id, stage))
-    if stage is MonthlyBudgetStage.EXHAUSTED:
-        log.warning(
-            "pro_model_degraded",
-            event_name="pro_model_degraded",
-            user_id=user_id,
-            plan=plan.value,
-        )
-        return _default_lane(), plan
-
     return (
         ModelLane(
             provider=LLMProviderName(PAID_MODEL_PROVIDER),
@@ -342,90 +316,6 @@ async def resolve_lane(
         ),
         plan,
     )
-
-
-class MonthlyBudgetStage(StrEnum):
-    """Where a pro user's month sits against the economic guard."""
-
-    UNDER = "under"
-    NEAR = "near"
-    EXHAUSTED = "exhausted"
-
-
-async def _pro_monthly_budget_stage(user_id: str) -> MonthlyBudgetStage:
-    """Classify the month's spend against the pro economic guard.
-
-    Fails open (UNDER) on infra errors — never punish a paying user for a
-    Redis hiccup.
-    """
-    try:
-        spent = await get_cost(user_id, RateLimitPeriod.MONTH)
-    except Exception as e:
-        log.warning(
-            f"{LogTag.AGENT} Monthly budget read failed; keeping the paid lane",
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        return MonthlyBudgetStage.UNDER
-    if spent >= PRO_MONTHLY_COST_BUDGET_USD:
-        return MonthlyBudgetStage.EXHAUSTED
-    if spent >= PRO_MONTHLY_COST_BUDGET_USD * PRO_MONTHLY_BUDGET_HEADS_UP_FRACTION:
-        return MonthlyBudgetStage.NEAR
-    return MonthlyBudgetStage.UNDER
-
-
-_NOTIFIED_KEY_BY_STAGE: Mapping[MonthlyBudgetStage, str] = {
-    MonthlyBudgetStage.NEAR: COST_BUDGET_NEAR_NOTIFIED_KEY,
-    MonthlyBudgetStage.EXHAUSTED: COST_BUDGET_NOTIFIED_KEY,
-}
-
-
-def _monthly_budget_notice(stage: MonthlyBudgetStage, reset: str) -> NotificationContent:
-    if stage is MonthlyBudgetStage.NEAR:
-        return NotificationContent(
-            title="Most of this month's priority compute is used",
-            body=(
-                "When it runs out, GAIA keeps working on the standard model until "
-                f"{reset}. Nothing pauses."
-            ),
-        )
-    return NotificationContent(
-        title="Priority compute used for this month",
-        body=(
-            "You've used this month's priority AI compute. GAIA keeps "
-            f"working on the standard model until {reset}."
-        ),
-    )
-
-
-async def _notify_monthly_budget_once(user_id: str, stage: MonthlyBudgetStage) -> None:
-    """In-app notice the first time a month reaches this stage (Redis SET NX gate)."""
-    try:
-        client = redis_cache.redis
-        if client is None:
-            return
-        key = _NOTIFIED_KEY_BY_STAGE[stage].format(
-            user_id=user_id, window=get_time_window_key(RateLimitPeriod.MONTH)
-        )
-        if not await client.set(key, "1", nx=True, ex=MONTHLY_BUDGET_TTL_SECONDS):
-            return
-        reset_time = get_reset_time(RateLimitPeriod.MONTH)
-        await notification_service.create_notification(
-            NotificationRequest(
-                user_id=user_id,
-                source=NotificationSourceEnum.USAGE_LIMIT,
-                # type is left to NotificationRequest's own default (INFO) rather
-                # than restated here — one source of truth for it.
-                content=_monthly_budget_notice(stage, f"{reset_time:%b %d}"),
-            )
-        )
-    except Exception as e:
-        log.warning(
-            f"{LogTag.AGENT} Monthly budget notice failed",
-            stage=stage.value,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
 
 
 __all__ = [

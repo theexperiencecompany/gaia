@@ -18,12 +18,17 @@ from unittest.mock import AsyncMock, patch
 import fakeredis.aioredis
 import pytest
 
-from app.config.rate_limits import get_daily_cost_budget_usd, get_per_request_token_ceiling
-from app.constants.llm import BUDGET_WRAPUP_REMAINING_FRACTION
+from app.config.rate_limits import (
+    RateLimitPeriod,
+    get_daily_cost_budget_usd,
+    get_per_request_token_ceiling,
+    get_reset_time,
+)
+from app.constants.llm import BUDGET_WRAPUP_REMAINING_FRACTION, PRO_MONTHLY_COST_BUDGET_USD
 from app.db.redis import redis_cache
 from app.db.repositories.usage_daily import UsageDailyIncrement
 from app.models.payment_models import PlanType
-from app.services import cost_budget
+from app.services import cost_budget, usage_heads_up
 from app.services.cost_budget import (
     DAILY_BUDGET_STOP_FREE,
     DAILY_BUDGET_STOP_PRO,
@@ -67,6 +72,46 @@ async def _burn_tokens(count: int) -> None:
     await record_model_call_usage(
         USER, UsageDailyIncrement(cost=0.0, input_tokens=count), REQUEST, charge_to_budget=True
     )
+
+
+async def _spend_earlier_this_month(amount: float) -> None:
+    """Spend booked on an earlier day: it sits in the month window, not today's."""
+    await redis_cache.redis.incrbyfloat(
+        cost_budget._budget_key(USER, RateLimitPeriod.MONTH), amount
+    )
+
+
+@pytest.mark.unit
+class TestMonthlyWall:
+    async def test_binds_a_pro_run_once_the_month_reaches_the_allowance(self) -> None:
+        await _spend_earlier_this_month(PRO_MONTHLY_COST_BUDGET_USD)
+
+        check = await get_budget_stop_reason(USER, PlanType.PRO, REQUEST)
+
+        reset = get_reset_time(RateLimitPeriod.MONTH)
+        assert check.stop_reason is not None
+        assert f"{reset:%B} {reset.day}" in check.stop_reason
+
+    async def test_binds_without_a_request_id_too(self) -> None:
+        await _spend_earlier_this_month(PRO_MONTHLY_COST_BUDGET_USD)
+
+        check = await get_budget_stop_reason(USER, PlanType.PRO, None)
+
+        assert check.stop_reason is not None
+
+    async def test_lets_a_pro_run_through_one_cent_short(self) -> None:
+        await _spend_earlier_this_month(PRO_MONTHLY_COST_BUDGET_USD - 0.01)
+
+        check = await get_budget_stop_reason(USER, PlanType.PRO, REQUEST)
+
+        assert check.stop_reason is None
+
+    async def test_free_has_no_monthly_wall(self) -> None:
+        await _spend_earlier_this_month(PRO_MONTHLY_COST_BUDGET_USD * 10)
+
+        check = await get_budget_stop_reason(USER, PlanType.FREE, REQUEST)
+
+        assert check.stop_reason is None
 
 
 @pytest.mark.unit
@@ -189,7 +234,7 @@ class TestThreadingGaps:
     async def test_no_user_id_reports_nothing_read_at_all(self) -> None:
         check = await get_budget_stop_reason(None, PlanType.FREE, REQUEST)
 
-        assert check == (None, None, None)
+        assert check == BudgetCheck(None, None, None)
 
     async def test_a_missing_plan_is_derived_and_reported_back(self) -> None:
         await _spend(0.01)
@@ -223,7 +268,7 @@ class TestThreadingGaps:
         ):
             check = await get_budget_stop_reason(USER, None, REQUEST)
 
-        assert check == (None, None, None)
+        assert check == BudgetCheck(None, None, None)
 
     async def test_a_plan_lookup_failure_names_the_user_it_stopped_enforcing_for(
         self,
@@ -341,3 +386,18 @@ class TestResolvedPlanSurvivesABoundWall:
 
         assert check.stop_reason == DAILY_BUDGET_STOP_FREE
         assert check.plan_type == PlanType.FREE
+
+
+@pytest.mark.unit
+class TestMonthlyHeadsUp:
+    async def test_the_heads_up_fires_once_a_month_and_names_the_reset(self) -> None:
+        created = AsyncMock()
+        with patch.object(usage_heads_up.notification_service, "create_notification", created):
+            await usage_heads_up.notify_monthly_heads_up_once(USER)
+            await usage_heads_up.notify_monthly_heads_up_once(USER)
+
+        assert created.await_count == 1
+        request = created.await_args.args[0]
+        reset = get_reset_time(RateLimitPeriod.MONTH)
+        assert request.user_id == USER
+        assert f"{reset:%B} {reset.day}" in request.content.body

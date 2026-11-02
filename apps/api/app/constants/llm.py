@@ -507,8 +507,8 @@ PRO_DAILY_COST_BUDGET_USD = 5.00  # TUNE — abuse guard, not a usage limit
 BUDGET_WRAPUP_REMAINING_FRACTION = 0.2
 
 # Rolling monthly USD cost budget for pro: the ECONOMIC guard, ~1x the
-# subscription price. On exhaustion pro is NOT blocked — routing degrades to
-# the free-tier model for the rest of the month.
+# subscription price. Reaching it pauses chat, bots, workflow runs and tracked
+# todos until the month resets, the same wall as the daily budget.
 PRO_MONTHLY_COST_BUDGET_USD = 25.00  # TUNE
 # The one-time heads-up fires here; mirrors USAGE_WARN_THRESHOLD (libs/shared/ts/src/constants/usage.ts),
 # where the usage page turns amber.

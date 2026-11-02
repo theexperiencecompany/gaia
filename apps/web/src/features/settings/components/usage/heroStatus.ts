@@ -27,10 +27,8 @@ function resetPhrase(win: Period, resetIso: string): string {
 /**
  * Copy for the usage hero, by window and how full it is.
  *
- * The two windows bind differently: the daily budget pauses chat and workflow
- * runs until it resets, while Pro's monthly allowance never blocks anything,
- * it moves GAIA to the standard model until the month resets. Saying only
- * "100% used" reads as "you're cut off", which is false for the month.
+ * Both windows bind the same way: at 100% chat, workflows and tracked todos
+ * pause until the window resets, so the copy names that moment up front.
  */
 export function heroStatus(
   win: Period,
@@ -45,14 +43,14 @@ export function heroStatus(
   if (win === "month") {
     if (percent >= 100) {
       return {
-        headline: "Priority allowance used for this month",
-        detail: `Nothing is paused. GAIA keeps working on the standard model until it resets ${when}.`,
+        headline: `Paused until ${when}`,
+        detail: `You've used this month's allowance. Chat, workflows and tracked todos resume ${when}, when it resets.`,
       };
     }
     if (percent >= USAGE_WARN_THRESHOLD) {
       return {
         headline: `of your ${allowance} used`,
-        detail: `At 100%, GAIA switches to the standard model until ${when}. Chat and workflows keep working.`,
+        detail: `At 100%, chat, workflows and tracked todos pause until ${when}.`,
       };
     }
     return { headline: `of your ${allowance} used`, detail: `Resets ${when}` };

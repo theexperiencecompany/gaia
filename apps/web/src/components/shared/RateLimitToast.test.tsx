@@ -37,4 +37,18 @@ describe("handleRateLimitError on the daily cost wall", () => {
       "Usage limit reached: You've used today's AI usage allowance. Resets in 3 hours.",
     );
   });
+
+  it("shows a monthly pause's own reset day without a countdown on top", () => {
+    const message =
+      "You've used this month's AI usage allowance, so chat, workflows and tracked todos are paused until December 1, when it resets.";
+    handleRateLimitError({
+      code: "rate_limit_exceeded",
+      message,
+      feature: "chat_messages",
+      current_plan: "pro",
+      reset_time: "2026-12-01T00:00:00Z",
+    });
+
+    expect(toastError).toHaveBeenCalledWith(`Usage limit reached: ${message}`);
+  });
 });

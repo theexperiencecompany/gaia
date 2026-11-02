@@ -35,6 +35,8 @@ from app.constants.llm import (
     AGENT_RECURSION_LIMIT,
     BUDGET_WRAPUP_REMAINING_FRACTION,
     DEFAULT_MAX_TOKENS,
+    PRO_MONTHLY_BUDGET_HEADS_UP_FRACTION,
+    PRO_MONTHLY_COST_BUDGET_USD,
     PROVIDER_NAME_METADATA_KEY,
     RECURSION_HWM_FRACTION,
 )
@@ -1292,3 +1294,31 @@ def test_the_serving_model_is_the_fallback_only_when_one_answered(
         accounting._serving_model(AIMessage(content="x", response_metadata=metadata), lane)
         == served
     )
+
+
+@pytest.mark.parametrize(
+    ("fraction", "expected"),
+    [
+        (PRO_MONTHLY_BUDGET_HEADS_UP_FRACTION, ["notify_monthly_heads_up_once"]),
+        (PRO_MONTHLY_BUDGET_HEADS_UP_FRACTION - 0.01, []),
+    ],
+)
+async def test_a_pro_call_in_the_monthly_heads_up_band_sends_the_heads_up(
+    fraction: float, expected: list[str]
+) -> None:
+    check = BudgetCheck(None, 0.0, PlanType.PRO, PRO_MONTHLY_COST_BUDGET_USD * fraction)
+    spawned: list[str] = []
+
+    def _spawn(coro: Any) -> None:
+        spawned.append(coro.__qualname__)
+        coro.close()
+
+    _, handler = _recording_handler()
+    with (
+        patch.object(accounting, "current_run_config", lambda: CONFIG),
+        patch.object(accounting, "get_budget_stop_reason", AsyncMock(return_value=check)),
+        patch.object(accounting, "spawn_background_task", _spawn),
+    ):
+        await LLMAccountingMiddleware(agent_name="a").awrap_model_call(_model_request(), handler)
+
+    assert spawned == expected

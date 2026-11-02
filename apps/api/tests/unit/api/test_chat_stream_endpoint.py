@@ -437,7 +437,7 @@ def accepted_turn(owned_conversations: set[tuple[str, str]]) -> Iterator[MagicMo
             new_callable=AsyncMock,
             return_value=None,
         ),
-        patch("app.api.v1.endpoints.chat.enforce_daily_cost_budget", new_callable=AsyncMock),
+        patch("app.api.v1.endpoints.chat.enforce_cost_budget", new_callable=AsyncMock),
         patch("app.api.v1.endpoints.chat.stream_manager.start_stream", new_callable=AsyncMock),
         patch("app.api.v1.endpoints.chat.stream_manager.subscribe_stream", new=_fake_subscribe),
         patch("app.api.v1.endpoints.chat.run_chat_stream_background", new_callable=AsyncMock),

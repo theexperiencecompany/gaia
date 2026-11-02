@@ -51,6 +51,7 @@ from app.services.cost_budget import (
     BudgetCheck,
     get_budget_stop_reason,
     is_budget_wrapup_threshold,
+    is_monthly_heads_up_due,
 )
 from app.services.latency_metrics import observe_llm_call
 from app.services.llm_metering import (
@@ -64,6 +65,8 @@ from app.services.llm_metering import (
     record_llm_call,
     resolve_channel,
 )
+from app.services.usage_heads_up import notify_monthly_heads_up_once
+from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import ModelContext, log
 
 
@@ -234,6 +237,14 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
                     )
                 ]
             )
+
+        if (
+            user_id
+            and check.month_spent_usd is not None
+            and check.plan_type is not None
+            and is_monthly_heads_up_due(check.month_spent_usd, check.plan_type)
+        ):
+            spawn_background_task(notify_monthly_heads_up_once(str(user_id)))
 
         thread_id = self._thread_id(config)
         if (

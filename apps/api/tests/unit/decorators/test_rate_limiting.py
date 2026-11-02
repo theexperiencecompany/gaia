@@ -21,7 +21,11 @@ from app.api.v1.middleware.tiered_rate_limiter import (
     CostBudgetExceededException,
     RateLimitExceededException,
 )
-from app.constants.llm import FREE_DAILY_COST_BUDGET_USD
+from app.config.rate_limits import RateLimitPeriod, get_reset_time
+from app.constants.llm import (
+    FREE_DAILY_COST_BUDGET_USD,
+    PRO_MONTHLY_COST_BUDGET_USD,
+)
 from app.decorators import rate_limiting as rl
 from app.models.payment_models import PlanType
 from app.models.user_models import AuthenticatedUser
@@ -589,7 +593,7 @@ class TestDailyCostBudget:
 
     async def test_spend_under_the_budget_passes_and_books_nothing(self) -> None:
         with _budget_of(FREE_DAILY_COST_BUDGET_USD / 2, PlanType.FREE) as mock_upsell:
-            await rl.enforce_daily_cost_budget(USER_ID, "chat_messages")
+            await rl.enforce_cost_budget(USER_ID, "chat_messages")
 
         mock_upsell.assert_not_called()
 
@@ -598,7 +602,7 @@ class TestDailyCostBudget:
     ) -> None:
         monkeypatch.setattr(rl.settings, "DEV_UNLIMITED_RATE_LIMITS", True)
         with _budget_of(FREE_DAILY_COST_BUDGET_USD, PlanType.FREE) as mock_upsell:
-            await rl.enforce_daily_cost_budget(USER_ID, "chat_messages")
+            await rl.enforce_cost_budget(USER_ID, "chat_messages")
 
         mock_upsell.assert_not_called()
 
@@ -607,7 +611,7 @@ class TestDailyCostBudget:
             _budget_of(FREE_DAILY_COST_BUDGET_USD, PlanType.FREE),
             pytest.raises(CostBudgetExceededException) as raised,
         ):
-            await rl.enforce_daily_cost_budget(USER_ID, "chat_messages")
+            await rl.enforce_cost_budget(USER_ID, "chat_messages")
 
         assert raised.value.status_code == 429
         assert raised.value.detail["feature"] == "chat_messages"
@@ -618,7 +622,7 @@ class TestDailyCostBudget:
         """Every argument is load-bearing: the plan decides whether the seam fires, the feature names the wall, the origin picks the email."""
         with _budget_of(FREE_DAILY_COST_BUDGET_USD, PlanType.FREE) as mock_upsell:
             with pytest.raises(CostBudgetExceededException):
-                await rl.enforce_daily_cost_budget(
+                await rl.enforce_cost_budget(
                     USER_ID, "chat_messages", origin=LimitHitOrigin.BACKGROUND
                 )
 
@@ -629,7 +633,7 @@ class TestDailyCostBudget:
     async def test_an_undeclared_origin_books_an_interactive_hit(self) -> None:
         with _budget_of(FREE_DAILY_COST_BUDGET_USD, PlanType.FREE) as mock_upsell:
             with pytest.raises(CostBudgetExceededException):
-                await rl.enforce_daily_cost_budget(USER_ID, "chat_messages")
+                await rl.enforce_cost_budget(USER_ID, "chat_messages")
 
         assert mock_upsell.call_args.args[3] is LimitHitOrigin.INTERACTIVE
 
@@ -639,10 +643,58 @@ class TestDailyCostBudget:
             _budget_of(1_000.0, PlanType.PRO),
             pytest.raises(CostBudgetExceededException) as raised,
         ):
-            await rl.enforce_daily_cost_budget(USER_ID, "chat_messages")
+            await rl.enforce_cost_budget(USER_ID, "chat_messages")
 
         assert "plan_required" not in raised.value.detail
         assert raised.value.detail["current_plan"] == PlanType.PRO.value
+
+
+@contextmanager
+def _spend_of(*, day: float, month: float, plan: PlanType) -> Iterator[None]:
+    """Run the real gate against a per-window spend."""
+
+    async def _get_cost(user_id: str, period: RateLimitPeriod) -> float:
+        return {(USER_ID, RateLimitPeriod.DAY): day, (USER_ID, RateLimitPeriod.MONTH): month}[
+            (user_id, period)
+        ]
+
+    with (
+        patch(
+            "app.decorators.rate_limiting.payment_service.get_cached_plan_type",
+            new_callable=AsyncMock,
+            return_value=plan,
+        ),
+        patch("app.decorators.rate_limiting.get_cost", _get_cost),
+        patch("app.decorators.rate_limiting.schedule_limit_upsell"),
+    ):
+        yield
+
+
+class TestMonthlyCostBudget:
+    """At 100% of Pro's monthly allowance usage stops until the month resets."""
+
+    async def test_a_pro_user_at_the_monthly_allowance_is_paused_until_the_month_resets(
+        self,
+    ) -> None:
+        with (
+            _spend_of(day=0.5, month=PRO_MONTHLY_COST_BUDGET_USD, plan=PlanType.PRO),
+            pytest.raises(CostBudgetExceededException) as raised,
+        ):
+            await rl.enforce_cost_budget(USER_ID, "chat_messages")
+
+        reset = get_reset_time(RateLimitPeriod.MONTH)
+        assert raised.value.status_code == 429
+        assert raised.value.detail["reset_time"] == reset.isoformat()
+        assert f"{reset:%B} {reset.day}" in raised.value.detail["message"]
+        assert "plan_required" not in raised.value.detail
+
+    async def test_a_pro_user_one_cent_short_of_the_allowance_runs(self) -> None:
+        with _spend_of(day=0.5, month=PRO_MONTHLY_COST_BUDGET_USD - 0.01, plan=PlanType.PRO):
+            await rl.enforce_cost_budget(USER_ID, "chat_messages")
+
+    async def test_free_has_no_monthly_wall(self) -> None:
+        with _spend_of(day=0.0, month=PRO_MONTHLY_COST_BUDGET_USD * 10, plan=PlanType.FREE):
+            await rl.enforce_cost_budget(USER_ID, "chat_messages")
 
 
 class TestToolPlanLabelling:

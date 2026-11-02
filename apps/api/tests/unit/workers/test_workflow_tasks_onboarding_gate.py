@@ -37,7 +37,7 @@ async def _run_task(
         # The paid-only gate is defaulted to active by the workers-dir conftest's
         # autouse _subscription_active_by_default fixture — these tests are
         # about the onboarding gate, not that one.
-        patch(f"{MODULE}.enforce_daily_cost_budget", new_callable=AsyncMock) as budget,
+        patch(f"{MODULE}.enforce_cost_budget", new_callable=AsyncMock) as budget,
         patch(f"{MODULE}.create_execution", new_callable=AsyncMock) as create,
         patch(
             f"{MODULE}.execute_workflow_as_chat",

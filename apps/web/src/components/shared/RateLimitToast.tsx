@@ -1,7 +1,7 @@
 "use client";
 
 import { Alert01Icon, CheckmarkBadge01Icon, Timer02Icon } from "@icons";
-import { formatPlanName } from "@shared/utils";
+import { formatDate, formatPlanName } from "@shared/utils";
 import type { ReactNode } from "react";
 import { toast } from "@/lib/toast";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
@@ -24,11 +24,19 @@ interface RateLimitToastProps {
   planRequired?: string;
 }
 
-function resetsIn(resetTime: string): string {
-  const minutes = Math.ceil(
-    (new Date(resetTime).getTime() - Date.now()) / (1000 * 60),
-  );
+const MINUTES_PER_DAY = 24 * 60;
 
+function minutesUntil(resetTime: string): number {
+  return Math.ceil((new Date(resetTime).getTime() - Date.now()) / (1000 * 60));
+}
+
+function resetsIn(resetTime: string): string {
+  const minutes = minutesUntil(resetTime);
+
+  // A monthly pause is days away: name the day instead of counting hours.
+  if (minutes > MINUTES_PER_DAY) {
+    return `Resets on ${formatDate(resetTime)}.`;
+  }
   if (minutes > 60) {
     const hours = Math.ceil(minutes / 60);
     return `Resets in ${hours} hour${hours > 1 ? "s" : ""}.`;
@@ -77,7 +85,8 @@ export const showRateLimitToast = ({
 
   const planName = planRequired ? formatPlanName(planRequired) : undefined;
 
-  // A server message never carries the reset, so it is appended here in the user's locale.
+  // A multi-day pause names its reset day in the server's own message; a same-day
+  // one gets the countdown here, which only the client can phrase.
   if (!message) {
     message = buildRateLimitMessage({
       isUpgradeRequired,
@@ -85,7 +94,11 @@ export const showRateLimitToast = ({
       planName,
       resetTime,
     });
-  } else if (resetTime && !isUpgradeRequired) {
+  } else if (
+    resetTime &&
+    !isUpgradeRequired &&
+    minutesUntil(resetTime) <= MINUTES_PER_DAY
+  ) {
     message = `${message} ${resetsIn(resetTime)}`;
   }
 

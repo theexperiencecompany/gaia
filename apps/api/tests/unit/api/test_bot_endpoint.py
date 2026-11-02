@@ -1962,7 +1962,7 @@ class TestBotChatStreamMetering:
             p[5],
             p[6],
             p[7],
-            patch("app.services.bot_service.enforce_daily_cost_budget", cost_wall),
+            patch("app.services.bot_service.enforce_cost_budget", cost_wall),
         ):
             await client.post(
                 f"{BOT_BASE}/chat-stream",

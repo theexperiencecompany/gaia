@@ -6,8 +6,8 @@ model call; ainvoke_structured prices auxiliary one-shot calls the same way
 but with charge_to_budget=False, so background work never eats the user's
 allowance. The chat endpoint checks the daily window before running the
 agent (429 wall); awrap_model_call checks it plus the per-request token
-ceiling as the backstop, and the monthly window drives the pro model
-degrade in resolve_lane.
+ceiling as the backstop. Pro also has a monthly window: reaching it stops
+usage the same way until the month resets.
 
 Follows RedisCache's degradation philosophy: when Redis is unavailable these
 helpers warn and no-op (enforcement fails open; startup verify_connection
@@ -16,6 +16,7 @@ fails hard in production).
 
 import asyncio
 from collections.abc import Awaitable
+from datetime import datetime
 from typing import Any, NamedTuple
 
 from redis.exceptions import RedisError
@@ -32,6 +33,7 @@ from app.constants.llm import (
     BUDGET_WRAPUP_REMAINING_FRACTION,
     DAILY_BUDGET_TTL_SECONDS,
     MONTHLY_BUDGET_TTL_SECONDS,
+    PRO_MONTHLY_BUDGET_HEADS_UP_FRACTION,
     PRO_MONTHLY_COST_BUDGET_USD,
     REQUEST_TOKEN_COUNTER_TTL_SECONDS,
 )
@@ -91,6 +93,7 @@ class BudgetCheck(NamedTuple):
     stop_reason: str | None
     spent_usd: float | None
     plan_type: PlanType | None
+    month_spent_usd: float | None = None
 
 
 def _budget_key(user_id: str, period: RateLimitPeriod) -> str:
@@ -279,31 +282,38 @@ async def get_budget_stop_reason(
     # second round trip. The threading-gap warning stays scoped to a run that
     # is otherwise proceeding (daily wall not bound), exactly as before.
     if root_request_id is None:
-        spent = await get_cost(user_id, RateLimitPeriod.DAY)
+        spent, month_spent = await asyncio.gather(
+            get_cost(user_id, RateLimitPeriod.DAY), get_cost(user_id, RateLimitPeriod.MONTH)
+        )
         if is_daily_budget_exhausted(spent, plan_type):
             stop = DAILY_BUDGET_STOP_FREE if plan_type == PlanType.FREE else DAILY_BUDGET_STOP_PRO
             return BudgetCheck(stop, spent, plan_type)
+        if is_monthly_budget_exhausted(month_spent, plan_type):
+            return BudgetCheck(monthly_budget_stop_text(), spent, plan_type, month_spent)
         log.warning(
             f"{LogTag.AGENT} Per-request ceiling skipped — missing root_request_id "
             "in configurable (threading gap?)."
         )
-        return BudgetCheck(None, spent, plan_type)
+        return BudgetCheck(None, spent, plan_type, month_spent)
 
     # Both reads are independent — issue them together so the hottest path (this
     # runs before every model call) pays one round trip, not two. The daily wall
     # still takes priority; the token read is harmless work when it binds.
-    spent, used = await asyncio.gather(
+    spent, month_spent, used = await asyncio.gather(
         get_cost(user_id, RateLimitPeriod.DAY),
+        get_cost(user_id, RateLimitPeriod.MONTH),
         get_request_tokens(root_request_id),
     )
     if is_daily_budget_exhausted(spent, plan_type):
         stop = DAILY_BUDGET_STOP_FREE if plan_type == PlanType.FREE else DAILY_BUDGET_STOP_PRO
         return BudgetCheck(stop, spent, plan_type)
+    if is_monthly_budget_exhausted(month_spent, plan_type):
+        return BudgetCheck(monthly_budget_stop_text(), spent, plan_type, month_spent)
     if used >= get_per_request_token_ceiling(plan_type):
         stop = REQUEST_CEILING_STOP_FREE if plan_type == PlanType.FREE else REQUEST_CEILING_STOP_PRO
-        return BudgetCheck(stop, spent, plan_type)
+        return BudgetCheck(stop, spent, plan_type, month_spent)
 
-    return BudgetCheck(None, spent, plan_type)
+    return BudgetCheck(None, spent, plan_type, month_spent)
 
 
 def is_daily_budget_exhausted(spent: float, plan_type: PlanType) -> bool:
@@ -315,6 +325,35 @@ def is_daily_budget_exhausted(spent: float, plan_type: PlanType) -> bool:
     counter).
     """
     return spent >= get_daily_cost_budget_usd(plan_type)
+
+
+def is_monthly_budget_exhausted(month_spent: float, plan_type: PlanType) -> bool:
+    """Check whether a pro user's month has consumed the monthly allowance (free has none)."""
+    return plan_type == PlanType.PRO and month_spent >= PRO_MONTHLY_COST_BUDGET_USD
+
+
+def is_monthly_heads_up_due(month_spent: float, plan_type: PlanType) -> bool:
+    """Check whether a pro user's month sits in the heads-up band below the allowance."""
+    return (
+        plan_type == PlanType.PRO
+        and PRO_MONTHLY_COST_BUDGET_USD * PRO_MONTHLY_BUDGET_HEADS_UP_FRACTION
+        <= month_spent
+        < PRO_MONTHLY_COST_BUDGET_USD
+    )
+
+
+def format_reset_date(reset: datetime) -> str:
+    """Render a budget reset as a day the user reads, e.g. "December 1"."""
+    return f"{reset:%B} {reset.day}"
+
+
+def monthly_budget_stop_text() -> str:
+    """Return the user-facing stop for a bound monthly allowance, naming the day it resets."""
+    reset = format_reset_date(get_reset_time(RateLimitPeriod.MONTH))
+    return (
+        "You've used this month's AI usage allowance, so chat, workflows and tracked "
+        f"todos are paused until {reset}, when it resets."
+    )
 
 
 def is_budget_wrapup_threshold(spent: float, plan_type: PlanType) -> bool:

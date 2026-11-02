@@ -816,7 +816,7 @@ class TestTriggeredExecutionGating:
             patch(f"{MODULE}.todo_repository", repo),
             patch("app.workers.tasks.todo_run_context.todo_repository", repo),
             patch(f"{MODULE}._execute_on_executor", via_agent),
-            patch(f"{MODULE}.enforce_daily_cost_budget", budget),
+            patch(f"{MODULE}.enforce_cost_budget", budget),
             patch(f"{MODULE}._execute_on_executor", via_agent),
             patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="UTC"))),
         ):
@@ -860,7 +860,7 @@ class TestTriggeredExecutionGating:
             patch(f"{MODULE}.todo_repository", repo),
             patch("app.workers.tasks.todo_run_context.todo_repository", repo),
             patch(f"{MODULE}._execute_on_executor", AsyncMock(side_effect=RuntimeError("boom"))),
-            patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
+            patch(f"{MODULE}.enforce_cost_budget", AsyncMock()),
             patch(f"{MODULE}._mark_todo_failed", AsyncMock()),
             patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="UTC"))),
             _serving(pool),
@@ -883,7 +883,7 @@ class TestTriggeredExecutionGating:
             patch(f"{MODULE}.todo_repository", repo),
             patch("app.workers.tasks.todo_run_context.todo_repository", repo),
             patch(f"{MODULE}._execute_on_executor", AsyncMock(side_effect=RuntimeError("boom"))),
-            patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
+            patch(f"{MODULE}.enforce_cost_budget", AsyncMock()),
             patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="UTC"))),
             _serving(pool),
         ):
@@ -1155,7 +1155,7 @@ class TestExecuteTodoWithRetrySuccess:
                 LOAD_USER,
                 AsyncMock(side_effect=_user_context(timezone=tz)),
             ),
-            patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
+            patch(f"{MODULE}.enforce_cost_budget", AsyncMock()),
             _serving(pool),
         ):
             result = await _execute_todo_with_retry("todo-1", origin)
@@ -1286,7 +1286,7 @@ class TestExecuteTodoWithRetryFailure:
             patch(f"{MODULE}._execute_on_executor", AsyncMock(side_effect=failure)),
             patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="UTC"))),
             patch(f"{MODULE}._mark_todo_failed", mark_failed),
-            patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
+            patch(f"{MODULE}.enforce_cost_budget", AsyncMock()),
             _serving(pool),
         ):
             result = await _execute_todo_with_retry("todo-1", origin)
@@ -1432,7 +1432,7 @@ class TestARecurringTodoOutlivesAFailedOccurrence:
             ),
             patch(f"{MODULE}.notification_service.create_notification", notify),
             patch(f"{MODULE}.teardown_subscriptions", teardown),
-            patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
+            patch(f"{MODULE}.enforce_cost_budget", AsyncMock()),
             _serving(pool),
         ):
             result = await _execute_todo_with_retry("todo-1", origin)
@@ -2126,7 +2126,7 @@ class TestStaleScheduledFire:
             patch(f"{MODULE}.todo_repository", repo),
             patch("app.workers.tasks.todo_run_context.todo_repository", repo),
             patch(f"{MODULE}._execute_on_executor", run),
-            patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
+            patch(f"{MODULE}.enforce_cost_budget", AsyncMock()),
             patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="UTC"))),
             _serving(_pool()),
         ):
@@ -2293,7 +2293,7 @@ class TestOneRunPerOccurrence:
             patch(f"{MODULE}.todo_repository", row),
             patch("app.workers.tasks.todo_run_context.todo_repository", row),
             patch(f"{MODULE}._execute_on_executor", run),
-            patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
+            patch(f"{MODULE}.enforce_cost_budget", AsyncMock()),
             patch(f"{MODULE}._mark_todo_failed", AsyncMock()),
             patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="UTC"))),
         ):
@@ -2582,7 +2582,7 @@ class TestTriggerEventsCoalesce:
             patch("app.workers.tasks.todo_run_context.todo_repository", row),
             patch(f"{_DISPATCH}.todo_repository", row),
             patch(f"{MODULE}.run_todo_on_executor", run),
-            patch(f"{MODULE}.enforce_daily_cost_budget", self.budget),
+            patch(f"{MODULE}.enforce_cost_budget", self.budget),
             patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="UTC"))),
             patch(f"{_DISPATCH}.record_activity", AsyncMock()),
             patch(f"{_DISPATCH}.capture"),
@@ -3295,7 +3295,7 @@ class TestResumeTrackedTodo:
             patch(f"{MODULE}.todo_repository", run.repo),
             patch("app.workers.tasks.todo_run_context.todo_repository", run.repo),
             patch(f"{MODULE}._load_user_with_tz", run.load_user),
-            patch(f"{MODULE}.enforce_daily_cost_budget", run.budget),
+            patch(f"{MODULE}.enforce_cost_budget", run.budget),
             patch(f"{MODULE}.run_todo_on_executor", run.agent),
             patch(f"{MODULE}.record_activity", run.timeline),
             patch(f"{MODULE}.enqueue_worker_job", run.enqueue),
@@ -3562,7 +3562,7 @@ class TestAnUnpaidOwnersTodoPausesUntilTheyPay:
             patch(f"{MODULE}.todo_repository", repo),
             patch(f"{MODULE}._execute_on_executor", execute),
             patch(LOAD_USER, AsyncMock(side_effect=_user_context())),
-            patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
+            patch(f"{MODULE}.enforce_cost_budget", AsyncMock()),
             patch(f"{MODULE}.capture_paywall_block") as capture,
             _serving(_pool()),
         ):
