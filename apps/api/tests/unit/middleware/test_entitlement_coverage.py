@@ -29,6 +29,7 @@ from app.api.v1.middleware.entitlement_allowlist import (
 )
 from app.decorators.entitlements import SubscriptionRequiredException
 from app.models.payment_models import PlanType
+from app.models.user_models import AuthenticatedUser
 from tests.conftest import FAKE_USER, _create_test_app
 
 pytestmark = pytest.mark.unit
@@ -314,7 +315,7 @@ async def test_pro_user_is_not_blocked(gated_client: AsyncClient, method: str, p
 # ---------------------------------------------------------------------------
 
 
-def _minimal_app(user: dict[str, Any] | None) -> FastAPI:
+def _minimal_app(user: AuthenticatedUser | None) -> FastAPI:
     app = FastAPI()
 
     @app.get("/api/v1/paid")
@@ -349,7 +350,11 @@ def test_production_middleware_order_puts_the_gate_inside_auth_and_cors() -> Non
     app = FastAPI()
     configure_middleware(app)
     # user_middleware is ordered outermost-first.
-    order = [middleware.cls.__name__ for middleware in app.user_middleware]
+    order = [
+        middleware.cls.__name__
+        for middleware in app.user_middleware
+        if isinstance(middleware.cls, type)
+    ]
 
     assert order.index("WorkOSAuthMiddleware") < order.index("EntitlementMiddleware")
     assert order.index("CORSMiddleware") < order.index("EntitlementMiddleware")

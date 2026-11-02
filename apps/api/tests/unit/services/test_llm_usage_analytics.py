@@ -139,8 +139,10 @@ def test_every_label_the_codebase_passes_has_a_feature() -> None:
                 continue
             for kw in node.keywords:
                 if kw.arg == "label" and isinstance(kw.value, ast.Constant):
-                    if feature_for_label(kw.value.value) is AIFeature.UNATTRIBUTED:
-                        unmapped.add(kw.value.value)
+                    label = kw.value.value
+                    assert isinstance(label, str), f"non-string label constant: {label!r}"
+                    if feature_for_label(label) is AIFeature.UNATTRIBUTED:
+                        unmapped.add(label)
 
     assert not unmapped, f"labels no AIFeature member claims: {sorted(unmapped)}"
 

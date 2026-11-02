@@ -24,18 +24,21 @@ def _rejection(build: Callable[[], BaseModel]) -> str:
     return str(error["ctx"]["error"])
 
 
-def _artifact(**overrides: object) -> dict[str, object]:
-    return {
-        "conversation_id": "conv-1",
-        "path": "shots/step-1.png",
-        "filename": "step-1.png",
-    } | overrides
+def _artifact(**overrides: str | None) -> OutboundAttachment:
+    return OutboundAttachment.model_validate(
+        {
+            "conversation_id": "conv-1",
+            "path": "shots/step-1.png",
+            "filename": "step-1.png",
+        }
+        | overrides
+    )
 
 
 @pytest.mark.unit
 class TestAttachmentSource:
     def test_an_artifact_pair_is_a_valid_source(self) -> None:
-        attachment = OutboundAttachment(**_artifact())
+        attachment = _artifact()
         assert (attachment.conversation_id, attachment.path) == ("conv-1", "shots/step-1.png")
         assert attachment.url is None
 
@@ -48,15 +51,14 @@ class TestAttachmentSource:
         assert _rejection(lambda: OutboundAttachment(filename="a.png")) == _ONE_SOURCE
 
     def test_both_sources_at_once_is_rejected(self) -> None:
-        both = _artifact(url="https://cdn.example/a.png")
-        assert _rejection(partial(OutboundAttachment, **both)) == _ONE_SOURCE
+        assert _rejection(partial(_artifact, url="https://cdn.example/a.png")) == _ONE_SOURCE
 
     @pytest.mark.parametrize("missing", ["conversation_id", "path"])
     def test_half_an_artifact_pair_is_not_a_source(self, missing: str) -> None:
-        assert _rejection(lambda: OutboundAttachment(**_artifact(**{missing: None}))) == _ONE_SOURCE
+        assert _rejection(lambda: _artifact(**{missing: None})) == _ONE_SOURCE
 
     def test_half_an_artifact_pair_alongside_a_url_leaves_exactly_one_source(self) -> None:
-        attachment = OutboundAttachment(**_artifact(path=None, url="https://cdn.example/a.png"))
+        attachment = _artifact(path=None, url="https://cdn.example/a.png")
         assert attachment.url == "https://cdn.example/a.png"
 
 
@@ -70,7 +72,7 @@ class TestAttachmentUrlScheme:
         assert _rejection(lambda: OutboundAttachment(url=url, filename="a.png")) == _HTTPS_ONLY
 
     def test_the_scheme_rule_does_not_apply_to_an_artifact_source(self) -> None:
-        assert OutboundAttachment(**_artifact()).url is None
+        assert _artifact().url is None
 
 
 @pytest.mark.unit
@@ -130,7 +132,7 @@ class TestEnvelopeBody:
         envelope = OutboundMessageEnvelope(
             platform="slack",
             destination_id="C1",
-            attachment=OutboundAttachment(**_artifact()),
+            attachment=_artifact(),
         )
         assert envelope.text is None
         assert envelope.is_channel is False

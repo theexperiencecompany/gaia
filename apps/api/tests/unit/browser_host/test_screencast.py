@@ -16,9 +16,10 @@ import pytest
 from starlette.websockets import WebSocketState
 
 from app.browser_host import screencast
-from app.browser_host.cdp_mux import CdpCommandError
+from app.browser_host.cdp_mux import CdpCommandError, CDPTimeoutError
 from app.browser_host.host import HostSession
 from app.constants.browser import BROWSER_VIEWPORT_HEIGHT, BROWSER_VIEWPORT_WIDTH
+from shared.py.wide_events import log
 from tests.unit.browser_host.conftest import FakeMux, make_session
 
 pytestmark = pytest.mark.unit
@@ -353,7 +354,7 @@ async def test_a_page_that_will_not_let_go_is_left_to_the_sessions_teardown(
     run = _Run()
     await run.start()
     warning = MagicMock()
-    monkeypatch.setattr(screencast.log, "warning", warning)
+    monkeypatch.setattr(log, "warning", warning)
     run.mux.send_error = CdpCommandError({"message": "Target closed"})
 
     run.viewer.leave()
@@ -389,7 +390,7 @@ async def test_a_favicon_read_that_fails_is_warned_about_and_left_empty(
 ) -> None:
     mux = _mux()
     warning = MagicMock()
-    monkeypatch.setattr(screencast.log, "warning", warning)
+    monkeypatch.setattr(log, "warning", warning)
 
     async def _refuse(method: str, params: Any = None, session_id: Any = None) -> dict[str, Any]:
         raise CdpCommandError({"message": "no context"})
@@ -449,7 +450,7 @@ async def test_a_view_that_closes_logs_which_session_it_watched(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     recorded = MagicMock()
-    monkeypatch.setattr(screencast.log, "set", recorded)
+    monkeypatch.setattr(log, "set", recorded)
     for pages, ends in ((["t1"], "leave"), ([], "nothing to show")):
         recorded.reset_mock()
         run = _Run(pages=pages)
@@ -482,7 +483,7 @@ async def test_a_page_that_never_answers_its_attach_fails_the_view_inside_the_bu
     run = _Run()
     run.mux.hang_on = "Target.attachToTarget"
 
-    with pytest.raises(screencast.CDPTimeoutError):
+    with pytest.raises(CDPTimeoutError):
         await screencast.run_live_view(cast(Any, run.host), run.session, cast(Any, run.viewer))
 
 
@@ -491,7 +492,7 @@ async def test_a_page_that_never_lets_go_is_left_inside_the_budget(
     monkeypatch: pytest.MonkeyPatch, hangs: str
 ) -> None:
     warning = MagicMock()
-    monkeypatch.setattr(screencast.log, "warning", warning)
+    monkeypatch.setattr(log, "warning", warning)
     run = _Run()
     await run.start()
     monkeypatch.setattr(screencast, "BROWSER_HOST_LIVENESS_TIMEOUT_SECONDS", 0.01)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import socket
 import subprocess
 import sys
@@ -159,7 +160,7 @@ async def test_obscura_is_launched_on_a_free_port_and_stopped_when_it_never_answ
     monkeypatch.setattr(obscura_launch, "free_local_port", lambda: 9444)
     proc = _Proc()
     spawn = AsyncMock(return_value=proc)
-    monkeypatch.setattr(obscura_launch.asyncio, "create_subprocess_exec", spawn)
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
     monkeypatch.setattr(
         obscura_launch, "until_published", AsyncMock(side_effect=EngineLaunchError("x"))
     )

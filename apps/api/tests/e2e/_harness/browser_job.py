@@ -22,6 +22,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from browser_use.agent.views import ActionResult, AgentHistoryList, AgentState
 from browser_use.browser.events import BrowserConnectedEvent
 import fakeredis.aioredis
+from pydantic import BaseModel
 
 from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.session import RunKind, create_session
@@ -34,7 +35,6 @@ from app.constants.browser import (
     TAKEOVER_KIND_CATEGORY,
     BrowserEngine,
     EngineSwitchReason,
-    SensitiveCategory,
     TakeoverKind,
 )
 from app.core.stream_manager import StreamManager
@@ -43,6 +43,7 @@ from app.models.chat_models import MessageModel
 from app.models.hil_models import HILPreferences
 from app.schemas.browser_job import BrowserJobRequest
 from app.services.browser.exceptions import BrowserSessionGone
+from app.services.browser.tools import EngineSwitchFn, TakeoverFn
 from app.workers.tasks import browser_tasks
 from shared.py import wide_events
 
@@ -164,7 +165,7 @@ class BrowserDouble:
         self.stop_observed = False
         #: What each takeover handed back to the agent — the user's note.
         self.takeover_notes: list[str | None] = []
-        self.takeover: Callable[[str, SensitiveCategory], Any] | None = None
+        self.takeover: TakeoverFn | None = None
         #: The next step to play: a run moved to the fallback engine picks up
         #: where the run on the dead engine stopped.
         self.next_step = 0
@@ -173,7 +174,7 @@ class BrowserDouble:
         #: Where the scripted browser is now, for the run's resume on a fallback engine.
         self.url: str | None = None
         #: The continue_in_full_browser action, when the run on this engine was offered it.
-        self.switch: Callable[[EngineSwitchReason], Any] | None = None
+        self.switch: EngineSwitchFn | None = None
 
     def agent(self, **kwargs: Any) -> _ScriptedAgent:
         return _ScriptedAgent(self, **kwargs)
@@ -225,7 +226,7 @@ class _ScriptedAgent:
         self._stopped = False
         self.state = kwargs.get("injected_agent_state") or _agent_state([])
         # Its steps are scripted results, not model outputs: nothing it read to report.
-        self.history = AgentHistoryList(history=[])
+        self.history: AgentHistoryList[BaseModel] = AgentHistoryList(history=[])
         self.browser_session = _BrowserSession(double)
         self.new_tasks: list[str] = []
         self.message_manager = SimpleNamespace(add_new_task=self.new_tasks.append)
@@ -291,7 +292,7 @@ class _ScriptedAgent:
         # A done action ends the run where Browser-Use ends it, with its own text and verdict.
         return _ended_by(step_actions)
 
-    async def _act(self, step: ScriptedStep) -> object:
+    async def _act(self, step: ScriptedStep) -> str | None:
         """Run the step's takeover or switch; return what a takeover answered."""
         if step.takeover is not None:
             return await self._hand_over(*step.takeover)
@@ -300,7 +301,7 @@ class _ScriptedAgent:
             await self._double.switch(step.switch)
         return None
 
-    async def _hand_over(self, reason: str, category: str) -> object:
+    async def _hand_over(self, reason: str, category: str) -> str:
         assert self._double.takeover is not None, "the takeover action was never built"
         # Browser-Use validates the action's arguments into its param model first.
         return await self._double.takeover(reason, TAKEOVER_KIND_CATEGORY[TakeoverKind(category)])
@@ -365,6 +366,10 @@ class JobWorld:
         self.lease_renewals: list[str] = []
         #: Each job a stop asked ARQ to abort.
         self.aborted: list[str] = []
+        #: Stands in for the login store: each sign-in the job saved.
+        self.save_storage_state = AsyncMock()
+        #: Stands in for the task history: each run the job recorded.
+        self.record_browser_task = AsyncMock()
 
     def frames(self, stream_id: str | None = None) -> list[dict[str, Any]]:
         """Return each SSE chunk the job's own stream (or a named one) carried, decoded."""
@@ -478,7 +483,7 @@ async def browser_job_world(
         world.aborted.append(job_id)
         return bool(running)
 
-    patches = [
+    patches: list[AbstractContextManager[object]] = [
         patch("app.db.redis.redis_cache.redis", redis),
         patch("app.services.browser.job_stop._abort_if_started", _abort),
         patch("app.services.browser.agent_run.Agent", double.agent),
@@ -501,7 +506,7 @@ async def browser_job_world(
         patch("app.services.browser.agent_run.build_text_model", lambda ledger: object()),
         patch("app.services.browser.agent_run.open_jev_client", _unused_jev_client),
         patch("app.services.browser.agent_run.JevPage", _Page),
-        patch("app.services.browser.job_runner.record_browser_task", AsyncMock()),
+        patch("app.services.browser.job_runner.record_browser_task", world.record_browser_task),
         patch("app.services.browser.job_runner.capture", MagicMock()),
         patch("app.services.browser.agent_run.build_browser_tools", _tools_of(double)),
         patch(
@@ -592,7 +597,7 @@ def _host_patches(
         patch("app.services.browser.session.host_client.renew_session_lease", _renew_host_lease),
         patch.object(settings, "BROWSER_FALLBACK_HOST_URL", scripted_host.fallback_url),
         patch("app.services.browser.session.load_storage_state", AsyncMock(return_value=None)),
-        patch("app.services.browser.session.save_storage_state", AsyncMock()),
+        patch("app.services.browser.session.save_storage_state", world.save_storage_state),
     ]
 
 
@@ -668,8 +673,8 @@ def _tools_of(double: BrowserDouble) -> Callable[..., object]:
         *,
         solve_captcha: bool,
         user_sites: object,
-        handle_takeover: Callable[[str, SensitiveCategory], Any],
-        handle_engine_switch: Callable[[EngineSwitchReason], Any] | None = None,
+        handle_takeover: TakeoverFn,
+        handle_engine_switch: EngineSwitchFn | None = None,
     ) -> object:
         double.takeover = handle_takeover
         double.switch = handle_engine_switch
