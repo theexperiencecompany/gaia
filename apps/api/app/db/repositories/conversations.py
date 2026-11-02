@@ -59,6 +59,11 @@ from app.models.conversation_models import (
 
 #: The seeded Getting-started thread is three bot messages; its question is the last.
 SEEDED_OPENING_MESSAGES = 3
+_SEEDED_OPENING_PROJECTION: dict[str, object] = {
+    "_id": 0,
+    "system_purpose": 1,
+    "messages": {"$slice": SEEDED_OPENING_MESSAGES},
+}
 _BOT_SOURCE_VALUES: list[str] = [s.value for s in BOT_CONVERSATION_SOURCES]
 _SUMMARY_PROJECTION: dict[str, object] = {
     "_id": 0,
@@ -622,10 +627,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         """Return the question and chips a Getting-started thread opened with, or None for any other thread."""
         row = await self._find_one_projected(
             {"conversation_id": conversation_id, "user_id": user_id},
-            # Equivalent under mutation: any truthy flag projects the field, and the row ignores _id.
-            # pragma: no mutate start
-            {"_id": 0, "system_purpose": 1, "messages": {"$slice": SEEDED_OPENING_MESSAGES}},
-            # pragma: no mutate end
+            _SEEDED_OPENING_PROJECTION,
             _SeededOpeningRow,
         )
         if row is None or row.system_purpose is not SystemPurpose.GETTING_STARTED:

@@ -99,7 +99,7 @@ def clean_language(value: str | None) -> str | None:
     """Reduce a browser locale ("de-DE", "pt_BR") to its lowercase primary subtag, or None."""
     if value is None:
         return None
-    primary = value.strip().replace("_", "-").split("-", 1)[0].lower()
+    primary = value.strip().replace("_", "-").split("-")[0].lower()
     return primary if _LANGUAGE_SUBTAG.fullmatch(primary) else None
 
 
