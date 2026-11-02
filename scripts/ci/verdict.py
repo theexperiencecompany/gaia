@@ -1467,6 +1467,35 @@ def _post(
     return not lost
 
 
+def _report_failed_tasks(
+    job: str,
+    planned: set[str],
+    raw: dict[str, nx_affected.TaskResult],
+    known: dict[str, nx_affected.Check],
+) -> dict[str, str]:
+    """Write each failed task's verdict; return each failed check's first finding.
+
+    The PR's checks list shows that finding before the job's verdict uploads.
+    """
+    first_findings: dict[str, str] = {}
+    for task in sorted(planned):
+        result = raw.get(task)
+        if not result or result["status"] in nx_affected.PASSED:
+            continue
+        check = known[task]
+        lane = f"{job}/{check.check}"
+        findings = output_findings.read(
+            result["output"],
+            fallback=check.fallback,
+            path_prefix=f"{check.cwd}/" if check.cwd else "",
+        )
+        if findings:
+            first_findings.setdefault(str(check.check), _one_line(findings[0]))
+        if not lane_already_reported(lane, default_out_dir()):
+            report_failed_check(lane, result["code"], result["output"], findings, default_out_dir())
+    return first_findings
+
+
 def cmd_post_statuses(args: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="verdict.py post-statuses")
     parser.add_argument("--job", required=True, help="the ci.yml job whose checks these are")
@@ -1509,23 +1538,7 @@ def cmd_post_statuses(args: list[str]) -> int:
     outcomes = job_outcomes(opts.job, planned, results, steps)
     if opts.check:
         planned = {task for task in planned if known[task].check == opts.check}
-    # The PR's checks list shows a red check's first finding, readable before the job ends.
-    first_findings: dict[str, str] = {}
-    for task in sorted(planned):
-        result = raw.get(task)
-        if not result or result["status"] in nx_affected.PASSED:
-            continue
-        check = known[task]
-        lane = f"{opts.job}/{check.check}"
-        findings = output_findings.read(
-            result["output"],
-            fallback=check.fallback,
-            path_prefix=f"{check.cwd}/" if check.cwd else "",
-        )
-        if findings:
-            first_findings.setdefault(str(check.check), _one_line(findings[0]))
-        if not lane_already_reported(lane, default_out_dir()):
-            report_failed_check(lane, result["code"], result["output"], findings, default_out_dir())
+    first_findings = _report_failed_tasks(opts.job, planned, raw, known)
 
     # Checks run-job already posted as they finished; their state cannot change since.
     posted_file = opts.results.with_suffix(".posted")

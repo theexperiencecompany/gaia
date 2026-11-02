@@ -373,7 +373,7 @@ def test_a_red_status_names_its_first_finding_not_just_the_log(
     api: FakeGitHub, tmp_path: Path
 ) -> None:
     """The verdict uploads when the job ends; the status is all a reader has before that."""
-    result = {
+    result: nx_affected.TaskResult = {
         "status": "failure",
         "code": 1,
         "output": "tools/x.py:3:1: F401 `os` imported but unused\n",
