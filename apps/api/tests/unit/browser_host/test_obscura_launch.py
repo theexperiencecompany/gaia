@@ -85,7 +85,10 @@ def test_a_command_outlives_the_script_phase_it_waits_on(monkeypatch: pytest.Mon
 
     env = obscura_serve_env()
 
-    assert int(env["OBSCURA_CDP_COMMAND_TIMEOUT_MS"]) > int(env["OBSCURA_SCRIPT_DEADLINE_MS"])
+    assert (env["OBSCURA_SCRIPT_DEADLINE_MS"], env["OBSCURA_CDP_COMMAND_TIMEOUT_MS"]) == (
+        "60000",
+        "70000",
+    )
 
 
 def test_obscura_reaches_private_addresses_only_while_the_host_allows_private_origins(

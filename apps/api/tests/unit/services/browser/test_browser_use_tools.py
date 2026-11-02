@@ -11,7 +11,7 @@ from browser_use.tools.service import Tools
 from pydantic import PrivateAttr
 import pytest
 
-from app.constants.browser import BrowserEngine
+from app.constants.browser import BROWSER_CODE_BOXES_TO_JEV, BrowserEngine
 from app.services.browser.browser_use_session import GaiaBrowserSession
 from app.services.browser.browser_use_tools import GaiaTools
 
@@ -187,38 +187,91 @@ async def test_an_extract_carries_the_pages_real_title(browser_use: _BrowserUse)
     assert await _act("extract", {"query": "t"}, _Page("https://example.com/")) == untitled
 
 
-def _code_boxes() -> dict[int, Any]:
-    """GitHub's device code entry: eight one-character boxes and a read-only dash in one form, by index."""
-    form = SimpleNamespace(node_name="FORM", attributes={}, parent_node=None, children_nodes=[])
-    boxes = [
-        SimpleNamespace(
-            node_name="INPUT",
-            attributes={"maxlength": "1"} if n != 4 else {"readonly": ""},
-            parent_node=form,
-            children_nodes=[],
-        )
-        for n in range(9)
-    ]
-    form.children_nodes = boxes
-    return {10 + n: box for n, box in enumerate(boxes)}
+def _node(name: str, attributes: dict[str, str] | None = None) -> SimpleNamespace:
+    return SimpleNamespace(
+        node_name=name, attributes=attributes or {}, parent_node=None, children_nodes=[]
+    )
+
+
+def _adopt(parent: SimpleNamespace, *children: SimpleNamespace) -> None:
+    parent.children_nodes = [*parent.children_nodes, *children]
+    for child in children:
+        child.parent_node = parent
+
+
+def _code_boxes(boxes: int = 8, *, container: str = "FORM", halves: bool = False) -> dict[int, Any]:
+    """Build a code entry by index: one-character boxes, a read-only dash after the fourth, in container.
+
+    With halves, each side of the dash sits in its own wrapper, as GitHub lays its code out.
+    """
+    outer = _node(container)
+    holders = [_node("DIV"), _node("DIV")] if halves else [outer]
+    if halves:
+        _adopt(outer, *holders)
+    for n in range(boxes):
+        holder = holders[min(n // 4, len(holders) - 1)]
+        _adopt(holder, _node("INPUT", {"maxlength": "1"}))
+        if n == 3:
+            _adopt(holder, _node("INPUT", {"readonly": ""}))
+    _adopt(_node("BODY"), outer)
+    return {10 + n: box for n, box in enumerate(b for h in holders for b in h.children_nodes)}
+
+
+async def _typed(browser_use: _BrowserUse, elements: dict[int, Any], index: int) -> ActionResult:
+    page = _Page("https://github.com/login/device", elements=elements)
+    return await _act("input", {"index": index, "text": "E"}, page)
 
 
 @pytest.mark.regression
 async def test_a_code_split_into_boxes_is_never_typed_box_by_box(browser_use: _BrowserUse) -> None:
     """Regression for GAIA-715: the agent typed GitHub's device code box by box and lost characters."""
-    page = _Page("https://github.com/login/device", elements=_code_boxes())
+    result = await _typed(browser_use, _code_boxes(), 11)
 
-    result = await _act("input", {"index": 11, "text": "E"}, page)
-
-    assert result.error is not None
-    assert "jev" in result.error
+    assert result.error == BROWSER_CODE_BOXES_TO_JEV.format(count=8)
     assert browser_use.calls == []
 
 
-async def test_an_ordinary_field_is_typed_as_asked(browser_use: _BrowserUse) -> None:
-    field = SimpleNamespace(node_name="INPUT", attributes={}, parent_node=None, children_nodes=[])
-    page = _Page("https://example.test", elements={3: field})
+@pytest.mark.parametrize(
+    "boxes", [_code_boxes(halves=True), _code_boxes(container="DIV")], ids=["halves", "no-form"]
+)
+async def test_boxes_split_across_their_form_or_in_no_form_are_one_code(
+    browser_use: _BrowserUse, boxes: dict[int, Any]
+) -> None:
+    result = await _typed(browser_use, boxes, 10)
 
-    await _act("input", {"index": 3, "text": "hello"}, page)
+    assert result.error == BROWSER_CODE_BOXES_TO_JEV.format(count=8)
 
+
+async def test_four_boxes_make_a_code_and_three_do_not(browser_use: _BrowserUse) -> None:
+    four = await _typed(browser_use, _code_boxes(4), 10)
+    three = await _typed(browser_use, _code_boxes(3), 10)
+
+    assert four.error == BROWSER_CODE_BOXES_TO_JEV.format(count=4)
+    assert three.error is None
+    assert len(browser_use.calls) == 1
+
+
+@pytest.mark.parametrize(
+    "target",
+    [_node("DIV", {"maxlength": "1"}), _node("INPUT")],
+    ids=["one-character-non-input", "input-of-any-length"],
+)
+async def test_a_field_beside_a_code_is_typed_as_asked(
+    browser_use: _BrowserUse, target: SimpleNamespace
+) -> None:
+    boxes = _code_boxes()
+    _adopt(next(iter(boxes.values())).parent_node, target)
+
+    result = await _typed(browser_use, {**boxes, 3: target}, 3)
+
+    assert result.error is None
+    assert len(browser_use.calls) == 1
+
+
+async def test_an_element_the_page_no_longer_has_is_left_to_browser_use(
+    browser_use: _BrowserUse,
+) -> None:
+    result = await _typed(browser_use, {}, 3)
+
+    assert result.error is None
     assert len(browser_use.calls) == 1
