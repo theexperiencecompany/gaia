@@ -321,25 +321,26 @@ def _uv_lock(*packages: tuple[str, str]) -> str:
 def _pip(
     tmp_path: Path, report: dict | None, *, exit_code: int = 1, **env: str
 ) -> subprocess.CompletedProcess[str]:
-    """Run `audit.sh pip` with uv and uvx stubbed: uvx writes `report` where pip-audit's -o points."""
+    """Run `audit.sh pip` with uv stubbed: its pip-audit run writes `report` where -o points."""
     stub = tmp_path / "pipbin"
     stub.mkdir(exist_ok=True)
     (tmp_path / "pip-report.json").write_text("" if report is None else json.dumps(report))
+    # One uv for both calls: `uv export -o` gets an empty lock export, `uv run … pip-audit -o` the report.
     (stub / "uv").write_text(
-        '#!/usr/bin/env bash\nwhile [ "$#" -gt 0 ]; do [ "$1" = -o ] && : > "$2"; shift; done\n'
-    )
-    (stub / "uvx").write_text(
         textwrap.dedent(f"""\
         #!/usr/bin/env bash
+        case " $* " in *" pip-audit "*) audit=1 ;; *) audit=0 ;; esac
         while [ "$#" -gt 0 ]; do
-          [ "$1" = -o ] && cp "{tmp_path / "pip-report.json"}" "$2"
+          if [ "$1" = -o ]; then
+            if [ "$audit" = 1 ]; then cp "{tmp_path / "pip-report.json"}" "$2"; else : > "$2"; fi
+          fi
           shift
         done
-        exit {exit_code}
+        [ "$audit" = 1 ] && exit {exit_code}
+        exit 0
         """)
     )
-    for tool in ("uv", "uvx"):
-        (stub / tool).chmod(0o755)
+    (stub / "uv").chmod(0o755)
     return subprocess.run(
         ["bash", str(SCRIPT), "pip"],
         env={

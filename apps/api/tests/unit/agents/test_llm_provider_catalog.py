@@ -6,11 +6,14 @@ loud, naming the role, when none of them can. Production must not move at all.
 """
 
 from collections.abc import Callable, Iterator
-from typing import cast
+from typing import TypeVar, cast
 
+from langchain_core.language_models import BaseChatModel, LanguageModelLike
+from langchain_core.runnables.configurable import RunnableConfigurableFields
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langchain_openrouter import ChatOpenRouter
+from pydantic import SecretStr
 import pytest
 
 from app.agents.llm import client as client_module
@@ -34,6 +37,7 @@ from app.agents.llm.client import (
 from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.llm.lane import AgentRole, resolve_lane
 from app.agents.llm.types import ProviderLLM
+from app.config.settings import settings
 from app.constants.llm import (
     DEFAULT_MAX_TOKENS,
     HELPER_MAX_OUTPUT_TOKENS,
@@ -67,6 +71,9 @@ _OLLAMA = _config(base_url="http://127.0.0.1:11434", model="qwen3:8b")
 _CUSTOM = _config(api_key="sk-custom", base_url="https://llm.example.com/v1", model="my-model")
 
 
+_ClientT = TypeVar("_ClientT", bound=BaseChatModel)
+
+
 class _Registry:
     """The lazy-provider registry: one placeholder client per registered LLM name."""
 
@@ -76,11 +83,19 @@ class _Registry:
         return object()
 
 
+def _default_client(lazy: LazyLoader[LanguageModelLike], kind: type[_ClientT]) -> _ClientT:
+    """Load a provider's configurable client and return the concrete client it defaults to."""
+    configurable = lazy.loader_func()
+    assert isinstance(configurable, RunnableConfigurableFields)
+    assert isinstance(configurable.default, kind)
+    return configurable.default
+
+
 @pytest.fixture(autouse=True)
 def _instance(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Resolve every credential to nothing, so each test configures exactly what it names."""
-    monkeypatch.setattr(client_module.settings, "GAIA_SIM_MODE", False)
-    monkeypatch.setattr(client_module.settings, "DEV_DEFAULT_MODEL", None)
+    monkeypatch.setattr(settings, "GAIA_SIM_MODE", False)
+    monkeypatch.setattr(settings, "DEV_DEFAULT_MODEL", None)
     monkeypatch.setattr(client_module, "providers", _Registry())
     resolved_configs.clear()
     resolved_configs.update(dict.fromkeys(CredentialProviderName))
@@ -91,8 +106,8 @@ def _instance(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 
 
 def _configure(env: str, monkeypatch: pytest.MonkeyPatch, **configs: ProviderConfig) -> None:
-    monkeypatch.setattr(client_module.settings, "ENV", env)
-    resolved_configs.update(configs)
+    monkeypatch.setattr(settings, "ENV", env)
+    resolved_configs.update({CredentialProviderName(name): cfg for name, cfg in configs.items()})
 
 
 class TestProductionRoutingIsPinned:
@@ -101,24 +116,24 @@ class TestProductionRoutingIsPinned:
     @pytest.fixture(autouse=True)
     def _hosted(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # Production reads keys from the environment only, never the snapshot.
-        monkeypatch.setattr(client_module.settings, "ENV", "production")
-        monkeypatch.setattr(client_module.settings, "AUTH_MODE", "workos")
-        monkeypatch.setattr(client_module.settings, "OPENROUTER_API_KEY", "sk-or")
-        monkeypatch.setattr(client_module.settings, "OPENROUTER_BASE_URL", None)
-        monkeypatch.setattr(client_module.settings, "GOOGLE_API_KEY", "g-key")
-        monkeypatch.setattr(client_module.settings, "OPENAI_API_KEY", "sk-openai")
+        monkeypatch.setattr(settings, "ENV", "production")
+        monkeypatch.setattr(settings, "AUTH_MODE", "workos")
+        monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "sk-or")
+        monkeypatch.setattr(settings, "OPENROUTER_BASE_URL", None)
+        monkeypatch.setattr(settings, "GOOGLE_API_KEY", "g-key")
+        monkeypatch.setattr(settings, "OPENAI_API_KEY", "sk-openai")
 
     async def test_comms_runs_openai_gpt_5_6_luna(self) -> None:
         lane, _ = await resolve_lane(None, AgentRole.COMMS)
 
         assert (lane.provider, lane.model, lane.reasoning) == ("openai", "gpt-5.6-luna", None)
 
-    async def test_executor_runs_openrouter_deepseek_at_medium_reasoning(self) -> None:
+    async def test_executor_runs_openrouter_gpt_6_luna_at_medium_reasoning(self) -> None:
         lane, _ = await resolve_lane(None, AgentRole.EXECUTOR)
 
         assert (lane.provider, lane.model, lane.reasoning) == (
             "openrouter",
-            "deepseek/deepseek-v4-flash-0731",
+            "openai/gpt-6-luna",
             {"effort": "medium"},
         )
 
@@ -136,13 +151,13 @@ class TestProductionRoutingIsPinned:
         assert fallback is not None
         assert (fallback.provider, fallback.model) == (
             "openrouter",
-            "deepseek/deepseek-v4-flash-0731",
+            "openai/gpt-6-luna",
         )
 
     @pytest.mark.parametrize(
         ("use", "expected"),
         [
-            (ModelUse.HELPER, ("openrouter", "deepseek/deepseek-v4-flash-0731")),
+            (ModelUse.HELPER, ("openrouter", "openai/gpt-6-luna")),
             (ModelUse.JUDGE, ("openrouter", "google/gemini-3.5-flash-lite")),
             (ModelUse.MEMORY, ("gemini", "gemini-3.1-flash-lite")),
             (ModelUse.VISION, ("gemini", "gemini-3.1-flash-lite")),
@@ -157,13 +172,13 @@ class TestProductionRoutingIsPinned:
         assert isinstance(judge, ChatOpenRouter)
         assert (judge.model_kwargs or {})["models"] == [
             "google/gemini-3.5-flash-lite",
-            "deepseek/deepseek-v4-flash-0731",
+            "openai/gpt-6-luna",
         ]
 
     async def test_without_gemini_openai_is_never_the_executors_fallback(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(client_module.settings, "GOOGLE_API_KEY", None)
+        monkeypatch.setattr(settings, "GOOGLE_API_KEY", None)
         lane, _ = await resolve_lane(None, AgentRole.EXECUTOR)
 
         assert lane.fallback() is None
@@ -172,12 +187,12 @@ class TestProductionRoutingIsPinned:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """OpenAI is comms-only in production; a missing OpenRouter key fails loud at load time."""
-        monkeypatch.setattr(client_module.settings, "OPENROUTER_API_KEY", None)
-        monkeypatch.setattr(client_module.settings, "GOOGLE_API_KEY", None)
+        monkeypatch.setattr(settings, "OPENROUTER_API_KEY", None)
+        monkeypatch.setattr(settings, "GOOGLE_API_KEY", None)
 
         lane, _ = await resolve_lane(None, AgentRole.EXECUTOR)
 
-        assert (lane.provider, lane.model) == ("openrouter", "deepseek/deepseek-v4-flash-0731")
+        assert (lane.provider, lane.model) == ("openrouter", "openai/gpt-6-luna")
 
     def test_openai_is_registered_last_as_a_by_name_alternative(self) -> None:
         available = {
@@ -190,19 +205,21 @@ class TestProductionRoutingIsPinned:
         assert [p.name for p in ordered] == ["openrouter", "gemini", "openai"]
 
     async def test_comms_ignores_a_stored_openai_model(self) -> None:
-        resolved_configs["openai"] = _config(api_key="sk-openai", model="gpt-4o")
+        resolved_configs[CredentialProviderName.OPENAI] = _config(
+            api_key="sk-openai", model="gpt-4o"
+        )
 
         lane, _ = await resolve_lane(None, AgentRole.COMMS)
-        llm = client_module.init_openai_llm().loader_func()
+        chat = _default_client(client_module.init_openai_llm(), ChatOpenAI)
 
         assert lane.model == "gpt-5.6-luna"
-        assert llm.default.model_name == "gpt-5.6-luna"
+        assert chat.model_name == "gpt-5.6-luna"
         assert chat_model(LLMProviderName.OPENAI) == "gpt-5.6-luna"
 
     def test_a_missing_hosted_key_is_never_routed_around(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(client_module.settings, "GOOGLE_API_KEY", None)
+        monkeypatch.setattr(settings, "GOOGLE_API_KEY", None)
 
         assert one_shot_route(ModelUse.MEMORY) is None
         with pytest.raises(LLMNotConfiguredError, match="memory"):
@@ -213,7 +230,7 @@ class TestOpenAIOnly:
     @pytest.fixture(autouse=True)
     def _openai_only(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # A credential-store key, not settings.OPENAI_API_KEY: the store must count.
-        monkeypatch.setattr(client_module.settings, "OPENAI_API_KEY", None)
+        monkeypatch.setattr(settings, "OPENAI_API_KEY", None)
         _configure("selfhost", monkeypatch, openai=_OPENAI)
 
     @pytest.mark.parametrize("role", [AgentRole.COMMS, AgentRole.EXECUTOR, AgentRole.SUBAGENT])
@@ -231,7 +248,9 @@ class TestOpenAIOnly:
         assert model.openai_api_base is None
 
     async def test_a_configured_model_is_honoured(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        resolved_configs["openai"] = _config(api_key="sk-openai", model="gpt-5.4")
+        resolved_configs[CredentialProviderName.OPENAI] = _config(
+            api_key="sk-openai", model="gpt-5.4"
+        )
 
         lane, _ = await resolve_lane(None, AgentRole.COMMS)
 
@@ -246,7 +265,7 @@ class TestOpenAIOnly:
         assert model.reasoning_effort == "none"
         assert model.max_tokens == HELPER_MAX_OUTPUT_TOKENS
         assert model.max_retries == 0
-        assert model.openai_api_key is not None
+        assert isinstance(model.openai_api_key, SecretStr)
         assert model.openai_api_key.get_secret_value() == "sk-openai"
         assert model.profile == {"max_input_tokens": DEFAULT_MAX_TOKENS}
 
@@ -286,9 +305,9 @@ class TestGeminiOnly:
         assert memory_lane_available() is True
 
     def test_the_chat_client_runs_a_stored_model(self) -> None:
-        resolved_configs["gemini"] = _config(api_key="g-key", model="gemini-x")
+        resolved_configs[CredentialProviderName.GEMINI] = _config(api_key="g-key", model="gemini-x")
 
-        assert init_gemini_llm().loader_func().default.model == "gemini-x"
+        assert _default_client(init_gemini_llm(), ChatGoogleGenerativeAI).model == "gemini-x"
 
 
 class TestOllamaOnly:
@@ -321,14 +340,16 @@ class TestOllamaOnly:
         assert model.temperature == 0.3
 
     def test_only_trailing_slashes_are_stripped_from_the_endpoint(self) -> None:
-        resolved_configs["ollama"] = _config(base_url="http://OLLAMA-BOX//", model="qwen3:8b")
+        resolved_configs[CredentialProviderName.OLLAMA] = _config(
+            base_url="http://OLLAMA-BOX//", model="qwen3:8b"
+        )
 
         model = cast(ChatOpenAI, resolve_model(ModelUse.HELPER))
 
         assert model.openai_api_base == "http://OLLAMA-BOX/v1"
 
     def test_an_endpoint_saved_without_a_url_serves_nothing(self) -> None:
-        resolved_configs["ollama"] = _config(model="qwen3:8b")
+        resolved_configs[CredentialProviderName.OLLAMA] = _config(model="qwen3:8b")
 
         assert provider_configured(LLMProviderName.OLLAMA) is False
         with pytest.raises(LLMNotConfiguredError):
@@ -374,14 +395,14 @@ class TestCustomOnly:
         ids=["no-key", "no-url"],
     )
     def test_an_endpoint_missing_its_key_or_url_serves_nothing(self, saved: ProviderConfig) -> None:
-        resolved_configs["custom"] = saved
+        resolved_configs[CredentialProviderName.CUSTOM] = saved
 
         assert provider_configured(LLMProviderName.CUSTOM) is False
         with pytest.raises(LLMNotConfiguredError):
             init_custom_llm().loader_func()
 
     def test_an_endpoint_saved_without_a_model_serves_nothing(self) -> None:
-        resolved_configs["custom"] = _config(
+        resolved_configs[CredentialProviderName.CUSTOM] = _config(
             api_key="sk-custom", base_url="https://llm.example.com/v1"
         )
 
@@ -415,9 +436,11 @@ class TestOpenRouterOnly:
         assert model.openrouter_api_base == "https://or.example.com/api/v1"
 
     def test_the_chat_client_runs_a_stored_model(self) -> None:
-        resolved_configs["openrouter"] = _config(api_key="sk-or", model="vendor/m")
+        resolved_configs[CredentialProviderName.OPENROUTER] = _config(
+            api_key="sk-or", model="vendor/m"
+        )
 
-        assert init_openrouter_llm().loader_func().default.model_name == "vendor/m"
+        assert _default_client(init_openrouter_llm(), ChatOpenRouter).model_name == "vendor/m"
 
 
 class TestKeylessConfigs:

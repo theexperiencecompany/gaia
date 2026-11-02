@@ -52,7 +52,9 @@ async function printDryRun(options: RestoreOptions): Promise<void> {
     );
     return;
   }
-  out("  These commands would run, from the install's infra/docker folder:");
+  out(
+    "  These commands would run, from the install's packages/cli/selfhost folder:",
+  );
   for (const cmd of cmds) out(`    ${cmd}`);
 }
 

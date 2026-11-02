@@ -93,7 +93,7 @@ cmd_up() {
 
   local args=(up --yes --code-sandbox)
   if [[ -n "${IMAGE_TAG:-}" ]]; then
-    # The shell environment outranks infra/docker/.env in compose interpolation.
+    # The shell environment outranks the compose env file in compose interpolation.
     export GAIA_VERSION="$IMAGE_TAG"
     echo "Pulling gaia + gaia-web at :$IMAGE_TAG"
   else
