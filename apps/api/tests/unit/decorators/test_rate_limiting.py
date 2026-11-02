@@ -678,7 +678,7 @@ class TestMonthlyCostBudget:
     ) -> None:
         reset = datetime(2099, 2, 1, tzinfo=UTC)
         with (
-            _spend_of(day=0.5, month=PRO_MONTHLY_COST_BUDGET_USD, plan=PlanType.PRO),
+            _spend_of(day=0.5, month=PRO_MONTHLY_COST_BUDGET_USD + 0.1234567, plan=PlanType.PRO),
             patch(
                 "app.decorators.rate_limiting.get_reset_time",
                 lambda period: {RateLimitPeriod.MONTH: reset}[period],
@@ -705,7 +705,7 @@ class TestMonthlyCostBudget:
         assert log.warning.call_args.kwargs == {
             "user": {"id": USER_ID},
             "user_plan": PlanType.PRO.value,
-            "spent_usd": round(PRO_MONTHLY_COST_BUDGET_USD, 6),
+            "spent_usd": pytest.approx(PRO_MONTHLY_COST_BUDGET_USD + 0.123457, abs=1e-9),
             "feature_key": "chat_messages",
         }
 
