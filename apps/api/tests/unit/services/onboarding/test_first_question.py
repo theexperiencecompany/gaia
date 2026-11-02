@@ -532,13 +532,15 @@ class TestResolveBranches:
 
     async def test_stored_jobs_cost_no_model_call(self) -> None:
         compose = AsyncMock()
+        repository = _repository(_stored())
         with (
-            patch(f"{MODULE}.user_repository", _repository(_stored())),
+            patch(f"{MODULE}.user_repository", repository),
             patch(f"{MODULE}.compose_first_question", compose),
         ):
             result = await resolve_first_question("u1", _prefs(), "telegram")
 
         assert result == FirstQuestion(chips=GOOD_CHIPS)
+        repository.get.assert_awaited_once_with("u1")
         compose.assert_not_awaited()
 
     async def test_a_miss_gets_one_live_attempt_on_the_six_second_ceiling_and_stores_it(
