@@ -420,7 +420,7 @@ jobs:
       # round-trip it through actions/cache (its post-save hung at 0 MB/s on
       # the box and cancelled a passing lane, run 37220487362).
       - name: Point mypy at this runner's persistent cache
-        if: (contains(fromJSON(needs.detect.outputs.job_tasks)['lint-python'], 'api:type-check') || contains(fromJSON(needs.detect.outputs.job_tasks)['lint-python'], 'shared-python:type-check') || contains(fromJSON(needs.detect.outputs.job_tasks)['lint-python'], 'voice-agent:type-check') || contains(fromJSON(needs.detect.outputs.job_tasks)['lint-python'], 'ci:mypy'))
+        if: (contains(fromJSON(needs.detect.outputs.job_tasks)['lint-python'], 'api:type-check') || contains(fromJSON(needs.detect.outputs.job_tasks)['lint-python'], 'shared-python:type-check') || contains(fromJSON(needs.detect.outputs.job_tasks)['lint-python'], 'voice-agent:type-check') || contains(fromJSON(needs.detect.outputs.job_tasks)['lint-python'], 'ci:mypy') || contains(fromJSON(needs.detect.outputs.job_tasks)['lint-python'], 'ci:mypy-tests'))
         run: |
           if [ -n "${RUNNER_LOCAL_CACHE:-}" ]; then
             echo "MYPY_CACHE_DIR=$RUNNER_LOCAL_CACHE/mypy/$RUNNER_NAME" >> "$GITHUB_ENV"
@@ -428,7 +428,7 @@ jobs:
             echo "MYPY_CACHE_DIR=$GITHUB_WORKSPACE/.mypy_cache" >> "$GITHUB_ENV"
           fi
       - name: Restore mypy incremental cache
-        if: (contains(fromJSON(needs.detect.outputs.job_tasks)['lint-python'], 'api:type-check') || contains(fromJSON(needs.detect.outputs.job_tasks)['lint-python'], 'shared-python:type-check') || contains(fromJSON(needs.detect.outputs.job_tasks)['lint-python'], 'voice-agent:type-check') || contains(fromJSON(needs.detect.outputs.job_tasks)['lint-python'], 'ci:mypy')) && !startsWith(runner.name, 'gaia-home-')
+        if: (contains(fromJSON(needs.detect.outputs.job_tasks)['lint-python'], 'api:type-check') || contains(fromJSON(needs.detect.outputs.job_tasks)['lint-python'], 'shared-python:type-check') || contains(fromJSON(needs.detect.outputs.job_tasks)['lint-python'], 'voice-agent:type-check') || contains(fromJSON(needs.detect.outputs.job_tasks)['lint-python'], 'ci:mypy') || contains(fromJSON(needs.detect.outputs.job_tasks)['lint-python'], 'ci:mypy-tests')) && !startsWith(runner.name, 'gaia-home-')
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .mypy_cache
