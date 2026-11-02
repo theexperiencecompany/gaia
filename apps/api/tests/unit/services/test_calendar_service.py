@@ -201,7 +201,7 @@ class TestListCalendars:
             message="Google Calendar is not connected",
             status_code=403,
             code=INTEGRATION_NOT_CONNECTED,
-            public={"toolkit": "googlecalendar"},
+            public={"toolkit": "GOOGLECALENDAR"},
         )
         with pytest.raises(HTTPException) as exc:
             await list_calendars(USER_ID)
@@ -209,7 +209,7 @@ class TestListCalendars:
         assert exc.value.detail == {
             "type": "integration",
             "code": INTEGRATION_NOT_CONNECTED,
-            "toolkit": "googlecalendar",
+            "toolkit": "GOOGLECALENDAR",
             # Lets the web's Reconnect start the calendar connect, not just open the page.
             "integration_id": "googlecalendar",
             "message": "Reconnect Google Calendar to load your events.",

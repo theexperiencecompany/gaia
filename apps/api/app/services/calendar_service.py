@@ -20,6 +20,8 @@ from app.models.calendar_models import (
     EventDeleteRequest,
     EventDeleteResponse,
     EventUpdateRequest,
+    GoogleApiErrorBody,
+    GoogleApiErrorDetail,
     GoogleCalendarAttendee,
     GoogleCalendarEventDateTime,
     GoogleCalendarEventResource,
@@ -30,6 +32,7 @@ from app.models.calendar_models import (
     GoogleConferenceData,
     GoogleConferenceSolutionKey,
 )
+from app.models.integrations.composio import ProxyErrorMeta
 from app.services.composio.proxy_client import ProxyMethod, ProxyRequest, proxy_request
 from app.utils.calendar_utils import CALENDAR_API_BASE, calendar_events_endpoint
 from app.utils.errors import AppError
@@ -76,17 +79,17 @@ async def _proxy(
                 detail={
                     "type": "integration",
                     "code": INTEGRATION_NOT_CONNECTED,
-                    "toolkit": exc.public.get("toolkit"),
+                    "toolkit": CALENDAR_TOOLKIT,
                     "integration_id": GOOGLE_CALENDAR_INTEGRATION_ID,
                     "message": "Reconnect Google Calendar to load your events.",
                 },
             ) from exc
-        provider_response = exc.meta.get("provider_response")
-        detail: object = exc.message
+        provider_response = ProxyErrorMeta.model_validate(exc.meta).provider_response
+        detail = exc.message
         if isinstance(provider_response, dict):
-            error_message = provider_response.get("error", {})
-            if isinstance(error_message, dict) and error_message.get("message"):
-                detail = error_message["message"]
+            google_error = GoogleApiErrorBody.model_validate(provider_response).error
+            if isinstance(google_error, GoogleApiErrorDetail) and google_error.message:
+                detail = google_error.message
         raise HTTPException(status_code=exc.status_code, detail=detail) from exc
 
 

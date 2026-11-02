@@ -107,6 +107,22 @@ class GoogleCalendarEventsPage(BaseModel):
     nextPageToken: str | None = None
 
 
+class GoogleApiErrorDetail(BaseModel):
+    """The `error` object of a Google API error body; only its message is read."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    message: str | None = None
+
+
+class GoogleApiErrorBody(BaseModel):
+    """A Google API error body; OAuth endpoints send `error` as a bare string."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    error: GoogleApiErrorDetail | str | None = None
+
+
 class GoogleCalendarListEntry(GooglePassthroughModel):
     """One entry of Google's ``calendarList.list`` payload, forwarded to the client
     verbatim.

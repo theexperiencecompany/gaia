@@ -641,6 +641,7 @@ class TestAnIntegrationWithNoUsableAccountShowsTheConnectCard:
         with (
             patch(f"{ACCOUNTS}.get_account_record", AsyncMock(return_value=None)),
             patch(f"{MODULE}.expire_account", AsyncMock()) as expire,
+            patch(f"{MODULE}.log") as mock_log,
             _ui_chat_turn(writer, expired=False),
         ):
             result = await asyncio.to_thread(
@@ -649,6 +650,10 @@ class TestAnIntegrationWithNoUsableAccountShowsTheConnectCard:
 
         # Nothing was connected, so nothing died and nothing is expired.
         expire.assert_not_awaited()
+        invocation = mock_log.set.call_args.kwargs["composio_tool_invocation"]
+        assert invocation["outcome"] == "integration_not_connected"
+        assert mock_log.warning.call_args.kwargs["tool"] == "GMAIL_FETCH_MESSAGES"
+        assert "no usable connected account" in mock_log.warning.call_args.args[0]
         card = writer.call_args.args[0]["integration_connection_required"]
         assert card["integration_id"] == "gmail"
         assert card["expired"] is False
