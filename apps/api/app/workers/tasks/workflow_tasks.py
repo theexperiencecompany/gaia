@@ -1691,6 +1691,21 @@ async def execute_workflow_as_playbook(
 # The plan-quota charge moved to _run_workflow, the single place a fire is
 # billed — a replay that stops partway calls this to finish, and one result
 # must never cost two executions. The seam still reads trigger_type's origin.
+async def _run_trace(stream_id: str, workflow_id: str) -> list[RecordedCall]:
+    """Return the finished run's record; one that cannot be read is logged, the run still done."""
+    try:
+        return await read_run_record(stream_id)
+    except Exception as exc:
+        # The work already happened: failing the execution would misreport it.
+        log.error(
+            f"{LogTag.WORKER} workflow run record could not be read",
+            workflow_id=workflow_id,
+            error_type=type(exc).__name__,
+            exc_info=True,
+        )
+        return []
+
+
 async def execute_workflow_as_chat(
     workflow: Workflow, user: AuthenticatedUser, context: dict[str, object], *, reservation: str
 ) -> tuple[str, list[RecordedCall]]:
@@ -1779,9 +1794,7 @@ async def execute_workflow_as_chat(
         )
 
         # Every tool call the run made, by any path, in the order each finished.
-        trace = await read_run_record(result.stream_id)
-
-        return conversation_id, trace
+        return conversation_id, await _run_trace(result.stream_id, workflow.id)
 
     except Exception as e:
         # Re-raise so caller marks execution as failed instead of fake-success.

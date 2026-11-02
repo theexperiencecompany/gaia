@@ -23,10 +23,13 @@ from langgraph.errors import GraphBubbleUp
 from langgraph.types import Command
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.agents.core.subagents.call_record import is_error_envelope
 from app.agents.tools.run_record import append_call, append_call_sync
 from app.constants.execute import EXECUTE_TOOL_NAME
+from app.constants.log_tags import LogTag
 from app.models.agent_models import AgentConfigurable, agent_configurable
-from app.models.workflow_execution_models import RecordedCall, build_result_digest
+from app.models.workflow_execution_models import RecordedCall, build_result_digest, parse_result
+from shared.py.wide_events import log
 
 #: How a graph tool node marks its input as a ToolCall rather than plain args.
 GRAPH_TOOL_CALL_TYPE = "tool_call"
@@ -60,11 +63,9 @@ async def invoke_tool(
         # A pause for approval, not a finished call: recorded when it resumes and runs.
         raise
     except Exception as exc:
-        if pending is not None:
-            await append_call(pending[0], _finished(pending[1], _error_text(exc), failed=True))
+        await _write(pending, _error_text(exc), failed=True)
         raise
-    if pending is not None:
-        await append_call(pending[0], _finished(pending[1], output, failed=False))
+    await _write(pending, output, failed=False)
     return output
 
 
@@ -82,12 +83,43 @@ def invoke_tool_sync(
     except GraphBubbleUp:
         raise
     except Exception as exc:
-        if pending is not None:
-            append_call_sync(pending[0], _finished(pending[1], _error_text(exc), failed=True))
+        _write_sync(pending, _error_text(exc), failed=True)
         raise
-    if pending is not None:
-        append_call_sync(pending[0], _finished(pending[1], output, failed=False))
+    _write_sync(pending, output, failed=False)
     return output
+
+
+async def _write(pending: tuple[str, RecordedCall] | None, output: object, *, failed: bool) -> None:
+    """Append a finished call to its run's record; a failed write is logged, never raised."""
+    if pending is None:
+        return
+    call = _finished(pending[1], output, failed=failed)
+    try:
+        await append_call(pending[0], call)
+    except Exception as exc:
+        # The tool already ran: raising would report it failed and invite a repeat.
+        _log_unrecorded(call, exc)
+
+
+def _write_sync(pending: tuple[str, RecordedCall] | None, output: object, *, failed: bool) -> None:
+    """Sync twin of _write."""
+    if pending is None:
+        return
+    call = _finished(pending[1], output, failed=failed)
+    try:
+        append_call_sync(pending[0], call)
+    except Exception as exc:
+        # The tool already ran: raising would report it failed and invite a repeat.
+        _log_unrecorded(call, exc)
+
+
+def _log_unrecorded(call: RecordedCall, exc: Exception) -> None:
+    log.error(
+        f"{LogTag.TOOL} run record: a finished call was not recorded",
+        tool_name=call.tool_name,
+        error_type=type(exc).__name__,
+        exc_info=True,
+    )
 
 
 def _pending(
@@ -117,11 +149,13 @@ def _pending(
 
 def _finished(call: RecordedCall, output: object, *, failed: bool) -> RecordedCall:
     """Return the call with what it returned, or the error it raised."""
+    digest = build_result_digest(_as_text(_result_payload(output)))
     return RecordedCall.model_validate(
         {
             **call.model_dump(mode="json"),
-            "result_digest": build_result_digest(_as_text(_result_payload(output))),
-            "failed": failed,
+            "result_digest": digest,
+            # A tool that reports its own failure under a normal return failed all the same.
+            "failed": failed or is_error_envelope(parse_result(digest)),
         }
     )
 

@@ -25,7 +25,7 @@ from app.models.trigger_subscription_models import (
 )
 from app.services.agent_lab import lab_events, lab_runs, sandbox_setup
 from app.services.sandbox import execute_token
-from app.services.sandbox.execute_token import mint_execute_token
+from app.services.sandbox.execute_token import ExecuteGrant, mint_execute_token
 from app.services.sandbox.local_sandbox import LocalDockerSandbox
 from app.utils.errors import AppError
 from shared.py.analytics import UserId
@@ -49,7 +49,9 @@ def _secret() -> Iterator[None]:
 
 
 def _bearer(user_id: str = USER_ID, run_id: str = "run-1") -> str:
-    token = mint_execute_token(user_id, run_id, scoped_tool_names=[], ttl_seconds=60)
+    token = mint_execute_token(
+        ExecuteGrant(user_id=user_id, run_id=run_id, scoped_tool_names=[]), ttl_seconds=60
+    )
     return f"Bearer {token}"
 
 
@@ -431,7 +433,8 @@ class TestLabTokenTtl:
         with patch.object(sandbox_setup, "mint_execute_token", return_value="tok") as mint:
             sandbox_setup.mint_lab_hooks_token(USER_ID, "lab-1")
         assert mint.call_args.kwargs["ttl_seconds"] == SANDBOX_LAB_EVENTS_TOKEN_TTL_SECONDS
-        assert mint.call_args.kwargs["scoped_tool_names"] == []
+        (grant,) = mint.call_args.args
+        assert grant == ExecuteGrant(user_id=USER_ID, run_id="lab-1", scoped_tool_names=[])
 
 
 @pytest.mark.unit

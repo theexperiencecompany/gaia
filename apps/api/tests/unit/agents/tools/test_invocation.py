@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 import json
 from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import ToolMessage
 from langchain_core.runnables import RunnableConfig
@@ -13,7 +14,7 @@ from langgraph.errors import GraphInterrupt
 from langgraph.types import Command
 import pytest
 
-from app.agents.tools.invocation import ViaExecute, invoke_tool
+from app.agents.tools.invocation import ViaExecute, invoke_tool, invoke_tool_sync
 from app.agents.tools.run_record import read_run_record
 from app.constants.cache import RUN_RECORD_PREFIX, RUN_RECORD_TTL
 
@@ -188,3 +189,55 @@ async def test_a_call_the_execute_proxy_made_is_recorded_as_proxied_with_its_acc
     proxied, direct = await read_run_record(STREAM_ID)
     assert (proxied.proxied, proxied.account) == (True, "work@acme.com")
     assert (direct.proxied, direct.account) == (False, None)
+
+
+@tool
+async def reports_failure(query: str) -> dict[str, Any]:
+    """Answer normally with a body that says the call failed."""
+    return {"success": False, "error": f"no {query}"}
+
+
+async def test_a_tool_that_reports_its_own_failure_is_recorded_as_failed(fake_redis: Any) -> None:
+    await invoke_tool(reports_failure, {"query": "q"}, CONFIG)
+    await invoke_tool(answers, {"query": "q"}, CONFIG)
+
+    failed, answered = await read_run_record(STREAM_ID)
+    assert (failed.failed, answered.failed) == (True, False)
+
+
+@pytest.mark.parametrize("tool_under_test", [answers, raises], ids=["returned", "raised"])
+async def test_a_call_the_record_could_not_take_keeps_its_own_outcome(
+    fake_redis: Any, tool_under_test: BaseTool
+) -> None:
+    """The tool already ran: a record that fails to write must not report it failed, or succeeded."""
+    with (
+        patch("app.agents.tools.invocation.append_call", AsyncMock(side_effect=OSError("down"))),
+        patch("app.agents.tools.invocation.log") as log,
+    ):
+        if tool_under_test is raises:
+            with pytest.raises(RuntimeError, match="no q"):
+                await invoke_tool(tool_under_test, {"query": "q"}, CONFIG)
+        else:
+            assert await invoke_tool(tool_under_test, {"query": "q"}, CONFIG) == {"items": ["q"]}
+
+    assert log.error.call_args.kwargs == {
+        "tool_name": tool_under_test.name,
+        "error_type": "OSError",
+        "exc_info": True,
+    }
+
+
+def test_a_sync_call_the_record_could_not_take_still_returns() -> None:
+    with (
+        patch("app.agents.tools.invocation.append_call_sync", MagicMock(side_effect=OSError("x"))),
+        patch("app.agents.tools.invocation.log") as log,
+    ):
+        assert invoke_tool_sync(answers_sync, {"query": "q"}, CONFIG) == "q"
+
+    assert log.error.call_args.kwargs["tool_name"] == "answers_sync"
+
+
+@tool
+def answers_sync(query: str) -> str:
+    """Answer synchronously."""
+    return query
