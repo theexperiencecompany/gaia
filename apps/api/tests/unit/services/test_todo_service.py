@@ -7,10 +7,9 @@ queueing, search indexing, tracked-todo completion routing, response mapping,
 and the ProjectService guards.
 """
 
-from collections.abc import Coroutine, Iterator
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from bson import ObjectId
@@ -386,77 +385,6 @@ class TestCreateTodo:
         mock_vector_utils["store_embedding"].assert_awaited_once_with(
             created.id, created, FAKE_USER_ID
         )
-
-    async def test_create_todo_with_workflow_queues_generation(
-        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, mock_workflow_queue
-    ):
-        created = _make_todo_doc(todo_id=FAKE_TODO_ID, project_id=FAKE_INBOX_ID)
-        mock_todo_repo.create = AsyncMock(return_value=created)
-        result = await TodoService.create_todo_with_workflow(
-            TodoModel(title="Buy milk", description="2%"), FAKE_USER_ID
-        )
-        # Queued as a fire-and-forget background task, so assert the call, not the await.
-        mock_workflow_queue.queue_todo_workflow_generation.assert_called_once_with(
-            todo_id=FAKE_TODO_ID, user_id=FAKE_USER_ID, title="Buy milk", description="2%"
-        )
-        assert result.id == FAKE_TODO_ID
-
-    async def test_create_todo_with_workflow_spawns_a_named_task_scoped_to_the_todo(
-        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, mock_workflow_queue
-    ):
-        mock_todo_repo.create = AsyncMock(
-            return_value=_make_todo_doc(todo_id=FAKE_TODO_ID, project_id=FAKE_INBOX_ID)
-        )
-        with patch("app.services.todos.todo_service.spawn_logged_task") as spawn:
-            await TodoService.create_todo_with_workflow(TodoModel(title="Buy milk"), FAKE_USER_ID)
-
-        spawn.assert_called_once()
-        assert spawn.call_args.args[0] == "todo_workflow_generation"
-        assert spawn.call_args.kwargs == {
-            "user": {"id": FAKE_USER_ID},
-            "todo": {"id": FAKE_TODO_ID},
-        }
-        mock_workflow_queue.queue_todo_workflow_generation.assert_called_once_with(
-            todo_id=FAKE_TODO_ID, user_id=FAKE_USER_ID, title="Buy milk", description=""
-        )
-        spawn.call_args.args[1].close()
-
-    async def test_a_failed_generation_queue_still_returns_the_created_todo(
-        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, mock_workflow_queue
-    ):
-        mock_todo_repo.create = AsyncMock(
-            return_value=_make_todo_doc(todo_id=FAKE_TODO_ID, project_id=FAKE_INBOX_ID)
-        )
-
-        def refuse_to_spawn(_operation: str, coro: Coroutine[Any, Any, Any], **_: Any) -> None:
-            coro.close()
-            raise RuntimeError("loop closed")
-
-        with (
-            patch(
-                "app.services.todos.todo_service.spawn_logged_task",
-                side_effect=refuse_to_spawn,
-            ),
-            patch("app.services.todos.todo_service.log") as log,
-        ):
-            result = await TodoService.create_todo_with_workflow(
-                TodoModel(title="Buy milk"), FAKE_USER_ID
-            )
-
-        assert result.id == FAKE_TODO_ID
-        log.warning.assert_called_once_with(
-            "todo.workflow_queue_failed", title="Buy milk", error="loop closed"
-        )
-
-    async def test_create_todo_with_workflow_refuses_a_tracked_todo(
-        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, mock_workflow_queue
-    ):
-        with pytest.raises(TrackedTodoWorkflowError):
-            await TodoService.create_todo_with_workflow(
-                TodoModel(title="Nightly", labels=[GAIA_TRACKED_LABEL]), FAKE_USER_ID
-            )
-        mock_todo_repo.create.assert_not_awaited()
-        mock_workflow_queue.queue_todo_workflow_generation.assert_not_called()
 
     async def test_a_classic_todo_can_be_created_already_linked(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, mock_workflow_queue

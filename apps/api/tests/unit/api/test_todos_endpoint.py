@@ -513,18 +513,24 @@ class TestListQueryHelpers:
 
 
 class TestCreateTodoEndpoint:
-    async def test_a_classic_todo_is_created_with_its_workflow(self, client: AsyncClient) -> None:
-        """POST /todos is the classic entry point: the one path that generates a todo's workflow."""
-        with patch(
-            f"{TODOS_ENDPOINT}.TodoService.create_todo_with_workflow",
-            new=AsyncMock(return_value=_todo_response()),
-        ) as create:
+    async def test_creating_a_todo_queues_no_workflow_generation(self, client: AsyncClient) -> None:
+        """A workflow is generated only when the user presses Generate Workflow on the todo."""
+        with (
+            patch(
+                "app.services.todos.todo_service.TodoService.create_todo",
+                new=AsyncMock(return_value=_todo_response()),
+            ) as create,
+            patch(
+                "app.services.workflow.queue_service.WorkflowQueueService.queue_todo_workflow_generation",
+                new=AsyncMock(return_value=True),
+            ) as queue,
+        ):
             resp = await client.post("/api/v1/todos", json={"title": "Buy milk"})
 
         assert resp.status_code == 201
-        create.assert_awaited_once()
         assert create.await_args.args[0].title == "Buy milk"
         assert create.await_args.args[1] == "507f1f77bcf86cd799439011"
+        queue.assert_not_called()
 
 
 class TestGenerateTodoWorkflow:

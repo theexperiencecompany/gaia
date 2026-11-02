@@ -8,7 +8,6 @@ from langchain_core.tools import tool
 
 from app.constants.log_tags import LogTag
 from app.decorators import with_doc, with_rate_limiting
-from app.models.agent_config import read_agent_configurable
 from app.models.agent_models import current_stream_writer, get_user_id
 from app.models.todo_models import (
     Priority,
@@ -225,12 +224,7 @@ async def create_todo(
             project_id=project_id,
         )
 
-        # No human watches a background run: a sync that files hundreds of todos must not
-        # buy an LLM workflow for each. Its todos generate one on demand from the todo view.
-        if read_agent_configurable(config).execution_mode == "background":
-            result = await TodoService.create_todo(todo_data, user_id)
-        else:
-            result = await TodoService.create_todo_with_workflow(todo_data, user_id)
+        result = await TodoService.create_todo(todo_data, user_id)
         todo_dict = result.model_dump(mode="json")
 
         # Prepare response data
