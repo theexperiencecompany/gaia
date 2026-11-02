@@ -12,7 +12,8 @@ writer, so the numbers the wall compares are the numbers production would have
 written. Only the plan lookup — an external payments boundary — is stubbed.
 """
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import fakeredis.aioredis
@@ -22,13 +23,16 @@ from app.config.rate_limits import (
     RateLimitPeriod,
     get_daily_cost_budget_usd,
     get_per_request_token_ceiling,
-    get_reset_time,
 )
-from app.constants.llm import BUDGET_WRAPUP_REMAINING_FRACTION, PRO_MONTHLY_COST_BUDGET_USD
+from app.constants.llm import (
+    BUDGET_WRAPUP_REMAINING_FRACTION,
+    PRO_MONTHLY_BUDGET_HEADS_UP_FRACTION,
+    PRO_MONTHLY_COST_BUDGET_USD,
+)
 from app.db.redis import redis_cache
 from app.db.repositories.usage_daily import UsageDailyIncrement
 from app.models.payment_models import PlanType
-from app.services import cost_budget, usage_heads_up
+from app.services import cost_budget
 from app.services.cost_budget import (
     DAILY_BUDGET_STOP_FREE,
     DAILY_BUDGET_STOP_PRO,
@@ -38,6 +42,7 @@ from app.services.cost_budget import (
     get_budget_stop_reason,
     is_budget_wrapup_threshold,
     is_daily_budget_exhausted,
+    is_monthly_heads_up_due,
     record_model_call_usage,
 )
 from shared.py.wide_events import log
@@ -81,30 +86,53 @@ async def _spend_earlier_this_month(amount: float) -> None:
     )
 
 
+#: A fixed month reset, so the stop copy is asserted against a value, not today's clock.
+RESET = datetime(2099, 2, 1, tzinfo=UTC)
+STOP_TEXT = (
+    "You've used this month's AI usage allowance, so chat, workflows and tracked "
+    "todos are paused until February 1, when it resets."
+)
+
+
+@pytest.fixture
+def month_reset() -> Iterator[None]:
+    """Answer only for the MONTH window: asking for any other window has to fail."""
+    with patch.object(
+        cost_budget, "get_reset_time", lambda period: {RateLimitPeriod.MONTH: RESET}[period]
+    ):
+        yield
+
+
 @pytest.mark.unit
+@pytest.mark.usefixtures("month_reset")
 class TestMonthlyWall:
     async def test_binds_a_pro_run_once_the_month_reaches_the_allowance(self) -> None:
         await _spend_earlier_this_month(PRO_MONTHLY_COST_BUDGET_USD)
 
         check = await get_budget_stop_reason(USER, PlanType.PRO, REQUEST)
 
-        reset = get_reset_time(RateLimitPeriod.MONTH)
-        assert check.stop_reason is not None
-        assert f"{reset:%B} {reset.day}" in check.stop_reason
+        assert check == BudgetCheck(STOP_TEXT, 0.0, PlanType.PRO)
 
     async def test_binds_without_a_request_id_too(self) -> None:
         await _spend_earlier_this_month(PRO_MONTHLY_COST_BUDGET_USD)
 
         check = await get_budget_stop_reason(USER, PlanType.PRO, None)
 
-        assert check.stop_reason is not None
+        assert check == BudgetCheck(STOP_TEXT, 0.0, PlanType.PRO)
 
-    async def test_lets_a_pro_run_through_one_cent_short(self) -> None:
+    async def test_lets_a_pro_run_through_one_cent_short_and_reports_the_month(self) -> None:
         await _spend_earlier_this_month(PRO_MONTHLY_COST_BUDGET_USD - 0.01)
 
         check = await get_budget_stop_reason(USER, PlanType.PRO, REQUEST)
 
-        assert check.stop_reason is None
+        assert check == BudgetCheck(None, 0.0, PlanType.PRO, PRO_MONTHLY_COST_BUDGET_USD - 0.01)
+
+    async def test_reports_the_month_without_a_request_id_too(self) -> None:
+        await _spend_earlier_this_month(1.5)
+
+        check = await get_budget_stop_reason(USER, PlanType.PRO, None)
+
+        assert check == BudgetCheck(None, 0.0, PlanType.PRO, 1.5)
 
     async def test_free_has_no_monthly_wall(self) -> None:
         await _spend_earlier_this_month(PRO_MONTHLY_COST_BUDGET_USD * 10)
@@ -112,6 +140,19 @@ class TestMonthlyWall:
         check = await get_budget_stop_reason(USER, PlanType.FREE, REQUEST)
 
         assert check.stop_reason is None
+
+
+@pytest.mark.unit
+class TestMonthlyHeadsUpBand:
+    def test_opens_at_the_heads_up_line(self) -> None:
+        line = PRO_MONTHLY_COST_BUDGET_USD * PRO_MONTHLY_BUDGET_HEADS_UP_FRACTION
+        assert is_monthly_heads_up_due(line, PlanType.PRO) is True
+
+    def test_closes_at_the_allowance_where_the_wall_takes_over(self) -> None:
+        assert is_monthly_heads_up_due(PRO_MONTHLY_COST_BUDGET_USD, PlanType.PRO) is False
+
+    def test_free_never_gets_it(self) -> None:
+        assert is_monthly_heads_up_due(PRO_MONTHLY_COST_BUDGET_USD * 0.9, PlanType.FREE) is False
 
 
 @pytest.mark.unit
@@ -386,18 +427,3 @@ class TestResolvedPlanSurvivesABoundWall:
 
         assert check.stop_reason == DAILY_BUDGET_STOP_FREE
         assert check.plan_type == PlanType.FREE
-
-
-@pytest.mark.unit
-class TestMonthlyHeadsUp:
-    async def test_the_heads_up_fires_once_a_month_and_names_the_reset(self) -> None:
-        created = AsyncMock()
-        with patch.object(usage_heads_up.notification_service, "create_notification", created):
-            await usage_heads_up.notify_monthly_heads_up_once(USER)
-            await usage_heads_up.notify_monthly_heads_up_once(USER)
-
-        assert created.await_count == 1
-        request = created.await_args.args[0]
-        reset = get_reset_time(RateLimitPeriod.MONTH)
-        assert request.user_id == USER
-        assert f"{reset:%B} {reset.day}" in request.content.body

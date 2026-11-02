@@ -21,7 +21,7 @@ from app.api.v1.middleware.tiered_rate_limiter import (
     CostBudgetExceededException,
     RateLimitExceededException,
 )
-from app.config.rate_limits import RateLimitPeriod, get_reset_time
+from app.config.rate_limits import RateLimitPeriod
 from app.constants.llm import (
     FREE_DAILY_COST_BUDGET_USD,
     PRO_MONTHLY_COST_BUDGET_USD,
@@ -676,17 +676,38 @@ class TestMonthlyCostBudget:
     async def test_a_pro_user_at_the_monthly_allowance_is_paused_until_the_month_resets(
         self,
     ) -> None:
+        reset = datetime(2099, 2, 1, tzinfo=UTC)
         with (
             _spend_of(day=0.5, month=PRO_MONTHLY_COST_BUDGET_USD, plan=PlanType.PRO),
+            patch(
+                "app.decorators.rate_limiting.get_reset_time",
+                lambda period: {RateLimitPeriod.MONTH: reset}[period],
+            ),
+            patch(
+                "app.decorators.rate_limiting.monthly_budget_stop_text",
+                lambda: "paused until February 1",
+            ),
+            patch("app.decorators.rate_limiting.log") as log,
             pytest.raises(CostBudgetExceededException) as raised,
         ):
             await rl.enforce_cost_budget(USER_ID, "chat_messages")
 
-        reset = get_reset_time(RateLimitPeriod.MONTH)
         assert raised.value.status_code == 429
-        assert raised.value.detail["reset_time"] == reset.isoformat()
-        assert f"{reset:%B} {reset.day}" in raised.value.detail["message"]
-        assert "plan_required" not in raised.value.detail
+        assert raised.value.period is RateLimitPeriod.MONTH
+        assert raised.value.detail == {
+            "code": "rate_limit_exceeded",
+            "feature": "chat_messages",
+            "message": "paused until February 1",
+            "reset_time": reset.isoformat(),
+            "current_plan": PlanType.PRO.value,
+        }
+        assert log.warning.call_args.args == ("[API] Monthly cost budget exhausted",)
+        assert log.warning.call_args.kwargs == {
+            "user": {"id": USER_ID},
+            "user_plan": PlanType.PRO.value,
+            "spent_usd": round(PRO_MONTHLY_COST_BUDGET_USD, 6),
+            "feature_key": "chat_messages",
+        }
 
     async def test_a_pro_user_one_cent_short_of_the_allowance_runs(self) -> None:
         with _spend_of(day=0.5, month=PRO_MONTHLY_COST_BUDGET_USD - 0.01, plan=PlanType.PRO):

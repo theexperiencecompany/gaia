@@ -289,7 +289,7 @@ async def get_budget_stop_reason(
             stop = DAILY_BUDGET_STOP_FREE if plan_type == PlanType.FREE else DAILY_BUDGET_STOP_PRO
             return BudgetCheck(stop, spent, plan_type)
         if is_monthly_budget_exhausted(month_spent, plan_type):
-            return BudgetCheck(monthly_budget_stop_text(), spent, plan_type, month_spent)
+            return BudgetCheck(monthly_budget_stop_text(), spent, plan_type)
         log.warning(
             f"{LogTag.AGENT} Per-request ceiling skipped — missing root_request_id "
             "in configurable (threading gap?)."
@@ -308,10 +308,10 @@ async def get_budget_stop_reason(
         stop = DAILY_BUDGET_STOP_FREE if plan_type == PlanType.FREE else DAILY_BUDGET_STOP_PRO
         return BudgetCheck(stop, spent, plan_type)
     if is_monthly_budget_exhausted(month_spent, plan_type):
-        return BudgetCheck(monthly_budget_stop_text(), spent, plan_type, month_spent)
+        return BudgetCheck(monthly_budget_stop_text(), spent, plan_type)
     if used >= get_per_request_token_ceiling(plan_type):
         stop = REQUEST_CEILING_STOP_FREE if plan_type == PlanType.FREE else REQUEST_CEILING_STOP_PRO
-        return BudgetCheck(stop, spent, plan_type, month_spent)
+        return BudgetCheck(stop, spent, plan_type)
 
     return BudgetCheck(None, spent, plan_type, month_spent)
 
