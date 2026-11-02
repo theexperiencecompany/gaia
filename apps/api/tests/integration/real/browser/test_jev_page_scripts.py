@@ -98,6 +98,21 @@ async def test_one_character_boxes_are_offered_as_one_field(page: Page) -> None:
     assert not any(label.startswith("Open User code") for label in _labels(snapshot, "click"))
 
 
+async def test_one_character_password_boxes_stay_secrets_and_never_show_what_was_typed(
+    page: Page,
+) -> None:
+    await page.set_content(
+        _DEVICE.replace('maxlength="1"', 'type="password" role="textbox" maxlength="1"')
+    )
+    await page.fill("#user-code-0", "W")
+    snapshot: dict[str, Any] = await page.evaluate(_SNAPSHOT)
+
+    assert not [a for a in snapshot["actions"] if a["kind"] == "fill"]
+    secrets = [a for a in snapshot["actions"] if a["kind"] == "secret"]
+    assert len(secrets) == 8
+    assert all(a["value"] == "" for a in secrets)
+
+
 @pytest.mark.regression
 async def test_a_code_typed_into_the_first_box_is_read_back_whole(page: Page) -> None:
     snapshot = await _snapshot(page, _DEVICE)

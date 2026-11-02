@@ -268,7 +268,7 @@
   const isDisabled = e => e.matches(':disabled') || !!e.closest('[aria-disabled="true"]');
   const offered = e => isSafe(e) && isVisible(e) && !isDisabled(e);
   // A one-character box: a code split into one box per character, which the page steps through.
-  const isSegment = e => e.tagName==='INPUT' && e.maxLength===1 && offered(e) && isEditable(e, roleOf(e));
+  const isSegment = e => e.tagName==='INPUT' && !isSecret(e) && e.maxLength===1 && offered(e) && isEditable(e, roleOf(e));
   // How many one-character boxes in one form make one code field (BROWSER_CODE_MIN_BOXES).
   const MIN_SEGMENTS=4;
 

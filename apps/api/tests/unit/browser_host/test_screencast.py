@@ -211,6 +211,30 @@ async def test_a_main_frame_navigation_refreshes_the_tab_and_a_subframe_does_not
     await run.finish()
 
 
+@pytest.mark.regression
+async def test_the_first_frame_after_a_navigation_names_the_new_page_before_the_tab_is_reread() -> (
+    None
+):
+    run = _Run()
+    await run.start()
+    run.mux.hang_on = "Target.getTargetInfo"
+
+    run.mux.emit(
+        {
+            "method": "Page.frameNavigated",
+            "sessionId": run.page_session,
+            "params": {"frame": {"url": "https://example.com/secure"}},
+        }
+    )
+    await run.mux.until_hanging(1)
+    run.frame("<jpeg>")
+    await asyncio.wait_for(run.viewer.got_frame.wait(), 1.0)
+    run.viewer.leave()
+    await run.finish()
+
+    assert run.viewer.sent[0]["url"] == "https://example.com/secure"
+
+
 async def test_the_viewers_input_drives_the_page_it_sees() -> None:
     run = _Run()
     await run.start()
