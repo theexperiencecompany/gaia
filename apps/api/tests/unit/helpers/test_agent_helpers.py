@@ -405,6 +405,22 @@ class TestBuildAgentConfig:
         assert configurable["selected_tool"] == "web_search"
         assert configurable["vfs_session_id"] == "vfs-sess-1"
 
+    @pytest.mark.parametrize(
+        ("own", "inherited", "expected"),
+        [("calendar", "todos", "calendar"), (None, "todos", "todos"), (None, None, None)],
+        ids=["own-scope-wins", "inherited", "executor"],
+    )
+    async def test_a_run_scope_is_its_own_else_its_parents(
+        self, own: str | None, inherited: str | None, expected: str | None
+    ) -> None:
+        """A spawn inside a handoff records its calls in that handoff's scope; a handoff names its own."""
+        config = await build_agent_config(
+            identity=AgentIdentity(conversation_id=CONV_ID, user=FAKE_USER, agent_name="executor"),
+            thread=AgentThread(base_configurable={"run_scope": inherited}, run_scope=own),
+        )
+
+        assert config["configurable"].get("run_scope") == expected
+
     @patch("app.helpers.agent_helpers.resolve_lane")
     async def test_a_comms_run_keeps_the_comms_lane_it_inherits(self, mock_resolve):
         comms_lane = ModelLane(

@@ -877,3 +877,5 @@ class TestSuggestIntegrations:
         # Check it passed search_public_query
         call_args = mock_list.ainvoke.call_args
         assert call_args[0][0]["search_public_query"] == "email tools"
+        # The user's run reaches the listing: it reads the user id from it.
+        assert call_args.kwargs["config"]["configurable"]["user_id"] == FAKE_USER_ID
