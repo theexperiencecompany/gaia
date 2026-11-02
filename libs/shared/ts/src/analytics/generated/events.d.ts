@@ -1253,6 +1253,7 @@ export interface EventProperties {
     "feature": string;
     "plan": string;
     "origin"?: string;
+    "window"?: "day" | "month" | "request" | "burst";
   };
   "reddit:post_viewed": {
     "subreddit": string;

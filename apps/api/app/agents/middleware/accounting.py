@@ -54,6 +54,7 @@ from app.services.cost_budget import (
     is_monthly_heads_up_due,
 )
 from app.services.latency_metrics import observe_llm_call
+from app.services.limit_upsell import capture_limit_hit, current_limit_origin
 from app.services.llm_metering import (
     LLMCallContext,
     extract_finish_reason,
@@ -67,6 +68,7 @@ from app.services.llm_metering import (
 )
 from app.services.usage_heads_up import notify_monthly_heads_up_once
 from app.utils.background_tasks import spawn_background_task
+from shared.py.analytics import UserId
 from shared.py.wide_events import ModelContext, log
 
 
@@ -229,6 +231,14 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
             # sets plan_type), so the card always has a real plan to render.
             if check.plan_type is not None:
                 self._emit_budget_stop_card(check.stop_reason, check.plan_type)
+            if user_id:
+                capture_limit_hit(
+                    UserId(str(user_id)),
+                    PRIMARY_METERED_FEATURE,
+                    check.plan_type,
+                    origin=current_limit_origin(),
+                    window=check.wall,
+                )
             return ModelResponse(
                 result=[
                     AIMessage(

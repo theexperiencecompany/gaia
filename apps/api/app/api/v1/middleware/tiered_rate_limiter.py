@@ -35,10 +35,16 @@ from app.models.usage_models import (
     UsagePeriod,
     UserUsageSnapshot,
 )
-from app.services.limit_upsell import LimitHitOrigin, current_limit_origin, schedule_limit_upsell
+from app.services.limit_upsell import (
+    LimitHitOrigin,
+    capture_limit_hit,
+    current_limit_origin,
+    schedule_limit_upsell,
+)
 from app.services.usage_activity import counts_as_activity, record_activity
 from app.services.usage_service import UsageService
 from app.utils.background_tasks import spawn_background_task
+from shared.py.analytics import UserId
 from shared.py.wide_events import log, spawn_logged_task
 
 # UsageInfo is imported (not defined here) but re-exported for callers that
@@ -152,6 +158,7 @@ class TieredRateLimiter:
         try:
             return await self._check_and_increment(user_id, feature_key, user_plan)
         except RateLimitExceededException:
+            capture_limit_hit(UserId(user_id), feature_key, user_plan, origin=origin)
             schedule_limit_upsell(user_id, feature_key, user_plan, origin)
             raise
 

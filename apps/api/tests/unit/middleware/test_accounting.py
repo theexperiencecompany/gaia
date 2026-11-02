@@ -48,6 +48,9 @@ from app.services.cost_budget import (
     BudgetCheck,
     is_budget_wrapup_threshold,
 )
+from app.services.limit_upsell import LimitHitOrigin
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.billing import LimitWindow
 from shared.py.wide_events import log
 
 #: A stored lane, whole: to_configurable writes every key, so a fixture must too.
@@ -59,11 +62,14 @@ _LANE: dict[str, object] = {
     "max_input_tokens": DEFAULT_MAX_TOKENS,
 }
 
+#: A real Mongo id: a budget stop records the refusal against it.
+USER_ID = "6812f0b3c9a14e2b7d5a91cd"
+
 CONFIG: dict[str, Any] = {
     "configurable": {
         "thread_id": "conv-1",
         "lane": _LANE,
-        "user_id": "user-1",
+        "user_id": USER_ID,
     }
 }
 
@@ -159,7 +165,7 @@ _LEDGER_CONFIG: dict[str, Any] = {
         "workflow_id": "wf-1",
         "root_request_id": "req-1",
         "lane": _LANE,
-        "user_id": "user-1",
+        "user_id": USER_ID,
     }
 }
 
@@ -226,7 +232,7 @@ async def test_a_graph_call_is_never_recorded_as_background_system_work() -> Non
     """Mislabeling it background would relabel most chat spend as system work nobody asked for."""
     bare = {
         "configurable": {
-            "user_id": "user-1",
+            "user_id": USER_ID,
             "lane": _LANE,
         }
     }
@@ -765,7 +771,7 @@ async def test_budget_wrapup_notice_injected_once_when_spend_crosses_threshold()
             "msg": "budget_wrapup_notice",
             "event_name": "budget_wrapup_notice",
             "agent_name": "a",
-            "user_id": "user-1",
+            "user_id": USER_ID,
             "thread_id": "conv-1",
             "spent": spent,
             "budget": budget,
@@ -884,7 +890,7 @@ async def test_the_wall_is_checked_against_the_callers_user_plan_and_request_tre
     config = {
         "configurable": {
             "thread_id": "conv-1",
-            "user_id": "user-1",
+            "user_id": USER_ID,
             "plan_type": "pro",
             "root_request_id": "req-9",
         }
@@ -897,7 +903,7 @@ async def test_the_wall_is_checked_against_the_callers_user_plan_and_request_tre
     ):
         await mw.awrap_model_call(_model_request(), handler)
 
-    assert seen == [("user-1", PlanType.PRO, "req-9")]
+    assert seen == [(USER_ID, PlanType.PRO, "req-9")]
 
 
 async def test_a_budget_check_failure_fails_open_and_still_runs_the_model() -> None:
@@ -1029,7 +1035,7 @@ async def test_high_water_mark_fires_on_reaching_the_cap() -> None:
     assert events[0]["hwm_cap"] == _hwm_cap(limit)
     assert events[0]["agent_name"] == "a"
     assert events[0]["thread_id"] == "conv-1"
-    assert events[0]["user_id"] == "user-1"
+    assert events[0]["user_id"] == USER_ID
 
 
 async def test_high_water_mark_is_emitted_only_once_per_thread() -> None:
@@ -1150,7 +1156,7 @@ async def test_the_llm_call_event_carries_the_per_step_attribution() -> None:
         "agent_name": "executor_agent",
         "model": "gemini-3-pro",
         "thread_id": "conv-1",
-        "user_id": "user-1",
+        "user_id": USER_ID,
         "input_tokens": 100,
         "cached_tokens": 40,
         "output_tokens": 20,
@@ -1223,7 +1229,7 @@ async def test_the_price_is_looked_up_for_the_lanes_model_and_provider() -> None
 async def test_a_bag_with_no_lane_says_so_instead_of_undercharging_silently() -> None:
     """Priced as "unknown" matches no pricing entry, so the call silently undercharges the budget without this warning."""
     warned: list[tuple[str, dict[str, Any]]] = []
-    config = {"configurable": {"thread_id": "conv-1", "user_id": "user-1"}}
+    config = {"configurable": {"thread_id": "conv-1", "user_id": USER_ID}}
     config_patch, cost_patch, usage_patch = _accounting_env(config)
     mw = LLMAccountingMiddleware(agent_name="executor_agent")
     with (
@@ -1299,7 +1305,7 @@ def test_the_serving_model_is_the_fallback_only_when_one_answered(
 @pytest.mark.parametrize(
     ("fraction", "expected"),
     [
-        (PRO_MONTHLY_BUDGET_HEADS_UP_FRACTION, ["notify_monthly_heads_up_once:user-1"]),
+        (PRO_MONTHLY_BUDGET_HEADS_UP_FRACTION, [f"notify_monthly_heads_up_once:{USER_ID}"]),
         (PRO_MONTHLY_BUDGET_HEADS_UP_FRACTION - 0.01, []),
     ],
 )
@@ -1336,3 +1342,41 @@ async def test_a_run_with_no_user_sends_no_heads_up() -> None:
         await LLMAccountingMiddleware(agent_name="a").awrap_model_call(_model_request(), handler)
 
     assert spawned == []
+
+
+_WALLS: list[LimitWindow] = ["day", "month", "request"]
+
+
+@pytest.mark.parametrize("wall", _WALLS)
+async def test_a_budget_stop_records_one_refusal_naming_its_wall(wall: LimitWindow) -> None:
+    check = BudgetCheck("Paused.", 999.0, PlanType.PRO, wall=wall)
+    with (
+        patch.object(accounting, "current_run_config", lambda: CONFIG),
+        patch.object(accounting, "get_budget_stop_reason", AsyncMock(return_value=check)),
+        patch.object(accounting, "capture_limit_hit") as hit,
+        patch.object(accounting, "current_limit_origin", return_value=LimitHitOrigin.BACKGROUND),
+    ):
+        await LLMAccountingMiddleware(agent_name="a").awrap_model_call(
+            _model_request(), AsyncMock()
+        )
+
+    hit.assert_called_once_with(
+        UserId(USER_ID),
+        "chat_messages",
+        PlanType.PRO,
+        origin=LimitHitOrigin.BACKGROUND,
+        window=wall,
+    )
+
+
+async def test_a_call_no_wall_stopped_records_no_refusal() -> None:
+    check = BudgetCheck(None, 0.0, PlanType.PRO, 0.0)
+    _, handler = _recording_handler()
+    with (
+        patch.object(accounting, "current_run_config", lambda: CONFIG),
+        patch.object(accounting, "get_budget_stop_reason", AsyncMock(return_value=check)),
+        patch.object(accounting, "capture_limit_hit") as hit,
+    ):
+        await LLMAccountingMiddleware(agent_name="a").awrap_model_call(_model_request(), handler)
+
+    hit.assert_not_called()

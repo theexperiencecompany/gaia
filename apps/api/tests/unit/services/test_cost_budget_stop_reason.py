@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock, patch
 
 import fakeredis.aioredis
 import pytest
+import time_machine
 
 from app.config.rate_limits import (
     RateLimitPeriod,
@@ -82,24 +83,34 @@ async def _burn_tokens(count: int) -> None:
 async def _spend_earlier_this_month(amount: float) -> None:
     """Spend booked on an earlier day: it sits in the month window, not today's."""
     await redis_cache.redis.incrbyfloat(
-        cost_budget._budget_key(USER, RateLimitPeriod.MONTH), amount
+        await cost_budget._budget_key(USER, RateLimitPeriod.MONTH), amount
     )
 
 
-#: A fixed month reset, so the stop copy is asserted against a value, not today's clock.
-RESET = datetime(2099, 2, 1, tzinfo=UTC)
+#: The user bills on the 15th, and today is mid-cycle, so the allowance resets on the next 15th.
+BILLING_DAY = 15
+TODAY = datetime(2099, 1, 20, 9, tzinfo=UTC)
 STOP_TEXT = (
     "You've used this month's AI usage allowance, so chat, workflows and tracked "
-    "todos are paused until February 1, when it resets."
+    "todos are paused until February 15, when it resets."
 )
+
+
+@pytest.fixture(autouse=True)
+def billing_day() -> Iterator[AsyncMock]:
+    """Answer the billing-day lookup for USER only, so the month window is anchored on it."""
+
+    async def _billing_day(user_id: str) -> int:
+        return {USER: BILLING_DAY}[user_id]
+
+    with patch.object(cost_budget.payment_service, "get_cached_billing_day", _billing_day):
+        yield
 
 
 @pytest.fixture
 def month_reset() -> Iterator[None]:
-    """Answer only for the MONTH window: asking for any other window has to fail."""
-    with patch.object(
-        cost_budget, "get_reset_time", lambda period: {RateLimitPeriod.MONTH: RESET}[period]
-    ):
+    """Freeze the clock mid-cycle so the reset date in the copy is a fixed value."""
+    with time_machine.travel(TODAY, tick=False):
         yield
 
 
@@ -111,14 +122,14 @@ class TestMonthlyWall:
 
         check = await get_budget_stop_reason(USER, PlanType.PRO, REQUEST)
 
-        assert check == BudgetCheck(STOP_TEXT, 0.0, PlanType.PRO)
+        assert check == BudgetCheck(STOP_TEXT, 0.0, PlanType.PRO, wall="month")
 
     async def test_binds_without_a_request_id_too(self) -> None:
         await _spend_earlier_this_month(PRO_MONTHLY_COST_BUDGET_USD)
 
         check = await get_budget_stop_reason(USER, PlanType.PRO, None)
 
-        assert check == BudgetCheck(STOP_TEXT, 0.0, PlanType.PRO)
+        assert check == BudgetCheck(STOP_TEXT, 0.0, PlanType.PRO, wall="month")
 
     async def test_lets_a_pro_run_through_one_cent_short_and_reports_the_month(self) -> None:
         await _spend_earlier_this_month(PRO_MONTHLY_COST_BUDGET_USD - 0.01)
@@ -427,3 +438,23 @@ class TestResolvedPlanSurvivesABoundWall:
 
         assert check.stop_reason == DAILY_BUDGET_STOP_FREE
         assert check.plan_type == PlanType.FREE
+
+
+@pytest.mark.unit
+class TestBillingAnchoredMonth:
+    async def test_spend_before_the_billing_day_does_not_count_after_it(self) -> None:
+        with time_machine.travel(datetime(2099, 1, 14, 23, tzinfo=UTC), tick=False):
+            await _spend_earlier_this_month(PRO_MONTHLY_COST_BUDGET_USD)
+        with time_machine.travel(datetime(2099, 1, 15, 1, tzinfo=UTC), tick=False):
+            check = await get_budget_stop_reason(USER, PlanType.PRO, REQUEST)
+
+        assert check == BudgetCheck(None, 0.0, PlanType.PRO, 0.0)
+
+    async def test_spend_early_in_the_cycle_still_counts_across_the_calendar_month(self) -> None:
+        with time_machine.travel(datetime(2099, 1, 20, tzinfo=UTC), tick=False):
+            await _spend_earlier_this_month(PRO_MONTHLY_COST_BUDGET_USD)
+        with time_machine.travel(datetime(2099, 2, 3, tzinfo=UTC), tick=False):
+            check = await get_budget_stop_reason(USER, PlanType.PRO, REQUEST)
+
+        assert check.stop_reason is not None
+        assert "February 15" in check.stop_reason

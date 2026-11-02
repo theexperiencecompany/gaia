@@ -42,6 +42,15 @@ async def fake_redis() -> AsyncIterator[fakeredis.aioredis.FakeRedis]:
 
 
 @pytest.fixture(autouse=True)
+def no_billing_day() -> Iterator[None]:
+    """Give the user no billing day, so the month window is the calendar month."""
+    with patch.object(
+        cost_budget.payment_service, "get_cached_billing_day", AsyncMock(return_value=None)
+    ):
+        yield
+
+
+@pytest.fixture(autouse=True)
 def rollup() -> Iterator[AsyncMock]:
     """Stub the durable Mongo rollup — its own writes are covered elsewhere; here we only care WHICH bucket a call is booked into."""
     with patch.object(cost_budget, "record_cost", AsyncMock()) as mock:

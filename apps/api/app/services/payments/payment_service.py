@@ -75,6 +75,19 @@ class _CachedPlanType(TypedDict, total=False):
     """The record get_cached_plan_type caches under SUBSCRIPTION_PLAN_CACHE_PREFIX."""
 
     plan_type: str
+    #: Day of month the subscription bills on; None without one. Absent on a record
+    #: written before the field existed, which is read as a miss.
+    billing_day: int | None
+
+
+def _billing_day(subscription: SubscriptionDocument | None) -> int | None:
+    """Return the day of month a subscription bills on (UTC), from Dodo's billing dates."""
+    if subscription is None:
+        return None
+    for iso in (subscription.next_billing_date, subscription.previous_billing_date):
+        if iso:
+            return datetime.fromisoformat(iso).astimezone(UTC).day
+    return subscription.created_at.day if subscription.created_at else None
 
 
 class DodoPaymentService:
@@ -713,21 +726,35 @@ class DodoPaymentService:
         if not settings.deployment.enforces_plans:
             log.set_ns("payment", plan_type=PlanType.PRO.value, plan_source="unenforced")
             return PlanType.PRO
+        record, source = await self._cached_plan_record(user_id)
+        plan = PlanType(record["plan_type"])
+        log.set_ns("payment", plan_type=plan.value, plan_source=source)
+        return plan
+
+    async def get_cached_billing_day(self, user_id: str) -> int | None:
+        """Return the cached day of month the user's subscription bills on (None without one)."""
+        if not settings.deployment.enforces_plans:
+            return None
+        record, _ = await self._cached_plan_record(user_id)
+        return record.get("billing_day")
+
+    async def _cached_plan_record(self, user_id: str) -> tuple[_CachedPlanType, str]:
+        """Return the cached plan record and where it came from, filling the cache on a miss."""
         cache_key = f"{SUBSCRIPTION_PLAN_CACHE_PREFIX}{user_id}"
         cached = await redis_cache.get(cache_key)
-        if isinstance(cached, dict):
-            record: _CachedPlanType = cast(_CachedPlanType, cached)
-            if record.get("plan_type"):
-                cached_plan = PlanType(record["plan_type"])
-                log.set_ns("payment", plan_type=cached_plan.value, plan_source="cache")
-                return cached_plan
+        if isinstance(cached, dict) and cached.get("plan_type") and "billing_day" in cached:
+            return cast(_CachedPlanType, cached), "cache"
 
-        plan_raw = (await self.get_user_subscription_status(user_id)).plan_type or PlanType.FREE
+        status = await self.get_user_subscription_status(user_id)
+        plan_raw = status.plan_type or PlanType.FREE
         # Pydantic v2 coerces str, Enum fields to plain strings; normalize before calling .value
         plan = plan_raw if isinstance(plan_raw, PlanType) else PlanType(plan_raw)
-        await redis_cache.set(cache_key, {"plan_type": plan.value}, ttl=SUBSCRIPTION_PLAN_CACHE_TTL)
-        log.set_ns("payment", plan_type=plan.value, plan_source="subscription")
-        return plan
+        record: _CachedPlanType = {
+            "plan_type": plan.value,
+            "billing_day": _billing_day(status.subscription),
+        }
+        await redis_cache.set(cache_key, dict(record), ttl=SUBSCRIPTION_PLAN_CACHE_TTL)
+        return record, "subscription"
 
 
 payment_service = DodoPaymentService()

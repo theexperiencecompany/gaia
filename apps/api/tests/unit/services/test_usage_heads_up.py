@@ -11,7 +11,6 @@ from unittest.mock import AsyncMock, patch
 import fakeredis.aioredis
 import pytest
 
-from app.config.rate_limits import RateLimitPeriod
 from app.constants.cache import COST_BUDGET_NEAR_NOTIFIED_KEY
 from app.constants.llm import MONTHLY_BUDGET_TTL_SECONDS
 from app.constants.log_tags import LogTag
@@ -21,8 +20,8 @@ from app.services import usage_heads_up
 from app.services.usage_heads_up import notify_monthly_heads_up_once
 
 USER = "u-heads-up"
-WINDOW = "209901"
-RESET = datetime(2099, 2, 1, tzinfo=UTC)
+WINDOW = "20990115"
+RESET = datetime(2099, 2, 15, tzinfo=UTC)
 
 
 @pytest.fixture
@@ -36,17 +35,16 @@ async def fake_redis() -> AsyncIterator[fakeredis.aioredis.FakeRedis]:
 
 @pytest.fixture
 def created() -> Iterator[AsyncMock]:
-    """Stub the notification write and key the month window and reset to MONTH only."""
+    """Stub the notification write and answer the allowance window for known users only."""
     notify = AsyncMock()
     with (
         patch.object(usage_heads_up.notification_service, "create_notification", notify),
         patch.object(
             usage_heads_up,
-            "get_time_window_key",
-            lambda period: {RateLimitPeriod.MONTH: WINDOW}[period],
-        ),
-        patch.object(
-            usage_heads_up, "get_reset_time", lambda period: {RateLimitPeriod.MONTH: RESET}[period]
+            "monthly_allowance_window",
+            AsyncMock(
+                side_effect=lambda user_id: {USER: (WINDOW, RESET), "u2": (WINDOW, RESET)}[user_id]
+            ),
         ),
     ):
         yield notify
@@ -72,7 +70,7 @@ class TestMonthlyHeadsUp:
         assert request.content.title == "Most of this month's usage allowance is used"
         assert request.content.body == (
             "When it runs out, chat, workflows and tracked todos pause "
-            "until February 1, when it resets."
+            "until February 15, when it resets."
         )
 
     async def test_the_gate_is_this_users_month_and_expires_with_it(

@@ -24,14 +24,22 @@ import { CARD, HEALTHY, InfoTip, NEAR } from "./usageChrome";
 // the settings page. The shared promise means every chart here triggers a
 // single chunk load.
 
+/** The same day one month earlier, clamped to that month's length: the allowance
+ * month runs billing day to billing day, so a Mar 31 reset opened on Feb 28. */
+function oneMonthBefore(end: Date): number {
+  const year =
+    end.getUTCMonth() === 0 ? end.getUTCFullYear() - 1 : end.getUTCFullYear();
+  const month = (end.getUTCMonth() + 11) % 12;
+  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  return Date.UTC(year, month, Math.min(end.getUTCDate(), lastDay));
+}
+
 /** Fraction (0-1) of the current window already elapsed — the "you should be
  * here by now" mark. Simple: elapsed / total, from the window's reset time. */
 function elapsedFraction(resetIso: string, period: Period): number {
   const end = new Date(resetIso);
   const start =
-    period === "day"
-      ? end.getTime() - 86_400_000
-      : Date.UTC(end.getUTCFullYear(), end.getUTCMonth() - 1, 1);
+    period === "day" ? end.getTime() - 86_400_000 : oneMonthBefore(end);
   return Math.min(
     1,
     Math.max(0, (Date.now() - start) / (end.getTime() - start)),

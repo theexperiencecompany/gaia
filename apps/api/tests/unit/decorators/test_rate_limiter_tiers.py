@@ -19,10 +19,8 @@ from app.api.v1.middleware.tiered_rate_limiter import (
 )
 from app.config.rate_limits import get_limits_for_plan
 from app.models.payment_models import PlanType
-from app.models.user_models import AuthenticatedUser
 from app.services.limit_upsell import LimitHitOrigin
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.billing import RateLimitHit
 
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
@@ -103,7 +101,7 @@ class TestTieredLimiterRealDecision:
         self.limiter.redis.get = AsyncMock(return_value=None)
         self.limiter.redis.redis = _pipeline_mock()
 
-        result = await self.limiter.check_and_increment("user1", "generate_image", PlanType.PRO)
+        result = await self.limiter.check_and_increment(USER_ID, "generate_image", PlanType.PRO)
 
         assert result["day"].used == 0
         assert result["day"].limit == 45
@@ -119,7 +117,7 @@ class TestTieredLimiterRealDecision:
             return_value=reset_time,
         ):
             with pytest.raises(RateLimitExceededException) as exc_info:
-                await self.limiter.check_and_increment("user1", "generate_image", PlanType.FREE)
+                await self.limiter.check_and_increment(USER_ID, "generate_image", PlanType.FREE)
 
         exc = exc_info.value
         assert exc.status_code == 429
@@ -133,7 +131,7 @@ class TestTieredLimiterRealDecision:
     async def test_pro_only_feature_gated_for_free_user(self) -> None:
         """voice_mode: FREE (0/0) is plan-gated — raises before any Redis read."""
         with pytest.raises(RateLimitExceededException) as exc_info:
-            await self.limiter.check_and_increment("user1", "voice_mode", PlanType.FREE)
+            await self.limiter.check_and_increment(USER_ID, "voice_mode", PlanType.FREE)
 
         exc = exc_info.value
         assert exc.status_code == 429
@@ -149,163 +147,52 @@ class TestTieredLimiterRealDecision:
         self.limiter.redis.get = AsyncMock(return_value=None)
         self.limiter.redis.redis = _pipeline_mock()
 
-        result = await self.limiter.check_and_increment("user1", "voice_mode", PlanType.PRO)
+        result = await self.limiter.check_and_increment(USER_ID, "voice_mode", PlanType.PRO)
 
         assert result["day"].limit == 200
         assert result["month"].limit == 6000
 
 
 # ---------------------------------------------------------------------------
-# RATE_LIMIT_HIT analytics at the decorator seams
+# rate_limit:hit at the limiter seam
 # ---------------------------------------------------------------------------
 
 
 class TestRateLimitHitAnalytics:
-    """Paid-plan hits are captured at the decorator seam; FREE hits are already captured by schedule_limit_upsell."""
+    """The limiter records every exceed once, on every plan, before it raises."""
 
-    def _exceeded(self) -> RateLimitExceededException:
-        return RateLimitExceededException("fake_feature")
-
-    @pytest.mark.asyncio
-    async def test_with_rate_limiting_captures_pro_hit(self) -> None:
-        from app.decorators.rate_limiting import (
-            LangChainRateLimitError,
-            clear_user_context,
-            set_user_context,
-            with_rate_limiting,
-        )
-
-        async def fake_tool(config: dict) -> dict:
-            return {"ok": True}
-
-        wrapped = with_rate_limiting("fake_feature")(fake_tool)
-        set_user_context(USER_ID)
-        try:
-            with (
-                patch(
-                    "app.decorators.rate_limiting.payment_service.get_cached_plan_type",
-                    new_callable=AsyncMock,
-                    return_value=PlanType.PRO,
-                ),
-                patch(
-                    "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
-                    new_callable=AsyncMock,
-                    side_effect=self._exceeded(),
-                ),
-                patch("app.decorators.rate_limiting.capture") as mock_capture,
-            ):
-                with pytest.raises(LangChainRateLimitError):
-                    await wrapped(config={})
-        finally:
-            clear_user_context()
-
-        mock_capture.assert_called_once()
-        assert mock_capture.call_args.args == (
-            UserId(USER_ID),
-            RateLimitHit(feature="fake_feature", plan="pro"),
-        )
-
-    @pytest.mark.asyncio
-    async def test_with_rate_limiting_skips_free_hit(self) -> None:
-        """FREE hits are captured by the upsell seam — no decorator duplicate."""
-        from app.decorators.rate_limiting import (
-            LangChainRateLimitError,
-            clear_user_context,
-            set_user_context,
-            with_rate_limiting,
-        )
-
-        async def fake_tool(config: dict) -> dict:
-            return {"ok": True}
-
-        wrapped = with_rate_limiting("fake_feature")(fake_tool)
-        set_user_context(USER_ID)
-        try:
-            with (
-                patch(
-                    "app.decorators.rate_limiting.payment_service.get_cached_plan_type",
-                    new_callable=AsyncMock,
-                    return_value=PlanType.FREE,
-                ),
-                patch(
-                    "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
-                    new_callable=AsyncMock,
-                    side_effect=self._exceeded(),
-                ),
-                patch("app.decorators.rate_limiting.capture") as mock_capture,
-            ):
-                with pytest.raises(LangChainRateLimitError):
-                    await wrapped(config={})
-        finally:
-            clear_user_context()
-
-        mock_capture.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_tiered_rate_limit_captures_pro_hit(self) -> None:
-        from app.decorators.rate_limiting import tiered_rate_limit
-
-        async def fake_endpoint() -> dict:
-            return {"ok": True}
-
-        wrapped = tiered_rate_limit("fake_feature")(fake_endpoint)
-        subscription = MagicMock(plan_type=PlanType.PRO)
+    @pytest.mark.parametrize("plan", [PlanType.FREE, PlanType.PRO])
+    async def test_an_exceed_records_one_hit_for_the_plan(self, plan: PlanType) -> None:
+        limiter = TieredRateLimiter()
         with (
-            patch(
-                "app.core.request_context.get_authenticated_user",
-                return_value=AuthenticatedUser(user_id=USER_ID),
+            patch.object(
+                limiter,
+                "_check_and_increment",
+                AsyncMock(side_effect=RateLimitExceededException("fake_feature")),
             ),
-            patch(
-                "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
-                new_callable=AsyncMock,
-                return_value=subscription,
-            ),
-            patch(
-                "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
-                new_callable=AsyncMock,
-                side_effect=self._exceeded(),
-            ),
-            patch("app.decorators.rate_limiting.capture") as mock_capture,
+            patch("app.api.v1.middleware.tiered_rate_limiter.capture_limit_hit") as hit,
+            patch("app.api.v1.middleware.tiered_rate_limiter.schedule_limit_upsell"),
+            pytest.raises(RateLimitExceededException),
         ):
-            with pytest.raises(RateLimitExceededException):
-                await wrapped()
+            await limiter.check_and_increment(
+                USER_ID, "fake_feature", plan, origin=LimitHitOrigin.INTERACTIVE
+            )
 
-        mock_capture.assert_called_once()
-        assert mock_capture.call_args.args == (
-            UserId(USER_ID),
-            RateLimitHit(feature="fake_feature", plan="pro"),
+        hit.assert_called_once_with(
+            UserId(USER_ID), "fake_feature", plan, origin=LimitHitOrigin.INTERACTIVE
         )
 
-    @pytest.mark.asyncio
-    async def test_tiered_rate_limit_skips_free_hit(self) -> None:
-        from app.decorators.rate_limiting import tiered_rate_limit
-
-        async def fake_endpoint() -> dict:
-            return {"ok": True}
-
-        wrapped = tiered_rate_limit("fake_feature")(fake_endpoint)
-        subscription = MagicMock(plan_type=PlanType.FREE)
+    async def test_a_request_under_the_limit_records_nothing(self) -> None:
+        limiter = TieredRateLimiter()
         with (
-            patch(
-                "app.core.request_context.get_authenticated_user",
-                return_value=AuthenticatedUser(user_id=USER_ID),
-            ),
-            patch(
-                "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
-                new_callable=AsyncMock,
-                return_value=subscription,
-            ),
-            patch(
-                "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
-                new_callable=AsyncMock,
-                side_effect=self._exceeded(),
-            ),
-            patch("app.decorators.rate_limiting.capture") as mock_capture,
+            patch.object(limiter, "_check_and_increment", AsyncMock(return_value={})),
+            patch("app.api.v1.middleware.tiered_rate_limiter.capture_limit_hit") as hit,
         ):
-            with pytest.raises(RateLimitExceededException):
-                await wrapped()
+            await limiter.check_and_increment(
+                USER_ID, "fake_feature", PlanType.PRO, origin=LimitHitOrigin.INTERACTIVE
+            )
 
-        mock_capture.assert_not_called()
+        hit.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -363,11 +250,12 @@ class TestEnforceTieredLimit:
 
         assert mock_check.await_args.kwargs["user_plan"] == PlanType.FREE
 
-    @pytest.mark.asyncio
-    async def test_captures_the_paid_plan_hit_and_re_raises(self) -> None:
+    @pytest.mark.parametrize("plan", [PlanType.FREE, PlanType.PRO])
+    async def test_re_raises_without_recording_the_hit_a_second_time(self, plan: PlanType) -> None:
+        """The limiter records the hit before raising; a second event here double-counts every wall."""
         from app.decorators.rate_limiting import enforce_tiered_limit
 
-        subscription = MagicMock(plan_type=PlanType.PRO)
+        subscription = MagicMock(plan_type=plan)
         with (
             patch(
                 "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
@@ -379,35 +267,9 @@ class TestEnforceTieredLimit:
                 new_callable=AsyncMock,
                 side_effect=RateLimitExceededException("fake_feature"),
             ),
-            patch("app.decorators.rate_limiting.capture") as mock_capture,
+            patch("app.decorators.rate_limiting.capture_limit_hit") as hit,
         ):
             with pytest.raises(RateLimitExceededException):
                 await enforce_tiered_limit(USER_ID, "fake_feature")
 
-        mock_capture.assert_called_once_with(
-            UserId(USER_ID), RateLimitHit(feature="fake_feature", plan="pro")
-        )
-
-    @pytest.mark.asyncio
-    async def test_skips_the_free_hit_and_still_re_raises(self) -> None:
-        """FREE hits are captured by the limit-upsell seam — a second event here would double-count every free user's wall."""
-        from app.decorators.rate_limiting import enforce_tiered_limit
-
-        subscription = MagicMock(plan_type=PlanType.FREE)
-        with (
-            patch(
-                "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
-                new_callable=AsyncMock,
-                return_value=subscription,
-            ),
-            patch(
-                "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
-                new_callable=AsyncMock,
-                side_effect=RateLimitExceededException("fake_feature"),
-            ),
-            patch("app.decorators.rate_limiting.capture") as mock_capture,
-        ):
-            with pytest.raises(RateLimitExceededException):
-                await enforce_tiered_limit(USER_ID, "fake_feature")
-
-        mock_capture.assert_not_called()
+        hit.assert_not_called()

@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 
+from app.config.rate_limits import PRIMARY_METERED_FEATURE
 from app.db.redis import redis_cache
 from app.db.repositories.bot_sessions import bot_session_repository
 from app.db.repositories.conversations import conversation_repository
@@ -18,7 +19,8 @@ from app.services.bot_session_merge import apply_merge, plan_merge
 from app.services.browser.handoff import bot_chat_address
 from app.services.browser.job_stop import requester_chat, stop_chat_jobs
 from app.services.conversation_service import create_conversation_service
-from shared.py.analytics import UserId
+from app.services.limit_upsell import capture_limit_hit
+from shared.py.analytics import PlatformIdentity, UserId
 from shared.py.analytics.catalog.chat import ChatMessageSubmitted
 from shared.py.wide_events import log
 
@@ -43,6 +45,12 @@ class BotService:
                 if count == 1:
                     await redis_cache.redis.expire(key, BOT_RATE_WINDOW)
                 if count > BOT_RATE_LIMIT:
+                    capture_limit_hit(
+                        PlatformIdentity(platform, platform_user_id),
+                        PRIMARY_METERED_FEATURE,
+                        None,
+                        window="burst",
+                    )
                     raise HTTPException(
                         status_code=429,
                         detail="Rate limit exceeded. Please wait before sending more messages.",
