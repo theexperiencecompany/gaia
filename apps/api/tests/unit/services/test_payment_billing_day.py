@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.config.settings import settings
 from app.models.payment_models import PlanType, SubscriptionDocument, UserSubscriptionStatus
 from app.services.payments import payment_service as payment_service_module
 from app.services.payments.payment_service import _billing_day, payment_service
@@ -86,7 +87,7 @@ class TestCachedBillingDay:
     async def test_without_plans_there_is_no_billing_day(
         self, cache: MagicMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(payment_service_module.settings, "ENV", "selfhost")
+        monkeypatch.setattr(settings, "ENV", "selfhost")
         cache.get = AsyncMock(side_effect=AssertionError("no cache read"))
 
         assert await payment_service.get_cached_billing_day(FAKE_USER_ID) is None

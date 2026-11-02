@@ -15,7 +15,7 @@ from typing import Any, ClassVar, cast
 from unittest.mock import AsyncMock, patch
 
 from langchain.agents.middleware.types import AgentState, ModelRequest, ModelResponse
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 from prometheus_client import REGISTRY
 import pytest
 
@@ -31,18 +31,23 @@ from app.config.rate_limits import (
     RateLimitPeriod,
     get_daily_cost_budget_usd,
 )
+from app.config.settings import settings
 from app.constants.llm import (
     AGENT_RECURSION_LIMIT,
+    BUDGET_STOP_METADATA_KEY,
     BUDGET_WRAPUP_REMAINING_FRACTION,
     DEFAULT_MAX_TOKENS,
     PRO_MONTHLY_BUDGET_HEADS_UP_FRACTION,
     PRO_MONTHLY_COST_BUDGET_USD,
     PROVIDER_NAME_METADATA_KEY,
     RECURSION_HWM_FRACTION,
+    UNKNOWN_MODEL_NAME,
+    LLMProviderName,
 )
 from app.constants.log_tags import LogTag
+from app.db.repositories.llm_calls import llm_calls_repository
 from app.models.payment_models import PlanType
-from app.services import cost_budget, llm_metering
+from app.services import llm_metering
 from app.services.cost_budget import (
     BUDGET_WRAPUP_NOTICE,
     BudgetCheck,
@@ -138,7 +143,11 @@ def _fresh_wide_event() -> None:
 
 
 def test_latest_ai_message_picks_the_most_recent_one() -> None:
-    messages = [AIMessage(content="first"), HumanMessage(content="h"), AIMessage(content="last")]
+    messages: list[AnyMessage] = [
+        AIMessage(content="first"),
+        HumanMessage(content="h"),
+        AIMessage(content="last"),
+    ]
     picked = _latest_ai_message(messages)
     assert picked is not None and picked.content == "last"
 
@@ -293,7 +302,7 @@ async def test_the_provider_calls_wall_time_reaches_the_ledger_in_milliseconds()
         # 50.1234 ms of provider time. Deliberately not a round number: a value
         # that survives rounding to 2dp is what distinguishes the real
         # measurement from one scaled, offset or rounded differently.
-        patch.object(accounting.time, "monotonic", side_effect=[100.0, 100.0501234]),
+        patch.object(time, "monotonic", side_effect=[100.0, 100.0501234]),
     ):
         await mw.awrap_model_call(_model_request(), _handler)
         await mw.aafter_model(_state(_ai()), None)
@@ -305,7 +314,7 @@ async def test_the_dev_unlimited_flag_lets_the_model_call_through(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The real budget check runs here: under the flag it once returned None, and every model call raised AttributeError."""
-    monkeypatch.setattr(cost_budget.settings, "DEV_UNLIMITED_RATE_LIMITS", True)
+    monkeypatch.setattr(settings, "DEV_UNLIMITED_RATE_LIMITS", True)
     config_patch, cost_patch, usage_patch = _accounting_env(_LEDGER_CONFIG)
     mw = LLMAccountingMiddleware(agent_name="comms_agent")
     reply = ModelResponse(result=[_ai()])
@@ -343,7 +352,7 @@ async def test_the_latency_is_consumed_by_the_call_it_measured() -> None:
             "get_budget_stop_reason",
             AsyncMock(return_value=BudgetCheck(stop_reason=None, plan_type=None, spent_usd=None)),
         ),
-        patch.object(accounting.time, "monotonic", side_effect=[100.0, 100.0501234]),
+        patch.object(time, "monotonic", side_effect=[100.0, 100.0501234]),
     ):
         await mw.awrap_model_call(_model_request(), _handler)
         await mw.aafter_model(_state(_ai()), None)
@@ -371,9 +380,7 @@ async def test_overlapping_stamps_do_not_clobber() -> None:
             "get_budget_stop_reason",
             AsyncMock(return_value=BudgetCheck(stop_reason=None, plan_type=None, spent_usd=None)),
         ),
-        patch.object(
-            accounting.time, "monotonic", side_effect=[100.0, 100.0501234, 200.0, 200.0501234]
-        ),
+        patch.object(time, "monotonic", side_effect=[100.0, 100.0501234, 200.0, 200.0501234]),
     ):
         await mw.awrap_model_call(_model_request(), _handler)
         await mw.awrap_model_call(_model_request(), _handler)
@@ -435,7 +442,7 @@ async def test_metered_call_observes_llm_call_histogram() -> None:
             "get_budget_stop_reason",
             AsyncMock(return_value=BudgetCheck(stop_reason=None, plan_type=None, spent_usd=None)),
         ),
-        patch.object(accounting.time, "monotonic", side_effect=[100.0, 100.0501234]),
+        patch.object(time, "monotonic", side_effect=[100.0, 100.0501234]),
     ):
         await mw.awrap_model_call(_model_request(), _handler)
         await mw.aafter_model(_state(_ai()), None)
@@ -468,7 +475,7 @@ async def test_metered_call_records_the_exact_provider_seconds() -> None:
             "get_budget_stop_reason",
             AsyncMock(return_value=BudgetCheck(stop_reason=None, plan_type=None, spent_usd=None)),
         ),
-        patch.object(accounting.time, "monotonic", side_effect=[100.0, 100.0501234]),
+        patch.object(time, "monotonic", side_effect=[100.0, 100.0501234]),
     ):
         await mw.awrap_model_call(_model_request(), _handler)
         await mw.aafter_model(_state(_ai()), None)
@@ -629,7 +636,7 @@ async def test_state_exposed_as_an_object_is_read_through_its_attribute() -> Non
     mw = LLMAccountingMiddleware(agent_name="a")
     config_patch, cost_patch, usage_patch = _accounting_env()
     with config_patch, cost_patch, usage_patch:
-        await mw.aafter_model(ObjectState(), cast(Any, None))
+        await mw.aafter_model(cast(AgentState[Any], ObjectState()), cast(Any, None))
 
     assert log.get()["model"]["input_tokens"] == 7
 
@@ -724,7 +731,7 @@ def test_thread_id_is_unknown_without_any_identifier() -> None:
 
 def _stop_reply(text: str) -> AIMessage:
     """Build the reply the budget wall writes in place of a model call."""
-    return AIMessage(content=text, response_metadata={accounting.BUDGET_STOP_METADATA_KEY: True})
+    return AIMessage(content=text, response_metadata={BUDGET_STOP_METADATA_KEY: True})
 
 
 def _model_request(messages: list[Any] | None = None) -> ModelRequest:
@@ -828,11 +835,13 @@ async def test_a_turn_the_budget_wall_stopped_writes_no_ledger_row() -> None:
         cost_patch,
         usage_patch,
         patch.object(accounting, "get_budget_stop_reason", AsyncMock(return_value=check)),
-        patch.object(llm_metering.llm_calls_repository, "create", AsyncMock()) as ledger,
+        patch.object(llm_calls_repository, "create", AsyncMock()) as ledger,
     ):
         await mw.abefore_model({"messages": []}, None)
         response = await mw.awrap_model_call(_model_request(), AsyncMock())
-        await mw.aafter_model(_state(response.result[0]), None)
+        stop_reply = response.result[0]
+        assert isinstance(stop_reply, AIMessage)
+        await mw.aafter_model(_state(stop_reply), None)
         await asyncio.gather(
             *(t for t in asyncio.all_tasks() if t.get_name().startswith("llm_calls_ledger"))
         )
@@ -861,7 +870,7 @@ async def test_a_fallback_reply_is_priced_as_the_model_that_served_it() -> None:
     with (
         patch.object(accounting, "current_run_config", lambda: lane_config),
         patch.object(llm_metering, "record_model_call_usage", AsyncMock()),
-        patch.object(llm_metering.llm_calls_repository, "create", AsyncMock()) as ledger,
+        patch.object(llm_calls_repository, "create", AsyncMock()) as ledger,
     ):
         await mw.abefore_model({"messages": []}, None)
         await mw.aafter_model(_state(reply), None)
@@ -1267,7 +1276,7 @@ async def test_a_bag_that_does_carry_a_lane_warns_about_nothing() -> None:
 
 
 _SERVING_LANE = ModelLane(
-    provider="openrouter",
+    provider=LLMProviderName.OPENROUTER,
     model="deepseek/deepseek-v4-flash-0731",
     reasoning=None,
     provider_pin=None,
@@ -1289,7 +1298,7 @@ _SERVING_LANE = ModelLane(
             "deepseek/deepseek-v4-flash-0731",
         ),
         ({"gaia_fell_back": True}, _SERVING_LANE, "deepseek/deepseek-v4-flash-0731"),
-        ({}, None, accounting.UNKNOWN_MODEL_NAME),
+        ({}, None, UNKNOWN_MODEL_NAME),
     ],
     ids=["fallback-served", "fallback-named-but-not-taken", "fell-back-unnamed", "no-lane"],
 )

@@ -680,7 +680,16 @@ class TestLoadConversationHistory:
         mock_conversations.get = AsyncMock(
             return_value=_conv([{"type": "bot", "response": long_reply}])
         )
-        body = BotChatRequest(message="hello?", platform="telegram", platform_user_id="1685738115")
+        body = BotChatRequest(
+            message="hello?",
+            platform="telegram",
+            platform_user_id="1685738115",
+            channel_id=None,
+            is_dm=False,
+            file_ids=None,
+            file_data=None,
+            platform_message_id=None,
+        )
 
         request = await build_bot_message_request(body, "conv1", "user1")
 

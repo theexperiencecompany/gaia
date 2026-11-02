@@ -26,6 +26,7 @@ from app.services.cost_budget import (
     get_request_tokens,
     record_model_call_usage,
 )
+from app.services.payments.payment_service import payment_service
 from shared.py.wide_events import log
 
 USER = "u-metering"
@@ -44,9 +45,7 @@ async def fake_redis() -> AsyncIterator[fakeredis.aioredis.FakeRedis]:
 @pytest.fixture(autouse=True)
 def no_billing_day() -> Iterator[None]:
     """Give the user no billing day, so the month window is the calendar month."""
-    with patch.object(
-        cost_budget.payment_service, "get_cached_billing_day", AsyncMock(return_value=None)
-    ):
+    with patch.object(payment_service, "get_cached_billing_day", AsyncMock(return_value=None)):
         yield
 
 
@@ -219,7 +218,7 @@ class TestDegradation:
     async def test_redis_being_down_does_not_fail_the_model_call(self, rollup: AsyncMock) -> None:
         with (
             patch.object(redis_cache, "redis", None),
-            patch.object(cost_budget.log, "warning") as warned,
+            patch.object(log, "warning") as warned,
         ):
             await record_model_call_usage(
                 USER,
