@@ -58,7 +58,7 @@
     "amqplib": "^0.10.9",
     "axios": "^1.20.0",
     "dotenv": "^16.6.1",
-    "hono": "^4.12.29",
+    "hono": "^4.13.11",
     "posthog-node": "^5.51.4",
     "slackify-markdown": "^5.0.0",
     "string-similarity": "^4.0.4",
