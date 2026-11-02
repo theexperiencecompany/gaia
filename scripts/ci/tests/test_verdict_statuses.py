@@ -367,3 +367,19 @@ def test_a_check_post_that_did_not_land_is_posted_again_at_the_end(
 
     _post(tmp_path, "lint-node", {"ci:biome": "success"})
     assert "ci / node / biome" in _states(api)
+
+
+def test_a_red_status_names_its_first_finding_not_just_the_log(
+    api: FakeGitHub, tmp_path: Path
+) -> None:
+    """The verdict uploads when the job ends; the status is all a reader has before that."""
+    result = {
+        "status": "failure",
+        "code": 1,
+        "output": "tools/x.py:3:1: F401 `os` imported but unused\n",
+    }
+    _post(tmp_path, "lint-python", {"ci:ruff": result}, "--check", "ruff")
+
+    description = _statuses(api)["ci / python / ruff"]["description"]
+    assert description.startswith("failed — tools/x.py:3:1: F401")
+    assert len(description) <= 140

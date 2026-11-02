@@ -1196,15 +1196,17 @@ def cmd_check(args: list[str]) -> int:
         return 0
     flag_pending_upload()
     if not lane_already_reported(opts.lane, opts.out):
-        report_failed_check(opts.lane, rc, output, opts.out, opts.fallback, opts.path_prefix)
+        findings = output_findings.read(
+            output, fallback=opts.fallback, path_prefix=opts.path_prefix
+        )
+        report_failed_check(opts.lane, rc, output, findings, opts.out)
     return rc
 
 
 def report_failed_check(
-    lane: str, rc: int, output: str, out: Path, fallback: str | None, path_prefix: str
+    lane: str, rc: int, output: str, findings: list[Finding], out: Path
 ) -> None:
-    """Write and announce a failed check's verdict, its findings read from what it printed."""
-    findings = output_findings.read(output, fallback=fallback, path_prefix=path_prefix)
+    """Write and announce a failed check's verdict from the findings read out of what it printed."""
     located = sum(1 for f in findings if f["file"])
     check = lane.rsplit("/", 1)[-1]
     summary = (
@@ -1342,7 +1344,6 @@ OUTCOME_STATUS: dict[str, tuple[str, str]] = {
 _UNKNOWN_OUTCOME = ("error", "reported no outcome")
 
 
-# nx's task results that mean the task ran and passed (a cache hit replays a pass).
 def job_outcomes(
     job: str, planned: set[str], results: dict[str, str], steps: dict[str, str]
 ) -> dict[str, str]:
@@ -1383,12 +1384,22 @@ def _this_job_url(gh: GitHub, repo: str, run_id: int, attempt: int) -> str | Non
     return field_of(mine[0], "html_url", str) if len(mine) == 1 else None
 
 
+def _one_line(finding: Finding) -> str:
+    message = " ".join(finding["message"].split())
+    # Most tools' lines already open with their location; a bare message gets one.
+    if not finding["file"] or finding["file"] in message:
+        return message
+    return f"{finding['file']}:{finding['line']} {message}"
+
+
 def _status_fields(
-    name: str, area: str, outcome: str, reused: dict[str, str], url: str
+    name: str, area: str, outcome: str, reused: dict[str, str], url: str, finding: str | None
 ) -> dict[str, str]:
     state, description = OUTCOME_STATUS.get(outcome, _UNKNOWN_OUTCOME)
     if outcome == "skipped" and name in reused:
         description = f"reused — {reused[name]}"
+    elif outcome == "failure" and finding:
+        description = f"failed — {finding}"
     return {
         "state": state,
         "context": status_context(name, area),
@@ -1398,7 +1409,11 @@ def _status_fields(
 
 
 def _post(
-    gh: GitHub, opts: argparse.Namespace, outcomes: dict[str, str], reused: dict[str, str]
+    gh: GitHub,
+    opts: argparse.Namespace,
+    outcomes: dict[str, str],
+    reused: dict[str, str],
+    findings: dict[str, str],
 ) -> bool:
     """Post one status per check; False when any did not land."""
     try:
@@ -1418,7 +1433,7 @@ def _post(
     endpoint = f"repos/{opts.repo}/statuses/{opts.sha}"
     lost: list[str] = []
     for name, outcome in outcomes.items():
-        fields = _status_fields(name, areas[name], outcome, reused, url)
+        fields = _status_fields(name, areas[name], outcome, reused, url, findings.get(name))
         try:
             gh.post(endpoint, fields)
         except GitHubError as err:
@@ -1473,23 +1488,23 @@ def cmd_post_statuses(args: list[str]) -> int:
     outcomes = job_outcomes(opts.job, planned, results, steps)
     if opts.check:
         planned = {task for task in planned if known[task].check == opts.check}
+    # The PR's checks list shows a red check's first finding, readable before the job ends.
+    first_findings: dict[str, str] = {}
     for task in sorted(planned):
         result = raw.get(task)
-        lane = f"{opts.job}/{known[task].check}"
-        if (
-            result
-            and result["status"] not in nx_affected.PASSED
-            and not lane_already_reported(lane, default_out_dir())
-        ):
-            check = known[task]
-            report_failed_check(
-                lane,
-                result["code"],
-                result["output"],
-                default_out_dir(),
-                check.fallback,
-                f"{check.cwd}/" if check.cwd else "",
-            )
+        if not result or result["status"] in nx_affected.PASSED:
+            continue
+        check = known[task]
+        lane = f"{opts.job}/{check.check}"
+        findings = output_findings.read(
+            result["output"],
+            fallback=check.fallback,
+            path_prefix=f"{check.cwd}/" if check.cwd else "",
+        )
+        if findings:
+            first_findings.setdefault(str(check.check), _one_line(findings[0]))
+        if not lane_already_reported(lane, default_out_dir()):
+            report_failed_check(lane, result["code"], result["output"], findings, default_out_dir())
 
     # Checks run-job already posted as they finished; their state cannot change since.
     posted_file = opts.results.with_suffix(".posted")
@@ -1503,7 +1518,7 @@ def cmd_post_statuses(args: list[str]) -> int:
     if not opts.no_post:
         if not (opts.repo and opts.sha and opts.run_id and opts.run_attempt):
             parser.error("--repo, --sha, --run-id and --run-attempt are required to post")
-        landed = _post(GitHub.from_env(), opts, to_post, reused)
+        landed = _post(GitHub.from_env(), opts, to_post, reused, first_findings)
     if opts.check:
         if landed and not opts.no_post:
             with posted_file.open("a") as handle:
