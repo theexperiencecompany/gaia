@@ -13,7 +13,6 @@ from app.db.repositories.base import UserScopedRepository, cached_query
 from app.db.repositories.cache import CachePolicy
 from app.models.integration_models import (
     IntegrationAccount,
-    IntegrationToolsRecord,
     UserIntegrationDocument,
     UserIntegrationStatus,
     UserIntegrationUpdate,
@@ -61,37 +60,6 @@ class UserIntegrationsRepository(
     async def is_connected(self, user_id: str, integration_id: str) -> bool:
         doc = await self.get_for_user(user_id, integration_id)
         return doc is not None and doc.status == "connected"
-
-    async def tools_for_connected(self, user_id: str) -> list[IntegrationToolsRecord]:
-        """Return the stored server tools of the integrations this user is connected to, in one read.
-
-        The tool list lives on the shared integrations document; this join scopes it to one user.
-        """
-        return await self._aggregate(
-            [
-                {"$match": {"user_id": user_id, "status": "connected"}},
-                {
-                    "$lookup": {
-                        "from": "integrations",
-                        "localField": "integration_id",
-                        "foreignField": "integration_id",
-                        "as": "integration",
-                    }
-                },
-                {"$unwind": "$integration"},
-                {"$match": {"integration.tools": {"$exists": True, "$ne": []}}},
-                {
-                    "$project": {
-                        "_id": 0,
-                        "integration_id": 1,
-                        "tools": "$integration.tools",
-                        "name": "$integration.name",
-                        "icon_url": "$integration.icon_url",
-                    }
-                },
-            ],
-            IntegrationToolsRecord,
-        )
 
     async def has_connected_before(self, user_id: str, integration_id: str) -> bool:
         """Whether this user's record was ever connected; connected_at survives a later expiry or re-auth."""

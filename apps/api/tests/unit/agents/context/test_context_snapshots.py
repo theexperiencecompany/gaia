@@ -20,7 +20,7 @@ from tests._harness.context_sources import ContextSources, knowledge, memory
 
 from app.models.todo_models import TodoDocument
 
-#: One fixture across all five tiers, so a difference between two snapshots is a
+#: One fixture across every tier, so a difference between two snapshots is a
 #: difference between the tiers rather than between their inputs.
 COMMON_USER = HarnessUser(
     user_id="user-alpha",
@@ -37,9 +37,7 @@ COMMON_SOURCES = ContextSources(
     tracked_todos="Tracked: ship the context refactor",
     skills="## Available skills\n- inbox-triage",
     connected_integrations=[{"id": "gmail", "name": "Gmail"}],
-    account_identity={"email": "ada@example.com"},
     global_instructions="Reply in plain English.",
-    integration_instructions="Always archive newsletters.",
     workflow_integrations_hint="# Connected integrations\nGmail (`gmail`)",
 )
 
@@ -56,9 +54,7 @@ BOUND_RUN_SOURCES = ContextSources(
     tracked_todos=COMMON_SOURCES.tracked_todos,
     skills=COMMON_SOURCES.skills,
     connected_integrations=COMMON_SOURCES.connected_integrations,
-    account_identity=COMMON_SOURCES.account_identity,
     global_instructions=COMMON_SOURCES.global_instructions,
-    integration_instructions=COMMON_SOURCES.integration_instructions,
     active_todo=ACTIVE_TODO,
 )
 
@@ -74,11 +70,10 @@ class TestTierSnapshots:
         )
         assert_snapshot(f"tier_{tier.value}", messages)
 
-    @pytest.mark.parametrize("tier", [AgentTier.EXECUTOR, AgentTier.PROVIDER_SUBAGENT])
-    async def test_bound_background_run_shows_both_banners(self, tier: AgentTier) -> None:
+    async def test_bound_background_run_shows_both_banners(self) -> None:
         """An active todo plus a headless run — the only shape where both run-binding banners appear at once."""
         messages = await effective_context(
-            tier,
+            AgentTier.EXECUTOR,
             ContextSeed(
                 user=COMMON_USER,
                 query=QUERY,
@@ -89,7 +84,7 @@ class TestTierSnapshots:
                 },
             ),
         )
-        assert_snapshot(f"bound_background_{tier.value}", messages)
+        assert_snapshot("bound_background_executor", messages)
 
     async def test_multi_turn_thread_collapses_stale_slots(self) -> None:
         """Pins the "exactly one per slot, and it is the latest" behaviour end to end."""

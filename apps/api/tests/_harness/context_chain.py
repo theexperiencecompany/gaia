@@ -6,7 +6,7 @@ harness exists to catch.
 
 execute_hooks is a plain async function over a plain dict, so the chain
 runs with no compiled graph, checkpointer, LLM or network:
-    messages = await effective_context(AgentTier.PROVIDER_SUBAGENT, ContextSeed(query="..."))
+    messages = await effective_context(AgentTier.EXECUTOR, ContextSeed(query="..."))
 
 External reads are pinned by fake_context_sources and fenced beneath it,
 so a new read fails loudly instead of reaching a real store.
@@ -32,7 +32,6 @@ from app.agents.core.nodes.pre_model_hooks import (
     comms_pre_model_hooks,
     worker_pre_model_hooks,
 )
-from app.agents.core.subagents.subagent_helpers import create_subagent_system_message
 from app.agents.core.subagents.subagent_runner import ThreadSeed, build_initial_messages
 from app.agents.llm.lane import ModelLane
 from app.agents.prompts.subagent_prompts import WORKFLOW_AGENT_SYSTEM_PROMPT
@@ -68,18 +67,11 @@ FIXED_HOST = "https://api.heygaia.io"
 #: text rather than a template, so the harness supplies a stable stand-in.
 SPAWN_SYSTEM_PROMPT = "You are a spawned worker subagent."
 
-#: A real, registered integration, so ``get_integration_by_id`` resolves and the
-#: provider-metadata and integration-instructions sections are genuinely reachable
-#: rather than short-circuiting on an unknown id.
-PROVIDER_INTEGRATION_ID = "gmail"
-PROVIDER_AGENT_NAME = "gmail_agent"
-
 #: The agent name each tier runs under. Only affects visibility metadata and the
 #: skills lookup key, but both are real inputs to what the tier ends up seeing.
 _AGENT_NAMES = {
     AgentTier.COMMS: "comms_agent",
     AgentTier.EXECUTOR: "executor_agent",
-    AgentTier.PROVIDER_SUBAGENT: PROVIDER_AGENT_NAME,
     AgentTier.SPAWN: "spawn_agent",
     AgentTier.WORKFLOW_AUTHORING: "workflow_agent",
 }
@@ -153,8 +145,7 @@ def hooks_for(tier: AgentTier) -> list[HookType]:
         # A spawn owns no todo list; the workflow author is authoring-only and
         # must not plan or execute. Neither wires the todo hook.
         return worker_pre_model_hooks()
-    source = "executor" if tier is AgentTier.EXECUTOR else PROVIDER_INTEGRATION_ID
-    return worker_pre_model_hooks(cast(HookType, create_todo_pre_model_hook(source=source)))
+    return worker_pre_model_hooks(cast(HookType, create_todo_pre_model_hook(source="executor")))
 
 
 def bound_for(provider: LLMProviderName) -> AgentConfigurable:
@@ -229,22 +220,6 @@ async def seed_context(
             task=query,
             seed=ThreadSeed(
                 tier=AgentTier.EXECUTOR, configurable=configurable, user_id=user.user_id
-            ),
-        )
-
-    if tier is AgentTier.PROVIDER_SUBAGENT:
-        return await build_initial_messages(
-            system_message=await create_subagent_system_message(
-                integration_id=PROVIDER_INTEGRATION_ID
-            ),
-            agent_name=PROVIDER_AGENT_NAME,
-            task=query,
-            seed=ThreadSeed(
-                tier=AgentTier.PROVIDER_SUBAGENT,
-                configurable=configurable,
-                user_id=user.user_id,
-                subagent_id=PROVIDER_AGENT_NAME,
-                integration_id=PROVIDER_INTEGRATION_ID,
             ),
         )
 

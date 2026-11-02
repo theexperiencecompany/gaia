@@ -4,6 +4,7 @@ import pytest
 
 from app.agents.core.graph_builder.build_graph import EXECUTOR_INITIAL_TOOL_IDS
 from app.agents.prompts.comms_prompts import EXECUTOR_AGENT_PROMPT
+from app.agents.workspace.operational_docs import get_core
 
 
 def _lines_containing(needle: str) -> list[str]:
@@ -41,3 +42,12 @@ class TestExecutorPromptDoctrine:
 
     def test_handoff_is_not_bound(self) -> None:
         assert "handoff" not in EXECUTOR_INITIAL_TOOL_IDS
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("prompt", [EXECUTOR_AGENT_PROMPT, " ".join(get_core().split())])
+def test_a_shared_mcp_tool_name_is_taught_as_prefixed_on_every_server(prompt: str) -> None:
+    """Seen on this branch: the prompts said only the later server's tool was prefixed; the code prefixes both."""
+    flattened = " ".join(prompt.split())
+    assert "each one's tool carries its integration's name as a prefix" in flattened
+    assert "the later" not in flattened

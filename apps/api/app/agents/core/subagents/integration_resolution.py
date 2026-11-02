@@ -6,6 +6,7 @@ from app.agents.core.subagents.registry import get_subagent_by_id
 from app.constants.cache import SUBAGENT_CACHE_PREFIX, SUBAGENT_CACHE_TTL
 from app.db.redis import get_cache, set_cache
 from app.db.repositories.integrations import integration_repository
+from app.models.mcp_config import MCPConfig
 from app.models.subagent_models import Subagent
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_token_store import MCPTokenStore
@@ -25,29 +26,25 @@ class CustomMcpSubagent(BaseModel):
     name: str | None = None
     source: str | None = None
     managed_by: str | None = None
-    mcp_config: dict[str, object] | None = None
+    mcp_config: MCPConfig | None = None
     icon_url: str | None = None
     subagent_config: None = None
 
 
 class _CustomIntegrationDoc(BaseModel):
-    """The ``IntegrationResolver.custom_doc`` keys a custom-MCP target copies.
-
-    ``mcp_config`` stays the stored mapping: it is cached verbatim.
-    """
+    """The ``IntegrationResolver.custom_doc`` keys a custom-MCP target copies."""
 
     model_config = ConfigDict(extra="ignore")
 
     integration_id: str = ""
     name: str | None = None
-    mcp_config: dict[str, object] | None = None
+    mcp_config: MCPConfig | None = None
     icon_url: str | None = None
 
 
 def _requires_auth(target: Subagent | CustomMcpSubagent) -> bool:
     if isinstance(target, CustomMcpSubagent):
-        # The cached mcp_config is the stored mapping, not a validated MCPConfig.
-        return target.mcp_config is not None and target.mcp_config.get("requires_auth") is True
+        return target.mcp_config is not None and target.mcp_config.requires_auth
     return target.managed_by == "mcp" and bool(
         target.mcp_config and target.mcp_config.requires_auth
     )
@@ -83,7 +80,7 @@ async def get_integration_target(integration_id: str) -> Subagent | CustomMcpSub
             name=custom.name,
             source=custom.source,
             managed_by=custom.managed_by,
-            mcp_config=custom.mcp_config.model_dump() if custom.mcp_config else None,
+            mcp_config=custom.mcp_config,
             icon_url=custom.icon_url,
         )
         await set_cache(cache_key, result.model_dump(), ttl=SUBAGENT_CACHE_TTL)

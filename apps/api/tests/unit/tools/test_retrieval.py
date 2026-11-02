@@ -13,6 +13,9 @@ import pytest
 from app.agents.core.subagents.integration_resolution import CustomMcpSubagent
 from app.agents.tools.core import retrieval
 from app.models.integration_models import UserToolNamespaces
+from app.models.mcp_config import MCPConfig
+from app.services.mcp import tool_naming
+from app.services.mcp.tool_naming import stamp_tool_metadata
 from app.utils.log_identifiers import user_text_shape
 from tests.helpers import captured_wide_event
 
@@ -243,7 +246,7 @@ class TestProcessChromaSearchResult:
             [item],
             {"GMAIL_SEND"},
             registry,
-            retrieval._HitFilter(include_subagents=True, user_namespaces=set()),
+            retrieval._HitFilter(include_subagents=True),
         )
         assert len(result) == 1
         assert result[0]["id"] == "GMAIL_SEND"
@@ -259,7 +262,7 @@ class TestProcessChromaSearchResult:
             [item],
             {"GMAIL_SEND"},
             registry,
-            retrieval._HitFilter(include_subagents=True, user_namespaces=set()),
+            retrieval._HitFilter(include_subagents=True),
         )
         assert len(result) == 0
 
@@ -275,9 +278,7 @@ class TestProcessChromaSearchResult:
             [item],
             {"create_todo"},
             registry,
-            retrieval._HitFilter(
-                include_subagents=False, user_namespaces=set(), tool_space="gmail"
-            ),
+            retrieval._HitFilter(include_subagents=False, tool_space="gmail"),
         )
         assert len(result) == 0
 
@@ -296,9 +297,7 @@ class TestProcessChromaSearchResult:
             [item],
             {webpage_tool},
             registry,
-            retrieval._HitFilter(
-                include_subagents=False, user_namespaces=set(), tool_space="gmail"
-            ),
+            retrieval._HitFilter(include_subagents=False, tool_space="gmail"),
         )
         assert len(result) == 1
 
@@ -316,7 +315,7 @@ class TestProcessChromaSearchResult:
             [item],
             {"GMAIL_SEND"},
             registry,
-            retrieval._HitFilter(include_subagents=True, user_namespaces=set()),
+            retrieval._HitFilter(include_subagents=True),
         )
         assert len(result) == 0
 
@@ -337,7 +336,7 @@ class TestProcessSearchResults:
             results,
             set(),
             registry,
-            retrieval._HitFilter(include_subagents=False, user_namespaces=set()),
+            retrieval._HitFilter(include_subagents=False),
         )
         assert processed == []
 
@@ -350,7 +349,7 @@ class TestProcessSearchResults:
             [[], None],
             set(),
             registry,
-            retrieval._HitFilter(include_subagents=False, user_namespaces=set()),
+            retrieval._HitFilter(include_subagents=False),
         )
         assert processed == []
 
@@ -364,7 +363,7 @@ class TestProcessSearchResults:
             [public_results],
             set(),
             registry,
-            retrieval._HitFilter(include_subagents=True, user_namespaces=set()),
+            retrieval._HitFilter(include_subagents=True),
         )
         assert [r["id"] for r in processed] == ["integration:abc (App)"]
 
@@ -649,9 +648,9 @@ class TestRetrieveToolsDiscovery:
                 return_value=({"general"}, {}),
             ),
             patch(
-                "app.agents.tools.core.retrieval._user_mcp_tool_names",
+                "app.agents.tools.core.retrieval._user_mcp_tools",
                 new_callable=AsyncMock,
-                return_value=set(),
+                return_value=retrieval._UserMcpTools(set(), {}),
             ),
         ):
             await fn(store=store, config=config, query="send email", exact_tool_names=[])
@@ -903,9 +902,7 @@ class TestActivatedNamespaceTools:
             [self._delegated_hit()],
             {"GITHUB_LIST_PULL_REQUESTS"},
             self._delegated_registry(),
-            retrieval._HitFilter(
-                include_subagents=True, user_namespaces=set(), active_namespaces={"github"}
-            ),
+            retrieval._HitFilter(include_subagents=True, active_namespaces={"github"}),
         )
         assert [r["id"] for r in result] == ["GITHUB_LIST_PULL_REQUESTS"]
 
@@ -916,9 +913,7 @@ class TestActivatedNamespaceTools:
             [self._delegated_hit()],
             {"GITHUB_LIST_PULL_REQUESTS"},
             self._delegated_registry(),
-            retrieval._HitFilter(
-                include_subagents=True, user_namespaces=set(), active_namespaces={"gmail"}
-            ),
+            retrieval._HitFilter(include_subagents=True, active_namespaces={"gmail"}),
         )
         assert result == []
 
@@ -929,9 +924,7 @@ class TestActivatedNamespaceTools:
             [self._delegated_hit()],
             {"GITHUB_LIST_PULL_REQUESTS"},
             self._delegated_registry(),
-            retrieval._HitFilter(
-                include_subagents=True, user_namespaces=set(), active_namespaces=set()
-            ),
+            retrieval._HitFilter(include_subagents=True, active_namespaces=set()),
         )
         assert result == []
 
@@ -979,9 +972,9 @@ class TestActivatedNamespaceTools:
                 return_value={"github"},
             ),
             patch(
-                "app.agents.tools.core.retrieval._user_mcp_tool_names",
+                "app.agents.tools.core.retrieval._user_mcp_tools",
                 new_callable=AsyncMock,
-                return_value=set(),
+                return_value=retrieval._UserMcpTools(set(), {}),
             ),
             patch(
                 "app.agents.tools.core.retrieval.search_public_integrations",
@@ -1012,7 +1005,10 @@ class TestActivatedNamespaceTools:
             [item],
             set(),
             registry,
-            retrieval._HitFilter(include_subagents=True, user_namespaces={"my-mcp.dev"}),
+            retrieval._HitFilter(
+                include_subagents=True,
+                connected_integration_ids={"my-mcp"},
+            ),
         )
         assert [r["id"] for r in result] == ["mcp_integration:my-mcp (My MCP)"]
 
@@ -1027,7 +1023,7 @@ class TestActivatedNamespaceTools:
             [item],
             {"github"},
             registry,
-            retrieval._HitFilter(include_subagents=True, user_namespaces=set()),
+            retrieval._HitFilter(include_subagents=True),
         )
         assert result == []
 
@@ -1042,7 +1038,7 @@ class TestActivatedNamespaceTools:
             [item],
             set(),
             registry,
-            retrieval._HitFilter(include_subagents=True, user_namespaces=set()),
+            retrieval._HitFilter(include_subagents=True),
         )
         assert [r["id"] for r in result] == ["mcp_integration:notes (Notes)"]
 
@@ -1057,7 +1053,7 @@ class TestActivatedNamespaceTools:
             [item],
             set(),
             registry,
-            retrieval._HitFilter(include_subagents=True, user_namespaces=set()),
+            retrieval._HitFilter(include_subagents=True),
         )
         assert [r["id"] for r in result] == ["mcp_integration:notes (Notes)"]
 
@@ -1072,7 +1068,7 @@ class TestActivatedNamespaceTools:
             [public],
             set(),
             registry,
-            retrieval._HitFilter(include_subagents=True, user_namespaces=set()),
+            retrieval._HitFilter(include_subagents=True),
         )
         assert processed == [{"id": "integration:linear (Linear)", "score": 0.7}]
 
@@ -1143,7 +1139,10 @@ class TestChromaHitsWithRealSearchItems:
             [stale, pointer],
             set(),
             MagicMock(),
-            retrieval._HitFilter(include_subagents=True, user_namespaces={"my-mcp.dev"}),
+            retrieval._HitFilter(
+                include_subagents=True,
+                connected_integration_ids={"my-mcp"},
+            ),
         )
         assert result == [{"id": "mcp_integration:my-mcp (My MCP)", "score": 0.7}]
 
@@ -1156,7 +1155,7 @@ class TestChromaHitsWithRealSearchItems:
             hits,
             {"GMAIL_SEND_EMAIL"},
             MagicMock(),
-            retrieval._HitFilter(include_subagents=False, user_namespaces=set()),
+            retrieval._HitFilter(include_subagents=False),
         )
         assert result == [{"id": "GMAIL_SEND_EMAIL", "score": 0.8}]
 
@@ -1176,7 +1175,7 @@ class TestChromaHitsWithRealSearchItems:
             [corrupt, pointer],
             set(),
             MagicMock(),
-            retrieval._HitFilter(include_subagents=True, user_namespaces=set()),
+            retrieval._HitFilter(include_subagents=True),
         )
         assert result == [{"id": "mcp_integration:my-mcp (My MCP)", "score": 0.7}]
 
@@ -1194,9 +1193,7 @@ class TestChromaHitsWithRealSearchItems:
             hits,
             {"create_todo", retrieval.WEBPAGE_TOOLS[0], "GMAIL_SEND_EMAIL"},
             registry,
-            retrieval._HitFilter(
-                include_subagents=False, user_namespaces=set(), tool_space="gmail"
-            ),
+            retrieval._HitFilter(include_subagents=False, tool_space="gmail"),
         )
         assert [hit["id"] for hit in result] == [retrieval.WEBPAGE_TOOLS[0], "GMAIL_SEND_EMAIL"]
 
@@ -1214,7 +1211,7 @@ class TestChromaHitsWithRealSearchItems:
             hits,
             {"GITHUB_LIST_PULL_REQUESTS", "GMAIL_SEND_EMAIL"},
             registry,
-            retrieval._HitFilter(include_subagents=True, user_namespaces=set()),
+            retrieval._HitFilter(include_subagents=True),
         )
         assert result == [{"id": "GMAIL_SEND_EMAIL", "score": 0.8}]
 
@@ -1276,7 +1273,11 @@ class TestDiscoveryCallContract:
         with (
             patch.object(retrieval, "get_tool_registry", new=AsyncMock(return_value=registry)),
             patch.object(retrieval, "_get_user_context", new=user_context),
-            patch.object(retrieval, "_user_mcp_tool_names", new=AsyncMock(return_value=set())),
+            patch.object(
+                retrieval,
+                "_user_mcp_tools",
+                new=AsyncMock(return_value=retrieval._UserMcpTools(set(), {})),
+            ),
             patch.object(retrieval, "get_active", new=AsyncMock(return_value=set())),
         ):
             fn = retrieval.get_retrieve_tools_function(
@@ -1301,7 +1302,11 @@ async def _discover(query: str, status: dict[str, bool], configurable: dict[str,
     with (
         patch.object(retrieval, "get_tool_registry", new=AsyncMock(return_value=registry)),
         patch.object(retrieval, "_get_user_context", new=AsyncMock(return_value=({"general"}, {}))),
-        patch.object(retrieval, "_user_mcp_tool_names", new=AsyncMock(return_value=set())),
+        patch.object(
+            retrieval,
+            "_user_mcp_tools",
+            new=AsyncMock(return_value=retrieval._UserMcpTools(set(), {})),
+        ),
         patch.object(retrieval, "get_active", new=AsyncMock(return_value=set())),
         patch.object(retrieval, "search_public_integrations", new=AsyncMock(return_value=[])),
         patch(
@@ -1497,7 +1502,7 @@ _CUSTOM_MCP = CustomMcpSubagent(
     id="abc123def456",
     name="Acme MCP",
     managed_by="mcp",
-    mcp_config={"server_url": "https://mcp.acme.dev/v1", "requires_auth": True},
+    mcp_config=MCPConfig(server_url="https://mcp.acme.dev/v1", requires_auth=True),
 )
 _OWN_NAMESPACE = "mcp.acme.dev/v1"
 _OTHER_NAMESPACE = "mcp.rival.dev"
@@ -1554,44 +1559,138 @@ class TestActivatedMcpIntegrations:
         (warning,) = event["warnings"]
         assert warning["namespace"] == "mcp.other-user.dev"
 
+    @pytest.mark.usefixtures("core_tool_registry")
     async def test_only_activated_per_user_mcps_are_warmed_for_their_tool_names(self) -> None:
         github = retrieval.get_subagent_by_id("github")
         assert github is not None
         mcp_client = MagicMock()
-        mcp_client._tools = {"warm_mcp": [SimpleNamespace(name="WARM_TOOL")]}
-        mcp_client.tools_for = AsyncMock(return_value=[SimpleNamespace(name="ACME_INVOICES")])
+        mcp_client._tools = {"warm_mcp": [_live_mcp_tool("WARM_TOOL", "warm_mcp")]}
+        mcp_client.ensure_connected = AsyncMock(
+            return_value=[_live_mcp_tool("ACME_INVOICES", _CUSTOM_MCP.id)]
+        )
 
-        with patch.object(retrieval, "get_mcp_client", new=AsyncMock(return_value=mcp_client)):
-            names = await retrieval._user_mcp_tool_names(
+        with (
+            patch.object(retrieval, "get_mcp_client", new=AsyncMock(return_value=mcp_client)),
+            patch.object(retrieval, "_target_tool_space", new=AsyncMock(return_value="mcp.acme")),
+        ):
+            tools = await retrieval._user_mcp_tools(
                 "u1", {_CUSTOM_MCP.id: _CUSTOM_MCP, "github": github}
             )
 
-        assert names == {"WARM_TOOL", "ACME_INVOICES"}
-        mcp_client.tools_for.assert_awaited_once_with(_CUSTOM_MCP.id)
+        assert tools.names == {"WARM_TOOL", "ACME_INVOICES"}
+        mcp_client.ensure_connected.assert_awaited_once_with(_CUSTOM_MCP.id)
+
+    @pytest.mark.usefixtures("core_tool_registry")
+    async def test_an_activated_mcps_chroma_keys_map_to_the_users_prefixed_names(self) -> None:
+        """Seen on this branch: Chroma keys a collided tool search, the user holds acme_search, so discovery dropped it."""
+        renamed = _live_mcp_tool("search", _CUSTOM_MCP.id)
+        renamed.name = "acme_search"
+        mcp_client = MagicMock()
+        mcp_client._tools = {}
+        mcp_client.ensure_connected = AsyncMock(
+            return_value=[renamed, _live_mcp_tool("invoices", _CUSTOM_MCP.id)]
+        )
+
+        with (
+            patch.object(retrieval, "get_mcp_client", new=AsyncMock(return_value=mcp_client)),
+            patch.object(retrieval, "_target_tool_space", new=AsyncMock(return_value="mcp.acme")),
+        ):
+            tools = await retrieval._user_mcp_tools("u1", {_CUSTOM_MCP.id: _CUSTOM_MCP})
+
+        assert tools.live_by_index_key == {
+            "mcp.acme": {"search": "acme_search", "invoices": "invoices"}
+        }
+
+    def test_a_collided_chroma_hit_surfaces_under_the_users_live_name(self) -> None:
+        hit = MagicMock(key="search", namespace=("mcp.acme",), score=0.9, value={})
+        registry = MagicMock()
+        registry.get_category_of_tool.return_value = None
+
+        result = retrieval._process_chroma_search_result(
+            [hit],
+            {"acme_search"},
+            registry,
+            retrieval._HitFilter(
+                include_subagents=True,
+                active_namespaces={"mcp.acme"},
+                mcp_live_names={"mcp.acme": {"search": "acme_search"}},
+            ),
+        )
+
+        assert result == [{"id": "acme_search", "score": 0.9}]
+
+    def test_two_servers_exposing_search_both_surface_under_their_own_prefixed_names(self) -> None:
+        """Seen on this branch: with posthog and context7 both exposing search, discovery returned neither."""
+        posthog = [_live_mcp_tool("search", "posthog", "PostHog")]
+        context7 = [_live_mcp_tool("search", "context7", "Context7")]
+        names = tool_naming.gaia_names_by_integration(
+            {
+                "posthog": tool_naming.live_server_tool_names(posthog),
+                "context7": tool_naming.live_server_tool_names(context7),
+            },
+            set(),
+        )
+        tool_naming.apply_gaia_names(posthog, names["posthog"])
+        tool_naming.apply_gaia_names(context7, names["context7"])
+        live_names = {
+            "mcp.posthog": tool_naming.live_names_by_index_key(posthog, set()),
+            "mcp.context7": tool_naming.live_names_by_index_key(context7, set()),
+        }
+        registry = MagicMock()
+        registry.get_category_of_tool.return_value = None
+
+        hits = retrieval._process_chroma_search_result(
+            [
+                MagicMock(key="search", namespace=("mcp.posthog",), score=0.9, value={}),
+                MagicMock(key="search", namespace=("mcp.context7",), score=0.8, value={}),
+            ],
+            {tool.name for tool in [*posthog, *context7]},
+            registry,
+            retrieval._HitFilter(
+                include_subagents=True,
+                active_namespaces={"mcp.posthog", "mcp.context7"},
+                mcp_live_names=live_names,
+            ),
+        )
+
+        assert hits == [
+            {"id": "posthog_search", "score": 0.9},
+            {"id": "context7_search", "score": 0.8},
+        ]
 
     async def test_without_an_activation_no_mcp_is_connected(self) -> None:
         mcp_client = MagicMock()
-        mcp_client._tools = {"warm_mcp": [SimpleNamespace(name="WARM_TOOL")]}
-        mcp_client.tools_for = AsyncMock()
+        mcp_client._tools = {"warm_mcp": [_live_mcp_tool("WARM_TOOL", "warm_mcp")]}
+        mcp_client.ensure_connected = AsyncMock()
 
         with patch.object(retrieval, "get_mcp_client", new=AsyncMock(return_value=mcp_client)):
-            assert await retrieval._user_mcp_tool_names("u1") == {"WARM_TOOL"}
+            assert (await retrieval._user_mcp_tools("u1")).names == {"WARM_TOOL"}
 
-        mcp_client.tools_for.assert_not_awaited()
+        mcp_client.ensure_connected.assert_not_awaited()
 
+    @pytest.mark.usefixtures("core_tool_registry")
     async def test_an_unreachable_activated_mcp_keeps_the_rest_and_warns(self) -> None:
         mcp_client = MagicMock()
-        mcp_client._tools = {"warm_mcp": [SimpleNamespace(name="WARM_TOOL")]}
-        mcp_client.tools_for = AsyncMock(side_effect=ConnectionError("down"))
+        mcp_client._tools = {"warm_mcp": [_live_mcp_tool("WARM_TOOL", "warm_mcp")]}
+        mcp_client.ensure_connected = AsyncMock(side_effect=ConnectionError("down"))
 
         with patch.object(retrieval, "get_mcp_client", new=AsyncMock(return_value=mcp_client)):
             async with captured_wide_event() as event:
-                names = await retrieval._user_mcp_tool_names("u1", {_CUSTOM_MCP.id: _CUSTOM_MCP})
+                tools = await retrieval._user_mcp_tools("u1", {_CUSTOM_MCP.id: _CUSTOM_MCP})
 
-        assert names == {"WARM_TOOL"}
+        assert tools.names == {"WARM_TOOL"}
         (warning,) = event["warnings"]
         assert warning["integration_id"] == _CUSTOM_MCP.id
         assert warning["error_type"] == "ConnectionError"
+
+
+def _live_mcp_tool(
+    server_name: str, integration_id: str, source_name: str = "Acme"
+) -> SimpleNamespace:
+    """Build a live MCP tool as MCPClient holds it, stamped with its server identity."""
+    tool = SimpleNamespace(name=server_name, description="", metadata=None)
+    stamp_tool_metadata([tool], integration_id, "https://mcp.acme.dev", source_name)
+    return tool
 
 
 @pytest.mark.unit
@@ -1607,7 +1706,10 @@ class TestMcpIntegrationPointers:
             [pointer],
             set(),
             MagicMock(),
-            retrieval._HitFilter(include_subagents=True, user_namespaces={_OWN_NAMESPACE}),
+            retrieval._HitFilter(
+                include_subagents=True,
+                connected_integration_ids={_CUSTOM_MCP.id},
+            ),
         )
         text = retrieval._render_discovery_response(
             retrieval._RankedHits([hit["id"]], 1, 25), MagicMock(), {}, "invoices", (), False
@@ -1638,10 +1740,8 @@ class TestMcpIntegrationPointers:
         ]
 
 
-async def _discovered_pointers(
-    user_namespaces: set[str], pointers: list[SearchItem]
-) -> tuple[list[str], list[dict[str, object]]]:
-    """Run discovery for a user holding user_namespaces; return its mcp_integration: entries."""
+async def _discovered_pointers(connected_ids: set[str], pointers: list[SearchItem]) -> list[str]:
+    """Run discovery for a user connected to connected_ids; return its mcp_integration: entries."""
 
     async def fake_asearch(
         namespace: tuple[str, ...], query: str = "", limit: int = 25
@@ -1653,26 +1753,27 @@ async def _discovered_pointers(
     registry = MagicMock()
     registry.get_tool_names.return_value = []
     registry.get_tool_meta.return_value = None
+    user_context = ({"general", "subagents", _OWN_NAMESPACE}, dict.fromkeys(connected_ids))
     with (
         patch.object(retrieval, "get_tool_registry", new=AsyncMock(return_value=registry)),
-        patch.object(
-            retrieval, "_get_user_context", new=AsyncMock(return_value=(user_namespaces, {}))
-        ),
+        patch.object(retrieval, "_get_user_context", new=AsyncMock(return_value=user_context)),
         patch.object(retrieval, "get_active", new=AsyncMock(return_value=set())),
-        patch.object(retrieval, "_user_mcp_tool_names", new=AsyncMock(return_value=set())),
+        patch.object(
+            retrieval,
+            "_user_mcp_tools",
+            new=AsyncMock(return_value=retrieval._UserMcpTools(set(), {})),
+        ),
         patch.object(retrieval, "_unconnected_named_in", new=AsyncMock(return_value=[])),
         patch.object(retrieval, "search_public_integrations", new=AsyncMock(return_value=[])),
     ):
         fn = retrieval.get_retrieve_tools_function(tool_space="general")
-        async with captured_wide_event() as event:
-            result = await fn(
-                store=store,
-                config={"configurable": {"user_id": "user-b", "conversation_id": "c1"}},
-                query="list invoices",
-                exact_tool_names=[],
-            )
-    entries = [e for e in result["response"] if e.startswith("mcp_integration:")]
-    return entries, event.get("warnings", [])
+        result = await fn(
+            store=store,
+            config={"configurable": {"user_id": "user-b", "conversation_id": "c1"}},
+            query="list invoices",
+            exact_tool_names=[],
+        )
+    return [e for e in result["response"] if e.startswith("mcp_integration:")]
 
 
 @pytest.mark.unit
@@ -1685,9 +1786,18 @@ class TestCustomMcpPointerEntitlement:
             {"name": "Rival MCP", "source": "custom", "tool_namespace": _OTHER_NAMESPACE},
         )
 
-        entries, _ = await _discovered_pointers({"general", "subagents", _OWN_NAMESPACE}, [pointer])
+        assert await _discovered_pointers({_CUSTOM_MCP.id}, [pointer]) == []
 
-        assert entries == []
+    async def test_another_users_pointer_at_the_same_server_url_is_not_returned(self) -> None:
+        """Seen on this branch: the URL-derived namespace is shared, so a second user's pointer at the same server leaked."""
+        pointer = _search_item(
+            "rival1234567",
+            ("subagents",),
+            0.9,
+            {"name": "Rival MCP", "source": "custom", "tool_namespace": _OWN_NAMESPACE},
+        )
+
+        assert await _discovered_pointers({_CUSTOM_MCP.id}, [pointer]) == []
 
     async def test_the_users_own_custom_pointer_is_returned(self) -> None:
         pointer = _search_item(
@@ -1697,13 +1807,20 @@ class TestCustomMcpPointerEntitlement:
             {"name": "Acme MCP", "source": "custom", "tool_namespace": _OWN_NAMESPACE},
         )
 
-        entries, _ = await _discovered_pointers({"general", "subagents", _OWN_NAMESPACE}, [pointer])
+        assert await _discovered_pointers({_CUSTOM_MCP.id}, [pointer]) == [
+            f"mcp_integration:{_CUSTOM_MCP.id} (Acme MCP)"
+        ]
 
-        assert entries == [f"mcp_integration:{_CUSTOM_MCP.id} (Acme MCP)"]
+    async def test_an_own_pointer_written_before_tool_namespace_existed_is_returned(self) -> None:
+        legacy = _search_item(
+            _CUSTOM_MCP.id, ("subagents",), 0.9, {"name": "Acme MCP", "source": "custom"}
+        )
 
-    async def test_a_platform_pointer_is_returned_without_its_namespace_in_user_namespaces(
-        self,
-    ) -> None:
+        assert await _discovered_pointers({_CUSTOM_MCP.id}, [legacy]) == [
+            f"mcp_integration:{_CUSTOM_MCP.id} (Acme MCP)"
+        ]
+
+    async def test_a_platform_pointer_is_returned_without_a_connection(self) -> None:
         pointer = _search_item(
             "subagent:notes",
             ("subagents",),
@@ -1711,21 +1828,4 @@ class TestCustomMcpPointerEntitlement:
             {"name": "Notes", "source": "mcp", "tool_namespace": "notes"},
         )
 
-        entries, _ = await _discovered_pointers({"general", "subagents"}, [pointer])
-
-        assert entries == ["mcp_integration:notes (Notes)"]
-
-    async def test_a_custom_pointer_without_a_tool_namespace_is_dropped_with_a_warning(
-        self,
-    ) -> None:
-        legacy = _search_item(
-            "legacy123456", ("subagents",), 0.9, {"name": "Legacy MCP", "source": "custom"}
-        )
-
-        entries, warnings = await _discovered_pointers(
-            {"general", "subagents", _OWN_NAMESPACE}, [legacy]
-        )
-
-        assert entries == []
-        (warning,) = [w for w in warnings if w["msg"].endswith("no tool_namespace; dropped")]
-        assert warning["integration_id"] == "legacy123456"
+        assert await _discovered_pointers(set(), [pointer]) == ["mcp_integration:notes (Notes)"]

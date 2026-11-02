@@ -62,6 +62,9 @@ MCP_RENAMED_TOOL_NOTE = (
 # activate_integration preloads every schema of an MCP exposing at most this many
 # tools; above it only the configured startup tools, the rest via retrieve_tools.
 MCP_PRELOAD_ALL_MAX = 10
+# resolve_tool_owner connects at most this many of the user's connected MCPs that have
+# no stored tool list (master's disconnect wiped them) when a tool name is unknown.
+MCP_UNLISTED_CONNECT_MAX = 3
 # Skills a user saved for a custom MCP are keyed by this agent name plus its id.
 CUSTOM_MCP_AGENT_NAME_PREFIX = "custom_mcp_"
 

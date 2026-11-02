@@ -36,9 +36,7 @@ VOLATILE_SOURCES = ContextSources(
     memories=[memory("Ships on Fridays", mentioned="2026-02-01")],
     skills="## Available skills\n- inbox-triage",
     connected_integrations=[{"id": "gmail", "name": "Gmail"}],
-    account_identity={"email": "ada@example.com"},
     global_instructions="Reply in plain English.",
-    integration_instructions="Always archive newsletters.",
     tracked_todos="Tracked: ship the context refactor",
     workflow_integrations_hint="# Connected integrations\nGmail (`gmail`)",
 )
@@ -47,7 +45,6 @@ VOLATILE_SOURCES = ContextSources(
 #: volatile block out; every worker tier folded it into the cacheable prefix.
 WORKER_TIERS = [
     AgentTier.EXECUTOR,
-    AgentTier.PROVIDER_SUBAGENT,
     AgentTier.SPAWN,
     AgentTier.WORKFLOW_AUTHORING,
 ]
@@ -74,7 +71,7 @@ class TestVolatileContentIsNotInTheCacheablePrefix:
         assert "inbox-triage" in stable
         assert "inbox-triage" not in recall
 
-    @pytest.mark.parametrize("tier", [AgentTier.EXECUTOR, AgentTier.PROVIDER_SUBAGENT])
+    @pytest.mark.parametrize("tier", [AgentTier.EXECUTOR])
     async def test_run_banners_are_in_the_volatile_slot(self, tier: AgentTier) -> None:
         messages = await effective_context(
             tier,

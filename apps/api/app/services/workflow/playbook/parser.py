@@ -16,10 +16,11 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 import json
 import re
-from typing import Any
+from typing import Any, TypedDict, cast
 
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field, ValidationError
+from pydantic_core import ErrorDetails
 import yaml
 
 from app.agents.core.subagents.call_record import ARG_TRUNCATION_MARKER, is_error_envelope
@@ -36,7 +37,11 @@ from app.models.playbook_models import (
     is_time_slot,
     walk_ask_slots,
 )
-from app.models.workflow_execution_models import carries_no_data
+from app.models.workflow_execution_models import (
+    ToolResultEnvelope,
+    as_envelope,
+    carries_no_data,
+)
 from app.services.workflow.playbook.evaluator import (
     NO_ITEM,
     STEP_FILE_FIELD,
@@ -395,14 +400,15 @@ def _result_refusal(tool_name: str, call: RecordedResult) -> str | None:
 
 def _envelope_error(result: object) -> str:
     """Return what a failed tool said about its own failure, as one phrase."""
-    if isinstance(result, dict):
-        reported = result.get("error") or result.get("message")
+    envelope: ToolResultEnvelope | None = as_envelope(result)
+    if envelope is not None:
+        reported = envelope.get("error") or envelope.get("message")
         if reported:
             return str(reported)[:_ARGS_IN_MESSAGE_MAX_CHARS]
     return "the call reported success: false"
 
 
-def _rendered_args(args: Mapping[str, Any]) -> str:
+def _rendered_args(args: Mapping[str, object]) -> str:
     # ensure_ascii=False and ensure_ascii=None are byte-identical to json (it
     # only tests truthiness), so that mutation is provably equivalent and exempt.
     rendered = json.dumps(dict(args), default=str, ensure_ascii=False)  # pragma: no mutate
@@ -489,15 +495,15 @@ def _required_args(tool: BaseTool) -> set[str]:
     """
     schema = tool.tool_call_schema
     if isinstance(schema, dict):
-        rendered: Mapping[str, Any] = schema
+        rendered: _CallSchema = cast(_CallSchema, schema)
     elif issubclass(schema, BaseModel):
-        rendered = schema.model_json_schema()
+        rendered = cast(_CallSchema, schema.model_json_schema())
     else:
-        rendered = schema.schema()
+        rendered = cast(_CallSchema, schema.schema())
     return set(rendered.get("required") or [])
 
 
-def _check_ask_slot(slot: Mapping[str, Any], where: str, walk: _Walk) -> None:
+def _check_ask_slot(slot: Mapping[str, object], where: str, walk: _Walk) -> None:
     """One inline ask slot, checked as the model wrote it.
 
     The whole slot vocabulary is two keys, so the message names both rather than
@@ -650,7 +656,7 @@ def _time_slot_hint(placeholder: str, layout: str) -> str:
 
 
 def _check_time_slot(
-    value: Mapping[str, Any], key: str, where: str, recorded: RecordedResult | None, walk: _Walk
+    value: Mapping[str, object], key: str, where: str, recorded: RecordedResult | None, walk: _Walk
 ) -> None:
     """Check a $time slot is well-formed and its layout is the one the tool took."""
     try:
@@ -715,7 +721,8 @@ def _check_time_layout(
 
 
 def _first_validation_message(error: ValidationError) -> str:
-    return error.errors()[0]["msg"].removeprefix("Value error, ")
+    first: ErrorDetails = error.errors()[0]
+    return first["msg"].removeprefix("Value error, ")
 
 
 def _check_value_type(
@@ -723,7 +730,8 @@ def _check_value_type(
 ) -> None:
     if not isinstance(arg_schema, dict):
         return
-    accepted = _accepted_types(arg_schema)
+    schema: _ArgSchema = cast(_ArgSchema, arg_schema)
+    accepted = _accepted_types(schema)
     if not accepted:
         return
     numeric_only = accepted in ((int,), (int, float))
@@ -732,27 +740,49 @@ def _check_value_type(
     issues.append(
         PlaybookIssue(
             where=where,
-            problem=f"expected {_describe(arg_schema)}, got {type(value).__name__}",
+            problem=f"expected {_describe(schema)}, got {type(value).__name__}",
         )
     )
 
 
-def _accepted_types(arg_schema: dict[str, Any]) -> tuple[type, ...]:
+class _CallSchema(TypedDict, total=False):
+    """The key of a tool's call schema that names the args it cannot be called without."""
+
+    required: list[str]
+
+
+class _ArgSchema(TypedDict, total=False):
+    """The JSON-schema keys an argument's type check reads."""
+
+    type: object
+    anyOf: list[object]
+    oneOf: list[object]
+
+
+def _declared_type(arg_schema: _ArgSchema) -> str | None:
     declared = arg_schema.get("type")
-    if isinstance(declared, str):
+    return declared if isinstance(declared, str) else None
+
+
+def _variants(arg_schema: _ArgSchema) -> list[_ArgSchema]:
+    variants = arg_schema.get("anyOf") or arg_schema.get("oneOf") or []
+    return [cast(_ArgSchema, variant) for variant in variants if isinstance(variant, dict)]
+
+
+def _accepted_types(arg_schema: _ArgSchema) -> tuple[type, ...]:
+    declared = _declared_type(arg_schema)
+    if declared is not None:
         return _JSON_TYPE_TO_PYTHON.get(declared, ())
-    variants = arg_schema.get("anyOf") or arg_schema.get("oneOf") or []
-    accepted: list[type] = []
-    for variant in variants:
-        if isinstance(variant, dict):
-            accepted.extend(_accepted_types(variant))
-    return tuple(accepted)
+    return tuple(
+        accepted for variant in _variants(arg_schema) for accepted in _accepted_types(variant)
+    )
 
 
-def _describe(arg_schema: dict[str, Any]) -> str:
-    declared = arg_schema.get("type")
-    if isinstance(declared, str):
+def _describe(arg_schema: _ArgSchema) -> str:
+    declared = _declared_type(arg_schema)
+    if declared is not None:
         return declared
-    variants = arg_schema.get("anyOf") or arg_schema.get("oneOf") or []
-    names = [v["type"] for v in variants if isinstance(v, dict) and isinstance(v.get("type"), str)]
+    names = [
+        name for variant in _variants(arg_schema) if (name := _declared_type(variant)) is not None
+    ]
     return " or ".join(names) if names else "another type"

@@ -19,6 +19,7 @@ from pydantic import ValidationError
 from pydantic.v1 import ValidationError as LegacyValidationError
 
 from app.constants.agents import PLAYBOOK_REPLAYED_CALLS_KEY
+from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME
 from app.constants.log_tags import LogTag
 from app.db.repositories.playbooks import playbook_repository
 from app.db.repositories.workflows import workflow_repository
@@ -52,10 +53,6 @@ from app.utils.workflow_utils import (
     success_response,
 )
 from shared.py.wide_events import log
-
-#: The tool that loads an integration into a run; its integration_id is what a
-#: blocked-run claim is checked against.
-_ACTIVATE_INTEGRATION_TOOL = "activate_integration"
 
 
 def _render_location(location: tuple[int | str, ...]) -> str:
@@ -131,7 +128,7 @@ def _activated_integrations(state: Mapping[str, Any] | None) -> list[str]:
         (call.get("args") or {}).get("integration_id")
         for message in messages
         for call in getattr(message, "tool_calls", None) or []
-        if call.get("name") == _ACTIVATE_INTEGRATION_TOOL
+        if call.get("name") == ACTIVATE_INTEGRATION_TOOL_NAME
     ]
     return [str(target) for target in dict.fromkeys(targets) if target]
 

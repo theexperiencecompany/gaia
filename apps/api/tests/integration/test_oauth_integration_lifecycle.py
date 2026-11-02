@@ -1352,15 +1352,14 @@ class TestMCPIntegrationConnection:
     async def test_connect_auth_required_mcp_returns_redirect(self) -> None:
         """MCP integration requiring OAuth returns redirect with auth URL."""
 
-        mock_mcp_client = AsyncMock()
-        mock_mcp_client.build_oauth_auth_url = AsyncMock(
-            return_value="https://auth.example.com/oauth?client_id=abc"
-        )
-
         with (
             patch(
                 "app.services.integrations.integration_connection_service.get_mcp_client",
-                AsyncMock(return_value=mock_mcp_client),
+                AsyncMock(return_value=AsyncMock()),
+            ),
+            patch(
+                "app.services.integrations.integration_connection_service.build_oauth_auth_url",
+                AsyncMock(return_value="https://auth.example.com/oauth?client_id=abc"),
             ),
             patch(
                 "app.services.integrations.integration_connection_service.update_user_integration_status",

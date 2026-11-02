@@ -534,8 +534,6 @@ class TestConnectIntegration:
         """The tool result must carry the provider URL so the model can relay it as plain text."""
         mock_gsw.return_value = _writer()
         auth_url = "https://mcp.example.com/authorize?state=xyz"
-        client = MagicMock()
-        client.build_oauth_auth_url = AsyncMock(return_value=auth_url)
 
         with (
             patch(
@@ -545,7 +543,11 @@ class TestConnectIntegration:
             patch("app.utils.integration_checker.current_stream_writer", return_value=_writer()),
             patch(
                 "app.utils.integration_checker.get_mcp_client",
-                new=AsyncMock(return_value=client),
+                new=AsyncMock(return_value=MagicMock()),
+            ),
+            patch(
+                "app.utils.integration_checker.build_oauth_auth_url",
+                new=AsyncMock(return_value=auth_url),
             ),
         ):
             result = await connect_integration.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it

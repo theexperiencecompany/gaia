@@ -7891,14 +7891,6 @@
             "title": "Never Auto Tools",
             "type": "array"
           },
-          "tool_labels": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/HILToolKeyLabel"
-            },
-            "description": "Display label for every key in tool_overrides and never_auto_tools.",
-            "title": "Tool Labels",
-            "type": "object"
-          },
           "tool_overrides": {
             "additionalProperties": {
               "type": "boolean"
@@ -7910,38 +7902,9 @@
         "required": [
           "mode",
           "tool_overrides",
-          "never_auto_tools",
-          "tool_labels"
+          "never_auto_tools"
         ],
         "title": "HILPreferencesResponse",
-        "type": "object"
-      },
-      "HILToolKeyLabel": {
-        "description": "What a stored HIL tool key names, for display: clients send the key back unchanged.",
-        "properties": {
-          "integration_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "The integration the tool belongs to, when known.",
-            "title": "Integration Name"
-          },
-          "tool_name": {
-            "description": "The tool's own name (an MCP tool's name on its server).",
-            "title": "Tool Name",
-            "type": "string"
-          }
-        },
-        "required": [
-          "integration_name",
-          "tool_name"
-        ],
-        "title": "HILToolKeyLabel",
         "type": "object"
       },
       "HandoffDecision": {

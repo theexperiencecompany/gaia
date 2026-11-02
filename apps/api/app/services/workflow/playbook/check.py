@@ -19,7 +19,13 @@ from app.constants.log_tags import LogTag
 from app.db.repositories.playbooks import playbook_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.playbook_models import PlaybookDocument, PlaybookRunOutcome, PlaybookRunStatus
-from app.models.workflow_execution_models import RecordedCall, carries_no_data, parse_result
+from app.models.workflow_execution_models import (
+    RecordedCall,
+    ToolResultEnvelope,
+    as_envelope,
+    carries_no_data,
+    parse_result,
+)
 from app.models.workflow_models import WorkflowDocument
 from app.services.workflow.playbook.lifecycle import HEAL_STATUSES
 from app.services.workflow.playbook.workflow_hash import workflow_hash
@@ -107,8 +113,8 @@ def _wrote_a_playbook(trace: Sequence[RecordedCall]) -> bool:
     for call in trace:
         if call.tool_name != "write_playbook":
             continue
-        result = parse_result(call.result_digest)
-        if isinstance(result, dict) and result.get("success") is True:
+        envelope: ToolResultEnvelope | None = as_envelope(parse_result(call.result_digest))
+        if envelope is not None and envelope.get("success") is True:
             return True
     return False
 

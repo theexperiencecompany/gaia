@@ -9,7 +9,6 @@ const EMPTY: HilPreferences = {
   mode: DEFAULT_HIL_MODE,
   tool_overrides: {},
   never_auto_tools: [],
-  tool_labels: {},
 };
 
 /**

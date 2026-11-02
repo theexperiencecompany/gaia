@@ -12,6 +12,7 @@ from app.agents.tools.execute.unwrap import ExecuteCallArgs, unwrap_execute_call
 from app.config.oauth_config import get_integration_by_id, get_integration_by_tool_slug
 from app.constants.agents import INTERNAL_AGENT_TAG_PATTERN
 from app.constants.browser import BROWSER_TOOL_CATEGORY
+from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME
 from app.constants.log_tags import LogTag
 from app.constants.tool_labels import TOOL_DISPLAY_NAMES, humanize_tool_name
 from app.db.repositories.integrations import integration_repository
@@ -188,7 +189,7 @@ async def format_tool_call_entry(
 
     if tool_name_raw in _SPECIAL_TOOLS:
         tool_category, tool_display_name, show_category = _SPECIAL_TOOLS[tool_name_raw]
-        if tool_name_raw == "activate_integration" and not integration_id:
+        if tool_name_raw == ACTIVATE_INTEGRATION_TOOL_NAME and not integration_id:
             # The card names the integration being activated, custom MCPs included.
             integration_id = ActivateIntegrationCallArgs.model_validate(call_args).integration_id
     else:
@@ -301,7 +302,7 @@ _SPECIAL_TOOLS: dict[str, tuple[str, str, bool]] = {
     "stop_browser_task": (BROWSER_TOOL_CATEGORY, "Stopping the browser task", False),
     "tell_browser_task": (BROWSER_TOOL_CATEGORY, "Telling the browser task", False),
     "spawn_subagent": ("spawn_subagent", "Spawn subagent", False),
-    "activate_integration": ("integrations", "Activating integration", False),
+    ACTIVATE_INTEGRATION_TOOL_NAME: ("integrations", "Activating integration", False),
     "plan_tasks": ("plan_tasks", "Plan tasks", False),
     # Synthetic card a replayed workflow run leads with — never a callable
     # tool. The playbooks category carries the icon the authoring tools use.

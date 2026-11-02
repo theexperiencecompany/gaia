@@ -100,6 +100,19 @@ CUSTOM_INTEGRATION_ID = "custom-int-uuid-456"
 SERVER_URL = "https://mcp.example.com/v1"
 
 
+@pytest.fixture
+def build_oauth_auth_url() -> Iterator[AsyncMock]:
+    """Patch the MCP OAuth URL builder where both the platform and the custom connect paths call it."""
+    mock = AsyncMock()
+    with (
+        patch(
+            "app.services.integrations.integration_connection_service.build_oauth_auth_url", mock
+        ),
+        patch("app.services.integrations.custom_crud.build_oauth_auth_url", mock),
+    ):
+        yield mock
+
+
 def _make_oauth_integration(**overrides: Any) -> OAuthIntegration:
     """Build an OAuthIntegration with test defaults; override any field by name."""
     overrides.setdefault("id", overrides.pop("integration_id", "platform-int"))
@@ -2239,7 +2252,9 @@ class TestCreateAndConnectCustomIntegration:
         "app.services.integrations.custom_crud.fetch_favicon_from_url",
         new_callable=AsyncMock,
     )
-    async def test_probe_detects_auth_requirement(self, mock_favicon, mock_create):
+    async def test_probe_detects_auth_requirement(
+        self, mock_favicon, mock_create, build_oauth_auth_url: AsyncMock
+    ):
         mock_favicon.return_value = None
         integration = Integration(
             integration_id="new-id",
@@ -2257,7 +2272,7 @@ class TestCreateAndConnectCustomIntegration:
             "requires_auth": True,
             "auth_type": "oauth",
         }
-        mock_mcp_client.build_oauth_auth_url.return_value = "https://auth.example.com"
+        build_oauth_auth_url.return_value = "https://auth.example.com"
 
         request = CreateCustomIntegrationRequest(
             name="Auth Probe",
@@ -2317,7 +2332,9 @@ class TestCreateAndConnectCustomIntegration:
         "app.services.integrations.custom_crud.fetch_favicon_from_url",
         new_callable=AsyncMock,
     )
-    async def test_connect_raises_oauth_error_triggers_auth_flow(self, mock_favicon, mock_create):
+    async def test_connect_raises_oauth_error_triggers_auth_flow(
+        self, mock_favicon, mock_create, build_oauth_auth_url: AsyncMock
+    ):
         from mcp_use.client.exceptions import OAuthAuthenticationError
 
         mock_favicon.return_value = None
@@ -2335,7 +2352,7 @@ class TestCreateAndConnectCustomIntegration:
         mock_mcp_client = AsyncMock()
         mock_mcp_client.probe_connection.return_value = {}
         mock_mcp_client.connect.side_effect = OAuthAuthenticationError("Need auth")
-        mock_mcp_client.build_oauth_auth_url.return_value = "https://oauth.example.com"
+        build_oauth_auth_url.return_value = "https://oauth.example.com"
 
         request = CreateCustomIntegrationRequest(
             name="OAuthErr",
@@ -2504,10 +2521,10 @@ class TestConnectMcpIntegration:
         new_callable=AsyncMock,
     )
     async def test_connect_requires_auth_returns_redirect(
-        self, mock_get_client, mock_update_status
+        self, mock_get_client, mock_update_status, build_oauth_auth_url: AsyncMock
     ):
         mock_client = AsyncMock()
-        mock_client.build_oauth_auth_url.return_value = "https://auth.example.com"
+        build_oauth_auth_url.return_value = "https://auth.example.com"
         mock_get_client.return_value = mock_client
 
         result = await connect_mcp_integration(
@@ -2522,9 +2539,7 @@ class TestConnectMcpIntegration:
         assert result.status == "redirect"
         assert result.redirect_url == "https://auth.example.com"
         mock_update_status.assert_awaited_once_with(USER_ID, INTEGRATION_ID, "created")
-        assert mock_client.build_oauth_auth_url.await_args.kwargs["redirect_path"] == (
-            "/integrations"
-        )
+        assert build_oauth_auth_url.await_args.kwargs["redirect_path"] == ("/integrations")
 
     @patch(
         "app.services.integrations.integration_connection_service.update_user_integration_status",
@@ -2573,10 +2588,10 @@ class TestConnectMcpIntegration:
         new_callable=AsyncMock,
     )
     async def test_connect_requires_auth_platform_skips_status_update(
-        self, mock_get_client, mock_update_status
+        self, mock_get_client, mock_update_status, build_oauth_auth_url: AsyncMock
     ):
         mock_client = AsyncMock()
-        mock_client.build_oauth_auth_url.return_value = "https://auth.example.com"
+        build_oauth_auth_url.return_value = "https://auth.example.com"
         mock_get_client.return_value = mock_client
 
         result = await connect_mcp_integration(
@@ -2671,14 +2686,16 @@ class TestConnectMcpIntegration:
         "app.services.integrations.integration_connection_service.get_mcp_client",
         new_callable=AsyncMock,
     )
-    async def test_probe_detects_auth_requirement(self, mock_get_client):
+    async def test_probe_detects_auth_requirement(
+        self, mock_get_client, build_oauth_auth_url: AsyncMock
+    ):
         """When probe_result is None, probe is performed and discovers auth requirement."""
         mock_client = AsyncMock()
         mock_client.probe_connection.return_value = {
             "requires_auth": True,
             "auth_type": "oauth",
         }
-        mock_client.build_oauth_auth_url.return_value = "https://auth.url"
+        build_oauth_auth_url.return_value = "https://auth.url"
         mock_get_client.return_value = mock_client
 
         with patch(
@@ -2706,13 +2723,13 @@ class TestConnectMcpIntegration:
         new_callable=AsyncMock,
     )
     async def test_connect_catches_oauth_authentication_error(
-        self, mock_get_client, mock_update_status
+        self, mock_get_client, mock_update_status, build_oauth_auth_url: AsyncMock
     ):
         from mcp_use.client.exceptions import OAuthAuthenticationError
 
         mock_client = AsyncMock()
         mock_client.connect.side_effect = OAuthAuthenticationError("Need auth")
-        mock_client.build_oauth_auth_url.return_value = "https://auth.url"
+        build_oauth_auth_url.return_value = "https://auth.url"
         mock_get_client.return_value = mock_client
 
         result = await connect_mcp_integration(
@@ -3361,9 +3378,9 @@ class TestInvalidateCaches:
 class TestRedirectToOauth:
     """Direct tests for _redirect_to_oauth: the OAuth redirect response."""
 
-    async def test_builds_redirect_response(self) -> None:
+    async def test_builds_redirect_response(self, build_oauth_auth_url: AsyncMock) -> None:
         mcp_client = AsyncMock()
-        mcp_client.build_oauth_auth_url.return_value = "https://auth.example.com/start"
+        build_oauth_auth_url.return_value = "https://auth.example.com/start"
 
         with patch("app.services.integrations.integration_connection_service.log.set") as log_set:
             response = await _redirect_to_oauth(mcp_client, "int-1", "gmail", "/callback/xyz")
@@ -3373,7 +3390,8 @@ class TestRedirectToOauth:
         assert response.name == "gmail"
         assert response.redirect_url == "https://auth.example.com/start"
         assert response.message == "OAuth authentication required"
-        mcp_client.build_oauth_auth_url.assert_awaited_once_with(
+        build_oauth_auth_url.assert_awaited_once_with(
+            mcp_client.token_store,
             integration_id="int-1",
             redirect_uri=f"{get_api_base_url()}/api/v1/mcp/oauth/callback",
             redirect_path="/callback/xyz",
@@ -3388,14 +3406,15 @@ class TestRedirectToOauth:
             }
         )
 
-    async def test_passes_challenge_data_through(self) -> None:
+    async def test_passes_challenge_data_through(self, build_oauth_auth_url: AsyncMock) -> None:
         mcp_client = AsyncMock()
-        mcp_client.build_oauth_auth_url.return_value = "https://auth.example.com/start"
+        build_oauth_auth_url.return_value = "https://auth.example.com/start"
         challenge = {"state": "abc"}
 
         await _redirect_to_oauth(mcp_client, "int-1", "gmail", "/cb", challenge_data=challenge)
 
-        args, kwargs = mcp_client.build_oauth_auth_url.await_args
+        args, kwargs = build_oauth_auth_url.await_args
+        assert args == (mcp_client.token_store,)
         assert kwargs["challenge_data"] == challenge
 
 
@@ -3411,7 +3430,9 @@ _PLATFORM_TARGET = _McpConnectTarget(
 class TestHandleAuthRequired:
     """Direct tests for _handle_auth_required: bearer vs OAuth routing."""
 
-    async def test_bearer_branch_returns_error_response(self) -> None:
+    async def test_bearer_branch_returns_error_response(
+        self, build_oauth_auth_url: AsyncMock
+    ) -> None:
         mcp_client = AsyncMock()
 
         response = await _handle_auth_required(
@@ -3421,11 +3442,13 @@ class TestHandleAuthRequired:
         assert response.status == "error"
         assert response.error == "bearer_required"
         assert response.message == "This integration requires an API key."
-        mcp_client.build_oauth_auth_url.assert_not_awaited()
+        build_oauth_auth_url.assert_not_awaited()
 
-    async def test_oauth_branch_redirects_with_challenge(self) -> None:
+    async def test_oauth_branch_redirects_with_challenge(
+        self, build_oauth_auth_url: AsyncMock
+    ) -> None:
         mcp_client = AsyncMock()
-        mcp_client.build_oauth_auth_url.return_value = "https://auth.example.com/start"
+        build_oauth_auth_url.return_value = "https://auth.example.com/start"
         probe = {"oauth_challenge": {"state": "s"}}
 
         response = await _handle_auth_required(
@@ -3433,7 +3456,7 @@ class TestHandleAuthRequired:
         )
 
         assert response.status == "redirect"
-        kwargs = mcp_client.build_oauth_auth_url.await_args.kwargs
+        kwargs = build_oauth_auth_url.await_args.kwargs
         assert kwargs["challenge_data"] == {"state": "s"}
         assert kwargs["redirect_path"] == "/cb"
 
@@ -3450,10 +3473,10 @@ class TestConnectProbeDetection:
         new_callable=AsyncMock,
     )
     async def test_probe_detects_auth_and_records_it(
-        self, mock_get_client, mock_update_status
+        self, mock_get_client, mock_update_status, build_oauth_auth_url: AsyncMock
     ) -> None:
         mock_client = AsyncMock()
-        mock_client.build_oauth_auth_url.return_value = "https://auth.example.com"
+        build_oauth_auth_url.return_value = "https://auth.example.com"
         mock_get_client.return_value = mock_client
 
         result = await connect_mcp_integration(
@@ -3500,7 +3523,7 @@ class TestConnectProbeDetection:
         new_callable=AsyncMock,
     )
     async def test_probe_uses_the_server_url_and_threads_its_challenge(
-        self, mock_get_client, mock_update_status
+        self, mock_get_client, mock_update_status, build_oauth_auth_url: AsyncMock
     ) -> None:
         mock_client = AsyncMock()
         mock_client.probe_connection.return_value = {
@@ -3508,7 +3531,7 @@ class TestConnectProbeDetection:
             "auth_type": "custom",
             "oauth_challenge": {"state": "s"},
         }
-        mock_client.build_oauth_auth_url.return_value = "https://auth.example.com"
+        build_oauth_auth_url.return_value = "https://auth.example.com"
         mock_get_client.return_value = mock_client
 
         result = await connect_mcp_integration(
@@ -3522,7 +3545,7 @@ class TestConnectProbeDetection:
 
         assert result.status == "redirect"
         mock_client.probe_connection.assert_awaited_once_with(SERVER_URL)
-        kwargs = mock_client.build_oauth_auth_url.await_args.kwargs
+        kwargs = build_oauth_auth_url.await_args.kwargs
         assert kwargs["challenge_data"] == {"state": "s"}
 
     @patch(
@@ -3534,10 +3557,10 @@ class TestConnectProbeDetection:
         new_callable=AsyncMock,
     )
     async def test_probe_detected_bearer_asks_for_an_api_key(
-        self, mock_get_client, mock_update_status
+        self, mock_get_client, mock_update_status, build_oauth_auth_url: AsyncMock
     ) -> None:
         mock_client = AsyncMock()
-        mock_client.build_oauth_auth_url.return_value = "https://auth.example.com"
+        build_oauth_auth_url.return_value = "https://auth.example.com"
         mock_get_client.return_value = mock_client
 
         result = await connect_mcp_integration(
@@ -3554,7 +3577,7 @@ class TestConnectProbeDetection:
         mock_client.update_integration_auth_status.assert_awaited_once_with(
             INTEGRATION_ID, requires_auth=True, auth_type="bearer"
         )
-        mock_client.build_oauth_auth_url.assert_not_awaited()
+        build_oauth_auth_url.assert_not_awaited()
 
     @patch(
         "app.services.integrations.integration_connection_service.update_user_integration_status",
@@ -3565,10 +3588,10 @@ class TestConnectProbeDetection:
         new_callable=AsyncMock,
     )
     async def test_probe_ignored_when_auth_already_required(
-        self, mock_get_client, mock_update_status
+        self, mock_get_client, mock_update_status, build_oauth_auth_url: AsyncMock
     ) -> None:
         mock_client = AsyncMock()
-        mock_client.build_oauth_auth_url.return_value = "https://auth.example.com"
+        build_oauth_auth_url.return_value = "https://auth.example.com"
         mock_get_client.return_value = mock_client
 
         result = await connect_mcp_integration(
@@ -3596,10 +3619,10 @@ class TestConnectMorePaths:
         new_callable=AsyncMock,
     )
     async def test_default_platform_false_records_status(
-        self, mock_get_client, mock_update_status
+        self, mock_get_client, mock_update_status, build_oauth_auth_url: AsyncMock
     ) -> None:
         mock_client = AsyncMock()
-        mock_client.build_oauth_auth_url.return_value = "https://auth.example.com"
+        build_oauth_auth_url.return_value = "https://auth.example.com"
         mock_get_client.return_value = mock_client
 
         result = await connect_mcp_integration(
@@ -3617,12 +3640,14 @@ class TestConnectMorePaths:
         "app.services.integrations.integration_connection_service.get_mcp_client",
         new_callable=AsyncMock,
     )
-    async def test_connect_time_oauth_discovery_routes_to_redirect(self, mock_get_client) -> None:
+    async def test_connect_time_oauth_discovery_routes_to_redirect(
+        self, mock_get_client, build_oauth_auth_url: AsyncMock
+    ) -> None:
         from mcp_use.client.exceptions import OAuthAuthenticationError
 
         mock_client = AsyncMock()
         mock_client.connect.side_effect = OAuthAuthenticationError("Need auth")
-        mock_client.build_oauth_auth_url.return_value = "https://auth.example.com"
+        build_oauth_auth_url.return_value = "https://auth.example.com"
         mock_get_client.return_value = mock_client
 
         result = await connect_mcp_integration(

@@ -20,12 +20,13 @@ from app.constants.log_tags import LogTag
 from app.decorators.caching import Cacheable
 from app.models.tools_models import ToolInfo, ToolsCategoryResponse, ToolsListResponse
 from app.schemas.integrations.responses import IntegrationToolApproval
-from app.services.hil.tool_key import MCPToolIdentity, hil_tool_key
+from app.services.hil.tool_key import MCPToolIdentity, hil_tool_key, mcp_tool_identity
 from app.services.integrations.user_integrations import (
     UserIntegrationRecord,
     get_user_integration_records,
 )
 from app.services.mcp.mcp_tools_service import get_all_mcp_tools, get_integration_tools
+from app.services.mcp.tool_naming import master_rename
 from app.utils.request_coalescing import coalesce_request
 from shared.py.wide_events import log
 
@@ -267,12 +268,22 @@ async def get_integration_tool_list(integration_id: str) -> list[IntegrationTool
                 # and is the single source of truth — it also carries LLM
                 # classifications written back via mark_tool_destructive.
                 destructive=bool(tool.destructive),
-                approval_key=hil_tool_key(tool.name, None),
+                # A no-auth MCP's tools sit in the registry but keep their server identity.
+                approval_key=hil_tool_key(tool.name, mcp_tool_identity(tool.tool)),
             )
             for tool in category_obj.tools
         ]
 
     stored = await get_integration_tools(integration_id)
+    renamed = [tool.name for tool in stored if master_rename(tool) is not None]
+    if renamed:
+        # Master stored its GAIA rename, not the server's name, so a key built from it
+        # would never match the gate's; a reconnect (or the restore script) rewrites the list.
+        log.warning(
+            f"{LogTag.TOOL} Stored MCP tool list holds renames; those tools are not listed",
+            integration_id=integration_id,
+            tools=renamed,
+        )
     return [
         IntegrationToolApproval(
             name=tool.name,
@@ -283,5 +294,5 @@ async def get_integration_tool_list(integration_id: str) -> list[IntegrationTool
             ),
         )
         for tool in stored
-        if tool.name
+        if tool.name and tool.name not in renamed
     ]

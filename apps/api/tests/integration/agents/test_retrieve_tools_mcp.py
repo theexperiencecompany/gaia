@@ -22,10 +22,10 @@ import pytest
 
 from app.agents.core.subagents.integration_resolution import CustomMcpSubagent
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
-from app.helpers.namespace_utils import derive_integration_namespace
 from app.models.integration_models import UserToolNamespaces
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.custom_mcp_index import CustomMcpIndexRequest, index_custom_mcp_as_subagent
+from app.services.mcp.tool_naming import stamp_tool_metadata
 
 
 def _fake_tool(name: str, description: str = "test tool"):
@@ -48,7 +48,7 @@ def _fake_mcp_client(integration_tools_map: dict[str, list[Any]]):
     """Build a MagicMock MCPClient whose _tools dict contains the given tools.
 
     Models the two lookups the execute resolver performs (resolve_tool_owner +
-    tools_for) so proxied schema-doc rendering exercises the same per-user
+    ensure_connected) so proxied schema-doc rendering exercises the same per-user
     scoping the name filters do.
     """
     client = MagicMock()
@@ -63,7 +63,7 @@ def _fake_mcp_client(integration_tools_map: dict[str, list[Any]]):
             None,
         )
     )
-    client.tools_for = AsyncMock(side_effect=lambda iid: integration_tools_map.get(iid, []))
+    client.ensure_connected = AsyncMock(side_effect=lambda iid: integration_tools_map.get(iid, []))
     return client
 
 
@@ -254,20 +254,35 @@ _ACME = CustomMcpSubagent(
 _ACME_NAMESPACE = "mcp.acme.dev/v1"
 
 
-async def _discover_with_activated_acme(user_namespaces: set[str]) -> tuple[dict, list, MagicMock]:
+def _live_acme_tool(server_name: str, live_name: str | None = None) -> MagicMock:
+    """Build an Acme tool as MCPClient holds it: stamped, and renamed when a collision prefixed it."""
+    tool = _fake_tool(server_name)
+    tool.metadata = None
+    stamp_tool_metadata([tool], _ACME.id, "https://mcp.acme.dev/v1", "Acme MCP")
+    tool.name = live_name or server_name
+    return tool
+
+
+async def _discover_with_activated_acme(
+    user_namespaces: set[str],
+    live_tool: MagicMock | None = None,
+    chroma_key: str = "ACME_LIST_INVOICES",
+) -> tuple[dict, list, MagicMock]:
     """Discovery in a conversation that activated Acme, against a cold MCPClient."""
     searched: list[tuple[str, ...]] = []
 
     async def fake_asearch(namespace: tuple[str, ...], query: str = "", limit: int = 25) -> list:
         searched.append(namespace)
         if namespace == (_ACME_NAMESPACE,):
-            return [_fake_search_item("ACME_LIST_INVOICES", namespace)]
+            return [_fake_search_item(chroma_key, namespace)]
         return []
 
     store = MagicMock()
     store.asearch = fake_asearch
     client = _fake_mcp_client({})
-    client.tools_for = AsyncMock(return_value=[_fake_tool("ACME_LIST_INVOICES")])
+    client.ensure_connected = AsyncMock(
+        return_value=[live_tool or _live_acme_tool("ACME_LIST_INVOICES")]
+    )
     registry = MagicMock()
     registry.get_tool_names = MagicMock(return_value=[])
     registry.get_category_of_tool = MagicMock(return_value="")
@@ -278,6 +293,10 @@ async def _discover_with_activated_acme(user_namespaces: set[str]) -> tuple[dict
         patch("app.agents.tools.core.retrieval.get_mcp_client", new=AsyncMock(return_value=client)),
         patch(
             "app.agents.tools.core.retrieval.get_tool_registry",
+            new=AsyncMock(return_value=registry),
+        ),
+        patch(
+            "app.services.mcp.tool_naming.get_tool_registry",
             new=AsyncMock(return_value=registry),
         ),
         patch(
@@ -328,8 +347,18 @@ class TestRetrieveToolsActivatedCustomMcp:
         )
 
         assert (_ACME_NAMESPACE,) in searched
-        client.tools_for.assert_awaited_once_with(_ACME.id)
+        client.ensure_connected.assert_awaited_once_with(_ACME.id)
         assert "ACME_LIST_INVOICES" in result["response"]
+
+    async def test_a_tool_another_server_also_exposes_is_found_under_its_prefixed_name(self):
+        """Seen on this branch: Chroma keys the tool search, the user holds acme_mcp_search, so discovery dropped it."""
+        result, _, _ = await _discover_with_activated_acme(
+            {"general", "subagents", _ACME_NAMESPACE},
+            live_tool=_live_acme_tool("search", "acme_mcp_search"),
+            chroma_key="search",
+        )
+
+        assert "acme_mcp_search" in result["response"]
 
     async def test_a_stamped_custom_namespace_the_user_does_not_own_is_not_searched(self):
         """A stamp is not an entitlement: without the namespace in user_namespaces it is never searched."""
@@ -344,13 +373,11 @@ _CUSTOM_MCPS_BY_USER = {
         integration_id="aaa111aaa111",
         name="Alpha Invoices",
         description="Lists invoices",
-        server_url="https://mcp.alpha.dev/v1",
     ),
     "user-b": CustomMcpIndexRequest(
         integration_id="bbb222bbb222",
         name="Beta Invoices",
         description="Lists invoices",
-        server_url="https://mcp.beta.dev/v1",
     ),
 }
 
@@ -376,15 +403,9 @@ async def _indexed_pointer_docs() -> list[SearchItem]:
     ]
 
 
-async def _namespaces_for(user_id: str) -> UserToolNamespaces:
+async def _connected_for(user_id: str) -> dict[str, str | None]:
     own = _CUSTOM_MCPS_BY_USER[user_id]
-    return UserToolNamespaces(
-        namespaces={
-            "general",
-            "subagents",
-            derive_integration_namespace(own.integration_id, own.server_url, is_custom=True),
-        }
-    )
+    return {own.integration_id: own.name}
 
 
 @pytest.mark.integration
@@ -413,11 +434,11 @@ class TestRetrieveToolsCustomMcpPointerIsolation:
             ),
             patch(
                 "app.agents.tools.core.retrieval.get_user_available_tool_namespaces",
-                new=AsyncMock(side_effect=_namespaces_for),
+                new=AsyncMock(return_value=UserToolNamespaces(namespaces={"general", "subagents"})),
             ),
             patch(
                 "app.agents.tools.core.retrieval._resolve_connected_subagents",
-                new=AsyncMock(return_value={}),
+                new=AsyncMock(side_effect=_connected_for),
             ),
             patch(
                 "app.agents.tools.core.retrieval.get_active",

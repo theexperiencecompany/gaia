@@ -3,9 +3,13 @@
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from app.constants.mcp import MCP_RENAMED_TOOL_NOTE
+from app.models.hil_models import HILPreferences
 from app.models.integration_models import McpToolsRollupEntry, StoredIntegrationTool
 from app.models.tools_models import ToolsCategoryResponse, ToolsListResponse
+from app.services.hil.policy import is_gated
 from app.services.hil.tool_key import MCPToolIdentity, hil_tool_key
+from app.services.mcp.tool_naming import stamp_tool_metadata
 from app.services.tools.tools_service import (
     _build_tools_response,
     get_available_tools,
@@ -14,6 +18,7 @@ from app.services.tools.tools_service import (
     get_tool_categories,
     get_tools_by_category,
 )
+from tests.helpers import captured_wide_event
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -670,6 +675,26 @@ class TestIntegrationToolApprovalKey:
 
         assert tool.approval_key == "GMAIL_SEND_EMAIL"
 
+    async def test_a_registry_tool_from_a_no_auth_mcp_keys_by_its_server(self):
+        """Seen on this branch: deepwiki's toggle wrote ask_question while the gate read mcp:deepwiki:ask_question."""
+        category = _mock_category(tools=[_mock_tool("ask_question")])
+        category.tools[0].destructive = False
+        category.tools[0].tool.description = "Ask about a repo"
+        category.tools[0].tool.name = "ask_question"
+        category.tools[0].tool.metadata = {}
+        stamp_tool_metadata(
+            [category.tools[0].tool], "deepwiki", "https://mcp.deepwiki.com", "DeepWiki"
+        )
+        registry = MagicMock()
+        registry.get_all_category_objects.return_value = {"deepwiki": category}
+        with patch(
+            "app.services.tools.tools_service.get_tool_registry",
+            new=AsyncMock(return_value=registry),
+        ):
+            (tool,) = await get_integration_tool_list("deepwiki")
+
+        assert tool.approval_key == "mcp:deepwiki:ask_question"
+
     async def test_an_mcp_tool_keys_by_its_server_and_its_name_there(self):
         registry = MagicMock()
         registry.get_all_category_objects.return_value = {}
@@ -690,3 +715,91 @@ class TestIntegrationToolApprovalKey:
             "delete_item", MCPToolIdentity(integration_id="posthog", server_name="delete_item")
         )
         assert tool.approval_key == "mcp:posthog:delete_item"
+
+
+class TestStoredListHoldingMastersRenames:
+    """Seen on this branch: a list master stored held posthog_execute, so its toggle wrote a key the gate never reads."""
+
+    async def test_an_entry_master_renamed_is_not_offered_a_key(self):
+        registry = MagicMock()
+        registry.get_all_category_objects.return_value = {}
+        stored = [
+            StoredIntegrationTool(
+                name="posthog_execute",
+                description=MCP_RENAMED_TOOL_NOTE.format(
+                    original="execute", renamed="posthog_execute"
+                )
+                + "Run a query.",
+            ),
+            StoredIntegrationTool(name="query", description="Query events."),
+        ]
+        with (
+            patch(
+                "app.services.tools.tools_service.get_tool_registry",
+                new=AsyncMock(return_value=registry),
+            ),
+            patch(
+                "app.services.tools.tools_service.get_integration_tools",
+                new=AsyncMock(return_value=stored),
+            ),
+        ):
+            async with captured_wide_event() as event:
+                listed = await get_integration_tool_list("posthog")
+
+        assert [tool.approval_key for tool in listed] == ["mcp:posthog:query"]
+        (warning,) = event["warnings"]
+        assert warning["integration_id"] == "posthog"
+        assert warning["tools"] == ["posthog_execute"]
+
+
+class TestSettingsKeyIsTheKeyTheGateReads:
+    """Both sides build the key with hil_tool_key, so a switch the user flips must change the gate's answer."""
+
+    async def test_a_no_auth_mcp_tool_switched_off_in_settings_is_not_gated(self):
+        tool = MagicMock()
+        tool.name = "ask_question"
+        tool.description = "Ask about a repo"
+        tool.metadata = {}
+        stamp_tool_metadata([tool], "deepwiki", "https://mcp.deepwiki.com", "DeepWiki")
+        category = _mock_category(
+            tools=[SimpleNamespace(name="ask_question", tool=tool, destructive=True)]
+        )
+        registry = MagicMock()
+        registry.get_all_category_objects.return_value = {"deepwiki": category}
+        with patch(
+            "app.services.tools.tools_service.get_tool_registry",
+            new=AsyncMock(return_value=registry),
+        ):
+            (listed,) = await get_integration_tool_list("deepwiki")
+
+        prefs = HILPreferences(mode="always_ask", tool_overrides={listed.approval_key: False})
+        with patch("app.services.hil.policy.is_tool_destructive", new=AsyncMock(return_value=True)):
+            assert await is_gated(prefs, "ask_question", tool) is False
+
+    async def test_a_user_mcp_tool_switched_off_in_settings_is_not_gated_under_a_collision_name(
+        self,
+    ):
+        live = MagicMock()
+        live.name = "delete_item"
+        live.description = "Delete one item"
+        live.metadata = {}
+        stamp_tool_metadata([live], "posthog", "https://mcp.posthog.com", "PostHog")
+        live.name = "posthog_delete_item"
+        registry = MagicMock()
+        registry.get_all_category_objects.return_value = {}
+        stored = [StoredIntegrationTool(name="delete_item", description="Delete one item")]
+        with (
+            patch(
+                "app.services.tools.tools_service.get_tool_registry",
+                new=AsyncMock(return_value=registry),
+            ),
+            patch(
+                "app.services.tools.tools_service.get_integration_tools",
+                new=AsyncMock(return_value=stored),
+            ),
+        ):
+            (listed,) = await get_integration_tool_list("posthog")
+
+        prefs = HILPreferences(mode="always_ask", tool_overrides={listed.approval_key: False})
+        with patch("app.services.hil.policy.is_tool_destructive", new=AsyncMock(return_value=True)):
+            assert await is_gated(prefs, live.name, live) is False

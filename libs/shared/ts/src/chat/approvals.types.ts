@@ -29,7 +29,7 @@ export type HilMode = "always_allow" | "always_ask" | "auto";
  * Per-user HIL preferences. `tool_overrides` maps a HIL tool key to
  * needs-approval, overriding the destructive default. A key is a registry
  * tool's bare name or an MCP tool's `mcp:<integration_id>:<name>`; clients read
- * it from the server (`approval_key`, `tool_labels`) and send it back unchanged.
+ * it from the server (`approval_key`) and send it back unchanged.
  */
 export type HilPreferences = HILPreferencesResponse;
 

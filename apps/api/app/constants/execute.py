@@ -6,6 +6,9 @@ drift (root CLAUDE.md, Type Safety item 18).
 """
 
 EXECUTE_TOOL_NAME = "execute"
+# The tool that loads an integration into a run; the executor graph, the display
+# formatter and the blocked-run claim check all name it.
+ACTIVATE_INTEGRATION_TOOL_NAME = "activate_integration"
 # Names the account an execute result came from, when the user has several on that integration.
 RAN_AS_ACCOUNT_KEY = "ran_as_account"
 

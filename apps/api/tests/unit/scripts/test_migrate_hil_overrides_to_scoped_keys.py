@@ -10,7 +10,12 @@ SERVERS = {
     "linear": frozenset({"delete_item", "create_issue"}),
     "notion": frozenset({"search"}),
 }
-REGISTRY = frozenset({"search", "GMAIL_SEND_EMAIL"})
+# Registry tool name -> the key the gate reads it under; a no-auth MCP's registry tool is server-scoped.
+REGISTRY = {
+    "search": "search",
+    "GMAIL_SEND_EMAIL": "GMAIL_SEND_EMAIL",
+    "ask_question": "mcp:deepwiki:ask_question",
+}
 
 
 @pytest.mark.unit
@@ -29,8 +34,28 @@ class TestPlanKeys:
     def test_a_registry_tool_name_is_left_alone_even_when_a_server_has_it(self) -> None:
         assert plan_keys(["search", "GMAIL_SEND_EMAIL"], SERVERS, REGISTRY) == KeyPlan({}, {})
 
+    def test_a_no_auth_mcp_registry_tool_moves_to_the_key_its_gate_reads(self) -> None:
+        """Seen on this branch: a bare deepwiki override was skipped as a registry name and stopped applying."""
+        assert plan_keys(["ask_question"], SERVERS, REGISTRY) == KeyPlan(
+            rewrites={"ask_question": "mcp:deepwiki:ask_question"}, ambiguous={}
+        )
+
     def test_an_already_scoped_or_unknown_key_is_left_alone(self) -> None:
         assert plan_keys(["mcp:posthog:query", "nowhere"], SERVERS, REGISTRY) == KeyPlan({}, {})
+
+    def test_a_key_on_a_name_master_renamed_is_reported_not_guessed(self) -> None:
+        """Seen on this branch: posthog_execute in a stored list became mcp:posthog:posthog_execute, a key the gate never reads."""
+        plan = plan_keys(
+            ["posthog_execute", "query"],
+            SERVERS,
+            REGISTRY,
+            master_renamed={"posthog": frozenset({"posthog_execute"})},
+        )
+        assert plan == KeyPlan(
+            rewrites={"query": "mcp:posthog:query"},
+            ambiguous={},
+            unverified={"posthog_execute": ["posthog"]},
+        )
 
 
 @pytest.mark.unit

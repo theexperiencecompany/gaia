@@ -49,6 +49,7 @@ from app.agents.tools.subagent_control_tool import (
 )
 from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
 from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
+from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
 from app.override.langgraph_bigtool.agent_config import (
@@ -126,7 +127,7 @@ async def build_executor_graph(
     tool_dict = tool_registry.get_tool_dict()
     tool_dict.update({t.name: t for t in todo_tools})
 
-    tool_dict.update({"activate_integration": activate_integration})
+    tool_dict.update({ACTIVATE_INTEGRATION_TOOL_NAME: activate_integration})
     # Executor-only tools to steer or cancel a specific running subagent by id.
     tool_dict.update(
         {t.name: t for t in (list_running_subagents, message_subagent, cancel_subagent)}
@@ -140,7 +141,7 @@ async def build_executor_graph(
         "list_running_subagents",
         "message_subagent",
         "cancel_subagent",
-        "activate_integration",
+        ACTIVATE_INTEGRATION_TOOL_NAME,
         # A spawn mines untrusted output; global instructions reach every tier.
         "update_user_instructions",
     }
@@ -173,7 +174,7 @@ async def build_executor_graph(
 
     pre_model_hooks = worker_pre_model_hooks(todo_hook, drains_inbox=True)
 
-    initial_tools = ["activate_integration", *EXECUTOR_INITIAL_TOOL_IDS]
+    initial_tools = [ACTIVATE_INTEGRATION_TOOL_NAME, *EXECUTOR_INITIAL_TOOL_IDS]
 
     builder = create_agent(
         chat_llm,

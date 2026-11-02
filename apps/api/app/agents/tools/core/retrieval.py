@@ -63,6 +63,7 @@ from app.services.integrations.integration_service import (
 )
 from app.services.integrations.user_integrations import get_user_integrations
 from app.services.mcp.mcp_client import get_mcp_client
+from app.services.mcp.tool_naming import live_names_by_index_key, reserved_tool_names
 from app.services.oauth.oauth_service import (
     check_multiple_integrations_status,
     get_all_integrations_status,
@@ -254,7 +255,7 @@ async def split_startup_tools(
         return [], []
     tool_registry = await get_tool_registry()
     if mcp_tool_names is None:
-        mcp_tool_names = await _user_mcp_tool_names(user_id)
+        mcp_tool_names = (await _user_mcp_tools(user_id)).names
     return partition_startup_tools(tool_registry, declared_names, mcp_tool_names)
 
 
@@ -273,35 +274,44 @@ async def render_preload_block(user_id: str | None, preload_names: list[str]) ->
     return header + "\n\n" + "\n\n".join(docs)
 
 
-async def _user_mcp_tool_names(
+class _UserMcpTools(NamedTuple):
+    """The live names of the user's MCP tools, and how activated namespaces' Chroma keys map onto them."""
+
+    names: set[str]
+    # Chroma indexes a tool under one name for every user; a collision with
+    # another of this user's servers prefixes the live name per user.
+    live_by_index_key: dict[str, dict[str, str]]
+
+
+async def _user_mcp_tools(
     user_id: str | None, active_targets: Mapping[str, _TargetIntegration] | None = None
-) -> set[str]:
+) -> _UserMcpTools:
     """Tool names held by the user's MCPClient, plus those of MCPs activated in this conversation.
 
     Per-user MCP tools live outside the global ToolRegistry. Only the
     conversation's activated MCP integrations are (re)connected via
-    ``tools_for``; every other integration contributes only what is already
+    ``ensure_connected``; every other integration contributes only what is already
     warm, so discovery never opens connections it was not asked for.
     """
+    tools = _UserMcpTools(names=set(), live_by_index_key={})
     if not user_id:
-        return set()
+        return tools
     try:
         mcp_client = await get_mcp_client(user_id=str(user_id))
-        names: set[str] = set()
         for integration_tools in mcp_client._tools.values():
-            names.update(t.name for t in integration_tools)
+            tools.names.update(t.name for t in integration_tools)
     except Exception as e:
         log.warning(
-            f"{LogTag.TOOL} _user_mcp_tool_names failed",
+            f"{LogTag.TOOL} _user_mcp_tools failed",
             user_id=user_id,
             error_type=type(e).__name__,
         )
-        return set()
-    for target in (active_targets or {}).values():
-        if not is_per_user_mcp(target):
-            continue
+        return tools
+    activated = [target for target in (active_targets or {}).values() if is_per_user_mcp(target)]
+    reserved = await reserved_tool_names() if activated else set()
+    for target in activated:
         try:
-            names.update(t.name for t in await mcp_client.tools_for(target.id))
+            live = await mcp_client.ensure_connected(target.id)
         except Exception as e:
             # One unreachable activated server must not blank discovery for the rest.
             log.warning(
@@ -309,7 +319,11 @@ async def _user_mcp_tool_names(
                 integration_id=target.id,
                 error_type=type(e).__name__,
             )
-    return names
+            continue
+        tools.names.update(t.name for t in live)
+        if live and (tool_space := await _target_tool_space(target)):
+            tools.live_by_index_key[tool_space] = live_names_by_index_key(live, reserved)
+    return tools
 
 
 def _is_platform_tool_space(tool_space: str) -> bool:
@@ -453,7 +467,6 @@ class _SubagentPointerValue(TypedDict, total=False):
 
     name: str
     source: str
-    tool_namespace: str
 
 
 class _DiscoveredTool(TypedDict):
@@ -480,14 +493,16 @@ class _RetrievalScope:
 class _HitFilter:
     """Which store hits one discovery search may surface.
 
-    user_namespaces are the tool namespaces the caller is entitled to; a custom
-    MCP pointer outside them never surfaces.
+    connected_integration_ids are the integrations the caller is connected to;
+    a custom MCP pointer to any other never surfaces. mcp_live_names maps an
+    activated MCP namespace's Chroma keys to the user's live tool names.
     """
 
     include_subagents: bool
-    user_namespaces: set[str]
+    connected_integration_ids: set[str] = field(default_factory=set)
     tool_space: str = "general"
     active_namespaces: set[str] | None = None
+    mcp_live_names: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
 
 
 @dataclass
@@ -725,13 +740,13 @@ def _process_public_integration_result(
     return processed
 
 
-def _mcp_pointer_hit(item: SearchItem, user_namespaces: set[str]) -> ScoredToolHit | None:
+def _mcp_pointer_hit(item: SearchItem, connected_integration_ids: set[str]) -> ScoredToolHit | None:
     """The mcp_integration: entry for a subagents-namespace pointer, or None for a stale doc.
 
     Pointers exist only for MCP integrations, static (source "mcp", the default
     for docs predating the field) or custom; anything else predates the index.
-    The namespace is shared by every user, so a custom pointer surfaces only
-    when its tool_namespace is one the caller is entitled to.
+    The namespace is shared by every user, so a custom pointer surfaces only to
+    a user connected to that very integration.
     """
     # value is unpickled from the store: the dict annotation is a claim, not a check.
     raw_value: object = item.value
@@ -742,17 +757,8 @@ def _mcp_pointer_hit(item: SearchItem, user_namespaces: set[str]) -> ScoredToolH
     if source not in ("custom", "mcp"):
         return None
     integration_id = str(item.key).removeprefix(_STATIC_POINTER_KEY_PREFIX)
-    if source == "custom":
-        tool_namespace = value.get("tool_namespace")
-        if tool_namespace is None:
-            # Written before the field existed: ownership is unknown, so it never surfaces.
-            log.warning(
-                f"{LogTag.TOOL} Custom MCP pointer has no tool_namespace; dropped",
-                integration_id=integration_id,
-            )
-            return None
-        if tool_namespace not in user_namespaces:
-            return None
+    if source == "custom" and integration_id not in connected_integration_ids:
+        return None
     name = value.get("name")
     entry = (
         f"{_MCP_INTEGRATION_PREFIX}{integration_id} ({name})"
@@ -797,7 +803,8 @@ def _process_chroma_search_result(
         if namespace == ("subagents",):
             if (
                 hit_filter.include_subagents
-                and (hit := _mcp_pointer_hit(item, hit_filter.user_namespaces)) is not None
+                and (hit := _mcp_pointer_hit(item, hit_filter.connected_integration_ids))
+                is not None
             ):
                 processed.append(hit)
             continue
@@ -815,8 +822,11 @@ def _process_chroma_search_result(
         ):
             continue
 
-        if tool_key in available_tool_names:
-            processed.append(ScoredToolHit(id=tool_key, score=item.score))
+        # Tool namespaces are single-segment: chroma_tools_store writes (namespace,).
+        namespace_key = "::".join(namespace or ())  # pragma: no mutate — 1-tuple, no separator
+        tool_name = hit_filter.mcp_live_names.get(namespace_key, {}).get(tool_key, tool_key)
+        if tool_name in available_tool_names:
+            processed.append(ScoredToolHit(id=tool_name, score=item.score))
 
     return processed
 
@@ -1186,9 +1196,11 @@ async def _bind_exact_tools(
     # else an out-of-scope tool reports a fake bind the graph then rejects,
     # looping the model bind->reject.
     bindable_set = bindable_tool_names if bindable_tool_names is not None else global_tool_names
-    mcp_tool_names_set = await _user_mcp_tool_names(
-        scope.user_id, await _active_integration_targets(scope.conversation_id)
-    )
+    mcp_tool_names_set = (
+        await _user_mcp_tools(
+            scope.user_id, await _active_integration_targets(scope.conversation_id)
+        )
+    ).names
     triage = _triage_exact_names(
         exact_tool_names,
         tool_registry,
@@ -1331,9 +1343,8 @@ async def _discover_tools(
     # MCP tool names don't live in the global registry anymore (resilience
     # rewrite removed the per-user categories) — union with the live MCPClient
     # names so the discovery filter doesn't drop every PostHog/Notion/etc. hit.
-    available_tool_names_set = global_tool_names | await _user_mcp_tool_names(
-        user_id, active_targets
-    )
+    user_mcp_tools = await _user_mcp_tools(user_id, active_targets)
+    available_tool_names_set = global_tool_names | user_mcp_tools.names
 
     stats = _search_hit_stats(results)
 
@@ -1343,9 +1354,10 @@ async def _discover_tools(
         tool_registry,
         _HitFilter(
             include_subagents=scope.include_subagents,
-            user_namespaces=user_namespaces,
+            connected_integration_ids=set(connected_integrations),
             tool_space=tool_space,
             active_namespaces=active_namespaces,
+            mcp_live_names=user_mcp_tools.live_by_index_key,
         ),
     )
 

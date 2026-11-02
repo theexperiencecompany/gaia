@@ -747,7 +747,7 @@ def core_tool_registry() -> Iterator[None]:
     registry = ToolRegistry()
     registry.setup()
     with patch(
-        "app.services.mcp.mcp_client.get_tool_registry",
+        "app.services.mcp.tool_naming.get_tool_registry",
         new_callable=AsyncMock,
         return_value=registry,
     ):

@@ -2,7 +2,7 @@
 
 Three sources, tried in cost order: the global registry (materialized internal
 + Composio tools), the per-user MCPClient (MCP tools never enter the global
-registry — see retrieval._user_mcp_tool_names), and on-demand Composio
+registry — see retrieval._user_mcp_tools), and on-demand Composio
 materialization (the provider catalog holds metadata only until a toolkit is
 first used — see ToolRegistry.populate_provider_catalog).
 
@@ -104,7 +104,7 @@ async def _resolve_mcp_tool(user_id: str | None, tool_name: str) -> ResolvedTool
         mcp_client = await get_mcp_client(user_id=str(user_id))
     except Exception as e:
         # An MCP outage must not take down resolution for registry/Composio
-        # tools — but it is never silent (mirrors _user_mcp_tool_names).
+        # tools — but it is never silent (mirrors _user_mcp_tools).
         log.warning(
             f"{LogTag.TOOL} execute resolver: MCP client unavailable",
             user_id=user_id,
@@ -114,7 +114,7 @@ async def _resolve_mcp_tool(user_id: str | None, tool_name: str) -> ResolvedTool
     integration_id = await mcp_client.resolve_tool_owner(tool_name)
     if integration_id is None:
         return None
-    for tool in await mcp_client.tools_for(integration_id):
+    for tool in await mcp_client.ensure_connected(integration_id):
         if tool.name == tool_name:
             return ResolvedTool(
                 name=tool.name,

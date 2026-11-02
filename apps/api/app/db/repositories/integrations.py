@@ -7,6 +7,7 @@ leaves updated_at unset on insert and only update_custom writes it, so the
 repository mirrors that on-disk reality rather than stamping every write.
 """
 
+from collections.abc import Collection
 from datetime import UTC, datetime
 import re
 
@@ -41,6 +42,13 @@ _TOOLS_STUB_FILTER: dict[str, object] = {
     **{field: {"$exists": False} for field in _IDENTITY_FIELDS},
 }
 _FULL_DOCUMENT_FILTER: dict[str, object] = {field: {"$exists": True} for field in _IDENTITY_FIELDS}
+_HAS_TOOLS_FILTER: dict[str, object] = {"tools": {"$exists": True, "$ne": []}}
+_TOOLS_RECORD_PROJECTION: dict[str, object] = {
+    "integration_id": 1,
+    "tools": 1,
+    "name": 1,
+    "icon_url": 1,
+}
 
 
 class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
@@ -478,9 +486,16 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
     async def all_with_tools(self) -> list[IntegrationToolsRecord]:
         """Every integration that has stored tools, projected for the global roll-up."""
         return await self._aggregate(
+            [{"$match": _HAS_TOOLS_FILTER}, {"$project": _TOOLS_RECORD_PROJECTION}],
+            IntegrationToolsRecord,
+        )
+
+    async def tools_by_ids(self, integration_ids: Collection[str]) -> list[IntegrationToolsRecord]:
+        """Those of integration_ids that have stored tools, projected like all_with_tools."""
+        return await self._aggregate(
             [
-                {"$match": {"tools": {"$exists": True, "$ne": []}}},
-                {"$project": {"integration_id": 1, "tools": 1, "name": 1, "icon_url": 1}},
+                {"$match": {"integration_id": {"$in": list(integration_ids)}, **_HAS_TOOLS_FILTER}},
+                {"$project": _TOOLS_RECORD_PROJECTION},
             ],
             IntegrationToolsRecord,
         )

@@ -76,9 +76,9 @@ class TestResolveTool:
         mcp_tool.name = "NOTION_MCP_SEARCH"
         client = MagicMock()
         client.resolve_tool_owner = AsyncMock(return_value="notion-mcp")
-        # tools_for is async on the real MCPClient — a sync mock here hid a
+        # ensure_connected is async on the real MCPClient — a sync mock here hid a
         # missing await that mypy caught; keep the mock faithful.
-        client.tools_for = AsyncMock(return_value=[mcp_tool])
+        client.ensure_connected = AsyncMock(return_value=[mcp_tool])
         with (
             patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=_registry_with({}))),
             patch(f"{MODULE}.get_mcp_client", new=AsyncMock(return_value=client)),
@@ -227,7 +227,7 @@ class TestMcpResolution:
                 "LINEAR_MCP_SEARCH": "linear-mcp",
             }.get
         )
-        client.tools_for = AsyncMock(
+        client.ensure_connected = AsyncMock(
             side_effect=lambda integration_id: {"notion-mcp": [wanted], "linear-mcp": [other]}[
                 integration_id
             ]
@@ -240,8 +240,8 @@ class TestMcpResolution:
             resolved = await resolver.resolve_tool("u1", "NOTION_MCP_SEARCH")
         get_client.assert_awaited_once_with(user_id="u1")
         client.resolve_tool_owner.assert_awaited_once_with("NOTION_MCP_SEARCH")
-        # tools_for, not the warm-only get_tools: after a restart the owner is cold.
-        client.tools_for.assert_awaited_once_with("notion-mcp")
+        # ensure_connected, not the warm-only get_tools: after a restart the owner is cold.
+        client.ensure_connected.assert_awaited_once_with("notion-mcp")
         assert resolved == ResolvedTool(
             "NOTION_MCP_SEARCH", wanted, is_integration=True, shape_scope="mcp:notion-mcp"
         )

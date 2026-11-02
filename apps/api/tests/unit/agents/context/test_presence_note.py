@@ -267,10 +267,8 @@ class TestWhereTheNoteSits:
 
         assert _notes(messages) == []
 
-    async def test_a_handoff_subagent_gets_no_note(self) -> None:
-        messages = await effective_context(
-            AgentTier.PROVIDER_SUBAGENT, _seed(CAME_FROM_WEB, "telegram")
-        )
+    async def test_a_spawned_subagent_gets_no_note(self) -> None:
+        messages = await effective_context(AgentTier.SPAWN, _seed(CAME_FROM_WEB, "telegram"))
 
         assert _notes(messages) == []
 

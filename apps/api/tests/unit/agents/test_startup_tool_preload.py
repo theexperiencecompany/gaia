@@ -115,10 +115,10 @@ class TestSplitStartupTools:
 
     async def test_mcp_names_are_fetched_for_the_calling_user(self) -> None:
         registry = _registry(integration_names=set(), internal_names=set())
-        mcp_names = AsyncMock(return_value={"MY_MCP_TOOL"})
+        mcp_names = AsyncMock(return_value=retrieval._UserMcpTools({"MY_MCP_TOOL"}, {}))
         with (
             patch.object(retrieval, "get_tool_registry", new=AsyncMock(return_value=registry)),
-            patch.object(retrieval, "_user_mcp_tool_names", new=mcp_names),
+            patch.object(retrieval, "_user_mcp_tools", new=mcp_names),
         ):
             bind, preload = await retrieval.split_startup_tools("u1", ["MY_MCP_TOOL"])
         assert (bind, preload) == ([], ["MY_MCP_TOOL"])

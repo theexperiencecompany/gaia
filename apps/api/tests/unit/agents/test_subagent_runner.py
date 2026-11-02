@@ -296,26 +296,24 @@ class TestBuildInitialMessages:
 
     @pytest.mark.asyncio
     async def test_tier_and_ids_reach_the_assembler(self):
-        """The tier selects which sections apply; the wrong one silently loses provider metadata."""
+        """The tier selects which sections apply; the wrong one silently loses its sections."""
         with self._assembled() as mock_assemble:
             await build_initial_messages(
                 system_message=SystemMessage(content="sys"),
                 agent_name="agent",
                 task="task",
                 seed=ThreadSeed(
-                    tier=AgentTier.PROVIDER_SUBAGENT,
+                    tier=AgentTier.SPAWN,
                     configurable={},
                     user_id="uid-1",
                     subagent_id="github_agent",
-                    integration_id="github",
                 ),
             )
 
         ctx = mock_assemble.call_args.args[0]
-        assert ctx.tier is AgentTier.PROVIDER_SUBAGENT
+        assert ctx.tier is AgentTier.SPAWN
         assert ctx.user_id == "uid-1"
         assert ctx.subagent_id == "github_agent"
-        assert ctx.integration_id == "github"
 
 
 # ---------------------------------------------------------------------------
@@ -1492,10 +1490,7 @@ class TestPrepareExecutorExecution:
 # ---------------------------------------------------------------------------
 
 
-from app.agents.core.subagents.subagent_helpers import (
-    build_subagent_system_prompt,
-    create_subagent_system_message,
-)
+from app.agents.core.subagents.subagent_helpers import build_subagent_system_prompt
 
 
 class TestBuildSubagentSystemPrompt:
@@ -1563,25 +1558,6 @@ class TestBuildSubagentSystemPrompt:
     async def test_blank_integration_id_returns_empty(self):
         with patch("app.agents.core.subagents.subagent_helpers.log"):
             assert await build_subagent_system_prompt("") == ""
-
-
-# ---------------------------------------------------------------------------
-# create_subagent_system_message
-# ---------------------------------------------------------------------------
-
-
-class TestCreateSubagentSystemMessage:
-    @pytest.mark.asyncio
-    async def test_returns_system_message(self):
-        with patch(
-            "app.agents.core.subagents.subagent_helpers.build_subagent_system_prompt",
-            new_callable=AsyncMock,
-            return_value="Test prompt",
-        ):
-            result = await create_subagent_system_message(integration_id="github")
-
-        assert isinstance(result, SystemMessage)
-        assert result.content == "Test prompt"
 
 
 # ---------------------------------------------------------------------------

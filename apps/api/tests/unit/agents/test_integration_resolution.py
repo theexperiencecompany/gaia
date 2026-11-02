@@ -23,7 +23,6 @@ from app.models.subagent_models import Subagent
 from app.services.mcp.custom_mcp_index import CustomMcpIndexRequest, index_custom_mcp_as_subagent
 
 RESOLUTION = "app.agents.core.subagents.integration_resolution"
-INDEX = "app.services.mcp.custom_mcp_index"
 
 
 def _integration(integration_id: str, name: str, **overrides: object) -> Integration:
@@ -181,6 +180,20 @@ class TestGetIntegrationTarget:
         assert result == CustomMcpSubagent(id="abc123", name="Custom MCP")
         get_cache.assert_awaited_once_with(f"{SUBAGENT_CACHE_PREFIX}:abc123")
 
+    async def test_a_cached_mcp_config_is_validated_into_its_model(self):
+        cached = {
+            "id": "abc123",
+            "mcp_config": {"server_url": "https://example.com", "requires_auth": True},
+        }
+        with (
+            patch(f"{RESOLUTION}.get_subagent_by_id", return_value=None),
+            patch(f"{RESOLUTION}.get_cache", new=AsyncMock(return_value=cached)),
+        ):
+            result = await get_integration_target("abc123")
+
+        assert isinstance(result, CustomMcpSubagent)
+        assert result.mcp_config == MCPConfig(server_url="https://example.com", requires_auth=True)
+
     async def test_returns_none_for_negative_cache(self):
         with (
             patch(f"{RESOLUTION}.get_subagent_by_id", return_value=None),
@@ -212,7 +225,7 @@ class TestGetIntegrationTarget:
             name="My MCP",
             source="custom",
             managed_by="mcp",
-            mcp_config=MCPConfig(server_url="https://example.com").model_dump(),
+            mcp_config=MCPConfig(server_url="https://example.com"),
             icon_url="https://example.com/icon.png",
         )
         assert result == expected
@@ -246,7 +259,7 @@ class TestGetIntegrationTarget:
             name="Resolved",
             source="user_integrations",
             managed_by="mcp",
-            mcp_config={"server_url": "https://resolved.example.com"},
+            mcp_config=MCPConfig(server_url="https://resolved.example.com"),
             icon_url="https://resolved.example.com/icon.png",
         )
         assert result == expected
@@ -322,7 +335,7 @@ class TestCheckMcpConnection:
             id="abc123",
             name="My MCP",
             managed_by="mcp",
-            mcp_config={"server_url": "https://example.com", "requires_auth": True},
+            mcp_config=MCPConfig(server_url="https://example.com", requires_auth=True),
         )
         writer = MagicMock()
         with (
@@ -339,7 +352,7 @@ class TestCheckMcpConnection:
         "target",
         [
             None,
-            CustomMcpSubagent(id="abc123", mcp_config={"server_url": "https://example.com"}),
+            CustomMcpSubagent(id="abc123", mcp_config=MCPConfig(server_url="https://example.com")),
             _make_subagent("gmail", managed_by="composio"),
             _make_subagent(
                 "deepwiki", managed_by="mcp", mcp_config=MCPConfig(server_url="https://x.test")
@@ -359,24 +372,21 @@ class TestCheckMcpConnection:
 
 @pytest.mark.asyncio
 class TestIndexCustomMcpAsSubagent:
-    async def test_indexes_identity_namespace_and_tool_summaries(self):
+    async def test_indexes_identity_and_tool_summaries(self):
         store = AsyncMock()
         tool = StructuredTool.from_function(
             func=_get_meetings, name="get_meetings", description="List meetings.\nMore detail."
         )
-        with patch(f"{INDEX}.derive_integration_namespace", return_value="example.com") as derive:
-            await index_custom_mcp_as_subagent(
-                store=store,
-                request=CustomMcpIndexRequest(
-                    integration_id="abc123",
-                    name="My Tool",
-                    description="Does stuff",
-                    server_url="https://example.com/mcp",
-                    tools=[tool],
-                ),
-            )
+        await index_custom_mcp_as_subagent(
+            store=store,
+            request=CustomMcpIndexRequest(
+                integration_id="abc123",
+                name="My Tool",
+                description="Does stuff",
+                tools=[tool],
+            ),
+        )
 
-        derive.assert_called_once_with("abc123", "https://example.com/mcp", is_custom=True)
         store.abatch.assert_awaited_once()
         put_op = store.abatch.call_args[0][0][0]
         assert put_op.namespace == ("subagents",)
@@ -386,6 +396,5 @@ class TestIndexCustomMcpAsSubagent:
             "name": "My Tool",
             "description": "My Tool. Does stuff. Available tools: get_meetings: List meetings..",
             "source": "custom",
-            "tool_namespace": "example.com",
         }
         assert put_op.index == ["description"]

@@ -65,11 +65,11 @@ def _binding_deps(
 ) -> Iterator[MagicMock]:
     async def _mcp_names(
         user_id: str | None, _active_targets: Mapping[str, object] | None = None
-    ) -> set[str]:
-        return (mcp_names_for or {}).get(user_id or "", set())
+    ) -> retrieval._UserMcpTools:
+        return retrieval._UserMcpTools((mcp_names_for or {}).get(user_id or "", set()), {})
 
     with (
-        patch.object(retrieval, "_user_mcp_tool_names", new=AsyncMock(side_effect=_mcp_names)),
+        patch.object(retrieval, "_user_mcp_tools", new=AsyncMock(side_effect=_mcp_names)),
         patch.object(
             retrieval, "_unconnected_for_tools", new=AsyncMock(return_value=unconnected or {})
         ),

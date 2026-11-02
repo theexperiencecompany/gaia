@@ -55,14 +55,16 @@ def gaia_tool_names(
     server_names: Sequence[str],
     reserved: Collection[str],
     shared: Collection[str],
+    taken: Collection[str] = (),
 ) -> dict[str, str]:
     """Map each server tool name to its GAIA-facing name.
 
     A name is source-prefixed iff GAIA reserves it or another of the user's MCP
     servers exposes it (shared), so the result never depends on connect order.
+    A prefixed name never lands on one in taken (another server's GAIA names).
     """
     clashing = {name for name in server_names if name in reserved or name in shared}
-    taken = {*reserved, *(set(server_names) - clashing)}
+    taken = {*reserved, *(set(server_names) - clashing), *taken}
     names: dict[str, str] = {}
     for name in server_names:
         if name in clashing:

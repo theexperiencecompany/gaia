@@ -84,13 +84,13 @@ async def _discover(
 
     async def _mcp_names(
         user_id: str | None, _active_targets: Mapping[str, object] | None = None
-    ) -> set[str]:
-        return mcp_names_for.get(user_id or "", set())
+    ) -> retrieval._UserMcpTools:
+        return retrieval._UserMcpTools(mcp_names_for.get(user_id or "", set()), {})
 
     with (
         patch.object(retrieval, "get_tool_registry", new=AsyncMock(return_value=registry)),
         patch.object(retrieval, "_get_user_context", new=AsyncMock(return_value=({"notion"}, {}))),
-        patch.object(retrieval, "_user_mcp_tool_names", new=AsyncMock(side_effect=_mcp_names)),
+        patch.object(retrieval, "_user_mcp_tools", new=AsyncMock(side_effect=_mcp_names)),
         patch.object(retrieval, "get_active", new=AsyncMock(return_value=set())),
         patch.object(retrieval, "log") as mock_log,
     ):

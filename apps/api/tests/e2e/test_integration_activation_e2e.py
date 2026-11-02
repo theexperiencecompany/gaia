@@ -230,7 +230,7 @@ class TestActivationThroughRealExecutorGraph:
             return f"paper:{query}"
 
         mcp_client = MagicMock()
-        mcp_client.tools_for = AsyncMock(return_value=[lookup_paper])
+        mcp_client.ensure_connected = AsyncMock(return_value=[lookup_paper])
         mcp_client.get_tools = AsyncMock(return_value=[lookup_paper])
         mcp_client.find_integration = MagicMock(return_value="abc123")
         mcp_client.resolve_tool_owner = AsyncMock(return_value="abc123")
@@ -270,7 +270,7 @@ class TestActivationThroughRealExecutorGraph:
         resolver_registry = MagicMock()
         resolver_registry.get_tool_meta.return_value = None
         resolver_registry.get_tool_names.return_value = []
-        custom = CustomMcpSubagent(id="abc123", name="Scholar", managed_by="mcp", mcp_config={})
+        custom = CustomMcpSubagent(id="abc123", name="Scholar", managed_by="mcp")
         docs = "1 integration tool(s) preloaded below.\n## lookup_paper"
 
         p1, p2, p3, p4 = _run_executor(model, registry)
@@ -309,7 +309,7 @@ class TestActivationThroughRealExecutorGraph:
         assert activation and "is now active with 1 tools" in activation.text
         assert "## lookup_paper" in activation.text
         assert "handoff" not in activation.text
-        mcp_client.tools_for.assert_any_await("abc123")
+        mcp_client.ensure_connected.assert_any_await("abc123")
 
         ran = _tool_message_for(result, "e1")
         assert ran, "execute never answered — the activated MCP tool was unreachable"

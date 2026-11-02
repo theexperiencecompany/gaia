@@ -203,6 +203,23 @@ class TestIntegrationsRepository:
         assert records[a].icon_url == "https://a.png"
         assert [t.name for t in records[a].tools] == ["ta"]
 
+    async def test_tools_by_ids_returns_only_the_asked_ids_with_stored_tools(self, repo):
+        asked, empty, other = (f"{p}-{uuid.uuid4().hex}" for p in ("ask", "empty", "other"))
+        await repo.create(_integration(asked, "Asked"))
+        await repo.store_tools_batch(
+            [
+                (asked, [StoredIntegrationTool(name="search")]),
+                (other, [StoredIntegrationTool(name="x")]),
+            ]
+        )
+        await repo.create(_integration(empty, "Empty"))
+
+        [record] = await repo.tools_by_ids([asked, empty])
+
+        assert record.integration_id == asked
+        assert record.name == "Asked"
+        assert [t.name for t in record.tools] == ["search"]
+
     async def test_heal_top_level_auth(self, repo):
         iid = f"heal-{uuid.uuid4().hex}"
         await repo.create(_integration(iid, "Heal", requires_auth=False, auth_type=None))

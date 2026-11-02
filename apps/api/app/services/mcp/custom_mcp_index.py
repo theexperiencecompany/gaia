@@ -7,7 +7,6 @@ from typing import Protocol
 from langgraph.store.base import BaseStore, PutOp
 
 from app.constants.log_tags import LogTag
-from app.helpers.namespace_utils import derive_integration_namespace
 from shared.py.wide_events import log
 
 SUBAGENTS_NAMESPACE = ("subagents",)
@@ -31,7 +30,6 @@ class CustomMcpIndexRequest:
         integration_id: Unique ID of the custom integration (12-char hex)
         name: Display name of the integration
         description: Description of what the integration does
-        server_url: MCP server URL for namespace derivation
         tools: The MCP's tools — their names/summaries are embedded so the
             integration ranks for what it can actually do (e.g. a "get_meetings"
             tool surfaces on a "meetings" query) instead of generic boilerplate.
@@ -40,7 +38,6 @@ class CustomMcpIndexRequest:
     integration_id: str
     name: str
     description: str
-    server_url: str | None = None
     tools: Sequence[IndexedToolSummary] | None = None
 
 
@@ -52,7 +49,6 @@ async def index_custom_mcp_as_subagent(
     integration_id = request.integration_id
     name = request.name
     description = request.description
-    server_url = request.server_url
     tools = request.tools
 
     parts = [f"{name}."]
@@ -67,8 +63,6 @@ async def index_custom_mcp_as_subagent(
         parts.append(f"Available tools: {'; '.join(summaries)}.")
     rich_description = " ".join(parts)
 
-    tool_namespace = derive_integration_namespace(integration_id, server_url, is_custom=True)
-
     put_op = PutOp(
         namespace=SUBAGENTS_NAMESPACE,
         key=integration_id,
@@ -77,7 +71,6 @@ async def index_custom_mcp_as_subagent(
             "name": name,
             "description": rich_description,
             "source": "custom",
-            "tool_namespace": tool_namespace,
         },
         index=["description"],
     )

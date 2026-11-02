@@ -10054,33 +10054,10 @@ export interface components {
             mode: "always_allow" | "always_ask" | "auto";
             /** Never Auto Tools */
             never_auto_tools: string[];
-            /**
-             * Tool Labels
-             * @description Display label for every key in tool_overrides and never_auto_tools.
-             */
-            tool_labels: {
-                [key: string]: components["schemas"]["HILToolKeyLabel"];
-            };
             /** Tool Overrides */
             tool_overrides: {
                 [key: string]: boolean;
             };
-        };
-        /**
-         * HILToolKeyLabel
-         * @description What a stored HIL tool key names, for display: clients send the key back unchanged.
-         */
-        HILToolKeyLabel: {
-            /**
-             * Integration Name
-             * @description The integration the tool belongs to, when known.
-             */
-            integration_name: string | null;
-            /**
-             * Tool Name
-             * @description The tool's own name (an MCP tool's name on its server).
-             */
-            tool_name: string;
         };
         /**
          * HistoryFeatureUsage
@@ -17280,7 +17257,6 @@ export type HandoffDecisionResponse = components['schemas']['HandoffDecisionResp
 export type HandoffStatus = components['schemas']['HandoffStatus'];
 export type HealthResponse = components['schemas']['HealthResponse'];
 export type HILPreferencesResponse = components['schemas']['HILPreferencesResponse'];
-export type HILToolKeyLabel = components['schemas']['HILToolKeyLabel'];
 export type HistoryFeatureUsage = components['schemas']['HistoryFeatureUsage'];
 export type HistoryUsagePeriod = components['schemas']['HistoryUsagePeriod'];
 export type ImageData = components['schemas']['ImageData'];

@@ -10,6 +10,14 @@ stored conversation. A record that was already decided but never resumed keeps
 its decision and only has its recipe cleared: the HIL API has no transition out
 of a decided status, so it is reported for a person to follow up.
 
+A blocking handoff did not park a subagent: it paused the executor itself, and
+its approval record is an ordinary executor-level one (``resume_item`` set, no
+``subagent_resume``), whose tool is the subagent's own gated call. Nothing on
+the record names the ``handoff`` call the executor's checkpoint holds, so those
+cannot be told from an ordinary executor pause here. The script counts them and
+touches none: expiring them all would cancel approvals that resume fine. After
+the deploy, one that was a handoff has no ``handoff`` tool left to resume into.
+
 Dry run by default; ``--apply`` writes. Run before deploying the code that
 removed the handoff path.
 
@@ -41,6 +49,19 @@ async def parked_handoff_records() -> list[HILApprovalRecord]:
         sort=[("created_at", 1)],
     )
     return [HILApprovalRecord.model_validate(doc) async for doc in cursor]
+
+
+async def unclassified_executor_pauses() -> tuple[int, int]:
+    """Count the executor-level approvals not yet resumed, (pending, decided); a handoff pause is among them."""
+    collection = get_async_collection(hil_approval_repository.collection_name)
+    executor_paused = {"resumed_at": None, "resume_item": {"$ne": None}, "subagent_resume": None}
+    pending = await collection.count_documents(
+        {**executor_paused, "status": HILApprovalStatus.PENDING.value}
+    )
+    decided = await collection.count_documents(
+        {**executor_paused, "status": {"$ne": HILApprovalStatus.PENDING.value}}
+    )
+    return pending, decided
 
 
 async def expire(record: HILApprovalRecord) -> bool:
@@ -75,6 +96,13 @@ async def main(apply: bool) -> None:
             f"tool {record.tool_name}, conversation {record.conversation_id}): the action "
             "did not run; tell the user to ask again"
         )
+    pending_paused, decided_paused = await unclassified_executor_pauses()
+    print(
+        f"executor-level approvals not yet resumed: {pending_paused} pending and "
+        f"{decided_paused} decided; some may be blocking handoffs that cannot resume, but "
+        "the record cannot say which (the executor checkpoint holds the pending call). "
+        "They are not touched."
+    )
     if not apply:
         print("dry run: pass --apply to expire them")
         return

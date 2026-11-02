@@ -37,11 +37,9 @@ from app.services.integrations.user_integrations import (
     invalidate_user_integration_caches,
     remove_user_integration,
 )
-from app.services.mcp.mcp_client import (
-    DCRNotSupportedError,
-    DCRRegistrationError,
-    MCPClient,
-)
+from app.services.mcp.mcp_client import MCPClient
+from app.services.mcp.mcp_errors import DCRNotSupportedError, DCRRegistrationError
+from app.services.mcp.mcp_oauth import build_oauth_auth_url
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.mcp.mcp_tools_service import invalidate_mcp_tools_cache
 from app.utils.favicon_utils import fetch_favicon_from_url
@@ -448,7 +446,8 @@ async def _get_integration(integration_id: str) -> Integration | None:
 async def _build_oauth_result(mcp_client: MCPClient, integration_id: str) -> CustomConnectionResult:
     """Build OAuth redirect result."""
     try:
-        auth_url = await mcp_client.build_oauth_auth_url(
+        auth_url = await build_oauth_auth_url(
+            mcp_client.token_store,
             integration_id=integration_id,
             redirect_uri=get_mcp_oauth_redirect_uri(),
             redirect_path="/integrations",

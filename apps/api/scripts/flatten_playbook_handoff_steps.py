@@ -30,6 +30,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from motor.motor_asyncio import AsyncIOMotorCollection
 from pydantic import ValidationError
 
 from app.constants.execute import EXECUTE_TOOL_NAME
@@ -145,16 +146,7 @@ def _diff(before: object, after: object) -> str:
     return "\n".join(difflib.unified_diff(old, new, "before", "after", lineterm=""))
 
 
-async def main(apply: bool) -> None:
-    playbooks = get_async_collection(PLAYBOOKS_COLLECTION)
-    affected: list[tuple[RawDocument, Flattened]] = []
-    total = await playbooks.count_documents({})
-    async for doc in playbooks.find({"steps": {"$elemMatch": {HANDOFF_KEY: {"$type": "string"}}}}):
-        flattened = flatten_steps(doc["steps"])
-        _validated(doc, flattened.steps)
-        affected.append((doc, flattened))
-
-    print(f"playbooks: {total}, with handoff steps to flatten: {len(affected)}")
+def _report(affected: Sequence[tuple[RawDocument, Flattened]]) -> None:
     for doc, flattened in affected:
         if flattened.handoff_references:
             print(
@@ -173,12 +165,11 @@ async def main(apply: bool) -> None:
         print(f"sample, playbook {sample_doc.get('playbook_id')}:")
         print(_diff(sample_doc.get("steps"), sample.steps))
 
-    if not apply:
-        print("dry run: pass --apply to back up and write")
-        return
-    if not affected:
-        return
 
+async def _back_up_and_write(
+    playbooks: AsyncIOMotorCollection[RawDocument],
+    affected: Sequence[tuple[RawDocument, Flattened]],
+) -> None:
     backup_name = f"{BACKUP_COLLECTION_PREFIX}{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}"
     backup = get_async_collection(backup_name)
     inserted = await backup.insert_many([doc for doc, _ in affected])
@@ -204,6 +195,24 @@ async def main(apply: bool) -> None:
         else:
             print(f"  SKIPPED playbook {doc.get('playbook_id')}: rewritten since it was read")
     print(f"flattened {written} of {len(affected)} playbooks")
+
+
+async def main(apply: bool) -> None:
+    playbooks = get_async_collection(PLAYBOOKS_COLLECTION)
+    affected: list[tuple[RawDocument, Flattened]] = []
+    total = await playbooks.count_documents({})
+    async for doc in playbooks.find({"steps": {"$elemMatch": {HANDOFF_KEY: {"$type": "string"}}}}):
+        flattened = flatten_steps(doc["steps"])
+        _validated(doc, flattened.steps)
+        affected.append((doc, flattened))
+
+    print(f"playbooks: {total}, with handoff steps to flatten: {len(affected)}")
+    _report(affected)
+    if not apply:
+        print("dry run: pass --apply to back up and write")
+        return
+    if affected:
+        await _back_up_and_write(playbooks, affected)
 
 
 if __name__ == "__main__":

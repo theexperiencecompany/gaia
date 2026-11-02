@@ -823,8 +823,8 @@ docs come to you (injected) or via the `read_manual` tool.
   and slack, built-ins, platform MCP servers, and the user's own custom MCP
   connections) loads in-context via `activate_integration`, then you act
   yourself with its tools. Integration tools always run through `execute`.
-  When two of the user's MCP servers expose the same tool name, the later
-  one's copy is prefixed with its integration id (`posthog_search`,
+  When two of the user's MCP servers expose the same tool name, each one's
+  tool carries its integration's name as a prefix (`posthog_search`,
   `context7_search`). Integrations are never separate agents; for isolated or
   noisy work, `spawn_subagent`.
 

@@ -186,7 +186,6 @@ class ThreadSeed:
     user_id: str | None = None
     subagent_id: str | None = None
     retrieval_query: str | None = None
-    integration_id: str | None = None
     #: The comms turn's request this thread serves; see SectionContext.request_query.
     request_query: str | None = None
 
@@ -205,12 +204,11 @@ async def build_initial_messages(
     callers pass the unenhanced task when task carries hints that would pollute search.
     """
     configurable: AgentConfigurable = seed.configurable
-    tier, user_id, subagent_id, retrieval_query, integration_id = (
+    tier, user_id, subagent_id, retrieval_query = (
         seed.tier,
         seed.user_id,
         seed.subagent_id,
         seed.retrieval_query,
-        seed.integration_id,
     )
 
     log.set(agent_prep={"agent_name": agent_name, "task_length": len(task)})
@@ -223,7 +221,6 @@ async def build_initial_messages(
             request_query=seed.request_query,
             user_id=user_id,
             subagent_id=subagent_id,
-            integration_id=integration_id,
         ),
     )
     assembled, note = await asyncio.gather(
@@ -253,7 +250,7 @@ async def build_initial_messages(
 async def _executor_presence_note(
     ctx: SectionContext, configurable: AgentConfigurable
 ) -> HumanMessage | None:
-    """Return the executor's surface-change note; handoff and spawned subagents get none."""
+    """Return the executor's surface-change note; every other worker tier gets none."""
     if ctx.tier is not AgentTier.EXECUTOR:
         return None
     return await presence_note_message(
