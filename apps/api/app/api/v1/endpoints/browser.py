@@ -5,7 +5,7 @@ Continue/Cancel buttons POST here; the decision is written to Redis, unblocking
 the browser tool that is polling for it (the tool may run in a different worker
 process — Redis is the bridge).
 
-Live-view token: the live view itself is served at the root ``/live/{id}`` route
+Live-view token: the live view itself is served at ``/browser/live/{id}``
 (``endpoints/browser_live_view.py``). The chat card fetches a short-lived ``?t=``
 takeover token here and opens the live-view socket and full-page link with it.
 """
@@ -23,6 +23,7 @@ from app.constants.browser import (
     BROWSER_HANDOFF_GONE_DETAIL,
     BROWSER_HANDOFF_NOT_OWNED_DETAIL,
     BROWSER_IMPORT_TOKEN_TTL_SECONDS,
+    BROWSER_ROUTE_PREFIX,
 )
 from app.constants.log_tags import LogTag
 from app.schemas.browser import (
@@ -48,7 +49,7 @@ from shared.py.analytics import UserId
 from shared.py.analytics.catalog.browser import BrowserImportTokenMinted, BrowserLoginsImported
 from shared.py.wide_events import log
 
-router = APIRouter(prefix="/browser", tags=["Browser"])
+router = APIRouter(prefix=BROWSER_ROUTE_PREFIX, tags=["Browser"])
 
 
 @router.post("/handoffs/{handoff_id}/decision")

@@ -20,10 +20,11 @@ class IdKind:
 #: A Mongo ObjectId in its 24-hex string form.
 ObjectIdStr = Annotated[str, StringConstraints(pattern=r"^[0-9a-fA-F]{24}$"), IdKind("object_id")]
 
-#: A machine identifier: a uuid, a slug, a tool name, a flag key. No whitespace, no "@".
+#: A machine identifier: a uuid, a slug, a tool name, a flag key, an OpenRouter alias
+#: ("~vendor/model-latest"). No whitespace, no "@".
 Identifier = Annotated[
     str,
-    StringConstraints(pattern=r"^[A-Za-z0-9_.:/#+\-]{1,256}$"),
+    StringConstraints(pattern=r"^[A-Za-z0-9_.:/#+~\-]{1,256}$"),
     IdKind("identifier"),
 ]
 

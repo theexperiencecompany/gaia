@@ -101,14 +101,14 @@
             "type": "string"
           },
           "conversation_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Conversation Id",
             "type": "string"
           },
           "task_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -121,7 +121,7 @@
           "trigger_type": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -134,7 +134,7 @@
           "source": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -223,14 +223,14 @@
             "type": "string"
           },
           "conversation_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Conversation Id",
             "type": "string"
           },
           "task_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -243,7 +243,7 @@
           "trigger_type": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -256,7 +256,7 @@
           "source": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -315,7 +315,7 @@
             "title": "Executor Active Ms"
           },
           "reason": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Reason",
             "type": "string"
           }
@@ -350,14 +350,14 @@
             "type": "string"
           },
           "conversation_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Conversation Id",
             "type": "string"
           },
           "task_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -370,7 +370,7 @@
           "trigger_type": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -383,7 +383,7 @@
           "source": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -414,12 +414,12 @@
         "description": "One llm_calls ledger row: every priced model call, graph or one-shot, success or error.",
         "properties": {
           "feature": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Feature",
             "type": "string"
           },
           "agent_name": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Agent Name",
             "type": "string"
           },
@@ -432,14 +432,14 @@
             "type": "boolean"
           },
           "model": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Model",
             "type": "string"
           },
           "model_served": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -452,7 +452,7 @@
           "provider": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -499,7 +499,7 @@
           "error_family": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -512,7 +512,7 @@
           "finish_reason": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -537,7 +537,7 @@
           "channel": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -550,7 +550,7 @@
           "generation_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -563,7 +563,7 @@
           "conversation_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -576,7 +576,7 @@
           "workflow_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -587,7 +587,7 @@
             "title": "Workflow Id"
           },
           "llm_call_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Llm Call Id",
             "type": "string"
           }
@@ -673,7 +673,7 @@
           "error_code": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -772,7 +772,7 @@
         "description": "The user opened a blog post.",
         "properties": {
           "slug": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Slug",
             "type": "string"
           }
@@ -903,7 +903,7 @@
         "description": "A bot slash command finished, successfully or not.",
         "properties": {
           "command": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Command",
             "type": "string"
           },
@@ -918,7 +918,7 @@
           "error_type": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -949,14 +949,14 @@
         "description": "A bot command or chat stream failed.",
         "properties": {
           "context": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Context",
             "type": "string"
           },
           "error_type": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -1065,7 +1065,7 @@
         "description": "A platform user sent the bot an attachment; outcome says whether it was ingested.",
         "properties": {
           "media_kind": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Media Kind",
             "type": "string"
           },
@@ -1106,7 +1106,7 @@
           "command": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -1189,7 +1189,7 @@
           "reason": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -1220,7 +1220,7 @@
         "description": "A bot user started a new conversation, archiving the current one.",
         "properties": {
           "platform": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Platform",
             "type": "string"
           }
@@ -1245,12 +1245,12 @@
         "description": "The agent moved an Obscura run to Chrome: the sites where the fast engine falls short.",
         "properties": {
           "reason": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Reason",
             "type": "string"
           },
           "engine": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Engine",
             "type": "string"
           },
@@ -1288,7 +1288,7 @@
         "description": "A human resolved a browser handoff: continued it or cancelled the run.",
         "properties": {
           "decision": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Decision",
             "type": "string"
           },
@@ -1345,7 +1345,7 @@
           "source_browser": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -1376,7 +1376,7 @@
         "description": "A browser run finished; captured at the end, never on start, so attempts never count as successes.",
         "properties": {
           "status": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Status",
             "type": "string"
           },
@@ -1397,7 +1397,7 @@
             "type": "integer"
           },
           "source": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Source",
             "type": "string"
           },
@@ -1472,7 +1472,7 @@
           "recurrence_frequency": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -1666,7 +1666,7 @@
         "description": "Comms resolved a background executor update as a message, a one-emoji react, or silence.",
         "properties": {
           "outcome": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Outcome",
             "type": "string"
           },
@@ -1764,7 +1764,7 @@
           "system_purpose": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -1797,7 +1797,7 @@
           "conversation_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -1839,7 +1839,7 @@
         "description": "A conversation's description changed, by the user or the auto-title task.",
         "properties": {
           "conversation_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Conversation Id",
             "type": "string"
           }
@@ -1868,7 +1868,7 @@
             "type": "boolean"
           },
           "conversation_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Conversation Id",
             "type": "string"
           }
@@ -1933,12 +1933,12 @@
             "type": "integer"
           },
           "resource_type": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Resource Type",
             "type": "string"
           },
           "content_type": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Content Type",
             "type": "string"
           }
@@ -1963,7 +1963,7 @@
         "description": "A connect button on the new-chat integration grid was clicked.",
         "properties": {
           "integration_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Integration Id",
             "type": "string"
           },
@@ -1993,12 +1993,12 @@
         "description": "A chat turn the user stopped before it finished.",
         "properties": {
           "stream_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Stream Id",
             "type": "string"
           },
           "conversation_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Conversation Id",
             "type": "string"
           },
@@ -2057,7 +2057,7 @@
           "source": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -2095,12 +2095,12 @@
         "description": "A chat turn reached its terminal state; executor-leg timings ride on agent:run_completed.",
         "properties": {
           "stream_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Stream Id",
             "type": "string"
           },
           "conversation_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Conversation Id",
             "type": "string"
           },
@@ -2159,7 +2159,7 @@
           "source": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -2215,7 +2215,7 @@
         "description": "A bot turn stopped at a gate; without it a refusal is indistinguishable from silence.",
         "properties": {
           "platform": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Platform",
             "type": "string"
           },
@@ -2245,7 +2245,7 @@
         "description": "A chat turn passed every gate and was accepted, from any surface.",
         "properties": {
           "source": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Source",
             "type": "string"
           },
@@ -2254,7 +2254,7 @@
             "type": "boolean"
           },
           "stream_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Stream Id",
             "type": "string"
           },
@@ -2313,7 +2313,7 @@
           "tool_name": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -2326,7 +2326,7 @@
           "tool_category": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -2351,7 +2351,7 @@
           "workflow_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -2424,12 +2424,12 @@
         "description": "A category tab was switched in the slash-command dropdown.",
         "properties": {
           "category": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Category",
             "type": "string"
           },
           "previous_category": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Previous Category",
             "type": "string"
           }
@@ -2454,12 +2454,12 @@
         "description": "A tool was picked from the slash-command dropdown; the typed query is never sent.",
         "properties": {
           "tool_name": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Tool Name",
             "type": "string"
           },
           "tool_category": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Tool Category",
             "type": "string"
           },
@@ -2551,7 +2551,7 @@
           "conversation_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -2717,12 +2717,12 @@
         "description": "An authenticated host paired itself as a device.",
         "properties": {
           "client": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Client",
             "type": "string"
           },
           "platform": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Platform",
             "type": "string"
           }
@@ -3035,7 +3035,7 @@
         "description": "A user opened an email in the mail view.",
         "properties": {
           "mail_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Mail Id",
             "type": "string"
           }
@@ -3246,7 +3246,7 @@
           "digest": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -3297,7 +3297,7 @@
           "error_digest": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -3310,7 +3310,7 @@
           "error_name": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -3378,7 +3378,7 @@
         "description": "A user switched a user-facing flag in Settings.",
         "properties": {
           "flag": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Flag",
             "type": "string"
           },
@@ -3407,7 +3407,7 @@
         "description": "A flag resolved on a path PostHog never saw; the complement of $feature_flag_called.",
         "properties": {
           "flag": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Flag",
             "type": "string"
           },
@@ -3503,7 +3503,7 @@
         "description": "A checklist row was clicked; completion is server-derived, but the click never reaches it.",
         "properties": {
           "step": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Step",
             "type": "string"
           },
@@ -3539,7 +3539,7 @@
           "discount_code": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -3569,7 +3569,7 @@
         "description": "The user clicked the founder letter's discount offer.",
         "properties": {
           "discount_code": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Discount Code",
             "type": "string"
           },
@@ -3600,7 +3600,7 @@
           "discount_code": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -3654,7 +3654,7 @@
           "discount_code": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -3691,7 +3691,7 @@
           "discount_code": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -3721,12 +3721,12 @@
         "description": "A ledger approval card was registered, held for the run's drain or streamed.",
         "properties": {
           "approval_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Approval Id",
             "type": "string"
           },
           "tool_name": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Tool Name",
             "type": "string"
           },
@@ -3769,7 +3769,7 @@
             "type": "string"
           },
           "tool_name": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Tool Name",
             "type": "string"
           },
@@ -3781,7 +3781,7 @@
           "approval_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -3836,7 +3836,7 @@
         "description": "A parked todo or workflow run was re-queued after its approval was granted.",
         "properties": {
           "approval_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Approval Id",
             "type": "string"
           },
@@ -3866,7 +3866,7 @@
         "description": "A pending ledger approval was withdrawn by its proposer, the executor, or a cancelled run.",
         "properties": {
           "approval_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Approval Id",
             "type": "string"
           },
@@ -3875,7 +3875,7 @@
             "type": "integer"
           },
           "revoker": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Revoker",
             "type": "string"
           }
@@ -4009,7 +4009,7 @@
             "type": "string"
           },
           "updated_by": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Updated By",
             "type": "string"
           },
@@ -4038,7 +4038,7 @@
         "description": "An account was authorized on a multi-account integration, or replaced one with its identity.",
         "properties": {
           "integration_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Integration Id",
             "type": "string"
           },
@@ -4080,7 +4080,7 @@
         "description": "One account of an integration was disconnected; 0 left means the integration went too.",
         "properties": {
           "integration_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Integration Id",
             "type": "string"
           },
@@ -4109,7 +4109,7 @@
         "description": "An account of an integration was given a name, or had it cleared.",
         "properties": {
           "integration_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Integration Id",
             "type": "string"
           },
@@ -4138,14 +4138,14 @@
         "description": "A connect flow was started and the user sent off to authorize it.",
         "properties": {
           "integration_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Integration Id",
             "type": "string"
           },
           "auth_type": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -4158,7 +4158,7 @@
           "managed_by": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -4202,7 +4202,7 @@
         "description": "An integration or platform account finished connecting.",
         "properties": {
           "integration_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Integration Id",
             "type": "string"
           },
@@ -4235,7 +4235,7 @@
           "managed_by": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -4261,7 +4261,7 @@
           "provider": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -4316,7 +4316,7 @@
         "description": "A user deleted a custom integration.",
         "properties": {
           "integration_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Integration Id",
             "type": "string"
           }
@@ -4341,7 +4341,7 @@
         "description": "A user published a custom integration to the marketplace.",
         "properties": {
           "integration_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Integration Id",
             "type": "string"
           }
@@ -4366,7 +4366,7 @@
         "description": "A user unpublished a custom integration.",
         "properties": {
           "integration_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Integration Id",
             "type": "string"
           }
@@ -4391,7 +4391,7 @@
         "description": "A user edited a custom integration.",
         "properties": {
           "integration_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Integration Id",
             "type": "string"
           }
@@ -4416,7 +4416,7 @@
         "description": "An integration or platform account was disconnected.",
         "properties": {
           "integration_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Integration Id",
             "type": "string"
           }
@@ -4441,7 +4441,7 @@
         "description": "A connect or disconnect request failed in the browser.",
         "properties": {
           "integration": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Integration",
             "type": "string"
           },
@@ -4460,7 +4460,7 @@
           "error_code": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -4523,7 +4523,7 @@
         "description": "Another account became an integration's primary, the one triggers and defaults use.",
         "properties": {
           "integration_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Integration Id",
             "type": "string"
           },
@@ -4552,7 +4552,7 @@
         "description": "A self-host admin removed a Composio toolkit they had enabled.",
         "properties": {
           "toolkit": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Toolkit",
             "type": "string"
           }
@@ -4577,7 +4577,7 @@
         "description": "A self-host admin enabled a Composio toolkit; GAIA created its auth config.",
         "properties": {
           "toolkit": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Toolkit",
             "type": "string"
           },
@@ -4708,7 +4708,7 @@
         "description": "A user deleted one memory.",
         "properties": {
           "memory_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Memory Id",
             "type": "string"
           }
@@ -5065,7 +5065,7 @@
         "description": "A user applied one action to several notifications at once.",
         "properties": {
           "action": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Action",
             "type": "string"
           },
@@ -5140,7 +5140,7 @@
         "description": "A user clicked a notification in the notification center popover.",
         "properties": {
           "notification_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Notification Id",
             "type": "string"
           },
@@ -5170,7 +5170,7 @@
         "description": "A lifecycle nurture email went out.",
         "properties": {
           "step": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Step",
             "type": "string"
           },
@@ -5225,7 +5225,7 @@
         "properties": {
           "needs": {
             "items": {
-              "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+              "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
               "type": "string"
             },
             "title": "Needs",
@@ -5256,7 +5256,7 @@
         "description": "A user reached an onboarding phase.",
         "properties": {
           "phase": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Phase",
             "type": "string"
           }
@@ -5299,7 +5299,7 @@
         "description": "A user wiped the wizard from the restart modal; only the browser knows the reset came from there.",
         "properties": {
           "from_stage": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "From Stage",
             "type": "string"
           }
@@ -5354,7 +5354,7 @@
           },
           "platforms": {
             "items": {
-              "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+              "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
               "type": "string"
             },
             "title": "Platforms",
@@ -5466,7 +5466,7 @@
           "source": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -5479,7 +5479,7 @@
           "billing_cycle": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -5492,7 +5492,7 @@
           "plan_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -5523,7 +5523,7 @@
         "description": "Dodo reported a failed payment for a GAIA user.",
         "properties": {
           "payment_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Payment Id",
             "type": "string"
           },
@@ -5602,7 +5602,7 @@
         "description": "Dodo reported a successful payment for a GAIA user.",
         "properties": {
           "payment_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Payment Id",
             "type": "string"
           },
@@ -5687,7 +5687,7 @@
                 "type": "string"
               },
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               }
             ],
@@ -5773,14 +5773,14 @@
         "description": "The user opened a pinned message from the pins page.",
         "properties": {
           "conversation_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Conversation Id",
             "type": "string"
           },
           "message_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -5811,7 +5811,7 @@
         "description": "A user copied their public profile card link.",
         "properties": {
           "holo_card_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Holo Card Id",
             "type": "string"
           }
@@ -5926,19 +5926,19 @@
         "description": "A user ran into a tiered rate limit.",
         "properties": {
           "feature": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Feature",
             "type": "string"
           },
           "plan": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Plan",
             "type": "string"
           },
           "origin": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -5969,7 +5969,7 @@
         "description": "The user opened a Reddit post from a chat tool card.",
         "properties": {
           "subreddit": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Subreddit",
             "type": "string"
           },
@@ -6021,7 +6021,7 @@
             "type": "string"
           },
           "agent": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Agent",
             "type": "string"
           },
@@ -6229,14 +6229,14 @@
             "type": "string"
           },
           "conversation_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Conversation Id",
             "type": "string"
           },
           "message_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -6285,7 +6285,7 @@
         "description": "A user reordered which platform GAIA texts first; platform names and count only.",
         "properties": {
           "first": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "First",
             "type": "string"
           },
@@ -6321,7 +6321,7 @@
           "app_icon_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -6357,7 +6357,7 @@
           },
           "channels_enabled": {
             "items": {
-              "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+              "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
               "type": "string"
             },
             "title": "Channels Enabled",
@@ -6365,7 +6365,7 @@
           },
           "channels_disabled": {
             "items": {
-              "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+              "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
               "type": "string"
             },
             "title": "Channels Disabled",
@@ -6410,7 +6410,7 @@
             "anyOf": [
               {
                 "items": {
-                  "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                  "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                   "type": "string"
                 },
                 "type": "array"
@@ -6425,7 +6425,7 @@
           "voice_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -6450,7 +6450,7 @@
           "mode": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -6463,7 +6463,7 @@
           "tool_name": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -6542,7 +6542,7 @@
         "description": "A skill was installed from GitHub, written inline, or learned by GAIA's agent.",
         "properties": {
           "target": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Target",
             "type": "string"
           },
@@ -6552,14 +6552,14 @@
             "type": "string"
           },
           "author": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Author",
             "type": "string"
           },
           "skill_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -6608,12 +6608,12 @@
         "description": "A user uninstalled a skill.",
         "properties": {
           "skill_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Skill Id",
             "type": "string"
           },
           "target": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Target",
             "type": "string"
           }
@@ -6638,12 +6638,12 @@
         "description": "A skill's instructions were edited, by the user or by GAIA's agent.",
         "properties": {
           "target": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Target",
             "type": "string"
           },
           "author": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Author",
             "type": "string"
           }
@@ -6668,7 +6668,7 @@
         "description": "A subscription became active.",
         "properties": {
           "subscription_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Subscription Id",
             "type": "string"
           },
@@ -6770,17 +6770,17 @@
         "description": "A subscription was cancelled, now or at the next billing date.",
         "properties": {
           "subscription_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Subscription Id",
             "type": "string"
           },
           "product_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Product Id",
             "type": "string"
           },
           "billing_interval": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Billing Interval",
             "type": "string"
           }
@@ -6805,7 +6805,7 @@
         "description": "A subscription expired and the user fell back to the free plan.",
         "properties": {
           "subscription_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Subscription Id",
             "type": "string"
           }
@@ -6860,7 +6860,7 @@
         "description": "A subscription's renewal failed or Dodo put it on hold, so the user lost Pro.",
         "properties": {
           "subscription_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Subscription Id",
             "type": "string"
           },
@@ -6925,7 +6925,7 @@
           "plan_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -6938,7 +6938,7 @@
           "source": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -6969,7 +6969,7 @@
         "description": "A subscription renewed for another billing period.",
         "properties": {
           "subscription_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Subscription Id",
             "type": "string"
           },
@@ -7024,7 +7024,7 @@
         "description": "A user submitted a support request; lengths and counts only, never the text.",
         "properties": {
           "request_type": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Request Type",
             "type": "string"
           },
@@ -7109,7 +7109,7 @@
         "description": "A user created a todo.",
         "properties": {
           "priority": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Priority",
             "type": "string"
           },
@@ -7228,7 +7228,7 @@
         "description": "A tracked todo's run result reached, or failed to reach, the user; destination is where it was routed.",
         "properties": {
           "outcome": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Outcome",
             "type": "string"
           },
@@ -7237,7 +7237,7 @@
             "type": "boolean"
           },
           "trigger_type": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Trigger Type",
             "type": "string"
           },
@@ -7248,7 +7248,7 @@
           "platform": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -7310,7 +7310,7 @@
         "description": "A trigger subscription could not be registered on a tracked todo.",
         "properties": {
           "trigger_name": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Trigger Name",
             "type": "string"
           },
@@ -7347,17 +7347,17 @@
         "description": "A trigger subscription was stored on a tracked todo.",
         "properties": {
           "trigger_name": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Trigger Name",
             "type": "string"
           },
           "action": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Action",
             "type": "string"
           },
           "resolution": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Resolution",
             "type": "string"
           },
@@ -7428,7 +7428,7 @@
           "priority": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -7506,17 +7506,17 @@
         "description": "A subscribed trigger passed its conditions and cooldown and ran its action.",
         "properties": {
           "trigger_name": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Trigger Name",
             "type": "string"
           },
           "action": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Action",
             "type": "string"
           },
           "resolution": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Resolution",
             "type": "string"
           },
@@ -7583,7 +7583,7 @@
             "anyOf": [
               {
                 "items": {
-                  "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                  "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                   "type": "string"
                 },
                 "type": "array"
@@ -7598,7 +7598,7 @@
           "priority": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -7711,12 +7711,12 @@
         "description": "A proxied dispatch failed before the tool ran; against tool:used{via=execute} it is retries per success.",
         "properties": {
           "tool_name": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Tool Name",
             "type": "string"
           },
           "reason": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Reason",
             "type": "string"
           }
@@ -7741,7 +7741,7 @@
         "description": "A tool ran; via splits bound calls from proxied execute calls, source marks MCP-app calls.",
         "properties": {
           "tool_name": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Tool Name",
             "type": "string"
           },
@@ -7852,7 +7852,7 @@
         "description": "A user fetched their usage summary.",
         "properties": {
           "plan_type": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Plan Type",
             "type": "string"
           }
@@ -7877,7 +7877,7 @@
         "description": "The user clicked Add to your GAIA on a use-case page.",
         "properties": {
           "use_case_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Use Case Id",
             "type": "string"
           }
@@ -7940,7 +7940,7 @@
           "login_method": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -8019,7 +8019,7 @@
           "signup_method": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -8063,7 +8063,7 @@
           "conversation_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -8095,7 +8095,7 @@
           "conversation_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -8171,7 +8171,7 @@
         "description": "The voice worker joined a room minted for a known GAIA user.",
         "properties": {
           "room": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Room",
             "type": "string"
           }
@@ -8198,7 +8198,7 @@
           "conversation_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -8253,7 +8253,7 @@
           "releaseId": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -8296,7 +8296,7 @@
         "description": "The user dismissed the what's-new card until the next release.",
         "properties": {
           "releaseId": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Releaseid",
             "type": "string"
           }
@@ -8345,7 +8345,7 @@
         "description": "The user clicked through to the full release notes.",
         "properties": {
           "releaseId": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Releaseid",
             "type": "string"
           }
@@ -8395,7 +8395,7 @@
         "description": "The user viewed one release in the what's-new modal.",
         "properties": {
           "releaseId": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Releaseid",
             "type": "string"
           },
@@ -8444,7 +8444,7 @@
           "workflow_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -8457,7 +8457,7 @@
           "trigger_type": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -8573,7 +8573,7 @@
           "workflow_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -8586,7 +8586,7 @@
           "trigger_type": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -8636,7 +8636,7 @@
           "workflow_id": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -8685,7 +8685,7 @@
           "platform": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {
@@ -8780,12 +8780,12 @@
         "description": "A user opened a workflow card's use-case page; client-side routing the server never sees.",
         "properties": {
           "slug": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Slug",
             "type": "string"
           },
           "variant": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Variant",
             "type": "string"
           }

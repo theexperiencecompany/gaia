@@ -20,9 +20,7 @@ pytestmark = pytest.mark.unit
 
 @pytest.fixture(autouse=True)
 def link_base(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        "app.services.browser.links.settings.BROWSER_LIVE_VIEW_BASE_URL", "https://browser.test"
-    )
+    monkeypatch.setattr("app.services.browser.links.settings.HOST", "https://browser.test")
 
 
 def _code(url: str) -> str:
@@ -35,7 +33,7 @@ async def test_a_stored_frame_is_read_back_by_its_runs_code_and_index(
     url = await shot_store.store_step_screenshot(b"\xff\xd8jpeg-one", "sess-1", 2)
 
     assert url is not None
-    assert url.startswith("https://browser.test/shots/")
+    assert url.startswith("https://browser.test/api/v1/browser/shots/")
     assert url.endswith("/2.jpg")
     assert "sess-1" not in url
     assert await shot_store.read_step_screenshot(_code(url), 2) == b"\xff\xd8jpeg-one"

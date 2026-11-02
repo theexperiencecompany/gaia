@@ -268,7 +268,6 @@ class BrowserStack:
             "BROWSER_HOST_KEY": self.host_key,
             "BROWSER_FALLBACK_HOST_URL": self.chrome.url,
             "HOST": self.api_url,
-            "BROWSER_LIVE_VIEW_BASE_URL": self.api_url,
             "GAIA_BOT_API_KEY": _BOT_KEY,
             "BOT_SESSION_TOKEN_SECRET": _BOT_SESSION_SECRET,
             "BROWSER_STATE_ENCRYPTION_KEY": self.state_key,
@@ -500,11 +499,13 @@ class BrowserStack:
     async def decide_on_live_page(self, live_url: str, decision: str) -> int:
         """Press the live view page's Done ("continue") or Cancel, as its buttons do.
 
-        The link opens the web app's page; its buttons answer on this API's /live/{code}/decision.
+        The link opens the web app's page; its buttons answer on this API's /api/v1/browser/live/{code}/decision.
         """
         code = urlsplit(live_url).path.rstrip("/").rsplit("/", 1)[-1]
         async with httpx.AsyncClient(base_url=self.api_url, timeout=30) as client:
-            response = await client.post(f"/live/{code}/decision", json={"decision": decision})
+            response = await client.post(
+                f"/api/v1/browser/live/{code}/decision", json={"decision": decision}
+            )
         return response.status_code
 
 

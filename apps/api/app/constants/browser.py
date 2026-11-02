@@ -168,7 +168,10 @@ BROWSER_SESSION_LEASE_SECONDS = 90.0
 # Three renewals per lease, so one slow or lost renewal never costs a live run its browser.
 BROWSER_SESSION_LEASE_RENEW_SECONDS = BROWSER_SESSION_LEASE_SECONDS / 3
 
-# A short capability code for the bot's live-view link (browser.heygaia.io/{code}):
+#: Where the browser routers sit under API_V1_PREFIX: the authenticated one and the capability links.
+BROWSER_ROUTE_PREFIX = "/browser"
+
+# A short capability code for the bot's live-view link ({FRONTEND_URL}/live/{code}):
 # the code IS the secret and maps to the session + owner in Redis, so the link
 # carries no 32-char session id and no long ?t= token. One per handoff, revoked on settle.
 BROWSER_LIVE_CODE_KEY_PREFIX = "browser:livecode:"
@@ -177,7 +180,7 @@ BROWSER_LIVE_CODE_HANDOFF_PREFIX = "browser:livecode:handoff:"
 BROWSER_LIVE_CODE_REVOKED_PREFIX = "browser:livecode:revoked:"
 
 # Replay: a short code maps to a finished session's screenshot set, so the recap
-# link (browser.heygaia.io/replays/{code}) plays every step back as a slideshow.
+# link ({HOST}/api/v1/browser/replays/{code}) plays every step back as a slideshow.
 # Longer-lived than the live code — a recap should still open days later.
 BROWSER_REPLAY_CODE_KEY_PREFIX = "browser:replay:"
 BROWSER_REPLAY_CODE_TTL_SECONDS = 7 * 24 * 3600

@@ -1,4 +1,7 @@
-"""HTTP header names and statuses the API sets by hand."""
+"""HTTP header names, statuses and paths the API sets by hand."""
+
+#: The prefix every client-facing route sits under: the one the deployed proxies forward.
+API_V1_PREFIX = "/api/v1"
 
 #: Every surface that refuses a request with a retry hint — the rate limiter,
 #: the request timeout, the paywall gate's 503 and the embedding sidecar —

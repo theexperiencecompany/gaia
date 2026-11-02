@@ -1,8 +1,8 @@
-"""Root-mounted authenticated browser live view.
+"""The browser links a user is handed: the live view, its handoff decision, recaps and step frames.
 
-Root-mounted (no /api/v1 prefix), so the recap and screenshot links can sit on a
-friendly public vhost that reverse-proxies to THIS api service. The browser host
-is never exposed directly.
+Under /api/v1/browser like every client-facing route, the one prefix the deployed
+proxies forward (with WebSocket upgrades). The browser host is never exposed
+directly; each route authenticates itself with the capability in its own URL.
 
 WS /live/{id} proxies frames and input between a viewer (the chat card, or the
 web app's full-page live view a bot link opens), dialled on the API's own
@@ -32,6 +32,7 @@ from app.browser_host.pumps import pump_until_first_close
 from app.constants.browser import (
     BROWSER_HANDOFF_GONE_DETAIL,
     BROWSER_LIVE_VIEW_NOT_WAITING_DETAIL,
+    BROWSER_ROUTE_PREFIX,
 )
 from app.constants.log_tags import LogTag
 from app.schemas.browser import HandoffDecisionRequest, HandoffDecisionResponse
@@ -47,7 +48,7 @@ from app.services.browser.takeover_token import (
 )
 from shared.py.wide_events import log
 
-router = APIRouter(tags=["Browser"])
+router = APIRouter(prefix=BROWSER_ROUTE_PREFIX, tags=["Browser"])
 
 # WebSocket close code for "session unknown or has no live stream" (app 4xxx range).
 _WS_SESSION_GONE = 4404

@@ -315,10 +315,6 @@ class Settings(BrowserHostSettings):
     # When false, a session's login is never persisted or restored (per-deployment
     # opt-out of "log in once, reuse next time").
     BROWSER_PERSIST_LOGINS: bool = True
-    # Public base URL for the recap and step-screenshot links a user is sent, e.g.
-    # https://browser.heygaia.io where a vhost reverse-proxies to this api service.
-    # When unset, those links fall back to HOST.
-    BROWSER_LIVE_VIEW_BASE_URL: str | None = None
 
     # Custom OpenRouter/OpenAI-compatible endpoint for cheap bulk dev/test usage.
     # All three must be set; the "custom" provider is registered exclusively in

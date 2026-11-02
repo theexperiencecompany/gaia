@@ -65,9 +65,7 @@ def redis_backend(
     monkeypatch: pytest.MonkeyPatch, fake_redis: fakeredis.aioredis.FakeRedis
 ) -> fakeredis.aioredis.FakeRedis:
     """Give the Redis backend a per-test store and a link base."""
-    monkeypatch.setattr(
-        "app.services.browser.links.settings.BROWSER_LIVE_VIEW_BASE_URL", "https://browser.test"
-    )
+    monkeypatch.setattr("app.services.browser.links.settings.HOST", "https://browser.test")
     return fake_redis
 
 
@@ -167,7 +165,7 @@ class TestPublishStepScreenshot:
         result = await shots.publish_step_screenshot(b"jpegbytes", "conv1", 1)
 
         assert result is not None
-        assert result.startswith("https://browser.test/shots/")
+        assert result.startswith("https://browser.test/api/v1/browser/shots/")
         assert result.endswith("/1.jpg")
         assert await _read_back(result, 1) == b"jpegbytes"
 
