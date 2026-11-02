@@ -1,9 +1,10 @@
-"""Playbook tools: write, read, decline, and disable a workflow's frozen sequence.
+"""Playbook tools: read the run record, then write, read, decline, or disable a workflow's playbook.
 
 A workflow keeps at most one playbook. There is no edit path and no version
 history, because the agent revises by writing the whole document again, so a
 write always replaces what was there and a rejected write leaves the previous
-playbook untouched.
+playbook untouched. A write picks its steps from the run record by number, so
+every step is a call this run really made, as it made it.
 """
 
 from collections.abc import Mapping
@@ -11,42 +12,44 @@ from datetime import UTC, datetime
 import json
 from typing import Annotated, Any
 
-from langchain_core.messages import ToolMessage
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
-from pydantic import BeforeValidator, ValidationError
+from pydantic import BeforeValidator, TypeAdapter, ValidationError
 from pydantic.v1 import ValidationError as LegacyValidationError
 
-from app.agents.core.background.executor_capture import drain_executor_tool_data
 from app.agents.tools.execute.unwrap import unwrap_execute_call
+from app.agents.tools.run_record import read_run_record as read_recorded_calls
 from app.agents.tools.todo_tools import TODO_TOOL_NAMES
-from app.constants.agents import PLAYBOOK_REPLAYED_CALLS_KEY
+from app.constants.agents import PLAYBOOK_REPLAYED_CALLS_KEY, PLAYBOOK_UNPICKABLE_TOOLS
 from app.constants.log_tags import LogTag
 from app.db.repositories.playbooks import playbook_repository
 from app.db.repositories.workflows import workflow_repository
-from app.models.agent_models import get_user_id
+from app.models.agent_models import agent_configurable, get_user_id
 from app.models.playbook_models import (
     BLOCKED_DECLINE_KINDS,
     INTEGRATION_DECLINE_KINDS,
     DeclineKind,
     PlaybookDocument,
     PlaybookRunStatus,
-    PlaybookStepInput,
     is_work_call,
-    playbook_body_from_input,
 )
-from app.models.workflow_execution_models import RecordedCall, parse_result
+from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import WorkflowDocument, WorkflowUpdate
 from app.services.workflow.playbook.lifecycle import HEAL_STATUSES
 from app.services.workflow.playbook.parser import (
-    RecordedResult,
-    RunResults,
+    PlaybookIssue,
     dump_playbook,
     validate_playbook,
 )
+from app.services.workflow.playbook.record import (
+    PlaybookPick,
+    RecordEntry,
+    build_playbook,
+    number_record,
+    render_record,
+)
 from app.services.workflow.playbook.workflow_hash import workflow_hash
-from app.services.workflow.run_trace import build_trace
 from app.utils.json_args import decode_json_container
 from app.utils.workflow_utils import (
     WorkflowConfigError,
@@ -59,7 +62,7 @@ from shared.py.wide_events import log
 
 
 def _render_location(location: tuple[int | str, ...]) -> str:
-    """One pydantic error location as the author wrote it: ``steps[0].tool``."""
+    """One pydantic error location as the author wrote it: ``steps[0].call``."""
     rendered = ""
     for part in location:
         if isinstance(part, int):
@@ -91,30 +94,6 @@ def _explain_validation_error(error: ValidationError | LegacyValidationError) ->
     )
 
 
-def _answered_calls(state: Mapping[str, Any] | None) -> list[tuple[str, dict[str, Any], object]]:
-    """Every tool call in the run's messages that has an answer: name, args, parsed answer.
-
-    Failed calls are kept, unlike the handoff record's successful-only lines
-    (``call_record.py``): a step frozen on a call that errored is precisely one
-    of the things the validator has to catch. A call with no answer is one still
-    in flight (this very tool call, in every real run) and is left out.
-    """
-    if state is None:
-        return []
-    messages = state.get("messages")
-    if not isinstance(messages, list):
-        return []
-    answers = _answers_by_call_id(messages)
-    calls: list[tuple[str, dict[str, Any], object]] = []
-    for message in messages:
-        for call in getattr(message, "tool_calls", None) or []:
-            call_id = call.get("id")
-            name = str(call.get("name") or "")
-            if name and call_id in answers:
-                calls.append((name, dict(call.get("args") or {}), answers[call_id]))
-    return calls
-
-
 def _handoff_targets(state: Mapping[str, Any] | None) -> list[str]:
     """The subagents this run handed off to, in order, each once.
 
@@ -139,9 +118,9 @@ def _handoff_targets(state: Mapping[str, Any] | None) -> list[str]:
 def _invoked_call_names(state: Mapping[str, Any] | None) -> list[str]:
     """Every tool the run has called so far, answered or still in flight, seen through execute.
 
-    The quiet-day check reads this rather than the answered record: a model
-    can issue ``create_todo`` and the decline in one parallel batch, and the
-    create has no answer yet when the decline is judged.
+    The quiet-day check reads this rather than the run record: a model can
+    issue ``create_todo`` and the decline in one parallel batch, and the create
+    has not finished (so is not recorded) when the decline is judged.
     """
     if state is None:
         return []
@@ -156,98 +135,59 @@ def _invoked_call_names(state: Mapping[str, Any] | None) -> list[str]:
     ]
 
 
-def _answers_by_call_id(messages: list[object]) -> dict[str, object]:
-    """Each tool message's parsed answer, keyed by the call it answers."""
-    answers: dict[str, object] = {}
-    for message in messages:
-        if isinstance(message, ToolMessage) and message.tool_call_id:
-            content = message.content
-            answers[message.tool_call_id] = parse_result(
-                content if isinstance(content, str) else json.dumps(content, default=str)
-            )
-    return answers
+#: A stopped replay's calls, as the worker hands them over in the configurable.
+_REPLAYED_CALLS = TypeAdapter(list[RecordedCall])
 
 
-def _subagent_results(config: RunnableConfig) -> list[RecordedResult]:
-    """The calls this run's subagents made, with their results, from the
-    stream's captured tool events.
+async def _pickable_record(config: RunnableConfig) -> list[RecordEntry]:
+    """Return this run's calls a playbook may replay, numbered.
 
-    A handoff's children are not in the executor's own state: the subagent ran
-    on its own graph, and the executor saw one message back. Its calls are
-    captured for the execution trace as they happen (``build_trace``), so the
-    validator reads them from there, digests and all, scoped to the subagent.
+    A stopped replay's calls come first: they ran before anything this run did,
+    and the fallback brief told the agent not to run them again.
+    """
+    raw = agent_configurable(config).get(PLAYBOOK_REPLAYED_CALLS_KEY) or []
+    replayed = _REPLAYED_CALLS.validate_python(raw)
+    recorded = await read_recorded_calls(get_stream_id(config))
+    return number_record([*replayed, *recorded], _UNPICKABLE_TOOLS)
+
+
+def _refused(issues: list[PlaybookIssue], workflow_id: str) -> dict[str, Any]:
+    """Return the refusal for a write, every issue with where it is."""
+    problems = "; ".join(f"{issue.where}: {issue.problem}" for issue in issues)
+    log.warning(
+        f"{LogTag.TOOL} write_playbook: rejected — "
+        + "; ".join(f"{issue.where}: {issue.problem}" for issue in issues[:5]),
+        issues=len(issues),
+        workflow_id=workflow_id,
+    )
+    return error_response(
+        "invalid_playbook",
+        "The playbook was not written. Fix these and call write_playbook again: " + problems,
+    )
+
+
+@tool
+async def read_run_record(config: RunnableConfig) -> dict[str, Any]:
+    """
+    List the tool calls this run has made, numbered, to pick a playbook's steps from.
+
+    Each call shows its tool, where it ran, the args it was sent and the shape
+    of what it returned: the keys a $steps reference can read. Call this right
+    before write_playbook; a playbook's steps are these numbers.
     """
     try:
-        stream_id = get_stream_id(config)
-    except WorkflowConfigError:
-        log.set_ns("playbook", subagent_calls=None)
-        return []
-    entries = drain_executor_tool_data(stream_id)
-    trace = build_trace(entries)
-    children = [call for call in trace if call.subagent is not None]
-    # On the wide event: how many calls the write could see in each scope. A
-    # child refused as "did not run" with zero here is a capture gap, not the
-    # model's fault.
-    log.set_ns(
-        "playbook",
-        capture_stream=stream_id,
-        captured_entries=len(entries),
-        traced_calls=len(trace),
-        subagent_calls=len(children),
-    )
-    return [
-        RecordedResult(
-            tool_name=call.tool_name,
-            args=call.args,
-            result=parse_result(call.result_digest),
-            subagent=call.subagent,
+        workflow_id = get_workflow_id(config)
+    except WorkflowConfigError as e:
+        return error_response("not_in_workflow_run", str(e))
+    log.set(tool={"name": "read_run_record", "action": "read"}, workflow_id=workflow_id)
+    record = await _pickable_record(config)
+    log.set_ns("playbook", record_calls=len(record))
+    if not record:
+        return success_response(
+            {"calls": []},
+            "This run has made no call a playbook can replay, so there is nothing to freeze.",
         )
-        for call in children
-    ]
-
-
-def _replayed_results(config: RunnableConfig) -> list[RecordedResult]:
-    """The calls a stopped replay made this fire, as results a write may freeze.
-
-    They ran, they produced their results, and the fallback brief told the agent
-    not to run them again. They are this run's calls in every sense the
-    validator cares about.
-    """
-    raw = (config.get("configurable") or {}).get(PLAYBOOK_REPLAYED_CALLS_KEY) or []
-    replayed = [RecordedCall.model_validate(item) for item in raw]
-    return [
-        RecordedResult(
-            tool_name=call.tool_name,
-            args=call.args,
-            result=parse_result(call.result_digest),
-            subagent=call.subagent,
-        )
-        for call in replayed
-    ]
-
-
-def _run_results(state: Mapping[str, Any] | None) -> RunResults | None:
-    """The authoring run's tool calls with what each one returned, in call order.
-
-    ``None`` when there is no run to read: the dev ``/dev/executor`` route and
-    the unit tests build these tools without a graph, and a playbook written
-    there is validated exactly as it was before rather than refused for a run
-    that was never recorded. An empty list is NOT the same answer — it means the
-    run really made no calls, and a playbook freezing calls is wrong.
-
-    Failed calls are kept, unlike the handoff record's successful-only lines
-    (``call_record.py``): a step frozen on a call that errored is precisely one
-    of the things the validator has to catch.
-    """
-    if state is None:
-        return None
-    messages = state.get("messages")
-    if not isinstance(messages, list):
-        return None
-    return [
-        RecordedResult(tool_name=name, args=args, result=answer)
-        for name, args, answer in _answered_calls(state)
-    ]
+    return success_response({"calls": render_record(record)})
 
 
 @tool
@@ -256,37 +196,33 @@ async def write_playbook(
     description: Annotated[str, "What this playbook does, in one or two lines."],
     # Models often JSON-encode this list (prod: 7 refused writes); the schema stays an array.
     steps: Annotated[
-        list[PlaybookStepInput],
+        list[PlaybookPick],
         BeforeValidator(decode_json_container),
-        "The calls to replay, in the order you made them: only the calls that did "
-        "the work, never discovery or dead ends. Writing the result is not a step; "
-        "that is what result_brief is for.",
+        "The calls from read_run_record that did the work, by number: never "
+        "discovery, dead ends or retries. Each step replays its call exactly as "
+        "recorded, except the values you mark in vary.",
     ],
     result_brief: Annotated[
         str,
         "How to write the run's result for the user from the steps' results. "
         "Classification, judgement and summarising go here.",
     ],
-    #: The run's own messages, injected by the graph and absent from the schema
-    #: the model sees. Defaulted because a tool built without a graph (the dev
-    #: executor route, the unit tests) is called with arguments only.
-    state: Annotated[dict[str, Any] | None, InjectedState] = None,
 ) -> dict[str, Any]:
     """
-    Freeze this workflow run's settled tool sequence as a playbook, so later runs
-    execute it instead of reasoning it out again. The playbook attaches to the
-    workflow this run is executing; there is no id to supply.
+    Freeze calls this workflow run made as its playbook, so later runs replay
+    them instead of reasoning the work out again. Pick the calls by their number
+    in read_run_record and mark the values that change per run; the tool, every
+    other argument and where it ran come from the record. The playbook attaches
+    to the workflow this run is executing; there is no id to supply.
 
-    The steps are checked against the real tools AND against what this run's
-    calls actually returned before anything is stored: if a tool or an argument
-    does not exist, if a step froze a call this run never made or one that came
-    back empty, or if a $steps reference reads a field the result does not have,
-    NOTHING is written and the problems come back so you can fix them and call
-    this again. A successful write replaces the workflow's previous playbook
-    entirely, which is also how you revise one.
+    Nothing is written if a pick is wrong (a number that is not in the record, a
+    path the call does not have, a $steps reference to a field its call did not
+    return); the problems come back so you can fix them and call this again. A
+    successful write replaces the workflow's previous playbook entirely.
 
-    Only write a playbook when the same order of calls would work tomorrow
-    unchanged. A run whose order depends on what it finds is not a playbook.
+    Only write a playbook when the same calls would do the work tomorrow with
+    only the marked values changed. A run whose calls depend on what it finds is
+    not a playbook.
     """
     try:
         workflow_id = get_workflow_id(config)
@@ -299,38 +235,15 @@ async def write_playbook(
         if workflow is None:
             return error_response("workflow_not_found", f"No workflow {workflow_id} for this user.")
 
-        try:
-            body = playbook_body_from_input(description, steps, result_brief)
-        except ValueError as e:
-            # A shape the body cannot take (a for_each without its ceiling) is
-            # an authoring error like a bad reference: refused, not raised.
-            return error_response("invalid_playbook", f"The playbook was not written. {e}")
-
-        results = _run_results(state)
-        if results is not None:
-            # The replay's calls come first: they ran before anything the agent
-            # did. The subagents' calls come last, in their own scopes.
-            results = [*_replayed_results(config), *results, *_subagent_results(config)]
-        # On the wide event because it is the one thing a rejected-or-accepted
-        # write cannot show from its outcome: whether the run's own results
-        # were in hand (None: no graph state reached the tool at all).
-        log.set_ns("playbook", checked_against_calls=None if results is None else len(results))
-        validation = await validate_playbook(body, user_id, results)
+        record = await _pickable_record(config)
+        built = build_playbook(description, steps, result_brief, record)
+        log.set_ns("playbook", record_calls=len(record), picks=len(steps))
+        if built.body is None:
+            return _refused(built.issues, workflow_id)
+        validation = await validate_playbook(built.body, user_id, built.sources)
         if not validation.valid:
-            # The issues themselves, not just how many. A refused playbook is
-            # diagnosed from the reason, and a count in a structured field that
-            # the console format drops tells whoever is watching nothing at all.
-            log.warning(
-                f"{LogTag.TOOL} write_playbook: rejected — "
-                + "; ".join(f"{issue.where}: {issue.problem}" for issue in validation.issues[:5]),
-                issues=len(validation.issues),
-                workflow_id=workflow_id,
-            )
-            return error_response(
-                "invalid_playbook",
-                "The playbook was not written. Fix these and call write_playbook again: "
-                + "; ".join(f"{issue.where}: {issue.problem}" for issue in validation.issues),
-            )
+            return _refused(validation.issues, workflow_id)
+        body = built.body
 
         now = datetime.now(UTC)
         stored = await playbook_repository.upsert_for_workflow(
@@ -670,7 +583,9 @@ async def disable_playbook(
         return error_response("disable_failed", str(e))
 
 
-tools = [write_playbook, read_playbook, decline_playbook, disable_playbook]
+tools = [read_run_record, write_playbook, read_playbook, decline_playbook, disable_playbook]
 
 #: The run tracking its own plan and deciding its playbook: never the workflow's work.
 _RUN_BOOKKEEPING_TOOLS = frozenset(TODO_TOOL_NAMES | {t.name for t in tools})
+#: Calls a playbook step can never be.
+_UNPICKABLE_TOOLS = _RUN_BOOKKEEPING_TOOLS | PLAYBOOK_UNPICKABLE_TOOLS

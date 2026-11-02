@@ -1,9 +1,9 @@
-"""The playbook check brief's examples, held to the validator that judges a real write.
+"""The playbook check brief's examples, held to the builder and validator that judge a real write.
 
 The brief once showed an activate_integration step the validator does not
-know, and every run that copied it was refused (prod, Oct 2026). These run
-each example through validate_playbook against the real tool registry and a
-run that made exactly the example's calls, so the two cannot disagree again.
+know, and every run that copied it was refused (prod, Oct 2026). Each example
+is a record and the write picked from it; here the write is built over that
+record and validated against the real tool registry, as write_playbook does.
 """
 
 from unittest.mock import AsyncMock, patch
@@ -12,15 +12,23 @@ import pytest
 
 from app.agents.prompts.playbook_prompts import (
     PLAYBOOK_CHECK_BRIEF,
-    PLAYBOOK_EXAMPLE,
-    PLAYBOOK_FOR_EACH_EXAMPLE,
+    PLAYBOOK_EXAMPLE_RECORD,
+    PLAYBOOK_EXAMPLE_WRITE,
+    PLAYBOOK_FOR_EACH_RECORD,
+    PLAYBOOK_FOR_EACH_WRITE,
 )
 from app.agents.tools.core.registry import ToolRegistry
-from app.models.playbook_models import ForEachStep, PlaybookBody, ToolStep
-from app.services.workflow.playbook.parser import RecordedResult, dump_playbook, validate_playbook
+from app.models.playbook_models import ForEachStep, ToolStep
+from app.models.workflow_execution_models import RecordedCall
+from app.services.workflow.playbook.parser import validate_playbook
+from app.services.workflow.playbook.record import PlaybookPick, build_playbook, number_record
 
 PARSER = "app.services.workflow.playbook.parser"
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
+EXAMPLES = [
+    (PLAYBOOK_EXAMPLE_RECORD, PLAYBOOK_EXAMPLE_WRITE),
+    (PLAYBOOK_FOR_EACH_RECORD, PLAYBOOK_FOR_EACH_WRITE),
+]
 
 
 @pytest.fixture(scope="module")
@@ -30,48 +38,41 @@ def registry() -> ToolRegistry:
     return registry
 
 
-def _concrete(value: object) -> object:
-    """Return what the authoring run sent where the example holds a slot or placeholder."""
-    if isinstance(value, dict):
-        if "$ask" in value:
-            return "written at authoring"
-        return {key: _concrete(item) for key, item in value.items()}
-    if isinstance(value, str) and value.startswith("$"):
-        return "thread-1"
-    return value
-
-
-def _run_that_made(body: PlaybookBody) -> list[RecordedResult]:
-    calls = []
-    for step in body.steps:
-        assert isinstance(step, ToolStep | ForEachStep)
-        calls.append(
-            RecordedResult(
-                tool_name=step.tool,
-                args={key: _concrete(value) for key, value in step.args.items()},
-                result={"successful": True, "data": {"items": [{"id": "thread-1"}]}},
-            )
-        )
-    return calls
-
-
-@pytest.mark.parametrize(
-    "body", [PLAYBOOK_EXAMPLE, PLAYBOOK_FOR_EACH_EXAMPLE], ids=["flat", "for_each"]
-)
-async def test_a_run_that_made_the_examples_calls_can_write_the_example(
-    body: PlaybookBody, registry: ToolRegistry
+@pytest.mark.parametrize(("record", "write"), EXAMPLES, ids=["flat", "for_each"])
+async def test_each_example_write_builds_over_its_record_and_validates(
+    record: list[RecordedCall], write: dict[str, object], registry: ToolRegistry
 ) -> None:
+    steps = write["steps"]
+    assert isinstance(steps, list)
+    built = build_playbook(
+        str(write["description"]),
+        [PlaybookPick.model_validate(step) for step in steps],
+        str(write["result_brief"]),
+        number_record(record, ()),
+    )
+    assert built.issues == []
+    assert built.body is not None
+
     with patch(f"{PARSER}.get_tool_registry", new=AsyncMock(return_value=registry)):
-        validation = await validate_playbook(body, USER_ID, _run_that_made(body))
+        validation = await validate_playbook(built.body, USER_ID, built.sources)
     assert validation.issues == []
 
 
-@pytest.mark.parametrize(
-    "body", [PLAYBOOK_EXAMPLE, PLAYBOOK_FOR_EACH_EXAMPLE], ids=["flat", "for_each"]
-)
-def test_the_brief_shows_each_example_as_read_playbook_renders_it(body: PlaybookBody) -> None:
-    assert dump_playbook(body) in PLAYBOOK_CHECK_BRIEF
+def test_the_for_each_example_repeats_one_draft_call_over_the_picked_threads() -> None:
+    steps = PLAYBOOK_FOR_EACH_WRITE["steps"]
+    assert isinstance(steps, list)
+    built = build_playbook(
+        "d",
+        [PlaybookPick.model_validate(step) for step in steps],
+        "r",
+        number_record(PLAYBOOK_FOR_EACH_RECORD, ()),
+    )
+    assert built.body is not None
+    fetch, drafts = built.body.steps
+    assert isinstance(fetch, ToolStep)
+    assert isinstance(drafts, ForEachStep)
+    assert drafts.args["tool_name"] == "GMAIL_CREATE_EMAIL_DRAFT"
 
 
-def test_the_brief_never_shows_activate_integration_as_a_step() -> None:
-    assert "tool: activate_integration" not in PLAYBOOK_CHECK_BRIEF
+def test_the_brief_never_shows_activate_integration() -> None:
+    assert "activate_integration" not in PLAYBOOK_CHECK_BRIEF

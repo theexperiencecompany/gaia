@@ -62,6 +62,19 @@ def detect_layout(value: object) -> str | None:
     return None
 
 
+def time_slot_layout(placeholder: re.Match[str], example: object) -> str | None:
+    """Return the layout a whole time placeholder must carry to render like example.
+
+    None when there is no layout to follow, or when the placeholder's own ISO
+    rendering already is that layout.
+    """
+    layout = detect_layout(example)
+    if layout is None:
+        return None
+    date_only = placeholder.group("root") == "today" and placeholder.group("clock") is None
+    return None if layout == (ISO_DATE_LAYOUT if date_only else ISO_DATETIME_LAYOUT) else layout
+
+
 def _layout_of(text: str) -> str | None:
     for layout in KNOWN_TIME_LAYOUTS:
         try:

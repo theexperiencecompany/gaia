@@ -98,6 +98,18 @@ PLAYBOOK_FALLBACK_CONTEXT_KEY = "playbook_fallback"
 #: without this the write validator refused every rewrite that kept one
 #: ("did not run in this run").
 PLAYBOOK_REPLAYED_CALLS_KEY = "playbook_replayed_calls"
+#: Calls a playbook never replays: delegation, whose children are in the run
+#: record themselves, and tool discovery and binding, which do no work.
+PLAYBOOK_UNPICKABLE_TOOLS = frozenset(
+    {
+        "call_executor",
+        "cancel_executor",
+        "handoff",
+        "spawn_subagent",
+        "retrieve_tools",
+        "activate_integration",
+    }
+)
 
 # The trigger-context key carrying the busy-lock value a workflow fire reserved.
 # Written by the workflow worker, read by call_executor so the dispatched

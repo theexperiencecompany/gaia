@@ -37,11 +37,15 @@ async def invoke_tool(
     config: RunnableConfig | None = None,
     *,
     call_args: Mapping[str, object] | None = None,
+    proxied: bool = False,
+    account: str | None = None,
 ) -> object:
     """Run tool and record the call in the run it belongs to.
 
     call_args is what the model asked for, when tool_input also carries values
     the caller injected (a store, the user id); it defaults to tool_input's own args.
+    proxied and account say the call ran through execute as that account, which a
+    replay must do again.
     """
     args = _call_args(tool_input) if call_args is None else dict(call_args)
     try:
@@ -50,11 +54,13 @@ async def invoke_tool(
         # A pause for approval, not a finished call: recorded when it resumes and runs.
         raise
     except Exception as exc:
-        recorded = _recorded(tool, args, config, _error_text(exc), failed=True)
+        recorded = _recorded(
+            tool, args, config, _error_text(exc), failed=True, proxied=proxied, account=account
+        )
         if recorded is not None:
             await append_call(*recorded)
         raise
-    recorded = _recorded(tool, args, config, output, failed=False)
+    recorded = _recorded(tool, args, config, output, failed=False, proxied=proxied, account=account)
     if recorded is not None:
         await append_call(*recorded)
     return output
@@ -91,6 +97,8 @@ def _recorded(
     output: object,
     *,
     failed: bool,
+    proxied: bool = False,
+    account: str | None = None,
 ) -> tuple[str, RecordedCall] | None:
     """Return (stream id, call) for a call that belongs to a run, else None."""
     if tool.name == EXECUTE_TOOL_NAME or config is None:
@@ -106,6 +114,8 @@ def _recorded(
         args=args,
         result_digest=build_result_digest(_as_text(_result_payload(output))),
         failed=failed,
+        proxied=proxied,
+        account=account,
     )
     return stream_id, call
 

@@ -277,6 +277,10 @@ class RecordedCall(BaseModel):
     replayed: bool = False
     #: True when the tool raised instead of returning; result_digest holds the error.
     failed: bool = False
+    #: True when the call ran through the execute proxy, as a replay must run it again.
+    proxied: bool = False
+    #: The connected account a proxied call named; None is the primary.
+    account: str | None = None
 
 
 class WorkflowExecution(ResponseModel):

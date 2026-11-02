@@ -236,7 +236,9 @@ async def dispatch_tool(
     bound = None if resolved_name in TOOL_TIMEOUT_EXEMPT_TOOLS else TOOL_EXECUTION_TIMEOUT_SECONDS
     try:
         async with asyncio.timeout(bound):
-            output = await invoke_tool(tool, validated, with_account(config, choice))
+            output = await invoke_tool(
+                tool, validated, with_account(config, choice), proxied=True, account=account
+            )
     except TimeoutError:
         # The only failure whose effect is unknown — the provider may have
         # applied it after we stopped waiting. Bounded here so the model gets

@@ -4,9 +4,9 @@ validate_playbook asks whether an authored document could actually run: the
 tools exist, their args are real, and every reference resolves. Messages
 name the offending step and what would be valid, not just "invalid".
 
-Given the authoring run's own results, it also checks whether those calls
-actually happened and returned what the document claims — a playbook can
-freeze a call that ran but never really produced what it references.
+Given the recorded call each tool step was built from, it also checks what
+those calls returned: a step frozen on a failed or empty call, or a $steps
+reference to a field its call never returned, is refused at the write.
 
 dump_playbook renders a body as YAML for humans; the structured body is the
 only stored form, so nothing parses the YAML back.
@@ -22,9 +22,8 @@ from langchain_core.tools import BaseTool
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 import yaml
 
-from app.agents.core.subagents.call_record import ARG_TRUNCATION_MARKER, is_error_envelope
+from app.agents.core.subagents.call_record import is_error_envelope
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
-from app.constants.execute import EXECUTE_DATA_ARG, EXECUTE_LABEL_ARG, EXECUTE_TOOL_NAME
 from app.models.integrations.composio_hooks import JsonSchemaNode
 from app.models.playbook_models import (
     TIME_KEY,
@@ -35,7 +34,6 @@ from app.models.playbook_models import (
     PlaybookStep,
     TimeSlot,
     ToolStep,
-    is_ask_slot,
     is_time_slot,
     walk_ask_slots,
 )
@@ -49,18 +47,13 @@ from app.services.workflow.playbook.evaluator import (
     resolve_step,
 )
 from app.services.workflow.playbook.placeholders import PLACEHOLDER_TOKEN, placeholder_tokens
-from app.services.workflow.playbook.time_layouts import (
-    ISO_DATE_LAYOUT,
-    ISO_DATETIME_LAYOUT,
-    detect_layout,
-)
+from app.services.workflow.playbook.time_layouts import detect_layout, time_slot_layout
 from app.services.workflow.playbook.tool_space import (
     ToolSpace,
     handoff_tool_space,
     resolve_subagent_tools,
     tool_space_denial,
 )
-from app.utils.json_args import decode_json_container
 
 _JSON_TYPE_TO_PYTHON: dict[str, tuple[type, ...]] = {
     "string": (str,),
@@ -78,8 +71,8 @@ _JSON_TYPE_TO_PYTHON: dict[str, tuple[type, ...]] = {
 #: the sentence that says what is wrong.
 _MAX_LISTED_KEYS = 12
 
-#: Longest rendering of a matched call's args inside a message. The args are
-#: there to say WHICH call came back empty, not to reproduce it.
+#: Longest rendering of a call's args inside a message. The args are there to
+#: say WHICH call came back empty, not to reproduce it.
 _ARGS_IN_MESSAGE_MAX_CHARS = 200
 
 
@@ -96,14 +89,10 @@ class RecordedResult:
     args: Mapping[str, Any]
     result: object
     #: The stable id of the subagent that made the call (``todos``), or
-    #: ``None`` for the executor's own — a step inside ``handoff: todos``
-    #: is matched only against that subagent's calls.
+    #: ``None`` for the executor's own.
     subagent: str | None = None
-
-
-#: The authoring run's calls, in call order. The order IS part of the matching
-#: rule — the last call wins — so a mapping keyed by tool name would lose it.
-RunResults = Sequence[RecordedResult]
+    #: True when the tool raised instead of returning.
+    failed: bool = False
 
 
 class PlaybookIssue(BaseModel):
@@ -141,23 +130,25 @@ def dump_playbook(body: PlaybookBody) -> str:
 
 
 async def validate_playbook(
-    body: PlaybookBody, user_id: str, results: RunResults | None = None
+    body: PlaybookBody, user_id: str, sources: Sequence[RecordedResult] | None = None
 ) -> PlaybookValidation:
     """Check a parsed playbook against the tools it would actually reach.
 
     Fatal always: unknown tool, bad arg, or forward step reference. user_id
-    matters since tool existence is per-user (handoff subagent space, per-user
-    MCP tools). With results (the run's real calls), also flags an unused
-    tool, an empty/errored frozen call, or a bad $steps shape.
+    matters since tool existence is per-user. sources[i] is the recorded call
+    the i-th tool step (document order, handoff children included) was built
+    from; with them, an empty or failed call and a bad $steps shape are refused.
     """
     registry = await get_tool_registry()
-    walk = _Walk(user_id=user_id, registry=registry, results=results)
+    walk = _Walk(user_id=user_id, registry=registry, sources=sources)
     await _check_steps(
         body.steps,
         "steps",
         ToolSpace(tools=registry.get_tool_dict(), runtime=None, subagent_id=None),
         walk,
     )
+    if sources is not None and walk.cursor != len(sources):
+        raise ValueError(f"{len(sources)} sources for {walk.cursor} tool steps")
     return PlaybookValidation(valid=not walk.issues, issues=walk.issues)
 
 
@@ -173,18 +164,15 @@ class _Walk:
     #: ``$steps.sweep.list.todos`` being accepted, then stopping the replay.
     handoff_ids: set[str] = field(default_factory=set)
     issues: list[PlaybookIssue] = field(default_factory=list)
-    #: The authoring run's calls, or ``None`` when there is no run to check
-    #: against. ``None`` and an empty run are different: an empty run means
-    #: every tool step froze a call that never happened.
-    results: RunResults | None = None
+    #: The recorded call each tool step was built from, in document order, or
+    #: ``None`` for a document checked without a run (a predefined recipe).
+    sources: Sequence[RecordedResult] | None = None
+    #: How many tool steps the walk has passed: the index of the next source.
+    cursor: int = 0
     #: What each declared step returned in that run, filled as the walk passes
     #: the step. A ``$steps`` reference is checked against this, so it can only
     #: ever read a step that ran before it — the same rule the replay enforces.
     step_results: dict[str, StepResult] = field(default_factory=dict)
-    #: Positions in ``results`` that a step has already frozen. A recorded call
-    #: is one call; two steps matched to it would replay it twice and double a
-    #: side effect the run performed once.
-    consumed: set[int] = field(default_factory=set)
     #: The subagent whose steps are being walked, ``None`` at the top level.
     scope: str | None = None
 
@@ -211,6 +199,7 @@ async def _check_steps(
                 walk.handoff_ids.add(step.id)
             subagent = await resolve_subagent_tools(step.handoff, walk.user_id, walk.registry)
             if subagent is None:
+                walk.cursor += len(step.steps)
                 walk.issues.append(
                     PlaybookIssue(
                         where=here,
@@ -242,39 +231,17 @@ def _check_tool_step(
     step: ToolStep | ForEachStep, path: str, space: ToolSpace, walk: _Walk
 ) -> None:
     tool_name = step.tool
+    recorded = _check_source(step, tool_name, path, walk) if walk.sources is not None else None
     denial = tool_space_denial(tool_name, space)
     if denial is not None:
         walk.issues.append(PlaybookIssue(where=path, problem=denial))
         return
-
-    # Matched within the walk's scope: a top-level step against the executor's
-    # own calls, a handoff's child against that subagent's — seen live as
-    # $item.todo_id accepted over elements carrying id, then stopping the replay.
-    recorded = (
-        _check_recorded_call(step, tool_name, path, walk) if walk.results is not None else None
-    )
 
     sample = _check_for_each_source(step, path, walk) if isinstance(step, ForEachStep) else NO_ITEM
     schema: dict[str, Any] = space.tools[tool_name].args
     _check_required_args(step, tool_name, path, space, walk)
     for key, value in step.args.items():
         where = f"{path}.args.{key}"
-        # ensure_ascii=False, or the marker's ellipsis leaves json.dumps as
-        # a \\u2026 escape and this check can never fire. Seen exactly so:
-        # the recorded-stub refusal below was dead until this run.
-        if ARG_TRUNCATION_MARKER in json.dumps(value, default=str, ensure_ascii=False):
-            # The call record cuts long args to keep the record small and marks
-            # the cut; a step copied from it would send the stub forever.
-            walk.issues.append(
-                PlaybookIssue(
-                    where=where,
-                    problem=(
-                        f"{key!r} was cut short in the call record; pass the full value "
-                        "you actually sent, not the recorded stub"
-                    ),
-                )
-            )
-            continue
         arg_schema = schema.get(key)
         if arg_schema is None:
             walk.issues.append(
@@ -318,123 +285,24 @@ def _check_tool_step(
             _check_value_type(value, arg_schema, where, walk.issues)
 
 
-def _check_recorded_call(
+def _check_source(
     step: ToolStep | ForEachStep, tool_name: str, path: str, walk: _Walk
-) -> RecordedResult | None:
-    """Check one tool step against the call it froze in the run writing it.
+) -> RecordedResult:
+    """Take the recorded call this step was built from, and check what it returned.
 
-    Matching the step back to a recorded call is also what makes the $steps
-    references checkable: the matched result is what later steps read from.
+    The source's result is also what later $steps references read.
     """
-    matched = _matched_call(step, walk)
-    if matched is None:
-        walk.issues.append(PlaybookIssue(where=path, problem=_unmatched_problem(tool_name, walk)))
-        return None
-    index, call = matched
-    walk.consumed.add(index)
+    sources = walk.sources or ()
+    if walk.cursor >= len(sources):
+        raise ValueError(f"no source for tool step {path}: {len(sources)} sources")
+    call = sources[walk.cursor]
+    walk.cursor += 1
     if step.id:
         walk.step_results[step.id] = StepResult(value=call.result)
     refusal = _result_refusal(tool_name, call)
     if refusal is not None:
         walk.issues.append(PlaybookIssue(where=path, problem=refusal))
     return call
-
-
-def _unmatched_problem(tool_name: str, walk: _Walk) -> str:
-    """Return why no recorded call answers to this step: none made, all frozen already, or only calls with other args."""
-    same_tool = [
-        (index, call)
-        for index, call in enumerate(walk.results or ())
-        if call.tool_name == tool_name and call.subagent == walk.scope
-    ]
-    if not same_tool:
-        return (
-            f"{tool_name} did not run in this run; a playbook freezes calls "
-            "that ran and produced their result — run it, or drop the step"
-        )
-    left = [call for index, call in same_tool if index not in walk.consumed]
-    if not left:
-        return (
-            f"{tool_name} ran {len(same_tool)} time(s) in this run and earlier steps froze "
-            "every one of them; a step cannot replay a call the run did not make — drop "
-            "this step, or run it again"
-        )
-    return (
-        f"{tool_name} ran {len(same_tool)} time(s) in this run, but never with these args "
-        f"(the last call used {_rendered_args(left[-1].args)}); freeze the call that ran, "
-        "with the args that produced its result, or run it with these args"
-    )
-
-
-def _matched_call(step: ToolStep | ForEachStep, walk: _Walk) -> tuple[int, RecordedResult] | None:
-    """Return the recorded call this step froze, with its position, or None.
-
-    Agreement is structural (_agrees), not per-arg — a deciding difference is
-    often nested under an arg that itself carries a placeholder. Among calls
-    that agree, the LAST wins; a step agreeing with none is unmatched, and an
-    already-consumed call is never offered again.
-    """
-    # execute's card label is rewritten freely between the call and the write, and
-    # changes nothing the call does (prod: refused writes differing only in it).
-    deciding = {
-        key: value
-        for key, value in step.args.items()
-        if not (step.tool == EXECUTE_TOOL_NAME and key == EXECUTE_LABEL_ARG)
-    }
-    agreeing = [
-        (index, call)
-        for index, call in enumerate(walk.results or ())
-        if call.tool_name == step.tool
-        and call.subagent == walk.scope
-        and index not in walk.consumed
-        and all(
-            key in call.args and _agrees(value, _as_dispatched(step.tool, key, call.args[key]))
-            for key, value in deciding.items()
-        )
-    ]
-    return agreeing[-1] if agreeing else None
-
-
-def _as_dispatched(tool_name: str, key: str, recorded: object) -> object:
-    """Return a recorded arg as the tool ran it: execute runs a JSON-encoded data as its object."""
-    if tool_name == EXECUTE_TOOL_NAME and key == EXECUTE_DATA_ARG:
-        return decode_json_container(recorded)
-    return recorded
-
-
-def _agrees(step_value: object, recorded_value: object) -> bool:
-    """Whether a step's authored value could be the recorded call's value.
-
-    An $ask/$time slot or a bare placeholder token agrees with anything
-    (unknowable until replay); an embedded token agrees with any string. A
-    mapping agrees if every step-written key is present and agrees (extra
-    recorded keys are fine); a list agrees elementwise at equal length.
-    """
-    if is_ask_slot(step_value) or is_time_slot(step_value):
-        return True
-    if isinstance(step_value, str):
-        if PLACEHOLDER_TOKEN.fullmatch(step_value):
-            return True
-        if PLACEHOLDER_TOKEN.search(step_value):
-            return isinstance(recorded_value, str)
-        return step_value == recorded_value
-    if isinstance(step_value, Mapping):
-        return isinstance(recorded_value, Mapping) and all(
-            key in recorded_value and _agrees(item, recorded_value[key])
-            for key, item in step_value.items()
-        )
-    if isinstance(step_value, list):
-        return (
-            isinstance(recorded_value, list)
-            and len(step_value) == len(recorded_value)
-            # strict= can never fire: the length check above short-circuits first,
-            # so no mutation of it is observable (same construct as trigger_dispatch_tasks).
-            and all(
-                _agrees(item, other)
-                for item, other in zip(step_value, recorded_value, strict=True)  # pragma: no mutate
-            )
-        )
-    return step_value == recorded_value
 
 
 def _result_refusal(tool_name: str, call: RecordedResult) -> str | None:
@@ -444,7 +312,7 @@ def _result_refusal(tool_name: str, call: RecordedResult) -> str | None:
     often does so with an empty list beside it, and "returned no items" would
     name the symptom while the message says the cause.
     """
-    if is_error_envelope(call.result):
+    if call.failed or is_error_envelope(call.result):
         return (
             f"{tool_name} failed in this run ({_envelope_error(call.result)}); a playbook "
             "freezes calls that succeeded — fix the call and run it again, or drop the step"
@@ -682,7 +550,7 @@ def _check_step_placeholder(match: re.Match[str], where: str, walk: _Walk) -> ob
             )
         )
         return _UNRESOLVED
-    if walk.results is None:
+    if walk.sources is None:
         return _UNRESOLVED
     return _check_step_reference(token, path, where, walk)
 
@@ -787,8 +655,7 @@ def _check_time_layout(
     whole = PLACEHOLDER_TOKEN.fullmatch(value)
     placeholder = whole.group(0) if whole is not None else tokens[0].group(0)
     if whole is not None:
-        date_only = whole.group("root") == "today" and whole.group("clock") is None
-        if layout == (ISO_DATE_LAYOUT if date_only else ISO_DATETIME_LAYOUT):
+        if time_slot_layout(whole, example) is None:
             return
         problem = (
             f"{key!r} was {example!r} in this run, whose layout is {layout!r}; {value} "

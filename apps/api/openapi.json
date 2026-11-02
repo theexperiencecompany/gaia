@@ -15293,6 +15293,17 @@
       "RecordedCall": {
         "description": "One tool call as it actually ran.\n\nCaptured from the run's own tool events \u2014 the same stream the chat UI\nrenders \u2014 so recording costs nothing beyond persisting what was already\ncollected. ``args`` is what makes this useful: it is the material an agent\nreads to author a playbook, and the cursor a later run picks up from.",
         "properties": {
+          "account": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account"
+          },
           "args": {
             "additionalProperties": true,
             "title": "Args",
@@ -15301,6 +15312,11 @@
           "failed": {
             "default": false,
             "title": "Failed",
+            "type": "boolean"
+          },
+          "proxied": {
+            "default": false,
+            "title": "Proxied",
             "type": "boolean"
           },
           "replayed": {
