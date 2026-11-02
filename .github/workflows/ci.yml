@@ -189,10 +189,6 @@ jobs:
       tasks: ${{ steps.affected.outputs.tasks }}
       jobs: ${{ steps.affected.outputs.jobs }}
       job_tasks: ${{ steps.affected.outputs.job_tasks }}
-      # Each task's changed files that nx matched to its inputs, or __FULL__
-      # when nx reached it through config or the CI harness:
-      # `changes.sh files --task` hands a check exactly these.
-      task_files: ${{ steps.affected.outputs.task_files }}
       # The test-python matrices, from the one slice definition
       # (scripts/ci/lib/test-slices.json), cut to this run's tier.
       # Slice NAMES (the matrix value, so a job row reads `test-python
@@ -263,7 +259,15 @@ jobs:
         id: affected
         env:
           GAIA_PR_BASE: ${{ steps.base.outputs.base_ref }}
+          TASK_FILES_PATH: ${{ runner.temp }}/task-files.json
         run: bash scripts/ci/changes.sh affected
+      # Each task's changed files, for changes.sh files --task (the task-files composite).
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: task-files
+          path: ${{ runner.temp }}/task-files.json
+          retention-days: 1
+          if-no-files-found: error
 
       # Last, so everything above is decided even when this fails: it is ALSO
       # the step that fails loudly when changed app code has no test file
@@ -335,7 +339,6 @@ jobs:
       # nor for a fork or Dependabot (read-only token).
       # Negated: `cond && '' || x` is always x, since '' is falsy in an expression.
       NO_POST: ${{ !(contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '--no-post' || '' }}
-      TASK_FILES: ${{ needs.detect.outputs.task_files }}
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
       AUDIT_SCOPE: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'introduced' || 'all' }}
     # On a PR and in the merge queue pnpm-audit fails only on an advisory in a
@@ -351,6 +354,7 @@ jobs:
           clean: ${{ !startsWith(runner.name, 'gaia-home-') }}
           fetch-depth: 0
           persist-credentials: false
+      - uses: ./.github/actions/task-files
       - uses: ./.github/actions/setup-node-pnpm
       # Every check detect picked for this job, through nx (tools/ci/project.json and
       # the code projects' targets); each check's status is posted as it finishes.
@@ -390,7 +394,6 @@ jobs:
       # nor for a fork or Dependabot (read-only token).
       # Negated: `cond && '' || x` is always x, since '' is falsy in an expression.
       NO_POST: ${{ !(contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '--no-post' || '' }}
-      TASK_FILES: ${{ needs.detect.outputs.task_files }}
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
     timeout-minutes: 35
     permissions:
@@ -403,6 +406,7 @@ jobs:
           clean: ${{ !startsWith(runner.name, 'gaia-home-') }}
           fetch-depth: 0
           persist-credentials: false
+      - uses: ./.github/actions/task-files
       - uses: ./.github/actions/setup-uv
       - uses: ./.github/actions/setup-node-pnpm
       # mypy needs the real dependencies; the composite is how this repo
@@ -489,7 +493,6 @@ jobs:
       # nor for a fork or Dependabot (read-only token).
       # Negated: `cond && '' || x` is always x, since '' is falsy in an expression.
       NO_POST: ${{ !(contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '--no-post' || '' }}
-      TASK_FILES: ${{ needs.detect.outputs.task_files }}
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
       DEAD_CODE_LANE: lint-mixed/dead-code
     timeout-minutes: 35
@@ -503,6 +506,7 @@ jobs:
           clean: ${{ !startsWith(runner.name, 'gaia-home-') }}
           fetch-depth: 0
           persist-credentials: false
+      - uses: ./.github/actions/task-files
       - uses: ./.github/actions/setup-uv
       # deploy_templates.py runs in the apps/api environment (PyYAML).
       - uses: ./.github/actions/setup-python-test-env
@@ -598,7 +602,6 @@ jobs:
       # nor for a fork or Dependabot (read-only token).
       # Negated: `cond && '' || x` is always x, since '' is falsy in an expression.
       NO_POST: ${{ !(contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '--no-post' || '' }}
-      TASK_FILES: ${{ needs.detect.outputs.task_files }}
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
     timeout-minutes: 10
     permissions:
@@ -611,6 +614,7 @@ jobs:
           clean: ${{ !startsWith(runner.name, 'gaia-home-') }}
           fetch-depth: 0
           persist-credentials: false
+      - uses: ./.github/actions/task-files
       - uses: ./.github/actions/setup-node-pnpm
 
       # Every check detect picked for this job, through nx (tools/ci/project.json and
@@ -671,7 +675,6 @@ jobs:
       # nor for a fork or Dependabot (read-only token).
       # Negated: `cond && '' || x` is always x, since '' is falsy in an expression.
       NO_POST: ${{ !(contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '--no-post' || '' }}
-      TASK_FILES: ${{ needs.detect.outputs.task_files }}
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
       AUDIT_SCOPE: ${{ github.event_name == 'merge_group' && 'introduced' || 'all' }}
     # In the merge queue pip-audit fails only on an advisory in a version the
@@ -689,6 +692,7 @@ jobs:
           clean: ${{ !startsWith(runner.name, 'gaia-home-') }}
           fetch-depth: 0
           persist-credentials: false
+      - uses: ./.github/actions/task-files
       - uses: ./.github/actions/setup-uv
       - uses: ./.github/actions/setup-node-pnpm
       # import-cost imports the real modules, so it needs the real venv.
@@ -735,7 +739,6 @@ jobs:
       # nor for a fork or Dependabot (read-only token).
       # Negated: `cond && '' || x` is always x, since '' is falsy in an expression.
       NO_POST: ${{ !(contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '--no-post' || '' }}
-      TASK_FILES: ${{ needs.detect.outputs.task_files }}
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
       NEXT_PUBLIC_API_BASE_URL: https://api.heygaia.io/api/v1/
       NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${{ vars.NEXT_PUBLIC_TURNSTILE_SITE_KEY }}
@@ -758,6 +761,7 @@ jobs:
           clean: ${{ !startsWith(runner.name, 'gaia-home-') }}
           fetch-depth: ${{ startsWith(runner.name, 'gaia-home-') && '0' || '1' }}
           persist-credentials: false
+      - uses: ./.github/actions/task-files
       - uses: ./.github/actions/setup-node-pnpm
       - uses: ./.github/actions/restore-nextjs-cache
       # Every check detect picked for this job, through nx (tools/ci/project.json and
@@ -818,7 +822,6 @@ jobs:
       # nor for a fork or Dependabot (read-only token).
       # Negated: `cond && '' || x` is always x, since '' is falsy in an expression.
       NO_POST: ${{ !(contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '--no-post' || '' }}
-      TASK_FILES: ${{ needs.detect.outputs.task_files }}
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
     timeout-minutes: 20
     permissions:

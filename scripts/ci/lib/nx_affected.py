@@ -40,9 +40,10 @@ SOURCE_GLOB = re.compile(r"(?:^|/)\*\.(\w+|\{[\w,]+\})$")
 # Past this many files a scoped list costs more to carry in detect's outputs
 # (1 MB per job) than a full scan costs to run.
 SCOPED_FILES_MAX = 300
-# Every job carries task_files as one env var, and Linux refuses a single env
-# string over 128 KiB (MAX_ARG_STRLEN): no process in the job could start.
-TASK_FILES_MAX_BYTES = 96 * 1024
+# Where detect writes each task's files and a job reads them back. A file, never
+# an env var or job output: Linux refuses one env string over 128 KiB
+# (MAX_ARG_STRLEN), and a 233-file PR's map was 139,600 bytes.
+TASK_FILES_ENV = "TASK_FILES_PATH"
 
 
 @dataclass(frozen=True)
@@ -302,21 +303,13 @@ def task_files(selection: Selection) -> dict[str, str | list[str]]:
 
     A task reached through a config, manifest or the CI harness rather than a
     source glob changed no file it would be scoped to, so it scans the whole
-    tree; so does one whose list outgrows SCOPED_FILES_MAX, and the longest lists
-    while the whole map outgrows TASK_FILES_MAX_BYTES.
+    tree; so does one whose list outgrows SCOPED_FILES_MAX.
     """
     scoped: dict[str, str | list[str]] = {}
     for task, reasons in selection.tasks.items():
         files = sorted(r["file"] for r in reasons if _is_source(r))
         whole = len(files) < len(reasons) or len(files) > SCOPED_FILES_MAX
         scoped[task] = FULL_SCAN if whole else files
-    # Past the env budget the longest lists become full scans, which only ever check more.
-    while len(json.dumps(scoped)) > TASK_FILES_MAX_BYTES:
-        longest = max(
-            (task for task, files in scoped.items() if files != FULL_SCAN),
-            key=lambda task: len(json.dumps(scoped[task])),
-        )
-        scoped[longest] = FULL_SCAN
     return scoped
 
 
@@ -334,7 +327,6 @@ def outputs(selection: Selection, event: str, branch: str | None) -> dict[str, s
         "jobs": json.dumps(sorted(jobs)),
         "job_tasks": json.dumps(jobs),
         "release_groups": json.dumps(release_groups(selection)),
-        "task_files": json.dumps(task_files(selection)),
     }
 
 
@@ -354,7 +346,7 @@ def main() -> int:
     parser.add_argument(
         "--files-for",
         metavar="TASK",
-        help="print one task's files, or FULL_SCAN; read from $TASK_FILES (detect's) when set",
+        help="print one task's files, or FULL_SCAN; read from $TASK_FILES_PATH (detect's) when set",
     )
     opts = parser.parse_args()
 
@@ -365,8 +357,13 @@ def main() -> int:
         else [f"--base={opts.base}", *([f"--head={opts.head}"] if opts.head else [])]
     )
     if opts.files_for:
-        from_detect = os.environ.get("TASK_FILES")
-        scoped = json.loads(from_detect) if from_detect else task_files(select(range_args))
+        from_detect = os.environ.get(TASK_FILES_ENV)
+        # Set but unreadable is a broken handoff, not a reason to ask nx again.
+        scoped = (
+            json.loads(Path(from_detect).read_text())
+            if from_detect
+            else task_files(select(range_args))
+        )
         entry = scoped.get(opts.files_for, [])
         sys.stdout.write(
             f"{entry}\n" if isinstance(entry, str) else "".join(f"{f}\n" for f in entry)
@@ -374,6 +371,9 @@ def main() -> int:
         return 0
 
     selection = select(range_args)
+    target = os.environ.get(TASK_FILES_ENV)
+    if target:
+        Path(target).write_text(json.dumps(task_files(selection)))
     published = outputs(
         selection,
         os.environ.get("GITHUB_EVENT_NAME", LOCAL_EVENT),
