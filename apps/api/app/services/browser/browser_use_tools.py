@@ -24,7 +24,7 @@ from browser_use.llm.base import BaseChatModel
 from browser_use.tools.registry.views import ActionModel
 from browser_use.tools.service import Tools
 from browser_use.utils import match_url_with_domain_pattern
-from pydantic import TypeAdapter
+from pydantic import BaseModel, ConfigDict, TypeAdapter
 from typing_extensions import override
 
 from app.constants.browser import BROWSER_CODE_BOXES_TO_JEV, BROWSER_CODE_MIN_BOXES
@@ -96,17 +96,25 @@ def _refusal(
     return f"{'; '.join(refused)}; nothing was typed." if refused else None
 
 
-class _TypedIndex(TypedDict, total=False):
+class _InputTarget(BaseModel):
     """Browser-Use's input action, read for the element it types into."""
 
-    index: int
+    model_config = ConfigDict(extra="ignore")
+
+    index: int | None = None
 
 
-_TYPED_INDEX: TypeAdapter[_TypedIndex] = TypeAdapter(_TypedIndex)
+class _BoxAttributes(BaseModel):
+    """The one DOM attribute that makes a field a one-character code box."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    maxlength: str | None = None
 
 
 def _is_code_box(node: EnhancedDOMTreeNode) -> bool:
-    return node.node_name.upper() == "INPUT" and node.attributes.get("maxlength") == "1"
+    attributes = _BoxAttributes.model_validate(node.attributes)
+    return node.node_name.upper() == "INPUT" and attributes.maxlength == "1"
 
 
 def _form_of(node: EnhancedDOMTreeNode) -> EnhancedDOMTreeNode | None:
@@ -124,7 +132,7 @@ def _descendants(node: EnhancedDOMTreeNode) -> list[EnhancedDOMTreeNode]:
 
 async def _code_boxes(browser_session: BrowserSession, params: object) -> int:
     """Return how many one-character boxes the input's target belongs to; 0 for an ordinary field."""
-    index = _TYPED_INDEX.validate_python(params).get("index")
+    index = _InputTarget.model_validate(params).index
     node = await browser_session.get_element_by_index(index) if index is not None else None
     if node is None or not _is_code_box(node) or (form := _form_of(node)) is None:
         return 0
