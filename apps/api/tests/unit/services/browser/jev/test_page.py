@@ -69,6 +69,7 @@ SNAPSHOT: dict[str, Any] = {
     "page_key": PAGE_KEY,
     "guards": GUARDS,
     "omitted_actions": 3,
+    "disabled": ["Authorize"],
     "frames": [
         {"src": "https://pay.test/frame", "same_origin": False, "loaded": False, "visible": True}
     ],
@@ -310,7 +311,9 @@ async def test_a_snapshot_is_read_into_the_page_state() -> None:
 
     state = await page.observe()
 
-    assert state == _state(fingerprint=state.fingerprint, omitted_actions=3)
+    assert state == _state(
+        fingerprint=state.fingerprint, omitted_actions=3, disabled=("Authorize",)
+    )
 
 
 @pytest.mark.parametrize(
@@ -531,6 +534,27 @@ async def test_a_press_lands_where_the_page_says_it_reaches_and_a_dropdown_needs
     ]
 
 
+@pytest.mark.regression
+async def test_a_code_split_into_boxes_is_typed_without_the_separators_its_page_draws() -> None:
+    """Regression for GAIA-715: a dash typed into GitHub's code boxes shifted every character after it."""
+    code_field = PageAction(
+        id="e5",
+        node=7,
+        kind="fill",
+        label="User code",
+        value="",
+        segments=[7, 8, 9, 10, 11, 12, 13, 14],
+    )
+    tab = _Tab(act={7: {"x": 1, "y": 1}}, value="WDJBMJHT")
+    page, _ = _page(tab)
+
+    held = await page.act(code_field, _state(), text="WDJB-MJHT")
+
+    assert held == "WDJBMJHT"
+    assert [key["text"] for key in tab.keys[2:] if key["type"] == "keyDown"] == list("WDJBMJHT")
+    assert ("value", code_field) in tab.calls
+
+
 async def test_typing_replaces_the_focused_fields_text_with_real_keys_and_reads_it_back() -> None:
     tab = _Tab(act={7: {"x": 1, "y": 1}}, value="Ad")
     page, _ = _page(tab)
@@ -539,7 +563,7 @@ async def test_typing_replaces_the_focused_fields_text_with_real_keys_and_reads_
 
     assert held == "Ad"
     assert ("focused", 7) in tab.calls
-    assert ("value", 7) in tab.calls
+    assert ("value", FIELD) in tab.calls
     assert tab.keys[0]["commands"] == ["selectAll"]
     assert tab.keys[2:] == [
         {"type": "keyDown", "key": "a", "text": "a", "code": "KeyA", "windowsVirtualKeyCode": 65},

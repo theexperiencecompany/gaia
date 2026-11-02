@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import math
 from typing import cast
 
@@ -181,6 +182,17 @@ def test_a_page_with_more_elements_than_one_request_carries_counts_the_ones_left
     assert len(space.elements) == JEV_MAX_ELEMENTS
     assert space.left_out == 5
     assert space.controls == {JevOperation.WAIT: WAIT}
+
+
+@pytest.mark.regression
+async def test_jev_is_told_which_controls_the_page_shows_but_has_disabled() -> None:
+    """Regression for GAIA-715: unseen, a disabled Authorize read as no way forward, and the run clicked Cancel."""
+    jev = _Jev(operation="WAIT")
+    page = replace(_page(BUY, WAIT), disabled=("Authorize github",))
+
+    await decide(jev, Situation(page, "authorize", "done", [], _unmasked))
+
+    assert _asked(jev).state["disabled_elements"] == ["Authorize github"]
 
 
 async def test_jev_is_asked_about_the_page_its_elements_and_what_it_did(

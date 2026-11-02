@@ -32,7 +32,6 @@ from app.browser_host.pumps import pump_until_first_close
 from app.constants.browser import (
     BROWSER_HANDOFF_GONE_DETAIL,
     BROWSER_LIVE_VIEW_NOT_WAITING_DETAIL,
-    BROWSER_ROUTE_PREFIX,
 )
 from app.constants.log_tags import LogTag
 from app.schemas.browser import HandoffDecisionRequest, HandoffDecisionResponse
@@ -48,7 +47,7 @@ from app.services.browser.takeover_token import (
 )
 from shared.py.wide_events import log
 
-router = APIRouter(prefix=BROWSER_ROUTE_PREFIX, tags=["Browser"])
+router = APIRouter(prefix="/browser", tags=["Browser"])
 
 # WebSocket close code for "session unknown or has no live stream" (app 4xxx range).
 _WS_SESSION_GONE = 4404

@@ -188,7 +188,8 @@ BROWSER_SESSION_LEASE_SECONDS = 90.0
 # Three renewals per lease, so one slow or lost renewal never costs a live run its browser.
 BROWSER_SESSION_LEASE_RENEW_SECONDS = BROWSER_SESSION_LEASE_SECONDS / 3
 
-#: Where the browser routers sit under API_V1_PREFIX: the authenticated one and the capability links.
+#: Where the browser routers sit under API_V1_PREFIX. The routers spell it as a literal, the
+#: only form tools/evlog_map resolves; links build on this one.
 BROWSER_ROUTE_PREFIX = "/browser"
 
 # A short capability code for the bot's live-view link ({FRONTEND_URL}/live/{code}):
@@ -319,6 +320,11 @@ BROWSER_HUMAN_CHECKS = (
     "credentials the task gives is done by the run itself, never handed over. Before you hand "
     "off a login, fill every non-secret field yourself (username, email, the account "
     "identifier), so the user is left only the secret step.\n"
+    # Measured on GitHub's device login: stuck on a disabled Authorize, the agent pressed
+    # Cancel, and the user's gh login came back access_denied.
+    "- A consent the task asks you to grant (Authorize, Allow, Approve): never press its "
+    "Cancel, Deny or Decline. A grant button the page shows disabled becomes usable after a "
+    f"moment, so wait for it; if it never does, call `{BrowserHandoffAction.REQUEST_HUMAN_TAKEOVER}`.\n"
     "- A CAPTCHA, reCAPTCHA, hCaptcha, an 'I'm not a robot' or image-grid challenge, or any "
     f"other bot check: call `{BrowserHandoffAction.SOLVE_CAPTCHA_WITH_HELP}` on the first one "
     "and do what its result says. Never try to solve one yourself or click challenge tiles.\n"

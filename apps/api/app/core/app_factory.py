@@ -17,7 +17,6 @@ from app.api.v1.endpoints.health import router as health_router
 from app.api.v1.endpoints.readiness import router as readiness_router
 from app.api.v1.routes import router as api_router
 from app.config.settings import settings
-from app.constants.http import API_V1_PREFIX
 from app.constants.log_tags import LogTag
 from app.core.exception_handlers import register_exception_handlers
 from app.core.lifespan import lifespan
@@ -89,7 +88,7 @@ def create_app() -> FastAPI:
 
     register_exception_handlers(app)
 
-    app.include_router(api_router, prefix=API_V1_PREFIX, responses=ERROR_RESPONSES)
+    app.include_router(api_router, prefix="/api/v1", responses=ERROR_RESPONSES)
     app.include_router(health_router, responses=ERROR_RESPONSES)
     # Readiness pings every datastore and names them: public to an instance's
     # operator, behind the metrics token on GAIA Cloud.
@@ -105,7 +104,7 @@ def create_app() -> FastAPI:
     # Dev-only identity + seeding router. Mounted only when the auth bypass is
     # active in development, so it never exists in production (every route 404s).
     if settings.deployment.dev_tools and settings.DEV_AUTH_BYPASS_EMAIL:
-        app.include_router(dev_router, prefix=API_V1_PREFIX, responses=ERROR_RESPONSES)
+        app.include_router(dev_router, prefix="/api/v1", responses=ERROR_RESPONSES)
         wide_log.warning(
             f"{LogTag.STARTUP} Dev identity router mounted at /api/v1/dev "
             "(development only — mint/seed/delete users)"

@@ -23,7 +23,6 @@ from app.constants.browser import (
     BROWSER_HANDOFF_GONE_DETAIL,
     BROWSER_HANDOFF_NOT_OWNED_DETAIL,
     BROWSER_IMPORT_TOKEN_TTL_SECONDS,
-    BROWSER_ROUTE_PREFIX,
 )
 from app.constants.log_tags import LogTag
 from app.schemas.browser import (
@@ -49,7 +48,7 @@ from shared.py.analytics import UserId
 from shared.py.analytics.catalog.browser import BrowserImportTokenMinted, BrowserLoginsImported
 from shared.py.wide_events import log
 
-router = APIRouter(prefix=BROWSER_ROUTE_PREFIX, tags=["Browser"])
+router = APIRouter(prefix="/browser", tags=["Browser"])
 
 
 @router.post("/handoffs/{handoff_id}/decision")
