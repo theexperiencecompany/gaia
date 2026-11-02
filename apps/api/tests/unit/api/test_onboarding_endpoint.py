@@ -391,6 +391,21 @@ class TestReportOnboardingStep:
         assert response.json() == {"phase": step.value, "first_time": True}
         record.assert_awaited_once_with(FAKE_USER_ID, step)
 
+    async def test_the_wide_event_names_the_user_the_step_and_whether_it_was_new(
+        self, client: AsyncClient
+    ):
+        with (
+            patch(_RECORD_STEP, new_callable=AsyncMock, return_value=True),
+            patch("app.api.v1.endpoints.onboarding.log") as log,
+        ):
+            await client.post(PHASE_URL, json={"phase": "paywall_reached"})
+
+        log.set.assert_called_once_with(
+            user={"id": FAKE_USER_ID},
+            onboarding={"operation": "report_step", "step": OnboardingStep.PAYWALL_REACHED},
+        )
+        log.set_ns.assert_called_once_with("onboarding", first_time=True)
+
     async def test_repeat_report_says_it_was_not_the_first(self, client: AsyncClient):
         with patch(_RECORD_STEP, new_callable=AsyncMock, return_value=False):
             response = await client.post(PHASE_URL, json={"phase": "started"})
@@ -431,6 +446,23 @@ class TestSaveAnswers:
         assert [need.value for need in answers.needs] == ["inbox"]
         assert not any(
             isinstance(c.args[1], SettingsPreferencesChanged) for c in mock_capture.call_args_list
+        )
+
+    async def test_returns_the_stored_user_and_syncs_the_account(self, client: AsyncClient):
+        stored = {"user_id": FAKE_USER_ID, "onboarding": {"preferences": {"profession": "founder"}}}
+        with (
+            patch(_SAVE_ANSWERS, new_callable=AsyncMock, return_value=stored),
+            patch("app.api.v1.endpoints.onboarding.schedule_account_sync") as sync,
+            patch("app.api.v1.endpoints.onboarding.log") as log,
+        ):
+            response = await client.put(
+                ANSWERS_URL, json={"profession": "founder", "needs": ["inbox"]}
+            )
+
+        assert response.json() == {"success": True, "message": "Answers saved", "user": stored}
+        sync.assert_called_once_with(FAKE_USER_ID)
+        log.set.assert_called_once_with(
+            user={"id": FAKE_USER_ID}, onboarding={"operation": "save_answers"}
         )
 
     async def test_unanswered_q2_returns_422(self, client: AsyncClient):

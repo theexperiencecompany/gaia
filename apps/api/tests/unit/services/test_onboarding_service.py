@@ -458,6 +458,26 @@ class TestCompleteOnboarding:
         assert capture.call_args.args[1].linked_platform == "telegram"
         assert compose.call_args.args[1] == "telegram"
 
+    async def test_the_first_conversation_is_built_from_the_stored_preferences(
+        self, mock_repo: MagicMock, sample_user_id: str
+    ) -> None:
+        """The wizard stored the language earlier; the request does not carry it."""
+        mock_repo.complete_onboarding.return_value = _completed_user(
+            sample_user_id, preferences={"profession": "Engineer", "language": "de"}
+        )
+        request = OnboardingRequest(profession="Engineer", needs=["inbox"])
+
+        with (
+            patch(f"{SERVICE}.capture"),
+            patch(f"{SERVICE}.identify_user"),
+            patch(f"{SERVICE}.compose_first_conversation") as compose,
+            patch(f"{SERVICE}.seed_first_conversation", AsyncMock(return_value=None)),
+            patch(f"{SERVICE}.resolve_first_question", AsyncMock(return_value=None)),
+        ):
+            await complete_onboarding(sample_user_id, request)
+
+        assert compose.call_args.args[0].language == "de"
+
     async def test_a_typed_need_travels_only_as_a_flag(
         self,
         mock_repo: MagicMock,
@@ -1258,6 +1278,34 @@ class TestSaveOnboardingAnswers:
             has_other_need=True,
         )
 
+    async def test_writes_every_answer_for_this_user_and_stamps_them_for_this_user(
+        self, mock_repo: MagicMock, sample_user_id: str
+    ) -> None:
+        mock_repo.update_onboarding_preferences.return_value = UserDocument(id=sample_user_id)
+        answers = OnboardingAnswers(
+            profession="founder",
+            needs=[OnboardingNeed.INBOX],
+            other_need="chasing invoices",
+            language="de-DE",
+        )
+
+        with (
+            patch(f"{SERVICE}.spawn_background_task"),
+            patch(f"{SERVICE}.prewarm_first_question"),
+            patch(f"{SERVICE}.capture"),
+        ):
+            await save_onboarding_answers(sample_user_id, answers)
+
+        written_for, written = mock_repo.update_onboarding_preferences.await_args.args
+        assert written_for == sample_user_id
+        assert (written.profession, written.needs, written.other_need, written.language) == (
+            "founder",
+            [OnboardingNeed.INBOX],
+            "chasing invoices",
+            "de",
+        )
+        assert mock_repo.record_onboarding_step.await_args.args[0] == sample_user_id
+
     async def test_a_missing_user_is_a_404_and_stamps_nothing(
         self, mock_repo: MagicMock, sample_user_id: str
     ) -> None:
@@ -1270,6 +1318,7 @@ class TestSaveOnboardingAnswers:
             )
 
         assert exc_info.value.status_code == 404
+        assert exc_info.value.detail == "User not found"
         mock_repo.record_onboarding_step.assert_not_awaited()
 
 
