@@ -411,6 +411,18 @@ class TestAReactionTheCatalogCannotCarryIsDeliveredAsText:
         assert state.saved
 
 
+class TestUsageMetadata:
+    async def test_the_turns_token_usage_is_saved_on_the_reply(self):
+        """The cost and usage views read it back off the saved message."""
+        state = _StreamState()
+        state.complete_message = "Done."
+        state.usage_metadata = {"gpt-6-luna": {"input_tokens": 120, "output_tokens": 30}}
+
+        bot, _ = await persist(state)
+
+        assert bot.metadata == {"gpt-6-luna": {"input_tokens": 120, "output_tokens": 30}}
+
+
 class TestStoppedTurns:
     """A stopped turn says so on reload: the marker is stored on the message, not kept in the tab."""
 
