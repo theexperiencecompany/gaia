@@ -166,8 +166,8 @@ PLAYBOOK_DECISION_NUDGE_MESSAGE = (
 )
 MAX_PLAYBOOK_DECISION_NUDGES = 1
 
-#: The playbook decision tools. Bookkeeping about a run, never the run itself:
-#: left out of the record the next run reads, or the model copies them as steps.
+#: The playbook tools. Bookkeeping about a run, never the run itself: left out
+#: of the record the next run reads, or the model copies them as steps.
 PLAYBOOK_TOOL_NAMES = frozenset(
-    {"write_playbook", "read_playbook", "decline_playbook", "disable_playbook"}
+    {"read_run_record", "write_playbook", "read_playbook", "decline_playbook", "disable_playbook"}
 )

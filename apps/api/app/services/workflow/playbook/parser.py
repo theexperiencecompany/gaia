@@ -47,7 +47,11 @@ from app.services.workflow.playbook.evaluator import (
     resolve_step,
 )
 from app.services.workflow.playbook.placeholders import PLACEHOLDER_TOKEN, placeholder_tokens
-from app.services.workflow.playbook.time_layouts import detect_layout, time_slot_layout
+from app.services.workflow.playbook.time_layouts import (
+    detect_layout,
+    renders_inside,
+    time_slot_layout,
+)
 from app.services.workflow.playbook.tool_space import (
     ToolSpace,
     handoff_tool_space,
@@ -661,6 +665,8 @@ def _check_time_layout(
             f"{key!r} was {example!r} in this run, whose layout is {layout!r}; {value} "
             f"renders as ISO 8601, so write {_time_slot_hint(placeholder, layout)}"
         )
+    elif all(renders_inside(t, example) for t in tokens if t.group("root") in _TIME_ROOTS):
+        return
     else:
         problem = (
             f"{key!r} was {example!r} in this run; {value!r} renders its placeholder as "

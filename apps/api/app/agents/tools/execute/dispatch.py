@@ -25,7 +25,7 @@ from pydantic import BaseModel, ValidationError
 
 from app.agents.tools.execute.account_choice import choose_account, tool_used, with_account
 from app.agents.tools.execute.resolver import ResolvedTool, resolve_tool
-from app.agents.tools.invocation import invoke_tool
+from app.agents.tools.invocation import ViaExecute, invoke_tool
 from app.constants.execute import (
     TICKET_APPROVE_NAME,
     TICKET_NAMES,
@@ -237,7 +237,7 @@ async def dispatch_tool(
     try:
         async with asyncio.timeout(bound):
             output = await invoke_tool(
-                tool, validated, with_account(config, choice), proxied=True, account=account
+                tool, validated, with_account(config, choice), via=ViaExecute(account)
             )
     except TimeoutError:
         # The only failure whose effect is unknown — the provider may have

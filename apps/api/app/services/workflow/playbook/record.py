@@ -34,7 +34,12 @@ from app.models.playbook_models import (
 from app.models.workflow_execution_models import RecordedCall, parse_result
 from app.services.workflow.playbook.parser import PlaybookIssue, RecordedResult
 from app.services.workflow.playbook.placeholders import PLACEHOLDER_TOKEN, placeholder_tokens
-from app.services.workflow.playbook.time_layouts import detect_layout, time_slot_layout
+from app.services.workflow.playbook.time_layouts import (
+    detect_layout,
+    renders_inside,
+    time_slot_layout,
+    written_in,
+)
 
 #: Most keys a result shape lists per object, and how deep it goes.
 _SHAPE_MAX_KEYS = 15
@@ -418,7 +423,7 @@ def _stored_value(
         if layout is None:
             return value
         return _time_slot_value(whole.group(0), layout)
-    if detect_layout(example) is None:
+    if all(renders_inside(token, example) for token in times):
         return value
     issues.append(
         PlaybookIssue(
@@ -433,17 +438,19 @@ def _stored_value(
 def _time_slot(
     value: TimeValue, example: object, path: str, issues: list[PlaybookIssue], where: str
 ) -> object | None:
-    layout = detect_layout(example)
-    if layout is not None and value.format is not None and value.format != layout:
+    if value.format is not None and not (
+        isinstance(example, str) and written_in(example, value.format)
+    ):
         issues.append(
             PlaybookIssue(
                 where=where,
-                problem=f"{path!r} was {example!r}, whose layout is {layout!r}, not "
-                f"{value.format!r}; leave format out to keep the recorded layout",
+                problem=f"{path!r} was {example!r}, which is not written in {value.format!r}; "
+                "leave format out to keep the recorded layout",
             )
         )
         return None
-    chosen = value.format or layout
+    # A layout the author names wins: 03/11/2026 reads as March or November.
+    chosen = value.format or detect_layout(example)
     if chosen is None:
         issues.append(
             PlaybookIssue(

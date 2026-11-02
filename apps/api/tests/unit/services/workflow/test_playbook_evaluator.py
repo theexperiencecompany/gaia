@@ -191,6 +191,13 @@ def test_a_time_slot_that_is_not_a_time_is_refused_with_the_grammar() -> None:
     assert caught.value.fix == "write the time as $today + 1d 09:00 or similar"
 
 
+def test_a_layout_ending_in_z_is_rendered_in_utc() -> None:
+    """A trailing Z says UTC; the user's own clock with a Z on it is a different instant."""
+    slot = TimeSlot.model_validate({"$time": "$now", "format": "%Y-%m-%dT%H:%M:%SZ"})
+
+    assert _render_time_slot(slot, NOW) == "2026-03-14T08:30:00Z"
+
+
 def test_a_clock_makes_a_date_an_instant() -> None:
     """Seen live: "tomorrow at nine" had no spelling, so the model wrote prose around $today + 1d."""
     context = _context()

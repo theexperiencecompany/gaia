@@ -210,11 +210,26 @@ async def test_the_execute_proxy_records_the_real_tool_and_not_itself(fake_redis
         patch("app.agents.tools.execute.dispatch.capture"),
     ):
         await execute.ainvoke(
-            {"task_description": "probing", "tool_name": "probe", "data": {"query": "q"}},
+            {
+                "task_description": "probing",
+                "tool_name": "probe",
+                "data": {"query": "q"},
+                "account": "work@acme.com",
+            },
             config=_run_config(),
         )
 
     assert await _recorded() == [("probe", {"query": "q"}, "todos", "answered q")]
+    # A playbook replays it the way it ran: through execute, as the account it named.
+    (call,) = await read_run_record(STREAM_ID)
+    assert (call.proxied, call.account) == (True, "work@acme.com")
+
+
+async def test_a_directly_bound_call_is_not_recorded_as_proxied(fake_redis: Any) -> None:
+    await DynamicToolNode({"probe": probe})._afunc(_one_call("probe"), _run_config(), Runtime())
+
+    (call,) = await read_run_record(STREAM_ID)
+    assert (call.proxied, call.account) == (False, None)
 
 
 async def test_a_sandbox_script_calling_back_records_into_its_run(

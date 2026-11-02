@@ -21,7 +21,11 @@ from pydantic.v1 import ValidationError as LegacyValidationError
 from app.agents.tools.execute.unwrap import unwrap_execute_call
 from app.agents.tools.run_record import read_run_record as read_recorded_calls
 from app.agents.tools.todo_tools import TODO_TOOL_NAMES
-from app.constants.agents import PLAYBOOK_REPLAYED_CALLS_KEY, PLAYBOOK_UNPICKABLE_TOOLS
+from app.constants.agents import (
+    PLAYBOOK_REPLAYED_CALLS_KEY,
+    PLAYBOOK_TOOL_NAMES,
+    PLAYBOOK_UNPICKABLE_TOOLS,
+)
 from app.constants.log_tags import LogTag
 from app.db.repositories.playbooks import playbook_repository
 from app.db.repositories.workflows import workflow_repository
@@ -586,6 +590,6 @@ async def disable_playbook(
 tools = [read_run_record, write_playbook, read_playbook, decline_playbook, disable_playbook]
 
 #: The run tracking its own plan and deciding its playbook: never the workflow's work.
-_RUN_BOOKKEEPING_TOOLS = frozenset(TODO_TOOL_NAMES | {t.name for t in tools})
+_RUN_BOOKKEEPING_TOOLS = frozenset(TODO_TOOL_NAMES | PLAYBOOK_TOOL_NAMES)
 #: Calls a playbook step can never be.
 _UNPICKABLE_TOOLS = _RUN_BOOKKEEPING_TOOLS | PLAYBOOK_UNPICKABLE_TOOLS

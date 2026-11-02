@@ -17,7 +17,7 @@ tool with a hole in it.
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 import json
 import re
 from typing import Any
@@ -35,7 +35,7 @@ from app.models.playbook_models import (
 )
 from app.models.workflow_execution_models import RECORD_CUT_MARKER, RecordedCall, parse_result
 from app.services.workflow.playbook.placeholders import PLACEHOLDER_TOKEN
-from app.services.workflow.playbook.time_layouts import render_iso
+from app.services.workflow.playbook.time_layouts import render_iso, renders_in_utc
 from app.utils.errors import AppError
 
 #: Offset suffixes ``$now``/``$today`` accept, as ``timedelta`` keywords.
@@ -325,7 +325,10 @@ def _render_time_slot(slot: TimeSlot, now: datetime) -> str:
             why=f"{TIME_KEY} takes $now or $today with an optional offset and clock",
             fix="write the time as $today + 1d 09:00 or similar",
         )
-    return _resolve_moment(match, now).strftime(slot.format)
+    moment = _resolve_moment(match, now)
+    if renders_in_utc(slot.format):
+        moment = moment.astimezone(UTC)
+    return moment.strftime(slot.format)
 
 
 def _resolve_token(match: re.Match[str], context: RunContext) -> object:

@@ -12,6 +12,7 @@ through here, and that real call (name, args, result) is the record.
 """
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 import json
 from typing import cast
 
@@ -31,38 +32,39 @@ from app.models.workflow_execution_models import RecordedCall, build_result_dige
 GRAPH_TOOL_CALL_TYPE = "tool_call"
 
 
+@dataclass(frozen=True, slots=True)
+class ViaExecute:
+    """A call the execute proxy dispatched, as the account it named (None: the primary)."""
+
+    account: str | None
+
+
 async def invoke_tool(
     tool: BaseTool,
     tool_input: Mapping[str, object],
     config: RunnableConfig | None = None,
     *,
     call_args: Mapping[str, object] | None = None,
-    proxied: bool = False,
-    account: str | None = None,
+    via: ViaExecute | None = None,
 ) -> object:
     """Run tool and record the call in the run it belongs to.
 
     call_args is what the model asked for, when tool_input also carries values
     the caller injected (a store, the user id); it defaults to tool_input's own args.
-    proxied and account say the call ran through execute as that account, which a
-    replay must do again.
+    via says the execute proxy dispatched it, which a replay must do again.
     """
-    args = _call_args(tool_input) if call_args is None else dict(call_args)
+    pending = _pending(tool, tool_input, config, call_args, via)
     try:
         output = await tool.ainvoke(dict(tool_input), config=config)
     except GraphBubbleUp:
         # A pause for approval, not a finished call: recorded when it resumes and runs.
         raise
     except Exception as exc:
-        recorded = _recorded(
-            tool, args, config, _error_text(exc), failed=True, proxied=proxied, account=account
-        )
-        if recorded is not None:
-            await append_call(*recorded)
+        if pending is not None:
+            await append_call(pending[0], _finished(pending[1], _error_text(exc), failed=True))
         raise
-    recorded = _recorded(tool, args, config, output, failed=False, proxied=proxied, account=account)
-    if recorded is not None:
-        await append_call(*recorded)
+    if pending is not None:
+        await append_call(pending[0], _finished(pending[1], output, failed=False))
     return output
 
 
@@ -74,33 +76,28 @@ def invoke_tool_sync(
     call_args: Mapping[str, object] | None = None,
 ) -> object:
     """Sync twin of invoke_tool, for LangGraph's sync node functions."""
-    args = _call_args(tool_input) if call_args is None else dict(call_args)
+    pending = _pending(tool, tool_input, config, call_args, None)
     try:
         output = tool.invoke(dict(tool_input), config=config)
     except GraphBubbleUp:
         raise
     except Exception as exc:
-        recorded = _recorded(tool, args, config, _error_text(exc), failed=True)
-        if recorded is not None:
-            append_call_sync(*recorded)
+        if pending is not None:
+            append_call_sync(pending[0], _finished(pending[1], _error_text(exc), failed=True))
         raise
-    recorded = _recorded(tool, args, config, output, failed=False)
-    if recorded is not None:
-        append_call_sync(*recorded)
+    if pending is not None:
+        append_call_sync(pending[0], _finished(pending[1], output, failed=False))
     return output
 
 
-def _recorded(
+def _pending(
     tool: BaseTool,
-    args: dict[str, object],
+    tool_input: Mapping[str, object],
     config: RunnableConfig | None,
-    output: object,
-    *,
-    failed: bool,
-    proxied: bool = False,
-    account: str | None = None,
+    call_args: Mapping[str, object] | None,
+    via: ViaExecute | None,
 ) -> tuple[str, RecordedCall] | None:
-    """Return (stream id, call) for a call that belongs to a run, else None."""
+    """Return (stream id, the call before its result) for a call that belongs to a run, else None."""
     if tool.name == EXECUTE_TOOL_NAME or config is None:
         return None
     configurable: AgentConfigurable = agent_configurable(config)
@@ -111,13 +108,22 @@ def _recorded(
         tool_name=tool.name,
         subagent_id=configurable.get("subagent_id"),
         subagent=configurable.get("run_scope"),
-        args=args,
-        result_digest=build_result_digest(_as_text(_result_payload(output))),
-        failed=failed,
-        proxied=proxied,
-        account=account,
+        args=_call_args(tool_input) if call_args is None else dict(call_args),
+        proxied=via is not None,
+        account=via.account if via is not None else None,
     )
     return stream_id, call
+
+
+def _finished(call: RecordedCall, output: object, *, failed: bool) -> RecordedCall:
+    """Return the call with what it returned, or the error it raised."""
+    return RecordedCall.model_validate(
+        {
+            **call.model_dump(mode="json"),
+            "result_digest": build_result_digest(_as_text(_result_payload(output))),
+            "failed": failed,
+        }
+    )
 
 
 class _GraphToolCall(BaseModel):
