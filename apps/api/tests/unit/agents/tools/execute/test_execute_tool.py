@@ -21,6 +21,7 @@ from app.agents.tools.execute.dispatch import (
     dispatch_tool,
 )
 from app.agents.tools.execute.execute_tool import build_execute_tool, execute
+from app.agents.tools.execute.unwrap import unwrap_execute_call
 from app.constants.execute import EXECUTE_TOOL_NAME
 from app.models.execute_models import DispatchError, DispatchErrorKind
 
@@ -317,6 +318,14 @@ class TestExecuteToolCall:
 
     def test_the_schema_the_model_sees_still_asks_for_an_object(self) -> None:
         assert execute.args["data"]["type"] == "object"
+
+    def test_the_gate_and_card_see_the_same_args_dispatch_runs(self) -> None:
+        """Seen live: the card showed {} for a JSON-encoded data the proxy then ran, so the HIL gate judged empty args."""
+        call = {"tool_name": "GMAIL_FETCH_MESSAGES", "data": '{"timeframe": "14d"}'}
+        assert unwrap_execute_call(EXECUTE_TOOL_NAME, call) == (
+            "GMAIL_FETCH_MESSAGES",
+            {"timeframe": "14d"},
+        )
 
     async def test_a_tool_name_analytics_cannot_carry_fails_the_args_schema_before_dispatch(
         self,
