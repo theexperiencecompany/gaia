@@ -12,7 +12,7 @@ dump_playbook renders a body as YAML for humans; the structured body is the
 only stored form, so nothing parses the YAML back.
 """
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 import json
 import re
@@ -138,15 +138,17 @@ async def validate_playbook(
     from; with them, an empty or failed call and a bad $steps shape are refused.
     """
     registry = await get_tool_registry()
-    walk = _Walk(user_id=user_id, registry=registry, sources=sources)
+    walk = _Walk(
+        user_id=user_id, registry=registry, sources=None if sources is None else iter(sources)
+    )
     await _check_steps(
         body.steps,
         "steps",
         ToolSpace(tools=registry.get_tool_dict(), runtime=None, subagent_id=None),
         walk,
     )
-    if sources is not None and walk.cursor != len(sources):
-        raise ValueError(f"{len(sources)} sources for {walk.cursor} tool steps")
+    if walk.sources is not None and next(walk.sources, None) is not None:
+        raise ValueError(f"{len(sources or ())} sources for {walk.taken} tool steps")
     return PlaybookValidation(valid=not walk.issues, issues=walk.issues)
 
 
@@ -164,9 +166,9 @@ class _Walk:
     issues: list[PlaybookIssue] = field(default_factory=list)
     #: The recorded call each tool step was built from, in document order, or
     #: ``None`` for a document checked without a run (a predefined recipe).
-    sources: Sequence[RecordedResult] | None = None
-    #: How many tool steps the walk has passed: the index of the next source.
-    cursor: int = 0
+    sources: Iterator[RecordedResult] | None = None
+    #: How many sources the walk has taken, one per tool step passed.
+    taken: int = 0
     #: What each declared step returned in that run, filled as the walk passes
     #: the step. A ``$steps`` reference is checked against this, so it can only
     #: ever read a step that ran before it — the same rule the replay enforces.
@@ -197,7 +199,9 @@ async def _check_steps(
                 walk.handoff_ids.add(step.id)
             subagent = await resolve_subagent_tools(step.handoff, walk.user_id, walk.registry)
             if subagent is None:
-                walk.cursor += len(step.steps)
+                if walk.sources is not None:
+                    for index in range(len(step.steps)):
+                        _take_source(walk, f"{here}.steps[{index}]")
                 walk.issues.append(
                     PlaybookIssue(
                         where=here,
@@ -283,6 +287,15 @@ def _check_tool_step(
             _check_value_type(value, arg_schema, where, walk.issues)
 
 
+def _take_source(walk: _Walk, path: str) -> RecordedResult:
+    """Return the next tool step's source; running out is a bug in whoever built them."""
+    call = next(walk.sources, None) if walk.sources is not None else None
+    if call is None:
+        raise ValueError(f"no source for tool step {path}: {walk.taken} sources")
+    walk.taken += 1
+    return call
+
+
 def _check_source(
     step: ToolStep | ForEachStep, tool_name: str, path: str, walk: _Walk
 ) -> RecordedResult:
@@ -290,11 +303,7 @@ def _check_source(
 
     The source's result is also what later $steps references read.
     """
-    sources = walk.sources or ()
-    if walk.cursor >= len(sources):
-        raise ValueError(f"no source for tool step {path}: {len(sources)} sources")
-    call = sources[walk.cursor]
-    walk.cursor += 1
+    call = _take_source(walk, path)
     if step.id:
         walk.step_results[step.id] = StepResult(value=call.result)
     refusal = _result_refusal(tool_name, call)
