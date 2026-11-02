@@ -160,7 +160,9 @@ async def _run_executor(
     ):
         result_text = ""
         result_type = "final"
-        stopped = False
+        # Equivalent under mutation: read only if execute raised, when result_text is
+        # still empty and finalize has nothing to deliver either way.
+        stopped = False  # pragma: no mutate
         # Equivalent under mutation: read only if execute raised, when result_type is still
         # "final" and finalize's `if ctx` treats any falsy placeholder alike.
         run_ctx: SubagentExecutionContext | None = None  # pragma: no mutate

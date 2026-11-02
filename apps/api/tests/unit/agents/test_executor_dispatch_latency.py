@@ -554,6 +554,16 @@ class TestBackgroundRunExactWiring:
         ):
             yield SimpleNamespace(execute=execute, is_cancelled=is_cancelled_mock)
 
+    @pytest.mark.parametrize("stopped", [True, False])
+    async def test_finalize_is_told_whether_the_stop_cut_the_run_short(self, stopped: bool) -> None:
+        run = _run("exec-stopped")
+        result = _ExecutorResult("so far", "final", stopped=stopped)
+        with self._env(run, perf_values=[1000.0, 1000.0, 1000.5], result=result):
+            await run_executor_background(run=run, task="the task", configurable={})
+            finalize = er._finalize_executor_run
+
+        assert finalize.await_args.kwargs == {"stopped": stopped}
+
     async def test_execute_executor_receives_the_run_arguments(self) -> None:
         run = _run("exec-args")
         configurable = {"conversation_source": "web"}

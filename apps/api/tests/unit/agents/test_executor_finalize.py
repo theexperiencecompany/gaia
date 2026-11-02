@@ -225,8 +225,18 @@ class TestACompletedResultIsNeverDiscarded:
 
         await er._finalize_executor_run(run, TASK, "partial text", "final", stopped=True)
 
+        boundaries.stream_manager.is_cancelled.assert_awaited_once_with("s1")
         boundaries.deliver.assert_not_awaited()
         boundaries.record_cancel.assert_awaited_once_with(run.conversation_id, run.task_id, TASK)
+
+    async def test_a_run_not_said_to_be_stopped_is_a_finished_one(self, boundaries) -> None:
+        """The default is the finished run: only the runner, which knows, says otherwise."""
+        boundaries.stream_manager.is_cancelled.return_value = True
+        create_session("s1", RunKind.LIVE)
+
+        await er._finalize_executor_run(_run(RunKind.LIVE), TASK, "the answer", "final")
+
+        boundaries.deliver.assert_awaited_once()
 
     async def test_an_error_under_a_stop_counts_as_cut_short(self, boundaries) -> None:
         """The stop is the likeliest cause of the error, so it is not reported as a failure."""

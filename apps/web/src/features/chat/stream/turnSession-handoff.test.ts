@@ -18,50 +18,13 @@ vi.mock("@/lib/db/chatDb", () => ({
   },
   dbEventEmitter: { on: vi.fn(), off: vi.fn() },
 }));
-vi.mock("@/stores/composerStore", () => ({
-  useComposerStore: Object.assign(vi.fn(), { getState: vi.fn(() => ({})) }),
-}));
-vi.mock("@/features/chat/api/chatApi", () => ({
-  chatApi: {},
-  DuplicateTurnError: class extends Error {},
-  RateLimitError: class extends Error {},
-}));
-vi.mock("@/services/syncService", () => ({ syncSingleConversation: vi.fn() }));
-vi.mock("@/lib/toast", () => ({ toast: { error: vi.fn(), info: vi.fn() } }));
-vi.mock("@/lib/analytics", () => ({ track: vi.fn() }));
-vi.mock("@/features/chat/stream/unread", () => ({
-  isViewingConversation: () => true,
-  markConversationUnread: vi.fn(),
-}));
 
+import { textSendArgs } from "@/__tests__/helpers/sendArgs";
 import { TurnSession } from "@/features/chat/stream/turnSession";
-import type { SendArgs } from "@/features/chat/stream/types";
 import { useChatStore } from "@/stores/chatStore";
 import { useActiveComposerLocked, useStreamStore } from "@/stores/streamStore";
 
 const CONV = "conv-handoff";
-
-const sendArgs = (): SendArgs => ({
-  inputText: "find me five fintech companies",
-  userMessage: {
-    type: "user",
-    response: "find me five fintech companies",
-    date: new Date().toISOString(),
-    message_id: "msg-1",
-  },
-  options: {
-    fileData: [],
-    selectedTool: null,
-    toolCategory: null,
-    selectedWorkflow: null,
-    selectedCalendarEvent: null,
-    optimisticUserId: "opt-1",
-    replyToMessage: null,
-    conversationId: CONV,
-    isOnboardingDemo: false,
-    isRetry: false,
-  },
-});
 
 /** The private steps the SSE plumbing reaches; the transport is not under test. */
 interface TurnInternals {
@@ -70,10 +33,14 @@ interface TurnInternals {
 }
 
 const mainResponseComplete = (toolCategory: string | null): void => {
-  const session = new TurnSession(CONV, sendArgs(), {
-    onEnd: vi.fn(),
-    onRekey: vi.fn(),
-  }) as unknown as TurnInternals;
+  const session = new TurnSession(
+    CONV,
+    textSendArgs(CONV, "find me five fintech companies"),
+    {
+      onEnd: vi.fn(),
+      onRekey: vi.fn(),
+    },
+  ) as unknown as TurnInternals;
   session.acc = {
     ...session.acc,
     toolData: toolCategory
