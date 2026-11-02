@@ -257,7 +257,7 @@ async def get_subscription_status_endpoint(
         raise HTTPException(status_code=500, detail="Failed to get subscription status") from e
 
 
-@router.get("/paywall", response_model=PaywallResponse)
+@router.get("/paywall")
 @limiter.limit("60/minute")
 # evlog-map-disable-next-line audit -- read-only paywall lookup, no state change to audit
 async def get_paywall_endpoint(
