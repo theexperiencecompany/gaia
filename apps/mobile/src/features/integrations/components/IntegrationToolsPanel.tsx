@@ -1,4 +1,3 @@
-import { useMemo } from "react";
 import { View } from "react-native";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
@@ -52,23 +51,21 @@ export function IntegrationToolsPanel({
 }: IntegrationToolsPanelProps) {
   const { fontSize, spacing } = useResponsive();
 
-  const entries = useMemo<ToolEntry[]>(() => {
-    const prefixRegex = categoryPrefix
-      ? new RegExp(`^${escapeRegExp(categoryPrefix)}\\s*`, "i")
-      : null;
-    return tools.map((tool) => {
-      const formatted = formatToolName(tool.name);
-      const label = prefixRegex
-        ? formatted.replace(prefixRegex, "").trim() || formatted
-        : formatted;
-      return {
-        name: tool.name,
-        label,
-        destructive: tool.destructive ?? false,
-        approvalKey: tool.approval_key,
-      };
-    });
-  }, [tools, categoryPrefix]);
+  const prefixRegex = categoryPrefix
+    ? new RegExp(`^${escapeRegExp(categoryPrefix)}\\s*`, "i")
+    : null;
+  const entries: ToolEntry[] = tools.map((tool) => {
+    const formatted = formatToolName(tool.name);
+    const label = prefixRegex
+      ? formatted.replace(prefixRegex, "").trim() || formatted
+      : formatted;
+    return {
+      name: tool.name,
+      label,
+      destructive: tool.destructive ?? false,
+      approvalKey: tool.approval_key,
+    };
+  });
 
   if (entries.length === 0) {
     return null;
