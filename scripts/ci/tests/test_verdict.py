@@ -295,16 +295,35 @@ def test_pytest_verdict_points_at_the_failing_test(tmp_path: Path) -> None:
             "test-python/unit-a",
             "--path-prefix",
             "apps/api/",
+            "--exit-code",
+            "1",
             "--out",
             str(tmp_path / "v"),
         ]
     )
 
-    (found,) = _read(tmp_path, "test-python/unit-a")["findings"]
+    doc = _read(tmp_path, "test-python/unit-a")
+    assert doc["status"] == "fail"
+    (found,) = doc["findings"]
     assert found["file"] == "apps/api/tests/contracts/test_x.py"
     # JUnit's `line` is 0-based, GitHub annotations are 1-based.
     assert found["line"] == 42
     assert "FAILED" in found["message"]
+
+
+def test_a_failure_the_flake_gate_accepted_does_not_red_the_lane(tmp_path: Path) -> None:
+    # In the merge queue the flake gate exits 0 when the rerun passes, but the
+    # JUnit is the first run's: reading it alone ejected PR #1579 twice.
+    junit = _junit(tmp_path, "test_flaky", '<failure message="Timeout">E  Timeout</failure>')
+
+    verdict.cmd_pytest_verdict(
+        [junit, "--lane", "slice", "--exit-code", "0", "--out", str(tmp_path / "v")]
+    )
+
+    doc = _read(tmp_path, "slice")
+    assert doc["status"] == "pass"
+    (found,) = doc["findings"]
+    assert found["message"].startswith("FLAKY")
 
 
 def test_a_green_pytest_run_that_exited_nonzero_is_not_a_pass(tmp_path: Path) -> None:
@@ -345,6 +364,8 @@ def test_a_real_xunit2_report_still_lands_on_the_failing_line(tmp_path: Path) ->
             "slice",
             "--path-prefix",
             "apps/api/",
+            "--exit-code",
+            "1",
             "--out",
             str(tmp_path / "v"),
         ]
