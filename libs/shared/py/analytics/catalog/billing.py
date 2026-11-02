@@ -114,7 +114,7 @@ class SubscriptionActivated(ServerEvent):
     subscription_id: Identifier
     plan_name: Literal["Pro"]
     currency: CurrencyCode
-    # Dodo's product and interval ("Month", "Year"); a backfill sends them only when its row has them.
+    # Dodo's product and interval ("Month", "Year"); absent on a backfill, whose row knows only the current plan.
     product_id: Identifier | None = None
     billing_interval: Identifier | None = None
     amount: float | None = None

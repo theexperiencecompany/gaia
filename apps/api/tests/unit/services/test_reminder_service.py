@@ -957,7 +957,12 @@ class TestEveryReminderChangeIsCountedOnceWhoeverMadeIt:
 
         assert await scheduler.pause(reminder_id, FAKE_USER_ID) is True
 
-        assert mock_repo.update_for_user.call_args.args[2].status is ReminderStatus.PAUSED
+        owned_id, owner, update = mock_repo.update_for_user.call_args.args
+        assert (owned_id, owner, update.status) == (
+            reminder_id,
+            FAKE_USER_ID,
+            ReminderStatus.PAUSED,
+        )
         mock_capture.assert_called_once_with(UserId(FAKE_USER_ID), ReminderPaused())
 
     async def test_resuming_counts_a_resume_not_an_edit(self, scheduler, mock_repo, mock_capture):
@@ -972,9 +977,13 @@ class TestEveryReminderChangeIsCountedOnceWhoeverMadeIt:
     async def test_a_cancel_is_counted_only_when_it_cancelled_something(
         self, scheduler, mock_capture, cancelled, expected
     ):
+        reminder_id = str(ObjectId())
         with patch.object(
             ReminderScheduler, "update_task_status", new_callable=AsyncMock, return_value=cancelled
-        ):
-            assert await scheduler.cancel_task(str(ObjectId()), FAKE_USER_ID) is cancelled
+        ) as set_status:
+            assert await scheduler.cancel_task(reminder_id, FAKE_USER_ID) is cancelled
 
-        assert [c.args[1] for c in mock_capture.call_args_list] == expected
+        set_status.assert_awaited_once_with(
+            reminder_id, ScheduledTaskStatus.CANCELLED, user_id=FAKE_USER_ID
+        )
+        assert mock_capture.call_args_list == [call(UserId(FAKE_USER_ID), e) for e in expected]

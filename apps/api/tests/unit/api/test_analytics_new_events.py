@@ -21,6 +21,7 @@ from app.models.files_models import FileDocument
 from app.models.hil_models import ApprovalLedgerDocument, LedgerState
 from app.models.integration_models import Integration
 from app.models.mail_models import GmailMessageResource
+from app.models.memory_models import MemoryDocument
 from app.models.notification.notification_models import NotificationRecord
 from app.models.payment_models import PlanType
 from app.models.todo_models import TodoDocument
@@ -411,8 +412,6 @@ class TestMemoryNewEvents:
         mock_capture.assert_called_once_with(UserId(UID), MemoryUpdated())
 
     async def test_document_update_captures(self, client: AsyncClient) -> None:
-        from app.models.memory_models import MemoryDocument
-
         with (
             patch(f"{_MEM}.memory_engine.update_document", new_callable=AsyncMock) as mock_upd,
             patch(_MEM_CAPTURE) as mock_capture,
