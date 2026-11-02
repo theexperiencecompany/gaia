@@ -431,3 +431,24 @@ class TestAReactionTheCatalogCannotCarryIsDeliveredAsText:
 
         assert (bot.kind, bot.response) == (MessageKind.EMOJI_ACK, "👍")
         assert state.saved
+
+
+class TestStoppedTurns:
+    """A stopped turn says so on reload: the marker is stored on the message, not kept in the tab."""
+
+    async def test_a_turn_the_user_stopped_is_saved_as_stopped(self):
+        state = _StreamState()
+        state.complete_message = "Looking into Berlin dentists"
+        state.is_cancelled = True
+
+        bot, _ = await persist(state)
+
+        assert bot.stopped is True
+
+    async def test_a_finished_turn_carries_no_stopped_mark(self):
+        state = _StreamState()
+        state.complete_message = "Three dentists near you."
+
+        bot, _ = await persist(state)
+
+        assert bot.stopped is None

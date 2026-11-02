@@ -142,13 +142,14 @@ async def save_bot_reply(
     follow_up_actions: list[str] | None = None,
     kind: MessageKind = MessageKind.TEXT,
     reacts_to_message_id: str | None = None,
+    stopped: bool = False,
 ) -> None:
     """Persist the turn's reply to Mongo; the user message was saved when the turn began.
 
     Artifact URLs are baked absolute so a stale frontend chunk still renders.
     bot_timestamp stamps the reply at comms-completion time, keeping it sorted
     ahead of a delegated executor answer in voice mode.
-    kind and reacts_to_message_id stamp a REACT turn as a one-emoji acknowledgment.
+    kind and reacts_to_message_id stamp a REACT turn; stopped, a turn cut off with Stop.
     """
     bot_timestamp = bot_timestamp or datetime.now(UTC)
     rendered_message = absolutize_artifact_urls(complete_message, conversation_id)
@@ -166,6 +167,7 @@ async def save_bot_reply(
         follow_up_actions=follow_up_actions,
         kind=kind,
         reacts_to_message_id=reacts_to_message_id,
+        stopped=stopped or None,
     )
     bot_message.message_id = bot_message_id
 

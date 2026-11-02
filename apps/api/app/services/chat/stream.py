@@ -1089,6 +1089,7 @@ async def _save_reply(
         follow_up_actions=state.follow_up_actions or None,
         kind=state.message_kind,
         reacts_to_message_id=state.reacts_to_message_id,
+        stopped=state.is_cancelled,
     )
     if state.message_kind is MessageKind.EMOJI_ACK:
         capture(UserId(user.user_id), ChatTurnReacted(emoji=state.complete_message))
