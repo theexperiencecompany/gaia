@@ -280,6 +280,9 @@ class TestActivationThroughRealExecutorGraph:
             p3,
             p4,
             patch(f"{_ACTIVATION_MOD}.get_integration_target", new=AsyncMock(return_value=custom)),
+            patch(
+                f"{_ACTIVATION_MOD}.check_user_has_integration", new=AsyncMock(return_value=True)
+            ),
             patch(f"{_ACTIVATION_MOD}.check_mcp_connection", new=AsyncMock(return_value=None)),
             patch(f"{_ACTIVATION_MOD}.get_mcp_client", new=AsyncMock(return_value=mcp_client)),
             patch(f"{_ACTIVATION_MOD}.render_preload_block", new=AsyncMock(return_value=docs)),

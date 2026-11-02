@@ -48,6 +48,7 @@ from app.db.repositories.integrations import integration_repository
 from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.models.subagent_models import Subagent
 from app.services.integrations.integration_accounts import get_account_record
+from app.services.integrations.user_integrations import check_user_has_integration
 from app.services.mcp.mcp_client import get_mcp_client
 from app.services.mcp.mcp_errors import MCPAuthorizationRequiredError, StepUpAuthRequiredError
 from app.services.user_instructions_service import get_instructions
@@ -380,6 +381,12 @@ async def _connect_and_activate(
         # registry, so they are connected in the user's MCP client and run via execute.
         if not user_id:
             return f"'{target.id}' needs a signed-in user, so it cannot be activated in this run."
+        # A custom MCP is private to whoever added it: anyone else gets the same
+        # answer as for an id that does not exist, so ids cannot be probed.
+        if isinstance(target, CustomMcpSubagent) and not await check_user_has_integration(
+            user_id, target.id
+        ):
+            return f"Unknown integration '{target.id}'."
         if connect_prompt := await check_mcp_connection(target.id, user_id):
             return connect_prompt
         try:

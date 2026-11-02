@@ -59,6 +59,13 @@ def _subagent(
     return subagent
 
 
+@pytest.fixture(autouse=True)
+def _user_owns_their_custom_mcp() -> Iterator[None]:
+    """Treat every custom MCP as the caller's own; tests of someone else's override this."""
+    with patch(f"{_MOD}.check_user_has_integration", new=AsyncMock(return_value=True)):
+        yield
+
+
 def _auth_mcp() -> MagicMock:
     subagent = _subagent(agent_name="perplexity_agent", managed_by="mcp", requires_auth=True)
     subagent.id = "perplexity"
@@ -536,6 +543,21 @@ class TestActivateIntegrationTool:
             patch(f"{_MOD}._has_several_accounts", new=AsyncMock(return_value=False)),
         ):
             yield resolve
+
+    async def test_a_custom_mcp_the_user_never_added_is_unknown_and_not_named(self) -> None:
+        """Another user's private custom MCP must not be activatable, nor reveal its name."""
+        someone_elses = CustomMcpSubagent(id="abc123", name="Secret Project Wiki", managed_by="mcp")
+        connect = AsyncMock()
+        with (
+            patch(f"{_MOD}.get_integration_target", new=AsyncMock(return_value=someone_elses)),
+            patch(f"{_MOD}.check_user_has_integration", new=AsyncMock(return_value=False)),
+            patch(f"{_MOD}.check_mcp_connection", new=connect),
+        ):
+            call, run_cfg = self._invoke({"user_id": "bob"}, integration_id="abc123")
+            result = await activate_integration.ainvoke(call, run_cfg)
+
+        assert self._text(result) == "Unknown integration 'abc123'."
+        connect.assert_not_awaited()
 
     async def test_unknown_integration_fails_loud(self) -> None:
         resolve = AsyncMock(return_value=None)

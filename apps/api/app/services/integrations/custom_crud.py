@@ -37,7 +37,7 @@ from app.services.integrations.user_integrations import (
     invalidate_user_integration_caches,
     remove_user_integration,
 )
-from app.services.mcp.mcp_client import MCPClient
+from app.services.mcp.mcp_client import MCPClient, drop_local_sessions
 from app.services.mcp.mcp_errors import DCRNotSupportedError, DCRRegistrationError
 from app.services.mcp.mcp_oauth import build_oauth_auth_url
 from app.services.mcp.mcp_token_store import MCPTokenStore
@@ -247,6 +247,9 @@ async def _delete_owned_integration(doc: Integration, user_id: str, integration_
                 error=str(e),
                 error_type=type(e).__name__,
             )
+
+    # Live sessions outlive the rows above and would keep forcing the deleted server's tool-name prefix.
+    await drop_local_sessions(integration_id, affected_user_ids)
 
     try:
         async with get_db_session() as session:

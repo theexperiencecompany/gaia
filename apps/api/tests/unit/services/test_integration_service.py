@@ -1813,6 +1813,10 @@ class TestDeleteCustomIntegration:
                 "app.services.integrations.custom_crud.delete_cache_by_pattern",
                 new_callable=AsyncMock,
             ) as delete_pattern,
+            patch(
+                "app.services.integrations.custom_crud.drop_local_sessions",
+                new_callable=AsyncMock,
+            ) as drop_sessions,
         ):
             yield SimpleNamespace(
                 repo=repo,
@@ -1824,6 +1828,7 @@ class TestDeleteCustomIntegration:
                 deregister=deregister,
                 delete_cache=delete_cache,
                 delete_pattern=delete_pattern,
+                drop_sessions=drop_sessions,
             )
 
     def _db_session(self, seams) -> AsyncMock:
@@ -2064,6 +2069,22 @@ class TestDeleteCustomIntegration:
             call(USER_ID, CUSTOM_INTEGRATION_ID),
             call(USER_ID_2, CUSTOM_INTEGRATION_ID),
         ]
+
+    async def test_delete_drops_the_live_sessions_of_every_affected_user(
+        self, _delete_seams
+    ) -> None:
+        """Seen live: a deleted server's session stayed warm and kept forcing its tool-name prefix."""
+        seams = _delete_seams
+        doc = _make_custom_integration(created_by=USER_ID, is_public=False)
+        seams.repo.get_custom = AsyncMock(return_value=doc)
+        seams.repo.delete_custom = AsyncMock(return_value=True)
+        seams.user_repo.user_ids_with_integration = AsyncMock(return_value=[USER_ID, USER_ID_2])
+        self._db_session(seams)
+
+        result = await delete_custom_integration(USER_ID, CUSTOM_INTEGRATION_ID)
+
+        assert result is True
+        seams.drop_sessions.assert_awaited_once_with(CUSTOM_INTEGRATION_ID, [USER_ID, USER_ID_2])
 
     async def test_delete_credential_purge_failure_still_deletes(self, _delete_seams) -> None:
         seams = _delete_seams

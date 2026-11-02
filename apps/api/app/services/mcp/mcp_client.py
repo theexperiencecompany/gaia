@@ -1,7 +1,7 @@
 """Per-user MCP client: connects integrations, holds their sessions and live tools, and tears them down."""
 
 import asyncio
-from collections.abc import Awaitable, Callable, Collection
+from collections.abc import Awaitable, Callable, Collection, Iterable
 import re
 import time
 from typing import TypedDict
@@ -575,8 +575,11 @@ class MCPClient:
         )
         return raw_tools
 
-    async def _user_server_tool_names(self) -> dict[str, ServerToolNames]:
-        """Server-side tool names of the user's MCP integrations: warm ones from memory, other connected ones from Mongo."""
+    async def _user_server_tool_names(self, leaving: str | None) -> dict[str, ServerToolNames]:
+        """Server-side tool names of the user's MCP integrations: warm ones from memory, other connected ones from Mongo.
+
+        leaving is being disconnected: its stored record can still read connected here.
+        """
         server_tools = {
             integration_id: live_server_tool_names(tools)
             for integration_id, tools in self._tools.items()
@@ -585,7 +588,7 @@ class MCPClient:
         records = [
             record
             for record in await connected_tool_records(self.user_id)
-            if record.integration_id not in server_tools
+            if record.integration_id not in server_tools and record.integration_id != leaving
         ]
         if not records:
             return server_tools
@@ -602,10 +605,14 @@ class MCPClient:
         return server_tools
 
     async def _gaia_tool_names(
-        self, joining: dict[str, ServerToolNames], reserved: set[str]
+        self,
+        joining: dict[str, ServerToolNames],
+        reserved: set[str],
+        *,
+        leaving: str | None = None,
     ) -> dict[str, dict[str, str]]:
         """GAIA-facing names for every user MCP integration, with joining overriding what is stored."""
-        server_tools = {**await self._user_server_tool_names(), **joining}
+        server_tools = {**await self._user_server_tool_names(leaving), **joining}
         return gaia_names_by_integration(server_tools, reserved)
 
     def _rename_warm_tools(self, names: dict[str, dict[str, str]]) -> None:
@@ -1094,26 +1101,12 @@ class MCPClient:
         oauth_config = await discover_oauth_config(self.token_store, integration_id, mcp_config)
         return await try_refresh_token(self.token_store, integration_id, mcp_config, oauth_config)
 
-    async def disconnect(self, integration_id: str) -> None:
-        """Disconnect from an MCP server.
+    async def drop_local(self, integration_id: str) -> None:
+        """Close this process's session for an integration and rename the peers it forced a prefix on.
 
-        Revokes tokens (RFC 7009) in the background — local state invalidates
-        first since the revoke can take up to 20s. Client cleanup is
-        timeout-bounded (Loki trace 2026-05-26 12:04:53); also clears OAuth
-        discovery cache and deletes PostgreSQL credentials.
+        Local only: it writes nothing, so it also serves an integration that is already
+        disconnected or deleted elsewhere, which a full disconnect would recreate a row for.
         """
-        # Fire-and-forget the upstream OAuth revoke — the user has already
-        # been disconnected locally; provider-side revocation is best-effort.
-        if (
-            _spawn_background(
-                revoke_integration_tokens(self.token_store, integration_id),
-                f"revoke_{integration_id}",
-            )
-            is None
-        ):
-            # Tests or non-asyncio contexts — fall back to awaiting.
-            await revoke_integration_tokens(self.token_store, integration_id)
-
         # Clean up in-memory state with a tight timeout — mcp_use's
         # session.__aexit__ can block on the upstream MCP server's TCP close,
         # producing a "silent" multi-second gap. Local state still gets cleared.
@@ -1140,6 +1133,35 @@ class MCPClient:
         if integration_id in self._tools:
             del self._tools[integration_id]
 
+        # A name this integration shared is no longer shared: drop the prefix it forced.
+        if self._tools:
+            names = await self._gaia_tool_names(
+                {}, await reserved_tool_names(), leaving=integration_id
+            )
+            self._rename_warm_tools(names)
+
+    async def disconnect(self, integration_id: str) -> None:
+        """Disconnect from an MCP server.
+
+        Revokes tokens (RFC 7009) in the background — local state invalidates
+        first since the revoke can take up to 20s. Client cleanup is
+        timeout-bounded (Loki trace 2026-05-26 12:04:53); also clears OAuth
+        discovery cache and deletes PostgreSQL credentials.
+        """
+        # Fire-and-forget the upstream OAuth revoke — the user has already
+        # been disconnected locally; provider-side revocation is best-effort.
+        if (
+            _spawn_background(
+                revoke_integration_tokens(self.token_store, integration_id),
+                f"revoke_{integration_id}",
+            )
+            is None
+        ):
+            # Tests or non-asyncio contexts — fall back to awaiting.
+            await revoke_integration_tokens(self.token_store, integration_id)
+
+        await self.drop_local(integration_id)
+
         # The stored tool list is the server's, shared by every user, so it stays: a
         # reader scopes it to a user through connected_tool_records.
 
@@ -1164,9 +1186,6 @@ class MCPClient:
         # Wipe persistent auth artifacts (Mongo status, PG creds, DCR client,
         # Redis OAuth cache) via the shared teardown helper.
         await self._reset_to_disconnected(integration_id)
-        # A name this integration shared is no longer shared: drop the prefix it forced.
-        if self._tools:
-            self._rename_warm_tools(await self._gaia_tool_names({}, await reserved_tool_names()))
 
         log.info(f"{LogTag.MCP} Disconnected MCP", integration_id=integration_id)
 
@@ -1268,7 +1287,7 @@ class MCPClient:
         if await self.is_connected_db(integration_id):
             return True
         if integration_id in self._tools or integration_id in self._clients:
-            await self.disconnect(integration_id)
+            await self.drop_local(integration_id)
         return False
 
     async def ensure_connected(self, integration_id: str) -> list[BaseTool]:
@@ -1321,3 +1340,11 @@ async def get_mcp_client(user_id: str) -> MCPClient:
     """Get MCP client for a user from the pool."""
     pool = await get_mcp_client_pool()
     return await pool.get(user_id)
+
+
+async def drop_local_sessions(integration_id: str, user_ids: Iterable[str]) -> None:
+    """Drop this process's live sessions of a deleted integration for the given users."""
+    pool = await get_mcp_client_pool()
+    for user_id in user_ids:
+        if (client := pool.peek(user_id)) is not None:
+            await client.drop_local(integration_id)

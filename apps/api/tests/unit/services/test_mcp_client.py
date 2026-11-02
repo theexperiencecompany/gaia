@@ -58,6 +58,7 @@ from app.services.mcp.mcp_client import (
     MCPClient,
     _parse_device_server_url,
     _spawn_background,
+    drop_local_sessions,
     get_mcp_client,
 )
 from app.services.mcp.mcp_client_pool import MCPClientPool, PooledClient
@@ -905,11 +906,11 @@ class TestMCPClientEnsureConnected:
             getattr(client, attr)[INTEGRATION_ID] = [_mock_tool()]
             with (
                 patch.object(client, "is_connected_db", new_callable=AsyncMock, return_value=False),
-                patch.object(client, "disconnect", new_callable=AsyncMock) as disconnect,
+                patch.object(client, "drop_local", new_callable=AsyncMock) as drop_local,
             ):
                 with pytest.raises(ValueError, match="not connected"):
                     await client.ensure_connected(INTEGRATION_ID)
-            disconnect.assert_awaited_once_with(INTEGRATION_ID)
+            drop_local.assert_awaited_once_with(INTEGRATION_ID)
 
     async def test_no_disconnect_when_nothing_is_cached(self):
         # Nothing warm to drop → raise without a spurious disconnect.
@@ -1136,6 +1137,35 @@ class TestMCPClientPoolGet:
         await pool.get("a")
         # 'a' should now be at end
         assert list(pool._clients.keys())[-1] == "a"
+
+
+class TestMCPClientPoolPeek:
+    def test_returns_the_pooled_client(self):
+        pool = MCPClientPool(max_clients=10)
+        mock_client = MagicMock()
+        pool._clients["u1"] = PooledClient(client=mock_client)
+        assert pool.peek("u1") is mock_client
+
+    def test_never_creates_a_client_for_an_unknown_user(self):
+        pool = MCPClientPool(max_clients=10)
+        assert pool.peek("nobody") is None
+        assert pool.size == 0
+
+
+class TestDropLocalSessions:
+    async def test_drops_only_for_users_who_have_a_pooled_client(self):
+        pool = MCPClientPool(max_clients=10)
+        warm = MagicMock()
+        warm.drop_local = AsyncMock()
+        pool._clients["warm_user"] = PooledClient(client=warm)
+
+        with patch(
+            "app.services.mcp.mcp_client.get_mcp_client_pool", new=AsyncMock(return_value=pool)
+        ):
+            await drop_local_sessions(INTEGRATION_ID, ["warm_user", "cold_user"])
+
+        warm.drop_local.assert_awaited_once_with(INTEGRATION_ID)
+        assert pool.size == 1
 
 
 class TestMCPClientPoolEvict:
@@ -5586,6 +5616,67 @@ class TestCrossMcpToolNameCollisions:
         assert client._tools["context7"][0].name == "search"
         assert client._tools["context7"][0].description == "Docs."
 
+    async def test_a_leaving_server_still_listed_as_connected_does_not_keep_its_prefix_on_the_other(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Seen live: deleting a custom MCP disconnects it while its stored list still reads connected."""
+        client = MCPClient(user_id=USER_ID)
+        survivor = _stamped_tool("search", "Docs.", "Context7", "context7")
+        survivor.name = "context7_search"
+        client._tools["context7"] = [survivor]
+        monkeypatch.setattr(mcp_client, "revoke_integration_tokens", AsyncMock())
+        client._reset_to_disconnected = AsyncMock()
+        leaving = MagicMock(integration_id="posthog", tools=[MagicMock()])
+        leaving.tools[0].name = "search"
+        posthog = MagicMock(mcp_config=_make_mcp_config())
+        posthog.name = "PostHog"
+
+        with (
+            patch(
+                "app.services.mcp.mcp_client.connected_tool_records",
+                new=AsyncMock(return_value=[leaving]),
+            ),
+            patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
+        ):
+            mock_resolver.resolve = AsyncMock(return_value=posthog)
+            await client.disconnect("posthog")
+
+        assert survivor.name == "search"
+
+
+class TestADeletedOrRemotelyDisconnectedIntegration:
+    async def test_the_local_session_is_dropped_without_recreating_its_link_row(self) -> None:
+        """Seen live: tearing down a deleted integration upserted a 'created' row for it."""
+        client = MCPClient(user_id=USER_ID)
+        client._tools[INTEGRATION_ID] = [_stamped_tool("search")]
+        client.is_connected_db = AsyncMock(return_value=False)
+
+        with patch(
+            "app.services.mcp.mcp_client.update_user_integration_status", new_callable=AsyncMock
+        ) as write_status:
+            assert await client.resolve_tool_owner("search") is None
+
+        write_status.assert_not_awaited()
+        assert INTEGRATION_ID not in client._tools
+
+    @pytest.mark.usefixtures("core_tool_registry")
+    async def test_dropping_a_session_renames_the_peer_it_was_forcing_a_prefix_on(
+        self,
+    ) -> None:
+        client = MCPClient(user_id=USER_ID)
+        survivor = _stamped_tool("search", "Docs.", "Context7", "context7")
+        survivor.name = "context7_search"
+        client._tools["context7"] = [survivor]
+        client._tools["posthog"] = [_stamped_tool("search", "Events.", "PostHog", "posthog")]
+
+        with patch(
+            "app.services.mcp.mcp_client.connected_tool_records", new=AsyncMock(return_value=[])
+        ):
+            await client.drop_local("posthog")
+
+        assert survivor.name == "search"
+        assert "posthog" not in client._tools
+
 
 class TestResolveToolOwner:
     async def test_a_warm_owner_is_found_without_reading_the_stored_tool_lists(self) -> None:
@@ -5604,11 +5695,11 @@ class TestResolveToolOwner:
         client = MCPClient(user_id=USER_ID)
         client._tools[INTEGRATION_ID] = [_stamped_tool("search")]
         client.is_connected_db = AsyncMock(return_value=False)
-        client.disconnect = AsyncMock()
+        client.drop_local = AsyncMock()
 
         assert await client.resolve_tool_owner("search") is None
         client.is_connected_db.assert_awaited_once_with(INTEGRATION_ID)
-        client.disconnect.assert_awaited_once_with(INTEGRATION_ID)
+        client.drop_local.assert_awaited_once_with(INTEGRATION_ID)
 
     @pytest.mark.usefixtures("core_tool_registry")
     async def test_a_warm_tool_renamed_by_another_process_resolves_under_its_new_name(
