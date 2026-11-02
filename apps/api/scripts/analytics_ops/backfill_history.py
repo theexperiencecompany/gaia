@@ -159,6 +159,8 @@ def activation(row: SubscriptionDocument) -> Backfill:
             subscription_id=row.dodo_subscription_id,
             plan_name=PRO_PLAN_NAME,
             currency=row.currency,
+            product_id=row.product_id,
+            billing_interval=row.payment_frequency_interval,
             amount=amount,
             amount_charged_pre_tax=amount,
             currency_charged=row.currency if amount is not None else None,
