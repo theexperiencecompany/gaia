@@ -2555,11 +2555,11 @@ result_brief: x
     ) -> None:
         result = await self._validate(self._body('"$today + 1d 09:00"'), "2026-09-06 09:00:00")
 
-        assert len(result.issues) == 1
-        assert (
+        assert [issue.problem for issue in result.issues] == [
+            "'subject' was '2026-09-06 09:00:00' in this run, whose layout is "
+            "'%Y-%m-%d %H:%M:%S'; $today + 1d 09:00 renders as ISO 8601, so write "
             '{"$time": "$today + 1d 09:00", "format": "%Y-%m-%d %H:%M:%S"}'
-            in result.issues[0].problem
-        )
+        ]
 
     async def test_a_bare_placeholder_matching_the_tools_layout_is_accepted(self) -> None:
         dated = await self._validate(self._body('"$today + 1d"'), "2026-09-06")
