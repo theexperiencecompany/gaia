@@ -67,6 +67,9 @@ prek = "0.2.23"
 "npm:eas-cli" = "25.3.0"
 # worktrunk (`wt`) — parallel-worktree workflow. Pinned so every clone gets the same CLI.
 "ubi:max-sixty/worktrunk" = { version = "0.68.0", exe = "wt" }
+# The proxy the browser stack runs in front of the API: the Caddy self-host ships
+# (docker-compose.selfhost.yml) and CI installs (scripts/ci/browser.sh locate).
+caddy = "2.10.2"
 
 [env]
 _.python.venv = { path = ".venv", create = true }
