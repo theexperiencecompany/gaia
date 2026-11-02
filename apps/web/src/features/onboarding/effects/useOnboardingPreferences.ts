@@ -1,9 +1,14 @@
 "use client";
 
 import type { OnboardingAnswers } from "@shared/api/generated";
-import { type MutationStatus, useMutation } from "@tanstack/react-query";
+import {
+  type MutationStatus,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { type Dispatch, useCallback, useEffect, useMemo, useRef } from "react";
 
+import { CURRENT_USER_QUERY_KEY } from "@/features/auth/hooks/useCurrentUser";
 import { shouldRetryQuery } from "@/lib/queryClient";
 
 import { saveOnboardingAnswers } from "../api/onboardingApi";
@@ -39,10 +44,15 @@ export function useOnboardingPreferences(
     };
   }, [profession, selectedNeeds, otherNeed]);
 
+  const queryClient = useQueryClient();
   const { mutate, status, reset } = useMutation({
     mutationFn: (answers: OnboardingAnswers) => saveOnboardingAnswers(answers),
     retry: shouldRetryQuery,
-    onSuccess: () => dispatch({ type: "preferencesPersisted" }),
+    // The cached user carries the stored answers a later visit resumes from.
+    onSuccess: () => {
+      dispatch({ type: "preferencesPersisted" });
+      void queryClient.invalidateQueries({ queryKey: CURRENT_USER_QUERY_KEY });
+    },
     onError: (error: unknown) => {
       console.error("[onboarding] saving your answers failed:", error);
     },

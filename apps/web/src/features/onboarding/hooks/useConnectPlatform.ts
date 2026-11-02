@@ -19,8 +19,8 @@
 
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { type Dispatch, useCallback, useEffect, useRef, useState } from "react";
+import { QueryObserver, useQuery, useQueryClient } from "@tanstack/react-query";
+import { type Dispatch, useCallback, useEffect, useState } from "react";
 import type { PhoneLinkTarget } from "@/components/shared/PhoneLinkModal";
 import { BOT_AUTH_COMMAND, type BotPlatform } from "@/config/botPlatforms";
 import { useBotLinks } from "@/features/bots/hooks/useBotLinks";
@@ -114,28 +114,28 @@ export function useConnectPlatform(
     [botLinks, linkCode],
   );
 
-  // Focus refetch catches the common case at once: the user taps Start, then
-  // switches back to this tab.
-  const { data: linkedAccounts } = useQuery({
-    queryKey: PLATFORM_LINKS_QUERY_KEY,
-    queryFn: fetchPlatformLinks,
-    enabled: awaitingPlatform !== null,
-    refetchInterval: PLATFORM_LINK_POLL_MS,
-    refetchOnWindowFocus: true,
-    staleTime: 0,
-  });
-  const linkLanded =
-    awaitingPlatform !== null &&
-    !!linkedAccounts?.platform_links[awaitingPlatform]?.platformUserId;
-
-  // A ref, not state: StrictMode re-runs the effect and onboarding must submit once.
-  const confirmedRef = useRef(false);
+  // Subscribed, not derived in render: the link landing is an outside event
+  // that submits onboarding once. Focus refetch catches the common case at
+  // once — the user taps Start, then switches back to this tab.
+  const queryClient = useQueryClient();
   useEffect(() => {
-    if (!linkLanded || !awaitingPlatform || confirmedRef.current) return;
-    confirmedRef.current = true;
-    dispatch({ type: "platformConnected", platform: awaitingPlatform });
-    onConfirmed();
-  }, [linkLanded, awaitingPlatform, dispatch, onConfirmed]);
+    if (!awaitingPlatform) return;
+    const observer = new QueryObserver(queryClient, {
+      queryKey: PLATFORM_LINKS_QUERY_KEY,
+      queryFn: fetchPlatformLinks,
+      refetchInterval: PLATFORM_LINK_POLL_MS,
+      refetchOnWindowFocus: true,
+      staleTime: 0,
+    });
+    let confirmed = false;
+    return observer.subscribe(({ data }) => {
+      if (confirmed || !data?.platform_links[awaitingPlatform]?.platformUserId)
+        return;
+      confirmed = true;
+      dispatch({ type: "platformConnected", platform: awaitingPlatform });
+      onConfirmed();
+    });
+  }, [awaitingPlatform, queryClient, dispatch, onConfirmed]);
 
   const chooseAnother = useCallback(() => setAwaitingPlatform(null), []);
 
