@@ -6,7 +6,7 @@
 services:
   gaia-backend:
     build: &api_build
-      context: ../..
+      context: ../../..
       dockerfile: apps/api/Dockerfile
 
   # Same Dockerfile as gaia-backend: the second build is a full cache hit, and
@@ -16,5 +16,5 @@ services:
 
   gaia-web:
     build:
-      context: ../..
+      context: ../../..
       dockerfile: apps/web/Dockerfile
