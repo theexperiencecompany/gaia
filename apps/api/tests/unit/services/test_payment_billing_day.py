@@ -1,6 +1,7 @@
 """The billing day the Pro allowance month is anchored on, read off the subscription and cached."""
 
 from collections.abc import Iterator
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -30,9 +31,18 @@ class TestBillingDay:
         sub = _subscription(next_billing_date=None, previous_billing_date="2026-10-09T00:00:00Z")
         assert _billing_day(sub) == 9
 
-    def test_reads_the_day_in_utc(self) -> None:
-        sub = _subscription(next_billing_date="2026-11-15T23:30:00-05:00")
-        assert _billing_day(sub) == 16
+    def test_reads_the_day_in_utc_not_the_servers_zone(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """01:00 UTC on the 16th is still the 15th on a US-Pacific host."""
+        monkeypatch.setenv("TZ", "America/Los_Angeles")
+        time.tzset()
+        try:
+            sub = _subscription(next_billing_date="2026-11-15T20:00:00-05:00")
+            assert _billing_day(sub) == 16
+        finally:
+            monkeypatch.undo()
+            time.tzset()
 
     def test_no_subscription_has_no_billing_day(self) -> None:
         assert _billing_day(None) is None
