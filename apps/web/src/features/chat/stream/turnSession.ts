@@ -622,10 +622,7 @@ export class TurnSession {
     // A delegated turn isn't done: the executor streams over this same SSE
     // moments later. Dropping the spinner here would leave a dead frame until
     // the first executor event re-arms it.
-    if (hasExecutorDelegation(this.acc.toolData)) {
-      store.updateSession(this.sessionKey, { executorHandedOff: true });
-      return;
-    }
+    if (hasExecutorDelegation(this.acc.toolData)) return;
 
     if (!this.steering) {
       this.setSpinner(false);

@@ -1,12 +1,9 @@
 // @vitest-environment jsdom
 
 /**
- * Once comms hands a turn to the background executor, the composer stops
- * offering Stop.
- *
- * Regression for prod eefc68cc: the SSE stays open for the whole executor run,
- * so Stop stayed on screen after the ack, and pressing it threw the finished
- * result away. The run is now stopped by asking, the way it is everywhere else.
+ * Stop stays on offer for the whole turn, the background executor run included:
+ * pressing it stops everything (product decision). Only a result the executor
+ * finished before the Stop landed is still delivered, server-side.
  */
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -24,7 +21,7 @@ import { TurnSession } from "@/features/chat/stream/turnSession";
 import { useChatStore } from "@/stores/chatStore";
 import { useActiveComposerLocked, useStreamStore } from "@/stores/streamStore";
 
-const CONV = "conv-handoff";
+const CONV = "conv-stop";
 
 /** The private steps the SSE plumbing reaches; the transport is not under test. */
 interface TurnInternals {
@@ -50,7 +47,7 @@ const mainResponseComplete = (toolCategory: string | null): void => {
   act(() => session.handleMainResponseComplete());
 };
 
-describe("the composer after the comms ack", () => {
+describe("Stop after the comms ack", () => {
   beforeEach(() => {
     act(() => {
       useChatStore.setState({ activeConversationId: CONV });
@@ -59,11 +56,11 @@ describe("the composer after the comms ack", () => {
     });
   });
 
-  it("offers no Stop once the turn was handed to the executor", () => {
+  it("keeps Stop on offer after the turn was handed to the executor", () => {
     mainResponseComplete("executor");
 
     const { result } = renderHook(() => useActiveComposerLocked());
-    expect(result.current).toBe(false);
+    expect(result.current).toBe(true);
   });
 
   it("still locks a turn comms is answering itself until the stream ends", () => {
