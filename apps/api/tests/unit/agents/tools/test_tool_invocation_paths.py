@@ -20,11 +20,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import fakeredis
 from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.types import ToolCallRequest
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import tool
+from langchain_core.tools import InjectedToolCallId, tool
 from langgraph.prebuilt import InjectedState
 from langgraph.runtime import Runtime
+from langgraph.types import Command
 import pytest
 
 from app.agents.middleware.executor import MiddlewareExecutor
@@ -122,6 +123,32 @@ async def probe_with_state(query: str, state: Annotated[dict[str, Any], Injected
     return f"answered {query}"
 
 
+@tool
+async def probe_command(
+    query: str,
+    state: Annotated[dict[str, Any], InjectedState],
+    tool_call_id: Annotated[str, InjectedToolCallId],
+) -> Command:
+    """Answer by updating graph state, the way a state-writing tool does."""
+    del state
+    return Command(
+        update={"messages": [ToolMessage(f"answered {query}", tool_call_id=tool_call_id)]}
+    )
+
+
+@tool
+def probe_command_sync(
+    query: str,
+    state: Annotated[dict[str, Any], InjectedState],
+    tool_call_id: Annotated[str, InjectedToolCallId],
+) -> Command:
+    """Answer by updating graph state, synchronously."""
+    del state
+    return Command(
+        update={"messages": [ToolMessage(f"answered {query}", tool_call_id=tool_call_id)]}
+    )
+
+
 class _Passthrough(AgentMiddleware):
     async def awrap_tool_call(self, request: ToolCallRequest, handler: Any) -> Any:
         return await handler(request)
@@ -212,3 +239,23 @@ async def test_a_sandbox_script_calling_back_records_into_its_run(
 
     assert response.ok
     assert await _recorded() == [("probe", {"query": "q"}, None, "answered q")]
+
+
+async def test_a_state_updating_tool_still_updates_state_and_is_recorded(fake_redis: Any) -> None:
+    """The node hands LangGraph its own input shape, which decides whether a Command's update is accepted."""
+    node = DynamicToolNode({"probe_command": probe_command})
+
+    output = await node._afunc(_one_call("probe_command"), _run_config(), Runtime())
+
+    assert [type(item) for item in output] == [Command]
+    assert await _recorded() == [("probe_command", {"query": "q"}, "todos", "answered q")]
+
+
+def test_a_sync_state_updating_tool_still_updates_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = fakeredis.FakeRedis(decode_responses=True)
+    monkeypatch.setattr(run_record, "_sync_client", lambda: client)
+    node = DynamicToolNode({"probe_command_sync": probe_command_sync})
+
+    output = node._func(_one_call("probe_command_sync"), _run_config(), Runtime())
+
+    assert [type(item) for item in output] == [Command]
