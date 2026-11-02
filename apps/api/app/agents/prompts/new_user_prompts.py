@@ -15,7 +15,6 @@ human voice).
 
 from dataclasses import dataclass
 
-from app.models.conversation_models import SeededQuestion
 from app.models.user_models import OnboardingNeed
 
 #: One line per need: what they want, then the real primitives you can CREATE for
@@ -204,16 +203,15 @@ MAIL_FACTS_HEADER = (
 INBOX_SUMMARY_LINE = "\n- Their inbox: {text}"
 MAIL_PORTRAIT_LINE = "\n- How they work, from their sent mail: {text}"
 
-#: Rendered only in the seeded Getting-started thread, quoting what it actually said.
-SEEDED_QUESTION_RULE = """
+#: Rendered only in the seeded Getting-started thread, quoting the jobs it offered.
+SEEDED_CHIPS_RULE = """
 
-This thread opened with your question "{question}" and these chips: {chips}.
+You opened this thread after they paid, offering these jobs as chips: {chips}.
 - A chip they tap is a job they handed you, even when it matches no playbook: start it
   (do the first piece, or ask the one missing detail). Never ask what it meant, never
   treat it as a search term.
-- The last chip means they want to name their own: ask what it is, in one line.
-- Gmail and Calendar were already offered above it with connect buttons. Bring them up
-  again only when the job needs them."""
+- Gmail and Calendar were already offered above the chips with connect buttons. Bring
+  them up again only when the job needs them."""
 
 
 @dataclass(frozen=True)
@@ -223,7 +221,8 @@ class NewUserFacts:
     profession: str
     needs: list[OnboardingNeed]
     other_need: str | None = None
-    seeded: SeededQuestion | None = None
+    #: The jobs the welcome thread offered, only while the turn is in that thread.
+    seeded_chips: tuple[str, ...] = ()
     inbox_summary: str | None = None
     mail_portrait: str | None = None
 
@@ -252,11 +251,8 @@ def build_new_user_guidance(facts: NewUserFacts) -> str:
     if not lines:
         return ""
     seeded = (
-        SEEDED_QUESTION_RULE.format(
-            question=facts.seeded.question,
-            chips=", ".join(f'"{chip}"' for chip in facts.seeded.chips),
-        )
-        if facts.seeded and facts.seeded.chips
+        SEEDED_CHIPS_RULE.format(chips=", ".join(f'"{chip}"' for chip in facts.seeded_chips))
+        if facts.seeded_chips
         else ""
     )
     return NEW_USER_GUIDANCE_TEMPLATE.format(

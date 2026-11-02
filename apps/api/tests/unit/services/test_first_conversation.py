@@ -12,7 +12,6 @@ from app.services.onboarding.first_conversation import (
     CONNECT_OPTIONS_TOOL_NAME,
     GMAIL_INTEGRATION_ID,
     INTEGRATIONS_PATH,
-    SOMETHING_ELSE_CHIP,
     compose_first_conversation,
     connect_link,
     with_starting_jobs,
@@ -160,21 +159,24 @@ class TestHandoverBubble:
 
 
 class TestChips:
-    def test_without_jobs_the_only_chip_is_the_escape_hatch(self) -> None:
-        assert compose_first_conversation(_prefs(), None).follow_ups == [SOMETHING_ELSE_CHIP]
+    """Every chip is a job: the web inserts a tapped chip's label into the composer as the user's words."""
 
-    def test_the_jobs_lead_and_the_escape_hatch_closes(self) -> None:
+    def test_without_jobs_the_thread_offers_no_chips(self) -> None:
+        """Regression: an escape-hatch chip put its own label, "Something else", in the chat box."""
+        assert compose_first_conversation(_prefs(), None).follow_ups == []
+
+    def test_the_chips_are_exactly_the_drafted_jobs(self) -> None:
         composed = compose_first_conversation(_prefs(), None)
         updated = with_starting_jobs(composed, JOBS)
         assert updated.lines == composed.lines
-        assert updated.follow_ups == [*JOBS, SOMETHING_ELSE_CHIP]
-        assert composed.follow_ups == [SOMETHING_ELSE_CHIP]
+        assert updated.follow_ups == JOBS
+        assert composed.follow_ups == []
 
     def test_the_chips_are_copied_not_shared(self) -> None:
         jobs = list(JOBS)
         updated = with_starting_jobs(compose_first_conversation(_prefs(), None), jobs)
         jobs.append("Ship it")
-        assert updated.follow_ups == [*JOBS, SOMETHING_ELSE_CHIP]
+        assert updated.follow_ups == JOBS
 
 
 class TestLanguage:
@@ -191,7 +193,7 @@ class TestLanguage:
         assert composed.opening[1].endswith("Ich bin auch auf deinem Telegram.")
         assert composed.opening[2].startswith("Zwei Dinge, die sich jetzt lohnen.\n- Gmail:")
         assert composed.question == "Womit fangen wir an?"
-        assert composed.follow_ups == ["Investoren finden", "Etwas anderes"]
+        assert composed.follow_ups == ["Investoren finden"]
         assert [o["label"] for o in composed.connect_options] == [
             "Gmail verbinden",
             "Kalender verbinden",
@@ -210,4 +212,4 @@ class TestLanguage:
         composed = compose_first_conversation(prefs, None)
         assert composed.opening[0] == "Okay, you're in."
         assert composed.question == "You're a founder. What's first?"
-        assert composed.follow_ups == [SOMETHING_ELSE_CHIP]
+        assert composed.follow_ups == []

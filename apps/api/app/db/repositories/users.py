@@ -54,6 +54,7 @@ from app.models.user_models import (
     OnboardingPreferences,
     PersonalizationBundle,
     PlatformLinkRecord,
+    StartingJobs,
     UserDocument,
     UserUpdate,
 )
@@ -296,6 +297,14 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             set_fields[f"onboarding.preferences.{field}"] = value
         return await self._apply_raw_update(
             {"_id": self._id_value(user_id)}, {"$set": set_fields}, scope=REPO_GLOBAL_SCOPE
+        )
+
+    async def set_starting_jobs(self, user_id: str, jobs: StartingJobs) -> None:
+        """Store the jobs drafted for the welcome thread and the paywall preview."""
+        await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {"$set": {"onboarding.starting_jobs": jobs.model_dump()}},
+            scope=REPO_GLOBAL_SCOPE,
         )
 
     async def set_first_conversation_id(

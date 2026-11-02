@@ -278,9 +278,7 @@ async def _run(api_url: str, scenario: Scenario) -> Row:
         for raw in scenario.messages:
             message = raw
             if raw == FIRST_CHIP:
-                message = next(
-                    (c for c in welcome.chips if c != "Something else"), "Something else"
-                )
+                message = next(iter(welcome.chips), "What should we start with?")
             print(f"    > {message}", flush=True)
             turn = await send_turn(client, api_url, message, conversation_id, history, TURN_OPTIONS)
             history += [

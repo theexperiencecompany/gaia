@@ -41,7 +41,6 @@ from app.db.repositories.todos import todo_repository
 from app.memory.context import AGENDA_HEADING, RECENT_ACTIVITY_HEADING
 from app.memory.engine import memory_engine
 from app.memory.mappers import entry_to_note
-from app.models.conversation_models import SeededQuestion
 from app.models.memory_models import MemorySearchResult
 from app.models.onboarding_models import PersistedTriageSummary
 from app.models.todo_models import TodoDocument
@@ -56,6 +55,7 @@ from app.services.integrations.integration_accounts import (
     list_account_records,
 )
 from app.services.integrations.user_integrations import get_connected_integrations_named
+from app.services.onboarding.first_question import seeded_chips
 from app.services.storage._vfs_common import folder_name
 from app.services.tools.tools_service import get_integration_tool_list
 from app.services.tracked_todo_service import tracked_todo_service
@@ -286,22 +286,27 @@ def _selected_needs(preferences: OnboardingPreferencesRecord) -> list[Onboarding
     return selected
 
 
-async def _seeded_question(ctx: SectionContext) -> SeededQuestion | None:
-    """Return what the Getting-started thread opened with, when this turn is in it."""
-    if not (ctx.user_id and ctx.conversation_id):
-        return None
+async def _welcome_chips(ctx: SectionContext) -> tuple[str, ...]:
+    """Return the jobs the welcome thread offered, when this turn is in that thread."""
+    onboarding = ctx.onboarding
+    if not (
+        ctx.user_id
+        and onboarding
+        and onboarding.preferences
+        and ctx.conversation_id
+        and ctx.conversation_id == onboarding.getting_started_conversation_id
+    ):
+        return ()
     try:
-        return await conversation_repository.get_seeded_question(
-            ctx.conversation_id, user_id=ctx.user_id
-        )
+        return tuple(await seeded_chips(ctx.user_id, onboarding.preferences))
     except Exception as e:
         log.warning(
-            "Error reading the seeded question for new-user guidance",
+            "Error reading the welcome chips for new-user guidance",
             error=str(e),
             error_type=type(e).__name__,
             user_id=ctx.user_id,
         )
-        return None
+        return ()
 
 
 def _mail_facts(onboarding: OnboardingSubdocument | None) -> tuple[str | None, str | None]:
@@ -348,7 +353,7 @@ async def build_new_user_guidance_block(ctx: SectionContext) -> str:
             profession=str(profession) if profession else "",
             needs=needs,
             other_need=other_need,
-            seeded=await _seeded_question(ctx),
+            seeded_chips=await _welcome_chips(ctx),
             inbox_summary=inbox_summary,
             mail_portrait=mail_portrait,
         )

@@ -25,6 +25,7 @@ from app.models.user_models import (
     OnboardingPhase,
     OnboardingPreferences,
     PersonalizationBundle,
+    StartingJobs,
     UserDocument,
     UserUpdate,
 )
@@ -223,6 +224,24 @@ class TestOnboardingWrites:
         stored = completed.onboarding.preferences
         assert stored is not None
         assert (stored.language, stored.profession) == ("de", "founder")
+
+    async def test_drafted_jobs_are_stored_on_the_onboarding_record_and_survive_completion(
+        self, repo, make_user
+    ):
+        """The paywall reads them before completion and the first chat after it, with no TTL."""
+        created = await repo.create(make_user(email="jobs@y.com"))
+        jobs = StartingJobs(answers_fingerprint="f" * 16, chips=["Find investors", "Hire someone"])
+        await repo.set_starting_jobs(created.id, jobs)
+        await repo.complete_onboarding(
+            created.id,
+            phase=OnboardingPhase.COMPLETED,
+            bio_status=BioStatus.PENDING,
+            preferences=OnboardingPreferences(profession="founder"),
+        )
+
+        stored = await repo.get(created.id)
+        assert stored is not None and stored.onboarding is not None
+        assert stored.onboarding.starting_jobs == jobs
 
     async def test_update_preferences_patches_only_given_keys(self, repo, make_user):
         created = await repo.create(make_user())
