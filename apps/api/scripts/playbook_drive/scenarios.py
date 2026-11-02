@@ -159,10 +159,8 @@ def replayed_ok(observation: Observation, _ctx: Context) -> bool:
 
 def refused(needle: str) -> Expectation:
     def check(observation: Observation, _ctx: Context) -> bool:
-        return (
-            observation.playbook is None
-            and observation.warned("write_playbook: rejected")
-            and observation.warned(needle)
+        return observation.playbook is None and any(
+            needle in refusal for refusal in observation.refusals
         )
 
     return check
@@ -249,7 +247,7 @@ def executor_failed(observation: Observation, ctx: Context) -> bool:
 
 def refused_kept(needle: str) -> Expectation:
     """Expect a rejected write on a workflow that still holds a playbook."""
-    return lambda observation, _ctx: observation.warned(needle)
+    return lambda observation, _ctx: any(needle in refusal for refusal in observation.refusals)
 
 
 #: Picks the write must refuse, each over a run that listed todos (call 1) and
@@ -337,17 +335,19 @@ SCENARIOS: list[Scenario] = [
                 "playbook with a for_each step",
             ),
             Fire("replay caps at max_items", for_each_ran(at_least=2, ran=1), "items >= 2, ran 1"),
+            # The finishing agent's rewrite is not driven here: in that run the replay's
+            # calls are numbered first, and a scripted model cannot read the record to
+            # pick around them as a real one does.
             Fire(
-                "empty list after a full replay is suspect; the finishing agent rewrites",
-                both(reason("replay_suspect"), lifecycle(status="not_run", streak=1)),
-                "streak 1 survives the rewrite",
+                "empty list after a full replay is suspect",
+                both(reason("replay_suspect"), lifecycle(status="suspect", streak=1)),
+                "streak 1",
                 before=complete_all,
             ),
             Fire(
-                "empty again: baseline reaches past the rewrite, streak 2, discarded",
-                both(discarded("suspect_streak_exhausted"), playbook_replaced),
-                "discard suspect_streak_exhausted",
-                before=complete_all_and_remember_playbook,
+                "the next fire heals it: a rewrite that keeps the suspect streak",
+                both(reason("heal"), lifecycle(status="not_run", streak=1, attempts=2)),
+                "heal, rewritten, streak 1 survives",
             ),
         ],
     ),
