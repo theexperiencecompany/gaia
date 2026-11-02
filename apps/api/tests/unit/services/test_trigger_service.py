@@ -88,6 +88,7 @@ from app.services.triggers.registry import (
     get_handler_by_name,
 )
 from app.utils.exceptions import TriggerRegistrationError
+from tests.helpers import captured_wide_event
 
 # ---------------------------------------------------------------------------
 # Restore real module after breaking circular import for initial loading
@@ -2069,7 +2070,10 @@ class TestCalendarStartingSoonFanOut:
     """
 
     @staticmethod
-    async def _fire(workflows: list[Workflow], payloads: list[dict[str, Any]]) -> AsyncMock:
+    async def _fire(
+        workflows: list[Workflow], payloads: list[dict[str, Any]]
+    ) -> tuple[AsyncMock, list[str], dict[str, Any]]:
+        """Dispatch each payload from its own calendar trigger; return the queue, results and wide event."""
         queue = AsyncMock(return_value=True)
         with (
             patch(
@@ -2087,11 +2091,16 @@ class TestCalendarStartingSoonFanOut:
                 calendar_trigger_handler, "_queue_todo_dispatch", AsyncMock(return_value=False)
             ),
         ):
-            for index, payload in enumerate(payloads):
-                await calendar_trigger_handler.process_event(
-                    STARTING_SOON_EVENT, f"ti_calendar_{index}", USER_ID, payload
-                )
-        return queue
+            async with captured_wide_event() as event:
+                results = [
+                    (
+                        await calendar_trigger_handler.process_event(
+                            STARTING_SOON_EVENT, f"ti_calendar_{index}", USER_ID, payload
+                        )
+                    )["message"]
+                    for index, payload in enumerate(payloads)
+                ]
+        return queue, results, event
 
     async def test_the_same_event_on_three_calendars_runs_the_workflow_once(self) -> None:
         reminder = _make_workflow(trigger_name="calendar_event_starting_soon")
@@ -2100,17 +2109,18 @@ class TestCalendarStartingSoonFanOut:
             for calendar in ("primary", "team@group.calendar.google.com", "ba@example.com")
         ]
 
-        queue = await self._fire([reminder], payloads)
+        queue, results, _ = await self._fire([reminder], payloads)
 
         queue.assert_awaited_once()
         assert queue.await_args.kwargs["context"]["trigger_data"]["event_id"] == "evt_weekly_sync"
+        assert results == ["Queued 1 workflows", "Queued 0 workflows", "Queued 0 workflows"]
 
     async def test_distinct_events_and_distinct_workflows_each_still_run(self) -> None:
         reminder = _make_workflow(trigger_name="calendar_event_starting_soon")
         briefing = _make_workflow(trigger_name="calendar_event_starting_soon")
         briefing.id = "wf_briefing"
 
-        queue = await self._fire(
+        queue, _, _ = await self._fire(
             [reminder, briefing],
             [
                 _starting_soon_payload("evt_standup", "primary"),
@@ -2135,7 +2145,7 @@ class TestCalendarStartingSoonFanOut:
         moved = _starting_soon_payload("evt_weekly_sync", "primary")
         moved["start_time"] = "2026-11-02T15:00:00Z"
 
-        queue = await self._fire(
+        queue, _, _ = await self._fire(
             [reminder], [_starting_soon_payload("evt_weekly_sync", "primary"), moved]
         )
 
@@ -2145,7 +2155,7 @@ class TestCalendarStartingSoonFanOut:
         reminder = _make_workflow(trigger_name="calendar_event_starting_soon")
         anonymous = _starting_soon_payload("", "primary")
 
-        queue = await self._fire([reminder], [anonymous, anonymous])
+        queue, _, _ = await self._fire([reminder], [anonymous, anonymous])
 
         assert queue.await_count == 2
 
@@ -2185,9 +2195,14 @@ class TestCalendarStartingSoonFanOut:
         reminder = _make_workflow(trigger_name="calendar_event_starting_soon")
         payload = _starting_soon_payload("evt_weekly_sync", "primary")
 
-        queue = await self._fire([reminder], [payload, payload])
+        queue, _, event = await self._fire([reminder], [payload, payload])
 
         assert queue.await_count == 2
+        dedupe_warnings = [w["msg"] for w in event["warnings"] if "dedupe" in w["msg"]]
+        assert (
+            dedupe_warnings
+            == [f"{LogTag.TRIGGER} Redis unavailable — occurrence dedupe skipped"] * 2
+        )
 
     async def test_a_failing_redis_write_fires_rather_than_dropping(
         self, fake_redis: Any, monkeypatch: pytest.MonkeyPatch
@@ -2196,9 +2211,12 @@ class TestCalendarStartingSoonFanOut:
         reminder = _make_workflow(trigger_name="calendar_event_starting_soon")
         payload = _starting_soon_payload("evt_weekly_sync", "primary")
 
-        queue = await self._fire([reminder], [payload, payload])
+        queue, _, event = await self._fire([reminder], [payload, payload])
 
         assert queue.await_count == 2
+        warning = next(w for w in event["warnings"] if "dedupe" in w["msg"])
+        assert warning["msg"] == f"{LogTag.TRIGGER} Redis write failed — occurrence dedupe skipped"
+        assert (warning["error"], warning["error_type"]) == ("down", "RedisError")
 
     async def test_the_claim_expires_after_a_day(self, fake_redis: Any) -> None:
         reminder = _make_workflow(trigger_name="calendar_event_starting_soon")

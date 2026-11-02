@@ -123,7 +123,13 @@ async def _claim_occurrence(workflow_id: str, occurrence: str) -> bool:
         return True
     key = TRIGGER_OCCURRENCE_KEY.format(workflow_id=workflow_id, occurrence=occurrence)
     try:
-        return bool(await client.set(key, "1", nx=True, ex=TRIGGER_OCCURRENCE_TTL_SECONDS))
+        claimed = await client.set(
+            key,
+            "1",  # pragma: no mutate — only the key's presence is read
+            nx=True,
+            ex=TRIGGER_OCCURRENCE_TTL_SECONDS,
+        )
+        return bool(claimed)
     except RedisError as exc:
         log.warning(
             f"{LogTag.TRIGGER} Redis write failed — occurrence dedupe skipped",
