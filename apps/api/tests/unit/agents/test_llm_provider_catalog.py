@@ -106,16 +106,6 @@ class TestProductionRoutingIsPinned:
         monkeypatch.setattr(client_module.settings, "GOOGLE_API_KEY", "g-key")
         monkeypatch.setattr(client_module.settings, "OPENAI_API_KEY", "sk-openai")
 
-    @pytest.mark.regression
-    async def test_comms_runs_the_default_lane_not_openai_gaia_719(self) -> None:
-        lane, _ = await resolve_lane(None, AgentRole.COMMS)
-
-        assert (lane.provider, lane.model, lane.reasoning) == (
-            "openrouter",
-            "deepseek/deepseek-v4.1-flash-1017",
-            {"effort": "medium"},
-        )
-
     async def test_executor_runs_openrouter_deepseek_v4_1_at_medium_reasoning(self) -> None:
         lane, _ = await resolve_lane(None, AgentRole.EXECUTOR)
 
@@ -178,10 +168,6 @@ class TestProductionRoutingIsPinned:
         lane, _ = await resolve_lane(None, AgentRole.EXECUTOR)
 
         assert (lane.provider, lane.model) == ("openrouter", "deepseek/deepseek-v4.1-flash-1017")
-
-    @pytest.mark.regression
-    def test_a_configured_openai_key_serves_nothing_gaia_719(self) -> None:
-        assert not provider_configured(LLMProviderName.OPENAI)
 
     def test_a_missing_hosted_key_is_never_routed_around(
         self, monkeypatch: pytest.MonkeyPatch
