@@ -359,7 +359,7 @@ class TestPauseReminder:
                 "app.api.v1.endpoints.reminders.reminder_scheduler.pause",
                 new_callable=AsyncMock,
                 return_value=True,
-            ),
+            ) as pause,
             patch(
                 "app.api.v1.endpoints.reminders.reminder_scheduler.get_reminder",
                 new_callable=AsyncMock,
@@ -369,6 +369,7 @@ class TestPauseReminder:
             resp = await client.post(f"{API}/rem_1/pause")
         assert resp.status_code == 200
         assert resp.json()["status"] == "paused"
+        pause.assert_awaited_once_with("rem_1", user_id=USER_ID)
 
     async def test_pause_failure(self, client: AsyncClient) -> None:
         with patch(
