@@ -14,11 +14,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient
 import pytest
 
+from app.config.feature_flags import OnboardingPaywallVariant
 from app.constants.log_tags import LogTag
 from app.models.payment_models import (
     CheckoutSource,
     CreateSubscriptionResponse,
     PaymentVerificationResponse,
+    PaywallResponse,
     PlanDuration,
     PlanResponse,
     ProCheckout,
@@ -40,6 +42,7 @@ VERIFY_PAYMENT_URL = "/api/v1/payments/verify-payment"
 SUBSCRIPTION_STATUS_URL = "/api/v1/payments/subscription-status"
 WEBHOOK_URL = "/api/v1/payments/webhooks/dodo"
 DISCOUNT_CODES_URL = "/api/v1/payments/discount-codes"
+PAYWALL_URL = "/api/v1/payments/paywall"
 
 
 def _make_plan(**overrides) -> dict:
@@ -641,6 +644,23 @@ class TestVerifyPayment:
 # ---------------------------------------------------------------------------
 # GET /subscription-status
 # ---------------------------------------------------------------------------
+
+
+class TestGetPaywall:
+    async def test_returns_the_callers_variant_and_drafted_jobs(self, client: AsyncClient):
+        paywall = PaywallResponse(
+            variant=OnboardingPaywallVariant.VALUE_PREVIEW, starting_jobs=["Clear my inbox"]
+        )
+        with patch(
+            "app.api.v1.endpoints.payments.get_paywall",
+            new_callable=AsyncMock,
+            return_value=paywall,
+        ) as get_paywall:
+            response = await client.get(PAYWALL_URL)
+
+        assert response.status_code == 200
+        assert response.json() == {"variant": "value_preview", "starting_jobs": ["Clear my inbox"]}
+        get_paywall.assert_awaited_once_with(FAKE_USER.user_id)
 
 
 class TestGetSubscriptionStatus:

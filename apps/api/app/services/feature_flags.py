@@ -201,6 +201,24 @@ def _variant_answer(flag: VariantFlag, answer: object) -> StrEnum | None:
     return known
 
 
+async def _posthog_variant(flag: VariantFlag, user_id: str) -> StrEnum | None:
+    """Return PostHog's variant for the user, or None when it is unconfigured, fails, or gives no known variant."""
+    client = _get_posthog_client()
+    if client is None:
+        return None
+    try:
+        answer = await asyncio.to_thread(client.get_feature_flag, flag.value, user_id)
+    except Exception as e:
+        log.warning(
+            "Feature flag evaluation failed, falling back to default",
+            flag=flag.value,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return None
+    return _variant_answer(flag, answer)
+
+
 async def get_variant(flag: VariantFlag, user_id: str | None) -> StrEnum:
     """Evaluate a multivariate flag for a user, live on every call: kill switch, PostHog, then the default.
 
@@ -214,19 +232,7 @@ async def get_variant(flag: VariantFlag, user_id: str | None) -> StrEnum:
     if await _kill_switch_engaged(flag, user_id):
         variant = spec.killed
     else:
-        client = _get_posthog_client()
-        answer: object = None
-        if client is not None:
-            try:
-                answer = await asyncio.to_thread(client.get_feature_flag, flag.value, user_id)
-            except Exception as e:
-                log.warning(
-                    "Feature flag evaluation failed, falling back to default",
-                    flag=flag.value,
-                    error=str(e),
-                    error_type=type(e).__name__,
-                )
-        variant = _variant_answer(flag, answer) or spec.default
+        variant = await _posthog_variant(flag, user_id) or spec.default
     log.set(flags={flag.value: variant.value})
     return variant
 

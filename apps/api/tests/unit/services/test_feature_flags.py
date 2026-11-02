@@ -802,14 +802,17 @@ class TestSetUserFlagRefusals:
 
 
 def _answers(by_key: dict[str, object]) -> MagicMock:
-    """Build a PostHog get_feature_flag that answers per dashboard key, None for any other."""
-    return MagicMock(side_effect=lambda key, _user: by_key.get(key))
+    """Build a PostHog get_feature_flag that answers per dashboard key for USER_ID, None otherwise."""
+    return MagicMock(side_effect=lambda key, user: by_key.get(key) if user == USER_ID else None)
 
 
 class TestVariantFlags:
-    async def test_posthog_variant_is_served(self, mock_client: MagicMock) -> None:
+    async def test_posthog_variant_is_served_and_recorded(self, mock_client: MagicMock) -> None:
         mock_client.get_feature_flag = _answers({"onboarding-paywall": "classic"})
-        assert await onboarding_paywall_variant(USER_ID) is OnboardingPaywallVariant.CLASSIC
+        with patch("app.services.feature_flags.log") as mock_log:
+            assert await onboarding_paywall_variant(USER_ID) is OnboardingPaywallVariant.CLASSIC
+        mock_log.warning.assert_not_called()
+        mock_log.set.assert_called_once_with(flags={"onboarding-paywall": "classic"})
 
     async def test_kill_switch_forces_the_known_good_variant_over_posthog(
         self, mock_client: MagicMock
@@ -819,24 +822,49 @@ class TestVariantFlags:
         )
         assert await onboarding_paywall_variant(USER_ID) is OnboardingPaywallVariant.CLASSIC
 
-    async def test_unknown_variant_fails_open_to_the_default(self, mock_client: MagicMock) -> None:
+    async def test_unknown_variant_fails_open_to_the_default_and_is_named(
+        self, mock_client: MagicMock
+    ) -> None:
         mock_client.get_feature_flag = _answers({"onboarding-paywall": "trial"})
-        assert await onboarding_paywall_variant(USER_ID) is OnboardingPaywallVariant.VALUE_PREVIEW
+        with patch("app.services.feature_flags.log") as mock_log:
+            assert (
+                await onboarding_paywall_variant(USER_ID) is OnboardingPaywallVariant.VALUE_PREVIEW
+            )
+        mock_log.warning.assert_called_once_with(
+            "Feature flag answered a variant GAIA does not know; serving the default",
+            flag="onboarding-paywall",
+            answer_type="str",
+        )
 
     async def test_boolean_answer_is_not_a_variant(self, mock_client: MagicMock) -> None:
         mock_client.get_feature_flag = _answers({"onboarding-paywall": True})
         assert await onboarding_paywall_variant(USER_ID) is OnboardingPaywallVariant.VALUE_PREVIEW
 
-    async def test_posthog_failure_fails_open_to_the_default(self, mock_client: MagicMock) -> None:
+    async def test_posthog_failure_fails_open_to_the_default_and_is_logged(
+        self, mock_client: MagicMock
+    ) -> None:
         mock_client.get_feature_flag.side_effect = TimeoutError("posthog down")
-        assert await onboarding_paywall_variant(USER_ID) is OnboardingPaywallVariant.VALUE_PREVIEW
+        with patch("app.services.feature_flags.log") as mock_log:
+            assert (
+                await onboarding_paywall_variant(USER_ID) is OnboardingPaywallVariant.VALUE_PREVIEW
+            )
+        mock_log.warning.assert_called_with(
+            "Feature flag evaluation failed, falling back to default",
+            flag="onboarding-paywall",
+            error="posthog down",
+            error_type="TimeoutError",
+        )
 
     async def test_no_user_serves_the_default_without_io(self, mock_client: MagicMock) -> None:
         assert await onboarding_paywall_variant(None) is OnboardingPaywallVariant.VALUE_PREVIEW
         mock_client.get_feature_flag.assert_not_called()
 
-    async def test_no_posthog_serves_the_default(self, no_client: None) -> None:
-        assert await onboarding_paywall_variant(USER_ID) is OnboardingPaywallVariant.VALUE_PREVIEW
+    async def test_no_posthog_serves_the_default_quietly(self, no_client: None) -> None:
+        with patch("app.services.feature_flags.log") as mock_log:
+            assert (
+                await onboarding_paywall_variant(USER_ID) is OnboardingPaywallVariant.VALUE_PREVIEW
+            )
+        mock_log.warning.assert_not_called()
 
     def test_every_variant_flag_serves_its_own_variants(self) -> None:
         for spec in VARIANT_FLAGS.values():
