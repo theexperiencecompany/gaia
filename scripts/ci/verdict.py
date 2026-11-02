@@ -39,7 +39,7 @@ Subcommands:
     consolidate DIR --expect "job[@family][*planned-members][=job-result],…"
         The gate's verdict. Print the table every lane's JSON forms and exit 1
         if any lane failed, timed out, errored — or never reported at all.
-    pytest-verdict <junit.xml> --lane L [--path-prefix P] [--out DIR]
+    pytest-verdict <junit.xml> --lane L --exit-code N [--path-prefix P] [--out DIR]
         Turn a pytest JUnit report into a verdict: one finding per failed test,
         at its own file and line, with the assertion tail as the detail.
     regression-proof-select <pr_file> <base_file> [<pr_file> <base_file> ...]
@@ -964,14 +964,22 @@ def _read_junit(path: str, path_prefix: str = "") -> list[JUnitCase]:
 # ---------------------------------------------------------------------------
 
 
+def _failure_label(case: JUnitCase, accepted: bool) -> str:
+    """Name how a test went wrong: FLAKY when the flake gate's rerun passed it."""
+    if accepted:
+        return "FLAKY"
+    return "ERROR" if case.errored and not case.failed else "FAILED"
+
+
 def cmd_pytest_verdict(args: list[str]) -> int:
     """Emit a slice's verdict from the JUnit report it already wrote."""
     parser = _verdict_parser("pytest-verdict", default_lane="")
     parser.add_argument("junit")
     # The slice's own exit code: pytest can fail for reasons JUnit does not
     # record (a collection abort, the flake gate), and a verdict that says
-    # `pass` over a red step is worse than none.
-    parser.add_argument("--exit-code", type=int, default=0)
+    # `pass` over a red step is worse than none. Required: a failed JUnit under
+    # exit 0 means the flake gate accepted a rerun, which only the caller knows.
+    parser.add_argument("--exit-code", type=int, required=True)
     opts = parser.parse_args(args)
     if not opts.lane:
         parser.error("--lane is required")
@@ -988,15 +996,28 @@ def cmd_pytest_verdict(args: list[str]) -> int:
         return 0
 
     broken = [c for c in cases if c.failed or c.errored]
+    # The JUnit is the first run's: the flake gate's rerun writes none, so a
+    # failure it accepted is still recorded here under a step that exited 0.
+    accepted = bool(broken) and not opts.exit_code
     findings: list[Finding] = [
         {
             "file": c.file,
             "line": c.line,
-            "message": f"{'ERROR' if c.errored and not c.failed else 'FAILED'} {c.name}",
+            "message": f"{_failure_label(c, accepted)} {c.name}",
             "detail": c.detail,
         }
         for c in broken
     ]
+    if accepted:
+        report(
+            opts.lane,
+            Status.PASS,
+            f"{len(cases)} test(s) passed, {len(broken)} only on the flake gate's rerun",
+            findings=findings,
+            advice=["Stabilise the FLAKY tests: the first-run traceback is in the step's output."],
+            out_dir=opts.out,
+        )
+        return 0
     if broken:
         report(
             opts.lane,
