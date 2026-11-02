@@ -51,6 +51,7 @@ from app.services.onboarding.intelligence_job import (
 )
 from app.services.onboarding.onboarding_service import (
     complete_onboarding,
+    complete_onboarding_on_platform_link,
     get_user_onboarding_status,
     record_onboarding_step,
     reset_onboarding,
@@ -1555,3 +1556,69 @@ class TestCompleteOnboardingExactKwargs:
             needs=[OnboardingNeed.MORNINGS],
             response_style="casual",
         )
+
+
+class TestCompleteOnboardingOnPlatformLink:
+    """The bot link landing finishes onboarding through the one completion path the web submit uses."""
+
+    @staticmethod
+    def _at_platform_step(user_id: str, **onboarding: Any) -> UserDocument:
+        return UserDocument.model_validate(
+            {
+                "id": user_id,
+                "onboarding": {
+                    "preferences": {
+                        "profession": "founder",
+                        "needs": ["inbox"],
+                        "other_need": "invoices",
+                    },
+                    "steps_reached": {"paid_reveal_seen": "2026-11-02T10:00:00Z"},
+                    **onboarding,
+                },
+            }
+        )
+
+    async def test_completes_from_the_stored_answers(
+        self, mock_repo: MagicMock, sample_user_id: str
+    ) -> None:
+        mock_repo.get.return_value = self._at_platform_step(sample_user_id)
+
+        with patch(f"{SERVICE}.complete_onboarding", AsyncMock()) as complete:
+            await complete_onboarding_on_platform_link(sample_user_id)
+
+        user_id, request = complete.await_args.args
+        assert user_id == sample_user_id
+        assert (request.profession, request.needs, request.other_need) == (
+            "founder",
+            [OnboardingNeed.INBOX],
+            "invoices",
+        )
+
+    @pytest.mark.parametrize(
+        "onboarding",
+        [
+            {"completed": True},
+            {"steps_reached": {}},
+            {"preferences": {"profession": None}},
+        ],
+        ids=["already-complete", "before-the-platform-step", "no-stored-answers"],
+    )
+    async def test_leaves_anyone_else_alone(
+        self, mock_repo: MagicMock, sample_user_id: str, onboarding: dict[str, Any]
+    ) -> None:
+        mock_repo.get.return_value = self._at_platform_step(sample_user_id, **onboarding)
+
+        with patch(f"{SERVICE}.complete_onboarding", AsyncMock()) as complete:
+            await complete_onboarding_on_platform_link(sample_user_id)
+
+        complete.assert_not_awaited()
+
+    async def test_a_user_without_onboarding_is_left_alone(
+        self, mock_repo: MagicMock, sample_user_id: str
+    ) -> None:
+        mock_repo.get.return_value = UserDocument(id=sample_user_id)
+
+        with patch(f"{SERVICE}.complete_onboarding", AsyncMock()) as complete:
+            await complete_onboarding_on_platform_link(sample_user_id)
+
+        complete.assert_not_awaited()

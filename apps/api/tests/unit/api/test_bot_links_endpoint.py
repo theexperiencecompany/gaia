@@ -48,6 +48,8 @@ from app.api.v1.endpoints.bot_links import (  # isort: skip
     redeem_link_code,
 )
 
+pytestmark = pytest.mark.usefixtures("onboarding_finish_on_link")
+
 BOT_BASE = "/api/v1/bot"
 PLAN_PATCH = "app.services.platform_link_service.payment_service.get_cached_plan_type"
 

@@ -145,6 +145,29 @@ async def complete_onboarding(
         raise HTTPException(status_code=500, detail="Failed to complete onboarding") from e
 
 
+async def complete_onboarding_on_platform_link(user_id: str) -> None:
+    """Finish onboarding when the platform step's bot link lands, so a user who never returns to the web tab is not left unfinished.
+
+    Only for a user already past the paid reveal with stored answers; the web
+    submit that may follow replays into the same atomic completion gate.
+    """
+    user = await user_repository.get(user_id)
+    onboarding = user.onboarding if user else None
+    if onboarding is None or onboarding.completed:
+        return
+    if OnboardingStep.PAID_REVEAL_SEEN not in onboarding.steps_reached:
+        return
+    stored = onboarding.preferences
+    if stored is None or not stored.profession:
+        return
+    await complete_onboarding(
+        user_id,
+        OnboardingRequest(
+            profession=stored.profession, needs=stored.needs or [], other_need=stored.other_need
+        ),
+    )
+
+
 async def _seed_first_conversation(
     user: UserDocument, preferences: OnboardingPreferences, connected_platform: str | None
 ) -> UserDocument | None:

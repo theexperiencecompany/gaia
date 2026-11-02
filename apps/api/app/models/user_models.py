@@ -346,7 +346,7 @@ class OnboardingRequest(OnboardingAnswers):
     """The onboarding submission: the answers again, plus the browser's timezone."""
 
     timezone: str | None = Field(
-        None, description="User's detected timezone (e.g., 'America/New_York', 'UTC')"
+        default=None, description="User's detected timezone (e.g., 'America/New_York', 'UTC')"
     )
 
     @field_validator("timezone")
