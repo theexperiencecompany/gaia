@@ -1,6 +1,4 @@
-import { Button } from "@heroui/button";
-import { Kbd } from "@heroui/react";
-import { Tooltip } from "@heroui/tooltip";
+import { Button, Kbd, Tooltip } from "@heroui/react";
 import { AudioWave01Icon } from "@icons";
 import SendStopButton from "@/features/chat/components/composer/SendStopButton";
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
@@ -121,7 +119,9 @@ export default function RightSide({
       return (
         <div className="flex items-center gap-2">
           Queue message
-          <Kbd className="text-zinc-400" keys={["enter"]} />
+          <Kbd className="text-zinc-400">
+            <Kbd.Abbr keyValue="enter" />
+          </Kbd>
         </div>
       );
     }
@@ -146,7 +146,9 @@ export default function RightSide({
     return (
       <div className="flex items-center gap-2">
         Send Message
-        <Kbd className="text-zinc-400" keys={["enter"]} />
+        <Kbd className="text-zinc-400">
+          <Kbd.Abbr keyValue="enter" />
+        </Kbd>
       </div>
     );
   };
@@ -154,38 +156,37 @@ export default function RightSide({
   return (
     <div className="ml-2 flex items-center gap-2">
       {isVoiceAvailable && (
-        <Tooltip
-          content="Voice Mode"
-          placement="left"
-          color="primary"
-          showArrow
-        >
-          <Button
-            isIconOnly
-            aria-label="Voice Mode"
-            className="h-9 min-h-9 w-9 max-w-9 min-w-9"
-            color="default"
-            radius="full"
-            type="button"
-            onMouseEnter={onVoiceModeHover}
-            onPress={() => setvoiceModeActive()}
-          >
-            <AudioWave01Icon className="text-zinc-400" />
-          </Button>
+        <Tooltip>
+          <Tooltip.Trigger>
+            <Button
+              isIconOnly
+              aria-label="Voice Mode"
+              className="h-9 min-h-9 w-9 max-w-9 min-w-9 rounded-full"
+              type="button"
+              onMouseEnter={onVoiceModeHover}
+              onPress={() => setvoiceModeActive()}
+              variant="secondary"
+            >
+              <AudioWave01Icon className="text-zinc-400" />
+            </Button>
+          </Tooltip.Trigger>
+          <Tooltip.Content placement="left" showArrow>
+            Voice Mode
+          </Tooltip.Content>
         </Tooltip>
       )}
 
-      <Tooltip
-        content={getTooltipContent()}
-        placement="right"
-        color={showStop ? "danger" : "primary"}
-        showArrow
-      >
-        <SendStopButton
-          hasContent={hasContent}
-          isUploading={isUploading}
-          onSend={handleFormSubmit}
-        />
+      <Tooltip>
+        <Tooltip.Trigger>
+          <SendStopButton
+            hasContent={hasContent}
+            isUploading={isUploading}
+            onSend={handleFormSubmit}
+          />
+        </Tooltip.Trigger>
+        <Tooltip.Content placement="right" showArrow>
+          {getTooltipContent()}
+        </Tooltip.Content>
       </Tooltip>
     </div>
   );

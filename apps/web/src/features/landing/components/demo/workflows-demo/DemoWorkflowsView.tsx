@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
+import { Button, Chip } from "@heroui/react";
 import {
   ArrowRight02Icon,
   PlayIcon,
@@ -94,7 +93,7 @@ function DemoWorkflowCard({
         {variant === "user" && activated !== undefined && (
           <Chip
             color={activated ? "success" : "danger"}
-            variant="flat"
+            variant="tertiary"
             size="sm"
           >
             {activated ? "Activated" : "Deactivated"}
@@ -144,17 +143,12 @@ function DemoWorkflowCard({
               </div>
             )}
             <Button
-              color="primary"
               size="sm"
-              variant={variant === "user" ? "flat" : "solid"}
+              variant={variant === "user" ? "tertiary" : "primary"}
               className={`font-medium rounded-xl ${variant === "user" ? "text-primary" : ""}`}
-              endContent={
-                variant !== "user" ? (
-                  <ZapIcon width={16} height={16} />
-                ) : undefined
-              }
             >
               {variant === "user" ? "Run" : "Create"}
+              {variant !== "user" ? <ZapIcon width={16} height={16} /> : null}
             </Button>
           </div>
         </div>
@@ -185,18 +179,12 @@ export default function DemoWorkflowsView() {
               </div>
             </div>
             <div className="flex shrink-0 gap-3">
-              <Button
-                variant="flat"
-                size="sm"
-                endContent={<ArrowRight02Icon className="h-4 w-4" />}
-              >
+              <Button variant="tertiary" size="sm">
                 Browse Use Cases
+                <ArrowRight02Icon className="h-4 w-4" />
               </Button>
-              <Button
-                color="primary"
-                size="sm"
-                startContent={<ZapIcon className="h-4 w-4" />}
-              >
+              <Button size="sm" variant="primary">
+                <ZapIcon className="h-4 w-4" />
                 Create New Workflow
               </Button>
             </div>

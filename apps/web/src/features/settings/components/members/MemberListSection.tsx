@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
+import { Button, Chip } from "@heroui/react";
 import type { MemberResponse } from "@shared/api/generated";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
@@ -49,15 +48,14 @@ export function MemberListSection({
           description={memberDescription(member)}
         >
           {member.role === "admin" ? (
-            <Chip size="sm" variant="flat">
+            <Chip size="sm" variant="secondary">
               Admin
             </Chip>
           ) : (
             <Button
               size="sm"
-              variant="flat"
-              color="danger"
-              isLoading={removingUserId === member.user_id}
+              variant="danger-soft"
+              isPending={removingUserId === member.user_id}
               onPress={() => void remove(member)}
             >
               Remove

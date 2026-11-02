@@ -8,7 +8,7 @@
 
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import type { TriggerConnectionPromptProps } from "./types";
@@ -36,8 +36,7 @@ export function TriggerConnectionPrompt({
         </p>
       </div>
       <Button
-        color="primary"
-        variant="flat"
+        variant="tertiary"
         size="sm"
         className="shrink-0"
         onPress={onConnect}

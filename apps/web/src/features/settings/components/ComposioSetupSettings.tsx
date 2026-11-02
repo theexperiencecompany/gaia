@@ -1,8 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Link } from "@heroui/link";
-import { Spinner } from "@heroui/spinner";
+import { Button, Link, Spinner } from "@heroui/react";
 import { Search01Icon, SquareArrowUpRight02Icon } from "@icons";
 import { useState } from "react";
 import { COMPOSIO_SETUP_DOCS_URL } from "@/features/settings/api/composioSetupApi";
@@ -78,12 +76,11 @@ export function ComposioSetupSettings() {
         <div className="flex justify-end p-2">
           <Button
             size="sm"
-            variant="flat"
-            color="primary"
+            variant="secondary"
             isDisabled={!canBrowse}
-            startContent={<Search01Icon className="size-4" />}
             onPress={() => openCatalog(null)}
           >
+            <Search01Icon className="size-4" />
             Browse Composio catalog
           </Button>
         </div>
@@ -114,19 +111,18 @@ export function ComposioSetupSettings() {
       <div className="flex items-center justify-between">
         <Link
           href={COMPOSIO_SETUP_DOCS_URL}
-          isExternal
-          size="sm"
-          className="text-zinc-400"
-          anchorIcon={<SquareArrowUpRight02Icon className="ml-1 size-3.5" />}
-          showAnchorIcon
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center text-zinc-400"
         >
           How to set up Composio
+          <SquareArrowUpRight02Icon className="ml-1 size-3.5" />
         </Link>
         <Button
-          color="primary"
+          variant="primary"
           size="sm"
           isDisabled={!composio.isDirty}
-          isLoading={composio.isSaving}
+          isPending={composio.isSaving}
           onPress={composio.save}
         >
           Save

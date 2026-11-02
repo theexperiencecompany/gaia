@@ -1,14 +1,11 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Tab, Tabs } from "@heroui/tabs";
-import { Tooltip } from "@heroui/tooltip";
+import { Button, Chip, Tabs, Tooltip } from "@heroui/react";
 import { Fire02Icon, SparklesIcon } from "@icons";
 import { USAGE_WARN_THRESHOLD } from "@shared/constants/usage";
 import type { FeatureUsage, UsageActivity, UsageSummary } from "@shared/types";
 import { formatCompactNumber, formatDate, formatDateUTC } from "@shared/utils";
-import { useMemo, useState } from "react";
+import { type ComponentProps, useMemo, useState } from "react";
 import BlurStack from "@/components/ui/blur-stack";
 import { ChartContainer, ChartTooltip } from "@/components/ui/chart";
 import { useRecharts } from "@/components/ui/chart-loader";
@@ -223,21 +220,28 @@ function Hero({ summary, isPro }: { summary: UsageSummary; isPro: boolean }) {
     <section className={cn(CARD, "relative flex items-center gap-5 p-4")}>
       {isPro && (
         <Tabs
-          size="sm"
-          radius="full"
           selectedKey={win}
           onSelectionChange={(k) => setWin(k as Period)}
           className="absolute right-4 top-4"
-          classNames={{
-            tabList: "bg-zinc-800/80 p-0.5",
-            cursor: "bg-zinc-700",
-            tab: "h-6 px-3",
-            tabContent:
-              "text-xs font-medium text-zinc-500 group-data-[selected=true]:text-zinc-100",
-          }}
         >
-          <Tab key="month" title="Month" />
-          <Tab key="day" title="Today" />
+          <Tabs.List className="bg-zinc-800/80 p-0.5">
+            <Tabs.Tab
+              id="month"
+              className="h-6 px-3 text-xs font-medium text-zinc-500 data-[selected]:text-zinc-100"
+            >
+              Month
+              <Tabs.Indicator className="bg-zinc-700" />
+            </Tabs.Tab>
+            <Tabs.Tab
+              id="day"
+              className="h-6 px-3 text-xs font-medium text-zinc-500 data-[selected]:text-zinc-100"
+            >
+              Today
+              <Tabs.Indicator className="bg-zinc-700" />
+            </Tabs.Tab>
+          </Tabs.List>
+          <Tabs.Panel id="month">{null}</Tabs.Panel>
+          <Tabs.Panel id="day">{null}</Tabs.Panel>
         </Tabs>
       )}
       <HeroGauge percent={percent} gauge={heroGauge(percent, resetIso, win)} />
@@ -326,19 +330,24 @@ function Stats({
         sub={`of ${elapsedDays} days this month`}
         accent={
           streak > 0 ? (
-            <Tooltip
-              content={`${streak}-day streak. You've been active every day for the last ${streak} days`}
-              placement="top"
-              delay={150}
-              closeDelay={0}
-              classNames={{
-                content: "max-w-64 bg-zinc-800 text-xs text-zinc-300 shadow-xl",
-              }}
-            >
-              <span className="flex cursor-default items-center gap-0.5 text-xs font-medium text-orange-400">
+            <Tooltip delay={150} closeDelay={0}>
+              <Tooltip.Trigger
+                render={(props) => (
+                  <span
+                    {...props}
+                    className="flex cursor-default items-center gap-0.5 text-xs font-medium text-orange-400"
+                  />
+                )}
+              >
                 <Fire02Icon size={13} />
                 {streak}
-              </span>
+              </Tooltip.Trigger>
+              <Tooltip.Content
+                placement="top"
+                className="max-w-64 bg-zinc-800 text-xs text-zinc-300 shadow-xl"
+              >
+                {`${streak}-day streak. You've been active every day for the last ${streak} days`}
+              </Tooltip.Content>
             </Tooltip>
           ) : undefined
         }
@@ -735,20 +744,27 @@ function Tools({
       <div className="mb-1 flex items-center justify-between">
         <h3 className="text-base font-semibold text-white">Tools</h3>
         <Tabs
-          size="sm"
-          radius="full"
           selectedKey={period}
           onSelectionChange={(k) => onPeriod(k as Period)}
-          classNames={{
-            tabList: "bg-zinc-800/80 p-0.5",
-            cursor: "bg-zinc-700",
-            tab: "h-6 px-3",
-            tabContent:
-              "text-xs font-medium text-zinc-500 group-data-[selected=true]:text-zinc-100",
-          }}
         >
-          <Tab key="day" title="Today" />
-          <Tab key="month" title="Month" />
+          <Tabs.List className="bg-zinc-800/80 p-0.5">
+            <Tabs.Tab
+              id="day"
+              className="h-6 px-3 text-xs font-medium text-zinc-500 data-[selected]:text-zinc-100"
+            >
+              Today
+              <Tabs.Indicator className="bg-zinc-700" />
+            </Tabs.Tab>
+            <Tabs.Tab
+              id="month"
+              className="h-6 px-3 text-xs font-medium text-zinc-500 data-[selected]:text-zinc-100"
+            >
+              Month
+              <Tabs.Indicator className="bg-zinc-700" />
+            </Tabs.Tab>
+          </Tabs.List>
+          <Tabs.Panel id="month">{null}</Tabs.Panel>
+          <Tabs.Panel id="day">{null}</Tabs.Panel>
         </Tabs>
       </div>
       {rows.length === 0 ? (
@@ -772,11 +788,16 @@ function Tools({
           {canCollapse && showAll && (
             <div className="mt-3 flex justify-center">
               <Chip
-                as="button"
-                variant="solid"
+                variant="primary"
                 size="sm"
                 className="cursor-pointer"
                 onClick={() => setShowAll(false)}
+                render={(props) => (
+                  <button
+                    {...(props as unknown as ComponentProps<"button">)}
+                    type="button"
+                  />
+                )}
               >
                 Show less
               </Chip>
@@ -787,11 +808,16 @@ function Tools({
               <BlurStack className="pointer-events-none absolute inset-x-0 bottom-0 h-24" />
               <div className="absolute inset-x-0 bottom-3 z-20 flex justify-center">
                 <Chip
-                  as="button"
-                  variant="flat"
+                  variant="tertiary"
                   size="sm"
                   className="cursor-pointer"
                   onClick={() => setShowAll(true)}
+                  render={(props) => (
+                    <button
+                      {...(props as unknown as ComponentProps<"button">)}
+                      type="button"
+                    />
+                  )}
                 >
                   Show more
                 </Chip>
@@ -817,18 +843,23 @@ function FeatureRow({
   const showPro = proLimit !== undefined && proLimit > p.limit;
   return (
     <div className="flex items-center gap-4 py-3">
-      <Tooltip
-        content={feature.description}
-        placement="top"
-        delay={250}
-        closeDelay={0}
-        classNames={{
-          content: "max-w-56 bg-zinc-800 text-xs text-zinc-300 shadow-xl",
-        }}
-      >
-        <span className="w-36 shrink-0 cursor-default truncate text-sm font-medium text-zinc-200">
+      <Tooltip delay={250} closeDelay={0}>
+        <Tooltip.Trigger
+          render={(props) => (
+            <span
+              {...props}
+              className="w-36 shrink-0 cursor-default truncate text-sm font-medium text-zinc-200"
+            />
+          )}
+        >
           {feature.title}
-        </span>
+        </Tooltip.Trigger>
+        <Tooltip.Content
+          placement="top"
+          className="max-w-56 bg-zinc-800 text-xs text-zinc-300 shadow-xl"
+        >
+          {feature.description}
+        </Tooltip.Content>
       </Tooltip>
       <Meter percent={p.percentage} className="h-1.5 flex-1" />
       <span className="min-w-16 shrink-0 text-right text-xs tabular-nums text-zinc-500">
@@ -892,10 +923,10 @@ function UpgradeBanner({
         <p className="truncate text-[13px] text-zinc-500">{reason}</p>
       </div>
       <Button
-        color="primary"
         size="sm"
         className="shrink-0 font-medium"
         onPress={onUpgrade}
+        variant="primary"
       >
         Upgrade
       </Button>

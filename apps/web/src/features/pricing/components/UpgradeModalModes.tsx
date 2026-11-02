@@ -1,9 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { ModalBody } from "@heroui/modal";
-import { Tab, Tabs } from "@heroui/tabs";
+import { Button, Chip, ModalBody, Tabs } from "@heroui/react";
 import type { ReactNode } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";
 
@@ -44,29 +41,36 @@ export function UpgradeModalPlanPicker({
       {discountBanner}
 
       <div className="w-full flex flex-col items-center px-5">
-        <Tabs aria-label="Billing period" radius="lg">
-          <Tab key="monthly" title="Monthly">
+        <Tabs>
+          <Tabs.List aria-label="Billing period">
+            <Tabs.Tab id="monthly">
+              Monthly
+              <Tabs.Indicator />
+            </Tabs.Tab>
+            <Tabs.Tab id="yearly">
+              <div className="flex items-center gap-2">
+                Yearly
+                <Chip color="accent" size="sm" variant="primary">
+                  <Chip.Label className="text-xs font-medium">
+                    2 months free
+                  </Chip.Label>
+                </Chip>
+              </div>
+              <Tabs.Indicator />
+            </Tabs.Tab>
+          </Tabs.List>
+          <Tabs.Panel id="monthly">
             <p className="mt-3 mb-4 text-center text-xs text-zinc-600">
               Secure payment · Cancel anytime
             </p>
             <PricingCards durationIsMonth initialPlans={plans} hideEnterprise />
-          </Tab>
-          <Tab
-            key="yearly"
-            title={
-              <div className="flex items-center gap-2">
-                Yearly
-                <Chip color="primary" size="sm" variant="shadow">
-                  <span className="text-xs font-medium">2 months free</span>
-                </Chip>
-              </div>
-            }
-          >
+          </Tabs.Panel>
+          <Tabs.Panel id="yearly">
             <p className="mt-3 mb-4 text-center text-xs text-zinc-600">
               Secure payment · Cancel anytime
             </p>
             <PricingCards initialPlans={plans} hideEnterprise />
-          </Tab>
+          </Tabs.Panel>
         </Tabs>
       </div>
     </div>
@@ -140,7 +144,7 @@ export function UpgradeModalOffer({
       )}
 
       <Button
-        variant="light"
+        variant="tertiary"
         size="sm"
         className="mx-auto mt-1 h-auto min-w-0 p-0 text-xs text-zinc-500 data-[hover=true]:bg-transparent data-[hover=true]:text-zinc-300 data-[hover=true]:underline"
         onPress={() => onLogout()}

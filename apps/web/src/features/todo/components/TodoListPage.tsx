@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import RightSidebarPanel from "@/components/layout/sidebar/RightSidebarPanel";
 import { TodoSidebar } from "@/components/layout/sidebar/right-variants/TodoSidebar";
@@ -260,7 +260,7 @@ export default function TodoListPage({
         <div className="flex w-full flex-1 flex-col items-center justify-center gap-3 px-4">
           <p className="text-base text-zinc-300">Couldn&apos;t load tasks</p>
           <p className="text-sm text-zinc-500">{loadError}</p>
-          <Button color="primary" variant="flat" onPress={() => refresh()}>
+          <Button variant="tertiary" onPress={() => refresh()}>
             Retry
           </Button>
         </div>

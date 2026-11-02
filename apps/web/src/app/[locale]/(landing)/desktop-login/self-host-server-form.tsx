@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
+import { Button, Description, Input, Label, TextField } from "@heroui/react";
 import { CloudIcon } from "@icons";
 import { type FormEvent, useState } from "react";
 import { FormError } from "@/components/shared/FormError";
@@ -47,24 +46,29 @@ export function SelfHostServerForm({
       )}
 
       <form onSubmit={onSubmit} className="flex flex-col gap-3">
-        <Input
-          type="text"
-          label="Server address"
-          placeholder="https://gaia.example.com"
-          description="The address you open GAIA at in your browser."
+        <TextField
           value={address}
-          onValueChange={setAddress}
-          autoComplete="url"
+          onChange={setAddress}
           isRequired
           isDisabled={isConnecting}
-        />
+        >
+          <Label>Server address</Label>
+          <Input
+            type="text"
+            placeholder="https://gaia.example.com"
+            autoComplete="url"
+          />
+          <Description>
+            The address you open GAIA at in your browser.
+          </Description>
+        </TextField>
 
         {error && <FormError>{error}</FormError>}
 
         <Button
           type="submit"
-          color="primary"
-          isLoading={isConnecting}
+          variant="primary"
+          isPending={isConnecting}
           className="w-full"
         >
           Connect
@@ -73,11 +77,11 @@ export function SelfHostServerForm({
 
       {currentOrigin && (
         <Button
-          variant="flat"
-          startContent={<CloudIcon height={17} />}
+          variant="tertiary"
           isDisabled={isConnecting}
           onPress={() => getElectronAPI()?.switchToGaiaCloud()}
         >
+          <CloudIcon height={17} />
           Use GAIA Cloud
         </Button>
       )}

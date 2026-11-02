@@ -1,0 +1,13 @@
+node_modules/
+package-lock.json
+# generated
+inventory.json
+variants.json
+manual-review.log
+report.html
+visual-report.html
+visual-report.json
+bundle-report.html
+bundle-*.json
+shots/
+variants-report.html

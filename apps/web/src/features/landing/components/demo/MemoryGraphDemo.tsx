@@ -1,4 +1,4 @@
-import { Card, CardBody } from "@heroui/card";
+import { Card } from "@heroui/react";
 import * as d3 from "d3";
 import { useEffect, useRef, useState } from "react";
 
@@ -266,11 +266,11 @@ export default function MemoryGraphDemo() {
           style={{ left: tooltip.x, top: tooltip.y }}
         >
           <Card className="border border-zinc-600 bg-zinc-800 shadow-lg">
-            <CardBody className="p-2">
+            <Card.Content className="p-2">
               <div className="max-w-48 text-xs text-zinc-100">
                 {tooltip.content}
               </div>
-            </CardBody>
+            </Card.Content>
           </Card>
         </div>
       )}
@@ -279,12 +279,12 @@ export default function MemoryGraphDemo() {
       {selectedNode && (
         <div className="absolute bottom-2 left-2 z-10">
           <Card className="border border-zinc-600 bg-zinc-800/90 backdrop-blur-sm">
-            <CardBody className="p-2">
+            <Card.Content className="p-2">
               <div className="text-xs text-zinc-100">
                 <div className="font-semibold">{selectedNode.label}</div>
                 <div className="text-zinc-300">{selectedNode.description}</div>
               </div>
-            </CardBody>
+            </Card.Content>
           </Card>
         </div>
       )}

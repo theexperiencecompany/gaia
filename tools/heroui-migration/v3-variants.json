@@ -1,0 +1,213 @@
+{
+  "accordion": {
+    "variant": ["default", "surface"]
+  },
+  "alert-dialog": {
+    "variant": ["blur", "opaque", "transparent"],
+    "size": ["cover", "lg", "md", "sm", "xs"]
+  },
+  "autocomplete": {
+    "variant": ["primary", "secondary"],
+    "fullWidth": ["false", "true"]
+  },
+  "avatar": {
+    "variant": ["default", "soft"],
+    "size": ["lg", "md", "sm"],
+    "color": ["accent", "danger", "default", "success", "warning"]
+  },
+  "badge": {
+    "variant": ["primary", "secondary", "soft"],
+    "size": ["lg", "md", "sm"],
+    "color": ["accent", "danger", "default", "success", "warning"],
+    "placement": ["bottom-left", "bottom-right", "top-left", "top-right"]
+  },
+  "button": {
+    "variant": [
+      "danger",
+      "danger-soft",
+      "ghost",
+      "outline",
+      "primary",
+      "secondary",
+      "tertiary"
+    ],
+    "size": ["lg", "md", "sm"],
+    "fullWidth": ["false", "true"]
+  },
+  "button-group": {
+    "orientation": ["horizontal", "vertical"],
+    "fullWidth": ["false", "true"]
+  },
+  "card": {
+    "variant": ["default", "secondary", "tertiary", "transparent"]
+  },
+  "checkbox": {
+    "variant": ["primary", "secondary"]
+  },
+  "checkbox-group": {
+    "variant": ["primary", "secondary"]
+  },
+  "chip": {
+    "variant": ["primary", "secondary", "soft", "tertiary"],
+    "size": ["lg", "md", "sm"],
+    "color": ["accent", "danger", "default", "success", "warning"]
+  },
+  "close-button": {
+    "variant": ["default"]
+  },
+  "color-field": {
+    "fullWidth": ["false", "true"]
+  },
+  "color-input-group": {
+    "variant": ["primary", "secondary"],
+    "fullWidth": ["false", "true"]
+  },
+  "color-swatch": {
+    "size": ["lg", "md", "sm", "xl", "xs"],
+    "shape": ["circle", "square"]
+  },
+  "color-swatch-picker": {
+    "variant": ["circle", "square"],
+    "size": ["lg", "md", "sm", "xl", "xs"]
+  },
+  "combo-box": {
+    "fullWidth": ["false", "true"]
+  },
+  "date-field": {
+    "fullWidth": ["false", "true"]
+  },
+  "date-input-group": {
+    "variant": ["primary", "secondary"],
+    "fullWidth": ["false", "true"]
+  },
+  "drawer": {
+    "variant": ["blur", "opaque", "transparent"],
+    "placement": ["bottom", "left", "right", "top"]
+  },
+  "input": {
+    "variant": ["primary", "secondary"],
+    "fullWidth": ["false", "true"]
+  },
+  "input-group": {
+    "variant": ["primary", "secondary"],
+    "fullWidth": ["false", "true"]
+  },
+  "input-otp": {
+    "variant": ["primary", "secondary"]
+  },
+  "kbd": {
+    "variant": ["default", "light"]
+  },
+  "list-box": {
+    "variant": ["danger", "default"]
+  },
+  "list-box-item": {
+    "variant": ["danger", "default"]
+  },
+  "menu-item": {
+    "variant": ["danger", "default"]
+  },
+  "meter": {
+    "size": ["lg", "md", "sm"],
+    "color": ["accent", "danger", "default", "success", "warning"]
+  },
+  "modal": {
+    "variant": ["blur", "opaque", "transparent"],
+    "size": ["cover", "full", "lg", "md", "sm", "xs"]
+  },
+  "number-field": {
+    "variant": ["primary", "secondary"],
+    "fullWidth": ["false", "true"]
+  },
+  "pagination": {
+    "size": ["lg", "md", "sm"]
+  },
+  "progress-bar": {
+    "size": ["lg", "md", "sm"],
+    "color": ["accent", "danger", "default", "success", "warning"]
+  },
+  "progress-circle": {
+    "size": ["lg", "md", "sm"],
+    "color": ["accent", "danger", "default", "success", "warning"]
+  },
+  "radio-group": {
+    "variant": ["primary", "secondary"]
+  },
+  "scroll-shadow": {
+    "variant": ["fade"],
+    "orientation": ["horizontal", "vertical"]
+  },
+  "search-field": {
+    "variant": ["primary", "secondary"],
+    "fullWidth": ["false", "true"]
+  },
+  "select": {
+    "variant": ["primary", "secondary"],
+    "fullWidth": ["false", "true"]
+  },
+  "separator": {
+    "variant": ["default", "secondary", "tertiary"],
+    "orientation": ["horizontal", "vertical"]
+  },
+  "sheet": {
+    "placement": ["bottom", "left", "right", "top"]
+  },
+  "spinner": {
+    "size": ["lg", "md", "sm", "xl"],
+    "color": ["accent", "current", "danger", "success", "warning"]
+  },
+  "surface": {
+    "variant": ["default", "secondary", "tertiary", "transparent"]
+  },
+  "switch": {
+    "size": ["lg", "md", "sm"]
+  },
+  "switch-group": {
+    "orientation": ["horizontal", "vertical"]
+  },
+  "table": {
+    "variant": ["primary", "secondary"]
+  },
+  "tabs": {
+    "variant": ["primary", "secondary"]
+  },
+  "tag": {
+    "variant": ["default", "surface"],
+    "size": ["lg", "md", "sm"]
+  },
+  "textarea": {
+    "variant": ["primary", "secondary"],
+    "fullWidth": ["false", "true"]
+  },
+  "textfield": {
+    "fullWidth": ["false", "true"]
+  },
+  "time-field": {
+    "fullWidth": ["false", "true"]
+  },
+  "toast": {
+    "variant": ["accent", "danger", "default", "success", "warning"],
+    "placement": [
+      "bottom",
+      "bottom end",
+      "bottom start",
+      "top",
+      "top end",
+      "top start"
+    ]
+  },
+  "toggle-button": {
+    "variant": ["default", "ghost"],
+    "size": ["lg", "md", "sm"]
+  },
+  "toggle-button-group": {
+    "orientation": ["horizontal", "vertical"],
+    "fullWidth": ["false", "true"]
+  },
+  "toolbar": {
+    "orientation": ["horizontal", "vertical"]
+  },
+  "typography": {
+    "color": ["default", "muted"]
+  }
+}

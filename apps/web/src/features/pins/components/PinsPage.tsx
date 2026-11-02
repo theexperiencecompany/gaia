@@ -1,6 +1,6 @@
 "use client";
 
-import { Input } from "@heroui/input";
+import { SearchField } from "@heroui/react";
 import { PinIcon } from "@icons";
 import { useEffect, useMemo, useState } from "react";
 import Spinner from "@/components/ui/spinner";
@@ -69,20 +69,18 @@ export default function Pins() {
 
       <div className="absolute bottom-4 left-0 z-10 flex w-full flex-col items-center justify-center px-3 sm:bottom-5">
         <div className="relative flex w-full max-w-(--breakpoint-sm) items-center gap-3">
-          <Input
+          <SearchField
             autoFocus
+            aria-label="Filter pins"
             className="w-full"
-            classNames={{ inputWrapper: "pr-1" }}
-            placeholder="Enter a message to filter pins"
-            radius="full"
-            size="lg"
             value={searchQuery}
-            isClearable
-            variant="faded"
-            onValueChange={(query) => {
-              setSearchQuery(query);
-            }}
-          />
+            onChange={setSearchQuery}
+          >
+            <SearchField.Group className="pr-1">
+              <SearchField.Input placeholder="Enter a message to filter pins" />
+              <SearchField.ClearButton />
+            </SearchField.Group>
+          </SearchField>
         </div>
       </div>
       <div className="bg-custom-gradient2 absolute bottom-0 left-0 z-1 h-[100px] w-full" />

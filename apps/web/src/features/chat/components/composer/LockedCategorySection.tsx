@@ -1,4 +1,4 @@
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { SquareLock01Icon } from "@icons";
 import type React from "react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
@@ -56,11 +56,8 @@ export const LockedCategorySection: React.FC<LockedCategorySectionProps> = ({
         </div>
 
         {!isConnected && (
-          <Button
-            size="sm"
-            color="primary"
-            variant="flat"
-            startContent={getToolCategoryIcon(
+          <Button size="sm" variant="tertiary" onPress={handleConnect}>
+            {getToolCategoryIcon(
               requiredIntegration.id,
               {
                 size: 16,
@@ -71,8 +68,6 @@ export const LockedCategorySection: React.FC<LockedCategorySectionProps> = ({
               },
               integration?.iconUrl,
             )}
-            onPress={handleConnect}
-          >
             Connect
           </Button>
         )}

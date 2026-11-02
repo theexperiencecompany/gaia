@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { toast } from "@/lib/toast";
 
 const LONG_MESSAGE =
@@ -142,8 +142,7 @@ export default function ToastPlaygroundPage() {
                 <Button
                   key={t.label}
                   size="sm"
-                  radius="full"
-                  variant="flat"
+                  variant="tertiary"
                   onPress={t.run}
                 >
                   {t.label}

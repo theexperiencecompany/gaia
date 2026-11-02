@@ -1,5 +1,4 @@
-import { Button } from "@heroui/button";
-import { ScrollShadow } from "@heroui/scroll-shadow";
+import { Button, ScrollShadow } from "@heroui/react";
 import { Cancel01Icon, Tick02Icon } from "@icons";
 import { useState } from "react";
 import { calendarApi } from "@/features/calendar/api/calendarApi";
@@ -115,11 +114,10 @@ export function CalendarDeleteSection({
       {calendar_delete_options.length > 1 && (
         <Button
           className="mt-3"
-          color="danger"
-          variant="solid"
+          variant="danger"
           fullWidth
           isDisabled={allCompleted}
-          isLoading={isConfirmingAll}
+          isPending={isConfirmingAll}
           onPress={handleDeleteAll}
         >
           {allCompleted ? (

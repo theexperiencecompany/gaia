@@ -1,4 +1,4 @@
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 
 export default function IntegrationStrip({
@@ -11,20 +11,18 @@ export default function IntegrationStrip({
       {integrations.map((integration) => (
         <Chip
           key={integration.id}
-          variant="flat"
+          variant="tertiary"
           size="sm"
           className="bg-zinc-800 text-zinc-300"
-          startContent={
-            <span className="mx-1 flex items-center">
-              {getToolCategoryIcon(integration.id, {
-                width: 18,
-                height: 18,
-                showBackground: false,
-              })}
-            </span>
-          }
         >
-          {integration.label}
+          <span className="mx-1 flex items-center">
+            {getToolCategoryIcon(integration.id, {
+              width: 18,
+              height: 18,
+              showBackground: false,
+            })}
+          </span>
+          <Chip.Label>{integration.label}</Chip.Label>
         </Chip>
       ))}
     </div>

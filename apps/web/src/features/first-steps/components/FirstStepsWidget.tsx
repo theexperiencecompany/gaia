@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Progress } from "@heroui/progress";
+import { Button, ProgressBar } from "@heroui/react";
 import { ArrowExpand01Icon, ArrowShrink02Icon } from "@icons";
 import { AnimatePresence, useReducedMotion } from "motion/react";
 import * as m from "motion/react-m";
@@ -68,16 +67,16 @@ export function FirstStepsWidget() {
               exit={{ opacity: 0 }}
               transition={FIRST_STEPS_TRANSITION}
             >
-              <Progress
+              <ProgressBar
                 aria-label={`${doneCount} of ${totalCount} first steps done`}
                 value={doneCount}
                 maxValue={totalCount}
                 size="sm"
-                classNames={{
-                  track: "bg-zinc-700",
-                  indicator: "bg-success transition-all duration-500 ease-out",
-                }}
-              />
+              >
+                <ProgressBar.Track className="bg-zinc-700">
+                  <ProgressBar.Fill className="bg-success transition-all duration-500 ease-out" />
+                </ProgressBar.Track>
+              </ProgressBar>
             </m.div>
           )}
         </AnimatePresence>
@@ -93,7 +92,7 @@ export function FirstStepsWidget() {
           <Button
             isIconOnly
             size="sm"
-            variant="light"
+            variant="tertiary"
             className="ml-auto cursor-pointer"
             aria-expanded
             aria-label="Collapse first steps"

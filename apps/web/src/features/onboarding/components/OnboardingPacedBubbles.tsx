@@ -6,7 +6,7 @@
 
 "use client";
 
-import { Spinner } from "@heroui/spinner";
+import { Spinner } from "@heroui/react";
 import { NEW_MESSAGE_BREAK_TOKEN } from "@shared/utils";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
@@ -53,10 +53,9 @@ export function OnboardingPacedBubbles({
                   as tall as a one-line reply; dots a step lighter than
                   HeroUI's default so they read on the bubble's zinc-800. */}
               <Spinner
-                variant="dots"
-                color="default"
+                color="current"
                 size="md"
-                classNames={{ wrapper: "h-6", dots: "bg-zinc-400" }}
+                className="h-6 text-zinc-400"
               />
             </m.output>
           </div>

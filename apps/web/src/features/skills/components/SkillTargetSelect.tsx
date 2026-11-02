@@ -1,6 +1,6 @@
 "use client";
 
-import { Select, SelectItem } from "@heroui/select";
+import { Label, ListBox, Select } from "@heroui/react";
 import type { SkillTarget } from "../api/types";
 import { SkillTargetIcon } from "./SkillTargetIcon";
 
@@ -16,34 +16,35 @@ export function SkillTargetSelect({
   value,
   onChange,
 }: Readonly<SkillTargetSelectProps>) {
+  const selected = targets.find((t) => t.value === value);
+
   return (
     <Select
-      label="Runs in"
-      selectedKeys={[value]}
-      onChange={(e) => e.target.value && onChange(e.target.value)}
-      classNames={{ trigger: "rounded-xl bg-zinc-800" }}
-      renderValue={(items) => {
-        const selected = items[0]?.key as string | undefined;
-        const meta = targets.find((t) => t.value === selected);
-        if (!meta) return null;
-        return (
-          <div className="flex items-center gap-2">
-            <SkillTargetIcon value={meta.value} icon={meta.icon} size={16} />
-            <span>{meta.label}</span>
-          </div>
-        );
-      }}
+      value={value}
+      onChange={(key) => key != null && onChange(String(key))}
     >
-      {targets.map((t) => (
-        <SelectItem
-          key={t.value}
-          startContent={
-            <SkillTargetIcon value={t.value} icon={t.icon} size={16} />
-          }
-        >
-          {t.label}
-        </SelectItem>
-      ))}
+      <Label>Runs in</Label>
+      <Select.Trigger className="rounded-xl bg-zinc-800">
+        {selected && (
+          <SkillTargetIcon
+            value={selected.value}
+            icon={selected.icon}
+            size={16}
+          />
+        )}
+        <Select.Value />
+        <Select.Indicator />
+      </Select.Trigger>
+      <Select.Popover>
+        <ListBox>
+          {targets.map((t) => (
+            <ListBox.Item key={t.value} id={t.value} textValue={t.label}>
+              <SkillTargetIcon value={t.value} icon={t.icon} size={16} />
+              {t.label}
+            </ListBox.Item>
+          ))}
+        </ListBox>
+      </Select.Popover>
     </Select>
   );
 }

@@ -1,15 +1,15 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Input, Textarea } from "@heroui/input";
 import {
+  Button,
+  Input,
+  Label,
+  ListBox,
   Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-} from "@heroui/modal";
-import { Select, SelectItem } from "@heroui/select";
+  Select,
+  TextArea,
+  TextField,
+} from "@heroui/react";
 import { Cancel01Icon, Upload01Icon } from "@icons";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
@@ -111,18 +111,25 @@ function SelfHostedSupportModal({
   onOpenChange,
 }: Pick<ContactSupportModalProps, "isOpen" | "onOpenChange">) {
   return (
-    <Modal isOpen={isOpen} onOpenChange={onOpenChange} backdrop="blur">
-      <ModalContent>
-        <ModalHeader>Get in Touch</ModalHeader>
-        <ModalBody>
-          <SelfHostedSupportNotice />
-        </ModalBody>
-        <ModalFooter>
-          <Button variant="light" onPress={onOpenChange}>
-            Close
-          </Button>
-        </ModalFooter>
-      </ModalContent>
+    <Modal isOpen={isOpen} onOpenChange={onOpenChange}>
+      <Modal.Backdrop variant="blur">
+        <Modal.Container>
+          <Modal.Dialog>
+            <Modal.CloseTrigger aria-label="Close" />
+            <Modal.Header>
+              <Modal.Heading>Get in Touch</Modal.Heading>
+            </Modal.Header>
+            <Modal.Body>
+              <SelfHostedSupportNotice />
+            </Modal.Body>
+            <Modal.Footer>
+              <Button variant="tertiary" onPress={onOpenChange}>
+                Close
+              </Button>
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
     </Modal>
   );
 }
@@ -207,58 +214,95 @@ function SupportRequestModal({
   return (
     <Modal
       isOpen={isOpen}
-      onOpenChange={onOpenChange}
-      size="2xl"
-      backdrop="blur"
-      isDismissable={false}
+      onOpenChange={(open) => {
+        if (!open) onOpenChange();
+      }}
     >
-      <ModalContent>
-        {() => (
-          <>
-            <ModalHeader className="flex flex-col gap-1">
-              Get in Touch
-            </ModalHeader>
+      <Modal.Backdrop isDismissable={false}>
+        <Modal.Container size="lg">
+          <Modal.Dialog className="max-w-2xl">
+            <Modal.Header className="flex flex-col gap-1">
+              <Modal.Heading>Get in Touch</Modal.Heading>
+            </Modal.Header>
 
-            <ModalBody className="gap-4">
+            <Modal.Body className="gap-4">
               <Select
-                label="Request Type"
-                placeholder="Select a request type"
-                selectedKeys={formData.type ? [formData.type] : []}
-                onSelectionChange={(keys) => {
-                  const selectedKey = Array.from(keys)[0] as string;
+                selectedKey={formData.type ? formData.type : null}
+                onSelectionChange={(key) => {
+                  const selectedKey = key as string;
                   handleInputChange("type", selectedKey);
                 }}
                 isRequired
               >
-                <SelectItem key={SUPPORT_REQUEST_TYPES.SUPPORT}>
-                  {SUPPORT_REQUEST_TYPE_LABELS[SUPPORT_REQUEST_TYPES.SUPPORT]}
-                </SelectItem>
-                <SelectItem key={SUPPORT_REQUEST_TYPES.FEATURE}>
-                  {SUPPORT_REQUEST_TYPE_LABELS[SUPPORT_REQUEST_TYPES.FEATURE]}
-                </SelectItem>
+                <Label>Request Type</Label>
+                <Select.Trigger>
+                  <Select.Value>
+                    {({ isPlaceholder, selectedText }) =>
+                      isPlaceholder ? "Select a request type" : selectedText
+                    }
+                  </Select.Value>
+                  <Select.Indicator />
+                </Select.Trigger>
+                <Select.Popover>
+                  <ListBox>
+                    <ListBox.Item
+                      id={SUPPORT_REQUEST_TYPES.SUPPORT}
+                      textValue={
+                        SUPPORT_REQUEST_TYPE_LABELS[
+                          SUPPORT_REQUEST_TYPES.SUPPORT
+                        ]
+                      }
+                    >
+                      {
+                        SUPPORT_REQUEST_TYPE_LABELS[
+                          SUPPORT_REQUEST_TYPES.SUPPORT
+                        ]
+                      }
+                      <ListBox.ItemIndicator />
+                    </ListBox.Item>
+                    <ListBox.Item
+                      id={SUPPORT_REQUEST_TYPES.FEATURE}
+                      textValue={
+                        SUPPORT_REQUEST_TYPE_LABELS[
+                          SUPPORT_REQUEST_TYPES.FEATURE
+                        ]
+                      }
+                    >
+                      {
+                        SUPPORT_REQUEST_TYPE_LABELS[
+                          SUPPORT_REQUEST_TYPES.FEATURE
+                        ]
+                      }
+                      <ListBox.ItemIndicator />
+                    </ListBox.Item>
+                  </ListBox>
+                </Select.Popover>
               </Select>
 
-              <Input
-                label="Title"
-                placeholder="Brief description of your request"
+              <TextField
                 value={formData.title}
-                onValueChange={(value) => handleInputChange("title", value)}
-                maxLength={FORM_VALIDATION.MAX_TITLE_LENGTH}
+                onChange={(value) => handleInputChange("title", value)}
                 isRequired
-              />
+              >
+                <Label>Title</Label>
+                <Input
+                  placeholder="Brief description of your request"
+                  maxLength={FORM_VALIDATION.MAX_TITLE_LENGTH}
+                />
+              </TextField>
 
-              <Textarea
-                label="Description"
-                placeholder="Please provide detailed information about your request..."
+              <TextField
                 value={formData.description}
-                onValueChange={(value) =>
-                  handleInputChange("description", value)
-                }
-                minRows={4}
-                maxRows={10}
-                maxLength={FORM_VALIDATION.MAX_DESCRIPTION_LENGTH}
+                onChange={(value) => handleInputChange("description", value)}
                 isRequired
-              />
+              >
+                <Label>Description</Label>
+                <TextArea
+                  placeholder="Please provide detailed information about your request..."
+                  rows={4}
+                  maxLength={FORM_VALIDATION.MAX_DESCRIPTION_LENGTH}
+                />
+              </TextField>
 
               {/* File Upload01Icon Section */}
               <div className="space-y-3">
@@ -363,23 +407,23 @@ function SupportRequestModal({
                   </div>
                 )}
               </div>
-            </ModalBody>
-            <ModalFooter>
-              <Button color="danger" variant="light" onPress={handleClose}>
+            </Modal.Body>
+            <Modal.Footer>
+              <Button variant="ghost" onPress={handleClose}>
                 Cancel
               </Button>
               <Button
-                color="primary"
                 onPress={handleSubmit}
-                isLoading={isSubmitting}
+                isPending={isSubmitting}
                 isDisabled={!isFormValid}
+                variant="primary"
               >
                 Submit Request
               </Button>
-            </ModalFooter>
-          </>
-        )}
-      </ModalContent>
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
     </Modal>
   );
 }

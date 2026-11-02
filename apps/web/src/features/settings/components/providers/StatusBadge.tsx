@@ -1,4 +1,4 @@
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 
 interface StatusBadgeProps {
   label: string;
@@ -8,13 +8,8 @@ interface StatusBadgeProps {
 
 export function StatusBadge({ label, active }: StatusBadgeProps) {
   return (
-    <Chip
-      size="sm"
-      variant="flat"
-      color={active ? "success" : "default"}
-      classNames={{ content: "text-xs font-medium" }}
-    >
-      {label}
+    <Chip size="sm" variant="soft" color={active ? "success" : "default"}>
+      <Chip.Label className="text-xs font-medium">{label}</Chip.Label>
     </Chip>
   );
 }

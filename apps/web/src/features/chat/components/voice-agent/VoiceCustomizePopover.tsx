@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Popover, PopoverContent, PopoverTrigger } from "@heroui/react";
+import { Button, Popover } from "@heroui/react";
 import { EditIcon } from "@icons";
 import { useLocalParticipant } from "@livekit/components-react";
 import { useCallback } from "react";
@@ -41,18 +41,21 @@ export function VoiceCustomizePopover() {
   );
 
   return (
-    <Popover placement="top-end" offset={12}>
-      <PopoverTrigger>
+    <Popover>
+      <Popover.Trigger>
         <Button
-          variant="flat"
-          radius="full"
-          startContent={<EditIcon className="h-4 w-4" />}
+          variant="tertiary"
           className="bg-zinc-900/80 text-zinc-200 shadow-lg backdrop-blur-md hover:bg-zinc-800"
         >
+          <EditIcon className="h-4 w-4" />
           Customise voice
         </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[30rem] max-w-[calc(100vw-2rem)] p-2">
+      </Popover.Trigger>
+      <Popover.Content
+        placement="top end"
+        offset={12}
+        className="w-[30rem] max-w-[calc(100vw-2rem)] p-2"
+      >
         <VoiceTable
           aria-label="Choose a voice"
           showLanguage={false}
@@ -65,7 +68,7 @@ export function VoiceCustomizePopover() {
             wrapper: "p-0 shadow-none bg-transparent",
           }}
         />
-      </PopoverContent>
+      </Popover.Content>
     </Popover>
   );
 }

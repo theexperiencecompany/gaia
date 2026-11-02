@@ -1,6 +1,14 @@
 "use client";
 
-import { Button, Chip, Slider, Switch, Textarea } from "@heroui/react";
+import {
+  Button,
+  Chip,
+  Label,
+  Slider,
+  Switch,
+  TextArea,
+  TextField,
+} from "@heroui/react";
 import { OPENUI_SAMPLES } from "@shared/utils";
 import { useCallback, useEffect, useState } from "react";
 
@@ -254,7 +262,7 @@ export default function DemoBody() {
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           {ANIMATION_CONFIG.map(([label, value]) => (
-            <Chip key={label} size="sm" variant="flat">
+            <Chip key={label} size="sm" variant="tertiary">
               <span className="text-zinc-500">{label}:</span>{" "}
               <span className="text-zinc-200">{value}</span>
             </Chip>
@@ -265,32 +273,49 @@ export default function DemoBody() {
       {/* Controls */}
       <div className="grid grid-cols-1 gap-4 rounded-2xl bg-zinc-900 p-4 sm:grid-cols-2 lg:grid-cols-4">
         <Slider
-          label="Stream speed (ms/tick)"
+          aria-label="Stream speed (ms/tick)"
           minValue={10}
           maxValue={300}
           step={5}
           value={speedMs}
           onChange={(v) => setSpeedMs(Array.isArray(v) ? v[0] : v)}
-          getValue={(v) => `${v}ms`}
           isDisabled={!streaming}
-        />
+        >
+          <Label>Stream speed (ms/tick)</Label>
+          <Slider.Output>{`${speedMs}ms`}</Slider.Output>
+          <Slider.Track>
+            <Slider.Fill />
+            <Slider.Thumb />
+          </Slider.Track>
+        </Slider>
         <Slider
-          label="Burst (words/tick)"
+          aria-label="Burst (words/tick)"
           minValue={1}
           maxValue={40}
           step={1}
           value={burstSize}
           onChange={(v) => setBurstSize(Array.isArray(v) ? v[0] : v)}
-          getValue={(v) => `${v}`}
           isDisabled={!streaming}
-        />
+        >
+          <Label>Burst (words/tick)</Label>
+          <Slider.Output>{`${burstSize}`}</Slider.Output>
+          <Slider.Track>
+            <Slider.Fill />
+            <Slider.Thumb />
+          </Slider.Track>
+        </Slider>
         <div className="flex items-center">
-          <Switch isSelected={streaming} onValueChange={setStreaming}>
-            Stream
+          <Switch isSelected={streaming} onChange={setStreaming}>
+            <Switch.Content>
+              <Switch.Control>
+                <Switch.Thumb />
+              </Switch.Control>
+              Stream
+            </Switch.Content>
           </Switch>
         </div>
         <div className="flex items-center justify-end">
-          <Button color="primary" onPress={replay}>
+          <Button onPress={replay} variant="primary">
             Replay
           </Button>
         </div>
@@ -298,20 +323,14 @@ export default function DemoBody() {
 
       {/* Editable content */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Textarea
-          label="User message (markdown)"
-          value={userText}
-          onValueChange={setUserText}
-          minRows={2}
-          maxRows={6}
-        />
-        <Textarea
-          label="Bot message (markdown)"
-          value={botText}
-          onValueChange={setBotText}
-          minRows={2}
-          maxRows={6}
-        />
+        <TextField value={userText} onChange={setUserText}>
+          <Label>User message (markdown)</Label>
+          <TextArea rows={2} />
+        </TextField>
+        <TextField value={botText} onChange={setBotText}>
+          <Label>Bot message (markdown)</Label>
+          <TextArea rows={2} />
+        </TextField>
       </div>
 
       <Previews

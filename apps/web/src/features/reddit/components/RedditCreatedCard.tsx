@@ -1,7 +1,6 @@
 "use client";
 
-import { Chip } from "@heroui/chip";
-import { ScrollShadow } from "@heroui/scroll-shadow";
+import { Chip, ScrollShadow } from "@heroui/react";
 import { CheckmarkCircle02Icon, LinkSquare02Icon } from "@icons";
 import Link from "next/link";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
@@ -44,7 +43,7 @@ export default function RedditCreatedCard({
               </span>
               <Chip
                 size="sm"
-                variant="flat"
+                variant="tertiary"
                 className="ml-auto bg-green-900/30 text-xs text-green-300"
               >
                 Just now

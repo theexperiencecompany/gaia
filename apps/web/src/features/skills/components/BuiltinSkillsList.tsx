@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
+import { Button, Chip } from "@heroui/react";
 import NextLink from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { skillsApi } from "../api/skillsApi";
@@ -74,7 +73,7 @@ export function BuiltinSkillsList({ query }: Readonly<BuiltinSkillsListProps>) {
         <p className="text-sm text-zinc-400">Couldn't load built-in skills.</p>
         <Button
           size="sm"
-          variant="flat"
+          variant="tertiary"
           className="rounded-xl"
           onPress={() => load()}
         >
@@ -111,21 +110,25 @@ export function BuiltinSkillsList({ query }: Readonly<BuiltinSkillsListProps>) {
                 <div className="flex shrink-0 items-center gap-2">
                   <Chip
                     size="sm"
-                    variant="flat"
+                    variant="tertiary"
                     color="warning"
-                    classNames={{
-                      base: "bg-warning/15",
-                      content: "text-xs font-medium",
-                    }}
+                    className="bg-warning/15"
                   >
-                    Not connected
+                    <Chip.Label className="text-xs font-medium">
+                      Not connected
+                    </Chip.Label>
                   </Chip>
                   <Button
-                    as={NextLink}
-                    href={`/integrations?id=${encodeURIComponent(group.icon)}`}
+                    render={(props) => (
+                      <NextLink
+                        {...(props as unknown as React.ComponentProps<
+                          typeof NextLink
+                        >)}
+                        href={`/integrations?id=${encodeURIComponent(group.icon)}`}
+                      />
+                    )}
                     size="sm"
-                    color="primary"
-                    variant="flat"
+                    variant="tertiary"
                     className="rounded-lg"
                   >
                     Connect

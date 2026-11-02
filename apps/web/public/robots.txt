@@ -26,7 +26,6 @@ Disallow: /calendar
 Disallow: /dashboard
 Disallow: /integrations
 Disallow: /mail
-Disallow: /notifications
 Disallow: /onboarding
 Disallow: /pins
 Disallow: /redirect

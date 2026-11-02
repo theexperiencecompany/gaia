@@ -1,6 +1,6 @@
 "use client";
 
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 import { PuzzleIcon, ToolsIcon } from "@icons";
 import type { ApprovalStatus } from "@shared/chat";
 import { AnimatePresence } from "motion/react";
@@ -59,7 +59,7 @@ function ApprovalOutcomeChip({
     <span className="ml-2 inline-flex min-w-0 items-center gap-1.5">
       <Chip
         size="sm"
-        variant="flat"
+        variant="tertiary"
         color={chip.color}
         className="h-5 shrink-0 text-[10px]"
       >

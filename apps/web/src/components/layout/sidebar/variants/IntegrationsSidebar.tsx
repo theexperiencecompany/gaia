@@ -1,9 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Kbd } from "@heroui/kbd";
-import { ScrollShadow } from "@heroui/scroll-shadow";
-import { Tooltip } from "@heroui/tooltip";
+import { Button, Kbd, ScrollShadow, Tooltip } from "@heroui/react";
 import { InternetIcon, PuzzleIcon } from "@icons";
 import { useCallback, useMemo, useState } from "react";
 import RightSidebarPanel from "@/components/layout/sidebar/RightSidebarPanel";
@@ -68,19 +65,16 @@ export default function IntegrationsSidebar() {
           fullWidth
           onPress={() => handleIntegrationClick(integration)}
           className="justify-start px-2 text-start text-sm text-zinc-500 hover:text-zinc-300"
-          variant="light"
-          radius="sm"
+          variant="tertiary"
           size="sm"
-          startContent={
-            <div className="relative">
-              <IntegrationIcon
-                integrationId={integration.id}
-                iconUrl={integration.iconUrl}
-                size={18}
-              />
-            </div>
-          }
         >
+          <div className="relative">
+            <IntegrationIcon
+              integrationId={integration.id}
+              iconUrl={integration.iconUrl}
+              size={18}
+            />
+          </div>
           <div className="flex items-center justify-between w-full">
             <span className="truncate">{integration.name}</span>
 
@@ -119,26 +113,25 @@ export default function IntegrationsSidebar() {
           />
         </RightSidebarPanel>
       )}
-      <Tooltip
-        content={
+      <Tooltip>
+        <Tooltip.Trigger>
+          <Button
+            className="w-full justify-start text-sm text-primary"
+            size="sm"
+            variant="tertiary"
+            onPress={openIntegrationModal}
+            data-keyboard-shortcut="create-integration"
+          >
+            <PuzzleIcon className="h-4 w-4 outline-0" />
+            Create Integration
+          </Button>
+        </Tooltip.Trigger>
+        <Tooltip.Content placement="right">
           <span className="flex items-center gap-2">
             Create Integration
             <Kbd className="text-[10px]">C</Kbd>
           </span>
-        }
-        placement="right"
-      >
-        <Button
-          className="w-full justify-start text-sm text-primary"
-          color="primary"
-          size="sm"
-          variant="flat"
-          startContent={<PuzzleIcon className="h-4 w-4 outline-0" />}
-          onPress={openIntegrationModal}
-          data-keyboard-shortcut="create-integration"
-        >
-          Create Integration
-        </Button>
+        </Tooltip.Content>
       </Tooltip>
 
       {integrations.length > 0 && (

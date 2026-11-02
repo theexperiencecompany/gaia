@@ -1,6 +1,5 @@
 "use client";
 
-import type { ChipProps } from "@heroui/chip";
 import type { Extensions } from "@tiptap/core";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
@@ -20,7 +19,11 @@ interface MentionEditorProps {
   toolNames: string[];
   /** Icon for a given mention name (lets each mention show its own icon). */
   renderMentionIcon?: (name: string) => ReactNode;
-  mentionRadius?: ChipProps["radius"];
+  /**
+   * @deprecated The v3 chip is rounded with Tailwind; kept so existing callers
+   * can still pass a radius value.
+   */
+  mentionRadius?: string;
   placeholder?: string;
   maxLength?: number;
   /** Override the wrapper styling (border/background/radius). */
@@ -51,7 +54,6 @@ export const MentionEditor = ({
   onChange,
   toolNames,
   renderMentionIcon,
-  mentionRadius,
   mentionRemovable,
   placeholder,
   maxLength,
@@ -69,19 +71,16 @@ export const MentionEditor = ({
   const toolNamesRef = useRef(toolNames);
   const iconRef = useRef(renderMentionIcon);
   const removableRef = useRef(mentionRemovable);
-  const radiusRef = useRef(mentionRadius);
   useEffect(() => {
     onChangeRef.current = onChange;
     toolNamesRef.current = toolNames;
     iconRef.current = renderMentionIcon;
     removableRef.current = mentionRemovable;
-    radiusRef.current = mentionRadius;
   });
 
   const [refs] = useState<MentionExtensionRefs>(() => ({
     icon: iconRef,
     removable: removableRef,
-    radius: radiusRef,
     toolNames: toolNamesRef,
   }));
   const [extensions] = useState<Extensions>(() =>

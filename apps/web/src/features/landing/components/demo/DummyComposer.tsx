@@ -1,7 +1,4 @@
-import { Button } from "@heroui/button";
-import { Textarea } from "@heroui/input";
-import { Kbd } from "@heroui/kbd";
-import { Tooltip } from "@heroui/tooltip";
+import { Button, Kbd, TextArea, Tooltip } from "@heroui/react";
 import {
   ArrowRight01Icon,
   ArrowUp02Icon,
@@ -136,29 +133,22 @@ const DummyComposer: React.FC<{
             aria-label="Demo chat input - not a real form submission"
             data-demo="true"
           >
-            <Textarea
-              ref={textareaRef}
-              autoFocus
-              classNames={{
-                inputWrapper:
-                  "px-3 data-[hover=true]:bg-zinc-800 group-data-[focus-visible=true]:ring-zinc-800 group-data-[focus-visible=true]:ring-offset-0 shadow-none",
-                innerWrapper: "items-center",
-                input: "font-light",
-              }}
-              maxRows={13}
-              minRows={1}
-              placeholder="What can I do for you today?"
-              size="lg"
-              value={message}
-              onValueChange={handleInputChange}
-              onKeyDown={handleKeyPress}
-              endContent={
-                <div className="flex items-center gap-1 text-xs text-nowrap text-foreground-500">
-                  <Kbd className="bg-zinc-700">/</Kbd>
-                  for tools
-                </div>
-              }
-            />
+            <div className="flex items-end gap-2 px-3 pt-1">
+              <TextArea
+                ref={textareaRef}
+                autoFocus
+                rows={1}
+                className="w-full resize-none border-0 bg-transparent p-0 font-light shadow-none outline-none focus:ring-0"
+                placeholder="What can I do for you today?"
+                value={message}
+                onChange={(e) => handleInputChange(e.target.value)}
+                onKeyDown={handleKeyPress}
+              />
+              <div className="flex items-center gap-1 pb-1 text-xs text-nowrap text-foreground-500">
+                <Kbd className="bg-zinc-700">/</Kbd>
+                for tools
+              </div>
+            </div>
           </form>
 
           {/* Toolbar */}
@@ -184,54 +174,54 @@ const DummyComposer: React.FC<{
                   side="top"
                   className="w-fit gap-2 rounded-xl border-none bg-zinc-900 p-1 text-white outline-2! outline-zinc-800!"
                 >
-                  <Tooltip
-                    content={
-                      <div className="max-w-[270px]">
-                        Upload and analyze documents, images or other files
-                      </div>
-                    }
-                    color="foreground"
-                    radius="sm"
-                  >
-                    <DropdownMenuItem className="cursor-pointer rounded-lg px-3 py-2 focus:bg-zinc-800 focus:text-white">
-                      <div className="flex w-full items-center justify-between gap-3">
-                        <div className="flex flex-col">
-                          <div className="flex flex-row items-center gap-2">
-                            <AttachmentIcon className="min-h-[20px] min-w-[20px] text-primary" />
-                            <span>Attach Files</span>
+                  <DropdownMenuItem className="cursor-pointer rounded-lg px-3 py-2 focus:bg-zinc-800 focus:text-white">
+                    <Tooltip>
+                      <Tooltip.Trigger className="w-full">
+                        <div className="flex w-full items-center justify-between gap-3">
+                          <div className="flex flex-col">
+                            <div className="flex flex-row items-center gap-2">
+                              <AttachmentIcon className="min-h-[20px] min-w-[20px] text-primary" />
+                              <span>Attach Files</span>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </DropdownMenuItem>
-                  </Tooltip>
+                      </Tooltip.Trigger>
+                      <Tooltip.Content>
+                        <div className="max-w-[270px]">
+                          Upload and analyze documents, images or other files
+                        </div>
+                      </Tooltip.Content>
+                    </Tooltip>
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
 
               {/* Tools Button */}
-              <Tooltip
-                content="Browse all tools"
-                placement="right"
-                color="primary"
-                showArrow
-              >
-                <ShadcnButton
-                  size="icon"
-                  className={`group w- relative h-9 rounded-full border-none bg-zinc-700 p-0 text-zinc-400 hover:bg-zinc-600/90 ${isSlashDropdownOpen && "border-primary/50 bg-primary/20 text-primary"}`}
-                  onClick={handleSlashButtonClick}
-                  aria-label="Browse all tools"
-                >
-                  <ToolsIcon
-                    className="min-h-[23px] min-w-[23px]"
-                    width={30}
-                    height={30}
-                  />
-                  {isSlashDropdownOpen && (
-                    <span
-                      className="absolute top-0 right-0 h-2 w-2 rounded-full bg-primary transition"
-                      aria-hidden="true"
+              <Tooltip>
+                <Tooltip.Trigger>
+                  <ShadcnButton
+                    size="icon"
+                    className={`group w- relative h-9 rounded-full border-none bg-zinc-700 p-0 text-zinc-400 hover:bg-zinc-600/90 ${isSlashDropdownOpen && "border-primary/50 bg-primary/20 text-primary"}`}
+                    onClick={handleSlashButtonClick}
+                    aria-label="Browse all tools"
+                  >
+                    <ToolsIcon
+                      className="min-h-[23px] min-w-[23px]"
+                      width={30}
+                      height={30}
                     />
-                  )}
-                </ShadcnButton>
+                    {isSlashDropdownOpen && (
+                      <span
+                        className="absolute top-0 right-0 h-2 w-2 rounded-full bg-primary transition"
+                        aria-hidden="true"
+                      />
+                    )}
+                  </ShadcnButton>
+                </Tooltip.Trigger>
+                <Tooltip.Content placement="right" showArrow>
+                  <Tooltip.Arrow />
+                  Browse all tools
+                </Tooltip.Content>
               </Tooltip>
             </div>
 

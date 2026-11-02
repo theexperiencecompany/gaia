@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Skeleton } from "@heroui/skeleton";
+import { Button, Skeleton } from "@heroui/react";
 import { CancelIcon, ZapIcon } from "@icons";
 import { useEffect, useState } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";
@@ -54,9 +53,8 @@ export function SidebarPromo({
             <div className="font-medium text-sm">{copy.heading}</div>
             <Button
               isIconOnly
-              variant="light"
+              variant="tertiary"
               size="sm"
-              radius="full"
               className="p-0! text-zinc-400 hover:text-white relative left-3 group-hover/pricingsidebar:opacity-100 opacity-0 transition"
               onPress={() => handleCollapse()}
             >

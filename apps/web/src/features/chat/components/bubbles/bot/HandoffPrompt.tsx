@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Spinner } from "@heroui/spinner";
+import { Button, buttonVariants, Spinner } from "@heroui/react";
 import {
   Alert01Icon,
   CheckmarkCircle02Icon,
@@ -190,8 +189,7 @@ export function HandoffDecision({
     <div className="flex items-center gap-2">
       {primary}
       <Button
-        variant={primary ? "flat" : "solid"}
-        radius="sm"
+        variant={primary ? "tertiary" : "primary"}
         className={`flex-1 font-semibold ${
           primary ? "text-zinc-100" : "bg-[#00bbff] text-zinc-900"
         }`}
@@ -200,8 +198,7 @@ export function HandoffDecision({
         I&rsquo;m done
       </Button>
       <Button
-        variant="light"
-        radius="sm"
+        variant="tertiary"
         className="shrink-0 px-3 text-zinc-500"
         onPress={() => decide("cancel")}
       >
@@ -226,20 +223,18 @@ function TakeOverButton({
   const className = "flex-1 bg-[#00bbff] font-semibold text-zinc-900";
   if (href) {
     return (
-      <Button
-        as="a"
+      <a
         href={href}
         target="_blank"
         rel="noopener noreferrer"
-        radius="sm"
-        className={className}
+        className={`${buttonVariants({ variant: "primary" })} ${className}`}
       >
         {cta}
-      </Button>
+      </a>
     );
   }
   return (
-    <Button radius="sm" className={className} onPress={onPress}>
+    <Button className={className} onPress={onPress}>
       {cta}
     </Button>
   );

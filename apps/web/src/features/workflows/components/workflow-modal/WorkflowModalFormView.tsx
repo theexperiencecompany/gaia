@@ -1,8 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Divider } from "@heroui/divider";
-import { Switch } from "@heroui/switch";
+import { Button, Separator, Switch } from "@heroui/react";
 import { InformationCircleIcon } from "@icons";
 import type { Control, FieldErrors, UseFormSetValue } from "react-hook-form";
 
@@ -186,7 +184,7 @@ export default function WorkflowModalFormView({
                 <Switch
                   size="sm"
                   isSelected={formData.notify_on_completion}
-                  onValueChange={(enabled) =>
+                  onChange={(enabled) =>
                     setValue("notify_on_completion", enabled, {
                       shouldDirty: true,
                     })
@@ -240,7 +238,7 @@ export default function WorkflowModalFormView({
 
       {/* Full-width footer */}
       <div className="shrink-0">
-        <Divider className="bg-zinc-700" />
+        <Separator className="bg-zinc-700" />
         <div className="px-6 py-4">
           {mode === "preview" ? (
             <PreviewFooter onClose={onClose} />
@@ -279,7 +277,7 @@ function PreviewFooter({ onClose }: { onClose: () => void }) {
           You can customise every detail later from the Workflows page.
         </span>
       </div>
-      <Button color="primary" onPress={onClose}>
+      <Button onPress={onClose} variant="primary">
         Close
       </Button>
     </div>

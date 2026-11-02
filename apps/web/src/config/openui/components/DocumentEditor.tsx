@@ -1,12 +1,12 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import {
+  Button,
   Dropdown,
   DropdownItem,
   DropdownMenu,
   DropdownTrigger,
-} from "@heroui/dropdown";
+} from "@heroui/react";
 import { ArrowDown01Icon, Copy01Icon, Tick01Icon } from "@icons";
 import Link from "@tiptap/extension-link";
 import Underline from "@tiptap/extension-underline";
@@ -93,7 +93,7 @@ interface ToolbarButtonProps {
 function ToolbarButton({ active, onClick, children }: ToolbarButtonProps) {
   return (
     <Button
-      variant="light"
+      variant="tertiary"
       size="sm"
       onPress={() => onClick()}
       className={[
@@ -187,7 +187,7 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
           {/* Main copy button — copies as markdown */}
           <Button
             isIconOnly
-            variant="light"
+            variant="tertiary"
             size="sm"
             onPress={copyAsMarkdown}
             aria-label={copied ? "Copied" : "Copy as Markdown"}
@@ -205,11 +205,11 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
           />
 
           {/* Chevron dropdown trigger */}
-          <Dropdown placement="bottom-end">
+          <Dropdown>
             <DropdownTrigger>
               <Button
                 isIconOnly
-                variant="light"
+                variant="tertiary"
                 size="sm"
                 aria-label="Copy options"
                 className={copied ? "text-emerald-400" : "text-zinc-400"}
@@ -217,16 +217,30 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
                 <ArrowDown01Icon size={12} />
               </Button>
             </DropdownTrigger>
-            <DropdownMenu
-              aria-label="Copy options"
-              onAction={(key) => {
-                if (key === "markdown") copyAsMarkdown();
-                if (key === "text") copyAsText();
-              }}
-            >
-              <DropdownItem key="markdown">Copy as Markdown</DropdownItem>
-              <DropdownItem key="text">Copy as Plain Text</DropdownItem>
-            </DropdownMenu>
+            <Dropdown.Popover placement="bottom end">
+              <DropdownMenu
+                aria-label="Copy options"
+                onAction={(key) => {
+                  if (key === "markdown") copyAsMarkdown();
+                  if (key === "text") copyAsText();
+                }}
+              >
+                <DropdownItem
+                  id="markdown"
+                  key="markdown"
+                  textValue="Copy as Markdown"
+                >
+                  Copy as Markdown
+                </DropdownItem>
+                <DropdownItem
+                  id="text"
+                  key="text"
+                  textValue="Copy as Plain Text"
+                >
+                  Copy as Plain Text
+                </DropdownItem>
+              </DropdownMenu>
+            </Dropdown.Popover>
           </Dropdown>
         </div>
       </div>

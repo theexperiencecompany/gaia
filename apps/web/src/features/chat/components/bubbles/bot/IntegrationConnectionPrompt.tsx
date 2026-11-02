@@ -1,7 +1,4 @@
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Input } from "@heroui/input";
-import { Spinner } from "@heroui/spinner";
+import { Button, Chip, Input, Spinner } from "@heroui/react";
 import { AlertCircleIcon } from "@icons";
 import {
   type ConnectionPromptState,
@@ -51,14 +48,14 @@ function StatusChip({
   // Adding an account leaves the integration connected while the card asks for more.
   if (isConnected || (state === "add_account" && !failed)) {
     return (
-      <Chip size="sm" variant="flat" color="success">
+      <Chip size="sm" variant="tertiary" color="success">
         Connected
       </Chip>
     );
   }
   const isDanger = failed || state === "expired";
   return (
-    <Chip size="sm" variant="flat" color={isDanger ? "danger" : "warning"}>
+    <Chip size="sm" variant="tertiary" color={isDanger ? "danger" : "warning"}>
       {failed
         ? "Failed"
         : state === "expired"
@@ -108,18 +105,17 @@ function InlineConnectAction({
         {needsBearerToken && (
           <Input
             type="password"
-            size="sm"
             className="max-w-xs"
             placeholder="Paste API token"
             autoComplete="off"
             value={token}
-            onValueChange={setToken}
-            isDisabled={connecting}
+            onChange={(e) => setToken(e.target.value)}
+            disabled={connecting}
           />
         )}
         <Button
-          color={isDanger ? "warning" : "primary"}
-          isLoading={connecting}
+          variant={isDanger ? "danger-soft" : "primary"}
+          isPending={connecting}
           isDisabled={needsBearerToken && !token.trim()}
           onPress={() => connect(needsBearerToken ? token : undefined)}
         >
@@ -184,7 +180,7 @@ function IntegrationConnectCard({
             <span className="text-xs text-zinc-400">Already connected</span>
             <div className="flex flex-wrap gap-1.5">
               {connectedAccounts.map((name) => (
-                <Chip key={name} size="sm" variant="flat">
+                <Chip key={name} size="sm" variant="tertiary">
                   {name}
                 </Chip>
               ))}

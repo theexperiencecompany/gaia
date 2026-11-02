@@ -1,7 +1,6 @@
 "use client";
 
-import { Chip } from "@heroui/chip";
-import { ScrollShadow } from "@heroui/scroll-shadow";
+import { Chip, ScrollShadow } from "@heroui/react";
 import {
   Alert01Icon,
   Calendar03Icon,
@@ -204,18 +203,16 @@ function DemoTodosCard() {
               <div className="mt-1.5 flex flex-wrap items-center gap-1">
                 <Chip
                   size="sm"
-                  variant="flat"
+                  variant="tertiary"
                   className="text-zinc-400 px-1"
-                  radius="sm"
                 >
                   {todo.priority}
                 </Chip>
                 {todo.due_date && (
                   <Chip
                     size="sm"
-                    variant="flat"
+                    variant="tertiary"
                     className="text-zinc-400 px-1"
-                    radius="sm"
                   >
                     {new Date(todo.due_date).toDateString() ===
                     new Date().toDateString()
@@ -338,11 +335,11 @@ function DemoGoalsCard() {
                       goal.progress === 100
                         ? "success"
                         : goal.progress > 0
-                          ? "primary"
+                          ? "accent"
                           : "warning"
                     }
                     size="sm"
-                    variant="flat"
+                    variant="tertiary"
                   >
                     {goal.progress === 100
                       ? "Completed"
@@ -353,18 +350,17 @@ function DemoGoalsCard() {
                   {hasSteps && (
                     <Chip
                       size="sm"
-                      variant="flat"
+                      variant="tertiary"
                       className="text-zinc-400 px-1"
-                      radius="sm"
-                      startContent={
-                        <CheckmarkCircle02Icon
-                          width={15}
-                          height={15}
-                          className="mx-1"
-                        />
-                      }
                     >
-                      {completedSteps}/{totalSteps} steps
+                      <CheckmarkCircle02Icon
+                        width={15}
+                        height={15}
+                        className="mx-1"
+                      />
+                      <Chip.Label>
+                        {completedSteps}/{totalSteps} steps
+                      </Chip.Label>
                     </Chip>
                   )}
                 </div>
@@ -412,30 +408,28 @@ function DemoConversationsCard() {
               <div className="mt-2 flex items-center gap-1">
                 <Chip
                   size="sm"
-                  variant="flat"
+                  variant="tertiary"
                   className="text-zinc-400 px-1"
-                  radius="sm"
-                  startContent={
-                    <MessageMultiple02Icon
-                      width={15}
-                      height={15}
-                      className="mx-1"
-                    />
-                  }
                 >
-                  {conversation.messageCount}{" "}
-                  {conversation.messageCount === 1 ? "message" : "messages"}
+                  <MessageMultiple02Icon
+                    width={15}
+                    height={15}
+                    className="mx-1"
+                  />
+                  <Chip.Label>
+                    {conversation.messageCount}{" "}
+                    {conversation.messageCount === 1 ? "message" : "messages"}
+                  </Chip.Label>
                 </Chip>
                 <Chip
                   size="sm"
-                  variant="flat"
+                  variant="tertiary"
                   className="text-zinc-400 px-1"
-                  radius="sm"
-                  startContent={
-                    <Calendar03Icon width={15} height={15} className="mx-1" />
-                  }
                 >
-                  {new Date(conversation.updated_at).toLocaleDateString()}
+                  <Calendar03Icon width={15} height={15} className="mx-1" />
+                  <Chip.Label>
+                    {new Date(conversation.updated_at).toLocaleDateString()}
+                  </Chip.Label>
                 </Chip>
               </div>
             </div>

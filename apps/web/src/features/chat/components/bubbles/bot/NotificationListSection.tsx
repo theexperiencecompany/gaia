@@ -1,7 +1,10 @@
-import { Accordion, AccordionItem } from "@heroui/accordion";
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { ScrollShadow } from "@heroui/scroll-shadow";
+import {
+  Accordion,
+  AccordionItem,
+  Button,
+  Chip,
+  ScrollShadow,
+} from "@heroui/react";
 import { NotificationIcon } from "@icons";
 import { useMemo, useState } from "react";
 import { NotificationItem } from "@/features/notification/components/NotificationItem";
@@ -94,28 +97,30 @@ export default function NotificationListSection({
   if (localNotifications.length === 0) {
     return (
       <div className="mx-auto mb-3 w-full rounded-2xl bg-zinc-800 p-3 py-0 text-white transition-colors duration-300">
-        <Accordion variant="light" defaultExpandedKeys={["notifications"]}>
-          <AccordionItem
-            key="notifications"
-            aria-label="Notifications"
-            title={
-              <div className="flex items-center gap-3">
-                <NotificationIcon className="h-5 w-5 text-zinc-400" />
-                <div className="flex flex-col">
-                  <span className="text-sm font-medium">{title}</span>
+        <Accordion defaultExpandedKeys={["notifications"]}>
+          <AccordionItem id="notifications">
+            <Accordion.Heading>
+              <Accordion.Trigger>
+                <div className="flex items-center gap-3">
+                  <NotificationIcon className="h-5 w-5 text-zinc-400" />
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium">{title}</span>
+                  </div>
                 </div>
+                <Accordion.Indicator />
+              </Accordion.Trigger>
+            </Accordion.Heading>
+            <Accordion.Panel>
+              <div className="flex flex-col items-center justify-center p-8 text-center">
+                <NotificationIcon className="mb-4 h-10 w-10 text-zinc-600" />
+                <p className="font-medium text-zinc-300">
+                  No notifications found
+                </p>
+                <p className="mt-1 text-sm text-zinc-400">
+                  You're all caught up! New notifications will appear here.
+                </p>
               </div>
-            }
-          >
-            <div className="flex flex-col items-center justify-center p-8 text-center">
-              <NotificationIcon className="mb-4 h-10 w-10 text-zinc-600" />
-              <p className="font-medium text-zinc-300">
-                No notifications found
-              </p>
-              <p className="mt-1 text-sm text-zinc-400">
-                You're all caught up! New notifications will appear here.
-              </p>
-            </div>
+            </Accordion.Panel>
           </AccordionItem>
         </Accordion>
       </div>
@@ -124,76 +129,78 @@ export default function NotificationListSection({
 
   return (
     <div className="mx-auto w-full rounded-2xl bg-zinc-800 p-3 py-0 text-white transition-colors duration-300">
-      <Accordion variant="light" defaultExpandedKeys={["notifications"]}>
-        <AccordionItem
-          key="notifications"
-          aria-label="Notifications"
-          title={
-            <div className="flex items-center gap-3">
-              <NotificationIcon className="h-5 w-5 text-zinc-400" />
-              <div className="flex flex-col">
-                <span className="text-sm font-medium">{title}</span>
+      <Accordion defaultExpandedKeys={["notifications"]}>
+        <AccordionItem id="notifications">
+          <Accordion.Heading>
+            <Accordion.Trigger>
+              <div className="flex items-center gap-3">
+                <NotificationIcon className="h-5 w-5 text-zinc-400" />
+                <div className="flex flex-col">
+                  <span className="text-sm font-medium">{title}</span>
+                </div>
+                {localNotifications.length > 0 && (
+                  <Chip
+                    className="bg-zinc-700 text-zinc-300"
+                    size="sm"
+                    variant="tertiary"
+                  >
+                    {localNotifications.length}
+                  </Chip>
+                )}
+                {unreadNotifications.length > 0 && (
+                  <Chip
+                    className="bg-blue-900/30 text-blue-400"
+                    size="sm"
+                    variant="tertiary"
+                  >
+                    {unreadNotifications.length} unread
+                  </Chip>
+                )}
               </div>
-              {localNotifications.length > 0 && (
-                <Chip
-                  className="bg-zinc-700 text-zinc-300"
-                  size="sm"
-                  variant="flat"
-                >
-                  {localNotifications.length}
-                </Chip>
-              )}
+              <Accordion.Indicator />
+            </Accordion.Trigger>
+          </Accordion.Heading>
+          <Accordion.Panel>
+            <div className="flex flex-col gap-3">
+              {/* Mark All Read Button */}
               {unreadNotifications.length > 0 && (
-                <Chip
-                  className="bg-blue-900/30 text-blue-400"
-                  size="sm"
-                  variant="flat"
-                >
-                  {unreadNotifications.length} unread
-                </Chip>
+                <div className="flex justify-end">
+                  <Button
+                    size="sm"
+                    variant="tertiary"
+                    onPress={handleMarkAllAsRead}
+                    isPending={isMarkingAllRead}
+                    className="text-zinc-300"
+                  >
+                    Mark all read
+                  </Button>
+                </div>
+              )}
+
+              {/* Notifications List */}
+              <ScrollShadow className="max-h-[60vh]">
+                <div className="space-y-2">
+                  {localNotifications.map((notification) => (
+                    <NotificationItem
+                      key={notification.id}
+                      notification={notification}
+                      onMarkAsRead={handleMarkAsRead}
+                    />
+                  ))}
+                </div>
+              </ScrollShadow>
+
+              {/* Footer */}
+              {unreadNotifications.length > 0 && (
+                <div className="border-t border-zinc-700 pt-3">
+                  <div className="text-sm text-zinc-400">
+                    {unreadNotifications.length} unread notification
+                    {unreadNotifications.length !== 1 ? "s" : ""}
+                  </div>
+                </div>
               )}
             </div>
-          }
-        >
-          <div className="flex flex-col gap-3">
-            {/* Mark All Read Button */}
-            {unreadNotifications.length > 0 && (
-              <div className="flex justify-end">
-                <Button
-                  size="sm"
-                  variant="flat"
-                  onPress={handleMarkAllAsRead}
-                  isLoading={isMarkingAllRead}
-                  className="text-zinc-300"
-                >
-                  Mark all read
-                </Button>
-              </div>
-            )}
-
-            {/* Notifications List */}
-            <ScrollShadow className="max-h-[60vh]">
-              <div className="space-y-2">
-                {localNotifications.map((notification) => (
-                  <NotificationItem
-                    key={notification.id}
-                    notification={notification}
-                    onMarkAsRead={handleMarkAsRead}
-                  />
-                ))}
-              </div>
-            </ScrollShadow>
-
-            {/* Footer */}
-            {unreadNotifications.length > 0 && (
-              <div className="border-t border-zinc-700 pt-3">
-                <div className="text-sm text-zinc-400">
-                  {unreadNotifications.length} unread notification
-                  {unreadNotifications.length !== 1 ? "s" : ""}
-                </div>
-              </div>
-            )}
-          </div>
+          </Accordion.Panel>
         </AccordionItem>
       </Accordion>
     </div>

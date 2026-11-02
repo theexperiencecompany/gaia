@@ -1,9 +1,8 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Tooltip } from "@heroui/tooltip";
+import { Button, Chip, Tooltip } from "@heroui/react";
 import Link from "next/link";
+import type { ComponentProps } from "react";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { COMPOSIO_SETUP_PATH } from "@/features/settings/api/composioSetupApi";
 
@@ -14,25 +13,34 @@ export function InstanceSetupNotice() {
   const { role } = useCurrentUser();
   if (role === "admin") {
     return (
-      <Tooltip content="Not set up on this instance yet">
-        <Button
-          as={Link}
-          href={COMPOSIO_SETUP_PATH}
-          size="sm"
-          variant="flat"
-          color="warning"
-          className="shrink-0 text-xs"
-        >
-          Set up
-        </Button>
+      <Tooltip>
+        <Tooltip.Trigger className="shrink-0">
+          <Button
+            render={(props) => (
+              <Link
+                {...(props as unknown as ComponentProps<"a">)}
+                href={COMPOSIO_SETUP_PATH}
+              />
+            )}
+            size="sm"
+            variant="secondary"
+            className="text-xs"
+          >
+            Set up
+          </Button>
+        </Tooltip.Trigger>
+        <Tooltip.Content>Not set up on this instance yet</Tooltip.Content>
       </Tooltip>
     );
   }
   return (
-    <Tooltip content={ASK_ADMIN}>
-      <Chip size="sm" variant="flat">
-        Not set up here
-      </Chip>
+    <Tooltip>
+      <Tooltip.Trigger>
+        <Chip size="sm" variant="secondary">
+          Not set up here
+        </Chip>
+      </Tooltip.Trigger>
+      <Tooltip.Content>{ASK_ADMIN}</Tooltip.Content>
     </Tooltip>
   );
 }
@@ -54,10 +62,14 @@ export function InstanceSetupCallout({ name }: { name: string }) {
       </div>
       {role === "admin" && (
         <Button
-          as={Link}
-          href={COMPOSIO_SETUP_PATH}
+          render={(props) => (
+            <Link
+              {...(props as unknown as ComponentProps<"a">)}
+              href={COMPOSIO_SETUP_PATH}
+            />
+          )}
           size="sm"
-          color="primary"
+          variant="primary"
           className="self-start"
         >
           Set it up

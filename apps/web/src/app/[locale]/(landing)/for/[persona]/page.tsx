@@ -1,4 +1,4 @@
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
@@ -293,17 +293,13 @@ function IntegrationBadge({
 }) {
   return (
     <SiteLink href={`/marketplace/${integration.slug}`}>
-      <Chip
-        variant="flat"
-        size="md"
-        className="bg-zinc-800 text-zinc-300"
-        startContent={getToolCategoryIcon(
+      <Chip variant="tertiary" size="md" className="bg-zinc-800 text-zinc-300">
+        {getToolCategoryIcon(
           integration.integrationId,
           { size: 16, width: 16, height: 16, showBackground: false },
           integration.iconUrl,
         )}
-      >
-        {integration.name}
+        <Chip.Label>{integration.name}</Chip.Label>
       </Chip>
     </SiteLink>
   );

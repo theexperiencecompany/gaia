@@ -1,15 +1,13 @@
 "use client";
 
-import { Button, ButtonGroup } from "@heroui/button";
 import {
+  Button,
+  ButtonGroup,
   Dropdown,
-  DropdownItem,
-  DropdownMenu,
-  DropdownTrigger,
-} from "@heroui/dropdown";
-import { Popover, PopoverContent, PopoverTrigger } from "@heroui/popover";
-import { Slider } from "@heroui/slider";
-import { Tooltip } from "@heroui/tooltip";
+  Popover,
+  Slider,
+  Tooltip,
+} from "@heroui/react";
 import {
   Copy01Icon,
   Download01Icon,
@@ -215,121 +213,139 @@ const EditorToolbar = ({
   onDownload,
 }: EditorToolbarProps) => (
   <ButtonGroup className="mt-2">
-    <Tooltip content="Share your card" placement="top">
-      <Dropdown placement="top">
-        <DropdownTrigger>
-          <Button isIconOnly variant="flat" aria-label="Share">
+    <Tooltip>
+      <Tooltip.Trigger>
+        <Dropdown>
+          <Button isIconOnly variant="tertiary" aria-label="Share">
             <Share08Icon size={20} />
           </Button>
-        </DropdownTrigger>
-        <DropdownMenu aria-label="Share options">
-          <DropdownItem
-            key="twitter"
-            startContent={<TwitterIcon width={16} height={16} />}
-          >
-            <TwitterShareButton url={shareUrl} title={shareTitle}>
-              Twitter
-            </TwitterShareButton>
-          </DropdownItem>
-          <DropdownItem
-            key="copy"
-            startContent={<Copy01Icon size={16} />}
-            onPress={() => onShare("copy")}
-          >
-            Copy Link
-          </DropdownItem>
-          {showViewProfile && holoCardId ? (
-            <DropdownItem
-              key="view"
-              startContent={<LinkSquare02Icon size={16} />}
-              onPress={() => window.open(`/profile/${holoCardId}`, "_blank")}
-            >
-              View Profile
-            </DropdownItem>
-          ) : null}
-        </DropdownMenu>
-      </Dropdown>
-    </Tooltip>
-
-    <Tooltip content="Customize colors" placement="top">
-      <Popover
-        isOpen={isColorPickerOpen}
-        onOpenChange={onColorPickerOpenChange}
-        placement="top"
-      >
-        <PopoverTrigger>
-          <Button isIconOnly variant="flat" aria-label="Color Picker">
-            <ColorSwatch color={color} />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-auto bg-zinc-800 p-4">
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-white/70">Color Picker</span>
-              <Button
-                size="sm"
-                variant="light"
-                isIconOnly
-                onPress={onResetColor}
-                aria-label="Reset Color"
+          <Dropdown.Popover placement="top">
+            <Dropdown.Menu aria-label="Share options">
+              <Dropdown.Item id="twitter" textValue="Twitter">
+                <TwitterIcon width={16} height={16} />
+                <TwitterShareButton url={shareUrl} title={shareTitle}>
+                  Twitter
+                </TwitterShareButton>
+              </Dropdown.Item>
+              <Dropdown.Item
+                id="copy"
+                textValue="Copy Link"
+                onAction={() => onShare("copy")}
               >
-                <ReloadIcon size={16} />
-              </Button>
-            </div>
-            <ColorPicker
-              value={color}
-              onChange={onColorChange}
-              hidePresets={true}
-              hideOpacity={true}
-              hideEyeDrop={true}
-              hideAdvancedSliders={true}
-              hideColorGuide={true}
-              hideInputType={true}
-              width={300}
-              height={100}
-              hideGradientStop={true}
-              className={"bg-transparent!"}
-            />
-            <div className="flex flex-col gap-2">
+                <Copy01Icon size={16} />
+                Copy Link
+              </Dropdown.Item>
+              {showViewProfile && holoCardId ? (
+                <Dropdown.Item
+                  id="view"
+                  textValue="View Profile"
+                  onAction={() =>
+                    window.open(`/profile/${holoCardId}`, "_blank")
+                  }
+                >
+                  <LinkSquare02Icon size={16} />
+                  View Profile
+                </Dropdown.Item>
+              ) : null}
+            </Dropdown.Menu>
+          </Dropdown.Popover>
+        </Dropdown>
+      </Tooltip.Trigger>
+      <Tooltip.Content placement="top">Share your card</Tooltip.Content>
+    </Tooltip>
+
+    <Tooltip>
+      <Tooltip.Trigger>
+        <Popover
+          isOpen={isColorPickerOpen}
+          onOpenChange={onColorPickerOpenChange}
+        >
+          <Popover.Trigger>
+            <Button isIconOnly variant="tertiary" aria-label="Color Picker">
+              <ColorSwatch color={color} />
+            </Button>
+          </Popover.Trigger>
+          <Popover.Content placement="top" className="w-auto bg-zinc-800 p-4">
+            <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-white/70">Opacity</span>
-                <span className="text-xs text-white/50">{opacity}%</span>
+                <span className="text-sm text-white/70">Color Picker</span>
+                <Button
+                  size="sm"
+                  variant="tertiary"
+                  isIconOnly
+                  onPress={onResetColor}
+                  aria-label="Reset Color"
+                >
+                  <ReloadIcon size={16} />
+                </Button>
               </div>
-              <Slider
-                size="sm"
-                step={1}
-                minValue={0}
-                maxValue={100}
-                value={opacity}
-                onChange={(value) => onOpacityChange(value as number)}
-                className="max-w-md"
+              <ColorPicker
+                value={color}
+                onChange={onColorChange}
+                hidePresets={true}
+                hideOpacity={true}
+                hideEyeDrop={true}
+                hideAdvancedSliders={true}
+                hideColorGuide={true}
+                hideInputType={true}
+                width={300}
+                height={100}
+                hideGradientStop={true}
+                className={"bg-transparent!"}
               />
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-white/70">Opacity</span>
+                  <span className="text-xs text-white/50">{opacity}%</span>
+                </div>
+                <Slider
+                  aria-label="Value"
+                  step={1}
+                  minValue={0}
+                  maxValue={100}
+                  value={opacity}
+                  onChange={(value) => onOpacityChange(value as number)}
+                  className="max-w-md"
+                >
+                  <Slider.Track>
+                    <Slider.Fill />
+                    <Slider.Thumb />
+                  </Slider.Track>
+                </Slider>
+              </div>
             </div>
-          </div>
-        </PopoverContent>
-      </Popover>
+          </Popover.Content>
+        </Popover>
+      </Tooltip.Trigger>
+      <Tooltip.Content placement="top">Customize colors</Tooltip.Content>
     </Tooltip>
 
-    <Tooltip content="Randomize colors" placement="top">
-      <Button
-        isIconOnly
-        variant="flat"
-        onPress={onRandomize}
-        aria-label="Randomize"
-      >
-        <Dices size={20} />
-      </Button>
+    <Tooltip>
+      <Tooltip.Trigger>
+        <Button
+          isIconOnly
+          variant="tertiary"
+          onPress={onRandomize}
+          aria-label="Randomize"
+        >
+          <Dices size={20} />
+        </Button>
+      </Tooltip.Trigger>
+      <Tooltip.Content placement="top">Randomize colors</Tooltip.Content>
     </Tooltip>
 
-    <Tooltip content="Download your card" placement="top">
-      <Button
-        isIconOnly
-        variant="flat"
-        onPress={onDownload}
-        aria-label="Download"
-      >
-        <Download01Icon size={20} />
-      </Button>
+    <Tooltip>
+      <Tooltip.Trigger>
+        <Button
+          isIconOnly
+          variant="tertiary"
+          onPress={onDownload}
+          aria-label="Download"
+        >
+          <Download01Icon size={20} />
+        </Button>
+      </Tooltip.Trigger>
+      <Tooltip.Content placement="top">Download your card</Tooltip.Content>
     </Tooltip>
   </ButtonGroup>
 );

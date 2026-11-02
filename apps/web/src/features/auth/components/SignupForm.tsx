@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
+import { Button, Input, Label, TextField } from "@heroui/react";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import { FormError } from "@/components/shared/FormError";
@@ -81,26 +80,23 @@ export function SignupForm({
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-4">
-      <Input
-        label="Name"
-        placeholder="Optional"
-        value={name}
-        onValueChange={setName}
-        autoComplete="name"
-        isDisabled={isSubmitting}
-        variant="faded"
-      />
-      <Input
-        type="email"
-        label="Email"
-        placeholder="you@example.com"
+      <TextField value={name} onChange={setName} isDisabled={isSubmitting}>
+        <Label>Name</Label>
+        <Input placeholder="Optional" autoComplete="name" />
+      </TextField>
+      <TextField
         value={email}
-        onValueChange={setEmail}
-        autoComplete="email"
+        onChange={setEmail}
         isRequired
         isDisabled={isSubmitting}
-        variant="faded"
-      />
+      >
+        <Label>Email</Label>
+        <Input
+          type="email"
+          placeholder="you@example.com"
+          autoComplete="email"
+        />
+      </TextField>
       <SecretInput
         subject="password"
         label="Password"
@@ -110,15 +106,14 @@ export function SignupForm({
         description={`At least ${MIN_PASSWORD_LENGTH} characters`}
         isRequired
         isDisabled={isSubmitting}
-        variant="faded"
       />
 
       {error && <FormError>{error}</FormError>}
 
       <Button
         type="submit"
-        color="primary"
-        isLoading={isSubmitting}
+        variant="primary"
+        isPending={isSubmitting}
         className="w-full"
       >
         Create account

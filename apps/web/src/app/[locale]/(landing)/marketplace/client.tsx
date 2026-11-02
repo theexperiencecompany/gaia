@@ -1,6 +1,5 @@
 "use client";
 
-import { Pagination } from "@heroui/pagination";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
@@ -40,6 +39,10 @@ export function IntegrationsPageClient() {
   const nativeFetched = useRef(false);
 
   const totalPages = useMemo(() => Math.ceil(total / ITEMS_PER_PAGE), [total]);
+  const pageNumbers = useMemo(
+    () => Array.from({ length: totalPages }, (_, idx) => idx + 1),
+    [totalPages],
+  );
 
   const loadIntegrations = useCallback(
     async (page: number, showFilteringSkeleton = false) => {
@@ -202,16 +205,45 @@ export function IntegrationsPageClient() {
           {/* Pagination — community only */}
           {totalPages > 1 && (
             <div className="mt-12 flex justify-center">
-              <Pagination
-                total={totalPages}
-                page={currentPage}
-                onChange={handlePageChange}
-                showControls
-                variant="faded"
-                classNames={{
-                  base: "cursor-pointer!",
-                }}
-              />
+              <div className="flex cursor-pointer items-center gap-1">
+                <button
+                  type="button"
+                  aria-label="Previous page"
+                  disabled={currentPage <= 1}
+                  onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
+                  className="rounded-md px-2 py-1 text-sm text-zinc-400 disabled:opacity-40"
+                >
+                  Prev
+                </button>
+                {pageNumbers.map((pageNumber) => (
+                  <button
+                    key={pageNumber}
+                    type="button"
+                    aria-current={
+                      currentPage === pageNumber ? "page" : undefined
+                    }
+                    onClick={() => handlePageChange(pageNumber)}
+                    className={
+                      currentPage === pageNumber
+                        ? "rounded-md bg-zinc-700 px-3 py-1 text-sm text-white"
+                        : "rounded-md px-3 py-1 text-sm text-zinc-400 hover:text-white"
+                    }
+                  >
+                    {pageNumber}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  aria-label="Next page"
+                  disabled={currentPage >= totalPages}
+                  onClick={() =>
+                    handlePageChange(Math.min(totalPages, currentPage + 1))
+                  }
+                  className="rounded-md px-2 py-1 text-sm text-zinc-400 disabled:opacity-40"
+                >
+                  Next
+                </button>
+              </div>
             </div>
           )}
         </>

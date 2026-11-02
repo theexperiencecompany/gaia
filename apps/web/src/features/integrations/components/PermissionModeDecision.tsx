@@ -1,6 +1,6 @@
 "use client";
 
-import { Radio, RadioGroup } from "@heroui/radio";
+import { Description, Radio, RadioGroup } from "@heroui/react";
 import type { HilMode } from "@shared/chat";
 import type { IntegrationPermissions } from "@/features/integrations/hooks/useIntegrationPermissions";
 import { MODE_OPTIONS } from "@/features/integrations/utils/permissionCopy";
@@ -29,26 +29,31 @@ export const PermissionModeDecision = ({
   >
     <RadioGroup
       aria-label="How often GAIA asks"
-      classNames={{ wrapper: "gap-0.5" }}
+      className="gap-0.5"
       value={permissions.mode}
       isDisabled={permissions.isSavingMode}
-      onValueChange={(value) => permissions.changeMode(value as HilMode)}
+      onChange={(value) => permissions.changeMode(value as HilMode)}
     >
       {MODE_OPTIONS.map((option) => (
         <Radio
           key={option.mode}
           value={option.mode}
-          description={option.description}
-          classNames={{
-            base: cn(
-              "m-0 max-w-full items-start gap-2 rounded-xl p-2.5",
-              option.mode === permissions.mode && "bg-zinc-800",
-            ),
-            label: "text-sm text-zinc-200",
-            description: "text-xs text-zinc-500",
-          }}
+          className={cn(
+            "m-0 max-w-full items-start gap-2 rounded-xl p-2.5",
+            option.mode === permissions.mode && "bg-zinc-800",
+          )}
         >
-          {option.label}
+          <Radio.Content className="text-sm text-zinc-200">
+            <Radio.Control>
+              <Radio.Indicator />
+            </Radio.Control>
+            {option.label}
+          </Radio.Content>
+          {option.description ? (
+            <Description className="text-xs text-zinc-500">
+              {option.description}
+            </Description>
+          ) : null}
         </Radio>
       ))}
     </RadioGroup>

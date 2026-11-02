@@ -1,10 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Spinner } from "@heroui/spinner";
-import { Switch } from "@heroui/switch";
-import { Tooltip } from "@heroui/tooltip";
+import { Button, Chip, Spinner, Switch, Tooltip } from "@heroui/react";
 import {
   ComputerIcon,
   Delete02Icon,
@@ -27,12 +23,12 @@ function StatusChip({
 }) {
   if (!paired)
     return (
-      <Chip size="sm" variant="flat" color="default">
+      <Chip size="sm" variant="tertiary" color="default">
         Not connected
       </Chip>
     );
   return (
-    <Chip size="sm" variant="flat" color={running ? "success" : "warning"}>
+    <Chip size="sm" variant="tertiary" color={running ? "success" : "warning"}>
       {running ? "Online" : "Paused"}
     </Chip>
   );
@@ -56,17 +52,19 @@ function ServerStateIndicator({
     return <Spinner size="sm" aria-label="Connecting" />;
   if (state === "error")
     return (
-      <Tooltip content={error ?? "Failed to connect"} color="danger">
-        <Button
-          size="sm"
-          variant="flat"
-          color="warning"
-          isDisabled={disabled}
-          startContent={<RedoIcon width={14} height={14} />}
-          onPress={onRetry}
-        >
-          Retry
-        </Button>
+      <Tooltip>
+        <Tooltip.Trigger>
+          <Button
+            size="sm"
+            variant="secondary"
+            isDisabled={disabled}
+            onPress={onRetry}
+          >
+            <RedoIcon width={14} height={14} />
+            Retry
+          </Button>
+        </Tooltip.Trigger>
+        <Tooltip.Content>{error ?? "Failed to connect"}</Tooltip.Content>
       </Tooltip>
     );
   return (
@@ -106,8 +104,7 @@ function ServerRow({
       <Button
         isIconOnly
         size="sm"
-        variant="light"
-        color="danger"
+        variant="ghost"
         isDisabled={disabled}
         aria-label={`Remove ${server.name}`}
         onPress={() => onRemove(server.key)}
@@ -169,16 +166,15 @@ export function ThisMacCard({
               size="sm"
               isSelected={status.running}
               isDisabled={busy === "toggle"}
-              onValueChange={(next) => void setRunning(next)}
+              onChange={(next) => void setRunning(next)}
               aria-label={`Keep ${noun} connected`}
             />
           </div>
         ) : (
           <Button
             size="sm"
-            color="primary"
-            variant="flat"
-            isLoading={busy === "pair"}
+            variant="tertiary"
+            isPending={busy === "pair"}
             onPress={() => void pair()}
           >
             Enable on {noun}

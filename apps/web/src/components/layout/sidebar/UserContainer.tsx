@@ -1,5 +1,4 @@
-import { Button } from "@heroui/button";
-import { Skeleton } from "@heroui/skeleton";
+import { Button, Skeleton } from "@heroui/react";
 import Image from "next/image";
 import React from "react";
 import { ChevronsDownUp, ChevronsUpDown } from "@/components/shared/icons";
@@ -20,24 +19,7 @@ export default function UserContainer() {
 
   return (
     <SettingsMenu onOpenChange={setIsOpen}>
-      <Button
-        className="group/triggerbtn pointer-events-auto relative flex w-full flex-row justify-between gap-3 bg-transparent px-2 py-6! hover:bg-zinc-800"
-        endContent={
-          isOpen ? (
-            <ChevronsDownUp
-              className="text-zinc-500 transition"
-              width={20}
-              height={20}
-            />
-          ) : (
-            <ChevronsUpDown
-              className="text-zinc-500 transition"
-              width={20}
-              height={20}
-            />
-          )
-        }
-      >
+      <Button className="group/triggerbtn pointer-events-auto relative flex w-full flex-row justify-between gap-3 bg-transparent px-2 py-6! hover:bg-zinc-800">
         <div className="flex items-center gap-3">
           <Avatar className="size-7 rounded-full bg-black">
             <AvatarImage src={user?.profilePicture} alt="User Avatar" />
@@ -64,6 +46,19 @@ export default function UserContainer() {
               ))}
           </div>
         </div>
+        {isOpen ? (
+          <ChevronsDownUp
+            className="text-zinc-500 transition"
+            width={20}
+            height={20}
+          />
+        ) : (
+          <ChevronsUpDown
+            className="text-zinc-500 transition"
+            width={20}
+            height={20}
+          />
+        )}
       </Button>
     </SettingsMenu>
   );

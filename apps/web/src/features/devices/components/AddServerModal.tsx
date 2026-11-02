@@ -1,16 +1,17 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Input, Textarea } from "@heroui/input";
 import {
+  Button,
+  Description,
+  Input,
+  Label,
+  ListBox,
   Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-  useDisclosure,
-} from "@heroui/modal";
-import { Select, SelectItem } from "@heroui/select";
+  Select,
+  TextArea,
+  TextField,
+  useOverlayState,
+} from "@heroui/react";
 import { PlusSignIcon } from "@icons";
 import type { AddOptions } from "@shared/bridge-core/config-builders";
 import { useState } from "react";
@@ -52,7 +53,7 @@ interface AddServerModalProps {
 }
 
 export function AddServerModal({ onAdd, isBusy }: AddServerModalProps) {
-  const { isOpen, onOpen, onOpenChange, onClose } = useDisclosure();
+  const { isOpen, open, close, setOpen } = useOverlayState();
   const [type, setType] = useState<ServerType>("stdio");
   const [name, setName] = useState("");
   const [command, setCommand] = useState("");
@@ -79,7 +80,7 @@ export function AddServerModal({ onAdd, isBusy }: AddServerModalProps) {
         : { type, name: name.trim(), url: url.trim(), header: lines(pairs) };
     if (await onAdd(opts)) {
       reset();
-      onClose();
+      close();
     }
   };
 
@@ -87,90 +88,97 @@ export function AddServerModal({ onAdd, isBusy }: AddServerModalProps) {
 
   return (
     <>
-      <Button
-        size="sm"
-        variant="flat"
-        startContent={<PlusSignIcon className="size-4" />}
-        onPress={onOpen}
-      >
+      <Button size="sm" variant="tertiary" onPress={open}>
+        <PlusSignIcon className="size-4" />
         Add server
       </Button>
-      <Modal isOpen={isOpen} onOpenChange={onOpenChange} placement="center">
-        <ModalContent>
-          {() => (
-            <>
-              <ModalHeader>Add an MCP server</ModalHeader>
-              <ModalBody className="gap-3">
+      <Modal isOpen={isOpen} onOpenChange={setOpen}>
+        <Modal.Backdrop>
+          <Modal.Container placement="center">
+            <Modal.Dialog>
+              <Modal.CloseTrigger aria-label="Close" />
+              <Modal.Header>
+                <Modal.Heading>Add an MCP server</Modal.Heading>
+              </Modal.Header>
+              <Modal.Body className="gap-3">
                 <Select
-                  label="Type"
-                  description={activeHint}
-                  selectedKeys={[type]}
-                  onChange={(e) => setType(e.target.value as ServerType)}
-                  disallowEmptySelection
+                  selectedKey={type}
+                  onSelectionChange={(key) => {
+                    if (key != null) setType(key as ServerType);
+                  }}
                 >
-                  {SERVER_TYPES.map((option) => (
-                    <SelectItem key={option.key}>{option.label}</SelectItem>
-                  ))}
+                  <Label>Type</Label>
+                  <Select.Trigger>
+                    <Select.Value />
+                    <Select.Indicator />
+                  </Select.Trigger>
+                  <Select.Popover>
+                    <ListBox>
+                      {SERVER_TYPES.map((option) => (
+                        <ListBox.Item
+                          key={option.key}
+                          id={option.key}
+                          textValue={option.label}
+                        >
+                          {option.label}
+                        </ListBox.Item>
+                      ))}
+                    </ListBox>
+                  </Select.Popover>
+                  {activeHint ? <Description>{activeHint}</Description> : null}
                 </Select>
 
-                <Input
-                  label="Name"
-                  value={name}
-                  onValueChange={setName}
-                  placeholder={NAME_PLACEHOLDER[type]}
-                  isRequired
-                />
+                <TextField value={name} onChange={setName} isRequired>
+                  <Label>Name</Label>
+                  <Input placeholder={NAME_PLACEHOLDER[type]} />
+                </TextField>
 
                 {type === "stdio" ? (
                   <>
-                    <Input
-                      label="Command"
-                      value={command}
-                      onValueChange={setCommand}
-                      placeholder="npx -y @modelcontextprotocol/server-everything"
-                    />
-                    <Textarea
-                      label="Environment (optional)"
-                      value={pairs}
-                      onValueChange={setPairs}
-                      placeholder={"KEY=value\nAPI_TOKEN=..."}
-                      minRows={2}
-                    />
+                    <TextField value={command} onChange={setCommand}>
+                      <Label>Command</Label>
+                      <Input placeholder="npx -y @modelcontextprotocol/server-everything" />
+                    </TextField>
+                    <TextField value={pairs} onChange={setPairs}>
+                      <Label>Environment (optional)</Label>
+                      <TextArea
+                        placeholder={"KEY=value\nAPI_TOKEN=..."}
+                        rows={2}
+                      />
+                    </TextField>
                   </>
                 ) : (
                   <>
-                    <Input
-                      label="URL"
-                      value={url}
-                      onValueChange={setUrl}
-                      placeholder="http://localhost:3000/mcp"
-                    />
-                    <Textarea
-                      label="Headers (optional)"
-                      value={pairs}
-                      onValueChange={setPairs}
-                      placeholder={"Authorization: Bearer ..."}
-                      minRows={2}
-                    />
+                    <TextField value={url} onChange={setUrl}>
+                      <Label>URL</Label>
+                      <Input placeholder="http://localhost:3000/mcp" />
+                    </TextField>
+                    <TextField value={pairs} onChange={setPairs}>
+                      <Label>Headers (optional)</Label>
+                      <TextArea
+                        placeholder={"Authorization: Bearer ..."}
+                        rows={2}
+                      />
+                    </TextField>
                   </>
                 )}
-              </ModalBody>
-              <ModalFooter>
-                <Button variant="light" onPress={onClose}>
+              </Modal.Body>
+              <Modal.Footer>
+                <Button variant="tertiary" onPress={close}>
                   Cancel
                 </Button>
                 <Button
-                  color="primary"
                   onPress={submit}
-                  isLoading={isBusy}
+                  isPending={isBusy}
                   isDisabled={name.trim().length === 0}
+                  variant="primary"
                 >
                   Add
                 </Button>
-              </ModalFooter>
-            </>
-          )}
-        </ModalContent>
+              </Modal.Footer>
+            </Modal.Dialog>
+          </Modal.Container>
+        </Modal.Backdrop>
       </Modal>
     </>
   );

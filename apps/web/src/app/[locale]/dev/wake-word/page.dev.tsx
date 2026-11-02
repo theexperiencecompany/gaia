@@ -1,9 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Snippet } from "@heroui/snippet";
-import { Tooltip } from "@heroui/tooltip";
+import { Button, Chip, Tooltip } from "@heroui/react";
 import {
   CheckmarkCircle02Icon,
   Mic02Icon,
@@ -319,40 +316,35 @@ function ControlBar({
   const label = controlLabel(enabled, state);
   return (
     <div className="flex flex-wrap items-center gap-4">
-      <Button
-        size="lg"
-        color={enabled ? "danger" : "primary"}
-        startContent={
-          enabled ? (
-            <MicOff02Icon className="size-4" />
-          ) : (
-            <Mic02Icon className="size-4" />
-          )
-        }
-        onPress={onToggle}
-      >
+      <Button size="lg" onPress={onToggle}>
+        {enabled ? (
+          <MicOff02Icon className="size-4" />
+        ) : (
+          <Mic02Icon className="size-4" />
+        )}
         {label}
       </Button>
 
       <div className="flex items-center gap-2">
-        <Tooltip content="Detector status">
+        <Tooltip>
           <Chip
-            variant="flat"
+            variant="tertiary"
             color={state === "listening" ? "success" : "default"}
             size="sm"
           >
             {state}
           </Chip>
+          <Tooltip.Content>Detector status</Tooltip.Content>
         </Tooltip>
 
         {state === "listening" && (
-          <Chip variant="flat" color="primary" size="sm">
+          <Chip variant="tertiary" color="accent" size="sm">
             threshold 0.60
           </Chip>
         )}
 
         {error && (
-          <Chip variant="flat" color="danger" size="sm">
+          <Chip variant="tertiary" color="danger" size="sm">
             {error.message}
           </Chip>
         )}
@@ -508,14 +500,9 @@ function SpecCard() {
           <SpecRow label="per-frame inference" value="~1.6 ms (Node CPU)" />
           <SpecRow label="warmup" value="~2 s after listening starts" />
         </div>
-        <Snippet
-          variant="bordered"
-          size="sm"
-          className="bg-zinc-900 font-mono text-xs"
-          hideSymbol
-        >
-          {`import { useHeyGaia } from "@/features/wake-word";`}
-        </Snippet>
+        <pre className="overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-900 p-3 font-mono text-xs text-zinc-300">
+          <code>{`import { useHeyGaia } from "@/features/wake-word";`}</code>
+        </pre>
       </div>
     </div>
   );

@@ -1,12 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import {
-  Dropdown,
-  DropdownItem,
-  DropdownMenu,
-  DropdownTrigger,
-} from "@heroui/dropdown";
+import { Button, Dropdown, Menu } from "@heroui/react";
 import {
   Delete02Icon,
   MoreVerticalIcon,
@@ -36,63 +30,57 @@ export default function DemoChatTab({ label, active }: DemoChatTabProps) {
       <Button
         className={`w-full justify-start px-2 text-sm font-light ${active ? "text-zinc-300" : "text-zinc-400 hover:text-zinc-300"}`}
         size="sm"
-        variant={active ? "flat" : "light"}
+        variant={active ? "tertiary" : "ghost"}
       >
         <span className="truncate">{label}</span>
       </Button>
 
       {/* Always-rendered dropdown trigger — fades in on hover like real ChatOptionsDropdown */}
       <div className="absolute right-0">
-        <Dropdown
-          className="dark w-fit min-w-fit text-foreground"
-          size="sm"
-          placement="right-start"
-        >
-          <DropdownTrigger>
-            <button
-              type="button"
-              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-700 hover:text-white ${buttonHovered ? "backdrop-blur-lg" : ""}`}
-              onClick={(e) => e.stopPropagation()}
-              aria-label="Chat options"
-            >
-              <MoreVerticalIcon
-                width={16}
-                height={16}
-                className={`transition-all ${buttonHovered ? "opacity-100" : "opacity-0"}`}
-              />
-            </button>
-          </DropdownTrigger>
-          <DropdownMenu aria-label="Chat actions" variant="faded">
-            <DropdownItem
-              key="star"
-              startContent={<StarIcon className="h-[15px] w-[15px]" />}
-              className="text-zinc-400"
-            >
-              Star
-            </DropdownItem>
-            <DropdownItem
-              key="rename"
-              startContent={<PencilEdit02Icon className="h-[15px] w-[15px]" />}
-              className="text-zinc-400"
-            >
-              Rename
-            </DropdownItem>
-            <DropdownItem
-              key="pin"
-              startContent={<PinIcon className="h-[15px] w-[15px]" />}
-              className="text-zinc-400"
-            >
-              Pin
-            </DropdownItem>
-            <DropdownItem
-              key="delete"
-              startContent={<Delete02Icon className="h-[15px] w-[15px]" />}
-              color="danger"
-              className="text-danger"
-            >
-              Delete
-            </DropdownItem>
-          </DropdownMenu>
+        <Dropdown>
+          <Dropdown.Trigger
+            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border-0 bg-transparent p-0 text-zinc-400 hover:bg-zinc-700 hover:text-white ${buttonHovered ? "backdrop-blur-lg" : ""}`}
+            onClick={(e) => e.stopPropagation()}
+            aria-label="Chat options"
+          >
+            <MoreVerticalIcon
+              width={16}
+              height={16}
+              className={`transition-all ${buttonHovered ? "opacity-100" : "opacity-0"}`}
+            />
+          </Dropdown.Trigger>
+          <Dropdown.Popover
+            placement="right top"
+            className="dark w-fit min-w-fit text-foreground"
+          >
+            <Menu aria-label="Chat actions">
+              <Menu.Item id="star" textValue="Star" className="text-zinc-400">
+                <StarIcon className="h-[15px] w-[15px]" />
+                Star
+              </Menu.Item>
+              <Menu.Item
+                id="rename"
+                textValue="Rename"
+                className="text-zinc-400"
+              >
+                <PencilEdit02Icon className="h-[15px] w-[15px]" />
+                Rename
+              </Menu.Item>
+              <Menu.Item id="pin" textValue="Pin" className="text-zinc-400">
+                <PinIcon className="h-[15px] w-[15px]" />
+                Pin
+              </Menu.Item>
+              <Menu.Item
+                id="delete"
+                textValue="Delete"
+                variant="danger"
+                className="text-danger"
+              >
+                <Delete02Icon className="h-[15px] w-[15px]" />
+                Delete
+              </Menu.Item>
+            </Menu>
+          </Dropdown.Popover>
         </Dropdown>
       </div>
     </div>

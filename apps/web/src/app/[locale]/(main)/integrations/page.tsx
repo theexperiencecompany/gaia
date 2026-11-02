@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Kbd } from "@heroui/kbd";
+import { Button, Kbd } from "@heroui/react";
 import { ConnectIcon, MessageFavourite02Icon } from "@icons";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -206,7 +205,9 @@ export default function IntegrationsPage() {
           onEnter={handleEnterSearch}
           endContent={
             <div className="flex items-center gap-1.5">
-              <Kbd keys={[isMac ? "command" : "ctrl"]}>F</Kbd>
+              <Kbd>
+                <Kbd.Abbr keyValue={isMac ? "command" : "ctrl"} />F
+              </Kbd>
             </div>
           }
         />
@@ -243,12 +244,9 @@ export default function IntegrationsPage() {
         </RightSidebarPanel>
       )}
       <div className="absolute right-4 bottom-4 z-1">
-        <Button
-          color="primary"
-          endContent={<MessageFavourite02Icon width={17} height={17} />}
-          onPress={handleRequestIntegration}
-        >
+        <Button onPress={handleRequestIntegration} variant="primary">
           Request an Integration
+          <MessageFavourite02Icon width={17} height={17} />
         </Button>
       </div>
 

@@ -1,6 +1,4 @@
-import { Button } from "@heroui/button";
-import { Kbd } from "@heroui/kbd";
-import { Tooltip } from "@heroui/tooltip";
+import { Button, Kbd, Tooltip } from "@heroui/react";
 import { PlayIcon, Share01Icon } from "@icons";
 
 /** What the current edit session offers for auxiliary actions. */
@@ -47,66 +45,81 @@ export default function WorkflowFooter({
       {/* Left: run (edit only) */}
       <div className="flex items-center gap-2">
         {isExisting && (
-          <Tooltip
-            content={
-              !hasSteps
+          <Tooltip>
+            <Tooltip.Trigger>
+              <Button
+                variant="secondary"
+                onPress={onRunWorkflow}
+                isDisabled={!hasSteps}
+                className="active:scale-[0.97] transition-transform duration-150"
+              >
+                <PlayIcon className="h-4 w-4" />
+                Run
+              </Button>
+            </Tooltip.Trigger>
+            <Tooltip.Content placement="top">
+              {!hasSteps
                 ? "Generate steps before running"
-                : "Run this workflow now"
-            }
-            placement="top"
-          >
-            <Button
-              color="success"
-              variant="flat"
-              startContent={<PlayIcon className="h-4 w-4" />}
-              onPress={onRunWorkflow}
-              isDisabled={!hasSteps}
-              className="active:scale-[0.97] transition-transform duration-150"
-            >
-              Run
-            </Button>
+                : "Run this workflow now"}
+            </Tooltip.Content>
           </Tooltip>
         )}
 
         {isExisting && !isPublic && onPublish && (
-          <Tooltip content="Share to the marketplace" placement="top">
-            <Button
-              variant="flat"
-              startContent={<Share01Icon className="h-4 w-4" />}
-              onPress={onPublish}
-              className="active:scale-[0.97] transition-transform duration-150"
-            >
-              Publish
-            </Button>
+          <Tooltip>
+            <Tooltip.Trigger>
+              <Button
+                variant="tertiary"
+                onPress={onPublish}
+                className="active:scale-[0.97] transition-transform duration-150"
+              >
+                <Share01Icon className="h-4 w-4" />
+                Publish
+              </Button>
+            </Tooltip.Trigger>
+            <Tooltip.Content placement="top">
+              Share to the marketplace
+            </Tooltip.Content>
           </Tooltip>
         )}
       </div>
 
       {/* Right: cancel + primary save */}
       <div className="flex items-center gap-2">
-        <Tooltip content={<Kbd keys={["escape"]} />} placement="top">
-          <Button
-            variant="light"
-            onPress={onCancel}
-            className="active:scale-[0.97] transition-transform duration-150"
-          >
-            Cancel
-          </Button>
+        <Tooltip>
+          <Tooltip.Trigger>
+            <Button
+              variant="tertiary"
+              onPress={onCancel}
+              className="active:scale-[0.97] transition-transform duration-150"
+            >
+              Cancel
+            </Button>
+          </Tooltip.Trigger>
+          <Tooltip.Content placement="top">
+            <Kbd>
+              <Kbd.Abbr keyValue="escape" />
+            </Kbd>
+          </Tooltip.Content>
         </Tooltip>
-        <Tooltip
-          content={<Kbd keys={[modifierKeyName, "enter"]} />}
-          placement="top"
-          isDisabled={isCreating || isDisabled}
-        >
-          <Button
-            color="primary"
-            onPress={onSave}
-            isLoading={isCreating}
-            isDisabled={isDisabled}
-            className="active:scale-[0.97] transition-transform duration-150"
-          >
-            {buttonText}
-          </Button>
+        <Tooltip isDisabled={isCreating || isDisabled}>
+          <Tooltip.Trigger>
+            <Button
+              onPress={onSave}
+              isPending={isCreating}
+              isDisabled={isDisabled}
+              className="active:scale-[0.97] transition-transform duration-150"
+              variant="primary"
+            >
+              {buttonText}
+            </Button>
+          </Tooltip.Trigger>
+          <Tooltip.Content placement="top">
+            <Kbd>
+              <Kbd.Abbr keyValue={modifierKeyName} />
+              <Kbd.Abbr keyValue="enter" />
+            </Kbd>
+          </Tooltip.Content>
         </Tooltip>
       </div>
     </div>

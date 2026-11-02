@@ -1,4 +1,4 @@
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import * as m from "motion/react-m";
 
 import { useVoiceSession } from "@/features/chat/components/voice-agent/VoiceSessionContext";
@@ -58,7 +58,7 @@ export default function FollowUpActions({
         >
           <Button
             className="text-xs text-foreground-500 outline-1 outline-zinc-700 transition-colors outline-dashed hover:bg-zinc-700 hover:text-foreground-700"
-            variant="light"
+            variant="tertiary"
             size="sm"
             onPress={() => handleActionClick(action)}
             isDisabled={loading}

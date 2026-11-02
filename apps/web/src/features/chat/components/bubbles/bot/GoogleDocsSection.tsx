@@ -1,4 +1,4 @@
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import Image from "next/image";
 import type React from "react";
 
@@ -26,20 +26,23 @@ const GoogleDocsSection: React.FC<GoogleDocsSectionProps> = ({
         <div className="space-y-2 space-x-2">
           <Button
             key={document.id}
-            as={"a"}
-            href={document.url}
-            target="_blank"
-            variant="flat"
-            startContent={
-              <Image
-                src={"/images/icons/googledocs.webp"}
-                alt="Google docs logo"
-                width={25}
-                height={25}
+            render={(props) => (
+              <a
+                {...(props as unknown as React.ComponentProps<"a">)}
+                href={document.url}
+                target="_blank"
+                rel="noopener noreferrer"
               />
-            }
+            )}
+            variant="tertiary"
             className="max-w-60 min-w-60 justify-start py-7"
           >
+            <Image
+              src={"/images/icons/googledocs.webp"}
+              alt="Google docs logo"
+              width={25}
+              height={25}
+            />
             <div className="flex flex-1 flex-col items-start">
               <span className="text-left text-sm font-medium">
                 {document.title}

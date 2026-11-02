@@ -1,8 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
-import { Tab, Tabs } from "@heroui/tabs";
+import { Button, SearchField, Tabs } from "@heroui/react";
 import {
   FolderLibraryIcon,
   PlusSignIcon,
@@ -92,41 +90,43 @@ export default function SkillsManagement() {
       {/* Tabs, search, and New skill share one row. */}
       <div className="flex items-center gap-3">
         <Tabs
-          variant="solid"
-          color="primary"
-          radius="full"
+          variant="primary"
           selectedKey={tab}
           onSelectionChange={(key) => setTab(key as string)}
         >
-          <Tab
-            key="yours"
-            title={<TabTitle icon={PuzzleIcon} label="Your Skills" />}
-          />
-          <Tab
-            key="builtin"
-            title={<TabTitle icon={FolderLibraryIcon} label="Built-in" />}
-          />
+          <Tabs.List>
+            <Tabs.Tab id="yours">
+              <TabTitle icon={PuzzleIcon} label="Your Skills" />
+            </Tabs.Tab>
+            <Tabs.Tab id="builtin">
+              <TabTitle icon={FolderLibraryIcon} label="Built-in" />
+            </Tabs.Tab>
+          </Tabs.List>
+          <Tabs.Panel id="yours">{null}</Tabs.Panel>
+          <Tabs.Panel id="builtin">{null}</Tabs.Panel>
         </Tabs>
         <div className="flex-1" />
-        <Input
-          size="sm"
-          variant="flat"
-          radius="lg"
-          placeholder="Search skills"
+        <SearchField
+          aria-label="Search skills"
           value={query}
-          onValueChange={setQuery}
-          startContent={<Search01Icon className="size-4 text-zinc-500" />}
+          onChange={setQuery}
           className="max-w-56"
-          isClearable
-          onClear={() => setQuery("")}
-        />
+        >
+          <SearchField.Group>
+            <SearchField.SearchIcon>
+              <Search01Icon className="size-4 text-zinc-500" />
+            </SearchField.SearchIcon>
+            <SearchField.Input placeholder="Search skills" />
+            <SearchField.ClearButton />
+          </SearchField.Group>
+        </SearchField>
         <Button
           size="sm"
-          color="primary"
           className="shrink-0 rounded-xl"
-          startContent={<PlusSignIcon className="size-4" />}
           onPress={openCreate}
+          variant="primary"
         >
+          <PlusSignIcon className="size-4" />
           New skill
         </Button>
       </div>

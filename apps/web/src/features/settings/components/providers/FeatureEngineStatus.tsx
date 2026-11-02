@@ -1,4 +1,4 @@
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { ArrowDown01Icon, CheckmarkCircle02Icon } from "@icons";
 import type { ProviderCatalog } from "@/features/settings/api/providersApi";
 import { featureEngineLabel } from "@/features/settings/utils/providerCatalog";
@@ -34,17 +34,15 @@ export function BuiltInWorking({
       {group.rows.length > 0 && (
         <Button
           size="sm"
-          variant="flat"
+          variant="secondary"
           aria-expanded={isOpen}
-          endContent={
-            <ArrowDown01Icon
-              size={16}
-              className={cn("transition-transform", isOpen && "rotate-180")}
-            />
-          }
           onPress={onToggle}
         >
           Use a better provider
+          <ArrowDown01Icon
+            size={16}
+            className={cn("transition-transform", isOpen && "rotate-180")}
+          />
         </Button>
       )}
     </div>

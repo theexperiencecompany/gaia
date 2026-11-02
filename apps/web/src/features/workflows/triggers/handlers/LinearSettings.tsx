@@ -6,8 +6,7 @@
 
 "use client";
 
-import { Input } from "@heroui/input";
-import { Select, SelectItem } from "@heroui/select";
+import { Input, ListBox, Select } from "@heroui/react";
 import { useState } from "react";
 
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
@@ -90,64 +89,84 @@ export function LinearSettings({
         {isLoading ? (
           <Select
             aria-label="Team"
-            placeholder="Loading teams..."
             className="w-full"
             isDisabled
-            isLoading
-            selectedKeys={[]}
+            selectedKey={null}
           >
-            <SelectItem key="loading" textValue="Loading...">
-              Loading...
-            </SelectItem>
+            <Select.Trigger>
+              <Select.Value>Loading teams...</Select.Value>
+              <Select.Indicator />
+            </Select.Trigger>
+            <Select.Popover>
+              <ListBox>
+                <ListBox.Item key="loading" id="loading" textValue="Loading...">
+                  Loading...
+                </ListBox.Item>
+              </ListBox>
+            </Select.Popover>
           </Select>
         ) : teamOptions.length > 0 && !useManualInput ? (
-          <Select
-            aria-label="Team"
-            placeholder="Select a team"
-            selectedKeys={triggerData?.team_id ? [triggerData.team_id] : []}
-            onSelectionChange={(keys) => {
-              const key = Array.from(keys)[0];
-              if (key) {
-                updateTriggerData({ team_id: String(key) });
-              }
-            }}
-            isLoading={isLoading}
-            description={
+          <div className="flex w-full flex-col gap-1.5">
+            <Select
+              aria-label="Team"
+              selectedKey={triggerData?.team_id ?? null}
+              onSelectionChange={(key) => {
+                if (key != null) {
+                  updateTriggerData({ team_id: String(key) });
+                }
+              }}
+              className="w-full"
+            >
+              <Select.Trigger>
+                <Select.Value>
+                  {triggerData?.team_id
+                    ? (teamOptions.find((o) => o.value === triggerData.team_id)
+                        ?.label ?? triggerData.team_id)
+                    : "Select a team"}
+                </Select.Value>
+                <Select.Indicator />
+              </Select.Trigger>
+              <Select.Popover>
+                <ListBox>
+                  {teamOptions.map((option) => (
+                    <ListBox.Item
+                      key={option.value}
+                      id={option.value}
+                      textValue={option.label}
+                    >
+                      {option.label}
+                    </ListBox.Item>
+                  ))}
+                </ListBox>
+              </Select.Popover>
+            </Select>
+            <button
+              type="button"
+              onClick={() => setUseManualInput(true)}
+              className="text-xs text-primary hover:underline"
+            >
+              Or enter manually
+            </button>
+          </div>
+        ) : (
+          <div className="flex w-full flex-col gap-1.5">
+            <Input
+              aria-label="Team ID"
+              placeholder="Available in Linear URL"
+              value={triggerData?.team_id || ""}
+              onChange={(e) => updateTriggerData({ team_id: e.target.value })}
+              className="w-full"
+            />
+            {teamOptions.length > 0 ? (
               <button
                 type="button"
-                onClick={() => setUseManualInput(true)}
+                onClick={() => setUseManualInput(false)}
                 className="text-xs text-primary hover:underline"
               >
-                Or enter manually
+                Or select from list
               </button>
-            }
-            className="w-full"
-          >
-            {teamOptions.map((option) => (
-              <SelectItem key={option.value} textValue={option.label}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </Select>
-        ) : (
-          <Input
-            aria-label="Team ID"
-            placeholder="Available in Linear URL"
-            value={triggerData?.team_id || ""}
-            onValueChange={(val) => updateTriggerData({ team_id: val })}
-            className="w-full"
-            description={
-              teamOptions.length > 0 ? (
-                <button
-                  type="button"
-                  onClick={() => setUseManualInput(false)}
-                  className="text-xs text-primary hover:underline"
-                >
-                  Or select from list
-                </button>
-              ) : undefined
-            }
-          />
+            ) : null}
+          </div>
         )}
       </TriggerSettingRow>
     </TriggerSettingsCard>

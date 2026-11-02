@@ -1,5 +1,4 @@
-import { Button } from "@heroui/button";
-import { Skeleton } from "@heroui/skeleton";
+import { Button, Skeleton } from "@heroui/react";
 import type React from "react";
 import { useIntegrationModalActions } from "@/stores/uiStore";
 import { getCategoryLabel } from "../constants/categories";
@@ -35,7 +34,7 @@ const NoIntegrationsFound: React.FC<NoIntegrationsFoundProps> = ({
         ? `No integrations found for "${searchQuery}"`
         : `No ${getCategoryLabel(selectedCategory).toLowerCase()} integrations found`}
     </p>
-    <Button onPress={clearFilters} variant="light" color="primary" size="sm">
+    <Button onPress={clearFilters} variant="tertiary" size="sm">
       Clear filters
     </Button>
   </div>

@@ -1,8 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Switch } from "@heroui/switch";
+import { Button, Chip, Switch } from "@heroui/react";
 import { Delete02Icon, Link04Icon, PencilEdit02Icon } from "@icons";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import type { Skill, SkillTarget } from "../api/types";
@@ -46,20 +44,17 @@ export function SkillRow({
           {showTarget && isScoped && targetMeta && (
             <Chip
               size="sm"
-              variant="flat"
-              startContent={
-                <SkillTargetIcon
-                  value={targetMeta.value}
-                  icon={targetMeta.icon}
-                  size={12}
-                />
-              }
-              classNames={{
-                base: "h-5 shrink-0 gap-1 bg-zinc-800 pl-1.5",
-                content: "px-1 text-xs text-zinc-400",
-              }}
+              variant="tertiary"
+              className="h-5 shrink-0 gap-1 bg-zinc-800 pl-1.5"
             >
-              {targetMeta.label}
+              <SkillTargetIcon
+                value={targetMeta.value}
+                icon={targetMeta.icon}
+                size={12}
+              />
+              <Chip.Label className="px-1 text-xs text-zinc-400">
+                {targetMeta.label}
+              </Chip.Label>
             </Chip>
           )}
         </div>
@@ -72,15 +67,13 @@ export function SkillRow({
 
       {skill.source_url &&
         (skill.source === "github" || skill.source === "url") && (
-          <Chip
-            as="a"
-            href={skill.source_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            size="sm"
-            variant="flat"
-            startContent={
-              skill.source === "github" ? (
+          <a href={skill.source_url} target="_blank" rel="noopener noreferrer">
+            <Chip
+              size="sm"
+              variant="tertiary"
+              className="h-6 shrink-0 cursor-pointer gap-1 bg-zinc-800 pl-2 data-[hover=true]:bg-zinc-700"
+            >
+              {skill.source === "github" ? (
                 getToolCategoryIcon("github", {
                   size: 14,
                   width: 14,
@@ -89,15 +82,12 @@ export function SkillRow({
                 })
               ) : (
                 <Link04Icon className="size-3.5 text-zinc-300" />
-              )
-            }
-            classNames={{
-              base: "h-6 shrink-0 cursor-pointer gap-1 bg-zinc-800 pl-2 data-[hover=true]:bg-zinc-700",
-              content: "px-1 text-xs text-zinc-400",
-            }}
-          >
-            {skill.source === "github" ? "GitHub" : "Source"}
-          </Chip>
+              )}
+              <Chip.Label className="px-1 text-xs text-zinc-400">
+                {skill.source === "github" ? "GitHub" : "Source"}
+              </Chip.Label>
+            </Chip>
+          </a>
         )}
 
       <div className="flex shrink-0 items-center gap-1">
@@ -105,7 +95,7 @@ export function SkillRow({
           <Button
             isIconOnly
             size="sm"
-            variant="light"
+            variant="tertiary"
             aria-label={`Edit ${skill.name}`}
             onPress={() => onEdit(skill)}
           >
@@ -114,10 +104,9 @@ export function SkillRow({
           <Button
             isIconOnly
             size="sm"
-            variant="light"
-            color="danger"
+            variant="ghost"
             aria-label={`Delete ${skill.name}`}
-            isLoading={isDeleting}
+            isPending={isDeleting}
             onPress={() => onDelete(skill)}
           >
             <Delete02Icon className="size-4" />
@@ -126,7 +115,7 @@ export function SkillRow({
         <Switch
           size="sm"
           isSelected={skill.enabled}
-          onValueChange={(enabled) => onToggle(skill, enabled)}
+          onChange={(enabled) => onToggle(skill, enabled)}
           aria-label={`${skill.enabled ? "Disable" : "Enable"} ${skill.name}`}
         />
       </div>

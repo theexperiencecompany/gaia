@@ -1,4 +1,4 @@
-import { Avatar } from "@heroui/avatar";
+import { Avatar } from "@heroui/react";
 import {
   CheckmarkBadge01Icon,
   DateTimeIcon,
@@ -78,13 +78,15 @@ function CommunityCreatorCard({
   return (
     <MetaCard>
       {creator?.picture ? (
-        <Avatar
-          src={creator.picture || undefined}
-          name={creator.name || undefined}
-          size="sm"
-          className="h-6 w-6"
-          imgProps={{ width: 24, height: 24 }}
-        />
+        <Avatar size="sm" className="h-6 w-6">
+          <Avatar.Image
+            src={creator.picture || undefined}
+            alt={creator.name || "Creator"}
+            width={24}
+            height={24}
+          />
+          <Avatar.Fallback>{creator.name?.charAt(0) ?? "?"}</Avatar.Fallback>
+        </Avatar>
       ) : (
         <UserCircle02Icon width={24} height={24} className="text-zinc-400" />
       )}

@@ -1,8 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Kbd } from "@heroui/react";
-import { Select, SelectItem } from "@heroui/select";
+import { Button, Kbd, ListBox, Select } from "@heroui/react";
 import {
   ArrowLeft01Icon,
   ArrowRight01Icon,
@@ -69,34 +67,40 @@ export default function CalendarHeader() {
         />
 
         <Select
-          size="sm"
-          selectedKeys={daysToShow ? [daysToShow.toString()] : ["1"]}
-          onSelectionChange={(keys) => {
-            const value = Array.from(keys)[0] as string;
-            setDaysToShow(parseInt(value, 10));
+          selectedKey={daysToShow ? daysToShow.toString() : "1"}
+          onSelectionChange={(key) => {
+            if (key != null) {
+              setDaysToShow(parseInt(String(key), 10));
+            }
           }}
           className="w-34"
-          // className="max-w-fit min-w-24"
-          classNames={{
-            trigger: "bg-zinc-800 text-xs! cursor-pointer",
-            value: "text-zinc-300",
-          }}
-          renderValue={(items) => {
-            const item = items[0];
-            const option = dayOptions.find((opt) => opt.value === item.key);
-            return <span>{option?.label}</span>;
-          }}
         >
-          {dayOptions.map((option) => (
-            <SelectItem
-              key={option.value}
-              aria-label={option.value}
-              textValue={option.value}
-              endContent={<Kbd keys={[]}>{option.kbd}</Kbd>}
-            >
-              {option.label}
-            </SelectItem>
-          ))}
+          <Select.Trigger className="bg-zinc-800 text-xs! cursor-pointer">
+            <Select.Value className="text-zinc-300">
+              {
+                dayOptions.find(
+                  (opt) =>
+                    opt.value === (daysToShow ? daysToShow.toString() : "1"),
+                )?.label
+              }
+            </Select.Value>
+            <Select.Indicator />
+          </Select.Trigger>
+          <Select.Popover>
+            <ListBox>
+              {dayOptions.map((option) => (
+                <ListBox.Item
+                  key={option.value}
+                  id={option.value}
+                  textValue={option.label}
+                  className="flex items-center justify-between"
+                >
+                  {option.label}
+                  <Kbd>{option.kbd}</Kbd>
+                </ListBox.Item>
+              ))}
+            </ListBox>
+          </Select.Popover>
         </Select>
       </div>
 
@@ -105,16 +109,21 @@ export default function CalendarHeader() {
           <Button
             isIconOnly
             size="sm"
-            variant="light"
+            variant="tertiary"
             onPress={goToPreviousDay}
           >
             <ArrowLeft01Icon className="h-5 w-5 text-zinc-400" />
           </Button>
 
-          <Button isIconOnly size="sm" variant="light" onPress={goToNextDay}>
+          <Button isIconOnly size="sm" variant="tertiary" onPress={goToNextDay}>
             <ArrowRight01Icon className="h-5 w-5 text-zinc-400" />
           </Button>
-          <Button variant="flat" onPress={goToToday} size="sm" className="ml-">
+          <Button
+            variant="tertiary"
+            onPress={goToToday}
+            size="sm"
+            className="ml-"
+          >
             Today
           </Button>
         </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { Cancel01Icon } from "@icons";
 import * as m from "motion/react-m";
 import { useRouter } from "next/navigation";
@@ -50,7 +50,7 @@ export default function SelectedWorkflowIndicator({
           <Button
             isIconOnly
             size="sm"
-            variant="light"
+            variant="tertiary"
             onPress={onRemove}
             className="text-zinc-400 hover:text-zinc-200"
           >

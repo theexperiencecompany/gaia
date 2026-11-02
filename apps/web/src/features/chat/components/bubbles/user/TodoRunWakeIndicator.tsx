@@ -1,4 +1,4 @@
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 import { CheckmarkCircle02Icon, Clock01Icon, FlashIcon } from "@icons";
 import type { TodoRunWake } from "@shared/api/generated";
 import { describeTodoRunWake } from "@shared/todos";
@@ -17,13 +17,9 @@ const WAKE_ICONS = {
 export function TodoRunWakeIndicator({ wake }: TodoRunWakeIndicatorProps) {
   const Icon = WAKE_ICONS[wake.kind];
   return (
-    <Chip
-      variant="flat"
-      radius="lg"
-      className="mx-3 mt-2 mb-1"
-      startContent={<Icon width={16} height={16} className="mx-1" />}
-    >
-      {describeTodoRunWake(wake)}
+    <Chip variant="secondary" className="mx-3 mt-2 mb-1">
+      <Icon width={16} height={16} className="mx-1" />
+      <Chip.Label>{describeTodoRunWake(wake)}</Chip.Label>
     </Chip>
   );
 }

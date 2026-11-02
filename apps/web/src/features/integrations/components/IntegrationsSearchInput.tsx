@@ -1,4 +1,4 @@
-import { Input } from "@heroui/input";
+import { InputGroup, TextField } from "@heroui/react";
 import { SearchIcon } from "@icons";
 import { forwardRef, type KeyboardEvent } from "react";
 
@@ -23,20 +23,22 @@ export const IntegrationsSearchInput = forwardRef<
   };
 
   return (
-    <Input
-      ref={ref}
-      type="text"
-      value={value}
-      isClearable={!!value}
-      className="max-w-lg"
-      // radius="full"
-      // size="sm"
-      startContent={<SearchIcon width={16} height={16} />}
-      endContent={!value ? endContent : undefined}
-      onValueChange={onChange}
-      onKeyDown={handleKeyDown}
-      placeholder="Search integrations..."
-    />
+    <TextField value={value} onChange={onChange} className="max-w-lg">
+      <InputGroup>
+        <InputGroup.Prefix>
+          <SearchIcon width={16} height={16} />
+        </InputGroup.Prefix>
+        <InputGroup.Input
+          ref={ref}
+          type="text"
+          placeholder="Search integrations..."
+          onKeyDown={handleKeyDown}
+        />
+        {!value && endContent ? (
+          <InputGroup.Suffix>{endContent}</InputGroup.Suffix>
+        ) : null}
+      </InputGroup>
+    </TextField>
   );
 });
 

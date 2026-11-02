@@ -1,4 +1,4 @@
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 import Image from "next/image";
 import Link from "next/link";
 
@@ -38,8 +38,8 @@ export function BlogCard({ blog, variant = "large", titleAs }: BlogCardProps) {
             <GrainOverlay className="rounded-2xl" />
             {blog.featured && (
               <Chip
-                variant="flat"
-                color="primary"
+                variant="tertiary"
+                color="accent"
                 size="sm"
                 className="absolute top-3 right-3 text-primary"
               >

@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { Cancel01Icon } from "@icons";
 import Image from "next/image";
 import { useEffect } from "react";
@@ -69,8 +69,7 @@ export function WhatsNewCard() {
         {/* Dismiss button */}
         <Button
           isIconOnly
-          variant="flat"
-          radius="full"
+          variant="tertiary"
           size="sm"
           onPress={handleDismiss}
           aria-label="Dismiss what's new"

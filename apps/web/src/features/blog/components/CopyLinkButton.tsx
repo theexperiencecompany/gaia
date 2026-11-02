@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { useState } from "react";
 import { copyText } from "@/lib/clipboard";
 import { toast } from "@/lib/toast";
@@ -30,9 +30,8 @@ export default function CopyLinkButton({
   return (
     <Button
       onPress={handleCopyLink}
-      variant="light"
+      variant="tertiary"
       size="sm"
-      radius="sm"
       className={className}
       aria-label="Copy link to this post"
     >

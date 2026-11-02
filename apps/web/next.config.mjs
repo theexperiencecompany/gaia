@@ -60,7 +60,8 @@ const nextConfig = {
   // the same directory. A dedicated dist dir (agents driving the app while a
   // human dev server runs) lifts that without touching the default build.
   ...(process.env.NEXT_DIST_DIR ? { distDir: process.env.NEXT_DIST_DIR } : {}),
-  productionBrowserSourceMaps: true,
+  // Was shipping 98.5 MB of .js.map next to the build; not user-facing bytes.
+  productionBrowserSourceMaps: false,
   // OpenNext file-traces every public/*.wasm into the Worker (even in unrelated
   // routes' .nft.json), collecting the desktop-only ~12MiB wake-word WASM past
   // Cloudflare's 10MiB limit. Exclude it on the Cloudflare build; Electron's standalone build copies public/ wholesale, unaffected.

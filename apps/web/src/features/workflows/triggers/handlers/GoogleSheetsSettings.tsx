@@ -7,7 +7,7 @@
 
 "use client";
 
-import { Select, SelectItem, SelectSection } from "@heroui/select";
+import { Description, Header, ListBox, Select } from "@heroui/react";
 import { useMemo } from "react";
 
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
@@ -47,8 +47,7 @@ interface GroupedOption {
   options: OptionItem[];
 }
 
-// Stable empty fallback for sheetKeys: a fresh `[]` literal every render would
-// change identity each time and defeat the selectedSheetKeys memo below.
+// Stable empty fallback for sheetKeys so the Select value keeps a stable identity.
 const NO_SHEET_KEYS: string[] = [];
 
 // =============================================================================
@@ -143,11 +142,6 @@ export function GoogleSheetsSettings({
     return groupedSheetOptions as OptionItem[];
   }, [groupedSheetOptions, hasGroupedSheets]);
 
-  // Convert stored sheet keys to Set<string> for the Select component
-  const selectedSheetKeys = useMemo(() => {
-    return new Set(sheetKeys);
-  }, [sheetKeys]);
-
   // Persist a selection pair into the parent-owned config.
   const updateSelections = (
     nextSpreadsheetIds: string[],
@@ -232,43 +226,72 @@ export function GoogleSheetsSettings({
         <TriggerSettingRow label="Sheets" wide>
           <Select
             aria-label="Sheets"
-            placeholder="Select sheet(s)"
+            placeholder={isLoadingSheets ? "Loading..." : "Select sheet(s)"}
             selectionMode="multiple"
-            selectedKeys={selectedSheetKeys}
-            onSelectionChange={handleSheetSelectionChange}
+            value={sheetKeys}
+            onChange={(keys) => handleSheetSelectionChange(new Set(keys))}
             className="w-full"
-            description="Select specific sheets (leave empty for all sheets)"
             isDisabled={spreadsheetIds.length === 0}
-            isLoading={isLoadingSheets}
-            renderValue={renderSheetValue}
           >
-            {hasGroupedSheets
-              ? (groupedSheetOptions as GroupedOption[]).map((group) => {
-                  const spreadsheetName =
-                    spreadsheetOptions.find((opt) => opt.value === group.group)
-                      ?.label || group.group;
-                  return (
-                    <SelectSection
-                      key={group.group}
-                      title={spreadsheetName}
-                      classNames={{
-                        heading:
-                          "text-xs font-semibold text-zinc-400 px-2 py-1",
-                      }}
-                    >
-                      {group.options.map((option) => (
-                        <SelectItem key={option.value} textValue={option.label}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectSection>
-                  );
-                })
-              : (groupedSheetOptions as OptionItem[]).map((option) => (
-                  <SelectItem key={option.value} textValue={option.label}>
-                    {option.label}
-                  </SelectItem>
-                ))}
+            <Select.Trigger>
+              <Select.Value>
+                {({ selectedItems }) =>
+                  renderSheetValue(
+                    (
+                      selectedItems as ({
+                        key?: React.Key;
+                        textValue?: string;
+                      } | null)[]
+                    ).map((item) => ({
+                      key: item?.key,
+                      textValue: item?.textValue,
+                    })),
+                  )
+                }
+              </Select.Value>
+              <Select.Indicator />
+            </Select.Trigger>
+            <Description>
+              Select specific sheets (leave empty for all sheets)
+            </Description>
+            <Select.Popover className="min-w-fit">
+              <ListBox>
+                {hasGroupedSheets
+                  ? (groupedSheetOptions as GroupedOption[]).map((group) => {
+                      const spreadsheetName =
+                        spreadsheetOptions.find(
+                          (opt) => opt.value === group.group,
+                        )?.label || group.group;
+                      return (
+                        <ListBox.Section key={group.group} id={group.group}>
+                          <Header className="px-2 py-1 text-xs font-semibold text-zinc-400">
+                            {spreadsheetName}
+                          </Header>
+                          {group.options.map((option) => (
+                            <ListBox.Item
+                              key={option.value}
+                              id={option.value}
+                              textValue={option.label}
+                            >
+                              {option.label}
+                              <ListBox.ItemIndicator />
+                            </ListBox.Item>
+                          ))}
+                        </ListBox.Section>
+                      );
+                    })
+                  : (groupedSheetOptions as OptionItem[]).map((option) => (
+                      <ListBox.Item
+                        key={option.value}
+                        id={option.value}
+                        textValue={option.label}
+                      >
+                        {option.label}
+                        <ListBox.ItemIndicator />
+                      </ListBox.Item>
+                    ))}
+              </ListBox>
+            </Select.Popover>
           </Select>
         </TriggerSettingRow>
       )}

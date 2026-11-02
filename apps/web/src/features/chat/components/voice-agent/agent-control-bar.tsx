@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  Button,
-  ButtonGroup,
-  Dropdown,
-  DropdownItem,
-  DropdownMenu,
-  DropdownTrigger,
-} from "@heroui/react";
+import { Button, ButtonGroup, Dropdown, Menu } from "@heroui/react";
 import {
   ArrowDown01Icon,
   CallEnd04Icon,
@@ -137,22 +130,19 @@ export function AgentControlBar({
     >
       {/* One floating pill holds every control — iOS-call style. */}
       <div className="flex items-center gap-1.5 rounded-full bg-zinc-900/80 p-1.5 shadow-lg backdrop-blur-md">
-        <ButtonGroup variant="flat" radius="full">
+        <ButtonGroup>
           <Button
             isIconOnly
             aria-label={micLive ? "Mute microphone" : "Unmute microphone"}
-            isLoading={microphoneToggle.pending}
+            isPending={microphoneToggle.pending}
             isDisabled={preConnectCapture}
             onPress={handleMicPress}
             className="h-12 w-14 bg-zinc-800 text-white transition-colors hover:bg-zinc-700 active:bg-zinc-700"
           >
             <MicStateIcon className="h-6 w-6" />
           </Button>
-          <Dropdown
-            placement="top-end"
-            onOpenChange={(open) => open && refreshDevices()}
-          >
-            <DropdownTrigger>
+          <Dropdown onOpenChange={(open) => open && refreshDevices()}>
+            <Dropdown.Trigger>
               <Button
                 isIconOnly
                 aria-label="Select microphone"
@@ -160,34 +150,35 @@ export function AgentControlBar({
               >
                 <ArrowDown01Icon className="h-4 w-4" />
               </Button>
-            </DropdownTrigger>
-            <DropdownMenu
-              aria-label="Audio input devices"
-              className="max-w-[300px]"
-              selectionMode="single"
-              disallowEmptySelection
-              selectedKeys={activeDeviceId ? [activeDeviceId] : []}
-              onAction={(key) => handleDeviceSelect(String(key))}
-            >
-              {devices.length > 0 ? (
-                devices.map((d) => (
-                  <DropdownItem key={d.deviceId}>
-                    {d.label || "Unnamed device"}
-                  </DropdownItem>
-                ))
-              ) : (
-                <DropdownItem key="__none" isReadOnly>
-                  No devices detected
-                </DropdownItem>
-              )}
-            </DropdownMenu>
+            </Dropdown.Trigger>
+            <Dropdown.Popover placement="top end">
+              <Menu
+                aria-label="Audio input devices"
+                className="max-w-[300px]"
+                selectionMode="single"
+                disallowEmptySelection
+                selectedKeys={activeDeviceId ? [activeDeviceId] : []}
+                onAction={(key) => handleDeviceSelect(String(key))}
+              >
+                {devices.length > 0 ? (
+                  devices.map((d) => (
+                    <Menu.Item key={d.deviceId} id={d.deviceId}>
+                      {d.label || "Unnamed device"}
+                    </Menu.Item>
+                  ))
+                ) : (
+                  <Menu.Item key="__none" id="__none" isDisabled>
+                    No devices detected
+                  </Menu.Item>
+                )}
+              </Menu>
+            </Dropdown.Popover>
           </Dropdown>
         </ButtonGroup>
 
         {visibleControls.leave && (
           <Button
             isIconOnly
-            radius="full"
             aria-label="End voice session"
             onPress={onLeave}
             isDisabled={isDisconnecting}

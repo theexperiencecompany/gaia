@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { Copy01Icon, Tick02Icon } from "@icons";
 import { useState } from "react";
 import { copyText } from "@/lib/clipboard";
@@ -34,17 +34,15 @@ export default function ShareButton({
 
   return (
     <Button
-      variant="flat"
+      variant="tertiary"
       className="font-light text-zinc-400"
-      startContent={
-        copied ? (
-          <Tick02Icon width={18} height={18} />
-        ) : (
-          <Copy01Icon width={18} height={18} />
-        )
-      }
       onPress={handleCopyLink}
     >
+      {copied ? (
+        <Tick02Icon width={18} height={18} />
+      ) : (
+        <Copy01Icon width={18} height={18} />
+      )}
       {copied ? "Copied link" : "Share"}
     </Button>
   );

@@ -1,5 +1,4 @@
-import { Button } from "@heroui/button";
-import { Tooltip } from "@heroui/react";
+import { Button, Tooltip } from "@heroui/react";
 import { CheckmarkCircle02Icon } from "@icons";
 import { formatDistanceToNow } from "date-fns";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
@@ -61,16 +60,18 @@ export const NotificationItem = ({
 
         {isUnread && (
           <div className="flex shrink-0 items-center gap-1">
-            <Tooltip content="Mark as Read">
-              <Button
-                variant="flat"
-                size="sm"
-                isIconOnly
-                onPress={() => onMarkAsRead(notification.id)}
-                title="Mark as read"
-              >
-                <CheckmarkCircle02Icon className="h-[18px] w-[18px]" />
-              </Button>
+            <Tooltip>
+              <Tooltip.Trigger>
+                <Button
+                  variant="tertiary"
+                  size="sm"
+                  isIconOnly
+                  onPress={() => onMarkAsRead(notification.id)}
+                >
+                  <CheckmarkCircle02Icon className="h-[18px] w-[18px]" />
+                </Button>
+              </Tooltip.Trigger>
+              <Tooltip.Content>Mark as Read</Tooltip.Content>
             </Tooltip>
           </div>
         )}
@@ -90,10 +91,10 @@ export const NotificationItem = ({
               return (
                 <Button
                   key={action.id}
-                  variant={action.style === "primary" ? "solid" : "flat"}
+                  variant={action.style === "primary" ? "primary" : "tertiary"}
                   size="sm"
                   className={`h-7 bg-zinc-800/50 text-xs text-zinc-200 hover:bg-zinc-800/70 ${isExecuted ? "cursor-not-allowed opacity-50" : ""}`}
-                  disabled={isDisabled}
+                  isDisabled={isDisabled}
                   onPress={() => executeAction(notification.id, action)}
                 >
                   {isCurrentlyExecuting ? (

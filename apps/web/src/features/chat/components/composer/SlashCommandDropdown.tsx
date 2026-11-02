@@ -1,5 +1,4 @@
-import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
+import { Button, InputGroup, TextField } from "@heroui/react";
 import { Cancel01Icon, SearchIcon } from "@icons";
 import { useVirtualizer, type VirtualItem } from "@tanstack/react-virtual";
 import { AnimatePresence } from "motion/react";
@@ -363,23 +362,21 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
             <div className="flex items-center gap-2 p-3">
               {/* SearchIcon Input */}
               <div className="flex-1">
-                <Input
-                  type="text"
-                  placeholder="Search tools..."
+                <TextField
+                  aria-label="Search tools"
                   value={searchQuery}
-                  radius="full"
-                  startContent={<SearchIcon size={16} />}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
+                  onChange={setSearchQuery}
+                >
+                  <InputGroup>
+                    <InputGroup.Prefix>
+                      <SearchIcon size={16} />
+                    </InputGroup.Prefix>
+                    <InputGroup.Input placeholder="Search tools..." />
+                  </InputGroup>
+                </TextField>
               </div>
               {/* Close Button */}
-              <Button
-                onPress={onClose}
-                isIconOnly
-                size="sm"
-                radius="full"
-                variant="flat"
-              >
+              <Button onPress={onClose} isIconOnly size="sm" variant="tertiary">
                 <Cancel01Icon size={14} />
               </Button>
             </div>

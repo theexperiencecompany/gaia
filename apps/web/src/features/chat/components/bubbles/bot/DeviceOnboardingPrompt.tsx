@@ -1,14 +1,12 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
-import { Link } from "@heroui/link";
-import { Snippet } from "@heroui/snippet";
+import { Button, Input, Link } from "@heroui/react";
 import {
   BookOpen01Icon,
   CheckmarkCircle02Icon,
   CommandLineIcon,
   ComputerIcon,
+  Copy01Icon,
 } from "@icons";
 import { type ReactNode, useState } from "react";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
@@ -25,6 +23,7 @@ import {
   normalizePairingCode,
   toApiPairingCode,
 } from "@/features/devices/utils";
+import { copyText } from "@/lib/clipboard";
 
 const PACKAGE_MANAGERS = ["npm", "pnpm", "bun"] as const;
 type PackageManager = (typeof PACKAGE_MANAGERS)[number];
@@ -56,16 +55,35 @@ function StepCard({
 }
 
 function CommandSnippet({ command }: { command: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await copyText(command);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard access can be blocked; the command stays selectable.
+    }
+  };
+
   return (
-    <Snippet
-      hideSymbol
-      variant="flat"
-      size="sm"
-      codeString={command}
-      className="w-full bg-zinc-800 text-zinc-200"
-    >
+    <div className="flex w-full items-center justify-between gap-2 rounded-md bg-zinc-800 px-3 py-1.5 text-zinc-200">
       <span className="truncate font-mono text-xs">{command}</span>
-    </Snippet>
+      <Button
+        isIconOnly
+        size="sm"
+        variant="ghost"
+        aria-label="Copy command"
+        onPress={handleCopy}
+      >
+        {copied ? (
+          <CheckmarkCircle02Icon width={14} height={14} />
+        ) : (
+          <Copy01Icon width={14} height={14} />
+        )}
+      </Button>
+    </div>
   );
 }
 
@@ -102,11 +120,11 @@ function DesktopEnableCard({ platform }: { platform: NodeJS.Platform | null }) {
         this app.
       </p>
       <Button
-        color="primary"
         size="sm"
         className="w-fit"
-        isLoading={busy === "pair"}
+        isPending={busy === "pair"}
         onPress={() => void pair()}
+        variant="primary"
       >
         Enable on {noun}
       </Button>
@@ -154,8 +172,7 @@ function CliOnboardingSteps({
             <Button
               key={pm}
               size="sm"
-              variant={pm === packageManager ? "solid" : "flat"}
-              color={pm === packageManager ? "primary" : "default"}
+              variant={pm === packageManager ? "primary" : "tertiary"}
               onPress={() => setPackageManager(pm)}
             >
               {pm}
@@ -165,13 +182,13 @@ function CliOnboardingSteps({
         <CommandSnippet command={install_commands[packageManager]} />
         <Link
           href={docs_url}
-          isExternal
-          showAnchorIcon
-          size="sm"
+          target="_blank"
+          rel="noopener noreferrer"
           className="text-xs"
         >
           <BookOpen01Icon width={14} height={14} className="mr-1" />
           Setup guide
+          <Link.Icon />
         </Link>
       </StepCard>
 
@@ -199,19 +216,18 @@ function CliOnboardingSteps({
             </p>
             <div className="flex flex-wrap items-center gap-2">
               <Input
-                size="sm"
                 className="max-w-[12rem]"
                 placeholder="e.g. NS2V-YC5S"
                 autoComplete="off"
                 value={code}
-                onValueChange={setCode}
+                onChange={(e) => setCode(e.target.value)}
                 aria-label="Pairing code"
               />
               <Button
-                color="primary"
-                isLoading={isApproving}
+                isPending={isApproving}
                 isDisabled={!canApprove}
                 onPress={approve}
+                variant="primary"
               >
                 Approve device
               </Button>

@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { Comment01Icon } from "@icons";
 import { useOpenTodoChat } from "@/features/todo/hooks/useOpenTodoChat";
 
@@ -15,11 +15,11 @@ export function OpenTodoChatButton({ todoId }: OpenTodoChatButtonProps) {
   return (
     <Button
       size="sm"
-      variant="flat"
+      variant="secondary"
       onPress={openChat}
-      isLoading={isOpening}
-      startContent={isOpening ? null : <Comment01Icon className="size-4" />}
+      isPending={isOpening}
     >
+      {isOpening ? null : <Comment01Icon className="size-4" />}
       Open chat
     </Button>
   );

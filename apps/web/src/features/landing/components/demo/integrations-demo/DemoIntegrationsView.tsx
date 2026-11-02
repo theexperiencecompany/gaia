@@ -1,8 +1,6 @@
 "use client";
 
-import { Button, ButtonGroup } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Input } from "@heroui/input";
+import { Button, ButtonGroup, Chip, InputGroup } from "@heroui/react";
 import {
   ArrowRight02Icon,
   Cancel01Icon,
@@ -52,7 +50,7 @@ function DemoIntegrationRow({
           <div className="flex items-center gap-2">
             <span className="font-medium">{integration.name}</span>
             {isPublic && (
-              <Chip size="sm" variant="flat" color="secondary">
+              <Chip size="sm" variant="tertiary" color="accent">
                 Community
               </Chip>
             )}
@@ -64,16 +62,11 @@ function DemoIntegrationRow({
       </button>
       <div className="shrink-0">
         {isConnected ? (
-          <Chip size="sm" variant="flat" color="success">
+          <Chip size="sm" variant="tertiary" color="success">
             Connected
           </Chip>
         ) : (
-          <Button
-            variant="flat"
-            color="primary"
-            size="sm"
-            className="text-sm text-primary"
-          >
+          <Button variant="tertiary" size="sm" className="text-sm text-primary">
             Connect
           </Button>
         )}
@@ -111,7 +104,7 @@ function DemoIntegrationSidebar({
       <div className="flex w-full items-end justify-end px-6 pt-4 pb-0">
         <Button
           onPress={onClose}
-          variant="light"
+          variant="tertiary"
           isIconOnly
           size="sm"
           aria-label="Close"
@@ -135,20 +128,19 @@ function DemoIntegrationSidebar({
           {/* Status chips */}
           <div className="flex items-center gap-2">
             {isConnected && (
-              <Chip size="sm" variant="flat" color="success" radius="sm">
+              <Chip size="sm" variant="tertiary" color="success">
                 Connected
               </Chip>
             )}
             {!isConnected && (
-              <Chip size="sm" variant="flat" color="default" radius="sm">
+              <Chip size="sm" variant="tertiary" color="default">
                 Not Connected
               </Chip>
             )}
             {isCustom && (
               <Chip
                 size="sm"
-                variant="flat"
-                radius="sm"
+                variant="tertiary"
                 className="text-xs font-light text-zinc-400"
               >
                 Custom
@@ -168,28 +160,28 @@ function DemoIntegrationSidebar({
 
           {/* Action buttons */}
           {!isConnected ? (
-            <Button color="primary" className="w-full font-medium" size="md">
+            <Button className="w-full font-medium" size="md" variant="primary">
               Connect
             </Button>
           ) : (
-            <ButtonGroup variant="flat" className="w-full" fullWidth>
+            <ButtonGroup variant="secondary" className="w-full" fullWidth>
               <Button
                 isIconOnly={useIconOnly}
                 className="w-full"
-                color="danger"
                 aria-label="Disconnect"
-                startContent={<Unlink04Icon width={18} height={18} />}
+                variant="danger"
               >
+                <Unlink04Icon width={18} height={18} />
                 {!useIconOnly && "Disconnect"}
               </Button>
               {isPublic && (
                 <Button
                   isIconOnly={useIconOnly}
                   className="w-full"
-                  color="primary"
                   aria-label="View on Marketplace"
-                  startContent={<InternetIcon width={18} height={18} />}
+                  variant="primary"
                 >
+                  <InternetIcon width={18} height={18} />
                   {!useIconOnly && "View"}
                 </Button>
               )}
@@ -197,10 +189,10 @@ function DemoIntegrationSidebar({
                 <Button
                   isIconOnly={useIconOnly}
                   className="w-full"
-                  color="primary"
                   aria-label="Publish"
-                  startContent={<GlobalIcon width={18} height={18} />}
+                  variant="primary"
                 >
+                  <GlobalIcon width={18} height={18} />
                   {!useIconOnly && "Publish"}
                 </Button>
               )}
@@ -208,10 +200,10 @@ function DemoIntegrationSidebar({
                 <Button
                   isIconOnly={useIconOnly}
                   className="w-full"
-                  color="default"
                   aria-label="Share"
-                  startContent={<Share08Icon width={18} height={18} />}
+                  variant="primary"
                 >
+                  <Share08Icon width={18} height={18} />
                   {!useIconOnly && "Share"}
                 </Button>
               )}
@@ -228,9 +220,8 @@ function DemoIntegrationSidebar({
                 {integration.tools.map((tool) => (
                   <Chip
                     key={tool}
-                    variant="flat"
+                    variant="tertiary"
                     size="sm"
-                    radius="full"
                     className="font-light text-zinc-300"
                   >
                     {tool}
@@ -341,18 +332,12 @@ export default function DemoIntegrationsView({
                 </div>
               </div>
               <div className="flex shrink-0 gap-3">
-                <Button
-                  variant="flat"
-                  size="sm"
-                  endContent={<ArrowRight02Icon className="h-4 w-4" />}
-                >
+                <Button variant="tertiary" size="sm">
                   Browse Marketplace
+                  <ArrowRight02Icon className="h-4 w-4" />
                 </Button>
-                <Button
-                  color="primary"
-                  size="sm"
-                  startContent={<ZapIcon className="h-4 w-4" />}
-                >
+                <Button size="sm" variant="primary">
+                  <ZapIcon className="h-4 w-4" />
                   Create Custom
                 </Button>
               </div>
@@ -362,20 +347,26 @@ export default function DemoIntegrationsView({
 
         {/* Search */}
         <div className="mb-6">
-          <Input
-            placeholder="Search integrations..."
-            value={searchQuery}
-            onValueChange={setSearchQuery}
-            startContent={
+          <InputGroup className="bg-zinc-800/50 border-zinc-700">
+            <InputGroup.Prefix>
               <Search01Icon className="text-zinc-500" width={18} height={18} />
-            }
-            classNames={{
-              inputWrapper: "bg-zinc-800/50 border-zinc-700",
-            }}
-            size="sm"
-            isClearable
-            onClear={() => setSearchQuery("")}
-          />
+            </InputGroup.Prefix>
+            <InputGroup.Input
+              placeholder="Search integrations..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            <InputGroup.Suffix>
+              <button
+                type="button"
+                aria-label="Clear search"
+                onClick={() => setSearchQuery("")}
+                className="cursor-pointer text-zinc-500 hover:text-zinc-300"
+              >
+                <Cancel01Icon width={18} height={18} />
+              </button>
+            </InputGroup.Suffix>
+          </InputGroup>
         </div>
 
         {/* Category Filter */}
@@ -383,8 +374,8 @@ export default function DemoIntegrationsView({
           {DEMO_CATEGORIES.map((cat) => (
             <Chip
               key={cat}
-              variant={selectedCategory === cat ? "solid" : "flat"}
-              color={selectedCategory === cat ? "primary" : "default"}
+              variant="primary"
+              color={selectedCategory === cat ? "accent" : "default"}
               className="cursor-pointer select-none"
               onClick={() => setSelectedCategory(cat)}
             >
@@ -401,7 +392,7 @@ export default function DemoIntegrationsView({
               <div className="mb-8">
                 <div className="mb-4 flex items-center gap-3 pl-4">
                   <h2 className="text-base font-semibold">Featured</h2>
-                  <Chip size="sm" variant="flat" color="primary">
+                  <Chip size="sm" variant="tertiary" color="accent">
                     {featuredIntegrations.length}
                   </Chip>
                 </div>
@@ -424,7 +415,7 @@ export default function DemoIntegrationsView({
                   <h2 className="text-base font-semibold">
                     {CATEGORY_LABELS[category] || category}
                   </h2>
-                  <Chip size="sm" variant="flat" color="default">
+                  <Chip size="sm" variant="tertiary" color="default">
                     {items.length}
                   </Chip>
                 </div>
@@ -446,7 +437,7 @@ export default function DemoIntegrationsView({
               <h2 className="text-base font-semibold">
                 {CATEGORY_LABELS[selectedCategory] || selectedCategory}
               </h2>
-              <Chip size="sm" variant="flat" color="default">
+              <Chip size="sm" variant="tertiary" color="default">
                 {filteredIntegrations.length}
               </Chip>
             </div>

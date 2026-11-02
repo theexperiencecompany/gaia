@@ -1,0 +1,82 @@
+/* HeroUI v3 — trimmed entry.
+ * Upstream `@heroui/styles` re-imports Tailwind and every one of its 85 component
+ * stylesheets. We already import Tailwind in globals.css and use 70 of them,
+ * so importing them selectively avoids shipping the whole library (~450 kB) per route.
+ * Order is preserved from upstream (shared primitives must come first). */
+@import "@heroui/styles/base" layer(base);
+@import "@heroui/styles/base/scrollbar.css" layer(base);
+
+@import "@heroui/styles/components/close-button.css";
+@import "@heroui/styles/components/description.css";
+@import "@heroui/styles/components/error-message.css";
+@import "@heroui/styles/components/field-error.css";
+@import "@heroui/styles/components/label.css";
+@import "@heroui/styles/components/accordion.css";
+@import "@heroui/styles/components/breadcrumbs.css";
+@import "@heroui/styles/components/disclosure.css";
+@import "@heroui/styles/components/link.css";
+@import "@heroui/styles/components/pagination.css";
+@import "@heroui/styles/components/tabs.css";
+@import "@heroui/styles/components/button.css";
+@import "@heroui/styles/components/button-group.css";
+@import "@heroui/styles/components/toggle-button.css";
+@import "@heroui/styles/components/toolbar.css";
+@import "@heroui/styles/components/dropdown.css";
+@import "@heroui/styles/components/list-box-item.css";
+@import "@heroui/styles/components/list-box-section.css";
+@import "@heroui/styles/components/list-box.css";
+@import "@heroui/styles/components/menu-item.css";
+@import "@heroui/styles/components/menu-section.css";
+@import "@heroui/styles/components/menu.css";
+@import "@heroui/styles/components/tag-group.css";
+@import "@heroui/styles/components/tag.css";
+@import "@heroui/styles/components/slider.css";
+@import "@heroui/styles/components/switch.css";
+@import "@heroui/styles/components/badge.css";
+@import "@heroui/styles/components/chip.css";
+@import "@heroui/styles/components/table.css";
+@import "@heroui/styles/components/alert.css";
+@import "@heroui/styles/components/empty-state.css";
+@import "@heroui/styles/components/skeleton.css";
+@import "@heroui/styles/components/meter.css";
+@import "@heroui/styles/components/progress-bar.css";
+@import "@heroui/styles/components/spinner.css";
+@import "@heroui/styles/components/toast.css";
+@import "@heroui/styles/components/checkbox-group.css";
+@import "@heroui/styles/components/checkbox.css";
+@import "@heroui/styles/components/fieldset.css";
+@import "@heroui/styles/components/input-otp.css";
+@import "@heroui/styles/components/input.css";
+@import "@heroui/styles/components/input-group.css";
+@import "@heroui/styles/components/number-field.css";
+@import "@heroui/styles/components/radio-group.css";
+@import "@heroui/styles/components/radio.css";
+@import "@heroui/styles/components/textfield.css";
+@import "@heroui/styles/components/search-field.css";
+@import "@heroui/styles/components/textarea.css";
+@import "@heroui/styles/components/calendar.css";
+@import "@heroui/styles/components/date-field.css";
+@import "@heroui/styles/components/time-field.css";
+@import "@heroui/styles/components/date-picker.css";
+@import "@heroui/styles/components/card.css";
+@import "@heroui/styles/components/header.css";
+@import "@heroui/styles/components/separator.css";
+@import "@heroui/styles/components/surface.css";
+@import "@heroui/styles/components/avatar.css";
+@import "@heroui/styles/components/avatar-group.css";
+@import "@heroui/styles/components/alert-dialog.css";
+@import "@heroui/styles/components/drawer.css";
+@import "@heroui/styles/components/sheet.css";
+@import "@heroui/styles/components/modal.css";
+@import "@heroui/styles/components/popover.css";
+@import "@heroui/styles/components/tooltip.css";
+@import "@heroui/styles/components/combo-box.css";
+@import "@heroui/styles/components/select.css";
+@import "@heroui/styles/components/autocomplete.css";
+@import "@heroui/styles/components/kbd.css";
+@import "@heroui/styles/components/typography.css";
+@import "@heroui/styles/components/scroll-shadow.css";
+
+@import "@heroui/styles/themes/default" layer(theme);
+@import "@heroui/styles/utilities";
+@import "@heroui/styles/variants";

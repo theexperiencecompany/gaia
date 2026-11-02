@@ -1,13 +1,16 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import {
+  Button,
+  Description,
   Dropdown,
   DropdownItem,
   DropdownMenu,
+  DropdownPopover,
   DropdownTrigger,
-} from "@heroui/dropdown";
-import { Tooltip } from "@heroui/tooltip";
+  Label,
+  Tooltip,
+} from "@heroui/react";
 import { PlayIcon, RedoIcon, SparklesIcon, ZapIcon } from "@icons";
 import { isWorkflowStatusFresh } from "@shared/todos";
 import { useCallback, useEffect, useState } from "react";
@@ -254,50 +257,47 @@ export default function WorkflowSection({
         {(hasWorkflow || error) && (
           <div className="flex items-center gap-2">
             {hasWorkflow ? (
-              <Dropdown placement="bottom-end">
+              <Dropdown>
                 <DropdownTrigger>
                   <Button
-                    color="default"
-                    variant="flat"
+                    variant="tertiary"
                     size="sm"
-                    isLoading={isGenerating}
+                    isPending={isGenerating}
                     isDisabled={isGenerating}
-                    startContent={
-                      !isGenerating && (
-                        <RedoIcon className="h-4 w-4 text-zinc-400" />
-                      )
-                    }
-                    endContent={
-                      !isGenerating && (
-                        <ChevronDown className="h-3 w-3 text-zinc-400" />
-                      )
-                    }
                   >
+                    {!isGenerating && (
+                      <RedoIcon className="h-4 w-4 text-zinc-400" />
+                    )}
                     {isGenerating ? "Regenerating..." : "Regenerate"}
+                    {!isGenerating && (
+                      <ChevronDown className="h-3 w-3 text-zinc-400" />
+                    )}
                   </Button>
                 </DropdownTrigger>
-                <DropdownMenu
-                  aria-label="Regeneration reasons"
-                  onAction={(key) => handleRegenerate(key as string)}
-                  disabledKeys={
-                    isGenerating ? regenerationReasons.map((r) => r.key) : []
-                  }
-                >
-                  {regenerationReasons.map((reason) => (
-                    <DropdownItem
-                      key={reason.key}
-                      textValue={reason.label}
-                      description={reason.description}
-                    >
-                      {reason.label}
-                    </DropdownItem>
-                  ))}
-                </DropdownMenu>
+                <DropdownPopover placement="bottom end">
+                  <DropdownMenu
+                    aria-label="Regeneration reasons"
+                    onAction={(key) => handleRegenerate(key as string)}
+                    disabledKeys={
+                      isGenerating ? regenerationReasons.map((r) => r.key) : []
+                    }
+                  >
+                    {regenerationReasons.map((reason) => (
+                      <DropdownItem
+                        key={reason.key}
+                        id={reason.key}
+                        textValue={reason.label}
+                      >
+                        <Label>{reason.label}</Label>
+                        <Description>{reason.description}</Description>
+                      </DropdownItem>
+                    ))}
+                  </DropdownMenu>
+                </DropdownPopover>
               </Dropdown>
             ) : (
               <Button
-                color="default"
-                variant="flat"
+                variant="tertiary"
                 size="sm"
                 onPress={handleGenerate}
                 isIconOnly
@@ -309,17 +309,21 @@ export default function WorkflowSection({
               </Button>
             )}
             {hasWorkflow && (
-              <Tooltip content="Run workflow" placement="bottom">
-                <Button
-                  color="success"
-                  variant="flat"
-                  size="sm"
-                  onPress={handleRun}
-                  isDisabled={isGenerating}
-                  isIconOnly
-                >
-                  <PlayIcon className="h-4 w-4" />
-                </Button>
+              <Tooltip>
+                <Tooltip.Trigger>
+                  <Button
+                    variant="tertiary"
+                    size="sm"
+                    onPress={handleRun}
+                    isDisabled={isGenerating}
+                    isIconOnly
+                  >
+                    <PlayIcon className="h-4 w-4" />
+                  </Button>
+                </Tooltip.Trigger>
+                <Tooltip.Content placement="bottom">
+                  Run workflow
+                </Tooltip.Content>
               </Tooltip>
             )}
           </div>
@@ -361,13 +365,8 @@ export default function WorkflowSection({
                   <p className="text-sm">No workflow generated yet</p>
                 )}
               </div>
-              <Button
-                color="primary"
-                variant="flat"
-                size="sm"
-                onPress={handleGenerate}
-                startContent={<SparklesIcon className="h-4 w-4" />}
-              >
+              <Button variant="tertiary" size="sm" onPress={handleGenerate}>
+                <SparklesIcon className="h-4 w-4" />
                 {error ? "Retry" : "Generate Workflow"}
               </Button>
               <p className="mx-auto max-w-sm text-xs text-zinc-500">

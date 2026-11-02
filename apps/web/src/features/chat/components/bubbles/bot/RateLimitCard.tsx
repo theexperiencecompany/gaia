@@ -1,6 +1,4 @@
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Divider } from "@heroui/divider";
+import { Button, Chip, Separator } from "@heroui/react";
 import { Clock01Icon, UploadCircle01Icon } from "@icons";
 import type { RateLimitData } from "@shared/chat";
 import { useRateLimitCard } from "@/features/chat/hooks/useRateLimitCard";
@@ -48,18 +46,15 @@ export default function RateLimitCard({ data }: RateLimitCardProps) {
 
         <Chip
           size="sm"
-          variant="flat"
+          variant="tertiary"
           color={isUpgradeRequired ? "warning" : "danger"}
-          classNames={{
-            base: `shrink-0 ${isUpgradeRequired ? "bg-warning/15" : "bg-red-500/15"}`,
-            content: "text-xs font-semibold",
-          }}
+          className={`shrink-0 text-xs font-semibold ${isUpgradeRequired ? "bg-warning/15" : "bg-red-500/15"}`}
         >
           {isUpgradeRequired ? planName : "Limit Hit"}
         </Chip>
       </div>
 
-      <Divider className="bg-zinc-700/50" />
+      <Separator className="bg-zinc-700/50" />
 
       {/* Body */}
       <div className="flex flex-col gap-3 p-4">
@@ -80,14 +75,13 @@ export default function RateLimitCard({ data }: RateLimitCardProps) {
 
       {showFooter && (
         <>
-          <Divider className="bg-zinc-700/50" />
+          <Separator className="bg-zinc-700/50" />
 
           {/* Footer CTA */}
           <div className="p-3">
             <Button
               size="sm"
-              color="primary"
-              variant={isUpgradeRequired ? "solid" : "flat"}
+              variant={isUpgradeRequired ? "primary" : "tertiary"}
               onPress={openPlans}
               className="w-full rounded-xl font-medium"
             >

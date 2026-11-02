@@ -1,13 +1,13 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
 import {
+  Button,
+  Chip,
   Dropdown,
   DropdownItem,
   DropdownMenu,
   DropdownTrigger,
-} from "@heroui/dropdown";
+} from "@heroui/react";
 import {
   Delete02Icon,
   MoreHorizontalIcon,
@@ -50,65 +50,75 @@ export function IntegrationAccountRow({
         )}
       </div>
       {account.isPrimary && (
-        <Chip size="sm" variant="flat" color="primary">
+        <Chip size="sm" variant="tertiary" color="accent">
           Primary
         </Chip>
       )}
       {isExpired && (
-        <Chip size="sm" variant="flat" color="warning">
+        <Chip size="sm" variant="tertiary" color="warning">
           Expired
         </Chip>
       )}
-      <Dropdown placement="bottom-end">
+      <Dropdown>
         <DropdownTrigger>
           <Button
             isIconOnly
             size="sm"
-            variant="light"
-            isLoading={isPending}
+            variant="tertiary"
+            isPending={isPending}
             aria-label={`Manage ${account.displayName}`}
           >
             <MoreHorizontalIcon className="size-4" />
           </Button>
         </DropdownTrigger>
-        <DropdownMenu
-          aria-label={`Actions for ${account.displayName}`}
-          disabledKeys={account.isPrimary || isExpired ? ["primary"] : []}
-        >
-          {isExpired ? (
-            <DropdownItem
-              key="reconnect"
-              startContent={<RefreshIcon className="size-4" />}
-              onPress={onReconnect}
-            >
-              Reconnect
-            </DropdownItem>
-          ) : (
-            <DropdownItem
-              key="primary"
-              startContent={<StarIcon className="size-4" />}
-              onPress={onMakePrimary}
-            >
-              Make primary
-            </DropdownItem>
-          )}
-          <DropdownItem
-            key="rename"
-            startContent={<PencilEdit02Icon className="size-4" />}
-            onPress={onRename}
+        <Dropdown.Popover placement="bottom end">
+          <DropdownMenu
+            aria-label={`Actions for ${account.displayName}`}
+            disabledKeys={account.isPrimary || isExpired ? ["primary"] : []}
           >
-            Rename
-          </DropdownItem>
-          <DropdownItem
-            key="remove"
-            color="danger"
-            className="text-danger"
-            startContent={<Delete02Icon className="size-4" />}
-            onPress={onRemove}
-          >
-            Disconnect
-          </DropdownItem>
-        </DropdownMenu>
+            {isExpired ? (
+              <DropdownItem
+                id="reconnect"
+                key="reconnect"
+                textValue="Reconnect"
+                onAction={onReconnect}
+              >
+                <RefreshIcon className="size-4" />
+                Reconnect
+              </DropdownItem>
+            ) : (
+              <DropdownItem
+                id="primary"
+                key="primary"
+                textValue="Make primary"
+                onAction={onMakePrimary}
+              >
+                <StarIcon className="size-4" />
+                Make primary
+              </DropdownItem>
+            )}
+            <DropdownItem
+              id="rename"
+              key="rename"
+              textValue="Rename"
+              onAction={onRename}
+            >
+              <PencilEdit02Icon className="size-4" />
+              Rename
+            </DropdownItem>
+            <DropdownItem
+              id="remove"
+              key="remove"
+              textValue="Disconnect"
+              variant="danger"
+              className="text-danger"
+              onAction={onRemove}
+            >
+              <Delete02Icon className="size-4" />
+              Disconnect
+            </DropdownItem>
+          </DropdownMenu>
+        </Dropdown.Popover>
       </Dropdown>
     </div>
   );

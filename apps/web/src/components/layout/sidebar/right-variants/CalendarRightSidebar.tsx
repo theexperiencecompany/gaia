@@ -1,9 +1,14 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Input, Textarea } from "@heroui/input";
-import { Select, SelectItem } from "@heroui/select";
-import { Switch } from "@heroui/switch";
+import {
+  Button,
+  Input,
+  Label,
+  ListBox,
+  Select,
+  Switch,
+  TextArea,
+} from "@heroui/react";
 import { Delete02Icon, RepeatIcon, UserCircleIcon } from "@icons";
 import React, { useEffectEvent } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
@@ -81,28 +86,16 @@ const EventTitleFields: React.FC<EventTitleFieldsProps> = ({
       value={summary}
       onChange={(e) => onSummaryChange(e.target.value)}
       placeholder="Event title"
-      classNames={{
-        input:
-          "text-2xl  bg-transparent text-zinc-100 placeholder:text-zinc-700",
-        inputWrapper:
-          "bg-transparent shadow-none hover:bg-transparent focus:bg-transparent data-[focus=true]:bg-transparent data-[hover=true]:bg-transparent border-red-500!",
-      }}
-      variant="underlined"
+      className="border-b border-zinc-700 bg-transparent px-0 text-2xl text-zinc-100 shadow-none placeholder:text-zinc-700 hover:bg-transparent focus:bg-transparent"
       autoFocus={isCreating}
     />
 
-    <Textarea
+    <TextArea
       value={description}
       onChange={(e) => onDescriptionChange(e.target.value)}
       placeholder="Add description"
-      minRows={6}
-      maxRows={6}
-      classNames={{
-        input: "bg-transparent text-zinc-200 placeholder:text-zinc-700",
-        inputWrapper:
-          "bg-zinc-800/30 hover:bg-zinc-800/50 data-[hover=true]:bg-zinc-800/50 shadow-none",
-      }}
-      variant="flat"
+      rows={6}
+      className="bg-zinc-800/30 text-zinc-200 placeholder:text-zinc-700 hover:bg-zinc-800/50"
     />
   </div>
 );
@@ -126,12 +119,7 @@ const EventDateTimeSection: React.FC<EventDateTimeSectionProps> = ({
 }) => (
   <>
     {/* All-day Toggle */}
-    <Switch
-      isSelected={isAllDay}
-      onValueChange={onAllDayChange}
-      size="sm"
-      color="primary"
-    >
+    <Switch isSelected={isAllDay} onChange={onAllDayChange} size="sm">
       <span className="text-sm text-zinc-500">All-day event</span>
     </Switch>
 
@@ -184,43 +172,42 @@ const RecurrenceSelector: React.FC<RecurrenceSelectorProps> = ({
 }) => (
   <div className="space-y-3">
     <Select
-      label="Repeat"
-      selectedKeys={recurrenceType ? [recurrenceType] : []}
-      selectionMode="single"
-      onSelectionChange={(keys) => {
-        const selected = Array.from(keys)[0] as string;
-        if (selected) onRecurrenceTypeChange(selected);
+      selectedKey={recurrenceType || null}
+      onSelectionChange={(key) => {
+        if (key != null) onRecurrenceTypeChange(String(key));
       }}
-      classNames={{
-        trigger:
-          "bg-zinc-800/30 hover:bg-zinc-800/50 data-[hover=true]:bg-zinc-800/50 shadow-none",
-        value: "text-zinc-200",
-        popoverContent: "bg-zinc-900 border border-zinc-800",
-        label: "text-zinc-400",
-      }}
-      startContent={<RepeatIcon className="size-4 text-zinc-500" />}
     >
-      <SelectItem key="none" textValue="Does not repeat">
-        Does not repeat
-      </SelectItem>
-      <SelectItem key="daily" textValue="Daily">
-        Daily
-      </SelectItem>
-      <SelectItem key="weekdays" textValue="Every weekday (Mon-Fri)">
-        Every weekday (Mon-Fri)
-      </SelectItem>
-      <SelectItem key="weekly" textValue="Weekly">
-        Weekly
-      </SelectItem>
-      <SelectItem key="monthly" textValue="Monthly">
-        Monthly
-      </SelectItem>
-      <SelectItem key="yearly" textValue="Yearly">
-        Yearly
-      </SelectItem>
-      <SelectItem key="custom" textValue="Custom (select days)">
-        Custom (select days)
-      </SelectItem>
+      <Label className="text-zinc-400">Repeat</Label>
+      <Select.Trigger className="bg-zinc-800/30 shadow-none hover:bg-zinc-800/50">
+        <RepeatIcon className="size-4 text-zinc-500" />
+        <Select.Value className="text-zinc-200" />
+        <Select.Indicator />
+      </Select.Trigger>
+      <Select.Popover className="border border-zinc-800 bg-zinc-900">
+        <ListBox>
+          <ListBox.Item id="none" textValue="Does not repeat">
+            Does not repeat
+          </ListBox.Item>
+          <ListBox.Item id="daily" textValue="Daily">
+            Daily
+          </ListBox.Item>
+          <ListBox.Item id="weekdays" textValue="Every weekday (Mon-Fri)">
+            Every weekday (Mon-Fri)
+          </ListBox.Item>
+          <ListBox.Item id="weekly" textValue="Weekly">
+            Weekly
+          </ListBox.Item>
+          <ListBox.Item id="monthly" textValue="Monthly">
+            Monthly
+          </ListBox.Item>
+          <ListBox.Item id="yearly" textValue="Yearly">
+            Yearly
+          </ListBox.Item>
+          <ListBox.Item id="custom" textValue="Custom (select days)">
+            Custom (select days)
+          </ListBox.Item>
+        </ListBox>
+      </Select.Popover>
     </Select>
 
     {recurrenceType === "custom" && (
@@ -261,23 +248,15 @@ const CalendarSelector: React.FC<CalendarSelectorProps> = ({
 }) => (
   <div className="space-y-3">
     <Select
-      label="Calendar"
-      selectedKeys={selectedCalendarId ? [selectedCalendarId] : []}
-      selectionMode="single"
-      onSelectionChange={(keys) => {
-        const selected = Array.from(keys)[0] as string;
-        if (selected) onCalendarChange(selected);
+      selectedKey={selectedCalendarId || null}
+      onSelectionChange={(key) => {
+        if (key != null) onCalendarChange(String(key));
       }}
       isRequired
-      classNames={{
-        trigger:
-          "bg-zinc-800/30 hover:bg-zinc-800/50 data-[hover=true]:bg-zinc-800/50 shadow-none",
-        value: "text-zinc-200",
-        popoverContent: "bg-zinc-900 border border-zinc-800",
-        label: "text-zinc-400",
-      }}
-      startContent={
-        selectedCalendarId && (
+    >
+      <Label className="text-zinc-400">Calendar</Label>
+      <Select.Trigger className="bg-zinc-800/30 shadow-none hover:bg-zinc-800/50">
+        {selectedCalendarId && (
           <div
             className="size-3 rounded-full"
             style={{
@@ -286,26 +265,30 @@ const CalendarSelector: React.FC<CalendarSelectorProps> = ({
                   ?.backgroundColor || "#3b82f6",
             }}
           />
-        )
-      }
-    >
-      {calendars.map((cal) => (
-        <SelectItem
-          key={cal.id}
-          textValue={`${cal.name || cal.summary}${cal.primary ? " (Primary)" : ""}`}
-          startContent={
-            <div
-              className="size-3 rounded-full"
-              style={{
-                backgroundColor: cal.backgroundColor || "#3b82f6",
-              }}
-            />
-          }
-        >
-          {cal.name || cal.summary}
-          {cal.primary ? " (Primary)" : ""}
-        </SelectItem>
-      ))}
+        )}
+        <Select.Value className="text-zinc-200" />
+        <Select.Indicator />
+      </Select.Trigger>
+      <Select.Popover className="border border-zinc-800 bg-zinc-900">
+        <ListBox>
+          {calendars.map((cal) => (
+            <ListBox.Item
+              key={cal.id}
+              id={cal.id}
+              textValue={`${cal.name || cal.summary}${cal.primary ? " (Primary)" : ""}`}
+            >
+              <div
+                className="size-3 rounded-full"
+                style={{
+                  backgroundColor: cal.backgroundColor || "#3b82f6",
+                }}
+              />
+              {cal.name || cal.summary}
+              {cal.primary ? " (Primary)" : ""}
+            </ListBox.Item>
+          ))}
+        </ListBox>
+      </Select.Popover>
     </Select>
   </div>
 );
@@ -545,10 +528,10 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
           {isCreating ? (
             <Button
               onPress={onCreate}
-              disabled={isSaving || !summary.trim()}
-              color="primary"
+              isDisabled={isSaving || !summary.trim()}
               fullWidth
-              isLoading={isSaving}
+              isPending={isSaving}
+              variant="primary"
             >
               {isSaving ? "Creating..." : "Create Event"}
             </Button>

@@ -1,6 +1,6 @@
 "use client";
 
-import { Card, CardBody, CardHeader } from "@heroui/card";
+import { Card } from "@heroui/react";
 import { ViewIcon } from "@icons";
 import Markdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
@@ -14,13 +14,13 @@ interface MarkdownPreviewProps {
 export function MarkdownPreview({ content, title }: MarkdownPreviewProps) {
   return (
     <Card className="max-h-96 overflow-hidden">
-      <CardHeader className="pb-3">
+      <Card.Header className="pb-3">
         <div className="flex items-center gap-2">
           <ViewIcon className="h-4 w-4 text-primary" />
           <h3 className="text-sm font-medium">Preview</h3>
         </div>
-      </CardHeader>
-      <CardBody className="overflow-y-auto pt-0">
+      </Card.Header>
+      <Card.Content className="overflow-y-auto pt-0">
         {title && (
           <h1 className="mb-4 text-2xl font-bold text-foreground">{title}</h1>
         )}
@@ -69,7 +69,7 @@ export function MarkdownPreview({ content, title }: MarkdownPreviewProps) {
             {content || "*Start typing to see preview...*"}
           </Markdown>
         </div>
-      </CardBody>
+      </Card.Content>
     </Card>
   );
 }

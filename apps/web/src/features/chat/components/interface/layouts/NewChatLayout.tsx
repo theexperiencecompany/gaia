@@ -1,4 +1,4 @@
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import type React from "react";
 import { useState } from "react";
 import { ChevronUp } from "@/components/shared/icons";
@@ -43,8 +43,7 @@ export const NewChatLayout: React.FC<NewChatLayoutProps> = ({
         {!showUseCases && (
           <Button
             className="font-medium text-zinc-300"
-            radius="full"
-            variant="flat"
+            variant="tertiary"
             onPress={() => setShowUseCases(true)}
           >
             Explore Use Cases <ChevronUp />

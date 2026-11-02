@@ -1,15 +1,7 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
-import { Link } from "@heroui/link";
-import {
-  Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-} from "@heroui/modal";
+import { Button, FieldError, Input, Modal, TextField } from "@heroui/react";
+import type { AnchorHTMLAttributes } from "react";
 import { useState } from "react";
 import CopyButton from "@/components/ui/CopyButton";
 
@@ -43,7 +35,7 @@ function CopyableValue({ label, value }: { label: string; value: string }) {
 }
 
 /**
- * The phone-entry branch of the modal. Rendered inside `<ModalContent>`, so it
+ * The phone-entry branch of the modal. Rendered inside the dialog body, so it
  * unmounts when the modal closes and `phone` starts empty on every open — no
  * reset effect needed.
  */
@@ -57,39 +49,41 @@ function PhoneNumberForm({
   "platformName" | "isSubmitting" | "onSubmit" | "onClose"
 >) {
   const [phone, setPhone] = useState("");
+  const isInvalid = phone.length > 0 && !E164_PHONE_PATTERN.test(phone);
 
   return (
     <>
-      <ModalHeader>Your phone number</ModalHeader>
-      <ModalBody>
+      <Modal.Header>Your phone number</Modal.Header>
+      <Modal.Body>
         <p className="text-sm text-zinc-400">
           {platformName} delivers to registered numbers only, so GAIA needs the
           number you text from.
         </p>
-        <Input
-          autoFocus
-          type="tel"
-          placeholder="+15551234567"
-          value={phone}
-          onValueChange={setPhone}
-          isInvalid={phone.length > 0 && !E164_PHONE_PATTERN.test(phone)}
-          errorMessage="Use E.164 format, e.g. +15551234567"
-        />
-      </ModalBody>
-      <ModalFooter>
-        <Button variant="flat" size="sm" onPress={onClose}>
+        <TextField isInvalid={isInvalid}>
+          <Input
+            autoFocus
+            type="tel"
+            placeholder="+15551234567"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+          />
+          <FieldError>Use E.164 format, e.g. +15551234567</FieldError>
+        </TextField>
+      </Modal.Body>
+      <Modal.Footer>
+        <Button variant="tertiary" size="sm" onPress={onClose}>
           Cancel
         </Button>
         <Button
-          color="primary"
           size="sm"
-          isLoading={isSubmitting}
+          isPending={isSubmitting}
           isDisabled={!E164_PHONE_PATTERN.test(phone)}
           onPress={() => onSubmit(phone)}
+          variant="primary"
         >
           Continue
         </Button>
-      </ModalFooter>
+      </Modal.Footer>
     </>
   );
 }
@@ -103,50 +97,65 @@ export function PhoneLinkModal({
   onClose,
 }: PhoneLinkModalProps) {
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="sm">
-      <ModalContent>
-        {target ? (
-          <>
-            <ModalHeader>Text GAIA to finish linking</ModalHeader>
-            <ModalBody className="gap-2">
-              <p className="text-sm text-zinc-400">
-                Send {target.command} to this number from the phone you just
-                registered.
-              </p>
-              <CopyableValue label="Number" value={target.contactNumber} />
-              <CopyableValue label="Send" value={target.command} />
-              {target.actionLink && (
-                <div className="pt-1">
-                  <Button
-                    as={Link}
-                    href={target.actionLink}
-                    isExternal
-                    variant="flat"
-                    size="sm"
-                  >
-                    Open in Messages
-                  </Button>
-                  <p className="pt-1.5 text-xs text-zinc-500">
-                    Opens the Messages app on iPhone and Mac only.
+    <Modal
+      isOpen={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <Modal.Backdrop>
+        <Modal.Container size="sm">
+          <Modal.Dialog>
+            <Modal.CloseTrigger aria-label="Close" />
+            {target ? (
+              <>
+                <Modal.Header>Text GAIA to finish linking</Modal.Header>
+                <Modal.Body className="gap-2">
+                  <p className="text-sm text-zinc-400">
+                    Send {target.command} to this number from the phone you just
+                    registered.
                   </p>
-                </div>
-              )}
-            </ModalBody>
-            <ModalFooter>
-              <Button color="primary" size="sm" onPress={onClose}>
-                Done
-              </Button>
-            </ModalFooter>
-          </>
-        ) : (
-          <PhoneNumberForm
-            platformName={platformName}
-            isSubmitting={isSubmitting}
-            onSubmit={onSubmit}
-            onClose={onClose}
-          />
-        )}
-      </ModalContent>
+                  <CopyableValue label="Number" value={target.contactNumber} />
+                  <CopyableValue label="Send" value={target.command} />
+                  {target.actionLink && (
+                    <div className="pt-1">
+                      <Button
+                        render={(props) => (
+                          <a
+                            {...(props as unknown as AnchorHTMLAttributes<HTMLAnchorElement>)}
+                            href={target.actionLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          />
+                        )}
+                        variant="tertiary"
+                        size="sm"
+                      >
+                        Open in Messages
+                      </Button>
+                      <p className="pt-1.5 text-xs text-zinc-500">
+                        Opens the Messages app on iPhone and Mac only.
+                      </p>
+                    </div>
+                  )}
+                </Modal.Body>
+                <Modal.Footer>
+                  <Button size="sm" onPress={onClose} variant="primary">
+                    Done
+                  </Button>
+                </Modal.Footer>
+              </>
+            ) : (
+              <PhoneNumberForm
+                platformName={platformName}
+                isSubmitting={isSubmitting}
+                onSubmit={onSubmit}
+                onClose={onClose}
+              />
+            )}
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
     </Modal>
   );
 }

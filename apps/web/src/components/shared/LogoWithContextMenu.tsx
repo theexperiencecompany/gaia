@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { buttonVariants } from "@heroui/react";
 import {
   Copy01Icon,
   DownloadCircle01Icon,
@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/context-menu";
 import { copyText } from "@/lib/clipboard";
 import { toast } from "@/lib/toast";
+import { cn } from "@/lib/utils";
 
 const menuItemsConfig = [
   {
@@ -194,7 +195,10 @@ export function LogoWithContextMenu({
   return (
     <ContextMenu onOpenChange={setIsOpen} modal={false}>
       <ContextMenuTrigger asChild>
-        <Button as={Link} href={"/"} variant="light" className={className}>
+        <Link
+          href="/"
+          className={cn(buttonVariants({ variant: "ghost" }), className)}
+        >
           <div className="transition-transform duration-200 hover:scale-[1.02]">
             <Image
               src="/images/logos/text_w_logo_white.webp"
@@ -205,7 +209,7 @@ export function LogoWithContextMenu({
               className={imageClassName}
             />
           </div>
-        </Button>
+        </Link>
       </ContextMenuTrigger>
       {isOpen && (
         <ContextMenuContent className="rounded-2xl bg-primary-bg/70 p-1.5">

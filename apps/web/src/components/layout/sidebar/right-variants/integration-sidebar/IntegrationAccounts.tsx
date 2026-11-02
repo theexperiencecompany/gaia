@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Skeleton } from "@heroui/skeleton";
+import { Button, Skeleton } from "@heroui/react";
 import { PlusSignIcon } from "@icons";
 import type { IntegrationAccountResponse } from "@shared/api/generated";
 import { useState } from "react";
@@ -81,12 +80,12 @@ export function IntegrationAccounts({
       ))}
       <Button
         size="sm"
-        variant="flat"
-        startContent={<PlusSignIcon className="size-4" />}
-        isLoading={isAdding}
+        variant="tertiary"
+        isPending={isAdding}
         isDisabled={atLimit}
         onPress={addAccount}
       >
+        <PlusSignIcon className="size-4" />
         {atLimit
           ? `${maxAccounts} accounts connected (the maximum)`
           : "Add another account"}

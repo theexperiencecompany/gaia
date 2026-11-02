@@ -1,9 +1,12 @@
-import { Accordion, AccordionItem } from "@heroui/accordion";
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Link } from "@heroui/link";
-import { ScrollShadow } from "@heroui/scroll-shadow";
-import { Tooltip } from "@heroui/tooltip";
+import {
+  Accordion,
+  AccordionItem,
+  Button,
+  Chip,
+  Link,
+  ScrollShadow,
+  Tooltip,
+} from "@heroui/react";
 import { ArrowRight02Icon, ConnectIcon, InformationCircleIcon } from "@icons";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -31,19 +34,22 @@ function AccordionTitle({ title, count, tooltip }: AccordionTitleProps) {
       <span>{title}</span>
       <Chip
         size="sm"
-        variant="flat"
+        variant="tertiary"
         className="text-xs aspect-square flex items-center justify-center text-zinc-400"
       >
         {count}
       </Chip>
-      <Tooltip content={tooltip} placement="top" className="ml-auto">
-        <InformationCircleIcon
-          width={18}
-          height={18}
-          className="text-zinc-500 cursor-help"
-        >
-          <title>Information</title>
-        </InformationCircleIcon>
+      <Tooltip>
+        <Tooltip.Trigger className="ml-auto">
+          <InformationCircleIcon
+            width={18}
+            height={18}
+            className="text-zinc-500 cursor-help"
+          >
+            <title>Information</title>
+          </InformationCircleIcon>
+        </Tooltip.Trigger>
+        <Tooltip.Content placement="top">{tooltip}</Tooltip.Content>
       </Tooltip>
     </div>
   );
@@ -148,7 +154,7 @@ function IntegrationListSection({
                 {integration.name}
               </span>
               {isConnected && (
-                <Chip size="sm" variant="flat" color="success">
+                <Chip size="sm" variant="tertiary" color="success">
                   Connected
                 </Chip>
               )}
@@ -167,8 +173,7 @@ function IntegrationListSection({
         {!isConnected && isAvailable && !integration.instanceSetupRequired && (
           <Button
             size="sm"
-            variant="flat"
-            color="primary"
+            variant="tertiary"
             className="shrink-0 text-xs"
             onPress={(e) =>
               handleConnect(integration.id, e as unknown as React.MouseEvent)
@@ -207,7 +212,7 @@ function IntegrationListSection({
               <span className="text-sm font-medium text-white">
                 {suggestion.name}
               </span>
-              <Chip size="sm" variant="flat" color="secondary">
+              <Chip size="sm" variant="tertiary" color="accent">
                 Community
               </Chip>
             </div>
@@ -219,10 +224,9 @@ function IntegrationListSection({
 
         <Button
           size="sm"
-          variant="flat"
-          color="primary"
+          variant="tertiary"
           className="shrink-0 text-xs"
-          isLoading={isConnecting}
+          isPending={isConnecting}
           onPress={(e) =>
             handleConnectSuggested(suggestion, e as unknown as React.MouseEvent)
           }
@@ -244,63 +248,69 @@ function IntegrationListSection({
   // Build accordion items array
   const accordionItems = [
     connectedIntegrations.length > 0 ? (
-      <AccordionItem
-        key="connected"
-        aria-label="Connected"
-        title={
-          <AccordionTitle
-            title="Connected"
-            count={connectedIntegrations.length}
-            tooltip="Your active integrations"
-          />
-        }
-      >
-        <ScrollShadow className="max-h-[150px]">
-          {connectedIntegrations.map(renderIntegration)}
-        </ScrollShadow>
+      <AccordionItem key="connected" id="connected">
+        <Accordion.Heading className="text-xs font-semibold text-zinc-400">
+          <Accordion.Trigger className="py-2 cursor-pointer">
+            <AccordionTitle
+              title="Connected"
+              count={connectedIntegrations.length}
+              tooltip="Your active integrations"
+            />
+            <Accordion.Indicator />
+          </Accordion.Trigger>
+        </Accordion.Heading>
+        <Accordion.Panel className="pt-0 pb-4">
+          <ScrollShadow className="max-h-[150px]">
+            {connectedIntegrations.map(renderIntegration)}
+          </ScrollShadow>
+        </Accordion.Panel>
       </AccordionItem>
     ) : null,
     suggestedIntegrations.length > 0 ? (
-      <AccordionItem
-        key="suggested"
-        aria-label="Discover More"
-        title={
-          <AccordionTitle
-            title="Discover More"
-            count={suggestedIntegrations.length}
-            tooltip="Public integrations from the community marketplace"
-          />
-        }
-      >
-        <ScrollShadow className="max-h-[150px] divide-y divide-zinc-700">
-          {suggestedIntegrations.map(renderSuggested)}
-        </ScrollShadow>
-        <div className="mt-3 flex justify-center">
-          <Link
-            href="/marketplace"
-            className="text-xs text-primary hover:underline gap-1"
-          >
-            <span>Go to Marketplace</span>
-            <ArrowRight02Icon width={16} height={16} />
-          </Link>
-        </div>
+      <AccordionItem key="suggested" id="suggested">
+        <Accordion.Heading className="text-xs font-semibold text-zinc-400">
+          <Accordion.Trigger className="py-2 cursor-pointer">
+            <AccordionTitle
+              title="Discover More"
+              count={suggestedIntegrations.length}
+              tooltip="Public integrations from the community marketplace"
+            />
+            <Accordion.Indicator />
+          </Accordion.Trigger>
+        </Accordion.Heading>
+        <Accordion.Panel className="pt-0 pb-4">
+          <ScrollShadow className="max-h-[150px] divide-y divide-zinc-700">
+            {suggestedIntegrations.map(renderSuggested)}
+          </ScrollShadow>
+          <div className="mt-3 flex justify-center">
+            <Link
+              href="/marketplace"
+              className="text-xs text-primary hover:underline gap-1"
+            >
+              <span>Go to Marketplace</span>
+              <ArrowRight02Icon width={16} height={16} />
+            </Link>
+          </div>
+        </Accordion.Panel>
       </AccordionItem>
     ) : null,
     notConnectedIntegrations.length > 0 ? (
-      <AccordionItem
-        key="available"
-        aria-label="Available"
-        title={
-          <AccordionTitle
-            title="Available"
-            count={notConnectedIntegrations.length}
-            tooltip="Integrations provided natively by GAIA"
-          />
-        }
-      >
-        <ScrollShadow className="max-h-[200px]">
-          {notConnectedIntegrations.map(renderIntegration)}
-        </ScrollShadow>
+      <AccordionItem key="available" id="available">
+        <Accordion.Heading className="text-xs font-semibold text-zinc-400">
+          <Accordion.Trigger className="py-2 cursor-pointer">
+            <AccordionTitle
+              title="Available"
+              count={notConnectedIntegrations.length}
+              tooltip="Integrations provided natively by GAIA"
+            />
+            <Accordion.Indicator />
+          </Accordion.Trigger>
+        </Accordion.Heading>
+        <Accordion.Panel className="pt-0 pb-4">
+          <ScrollShadow className="max-h-[200px]">
+            {notConnectedIntegrations.map(renderIntegration)}
+          </ScrollShadow>
+        </Accordion.Panel>
       </AccordionItem>
     ) : null,
   ].filter(Boolean);
@@ -308,18 +318,10 @@ function IntegrationListSection({
   const content = (
     <div className="w-full max-w-2xl rounded-3xl bg-zinc-800 p-4 text-white">
       <Accordion
-        selectionMode="multiple"
-        // showDivider={false}
+        allowsMultipleExpanded
         defaultExpandedKeys={defaultExpandedKeys}
         className="px-0"
-        variant="light"
-        isCompact
-        itemClasses={{
-          base: "py-0",
-          title: "text-xs font-semibold text-zinc-400",
-          trigger: "py-2 cursor-pointer",
-          content: "pt-0 pb-4",
-        }}
+        variant="default"
       >
         {accordionItems}
       </Accordion>

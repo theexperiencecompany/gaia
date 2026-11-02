@@ -1,8 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Modal, ModalBody, ModalContent, useDisclosure } from "@heroui/modal";
+import { Button, Chip, Modal, useOverlayState } from "@heroui/react";
 import { Fire02Icon, Share08Icon } from "@icons";
 import type { ActivityDay, UsageActivity } from "@shared/types";
 import { formatCompactNumber, formatDateUTC } from "@shared/utils";
@@ -184,7 +182,7 @@ export function ActivityBadge({
   tier: UsageActivity["tier"];
   activity: UsageActivity;
 }) {
-  const { isOpen, onOpen, onOpenChange } = useDisclosure();
+  const { isOpen, open: onOpen, setOpen: onOpenChange } = useOverlayState();
 
   useEffect(() => {
     if (isOpen && tier) fireBadgeConfetti(tier);
@@ -207,7 +205,6 @@ export function ActivityBadge({
     <>
       <Button
         onPress={onOpen}
-        disableRipple
         className="flex h-auto w-44 shrink-0 flex-col items-center justify-start gap-1 rounded-2xl bg-zinc-900/60 p-4 text-center transition-colors data-[hover=true]:bg-zinc-800/70"
       >
         <Medal tier={tier} className="size-28" />
@@ -217,48 +214,48 @@ export function ActivityBadge({
         </p>
       </Button>
 
-      <Modal
-        isOpen={isOpen}
-        onOpenChange={onOpenChange}
-        size="sm"
-        placement="center"
-        backdrop="blur"
-      >
-        <ModalContent className="bg-zinc-900">
-          <ModalBody className="items-center gap-0 px-8 py-10 text-center">
-            <Medal
-              tier={tier}
-              className="size-44 drop-shadow-[0_10px_35px_rgba(0,0,0,0.55)]"
-            />
-            <p className="mt-6 text-2xl font-semibold text-white">{t.label}</p>
-            <p className="mt-1 text-sm text-zinc-400">
-              of GAIA users by activity
-            </p>
-            <div className="mt-5 flex items-center gap-5 text-sm text-zinc-500">
-              <span>
-                <span className="font-semibold text-zinc-200">
-                  {formatCompactNumber(activity.total)}
-                </span>{" "}
-                actions
-              </span>
-              <span>
-                <span className="font-semibold text-zinc-200">
-                  {activity.streak}
-                </span>
-                -day streak
-              </span>
-            </div>
-            <Button
-              className="mt-7 font-medium"
-              color="primary"
-              radius="full"
-              startContent={<Share08Icon size={16} />}
-              onPress={() => void shareActivity(activity)}
-            >
-              Share
-            </Button>
-          </ModalBody>
-        </ModalContent>
+      <Modal isOpen={isOpen} onOpenChange={onOpenChange}>
+        <Modal.Backdrop>
+          <Modal.Container placement="center" size="sm">
+            <Modal.Dialog className="bg-zinc-900">
+              <Modal.CloseTrigger aria-label="Close" />
+              <Modal.Body className="items-center gap-0 px-8 py-10 text-center">
+                <Medal
+                  tier={tier}
+                  className="size-44 drop-shadow-[0_10px_35px_rgba(0,0,0,0.55)]"
+                />
+                <p className="mt-6 text-2xl font-semibold text-white">
+                  {t.label}
+                </p>
+                <p className="mt-1 text-sm text-zinc-400">
+                  of GAIA users by activity
+                </p>
+                <div className="mt-5 flex items-center gap-5 text-sm text-zinc-500">
+                  <span>
+                    <span className="font-semibold text-zinc-200">
+                      {formatCompactNumber(activity.total)}
+                    </span>{" "}
+                    actions
+                  </span>
+                  <span>
+                    <span className="font-semibold text-zinc-200">
+                      {activity.streak}
+                    </span>
+                    -day streak
+                  </span>
+                </div>
+                <Button
+                  className="mt-7 font-medium"
+                  onPress={() => void shareActivity(activity)}
+                  variant="primary"
+                >
+                  <Share08Icon size={16} />
+                  Share
+                </Button>
+              </Modal.Body>
+            </Modal.Dialog>
+          </Modal.Container>
+        </Modal.Backdrop>
       </Modal>
     </>
   );
@@ -328,25 +325,18 @@ export function UsageHeatmap({ activity }: { activity: UsageActivity }) {
             actions
           </p>
           {activity.streak > 0 && (
-            <Chip
-              size="sm"
-              variant="flat"
-              radius="full"
-              classNames={{
-                base: "h-6 bg-orange-500/15",
-                content:
-                  "flex items-center gap-1 px-2 text-xs font-medium text-orange-400",
-              }}
-            >
+            <Chip size="sm" variant="tertiary" className="h-6 bg-orange-500/15">
               <Fire02Icon size={13} />
-              {activity.streak}-day streak
+              <Chip.Label className="flex items-center gap-1 px-2 text-xs font-medium text-orange-400">
+                {activity.streak}-day streak
+              </Chip.Label>
             </Chip>
           )}
         </div>
         <Button
           isIconOnly
           size="sm"
-          variant="light"
+          variant="tertiary"
           className="shrink-0 text-zinc-400 data-[hover=true]:text-zinc-100"
           aria-label="Share on X"
           onPress={() => void shareActivity(activity)}

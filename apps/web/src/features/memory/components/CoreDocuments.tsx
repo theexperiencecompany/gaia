@@ -1,10 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Divider } from "@heroui/divider";
-import { Textarea } from "@heroui/input";
-import { Skeleton } from "@heroui/skeleton";
-import { Tab, Tabs } from "@heroui/tabs";
+import { Button, Separator, Skeleton, Tabs, TextArea } from "@heroui/react";
 import { FileEmpty02Icon, PencilEdit02Icon } from "@icons";
 import type { MemoryDocType, MemoryDocument } from "@shared/api/generated";
 import { formatDistanceToNow } from "date-fns";
@@ -116,17 +112,16 @@ export function CoreDocuments() {
   if (draft !== null) {
     documentContent = (
       <div className="space-y-3">
-        <Textarea
+        <TextArea
           value={draft}
-          onValueChange={setDraft}
-          minRows={12}
-          maxRows={24}
+          onChange={(e) => setDraft(e.target.value)}
+          className="min-h-48"
           autoFocus
         />
         <div className="flex justify-end gap-2">
           <Button
             size="sm"
-            variant="light"
+            variant="tertiary"
             className="rounded-xl"
             onPress={() => setDraft(null)}
           >
@@ -134,10 +129,10 @@ export function CoreDocuments() {
           </Button>
           <Button
             size="sm"
-            color="primary"
             className="rounded-xl"
             onPress={handleSave}
-            isLoading={isSaving}
+            isPending={isSaving}
+            variant="primary"
           >
             Save
           </Button>
@@ -160,16 +155,24 @@ export function CoreDocuments() {
     <div className="space-y-3">
       {/* Inner doc tabs — same variant/size as the main memory tabs */}
       <Tabs
-        variant="solid"
-        radius="full"
+        variant="primary"
         selectedKey={selectedDocType}
         onSelectionChange={(key) => {
           setSelectedDocType(key as MemoryDocType);
           setDraft(null);
         }}
       >
+        <Tabs.List>
+          {CORE_DOCUMENTS.map((doc) => (
+            <Tabs.Tab key={doc.docType} id={doc.docType}>
+              {doc.fileName}
+            </Tabs.Tab>
+          ))}
+        </Tabs.List>
         {CORE_DOCUMENTS.map((doc) => (
-          <Tab key={doc.docType} title={doc.fileName} />
+          <Tabs.Panel key={doc.docType} id={doc.docType}>
+            {null}
+          </Tabs.Panel>
         ))}
       </Tabs>
 
@@ -182,7 +185,7 @@ export function CoreDocuments() {
         {/* Meta row — version + updated timestamp, separated by divider */}
         {document && (
           <>
-            <Divider className="my-3 bg-zinc-700/50" />
+            <Separator className="my-3 bg-zinc-700/50" />
             <div className="flex items-center justify-between gap-3">
               <p className="flex items-center gap-1.5 text-xs text-zinc-500">
                 <span>v{document.version}</span>
@@ -197,11 +200,11 @@ export function CoreDocuments() {
               {draft === null && (
                 <Button
                   size="sm"
-                  variant="flat"
+                  variant="tertiary"
                   className="shrink-0 rounded-xl"
-                  startContent={<PencilEdit02Icon className="size-4" />}
                   onPress={() => setDraft(document.content)}
                 >
+                  <PencilEdit02Icon className="size-4" />
                   Edit
                 </Button>
               )}

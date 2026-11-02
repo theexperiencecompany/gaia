@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import type { DesktopAppIconOption } from "@shared/desktop-tools";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
@@ -25,8 +25,7 @@ export function AppIconPicker({
           <Button
             key={icon.id}
             isIconOnly
-            variant="light"
-            disableRipple
+            variant="tertiary"
             aria-label={`${icon.label} app icon`}
             aria-pressed={isSelected}
             onPress={() => onSelect(icon.id)}

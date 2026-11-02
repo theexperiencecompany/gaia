@@ -1,8 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
-import { Switch } from "@heroui/switch";
+import { Button, InputGroup, Switch } from "@heroui/react";
 import { Search01Icon } from "@icons";
 import {
   type IntegrationPermissions,
@@ -46,9 +44,9 @@ export const PermissionToolList = ({
         permissions.deviations > 0 && (
           <Button
             size="sm"
-            variant="light"
+            variant="tertiary"
             className="-mr-1 h-7 shrink-0 px-2 text-xs text-zinc-400"
-            isLoading={permissions.isSavingTools}
+            isPending={permissions.isSavingTools}
             onPress={permissions.resetToDefaults}
           >
             Reset to defaults
@@ -63,9 +61,9 @@ export const PermissionToolList = ({
           </p>
           <Button
             size="sm"
-            variant="flat"
+            variant="tertiary"
             className="h-7 shrink-0"
-            isLoading={permissions.isSavingMode}
+            isPending={permissions.isSavingMode}
             onPress={() => permissions.changeMode("auto")}
           >
             Turn on
@@ -74,15 +72,16 @@ export const PermissionToolList = ({
       )}
 
       {tools.length > SEARCH_THRESHOLD && (
-        <Input
-          size="sm"
-          variant="flat"
-          className="mb-2"
-          placeholder="Search tools"
-          value={query}
-          onValueChange={setQuery}
-          startContent={<Search01Icon className="size-4 text-zinc-500" />}
-        />
+        <InputGroup className="mb-2" variant="secondary">
+          <InputGroup.Prefix>
+            <Search01Icon className="size-4 text-zinc-500" />
+          </InputGroup.Prefix>
+          <InputGroup.Input
+            placeholder="Search tools"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </InputGroup>
       )}
 
       {TOOL_SECTIONS.map(({ key, title, destructive }) => {
@@ -110,7 +109,7 @@ export const PermissionToolList = ({
                 <Switch
                   size="sm"
                   isSelected={permissions.asks(tool)}
-                  onValueChange={(next) => permissions.toggle(tool, next)}
+                  onChange={(next) => permissions.toggle(tool, next)}
                   aria-label={`Ask before running ${tool.label}`}
                 />
               </div>

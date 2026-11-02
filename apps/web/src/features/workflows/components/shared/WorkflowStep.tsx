@@ -1,6 +1,6 @@
 "use client";
 
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 import { getToolDisplayName } from "@shared/icons";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrationLookup } from "@/features/integrations/hooks/useIntegrationLookup";
@@ -52,26 +52,23 @@ export default function WorkflowStep({
       <div className="flex-1 space-y-2">
         <div className="flex items-center gap-2">
           <Chip
-            radius="md"
-            variant="flat"
+            variant="tertiary"
             title={categoryLabel}
             aria-label={categoryLabel}
             className={`${chipPadding} pl-2 space-x-1 truncate ${chipTextSize}`}
-            startContent={
-              <div className="min-w-fit">
-                {getToolCategoryIcon(
-                  step.category,
-                  {
-                    size: iconSize,
-                    width: iconSize,
-                    height: iconSize,
-                    showBackground: false,
-                  },
-                  getIntegrationIconUrl(step.category),
-                )}
-              </div>
-            }
           >
+            <div className="min-w-fit">
+              {getToolCategoryIcon(
+                step.category,
+                {
+                  size: iconSize,
+                  width: iconSize,
+                  height: iconSize,
+                  showBackground: false,
+                },
+                getIntegrationIconUrl(step.category),
+              )}
+            </div>
             {categoryLabel}
           </Chip>
         </div>

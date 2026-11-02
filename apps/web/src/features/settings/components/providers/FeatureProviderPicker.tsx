@@ -1,9 +1,14 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Link as HeroLink } from "@heroui/link";
-import { Select, SelectItem } from "@heroui/select";
-import { Skeleton } from "@heroui/skeleton";
+import {
+  Button,
+  Description,
+  Link as HeroLink,
+  Label,
+  ListBox,
+  Select,
+  Skeleton,
+} from "@heroui/react";
 import { SquareArrowUpRight02Icon } from "@icons";
 import Link from "next/link";
 import { useMemo, useState } from "react";
@@ -58,6 +63,7 @@ export function FeatureProviderPicker({
     !group.rows.some((row) => isProviderConfigured(status, row.key));
   const [isUpgradeOpen, setIsUpgradeOpen] = useState(false);
   const showsPicker = !runsOnBuiltIn || isUpgradeOpen;
+  const managedAt = picked?.managed_at ?? null;
 
   const stateLabel = (row: CatalogProvider): string | null => {
     if (row.key === servingKey) return "In use";
@@ -84,52 +90,57 @@ export function FeatureProviderPicker({
         <>
           {group.rows.length > 1 ? (
             <Select
-              label="Provider"
-              size="sm"
-              disallowEmptySelection
-              selectedKeys={picked ? [picked.key] : []}
-              description={picked?.description}
-              onSelectionChange={(keys) => {
-                const [first] = Array.from(keys);
-                const row = group.rows.find((r) => r.key === first);
+              selectedKey={picked ? picked.key : null}
+              onSelectionChange={(key) => {
+                const row = group.rows.find((r) => r.key === key);
                 if (row) setPickedKey(row.key);
               }}
-              renderValue={(items) =>
-                items.map((item) => {
-                  const row = group.rows.find((r) => r.key === item.key);
-                  if (!row) return null;
-                  return (
-                    <span key={row.key} className="flex items-center gap-2">
+            >
+              <Label>Provider</Label>
+              <Select.Trigger className="min-h-8">
+                <Select.Value>
+                  {picked && (
+                    <span className="flex items-center gap-2">
+                      <ProviderFavicon
+                        src={picked.favicon_url}
+                        size={FAVICON_SIZE}
+                      />
+                      {picked.label}
+                      {stateLabel(picked) && (
+                        <span className="text-xs text-zinc-500">
+                          {stateLabel(picked)}
+                        </span>
+                      )}
+                    </span>
+                  )}
+                </Select.Value>
+                <Select.Indicator />
+              </Select.Trigger>
+              <Description>{picked?.description}</Description>
+              <Select.Popover>
+                <ListBox>
+                  {group.rows.map((row) => (
+                    <ListBox.Item
+                      key={row.key}
+                      id={row.key}
+                      textValue={row.label}
+                    >
                       <ProviderFavicon
                         src={row.favicon_url}
                         size={FAVICON_SIZE}
                       />
-                      {row.label}
-                      {stateLabel(row) && (
-                        <span className="text-xs text-zinc-500">
-                          {stateLabel(row)}
-                        </span>
-                      )}
-                    </span>
-                  );
-                })
-              }
-            >
-              {group.rows.map((row) => (
-                <SelectItem
-                  key={row.key}
-                  textValue={row.label}
-                  description={stateLabel(row) ?? undefined}
-                  startContent={
-                    <ProviderFavicon
-                      src={row.favicon_url}
-                      size={FAVICON_SIZE}
-                    />
-                  }
-                >
-                  {row.label}
-                </SelectItem>
-              ))}
+                      <span className="flex flex-col items-start">
+                        <span>{row.label}</span>
+                        {stateLabel(row) && (
+                          <span className="text-xs text-zinc-500">
+                            {stateLabel(row)}
+                          </span>
+                        )}
+                      </span>
+                    </ListBox.Item>
+                  ))}
+                </ListBox>
+              </Select.Popover>
             </Select>
           ) : (
             picked && (
@@ -137,15 +148,19 @@ export function FeatureProviderPicker({
             )
           )}
 
-          {picked?.managed_at ? (
+          {managedAt ? (
             <Button
-              as={Link}
-              href={picked.managed_at.href}
-              variant="flat"
+              render={(props) => (
+                <Link
+                  {...(props as unknown as React.ComponentProps<typeof Link>)}
+                  href={managedAt.href}
+                />
+              )}
+              variant="secondary"
               size="sm"
               className="self-start"
             >
-              {picked.managed_at.label}
+              {managedAt.label}
             </Button>
           ) : configs.isLoading ? (
             <Skeleton className="h-14 w-full rounded-xl" />
@@ -181,8 +196,8 @@ function UnavailableNotice({ group }: { group: FeatureGroup }) {
       <p className="text-xs text-zinc-500">{gap.reason}</p>
       <HeroLink
         href={gap.docs_url}
-        isExternal
-        size="sm"
+        target="_blank"
+        rel="noopener noreferrer"
         className="inline-flex items-center gap-1 self-start text-xs"
       >
         Read the docs

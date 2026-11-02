@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
+import { Button, Chip } from "@heroui/react";
 import { paywallCopyFor } from "@/features/pricing/constants";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
@@ -30,7 +29,12 @@ export function SubscriptionUpsell({
               {copy.planLabel}
             </p>
           </div>
-          <Chip color="warning" variant="flat" size="sm" className="text-xs">
+          <Chip
+            color="warning"
+            variant="tertiary"
+            size="sm"
+            className="text-xs"
+          >
             Inactive
           </Chip>
         </div>
@@ -44,7 +48,6 @@ export function SubscriptionUpsell({
             private Discord.
           </p>
           <Button
-            color="primary"
             className="w-full font-semibold text-black"
             size="sm"
             onPress={() =>
@@ -53,6 +56,7 @@ export function SubscriptionUpsell({
                 source: "settings_upsell",
               })
             }
+            variant="primary"
           >
             View plans
           </Button>

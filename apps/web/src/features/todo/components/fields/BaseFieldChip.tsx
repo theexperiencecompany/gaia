@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@heroui/react";
+import { Button, Popover } from "@heroui/react";
 import { ArrowDown01Icon } from "@icons";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -69,39 +68,38 @@ export default function BaseFieldChip({
         setIsOpen(open);
         onOpenChange?.(open);
       }}
-      placement="bottom-start"
-      showArrow={true}
-      shouldCloseOnBlur={true}
     >
-      <PopoverTrigger>
-        <Button
-          variant="light"
-          size="sm"
-          aria-label={`${label} selection. Current value: ${hasValue ? (typeof value === "string" ? value : "selected") : "none selected"}`}
-          className={cn(
-            "h-8 min-w-0 gap-1 border-0 px-3 font-normal ring-0 transition-all outline-none focus:ring-0 focus:outline-none",
-            isOpen && "ring-0",
-            isActive && "ring-0",
-            !hasValue && "text-zinc-500",
-            getButtonClassName(),
-            className,
+      <Button
+        variant="tertiary"
+        size="sm"
+        aria-label={`${label} selection. Current value: ${hasValue ? (typeof value === "string" ? value : "selected") : "none selected"}`}
+        className={cn(
+          "h-8 min-w-0 gap-1 border-0 px-3 font-normal ring-0 transition-all outline-none focus:ring-0 focus:outline-none",
+          isOpen && "ring-0",
+          isActive && "ring-0",
+          !hasValue && "text-zinc-500",
+          getButtonClassName(),
+          className,
+        )}
+      >
+        {icon}
+        <span className="max-w-[120px] truncate">
+          {hasValue ? (
+            value
+          ) : (
+            <span className="text-zinc-400">{placeholder}</span>
           )}
-        >
-          {icon}
-          <span className="max-w-[120px] truncate">
-            {hasValue ? (
-              value
-            ) : (
-              <span className="text-zinc-400">{placeholder}</span>
-            )}
-          </span>
-          <ArrowDown01Icon
-            size={14}
-            className={cn("transition-transform", isOpen && "rotate-180")}
-          />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="min-w-68 max-w-68 rounded-2xl border-zinc-700 bg-zinc-900 p-0 shadow-xl">
+        </span>
+        <ArrowDown01Icon
+          size={14}
+          className={cn("transition-transform", isOpen && "rotate-180")}
+        />
+      </Button>
+      <Popover.Content
+        placement="bottom start"
+        className="min-w-68 max-w-68 rounded-2xl border-zinc-700 bg-zinc-900 p-0 shadow-xl"
+      >
+        <Popover.Arrow />
         <div className="flex w-full justify-start pl-4 pt-3 text-xs font-medium text-zinc-400">
           {label}
         </div>
@@ -110,7 +108,7 @@ export default function BaseFieldChip({
             ? children({ onClose: () => setIsOpen(false) })
             : children}
         </div>
-      </PopoverContent>
+      </Popover.Content>
     </Popover>
   );
 }

@@ -1,4 +1,4 @@
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { Tick02Icon } from "@icons";
 import type { ReactNode } from "react";
 
@@ -25,7 +25,6 @@ export const EventCard = ({
   label,
   children,
   variant = "display",
-  buttonColor = "primary",
   completedLabel = "Completed",
   icon: Icon,
   onAction,
@@ -72,10 +71,9 @@ export const EventCard = ({
 
       {hasAction && (
         <Button
-          color={buttonColor}
           size="sm"
           isDisabled={status === "completed"}
-          isLoading={status === "loading"}
+          isPending={status === "loading"}
           onPress={onAction}
         >
           {status === "loading" ? (

@@ -1,7 +1,6 @@
 "use client";
 
-import { Link } from "@heroui/link";
-import { Spinner } from "@heroui/spinner";
+import { Spinner } from "@heroui/react";
 import NextLink from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect } from "react";
@@ -35,9 +34,12 @@ export function ProvidersSettings() {
       <p className="text-sm text-zinc-400">
         Keys that power GAIA&apos;s own tools, like search, email and running
         code. Apps you sign into, like Gmail or Calendar, live in{" "}
-        <Link as={NextLink} href="/integrations" size="sm">
+        <NextLink
+          href="/integrations"
+          className="text-sm text-primary hover:underline"
+        >
           Integrations
-        </Link>
+        </NextLink>
         .
       </p>
       {!catalog && !isCatalogError && <Spinner size="sm" />}

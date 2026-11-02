@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { Cancel01Icon } from "@icons";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -73,8 +73,7 @@ export function NotificationConnectBanner({
           <div className="flex shrink-0 items-center gap-1">
             <Button
               size="sm"
-              variant="flat"
-              color="primary"
+              variant="tertiary"
               className="text-xs"
               onPress={() => router.push("/settings/linked-accounts")}
             >
@@ -82,8 +81,7 @@ export function NotificationConnectBanner({
             </Button>
             <Button
               isIconOnly
-              variant="light"
-              radius="full"
+              variant="tertiary"
               size="sm"
               onPress={dismiss}
               aria-label="Dismiss"
@@ -101,8 +99,7 @@ export function NotificationConnectBanner({
     <div className="relative rounded-xl border border-zinc-700 bg-zinc-800/60 p-4">
       <Button
         isIconOnly
-        variant="light"
-        radius="full"
+        variant="tertiary"
         size="sm"
         onPress={dismiss}
         aria-label="Dismiss"
@@ -119,8 +116,7 @@ export function NotificationConnectBanner({
       </p>
       <Button
         size="sm"
-        variant="flat"
-        color="primary"
+        variant="tertiary"
         className="mt-3 text-xs"
         onPress={() => router.push("/settings/linked-accounts")}
       >

@@ -1,8 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Modal, ModalBody, ModalContent } from "@heroui/modal";
-import { Spinner } from "@heroui/spinner";
+import { Button, Modal, Spinner } from "@heroui/react";
 import { Alert01Icon, Login02Icon } from "@icons";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { handleAuthLogin } from "@/features/auth/hooks/handleAuthLogin";
@@ -26,7 +24,6 @@ const NON_DISMISSABLE_ROUTE_PREFIXES = [
   "/settings",
   "/pins",
   "/redirect",
-  "/notifications",
   "/calendar",
   "/dashboard",
 ];
@@ -48,30 +45,33 @@ export default function LoginModal() {
   const canDismiss = !isNonDismissableRoute(pathname);
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onOpenChange={(v) => setLoginModalOpen(v)}
-      isDismissable={canDismiss}
-      backdrop="blur"
-      className="outline-none"
-      isKeyboardDismissDisabled={!canDismiss}
-      hideCloseButton={!canDismiss}
-    >
-      <ModalContent className="p-4">
-        <ModalBody>
-          <div className="mb-3 space-y-3 text-center">
-            <div className="text-5xl font-medium">Login</div>
-            <div className="text-md text-foreground-600">
-              Please login to continue your journey with GAIA.
-            </div>
-          </div>
-          {isSelfhostWeb() ? (
-            <InstanceSignIn onLocalSignIn={() => setLoginModalOpen(false)} />
-          ) : (
-            <SignInButton isLocalAuth={false} />
-          )}
-        </ModalBody>
-      </ModalContent>
+    <Modal isOpen={isOpen} onOpenChange={(v) => setLoginModalOpen(v)}>
+      <Modal.Backdrop
+        isDismissable={canDismiss}
+        isKeyboardDismissDisabled={!canDismiss}
+        variant="blur"
+      >
+        <Modal.Container placement="center" size="md">
+          <Modal.Dialog className="p-4 outline-none" aria-label="Login">
+            <Modal.CloseTrigger aria-label="Close" />
+            <Modal.Body>
+              <div className="mb-3 space-y-3 text-center">
+                <div className="text-5xl font-medium">Login</div>
+                <div className="text-md text-foreground-600">
+                  Please login to continue your journey with GAIA.
+                </div>
+              </div>
+              {isSelfhostWeb() ? (
+                <InstanceSignIn
+                  onLocalSignIn={() => setLoginModalOpen(false)}
+                />
+              ) : (
+                <SignInButton isLocalAuth={false} />
+              )}
+            </Modal.Body>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
     </Modal>
   );
 }
@@ -100,8 +100,8 @@ function InstanceSignIn({ onLocalSignIn }: { onLocalSignIn: () => void }) {
         Couldn&apos;t reach your GAIA server to start signing in.
       </p>
       <Button
-        variant="flat"
-        isLoading={isFetching}
+        variant="tertiary"
+        isPending={isFetching}
         onPress={() => {
           void refetch();
         }}

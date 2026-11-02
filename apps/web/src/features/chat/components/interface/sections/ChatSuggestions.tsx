@@ -1,4 +1,4 @@
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import * as m from "motion/react-m";
 import type React from "react";
 import { useEffect, useState } from "react";
@@ -46,14 +46,12 @@ export const ChatSuggestions: React.FC = () => {
           >
             <Button
               fullWidth
-              variant="light"
+              variant="tertiary"
               size="sm"
               onPress={() => appendToInput(prompt)}
               className="h-10 justify-start gap-3 rounded-xl px-3 text-sm font-normal text-zinc-400 hover:text-zinc-100"
-              startContent={
-                <Icon size={18} className="shrink-0 text-zinc-500" />
-              }
             >
+              <Icon size={18} className="shrink-0 text-zinc-500" />
               {prompt}
             </Button>
           </m.div>

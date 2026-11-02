@@ -1,9 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Spinner } from "@heroui/spinner";
-import { Tooltip } from "@heroui/tooltip";
+import { Button, Chip, Spinner, Tooltip } from "@heroui/react";
 import { Delete02Icon, PencilEdit02Icon } from "@icons";
 import type { MemoryEntry } from "@shared/api/generated";
 import { formatDistanceToNow } from "date-fns";
@@ -58,17 +55,16 @@ export function MemoryRow({
 
   return (
     <div className="group flex items-start gap-3 px-4 py-3 transition-colors hover:bg-white/5">
-      <Tooltip
-        content={`Importance ${Math.round(memory.importance * 100)}%`}
-        placement="left"
-        closeDelay={0}
-      >
-        <span
+      <Tooltip closeDelay={0}>
+        <Tooltip.Trigger
           className={cn(
             "mt-1.5 size-2 shrink-0 rounded-full",
             importanceColor(memory.importance),
           )}
         />
+        <Tooltip.Content placement="left">
+          {`Importance ${Math.round(memory.importance * 100)}%`}
+        </Tooltip.Content>
       </Tooltip>
 
       <div className="min-w-0 flex-1">
@@ -80,30 +76,23 @@ export function MemoryRow({
             </span>
           )}
           {showCategory && memory.category_path && (
-            <Chip
-              size="sm"
-              variant="flat"
-              classNames={{
-                base: "h-5 bg-zinc-800",
-                content: "px-1.5 text-xs text-zinc-400",
-              }}
-            >
-              {memory.category_path}
+            <Chip size="sm" variant="tertiary" className="h-5 bg-zinc-800">
+              <Chip.Label className="px-1.5 text-xs text-zinc-400">
+                {memory.category_path}
+              </Chip.Label>
             </Chip>
           )}
           {memory.version > 1 && (
             <Chip
-              as="button"
               size="sm"
-              variant="flat"
+              variant="tertiary"
               onClick={toggleHistory}
-              classNames={{
-                base: "h-5 cursor-pointer bg-zinc-800 data-[hover=true]:bg-zinc-700",
-                content: "px-1.5 text-xs text-zinc-400",
-              }}
+              className="h-5 cursor-pointer bg-zinc-800 data-[hover=true]:bg-zinc-700"
             >
-              v{memory.version}
-              {expanded ? " · hide history" : " · history"}
+              <Chip.Label className="px-1.5 text-xs text-zinc-400">
+                v{memory.version}
+                {expanded ? " · hide history" : " · history"}
+              </Chip.Label>
             </Chip>
           )}
         </div>
@@ -147,7 +136,7 @@ export function MemoryRow({
         <Button
           isIconOnly
           size="sm"
-          variant="light"
+          variant="tertiary"
           aria-label="Edit memory"
           onPress={() => onEdit(memory)}
         >
@@ -156,10 +145,9 @@ export function MemoryRow({
         <Button
           isIconOnly
           size="sm"
-          variant="light"
-          color="danger"
+          variant="danger-soft"
           aria-label="Forget memory"
-          isLoading={isDeleting}
+          isPending={isDeleting}
           onPress={() => onForget(memory)}
         >
           <Delete02Icon className="size-4" />

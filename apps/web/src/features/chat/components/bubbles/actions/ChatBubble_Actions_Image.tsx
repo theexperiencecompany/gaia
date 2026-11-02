@@ -1,5 +1,4 @@
-import { Button } from "@heroui/button";
-import { Tooltip } from "@heroui/tooltip";
+import { Button, Tooltip } from "@heroui/react";
 import { Cancel01Icon, DownloadSquare01Icon } from "@icons";
 import type React from "react";
 import { toast } from "@/lib/toast";
@@ -62,29 +61,30 @@ export default function ChatBubble_Actions_Image({
   return (
     <div className="flex w-fit items-center gap-2 pl-1">
       {fullWidth && setOpenImage ? (
-        <Button variant="flat" onPress={() => setOpenImage(false)}>
+        <Button variant="tertiary" onPress={() => setOpenImage(false)}>
           <Cancel01Icon height="22" />
           <span>Cancel</span>
         </Button>
       ) : null}
-      <Tooltip
-        className={`${fullWidth ? "hidden" : ""}`}
-        color="primary"
-        content="Download Image"
-        placement="right"
-        size="md"
-      >
-        <Button
-          className={`w-fit ${fullWidth ? "px-3 py-2" : "bg-transparent p-0 text-zinc-500 data-[hover=true]:bg-transparent"} h-fit rounded-lg`}
-          color="primary"
-          isIconOnly={!fullWidth}
-          style={{ minWidth: "22px" }}
-          variant={fullWidth ? "solid" : "light"}
-          onPress={downloadFromSrc}
+      <Tooltip>
+        <Tooltip.Trigger>
+          <Button
+            className={`w-fit ${fullWidth ? "px-3 py-2" : "bg-transparent p-0 text-zinc-500 data-[hover=true]:bg-transparent"} h-fit rounded-lg`}
+            isIconOnly={!fullWidth}
+            style={{ minWidth: "22px" }}
+            variant={fullWidth ? "primary" : "ghost"}
+            onPress={downloadFromSrc}
+          >
+            <DownloadSquare01Icon className={`cursor-pointer`} height="22" />
+            <span className="text-black">{fullWidth ? "Download" : ""}</span>
+          </Button>
+        </Tooltip.Trigger>
+        <Tooltip.Content
+          className={fullWidth ? "hidden" : ""}
+          placement="right"
         >
-          <DownloadSquare01Icon className={`cursor-pointer`} height="22" />
-          <span className="text-black">{fullWidth ? "Download" : ""}</span>
-        </Button>
+          Download Image
+        </Tooltip.Content>
       </Tooltip>
     </div>
   );

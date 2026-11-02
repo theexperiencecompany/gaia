@@ -7,8 +7,8 @@
 
 "use client";
 
-import { Chip } from "@heroui/chip";
-import { Input } from "@heroui/input";
+import { Chip, InputGroup, Label, TextField } from "@heroui/react";
+import { Cancel01Icon } from "@icons";
 import { useId, useState } from "react";
 
 import type { TriggerTagInputProps } from "./types";
@@ -57,37 +57,40 @@ export function TriggerTagInput({
 
   return (
     <div className="flex w-full flex-col gap-2">
-      <Input
-        id={inputId}
-        label={label}
-        labelPlacement={label ? "outside" : undefined}
-        aria-label={label ?? "Add value"}
-        size="sm"
-        variant="flat"
-        value={input}
-        onValueChange={setInput}
-        onKeyDown={handleKeyDown}
-        onBlur={handleAdd}
-        placeholder={values.length > 0 ? placeholder : emptyPlaceholder}
-        startContent={
-          prefix ? (
-            <span className="pointer-events-none shrink-0 text-sm text-zinc-500">
-              {prefix}
-            </span>
-          ) : undefined
-        }
-      />
+      <TextField id={inputId}>
+        {label ? <Label>{label}</Label> : null}
+        <InputGroup>
+          {prefix ? (
+            <InputGroup.Prefix>
+              <span className="pointer-events-none shrink-0 text-sm text-zinc-500">
+                {prefix}
+              </span>
+            </InputGroup.Prefix>
+          ) : undefined}
+          <InputGroup.Input
+            aria-label={label ?? "Add value"}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onBlur={handleAdd}
+            placeholder={values.length > 0 ? placeholder : emptyPlaceholder}
+          />
+        </InputGroup>
+      </TextField>
 
       {values.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {values.map((value) => (
-            <Chip
-              key={value}
-              variant="flat"
-              onClose={() => handleRemove(value)}
-              classNames={{ content: "font-mono text-xs" }}
-            >
-              {value}
+            <Chip key={value} variant="tertiary">
+              <span className="font-mono text-xs">{value}</span>
+              <button
+                type="button"
+                aria-label={`Remove ${value}`}
+                className="ml-0.5 shrink-0 cursor-pointer text-zinc-500 hover:text-zinc-300"
+                onClick={() => handleRemove(value)}
+              >
+                <Cancel01Icon className="size-3" />
+              </button>
             </Chip>
           ))}
         </div>

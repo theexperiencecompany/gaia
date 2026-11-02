@@ -1,0 +1,17 @@
+import { chromium } from "@playwright/test";
+const browser = await chromium.launch();
+const page = await (await browser.newContext({ viewport:{width:1400,height:1200} })).newPage();
+page.on("pageerror", e=>console.log("PAGEERR", e.message.slice(0,200)));
+await page.goto("http://localhost:3200/blog/create", { waitUntil:"networkidle" });
+await page.waitForTimeout(1500);
+const submit = page.getByRole("button", { name: "Create Blog Post" });
+console.log("submit count", await submit.count());
+await submit.click();
+await page.waitForTimeout(2000);
+console.log("aria-invalid:", await page.locator("[aria-invalid='true']").count());
+console.log("title aria-invalid:", await page.getByPlaceholder("Enter blog post title").getAttribute("aria-invalid"));
+const texts = await page.locator("[role=alert], .field-error, [data-slot=field-error], p, span").allTextContents();
+console.log("candidate errors:", texts.filter(t=>/required|enter|select|must|invalid|at least/i.test(t)).slice(0,10));
+console.log("body has 'Title':", (await page.locator("body").innerText()).includes("Title"));
+await page.screenshot({path:"/tmp/blog-submit.png"});
+await browser.close();

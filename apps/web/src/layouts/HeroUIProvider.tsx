@@ -1,24 +1,10 @@
-// app/HeroUIProvider.tsx
 "use client";
 
-import { HeroUIProvider as HeroUIProviderComponent } from "@heroui/system";
-import { useRouter } from "next/navigation";
-
-// Only if using TypeScript
-declare module "@react-types/shared" {
-  interface RouterConfig {
-    routerOptions: NonNullable<
-      Parameters<ReturnType<typeof useRouter>["push"]>[1]
-    >;
-  }
-}
-
+/**
+ * HeroUI v3 needs no provider: components read theme tokens directly from CSS
+ * and get their router integration from React Aria's own defaults. This stays as
+ * a pass-through so the layout tree and its import sites are unchanged.
+ */
 export function HeroUIProvider({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
-
-  return (
-    <HeroUIProviderComponent navigate={router.push}>
-      {children}
-    </HeroUIProviderComponent>
-  );
+  return <>{children}</>;
 }

@@ -1,15 +1,15 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Input, Textarea } from "@heroui/input";
 import {
+  Button,
+  Chip,
+  FieldError,
+  Input,
+  Label,
   Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-} from "@heroui/modal";
+  TextArea,
+  TextField,
+} from "@heroui/react";
 import { Cancel01Icon } from "@icons";
 import { useEffect, useState } from "react";
 import { mailApi as EmailsAPI } from "@/features/mail/api/mailApi";
@@ -75,23 +75,21 @@ function RecipientsField({
           {chips.map((chip) => (
             <Chip
               key={chip.email}
-              variant="flat"
-              color={chip.isValid ? "primary" : "danger"}
+              variant="tertiary"
+              color={chip.isValid ? "accent" : "danger"}
               size="sm"
-              endContent={
-                mode === "edit" && (
-                  <button
-                    type="button"
-                    onClick={() => onRemoveChip(chip.email)}
-                    className="ml-1 rounded-full p-0.5 transition-colors hover:bg-white/20"
-                  >
-                    <Cancel01Icon size={12} />
-                  </button>
-                )
-              }
               className="max-w-[200px]"
             >
-              <span className="truncate text-xs">{chip.email}</span>
+              <Chip.Label className="truncate text-xs">{chip.email}</Chip.Label>
+              {mode === "edit" && (
+                <button
+                  type="button"
+                  onClick={() => onRemoveChip(chip.email)}
+                  className="ml-1 rounded-full p-0.5 transition-colors hover:bg-white/20"
+                >
+                  <Cancel01Icon size={12} />
+                </button>
+              )}
             </Chip>
           ))}
 
@@ -281,95 +279,115 @@ export function EmailPreviewModal({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="3xl" scrollBehavior="inside">
-      <ModalContent>
-        <ModalHeader className="flex flex-col gap-1">
-          <h2 className="text-xl font-semibold">Review & Send Email</h2>
-          <p className="text-sm text-gray-600">
-            {recipient_query
-              ? `AI composed this email based on: "${recipient_query}"`
-              : "Review and edit your email before sending"}
-          </p>
-        </ModalHeader>
+    <Modal
+      isOpen={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <Modal.Backdrop>
+        <Modal.Container size="lg">
+          <Modal.Dialog>
+            <Modal.CloseTrigger aria-label="Close" />
+            <Modal.Header className="flex flex-col gap-1">
+              <h2 className="text-xl font-semibold">Review &amp; Send Email</h2>
+              <p className="text-sm text-gray-600">
+                {recipient_query
+                  ? `AI composed this email based on: "${recipient_query}"`
+                  : "Review and edit your email before sending"}
+              </p>
+            </Modal.Header>
 
-        <ModalBody className="py-6">
-          <div className="space-y-6">
-            {/* Recipients */}
-            <RecipientsField
-              chips={emailChips}
-              mode={mode}
-              error={errors.recipients}
-              currentInput={currentInput}
-              onCurrentInputChange={setCurrentInput}
-              onAddChip={addEmailChip}
-              onRemoveChip={removeEmailChip}
-              onInputKeyDown={handleInputKeyDown}
-              onInputPaste={handlePaste}
-            />
+            <Modal.Body className="py-6">
+              <div className="space-y-6">
+                {/* Recipients */}
+                <RecipientsField
+                  chips={emailChips}
+                  mode={mode}
+                  error={errors.recipients}
+                  currentInput={currentInput}
+                  onCurrentInputChange={setCurrentInput}
+                  onAddChip={addEmailChip}
+                  onRemoveChip={removeEmailChip}
+                  onInputKeyDown={handleInputKeyDown}
+                  onInputPaste={handlePaste}
+                />
 
-            {/* Subject */}
-            <div className="space-y-2">
-              <Input
-                label="Subject"
-                placeholder="Email subject"
-                value={subject}
-                onChange={(e) => {
-                  setSubject(e.target.value);
-                  // Clear error when user starts typing
-                  if (errors.subject) {
-                    setErrors((prev) => ({ ...prev, subject: undefined }));
-                  }
-                }}
-                isDisabled={mode === "view"}
-                isInvalid={!!errors.subject}
-                errorMessage={errors.subject}
-                isRequired
-                variant="bordered"
-              />
-            </div>
+                {/* Subject */}
+                <div className="space-y-2">
+                  <TextField
+                    isDisabled={mode === "view"}
+                    isInvalid={!!errors.subject}
+                    isRequired
+                  >
+                    <Label>Subject</Label>
+                    <Input
+                      placeholder="Email subject"
+                      value={subject}
+                      onChange={(e) => {
+                        setSubject(e.target.value);
+                        // Clear error when user starts typing
+                        if (errors.subject) {
+                          setErrors((prev) => ({
+                            ...prev,
+                            subject: undefined,
+                          }));
+                        }
+                      }}
+                    />
+                    <FieldError>{errors.subject}</FieldError>
+                  </TextField>
+                </div>
 
-            {/* Body */}
-            <div className="space-y-2">
-              <Textarea
-                label="Body"
-                placeholder="Email body"
-                value={body}
-                onChange={(e) => {
-                  setBody(e.target.value);
-                  // Clear error when user starts typing
-                  if (errors.body) {
-                    setErrors((prev) => ({ ...prev, body: undefined }));
-                  }
-                }}
-                isDisabled={mode === "view"}
-                isInvalid={!!errors.body}
-                errorMessage={errors.body}
-                isRequired
-                variant="bordered"
-                minRows={12}
-                maxRows={20}
-              />
-            </div>
-          </div>
-        </ModalBody>
+                {/* Body */}
+                <div className="space-y-2">
+                  <TextField
+                    isDisabled={mode === "view"}
+                    isInvalid={!!errors.body}
+                    isRequired
+                  >
+                    <Label>Body</Label>
+                    <TextArea
+                      placeholder="Email body"
+                      value={body}
+                      onChange={(e) => {
+                        setBody(e.target.value);
+                        // Clear error when user starts typing
+                        if (errors.body) {
+                          setErrors((prev) => ({ ...prev, body: undefined }));
+                        }
+                      }}
+                      rows={12}
+                    />
+                    <FieldError>{errors.body}</FieldError>
+                  </TextField>
+                </div>
+              </div>
+            </Modal.Body>
 
-        <ModalFooter>
-          <Button variant="light" onPress={onClose} isDisabled={isSending}>
-            Cancel
-          </Button>
+            <Modal.Footer>
+              <Button
+                variant="tertiary"
+                onPress={onClose}
+                isDisabled={isSending}
+              >
+                Cancel
+              </Button>
 
-          {mode === "edit" && (
-            <Button
-              color="primary"
-              onPress={handleSendEmail}
-              isDisabled={isSending}
-              isLoading={isSending}
-            >
-              Send Email
-            </Button>
-          )}
-        </ModalFooter>
-      </ModalContent>
+              {mode === "edit" && (
+                <Button
+                  onPress={handleSendEmail}
+                  isDisabled={isSending}
+                  isPending={isSending}
+                  variant="primary"
+                >
+                  Send Email
+                </Button>
+              )}
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
     </Modal>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 import * as m from "motion/react-m";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import ProgressiveImage from "@/components/ui/ProgressiveImage";
@@ -138,7 +138,7 @@ export default function AiChiefOfStaffClient() {
           transition={{ duration: 0.5, ease }}
           className="relative z-10 mb-6"
         >
-          <Chip variant="flat" color="primary" size="md">
+          <Chip variant="tertiary" color="accent" size="md">
             For founders, executives &amp; senior ICs
           </Chip>
         </m.div>

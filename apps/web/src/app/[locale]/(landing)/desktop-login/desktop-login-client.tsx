@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Spinner } from "@heroui/spinner";
+import { Button, Spinner } from "@heroui/react";
 import { CancelCircleIcon } from "@icons";
 import type { DesktopServerFormReason } from "@shared/desktop-tools";
 import Image from "next/image";
@@ -167,7 +166,7 @@ export function DesktopLoginClient({
 
           {isSelfHosted ? (
             <div className="flex justify-center py-4">
-              <Spinner color="primary" />
+              <Spinner color="accent" />
             </div>
           ) : selfHostOrigin ? (
             <SelfHostServerForm
@@ -189,7 +188,7 @@ export function DesktopLoginClient({
 
               {status === "opened" && (
                 <div className="flex flex-col items-center gap-4 py-4">
-                  <Spinner color="primary" />
+                  <Spinner color="accent" />
                   <p className="text-center text-sm text-zinc-400">
                     Opening your browser...
                   </p>
@@ -198,7 +197,7 @@ export function DesktopLoginClient({
 
               {status === "waiting" && (
                 <div className="flex flex-col items-center gap-4 py-4">
-                  <Spinner color="primary" />
+                  <Spinner color="accent" />
                   <div className="text-center">
                     <p className="font-medium text-white">
                       Complete login in your browser
@@ -208,7 +207,7 @@ export function DesktopLoginClient({
                     </p>
                   </div>
                   <Button
-                    variant="light"
+                    variant="ghost"
                     size="sm"
                     className="mt-2 text-zinc-500"
                     onPress={() => setStatus("ready")}
@@ -231,7 +230,7 @@ export function DesktopLoginClient({
                     Failed to open browser
                   </p>
                   <Button
-                    variant="flat"
+                    variant="secondary"
                     size="sm"
                     onPress={() => setStatus("ready")}
                   >
@@ -248,10 +247,9 @@ export function DesktopLoginClient({
                   />
                 ) : (
                   <Button
-                    variant="light"
+                    variant="ghost"
                     size="sm"
-                    radius="full"
-                    className="text-zinc-400"
+                    className="rounded-full text-zinc-400"
                     onPress={() => setShowServerForm(true)}
                   >
                     Use my own server

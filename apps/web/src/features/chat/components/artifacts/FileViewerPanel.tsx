@@ -1,8 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Spinner } from "@heroui/spinner";
-import { Tab, Tabs } from "@heroui/tabs";
+import { Button, Spinner, Tabs } from "@heroui/react";
 import {
   Cancel01Icon,
   CodeIcon,
@@ -340,30 +338,28 @@ export default function FileViewerPanel({
       <div className="flex h-12 shrink-0 items-center gap-2 bg-zinc-800 px-2">
         {isPreviewable ? (
           <Tabs
-            aria-label="View mode"
             selectedKey={viewMode}
             onSelectionChange={(key) => setViewMode(key as ViewMode)}
-            size="sm"
-            variant="solid"
+            variant="primary"
           >
-            <Tab
-              key="preview"
-              title={
+            <Tabs.List aria-label="View mode">
+              <Tabs.Tab id="preview">
                 <div className="flex items-center gap-1.5">
                   <File01Icon size={14} />
                   <span>Preview</span>
                 </div>
-              }
-            />
-            <Tab
-              key="source"
-              title={
+                <Tabs.Indicator />
+              </Tabs.Tab>
+              <Tabs.Tab id="source">
                 <div className="flex items-center gap-1.5">
                   <CodeIcon size={14} />
                   <span>Code</span>
                 </div>
-              }
-            />
+                <Tabs.Indicator />
+              </Tabs.Tab>
+            </Tabs.List>
+            <Tabs.Panel id="preview">{null}</Tabs.Panel>
+            <Tabs.Panel id="source">{null}</Tabs.Panel>
           </Tabs>
         ) : null}
 
@@ -380,8 +376,8 @@ export default function FileViewerPanel({
           <Button
             isIconOnly
             size="sm"
-            variant="light"
-            onClick={handleCopy}
+            variant="tertiary"
+            onPress={handleCopy}
             aria-label="Copy file"
             isDisabled={content === null}
           >
@@ -390,8 +386,8 @@ export default function FileViewerPanel({
           <Button
             isIconOnly
             size="sm"
-            variant="light"
-            onClick={handleDownload}
+            variant="tertiary"
+            onPress={handleDownload}
             aria-label="Download file"
             isDisabled={!isImage && !isPdf && content === null}
           >
@@ -400,8 +396,8 @@ export default function FileViewerPanel({
           <Button
             isIconOnly
             size="sm"
-            variant="light"
-            onClick={closeSidebar}
+            variant="tertiary"
+            onPress={closeSidebar}
             aria-label="Close preview"
           >
             <Cancel01Icon size={16} />

@@ -15,7 +15,7 @@
 
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import * as m from "motion/react-m";
 import Image from "next/image";
 import type { FC } from "react";
@@ -108,7 +108,7 @@ export const OnboardingPlatformConnect: FC<OnboardingPlatformConnectProps> = ({
           animate={{ opacity: 1 }}
           transition={{ duration: 0.25, delay: platforms.length * 0.08 }}
         >
-          <Button variant="flat" size="md" onPress={onSkip}>
+          <Button variant="tertiary" size="md" onPress={onSkip}>
             Skip
           </Button>
           {/* A self-hosted instance offers every bot it runs right here. */}

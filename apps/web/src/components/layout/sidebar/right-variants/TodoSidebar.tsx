@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { Delete02Icon } from "@icons";
 import { isTrackedTodo } from "@shared/todos";
 import { formatDistanceToNow } from "date-fns";
@@ -156,9 +156,8 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
             <Button
               type="button"
               isIconOnly
-              color="danger"
               size="sm"
-              variant="flat"
+              variant="danger-soft"
               onPress={handleDelete}
               aria-label="Delete todo"
             >

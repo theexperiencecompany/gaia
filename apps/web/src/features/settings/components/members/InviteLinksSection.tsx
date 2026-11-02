@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
+import { Button, InputGroup } from "@heroui/react";
 import { Copy01Icon, UserAdd01Icon } from "@icons";
 import type { InviteResponse } from "@shared/api/generated";
 import { useRef, useState } from "react";
@@ -55,34 +54,35 @@ export function InviteLinksSection({
       >
         <Button
           size="sm"
-          color="primary"
-          startContent={<UserAdd01Icon width={16} height={16} />}
-          isLoading={isCreating}
+          variant="primary"
+          isPending={isCreating}
           onPress={create}
         >
+          <UserAdd01Icon width={16} height={16} />
           Create link
         </Button>
       </SettingsRow>
       {newLink && (
         <div className="px-4 py-3.5">
-          <Input
-            ref={linkField}
-            aria-label="New invite link"
-            value={newLink}
-            isReadOnly
-            size="sm"
-            endContent={
+          <InputGroup>
+            <InputGroup.Input
+              ref={linkField}
+              aria-label="New invite link"
+              value={newLink}
+              readOnly
+            />
+            <InputGroup.Suffix>
               <Button
                 isIconOnly
                 size="sm"
-                variant="light"
+                variant="ghost"
                 aria-label="Copy invite link"
                 onPress={() => void copyLink(linkField.current)}
               >
                 <Copy01Icon width={16} height={16} />
               </Button>
-            }
-          />
+            </InputGroup.Suffix>
+          </InputGroup>
         </div>
       )}
       {invites.map((invite) => (
@@ -93,9 +93,8 @@ export function InviteLinksSection({
         >
           <Button
             size="sm"
-            variant="flat"
-            color="danger"
-            isLoading={revokingInviteId === invite.id}
+            variant="danger-soft"
+            isPending={revokingInviteId === invite.id}
             onPress={() => onRevoke(invite.id)}
           >
             Revoke

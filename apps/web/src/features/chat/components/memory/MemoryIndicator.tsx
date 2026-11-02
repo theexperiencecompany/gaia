@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { AiBrain01Icon } from "@icons";
 
 interface MemoryResult {
@@ -77,12 +77,11 @@ export default function MemoryIndicator({
   return (
     <Button
       size="sm"
-      variant="flat"
-      radius="full"
+      variant="tertiary"
       className="w-fit text-gray-500"
-      startContent={<AiBrain01Icon className="h-4 w-4" />}
       onPress={onOpenModal}
     >
+      <AiBrain01Icon className="h-4 w-4" />
       {displayText}
     </Button>
   );

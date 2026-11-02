@@ -1,6 +1,6 @@
 "use client";
 
-import { Spinner } from "@heroui/spinner";
+import { Spinner } from "@heroui/react";
 import { ToolsIcon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
@@ -219,7 +219,7 @@ function RunningSubagentBody({
         {steps.awaitingApproval ? (
           <WaitingForApprovalPill />
         ) : (
-          <Spinner size="sm" color="default" />
+          <Spinner size="sm" color="current" />
         )}
         <ChevronDown
           className={`text-zinc-600 transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}

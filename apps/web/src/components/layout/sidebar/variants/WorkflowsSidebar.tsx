@@ -1,10 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Kbd } from "@heroui/kbd";
-import { useDisclosure } from "@heroui/modal";
-import { Spinner } from "@heroui/spinner";
-import { Tooltip } from "@heroui/tooltip";
+import { Button, Kbd, Spinner, Tooltip, useOverlayState } from "@heroui/react";
 import { ZapIcon } from "@icons";
 import { useRef, useState } from "react";
 import CreateWorkflowModal from "@/features/workflows/components/CreateWorkflowModal";
@@ -14,7 +10,7 @@ import { useWorkflows } from "@/features/workflows/hooks/useWorkflows";
 import type { Workflow } from "@/types/features/workflowTypes";
 
 export default function WorkflowsSidebar() {
-  const { isOpen, onOpen, onOpenChange } = useDisclosure();
+  const { isOpen, open, setOpen } = useOverlayState();
   const { workflows, isLoading } = useWorkflows();
 
   // State for editing a specific workflow
@@ -32,27 +28,26 @@ export default function WorkflowsSidebar() {
   return (
     <>
       <div className="flex flex-col gap-3">
-        <Tooltip
-          content={
+        <Tooltip>
+          <Tooltip.Trigger>
+            <Button
+              size="sm"
+              fullWidth
+              className="mb-2 flex justify-start text-sm font-medium text-primary"
+              variant="tertiary"
+              onPress={open}
+              data-keyboard-shortcut="create-workflow"
+            >
+              <ZapIcon width={18} height={18} />
+              New Workflow
+            </Button>
+          </Tooltip.Trigger>
+          <Tooltip.Content placement="right">
             <span className="flex items-center gap-2">
               New Workflow
               <Kbd className="text-[10px]">C</Kbd>
             </span>
-          }
-          placement="right"
-        >
-          <Button
-            color="primary"
-            size="sm"
-            fullWidth
-            className="mb-2 flex justify-start text-sm font-medium text-primary"
-            variant="flat"
-            onPress={onOpen}
-            data-keyboard-shortcut="create-workflow"
-          >
-            <ZapIcon width={18} height={18} />
-            New Workflow
-          </Button>
+          </Tooltip.Content>
         </Tooltip>
 
         {/* Workflows List */}
@@ -89,7 +84,7 @@ export default function WorkflowsSidebar() {
         </div>
       </div>
 
-      <CreateWorkflowModal isOpen={isOpen} onOpenChange={onOpenChange} />
+      <CreateWorkflowModal isOpen={isOpen} onOpenChange={setOpen} />
 
       {/* Edit Workflow Modal */}
       <WorkflowModal

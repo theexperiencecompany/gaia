@@ -1,6 +1,6 @@
 "use client";
 
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 import { getCategoryLabel } from "../constants/categories";
 
 interface CategoryFilterProps {
@@ -22,8 +22,8 @@ export function CategoryFilter({
       {allCategories.map((category) => (
         <Chip
           key={category}
-          variant={selectedCategory === category ? "solid" : "flat"}
-          color={selectedCategory === category ? "primary" : "default"}
+          variant="primary"
+          color={selectedCategory === category ? "accent" : "default"}
           className="cursor-pointer transition-colors duration-200"
           onClick={() => onCategoryChange(category)}
         >

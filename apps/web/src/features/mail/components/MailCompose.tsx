@@ -1,5 +1,10 @@
-import { Button, ButtonGroup } from "@heroui/button";
-import { Input } from "@heroui/input";
+import {
+  Button,
+  ButtonGroup,
+  Input,
+  InputGroup,
+  TextField,
+} from "@heroui/react";
 import {
   AiSearch02Icon,
   AlertCircleIcon,
@@ -153,17 +158,16 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
             </Alert>
           )}
 
-          <Input
-            variant="underlined"
-            startContent={
-              <div className="flex w-[50px] justify-center text-sm text-foreground-500">
-                From
-              </div>
-            }
-            disabled
-            value={user.email}
-            className="bg-zinc-800"
-          />
+          <TextField value={user.email ?? ""} isDisabled>
+            <InputGroup className="bg-zinc-800">
+              <InputGroup.Prefix>
+                <div className="flex w-[50px] justify-center text-sm text-foreground-500">
+                  From
+                </div>
+              </InputGroup.Prefix>
+              <InputGroup.Input readOnly />
+            </InputGroup>
+          </TextField>
 
           <div className="relative">
             <TagInput
@@ -184,21 +188,16 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
               isIconOnly
               className="absolute top-[3px] right-[3px]"
               size="sm"
-              color="primary"
               onPress={() => setIsAiModalOpen(true)}
+              variant="primary"
             >
               <AiSearch02Icon width={19} />
             </Button>
           </div>
 
-          <Input
-            placeholder="Subject"
-            variant="underlined"
-            className="bg-zinc-800"
-            classNames={{ innerWrapper: "px-2" }}
-            value={subject}
-            onChange={(e) => setSubject(e.target.value)}
-          />
+          <TextField value={subject} onChange={setSubject}>
+            <Input placeholder="Subject" className="bg-zinc-800 px-2" />
+          </TextField>
 
           <div className="relative flex h-full w-full flex-col">
             <div className="z-2 flex w-full justify-end gap-3 pb-2">
@@ -240,44 +239,40 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
           </div>
 
           <footer className="flex w-full justify-end gap-5">
-            <Input
-              placeholder="What is the email about?"
-              radius="full"
-              classNames={{ inputWrapper: "pr-1 pl-0" }}
-              className="pr-1"
-              variant="faded"
-              size="lg"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              onKeyDown={handleAskGaiaKeyPress}
-              startContent={
-                <Image
-                  alt="GAIA Logo"
-                  src={"/images/logos/logo.webp"}
-                  width={25}
-                  height={25}
-                  className={`ml-2`}
+            <TextField value={prompt} onChange={setPrompt} className="pr-1">
+              <InputGroup className="pr-1 pl-0">
+                <InputGroup.Prefix>
+                  <Image
+                    alt="GAIA Logo"
+                    src={"/images/logos/logo.webp"}
+                    width={25}
+                    height={25}
+                    className={`ml-2`}
+                  />
+                </InputGroup.Prefix>
+                <InputGroup.Input
+                  placeholder="What is the email about?"
+                  onKeyDown={handleAskGaiaKeyPress}
                 />
-              }
-              endContent={
-                <Button
-                  isIconOnly={loading}
-                  color="primary"
-                  radius="full"
-                  onPress={() => handleAskGaia()}
-                  isLoading={loading}
-                >
-                  <div className="flex w-fit items-center gap-2 px-3 text-medium">
-                    {!loading && (
-                      <>
-                        AI Draft
-                        <SentIcon width={25} className="min-w-[25px]" />
-                      </>
-                    )}
-                  </div>
-                </Button>
-              }
-            />
+                <InputGroup.Suffix>
+                  <Button
+                    isIconOnly={loading}
+                    onPress={() => handleAskGaia()}
+                    isPending={loading}
+                    variant="primary"
+                  >
+                    <div className="flex w-fit items-center gap-2 px-3 text-medium">
+                      {!loading && (
+                        <>
+                          AI Draft
+                          <SentIcon width={25} className="min-w-[25px]" />
+                        </>
+                      )}
+                    </div>
+                  </Button>
+                </InputGroup.Suffix>
+              </InputGroup>
+            </TextField>
 
             <div className="flex items-center gap-2">
               <ButtonGroup color="primary">

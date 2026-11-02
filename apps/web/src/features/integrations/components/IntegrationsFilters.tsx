@@ -1,8 +1,6 @@
 "use client";
 
-import { Chip } from "@heroui/chip";
-import { Input } from "@heroui/input";
-import { Select, SelectItem } from "@heroui/select";
+import { Chip, ListBox, SearchField, Select } from "@heroui/react";
 import { SearchIcon } from "@icons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { INTEGRATION_CATEGORIES } from "@/features/integrations/constants/categories";
@@ -102,8 +100,8 @@ export const IntegrationsFilters: React.FC<IntegrationsFiltersProps> = ({
           {INTEGRATION_CATEGORIES.map((cat) => (
             <Chip
               key={cat.key}
-              variant={category === cat.key ? "solid" : "flat"}
-              color={category === cat.key ? "primary" : "default"}
+              variant="primary"
+              color={category === cat.key ? "accent" : "default"}
               size="lg"
               className={cn(
                 "cursor-pointer font-light! backdrop-blur-2xl!",
@@ -118,27 +116,43 @@ export const IntegrationsFilters: React.FC<IntegrationsFiltersProps> = ({
 
         <div className="flex shrink-0 items-center gap-3">
           <Select
-            selectedKeys={[sort]}
-            onSelectionChange={(keys) => {
-              const selected = Array.from(keys)[0] as string;
-              if (selected) handleSortChange(selected);
+            selectedKey={sort}
+            onSelectionChange={(key) => {
+              if (typeof key === "string") handleSortChange(key);
             }}
             className="w-40"
             aria-label="Sort by"
           >
-            {SORT_OPTIONS.map((option) => (
-              <SelectItem key={option.key}>{option.label}</SelectItem>
-            ))}
+            <Select.Trigger>
+              <Select.Value />
+              <Select.Indicator />
+            </Select.Trigger>
+            <Select.Popover>
+              <ListBox>
+                {SORT_OPTIONS.map((option) => (
+                  <ListBox.Item
+                    key={option.key}
+                    id={option.key}
+                    textValue={option.label}
+                  >
+                    {option.label}
+                  </ListBox.Item>
+                ))}
+              </ListBox>
+            </Select.Popover>
           </Select>
 
-          <Input
+          <SearchField
             className="flex-1 sm:w-72 sm:flex-none min-w-0"
-            type="search"
-            placeholder="Search integrations..."
+            aria-label="Search integrations"
             value={search}
-            onValueChange={handleSearchChange}
-            startContent={<SearchIcon className="text-zinc-400" />}
-          />
+            onChange={handleSearchChange}
+          >
+            <SearchField.Group>
+              <SearchIcon className="text-zinc-400" />
+              <SearchField.Input placeholder="Search integrations..." />
+            </SearchField.Group>
+          </SearchField>
         </div>
       </div>
     </div>

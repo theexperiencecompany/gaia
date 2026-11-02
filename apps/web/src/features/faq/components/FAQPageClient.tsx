@@ -1,6 +1,6 @@
 "use client";
 
-import { Accordion, AccordionItem } from "@heroui/accordion";
+import { Accordion } from "@heroui/react";
 import type { FAQItem } from "@/lib/faq";
 
 interface FAQPageClientProps {
@@ -21,26 +21,22 @@ export default function FAQPageClient({ faqs }: FAQPageClientProps) {
         </div>
 
         <Accordion
-          variant="light"
+          variant="default"
           className="cursor-pointer p-0!"
-          itemClasses={{ titleWrapper: "cursor-pointer" }}
-          defaultSelectedKeys={faqs[0] ? [faqs[0].question] : []}
-          keepContentMounted
+          defaultExpandedKeys={faqs[0] ? [faqs[0].question] : []}
         >
           {faqs.map((item) => (
-            <AccordionItem
-              key={item.question}
-              aria-label={item.question}
-              title={item.question}
-              classNames={{
-                heading: "font-normal",
-                title: "text-2xl",
-                content:
-                  "text-xl max-w-[90%] text-foreground-500 font-light mb-6",
-              }}
-            >
-              <span className="select-text">{item.answer}</span>
-            </AccordionItem>
+            <Accordion.Item key={item.question} id={item.question}>
+              <Accordion.Heading className="font-normal">
+                <Accordion.Trigger className="cursor-pointer text-2xl">
+                  {item.question}
+                  <Accordion.Indicator />
+                </Accordion.Trigger>
+              </Accordion.Heading>
+              <Accordion.Panel className="text-xl max-w-[90%] text-foreground-500 font-light mb-6">
+                <span className="select-text">{item.answer}</span>
+              </Accordion.Panel>
+            </Accordion.Item>
           ))}
         </Accordion>
       </div>

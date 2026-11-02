@@ -1,8 +1,15 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Input, Textarea } from "@heroui/input";
-import { Select, SelectItem } from "@heroui/select";
+import {
+  Button,
+  FieldError,
+  Input,
+  Label,
+  ListBox,
+  Select,
+  TextArea,
+  TextField,
+} from "@heroui/react";
 import { Turnstile } from "@marsidev/react-turnstile";
 import type React from "react";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
@@ -65,64 +72,84 @@ function ContactRequestForm({
     <form onSubmit={onSubmit} className="grid gap-6" {...formProps}>
       {isVisitor && (
         <div className="grid gap-6 sm:grid-cols-2">
-          <Input
+          <TextField
             type="email"
-            label="Email"
-            placeholder="Where we should reply"
             value={visitor.email}
-            onValueChange={visitor.setEmail}
+            onChange={visitor.setEmail}
             validate={visitor.validateEmail}
-            autoComplete="email"
             isRequired
-          />
-          <Input
-            label="Name"
-            placeholder="Optional"
-            value={visitor.name}
-            onValueChange={visitor.setName}
-            maxLength={100}
-            autoComplete="name"
-          />
+          >
+            <Label>Email</Label>
+            <Input placeholder="Where we should reply" autoComplete="email" />
+            <FieldError />
+          </TextField>
+          <TextField value={visitor.name} onChange={visitor.setName}>
+            <Label>Name</Label>
+            <Input placeholder="Optional" maxLength={100} autoComplete="name" />
+          </TextField>
         </div>
       )}
 
       <Select
-        label="Request Type"
         placeholder="Select a request type"
-        selectedKeys={formData.type ? [formData.type] : []}
-        onSelectionChange={(keys) => {
-          const selectedKey = Array.from(keys)[0] as string;
-          handleInputChange("type", selectedKey);
+        selectedKey={formData.type ?? null}
+        onSelectionChange={(key) => {
+          handleInputChange("type", key as string);
         }}
         isRequired
       >
-        <SelectItem key={SUPPORT_REQUEST_TYPES.SUPPORT}>
-          {SUPPORT_REQUEST_TYPE_LABELS[SUPPORT_REQUEST_TYPES.SUPPORT]}
-        </SelectItem>
-        <SelectItem key={SUPPORT_REQUEST_TYPES.FEATURE}>
-          {SUPPORT_REQUEST_TYPE_LABELS[SUPPORT_REQUEST_TYPES.FEATURE]}
-        </SelectItem>
+        <Label>Request Type</Label>
+        <Select.Trigger>
+          <Select.Value />
+          <Select.Indicator />
+        </Select.Trigger>
+        <Select.Popover>
+          <ListBox>
+            <ListBox.Item
+              id={SUPPORT_REQUEST_TYPES.SUPPORT}
+              textValue={
+                SUPPORT_REQUEST_TYPE_LABELS[SUPPORT_REQUEST_TYPES.SUPPORT]
+              }
+            >
+              {SUPPORT_REQUEST_TYPE_LABELS[SUPPORT_REQUEST_TYPES.SUPPORT]}
+            </ListBox.Item>
+            <ListBox.Item
+              id={SUPPORT_REQUEST_TYPES.FEATURE}
+              textValue={
+                SUPPORT_REQUEST_TYPE_LABELS[SUPPORT_REQUEST_TYPES.FEATURE]
+              }
+            >
+              {SUPPORT_REQUEST_TYPE_LABELS[SUPPORT_REQUEST_TYPES.FEATURE]}
+            </ListBox.Item>
+          </ListBox>
+        </Select.Popover>
       </Select>
 
-      <Input
-        label="Title"
-        placeholder="Brief description of your request"
+      <TextField
         value={formData.title}
-        onValueChange={(value) => handleInputChange("title", value)}
-        maxLength={200}
+        onChange={(value) => handleInputChange("title", value)}
         isRequired
-      />
+      >
+        <Label>Title</Label>
+        <Input
+          placeholder="Brief description of your request"
+          maxLength={200}
+        />
+      </TextField>
 
-      <Textarea
-        label="Description"
-        placeholder="Please provide detailed information about your request..."
+      <TextField
         value={formData.description}
-        onValueChange={(value) => handleInputChange("description", value)}
-        minRows={4}
-        maxRows={10}
-        maxLength={2000}
+        onChange={(value) => handleInputChange("description", value)}
         isRequired
-      />
+      >
+        <Label>Description</Label>
+        <TextArea
+          placeholder="Please provide detailed information about your request..."
+          rows={4}
+          maxLength={2000}
+          className="field-sizing-content max-h-60"
+        />
+      </TextField>
 
       {isVisitor &&
         (TURNSTILE_SITE_KEY ? (
@@ -147,9 +174,9 @@ function ContactRequestForm({
       <div className="flex justify-end">
         <Button
           type="submit"
-          disabled={isSubmitting || (isVisitor && !TURNSTILE_SITE_KEY)}
-          isLoading={visitor.isVerifying}
-          color="primary"
+          isDisabled={isSubmitting || (isVisitor && !TURNSTILE_SITE_KEY)}
+          isPending={visitor.isVerifying}
+          variant="primary"
         >
           {isSubmitting ? "Submitting..." : "Submit"}
         </Button>

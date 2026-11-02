@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 
 import { usePopupCheckout } from "../hooks/usePopupCheckout";
@@ -39,11 +39,10 @@ export default function PopupPaywallNotice() {
 
       <Button
         size="sm"
-        color="primary"
-        radius="full"
         className="font-medium text-black"
-        isLoading={isOpeningCheckout}
+        isPending={isOpeningCheckout}
         onPress={() => void openCheckout()}
+        variant="primary"
       >
         Subscribe in your browser
       </Button>

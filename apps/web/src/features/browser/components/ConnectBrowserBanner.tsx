@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 
 interface ConnectBrowserBannerProps {
   onConnect: () => void;
@@ -16,9 +16,9 @@ export function ConnectBrowserBanner({ onConnect }: ConnectBrowserBannerProps) {
       </p>
       <Button
         size="sm"
-        color="primary"
         className="shrink-0"
         onPress={onConnect}
+        variant="primary"
       >
         Import
       </Button>

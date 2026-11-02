@@ -4,6 +4,7 @@
    The react-ui styles load with the OpenUI library: config/openui/openui.css. */
 @layer theme, base, openui, components, utilities;
 @import "tailwindcss";
+@import "./heroui.css";
 
 @source "../../../src";
 @source "../../../../../libs/shared/ts/src/**/*.{js,ts,jsx,tsx}";
@@ -12,13 +13,11 @@
 @source inline("grid-rows-3 grid-rows-4 grid-cols-3 grid-cols-4");
 
 /* HeroUI */
-@source "../../../node_modules/@heroui/theme/dist/**/*.{js,ts,jsx,tsx}";
 
 /* Streamdown — markdown renderer; scan its dist so Tailwind emits the utilities its components use */
 @source "../../../node_modules/streamdown/dist/*.js";
 
 @custom-variant dark (&:is(.dark *));
-@plugin "./hero.ts";
 @plugin "tailwindcss-animate";
 
 /* Global rather than in openui.css: it matches every recharts bar, not only react-ui's. */
@@ -357,6 +356,24 @@
   }
 }
 
+/* LCP-safe variant: starts at full opacity. Starting a headline at opacity:0
+   makes it non-contentful, so the browser never picks it as the Largest
+   Contentful Paint and falls back to a later, smaller element. Blur + Y only.
+   (Restored after the v3 merge dropped it: the `immediate` callers reference
+   this name, so without it the entrance animation silently never ran.) */
+@keyframes gaia-soft-blur-in-lcp {
+  from {
+    opacity: 1;
+    filter: blur(var(--sbi-blur, 12px));
+    transform: translateY(var(--sbi-y, 16px));
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0);
+  }
+}
+
 .hero-split-word {
   display: inline-block;
   opacity: 0;
@@ -469,11 +486,6 @@
 
   :root {
     /* HeroUI theme variables */
-    --heroui-primary: #00bbff;
-    --heroui-primary-foreground: #000000;
-    --heroui-focus: #00bbff;
-    --heroui-white: #ffffff;
-    --heroui-white-foreground: #000000;
 
     --background: 0 0% 100%;
     --foreground: 222.2 47.4% 11.2%;
@@ -509,11 +521,6 @@
 
   .dark {
     /* HeroUI theme variables */
-    --heroui-primary: #00bbff;
-    --heroui-primary-foreground: #000000;
-    --heroui-focus: #00bbff;
-    --heroui-white: #ffffff;
-    --heroui-white-foreground: #000000;
 
     --background: 224 71% 4%;
     --foreground: 213 31% 91%;
@@ -1279,4 +1286,66 @@
     [contenteditable="true"]
   ) {
   -webkit-app-region: no-drag;
+}
+
+/* HeroUI v3 token bridge.
+   v3 renamed the --heroui-* namespace to bare tokens (--accent/--focus), which
+   collide with the legacy shadcn HSL triplets above. The shadcn ones have no
+   --color-* mapping, so v3 wins. `.dark` must be listed explicitly: it is a
+   class selector and outranks `:root` on specificity, which silently reset the
+   brand blue back to the theme default. */
+:root,
+.dark {
+  --accent: #00bbff;
+  --accent-foreground: #000000;
+  --accent-hover: #33c9ff;
+  --focus: #00bbff;
+}
+
+/* v3 also renamed the theme's structural colours: `--heroui-background`,
+   `--heroui-content1` and `--heroui-divider` became `--background`, `--surface`
+   and `--separator`. Those bare names collide with the legacy shadcn HSL
+   triplets in the `base` layer above — and unlike `--accent` they DO have a
+   `--color-*` mapping (`--color-border: var(--border)`), so `--border` resolved
+   to the string `216 34% 17%` (not a colour), every `border-border`/`bg-border`
+   fell back to `currentColor` and drew a white hairline on the dark theme.
+   Re-declare them as real colours using the v2 values, and paint the canvas:
+   v2's HeroUI theme shipped `:root { background-color: hsl(var(--heroui-background)) }`,
+   which is where the site's black page background came from — v3 only declares
+   the token, so the marketing pages lost their black backdrop. */
+:root {
+  --background: #ffffff;
+  --surface: #ffffff;
+  --border: hsl(214.3 31.8% 91.4%);
+  --separator: hsl(0 0% 90%);
+}
+
+.dark {
+  /* v2 --heroui-background: 0 0% 0% */
+  --background: #000000;
+  /* v2 --heroui-content1: 240 5.88% 10% (zinc-900) */
+  --surface: hsl(240 5.88% 10%);
+  /* v2 --border: 216 34% 17% (subtle blue-grey hairline, not white) */
+  --border: hsl(216 34% 17%);
+  /* v2's accordion/dividers rendered as a #262626 hairline on black */
+  --separator: hsl(0 0% 15%);
+}
+
+html {
+  background-color: var(--background);
+}
+
+/* v3 ships pill-shaped controls (`.button` is rounded-3xl = 3x --radius).
+   Restore the tighter v2 geometry without forking the component styles. */
+:root {
+  --radius: 0.375rem;
+}
+.button {
+  border-radius: 0.75rem;
+}
+.button--icon-only {
+  border-radius: 0.5rem;
+}
+.chip {
+  border-radius: 0.5rem;
 }

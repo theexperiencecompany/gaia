@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { Download01Icon } from "@icons";
 
 function downloadAllAssets() {
@@ -14,11 +14,8 @@ function downloadAllAssets() {
 
 export function DownloadAll() {
   return (
-    <Button
-      onPress={downloadAllAssets}
-      color="primary"
-      startContent={<Download01Icon className="h-5 w-5" />}
-    >
+    <Button onPress={downloadAllAssets} variant="primary">
+      <Download01Icon className="h-5 w-5" />
       Download All Assets
     </Button>
   );

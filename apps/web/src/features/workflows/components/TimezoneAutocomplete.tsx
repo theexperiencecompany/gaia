@@ -1,6 +1,6 @@
 "use client";
 
-import { Autocomplete, AutocompleteItem } from "@heroui/autocomplete";
+import { Autocomplete, Input, ListBox, SearchField } from "@heroui/react";
 import { useEffect, useMemo, useState } from "react";
 
 import { timezoneSearchText } from "@/utils/timezoneUtils";
@@ -48,9 +48,9 @@ export function TimezoneAutocomplete({
     setInputValue(selectedCity);
   }, [selectedCity]);
 
-  // `items` (controlled) means HeroUI shows exactly what we pass — no built-in
-  // filtering — so we match across the full search text ourselves. When the box
-  // just shows the current selection (or is empty), show everything to browse.
+  // The dropdown shows exactly what we pass (no built-in filtering) so we match
+  // across the full search text ourselves. When the box just shows the current
+  // selection (or is empty), show everything to browse.
   const filteredOptions = useMemo(() => {
     const query = inputValue.trim().toLowerCase();
     if (!query || query === selectedCity.toLowerCase()) return options;
@@ -62,48 +62,54 @@ export function TimezoneAutocomplete({
   return (
     <Autocomplete
       aria-label="Timezone"
-      size="sm"
       className={className}
-      // Let the dropdown size to its content (zone + region + offset) instead of
-      // being clamped to the narrow trigger width, so nothing is cut off.
-      popoverProps={{ classNames: { content: "min-w-fit" } }}
-      // The list is virtualized with a fixed row height (default 32px), which is
-      // too short for the two-line city + region item and made rows overlap.
-      itemHeight={52}
-      items={filteredOptions}
-      inputValue={inputValue}
-      onInputChange={setInputValue}
       selectedKey={timezone || null}
       onSelectionChange={(key) => {
         if (key) onChange(String(key));
       }}
-      endContent={
-        selectedOffset ? (
+    >
+      <Autocomplete.Trigger>
+        {selectedOffset ? (
           <span className="shrink-0 text-xs text-zinc-500">
             {selectedOffset}
           </span>
-        ) : null
-      }
-    >
-      {(tz) => {
-        const { city, region } = describeZone(tz.value);
-        return (
-          <AutocompleteItem
-            key={tz.value}
-            // textValue (the search key + selected input text) is the city; the
-            // region is HeroUI's native description line, the offset its endContent.
-            textValue={city}
-            description={region || undefined}
-            endContent={
-              <span className="text-xs tabular-nums text-default-500">
-                {tz.offset}
-              </span>
-            }
+        ) : null}
+        <Autocomplete.Value />
+        <Autocomplete.Indicator />
+      </Autocomplete.Trigger>
+      <Autocomplete.Popover className="min-w-[var(--trigger-width)]">
+        <Autocomplete.Filter filter={() => true}>
+          <SearchField
+            aria-label="Search timezones"
+            value={inputValue}
+            onChange={setInputValue}
           >
-            {city}
-          </AutocompleteItem>
-        );
-      }}
+            <Input placeholder="Search timezones..." />
+          </SearchField>
+          <ListBox aria-label="Timezones">
+            {filteredOptions.map((tz) => {
+              const { city, region } = describeZone(tz.value);
+              return (
+                <ListBox.Item key={tz.value} id={tz.value} textValue={city}>
+                  <div className="flex w-full items-center justify-between gap-2">
+                    <div className="flex min-w-0 flex-col">
+                      <span className="truncate">{city}</span>
+                      {region ? (
+                        <span className="truncate text-xs text-default-500">
+                          {region}
+                        </span>
+                      ) : null}
+                    </div>
+                    <span className="shrink-0 text-xs tabular-nums text-default-500">
+                      {tz.offset}
+                    </span>
+                  </div>
+                </ListBox.Item>
+              );
+            })}
+          </ListBox>
+        </Autocomplete.Filter>
+      </Autocomplete.Popover>
     </Autocomplete>
   );
 }

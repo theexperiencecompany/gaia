@@ -1,8 +1,7 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import type { KbdKey } from "@heroui/kbd";
-import { Kbd } from "@heroui/kbd";
+import type { KbdKey } from "@heroui/react";
+import { Button, Kbd } from "@heroui/react";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 
 interface ShortcutRecorderProps {
@@ -114,7 +113,10 @@ function eventModifiers(event: KeyboardEvent): string[] {
 function ShortcutKbd({ accelerator }: Readonly<{ accelerator: string }>) {
   const { keys, label } = acceleratorToKbd(accelerator);
   return (
-    <Kbd keys={keys} classNames={{ base: "bg-zinc-700/80 shadow-none" }}>
+    <Kbd className="bg-zinc-700/80 shadow-none">
+      {keys.map((keyValue) => (
+        <Kbd.Abbr key={keyValue} keyValue={keyValue} />
+      ))}
       {label}
     </Kbd>
   );
@@ -189,9 +191,7 @@ export function ShortcutRecorder({
 
   return (
     <Button
-      variant="flat"
-      color={recording ? "primary" : "default"}
-      radius="lg"
+      variant="tertiary"
       onPress={() => (recording ? stopRecording() : setRecording(true))}
       onBlur={stopRecording}
       className="h-9 min-w-36 px-3"

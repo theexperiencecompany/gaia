@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
+import { Button, Chip } from "@heroui/react";
 import {
   Copy01Icon,
   LinkBackwardIcon,
@@ -804,7 +803,7 @@ function ChatDemoWindow() {
               <Chip
                 key={useCase.id}
                 size="lg"
-                variant={activeUseCase === i ? "shadow" : "flat"}
+                variant="primary"
                 className="cursor-pointer select-none"
                 onClick={() => switchUseCase(i)}
               >
@@ -816,11 +815,9 @@ function ChatDemoWindow() {
           <Button
             type="button"
             aria-label="Retry"
-            title="Replay demo"
             onPress={handleRetry}
             isIconOnly
-            radius="full"
-            variant="flat"
+            variant="tertiary"
           >
             <RedoIcon width={20} height={20} />
           </Button>

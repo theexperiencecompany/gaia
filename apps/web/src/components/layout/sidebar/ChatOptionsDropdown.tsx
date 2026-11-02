@@ -1,20 +1,13 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import {
+  Button,
   Dropdown,
-  DropdownItem,
-  DropdownMenu,
-  DropdownTrigger,
-} from "@heroui/dropdown";
-import { Input } from "@heroui/input";
-import {
+  Input,
+  Label,
   Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-} from "@heroui/modal";
+  TextField,
+} from "@heroui/react";
 import {
   ArrowDown01Icon,
   Delete02Icon,
@@ -27,7 +20,6 @@ import { useRouter } from "next/navigation";
 import {
   type KeyboardEvent,
   type ReactNode,
-  type SetStateAction,
   useCallback,
   useState,
 } from "react";
@@ -156,116 +148,121 @@ export default function ChatOptionsDropdown({
     <>
       <Dropdown
         className={`group/${chatId} w-fit min-w-fit text-foreground dark`}
-        size="sm"
       >
-        <DropdownTrigger>
-          <Button
-            className={`ml-auto ${buttonHovered ? "backdrop-blur-lg" : ""}`}
-            isIconOnly={!btnChildren}
-            variant={btnChildren ? "flat" : "light"}
-            radius={btnChildren ? "md" : "full"}
-            // size={btnChildren ? "md" : "sm"}
-            size="sm"
-          >
-            {btnChildren}
-            {logo2 ? (
-              <ArrowDown01Icon width={25} />
-            ) : (
-              <MoreVerticalIcon
-                className={
-                  "transition-all " +
-                  (buttonHovered
-                    ? "opacity-100"
-                    : "w-[20px] min-w-[20px] opacity-0")
-                }
-                width={20}
-              />
-            )}
-          </Button>
-        </DropdownTrigger>
-        <DropdownMenu aria-label="Static Actions">
-          <DropdownItem key="star" textValue="Star" onPress={handleStarToggle}>
-            <div className="flex flex-row items-center justify-start gap-2">
-              <StarIcon color="white" width={18} height={18} />
-              {starred ? "Unstar" : "Star"}
-            </div>
-          </DropdownItem>
-          <DropdownItem key="edit" textValue="Rename" onPress={openEditModal}>
-            <div className="flex flex-row items-center justify-start gap-2">
-              <PencilEdit02Icon color="white" width={18} height={18} />
-              Rename
-            </div>
-          </DropdownItem>
-          <DropdownItem
-            key="read"
-            textValue={isUnread ? "Mark as read" : "Mark as unread"}
-            onPress={handleReadToggle}
-          >
-            <div className="flex flex-row items-center justify-start gap-2">
-              <MessageNotificationIcon color="white" width={18} height={18} />
-              {isUnread ? "Mark as read" : "Mark as unread"}
-            </div>
-          </DropdownItem>
-          <DropdownItem
-            key="delete"
-            className="text-danger"
-            color="danger"
-            textValue="Delete"
-            onMouseOut={() => setDangerStateHovered(false)}
-            onMouseOver={() => setDangerStateHovered(true)}
-            onPress={handleDelete}
-          >
-            <div className="flex flex-row items-center justify-start gap-2">
-              <Delete02Icon
-                color={dangerStateHovered ? "white" : "red"}
-                width={18}
-                height={18}
-              />
-              Delete
-            </div>
-          </DropdownItem>
-        </DropdownMenu>
+        <Button
+          className={`ml-auto ${buttonHovered ? "backdrop-blur-lg" : ""}`}
+          isIconOnly={!btnChildren}
+          variant={btnChildren ? "tertiary" : "ghost"}
+          // size={btnChildren ? "md" : "sm"}
+          size="sm"
+        >
+          {btnChildren}
+          {logo2 ? (
+            <ArrowDown01Icon width={25} />
+          ) : (
+            <MoreVerticalIcon
+              className={
+                "transition-all " +
+                (buttonHovered
+                  ? "opacity-100"
+                  : "w-[20px] min-w-[20px] opacity-0")
+              }
+              width={20}
+            />
+          )}
+        </Button>
+        <Dropdown.Popover>
+          <Dropdown.Menu aria-label="Static Actions">
+            <Dropdown.Item
+              id="star"
+              textValue="Star"
+              onAction={handleStarToggle}
+            >
+              <div className="flex flex-row items-center justify-start gap-2">
+                <StarIcon color="white" width={18} height={18} />
+                {starred ? "Unstar" : "Star"}
+              </div>
+            </Dropdown.Item>
+            <Dropdown.Item
+              id="edit"
+              textValue="Rename"
+              onAction={openEditModal}
+            >
+              <div className="flex flex-row items-center justify-start gap-2">
+                <PencilEdit02Icon color="white" width={18} height={18} />
+                Rename
+              </div>
+            </Dropdown.Item>
+            <Dropdown.Item
+              id="read"
+              textValue={isUnread ? "Mark as read" : "Mark as unread"}
+              onAction={handleReadToggle}
+            >
+              <div className="flex flex-row items-center justify-start gap-2">
+                <MessageNotificationIcon color="white" width={18} height={18} />
+                {isUnread ? "Mark as read" : "Mark as unread"}
+              </div>
+            </Dropdown.Item>
+            <Dropdown.Item
+              id="delete"
+              className="text-danger"
+              variant="danger"
+              textValue="Delete"
+              onMouseOut={() => setDangerStateHovered(false)}
+              onMouseOver={() => setDangerStateHovered(true)}
+              onAction={handleDelete}
+            >
+              <div className="flex flex-row items-center justify-start gap-2">
+                <Delete02Icon
+                  color={dangerStateHovered ? "white" : "red"}
+                  width={18}
+                  height={18}
+                />
+                Delete
+              </div>
+            </Dropdown.Item>
+          </Dropdown.Menu>
+        </Dropdown.Popover>
       </Dropdown>
 
-      <Modal
-        className="text-foreground dark"
-        isOpen={isEditModalOpen}
-        onOpenChange={closeEditModal}
-      >
-        <ModalContent>
-          <ModalHeader className="pb-0">Rename Conversation</ModalHeader>
-          <ModalBody>
-            <Input
-              label={
-                <div className="space-x-1 text-xs">
-                  <span>Previous Name:</span>
-                  <span className="text-red-500">{chatName}</span>
-                </div>
-              }
-              labelPlacement="outside"
-              placeholder="Enter new chat name"
-              size="lg"
-              type="text"
-              value={newName}
-              variant="faded"
-              onChange={(e: { target: { value: SetStateAction<string> } }) =>
-                setNewName(e.target.value)
-              }
-              onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
-                if (e.nativeEvent.isComposing) return;
-                if (e.key === "Enter") handleEdit();
-              }}
-            />
-          </ModalBody>
-          <ModalFooter>
-            <Button variant="light" onPress={closeEditModal}>
-              Cancel
-            </Button>
-            <Button color="primary" onPress={handleEdit}>
-              Save
-            </Button>
-          </ModalFooter>
-        </ModalContent>
+      <Modal isOpen={isEditModalOpen} onOpenChange={closeEditModal}>
+        <Modal.Backdrop className="text-foreground dark">
+          <Modal.Container>
+            <Modal.Dialog>
+              <Modal.CloseTrigger aria-label="Close" />
+              <Modal.Header className="pb-0">
+                <Modal.Heading>Rename Conversation</Modal.Heading>
+              </Modal.Header>
+              <Modal.Body>
+                <TextField value={newName} onChange={setNewName}>
+                  <Label>
+                    <div className="space-x-1 text-xs">
+                      <span>Previous Name:</span>
+                      <span className="text-red-500">{chatName}</span>
+                    </div>
+                  </Label>
+                  <Input
+                    placeholder="Enter new chat name"
+                    type="text"
+                    variant="secondary"
+                    onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+                      if (e.nativeEvent.isComposing) return;
+                      if (e.key === "Enter") handleEdit();
+                    }}
+                  />
+                </TextField>
+              </Modal.Body>
+              <Modal.Footer>
+                <Button variant="tertiary" onPress={closeEditModal}>
+                  Cancel
+                </Button>
+                <Button onPress={handleEdit} variant="primary">
+                  Save
+                </Button>
+              </Modal.Footer>
+            </Modal.Dialog>
+          </Modal.Container>
+        </Modal.Backdrop>
       </Modal>
 
       <ConfirmationDialog {...confirmationProps} />

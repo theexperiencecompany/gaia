@@ -1,6 +1,6 @@
 "use client";
 
-import { Skeleton } from "@heroui/skeleton";
+import { Skeleton } from "@heroui/react";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 

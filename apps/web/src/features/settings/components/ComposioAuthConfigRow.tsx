@@ -1,7 +1,4 @@
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Input } from "@heroui/input";
-import { Select, SelectItem } from "@heroui/select";
+import { Button, Chip, Input, ListBox, Select, TextField } from "@heroui/react";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import type { ComposioIntegrationSetup } from "@/features/settings/api/composioSetupApi";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
@@ -52,8 +49,7 @@ export function ComposioAuthConfigRow({
         {!isSetUp && onSetUp && (
           <Button
             size="sm"
-            variant="flat"
-            color="primary"
+            variant="tertiary"
             className="shrink-0"
             onPress={() => onSetUp(row.toolkit.toLowerCase())}
           >
@@ -63,30 +59,49 @@ export function ComposioAuthConfigRow({
         {row.detected.length > 0 ? (
           <Select
             aria-label={`${row.name} auth config`}
-            size="sm"
             placeholder="Pick an auth config"
-            selectedKeys={value ? [value] : []}
-            onSelectionChange={(keys) => {
-              const [first] = Array.from(keys);
-              onChange(first === undefined ? "" : String(first));
+            selectedKey={value || null}
+            onSelectionChange={(key) => {
+              onChange(key === null ? "" : String(key));
             }}
           >
-            {row.detected.map((candidate) => (
-              <SelectItem key={candidate.id} description={candidate.id}>
-                {candidate.name}
-              </SelectItem>
-            ))}
+            <Select.Trigger>
+              <Select.Value />
+              <Select.Indicator />
+            </Select.Trigger>
+            <Select.Popover>
+              <ListBox>
+                {row.detected.map((candidate) => (
+                  <ListBox.Item
+                    key={candidate.id}
+                    id={candidate.id}
+                    textValue={candidate.name}
+                  >
+                    <span className="flex flex-col items-start">
+                      <span>{candidate.name}</span>
+                      <span className="text-xs text-zinc-500">
+                        {candidate.id}
+                      </span>
+                    </span>
+                  </ListBox.Item>
+                ))}
+              </ListBox>
+            </Select.Popover>
           </Select>
         ) : (
-          <Input
+          <TextField
             aria-label={`${row.name} auth config id`}
-            size="sm"
-            placeholder="ac_..."
             value={value}
-            onValueChange={onChange}
-          />
+            onChange={onChange}
+          >
+            <Input placeholder="ac_..." />
+          </TextField>
         )}
-        <Chip size="sm" variant="flat" color={isSetUp ? "success" : "default"}>
+        <Chip
+          size="sm"
+          variant="tertiary"
+          color={isSetUp ? "success" : "default"}
+        >
           {isSetUp ? "Set up" : "Not set up"}
         </Chip>
       </div>

@@ -1,9 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Link } from "@heroui/link";
-import { Spinner } from "@heroui/spinner";
+import { Button, Chip, Link, Spinner } from "@heroui/react";
 import {
   BookOpen01Icon,
   ComputerIcon,
@@ -46,7 +43,7 @@ function DeviceRow({
               <Chip
                 size="sm"
                 color={device.online ? "success" : "default"}
-                variant="flat"
+                variant="tertiary"
               >
                 {device.online ? "Online" : "Offline"}
               </Chip>
@@ -59,12 +56,11 @@ function DeviceRow({
         </div>
         <Button
           size="sm"
-          variant="flat"
-          color="danger"
-          isLoading={isRevoking}
-          startContent={<Delete02Icon className="size-4" />}
+          variant="danger-soft"
+          isPending={isRevoking}
           onPress={() => onRevoke(device.id)}
         >
+          <Delete02Icon className="size-4" />
           Revoke
         </Button>
       </div>
@@ -96,9 +92,8 @@ function DeviceRow({
           </p>
           <Link
             href={DEVICE_BRIDGE_DOCS_URL}
-            isExternal
-            showAnchorIcon
-            size="sm"
+            target="_blank"
+            rel="noreferrer"
             className="text-xs"
           >
             <BookOpen01Icon width={14} height={14} className="mr-1" />
@@ -136,7 +131,7 @@ function PairedDevices({
     return (
       <div className="flex flex-col items-center gap-3 rounded-2xl bg-zinc-800 p-6 text-center text-sm text-zinc-400">
         <span>Couldn&apos;t load your devices.</span>
-        <Button size="sm" variant="flat" onPress={() => void refetch()}>
+        <Button size="sm" variant="tertiary" onPress={() => void refetch()}>
           Retry
         </Button>
       </div>

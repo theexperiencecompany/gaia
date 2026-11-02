@@ -1,5 +1,4 @@
-import { Button } from "@heroui/button";
-import { Tooltip } from "@heroui/react";
+import { Button, Tooltip } from "@heroui/react";
 import {
   Copy01Icon,
   LinkBackwardIcon,
@@ -95,95 +94,116 @@ export default function ChatBubble_Actions({
     <>
       {!loading && (
         <div className="flex w-fit items-center">
-          <Tooltip content="Reply" placement="bottom">
-            <Button
-              isIconOnly
-              className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
-              variant="light"
-              onPress={handleReply}
-            >
-              <LinkBackwardIcon
-                className="cursor-pointer"
-                height="18"
-                width="18"
-              />
-            </Button>
-          </Tooltip>
-
-          <Tooltip content="Copy to clipboard" placement="bottom">
-            <Button
-              isIconOnly
-              className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
-              variant="light"
-              onPress={copyToClipboard}
-            >
-              <Copy01Icon className="cursor-pointer" height="20" width="20" />
-            </Button>
-          </Tooltip>
-
-          <Tooltip content="Pin message" placement="bottom">
-            <Button
-              isIconOnly
-              className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
-              variant="light"
-              radius="lg"
-              onPress={handlePinToggle}
-              color={pinned ? "primary" : "default"}
-            >
-              <PinIcon className={`cursor-pointer`} height="20" width="20" />
-            </Button>
-          </Tooltip>
-
-          {messageRole === "assistant" && (
-            <Tooltip content="Helpful response" placement="bottom">
+          <Tooltip>
+            <Tooltip.Trigger>
               <Button
                 isIconOnly
                 className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
-                variant="light"
-                radius="lg"
-                onPress={handleThumbsUp}
+                variant="tertiary"
+                onPress={handleReply}
               >
-                <ThumbsUpIcon
-                  className={`cursor-pointer`}
-                  height="20"
-                  width="20"
+                <LinkBackwardIcon
+                  className="cursor-pointer"
+                  height="18"
+                  width="18"
                 />
               </Button>
+            </Tooltip.Trigger>
+            <Tooltip.Content placement="bottom">Reply</Tooltip.Content>
+          </Tooltip>
+
+          <Tooltip>
+            <Tooltip.Trigger>
+              <Button
+                isIconOnly
+                className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
+                variant="tertiary"
+                onPress={copyToClipboard}
+              >
+                <Copy01Icon className="cursor-pointer" height="20" width="20" />
+              </Button>
+            </Tooltip.Trigger>
+            <Tooltip.Content placement="bottom">
+              Copy to clipboard
+            </Tooltip.Content>
+          </Tooltip>
+
+          <Tooltip>
+            <Tooltip.Trigger>
+              <Button
+                isIconOnly
+                className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
+                variant="tertiary"
+                onPress={handlePinToggle}
+              >
+                <PinIcon className={`cursor-pointer`} height="20" width="20" />
+              </Button>
+            </Tooltip.Trigger>
+            <Tooltip.Content placement="bottom">Pin message</Tooltip.Content>
+          </Tooltip>
+
+          {messageRole === "assistant" && (
+            <Tooltip>
+              <Tooltip.Trigger>
+                <Button
+                  isIconOnly
+                  className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
+                  variant="tertiary"
+                  onPress={handleThumbsUp}
+                >
+                  <ThumbsUpIcon
+                    className={`cursor-pointer`}
+                    height="20"
+                    width="20"
+                  />
+                </Button>
+              </Tooltip.Trigger>
+              <Tooltip.Content placement="bottom">
+                Helpful response
+              </Tooltip.Content>
             </Tooltip>
           )}
 
           {messageRole === "assistant" && (
-            <Tooltip content="Not helpful" placement="bottom">
-              <Button
-                isIconOnly
-                className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
-                variant="light"
-                radius="lg"
-                onPress={handleThumbsDown}
-              >
-                <ThumbsDownIcon
-                  className={`cursor-pointer`}
-                  height="20"
-                  width="20"
-                />
-              </Button>
+            <Tooltip>
+              <Tooltip.Trigger>
+                <Button
+                  isIconOnly
+                  className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
+                  variant="tertiary"
+                  onPress={handleThumbsDown}
+                >
+                  <ThumbsDownIcon
+                    className={`cursor-pointer`}
+                    height="20"
+                    width="20"
+                  />
+                </Button>
+              </Tooltip.Trigger>
+              <Tooltip.Content placement="bottom">Not helpful</Tooltip.Content>
             </Tooltip>
           )}
 
           {onRetry && (
-            <Tooltip content="Retry" placement="bottom">
-              <Button
-                isIconOnly
-                isDisabled={isRetrying}
-                className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
-                variant="light"
-                radius="lg"
-                onPress={onRetry}
-              >
-                <div className={isRetrying ? "animate-spin" : ""}>
-                  <RedoIcon className="cursor-pointer" height="18" width="18" />
-                </div>
-              </Button>
+            <Tooltip>
+              <Tooltip.Trigger>
+                <Button
+                  isIconOnly
+                  isDisabled={isRetrying}
+                  className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
+                  variant="tertiary"
+                  onPress={onRetry}
+                >
+                  <div className={isRetrying ? "animate-spin" : ""}>
+                    <RedoIcon
+                      className="cursor-pointer"
+                      height="18"
+                      width="18"
+                    />
+                  </div>
+                </Button>
+              </Tooltip.Trigger>
+              <Tooltip.Content placement="bottom">Retry</Tooltip.Content>
             </Tooltip>
           )}
           {/*
@@ -192,7 +212,7 @@ export default function ChatBubble_Actions({
             index={index}
             trigger={
               <Button
-                variant="light"
+                variant="tertiary"
                 className="w-fit p-0 h-fit rounded-md"
                 isIconOnly
                 style={{ minWidth: "22px" }}

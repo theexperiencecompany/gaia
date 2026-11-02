@@ -1,8 +1,6 @@
 "use client";
 
-import { Accordion, AccordionItem } from "@heroui/accordion";
-import { Chip } from "@heroui/chip";
-import { Divider } from "@heroui/divider";
+import { Accordion, AccordionItem, Chip, Separator } from "@heroui/react";
 import { AiWebBrowsingIcon, Alert01Icon, CheckmarkCircle02Icon } from "@icons";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import RightSidebarPanel from "@/components/layout/sidebar/RightSidebarPanel";
@@ -103,37 +101,33 @@ function StepsAccordion({
   currentTask: string | undefined;
 }) {
   return (
-    <Accordion isCompact className="px-0" variant="light">
-      <AccordionItem
-        key="steps"
-        aria-label="Steps"
-        title={
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="shrink-0 text-sm font-medium text-zinc-300">
-              Steps
-            </span>
-            <Chip
-              size="sm"
-              variant="flat"
-              classNames={{
-                base: "h-5 bg-zinc-700",
-                content: "px-1.5 text-xs text-zinc-300",
-              }}
-            >
-              {steps.length}
-            </Chip>
-            {currentTask && (
-              <span className="min-w-0 flex-1 truncate text-xs">
-                <ShimmerText text={currentTask} />
+    <Accordion className="px-0" variant="default">
+      <AccordionItem key="steps" id="steps">
+        <Accordion.Heading>
+          <Accordion.Trigger className="py-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="shrink-0 text-sm font-medium text-zinc-300">
+                Steps
               </span>
-            )}
-          </div>
-        }
-        classNames={{ trigger: "py-2", content: "space-y-2 pb-2" }}
-      >
-        {steps.map((step) => (
-          <StepRow key={`browser-step-${step.index}`} step={step} />
-        ))}
+              <Chip size="sm" variant="tertiary" className="h-5 bg-zinc-700">
+                <Chip.Label className="px-1.5 text-xs text-zinc-300">
+                  {steps.length}
+                </Chip.Label>
+              </Chip>
+              {currentTask && (
+                <span className="min-w-0 flex-1 truncate text-xs">
+                  <ShimmerText text={currentTask} />
+                </span>
+              )}
+            </div>
+            <Accordion.Indicator />
+          </Accordion.Trigger>
+        </Accordion.Heading>
+        <Accordion.Panel className="space-y-2 pb-2">
+          {steps.map((step) => (
+            <StepRow key={`browser-step-${step.index}`} step={step} />
+          ))}
+        </Accordion.Panel>
       </AccordionItem>
     </Accordion>
   );
@@ -142,7 +136,7 @@ function StepsAccordion({
 function ResultFooter({ result }: { result: BrowserResultSnapshot }) {
   return (
     <>
-      <Divider className="my-3 bg-zinc-700/50" />
+      <Separator className="my-3 bg-zinc-700/50" />
       <div className="flex items-start gap-2.5">
         {result.success ? (
           <CheckmarkCircle02Icon className="mt-px size-4 shrink-0 text-emerald-400" />

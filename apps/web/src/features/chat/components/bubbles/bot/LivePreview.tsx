@@ -1,13 +1,13 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Modal, ModalBody, ModalContent } from "@heroui/modal";
+import { Button, Modal } from "@heroui/react";
 import {
   EyeIcon,
   FullScreenIcon,
   SidebarRight01Icon,
   SquareArrowUpRight02Icon,
 } from "@icons";
+import type { AnchorHTMLAttributes } from "react";
 import { useState } from "react";
 import { useLiveBrowser } from "@/features/browser/hooks/useLiveBrowser";
 import type { LiveSurface } from "@/features/browser/types";
@@ -49,8 +49,7 @@ export function LivePreview({
           <Button
             isIconOnly
             size="sm"
-            variant="light"
-            radius="full"
+            variant="tertiary"
             className="ml-auto size-6 min-w-6 text-zinc-400"
             aria-label="Open in side panel"
             onPress={surface.openPanel}
@@ -62,8 +61,7 @@ export function LivePreview({
           <Button
             isIconOnly
             size="sm"
-            variant="light"
-            radius="full"
+            variant="tertiary"
             className="ml-auto size-6 min-w-6 text-zinc-400"
             aria-label="Full screen live preview"
             onPress={() => setFullscreen(true)}
@@ -85,12 +83,11 @@ export function LivePreview({
         <div className="mt-2 px-0.5">
           <Button
             size="sm"
-            variant="light"
-            radius="full"
+            variant="tertiary"
             className="h-7 px-2 text-xs text-zinc-400"
-            startContent={<SidebarRight01Icon className="size-3.5" />}
             onPress={surface.openPanel}
           >
+            <SidebarRight01Icon className="size-3.5" />
             Open side panel
           </Button>
         </div>
@@ -98,39 +95,44 @@ export function LivePreview({
       {surface.kind === "mobile" && (
         <div className="mt-2 px-0.5">
           <Button
-            as="a"
-            href={pageUrl}
-            target="_blank"
-            rel="noopener noreferrer"
+            render={(props) => (
+              <a
+                {...(props as AnchorHTMLAttributes<HTMLAnchorElement>)}
+                href={pageUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              />
+            )}
             size="sm"
-            variant="light"
-            radius="full"
+            variant="tertiary"
             className="h-7 px-2 text-xs text-zinc-400"
-            startContent={<SquareArrowUpRight02Icon className="size-3.5" />}
           >
+            <SquareArrowUpRight02Icon className="size-3.5" />
             Open full browser
           </Button>
         </div>
       )}
 
-      <Modal
-        isOpen={fullscreen}
-        onOpenChange={setFullscreen}
-        size="full"
-        scrollBehavior="inside"
-      >
-        <ModalContent className="bg-zinc-950">
-          <ModalBody className="flex flex-col gap-4 p-4 sm:p-6">
-            <div className="flex min-h-0 flex-1 items-center justify-center">
-              {fullscreen && <div className="w-full max-w-6xl">{screen}</div>}
-            </div>
-            {currentTask && (
-              <div className="mx-auto w-full max-w-6xl shrink-0 rounded-2xl bg-zinc-900 px-4 py-3 text-sm">
-                <ShimmerText text={currentTask} />
-              </div>
-            )}
-          </ModalBody>
-        </ModalContent>
+      <Modal isOpen={fullscreen} onOpenChange={setFullscreen}>
+        <Modal.Backdrop>
+          <Modal.Container size="full">
+            <Modal.Dialog className="bg-zinc-950">
+              <Modal.CloseTrigger aria-label="Close" />
+              <Modal.Body className="flex flex-col gap-4 p-4 sm:p-6">
+                <div className="flex min-h-0 flex-1 items-center justify-center">
+                  {fullscreen && (
+                    <div className="w-full max-w-6xl">{screen}</div>
+                  )}
+                </div>
+                {currentTask && (
+                  <div className="mx-auto w-full max-w-6xl shrink-0 rounded-2xl bg-zinc-900 px-4 py-3 text-sm">
+                    <ShimmerText text={currentTask} />
+                  </div>
+                )}
+              </Modal.Body>
+            </Modal.Dialog>
+          </Modal.Container>
+        </Modal.Backdrop>
       </Modal>
     </div>
   );

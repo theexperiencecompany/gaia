@@ -1,6 +1,4 @@
-import { Button } from "@heroui/button";
-import { Spinner } from "@heroui/spinner";
-import { Tooltip } from "@heroui/tooltip";
+import { Button, Spinner, Tooltip } from "@heroui/react";
 import { Cancel01Icon } from "@icons";
 import { formatFileSize } from "@shared/utils";
 import Image from "next/image";
@@ -50,7 +48,7 @@ const FileChip: React.FC<{
       <Button
         isIconOnly
         size="sm"
-        variant="faded"
+        variant="secondary"
         isDisabled={file.isUploading}
         className="absolute top-0 right-0 z-10 h-6 w-6 min-w-0 scale-90 rounded-full opacity-0 transition-opacity group-hover:opacity-100"
         onPress={() => onRemove(file.id)}
@@ -80,15 +78,15 @@ const FileChip: React.FC<{
           </div>
           <div className="flex min-w-0 flex-1 flex-col">
             {isTruncated ? (
-              <Tooltip
-                content={file.name}
-                placement="top-start"
-                showArrow
-                isOpen={isHovered}
-              >
-                <p className="truncate text-sm font-medium text-white">
-                  {file.name.substring(0, 15)}...
-                </p>
+              <Tooltip isOpen={isHovered}>
+                <Tooltip.Trigger>
+                  <p className="truncate text-sm font-medium text-white">
+                    {file.name.substring(0, 15)}...
+                  </p>
+                </Tooltip.Trigger>
+                <Tooltip.Content placement="top start" showArrow>
+                  {file.name}
+                </Tooltip.Content>
               </Tooltip>
             ) : (
               <p className="truncate text-sm font-medium text-white">

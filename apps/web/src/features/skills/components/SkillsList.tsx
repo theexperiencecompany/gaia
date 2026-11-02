@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button } from "@heroui/react";
 import { PlusSignIcon, PuzzleIcon } from "@icons";
 import { useMemo } from "react";
 import type { Skill, SkillTarget } from "../api/types";
@@ -154,11 +154,11 @@ function EmptyState({
           </p>
           <Button
             size="sm"
-            color="primary"
             className="mt-4 rounded-xl"
-            startContent={<PlusSignIcon className="size-4" />}
             onPress={onCreate}
+            variant="primary"
           >
+            <PlusSignIcon className="size-4" />
             New skill
           </Button>
         </>

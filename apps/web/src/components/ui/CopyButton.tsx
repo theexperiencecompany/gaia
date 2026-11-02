@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, type ButtonProps } from "@heroui/button";
+import { Button, type ButtonProps } from "@heroui/react";
 import { CheckmarkCircle01Icon, Copy01Icon } from "@icons";
 import { useState } from "react";
 import { copyWithFeedback } from "@/lib/clipboard";
@@ -16,7 +16,7 @@ interface CopyButtonProps {
 
 export default function CopyButton({
   textToCopy,
-  variant = "flat",
+  variant = "secondary",
   size = "sm",
   className = "",
   copied: externalCopied,

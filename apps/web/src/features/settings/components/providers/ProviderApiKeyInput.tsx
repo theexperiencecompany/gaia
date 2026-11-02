@@ -1,12 +1,12 @@
 "use client";
 
-import type { InputProps } from "@heroui/input";
-import { Link } from "@heroui/link";
+import { Link } from "@heroui/react";
 import { SquareArrowUpRight02Icon } from "@icons";
+import type { ComponentProps } from "react";
 import { SecretInput } from "@/components/shared/SecretInput";
 
 interface ProviderApiKeyInputProps
-  extends Omit<InputProps, "type" | "label" | "endContent"> {
+  extends Omit<ComponentProps<typeof SecretInput>, "subject"> {
   /** The field's name, e.g. "API key" or "API secret". */
   label: string;
   /** Where the provider issues keys; empty when it has no such page. */
@@ -26,8 +26,8 @@ export function ProviderApiKeyInput({
       {keyUrl && (
         <Link
           href={keyUrl}
-          isExternal
-          size="sm"
+          target="_blank"
+          rel="noreferrer"
           className="inline-flex items-center gap-1 text-xs text-zinc-500"
         >
           Get your key

@@ -1,0 +1,16 @@
+import { chromium } from "@playwright/test";
+const browser = await chromium.launch();
+const page = await (await browser.newContext({ viewport: { width: 1280, height: 1000 } })).newPage();
+const errs = [];
+page.on("pageerror", e => errs.push("PAGEERROR " + (e.stack||e.message).slice(0,800)));
+page.on("console", m => { if (m.type()==="error") errs.push("CONSOLE " + m.text().slice(0,400)); });
+await page.goto("http://localhost:3200/contact", { waitUntil: "networkidle" });
+await page.waitForTimeout(800);
+const title = page.getByPlaceholder("Brief description of your request");
+await title.click();
+await page.keyboard.type("Hi");
+await page.waitForTimeout(1500);
+console.log("inputs now:", await page.locator("input,textarea").count());
+console.log("body text:", (await page.locator("body").innerText()).slice(0,600).replace(/\n+/g," | "));
+console.log("ERRORS:\n" + errs.join("\n---\n"));
+await browser.close();

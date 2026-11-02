@@ -1,14 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
-import {
-  Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-} from "@heroui/modal";
+import { Button, Description, Input, Modal, TextField } from "@heroui/react";
 import type { IntegrationAccountResponse } from "@shared/api/generated";
 import { useState } from "react";
 
@@ -34,37 +26,44 @@ export function IntegrationAccountRenameModal({
   };
 
   return (
-    <Modal
-      className="text-foreground dark"
-      isOpen={account !== null}
-      onOpenChange={onClose}
-    >
-      <ModalContent>
-        <ModalHeader className="pb-0">Rename account</ModalHeader>
-        <ModalBody>
-          <Input
-            autoFocus
-            aria-label="Account name"
-            description={account?.label}
-            placeholder={account?.label}
-            value={name}
-            variant="faded"
-            onValueChange={setName}
-            onKeyDown={(event) => {
-              if (event.nativeEvent.isComposing) return;
-              if (event.key === "Enter") save();
-            }}
-          />
-        </ModalBody>
-        <ModalFooter>
-          <Button variant="light" onPress={onClose}>
-            Cancel
-          </Button>
-          <Button color="primary" onPress={save}>
-            Save
-          </Button>
-        </ModalFooter>
-      </ModalContent>
+    <Modal>
+      <Modal.Backdrop
+        isOpen={account !== null}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) onClose();
+        }}
+      >
+        <Modal.Container>
+          <Modal.Dialog className="text-foreground dark">
+            <Modal.CloseTrigger aria-label="Close" />
+            <Modal.Header className="pb-0">Rename account</Modal.Header>
+            <Modal.Body>
+              <TextField value={name} onChange={setName}>
+                <Input
+                  autoFocus
+                  aria-label="Account name"
+                  placeholder={account?.label}
+                  onKeyDown={(event) => {
+                    if (event.nativeEvent.isComposing) return;
+                    if (event.key === "Enter") save();
+                  }}
+                />
+                {account?.label ? (
+                  <Description>{account.label}</Description>
+                ) : null}
+              </TextField>
+            </Modal.Body>
+            <Modal.Footer>
+              <Button variant="tertiary" onPress={onClose}>
+                Cancel
+              </Button>
+              <Button onPress={save} variant="primary">
+                Save
+              </Button>
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
     </Modal>
   );
 }

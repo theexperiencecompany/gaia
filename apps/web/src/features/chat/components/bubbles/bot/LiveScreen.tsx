@@ -1,6 +1,6 @@
 "use client";
 
-import { Spinner } from "@heroui/spinner";
+import { Spinner } from "@heroui/react";
 import type { LiveBrowser } from "@/features/browser/hooks/useLiveBrowser";
 
 interface LiveScreenProps {

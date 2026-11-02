@@ -1,4 +1,4 @@
-import { Button } from "@heroui/button";
+import { buttonVariants } from "@heroui/react";
 import Image from "next/image";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { HubPagination } from "@/components/seo/HubPagination";
@@ -232,9 +232,12 @@ export async function AutomateHub({ locale, page }: AutomateHubProps) {
             {t("dont_see_your_combo")}
           </h2>
           <p className="mb-6 text-zinc-400">{t("dont_see_your_combo_desc")}</p>
-          <Button href="/marketplace" as="a" color="primary">
+          <SiteLink
+            className={buttonVariants({ variant: "primary" })}
+            href="/marketplace"
+          >
             {tCommon("browse_marketplace")}
-          </Button>
+          </SiteLink>
         </div>
       </div>
 
