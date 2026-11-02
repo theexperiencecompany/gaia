@@ -272,7 +272,7 @@
   // How many one-character boxes in one form make one code field (BROWSER_CODE_MIN_BOXES).
   const MIN_SEGMENTS=4;
 
-  // Each run of one-character boxes in one form, keyed by its first box; the rest are in it.
+  // Each run of one-character boxes in one form: its boxes by their first, and every box's run.
   function segmentedFields(roots) {
     const byForm=new Map();
     for (const {root} of roots) for (const e of root.querySelectorAll('input')) {
@@ -280,12 +280,12 @@
       const key=e.form || e.parentElement;
       byForm.set(key, [...(byForm.get(key) || []), e]);
     }
-    const first=new Map(), inGroup=new Set();
+    const first=new Map(), runOf=new Map();
     for (const boxes of byForm.values()) if (boxes.length>=MIN_SEGMENTS) {
       first.set(boxes[0], boxes);
-      boxes.forEach(b=>inGroup.add(b));
+      boxes.forEach(b=>runOf.set(b, boxes));
     }
-    return {first, inGroup};
+    return {first, runOf};
   }
 
   // One code field for a run of boxes: typed into its first box, which the page carries on from.
@@ -306,11 +306,12 @@
       }
       const rname=offered(e) ? roleOf(e) : null;
       if (!rname || !cache.pressPoint(e)) continue;
-      if (segments.inGroup.has(e) && !segments.first.has(e)) continue;
+      if (segments.runOf.has(e) && !segments.first.has(e)) continue;
       const base=describe(e, rname, ox, oy, cache);
       const own=segments.first.has(e) ? [segmentedAction(segments.first.get(e), base, cache)] : controlActions(e, base);
       actions.push(...own);
-      if ((e===active || segments.first.get(e)?.includes(active)) && own.some(a=>a.kind==='fill' || a.kind==='secret'))
+      const holdsFocus=e===active || (segments.first.has(e) && segments.runOf.get(active)===segments.first.get(e));
+      if (holdsFocus && own.some(a=>a.kind==='fill' || a.kind==='secret'))
         focused={id:'enter',kind:'enter',node:own[0].node,label:'Press Enter in '+own[0].label};
     }
     return {actions, focused, disabled};

@@ -166,6 +166,9 @@ def test_allowlist_snapshot(gated_app: FastAPI) -> None:
         "/api/v1/bot/settings/platform/platform_user_id",
         "/api/v1/bot/transcribe",
         "/api/v1/bot/unlink",
+        "/api/v1/browser/live/code/decision",
+        "/api/v1/browser/replays/code",
+        "/api/v1/browser/shots/code/index.jpg",
         "/api/v1/desktop/releases/latest",
         "/api/v1/device/pair/poll",
         "/api/v1/device/pair/start",
@@ -237,6 +240,25 @@ async def test_llm_spend_under_a_free_prefix_keeps_its_own_gate(gated_client: As
             json={"edited_summary": "short and warm", "profession": "founder"},
         )
     assert response.status_code == 402
+
+
+@pytest.mark.regression
+@pytest.mark.usefixtures("free_caller")
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("GET", "/api/v1/browser/replays/a-code"),
+        ("GET", "/api/v1/browser/shots/a-code/1.jpg"),
+        ("POST", "/api/v1/browser/live/a-code/decision"),
+    ],
+)
+async def test_a_browser_link_answers_by_its_capability_not_the_callers_plan(
+    gated_client: AsyncClient, method: str, path: str
+) -> None:
+    """A recap, frame or live-view link carries its own authority; a signed-in lapsed user opening one got the paywall."""
+    response = await gated_client.request(method, path, json={"decision": "continue"})
+
+    assert response.status_code != 402
 
 
 @pytest.mark.usefixtures("free_caller")
