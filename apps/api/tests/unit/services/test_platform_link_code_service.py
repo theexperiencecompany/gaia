@@ -321,6 +321,7 @@ class TestClaimReleaseDiscard:
                 "needs": ["inbox", "calendar"],
                 "response_style": None,
                 "other_need": None,
+                "language": None,
             },
         }
         assert [type(need) for need in value["preferences"]["needs"]] == [str, str]

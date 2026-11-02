@@ -622,7 +622,10 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         """Return the question and chips a Getting-started thread opened with, or None for any other thread."""
         row = await self._find_one_projected(
             {"conversation_id": conversation_id, "user_id": user_id},
+            # Equivalent under mutation: any truthy flag projects the field, and the row ignores _id.
+            # pragma: no mutate start
             {"_id": 0, "system_purpose": 1, "messages": {"$slice": SEEDED_OPENING_MESSAGES}},
+            # pragma: no mutate end
             _SeededOpeningRow,
         )
         if row is None or row.system_purpose is not SystemPurpose.GETTING_STARTED:

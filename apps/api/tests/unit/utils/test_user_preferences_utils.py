@@ -139,6 +139,7 @@ class TestBuildUserContextParts:
             "Communication Style: Use a casual and friendly tone",
             "Browser Language: de",
         ]
+        assert mock_log.set.call_args.kwargs["has_language"] is True
 
     @patch("app.utils.user_preferences_utils.log")
     def test_a_legacy_custom_instructions_key_is_not_rendered(self, mock_log: Any) -> None:

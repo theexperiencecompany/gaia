@@ -220,6 +220,10 @@ class TestAnswersFingerprintValue:
         assert fingerprint == "db8ff3619a26d6f8"
         assert len(fingerprint) == 16
 
+    def test_the_browser_language_is_part_of_the_pinned_digest(self) -> None:
+        """Chips are written in it, so a German and an English user must not share one."""
+        assert answers_fingerprint(_prefs(language="de-DE")) == "f7002d53b1c2eaaa"
+
     def test_an_empty_wizard_has_its_own_stable_digest(self) -> None:
         assert answers_fingerprint(_prefs(profession=None, needs=[], other_need=None)) == (
             "68b6d7c07ea25558"

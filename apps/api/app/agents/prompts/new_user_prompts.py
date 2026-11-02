@@ -231,7 +231,7 @@ class NewUserFacts:
 def _mail_facts(facts: NewUserFacts) -> str:
     lines = ""
     if facts.inbox_summary:
-        lines += INBOX_SUMMARY_LINE.format(summary=facts.inbox_summary)
+        lines = INBOX_SUMMARY_LINE.format(summary=facts.inbox_summary)
     if facts.mail_portrait:
         lines += MAIL_PORTRAIT_LINE.format(portrait=facts.mail_portrait)
     return f"{MAIL_FACTS_HEADER}{lines}" if lines else ""
