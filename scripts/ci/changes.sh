@@ -242,6 +242,7 @@ cmd_files() {
   # what its check reads; __FULL__ when nx reached it through config instead.
   if [[ -n "$task" ]]; then
     local scoped
+    # No --head: off CI nx then counts the working tree, like the diff below.
     scoped="$(python3 "$(dirname "$0")/lib/nx_affected.py" --files-for "$task" \
       --base "$(git merge-base "$REV" HEAD)")"
     if [[ "$scoped" == "$FULL_SENTINEL" ]]; then
@@ -257,7 +258,15 @@ cmd_files() {
     return 0
   fi
 
-  git diff --name-only --diff-filter=ACMR "${REV}...HEAD" \
+  # Off CI the working tree counts too, uncommitted and untracked: a local run
+  # checks what is about to be committed. CI's tree is the commit, plus whatever
+  # its own steps regenerated, which is not the change.
+  { if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+      git diff --name-only --diff-filter=ACMR "${REV}...HEAD"
+    else
+      git diff --name-only --diff-filter=ACMR "$(git merge-base "$REV" HEAD)"
+      git ls-files --others --exclude-standard
+    fi; } \
     | { grep -E "$ext_regex" || true; } \
     | while IFS= read -r f; do
         if [[ -f "$f" ]]; then

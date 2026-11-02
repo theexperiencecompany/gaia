@@ -195,7 +195,7 @@ stop_web() {
 # Start the production build on a free port; set WEB_URL once it is ready.
 start_web() {
   local web="$REPO_ROOT/apps/web" log="$1" port
-  port="$(node -e "const s=require('net').createServer().listen(0,'127.0.0.1',()=>{console.log(s.address().port);s.close()})")"
+  port="$(node -e "const s=require('net').createServer().listen(0,'127.0.0.1',()=>{process.stdout.write(String(s.address().port));s.close()})")"
   # Its own process group, so next and its workers stop together.
   set -m
   (builtin cd "$web" && exec node_modules/.bin/next start --port "$port" >"$log" 2>&1) &

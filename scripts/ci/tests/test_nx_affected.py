@@ -117,16 +117,46 @@ def test_exact_runs_groups_targets_only_when_they_run_on_the_same_projects() -> 
     assert sorted(product) == sorted(tasks)
 
 
-def test_run_reads_each_tasks_result_from_the_nx_ci_status_plugin() -> None:
-    results, passed = nx_affected.run(["ci:ignore-whys"], 1, [])
+def _run(tasks: list[str]) -> tuple[dict[str, nx_affected.TaskResult], list[str], bool]:
+    results: dict[str, nx_affected.TaskResult] = {}
+    order: list[str] = []
+
+    def on_done(task: str, result: nx_affected.TaskResult) -> None:
+        results[task] = result
+        order.append(task)
+
+    passed = nx_affected.run(tasks, 2, lambda _cores: [], on_done)
+    return results, order, passed
+
+
+def test_run_hands_each_task_its_own_result_and_output() -> None:
+    results, _, passed = _run(["ci:ignore-whys"])
     assert passed
-    assert results["ci:ignore-whys"]["status"] in ("success", "local-cache")
-    assert "ignore-whys: OK" in results["ci:ignore-whys"]["output"]
+    assert results["ci:ignore-whys"]["status"] == "success"
+    # Unprefixed: a `ci: ` prefix on every line hides each file:line from the verdict.
+    assert any(
+        line.startswith("ignore-whys: OK")
+        for line in results["ci:ignore-whys"]["output"].splitlines()
+    )
 
 
-def test_run_reports_a_failed_task_and_its_output(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_reports_a_failed_task_and_still_runs_the_rest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("AUDIT_SCOPE", "bogus")
-    results, passed = nx_affected.run(["ci:pnpm-audit"], 1, [])
+    results, _, passed = _run(["ci:pnpm-audit", "ci:ignore-whys"])
     assert not passed
     assert results["ci:pnpm-audit"]["status"] == "failure"
     assert "AUDIT_SCOPE must be all or introduced" in results["ci:pnpm-audit"]["output"]
+    assert results["ci:ignore-whys"]["status"] == "success"
+
+
+def test_a_task_that_rewrites_tracked_files_runs_before_the_rest() -> None:
+    _, order, _ = _run(["ci:ignore-whys", "ci:cli-config-schema"])
+    assert order[0] == "ci:cli-config-schema"
+
+
+def test_a_build_chain_reports_through_the_plugin() -> None:
+    known = nx_affected.checks()
+    assert known["web:build"].chained and known["ci:seo"].chained
+    assert not known["ci:ruff"].chained and known["ci:api-schema"].exclusive

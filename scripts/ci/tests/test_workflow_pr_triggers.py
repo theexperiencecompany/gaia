@@ -183,9 +183,15 @@ def test_a_dispatch_never_posts_per_check_statuses(workflow: Workflow) -> None:
         if "verdict.py post-statuses" in str(mapping(step).get("run", ""))
     ]
     assert posts, "found no post-statuses step"
+    for name, job in mapping(workflow["jobs"]).items():
+        if not any(
+            "verdict.py post-statuses" in str(mapping(s).get("run", ""))
+            for s in job.get("steps", [])
+        ):
+            continue
+        no_post = str(mapping(job["env"])["NO_POST"])
+        assert '"pull_request", "merge_group", "push"' in no_post, name
+        assert "workflow_dispatch" not in no_post, name
+        assert no_post.endswith("&& '' || '--no-post' }}"), name
     for step in posts:
-        no_post = str(mapping(step["env"])["NO_POST"])
-        assert '"pull_request", "merge_group", "push"' in no_post, step["name"]
-        assert "workflow_dispatch" not in no_post, step["name"]
-        assert no_post.endswith("&& '' || '--no-post' }}"), step["name"]
         assert str(step["run"]).endswith(" $NO_POST"), step["name"]

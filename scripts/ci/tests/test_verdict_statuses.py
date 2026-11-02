@@ -337,3 +337,33 @@ def test_every_posting_check_in_the_graph_has_an_area() -> None:
     nameless = [c.task for c in REAL_CHECKS().values() if c.check and not c.area]
 
     assert nameless == []
+
+
+def test_check_posts_only_that_check_and_leaves_the_job_verdict(
+    api: FakeGitHub, tmp_path: Path
+) -> None:
+    code = _post(tmp_path, "lint-node", {"ci:biome": "failure"}, "--check", "biome")
+
+    assert code == 0, "a finished check's post does not decide the job"
+    assert _states(api) == {"ci / node / biome": "failure"}
+    assert not (tmp_path / "verdicts" / "lint-node.json").exists()
+    assert (tmp_path / "results.posted").read_text().split() == ["biome"]
+
+
+def test_the_jobs_post_skips_what_run_job_already_posted(api: FakeGitHub, tmp_path: Path) -> None:
+    _post(tmp_path, "lint-node", {"ci:biome": "failure", "ci:deps": "success"}, "--check", "biome")
+    api.requests.clear()
+
+    assert _post(tmp_path, "lint-node", {"ci:biome": "failure", "ci:deps": "success"}) == 1
+    assert set(_states(api)) == {"ci / node / deps", "ci / node / type-check"}
+    assert _job_verdict(tmp_path, "lint-node")["status"] == "fail"
+
+
+def test_a_check_post_that_did_not_land_is_posted_again_at_the_end(
+    api: FakeGitHub, tmp_path: Path
+) -> None:
+    _post(tmp_path, "lint-node", {"ci:biome": "success"}, "--check", "biome", "--no-post")
+    api.requests.clear()
+
+    _post(tmp_path, "lint-node", {"ci:biome": "success"})
+    assert "ci / node / biome" in _states(api)

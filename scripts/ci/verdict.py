@@ -58,11 +58,13 @@ Subcommands:
         Write a failed scanner step's verdict (gitleaks, semgrep) from its SARIF
         report: one finding per result, at its location.
     post-statuses --job J --results FILE --job-tasks JSON [--step check=outcome ...]
-                  [--reused JSON]
+                  [--reused JSON] [--check C]
                   [--no-post | --repo R --sha S --run-id N --run-attempt A]
         Post one `ci / <area> / <check>` commit status per check of job J (its
         nx targets' metadata.ci), from run-job's task results and the outcome
-        of each check a step ran, and fail when any check failed.
+        of each check a step ran, and fail when any check failed. With --check,
+        post just that finished check (run-job calls it as each one ends); the
+        job's post then skips it.
 
 Interpreters: the JUnit readers need defusedxml and are invoked with
 `uv run --no-project` (the PEP 723 block above is what supplies it); the rest
@@ -1338,10 +1340,9 @@ OUTCOME_STATUS: dict[str, tuple[str, str]] = {
     "skipped": ("success", "skipped — nothing it checks changed"),
 }
 _UNKNOWN_OUTCOME = ("error", "reported no outcome")
+
+
 # nx's task results that mean the task ran and passed (a cache hit replays a pass).
-NX_PASSED = frozenset({"success", "local-cache", "local-cache-kept-existing", "remote-cache"})
-
-
 def job_outcomes(
     job: str, planned: set[str], results: dict[str, str], steps: dict[str, str]
 ) -> dict[str, str]:
@@ -1361,7 +1362,7 @@ def job_outcomes(
         due = [part.task for part in parts if part.task in planned]
         if not due:
             outcomes[name] = "skipped"
-        elif all(results.get(task) in NX_PASSED for task in due):
+        elif all(results.get(task) in nx_affected.PASSED for task in due):
             outcomes[name] = "success"
         else:
             outcomes[name] = "failure"
@@ -1445,6 +1446,9 @@ def cmd_post_statuses(args: list[str]) -> int:
     )
     parser.add_argument("--reused", default="{}", help="JSON {check: note} from `reuse-plan`")
     parser.add_argument(
+        "--check", help="post just this finished check now (run-job); the job's verdict waits"
+    )
+    parser.add_argument(
         "--no-post", action="store_true", help="a fork's token cannot write statuses"
     )
     parser.add_argument("--repo")
@@ -1467,12 +1471,14 @@ def cmd_post_statuses(args: list[str]) -> int:
         if known[task].check not in reused
     }
     outcomes = job_outcomes(opts.job, planned, results, steps)
+    if opts.check:
+        planned = {task for task in planned if known[task].check == opts.check}
     for task in sorted(planned):
         result = raw.get(task)
         lane = f"{opts.job}/{known[task].check}"
         if (
             result
-            and result["status"] not in NX_PASSED
+            and result["status"] not in nx_affected.PASSED
             and not lane_already_reported(lane, default_out_dir())
         ):
             check = known[task]
@@ -1485,11 +1491,24 @@ def cmd_post_statuses(args: list[str]) -> int:
                 f"{check.cwd}/" if check.cwd else "",
             )
 
+    # Checks run-job already posted as they finished; their state cannot change since.
+    posted_file = opts.results.with_suffix(".posted")
+    posted = set(posted_file.read_text().split()) if posted_file.is_file() else set()
+    to_post = (
+        {opts.check: outcomes[opts.check]}
+        if opts.check
+        else {name: outcome for name, outcome in outcomes.items() if name not in posted}
+    )
     landed = True
     if not opts.no_post:
         if not (opts.repo and opts.sha and opts.run_id and opts.run_attempt):
             parser.error("--repo, --sha, --run-id and --run-attempt are required to post")
-        landed = _post(GitHub.from_env(), opts, outcomes, reused)
+        landed = _post(GitHub.from_env(), opts, to_post, reused)
+    if opts.check:
+        if landed and not opts.no_post:
+            with posted_file.open("a") as handle:
+                handle.write(f"{opts.check}\n")
+        return 0
 
     failed = [name for name, outcome in outcomes.items() if outcome not in ("success", "skipped")]
     for name, outcome in outcomes.items():

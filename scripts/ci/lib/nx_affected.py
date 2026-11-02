@@ -10,6 +10,8 @@ its inputs name changed. Reached through `changes.sh affected`.
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 import functools
 import json
@@ -19,6 +21,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import threading
 from typing import TypedDict
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -57,6 +60,10 @@ class Check:
     cwd: str | None = None
     # The file a finding that names no file:line is pinned to.
     fallback: str | None = None
+    # `parallelism: false`: it rewrites tracked files, so nothing runs beside it.
+    exclusive: bool = False
+    # It depends on other tasks (a build chain), so it runs in the one shared nx run.
+    chained: bool = False
 
     def runs_on(self, event: str, branch: str | None) -> bool:
         if self.events is not None and event not in self.events:
@@ -118,6 +125,8 @@ def checks() -> dict[str, Check]:
                 runner=ci.get("runner", "nx"),
                 cwd=(spec.get("options") or {}).get("cwd"),
                 fallback=ci.get("fallback"),
+                exclusive=spec.get("parallelism") is False,
+                chained=bool(spec.get("dependsOn")),
             )
     return found
 
@@ -169,33 +178,89 @@ class TaskResult(TypedDict):
     output: str
 
 
-def run(tasks: list[str], parallel: int, wrap: list[str]) -> tuple[dict[str, TaskResult], bool]:
-    """Run exactly `tasks` through nx and return each one's result, and whether every run passed.
+# The nx task statuses that mean the check passed (a cache hit replays a pass).
+PASSED = frozenset({"success", "local-cache", "local-cache-kept-existing", "remote-cache"})
+# A CPU-slot prefix for a command that uses this many cores ([] off the box's governor).
+Wrap = Callable[[int], list[str]]
+# Called with each task's result the moment it has one.
+OnDone = Callable[[str, TaskResult], None]
 
-    `wrap` prefixes each nx command (CI's CPU-slot governor). A task nx could not
-    start has no result; the run's exit code still fails it.
+
+def run(tasks: list[str], parallel: int, wrap: Wrap, on_done: OnDone) -> bool:
+    """Run exactly `tasks` through nx, hand each result to `on_done` as it lands; True when all pass.
+
+    A task that writes tracked files runs first, alone. Build chains share one
+    nx run-many, so a dependency two of them need builds once. Every other task
+    runs as its own `nx run`, `parallel` at a time, so its result is not held
+    until the slowest check ends. on_done is called under one lock.
     """
-    results: dict[str, TaskResult] = {}
+    known = checks()
+    exclusive = [t for t in tasks if known[t].exclusive]
+    chained = [t for t in tasks if known[t].chained and not known[t].exclusive]
+    alone = [t for t in tasks if t not in exclusive and t not in chained]
+    lock = threading.Lock()
+
+    def report(task: str, result: TaskResult) -> None:
+        with lock:
+            on_done(task, result)
+
+    # Lists, not generators: all() would stop running checks at the first red one.
+    outcomes = [_run_one(t, wrap, report) for t in exclusive]
+    if chained:
+        outcomes.append(_run_many(chained, parallel, wrap, report))
+    with ThreadPoolExecutor(max_workers=max(parallel, 1)) as pool:
+        outcomes += list(pool.map(lambda t: _run_one(t, wrap, report), alone))
+    return all(outcomes)
+
+
+def _run_one(task: str, wrap: Wrap, report: OnDone) -> bool:
+    proc = subprocess.run(
+        [*wrap(1), "pnpm", "exec", "nx", "run", task, "--output-style=stream-without-prefixes"],
+        cwd=REPO_ROOT,
+        env={**os.environ, "NX_NO_CLOUD": "true"},
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        errors="replace",
+        check=False,
+    )
+    status = "success" if proc.returncode == 0 else "failure"
+    report(task, {"status": status, "code": proc.returncode, "output": proc.stdout})
+    return proc.returncode == 0
+
+
+def _run_many(tasks: list[str], parallel: int, wrap: Wrap, report: OnDone) -> bool:
+    """Run tasks in nx run-many calls; the nx-ci-status plugin hands back each task's result."""
     passed = True
     with tempfile.TemporaryDirectory() as scratch:
         for index, (projects, targets) in enumerate(exact_runs(tasks)):
             part = Path(scratch) / f"{index}.json"
-            command = [
-                "pnpm", "exec", "nx", "run-many",
-                "-p", ",".join(projects), "-t", ",".join(targets),
-                # stream: static replays a task's output in one write that process.exit() truncates.
-                f"--parallel={parallel}", "--output-style=stream",
-            ]  # fmt: skip
-            rc = subprocess.run(
-                [*wrap, *command],
+            proc = subprocess.run(
+                [
+                    *wrap(parallel), "pnpm", "exec", "nx", "run-many",
+                    "-p", ",".join(projects), "-t", ",".join(targets),
+                    # stream: static replays a task's output in one write that process.exit() truncates.
+                    f"--parallel={parallel}", "--output-style=stream",
+                ],
                 cwd=REPO_ROOT,
                 env={**os.environ, RESULTS_ENV: str(part), "NX_NO_CLOUD": "true"},
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                errors="replace",
                 check=False,
-            ).returncode
-            if part.is_file():
-                results.update(json.loads(part.read_text()))
-            passed = passed and rc == 0
-    return results, passed
+            )  # fmt: skip
+            found: dict[str, TaskResult] = json.loads(part.read_text()) if part.is_file() else {}
+            for task in (f"{p}:{t}" for p in projects for t in targets):
+                # A task nx never started has no result: its run's output is all there is.
+                unstarted: TaskResult = {
+                    "status": "failure",
+                    "code": proc.returncode or 1,
+                    "output": proc.stdout,
+                }
+                report(task, found.get(task) or unstarted)
+            passed = passed and proc.returncode == 0
+    return passed
 
 
 def job_tasks(selection: Selection, event: str, branch: str | None) -> dict[str, list[str]]:
@@ -273,7 +338,8 @@ def main() -> int:
     scope = parser.add_mutually_exclusive_group(required=True)
     scope.add_argument("--all", action="store_true", help="every task, as on a dispatch")
     scope.add_argument("--base", help="the revision the change is measured from")
-    parser.add_argument("--head", default="HEAD")
+    # No --head: nx measures the working tree, uncommitted and untracked files included.
+    parser.add_argument("--head")
     parser.add_argument(
         "--files-for",
         metavar="TASK",
@@ -285,7 +351,7 @@ def main() -> int:
         # One argument per file: Linux caps a single argv entry at 128 KiB.
         ["--files", *tracked_files()]
         if opts.all
-        else [f"--base={opts.base}", f"--head={opts.head}"]
+        else [f"--base={opts.base}", *([f"--head={opts.head}"] if opts.head else [])]
     )
     if opts.files_for:
         from_detect = os.environ.get("TASK_FILES")

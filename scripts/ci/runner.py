@@ -1176,9 +1176,9 @@ def cmd_with_slots(args: list[str]) -> int:
 
 
 # ── run-job ───────────────────────────────────────────────────────────────
-# A grouped job's checks are nx tasks. nx runs them in parallel, honouring a
-# target's `parallelism: false`; the nx-ci-status plugin writes each task's
-# result to NX_CI_TASK_RESULTS, which post-statuses turns into commit statuses.
+# A grouped job's checks are nx tasks (nx_affected.run). Each check's status is
+# posted the moment its last task finishes, so a red check shows while the slow
+# ones still run; post-statuses at the job's end posts the rest and the verdict.
 
 
 def cmd_run_job(args: list[str]) -> int:
@@ -1192,21 +1192,61 @@ def cmd_run_job(args: list[str]) -> int:
     tasks = [
         task for task in planned if known[task].runner == "nx" and known[task].check not in reused
     ]
+    waiting: dict[str, set[str]] = {}
+    for task in tasks:
+        waiting.setdefault(str(known[task].check), set()).add(task)
+    results: dict[str, nx_affected.TaskResult] = {}
+
+    def on_done(task: str, result: nx_affected.TaskResult) -> None:
+        results[task] = result
+        results_file.write_text(json.dumps(results, indent=2) + "\n")
+        check = str(known[task].check)
+        passed = result["status"] in nx_affected.PASSED
+        if passed:
+            print(
+                f"::group::{check}: passed ({task})\n{result['output']}\n::endgroup::", flush=True
+            )
+        else:
+            print(
+                f"{check}: FAILED ({task}, exit {result['code']})\n{result['output']}", flush=True
+            )
+        waiting[check].discard(task)
+        if not waiting[check]:
+            _post_check_status(job, check, results_file)
+
     parallel = measure_parallelism().nx
-    # with-slots holds `parallel` host CPU tokens per nx run, so it queues on the box's core budget.
-    slots = [
-        "bash",
-        "-c",
-        WITH_SLOTS_SH,
-        "with-slots",
-        str(LOG_SH),
-        str(CPU_SLOTS_SH),
-        str(parallel),
-    ]
-    results, passed = nx_affected.run(tasks, parallel, slots)
+    passed = nx_affected.run(tasks, parallel, _cpu_slots, on_done)
     results_file.write_text(json.dumps(results, indent=2) + "\n")
     ok(f"run-job {job}: {len(tasks)} task(s); {len(planned) - len(tasks)} reused or run by a step")
     return 0 if passed else 1
+
+
+def _cpu_slots(cores: int) -> list[str]:
+    """Prefix a command so it holds `cores` host CPU tokens while it runs (a no-op off the box)."""
+    return ["bash", "-c", WITH_SLOTS_SH, "with-slots", str(LOG_SH), str(CPU_SLOTS_SH), str(cores)]
+
+
+def _post_check_status(job: str, check: str, results_file: Path) -> None:
+    """Post one finished check's status now; post-statuses at the job's end posts any that did not land."""
+    subprocess.run(
+        [
+            sys.executable, str(HERE / "verdict.py"), "post-statuses", "--job", job,
+            "--check", check, "--results", str(results_file),
+            "--job-tasks", os.environ.get("JOB_TASKS") or "{}",
+            "--reused", os.environ.get("REUSED") or "{}",
+            *_post_target(),
+        ],
+        check=False,
+    )  # fmt: skip
+
+
+def _post_target() -> list[str]:
+    if os.environ.get("NO_POST"):
+        return ["--no-post"]
+    return [
+        "--repo", env_required("GITHUB_REPOSITORY"), "--sha", env_required("HEAD_SHA"),
+        "--run-id", env_required("GITHUB_RUN_ID"), "--run-attempt", env_required("GITHUB_RUN_ATTEMPT"),
+    ]  # fmt: skip
 
 
 # ── health ────────────────────────────────────────────────────────────────

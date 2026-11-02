@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import subprocess
 from typing import Any
 
 from doc_shape import mapping
@@ -50,9 +51,9 @@ def test_run_job_holds_as_many_tokens_as_it_asks_nx_for(
     """Hold as many tokens as nx spawns workers, or the box is oversubscribed on the quiet."""
     asked: dict[str, Any] = {}
 
-    def fake_run(tasks: list[str], parallel: int, wrap: list[str]) -> tuple[dict[str, Any], bool]:
-        asked.update(tasks=tasks, parallel=parallel, wrap=wrap)
-        return {}, True
+    def fake_run(tasks: list[str], parallel: int, wrap: Any, on_done: Any) -> bool:
+        asked.update(tasks=tasks, parallel=parallel, many=wrap(parallel), one=wrap(1))
+        return True
 
     check = nx_affected.Check("ci:biome", "lint-node", "biome", "node", None, None, True, "nx")
     monkeypatch.setattr(nx_affected, "checks", lambda: {check.task: check})
@@ -64,10 +65,51 @@ def test_run_job_holds_as_many_tokens_as_it_asks_nx_for(
 
     assert runner.cmd_run_job(["lint-node"]) == 0
     assert asked["tasks"] == ["ci:biome"] and asked["parallel"] == 6
-    assert "with-slots" in asked["wrap"] and asked["wrap"][-1] == "6"
+    assert "with-slots" in asked["many"] and asked["many"][-1] == "6"
+    assert asked["one"][-1] == "1", "a single-task nx run holds one token"
 
 
 def _parallelism(nx: int) -> Any:
     return runner.Parallelism(
         nproc=8, mem_gb=16, mem_avail_gb=8, nx=nx, pytest_n=4, pytest_capped=False, docker=2
     )
+
+
+def test_run_job_posts_each_check_the_moment_its_tasks_finish(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Regression: every status waited for the job's slowest check, so a quick red showed late."""
+    posts: list[str] = []
+    seen_when_deps_finished: list[str] = []
+    checks = [
+        nx_affected.Check("ci:biome", "lint-node", "biome", "node", None, None, True, "nx"),
+        nx_affected.Check(
+            "web:type-check", "lint-node", "type-check", "node", None, None, True, "nx"
+        ),
+        nx_affected.Check(
+            "cli:type-check", "lint-node", "type-check", "node", None, None, True, "nx"
+        ),
+    ]
+
+    def fake_run(tasks: list[str], parallel: int, wrap: Any, on_done: Any) -> bool:
+        on_done("ci:biome", {"status": "failure", "code": 1, "output": "a.ts:1:1 lint"})
+        on_done("web:type-check", {"status": "success", "code": 0, "output": ""})
+        seen_when_deps_finished.extend(posts)
+        on_done("cli:type-check", {"status": "success", "code": 0, "output": ""})
+        return False
+
+    def fake_post(argv: list[str], **_: Any) -> None:
+        posts.append(argv[argv.index("--check") + 1])
+
+    monkeypatch.setattr(nx_affected, "checks", lambda: {c.task: c for c in checks})
+    monkeypatch.setattr(nx_affected, "run", fake_run)
+    monkeypatch.setattr(subprocess, "run", fake_post)
+    monkeypatch.setattr(runner, "measure_parallelism", lambda: _parallelism(nx=2))
+    monkeypatch.setenv("JOB_TASKS", json.dumps({"lint-node": [c.task for c in checks]}))
+    monkeypatch.setenv("RESULTS_FILE", str(tmp_path / "results.json"))
+    monkeypatch.setenv("NO_POST", "--no-post")
+
+    assert runner.cmd_run_job(["lint-node"]) == 1
+    # biome posted before type-check's second task finished; type-check only once both had.
+    assert seen_when_deps_finished == ["biome"]
+    assert posts == ["biome", "type-check"]

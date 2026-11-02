@@ -396,3 +396,31 @@ def test_scoped_runs_the_whole_tree_on_a_full_scan(repo: Path) -> None:
 def test_scoped_runs_nothing_when_no_file_it_reads_changed(repo: Path) -> None:
     out = _scoped(repo, "--task", "t", "--ext", "ts", GAIA_PR_BASE="master", TASK_FILES="{}")
     assert not [line for line in out if line.startswith("args:")]
+
+
+def _local_files(repo: Path) -> list[str]:
+    env = {k: v for k, v in GIT_ENV.items() if k != "GITHUB_ACTIONS"}
+    proc = subprocess.run(
+        ["bash", str(SCRIPT), "files", "py"],
+        cwd=repo,
+        env={**env, "GAIA_PR_BASE": "master"},
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return proc.stdout.split()
+
+
+def test_files_off_ci_counts_uncommitted_and_untracked_edits(repo: Path) -> None:
+    """Regression: a local check missed an edit not yet committed, and CI then failed it."""
+    (repo / "app.py").write_text("x = 2\n")
+    (repo / "new.py").write_text("y = 1\n")
+    assert _local_files(repo) == ["app.py", "new.py"]
+
+
+def test_files_in_ci_counts_only_the_commits(repo: Path) -> None:
+    # A CI step that regenerated a tracked file did not change the PR.
+    (repo / "app.py").write_text("x = 2\n")
+    proc = _run(repo, "files", "py", GAIA_PR_BASE="master")
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.split() == []

@@ -299,19 +299,22 @@ Every check is an nx target whose `metadata.ci` names its ci.yml job, its status
 (`check`, `area`) and, when it is not every event's, its `events`/`branch`
 (tools/ci/project.json for the repo-wide checks, the code projects' targets for
 `api:type-check`, `web:build`, …). detect publishes each job's affected tasks
-(`job_tasks`); `runner.py run-job <job>` runs them in one `nx run-many` per
-project set (nx honours `parallelism: false`, `dependsOn` and the cache), and
-the `tools/nx-ci-status` plugin's `postTasksExecution` writes each task's status,
-exit code and output. `verdict.py post-statuses --job <job>` then posts one
-`ci / <area> / <check>` status per check, writes a `<job>/<check>` verdict for
-each failed one from its output (file:line, paths prefixed by the target's
-`cwd`), and fails the job: a task detect planned that has no result is a
-failure, never a skip. An action check (gitleaks, semgrep, trivy) or a step
-check (the PostHog ones) is a target with `runner` `action`/`step`; its step's
-outcome reaches post-statuses as `--step <check>=<outcome>`. The plugin's hook
-fires once, after the whole run, so a grouped job reports when its slowest
-check ends; one `nx run` per task would report sooner but builds a shared
-dependency twice in parallel.
+(`job_tasks`); `runner.py run-job <job>` runs them through `nx_affected.run`: a
+`parallelism: false` target (it rewrites tracked files) first and alone, the
+build chains (a target with `dependsOn`) in one `nx run-many` so a shared
+dependency builds once, and every other check as its own `nx run`, in
+parallel. Each check's status is posted (`post-statuses --check`) the moment
+its last task ends, so a red lint check shows while mypy is still running, and
+its output prints in its own log group. `verdict.py post-statuses --job <job>`
+at the end posts every status run-job did not (a step's check, a skip, a post
+that did not land), writes a `<job>/<check>` verdict for each failed check from
+its output (file:line, paths prefixed by the target's `cwd`) and fails the
+job: a task detect planned that has no result is a failure, never a skip. The
+`tools/nx-ci-status` plugin's `postTasksExecution` hands the run-many tasks'
+results back; it fires once per run, which is why only build chains share one.
+An action check (gitleaks, semgrep, trivy) or a step check (the PostHog ones)
+is a target with `runner` `action`/`step`; its step's outcome reaches
+post-statuses as `--step <check>=<outcome>`.
 
 **A step check is readable the moment it fails, not when its job ends.** A
 check step's shell is `python3 scripts/ci/verdict.py check -- bash -e {0}`

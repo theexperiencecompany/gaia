@@ -35,7 +35,6 @@ LOG_ROOT = "verify-logs"
 HEAVY_JOBS = frozenset({"python-audit", "ts-build-test"})
 # What a change meets before master: its PR, then the merge queue.
 LOCAL_EVENTS = ("pull_request", "merge_group")
-NX_PASSED = frozenset({"success", "local-cache", "local-cache-kept-existing"})
 
 
 def eprint(*args: str) -> None:
@@ -177,7 +176,7 @@ def _nx_parallel(root: Path) -> int:
 def _outcome(tasks: list[str], results: dict[str, nx_affected.TaskResult]) -> str:
     if any(task not in results for task in tasks):
         return "error"
-    return "passed" if all(results[t]["status"] in NX_PASSED for t in tasks) else "failed"
+    return "passed" if all(results[t]["status"] in nx_affected.PASSED for t in tasks) else "failed"
 
 
 def run_report(
@@ -255,7 +254,13 @@ def main() -> int:
     )
     os.environ.update({key.upper(): value for key, value in detected.items()})
     tasks = [task for check_tasks in to_run.values() for task in check_tasks]
-    results, _ = nx_affected.run(tasks, _nx_parallel(root), []) if tasks else ({}, True)
+    results: dict[str, nx_affected.TaskResult] = {}
+
+    def on_done(task: str, result: nx_affected.TaskResult) -> None:
+        results[task] = result
+        say(f"  {'pass' if result['status'] in nx_affected.PASSED else 'FAIL':5} {task}")
+
+    nx_affected.run(tasks, _nx_parallel(root), lambda _cores: [], on_done)
 
     report = run_report(to_run, left_out, results, log_dir, root)
     counts = {

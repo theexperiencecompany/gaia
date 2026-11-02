@@ -328,6 +328,12 @@ jobs:
     env:
       JOB_TASKS: ${{ needs.detect.outputs.job_tasks }}
       REUSED: ${{ needs.detect.outputs.reused || '{}' }}
+      # run-job posts each check's status as it finishes; post-statuses the rest.
+      GH_TOKEN: ${{ github.token }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      # Not on a dispatch (an open PR sharing the head would lose its statuses),
+      # nor for a fork or Dependabot (read-only token).
+      NO_POST: ${{ (contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '' || '--no-post' }}
       TASK_FILES: ${{ needs.detect.outputs.task_files }}
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
       AUDIT_SCOPE: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'introduced' || 'all' }}
@@ -346,22 +352,18 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       # Every check detect picked for this job, through nx (tools/ci/project.json and
-      # the code projects' targets). Each check's outcome is read in the next step.
+      # the code projects' targets); each check's status is posted as it finishes.
       - name: Run this job's checks through nx
         continue-on-error: true
         env:
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
         run: python3 scripts/ci/runner.py run-job lint-node
-      # One `ci / <area> / <check>` status per check and a verdict per failed one,
-      # then the job's. Not posted on a dispatch (an open PR sharing the head
-      # would lose its statuses), nor by a fork or Dependabot (read-only token).
+      # Every status run-job did not post (a step's check, a skip, a lost post),
+      # a verdict per failed check, then the job's.
       - name: Post one commit status per check (fails if any check failed)
         if: always()
         env:
-          GH_TOKEN: ${{ github.token }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
-          NO_POST: ${{ (contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '' || '--no-post' }}
         run: python3 scripts/ci/verdict.py post-statuses --job lint-node --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" $NO_POST
       - name: Upload the verdict
         if: always()
@@ -380,6 +382,12 @@ jobs:
     env:
       JOB_TASKS: ${{ needs.detect.outputs.job_tasks }}
       REUSED: ${{ needs.detect.outputs.reused || '{}' }}
+      # run-job posts each check's status as it finishes; post-statuses the rest.
+      GH_TOKEN: ${{ github.token }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      # Not on a dispatch (an open PR sharing the head would lose its statuses),
+      # nor for a fork or Dependabot (read-only token).
+      NO_POST: ${{ (contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '' || '--no-post' }}
       TASK_FILES: ${{ needs.detect.outputs.task_files }}
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
     timeout-minutes: 35
@@ -442,22 +450,18 @@ jobs:
         if: contains(fromJSON(needs.detect.outputs.job_tasks)['lint-python'], 'alert-rules:check')
         run: bash scripts/ci/audit.sh alert-rule-tools
       # Every check detect picked for this job, through nx (tools/ci/project.json and
-      # the code projects' targets). Each check's outcome is read in the next step.
+      # the code projects' targets); each check's status is posted as it finishes.
       - name: Run this job's checks through nx
         continue-on-error: true
         env:
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
         run: python3 scripts/ci/runner.py run-job lint-python
-      # One `ci / <area> / <check>` status per check and a verdict per failed one,
-      # then the job's. Not posted on a dispatch (an open PR sharing the head
-      # would lose its statuses), nor by a fork or Dependabot (read-only token).
+      # Every status run-job did not post (a step's check, a skip, a lost post),
+      # a verdict per failed check, then the job's.
       - name: Post one commit status per check (fails if any check failed)
         if: always()
         env:
-          GH_TOKEN: ${{ github.token }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
-          NO_POST: ${{ (contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '' || '--no-post' }}
         run: python3 scripts/ci/verdict.py post-statuses --job lint-python --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" $NO_POST
       - name: Upload the verdict
         if: always()
@@ -476,6 +480,12 @@ jobs:
     env:
       JOB_TASKS: ${{ needs.detect.outputs.job_tasks }}
       REUSED: ${{ needs.detect.outputs.reused || '{}' }}
+      # run-job posts each check's status as it finishes; post-statuses the rest.
+      GH_TOKEN: ${{ github.token }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      # Not on a dispatch (an open PR sharing the head would lose its statuses),
+      # nor for a fork or Dependabot (read-only token).
+      NO_POST: ${{ (contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '' || '--no-post' }}
       TASK_FILES: ${{ needs.detect.outputs.task_files }}
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
       DEAD_CODE_LANE: lint-mixed/dead-code
@@ -512,7 +522,7 @@ jobs:
         run: uv tool install vulture
 
       # Every check detect picked for this job, through nx (tools/ci/project.json and
-      # the code projects' targets). Each check's outcome is read in the next step.
+      # the code projects' targets); each check's status is posted as it finishes.
       - name: Run this job's checks through nx
         continue-on-error: true
         env:
@@ -552,16 +562,12 @@ jobs:
           POSTHOG_PERSONAL_API_KEY: ${{ secrets.POSTHOG_PERSONAL_API_KEY }}
           LIVE: ${{ github.event_name != 'push' && runner.temp || '' }}
         run: python3 scripts/ci/analytics.py check ${LIVE:+--live-catalog "$LIVE/live-catalog.json" --live-actions "$LIVE/live-actions.json"}
-      # One `ci / <area> / <check>` status per check and a verdict per failed one,
-      # then the job's. Not posted on a dispatch (an open PR sharing the head
-      # would lose its statuses), nor by a fork or Dependabot (read-only token).
+      # Every status run-job did not post (a step's check, a skip, a lost post),
+      # a verdict per failed check, then the job's.
       - name: Post one commit status per check (fails if any check failed)
         if: always()
         env:
-          GH_TOKEN: ${{ github.token }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
-          NO_POST: ${{ (contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '' || '--no-post' }}
         run: python3 scripts/ci/verdict.py post-statuses --job lint-mixed --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --step analytics-sync=${{ steps.analytics-sync.outcome }} --step analytics-check=${{ steps.analytics-check.outcome }} --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" $NO_POST
       - name: Upload the verdict
         if: always()
@@ -582,6 +588,12 @@ jobs:
     env:
       JOB_TASKS: ${{ needs.detect.outputs.job_tasks }}
       REUSED: ${{ needs.detect.outputs.reused || '{}' }}
+      # run-job posts each check's status as it finishes; post-statuses the rest.
+      GH_TOKEN: ${{ github.token }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      # Not on a dispatch (an open PR sharing the head would lose its statuses),
+      # nor for a fork or Dependabot (read-only token).
+      NO_POST: ${{ (contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '' || '--no-post' }}
       TASK_FILES: ${{ needs.detect.outputs.task_files }}
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
     timeout-minutes: 10
@@ -598,7 +610,7 @@ jobs:
       - uses: ./.github/actions/setup-node-pnpm
 
       # Every check detect picked for this job, through nx (tools/ci/project.json and
-      # the code projects' targets). Each check's outcome is read in the next step.
+      # the code projects' targets); each check's status is posted as it finishes.
       - name: Run this job's checks through nx
         continue-on-error: true
         env:
@@ -624,16 +636,12 @@ jobs:
       - name: gitleaks — read its findings into the verdict
         if: always() && steps.gitleaks.outcome == 'failure'
         run: python3 scripts/ci/verdict.py sarif --lane repo-policy/gitleaks results.sarif
-      # One `ci / <area> / <check>` status per check and a verdict per failed one,
-      # then the job's. Not posted on a dispatch (an open PR sharing the head
-      # would lose its statuses), nor by a fork or Dependabot (read-only token).
+      # Every status run-job did not post (a step's check, a skip, a lost post),
+      # a verdict per failed check, then the job's.
       - name: Post one commit status per check (fails if any check failed)
         if: always()
         env:
-          GH_TOKEN: ${{ github.token }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
-          NO_POST: ${{ (contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '' || '--no-post' }}
         run: python3 scripts/ci/verdict.py post-statuses --job repo-policy --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --step gitleaks=${{ steps.gitleaks.outcome }} --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" $NO_POST
       - name: Upload the verdict
         if: always()
@@ -652,6 +660,12 @@ jobs:
     env:
       JOB_TASKS: ${{ needs.detect.outputs.job_tasks }}
       REUSED: ${{ needs.detect.outputs.reused || '{}' }}
+      # run-job posts each check's status as it finishes; post-statuses the rest.
+      GH_TOKEN: ${{ github.token }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      # Not on a dispatch (an open PR sharing the head would lose its statuses),
+      # nor for a fork or Dependabot (read-only token).
+      NO_POST: ${{ (contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '' || '--no-post' }}
       TASK_FILES: ${{ needs.detect.outputs.task_files }}
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
       AUDIT_SCOPE: ${{ github.event_name == 'merge_group' && 'introduced' || 'all' }}
@@ -679,22 +693,18 @@ jobs:
           node: "false"
           restore-models: "false"
       # Every check detect picked for this job, through nx (tools/ci/project.json and
-      # the code projects' targets). Each check's outcome is read in the next step.
+      # the code projects' targets); each check's status is posted as it finishes.
       - name: Run this job's checks through nx
         continue-on-error: true
         env:
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
         run: python3 scripts/ci/runner.py run-job python-audit
-      # One `ci / <area> / <check>` status per check and a verdict per failed one,
-      # then the job's. Not posted on a dispatch (an open PR sharing the head
-      # would lose its statuses), nor by a fork or Dependabot (read-only token).
+      # Every status run-job did not post (a step's check, a skip, a lost post),
+      # a verdict per failed check, then the job's.
       - name: Post one commit status per check (fails if any check failed)
         if: always()
         env:
-          GH_TOKEN: ${{ github.token }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
-          NO_POST: ${{ (contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '' || '--no-post' }}
         run: python3 scripts/ci/verdict.py post-statuses --job python-audit --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" $NO_POST
       - name: Upload the verdict
         if: always()
@@ -713,6 +723,12 @@ jobs:
     env:
       JOB_TASKS: ${{ needs.detect.outputs.job_tasks }}
       REUSED: ${{ needs.detect.outputs.reused || '{}' }}
+      # run-job posts each check's status as it finishes; post-statuses the rest.
+      GH_TOKEN: ${{ github.token }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      # Not on a dispatch (an open PR sharing the head would lose its statuses),
+      # nor for a fork or Dependabot (read-only token).
+      NO_POST: ${{ (contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '' || '--no-post' }}
       TASK_FILES: ${{ needs.detect.outputs.task_files }}
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
       NEXT_PUBLIC_API_BASE_URL: https://api.heygaia.io/api/v1/
@@ -739,22 +755,18 @@ jobs:
       - uses: ./.github/actions/setup-node-pnpm
       - uses: ./.github/actions/restore-nextjs-cache
       # Every check detect picked for this job, through nx (tools/ci/project.json and
-      # the code projects' targets). Each check's outcome is read in the next step.
+      # the code projects' targets); each check's status is posted as it finishes.
       - name: Run this job's checks through nx
         continue-on-error: true
         env:
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
         run: python3 scripts/ci/runner.py run-job ts-build-test
-      # One `ci / <area> / <check>` status per check and a verdict per failed one,
-      # then the job's. Not posted on a dispatch (an open PR sharing the head
-      # would lose its statuses), nor by a fork or Dependabot (read-only token).
+      # Every status run-job did not post (a step's check, a skip, a lost post),
+      # a verdict per failed check, then the job's.
       - name: Post one commit status per check (fails if any check failed)
         if: always()
         env:
-          GH_TOKEN: ${{ github.token }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
-          NO_POST: ${{ (contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '' || '--no-post' }}
         run: python3 scripts/ci/verdict.py post-statuses --job ts-build-test --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" $NO_POST
       - name: Upload the verdict
         if: always()
@@ -793,6 +805,12 @@ jobs:
     env:
       JOB_TASKS: ${{ needs.detect.outputs.job_tasks }}
       REUSED: ${{ needs.detect.outputs.reused || '{}' }}
+      # run-job posts each check's status as it finishes; post-statuses the rest.
+      GH_TOKEN: ${{ github.token }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      # Not on a dispatch (an open PR sharing the head would lose its statuses),
+      # nor for a fork or Dependabot (read-only token).
+      NO_POST: ${{ (contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '' || '--no-post' }}
       TASK_FILES: ${{ needs.detect.outputs.task_files }}
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
     timeout-minutes: 20
@@ -863,16 +881,12 @@ jobs:
           # change; keep advisory until that PR merges, then flip to exit-code:1.
           exit-code: "0"
           ignore-unfixed: false
-      # One `ci / <area> / <check>` status per check and a verdict per failed one,
-      # then the job's. Not posted on a dispatch (an open PR sharing the head
-      # would lose its statuses), nor by a fork or Dependabot (read-only token).
+      # Every status run-job did not post (a step's check, a skip, a lost post),
+      # a verdict per failed check, then the job's.
       - name: Post one commit status per check (fails if any check failed)
         if: always()
         env:
-          GH_TOKEN: ${{ github.token }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
-          NO_POST: ${{ (contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '' || '--no-post' }}
         run: python3 scripts/ci/verdict.py post-statuses --job scan --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --step semgrep=${{ steps.semgrep.outcome }} --step trivy=${{ steps.trivy.outcome }} --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" $NO_POST
       - name: Upload the verdict
         if: always()
