@@ -23,7 +23,7 @@ from app.agents.llm.client import chat_model, chat_route, provider_configured
 from app.agents.llm.dev_lane import dev_default_model_id, dev_default_option
 from app.config.rate_limits import RateLimitPeriod, get_reset_time, get_time_window_key
 from app.config.settings import settings
-from app.constants.cache import COST_BUDGET_NOTIFIED_KEY
+from app.constants.cache import COST_BUDGET_NEAR_NOTIFIED_KEY, COST_BUDGET_NOTIFIED_KEY
 from app.constants.llm import (
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MAX_TOKENS,
@@ -36,6 +36,7 @@ from app.constants.llm import (
     PAID_COMMS_REASONING,
     PAID_MODEL_NAME,
     PAID_MODEL_PROVIDER,
+    PRO_MONTHLY_BUDGET_HEADS_UP_FRACTION,
     PRO_MONTHLY_COST_BUDGET_USD,
     PROVIDER_FIELD_ID,
     REASONING_FIELD_ID,
@@ -316,14 +317,16 @@ async def resolve_lane(
     if plan == PlanType.FREE or not settings.deployment.enforces_plans:
         return _default_lane(), plan
 
-    if await _pro_monthly_budget_exhausted(user_id):
+    stage = await _pro_monthly_budget_stage(user_id)
+    if stage is not MonthlyBudgetStage.UNDER:
+        spawn_background_task(_notify_monthly_budget_once(user_id, stage))
+    if stage is MonthlyBudgetStage.EXHAUSTED:
         log.warning(
             "pro_model_degraded",
             event_name="pro_model_degraded",
             user_id=user_id,
             plan=plan.value,
         )
-        spawn_background_task(_notify_degrade_once(user_id))
         return _default_lane(), plan
 
     return (
@@ -341,10 +344,18 @@ async def resolve_lane(
     )
 
 
-async def _pro_monthly_budget_exhausted(user_id: str) -> bool:
-    """Return whether the month's spend has crossed the pro economic guard.
+class MonthlyBudgetStage(StrEnum):
+    """Where a pro user's month sits against the economic guard."""
 
-    Fails open (False) on infra errors — never punish a paying user for a
+    UNDER = "under"
+    NEAR = "near"
+    EXHAUSTED = "exhausted"
+
+
+async def _pro_monthly_budget_stage(user_id: str) -> MonthlyBudgetStage:
+    """Classify the month's spend against the pro economic guard.
+
+    Fails open (UNDER) on infra errors — never punish a paying user for a
     Redis hiccup.
     """
     try:
@@ -355,17 +366,45 @@ async def _pro_monthly_budget_exhausted(user_id: str) -> bool:
             error=str(e),
             error_type=type(e).__name__,
         )
-        return False
-    return spent >= PRO_MONTHLY_COST_BUDGET_USD
+        return MonthlyBudgetStage.UNDER
+    if spent >= PRO_MONTHLY_COST_BUDGET_USD:
+        return MonthlyBudgetStage.EXHAUSTED
+    if spent >= PRO_MONTHLY_COST_BUDGET_USD * PRO_MONTHLY_BUDGET_HEADS_UP_FRACTION:
+        return MonthlyBudgetStage.NEAR
+    return MonthlyBudgetStage.UNDER
 
 
-async def _notify_degrade_once(user_id: str) -> None:
-    """In-app notice on the FIRST degraded turn of the month (Redis SET NX gate)."""
+_NOTIFIED_KEY_BY_STAGE: Mapping[MonthlyBudgetStage, str] = {
+    MonthlyBudgetStage.NEAR: COST_BUDGET_NEAR_NOTIFIED_KEY,
+    MonthlyBudgetStage.EXHAUSTED: COST_BUDGET_NOTIFIED_KEY,
+}
+
+
+def _monthly_budget_notice(stage: MonthlyBudgetStage, reset: str) -> NotificationContent:
+    if stage is MonthlyBudgetStage.NEAR:
+        return NotificationContent(
+            title="Most of this month's priority compute is used",
+            body=(
+                "When it runs out, GAIA keeps working on the standard model until "
+                f"{reset}. Nothing pauses."
+            ),
+        )
+    return NotificationContent(
+        title="Priority compute used for this month",
+        body=(
+            "You've used this month's priority AI compute. GAIA keeps "
+            f"working on the standard model until {reset}."
+        ),
+    )
+
+
+async def _notify_monthly_budget_once(user_id: str, stage: MonthlyBudgetStage) -> None:
+    """In-app notice the first time a month reaches this stage (Redis SET NX gate)."""
     try:
         client = redis_cache.redis
         if client is None:
             return
-        key = COST_BUDGET_NOTIFIED_KEY.format(
+        key = _NOTIFIED_KEY_BY_STAGE[stage].format(
             user_id=user_id, window=get_time_window_key(RateLimitPeriod.MONTH)
         )
         if not await client.set(key, "1", nx=True, ex=MONTHLY_BUDGET_TTL_SECONDS):
@@ -377,18 +416,13 @@ async def _notify_degrade_once(user_id: str) -> None:
                 source=NotificationSourceEnum.USAGE_LIMIT,
                 # type is left to NotificationRequest's own default (INFO) rather
                 # than restated here — one source of truth for it.
-                content=NotificationContent(
-                    title="Priority compute used for this month",
-                    body=(
-                        "You've used this month's priority AI compute. GAIA keeps "
-                        f"working on the standard model until {reset_time:%b %d}."
-                    ),
-                ),
+                content=_monthly_budget_notice(stage, f"{reset_time:%b %d}"),
             )
         )
     except Exception as e:
         log.warning(
-            f"{LogTag.AGENT} Degrade notice failed",
+            f"{LogTag.AGENT} Monthly budget notice failed",
+            stage=stage.value,
             error=str(e),
             error_type=type(e).__name__,
         )

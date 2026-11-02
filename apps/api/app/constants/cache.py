@@ -263,6 +263,8 @@ VOICE_EXECUTOR_RESULT_TIMEOUT_S = 90.0
 # One-shot gate (SET NX) for the "priority compute used this month" in-app notice,
 # so a degraded pro user is told once per month, not once per turn.
 COST_BUDGET_NOTIFIED_KEY = "cost_budget_notified:{user_id}:{window}"
+# Same gate for the earlier heads-up at PRO_MONTHLY_BUDGET_HEADS_UP_FRACTION of the month.
+COST_BUDGET_NEAR_NOTIFIED_KEY = "cost_budget_near_notified:{user_id}:{window}"
 
 # Keyed by user plus a hash of the answers it was written from, so a changed
 # Q1/Q2 answer reads a never-written key rather than a stale question. Two

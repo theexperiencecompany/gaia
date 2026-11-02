@@ -24,21 +24,19 @@ interface RateLimitToastProps {
   planRequired?: string;
 }
 
-function buildResetMessage(resetTime: string): string {
-  const resetDate = new Date(resetTime);
-  const now = new Date();
-  const timeDiff = Math.ceil(
-    (resetDate.getTime() - now.getTime()) / (1000 * 60),
-  ); // minutes
+function resetsIn(resetTime: string): string {
+  const minutes = Math.ceil(
+    (new Date(resetTime).getTime() - Date.now()) / (1000 * 60),
+  );
 
-  if (timeDiff > 60) {
-    const hours = Math.ceil(timeDiff / 60);
-    return `Rate limit exceeded. Resets in ${hours} hour${hours > 1 ? "s" : ""}.`;
+  if (minutes > 60) {
+    const hours = Math.ceil(minutes / 60);
+    return `Resets in ${hours} hour${hours > 1 ? "s" : ""}.`;
   }
-  if (timeDiff > 0) {
-    return `Rate limit exceeded. Resets in ${timeDiff} minute${timeDiff > 1 ? "s" : ""}.`;
+  if (minutes > 0) {
+    return `Resets in ${minutes} minute${minutes > 1 ? "s" : ""}.`;
   }
-  return "Rate limit exceeded. Resets very soon.";
+  return "Resets very soon.";
 }
 
 function buildRateLimitMessage({
@@ -56,7 +54,7 @@ function buildRateLimitMessage({
     return `${feature || "This feature"} is only available in the ${planName} plan. Upgrade to continue using it.`;
   }
   if (resetTime) {
-    return buildResetMessage(resetTime);
+    return `Rate limit exceeded. ${resetsIn(resetTime)}`;
   }
   return "You've exceeded the rate limit. Please upgrade for higher limits.";
 }
@@ -79,7 +77,7 @@ export const showRateLimitToast = ({
 
   const planName = planRequired ? formatPlanName(planRequired) : undefined;
 
-  // Auto-generate message if not provided
+  // A server message never carries the reset, so it is appended here in the user's locale.
   if (!message) {
     message = buildRateLimitMessage({
       isUpgradeRequired,
@@ -87,6 +85,8 @@ export const showRateLimitToast = ({
       planName,
       resetTime,
     });
+  } else if (resetTime && !isUpgradeRequired) {
+    message = `${message} ${resetsIn(resetTime)}`;
   }
 
   const toastConfig: ToastConfig = {

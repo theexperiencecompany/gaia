@@ -184,7 +184,7 @@ export const handleRateLimitError = (errorData: unknown): boolean => {
     showTokenLimitToast(feature, plan_required);
   } else {
     showRateLimitToast({
-      title: "Rate Limit Exceeded",
+      title: "Usage limit reached",
       message: message || undefined,
       resetTime: reset_time,
       feature,

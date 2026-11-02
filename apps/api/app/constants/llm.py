@@ -511,6 +511,9 @@ BUDGET_WRAPUP_REMAINING_FRACTION = 0.2
 # subscription price. On exhaustion pro is NOT blocked — routing degrades to
 # the free-tier model for the rest of the month.
 PRO_MONTHLY_COST_BUDGET_USD = 25.00  # TUNE
+# The one-time heads-up fires here; mirrors USAGE_WARN_THRESHOLD (libs/shared/ts/src/constants/usage.ts),
+# where the usage page turns amber.
+PRO_MONTHLY_BUDGET_HEADS_UP_FRACTION = 0.75
 
 # TTLs for the budget Redis keys: sized just past their window so keys expire
 # on their own (26h > 24h day, 32d > 31d month) even with clock skew.

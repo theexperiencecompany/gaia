@@ -7,7 +7,7 @@ import { Tooltip } from "@heroui/tooltip";
 import { Fire02Icon, SparklesIcon } from "@icons";
 import { USAGE_WARN_THRESHOLD } from "@shared/constants/usage";
 import type { FeatureUsage, UsageActivity, UsageSummary } from "@shared/types";
-import { formatCompactNumber, formatDate, formatDateUTC } from "@shared/utils";
+import { formatCompactNumber, formatDateUTC } from "@shared/utils";
 import { useMemo, useState } from "react";
 import BlurStack from "@/components/ui/blur-stack";
 import { ChartContainer, ChartTooltip } from "@/components/ui/chart";
@@ -15,6 +15,7 @@ import { useRecharts } from "@/components/ui/chart-loader";
 import { cn } from "@/lib/utils";
 import type { UsageHistoryEntry } from "../../api/usageApi";
 import { DayByDay } from "./DayByDay";
+import { heroStatus, type Period } from "./heroStatus";
 import { severityColor } from "./severityColor";
 import { ActivityBadge, UsageHeatmap } from "./UsageHeatmap";
 import { CARD, HEALTHY, InfoTip, NEAR } from "./usageChrome";
@@ -37,17 +38,7 @@ function elapsedFraction(resetIso: string, period: Period): number {
   );
 }
 
-type Period = "day" | "month";
 type PeriodData = NonNullable<FeatureUsage["periods"]["day"]>;
-
-/** Local wall-clock time of an instant, e.g. "5:30 AM" — "midnight" would be
- * a lie for every user outside UTC. */
-function fmtTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString([], {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
 
 // ---------------------------------------------------------------------------
 
@@ -141,13 +132,6 @@ function heroGauge(
   };
 }
 
-function heroResetText(win: Period, resetIso: string | undefined): string {
-  if (!resetIso) return "";
-  return win === "day"
-    ? `Resets at ${fmtTime(resetIso)}`
-    : `Resets ${formatDate(resetIso, "short")}`;
-}
-
 function HeroGauge({
   percent,
   gauge,
@@ -218,6 +202,7 @@ function Hero({ summary, isPro }: { summary: UsageSummary; isPro: boolean }) {
   const [win, setWin] = useState<Period>(isPro ? "month" : "day");
   const { percent, resetIso } = heroWindow(summary, win);
   const isDay = win === "day";
+  const status = heroStatus(win, percent, resetIso);
 
   return (
     <section className={cn(CARD, "relative flex items-center gap-5 p-4")}>
@@ -249,13 +234,9 @@ function Hero({ summary, isPro }: { summary: UsageSummary; isPro: boolean }) {
           <InfoTip text="How much of your usage allowance you've used this window, based on the AI compute your activity has consumed." />
         </div>
         <p className="mt-1 text-xl font-semibold text-white">
-          {isDay
-            ? "of your daily allowance used"
-            : "of your monthly allowance used"}
+          {status.headline}
         </p>
-        <p className="mt-2 text-[13px] text-zinc-500">
-          {heroResetText(win, resetIso)}
-        </p>
+        <p className="mt-2 text-[13px] text-zinc-500">{status.detail}</p>
       </div>
     </section>
   );
