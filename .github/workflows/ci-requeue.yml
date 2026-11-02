@@ -38,7 +38,8 @@ jobs:
           persist-credentials: false
       - name: Force-cancel and fully re-run attempts queued on an offline home runner
         env:
-          GH_TOKEN: ${{ github.token }}
-          GITHUB_TOKEN: ${{ github.token }}
+          # The PAT: github.token cannot list self-hosted runners, so every probe was a 403.
+          GH_TOKEN: ${{ secrets.HOMELAB_GH_PAT || github.token }}
+          GITHUB_TOKEN: ${{ secrets.HOMELAB_GH_PAT || github.token }}
           REQUEUE_RUN_ID: ${{ inputs.run_id }}
         run: python3 scripts/ci/runner.py requeue-stranded
