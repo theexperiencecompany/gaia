@@ -65,7 +65,7 @@ async def invoke_tool(
     except Exception as exc:
         await _write(pending, _error_text(exc), failed=True)
         raise
-    await _write(pending, output, failed=False)
+    await _write(pending, output)
     return output
 
 
@@ -85,11 +85,13 @@ def invoke_tool_sync(
     except Exception as exc:
         _write_sync(pending, _error_text(exc), failed=True)
         raise
-    _write_sync(pending, output, failed=False)
+    _write_sync(pending, output)
     return output
 
 
-async def _write(pending: tuple[str, RecordedCall] | None, output: object, *, failed: bool) -> None:
+async def _write(
+    pending: tuple[str, RecordedCall] | None, output: object, *, failed: bool = False
+) -> None:
     """Append a finished call to its run's record; a failed write is logged, never raised."""
     if pending is None:
         return
@@ -101,7 +103,9 @@ async def _write(pending: tuple[str, RecordedCall] | None, output: object, *, fa
         _log_unrecorded(call, exc)
 
 
-def _write_sync(pending: tuple[str, RecordedCall] | None, output: object, *, failed: bool) -> None:
+def _write_sync(
+    pending: tuple[str, RecordedCall] | None, output: object, *, failed: bool = False
+) -> None:
     """Sync twin of _write."""
     if pending is None:
         return

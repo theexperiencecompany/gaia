@@ -7,6 +7,7 @@ import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import fakeredis
 from langchain_core.messages import ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, tool
@@ -14,9 +15,11 @@ from langgraph.errors import GraphInterrupt
 from langgraph.types import Command
 import pytest
 
+from app.agents.tools import run_record
 from app.agents.tools.invocation import ViaExecute, invoke_tool, invoke_tool_sync
 from app.agents.tools.run_record import read_run_record
 from app.constants.cache import RUN_RECORD_PREFIX, RUN_RECORD_TTL
+from app.models.workflow_execution_models import RecordedCall
 
 STREAM_ID = "stream-invocation"
 CONFIG: RunnableConfig = {
@@ -234,10 +237,75 @@ def test_a_sync_call_the_record_could_not_take_still_returns() -> None:
     ):
         assert invoke_tool_sync(answers_sync, {"query": "q"}, CONFIG) == "q"
 
-    assert log.error.call_args.kwargs["tool_name"] == "answers_sync"
+    assert log.error.call_args.args == ("[TOOL] run record: a finished call was not recorded",)
+    assert log.error.call_args.kwargs == {
+        "tool_name": "answers_sync",
+        "error_type": "OSError",
+        "exc_info": True,
+    }
 
 
 @tool
 def answers_sync(query: str) -> str:
     """Answer synchronously."""
     return query
+
+
+@tool
+def reads_config_sync(query: str, config: RunnableConfig) -> str:
+    """Answer synchronously with the stream the call ran in."""
+    return f"{query} in {config['configurable']['stream_id']}"
+
+
+@tool
+def raises_sync(query: str) -> str:
+    """Fail synchronously."""
+    raise RuntimeError(f"no {query}")
+
+
+@pytest.fixture
+def sync_redis(monkeypatch: pytest.MonkeyPatch) -> fakeredis.FakeRedis:
+    client = fakeredis.FakeRedis(decode_responses=True)
+    monkeypatch.setattr(run_record, "_sync_client", lambda: client)
+    return client
+
+
+def _sync_record(client: fakeredis.FakeRedis) -> list[RecordedCall]:
+    return [
+        RecordedCall.model_validate_json(raw)
+        for raw in client.lrange(f"{RUN_RECORD_PREFIX}{STREAM_ID}", 0, -1)
+    ]
+
+
+def test_a_sync_call_is_recorded_with_the_models_args_and_kept_for_the_ttl(
+    sync_redis: fakeredis.FakeRedis,
+) -> None:
+    output = invoke_tool_sync(
+        reads_config_sync, {"query": "q"}, CONFIG, call_args={"query": "asked"}
+    )
+
+    assert output == f"q in {STREAM_ID}"
+    (call,) = _sync_record(sync_redis)
+    assert (call.tool_name, call.args, call.subagent, call.failed) == (
+        "reads_config_sync",
+        {"query": "asked"},
+        "todos",
+        False,
+    )
+    assert call.result_digest == f"q in {STREAM_ID}"
+    assert sync_redis.ttl(f"{RUN_RECORD_PREFIX}{STREAM_ID}") == RUN_RECORD_TTL
+
+
+def test_a_sync_call_that_raises_is_recorded_as_failed_and_still_raises(
+    sync_redis: fakeredis.FakeRedis,
+) -> None:
+    with pytest.raises(RuntimeError, match="no q"):
+        invoke_tool_sync(raises_sync, {"query": "q"}, CONFIG)
+
+    (call,) = _sync_record(sync_redis)
+    assert (call.tool_name, call.args, call.failed, call.result_digest) == (
+        "raises_sync",
+        {"query": "q"},
+        True,
+        "Error: RuntimeError: no q",
+    )
