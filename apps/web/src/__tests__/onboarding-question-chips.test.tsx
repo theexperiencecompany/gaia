@@ -15,6 +15,10 @@ import { useReducer } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+// The save-failure bubble renders the chat bubble stack, which this reply test never reaches.
+vi.mock("@/features/onboarding/components/OnboardingBotBubble", () => ({
+  OnboardingBotBubble: () => null,
+}));
 
 import { QuestionsReply } from "@/features/onboarding/components/stages/Questions";
 import {
