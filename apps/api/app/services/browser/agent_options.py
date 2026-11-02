@@ -9,7 +9,7 @@ wait is outside of.
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
+from typing import TypedDict
 
 from browser_use.tools.views import NavigateAction
 
@@ -26,11 +26,14 @@ from app.constants.browser import (
     JEV_FIRST_BURST_GOAL,
 )
 from app.services.browser.jev.secrets import RunSecrets
-from app.services.browser.jev.tool import JEV_ACTION
+from app.services.browser.jev.tool import JEV_ACTION, JevParams
 from app.services.browser.run_contract import BrowserRunConfig
 
 #: Browser-Use's own action that opens an address (registered by function name).
 _NAVIGATE_ACTION = "navigate"
+
+#: Browser-Use's initial_actions: each action's name to its params, as the action's model dumps them.
+InitialActions = list[dict[str, dict[str, object]]]
 
 
 class AgentOptions(TypedDict):
@@ -38,7 +41,7 @@ class AgentOptions(TypedDict):
 
     task: str
     directly_open_url: bool
-    initial_actions: list[dict[str, dict[str, Any]]] | None
+    initial_actions: InitialActions | None
     sensitive_data: dict[str, str | dict[str, str]] | None
     extend_system_message: str
     use_vision: bool
@@ -86,7 +89,7 @@ def agent_options(
     )
 
 
-def _initial_actions(task: str, config: BrowserRunConfig) -> list[dict[str, dict[str, Any]]] | None:
+def _initial_actions(task: str, config: BrowserRunConfig) -> InitialActions | None:
     """Return the start page's first action: Jev's burst there, else opening it; None on a blank tab.
 
     A burst on the blank tab could only end there, so the agent moves first.
@@ -97,11 +100,11 @@ def _initial_actions(task: str, config: BrowserRunConfig) -> list[dict[str, dict
     if config.jev:
         return [
             {
-                JEV_ACTION: {
-                    "goal": JEV_FIRST_BURST_GOAL.format(task=task),
-                    "done_when": JEV_FIRST_BURST_DONE_WHEN,
-                    "start_url": config.start_url,
-                }
+                JEV_ACTION: JevParams(
+                    goal=JEV_FIRST_BURST_GOAL.format(task=task),
+                    done_when=JEV_FIRST_BURST_DONE_WHEN,
+                    start_url=config.start_url,
+                ).model_dump()
             }
         ]
     return [{_NAVIGATE_ACTION: NavigateAction(url=config.start_url).model_dump()}]
