@@ -14,7 +14,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 from langchain_core.runnables import RunnableLambda
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 import pytest
 import time_machine
 
@@ -421,12 +421,14 @@ class TestFetchInputsModelsSend:
 
     @pytest.mark.parametrize("timeframe", ["24h", "this_month", "0d", "fortnight"])
     def test_an_unsupported_timeframe_is_refused_naming_the_accepted_forms(self, timeframe: str):
-        with pytest.raises(ValueError, match=r"timeframe") as refused:
+        with pytest.raises(ValidationError) as refused:
             FetchMessagesInput.model_validate({"timeframe": timeframe})
-        message = str(refused.value)
-        assert "7d" in message
-        assert (
-            "for anything else (hours, a calendar month) put after:/before: in `query`" in message
+        assert refused.value.errors()[0]["msg"] == (
+            f"Value error, timeframe {timeframe!r} is not supported. Use one of: today, "
+            "yesterday, tomorrow, this_week, last_week, next_week, or the last N "
+            "days/weeks/months/years written <N>d / <N>w / <N>m / <N>y (2d, 7d, 14d, 30d, "
+            "2w, 3m, 1y); for anything else (hours, a calendar month) put after:/before: "
+            "in `query` instead."
         )
 
     def test_omitted_fields_fall_back_to_the_default_set(self):
