@@ -12,7 +12,7 @@
 #   files [--task <t>] <ext> [<ext> ...]
 #                            The changed files for a lane to scope to, filtered
 #                            to those extensions. With --task, only those nx
-#                            matched to <t>'s inputs ($TASK_FILES from detect,
+#                            matched to <t>'s inputs ($TASK_FILES_PATH from detect,
 #                            else nx asked), and __FULL__ when nx reached <t>
 #                            through its config. See the contract below.
 #   py-source [--task <t>]   Like `files py`, but drops the paths the Python
@@ -25,9 +25,10 @@
 #                            nothing at all when no file it reads changed.
 #   affected                 Which CI tasks does this change reach? Asks
 #                            `nx affected --explain` (lib/nx_affected.py) and
-#                            writes tasks, jobs, job_tasks, task_files
+#                            writes tasks, jobs, job_tasks
 #                            and release_groups to
-#                            $GITHUB_OUTPUT. Every task on a
+#                            $GITHUB_OUTPUT, and each task's files to
+#                            $TASK_FILES_PATH when set. Every task on a
 #                            dispatch, unless --since-last-success.
 #
 # `base` — WHY THIS EXISTS. For a PR in a native GitHub stack, the
@@ -238,7 +239,7 @@ cmd_files() {
   REV="$(_base_rev "$BASE")"
 
   # --task <project:target>: the changed files nx matched to that task's
-  # inputs (detect's $TASK_FILES, else nx asked here), so a tool is handed only
+  # inputs (detect's $TASK_FILES_PATH file, else nx asked here), so a tool is handed only
   # what its check reads; __FULL__ when nx reached it through config instead.
   if [[ -n "$task" ]]; then
     local scoped

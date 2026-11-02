@@ -281,6 +281,13 @@ def _queue(repo: Path) -> str:
     return ahead
 
 
+def _task_files(repo: Path, task_map: str) -> str:
+    """Write detect's task-files artifact for the repo and return its path."""
+    path = repo.parent / "task-files.json"
+    path.write_text(task_map)
+    return str(path)
+
+
 def _run(repo: Path, *args: str, **env: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["bash", str(SCRIPT), *args],
@@ -328,7 +335,7 @@ def test_files_for_a_task_nx_marked_for_a_full_scan_is_full(repo: Path) -> None:
     """A config change selects the check but changes none of the files it reads; scoping it to them skipped it."""
     proc = _run(
         repo, "files", "--task", "ci:ruff", "py", GAIA_PR_BASE="master",
-        TASK_FILES='{"ci:ruff": "__FULL__"}',
+        TASK_FILES_PATH=_task_files(repo, '{"ci:ruff": "__FULL__"}'),
     )  # fmt: skip
     assert proc.stdout.strip() == "__FULL__", proc.stderr
 
@@ -341,7 +348,7 @@ def test_files_for_a_task_are_the_files_nx_matched_to_it(repo: Path) -> None:
     _git(repo, "commit", "-qm", "two py changes")
     proc = _run(
         repo, "files", "--task", "ci:interrogate", "py", GAIA_PR_BASE="master",
-        TASK_FILES='{"ci:interrogate": ["app.py", "gone.py"]}',
+        TASK_FILES_PATH=_task_files(repo, '{"ci:interrogate": ["app.py", "gone.py"]}'),
     )  # fmt: skip
     assert proc.stdout.split() == ["app.py"], proc.stderr
 
@@ -370,7 +377,7 @@ def test_scoped_appends_the_changed_files(repo: Path) -> None:
     _git(repo, "commit", "-aqm", "py change")
     out = _scoped(
         repo, "--task", "ci:ruff", "--ext", "py", GAIA_PR_BASE="master",
-        TASK_FILES='{"ci:ruff": ["app.py"]}',
+        TASK_FILES_PATH=_task_files(repo, '{"ci:ruff": ["app.py"]}'),
     )  # fmt: skip
     assert "args:app.py" in out
 
@@ -380,7 +387,7 @@ def test_scoped_hands_the_files_through_the_environment(repo: Path) -> None:
     _git(repo, "commit", "-aqm", "py change")
     out = _scoped(
         repo, "--task", "t", "--ext", "py", "--env", GAIA_PR_BASE="master",
-        TASK_FILES='{"t": ["app.py"]}',
+        TASK_FILES_PATH=_task_files(repo, '{"t": ["app.py"]}'),
     )  # fmt: skip
     assert "env:app.py" in out and "args:app.py" not in out
 
@@ -388,13 +395,21 @@ def test_scoped_hands_the_files_through_the_environment(repo: Path) -> None:
 def test_scoped_runs_the_whole_tree_on_a_full_scan(repo: Path) -> None:
     out = _scoped(
         repo, "--task", "ci:ruff", "--ext", "py", "--full", ". extra", GAIA_PR_BASE="master",
-        TASK_FILES='{"ci:ruff": "__FULL__"}',
+        TASK_FILES_PATH=_task_files(repo, '{"ci:ruff": "__FULL__"}'),
     )  # fmt: skip
     assert out[:2] == ["args:.", "args:extra"]
 
 
 def test_scoped_runs_nothing_when_no_file_it_reads_changed(repo: Path) -> None:
-    out = _scoped(repo, "--task", "t", "--ext", "ts", GAIA_PR_BASE="master", TASK_FILES="{}")
+    out = _scoped(
+        repo,
+        "--task",
+        "t",
+        "--ext",
+        "ts",
+        GAIA_PR_BASE="master",
+        TASK_FILES_PATH=_task_files(repo, "{}"),
+    )
     assert not [line for line in out if line.startswith("args:")]
 
 

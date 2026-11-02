@@ -383,3 +383,17 @@ def test_a_red_status_names_its_first_finding_not_just_the_log(
     description = _statuses(api)["ci / python / ruff"]["description"]
     assert description.startswith("failed — tools/x.py:3:1: F401")
     assert len(description) <= 140
+
+
+def test_a_red_status_without_a_location_names_the_outputs_last_word(
+    api: FakeGitHub, tmp_path: Path
+) -> None:
+    """Regression: an nx crash read only "failed — undefined"; its last line said SIGSEGV."""
+    result: nx_affected.TaskResult = {
+        "status": "failure",
+        "code": 1,
+        "output": "undefined\n ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command was killed with SIGSEGV\n",
+    }
+    _post(tmp_path, "lint-python", {"ci:ruff": result}, "--check", "ruff")
+
+    assert "SIGSEGV" in _statuses(api)["ci / python / ruff"]["description"]
