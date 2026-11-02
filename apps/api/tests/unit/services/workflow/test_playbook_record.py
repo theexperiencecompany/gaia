@@ -17,7 +17,6 @@ from unittest.mock import AsyncMock, patch
 from hypothesis import given, strategies as st
 from langchain_core.tools import BaseTool, StructuredTool
 from pydantic import create_model
-import pytest
 
 from app.agents.tools.execute.execute_tool import execute
 from app.agents.tools.execute.unwrap import execute_call_account, unwrap_execute_call
@@ -148,6 +147,10 @@ class _Run:
     calls: list[RecordedCall]
     picks: list[dict[str, object]]
 
+    def numbered(self, number: int) -> RecordedCall:
+        """Return the call a pick names: the number-th call that is not excluded."""
+        return [call for call in self.calls if call.tool_name not in EXCLUDED][number - 1]
+
 
 @st.composite
 def _value(draw: st.DrawFn, earlier: Sequence[tuple[str, object]]) -> tuple[object, object | None]:
@@ -184,7 +187,7 @@ def _runs(draw: st.DrawFn) -> _Run:
     for _ in range(draw(st.integers(1, 5))):
         for _noise in range(draw(st.integers(0, 2))):
             calls.append(draw(_noise_call()))
-        number = len(calls) + 1
+        number = sum(call.tool_name not in EXCLUDED for call in calls) + 1
         step_id = draw(st.sampled_from([f"s{number}", ""]))
         listing = {
             "items": [{"id": draw(_IDS), "n": n} for n in range(draw(st.integers(1, 3)))],
@@ -331,7 +334,7 @@ def test_a_built_playbook_replays_the_calls_the_run_made(run: _Run) -> None:
     assert built.body is not None
 
     picked = sorted(int(str(pick["call"])) for pick in run.picks)
-    made = [run.calls[number - 1] for number in picked]
+    made = [run.numbered(number) for number in picked]
     assert _replayed(built.body, built.sources) == [
         {
             "tool": call.tool_name,
@@ -349,10 +352,10 @@ def test_a_built_playbook_replays_the_calls_the_run_made(run: _Run) -> None:
 def test_a_number_that_is_not_in_the_record_lists_the_ones_that_are() -> None:
     calls = [_call("retrieve_tools", {}, {}), _call("tool_a", {"first": "x"}, LISTING)]
 
-    assert _problems(calls, [{"call": 1}, {"call": 7}]) == [
-        "steps[0].call: call 1 is not in this run's record; the calls you can pick are 2 "
+    assert _problems(calls, [{"call": 2}, {"call": 7}]) == [
+        "steps[0].call: call 2 is not in this run's record; the calls you can pick are 1 "
         "(read_run_record lists them)",
-        "steps[1].call: call 7 is not in this run's record; the calls you can pick are 2 "
+        "steps[1].call: call 7 is not in this run's record; the calls you can pick are 1 "
         "(read_run_record lists them)",
     ]
 
@@ -601,12 +604,20 @@ def test_the_record_shows_shapes_not_values() -> None:
     ]
 
 
-@pytest.mark.parametrize("excluded_first", [True, False])
-def test_numbers_do_not_move_when_calls_are_left_out(excluded_first: bool) -> None:
+def test_calls_that_cannot_be_picked_take_no_number() -> None:
+    """The run's own dispatch and discovery come first in a real record; numbering them would leave the author gaps to skip."""
     kept = _call("tool_a", {"first": "x"}, LISTING)
     left_out = _call("retrieve_tools", {}, {})
-    calls = [left_out, kept] if excluded_first else [kept, left_out]
 
-    assert [entry.number for entry in number_record(calls, EXCLUDED)] == [
-        2 if excluded_first else 1
-    ]
+    entries = number_record([left_out, kept, left_out, kept], EXCLUDED)
+
+    assert [entry.number for entry in entries] == [1, 2]
+
+
+def test_a_number_holds_as_the_record_grows() -> None:
+    calls = [_call("tool_a", {"first": "x"}, LISTING)]
+    before = number_record(calls, EXCLUDED)
+
+    after = number_record([*calls, _call("retrieve_tools", {}, {}), *calls], EXCLUDED)
+
+    assert after[: len(before)] == before

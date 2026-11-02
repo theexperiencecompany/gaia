@@ -62,20 +62,16 @@ class RecordEntry:
 
 
 def number_record(calls: Sequence[RecordedCall], excluded: Collection[str]) -> list[RecordEntry]:
-    """Give every call its number from 1, seen through execute, leaving out excluded tools.
+    """Give the calls a playbook may replay their numbers from 1, seen through execute.
 
-    A number is the call's position in calls, so it stays the same however the
-    record grows: the record only ever appends.
+    Excluded calls take no number. The record only ever appends, so a number
+    stays the same however far the run goes on.
     """
-    entries: list[RecordEntry] = []
-    for number, call in enumerate(calls, start=1):
-        real = _as_run(call)
-        if real.tool_name in excluded:
-            continue
-        entries.append(
-            RecordEntry(number=number, call=real, result=parse_result(real.result_digest))
-        )
-    return entries
+    pickable = [real for real in map(_as_run, calls) if real.tool_name not in excluded]
+    return [
+        RecordEntry(number=number, call=call, result=parse_result(call.result_digest))
+        for number, call in enumerate(pickable, start=1)
+    ]
 
 
 def _as_run(call: RecordedCall) -> RecordedCall:

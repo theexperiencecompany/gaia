@@ -1357,14 +1357,14 @@ class TestReadRunRecord:
 
         assert result["data"]["calls"] == [
             {
-                "call": 2,
+                "call": 1,
                 "tool": "GMAIL_FETCH_MESSAGES",
                 "ran_in": "executor",
                 "args": {"query": "is:unread"},
                 "returned": {"messages": {"list of 1": {"id": "str", "threadId": "str"}}},
             },
             {
-                "call": 3,
+                "call": 2,
                 "tool": "create_todo",
                 "ran_in": "todos",
                 "args": {"title": "x"},
