@@ -1,34 +1,34 @@
 #!/usr/bin/env python3
-"""Ask nx which CI tasks a change reaches, and write them as detect's outputs.
+"""Ask nx which CI checks a change reaches, and write them as detect's outputs.
 
-The candidates are every target of the .github/jobs projects (one project per
-ci.yml job, one target per check) plus the code projects' targets a job gates
-on. A task is affected when a file its inputs name changed; a job runs when a
-task of its project is. Reached through `changes.sh affected`.
+A CI check is any nx target whose metadata carries `ci.job`: the ci.yml job
+that runs it, the commit status it posts as (`ci.check`, `ci.area`), and when
+it runs (`ci.events`, `ci.branch`, `ci.reuse`). A task is affected when a file
+its inputs name changed. Reached through `changes.sh affected`.
 """
 
 from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+import functools
 import json
 import os
 from pathlib import Path
 import re
 import subprocess
 import sys
+import tempfile
+from typing import TypedDict
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-JOBS_DIR = REPO_ROOT / ".github" / "jobs"
-# The code projects' targets the workflows gate on: api:test opens the Python
-# slices, gaia-connect:check, alert-rules:check and each Python project's
-# type-check (mypy) their steps, a TypeScript project's build or test task puts
-# it in ts-build-test and its type-check in lint-node's, and docker:build is
-# the image build.yml publishes.
-CODE_TARGETS = ("build", "check", "docker:build", "test", "type-check")
 NX_JSON = REPO_ROOT / "nx.json"
-TYPESCRIPT_BUILD_TARGETS = {"build", "test"}
-TYPESCRIPT = "tag:scope:typescript"
+# The images build.yml publishes; no ci.yml job runs them, so they carry no ci metadata.
+IMAGE_TARGET = "docker:build"
+# A check that names no events runs on every one; off CI there is no event.
+LOCAL_EVENT = "local"
+# The nx-ci-status plugin (tools/nx-ci-status) writes each task's result where this names.
+RESULTS_ENV = "NX_CI_TASK_RESULTS"
 # changes.sh files' sentinel for "scan the whole tree".
 FULL_SCAN = "__FULL__"
 # A source input names files by extension (apps/api/**/*.py, **/*.{ts,tsx});
@@ -40,12 +40,33 @@ SCOPED_FILES_MAX = 300
 
 
 @dataclass(frozen=True)
+class Check:
+    """One CI check: an nx task and its target's `metadata.ci`."""
+
+    task: str
+    job: str
+    # The commit status it posts as, `ci / <area> / <check>`; None for a task that only gates its job.
+    check: str | None
+    area: str | None
+    events: tuple[str, ...] | None
+    branch: str | None
+    reuse: bool
+    # "nx": run-job runs it; "action" or "step": a workflow step of its job does.
+    runner: str
+    # Where its command runs, so the paths it prints resolve from the repo root.
+    cwd: str | None = None
+    # The file a finding that names no file:line is pinned to.
+    fallback: str | None = None
+
+    def runs_on(self, event: str, branch: str | None) -> bool:
+        if self.events is not None and event not in self.events:
+            return False
+        return self.branch is None or self.branch == branch
+
+
+@dataclass(frozen=True)
 class Selection:
     tasks: dict[str, list[dict[str, str]]]
-
-    @property
-    def projects(self) -> list[str]:
-        return sorted({_project(task) for task in self.tasks})
 
 
 def _project(task: str) -> str:
@@ -54,13 +75,6 @@ def _project(task: str) -> str:
 
 def _target(task: str) -> str:
     return task.split(":", 1)[1]
-
-
-def job_targets() -> list[str]:
-    targets: set[str] = set()
-    for project in sorted(JOBS_DIR.glob("*/project.json")):
-        targets |= set(json.loads(project.read_text())["targets"])
-    return sorted(targets)
 
 
 def _nx(*args: str) -> str:
@@ -79,6 +93,35 @@ def _json_after_banner(out: str, opener: str) -> object:
     return json.loads(out[out.index(opener) :])
 
 
+@functools.cache
+def checks() -> dict[str, Check]:
+    """Every CI check in the workspace, by task, read from the project graph."""
+    with tempfile.TemporaryDirectory() as scratch:
+        graph = Path(scratch) / "graph.json"
+        _nx("graph", f"--file={graph}")
+        nodes = json.loads(graph.read_text())["graph"]["nodes"]
+    found: dict[str, Check] = {}
+    for project, node in nodes.items():
+        for target, spec in node["data"]["targets"].items():
+            ci = (spec.get("metadata") or {}).get("ci") or {}
+            if not ci.get("job"):
+                continue
+            task = f"{project}:{target}"
+            found[task] = Check(
+                task=task,
+                job=ci["job"],
+                check=ci.get("check"),
+                area=ci.get("area"),
+                events=tuple(ci["events"]) if ci.get("events") else None,
+                branch=ci.get("branch"),
+                reuse=ci.get("reuse", True),
+                runner=ci.get("runner", "nx"),
+                cwd=(spec.get("options") or {}).get("cwd"),
+                fallback=ci.get("fallback"),
+            )
+    return found
+
+
 def tracked_files() -> list[str]:
     out = subprocess.run(
         ["git", "ls-files"], cwd=REPO_ROOT, capture_output=True, text=True, check=True
@@ -87,17 +130,83 @@ def tracked_files() -> list[str]:
 
 
 def select(range_args: list[str]) -> Selection:
-    out = _nx("affected", "-t", *job_targets(), *CODE_TARGETS, "--explain=stdout", *range_args)
+    known = checks()
+    targets = sorted({_target(task) for task in known} | {IMAGE_TARGET})
+    out = _nx("affected", "-t", *targets, "--explain=stdout", *range_args)
     explained = _json_after_banner(out, "{")
     assert isinstance(explained, dict)
-    return Selection(tasks=explained["affected"])
+    affected = explained["affected"]
+    return Selection(
+        tasks={
+            task: reasons
+            for task, reasons in affected.items()
+            if task in known or _target(task) == IMAGE_TARGET
+        }
+    )
 
 
-def typescript_projects(selection: Selection, targets: set[str]) -> str:
-    tagged = _json_after_banner(_nx("show", "projects", "--projects", TYPESCRIPT, "--json"), "[")
-    assert isinstance(tagged, list)
-    reached = {_project(task) for task in selection.tasks if _target(task) in targets}
-    return ",".join(sorted(reached.intersection(tagged)))
+def exact_runs(tasks: list[str]) -> list[tuple[list[str], list[str]]]:
+    """Split tasks into nx run-many calls whose projects × targets is exactly those tasks.
+
+    run-many runs every target on every project it names, so targets go
+    together only when they run on the same projects.
+    """
+    by_target: dict[str, set[str]] = {}
+    for task in tasks:
+        project, target = task.split(":", 1)
+        by_target.setdefault(target, set()).add(project)
+    by_projects: dict[frozenset[str], list[str]] = {}
+    for target, projects in by_target.items():
+        by_projects.setdefault(frozenset(projects), []).append(target)
+    return sorted((sorted(projects), sorted(targets)) for projects, targets in by_projects.items())
+
+
+class TaskResult(TypedDict):
+    """One task's result as the nx-ci-status plugin writes it."""
+
+    status: str
+    code: int
+    output: str
+
+
+def run(tasks: list[str], parallel: int, wrap: list[str]) -> tuple[dict[str, TaskResult], bool]:
+    """Run exactly `tasks` through nx and return each one's result, and whether every run passed.
+
+    `wrap` prefixes each nx command (CI's CPU-slot governor). A task nx could not
+    start has no result; the run's exit code still fails it.
+    """
+    results: dict[str, TaskResult] = {}
+    passed = True
+    with tempfile.TemporaryDirectory() as scratch:
+        for index, (projects, targets) in enumerate(exact_runs(tasks)):
+            part = Path(scratch) / f"{index}.json"
+            command = [
+                "pnpm", "exec", "nx", "run-many",
+                "-p", ",".join(projects), "-t", ",".join(targets),
+                # stream: static replays a task's output in one write that process.exit() truncates.
+                f"--parallel={parallel}", "--output-style=stream",
+            ]  # fmt: skip
+            rc = subprocess.run(
+                [*wrap, *command],
+                cwd=REPO_ROOT,
+                env={**os.environ, RESULTS_ENV: str(part), "NX_NO_CLOUD": "true"},
+                check=False,
+            ).returncode
+            if part.is_file():
+                results.update(json.loads(part.read_text()))
+            passed = passed and rc == 0
+    return results, passed
+
+
+def job_tasks(selection: Selection, event: str, branch: str | None) -> dict[str, list[str]]:
+    """Each ci.yml job's affected checks that run on this event and branch."""
+    known = checks()
+    jobs: dict[str, list[str]] = {}
+    for task in sorted(selection.tasks):
+        check = known.get(task)
+        if check and check.runs_on(event, branch):
+            jobs.setdefault(check.job, []).append(task)
+    return jobs
 
 
 def release_groups(selection: Selection) -> list[str]:
@@ -141,13 +250,13 @@ def _is_source(reason: dict[str, str]) -> bool:
     )
 
 
-def outputs(selection: Selection) -> dict[str, str]:
-    """Build detect's outputs; a lane reads each as the same name upper-cased, and ci:local sets them too."""
+def outputs(selection: Selection, event: str, branch: str | None) -> dict[str, str]:
+    """Build detect's outputs; a job reads each as the same name upper-cased, and ci:local sets them too."""
+    jobs = job_tasks(selection, event, branch)
     return {
         "tasks": json.dumps(sorted(selection.tasks)),
-        "projects": json.dumps(selection.projects),
-        "typescript_projects": typescript_projects(selection, TYPESCRIPT_BUILD_TARGETS),
-        "type_check_projects": typescript_projects(selection, {"type-check"}),
+        "jobs": json.dumps(sorted(jobs)),
+        "job_tasks": json.dumps(jobs),
         "release_groups": json.dumps(release_groups(selection)),
         "task_files": json.dumps(task_files(selection)),
     }
@@ -188,7 +297,11 @@ def main() -> int:
         return 0
 
     selection = select(range_args)
-    published = outputs(selection)
+    published = outputs(
+        selection,
+        os.environ.get("GITHUB_EVENT_NAME", LOCAL_EVENT),
+        os.environ.get("GITHUB_REF_NAME"),
+    )
     lines = "".join(f"{key}={value}\n" for key, value in published.items())
     sink = os.environ.get("GITHUB_OUTPUT")
     if sink:
@@ -203,8 +316,8 @@ def main() -> int:
     for task, reasons in sorted(selection.tasks.items()):
         print(f"{task} <- {_first_reason(reasons)}")
     print("::endgroup::")
-    jobs = ", ".join(selection.projects) or "none"
-    print(f"affected: {len(selection.tasks)} task(s); projects with work: {jobs}")
+    jobs = ", ".join(json.loads(published["jobs"])) or "none"
+    print(f"affected: {len(selection.tasks)} task(s); jobs with work: {jobs}")
     return 0
 
 

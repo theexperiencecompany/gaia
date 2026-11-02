@@ -7,7 +7,7 @@ drift. They did not — the hook and the lane both ignored `apps/api/pyproject.t
 and `uv.lock`, so a FastAPI or Pydantic bump changed the generated document
 with nothing regenerating or checking it.
 
-The source of truth is the lint-mixed:api-schema nx task's inputs: CI gates the
+The source of truth is the ci:api-schema nx task's inputs: CI gates the
 check on it, and the hook's literal regex (prek needs one) is held equal to it
 by test_hook_scopes.py.
 """
@@ -23,7 +23,7 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 PRE_COMMIT = REPO_ROOT / ".pre-commit-config.yaml"
-TASK = "lint-mixed:api-schema"
+TASK = "ci:api-schema"
 HOOK = "api-types"
 
 # A bump to either one re-generates the document without touching a route.

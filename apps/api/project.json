@@ -31,7 +31,14 @@
           "externalDependencies": []
         }
       ],
-      "outputs": []
+      "outputs": [],
+      "metadata": {
+        "ci": {
+          "job": null,
+          "check": null,
+          "area": null
+        }
+      }
     },
     "docker:build": {
       "executor": "nx:run-commands",
@@ -137,7 +144,14 @@
         {
           "externalDependencies": []
         }
-      ]
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-python",
+          "check": "mypy-api",
+          "area": "python"
+        }
+      }
     },
     "worker": {
       "executor": "nx:run-commands",
@@ -163,7 +177,14 @@
         {
           "externalDependencies": []
         }
-      ]
+      ],
+      "metadata": {
+        "ci": {
+          "job": "test-python",
+          "check": null,
+          "area": null
+        }
+      }
     },
     "test:real": {
       "executor": "nx:run-commands",

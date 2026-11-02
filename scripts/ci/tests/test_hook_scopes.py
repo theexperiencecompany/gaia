@@ -21,8 +21,8 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 PRE_COMMIT = REPO_ROOT / ".pre-commit-config.yaml"
 # The hooks that regenerate a check's artifact, and the task that checks it.
 HOOK_TASKS = {
-    "api-types": "lint-mixed:api-schema",
-    "analytics-types": "lint-mixed:analytics-catalog",
+    "api-types": "ci:api-schema",
+    "analytics-types": "ci:analytics-catalog",
 }
 # Every check reads the CI harness (nx.json's ciHarness); a hook has no reason to.
 HARNESS_PATTERNS = {

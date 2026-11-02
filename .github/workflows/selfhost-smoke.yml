@@ -8,7 +8,7 @@ name: Self-host smoke
 # `custom` provider, and a Playwright journey through setup, chat, tools,
 # uploads, invites, roles, readiness and the code sandbox
 # (scripts/ci/selfhost.sh + apps/web/e2e/selfhost). It runs on PRs that touch
-# what a self-hoster runs (nx task selfhost-smoke:e2e) and on dispatch.
+# what a self-hoster runs (nx task ci:selfhost-e2e) and on dispatch.
 # No `branches:` filter on pull_request: it matches the PR's base, so it would
 # exempt every stacked PR (see CLAUDE.md, Skipped / Non-Gated Lanes).
 on:
@@ -34,7 +34,7 @@ jobs:
   # --- Change detection (mirrors ci.yml#detect) ---
   # What nx says this change reaches (changes.sh affected), the same answer
   # ci.yml's detect gets: the smoke runs when api:test does, the end-to-end
-  # lane when selfhost-smoke:e2e (.github/jobs/selfhost-smoke) does.
+  # lane when ci:selfhost-e2e (tools/ci/project.json) does.
   changes:
     name: Ask nx which checks this change reaches
     runs-on: ubuntu-latest
@@ -45,7 +45,7 @@ jobs:
       actions: read
     outputs:
       tasks: ${{ steps.affected.outputs.tasks }}
-      selfhost_e2e: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(fromJSON(steps.affected.outputs.tasks), 'selfhost-smoke:e2e')) }}
+      selfhost_e2e: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(fromJSON(steps.affected.outputs.tasks), 'ci:selfhost-e2e')) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

@@ -20,7 +20,14 @@
         {
           "externalDependencies": []
         }
-      ]
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-mixed",
+          "check": "go-connect",
+          "area": "tests"
+        }
+      }
     }
   }
 }

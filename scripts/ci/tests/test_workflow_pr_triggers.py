@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from doc_shape import mapping
+from lib import nx_affected
 import pytest
 import yaml
 
@@ -138,10 +139,17 @@ def test_the_gate_reports_on_a_merge_group(workflow: Workflow) -> None:
 
 
 def test_a_pr_push_runs_only_the_fast_tier(workflow: Workflow) -> None:
-    # The full-tier jobs gate on detect's tier; a PR push never starts them.
+    # The full-tier jobs never start on a PR push: docker-image gates on detect's
+    # tier, and python-audit's and scan's checks name the events they run on.
     jobs = workflow["jobs"]
-    for name in ("python-audit", "scan", "docker-image"):
-        assert "needs.detect.outputs.tier == 'full'" in jobs[name]["if"], name
+    assert "needs.detect.outputs.tier == 'full'" in jobs["docker-image"]["if"]
+    full_tier = [c for c in nx_affected.checks().values() if c.job in ("python-audit", "scan")]
+    assert {c.check for c in full_tier} == {"import-cost", "pip-audit", "semgrep", "trivy"}
+    for check in full_tier:
+        assert not check.runs_on("pull_request", None), check.task
+        assert check.runs_on("merge_group", None), check.task
+    for name in ("python-audit", "scan"):
+        assert f"contains(fromJSON(needs.detect.outputs.jobs), '{name}')" in jobs[name]["if"]
     # Mutation is in both tiers: a survivor found only in the queue ejects the
     # group and costs a fix round.
     (plan,) = [s for s in jobs["detect"]["steps"] if s.get("id") == "plan"]
@@ -159,10 +167,11 @@ def test_the_secret_scan_runs_only_on_the_events_that_bring_commits(workflow: Wo
         if "gitleaks/gitleaks-action" in str(mapping(step).get("uses", ""))
     ]
     assert len(steps) == 1
-    condition = str(steps[0]["if"])
-    assert "github.event_name == 'pull_request'" in condition
-    assert "github.event_name == 'push'" in condition
-    assert "!=" not in condition.split("&&")[0], "an exclusion list lets workflow_dispatch through"
+    assert "'ci:gitleaks'" in str(steps[0]["if"])
+    gitleaks = nx_affected.checks()["ci:gitleaks"]
+    assert gitleaks.events == ("pull_request", "push"), (
+        "an exclusion list lets workflow_dispatch through"
+    )
 
 
 def test_a_dispatch_never_posts_per_check_statuses(workflow: Workflow) -> None:
@@ -175,6 +184,8 @@ def test_a_dispatch_never_posts_per_check_statuses(workflow: Workflow) -> None:
     ]
     assert posts, "found no post-statuses step"
     for step in posts:
-        condition = str(step.get("if", ""))
-        assert '"pull_request", "merge_group", "push"' in condition, step["name"]
-        assert "workflow_dispatch" not in condition, step["name"]
+        no_post = str(mapping(step["env"])["NO_POST"])
+        assert '"pull_request", "merge_group", "push"' in no_post, step["name"]
+        assert "workflow_dispatch" not in no_post, step["name"]
+        assert no_post.endswith("&& '' || '--no-post' }}"), step["name"]
+        assert str(step["run"]).endswith(" $NO_POST"), step["name"]

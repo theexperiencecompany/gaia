@@ -3,8 +3,8 @@
 
 The whole point of pinning is that "passed locally" means "passes CI". This
 check fails when the versions drift apart across the surfaces in SURFACES:
-both pre-commit configs, ci.yml, the local lane table
-(scripts/dev/verify-lanes.json), the root package.json quality scripts, the
+both pre-commit configs, ci.yml, the CI checks' nx targets
+(tools/ci/project.json), the root package.json quality scripts, the
 api mise tasks and taskipy scripts, the ignore-staleness guard's own ruff
 invocation, uv.lock, for biome pnpm-lock.yaml plus every biome.json schema, and
 for uv itself mise.toml, the setup-uv action and the app Dockerfiles.
@@ -717,7 +717,7 @@ UVX_SURFACES = (
     REPO_ROOT / "apps/api/mise.toml",
     REPO_ROOT / "apps/api/pyproject.toml",
     ROOT_PACKAGE_JSON,
-    REPO_ROOT / "scripts/dev/verify-lanes.json",
+    REPO_ROOT / "tools/ci/project.json",
     *sorted((REPO_ROOT / "scripts/ci").glob("*.sh")),
     *sorted(_HERE.glob("check_*.py")),
     *sorted(REPO_ROOT.glob("libs/shared/py/project.json")),

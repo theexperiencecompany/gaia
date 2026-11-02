@@ -424,6 +424,10 @@ cmd_evlog() {
     fi
   done < <(git diff --name-status -M --diff-filter=ACMR "$BASE_SHA"...HEAD)
 
+  if [ ! -s "$WORK"/head-files.txt ]; then
+    ci_ok "observability: OK (no changed Python files to ratchet)"
+    return 0
+  fi
   python3 tools/evlog_map --files-from "$WORK"/base-files.txt --json --no-write > "$WORK"/base-map.json
   python3 tools/evlog_map --files-from "$WORK"/head-files.txt --no-write \
     --baseline "$WORK"/base-map.json --rename-map "$WORK"/renames.txt

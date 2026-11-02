@@ -45,7 +45,14 @@
         {
           "externalDependencies": []
         }
-      ]
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-python",
+          "check": "mypy-shared",
+          "area": "python"
+        }
+      }
     }
   }
 }

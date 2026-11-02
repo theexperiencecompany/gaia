@@ -279,38 +279,6 @@ def main() -> int:
     check("sanitize: renamed-summary details collapsed", "do bad" not in ex2)
     check("sanitize: agent-ish details sets flag", red2 is True)
 
-    vjson = Path("scripts/dev/verify-lanes.json")
-    spec2 = importlib.util.spec_from_file_location(
-        "gaia_verify_mod", Path(__file__).resolve().parent.parent / "gaia_verify.py"
-    )
-    gv = importlib.util.module_from_spec(spec2)
-    sys.modules["gaia_verify_mod"] = gv
-    spec2.loader.exec_module(gv)
-
-    def loader_exit(payload_json: str) -> int:
-        with tempfile.TemporaryDirectory() as td2:
-            f = Path(td2) / "lanes.json"
-            f.write_text(payload_json)
-            try:
-                gv.load_lanes(f)
-                return 0
-            except SystemExit as exc:
-                return exc.code if isinstance(exc.code, int) else 1
-
-    base_ok = json.loads(vjson.read_text())
-    import copy
-
-    row_bad_name = copy.deepcopy(base_ok)
-    row_bad_name["lanes"][0]["name"] = "../../evil"
-    check("loader: traversal lane-name -> exit 2", loader_exit(json.dumps(row_bad_name)) == 2)
-    row_neg = copy.deepcopy(base_ok)
-    row_neg["lanes"][0]["timeout_s"] = -5
-    check("loader: negative timeout -> exit 2", loader_exit(json.dumps(row_neg)) == 2)
-    check("loader: malformed JSON -> exit 2 (no traceback)", loader_exit("{not json") == 2)
-    arr = copy.deepcopy(base_ok)
-    arr["lanes"] = {"a": 1}
-    check("loader: non-list lanes -> exit 2", loader_exit(json.dumps(arr)) == 2)
-
     rc, out, _err = run_scenario("happy", [])  # sanity: normal path unaffected
     check("happy path still exit 0 after hardening", rc == 0)
 

@@ -25,8 +25,8 @@
 #                            nothing at all when no file it reads changed.
 #   affected                 Which CI tasks does this change reach? Asks
 #                            `nx affected --explain` (lib/nx_affected.py) and
-#                            writes tasks, projects, task_files,
-#                            typescript_projects and release_groups to
+#                            writes tasks, jobs, job_tasks, task_files
+#                            and release_groups to
 #                            $GITHUB_OUTPUT. Every task on a
 #                            dispatch, unless --since-last-success.
 #
@@ -62,7 +62,7 @@
 #
 # Workflow files (.yml) belong in a lane's extension list only when that check
 # reads them (tool-pins). A workflow-only PR still validates CI itself because
-# the checks that read .github name it in their nx inputs (.github/jobs/).
+# the checks that read .github name it in their nx inputs (tools/ci/project.json).
 #
 # Diff accuracy note: the merge-base ("...") diff requires the base ref to be
 # present locally, so PR lanes that consume `files` must checkout with

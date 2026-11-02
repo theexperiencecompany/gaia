@@ -11,7 +11,7 @@ lane without grepping the workflow first.
 
 | Concept | Script | Subcommands |
 | --- | --- | --- |
-| Where and how hard a job runs | `runner.py` | `select`, `watchdog`, `requeue-stranded`, `cancel-superseded`, `rescope`, `prime-archive`, `parallel`, `dep-marker`, `heal-venv`, `with-slots`, `spawn`, `join`, `health` |
+| Where and how hard a job runs | `runner.py` | `select`, `watchdog`, `requeue-stranded`, `cancel-superseded`, `rescope`, `prime-archive`, `parallel`, `dep-marker`, `heal-venv`, `with-slots`, `run-job`, `health` |
 | The service containers a suite talks to | `test-services.sh` | `up`, `prepare`, `reset`, `down`, `janitor` |
 | The embedding sidecar | `embedding-sidecar.sh` | `start`, `stop` |
 | The real browsers a lane drives | `browser.sh` | `locate`, `chrome-host`, `eval` |
@@ -23,7 +23,7 @@ lane without grepping the workflow first.
 | Standing dependency + pin gates | `audit.sh` | `pnpm`, `pip`, `playwright-pin`, `model-pin`, `alert-rule-tools`, `evlog` |
 | Static hygiene over the TS/JS surface | `checks.mjs` | `file-sizes`, `components-per-file`, `types-location`, `duplication`, `evlog-map-bots`, `api-schema`, `analytics-catalog`, `api-schema-types`, `api-client-imports`, `cli-config-schema`, `deploy-templates`, `doc-comments` |
 | The PostHog project against the event catalog | `analytics.py` | `check`, `sync-actions`, `sync-loop-alert` |
-| Turning a run's output into a verdict | `verdict.py` | `emit`, `consolidate`, `dir`, `check-ownership`, `pytest-verdict`, `regression-proof-select`, `regression-proof-verdict`, `collect`, `check`, `sarif`, `step-outcomes`, `post-statuses`, `reuse-plan` |
+| Turning a run's output into a verdict | `verdict.py` | `emit`, `consolidate`, `dir`, `check-ownership`, `pytest-verdict`, `regression-proof-select`, `regression-proof-verdict`, `check`, `sarif`, `post-statuses`, `reuse-plan` |
 | Publishing what a green master produced | `release.sh` | `resolve-image-tags`, `promote-latest`, `dispatch-cli-publish`, `cli-release-images`, `pin-selfhost-release`, `cli-beta-release`, `selfhost-bots-arm64`, `selfhost-bots-manifest`, `connect-cross-check`, `connect-binaries`, `selfhost-bundle`, `disable-cf-builds` |
 | The release-metadata guards | `release.mjs` | `validate-manifest`, `verify-cli` |
 | Shipping to production | `deploy.sh` | `plan`, `stack`, `verify`, `retag`, `notify`, `failing-checks`, `served-commit`, `verify-commit`, `changelog`, `unwedge` |
@@ -199,7 +199,7 @@ and dispatches `sys.argv[1]` into `cmd_<sub>` functions like `verdict.py`. It
 imports its `lib/` modules as `from lib import x` (the script's directory is on
 `sys.path`) instead of shelling out to them, so data crosses as dataclasses, and
 every external call that can fail either raises or is checked. The
-`python-mypy` lane checks `scripts/ci`, but not strictly, so check a changed
+`mypy` check (`ci:mypy`) checks `scripts/ci`, but not strictly, so check a changed
 entrypoint with `mypy --strict` run from `scripts/ci` as well.
 
 ## Conventions every bash script here follows
@@ -294,7 +294,26 @@ therefore a strict improvement, not a prerequisite. The gate downloads every
 `verdict-*` and runs `verdict.py consolidate` with
 `--expect "<job>[@<family>]=<job result>,…"` covering exactly its `needs:` list.
 
-**A red check is readable the moment it fails, not when its job ends.** A
+**A grouped job's checks are nx tasks, and each still reports on its own.**
+Every check is an nx target whose `metadata.ci` names its ci.yml job, its status
+(`check`, `area`) and, when it is not every event's, its `events`/`branch`
+(tools/ci/project.json for the repo-wide checks, the code projects' targets for
+`api:type-check`, `web:build`, …). detect publishes each job's affected tasks
+(`job_tasks`); `runner.py run-job <job>` runs them in one `nx run-many` per
+project set (nx honours `parallelism: false`, `dependsOn` and the cache), and
+the `tools/nx-ci-status` plugin's `postTasksExecution` writes each task's status,
+exit code and output. `verdict.py post-statuses --job <job>` then posts one
+`ci / <area> / <check>` status per check, writes a `<job>/<check>` verdict for
+each failed one from its output (file:line, paths prefixed by the target's
+`cwd`), and fails the job: a task detect planned that has no result is a
+failure, never a skip. An action check (gitleaks, semgrep, trivy) or a step
+check (the PostHog ones) is a target with `runner` `action`/`step`; its step's
+outcome reaches post-statuses as `--step <check>=<outcome>`. The plugin's hook
+fires once, after the whole run, so a grouped job reports when its slowest
+check ends; one `nx run` per task would report sooner but builds a shared
+dependency twice in parallel.
+
+**A step check is readable the moment it fails, not when its job ends.** A
 check step's shell is `python3 scripts/ci/verdict.py check -- bash -e {0}`
 (`bash --noprofile --norc -eo pipefail {0}` where the step wants pipefail): the
 step body is unchanged, its output streams as before, and when it exits
@@ -306,9 +325,7 @@ the step after every check is the `upload-verdict` composite with
 (one YAML alias, `*upload-verdict-so-far`): it overwrites the job's artifact
 with what is there so far and clears the flag. Artifacts are readable mid-run
 and job logs are not, so `mise ci:remote` prints the finding under the still
-running job. The job's rollup (`step-outcomes`) only names the red checks; their
-findings live in their own verdicts. A step that is not a check (a spawn, a
-setup) keeps its plain shell: `check` reads its command's output to EOF, so a
+running job. A step that is not a check (a setup) keeps its plain shell: `check` reads its command's output to EOF, so a
 command that leaves a child holding stdout would hold the step open. Scanners
 that are actions (gitleaks, semgrep) cannot take a shell, so the step after
 them is `verdict.py sarif` over the report they wrote. The gate writes its own

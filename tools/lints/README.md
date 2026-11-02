@@ -394,9 +394,9 @@ change no answer.
 Measured on the home box, every module under `app/utils` and `app/models`
 costs 6-15 s alone, because those layers import upward
 (`app.utils.chat_utils` -> `app.agents.llm.chatbot`). Gating today would red
-~200 modules on a PR that caused none of them. Drop `--report` from the step
-in `ci.yml` and from `scripts/dev/verify-lanes.json` once the
-layering is fixed — that is the whole change.
+~200 modules on a PR that caused none of them. Drop `--report` from the
+`ci:import-cost` target in `tools/ci/project.json` once the layering is fixed —
+that is the whole change.
 
 ---
 

@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import subprocess
 
+from lib import nx_affected
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -99,3 +100,33 @@ def test_dependency_bump_selects_one_language(commit: str, expected: set[str]) -
 )
 def test_dependency_change_reaches_dependent_task(path: str, task: str) -> None:
     assert task in affected_tasks(f"--files={path}")
+
+
+def test_exact_runs_groups_targets_only_when_they_run_on_the_same_projects() -> None:
+    tasks = ["api:lint", "api:type-check", "web:lint", "web:type-check", "api:test", "ci:biome"]
+
+    runs = nx_affected.exact_runs(tasks)
+
+    # run-many runs every target on every project it names, so web:test must never appear.
+    assert runs == [
+        (["api"], ["test"]),
+        (["api", "web"], ["lint", "type-check"]),
+        (["ci"], ["biome"]),
+    ]
+    product = [f"{p}:{t}" for projects, targets in runs for p in projects for t in targets]
+    assert sorted(product) == sorted(tasks)
+
+
+def test_run_reads_each_tasks_result_from_the_nx_ci_status_plugin() -> None:
+    results, passed = nx_affected.run(["ci:ignore-whys"], 1, [])
+    assert passed
+    assert results["ci:ignore-whys"]["status"] in ("success", "local-cache")
+    assert "ignore-whys: OK" in results["ci:ignore-whys"]["output"]
+
+
+def test_run_reports_a_failed_task_and_its_output(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AUDIT_SCOPE", "bogus")
+    results, passed = nx_affected.run(["ci:pnpm-audit"], 1, [])
+    assert not passed
+    assert results["ci:pnpm-audit"]["status"] == "failure"
+    assert "AUDIT_SCOPE must be all or introduced" in results["ci:pnpm-audit"]["output"]

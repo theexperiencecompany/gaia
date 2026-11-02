@@ -35,10 +35,10 @@ Subcommands:
                       interpreter or no pyvenv.cfg, so uv recreates it.
   with-slots N -- cmd Acquire N host CPU tokens (lib/cpu-slots.sh), run cmd,
                       release them.
-  spawn NAME -- cmd   Start cmd in the background so a job's checks run side by
-                      side; its log, exit code and step summary are kept apart.
-  join NAME           Wait for a spawned check, print its log as a group, append
-                      its step summary, annotate a failure, exit with its code.
+  run-job JOB         Run JOB's checks detect selected (nx tasks whose target's
+                      metadata.ci.job is JOB, minus the reused) through nx,
+                      under this runner's CPU budget, and write each task's
+                      result for `verdict.py post-statuses`.
   health              Print, as JSON, what the box is actually doing: the home
                       listener pool, load average, thread count, who holds CPU
                       slots, and how many mutmut/pytest processes are running.
@@ -69,8 +69,8 @@ Env contract:
   prime-archive       ACTIONS_RUNNER_ACTION_ARCHIVE_CACHE, GAIA_REPO
                       (checkout to scan when run from a copy outside the repo).
   parallel            PYTEST_WORKER_GB (1.5) — per-xdist-worker RAM budget.
-  spawn / join        RUNNER_TEMP (required: the files live in $RUNNER_TEMP/bg),
-                      GITHUB_STEP_SUMMARY (spawn redirects it, join appends).
+  run-job             JOB_TASKS (detect's job_tasks), REUSED (detect's reused),
+                      RESULTS_FILE (where the task results land; required).
   health              GITHUB_REPOSITORY, RUNNER_LABEL (gaia-home); reads the
                       cpu-slots pool dir, never takes from it.
 """
@@ -93,6 +93,7 @@ import sys
 import time
 import urllib.parse
 
+from lib import nx_affected
 from lib.github import GitHub, GitHubError, Json, field_of, records, text_of
 
 HERE = Path(__file__).resolve().parent
@@ -1174,108 +1175,38 @@ def cmd_with_slots(args: list[str]) -> int:
     )
 
 
-# ── spawn / join ──────────────────────────────────────────────────────────
-
-# A job's steps run one at a time, so a check that runs beside the others starts
-# in one step and reports in a later one. Its output, exit code and step summary
-# land under $RUNNER_TEMP/bg; join replays them so each check keeps its own log,
-# outcome and status. The rc file is written by rename, so join never reads half.
-
-SPAWN_SH = (
-    'rc=0; "$@" || rc=$?; printf "%s\\n" "$rc" > "$GAIA_SPAWN_RC.tmp"; '
-    'mv -f "$GAIA_SPAWN_RC.tmp" "$GAIA_SPAWN_RC"'
-)
-SPAWN_NAME = re.compile(r"[a-z0-9][a-z0-9-]*")
-JOIN_POLL_SECS = 1.0
-FAILURE_TAIL_LINES = 40
+# ── run-job ───────────────────────────────────────────────────────────────
+# A grouped job's checks are nx tasks. nx runs them in parallel, honouring a
+# target's `parallelism: false`; the nx-ci-status plugin writes each task's
+# result to NX_CI_TASK_RESULTS, which post-statuses turns into commit statuses.
 
 
-@dataclass(frozen=True)
-class Background:
-    name: str
-    root: Path
-
-    @classmethod
-    def named(cls, name: str) -> Background:
-        temp = os.environ.get("RUNNER_TEMP")
-        if not temp:
-            raise Die("spawn/join: RUNNER_TEMP is not set")
-        if not SPAWN_NAME.fullmatch(name):
-            raise Die(f"spawn/join: {name!r} is not a check name (lowercase, digits, dashes)")
-        root = Path(temp, "bg")
-        root.mkdir(parents=True, exist_ok=True)
-        return cls(name, root)
-
-    def path(self, ext: str) -> Path:
-        return self.root / f"{self.name}.{ext}"
-
-
-def cmd_spawn(args: list[str]) -> int:
-    if len(args) < 3 or args[1] != "--":
-        log("usage: runner.py spawn NAME -- <cmd...>")
-        return 2
-    bg = Background.named(args[0])
-    if bg.path("pid").exists():
-        raise Die(f"spawn: {bg.name} was already started in this job")
-    env = {
-        **os.environ,
-        "GAIA_SPAWN_RC": str(bg.path("rc")),
-        "GITHUB_STEP_SUMMARY": str(bg.path("summary")),
-    }
-    with bg.path("log").open("wb") as out:
-        child = subprocess.Popen(
-            ["bash", "-c", SPAWN_SH, "spawn", *args[2:]],
-            stdin=subprocess.DEVNULL,
-            stdout=out,
-            stderr=subprocess.STDOUT,
-            env=env,
-            start_new_session=True,
-        )
-    bg.path("pid").write_text(f"{child.pid} {time.time()}\n")
-    ok(
-        f"{bg.name}: running in the background (pid {child.pid}); `runner.py join {bg.name}` reports it"
-    )
-    return 0
-
-
-def _wait_for_rc(bg: Background) -> tuple[int, float]:
-    """Block until the spawned check records its exit code; fail loud if it died first."""
-    pid_text = bg.path("pid")
-    if not pid_text.exists():
-        raise Die(f"join: {bg.name} was never spawned in this job")
-    pid, started = pid_text.read_text().split()
-    rc_file = bg.path("rc")
-    while not rc_file.exists():
-        if not _pid_alive(int(pid)) and not rc_file.exists():
-            raise Die(f"join: {bg.name} (pid {pid}) exited without recording an exit code")
-        time.sleep(JOIN_POLL_SECS)
-    return int(rc_file.read_text()), rc_file.stat().st_mtime - float(started)
-
-
-def cmd_join(args: list[str]) -> int:
+def cmd_run_job(args: list[str]) -> int:
     if len(args) != 1:
-        log("usage: runner.py join NAME")
-        return 2
-    bg = Background.named(args[0])
-    rc, elapsed = _wait_for_rc(bg)
-    log_text = bg.path("log").read_text(errors="replace")
-    print(f"::group::{bg.name} — log ({elapsed:.0f}s, exit {rc})", flush=True)
-    sys.stdout.write(log_text if log_text.endswith("\n") or not log_text else log_text + "\n")
-    print("::endgroup::", flush=True)
-    summary = bg.path("summary")
-    step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
-    if step_summary and summary.exists():
-        with open(step_summary, "a") as out:
-            out.write(summary.read_text())
-    if rc != 0:
-        tail = log_text.splitlines()[-FAILURE_TAIL_LINES:]
-        print("\n".join(tail), flush=True)
-        print(
-            f"::error title={bg.name}::{bg.name} failed (exit {rc}, {elapsed:.0f}s); "
-            "the full log is the group above",
-            flush=True,
-        )
-    return rc
+        raise Die("usage: runner.py run-job <job>")
+    job = args[0]
+    planned: list[str] = json.loads(os.environ.get("JOB_TASKS") or "{}").get(job, [])
+    reused: dict[str, str] = json.loads(os.environ.get("REUSED") or "{}")
+    results_file = Path(env_required("RESULTS_FILE"))
+    known = nx_affected.checks()
+    tasks = [
+        task for task in planned if known[task].runner == "nx" and known[task].check not in reused
+    ]
+    parallel = measure_parallelism().nx
+    # with-slots holds `parallel` host CPU tokens per nx run, so it queues on the box's core budget.
+    slots = [
+        "bash",
+        "-c",
+        WITH_SLOTS_SH,
+        "with-slots",
+        str(LOG_SH),
+        str(CPU_SLOTS_SH),
+        str(parallel),
+    ]
+    results, passed = nx_affected.run(tasks, parallel, slots)
+    results_file.write_text(json.dumps(results, indent=2) + "\n")
+    ok(f"run-job {job}: {len(tasks)} task(s); {len(planned) - len(tasks)} reused or run by a step")
+    return 0 if passed else 1
 
 
 # ── health ────────────────────────────────────────────────────────────────
@@ -1395,8 +1326,7 @@ COMMANDS: dict[str, Callable[[list[str]], int]] = {
     "dep-marker": cmd_dep_marker,
     "heal-venv": cmd_heal_venv,
     "with-slots": cmd_with_slots,
-    "spawn": cmd_spawn,
-    "join": cmd_join,
+    "run-job": cmd_run_job,
     "health": cmd_health,
 }
 

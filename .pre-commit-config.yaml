@@ -77,10 +77,9 @@ repos:
         files: '^(apps/web/src/config/openui/|scripts/openui/generate-prompt\.ts|apps/web/package\.json|pnpm-lock\.yaml)'
         pass_filenames: false
 
-      # `files:` is the api-schema lane's `scope` in scripts/dev/verify-lanes.json,
-      # byte for byte — that file is the source of truth for what can change the
-      # generated contract, and scripts/ci/tests/test_api_schema_scope.py fails
-      # if these two drift. Restaging the regenerated artifacts is deliberate:
+      # `files:` selects exactly what the ci:api-schema nx target's inputs do —
+      # those inputs are the source of truth for what can change the generated
+      # contract, and scripts/ci/tests/test_hook_scopes.py fails if they drift. Restaging the regenerated artifacts is deliberate:
       # they are build outputs of the change being committed. It says which.
       - id: api-types
         name: openapi.json + generated API types up to date

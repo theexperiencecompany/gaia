@@ -14,12 +14,12 @@ this list, which a reviewer sees.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 import re
 from typing import Any
 
 from doc_shape import mapping
+from lib import nx_affected
 import pytest
 import verdict
 import yaml
@@ -305,164 +305,73 @@ def test_the_gate_never_skips_and_never_special_cases_an_edit(workflow: dict[str
 
 
 # ---------------------------------------------------------------------------
-# Grouped jobs. lint-node, lint-python, lint-mixed, scan, python-audit and
-# ts-build-test each run a dozen checks as `continue-on-error` steps, so a red
-# check only fails the job if the aggregating step names it — and only shows on
-# the PR if the status step names it. A check missing from that one list is a
-# check that can fail in silence.
+# Grouped jobs. Every check is an nx target whose metadata.ci names its job;
+# the job runs them in one `runner.py run-job` step and `verdict.py
+# post-statuses` turns each into a commit status and a verdict. A job that
+# forgets either step, or a step-run check post-statuses is not told about,
+# is a check that can fail in silence.
 # ---------------------------------------------------------------------------
 
-AGGREGATE = "verdict.py step-outcomes"
 POST = "verdict.py post-statuses"
-# Setup inside a grouped job that may fail without being a check of its own:
-# the check that needs it fails in its place.
-SETUP_STEPS = {"alert-rule-tools", "jscpd-start"}
 
 
-def _grouped_jobs(workflow: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    return {
-        name: job
-        for name, job in workflow["jobs"].items()
-        if any(AGGREGATE in str(s.get("run", "")) for s in job.get("steps", []))
-    }
+def _checks_by_job() -> dict[str, list[nx_affected.Check]]:
+    jobs: dict[str, list[nx_affected.Check]] = {}
+    for check in nx_affected.checks().values():
+        if check.check:
+            jobs.setdefault(check.job, []).append(check)
+    return jobs
 
 
-def _checks_env(job: dict[str, Any], command: str) -> dict[str, Any]:
-    (step,) = [s for s in job["steps"] if command in str(s.get("run", ""))]
-    return mapping(step["env"])
+def _steps_running(job: dict[str, Any], command: str) -> list[dict[str, Any]]:
+    return [s for s in job["steps"] if command in str(s.get("run", ""))]
 
 
-CHECK_PAIR = re.compile(r"([\w-]+)=\$\{\{\s*steps\.([\w-]+)\.outcome\s*\}\}")
+def test_every_check_names_a_job_ci_yml_has(workflow: dict[str, Any]) -> None:
+    for check in nx_affected.checks().values():
+        assert check.job in workflow["jobs"] or check.job == "selfhost-smoke", check.task
 
 
-def test_every_check_step_is_aggregated_and_posted(workflow: dict[str, Any]) -> None:
-    grouped = _grouped_jobs(workflow)
-    assert grouped, "no grouped job runs verdict.py step-outcomes"
-    for name, job in grouped.items():
-        pairs = CHECK_PAIR.findall(str(_checks_env(job, AGGREGATE)["CHECKS"]))
-        for check, step_id in pairs:
-            assert check == step_id, f"{name}: check {check} reports step {step_id}'s outcome"
-        listed = {check for check, _ in pairs}
-        steps = {
-            s["id"]
-            for s in job["steps"]
-            if s.get("continue-on-error") and s.get("id") and s["id"] not in SETUP_STEPS
-        }
-        assert steps == listed, (
-            f"{name}: continue-on-error checks {sorted(steps)} vs CHECKS {sorted(listed)} — a "
-            "check missing from CHECKS fails without failing the job"
-        )
-
-
-SPAWN = re.compile(r"runner\.py spawn ([\w-]+) ")
-
-
-def test_every_spawned_check_reports_through_a_join_step_named_after_it(
+def test_every_grouped_job_runs_its_nx_checks_then_posts_every_check(
     workflow: dict[str, Any],
 ) -> None:
-    # A spawned check reports nothing by itself: without its join step it runs,
-    # fails, and no outcome, status or verdict ever sees it.
-    spawned = 0
-    for name, job in workflow["jobs"].items():
-        steps = job.get("steps", [])
-        for start in steps:
-            found = SPAWN.search(str(start.get("run", "")))
-            if not found:
-                continue
-            spawned += 1
-            check = found.group(1)
-            (joiner,) = [
-                s
-                for s in steps
-                if str(s.get("run", "")) == f"python3 scripts/ci/runner.py join {check}"
-            ]
-            assert joiner["id"] == check, f"{name}: {check} joins as step {joiner['id']}"
-            assert joiner["if"] == f"steps.{start['id']}.outcome == 'success'", (name, check)
-            assert joiner.get("continue-on-error") is True, (name, check)
-            assert steps.index(joiner) > steps.index(start), (name, check)
-    assert spawned, "no job spawns a background check"
-
-
-def test_every_posted_check_has_an_area(workflow: dict[str, Any]) -> None:
-    # post-statuses refuses a check with no area, which would red the job on
-    # the first run that reaches it.
-    for name, job in _grouped_jobs(workflow).items():
-        checks = {check for check, _ in CHECK_PAIR.findall(str(_checks_env(job, POST)["CHECKS"]))}
-        assert checks - set(verdict.CHECK_AREAS) == set(), name
-
-
-def test_the_statuses_and_the_verdict_read_one_list(workflow: dict[str, Any]) -> None:
-    # Two copies of the list drift; the posting step and the verdict share one
-    # YAML anchor, which PyYAML resolves to the very same mapping.
-    for name, job in _grouped_jobs(workflow).items():
-        assert _checks_env(job, POST) is _checks_env(job, AGGREGATE), (
-            f"{name}: the statuses and the verdict read different check lists"
-        )
-
-
-def test_a_reused_check_is_one_the_lane_table_maps(workflow: dict[str, Any]) -> None:
-    # A step skips on `reused_checks` containing its id, and reuse-plan only ever
-    # names a lane-table `ci_check`. An id the table does not map is never
-    # reused, which is safe; a table entry no step reads is dead.
-    lanes = json.loads((REPO_ROOT / "scripts" / "dev" / "verify-lanes.json").read_text())
-    mapped = {lane["ci_check"] for lane in lanes["lanes"] if lane.get("ci_check")}
-    gated: set[str] = set()
-    for job in _grouped_jobs(workflow).values():
-        for step in job["steps"]:
-            found = re.search(r"reused_checks \|\| '\[\]'\), '([^']+)'\)", str(step.get("if", "")))
-            if found:
-                gated.add(found.group(1))
-    assert mapped <= gated, f"lane-table checks no step reuses on: {sorted(mapped - gated)}"
-
-
-# ---------------------------------------------------------------------------
-# Readable the moment a check fails. A job's verdict used to upload at its very
-# end, and its log only once the whole RUN ended — 30 min after a lint check
-# went red. Each check now runs under `verdict.py check`, which writes its own
-# `<job>/<check>` verdict from what it printed, and an upload right after it
-# ships that verdict while the job keeps going.
-# ---------------------------------------------------------------------------
-
-CHECK_SHELL = re.compile(
-    r"^python3 (?:\.\./\.\./)?scripts/ci/verdict\.py check\b.* -- bash .*\{0\}$"
-)
-
-
-def _check_steps(job: dict[str, Any]) -> list[dict[str, Any]]:
-    return [
-        s
-        for s in job["steps"]
-        if s.get("continue-on-error") and s.get("id") and not str(s["id"]).endswith("-start")
-    ]
-
-
-def test_every_grouped_run_check_writes_its_own_verdict(workflow: dict[str, Any]) -> None:
-    for name, job in _grouped_jobs(workflow).items():
-        for step in _check_steps(job):
-            if "run" not in step:
-                continue
-            assert CHECK_SHELL.match(str(step.get("shell", ""))), (
-                f"{name}/{step['id']}: a check step's shell must be `verdict.py check -- bash … {{0}}`, "
-                "or a red check reports only '<tool> failed'"
-            )
-
-
-def test_every_check_is_followed_by_an_upload_of_the_verdicts_so_far(
-    workflow: dict[str, Any],
-) -> None:
-    for name, job in _grouped_jobs(workflow).items():
+    grouped = _checks_by_job()
+    assert grouped, "no nx target names a check"
+    for name, checks in grouped.items():
+        job = workflow["jobs"][name]
         steps = job["steps"]
-        for step in _check_steps(job):
-            after = steps[steps.index(step) + 1 :]
-            upload = next((s for s in after if s.get("uses") == UPLOAD_VERDICT), None)
-            assert upload is not None and _is_partial(upload), (
-                f"{name}/{step['id']}: the next upload after this check must be a partial one, "
-                "or its verdict waits for the end of the job"
+        (post,) = _steps_running(job, f"{POST} --job {name} ")
+        assert post["if"] == "always()", name
+        if any(c.runner == "nx" for c in checks):
+            (run,) = _steps_running(job, f"python3 scripts/ci/runner.py run-job {name}")
+            assert run.get("continue-on-error") is True, (
+                f"{name}: one red check must not skip the post"
             )
-            between = after[: after.index(upload)]
-            assert all(s.get("continue-on-error") is not True for s in between), (
-                f"{name}/{step['id']}: another check runs before its verdict is uploaded"
+            assert steps.index(run) < steps.index(post), name
+        for check in (c for c in checks if c.runner != "nx"):
+            (step,) = [s for s in steps if s.get("id") == check.check]
+            assert step.get("continue-on-error") is True, (name, check.check)
+            assert steps.index(step) < steps.index(post), (name, check.check)
+            assert f"--step {check.check}=${{{{ steps.{check.check}.outcome }}}}" in post["run"], (
+                f"{name}: post-statuses is never told {check.check}'s outcome"
             )
+
+
+def test_every_check_has_an_area() -> None:
+    # post-statuses posts `ci / <area> / <check>`; an area-less check has no status.
+    for checks in _checks_by_job().values():
+        for check in checks:
+            assert check.area in {"node", "python", "contracts", "tests", "security", "build"}, (
+                check.task
+            )
+
+
+def test_a_check_name_belongs_to_one_job() -> None:
+    # Two jobs posting one status context overwrite each other.
+    owner: dict[str, str] = {}
+    for name, checks in _checks_by_job().items():
+        for check in checks:
+            assert owner.setdefault(str(check.check), name) == name, check.task
 
 
 def test_a_partial_upload_runs_only_when_a_failing_verdict_is_waiting(

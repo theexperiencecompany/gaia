@@ -19,13 +19,19 @@
       "default",
       "!{projectRoot}/**/*.{spec,test}.{ts,tsx,js,jsx}"
     ],
-    "typecheck": ["default", { "env": "GAIA_TS_CHECKER" }],
+    "typecheck": [
+      "default",
+      {
+        "env": "GAIA_TS_CHECKER"
+      }
+    ],
     "python": ["{workspaceRoot}/pyproject.toml", "{workspaceRoot}/uv.lock"],
     "ciHarness": [
       "{workspaceRoot}/scripts/ci/**/*",
       "!{workspaceRoot}/scripts/ci/**/*.md",
       "{workspaceRoot}/.github/workflows/ci.yml",
-      "{workspaceRoot}/.github/actions/**/*"
+      "{workspaceRoot}/.github/actions/**/*",
+      "{workspaceRoot}/tools/nx-ci-status/**/*"
     ]
   },
   "targetDefaults": {
@@ -35,11 +41,25 @@
     "build": {
       "cache": true,
       "inputs": ["production", "^production"],
-      "dependsOn": ["sync", "^build"]
+      "dependsOn": ["sync", "^build"],
+      "metadata": {
+        "ci": {
+          "job": "ts-build-test",
+          "check": "build",
+          "area": "build"
+        }
+      }
     },
     "test": {
       "cache": true,
-      "inputs": ["default", "^production"]
+      "inputs": ["default", "^production"],
+      "metadata": {
+        "ci": {
+          "job": "ts-build-test",
+          "check": "test-typescript",
+          "area": "tests"
+        }
+      }
     },
     "lint": {
       "cache": true,
@@ -57,7 +77,14 @@
     },
     "type-check": {
       "cache": true,
-      "inputs": ["typecheck", "^production"]
+      "inputs": ["typecheck", "^production"],
+      "metadata": {
+        "ci": {
+          "job": "lint-node",
+          "check": "type-check",
+          "area": "node"
+        }
+      }
     },
     "dev": {
       "cache": false
@@ -88,7 +115,8 @@
         "watchDepsTargetName": "watch-deps"
       }
     },
-    "@nx/docker"
+    "@nx/docker",
+    "./tools/nx-ci-status/index.js"
   ],
   "release": {
     "releaseTag": {

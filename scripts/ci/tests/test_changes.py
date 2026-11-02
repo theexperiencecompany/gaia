@@ -327,8 +327,8 @@ def test_base_rev_refuses_a_base_it_cannot_resolve(repo: Path) -> None:
 def test_files_for_a_task_nx_marked_for_a_full_scan_is_full(repo: Path) -> None:
     """A config change selects the check but changes none of the files it reads; scoping it to them skipped it."""
     proc = _run(
-        repo, "files", "--task", "lint-python:ruff", "py", GAIA_PR_BASE="master",
-        TASK_FILES='{"lint-python:ruff": "__FULL__"}',
+        repo, "files", "--task", "ci:ruff", "py", GAIA_PR_BASE="master",
+        TASK_FILES='{"ci:ruff": "__FULL__"}',
     )  # fmt: skip
     assert proc.stdout.strip() == "__FULL__", proc.stderr
 
@@ -340,8 +340,8 @@ def test_files_for_a_task_are_the_files_nx_matched_to_it(repo: Path) -> None:
     _git(repo, "add", ".")
     _git(repo, "commit", "-qm", "two py changes")
     proc = _run(
-        repo, "files", "--task", "lint-python:interrogate", "py", GAIA_PR_BASE="master",
-        TASK_FILES='{"lint-python:interrogate": ["app.py", "gone.py"]}',
+        repo, "files", "--task", "ci:interrogate", "py", GAIA_PR_BASE="master",
+        TASK_FILES='{"ci:interrogate": ["app.py", "gone.py"]}',
     )  # fmt: skip
     assert proc.stdout.split() == ["app.py"], proc.stderr
 
@@ -369,8 +369,8 @@ def test_scoped_appends_the_changed_files(repo: Path) -> None:
     (repo / "app.py").write_text("x = 3\n")
     _git(repo, "commit", "-aqm", "py change")
     out = _scoped(
-        repo, "--task", "lint-python:ruff", "--ext", "py", GAIA_PR_BASE="master",
-        TASK_FILES='{"lint-python:ruff": ["app.py"]}',
+        repo, "--task", "ci:ruff", "--ext", "py", GAIA_PR_BASE="master",
+        TASK_FILES='{"ci:ruff": ["app.py"]}',
     )  # fmt: skip
     assert "args:app.py" in out
 
@@ -387,8 +387,8 @@ def test_scoped_hands_the_files_through_the_environment(repo: Path) -> None:
 
 def test_scoped_runs_the_whole_tree_on_a_full_scan(repo: Path) -> None:
     out = _scoped(
-        repo, "--task", "lint-python:ruff", "--ext", "py", "--full", ". extra", GAIA_PR_BASE="master",
-        TASK_FILES='{"lint-python:ruff": "__FULL__"}',
+        repo, "--task", "ci:ruff", "--ext", "py", "--full", ". extra", GAIA_PR_BASE="master",
+        TASK_FILES='{"ci:ruff": "__FULL__"}',
     )  # fmt: skip
     assert out[:2] == ["args:.", "args:extra"]
 

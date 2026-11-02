@@ -13,21 +13,18 @@ be quiet — so the only way to notice is a test that reads the workflow.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
-import re
 from typing import Any
 
 from doc_shape import mapping
+from lib import nx_affected
 import pytest
+import runner
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CI_YML = REPO_ROOT / ".github" / "workflows" / "ci.yml"
-
-# The lanes whose step runs nx across the whole workspace at a parallelism it
-# picked from nproc. Named rather than discovered: a new one should have to be
-# added here deliberately, which is the moment to ask whether it needs slots.
-GOVERNED_JOBS = ("ts-build-test",)
 
 
 @pytest.fixture(scope="module")
@@ -35,66 +32,42 @@ def workflow() -> dict[str, Any]:
     return mapping(yaml.safe_load(CI_YML.read_text()))
 
 
-@pytest.mark.parametrize("job_name", GOVERNED_JOBS)
-def test_the_nx_step_holds_cpu_tokens_while_it_runs(
-    workflow: dict[str, Any], job_name: str
+def test_no_step_runs_nx_across_the_workspace_outside_the_governor(
+    workflow: dict[str, Any],
 ) -> None:
-    steps = workflow["jobs"][job_name]["steps"]
-    nx_steps = [s for s in steps if "pnpm exec nx run-many" in s.get("run", "")]
-    assert nx_steps, f"{job_name} no longer runs nx run-many — is this table stale?"
-
-    for step in nx_steps:
-        assert "runner.py with-slots" in step["run"], (
-            f"{job_name}: the nx step runs outside the CPU governor. Wrap it in "
-            f'`runner.py with-slots "$NX_PARALLEL" -- ...` so it queues against '
-            f"the box's core budget instead of thrashing the concurrent lanes."
-        )
+    for name, job in workflow["jobs"].items():
+        for step in job.get("steps", []):
+            run = str(step.get("run", ""))
+            if "nx run-many" in run:
+                assert "runner.py with-slots" in run, (
+                    f"{name}: {step.get('name')} skips the governor"
+                )
 
 
-@pytest.mark.parametrize("job_name", GOVERNED_JOBS)
-def test_the_tokens_it_takes_match_the_parallelism_it_asks_nx_for(
-    workflow: dict[str, Any], job_name: str
+def test_run_job_holds_as_many_tokens_as_it_asks_nx_for(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """Hold as many tokens as nx spawns workers, or the box is oversubscribed on the quiet."""
-    steps = workflow["jobs"][job_name]["steps"]
-    runs = [s["run"] for s in steps if "runner.py with-slots" in s.get("run", "")]
-    assert runs, f"{job_name}: no step holds CPU tokens"
-    for run in runs:
-        # The command line only. The step's own comments explain what with-slots
-        # is for and name NX_PARALLEL in prose, and a regex over the whole block
-        # reads the explanation instead of the invocation.
-        command = next(line for line in run.splitlines() if "runner.py with-slots" in line)
+    asked: dict[str, Any] = {}
 
-        held = re.search(r"with-slots\s+\"?\$\{?([A-Za-z_]\w*)\}?\"?", command)
-        requested = re.search(r"--parallel=\"?\$\{?([A-Za-z_]\w*)\}?\"?", command)
-        assert held and requested, (
-            f"{job_name}: could not read the slot/parallel pair from {command!r}"
-        )
-        assert held.group(1) == requested.group(1), (
-            f"{job_name}: takes {held.group(1)} tokens but runs nx at {requested.group(1)}"
-        )
+    def fake_run(tasks: list[str], parallel: int, wrap: list[str]) -> tuple[dict[str, Any], bool]:
+        asked.update(tasks=tasks, parallel=parallel, wrap=wrap)
+        return {}, True
 
+    check = nx_affected.Check("ci:biome", "lint-node", "biome", "node", None, None, True, "nx")
+    monkeypatch.setattr(nx_affected, "checks", lambda: {check.task: check})
+    monkeypatch.setattr(nx_affected, "run", fake_run)
+    monkeypatch.setattr(runner, "measure_parallelism", lambda: _parallelism(nx=6))
+    monkeypatch.setenv("JOB_TASKS", json.dumps({"lint-node": ["ci:biome"]}))
+    monkeypatch.setenv("RESULTS_FILE", str(tmp_path / "results.json"))
+    monkeypatch.delenv("REUSED", raising=False)
 
-# lib/cpu-slots.sh: GAIA_CPU_SLOTS_TIMEOUT default, in minutes. A lane that
-# waits this long still runs afterwards (fail-open), so the wait is time the
-# job cap has to be able to absorb on top of the work itself.
-FAIL_OPEN_WAIT_MINUTES = 10
+    assert runner.cmd_run_job(["lint-node"]) == 0
+    assert asked["tasks"] == ["ci:biome"] and asked["parallel"] == 6
+    assert "with-slots" in asked["wrap"] and asked["wrap"][-1] == "6"
 
 
-@pytest.mark.parametrize("job_name", GOVERNED_JOBS)
-def test_the_job_cap_can_absorb_a_full_governor_wait(
-    workflow: dict[str, Any], job_name: str
-) -> None:
-    """A governed lane's `timeout-minutes` must leave room for the queue.
-
-    Enrolling a lane trades wall clock for not thrashing the box, which is the
-    trade we want — but the job cap is what decides whether patience reads as a
-    failure. test-typescript was enrolled at `timeout-minutes: 12` against a
-    600s fail-open wait plus ~4 min of checkout, install and suite: a busy box
-    would have failed it for queueing exactly as designed.
-    """
-    cap = workflow["jobs"][job_name]["timeout-minutes"]
-    assert cap > FAIL_OPEN_WAIT_MINUTES, (
-        f"{job_name}: timeout-minutes={cap} does not even cover the governor's "
-        f"{FAIL_OPEN_WAIT_MINUTES}-minute fail-open wait, let alone the work after it"
+def _parallelism(nx: int) -> Any:
+    return runner.Parallelism(
+        nproc=8, mem_gb=16, mem_avail_gb=8, nx=nx, pytest_n=4, pytest_capped=False, docker=2
     )

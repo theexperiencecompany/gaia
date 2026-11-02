@@ -862,7 +862,6 @@ def test_an_unknown_subcommand_is_a_usage_error() -> None:
 # the lane
 
 
-LANES = CI.parent / "dev" / "verify-lanes.json"
 WORKFLOW = CI.parent.parent / ".github" / "workflows" / "ci.yml"
 
 
@@ -879,7 +878,7 @@ WORKFLOW = CI.parent.parent / ".github" / "workflows" / "ci.yml"
     ],
 )
 def test_the_check_runs_on_the_files_that_define_the_contract(path: str, runs: bool) -> None:
-    assert ("lint-mixed:analytics-check" in nx_affected.select(["--files", path]).tasks) is runs
+    assert ("ci:analytics-check" in nx_affected.select(["--files", path]).tasks) is runs
 
 
 def test_the_ci_check_syncs_on_master_and_checks_the_rest_against_master() -> None:
@@ -896,11 +895,18 @@ def test_the_ci_check_syncs_on_master_and_checks_the_rest_against_master() -> No
         "python3 scripts/ci/analytics.py sync-actions --apply",
         "python3 scripts/ci/analytics.py sync-loop-alert --apply",
     ]
-    assert "github.event_name == 'push'" in sync["if"]
-    assert "default_branch" in sync["if"]
+    assert "'ci:analytics-sync'" in sync["if"]
     assert sync["env"]["POSTHOG_PERSONAL_API_KEY"] == secret
-    for step in (sync, check):
-        assert "'lint-mixed:analytics-check'" in step["if"]
+    assert "'ci:analytics-check'" in check["if"]
+    # Only a master push syncs, and the sync runs on what the check reads.
+    known = nx_affected.checks()
+    synced, checked = known["ci:analytics-sync"], known["ci:analytics-check"]
+    assert (synced.events, synced.branch) == (("push",), "master")
+    assert not synced.runs_on("pull_request", "master") and synced.runs_on("push", "master")
+    assert nx_affected.select(["--files", "config/posthog/actions.json"]).tasks.keys() >= {
+        synced.task,
+        checked.task,
+    }
     # Dependabot runs get no repo secrets: the check skips rather than failing.
     assert "dependabot[bot]" in check["if"]
 
