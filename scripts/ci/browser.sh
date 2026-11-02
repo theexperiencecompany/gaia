@@ -2,23 +2,26 @@
 # browser.sh — the real browsers a lane drives: finding them, and serving one.
 #
 # Subcommands:
-#   locate          Find Chrome (google-chrome on the runner image) and the Obscura
-#                   binary the obscura-bin build stage exported to
-#                   $RUNNER_TEMP/obscura, install the Caddy self-host ships (the
+#   locate          Install the Fortress build the gaia image ships (its Chromium),
+#                   find the Obscura binary the obscura-bin build stage exported
+#                   to $RUNNER_TEMP/obscura, install the Caddy self-host ships (the
 #                   proxy a user's live view goes through), and publish
 #                   CHROMIUM_BIN / OBSCURA_BIN / CADDY_BIN to $GITHUB_ENV. Any one
 #                   missing fails: the browser slice never skips a scenario.
-#   chrome-host     Start a Chrome browser host (python -m app.browser_host) in the
-#                   background on BROWSER_HOST_PORT with a fresh host key, publish
-#                   the key and a login-encryption key to $GITHUB_ENV, and wait for
-#                   its healthz. Used by the on-demand browser eval.
+#   chrome-host     Start a Chromium browser host (python -m app.browser_host) on
+#                   Fortress in the background on BROWSER_HOST_PORT with a fresh
+#                   host key, publish the key and a login-encryption key to
+#                   $GITHUB_ENV, and wait for its healthz. Used by the on-demand
+#                   browser eval.
 #   eval [ids]      Run the browser quality eval suite, all cases or the
 #                   comma-separated ids given.
 #
 # Env contract:
-#   locate        RUNNER_TEMP, GITHUB_ENV; CADDY_RELEASE_URL / CADDY_SHA512 replace the
-#                 pinned Caddy release only for the script's own tests.
-#   chrome-host   RUNNER_TEMP, GITHUB_ENV, BROWSER_HOST_PORT; CHROMIUM_BIN, else google-chrome.
+#   locate        RUNNER_TEMP, GITHUB_ENV; CADDY_RELEASE_URL / CADDY_SHA512 and
+#                 FORTRESS_RELEASE_URL / FORTRESS_SHA256 replace the pinned releases
+#                 only for the script's own tests.
+#   chrome-host   RUNNER_TEMP, GITHUB_ENV, BROWSER_HOST_PORT; CHROMIUM_BIN, else Fortress.
+#                 TILION_LICENSE_KEY, when set, runs Fortress's licensed engine.
 #   eval          what the suite reads (BROWSER_HOST_URL, OPENROUTER_API_KEY, ...), and
 #                 OPENROUTER_MODEL: the model the browser agent runs on, which the
 #                 eval records as the run's model (the product, not the eval, picks it).
@@ -37,6 +40,37 @@ CADDY_VERSION=2.10.2
 CADDY_RELEASE_URL="${CADDY_RELEASE_URL:-https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}/caddy_${CADDY_VERSION}_linux_amd64.tar.gz}"
 CADDY_SHA512="${CADDY_SHA512:-747df7ee74de188485157a383633a1a963fd9233b71fbb4a69ddcbcc589ce4e2cc82dacf5dbbe136cb51d17e14c59daeb5d9bc92487610b0f3b93680b2646546}"
 
+# Fortress is pinned once, in the gaia image (apps/api/Dockerfile's FORTRESS_* ARGs):
+# CI installs the same release, checked against the same SHA-256, that production runs.
+DOCKERFILE="$REPO_ROOT/apps/api/Dockerfile"
+
+dockerfile_arg() {
+  local value
+  value="$(sed -n "s/^ARG $1=//p" "$DOCKERFILE")"
+  [ -n "$value" ] || ci_die "no ARG $1 in $DOCKERFILE"
+  echo "$value"
+}
+
+install_fortress() {
+  local version platform sha256 url
+  version="$(dockerfile_arg FORTRESS_VERSION)"
+  case "$(uname -m)" in
+    x86_64) platform=linux-x64 sha256="$(dockerfile_arg FORTRESS_SHA256_AMD64)" ;;
+    aarch64 | arm64) platform=linux-arm64 sha256="$(dockerfile_arg FORTRESS_SHA256_ARM64)" ;;
+    *) ci_die "no Fortress build for $(uname -m)" ;;
+  esac
+  url="${FORTRESS_RELEASE_URL:-https://github.com/tiliondev/fortress/releases/download/v${version}/fortress-v${version%%.*}-${platform}.tar.gz}"
+  sha256="${FORTRESS_SHA256:-$sha256}"
+  local dir="${RUNNER_TEMP:?RUNNER_TEMP required}/fortress"
+  local archive="$dir.tar.gz"
+  mkdir -p "$dir"
+  curl -fsSL -o "$archive" "$url"
+  echo "$sha256  $archive" | sha256sum -c - > /dev/null || ci_die "fortress ${version} failed its checksum"
+  tar -C "$dir" -xzf "$archive" --strip-components=1
+  rm -f "$archive"
+  echo "$dir/tilion"
+}
+
 install_caddy() {
   local dir="${RUNNER_TEMP:?RUNNER_TEMP required}/caddy"
   local archive="$dir/caddy.tar.gz"
@@ -49,22 +83,22 @@ install_caddy() {
 
 cmd_locate() {
   local chrome obscura caddy
-  chrome="$(command -v google-chrome)" || ci_die "google-chrome is not on this runner"
   obscura="${RUNNER_TEMP:?RUNNER_TEMP required}/obscura/obscura"
   [ -x "$obscura" ] || ci_die "no Obscura binary at $obscura (the obscura-bin build stage did not export one)"
+  chrome="$(install_fortress)"
   {
     echo "CHROMIUM_BIN=$chrome"
     echo "OBSCURA_BIN=$obscura"
   } >> "${GITHUB_ENV:?GITHUB_ENV required}"
   caddy="$(install_caddy)"
   echo "CADDY_BIN=$caddy" >> "$GITHUB_ENV"
-  ci_ok "browsers: $("$chrome" --version), Obscura at $obscura, proxy $("$caddy" version)"
+  ci_ok "browsers: Fortress $(dockerfile_arg FORTRESS_VERSION) at $chrome, Obscura at $obscura, proxy $("$caddy" version)"
 }
 
 cmd_chrome_host() {
   local port="${BROWSER_HOST_PORT:?BROWSER_HOST_PORT required}"
   local chrome key log
-  chrome="${CHROMIUM_BIN:-$(command -v google-chrome)}" || ci_die "google-chrome is not on this runner"
+  chrome="${CHROMIUM_BIN:-$(install_fortress)}"
   key="$(openssl rand -hex 16)"
   log="${RUNNER_TEMP:?RUNNER_TEMP required}/browser-host.log"
   {
@@ -81,11 +115,11 @@ cmd_chrome_host() {
     waited=$((waited + 1))
     if [ "$waited" -ge "$HOST_READY_SECONDS" ]; then
       cat "$log" >&2
-      ci_die "the Chrome host never answered healthz on port $port within ${HOST_READY_SECONDS}s"
+      ci_die "the Chromium host never answered healthz on port $port within ${HOST_READY_SECONDS}s"
     fi
     sleep 1
   done
-  ci_ok "Chrome host: serving on port $port (log $log)"
+  ci_ok "Chromium host: serving on Fortress on port $port (log $log)"
 }
 
 cmd_eval() {
@@ -98,7 +132,7 @@ cmd_eval() {
 }
 
 usage() {
-  sed -n '2,20p' "$0" >&2
+  sed -n '2,27p' "$0" >&2
 }
 
 main() {

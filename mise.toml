@@ -511,7 +511,7 @@ description = "Run the real-infra tier (Postgres/Redis/Mongo/Chroma via docker c
 run = "cd apps/api && USE_REAL_SERVICES=1 uv run --group backend --group dev pytest tests/integration/real tests/contracts tests/e2e/test_hil_barrier_e2e.py tests/e2e/test_hil_spawn_e2e.py --ignore=tests/integration/real/browser --tb=short -q"
 
 [tasks."test:python:browser"]
-description = "Run the hermetic browser stack (API, worker, Chrome and Obscura hosts, fake models, fixture site) — needs the real services, CHROMIUM_BIN or google-chrome, and OBSCURA_BIN"
+description = "Run the hermetic browser stack (API, worker, Chrome and Obscura hosts, fake models, fixture site) — needs the real services, CHROMIUM_BIN (CI: Fortress; a dev box: any local Chromium) or google-chrome, and OBSCURA_BIN"
 run = "cd apps/api && USE_REAL_SERVICES=1 uv run --group backend --group dev pytest tests/integration/real/browser -n 2 --tb=short -q"
 
 [tasks."test:one"]

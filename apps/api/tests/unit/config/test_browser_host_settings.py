@@ -19,3 +19,14 @@ def test_a_blank_host_key_reads_as_unset_and_a_real_one_as_itself(
     monkeypatch.setenv("BROWSER_HOST_KEY", given)
 
     assert read == BrowserHostSettings().BROWSER_HOST_KEY
+
+
+@pytest.mark.parametrize(("given", "read"), [("", None), ("jwt-key", "jwt-key")])
+def test_a_blank_fortress_license_reads_as_unset_and_a_real_one_as_itself(
+    monkeypatch: pytest.MonkeyPatch, given: str, read: str | None
+) -> None:
+    """Compose spells it ${TILION_LICENSE_KEY:-}: a blank one must leave Fortress on ~/.tilion or v1."""
+    monkeypatch.setenv("TILION_LICENSE_KEY", given)
+
+    key = BrowserHostSettings().TILION_LICENSE_KEY
+    assert (key.get_secret_value() if key is not None else None) == read

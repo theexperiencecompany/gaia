@@ -182,7 +182,7 @@ Inputs `tag`, `version` and `sha` (the commit the tag points at). Both jobs chec
 
 ### `.github/workflows/browser-eval.yml`
 1. Triggers on `workflow_dispatch` only (input `only`: comma-separated case ids). `permissions: contents: read`. Never a required check: it bills model calls and loads live sites; the hermetic `browser` slice of `ci.yml` is the gate.
-2. Starts the test services, then a Chrome browser host (`scripts/ci/browser.sh chrome-host`, which mints the host key and the login-encryption key into `GITHUB_ENV` and waits for `healthz`).
+2. Starts the test services, then a Chromium browser host on Fortress (`scripts/ci/browser.sh chrome-host`, which installs the Fortress release the gaia image pins, mints the host key and the login-encryption key into `GITHUB_ENV` and waits for `healthz`).
 3. Runs the eval (`scripts/ci/browser.sh eval`, i.e. `python -m scripts.evals run --suite browser`) with the `EVAL_OPENROUTER_API_KEY` secret, writes its tail to the job summary, and uploads the eval journal and the host log.
 
 ## File Map

@@ -774,20 +774,6 @@ async def test_a_create_through_an_attach_the_engine_never_answers_fails_as_unre
     assert host._pending_slots == 0
 
 
-@pytest.mark.unit
-async def test_the_launch_hands_the_learned_user_agent_to_the_next_launch(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    launch = AsyncMock(return_value=(as_engine(StubEngine()), "Mozilla Chrome/1"))
-    host = make_host(launch=launch)
-
-    await host._launch()
-    await host._launch()
-
-    assert launch.await_args_list[1].args[2] == "Mozilla Chrome/1"
-    await host.stop()
-
-
 # --- what the host reports about itself, and the small contracts behind it ---
 
 
@@ -845,16 +831,16 @@ def spawned(monkeypatch: pytest.MonkeyPatch) -> _Spawned:
 
 
 @pytest.mark.unit
-async def test_a_fresh_host_has_not_failed_and_launches_with_nothing_learned(
+async def test_a_fresh_host_has_not_failed_and_launches_with_no_binary_resolved(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    launch = AsyncMock(return_value=(as_engine(StubEngine()), None))
+    launch = AsyncMock(return_value=as_engine(StubEngine()))
     host = make_host(launch=launch)
 
     await host._launch()
 
     assert host.failed is False
-    assert launch.await_args.args == (browser_host_settings.BROWSER_ENGINE, None, None)
+    assert launch.await_args.args == (browser_host_settings.BROWSER_ENGINE, None)
     await host.stop()
 
 
@@ -1087,18 +1073,13 @@ async def test_a_replacement_and_its_failure_are_each_reported(
 async def test_the_launch_names_the_configured_engine_and_the_resolved_binary(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    launch = AsyncMock(return_value=(as_engine(StubEngine()), "UA"))
+    launch = AsyncMock(return_value=as_engine(StubEngine()))
     host = make_host(launch=launch)
     host._chromium_path = "/opt/chrome"
-    host._user_agent = "Earlier UA"
 
     await host._launch()
 
-    assert launch.await_args.args == (
-        browser_host_settings.BROWSER_ENGINE,
-        "/opt/chrome",
-        "Earlier UA",
-    )
+    assert launch.await_args.args == (browser_host_settings.BROWSER_ENGINE, "/opt/chrome")
     await host.stop()
 
 

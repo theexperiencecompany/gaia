@@ -432,14 +432,12 @@ class Launcher:
         self.launched: list[StubEngine] = []
         self._changed = asyncio.Condition()
 
-    async def __call__(
-        self, kind: BrowserEngine, chromium_path: str | None, user_agent: str | None
-    ) -> tuple[Engine, str | None]:
+    async def __call__(self, kind: BrowserEngine, chromium_path: str | None) -> Engine:
         stub = self._queue.pop(0)
         self.launched.append(stub)
         async with self._changed:
             self._changed.notify_all()
-        return as_engine(stub), user_agent
+        return as_engine(stub)
 
     async def until_launched(self, count: int) -> None:
         """Return once count engines have launched."""

@@ -15,6 +15,7 @@ import sys
 
 import pytest
 
+from app.browser_host.cdp_mux import cdp_call
 from app.browser_host.engine import Engine
 from app.constants.browser import BrowserEngine
 from tests.integration.real.browser._stack.stack import required_binary
@@ -39,10 +40,11 @@ def silent_session_bus(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Itera
 @pytest.mark.usefixtures("silent_session_bus")
 async def test_a_chrome_launch_is_not_held_by_a_session_bus_that_never_answers() -> None:
     engine = await Engine.launch(
-        BrowserEngine.CHROMIUM, required_binary("CHROMIUM_BIN", "google-chrome"), None
+        BrowserEngine.CHROMIUM, required_binary("CHROMIUM_BIN", "google-chrome")
     )
     try:
         assert engine.alive
-        assert "Chrome/" in await engine.user_agent()
+        version = await cdp_call(engine.root_mux, "Browser.getVersion")
+        assert "Chrome/" in version["userAgent"]
     finally:
         await engine.shutdown()

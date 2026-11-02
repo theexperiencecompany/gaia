@@ -175,7 +175,6 @@ class _Harness:
                 action_results=self._record_outputs,
             ),
             setup=AgentRunSetup(
-                user_id="user-1",
                 ledger=self.ledger,
                 secrets=RunSecrets(
                     {"password": BrowserTaskSecret(value=SECRET, site="example.test")}
@@ -846,12 +845,8 @@ class TestExecute:
         assert (agent.options["llm"], agent.options["page_extraction_llm"]) == (_LLM, _TEXT_MODEL)
         assert built_with == [("agent", harness.ledger), ("text", harness.ledger)]
         browser = agent.options["browser"]
-        # The run's own session, fingerprinted for the run's user.
-        assert browser.options == {
-            "cdp_url": "ws://browser.test/cdp",
-            "user_id": "user-1",
-            "engine": BrowserEngine.CHROMIUM,
-        }
+        # The run's own session on its host; the engine, not GAIA, owns the fingerprint.
+        assert browser.options == {"cdp_url": "ws://browser.test/cdp"}
 
     async def test_the_stall_watcher_listens_on_every_connect_of_this_browser(
         self, harness: _Harness

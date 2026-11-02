@@ -11,11 +11,13 @@ from pathlib import Path
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
+from pydantic import SecretStr
 import pytest
 
 from app.browser_host import engine as engine_mod
 from app.browser_host.cdp_mux import CdpMux
-from app.browser_host.engine import Engine, launch_engine
+from app.browser_host.engine import Engine
+from app.browser_host.host import BrowserHost
 from app.browser_host.obscura_launch import LaunchedEngine
 from app.browser_host.process import EngineLaunchError
 from app.constants.browser import (
@@ -124,7 +126,7 @@ def test_the_command_debugs_on_an_ephemeral_port_from_its_profile(
 ) -> None:
     monkeypatch.setattr(engine_mod.browser_host_settings, "BROWSER_HOST_HEADED", False)
 
-    args = engine_mod.chromium_argv(_SHELL, "/tmp/p", None)
+    args = engine_mod.chromium_argv(_SHELL, "/tmp/p")
 
     assert args[:3] == [_SHELL, "--remote-debugging-port=0", "--user-data-dir=/tmp/p"]
     assert "--no-sandbox" in args
@@ -140,13 +142,12 @@ def test_the_full_browser_runs_the_new_headless_mode_and_a_headed_host_none(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(engine_mod.browser_host_settings, "BROWSER_HOST_HEADED", False)
-    full = engine_mod.chromium_argv("/opt/chrome", "/tmp/p", "UA/1")
+    full = engine_mod.chromium_argv("/opt/fortress/tilion", "/tmp/p")
     assert "--headless=new" in full
     assert "--headless" not in full
-    assert "--user-agent=UA/1" in full
 
     monkeypatch.setattr(engine_mod.browser_host_settings, "BROWSER_HOST_HEADED", True)
-    assert not any(a.startswith("--headless") for a in engine_mod.chromium_argv(_SHELL, "/p", None))
+    assert not any(a.startswith("--headless") for a in engine_mod.chromium_argv(_SHELL, "/p"))
 
 
 #: A throwaway CA (a public certificate, no key), and its SPKI pin as openssl computes it
@@ -173,14 +174,13 @@ def test_chrome_accepts_a_test_stacks_ca_only_while_one_is_set(
     ca_file.write_text(_TEST_CA_PEM)
     monkeypatch.setattr(engine_mod.browser_host_settings, "BROWSER_HOST_TEST_CA_FILE", None)
     assert not any(
-        a.startswith("--ignore-certificate-errors")
-        for a in engine_mod.chromium_argv(_SHELL, "/p", None)
+        a.startswith("--ignore-certificate-errors") for a in engine_mod.chromium_argv(_SHELL, "/p")
     )
 
     monkeypatch.setattr(engine_mod.browser_host_settings, "BROWSER_HOST_TEST_CA_FILE", str(ca_file))
 
     assert f"--ignore-certificate-errors-spki-list={_TEST_CA_PIN}" in engine_mod.chromium_argv(
-        _SHELL, "/p", None
+        _SHELL, "/p"
     )
 
 
@@ -223,7 +223,7 @@ async def test_an_obscura_launch_dials_the_endpoint_it_published(
         AsyncMock(return_value=LaunchedEngine(proc=cast(Any, proc), port=9333, ws_url=_WS)),
     )
 
-    engine = await Engine.launch(BrowserEngine.OBSCURA, None, None)
+    engine = await Engine.launch(BrowserEngine.OBSCURA, None)
 
     assert root.urls == [_WS]
     assert root.started == 1
@@ -246,13 +246,41 @@ async def test_a_chromium_launch_gets_a_fresh_profile_and_dials_its_port(
 
     monkeypatch.setattr(engine_mod, "spawn_engine", _spawn)
 
-    engine = await Engine.launch(BrowserEngine.CHROMIUM, _SHELL, "UA/1")
+    engine = await Engine.launch(BrowserEngine.CHROMIUM, _SHELL)
 
     assert engine.profile_dir is not None
     assert Path(engine.profile_dir).parent == tmp_path
     assert f"--user-data-dir={engine.profile_dir}" in spawned[0]
-    assert "--user-agent=UA/1" in spawned[0]
     assert root.urls == [_WS]
+
+
+@pytest.mark.regression
+async def test_a_headless_announcing_chromium_is_launched_once_with_its_own_user_agent(
+    root: FakeMux, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Regression: the host relaunched Chrome with a hand-made --user-agent, which desyncs Fortress's Client Hints."""
+    monkeypatch.setattr(engine_mod.tempfile, "tempdir", str(tmp_path))
+    monkeypatch.setattr(engine_mod.browser_host_settings, "BROWSER_ENGINE", BrowserEngine.CHROMIUM)
+    spawned: list[list[str]] = []
+
+    async def _spawn(argv: list[str], env: dict[str, str] | None) -> Any:
+        spawned.append(argv)
+        profile = next(a for a in argv if a.startswith("--user-data-dir=")).split("=", 1)[1]
+        (Path(profile) / "DevToolsActivePort").write_text("9333\n/devtools/browser/abc\n")
+        return _Proc()
+
+    monkeypatch.setattr(engine_mod, "spawn_engine", _spawn)
+    monkeypatch.setattr(engine_mod, "stop_process", AsyncMock())
+    host = BrowserHost(on_fatal=MagicMock())
+    host._chromium_path = _SHELL
+
+    try:
+        await host._launch()
+    finally:
+        await host.stop()
+
+    assert len(spawned) == 1
+    assert not any(a.startswith("--user-agent") for a in spawned[0])
 
 
 async def test_chromium_is_spawned_without_the_desktop_session_bus(
@@ -271,11 +299,26 @@ async def test_chromium_is_spawned_without_the_desktop_session_bus(
 
     monkeypatch.setattr(engine_mod, "spawn_engine", _spawn)
 
-    await Engine.launch(BrowserEngine.CHROMIUM, _SHELL, "UA/1")
+    await Engine.launch(BrowserEngine.CHROMIUM, _SHELL)
 
     assert envs[0] is not None
     assert "DBUS_SESSION_BUS_ADDRESS" not in envs[0]
     assert envs[0]["GAIA_ENGINE_ENV_PROBE"] == "kept"
+
+
+@pytest.mark.parametrize(("configured", "passed"), [("jwt-key", "jwt-key"), (None, None)])
+def test_fortress_gets_its_license_only_from_the_hosts_setting(
+    monkeypatch: pytest.MonkeyPatch, configured: str | None, passed: str | None
+) -> None:
+    """A blank inherited TILION_LICENSE_KEY would shadow ~/.tilion/license.jwt, so only the setting is passed."""
+    monkeypatch.setenv("TILION_LICENSE_KEY", "")
+    monkeypatch.setattr(
+        engine_mod.browser_host_settings,
+        "TILION_LICENSE_KEY",
+        SecretStr(configured) if configured is not None else None,
+    )
+
+    assert engine_mod.chromium_env().get("TILION_LICENSE_KEY") == passed
 
 
 class _MuxThatNeverShakesHands:
@@ -300,7 +343,7 @@ async def test_an_engine_that_never_finishes_the_handshake_fails_naming_it(
     with pytest.raises(
         EngineLaunchError, match=f"published {_WS} but did not finish the CDP handshake"
     ):
-        await Engine.launch(BrowserEngine.CHROMIUM, _SHELL, None)
+        await Engine.launch(BrowserEngine.CHROMIUM, _SHELL)
 
     stop.assert_awaited_once_with(proc)
     assert list(tmp_path.iterdir()) == []
@@ -319,7 +362,7 @@ async def test_a_launch_that_fails_leaves_no_process_and_no_profile(
     monkeypatch.setattr(engine_mod, "stop_process", stop)
 
     with pytest.raises(EngineLaunchError):
-        await Engine.launch(BrowserEngine.CHROMIUM, _SHELL, None)
+        await Engine.launch(BrowserEngine.CHROMIUM, _SHELL)
 
     stop.assert_awaited_once_with(proc)
     assert list(tmp_path.iterdir()) == []
@@ -328,7 +371,7 @@ async def test_a_launch_that_fails_leaves_no_process_and_no_profile(
 
 async def test_a_chromium_launch_needs_its_binary_resolved() -> None:
     with pytest.raises(RuntimeError, match="chromium_path not resolved"):
-        await Engine.launch(BrowserEngine.CHROMIUM, None, None)
+        await Engine.launch(BrowserEngine.CHROMIUM, None)
 
 
 def _engine(
@@ -343,49 +386,6 @@ def _engine(
         sampler=None,
         base_rss_mb=0.0,
     )
-
-
-async def test_a_headless_chromium_is_relaunched_announcing_plain_chrome(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    first = _engine(mux=FakeMux({"Browser.getVersion": {"userAgent": "M HeadlessChrome/153"}}))
-    second = _engine()
-    launch = AsyncMock(side_effect=[first, second])
-    monkeypatch.setattr(Engine, "launch", launch)
-    shutdown = AsyncMock()
-    monkeypatch.setattr(Engine, "shutdown", shutdown)
-
-    engine, agent = await launch_engine(BrowserEngine.CHROMIUM, _SHELL, None)
-
-    assert engine is second
-    assert agent == "M Chrome/153"
-    assert [c.args for c in launch.await_args_list] == [
-        (BrowserEngine.CHROMIUM, _SHELL, None),
-        (BrowserEngine.CHROMIUM, _SHELL, "M Chrome/153"),
-    ]
-    shutdown.assert_awaited_once()
-
-
-@pytest.mark.parametrize(
-    ("kind", "agent", "announced"),
-    [
-        (BrowserEngine.OBSCURA, None, "unused"),
-        (BrowserEngine.CHROMIUM, "Known/1", "unused"),
-        (BrowserEngine.CHROMIUM, None, "M Chrome/153"),
-    ],
-)
-async def test_an_engine_that_already_announces_a_plain_browser_is_launched_once(
-    monkeypatch: pytest.MonkeyPatch, kind: BrowserEngine, agent: str | None, announced: str
-) -> None:
-    only = _engine(mux=FakeMux({"Browser.getVersion": {"userAgent": announced}}))
-    launch = AsyncMock(return_value=only)
-    monkeypatch.setattr(Engine, "launch", launch)
-
-    engine, learned = await launch_engine(kind, _SHELL, agent)
-
-    assert engine is only
-    assert [c.args for c in launch.await_args_list] == [(kind, _SHELL, agent)]
-    assert learned == (agent if kind is BrowserEngine.OBSCURA or agent else announced)
 
 
 # --- how an engine fails, and stops ---
@@ -489,9 +489,3 @@ async def test_an_engines_memory_is_its_process_trees(monkeypatch: pytest.Monkey
 
     assert _engine().rss_mb() == 812.5
     read.assert_called_once_with(4242)
-
-
-async def test_an_engine_reports_the_agent_it_announces() -> None:
-    engine = _engine(mux=FakeMux({"Browser.getVersion": {"userAgent": "UA/9"}}))
-
-    assert await engine.user_agent() == "UA/9"

@@ -48,11 +48,9 @@ from shared.py.wide_events import log
 # the renderer sandbox needs unprivileged user namespaces the container lacks.
 # Compensating controls: browser-only network island, per-context download deny, http(s)-only proxy.
 _HOST_EXTRA_ARGS: tuple[str, ...] = ("--no-sandbox",)
-# Playwright names the shell binary per platform: headless_shell on Linux (what
-# production runs), chrome-headless-shell on macOS, .exe on Windows.
+# Playwright names the shell binary per platform: headless_shell on Linux,
+# chrome-headless-shell on macOS, .exe on Windows. Production sets CHROMIUM_BIN (Fortress).
 _HEADLESS_SHELL_BINARIES = ("headless_shell", "chrome-headless-shell", "headless_shell.exe")
-# How a headless build names itself in its User-Agent ("HeadlessChrome/153.0.0.0").
-_HEADLESS_MARKER = "HeadlessChrome/"
 # Per-renderer V8 heap ceiling: one runaway page must not OOM every other user's session.
 _JS_HEAP_MB = 512
 # A wedged engine stays alive and silent, so its root connection is asked on a
@@ -61,6 +59,8 @@ _LIVENESS_PROBE_INTERVAL_SECONDS = 15.0
 _LIVENESS_STRIKES = 2
 # Production's container has no session bus; a CI box or desktop hands its own one down.
 _SESSION_BUS_VARIABLE = "DBUS_SESSION_BUS_ADDRESS"
+# Where the Fortress binary reads its license; it is passed only from browser_host_settings.
+_FORTRESS_LICENSE_VARIABLE = "TILION_LICENSE_KEY"
 
 
 def _headless_shell_beside(chromium: Path) -> Path | None:
@@ -105,7 +105,7 @@ def spki_pin(pem_path: str) -> str:
     return base64.b64encode(hashlib.sha256(key).digest()).decode()
 
 
-def chromium_argv(chromium_path: str, profile_dir: str, user_agent: str | None) -> list[str]:
+def chromium_argv(chromium_path: str, profile_dir: str) -> list[str]:
     """Build the full Chromium argv for one launch into its own fresh profile."""
     args = [chromium_path, "--remote-debugging-port=0", f"--user-data-dir={profile_dir}"]
     args.extend(CHROME_DEFAULT_ARGS)
@@ -119,8 +119,6 @@ def chromium_argv(chromium_path: str, profile_dir: str, user_agent: str | None) 
         args.append(
             f"--ignore-certificate-errors-spki-list={spki_pin(browser_host_settings.BROWSER_HOST_TEST_CA_FILE)}"
         )
-    if user_agent is not None:
-        args.append(f"--user-agent={user_agent}")
     if not browser_host_settings.BROWSER_HOST_HEADED:
         # The shell build is headless by construction and only knows the bare flag.
         is_shell = Path(chromium_path).name in _HEADLESS_SHELL_BINARIES
@@ -129,12 +127,19 @@ def chromium_argv(chromium_path: str, profile_dir: str, user_agent: str | None) 
 
 
 def chromium_env() -> dict[str, str]:
-    """Return the host's environment minus the desktop session bus, which a headless engine never uses.
+    """Return the engine's environment: the host's, minus the session bus, plus Fortress's license when set.
 
     Chromium dials that bus on its UI thread at startup, after publishing its
     DevTools port, so a bus that is slow to answer stalls the CDP handshake.
+    A blank license would shadow ~/.tilion/license.jwt, so only a set one is passed.
     """
-    return {name: value for name, value in os.environ.items() if name != _SESSION_BUS_VARIABLE}
+    dropped = {_SESSION_BUS_VARIABLE, _FORTRESS_LICENSE_VARIABLE}
+    env = {name: value for name, value in os.environ.items() if name not in dropped}
+    if browser_host_settings.TILION_LICENSE_KEY is not None:
+        env[_FORTRESS_LICENSE_VARIABLE] = (
+            browser_host_settings.TILION_LICENSE_KEY.get_secret_value()
+        )
+    return env
 
 
 def _devtools_file_reader(profile_dir: str) -> Callable[[], Awaitable[str | None]]:
@@ -168,9 +173,7 @@ class Engine:
     base_rss_mb: float
 
     @classmethod
-    async def launch(
-        cls, kind: BrowserEngine, chromium_path: str | None, user_agent: str | None
-    ) -> Engine:
+    async def launch(cls, kind: BrowserEngine, chromium_path: str | None) -> Engine:
         """Start an engine and its root connection; nothing is left running when this raises."""
         profile_dir: str | None = None
         proc: asyncio.subprocess.Process | None = None
@@ -182,9 +185,7 @@ class Engine:
                 if chromium_path is None:
                     raise RuntimeError("chromium_path not resolved")
                 profile_dir = tempfile.mkdtemp(prefix="gaia-browser-host-")
-                proc = await spawn_engine(
-                    chromium_argv(chromium_path, profile_dir, user_agent), chromium_env()
-                )
+                proc = await spawn_engine(chromium_argv(chromium_path, profile_dir), chromium_env())
                 root_ws_url = await until_published(proc, _devtools_file_reader(profile_dir))
             root_mux = CdpMux(root_ws_url)
             try:
@@ -215,10 +216,6 @@ class Engine:
     def alive(self) -> bool:
         """Whether the process runs and its root connection is open."""
         return self.proc.returncode is None and not self.root_mux.closed
-
-    async def user_agent(self) -> str:
-        """Return the User-Agent the engine announces."""
-        return str((await cdp_call(self.root_mux, "Browser.getVersion"))["userAgent"])
 
     async def responsive(self, timeout: float) -> bool:
         """Whether the engine answers a round-trip on its root connection within timeout."""
@@ -267,26 +264,6 @@ class Engine:
         await stop_process(self.proc, graceful=graceful)
         await self.root_mux.close()
         await _remove_profile(self.profile_dir)
-
-
-async def launch_engine(
-    kind: BrowserEngine, chromium_path: str | None, user_agent: str | None
-) -> tuple[Engine, str | None]:
-    """Launch an engine, returning it and the User-Agent every later Chromium launch must announce.
-
-    Headless Chromium sends "HeadlessChrome/<v>" in every User-Agent, which sites
-    read as a bot (DuckDuckGo answered with a CAPTCHA); the first launch learns
-    the plain form and relaunches once with it, keeping the client-hint brands.
-    """
-    engine = await Engine.launch(kind, chromium_path, user_agent)
-    if kind is BrowserEngine.OBSCURA or user_agent is not None:
-        return engine, user_agent
-    announced = await engine.user_agent()
-    if _HEADLESS_MARKER not in announced:
-        return engine, announced
-    plain = announced.replace(_HEADLESS_MARKER, "Chrome/")
-    await engine.shutdown()
-    return await Engine.launch(kind, chromium_path, plain), plain
 
 
 async def _remove_profile(profile_dir: str | None) -> None:

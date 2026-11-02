@@ -10,7 +10,7 @@ import os
 from typing import Annotated, Self
 
 from dotenv import load_dotenv
-from pydantic import field_validator, model_validator
+from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from app.config.deployment import DeploymentKind
@@ -60,10 +60,13 @@ class BrowserHostSettings(BaseSettings):
     # while the old one drains. A safety bound on growth (patch 0033 keeps 60
     # churned sessions at ~170 MB); None disables it.
     BROWSER_ENGINE_RECYCLE_MB: int | None = 1500
-    # Path to a Chromium/Chrome binary for BROWSER_ENGINE=chromium. Unset, the
-    # host resolves Playwright's headless shell (its download can be
-    # unreachable from a dev box); set, that binary is used as is.
+    # Path to a Chromium/Chrome binary for BROWSER_ENGINE=chromium. The gaia image
+    # sets Fortress's launcher (/opt/fortress/tilion); a dev box points it at any
+    # Chromium it has. Unset, the host resolves Playwright's headless shell.
     CHROMIUM_BIN: str | None = None
+    # Fortress's license, which its binary verifies offline at launch: set, the
+    # Chromium engine runs Fortress's v3 engine; unset, its public v1 engine.
+    TILION_LICENSE_KEY: SecretStr | None = None
     # Test-only: exact origins (scheme://host:port, comma-separated) a navigation may
     # reach though they resolve private, for the hermetic browser stack's fixture site.
     # Production refuses to boot with any set (see _no_private_reach_in_production).
@@ -72,7 +75,7 @@ class BrowserHostSettings(BaseSettings):
     # fixture site (a secret is typed only on https). Production refuses to boot with it set.
     BROWSER_HOST_TEST_CA_FILE: str | None = None
 
-    @field_validator("BROWSER_HOST_KEY", mode="after")
+    @field_validator("BROWSER_HOST_KEY", "TILION_LICENSE_KEY", mode="before")
     @classmethod
     def _blank_key_is_unset(cls, v: str | None) -> str | None:
         # Compose spells an unset key ${BROWSER_HOST_KEY:-}, an empty string: that is no key.

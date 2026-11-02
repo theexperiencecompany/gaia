@@ -29,7 +29,7 @@ from app.browser_host.cdp_mux import (
     cdp_attach,
     cdp_call,
 )
-from app.browser_host.engine import Engine, launch_engine, resolve_chromium_path
+from app.browser_host.engine import Engine, resolve_chromium_path
 from app.browser_host.memory import memory_usage_mb
 from app.browser_host.metrics import SessionMetrics
 from app.browser_host.storage import dump_storage_state, seed_storage_state
@@ -112,10 +112,8 @@ class EngineUnresponsiveError(RuntimeError):
     """Raised when no engine serves, or it does not answer on its root connection in time."""
 
 
-#: Starts an engine of a kind on a binary with a User-Agent, returning it and the UA it learned.
-LaunchEngine = Callable[
-    [BrowserEngine, str | None, str | None], Awaitable[tuple[Engine, str | None]]
-]
+#: Starts an engine of a kind on a binary (None for Obscura, which names its own).
+LaunchEngine = Callable[[BrowserEngine, str | None], Awaitable[Engine]]
 #: Opens a connection to an engine's root websocket URL.
 ConnectEngine = Callable[[str], CdpMux]
 #: Reads (used_mb, limit_mb), what admission measures a new session against.
@@ -129,7 +127,7 @@ class BrowserHost:
         self,
         on_fatal: Callable[[], None],
         *,
-        launch: LaunchEngine = launch_engine,
+        launch: LaunchEngine = Engine.launch,
         connect: ConnectEngine = CdpMux,
         memory: MemoryProbe = memory_usage_mb,
     ) -> None:
@@ -140,8 +138,6 @@ class BrowserHost:
         self._memory = memory
         self.failed = False
         self._chromium_path: str | None = None
-        # Chromium's own User-Agent without the headless marker, learned on its first launch.
-        self._user_agent: str | None = None
         self._engine: Engine | None = None
         # Replaced engines still serving sessions; each stops when its last one ends.
         self._retiring: set[Engine] = set()
@@ -496,8 +492,8 @@ class BrowserHost:
                 self._retiring.add(engine)
 
     async def _launch(self) -> Engine:
-        engine, self._user_agent = await self._launch_engine(
-            browser_host_settings.BROWSER_ENGINE, self._chromium_path, self._user_agent
+        engine = await self._launch_engine(
+            browser_host_settings.BROWSER_ENGINE, self._chromium_path
         )
         self._supervisors[engine] = asyncio.create_task(self._supervise(engine))
         return engine

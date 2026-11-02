@@ -200,7 +200,8 @@ native lanes on both the GitHub runners and a Mac, and removed. `mise ci:local`
 is the one local gate; locally, run test files with `mise test:one`, the
 real-infra tier with `mise test:python:real` and the browser stack with
 `mise test:python:browser`. The browser slice (`engines: true` in
-`test-slices.json`) needs Chromium and an Obscura build. In CI the engine
+`test-slices.json`) needs Chromium and an Obscura build; CI's Chromium is the
+Fortress release the gaia image pins, a dev box's any local Chromium. In CI the engine
 slices run as their own job, `test-python-engines` (test-python's steps by YAML
 alias), which needs `obscura-bin`: that job builds Obscura through
 `.github/actions/build-obscura` (the composite obscura-compat uses, one GHA cache
