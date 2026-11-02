@@ -28,7 +28,9 @@ function out(line = ""): void {
 async function printDryRun(outputDir: string | undefined): Promise<void> {
   await printHeader({ showStatus: false });
   const result = await runBackup({ outputDir, dryRun: true });
-  out("  These commands would run, from the install's infra/docker folder:");
+  out(
+    "  These commands would run, from the install's packages/cli/selfhost folder:",
+  );
   for (const cmd of result.commands) out(`    ${cmd}`);
   out(
     `  Volumes not created yet (${VOLUME_BACKUPS.map((v) => v.label).join(", ")}) are skipped.`,

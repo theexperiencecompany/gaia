@@ -40,7 +40,14 @@ DEFAULT_PRICING = ModelPricing(
 MODEL_PRICING: dict[str, ModelPricing] = {
     # DEFAULT_MODEL_NAME / PAID_MODEL_NAME. UNUSED AS A PRICE: OpenRouter reports
     # every call's cost; this only keeps a cost-less reply off DEFAULT_PRICING.
-    # DeepSeek's first-party list price 2026-11-02: $0.15/$0.60/$0.003 per 1M.
+    # OpenRouter list price 2026-11-03: $0.10/$0.50/$0.01 per 1M.
+    "openai/gpt-6-luna": ModelPricing(
+        input_cost_per_1k=0.0001,
+        output_cost_per_1k=0.0005,
+        cached_input_cost_per_1k=0.00001,
+    ),
+    # DEFAULT_MODEL_NAME until 2026-11-03: historical llm_call events still meter at the
+    # rate actually served. DeepSeek's first-party list price: $0.15/$0.60/$0.003 per 1M.
     "deepseek/deepseek-v4.1-flash-1017": ModelPricing(
         input_cost_per_1k=0.00015,
         output_cost_per_1k=0.0006,

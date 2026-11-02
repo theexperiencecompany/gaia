@@ -3,7 +3,7 @@
 services:
   bot-slack:
     extends:
-      file: selfhost/bot.yml
+      file: bot.yml
       service: bot
     image: ghcr.io/theexperiencecompany/gaia-bot-slack:${GAIA_VERSION:-latest}
     depends_on:
