@@ -1048,44 +1048,6 @@ class TestWorkflowAndOnboarding:
         )
         assert await repo.get_source(cid, user_id=uid) is None
 
-    async def _seeded(self, repo, purpose: SystemPurpose) -> ConversationDocument:
-        doc = _doc(is_system_generated=True, system_purpose=purpose)
-        await repo.create(doc)
-        await repo.append_messages(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            messages=[
-                MessageModel(type="bot", response="Okay, you're in."),
-                MessageModel(type="bot", response=""),
-                MessageModel(
-                    type="bot",
-                    response="You're a founder. What's first?",
-                    follow_up_actions=["Find investors", "Something else"],
-                ),
-                MessageModel(type="user", response="Find investors"),
-                MessageModel(type="bot", response="Sure.", follow_up_actions=["Later chip"]),
-            ],
-        )
-        return doc
-
-    async def test_the_seeded_question_is_read_back_from_the_getting_started_thread(self, repo):
-        doc = await self._seeded(repo, SystemPurpose.GETTING_STARTED)
-
-        seeded = await repo.get_seeded_question(doc.conversation_id, user_id=doc.user_id)
-
-        assert seeded is not None
-        assert (seeded.question, seeded.chips) == (
-            "You're a founder. What's first?",
-            ["Find investors", "Something else"],
-        )
-
-    async def test_no_seeded_question_outside_the_getting_started_thread_or_its_owner(self, repo):
-        other = await self._seeded(repo, SystemPurpose.WORKFLOW_EXECUTION)
-        mine = await self._seeded(repo, SystemPurpose.GETTING_STARTED)
-
-        assert await repo.get_seeded_question(other.conversation_id, user_id=other.user_id) is None
-        assert await repo.get_seeded_question(mine.conversation_id, user_id=_uid()) is None
-
 
 class TestSearchAndSweeps:
     async def test_search_messages_and_descriptions(self, repo):

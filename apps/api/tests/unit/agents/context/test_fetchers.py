@@ -48,7 +48,7 @@ from app.agents.context.tiers import AgentTier
 from app.agents.prompts.new_user_prompts import (
     NEED_PLAYBOOKS,
     NEW_USER_GUIDANCE_TEMPLATE,
-    SEEDED_QUESTION_RULE,
+    SEEDED_CHIPS_RULE,
     TARGET_REPLY_EXAMPLE,
     NewUserFacts,
     build_new_user_guidance,
@@ -57,7 +57,6 @@ from app.agents.workspace.paths import session_dir
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.db.repositories.todos import todo_repository
 from app.memory.context import AGENDA_HEADING, RECENT_ACTIVITY_HEADING
-from app.models.conversation_models import SeededQuestion
 from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from app.models.memory_models import MemorySearchResult
 from app.models.todo_models import TodoDocument
@@ -65,6 +64,7 @@ from app.models.user_models import (
     NEEDS_MAX_SELECTION,
     BioStatus,
     OnboardingNeed,
+    OnboardingPreferences,
     OnboardingSubdocument,
 )
 from app.utils.artifact_utils import artifact_url_base
@@ -1065,43 +1065,54 @@ class TestNewUserGuidanceBlock:
         """A block with an empty playbook list is the generic coaching this section exists to replace, so it must be empty string."""
         assert build_new_user_guidance(NewUserFacts("Founder", [])) == ""
 
-    SEEDED = SeededQuestion(
-        question="You're a founder. What's first?", chips=["Find investors", "Something else"]
-    )
+    CHIPS = ("Find investors", "Hire someone")
 
-    def _patch_seeded(self, seeded: SeededQuestion | None) -> Any:
+    def _patch_seeded(self, chips: tuple[str, ...] | None = None) -> Any:
         return patch(
-            "app.agents.context.fetchers.conversation_repository.get_seeded_question",
-            AsyncMock(return_value=seeded),
+            "app.agents.context.fetchers.seeded_chips",
+            AsyncMock(return_value=list(chips or ())),
         )
 
     @staticmethod
     def _in_thread(**overrides: Any) -> SectionContext:
-        base = ctx(user_id="user-9", user_preferences={"profession": "Founder", "needs": ["inbox"]})
-        return replace(base, conversation_id="conv-1", **overrides)
+        """Build a comms turn inside the user's welcome thread, conv-1."""
+        prefs = {"profession": "Founder", "needs": ["inbox"]}
+        onboarding = overrides.pop(
+            "onboarding",
+            OnboardingSubdocument(
+                getting_started_conversation_id="conv-1",
+                preferences=OnboardingPreferences(
+                    profession="Founder", needs=[OnboardingNeed.INBOX]
+                ),
+            ),
+        )
+        base = ctx(user_id="user-9", user_preferences=prefs)
+        return replace(base, **{"conversation_id": "conv-1", "onboarding": onboarding, **overrides})
 
-    async def test_the_seeded_thread_quotes_back_its_question_and_chips(self) -> None:
-        """Read from the thread itself: what the user saw is what the model is told it offered."""
-        with self._patch_count(self._count(1)), self._patch_seeded(self.SEEDED) as read:
-            block = await build_new_user_guidance_block(self._in_thread())
+    async def test_the_welcome_thread_quotes_back_the_jobs_it_offered(self) -> None:
+        """Read through the one reader the paywall uses too, with the stored answers."""
+        with self._patch_count(self._count(1)), self._patch_seeded(self.CHIPS) as read:
+            turn = self._in_thread()
+            block = await build_new_user_guidance_block(turn)
 
-        read.assert_awaited_once_with("conv-1", user_id="user-9")
-        assert "\"You're a founder. What's first?\"" in block
-        assert '"Find investors", "Something else"' in block
+        assert turn.onboarding is not None
+        read.assert_awaited_once_with("user-9", turn.onboarding.preferences)
+        assert 'offering these jobs as chips: "Find investors", "Hire someone"' in block
 
-    async def test_any_other_thread_carries_no_seeded_rule(self) -> None:
-        with self._patch_count(self._count(2)), self._patch_seeded(None):
-            block = await build_new_user_guidance_block(self._in_thread())
+    async def test_any_other_thread_carries_no_chips_rule_and_reads_nothing(self) -> None:
+        with self._patch_count(self._count(2)), self._patch_seeded(self.CHIPS) as read:
+            block = await build_new_user_guidance_block(self._in_thread(conversation_id="conv-2"))
 
         assert block
-        assert "This thread opened with" not in block
+        assert "offering these jobs as chips" not in block
+        read.assert_not_awaited()
 
-    async def test_a_failed_seeded_read_keeps_the_block_and_names_the_cause(self) -> None:
+    async def test_a_failed_chips_read_keeps_the_block_and_names_the_cause(self) -> None:
         async with captured_wide_event() as event:
             with (
                 self._patch_count(self._count(1)),
                 patch(
-                    "app.agents.context.fetchers.conversation_repository.get_seeded_question",
+                    "app.agents.context.fetchers.seeded_chips",
                     AsyncMock(side_effect=RuntimeError("mongo down")),
                 ),
             ):
@@ -1110,7 +1121,7 @@ class TestNewUserGuidanceBlock:
         assert NEED_PLAYBOOKS[OnboardingNeed.INBOX] in block
         assert event["warnings"] == [
             {
-                "msg": "Error reading the seeded question for new-user guidance",
+                "msg": "Error reading the welcome chips for new-user guidance",
                 "error": "mongo down",
                 "error_type": "RuntimeError",
                 "user_id": "user-9",
@@ -1125,7 +1136,7 @@ class TestNewUserGuidanceBlock:
             user_bio="  Runs his inbox like a control tower.  ",
             triage_summary={"summary": "Mostly vendor alerts and two investor threads."},
         )
-        with self._patch_count(self._count(1)), self._patch_seeded(None):
+        with self._patch_count(self._count(1)), self._patch_seeded():
             block = await build_new_user_guidance_block(self._in_thread(onboarding=onboarding))
 
         assert block.endswith(
@@ -1156,7 +1167,7 @@ class TestNewUserGuidanceBlock:
         onboarding = OnboardingSubdocument(
             bio_status=status, user_bio="placeholder", triage_summary={"summary": "partial"}
         )
-        with self._patch_count(self._count(1)), self._patch_seeded(None):
+        with self._patch_count(self._count(1)), self._patch_seeded():
             block = await build_new_user_guidance_block(self._in_thread(onboarding=onboarding))
 
         assert "What their mail already told you" not in block
@@ -1164,7 +1175,7 @@ class TestNewUserGuidanceBlock:
     async def test_the_block_is_the_template_filled_with_every_one_of_its_slots(self) -> None:
         """Asserted whole rather than by substring: a slot filled with the wrong value still renders a plausible-looking block."""
         block = build_new_user_guidance(
-            NewUserFacts("Founder", [OnboardingNeed.INBOX], seeded=self.SEEDED)
+            NewUserFacts("Founder", [OnboardingNeed.INBOX], seeded_chips=self.CHIPS)
         )
 
         assert block == NEW_USER_GUIDANCE_TEMPLATE.format(
@@ -1172,18 +1183,12 @@ class TestNewUserGuidanceBlock:
             playbooks=f"- {NEED_PLAYBOOKS[OnboardingNeed.INBOX]}",
             target=TARGET_REPLY_EXAMPLE,
             mail="",
-            seeded=SEEDED_QUESTION_RULE.format(
-                question=self.SEEDED.question, chips='"Find investors", "Something else"'
-            ),
+            seeded=SEEDED_CHIPS_RULE.format(chips='"Find investors", "Hire someone"'),
         )
 
-    async def test_a_seeded_question_without_chips_closes_the_slot_up_entirely(self) -> None:
+    async def test_no_chips_closes_the_slot_up_entirely(self) -> None:
         """Any residue of the rule reads to the model as a choice it offered."""
-        block = build_new_user_guidance(
-            NewUserFacts(
-                "Founder", [OnboardingNeed.INBOX], seeded=SeededQuestion(question="Hi", chips=[])
-            )
-        )
+        block = build_new_user_guidance(NewUserFacts("Founder", [OnboardingNeed.INBOX]))
 
         assert block == NEW_USER_GUIDANCE_TEMPLATE.format(
             profession="Founder",
@@ -1201,9 +1206,11 @@ class TestNewUserGuidanceBlock:
                 "Founder",
                 longest[:NEEDS_MAX_SELECTION],
                 "chasing invoices",
-                seeded=SeededQuestion(
-                    question="You're a founder. What's first?",
-                    chips=["Find investors", "Fix my marketing", "Hire someone", "Write my pitch"],
+                seeded_chips=(
+                    "Find investors",
+                    "Fix my marketing",
+                    "Hire someone",
+                    "Write my pitch",
                 ),
                 inbox_summary="x" * 300,
                 mail_portrait="y" * 300,

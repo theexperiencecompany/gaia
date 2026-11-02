@@ -27,7 +27,7 @@ from app.constants.first_steps import (
     FIRST_STEPS_COLLAPSED_FIELD,
 )
 from app.db.repositories.users import UserRepository
-from app.models.user_models import OnboardingPreferences
+from app.models.user_models import OnboardingPreferences, StartingJobs
 from shared.py.analytics.catalog.onboarding import OnboardingStep
 from tests.helpers import captured_wide_event
 
@@ -282,3 +282,18 @@ class TestRecordOnboardingStep:
         self, repo: UserRepository, collection: MagicMock
     ) -> None:
         assert not await repo.record_onboarding_step(USER_ID, OnboardingStep.STARTED, NOW)
+
+
+async def test_the_drafted_jobs_write_evicts_the_global_user_cache() -> None:
+    """The paywall reads the user right after the Q2 save; a narrower eviction would serve the record without the jobs."""
+    repo = UserRepository()
+    jobs = StartingJobs(answers_fingerprint="f" * 16, chips=["Find investors"])
+    user_id = str(ObjectId())
+    with patch.object(repo, "_apply_raw_update", new=AsyncMock(return_value=None)) as raw:
+        await repo.set_starting_jobs(user_id, jobs)
+
+    raw.assert_awaited_once_with(
+        {"_id": ObjectId(user_id)},
+        {"$set": {"onboarding.starting_jobs": jobs.model_dump()}},
+        scope=REPO_GLOBAL_SCOPE,
+    )

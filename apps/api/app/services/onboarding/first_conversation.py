@@ -3,7 +3,7 @@
 Deterministic and model-free here: the same answers always produce the same two
 bubbles. The only model-written part, the four starting jobs offered as chips,
 comes from :mod:first_question at Q2 and is merged by :func:with_starting_jobs;
-when that call failed there are no job chips, only the escape hatch.
+when that call failed there are no chips, and the composer is the way in.
 
 This is post-onboarding, not a pitch. The user has just sat through the wizard,
 paid, and picked where GAIA texts them, so nothing here explains GAIA or reads
@@ -43,7 +43,6 @@ def connect_link(integration_id: str) -> str:
 CONNECT_OPTIONS_TOOL_NAME = "connect_options"
 HANDOVER_TEMPLATE = "You're {job}. What's first?"
 HANDOVER_SENTENCE_TEMPLATE = "{sentence}. What's first?"
-SOMETHING_ELSE_CHIP = WELCOME_COPY[DEFAULT_LANGUAGE].something_else
 _VOWELS = ("a", "e", "i", "o", "u")
 
 #: A typed sentence turned to the second person: "I run a bakery" reads
@@ -139,8 +138,8 @@ def compose_first_conversation(
     """Build the bubbles GAIA opens with, in the user's browser language.
 
     Outside English the question skips the job: a profession rendered into a
-    gendered language guesses the reader's gender. The escape-hatch chip is
-    always offered; model-written jobs join it in with_starting_jobs.
+    gendered language guesses the reader's gender. The chips are only ever the
+    model-written jobs, added by with_starting_jobs.
     """
     copy = welcome_copy(preferences.language)
     english = copy is WELCOME_COPY[DEFAULT_LANGUAGE]
@@ -152,11 +151,11 @@ def compose_first_conversation(
             f"{copy.routines_intro}\n- {copy.gmail_line}\n- {copy.calendar_line}",
         ],
         question=question,
-        follow_ups=[copy.something_else],
+        follow_ups=[],
         connect_options=_connect_options(copy),
     )
 
 
 def with_starting_jobs(composed: FirstConversation, chips: list[str]) -> FirstConversation:
-    """Return composed with the model-written starting jobs ahead of the escape hatch."""
-    return composed.model_copy(update={"follow_ups": [*chips, *composed.follow_ups]})
+    """Return composed with the model-written starting jobs as its chips."""
+    return composed.model_copy(update={"follow_ups": list(chips)})

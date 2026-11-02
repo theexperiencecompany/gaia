@@ -49,7 +49,12 @@ from app.models.onboarding_models import (
     WritingStyleExampleBlocks,
     WritingStyleOutput,
 )
-from app.models.user_models import OnboardingPhase, PersonalizationBundle, UserDocument
+from app.models.user_models import (
+    OnboardingPhase,
+    PersonalizationBundle,
+    StartingJobs,
+    UserDocument,
+)
 from app.services.integrations.integration_account_lifecycle import AccountConnected
 from app.services.oauth.oauth_service import handle_oauth_connection
 from app.services.onboarding.intelligence_job import personalization_job_id
@@ -162,6 +167,11 @@ class _UserStore:
         sub = self._sub(user_id)
         if sub is not None:
             sub["bio_status"] = bio_status
+
+    async def set_starting_jobs(self, user_id: str, jobs: StartingJobs) -> None:
+        sub = self._sub(user_id)
+        if sub is not None:
+            sub["starting_jobs"] = jobs.model_dump()
 
     async def set_first_conversation_id(
         self, user_id: str, conversation_id: str
@@ -439,6 +449,7 @@ def _enter_persistence_patches(stack: ExitStack, users: _UserStore, externals: _
 
     for patcher in (
         patch(f"{SVC}.onboarding_service.user_repository", users),
+        patch(f"{SVC}.first_question.user_repository", users),
         patch(f"{SVC}.intelligence_job.user_repository", users),
         patch(f"{SVC}.intelligence_service.user_repository", users),
         patch("app.api.v1.endpoints.onboarding.user_repository", users),

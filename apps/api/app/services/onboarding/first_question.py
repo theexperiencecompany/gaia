@@ -19,13 +19,9 @@ from pydantic import BaseModel, Field
 
 from app.agents.llm.client import StructuredCallOptions, ainvoke_structured, metered_config
 from app.agents.prompts.comms_prompts import COMMS_AGENT_PROMPT
-from app.constants.cache import (
-    FIRST_QUESTION_CACHE_PREFIX,
-    FIRST_QUESTION_CACHE_TTL,
-)
 from app.constants.log_tags import LogTag
-from app.db.redis import redis_cache
-from app.models.user_models import OnboardingPreferences
+from app.db.repositories.users import user_repository
+from app.models.user_models import OnboardingPreferences, StartingJobs
 from app.services.onboarding.first_message import NEED_PHRASES
 from shared.py.wide_events import log
 
@@ -221,8 +217,24 @@ def answers_fingerprint(preferences: OnboardingPreferences) -> str:
     return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
 
-def first_question_cache_key(user_id: str, preferences: OnboardingPreferences) -> str:
-    return f"{FIRST_QUESTION_CACHE_PREFIX}{user_id}:{answers_fingerprint(preferences)}"
+async def seeded_chips(user_id: str, preferences: OnboardingPreferences) -> list[str]:
+    """Return the jobs drafted from these answers, or [] when none were or the answers changed since.
+
+    The one reader of the drafted jobs: the paywall preview, the welcome thread
+    and the first-chat guidance all show what this returns.
+    """
+    user = await user_repository.get(user_id)
+    jobs = user.onboarding.starting_jobs if user and user.onboarding else None
+    if jobs is None or jobs.answers_fingerprint != answers_fingerprint(preferences):
+        return []
+    return list(jobs.chips)
+
+
+async def _store(user_id: str, preferences: OnboardingPreferences, question: FirstQuestion) -> None:
+    await user_repository.set_starting_jobs(
+        user_id,
+        StartingJobs(answers_fingerprint=answers_fingerprint(preferences), chips=question.chips),
+    )
 
 
 async def prewarm_first_question(
@@ -230,22 +242,17 @@ async def prewarm_first_question(
     preferences: OnboardingPreferences,
     connected_platform: str | None,
 ) -> None:
-    """Write the question while the user is still in the wizard.
+    """Draft the jobs while the user is still in the wizard and store them on their record.
 
     Fire-and-forget: this runs detached from the request that saved the answers,
-    so it owns its own failures and raises nothing. A question that is not ready
-    by the time completion is pressed simply is not used.
+    so it owns its own failures and raises nothing. Jobs not drafted by
+    completion get one live attempt there.
     """
     try:
         question = await compose_first_question(preferences, connected_platform, user_id=user_id)
         if question is None:
             return
-        await redis_cache.set(
-            first_question_cache_key(user_id, preferences),
-            question,
-            ttl=FIRST_QUESTION_CACHE_TTL,
-            model=FirstQuestion,
-        )
+        await _store(user_id, preferences, question)
     except Exception as e:
         log.warning(
             f"{LogTag.ONBOARDING} first question prewarm failed",
@@ -260,19 +267,15 @@ async def resolve_first_question(
     preferences: OnboardingPreferences,
     connected_platform: str | None,
 ) -> FirstQuestion | None:
-    """Return the question to close the seeded conversation with, at completion time.
+    """Return the jobs to close the seeded conversation with, at completion time.
 
-    Prefers whatever prewarm_first_question already wrote (free); a miss gets
-    one short live attempt, then the static line.
+    Prefers what prewarm_first_question stored; a miss gets one short live
+    attempt, stored too, then no chips.
     """
-    cached = await redis_cache.get(first_question_cache_key(user_id, preferences), FirstQuestion)
-    if cached is not None:
-        log.info(
-            f"{LogTag.ONBOARDING} first question resolved",
-            user_id=user_id,
-            outcome="cached",
-        )
-        return cached
+    stored = await seeded_chips(user_id, preferences)
+    if stored:
+        log.info(f"{LogTag.ONBOARDING} first question resolved", user_id=user_id, outcome="stored")
+        return FirstQuestion(chips=stored)
 
     live = await compose_first_question(
         preferences,
@@ -288,6 +291,7 @@ async def resolve_first_question(
             user_id=user_id,
             outcome="fallback",
         )
-    else:
-        log.info(f"{LogTag.ONBOARDING} first question resolved", user_id=user_id, outcome="live")
+        return None
+    await _store(user_id, preferences, live)
+    log.info(f"{LogTag.ONBOARDING} first question resolved", user_id=user_id, outcome="live")
     return live

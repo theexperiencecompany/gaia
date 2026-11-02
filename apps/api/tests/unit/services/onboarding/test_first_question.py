@@ -18,9 +18,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from pydantic import ValidationError
 import pytest
 
-from app.constants.cache import FIRST_QUESTION_CACHE_TTL
 from app.constants.log_tags import LogTag
-from app.models.user_models import OnboardingNeed, OnboardingPreferences
+from app.models.user_models import (
+    OnboardingNeed,
+    OnboardingPreferences,
+    OnboardingSubdocument,
+    StartingJobs,
+    UserDocument,
+)
 from app.services.onboarding.first_question import (
     LIVE_QUESTION_TIMEOUT_SECONDS,
     QUESTION_PROMPT_TEMPLATE,
@@ -32,9 +37,9 @@ from app.services.onboarding.first_question import (
     answers_fingerprint,
     comms_voice_rules,
     compose_first_question,
-    first_question_cache_key,
     prewarm_first_question,
     resolve_first_question,
+    seeded_chips,
 )
 
 MODULE = "app.services.onboarding.first_question"
@@ -254,11 +259,6 @@ class TestAnswersFingerprintValue:
     def test_changing_any_answer_changes_the_digest(self, changed: dict[str, Any]) -> None:
         assert answers_fingerprint(_prefs(**changed)) != answers_fingerprint(_prefs())
 
-    def test_the_cache_key_is_the_prefix_the_user_and_the_digest(self) -> None:
-        assert first_question_cache_key("u1", _prefs()) == (
-            "onboarding:first_question:u1:4e49aea28b02740d"
-        )
-
 
 def _llm_patch(draft: Any = None, error: Exception | None = None) -> AsyncMock:
     return AsyncMock(return_value=draft, side_effect=error)
@@ -421,51 +421,76 @@ class TestComposeFirstQuestionDraft:
         )
 
 
+def _repository(stored: StartingJobs | None = None) -> MagicMock:
+    """Build a users repository whose user holds stored as their drafted jobs."""
+    repository = MagicMock()
+    repository.get = AsyncMock(
+        return_value=UserDocument(id="u1", onboarding=OnboardingSubdocument(starting_jobs=stored))
+    )
+    repository.set_starting_jobs = AsyncMock()
+    return repository
+
+
+def _stored(preferences: OnboardingPreferences | None = None) -> StartingJobs:
+    return StartingJobs(
+        answers_fingerprint=answers_fingerprint(preferences or _prefs()), chips=GOOD_CHIPS
+    )
+
+
+@pytest.mark.unit
+class TestSeededChips:
+    """The one reader of the drafted jobs: paywall preview, welcome thread and first-chat guidance."""
+
+    async def test_the_jobs_drafted_from_these_answers_are_returned(self) -> None:
+        repository = _repository(_stored())
+        with patch(f"{MODULE}.user_repository", repository):
+            assert await seeded_chips("u1", _prefs()) == GOOD_CHIPS
+
+        repository.get.assert_awaited_once_with("u1")
+
+    async def test_jobs_drafted_from_other_answers_are_not_served(self) -> None:
+        """A user who went back and re-answered must not see the old answers' jobs."""
+        with patch(f"{MODULE}.user_repository", _repository(_stored(_prefs(profession="student")))):
+            assert await seeded_chips("u1", _prefs()) == []
+
+    async def test_no_drafted_jobs_yet_is_an_empty_list(self) -> None:
+        with patch(f"{MODULE}.user_repository", _repository(None)):
+            assert await seeded_chips("u1", _prefs()) == []
+
+    async def test_a_user_that_is_gone_has_no_jobs(self) -> None:
+        repository = _repository()
+        repository.get = AsyncMock(return_value=None)
+        with patch(f"{MODULE}.user_repository", repository):
+            assert await seeded_chips("u1", _prefs()) == []
+
+
 @pytest.mark.unit
 class TestPrewarmWrites:
-    """The question written while the user is still clicking."""
+    """The jobs drafted while the user is still clicking, stored on their record."""
 
-    async def test_the_question_is_written_under_this_users_answers_with_a_ttl(self) -> None:
-        """Two hours: long enough to survive an abandoned wizard, short enough that a stale question is never served after a re-answer."""
-        written = FirstQuestion(chips=GOOD_CHIPS)
-        setter = AsyncMock()
-        compose = AsyncMock(return_value=written)
-        with (
-            patch(f"{MODULE}.compose_first_question", compose),
-            patch(f"{MODULE}.redis_cache.set", setter),
-        ):
-            await prewarm_first_question("u1", _prefs(), "telegram")
-
-        assert setter.await_args.args == (first_question_cache_key("u1", _prefs()), written)
-        assert setter.await_args.kwargs == {
-            "ttl": FIRST_QUESTION_CACHE_TTL,
-            "model": FirstQuestion,
-        }
-        assert FIRST_QUESTION_CACHE_TTL == 7200
-
-    async def test_the_prewarm_composes_for_this_user_on_the_generous_ceiling(self) -> None:
-        """Nobody is waiting, so it takes the default 8s budget, and passes the user id or the prewarm's spend lands on nobody."""
-        setter = AsyncMock()
+    async def test_the_jobs_are_stored_under_the_answers_they_were_written_from(self) -> None:
+        repository = _repository()
         compose = AsyncMock(return_value=FirstQuestion(chips=GOOD_CHIPS))
         with (
             patch(f"{MODULE}.compose_first_question", compose),
-            patch(f"{MODULE}.redis_cache.set", setter),
+            patch(f"{MODULE}.user_repository", repository),
         ):
             await prewarm_first_question("u1", _prefs(), "telegram")
 
+        repository.set_starting_jobs.assert_awaited_once_with("u1", _stored())
         assert compose.await_args.args == (_prefs(), "telegram")
         assert compose.await_args.kwargs == {"user_id": "u1"}
 
-    async def test_a_miss_writes_nothing(self) -> None:
-        """An empty entry would be read as a hit at completion and suppress the one live attempt."""
-        setter = AsyncMock()
+    async def test_a_miss_stores_nothing(self) -> None:
+        """An empty entry would read as drafted jobs and suppress the one live attempt."""
+        repository = _repository()
         with (
             patch(f"{MODULE}.compose_first_question", AsyncMock(return_value=None)),
-            patch(f"{MODULE}.redis_cache.set", setter),
+            patch(f"{MODULE}.user_repository", repository),
         ):
             await prewarm_first_question("u1", _prefs(), None)
 
-        setter.assert_not_awaited()
+        repository.set_starting_jobs.assert_not_awaited()
 
     async def test_a_detached_failure_is_recorded_and_never_raised(self) -> None:
         """Runs off the request that saved the answers, so it can't raise; the message is truncated so a traceback can't leak a connection string."""
@@ -485,13 +510,15 @@ class TestPrewarmWrites:
             error_type="RuntimeError",
         )
 
-    async def test_a_redis_outage_does_not_escape_either(self) -> None:
+    async def test_a_failed_store_does_not_escape_either(self) -> None:
+        repository = _repository()
+        repository.set_starting_jobs = AsyncMock(side_effect=ConnectionError("down"))
         with (
             patch(
                 f"{MODULE}.compose_first_question",
                 AsyncMock(return_value=FirstQuestion(chips=GOOD_CHIPS)),
             ),
-            patch(f"{MODULE}.redis_cache.set", AsyncMock(side_effect=ConnectionError("down"))),
+            patch(f"{MODULE}.user_repository", repository),
             patch(f"{MODULE}.log") as mock_log,
         ):
             await prewarm_first_question("u1", _prefs(), None)
@@ -501,28 +528,30 @@ class TestPrewarmWrites:
 
 @pytest.mark.unit
 class TestResolveBranches:
-    """Cached, else one short live attempt, else the static line."""
+    """Stored, else one short live attempt that is stored too, else no chips."""
 
-    async def test_a_hit_is_returned_as_is_and_costs_no_model_call(self) -> None:
-        cached = FirstQuestion(chips=GOOD_CHIPS)
+    async def test_stored_jobs_cost_no_model_call(self) -> None:
         compose = AsyncMock()
-        getter = AsyncMock(return_value=cached)
+        repository = _repository(_stored())
         with (
-            patch(f"{MODULE}.redis_cache.get", getter),
+            patch(f"{MODULE}.user_repository", repository),
             patch(f"{MODULE}.compose_first_question", compose),
         ):
             result = await resolve_first_question("u1", _prefs(), "telegram")
 
-        assert result is cached
+        assert result == FirstQuestion(chips=GOOD_CHIPS)
+        repository.get.assert_awaited_once_with("u1")
         compose.assert_not_awaited()
-        assert getter.await_args.args == (first_question_cache_key("u1", _prefs()), FirstQuestion)
 
-    async def test_a_miss_gets_one_live_attempt_on_the_six_second_ceiling(self) -> None:
-        """The user is watching a spinner: past six seconds the static line is the better product, so this is a last chance."""
+    async def test_a_miss_gets_one_live_attempt_on_the_six_second_ceiling_and_stores_it(
+        self,
+    ) -> None:
+        """The user is watching a spinner, so this is a last chance; stored so the guidance and paywall see the same jobs."""
         written = FirstQuestion(chips=GOOD_CHIPS)
         compose = AsyncMock(return_value=written)
+        repository = _repository(None)
         with (
-            patch(f"{MODULE}.redis_cache.get", AsyncMock(return_value=None)),
+            patch(f"{MODULE}.user_repository", repository),
             patch(f"{MODULE}.compose_first_question", compose),
         ):
             result = await resolve_first_question("u1", _prefs(), "telegram")
@@ -534,38 +563,18 @@ class TestResolveBranches:
             "timeout_seconds": LIVE_QUESTION_TIMEOUT_SECONDS,
         }
         assert LIVE_QUESTION_TIMEOUT_SECONDS == 6.0
+        repository.set_starting_jobs.assert_awaited_once_with("u1", _stored())
 
-    async def test_a_miss_whose_live_call_misses_too_is_the_static_line(self) -> None:
-        compose = AsyncMock(return_value=None)
+    async def test_a_miss_whose_live_call_misses_too_is_no_chips_and_a_warning(self) -> None:
+        repository = _repository(None)
         with (
-            patch(f"{MODULE}.redis_cache.get", AsyncMock(return_value=None)),
-            patch(f"{MODULE}.compose_first_question", compose),
-        ):
-            assert await resolve_first_question("u1", _prefs(), None) is None
-
-        compose.assert_awaited_once()
-
-
-class TestFallbackWarning:
-    async def test_a_double_miss_is_a_warning_naming_the_user_and_the_outcome(self) -> None:
-        with (
-            patch(f"{MODULE}.redis_cache.get", AsyncMock(return_value=None)),
+            patch(f"{MODULE}.user_repository", repository),
             patch(f"{MODULE}.compose_first_question", AsyncMock(return_value=None)),
             patch(f"{MODULE}.log") as log,
         ):
             assert await resolve_first_question("u1", _prefs(), None) is None
 
+        repository.set_starting_jobs.assert_not_awaited()
         log.warning.assert_called_once()
         assert "first question missed" in log.warning.call_args.args[0]
         assert log.warning.call_args.kwargs == {"user_id": "u1", "outcome": "fallback"}
-
-    async def test_a_live_hit_is_not_a_warning(self) -> None:
-        written = FirstQuestion(chips=GOOD_CHIPS)
-        with (
-            patch(f"{MODULE}.redis_cache.get", AsyncMock(return_value=None)),
-            patch(f"{MODULE}.compose_first_question", AsyncMock(return_value=written)),
-            patch(f"{MODULE}.log") as log,
-        ):
-            assert await resolve_first_question("u1", _prefs(), None) is written
-
-        log.warning.assert_not_called()

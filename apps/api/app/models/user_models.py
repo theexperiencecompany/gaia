@@ -406,6 +406,17 @@ class _StoredProfession(BaseModel):
     profession: object = None
 
 
+class StartingJobs(BaseModel):
+    """``users.onboarding.starting_jobs``: the jobs drafted from the answers at the Q2 save.
+
+    answers_fingerprint names the answers they were written from, so a changed
+    answer reads as no jobs instead of someone else's.
+    """
+
+    answers_fingerprint: str
+    chips: list[str]
+
+
 class OnboardingSubdocument(BaseModel):
     """``users.onboarding`` — the wizard's answers plus everything the Gmail
     personalization pipeline stamps on the user.
@@ -439,6 +450,7 @@ class OnboardingSubdocument(BaseModel):
     # Seeded conversations, kept so a reset can tear them down again.
     first_message_conversation_id: str | None = None
     getting_started_conversation_id: str | None = None
+    starting_jobs: StartingJobs | None = None
     holo_conversation_id: str | None = None
     first_message: str | None = None
 

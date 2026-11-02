@@ -41,7 +41,6 @@ from app.models.user_models import (
     OnboardingRequest,
     UserDocument,
 )
-from app.services.onboarding.first_conversation import SOMETHING_ELSE_CHIP
 from app.services.onboarding.first_question import FirstQuestion
 from app.services.onboarding.intelligence_job import (
     abort_active_intelligence_job,
@@ -207,7 +206,6 @@ class TestCompleteOnboarding:
             "Fix my marketing",
             "Hire someone",
             "Write my pitch",
-            SOMETHING_ELSE_CHIP,
         ]
 
     async def test_no_written_jobs_means_no_chips_rather_than_invented_ones(
@@ -224,7 +222,7 @@ class TestCompleteOnboarding:
             await complete_onboarding(sample_user_id, sample_onboarding_request)
 
         composed = seed.await_args.args[1]
-        assert composed.follow_ups == [SOMETHING_ELSE_CHIP]
+        assert composed.follow_ups == []
 
     async def test_successful_onboarding(
         self,
