@@ -1526,6 +1526,27 @@ result_brief: x
 
         assert result.issues == []
 
+    async def test_only_executes_data_is_read_as_dispatched(self) -> None:
+        """Another tool's data arg that holds JSON text is text: decoding it would refuse the call it froze."""
+        body = _body(
+            """
+description: Post a raw payload
+steps:
+  - id: post
+    tool: post_raw
+    args:
+      data: '{"a": 1}'
+result_brief: x
+"""
+        )
+        results = [_call("post_raw", {"data": '{"a": 1}'}, {"posted": [{"id": "p1"}]})]
+        registry = _schema_registry(post_raw={"data": {"type": "string"}})
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=registry):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert result.issues == []
+
     async def test_an_execute_step_with_other_data_is_still_refused(self) -> None:
         body = _body(
             """

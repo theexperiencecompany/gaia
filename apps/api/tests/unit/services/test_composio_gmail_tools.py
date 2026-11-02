@@ -44,6 +44,7 @@ from app.services.composio.custom_tools.gmail_tools import (
     StarEmailInput,
     _count_inline_fit,
     _format_partial_result,
+    _relative_days,
     _resolve_timeframe,
     _timeframe_clause,
     register_gmail_custom_tools,
@@ -393,6 +394,10 @@ class TestResolveTimeframe:
     def test_any_count_of_days_weeks_months_resolves_to_its_window(self):
         assert _timeframe_clause("14d", Timezone.utc()) == "after:2026/10/07 before:2026/10/21"
         assert _timeframe_clause("2m", Timezone.utc()) == "after:2026/08/22 before:2026/10/21"
+
+    def test_a_named_timeframe_has_no_day_count(self):
+        with pytest.raises(ValueError, match=r"^not a relative timeframe: 'today'$"):
+            _relative_days("today")
 
     @pytest.mark.parametrize(
         ("timeframe", "expected_max"),
