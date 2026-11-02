@@ -226,6 +226,24 @@ def test_a_list_too_long_to_carry_is_a_full_scan() -> None:
     assert nx_affected.task_files(selection) == {"ci:ruff": nx_affected.FULL_SCAN}
 
 
+def test_the_task_files_every_job_carries_fit_in_one_environment_variable() -> None:
+    """Regression: a 233-file PR's TASK_FILES was 139,600 bytes, and Linux refuses an env string over 128 KiB."""
+    reasons = [
+        {
+            "kind": "input-file",
+            "file": f"apps/api/app/services/module_{n:04}.py",
+            "pattern": "**/*.py",
+        }
+        for n in range(250)
+    ]
+    selection = nx_affected.Selection(tasks={f"ci:check-{i}": reasons for i in range(12)})
+    scoped = nx_affected.task_files(selection)
+    assert len(json.dumps(scoped)) <= nx_affected.TASK_FILES_MAX_BYTES
+    # Collapsing to a full scan only ever checks more, and keeps as many lists as fit.
+    assert set(scoped) == set(selection.tasks)
+    assert sum(v != nx_affected.FULL_SCAN for v in scoped.values()) >= 1
+
+
 def test_a_check_lists_its_config_before_its_source_globs() -> None:
     """Nx names the first input a file matches; biome.json read as a source file scoped biome to itself."""
     for path in [REPO_ROOT / "tools" / "ci" / "project.json"]:

@@ -40,6 +40,9 @@ SOURCE_GLOB = re.compile(r"(?:^|/)\*\.(\w+|\{[\w,]+\})$")
 # Past this many files a scoped list costs more to carry in detect's outputs
 # (1 MB per job) than a full scan costs to run.
 SCOPED_FILES_MAX = 300
+# Every job carries task_files as one env var, and Linux refuses a single env
+# string over 128 KiB (MAX_ARG_STRLEN): no process in the job could start.
+TASK_FILES_MAX_BYTES = 96 * 1024
 
 
 @dataclass(frozen=True)
@@ -299,13 +302,21 @@ def task_files(selection: Selection) -> dict[str, str | list[str]]:
 
     A task reached through a config, manifest or the CI harness rather than a
     source glob changed no file it would be scoped to, so it scans the whole
-    tree; so does one whose list outgrows SCOPED_FILES_MAX.
+    tree; so does one whose list outgrows SCOPED_FILES_MAX, and the longest lists
+    while the whole map outgrows TASK_FILES_MAX_BYTES.
     """
     scoped: dict[str, str | list[str]] = {}
     for task, reasons in selection.tasks.items():
         files = sorted(r["file"] for r in reasons if _is_source(r))
         whole = len(files) < len(reasons) or len(files) > SCOPED_FILES_MAX
         scoped[task] = FULL_SCAN if whole else files
+    # Past the env budget the longest lists become full scans, which only ever check more.
+    while len(json.dumps(scoped)) > TASK_FILES_MAX_BYTES:
+        longest = max(
+            (task for task, files in scoped.items() if files != FULL_SCAN),
+            key=lambda task: len(json.dumps(scoped[task])),
+        )
+        scoped[longest] = FULL_SCAN
     return scoped
 
 
