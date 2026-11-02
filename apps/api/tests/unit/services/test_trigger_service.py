@@ -22,6 +22,7 @@ import pytest
 from redis.exceptions import RedisError
 
 from app.constants.log_tags import LogTag
+from app.db.redis import redis_cache
 from app.models.trigger_config import TriggerOptionsQuery
 
 # Break the circular import (triggers -> handlers -> workflow.service -> workflow.trigger_service
@@ -197,10 +198,13 @@ class _ConcreteTriggerHandler(TriggerHandler):
     ) -> list[str]:
         return ["trigger_id_1"]
 
+    def __init__(self, workflows: list[Workflow] | None = None) -> None:
+        self.matched = workflows or []
+
     async def find_workflows(
         self, event_type: str, trigger_id: str, data: dict[str, Any]
     ) -> list[Workflow]:
-        return []
+        return self.matched
 
 
 @pytest.mark.asyncio
@@ -396,8 +400,7 @@ class TestTriggerHandlerBase:
     @patch("app.services.triggers.base.WorkflowQueueService")
     async def test_process_event_queues_workflows(self, mock_queue_svc):
         workflow = _make_workflow()
-        handler = _ConcreteTriggerHandler()
-        handler.find_workflows = AsyncMock(return_value=[workflow])
+        handler = _ConcreteTriggerHandler([workflow])
         mock_queue_svc.queue_workflow_execution = AsyncMock(return_value=True)
 
         result = await handler.process_event("TEST_EVENT", TRIGGER_ID, USER_ID, {})
@@ -412,11 +415,10 @@ class TestTriggerHandlerBase:
     ) -> None:
         """The queued context carries the raw payload and the integration trigger stamp."""
         workflow = _make_workflow()
-        handler = _ConcreteTriggerHandler()
-        handler.find_workflows = AsyncMock(return_value=[workflow])
+        handler = _ConcreteTriggerHandler([workflow])
         mock_queue_svc.queue_workflow_execution = AsyncMock(return_value=True)
         mock_signal_context.return_value = ""
-        payload = {"start_time": "2026-01-01T10:00:00+00:00", "id": "evt_1"}
+        payload: dict[str, object] = {"start_time": "2026-01-01T10:00:00+00:00", "id": "evt_1"}
 
         await handler.process_event("TEST_EVENT", TRIGGER_ID, USER_ID, payload)
 
@@ -436,8 +438,7 @@ class TestTriggerHandlerBase:
     ) -> None:
         """Signal context is attached to every workflow but fetched once per user."""
         workflows = [_make_workflow(workflow_id="wf_1"), _make_workflow(workflow_id="wf_2")]
-        handler = _ConcreteTriggerHandler()
-        handler.find_workflows = AsyncMock(return_value=workflows)
+        handler = _ConcreteTriggerHandler(workflows)
         mock_queue_svc.queue_workflow_execution = AsyncMock(return_value=True)
         mock_signal_context.return_value = "todo: buy milk"
 
@@ -467,8 +468,7 @@ class TestTriggerHandlerBase:
     ) -> None:
         """A failing signal-context fetch still queues the workflow, minus the todos key."""
         workflow = _make_workflow()
-        handler = _ConcreteTriggerHandler()
-        handler.find_workflows = AsyncMock(return_value=[workflow])
+        handler = _ConcreteTriggerHandler([workflow])
         mock_queue_svc.queue_workflow_execution = AsyncMock(return_value=True)
         mock_signal_context.side_effect = Exception("mongo down")
 
@@ -484,8 +484,7 @@ class TestTriggerHandlerBase:
     async def test_process_event_skips_workflow_with_no_id(self, mock_queue_svc):
         workflow = _make_workflow()
         workflow.id = None
-        handler = _ConcreteTriggerHandler()
-        handler.find_workflows = AsyncMock(return_value=[workflow])
+        handler = _ConcreteTriggerHandler([workflow])
 
         result = await handler.process_event("TEST_EVENT", TRIGGER_ID, USER_ID, {})
         assert "Queued 0 workflows" in result["message"]
@@ -494,8 +493,7 @@ class TestTriggerHandlerBase:
     @patch("app.services.triggers.base.WorkflowQueueService")
     async def test_process_event_handles_queue_failure(self, mock_queue_svc):
         workflow = _make_workflow()
-        handler = _ConcreteTriggerHandler()
-        handler.find_workflows = AsyncMock(return_value=[workflow])
+        handler = _ConcreteTriggerHandler([workflow])
         mock_queue_svc.queue_workflow_execution = AsyncMock(side_effect=Exception("Queue failed"))
 
         result = await handler.process_event("TEST_EVENT", TRIGGER_ID, USER_ID, {})
@@ -2191,7 +2189,7 @@ class TestCalendarStartingSoonFanOut:
     async def test_redis_down_fires_every_event_rather_than_dropping_one(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(trigger_base.redis_cache, "redis", None)
+        monkeypatch.setattr(redis_cache, "redis", None)
         reminder = _make_workflow(trigger_name="calendar_event_starting_soon")
         payload = _starting_soon_payload("evt_weekly_sync", "primary")
 

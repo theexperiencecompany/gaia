@@ -2034,9 +2034,11 @@ class TestReopenOfATakenRef:
         created: list[TriggerSubscription] = []
 
         async def register(
-            **kwargs: object,
+            *, trigger_name: str, conditions: list[SubscriptionCondition], **rest: object
         ) -> tuple[TriggerSubscription, None, bool]:
-            subscription, outcome, created_flag = await _registered(**kwargs)
+            subscription, outcome, created_flag = await _registered(
+                trigger_name=trigger_name, conditions=conditions, **rest
+            )
             created.append(subscription)
             return subscription, outcome, created_flag
 
@@ -2130,9 +2132,11 @@ class TestReopenWatchesTheRefAgain:
         created: list[TriggerSubscription] = []
 
         async def register(
-            **kwargs: object,
+            *, trigger_name: str, conditions: list[SubscriptionCondition], **rest: object
         ) -> tuple[TriggerSubscription, None, bool]:
-            subscription, outcome, created_flag = await _registered(**kwargs)
+            subscription, outcome, created_flag = await _registered(
+                trigger_name=trigger_name, conditions=conditions, **rest
+            )
             created.append(subscription)
             return subscription, outcome, created_flag
 

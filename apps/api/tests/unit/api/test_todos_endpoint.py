@@ -5,6 +5,7 @@ happy path with the service faked, and analytics captures on mutations.
 """
 
 from datetime import UTC, datetime, timedelta, tzinfo
+from typing import Self
 from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
@@ -445,7 +446,7 @@ class TestListQueryHelpers:
 
         class _RecordingDatetime(datetime):
             @classmethod
-            def now(cls, tz: tzinfo | None = None) -> datetime:
+            def now(cls, tz: tzinfo | None = None) -> Self:
                 now_calls.append(tz)
                 return super().now(tz)
 
