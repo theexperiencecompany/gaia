@@ -1128,9 +1128,10 @@ class TestNewUserGuidanceBlock:
         with self._patch_count(self._count(1)), self._patch_seeded(None):
             block = await build_new_user_guidance_block(self._in_thread(onboarding=onboarding))
 
-        assert "- Their inbox: Mostly vendor alerts and two investor threads." in block
-        assert (
-            "- How they work, from their sent mail: Runs his inbox like a control tower." in block
+        assert block.endswith(
+            "never recite it:\n"
+            "- Their inbox: Mostly vendor alerts and two investor threads.\n"
+            "- How they work, from their sent mail: Runs his inbox like a control tower."
         )
 
     async def test_a_portrait_alone_still_renders_under_the_header(self) -> None:
