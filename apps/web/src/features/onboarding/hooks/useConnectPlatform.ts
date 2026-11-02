@@ -79,6 +79,15 @@ export function useConnectPlatform(
   const [awaitingPlatform, setAwaitingPlatform] = useState<BotPlatform | null>(
     null,
   );
+  // Every app opened this stage: they all carry the one code, so whichever
+  // the user finishes in is the link, even one they walked away from.
+  const [attempted, setAttempted] = useState<readonly BotPlatform[]>([]);
+  const attempt = useCallback((platform: BotPlatform) => {
+    setAwaitingPlatform(platform);
+    setAttempted((tried) =>
+      tried.includes(platform) ? tried : [...tried, platform],
+    );
+  }, []);
 
   // Minted on stage entry, not per click (window.open in a click handler must
   // be synchronous); a code outliving its TTL gets the bot's "link expired"
@@ -109,9 +118,9 @@ export function useConnectPlatform(
       }
       const url = linkCode?.links[platform] ?? botLinks?.[platform];
       if (url) window.open(url, "_blank", "noopener,noreferrer");
-      setAwaitingPlatform(platform);
+      attempt(platform);
     },
-    [botLinks, linkCode],
+    [attempt, botLinks, linkCode],
   );
 
   // Subscribed, not derived in render: the link landing is an outside event
@@ -119,7 +128,7 @@ export function useConnectPlatform(
   // once — the user taps Start, then switches back to this tab.
   const queryClient = useQueryClient();
   useEffect(() => {
-    if (!awaitingPlatform) return;
+    if (attempted.length === 0) return;
     const observer = new QueryObserver(queryClient, {
       queryKey: PLATFORM_LINKS_QUERY_KEY,
       queryFn: fetchPlatformLinks,
@@ -129,13 +138,15 @@ export function useConnectPlatform(
     });
     let confirmed = false;
     return observer.subscribe(({ data }) => {
-      if (confirmed || !data?.platform_links[awaitingPlatform]?.platformUserId)
-        return;
+      const linked = attempted.find(
+        (platform) => data?.platform_links[platform]?.platformUserId,
+      );
+      if (confirmed || !linked) return;
       confirmed = true;
-      dispatch({ type: "platformConnected", platform: awaitingPlatform });
+      dispatch({ type: "platformConnected", platform: linked });
       onConfirmed();
     });
-  }, [awaitingPlatform, queryClient, dispatch, onConfirmed]);
+  }, [attempted, queryClient, dispatch, onConfirmed]);
 
   const chooseAnother = useCallback(() => setAwaitingPlatform(null), []);
 
@@ -182,8 +193,8 @@ export function useConnectPlatform(
     const registered = phoneTarget !== null;
     setPhoneModalOpen(false);
     setPhoneTarget(null);
-    if (registered) setAwaitingPlatform("imessage");
-  }, [phoneTarget]);
+    if (registered) attempt("imessage");
+  }, [attempt, phoneTarget]);
 
   // Skipping just advances the wizard: the web no longer stages the composed
   // opener as the user's own turn (completion seeds GAIA's "Getting started"

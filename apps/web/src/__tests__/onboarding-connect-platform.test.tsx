@@ -205,6 +205,29 @@ describe("useConnectPlatform", () => {
     expect(onConfirmed).not.toHaveBeenCalled();
   });
 
+  it("finishes with an app the user walked away from if that is where they linked", async () => {
+    // One code rides every app's link, so whichever app redeems it is the link:
+    // opening Telegram, switching to WhatsApp, then tapping Start in Telegram
+    // links Telegram, and the stage must not wait on WhatsApp forever.
+    const { result, dispatch, onConfirmed } = await renderConnect();
+
+    act(() => result.current.connect("telegram"));
+    act(() => result.current.chooseAnother());
+    fetchPlatformLinks.mockResolvedValue({
+      platform_links: { telegram: { platformUserId: "tg-1" } },
+    });
+    act(() => result.current.connect("whatsapp"));
+
+    // Within one poll interval of the link landing.
+    await waitFor(() => expect(onConfirmed).toHaveBeenCalledOnce(), {
+      timeout: 3000,
+    });
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "platformConnected",
+      platform: "telegram",
+    });
+  });
+
   it("goes back to the picker on choose-another without submitting", async () => {
     const { result, onConfirmed } = await renderConnect();
 
