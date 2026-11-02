@@ -10,7 +10,6 @@ import asyncio
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
-import uuid
 
 from bson import ObjectId
 import pytest
@@ -31,13 +30,13 @@ from app.utils.occurrence import parse_occurrence_stamp
 _MISSING_OBJECT_ID = "0" * 24
 
 
-def _uid(prefix: str) -> str:
-    return f"{prefix}_{uuid.uuid4().hex[:12]}"
+def _uid() -> str:
+    return str(ObjectId())
 
 
 def _reminder(**overrides: object) -> ReminderDocument:
     data: dict[str, object] = {
-        "user_id": _uid("u"),
+        "user_id": _uid(),
         "agent": AgentType.STATIC,
         "payload": StaticReminderPayload(title="Drink water", body="stay hydrated"),
         "scheduled_at": datetime.now(UTC) + timedelta(hours=1),
@@ -71,11 +70,11 @@ class TestRemindersCore:
         assert await repo.get_for_user(created.id, "attacker") is None
 
     async def test_list_for_user_with_status_and_pagination(self, repo):
-        owner = _uid("owner")
+        owner = _uid()
         await repo.create(_reminder(user_id=owner, status=ReminderStatus.SCHEDULED))
         await repo.create(_reminder(user_id=owner, status=ReminderStatus.SCHEDULED))
         await repo.create(_reminder(user_id=owner, status=ReminderStatus.COMPLETED))
-        await repo.create(_reminder(user_id=_uid("other")))
+        await repo.create(_reminder(user_id=_uid()))
         assert len(await repo.list_for_user(owner)) == 3
         scheduled = await repo.list_for_user(owner, status=ReminderStatus.SCHEDULED)
         assert len(scheduled) == 2
@@ -101,7 +100,7 @@ class TestRemindersScheduler:
         assert [r.id for r in pending] == [due.id]
 
     async def test_set_status_reschedule_fields_and_user_guard(self, repo):
-        owner = _uid("owner")
+        owner = _uid()
         rem = await repo.create(_reminder(user_id=owner))
         run_at = datetime.now(UTC) + timedelta(days=1)
         ok = await repo.set_status(
@@ -117,7 +116,7 @@ class TestRemindersScheduler:
         assert (await repo.get(rem.id)).status == ReminderStatus.COMPLETED
 
     async def test_a_system_pause_is_found_by_its_reason_and_a_resume_clears_it(self, repo):
-        owner = _uid("owner")
+        owner = _uid()
         lapsed = await repo.create(_reminder(user_id=owner, repeat="0 9 * * *"))
         by_user = await repo.create(_reminder(user_id=owner, repeat="0 9 * * *"))
         await repo.set_status(
@@ -226,7 +225,7 @@ class TestRemindersScheduler:
 
 class TestRemindersUpdate:
     async def test_update_for_user_partial_and_scoped(self, repo):
-        owner = _uid("owner")
+        owner = _uid()
         rem = await repo.create(_reminder(user_id=owner, repeat=None))
         before = rem.updated_at
         updated = await repo.update_for_user(
@@ -263,7 +262,7 @@ class TestRemindersUpdate:
         assert await repo.get(recent_done.id) is not None
 
     async def test_update_replaces_payload(self, repo):
-        owner = _uid("owner")
+        owner = _uid()
         rem = await repo.create(_reminder(user_id=owner))
         updated = await repo.update_for_user(
             rem.id,
@@ -296,7 +295,7 @@ class TestReminderCreationIsIdempotent:
     async def test_the_same_reminder_asked_for_twice_is_created_once(
         self, scheduler, raw_collection
     ):
-        owner = _uid("owner")
+        owner = _uid()
         first = await scheduler.create_reminder(_create_request(), user_id=owner)
         second = await scheduler.create_reminder(_create_request(), user_id=owner)
 
@@ -309,7 +308,7 @@ class TestReminderCreationIsIdempotent:
     async def test_two_identical_creates_at_once_still_make_one_reminder(
         self, scheduler, raw_collection
     ):
-        owner = _uid("owner")
+        owner = _uid()
         results = await asyncio.gather(
             scheduler.create_reminder(_create_request(), user_id=owner),
             scheduler.create_reminder(_create_request(), user_id=owner),
@@ -321,7 +320,7 @@ class TestReminderCreationIsIdempotent:
     async def test_a_finished_reminder_does_not_block_asking_again(
         self, scheduler, repo, raw_collection
     ):
-        owner = _uid("owner")
+        owner = _uid()
         first = await scheduler.create_reminder(_create_request(), user_id=owner)
         await repo.set_status(first.reminder_id, ReminderStatus.CANCELLED)
 
@@ -341,7 +340,7 @@ class TestReminderCreationIsIdempotent:
     async def test_a_different_text_or_schedule_is_a_different_reminder(
         self, scheduler, raw_collection, other
     ):
-        owner = _uid("owner")
+        owner = _uid()
         await scheduler.create_reminder(_create_request(), user_id=owner)
         result = await scheduler.create_reminder(_create_request(**other), user_id=owner)
 
@@ -351,7 +350,7 @@ class TestReminderCreationIsIdempotent:
     async def test_a_one_time_reminder_is_not_the_twin_of_a_recurring_one(
         self, scheduler, raw_collection
     ):
-        owner = _uid("owner")
+        owner = _uid()
         await scheduler.create_reminder(_create_request(repeat="0 9 * * *"), user_id=owner)
         result = await scheduler.create_reminder(_create_request(), user_id=owner)
 
@@ -359,20 +358,20 @@ class TestReminderCreationIsIdempotent:
         assert await raw_collection.count_documents({"user_id": owner}) == 2
 
     async def test_another_users_identical_reminder_is_not_theirs(self, scheduler, raw_collection):
-        await scheduler.create_reminder(_create_request(), user_id=_uid("a"))
-        result = await scheduler.create_reminder(_create_request(), user_id=_uid("b"))
+        await scheduler.create_reminder(_create_request(), user_id=_uid())
+        result = await scheduler.create_reminder(_create_request(), user_id=_uid())
 
         assert result.created
 
 
 async def test_scheduled_for_user_is_every_armed_reminder_of_that_user(repo):
-    owner = _uid("owner")
+    owner = _uid()
     soon = await repo.create(_reminder(user_id=owner))
     overdue = await repo.create(
         _reminder(user_id=owner, scheduled_at=datetime.now(UTC) - timedelta(days=1))
     )
     await repo.create(_reminder(user_id=owner, status=ReminderStatus.COMPLETED))
-    await repo.create(_reminder(user_id=_uid("other")))
+    await repo.create(_reminder(user_id=_uid()))
 
     found = await repo.find_scheduled_for_user(owner)
 
