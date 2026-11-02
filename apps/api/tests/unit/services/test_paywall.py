@@ -18,21 +18,20 @@ def _user(preferences: OnboardingPreferences | None) -> MagicMock:
 
 async def test_value_preview_lists_the_jobs_drafted_from_the_users_answers() -> None:
     seeded = AsyncMock(return_value=["Clear my inbox", "Prep tomorrow"])
+    variant = AsyncMock(return_value=OnboardingPaywallVariant.VALUE_PREVIEW)
+    get_user = AsyncMock(return_value=_user(PREFERENCES))
     with (
-        patch(
-            "app.services.payments.paywall.onboarding_paywall_variant",
-            AsyncMock(return_value=OnboardingPaywallVariant.VALUE_PREVIEW),
-        ),
-        patch(
-            "app.services.payments.paywall.user_repository.get",
-            AsyncMock(return_value=_user(PREFERENCES)),
-        ),
+        patch("app.services.payments.paywall.onboarding_paywall_variant", variant),
+        patch("app.services.payments.paywall.user_repository.get", get_user),
         patch("app.services.payments.paywall.seeded_chips", seeded),
     ):
         paywall = await get_paywall(USER_ID)
 
     assert paywall.variant is OnboardingPaywallVariant.VALUE_PREVIEW
     assert paywall.starting_jobs == ["Clear my inbox", "Prep tomorrow"]
+    # The variant and the answers are this user's, not anyone's: PostHog buckets by id.
+    variant.assert_awaited_once_with(USER_ID)
+    get_user.assert_awaited_once_with(USER_ID)
     seeded.assert_awaited_once_with(USER_ID, PREFERENCES)
 
 
