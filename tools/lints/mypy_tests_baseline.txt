@@ -234,10 +234,6 @@ apps/api/tests/unit/agents/test_llm_client.py	dict-item
 apps/api/tests/unit/agents/test_llm_client.py	index
 apps/api/tests/unit/agents/test_llm_client.py	typeddict-item
 apps/api/tests/unit/agents/test_llm_client.py	union-attr
-apps/api/tests/unit/agents/test_llm_provider_catalog.py	arg-type
-apps/api/tests/unit/agents/test_llm_provider_catalog.py	attr-defined
-apps/api/tests/unit/agents/test_llm_provider_catalog.py	index
-apps/api/tests/unit/agents/test_llm_provider_catalog.py	union-attr
 apps/api/tests/unit/agents/test_llm_runtime_config.py	arg-type
 apps/api/tests/unit/agents/test_llm_runtime_config.py	attr-defined
 apps/api/tests/unit/agents/test_llm_runtime_config.py	index
