@@ -33,7 +33,7 @@ from tests.helpers import pick_free_port
 
 API_ROOT = Path(__file__).resolve().parents[5]
 #: The single-origin proxy self-host ships in front of the API and the web app.
-SELFHOST_CADDYFILE = API_ROOT.parents[1] / "infra" / "docker" / "selfhost" / "Caddyfile"
+SELFHOST_CADDYFILE = API_ROOT.parents[1] / "packages" / "cli" / "selfhost" / "Caddyfile"
 #: The health key the worker process's reaper (a main-queue ARQ worker) refreshes while it polls.
 REAPER_HEALTH_KEY = "browser-stack:reaper:health"
 #: How long a process gets to boot: a cold import of the app, or an engine launch.
