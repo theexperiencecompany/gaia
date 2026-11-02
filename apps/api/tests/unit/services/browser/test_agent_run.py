@@ -846,7 +846,11 @@ class TestExecute:
         assert built_with == [("agent", harness.ledger), ("text", harness.ledger)]
         browser = agent.options["browser"]
         # The run's own session, fingerprinted for the run's user.
-        assert browser.options == {"cdp_url": "ws://browser.test/cdp", "user_id": "user-1"}
+        assert browser.options == {
+            "cdp_url": "ws://browser.test/cdp",
+            "user_id": "user-1",
+            "engine": BrowserEngine.CHROMIUM,
+        }
 
     async def test_the_stall_watcher_listens_on_every_connect_of_this_browser(
         self, harness: _Harness

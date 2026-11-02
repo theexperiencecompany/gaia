@@ -78,6 +78,16 @@ def test_obscura_receives_its_script_deadline_in_milliseconds(
     assert env["OBSCURA_PROBE_PASSTHROUGH"] == "kept"
 
 
+@pytest.mark.regression
+def test_a_command_outlives_the_script_phase_it_waits_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Obscura's per-command budget defaulted to our 60 s script deadline, so both expired together."""
+    monkeypatch.setattr(browser_host_settings, "OBSCURA_SCRIPT_DEADLINE_SECONDS", 60)
+
+    env = obscura_serve_env()
+
+    assert int(env["OBSCURA_CDP_COMMAND_TIMEOUT_MS"]) > int(env["OBSCURA_SCRIPT_DEADLINE_MS"])
+
+
 def test_obscura_reaches_private_addresses_only_while_the_host_allows_private_origins(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

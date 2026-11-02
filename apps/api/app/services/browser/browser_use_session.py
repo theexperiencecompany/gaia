@@ -17,7 +17,7 @@ from pydantic import PrivateAttr
 from typing_extensions import override
 
 from app.browser_host.stealth import build_stealth_script
-from app.constants.browser import BROWSER_VIEWPORT_HEIGHT, BROWSER_VIEWPORT_WIDTH
+from app.constants.browser import BROWSER_VIEWPORT_HEIGHT, BROWSER_VIEWPORT_WIDTH, BrowserEngine
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
@@ -39,16 +39,19 @@ class GaiaBrowserSession(BrowserSession):
     """The run's Browser-Use session on the host, sized to the screencast and fingerprinted for its user."""
 
     _fingerprint_seed: int = PrivateAttr(default=_DEFAULT_SEED)
+    #: Only Chrome takes our stealth script; Obscura's --stealth owns its own fingerprint.
+    _chrome_stealth: bool = PrivateAttr(default=True)
     #: Targets that already carry the stealth script: it is registered once per target.
     _stealthed: set[str] = PrivateAttr(default_factory=set)
 
-    def __init__(self, *, cdp_url: str, user_id: str | None) -> None:
+    def __init__(self, *, cdp_url: str, user_id: str | None, engine: BrowserEngine) -> None:
         # Browser-Use sizes the page to a given viewport (at scale 1): the size the host screencasts.
         super().__init__(
             cdp_url=cdp_url,
             viewport={"width": BROWSER_VIEWPORT_WIDTH, "height": BROWSER_VIEWPORT_HEIGHT},
         )
         self._fingerprint_seed = seed_for_user(user_id)
+        self._chrome_stealth = engine is BrowserEngine.CHROMIUM
 
     @override
     async def get_or_create_cdp_session(
@@ -60,7 +63,7 @@ class GaiaBrowserSession(BrowserSession):
         it, so a tab window.open made would be fingerprint-naked without its own.
         """
         cdp_session = await super().get_or_create_cdp_session(target_id=target_id, focus=focus)
-        if cdp_session.target_id in self._stealthed:
+        if not self._chrome_stealth or cdp_session.target_id in self._stealthed:
             return cdp_session
         self._stealthed.add(cdp_session.target_id)
         try:

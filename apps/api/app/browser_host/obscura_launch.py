@@ -18,6 +18,8 @@ from app.browser_host.process import spawn_engine, stop_process, until_published
 from app.config.browser_host_settings import OBSCURA_PRIVATE_NETWORK_ENV, browser_host_settings
 
 _LOOPBACK = "127.0.0.1"
+#: A command waits on the script phase it started, so its budget ends after that phase's.
+_COMMAND_OVER_SCRIPT_SECONDS = 10
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,15 +65,17 @@ def obscura_serve_argv(port: int) -> list[str]:
 
 
 def obscura_serve_env() -> dict[str, str]:
-    """Return the environment an Obscura process runs with: ours plus its script deadline.
+    """Return the environment an Obscura process runs with: ours plus its script and command deadlines.
 
     Obscura refuses private addresses on its own unless told otherwise, and is told
     only while the host allows private origins (a test stack); the proxy keeps
     explicit navigations to exactly those origins. A test stack's CA becomes its trust store.
     """
     env = {key: value for key, value in os.environ.items() if key != OBSCURA_PRIVATE_NETWORK_ENV}
-    env["OBSCURA_SCRIPT_DEADLINE_MS"] = str(
-        browser_host_settings.OBSCURA_SCRIPT_DEADLINE_SECONDS * 1000
+    script_deadline = browser_host_settings.OBSCURA_SCRIPT_DEADLINE_SECONDS
+    env["OBSCURA_SCRIPT_DEADLINE_MS"] = str(script_deadline * 1000)
+    env["OBSCURA_CDP_COMMAND_TIMEOUT_MS"] = str(
+        (script_deadline + _COMMAND_OVER_SCRIPT_SECONDS) * 1000
     )
     if browser_host_settings.BROWSER_HOST_ALLOW_PRIVATE_ORIGINS:
         env[OBSCURA_PRIVATE_NETWORK_ENV] = "1"

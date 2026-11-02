@@ -295,7 +295,9 @@ class BrowserAgentRun:
             log.set_ns("browser", llm_error=type(exc).__name__)
             raise
         async with open_jev_client() as client:
-            browser = GaiaBrowserSession(cdp_url=self._session.cdp_url, user_id=self._user_id)
+            browser = GaiaBrowserSession(
+                cdp_url=self._session.cdp_url, user_id=self._user_id, engine=self._session.engine
+            )
             stalls = self._stalls = StalledLoads(browser)
             browser.event_bus.on(BrowserConnectedEvent, self._on_connected)
             browser.event_bus.on(BrowserConnectedEvent, stalls.attach)
