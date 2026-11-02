@@ -8501,6 +8501,18 @@
             ],
             "default": null,
             "title": "Generated Immediately"
+          },
+          "is_todo_workflow": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Is Todo Workflow"
           }
         },
         "required": ["origin"],

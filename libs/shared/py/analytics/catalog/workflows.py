@@ -43,6 +43,8 @@ class WorkflowCreated(ServerEvent):
     trigger_type: Identifier | None = None
     steps_count: int | None = None
     generated_immediately: bool | None = None
+    #: Kept for the Feature Adoption insight that splits on it; origin is the finer split.
+    is_todo_workflow: bool | None = None
 
 
 class WorkflowExecuted(ServerEvent):

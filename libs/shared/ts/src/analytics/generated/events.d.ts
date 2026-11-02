@@ -1665,6 +1665,7 @@ export interface EventProperties {
     "trigger_type"?: string;
     "steps_count"?: number;
     "generated_immediately"?: boolean;
+    "is_todo_workflow"?: boolean;
   };
   "workflow:deactivated": {
     "actor": "user" | "agent";

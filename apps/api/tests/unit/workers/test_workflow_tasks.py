@@ -699,7 +699,10 @@ class TestProcessWorkflowGenerationTask:
         assert _no_real_analytics.call_args.args == (
             UserId(user_id),
             WorkflowCreated(
-                origin="todo_requested", workflow_id=workflow.id, steps_count=len(workflow.steps)
+                origin="todo_requested",
+                workflow_id=workflow.id,
+                steps_count=len(workflow.steps),
+                is_todo_workflow=True,
             ),
         )
 

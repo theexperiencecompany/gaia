@@ -249,6 +249,7 @@ async def process_workflow_generation_task(
                         origin=origin,
                         workflow_id=workflow.id,
                         steps_count=len(workflow.steps),
+                        is_todo_workflow=True,
                     ),
                 )
 
