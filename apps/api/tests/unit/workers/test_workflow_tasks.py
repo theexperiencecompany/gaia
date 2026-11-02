@@ -1261,6 +1261,39 @@ class TestExecuteWorkflowAsChat:
         record.assert_awaited_once_with(STREAM_ID)
         assert trace == recorded
 
+    async def test_a_record_that_cannot_be_read_leaves_the_finished_run_finished(self):
+        """The run's work already happened; failing the execution over its record would misreport it."""
+        workflow = self._make_workflow()
+
+        with (
+            patch(
+                "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
+                new_callable=AsyncMock,
+                return_value="conv_trace",
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.add_workflow_execution_messages",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.agents.core.agent.call_agent_silent",
+                new_callable=AsyncMock,
+                return_value=SilentRunResult(message="Done", tool_data=[], stream_id=STREAM_ID),
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.read_run_record",
+                AsyncMock(side_effect=ConnectionError("redis down")),
+            ),
+            patch("app.workers.tasks.workflow_tasks.log") as log,
+        ):
+            conversation_id, trace = await execute_workflow_as_chat(
+                workflow, AuthenticatedUser(user_id=workflow.user_id), {}, reservation=RESERVATION
+            )
+
+        assert (conversation_id, trace) == ("conv_trace", [])
+        assert log.error.call_args.kwargs["workflow_id"] == workflow.id
+        assert log.error.call_args.kwargs["error_type"] == "ConnectionError"
+
 
 # ---------------------------------------------------------------------------
 # workflow notification senders (app.services.workflow.notifications)
