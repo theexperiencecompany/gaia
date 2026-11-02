@@ -79,7 +79,7 @@ It checks Docker, containers, ports, every database, the web app, disk and memor
 
 <AccordionGroup>
   <Accordion title="Port 3000 is taken">
-    GAIA opens one port. If it is busy, `gaia up` shows what uses it and suggests another. The choice is saved in `infra/docker/.env` inside `~/gaia`. To change it later, edit that file, then run `gaia stop && gaia start`.
+    GAIA opens one port. If it is busy, `gaia up` shows what uses it and suggests another. The choice is saved in `packages/cli/selfhost/.env` inside `~/gaia`. To change it later, edit that file, then run `gaia stop && gaia start`.
 
     | Variable | What it sets | Default |
     | --- | --- | --- |
@@ -99,8 +99,8 @@ It checks Docker, containers, ports, every database, the web app, disk and memor
   </Accordion>
 
   <Accordion title="What is in ~/gaia">
-    - `infra/docker/`: the Compose files and proxy settings
-    - Your files: `apps/api/.env`, `apps/bots/.env`, `infra/docker/.env` and `backups/`
+    - `packages/cli/selfhost/`: the Compose files and proxy settings
+    - Your files: `apps/api/.env`, `apps/bots/.env`, `packages/cli/selfhost/.env` and `backups/`
     - `gaia-selfhost.json`: the list of files that came with the release
 
     Run the commands from inside this folder.

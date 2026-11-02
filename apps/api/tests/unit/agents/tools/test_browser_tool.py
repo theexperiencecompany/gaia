@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import fakeredis.aioredis
 from langchain_core.runnables.config import RunnableConfig
+from langchain_core.tools import StructuredTool
 import pytest
 
 from app.agents.core.background.executor_channel import ExecutorInbox
@@ -31,6 +32,7 @@ from app.services.browser import job_relay, jobs
 from app.services.browser.job_events import JOB_TERMINAL_FRAME, publish_job_event
 from app.services.browser.job_stop import stop_browser_job
 from app.services.browser.job_teller import end_job
+from app.utils.redis_utils import RedisPoolManager
 from tests.helpers import captured_wide_event
 
 # A job that never runs records its ending in Redis (jobs.record_ending), so each test gets its own fakeredis.
@@ -184,9 +186,7 @@ def _install(
     monkeypatch.setattr(tool_mod, "relay_job_cards", _relay)
     monkeypatch.setattr(tool_mod, "follow_job_cards", _follow)
     monkeypatch.setattr(tool_mod, "spawn_logged_task", _spawn)
-    monkeypatch.setattr(
-        tool_mod.RedisPoolManager, "get_pool", AsyncMock(return_value=recorder.pool)
-    )
+    monkeypatch.setattr(RedisPoolManager, "get_pool", AsyncMock(return_value=recorder.pool))
     return recorder
 
 
@@ -399,6 +399,7 @@ async def test_a_config_with_no_configurable_key_still_degrades_cleanly(
     """Use the raw coroutine, not ainvoke, because LangChain's ensure_config always injects configurable; without the empty-dict fallback the next line raises AttributeError on None."""
     recorder = _install(monkeypatch)
 
+    assert isinstance(browser_task, StructuredTool) and browser_task.coroutine is not None
     await browser_task.coroutine(config={}, tool_call_id=TOOL_CALL_ID, task="x")
 
     assert recorder.request.user_id == ""
@@ -460,7 +461,7 @@ async def test_a_stop_while_the_job_is_being_queued_reaches_it_before_it_runs(
     _install(monkeypatch)
     monkeypatch.setattr(tool_mod, "put_job_state", jobs.put_job_state)
     monkeypatch.setattr(tool_mod, "set_latest_job", jobs.set_latest_job)
-    monkeypatch.setattr(tool_mod.RedisPoolManager, "get_pool", AsyncMock(return_value=fake_redis))
+    monkeypatch.setattr(RedisPoolManager, "get_pool", AsyncMock(return_value=fake_redis))
     stopped: list[str | None] = []
 
     async def _stop_lands_as_it_queues(*_args: object, _job_id: str, **_kwargs: object) -> object:
@@ -615,7 +616,7 @@ async def _run_headless_until(
     """Start a headless task whose worker ends the job as it is queued: on ending, or on a stop."""
     recorder = _install(monkeypatch)
     # A stop reads ARQ's keys on the same fake Redis.
-    monkeypatch.setattr(tool_mod.RedisPoolManager, "get_pool", AsyncMock(return_value=fake_redis))
+    monkeypatch.setattr(RedisPoolManager, "get_pool", AsyncMock(return_value=fake_redis))
     monkeypatch.setattr(tool_mod, "put_job_state", jobs.put_job_state)
     monkeypatch.setattr(tool_mod, "follow_job_cards", job_relay.follow_job_cards)
 

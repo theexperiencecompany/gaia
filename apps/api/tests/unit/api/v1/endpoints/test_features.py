@@ -30,7 +30,7 @@ class _UserStore:
     async def get(self, user_id: str) -> UserDocument | None:
         if not self.exists or user_id != USER_ID:
             return None
-        return UserDocument(id=user_id, feature_flags=self.choices)
+        return UserDocument.model_validate({"id": user_id, "feature_flags": self.choices})
 
     async def set_feature_flag(self, user_id: str, flag: FeatureFlag, enabled: bool) -> bool:
         if not self.exists or user_id != USER_ID:
@@ -164,8 +164,10 @@ class TestUpdateFeature:
 
         [captured] = _toggled_captures(posthog)
         assert captured["distinct_id"] == USER_ID
-        assert captured["properties"]["flag"] == "BROWSER_OBSCURA"
-        assert captured["properties"]["enabled"] is True
+        properties = captured["properties"]
+        assert isinstance(properties, dict)
+        assert properties["flag"] == "BROWSER_OBSCURA"
+        assert properties["enabled"] is True
         posthog.set.assert_called_once_with(
             distinct_id=USER_ID, properties={"feature_browser_obscura": True}
         )

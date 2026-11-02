@@ -21,7 +21,7 @@ from itertools import compress
 from pathlib import Path
 import shutil
 from time import perf_counter
-from typing import Any, TypedDict, cast
+from typing import Any, Protocol, TypedDict, cast
 
 from browser_use import Agent
 from browser_use.agent.views import ActionResult, AgentHistoryList, AgentOutput, AgentState
@@ -217,6 +217,12 @@ def _remove_directories(*directories: str | Path) -> None:
                 path=str(directory),
                 error_type=type(exc).__name__,
             )
+
+
+class _SteppingAgent(Protocol):
+    """What the step-end hook reads and writes on Browser-Use's agent: the results of its last step."""
+
+    state: AgentState
 
 
 @dataclass(frozen=True)
@@ -550,7 +556,7 @@ class BrowserAgentRun:
             frame=frame,
         )
 
-    async def _on_step_end(self, agent: Agent[None, BaseModel]) -> None:
+    async def _on_step_end(self, agent: _SteppingAgent) -> None:
         """Record the step's actions and mirror their results, then wait on whoever a handoff action asked."""
         await self._record_step(agent.state.last_result or [])
         wait, self._wait = self._wait, None

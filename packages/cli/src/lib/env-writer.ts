@@ -6,6 +6,7 @@ import {
   type SetupMode,
 } from "./env-parser.js";
 import { needsLocalCertificate } from "./local-certificate.js";
+import { DEV_DOCKER_DIR, selfhostDir } from "./paths.js";
 
 export interface EnvValues {
   [key: string]: string;
@@ -229,7 +230,7 @@ const DOCKER_PORT_VAR_TO_PORT: Record<string, number> = Object.fromEntries(
 /** A domain to serve GAIA at, or false (`gaia up --no-domain`) to stop serving the one an earlier run set. */
 export type DomainFlag = string | false;
 
-/** Self-host values for infra/docker/.env beyond port mappings. */
+/** Self-host values for the compose env file beyond port mappings. */
 export interface SelfhostComposeSettings {
   /** Group of the Docker socket inside containers (sandbox group_add). */
   dockerSocketGid: number;
@@ -240,29 +241,43 @@ export interface SelfhostComposeSettings {
 /** Compose profile that runs the bundled single-origin proxy. */
 const SELFHOST_PROXY_PROFILE = "proxy";
 
-function dockerComposeEnvPath(repoRoot: string): string {
-  return path.join(repoRoot, "infra", "docker", ".env");
+/**
+ * The compose env file: beside the developer stack for a developer setup,
+ * beside the self-host stack otherwise. A reader that names no mode takes the
+ * one this install already has.
+ */
+export function dockerComposeEnvPath(
+  repoRoot: string,
+  mode?: SetupMode,
+): string {
+  const developer = path.join(repoRoot, DEV_DOCKER_DIR, ".env");
+  const selfhost = path.join(selfhostDir(repoRoot), ".env");
+  if (mode === "developer") return developer;
+  if (mode === "selfhost") return selfhost;
+  return !fs.existsSync(selfhost) && fs.existsSync(developer)
+    ? developer
+    : selfhost;
 }
 
-/** The values in infra/docker/.env; empty when the file does not exist. */
-function readDockerComposeEnv(repoRoot: string): EnvValues {
-  const envPath = dockerComposeEnvPath(repoRoot);
+/** The values in the compose env file; empty when the file does not exist. */
+function readDockerComposeEnv(repoRoot: string, mode?: SetupMode): EnvValues {
+  const envPath = dockerComposeEnvPath(repoRoot, mode);
   return fs.existsSync(envPath)
     ? parseEnvFileValues(fs.readFileSync(envPath, "utf-8"))
     : {};
 }
 
-/** The infra/docker/.env key that pins every GAIA app image to one tag. */
+/** The compose env file's key that pins every GAIA app image to one tag. */
 export const GAIA_VERSION_ENV_KEY = "GAIA_VERSION";
 
-/** The image tag compose runs when infra/docker/.env pins no GAIA_VERSION. */
+/** The image tag compose runs when the compose env file pins no GAIA_VERSION. */
 const UNPINNED_IMAGE_TAG = "latest";
 
 /** The GAIA image tag the install runs today. */
-/** infra/docker/.env key holding the domain `gaia up --domain` serves GAIA at. */
+/** Compose env file key holding the domain `gaia up --domain` serves GAIA at. */
 const GAIA_DOMAIN_ENV_KEY = "GAIA_DOMAIN";
 
-/** infra/docker/.env key for Caddy's global options (the Caddyfile's first block). */
+/** Compose env file key for Caddy's global options (the Caddyfile's first block). */
 const CADDY_GLOBAL_OPTIONS_ENV_KEY = "GAIA_CADDY_GLOBAL_OPTIONS";
 
 /** Caddy global option: issue every certificate from Caddy's own local authority. */
@@ -279,12 +294,13 @@ export function readPinnedGaiaVersion(repoRoot: string): string {
   );
 }
 
-/** Replace infra/docker/.env with these values, keeping the previous file as .env.bak. */
+/** Replace the compose env file with these values, keeping the previous file as .env.bak. */
 function writeDockerComposeEnvValues(
   repoRoot: string,
   values: EnvValues,
+  mode?: SetupMode,
 ): void {
-  const envPath = dockerComposeEnvPath(repoRoot);
+  const envPath = dockerComposeEnvPath(repoRoot, mode);
   backupIfExists(envPath);
 
   const lines: string[] = [
@@ -300,16 +316,17 @@ function writeDockerComposeEnvValues(
   writeFileOwnerOnly(envPath, lines.join("\n"));
 }
 
-/** Set one key in infra/docker/.env, keeping every other value. */
+/** Set one key in a self-host install's compose env file, keeping every other value. */
 export function setDockerComposeEnvValue(
   repoRoot: string,
   key: string,
   value: string,
 ): void {
-  writeDockerComposeEnvValues(repoRoot, {
-    ...readDockerComposeEnv(repoRoot),
-    [key]: value,
-  });
+  writeDockerComposeEnvValues(
+    repoRoot,
+    { ...readDockerComposeEnv(repoRoot, "selfhost"), [key]: value },
+    "selfhost",
+  );
 }
 
 export function writeDockerComposeEnv(
@@ -321,7 +338,7 @@ export function writeDockerComposeEnv(
   // Merge-don't-clobber, so a rerun never erases a prior port or domain. The
   // retired NEXT_PUBLIC_APP_URL (the image calls a same-origin /api/v1) is dropped.
   const { NEXT_PUBLIC_APP_URL: _retired, ...merged }: EnvValues =
-    readDockerComposeEnv(repoRoot);
+    readDockerComposeEnv(repoRoot, mode);
 
   for (const [original, replacement] of Object.entries(portOverrides)) {
     const origPort = Number(original);
@@ -349,7 +366,7 @@ export function writeDockerComposeEnv(
     }
   }
 
-  writeDockerComposeEnvValues(repoRoot, merged);
+  writeDockerComposeEnvValues(repoRoot, merged, mode);
 }
 
 /**
@@ -379,12 +396,7 @@ export function portOverridesToDockerEnv(
  * and the .env override mechanism only works with variable substitution syntax.
  */
 export function patchDockerComposePorts(repoRoot: string): void {
-  const composePath = path.join(
-    repoRoot,
-    "infra",
-    "docker",
-    "docker-compose.yml",
-  );
+  const composePath = path.join(repoRoot, DEV_DOCKER_DIR, "docker-compose.yml");
   if (!fs.existsSync(composePath)) return;
 
   let content = fs.readFileSync(composePath, "utf-8");
@@ -436,7 +448,7 @@ export function patchDockerComposePorts(repoRoot: string): void {
 export function readDockerComposePortOverrides(
   repoRoot: string,
 ): Record<number, number> {
-  const envPath = path.join(repoRoot, "infra", "docker", ".env");
+  const envPath = dockerComposeEnvPath(repoRoot);
   const overrides: Record<number, number> = {};
 
   if (!fs.existsSync(envPath)) {

@@ -10,7 +10,7 @@ import pytest
 from app.config.settings import settings
 from app.constants.browser import BROWSER_LIVE_CODE_ENTROPY_BYTES
 from app.schemas.browser import LiveCodeRecord
-from app.services.browser import links, live_code, live_view
+from app.services.browser import live_code, live_view
 
 _URL_SAFE_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
@@ -80,8 +80,8 @@ async def test_link_opens_the_web_live_page_not_the_api(
 ) -> None:
     mint = AsyncMock(return_value="Xk3p9qR2mN4t")
     monkeypatch.setattr(live_view, "mint_live_code", mint)
-    monkeypatch.setattr(live_view.settings, "FRONTEND_URL", "https://heygaia.io")
-    monkeypatch.setattr(links.settings, "HOST", "https://api.heygaia.io")
+    monkeypatch.setattr(settings, "FRONTEND_URL", "https://heygaia.io")
+    monkeypatch.setattr(settings, "HOST", "https://api.heygaia.io")
 
     link = await live_view.create_live_view_link("sess-abc", "user-1", "h1")
 

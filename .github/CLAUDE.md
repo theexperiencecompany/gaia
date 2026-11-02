@@ -14,7 +14,7 @@ which ran 52 jobs per PR push between them, 24 of them for under a minute of
 work behind a runner's setup.
 
 - **Tiers.** A PR push runs the fast tier: `select-runner`, `detect`,
-  `lint-node`, `lint-python`, `lint-mixed`, `ts-build-test`, the `unit-a` and
+  `lint-node`, `lint-python`, `lint-mixed`, `repo-policy`, `ts-build-test`, the `unit-a` and
   `unit-b` slices, `test-mutation` on the changed modules (a survivor found
   only in the queue is an ejection plus a fix round), `quality-gate`. The merge
   queue (`merge_group`), master and dispatch run the full tier on top: the
@@ -24,16 +24,19 @@ work behind a runner's setup.
   deploy phases. A PR reaches master only through the queue, so the slow checks
   run once per merge, not once per push. `detect` decides the tier
   (`tier` output) and `pytest.sh slices` cuts the slice matrix to it.
-- **Grouped jobs.** Each check inside `lint-node`, `lint-python`,
-  `lint-mixed`, `scan`, `python-audit` and `ts-build-test` is its own
-  `continue-on-error` step with an `id`, listed once in the job's `CHECKS`
-  YAML anchor. That list feeds `verdict.py post-statuses` (one `ci / <area> / <check>`
-  commit status per check, linked to the job, its area from `CHECK_AREAS` in
-  verdict.py so the PR list sorts into groups; skipped on fork and Dependabot
-  PRs, whose token cannot write statuses) and `verdict.py step-outcomes`
-  (fails the job if any check failed). A check that writes its own verdict
-  reports under `<job>/<check>`, the job's namespace.
-- **Never add a check twice.** One check, one step, one job.
+- **Grouped jobs.** Every check inside `lint-node`, `lint-python`,
+  `lint-mixed`, `repo-policy`, `scan`, `python-audit` and `ts-build-test` is an
+  nx target whose `metadata.ci` names its job, its status (`check`, `area`) and
+  any `events`/`branch` it is limited to: `tools/ci/project.json` for the
+  repo-wide checks, the code projects' own targets for `api:type-check`,
+  `web:build` and the like. The job runs its checks in one
+  `runner.py run-job <job>` step and `verdict.py post-statuses --job <job>`
+  posts each as a `ci / <area> / <check>` commit status linked to the job
+  (skipped on a dispatch, fork and Dependabot PRs, whose token cannot write
+  statuses), writes a `<job>/<check>` verdict for each failed one and fails the
+  job. Only a check an action runs (gitleaks, semgrep, trivy) or that needs a
+  secret (the PostHog ones) is a step, `runner: action`/`step` in its metadata.
+- **Never add a check twice.** One check, one nx target, one job.
 
 ## Where jobs run: GitHub-hosted first, the home box as overflow
 
@@ -52,7 +55,7 @@ Every pool is routed the same way:
    jobs or more — the 20-job cap is hit; override with the
    `CI_HOSTED_QUEUE_THRESHOLD` repo variable — to `gaia-home`, and only when it
    has an idle listener for every job of the pool (`class_demand` in
-   `runner.py`: light 6, heavy 5, services 9, handed out services first). A
+   `runner.py`: light 7, heavy 5, services 9, handed out services first). A
    busy box is never queued on; a new lane in a pool raises its count.
 3. With both saturated, to `CI_BLACKSMITH_LABEL` (unset: stay queued on GitHub).
 
@@ -144,17 +147,30 @@ to check is `gh pr view --json mergeable`. Keep the branch merged with
 Four layers, from cheap to precise, all decided in the one `detect` job:
 
 1. **The tier** — a PR push never starts a full-tier job (see above).
-2. **Affected projects and path signals** — `nx show projects --affected`
-   (via `nrwl/nx-set-shas`, base `master`) computes the affected project lists
-   that gate jobs and scope their `-p` arguments; `has_api_schema`,
-   `has_analytics`, `has_alert_rules` and `has_go` are path-scoped. A job or
-   check skipped this way counts as PASSING; a failed `detect` fails the
-   gate. A workflow-only (`.yml`) PR lights the lint jobs up so changes to CI
-   itself get validated, but each check self-skips via its own narrower
-   `changes.sh files` list — check lists NEVER include yml.
+2. **Affected nx tasks** — `changes.sh affected` asks `nx affected
+   --explain` once (base: the PR's merge-base with `base_ref`, or
+   `nrwl/nx-set-shas` on every other event; every task on a dispatch). Every
+   check is an nx target and its `inputs` ARE the files that check reads.
+   `detect` publishes `tasks` (`<project>:<target>`), and from each target's
+   `metadata.ci.job` (filtered by its `events`/`branch` for this run) `jobs`
+   and `job_tasks`; a job runs on `contains(fromJSON(needs.detect.outputs.jobs),
+   '<job>')` and run-job runs exactly its `job_tasks`. `api:test` opens the
+   Python slices the same way. There is no path regex in ci.yml: to change what
+   runs a check, change its target's inputs. `scripts/ci/tests/test_workflow_nx_gates.py`
+   fails on a gate naming a task nx is never asked about and on a job that does
+   not start when detect names it; `test_hook_scopes.py` holds the prek hooks that copy a check's
+   files (api-types, analytics-types) equal to its task's inputs;
+   `test_nx_affected.py` pins what the manifests and lockfiles select. Only `repo-policy`'s gitleaks runs on every change.
+   A job or check skipped this way counts as PASSING; a failed `detect` fails
+   the gate. A workflow-only (`.yml`) PR runs exactly the checks whose inputs
+   name `.github` (harness-tests, tool-pins).
 3. **`scripts/ci/changes.sh files` inside checks** — scopes each tool to the
    exact changed files. Contract: prints `__FULL__` (push/dispatch → full
    scan), nothing (no relevant changes → skip & pass), or one path per line.
+   With `--task`, the paths are the ones nx matched to that task's inputs
+   (`detect`'s `task-files` artifact, read through the `task-files` composite as `$TASK_FILES_PATH`; ci:local writes the same file), so a check is never
+   handed a file outside what it reads, and `__FULL__` when nx reached the
+   task through its config or the CI harness.
    The base is `detect`'s `base_ref`: the PR's real parent, or on a merge
    group the commit the group was built on (`merge_group.base_sha` — for the
    second PR in the queue that is the first PR's group commit, not master).
@@ -162,17 +178,17 @@ Four layers, from cheap to precise, all decided in the one `detect` job:
    Jobs using it need `fetch-depth: 0` checkouts.
 4. **`verdict.py reuse-plan` in `detect`** — across pushes to the same PR.
    A check whose last pass on this PR (same base, not a manual re-run) is still
-   valid — nothing in the union of its lanes' `verify-lanes.json` scopes and
-   nothing under `.github/`, `scripts/`, `tools/`, `config/`, `patches/`, the
-   repo root or any config manifest (`GLOBAL_INVALIDATORS` in verdict.py)
-   changed between that pass and this run, on the head OR on the base it was
-   merged into — is skipped and labelled `reused`. The pass is read from the
+   valid — nx would not select its task for what changed between that pass and this run, on the
+   head OR on the base it was merged into: the same answer layer 2 gates it on —
+   is skipped and labelled `reused`. The pass is read from the
    check's own `ci / <area> / <check>` commit status, never the job API (a failed
    `continue-on-error` step reports conclusion `success` there). Each plan
    annotates the base tip it validated on its `detect` job
    (`::notice title=reuse-plan base`); a run without that note never anchors.
-   A check needs `ci_check` in the lane table to be reusable; one without it
-   always runs. Anything the plan cannot read means no reuse.
+   A check run-job runs is reusable unless its metadata says `"reuse": false`
+   (the audits, which a new advisory breaks without a commit); an action or
+   step check always runs. `mise ci:local` picks checks by the same nx tasks.
+   Anything the plan cannot read means no reuse.
 
 **Fail loud is non-negotiable in detection code.** Never
 `nx ... 2>/dev/null || echo ""` — a broken nx invocation must fail the job.
@@ -266,8 +282,8 @@ It reaches its verdict through `scripts/ci/verdict.py consolidate`
 rather than a hand-rolled result loop, so the gate prints what each lane
 actually FOUND (file, line, message) instead of the word `failure`, and a lane
 that merely ran out of clock reads `timed_out` rather than `failure`. **New
-check: a `continue-on-error` step in the grouped job that has its toolchain,
-plus its line in that job's `CHECKS`. New job: add it to the gate's `needs:`,
+check: an nx target with `metadata.ci` naming the grouped job that has its
+toolchain (`.github/quality-gate/README.md`, "Adding a check"). New job: add it to the gate's `needs:`,
 add `<job>=${{ needs.<job>.result }}` to the gate's `EXPECT` env, and end the
 job with the `./.github/actions/upload-verdict` composite under
 `if: always()`.** Either is enforced from the first run, and
@@ -312,14 +328,16 @@ rule/why/exact-fix/doc-pointer on failure (see `tools/lints/`).
   `apps/web/.next/cache` in ci.yml ts-build-test + desktop-pr-build prepare).
 - `nx.json` `defaultBase` is `master` (the single base branch). CI passes
   explicit bases; `defaultBase` matters for local `nx affected` / mise tasks.
-- Versions are pinned where a trusted SHA/number was resolvable (nx 22.7.7 in
-  nx.json `installation`, uv 0.10.6 (same as the Dockerfiles), `uvx ruff@<uv.lock version>` in the ruff
-  lane, pnpm/action-setup + docker/login-action by SHA).
-  `actions/checkout`/`setup-node`/`cache`/`nx-set-shas` still float on major
-  tags — pin them from a machine with GitHub API access.
+- Every tool version has one declaration: Node in `.node-version`, pnpm in
+  `package.json#packageManager`, Python in `.python-version`, the Python lint
+  and audit tools in the root `pyproject.toml`'s `lint` group (locked in
+  `uv.lock`, run with `uv run --frozen --no-build --isolated --only-group lint`),
+  biome in `pnpm-lock.yaml`, and every remote action by commit SHA.
+  `tools/lints/check_tool_pins.py` fails on a second copy (a `uvx tool@x`, an
+  action on a tag).
 - Never run a linter unpinned in a lane: ruff 0.16.0 shipped new rules
   (ISC004, RUF036) four minutes before a scheduled run and turned the lane
-  red with zero code changes. Pin to the uv.lock version; bump deliberately.
+  red with zero code changes. Bump a lint-group pin deliberately and re-lock.
 - Test-service images are digest-pinned (`tag@sha256:...`) in
   `scripts/ci/lib/service-images.sh`, the ONLY place a service image
   reference may appear; the tag part is a readability label, the digest is

@@ -1,0 +1,1174 @@
+{
+  "name": "ci",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "root": "tools/ci",
+  "projectType": "application",
+  "tags": ["scope:ci"],
+  "targets": {
+    "biome": {
+      "executor": "nx:run-commands",
+      "inputs": [
+        "{workspaceRoot}/biome.json",
+        "{workspaceRoot}/config/biome-rules/**/*",
+        "ciHarness",
+        "{workspaceRoot}/**/*.{ts,tsx,js,jsx,mjs,cjs,json,jsonc,css}",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "options": {
+        "command": "bash scripts/ci/changes.sh scoped --task ci:biome --ext \"ts tsx js jsx json jsonc css\" --env -- node scripts/ci/checks.mjs biome"
+      },
+      "cache": false,
+      "metadata": {
+        "ci": {
+          "job": "lint-node",
+          "check": "biome",
+          "area": "node"
+        }
+      }
+    },
+    "deps": {
+      "executor": "nx:run-commands",
+      "inputs": [
+        "{workspaceRoot}/pnpm-lock.yaml",
+        "{workspaceRoot}/packages/**/*",
+        "{workspaceRoot}/config/.syncpackrc.json",
+        "{workspaceRoot}/config/.npmpackagejsonlintrc.json",
+        "ciHarness",
+        "{workspaceRoot}/**/*.{ts,tsx,js,jsx,json}",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "options": {
+        "command": "pnpm run quality:deps && pnpm run quality:pkg-json"
+      },
+      "cache": false,
+      "metadata": {
+        "ci": {
+          "job": "lint-node",
+          "check": "deps",
+          "area": "node",
+          "fallback": "package.json"
+        }
+      }
+    },
+    "circular": {
+      "executor": "nx:run-commands",
+      "inputs": [
+        "{workspaceRoot}/biome.json",
+        "{workspaceRoot}/config/biome-rules/**/*",
+        "ciHarness",
+        "{workspaceRoot}/**/*.{ts,tsx,js,jsx}",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "options": {
+        "command": "pnpm run quality:circular"
+      },
+      "cache": false,
+      "metadata": {
+        "ci": {
+          "job": "lint-node",
+          "check": "circular",
+          "area": "node"
+        }
+      }
+    },
+    "file-size": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/changes.sh scoped --task ci:file-size --ext \"ts tsx js jsx mjs cjs\" --env -- node scripts/ci/checks.mjs file-sizes"
+      },
+      "cache": false,
+      "inputs": [
+        "ciHarness",
+        "{workspaceRoot}/**/*.{ts,tsx,js,jsx,mjs,cjs}",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-node",
+          "check": "file-size",
+          "area": "node"
+        }
+      }
+    },
+    "types-location": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/changes.sh scoped --task ci:types-location --ext \"ts tsx\" --env -- node scripts/ci/checks.mjs types-location --enforce"
+      },
+      "cache": false,
+      "inputs": [
+        "ciHarness",
+        "{workspaceRoot}/**/*.{ts,tsx,js}",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-node",
+          "check": "types-location",
+          "area": "node"
+        }
+      }
+    },
+    "doc-comments": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/changes.sh scoped --task ci:doc-comments --ext \"ts tsx js jsx mjs cjs\" --env -- node scripts/ci/checks.mjs doc-comments"
+      },
+      "cache": false,
+      "inputs": [
+        "ciHarness",
+        "{workspaceRoot}/**/*.{ts,tsx,js,jsx,mjs,cjs}",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-node",
+          "check": "doc-comments",
+          "area": "node"
+        }
+      }
+    },
+    "components-per-file": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/changes.sh scoped --task ci:components-per-file --ext tsx --env -- node scripts/ci/checks.mjs components-per-file"
+      },
+      "cache": false,
+      "inputs": [
+        "ciHarness",
+        "{workspaceRoot}/**/*.tsx",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-node",
+          "check": "components-per-file",
+          "area": "node"
+        }
+      }
+    },
+    "package-hygiene": {
+      "executor": "nx:run-commands",
+      "inputs": [
+        "{workspaceRoot}/packages/cli/**/*",
+        "{workspaceRoot}/pnpm-lock.yaml",
+        "ciHarness",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "options": {
+        "command": "pnpm run quality:publint && pnpm run quality:attw"
+      },
+      "cache": false,
+      "metadata": {
+        "ci": {
+          "job": "lint-node",
+          "check": "package-hygiene",
+          "area": "node"
+        }
+      }
+    },
+    "pnpm-audit": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/audit.sh pnpm"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/pnpm-lock.yaml",
+        "{workspaceRoot}/**/package.json",
+        "{workspaceRoot}/config/pnpm-audit-allowlist.json",
+        "ciHarness",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-node",
+          "check": "pnpm-audit",
+          "area": "node",
+          "reuse": false
+        }
+      }
+    },
+    "duplicates": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm run quality:dupe"
+      },
+      "inputs": [
+        "{workspaceRoot}/config/.jscpd.json",
+        "ciHarness",
+        "{workspaceRoot}/**/*.{ts,tsx,js,jsx,py}",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-node",
+          "check": "duplicates",
+          "area": "node"
+        }
+      }
+    },
+    "ruff": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/changes.sh scoped --task ci:ruff --ext py --full . -- uv run --frozen --no-build --isolated --only-group lint ruff check && bash scripts/ci/changes.sh scoped --task ci:ruff --ext py --full . -- uv run --frozen --no-build --isolated --only-group lint ruff format --check"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/**/pyproject.toml",
+        "{workspaceRoot}/**/ruff.toml",
+        "ciHarness",
+        "{workspaceRoot}/**/*.py",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-python",
+          "check": "ruff",
+          "area": "python"
+        }
+      }
+    },
+    "custom-lints": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python3 tools/lints/run.py apps/api/app apps/api/tests"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/tools/lints/**/*",
+        "ciHarness",
+        "{workspaceRoot}/**/*.py",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-python",
+          "check": "custom-lints",
+          "area": "python"
+        }
+      }
+    },
+    "lint-imports": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run --frozen --no-build --isolated --only-group lint lint-imports --no-cache",
+        "cwd": "apps/api"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/apps/api/pyproject.toml",
+        "ciHarness",
+        "{workspaceRoot}/apps/api/app/**/*.py",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-python",
+          "check": "lint-imports",
+          "area": "python"
+        }
+      }
+    },
+    "ignore-whys": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python3 tools/lints/check_ignore_whys.py"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/**/pyproject.toml",
+        "{workspaceRoot}/tools/lints/check_ignore_whys.py",
+        "ciHarness",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-python",
+          "check": "ignore-whys",
+          "area": "python"
+        }
+      }
+    },
+    "plr-complexity": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python3 tools/lints/check_plr_complexity.py"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/tools/lints/check_plr_complexity.py",
+        "{workspaceRoot}/tools/lints/plr_complexity_baseline.txt",
+        "ciHarness",
+        "{workspaceRoot}/**/*.py",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-python",
+          "check": "plr-complexity",
+          "area": "python"
+        }
+      }
+    },
+    "mypy-tests": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python3 tools/lints/check_mypy_tests.py"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/tools/lints/check_mypy_tests.py",
+        "{workspaceRoot}/tools/lints/mypy_tests_baseline.txt",
+        "{workspaceRoot}/tools/lints/_ratchet.py",
+        "{workspaceRoot}/tools/lints/_common.py",
+        "{workspaceRoot}/pyproject.toml",
+        "{workspaceRoot}/apps/api/pyproject.toml",
+        "{workspaceRoot}/uv.lock",
+        "ciHarness",
+        "{workspaceRoot}/apps/api/tests/**/*.py",
+        "{workspaceRoot}/apps/api/app/**/*.py",
+        "{workspaceRoot}/libs/shared/py/**/*.py",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-python",
+          "check": "mypy-tests",
+          "area": "python"
+        }
+      }
+    },
+    "typed-boundaries": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python3 tools/lints/check_typed_boundaries.py"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/tools/lints/check_typed_boundaries.py",
+        "{workspaceRoot}/tools/lints/typed_boundaries_baseline.txt",
+        "{workspaceRoot}/tools/lints/_ratchet.py",
+        "{workspaceRoot}/tools/lints/_common.py",
+        "ciHarness",
+        "{workspaceRoot}/**/*.py",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-python",
+          "check": "typed-boundaries",
+          "area": "python"
+        }
+      }
+    },
+    "xenon": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/changes.sh scoped --task ci:xenon --py-source --full \"apps/api apps/voice-agent libs/shared/py -e apps/api/tests/** -e apps/api/scripts/** -e libs/shared/py/tests/**\" -- uv run --frozen --no-build --isolated --only-group lint xenon --max-absolute F --max-modules E --max-average B"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/pyproject.toml",
+        "ciHarness",
+        "{workspaceRoot}/apps/api/**/*.py",
+        "{workspaceRoot}/apps/voice-agent/**/*.py",
+        "{workspaceRoot}/libs/shared/py/**/*.py",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-python",
+          "check": "xenon",
+          "area": "python"
+        }
+      }
+    },
+    "interrogate": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/changes.sh scoped --task ci:interrogate --py-source --full \"apps/api apps/voice-agent libs/shared/py\" -- uv run --frozen --no-build --isolated --only-group lint interrogate -c pyproject.toml"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/pyproject.toml",
+        "ciHarness",
+        "{workspaceRoot}/apps/api/**/*.py",
+        "{workspaceRoot}/apps/voice-agent/**/*.py",
+        "{workspaceRoot}/libs/shared/py/**/*.py",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-python",
+          "check": "interrogate",
+          "area": "python"
+        }
+      }
+    },
+    "bandit": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/changes.sh scoped --task ci:bandit --py-source --full \"-r apps/api/app apps/voice-agent/src libs/shared/py\" -- uv run --frozen --no-build --isolated --only-group lint bandit -c pyproject.toml --severity-level low --confidence-level low"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/pyproject.toml",
+        "ciHarness",
+        "{workspaceRoot}/apps/api/app/**/*.py",
+        "{workspaceRoot}/apps/voice-agent/src/**/*.py",
+        "{workspaceRoot}/libs/shared/py/**/*.py",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-python",
+          "check": "bandit",
+          "area": "python"
+        }
+      }
+    },
+    "mypy": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run --project apps/api --frozen --group backend --group dev mypy tools/lints --ignore-missing-imports && MYPYPATH=scripts/ci:scripts/ci/tests uv run --project apps/api --frozen --group backend --group dev mypy --explicit-package-bases scripts/ci --ignore-missing-imports --cache-dir \"${MYPY_CACHE_DIR:-.mypy_cache}/scripts-ci\""
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/pyproject.toml",
+        "{workspaceRoot}/apps/api/pyproject.toml",
+        "{workspaceRoot}/uv.lock",
+        "ciHarness",
+        "{workspaceRoot}/tools/lints/**/*.py",
+        "{workspaceRoot}/scripts/ci/**/*.py",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-python",
+          "check": "mypy",
+          "area": "python"
+        }
+      }
+    },
+    "ignore-staleness": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python3 tools/lints/check_ignore_staleness.py"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/**/pyproject.toml",
+        "{workspaceRoot}/tools/lints/**/*",
+        "ciHarness",
+        "{workspaceRoot}/**/*.py",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-python",
+          "check": "ignore-staleness",
+          "area": "python"
+        }
+      }
+    },
+    "uv-lock": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/audit.sh uv-lock"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/**/uv.lock",
+        "{workspaceRoot}/**/pyproject.toml",
+        "ciHarness",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-python",
+          "check": "uv-lock",
+          "area": "python"
+        }
+      }
+    },
+    "api-schema": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/ci/checks.mjs api-schema"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/apps/api/scripts/export_openapi.py",
+        "{workspaceRoot}/apps/api/scripts/openapi_contract.py",
+        "{workspaceRoot}/apps/api/tests/offline_env.py",
+        "{workspaceRoot}/apps/api/pyproject.toml",
+        "{workspaceRoot}/apps/api/openapi.json",
+        "{workspaceRoot}/uv.lock",
+        "{workspaceRoot}/libs/shared/ts/src/api/generated/**/*",
+        "{workspaceRoot}/scripts/ci/checks.mjs",
+        "{workspaceRoot}/package.json",
+        "ciHarness",
+        "{workspaceRoot}/apps/api/app/**/*.py",
+        "{workspaceRoot}/libs/shared/py/**/*.py",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "parallelism": false,
+      "metadata": {
+        "ci": {
+          "job": "lint-mixed",
+          "check": "api-schema",
+          "area": "contracts"
+        }
+      }
+    },
+    "analytics-catalog": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/ci/checks.mjs analytics-catalog"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/libs/shared/py/analytics/**/*",
+        "{workspaceRoot}/libs/shared/ts/src/analytics/generated/**/*",
+        "{workspaceRoot}/uv.lock",
+        "{workspaceRoot}/scripts/ci/checks.mjs",
+        "ciHarness",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "parallelism": false,
+      "metadata": {
+        "ci": {
+          "job": "lint-mixed",
+          "check": "analytics-catalog",
+          "area": "contracts"
+        }
+      }
+    },
+    "cli-config-schema": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/ci/checks.mjs cli-config-schema"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/apps/api/app/config/**/*",
+        "{workspaceRoot}/apps/api/scripts/dump_config_schema.py",
+        "{workspaceRoot}/packages/cli/src/lib/api-config-schema.generated.json",
+        "{workspaceRoot}/scripts/ci/checks.mjs",
+        "ciHarness",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "parallelism": false,
+      "metadata": {
+        "ci": {
+          "job": "lint-mixed",
+          "check": "cli-config-schema",
+          "area": "contracts"
+        }
+      }
+    },
+    "deploy-templates": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/ci/checks.mjs deploy-templates"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/packages/cli/selfhost/docker-compose.selfhost.yml",
+        "{workspaceRoot}/packages/cli/selfhost/Caddyfile",
+        "{workspaceRoot}/packages/cli/src/lib/machine-secrets.json",
+        "{workspaceRoot}/deploy/coolify/gaia.yaml",
+        "{workspaceRoot}/deploy/proxy.Dockerfile",
+        "{workspaceRoot}/render.yaml",
+        "{workspaceRoot}/scripts/ci/lib/deploy_templates.py",
+        "{workspaceRoot}/scripts/ci/checks.mjs",
+        "ciHarness",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "parallelism": false,
+      "metadata": {
+        "ci": {
+          "job": "lint-mixed",
+          "check": "deploy-templates",
+          "area": "contracts"
+        }
+      }
+    },
+    "analytics-check": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{workspaceRoot}/libs/shared/py/analytics/catalog/**/*",
+        "{workspaceRoot}/libs/shared/ts/src/analytics/generated/**/*",
+        "{workspaceRoot}/config/posthog/**/*",
+        "{workspaceRoot}/scripts/ci/analytics.py",
+        "ciHarness",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-mixed",
+          "check": "analytics-check",
+          "area": "contracts",
+          "reuse": false,
+          "runner": "step"
+        }
+      }
+    },
+    "api-schema-types": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/ci/checks.mjs api-schema-types"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/apps/api/openapi.json",
+        "ciHarness",
+        "{workspaceRoot}/**/*.{ts,tsx}",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-mixed",
+          "check": "api-schema-types",
+          "area": "contracts"
+        }
+      }
+    },
+    "observability-evlog-tests": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run --frozen --no-build --isolated --only-group harness pytest tools/evlog_map tools/logcheck -q"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/tools/evlog_map/**/*",
+        "{workspaceRoot}/tools/logcheck/**/*",
+        "ciHarness",
+        "{workspaceRoot}/**/*.py",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-mixed",
+          "check": "observability-evlog-tests",
+          "area": "contracts"
+        }
+      }
+    },
+    "observability-map": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "python3 tools/evlog_map --github-summary --no-write --min-score 100",
+          "node scripts/ci/checks.mjs evlog-map-bots --min-score 100"
+        ],
+        "parallel": false
+      },
+      "inputs": [
+        "{workspaceRoot}/apps/bots/**/*",
+        "{workspaceRoot}/libs/shared/ts/**/*",
+        "ciHarness",
+        "{workspaceRoot}/**/*.py",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-mixed",
+          "check": "observability-map",
+          "area": "contracts"
+        }
+      }
+    },
+    "observability-ratchet": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/audit.sh evlog"
+      },
+      "inputs": [
+        "ciHarness",
+        "{workspaceRoot}/**/*.py",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-mixed",
+          "check": "observability-ratchet",
+          "area": "contracts",
+          "events": ["pull_request"]
+        }
+      }
+    },
+    "observability-bots": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/ci/checks.mjs evlog-map-bots --min-score 100"
+      },
+      "inputs": [
+        "ciHarness",
+        "{workspaceRoot}/apps/bots/**/*.ts",
+        "{workspaceRoot}/libs/shared/ts/**/*.ts",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-mixed",
+          "check": "observability-bots",
+          "area": "contracts",
+          "events": ["pull_request"]
+        }
+      }
+    },
+    "wide-event-conformance": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python3 scripts/ci/wide-event-conformance/run.py --show-capture"
+      },
+      "cache": false,
+      "inputs": [
+        "ciHarness",
+        "{workspaceRoot}/**/*.{py,ts,tsx}",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-mixed",
+          "check": "wide-event-conformance",
+          "area": "contracts"
+        }
+      }
+    },
+    "dead-code": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/dead-code-check.sh --strict --verbose"
+      },
+      "inputs": [
+        "{workspaceRoot}/**/package.json",
+        "{workspaceRoot}/**/pyproject.toml",
+        "{workspaceRoot}/scripts/dead-code-check.sh",
+        "{workspaceRoot}/config/knip.config.ts",
+        "ciHarness",
+        "{workspaceRoot}/**/*.{ts,tsx,py}",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-mixed",
+          "check": "dead-code",
+          "area": "node"
+        }
+      }
+    },
+    "harness-tests": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run --frozen --isolated --only-group harness pytest tools/lints tools/llm-stub scripts/ci scripts/dev -q --durations=10 -n 4 --dist loadfile"
+      },
+      "inputs": [
+        "{workspaceRoot}/**/*",
+        "!{workspaceRoot}/**/*.md",
+        "!{workspaceRoot}/**/*.mdx",
+        "ciHarness",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-mixed",
+          "check": "harness-tests",
+          "area": "tests"
+        }
+      }
+    },
+    "suppression-hygiene": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python3 tools/lints/check_suppressions.py"
+      },
+      "cache": false,
+      "inputs": [
+        "ciHarness",
+        "{workspaceRoot}/**/*.{py,toml,lock,ts,tsx,js,jsx,mjs,cjs,json,jsonc,css,yaml}",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "repo-policy",
+          "check": "suppression-hygiene",
+          "area": "python"
+        }
+      }
+    },
+    "tool-pins": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python3 tools/lints/check_tool_pins.py"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/**/*",
+        "!{workspaceRoot}/**/*.md",
+        "!{workspaceRoot}/**/*.mdx",
+        "ciHarness",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "repo-policy",
+          "check": "tool-pins",
+          "area": "python"
+        }
+      }
+    },
+    "import-cost": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python3 tools/lints/check_import_cost.py --report"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/apps/api/app/constants/**/*",
+        "{workspaceRoot}/apps/api/app/config/**/*",
+        "{workspaceRoot}/apps/api/app/utils/**/*",
+        "{workspaceRoot}/apps/api/app/models/**/*",
+        "{workspaceRoot}/apps/api/app/main.py",
+        "{workspaceRoot}/apps/api/app/worker.py",
+        "{workspaceRoot}/apps/api/tests/conftest.py",
+        "{workspaceRoot}/tools/lints/check_import_cost.py",
+        "ciHarness",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "python-audit",
+          "check": "import-cost",
+          "area": "python",
+          "events": ["merge_group", "push", "workflow_dispatch"]
+        }
+      }
+    },
+    "pip-audit": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/audit.sh pip"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/uv.lock",
+        "{workspaceRoot}/pyproject.toml",
+        "ciHarness",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "python-audit",
+          "check": "pip-audit",
+          "area": "security",
+          "reuse": false,
+          "events": ["merge_group", "push", "workflow_dispatch"]
+        }
+      }
+    },
+    "semgrep": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{workspaceRoot}/tools/semgrep/**/*",
+        "ciHarness",
+        "{workspaceRoot}/**/*.py",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "scan",
+          "check": "semgrep",
+          "area": "security",
+          "runner": "action",
+          "events": ["merge_group", "push", "workflow_dispatch"]
+        }
+      }
+    },
+    "trivy": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{workspaceRoot}/**/pnpm-lock.yaml",
+        "{workspaceRoot}/**/package.json",
+        "{workspaceRoot}/**/uv.lock",
+        "{workspaceRoot}/**/pyproject.toml",
+        "{workspaceRoot}/**/go.mod",
+        "{workspaceRoot}/**/go.sum",
+        "{workspaceRoot}/**/*Dockerfile*",
+        "ciHarness",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "scan",
+          "check": "trivy",
+          "area": "security",
+          "runner": "action",
+          "events": ["merge_group", "push", "workflow_dispatch"]
+        }
+      }
+    },
+    "seo": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/smoke-web.sh audit-build"
+      },
+      "dependsOn": [
+        {
+          "projects": ["web"],
+          "target": "build"
+        }
+      ],
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/apps/web/**/*",
+        "{workspaceRoot}/libs/shared/ts/**/*",
+        "{workspaceRoot}/.github/workflows/deploy-web.yml",
+        "{workspaceRoot}/.github/workflows/web-build.yml",
+        "{workspaceRoot}/scripts/ci/smoke-web.sh",
+        "{workspaceRoot}/scripts/ci/lib/seo_audit.py",
+        "{workspaceRoot}/scripts/ci/lib/squirrel.py",
+        "{workspaceRoot}/scripts/ci/lib/origin_proxy.py",
+        "{workspaceRoot}/scripts/ci/baselines/squirrel-build.txt",
+        "{workspaceRoot}/config/squirrel.toml",
+        "ciHarness",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "ts-build-test",
+          "check": "seo",
+          "area": "build",
+          "events": ["pull_request", "merge_group"]
+        }
+      }
+    },
+    "selfhost-e2e": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{workspaceRoot}/packages/cli/**/*",
+        "{workspaceRoot}/apps/web/src/features/setup-wizard/**/*",
+        "{workspaceRoot}/apps/web/src/features/auth/**/*",
+        "{workspaceRoot}/apps/web/e2e/selfhost/**/*",
+        "{workspaceRoot}/tools/llm-stub/**/*",
+        "{workspaceRoot}/apps/api/Dockerfile",
+        "{workspaceRoot}/apps/web/Dockerfile",
+        "{workspaceRoot}/apps/api/app/api/v1/endpoints/setup.py",
+        "{workspaceRoot}/apps/api/app/api/v1/endpoints/auth_local.py",
+        "{workspaceRoot}/apps/api/app/api/v1/endpoints/members.py",
+        "{workspaceRoot}/apps/api/app/api/v1/endpoints/readiness.py",
+        "{workspaceRoot}/apps/api/app/api/v1/endpoints/blob.py",
+        "{workspaceRoot}/apps/web/playwright.selfhost.config.ts",
+        "{workspaceRoot}/scripts/ci/selfhost.sh",
+        "{workspaceRoot}/.github/workflows/selfhost-smoke.yml",
+        "ciHarness",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "selfhost-smoke"
+        }
+      }
+    },
+    "web-bundle": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{workspaceRoot}/.github/workflows/web-build.yml",
+        "{workspaceRoot}/.github/workflows/deploy-web.yml",
+        "{workspaceRoot}/scripts/ci/smoke-worker.sh",
+        "{workspaceRoot}/.github/actions/setup-node-pnpm/**/*",
+        "{workspaceRoot}/.github/actions/restore-nextjs-cache/**/*",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "web-build"
+        }
+      }
+    },
+    "desktop-package": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{workspaceRoot}/.github/workflows/desktop-pr-build.yml",
+        "{workspaceRoot}/.github/actions/setup-node-pnpm/**/*",
+        "{workspaceRoot}/.github/actions/restore-nextjs-cache/**/*",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "desktop-build"
+        }
+      }
+    },
+    "api-image": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{workspaceRoot}/apps/api/Dockerfile",
+        "{workspaceRoot}/.dockerignore",
+        "{workspaceRoot}/**/*Dockerfile.dockerignore",
+        "{workspaceRoot}/uv.lock",
+        "{workspaceRoot}/pyproject.toml",
+        "{workspaceRoot}/apps/api/pyproject.toml",
+        "{workspaceRoot}/libs/pyproject.toml",
+        "{workspaceRoot}/scripts/ci/audit.sh",
+        "{workspaceRoot}/apps/api/app/constants/memory.py",
+        "ciHarness",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "docker-image"
+        }
+      }
+    },
+    "test-mutation": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{workspaceRoot}/apps/api/tests/**/*",
+        "ciHarness",
+        "{workspaceRoot}/**/*.py",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "test-mutation"
+        }
+      }
+    },
+    "gitleaks": {
+      "executor": "nx:noop",
+      "inputs": ["{workspaceRoot}/**/*"],
+      "metadata": {
+        "ci": {
+          "job": "repo-policy",
+          "check": "gitleaks",
+          "area": "security",
+          "events": ["pull_request", "push"],
+          "runner": "action"
+        }
+      }
+    },
+    "analytics-sync": {
+      "executor": "nx:noop",
+      "inputs": [
+        "{workspaceRoot}/libs/shared/py/analytics/catalog/**/*",
+        "{workspaceRoot}/libs/shared/ts/src/analytics/generated/**/*",
+        "{workspaceRoot}/config/posthog/**/*",
+        "{workspaceRoot}/scripts/ci/analytics.py",
+        "ciHarness",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-mixed",
+          "check": "analytics-sync",
+          "area": "contracts",
+          "events": ["push"],
+          "branch": "master",
+          "reuse": false,
+          "runner": "step"
+        }
+      }
+    }
+  }
+}

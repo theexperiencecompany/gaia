@@ -12,7 +12,12 @@ from typing import Any, cast
 from browser_use.browser.session import BrowserSession
 import pytest
 
-from app.constants.browser import BROWSER_STEP_PHOTO_QUALITY, BrowserEngine
+from app.constants.browser import (
+    BROWSER_STEP_PHOTO_QUALITY,
+    JEV_SETTLE_MAX_SECONDS,
+    JEV_WAIT_SECONDS,
+    BrowserEngine,
+)
 from app.constants.log_tags import LogTag
 from app.services.browser.jev import page as page_mod
 from app.services.browser.jev.page import (
@@ -478,7 +483,7 @@ async def test_the_read_after_an_input_stops_waiting_at_the_cap(
     # The page's own wait was told how long it may take.
     [(_, cap)] = [call for call in tab.calls if call[0] == "settle"]
     assert isinstance(cap, float)
-    assert 0 < cap <= page_mod.JEV_SETTLE_MAX_SECONDS
+    assert 0 < cap <= JEV_SETTLE_MAX_SECONDS
 
 
 async def test_a_wait_waits_for_the_page_to_change_then_settles_and_sends_no_input() -> None:
@@ -490,7 +495,7 @@ async def test_a_wait_waits_for_the_page_to_change_then_settles_and_sends_no_inp
     await page.observe()
 
     assert tab.scripts[-3:] == ["wait", "settle", "snapshot"]
-    assert ("wait", page_mod.JEV_WAIT_SECONDS) in tab.calls
+    assert ("wait", JEV_WAIT_SECONDS) in tab.calls
     assert (tab.mouse, tab.keys) == ([], [])
 
 
