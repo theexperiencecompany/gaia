@@ -617,6 +617,9 @@ class TestDailyCostBudget:
         assert raised.value.detail["feature"] == "chat_messages"
         assert raised.value.detail["plan_required"] == PlanType.PRO.value
         assert raised.value.detail["current_plan"] == PlanType.FREE.value
+        assert raised.value.detail["message"] == (
+            "You've used today's AI usage allowance. Upgrade to Pro for higher limits."
+        )
 
     async def test_the_upsell_names_the_user_feature_plan_and_origin(self) -> None:
         """Every argument is load-bearing: the plan decides whether the seam fires, the feature names the wall, the origin picks the email."""
@@ -647,6 +650,8 @@ class TestDailyCostBudget:
 
         assert "plan_required" not in raised.value.detail
         assert raised.value.detail["current_plan"] == PlanType.PRO.value
+        assert raised.value.detail["message"] == "You've used today's AI usage allowance."
+        assert raised.value.period is RateLimitPeriod.DAY
 
 
 @contextmanager
