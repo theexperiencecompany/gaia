@@ -12,7 +12,7 @@ External reads are pinned by fake_context_sources and fenced beneath it,
 so a new read fails loudly instead of reaching a real store.
 """
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, cast
 from unittest.mock import patch
@@ -315,10 +315,6 @@ async def _seed_workflow(
     return [system_message, *assembled.messages(), human_message, time_message]
 
 
-def _with_onboarding(sources: ContextSources, prompt: str | None) -> ContextSources:
-    return sources if prompt is None else replace(sources, onboarding_prompt=prompt)
-
-
 @dataclass(frozen=True)
 class ContextSeed:
     """What a tier's context is seeded from, beyond the tier itself."""
@@ -330,7 +326,6 @@ class ContextSeed:
     now: datetime = FIXED_NOW
     prior_messages: list[AnyMessage] | None = None
     run_messages: list[AnyMessage] | None = None
-    onboarding_prompt: str | None = None
 
 
 async def effective_context(tier: AgentTier, seed: ContextSeed | None = None) -> list[AnyMessage]:
@@ -342,7 +337,7 @@ async def effective_context(tier: AgentTier, seed: ContextSeed | None = None) ->
     """
     spec = seed or ContextSeed()
     resolved_user = spec.user or HarnessUser()
-    resolved_sources = _with_onboarding(spec.sources or ContextSources(), spec.onboarding_prompt)
+    resolved_sources = spec.sources or ContextSources()
 
     with (
         time_machine.travel(spec.now, tick=False),

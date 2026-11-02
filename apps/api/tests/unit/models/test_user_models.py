@@ -218,3 +218,18 @@ class TestOnboardingSubdocumentToleratesOldRows:
             assert doc.onboarding is not None
             assert doc.onboarding.preferences is None
             assert doc.onboarding.completed is True
+
+
+class TestOnboardingPreferencesLanguage:
+    """The browser locale is stored as its primary subtag, the key every consumer reads."""
+
+    @pytest.mark.parametrize(
+        ("raw", "stored"),
+        [("de-DE", "de"), ("pt_BR", "pt"), (" ES ", "es"), ("fil-PH", "fil"), ("en", "en")],
+    )
+    def test_a_locale_is_reduced_to_its_language(self, raw: str, stored: str) -> None:
+        assert OnboardingPreferences(language=raw).language == stored
+
+    @pytest.mark.parametrize("raw", ["", "  ", "123", "x", "deutsch", "*-DE"])
+    def test_anything_that_is_not_a_language_tag_is_unset(self, raw: str) -> None:
+        assert OnboardingPreferences(language=raw).language is None

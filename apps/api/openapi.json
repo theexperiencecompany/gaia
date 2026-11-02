@@ -13109,6 +13109,18 @@
       },
       "OnboardingPreferences": {
         "properties": {
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The user's browser language as a primary subtag (\"de\", \"pt\"), set at onboarding",
+            "title": "Language"
+          },
           "needs": {
             "anyOf": [
               {

@@ -199,6 +199,22 @@ class _ConversationOwnerRow(_ConversationIdRow):
     user_id: str
 
 
+class SeededQuestion(BaseModel):
+    """The closing question of the seeded Getting-started thread and the chips under it."""
+
+    question: str
+    chips: list[str]
+
+
+class _SeededOpeningRow(BaseModel):
+    """Projection of a conversation's purpose and its first few messages."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    system_purpose: SystemPurpose | None = None
+    messages: list[MessageModel] = Field(default_factory=list)
+
+
 class _MessageProjectionRow(BaseModel):
     """Positional ``messages.$`` projection — a one-element messages slice."""
 
