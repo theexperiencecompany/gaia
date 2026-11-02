@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+import shutil
+import tempfile
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
@@ -19,13 +21,15 @@ from app.browser_host.cdp_mux import CdpMux
 from app.browser_host.engine import Engine
 from app.browser_host.host import BrowserHost
 from app.browser_host.obscura_launch import LaunchedEngine
-from app.browser_host.process import EngineLaunchError
+from app.browser_host.process import EngineLaunchError, ProcessSampler
+from app.config.browser_host_settings import browser_host_settings
 from app.constants.browser import (
     BROWSER_VIEWPORT_HEIGHT,
     BROWSER_VIEWPORT_WIDTH,
     BrowserEngine,
     EngineExit,
 )
+from shared.py.wide_events import log
 from tests.unit.browser_host.conftest import FakeMux
 
 pytestmark = pytest.mark.unit
@@ -97,10 +101,10 @@ def test_a_configured_binary_wins_and_a_missing_one_fails_loud(
 ) -> None:
     binary = tmp_path / "chrome"
     binary.write_text("")
-    monkeypatch.setattr(engine_mod.browser_host_settings, "CHROMIUM_BIN", str(binary))
+    monkeypatch.setattr(browser_host_settings, "CHROMIUM_BIN", str(binary))
     assert engine_mod.resolve_chromium_path() == str(binary)
 
-    monkeypatch.setattr(engine_mod.browser_host_settings, "CHROMIUM_BIN", str(tmp_path))
+    monkeypatch.setattr(browser_host_settings, "CHROMIUM_BIN", str(tmp_path))
     with pytest.raises(RuntimeError, match="CHROMIUM_BIN is set but is not a file"):
         engine_mod.resolve_chromium_path()
 
@@ -110,7 +114,7 @@ def test_without_a_configured_binary_playwrights_own_is_used(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, shell: str | None
 ) -> None:
     full = _playwright_install(tmp_path, shell_name=shell)
-    monkeypatch.setattr(engine_mod.browser_host_settings, "CHROMIUM_BIN", None)
+    monkeypatch.setattr(browser_host_settings, "CHROMIUM_BIN", None)
     playwright = MagicMock()
     playwright.__enter__.return_value.chromium.executable_path = str(full)
     monkeypatch.setattr(engine_mod, "sync_playwright", lambda: playwright)
@@ -124,7 +128,7 @@ def test_without_a_configured_binary_playwrights_own_is_used(
 def test_the_command_debugs_on_an_ephemeral_port_from_its_profile(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(engine_mod.browser_host_settings, "BROWSER_HOST_HEADED", False)
+    monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_HEADED", False)
 
     args = engine_mod.chromium_argv(_SHELL, "/tmp/p")
 
@@ -141,12 +145,12 @@ def test_the_command_debugs_on_an_ephemeral_port_from_its_profile(
 def test_the_full_browser_runs_the_new_headless_mode_and_a_headed_host_none(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(engine_mod.browser_host_settings, "BROWSER_HOST_HEADED", False)
+    monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_HEADED", False)
     full = engine_mod.chromium_argv("/opt/fortress/tilion", "/tmp/p")
     assert "--headless=new" in full
     assert "--headless" not in full
 
-    monkeypatch.setattr(engine_mod.browser_host_settings, "BROWSER_HOST_HEADED", True)
+    monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_HEADED", True)
     assert not any(a.startswith("--headless") for a in engine_mod.chromium_argv(_SHELL, "/p"))
 
 
@@ -172,12 +176,12 @@ def test_chrome_accepts_a_test_stacks_ca_only_while_one_is_set(
 ) -> None:
     ca_file = tmp_path / "ca.pem"
     ca_file.write_text(_TEST_CA_PEM)
-    monkeypatch.setattr(engine_mod.browser_host_settings, "BROWSER_HOST_TEST_CA_FILE", None)
+    monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_TEST_CA_FILE", None)
     assert not any(
         a.startswith("--ignore-certificate-errors") for a in engine_mod.chromium_argv(_SHELL, "/p")
     )
 
-    monkeypatch.setattr(engine_mod.browser_host_settings, "BROWSER_HOST_TEST_CA_FILE", str(ca_file))
+    monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_TEST_CA_FILE", str(ca_file))
 
     assert f"--ignore-certificate-errors-spki-list={_TEST_CA_PIN}" in engine_mod.chromium_argv(
         _SHELL, "/p"
@@ -209,7 +213,7 @@ def root(monkeypatch: pytest.MonkeyPatch) -> FakeMux:
     fake = FakeMux({"Browser.getVersion": {"userAgent": "Mozilla HeadlessChrome/153"}})
     monkeypatch.setattr(engine_mod, "CdpMux", fake.build)
     monkeypatch.setattr(engine_mod, "process_tree_rss_mb", lambda pid: 321.0)
-    monkeypatch.setattr(engine_mod.ProcessSampler, "for_pid", MagicMock(return_value=None))
+    monkeypatch.setattr(ProcessSampler, "for_pid", MagicMock(return_value=None))
     return fake
 
 
@@ -235,7 +239,7 @@ async def test_an_obscura_launch_dials_the_endpoint_it_published(
 async def test_a_chromium_launch_gets_a_fresh_profile_and_dials_its_port(
     root: FakeMux, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setattr(engine_mod.tempfile, "tempdir", str(tmp_path))
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
     spawned: list[list[str]] = []
 
     async def _spawn(argv: list[str], env: dict[str, str] | None) -> Any:
@@ -259,8 +263,8 @@ async def test_a_headless_announcing_chromium_is_launched_once_with_its_own_user
     root: FakeMux, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """Regression: the host relaunched Chrome with a hand-made --user-agent, which desyncs Fortress's Client Hints."""
-    monkeypatch.setattr(engine_mod.tempfile, "tempdir", str(tmp_path))
-    monkeypatch.setattr(engine_mod.browser_host_settings, "BROWSER_ENGINE", BrowserEngine.CHROMIUM)
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    monkeypatch.setattr(browser_host_settings, "BROWSER_ENGINE", BrowserEngine.CHROMIUM)
     spawned: list[list[str]] = []
 
     async def _spawn(argv: list[str], env: dict[str, str] | None) -> Any:
@@ -286,7 +290,7 @@ async def test_a_headless_announcing_chromium_is_launched_once_with_its_own_user
 async def test_chromium_is_spawned_without_the_desktop_session_bus(
     root: FakeMux, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setattr(engine_mod.tempfile, "tempdir", str(tmp_path))
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
     monkeypatch.setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path=/run/user/1002/bus")
     monkeypatch.setenv("GAIA_ENGINE_ENV_PROBE", "kept")
     envs: list[dict[str, str] | None] = []
@@ -313,7 +317,7 @@ def test_fortress_gets_its_license_only_from_the_hosts_setting(
     """A blank inherited TILION_LICENSE_KEY would shadow ~/.tilion/license.jwt, so only the setting is passed."""
     monkeypatch.setenv("TILION_LICENSE_KEY", "")
     monkeypatch.setattr(
-        engine_mod.browser_host_settings,
+        browser_host_settings,
         "TILION_LICENSE_KEY",
         SecretStr(configured) if configured is not None else None,
     )
@@ -332,7 +336,7 @@ class _MuxThatNeverShakesHands:
 async def test_an_engine_that_never_finishes_the_handshake_fails_naming_it(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setattr(engine_mod.tempfile, "tempdir", str(tmp_path))
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
     proc = _Proc()
     monkeypatch.setattr(engine_mod, "spawn_engine", AsyncMock(return_value=proc))
     monkeypatch.setattr(engine_mod, "until_published", AsyncMock(return_value=_WS))
@@ -352,7 +356,7 @@ async def test_an_engine_that_never_finishes_the_handshake_fails_naming_it(
 async def test_a_launch_that_fails_leaves_no_process_and_no_profile(
     root: FakeMux, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setattr(engine_mod.tempfile, "tempdir", str(tmp_path))
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
     proc = _Proc()
     monkeypatch.setattr(engine_mod, "spawn_engine", AsyncMock(return_value=proc))
     monkeypatch.setattr(
@@ -473,9 +477,9 @@ async def test_a_profile_that_cannot_be_removed_is_a_warning_not_a_failed_stop(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(engine_mod, "stop_process", AsyncMock())
-    monkeypatch.setattr(engine_mod.shutil, "rmtree", MagicMock(side_effect=OSError("busy")))
+    monkeypatch.setattr(shutil, "rmtree", MagicMock(side_effect=OSError("busy")))
     warning = MagicMock()
-    monkeypatch.setattr(engine_mod.log, "warning", warning)
+    monkeypatch.setattr(log, "warning", warning)
 
     await _engine(profile="/nowhere").shutdown()
 

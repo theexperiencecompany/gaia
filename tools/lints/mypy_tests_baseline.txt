@@ -324,11 +324,7 @@ apps/api/tests/unit/api/v1/endpoints/test_instructions.py	misc
 apps/api/tests/unit/app/test_main_smoke.py	arg-type
 apps/api/tests/unit/app/test_main_smoke.py	attr-defined
 apps/api/tests/unit/app/test_worker_smoke.py	attr-defined
-apps/api/tests/unit/browser_host/conftest.py	arg-type
-apps/api/tests/unit/browser_host/conftest.py	return-value
 apps/api/tests/unit/browser_host/test_cdp_mux.py	attr-defined
-apps/api/tests/unit/browser_host/test_engine.py	attr-defined
-apps/api/tests/unit/browser_host/test_host.py	attr-defined
 apps/api/tests/unit/browser_host/test_memory.py	attr-defined
 apps/api/tests/unit/browser_host/test_metrics.py	attr-defined
 apps/api/tests/unit/browser_host/test_process.py	attr-defined

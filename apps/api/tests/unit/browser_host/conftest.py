@@ -457,10 +457,14 @@ def make_host(
 
     Every connection dials mux when one is given, else a FakeEngine of its own.
     """
+
+    def _connect(url: str) -> CdpMux:
+        return cast(CdpMux, mux.build(url) if mux is not None else FakeEngine())
+
     host = BrowserHost(
         on_fatal=on_fatal if on_fatal is not None else MagicMock(),
         launch=launch if launch is not None else Launcher(),
-        connect=mux.build if mux is not None else (lambda _url: cast(CdpMux, FakeEngine())),
+        connect=_connect,
         memory=memory if memory is not None else AdmissionProbe(),
     )
     if launch is None:
