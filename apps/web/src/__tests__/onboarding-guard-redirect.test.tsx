@@ -15,6 +15,7 @@ const redirect = vi.fn();
 const usePathname = vi.fn();
 const useCurrentUser = vi.fn();
 const readPendingCheckout = vi.fn();
+const useEntitlement = vi.fn();
 
 vi.mock("next/navigation", () => ({
   redirect: (...args: unknown[]) => redirect(...args),
@@ -27,6 +28,10 @@ vi.mock("@/i18n/navigation", () => ({
 
 vi.mock("@/features/auth/hooks/useCurrentUser", () => ({
   useCurrentUser: () => useCurrentUser(),
+}));
+
+vi.mock("@/features/pricing/hooks/useEntitlement", () => ({
+  useEntitlement: () => useEntitlement(),
 }));
 
 vi.mock("@/features/pricing/lib/pendingCheckout", () => ({
@@ -49,6 +54,7 @@ describe("useOnboardingGuard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     readPendingCheckout.mockReturnValue(null);
+    useEntitlement.mockReturnValue("entitled");
     usePathname.mockReturnValue("/onboarding");
   });
 
@@ -82,6 +88,57 @@ describe("useOnboardingGuard", () => {
 
   it("does not redirect while a checkout is pending", () => {
     readPendingCheckout.mockReturnValue({ planId: "pro" });
+    useCurrentUser.mockReturnValue(completedUser("conv-123"));
+
+    renderHook(() => useOnboardingGuard());
+
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
+  // Regression: a never-paid account on /c got a non-dismissable wall whose
+  // only exit was Log out, instead of the wizard's paywall it left.
+  it("sends a never-subscribed account from the app to the onboarding paywall", () => {
+    usePathname.mockReturnValue("/c");
+    useEntitlement.mockReturnValue("never_subscribed");
+    useCurrentUser.mockReturnValue(completedUser("conv-123"));
+
+    renderHook(() => useOnboardingGuard());
+
+    expect(redirect).toHaveBeenCalledWith("/onboarding", "replace");
+  });
+
+  it("keeps a never-subscribed account on the onboarding paywall", () => {
+    useEntitlement.mockReturnValue("never_subscribed");
+    useCurrentUser.mockReturnValue(completedUser("conv-123"));
+
+    renderHook(() => useOnboardingGuard());
+
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
+  it("leaves a lapsed account in the app, where the UpgradeModal stands", () => {
+    usePathname.mockReturnValue("/c");
+    useEntitlement.mockReturnValue("lapsed");
+    useCurrentUser.mockReturnValue(completedUser("conv-123"));
+
+    renderHook(() => useOnboardingGuard());
+
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
+  it("holds a finished user on onboarding until the plan is read", () => {
+    useEntitlement.mockReturnValue("unknown");
+    useCurrentUser.mockReturnValue(completedUser("conv-123"));
+
+    renderHook(() => useOnboardingGuard());
+
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
+  it("lets a pending checkout resume before unpaid routing", () => {
+    readPendingCheckout.mockReturnValue({ planId: "pro" });
+    usePathname.mockReturnValue("/c");
+    useEntitlement.mockReturnValue("never_subscribed");
     useCurrentUser.mockReturnValue(completedUser("conv-123"));
 
     renderHook(() => useOnboardingGuard());

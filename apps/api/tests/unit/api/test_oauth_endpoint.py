@@ -149,6 +149,34 @@ class TestLoginWorkOS:
         assert response.status_code == 307
         mock_redis.client.setex.assert_awaited_once()
 
+    @patch("app.api.v1.endpoints.oauth.redis_cache")
+    @patch("app.api.v1.endpoints.oauth.get_workos_client")
+    async def test_signup_opens_authkit_on_the_sign_up_screen(
+        self,
+        mock_workos: MagicMock,
+        mock_redis: MagicMock,
+        client: AsyncClient,
+    ):
+        """Regression: /signup landed new visitors on AuthKit's Sign in screen, and they backed out."""
+        get_url = mock_workos.return_value.user_management.get_authorization_url
+        get_url.return_value = "https://workos.example.com/auth"
+        mock_redis.client = AsyncMock()
+        response = await client.get(
+            f"{OAUTH_BASE}/login/workos?screen_hint=sign-up", follow_redirects=False
+        )
+        assert response.status_code == 307
+        assert get_url.call_args.kwargs["screen_hint"] == "sign-up"
+
+    @patch("app.api.v1.endpoints.oauth.get_workos_client")
+    async def test_login_rejects_an_unknown_screen_hint(
+        self, mock_workos: MagicMock, client: AsyncClient
+    ):
+        response = await client.get(
+            f"{OAUTH_BASE}/login/workos?screen_hint=register", follow_redirects=False
+        )
+        assert response.status_code == 422
+        mock_workos.return_value.user_management.get_authorization_url.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # GET /oauth/login/workos/mobile

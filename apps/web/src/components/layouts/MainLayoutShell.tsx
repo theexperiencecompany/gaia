@@ -13,14 +13,18 @@ import {
   MAIN_CONTENT_ID,
   SkipToContentLink,
 } from "@/components/navigation/SkipToContentLink";
+import SuspenseLoader from "@/components/shared/SuspenseLoader";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { UNPAID_APP_ROUTES } from "@/features/auth/constants";
 import { useOnboardingGuard } from "@/features/auth/hooks/useOnboardingGuard";
+import { useAppSessionEnabled } from "@/features/pricing/hooks/useEntitlement";
 import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 import { useIsMobile } from "@/hooks/ui/useMobile";
 import { usePlatform } from "@/hooks/ui/usePlatform";
 import { useBackgroundSync } from "@/hooks/useBackgroundSync";
 import { useElectron } from "@/hooks/useElectron";
+import { usePathname } from "@/i18n/navigation";
 import ProvidersLayout from "@/layouts/ProvidersLayout";
 import SidebarLayout, { CustomSidebarTrigger } from "@/layouts/SidebarLayout";
 import { cn } from "@/lib/utils";
@@ -79,9 +83,15 @@ export function MainLayoutShell({ children }: { children: ReactNode }) {
   const dragRef = useRef<HTMLDivElement>(null);
   const [commandMenuOpen, setCommandMenuOpen] = useState(false);
   const billingEnabled = useDeployment().bills;
+  const pathname = usePathname();
+  // The paid app (sidebar, header, sync, the page itself) mounts only for an
+  // account allowed to use it; until then only the routes an unpaid account
+  // lives on render, so nothing behind the paywall is ever requested.
+  const appSessionEnabled = useAppSessionEnabled();
+  const showPage = appSessionEnabled || UNPAID_APP_ROUTES.includes(pathname);
   // Check if user needs onboarding
   useOnboardingGuard();
-  useBackgroundSync();
+  useBackgroundSync(appSessionEnabled);
 
   useChatStoreSync();
 
@@ -146,11 +156,17 @@ export function MainLayoutShell({ children }: { children: ReactNode }) {
             onOpenChange={handleOpenChange}
             defaultOpen={defaultOpen}
           >
-            <div className="relative flex h-screen w-full dark" ref={dragRef}>
+            <div
+              className="relative flex h-screen w-full dark"
+              ref={dragRef}
+              translate="no"
+            >
               <SkipToContentLink />
-              <SidebarLayout>
-                <Sidebar />
-              </SidebarLayout>
+              {appSessionEnabled && (
+                <SidebarLayout>
+                  <Sidebar />
+                </SidebarLayout>
+              )}
 
               <SidebarInset className="flex h-screen min-w-0 w-auto flex-col bg-primary-bg">
                 {/* Tapping anywhere outside the mobile sidebar dismisses it via
@@ -172,17 +188,21 @@ export function MainLayoutShell({ children }: { children: ReactNode }) {
                     isElectron && isMac && "electron-drag",
                   )}
                 >
-                  <HeaderSidebarTrigger
-                    // The collapsed border eats 1px of the header's content box,
-                    // which centres the 36px trigger 0.5px high (21.5 vs the
-                    // lights' 22). Nudge it back down so it sits pixel-perfect.
-                    className={
-                      isElectron && !currentOpen
-                        ? "translate-y-[0.5px]"
-                        : undefined
-                    }
-                  />
-                  <HeaderManager />
+                  {appSessionEnabled && (
+                    <>
+                      <HeaderSidebarTrigger
+                        // The collapsed border eats 1px of the header's content box,
+                        // which centres the 36px trigger 0.5px high (21.5 vs the
+                        // lights' 22). Nudge it back down so it sits pixel-perfect.
+                        className={
+                          isElectron && !currentOpen
+                            ? "translate-y-[0.5px]"
+                            : undefined
+                        }
+                      />
+                      <HeaderManager />
+                    </>
+                  )}
                 </header>
                 {/* Below the title bar so a visible banner never shifts the
                   window controls out of alignment with the traffic lights. */}
@@ -192,9 +212,7 @@ export function MainLayoutShell({ children }: { children: ReactNode }) {
                   id={MAIN_CONTENT_ID}
                   className="flex flex-1 flex-col overflow-hidden"
                 >
-                  {/* <Suspense fallback={<SuspenseLoader />}> */}
-                  {children}
-                  {/* </Suspense> */}
+                  {showPage ? children : <SuspenseLoader fullHeight />}
                 </div>
               </SidebarInset>
 
@@ -206,17 +224,19 @@ export function MainLayoutShell({ children }: { children: ReactNode }) {
               user opened it themselves. Nothing to sell where billing is off. */}
             {billingEnabled && <UpgradeModal />}
 
-            {/* What's New Modal */}
-            <WhatsNewModal />
+            {appSessionEnabled && (
+              <>
+                <WhatsNewModal />
 
-            {/* Activation checklist; hides itself on /onboarding and /dashboard */}
-            <FirstStepsWidget />
+                {/* Activation checklist; hides itself on /onboarding and /dashboard */}
+                <FirstStepsWidget />
 
-            {/* Global Command Menu */}
-            <CommandMenu
-              open={commandMenuOpen}
-              onOpenChange={setCommandMenuOpen}
-            />
+                <CommandMenu
+                  open={commandMenuOpen}
+                  onOpenChange={setCommandMenuOpen}
+                />
+              </>
+            )}
           </SidebarProvider>
         </RightSidebarSlotProvider>
       </TooltipProvider>
