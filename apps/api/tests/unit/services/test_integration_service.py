@@ -200,7 +200,7 @@ class TestIntegrationResolverResolve:
         assert result.mcp_config == mcp_cfg
         assert result.platform_integration == oauth_int
         assert result.custom_doc is None
-        mock_repo.get.assert_not_called()
+        mock_repo.get_custom.assert_not_called()
 
     @patch("app.services.integrations.integration_resolver.integration_repository")
     @patch("app.services.integrations.integration_resolver.get_integration_by_id")
@@ -254,7 +254,7 @@ class TestIntegrationResolverResolve:
     async def test_resolve_custom_integration_from_mongodb(self, mock_get_by_id, mock_repo):
         mock_get_by_id.return_value = None
         integration = _make_custom_integration()
-        mock_repo.get = AsyncMock(return_value=integration)
+        mock_repo.get_custom = AsyncMock(return_value=integration)
 
         result = await IntegrationResolver.resolve(CUSTOM_INTEGRATION_ID)
 
@@ -273,7 +273,7 @@ class TestIntegrationResolverResolve:
     async def test_resolve_custom_integration_no_mcp_config(self, mock_get_by_id, mock_repo):
         mock_get_by_id.return_value = None
         integration = _make_custom_integration().model_copy(update={"mcp_config": None})
-        mock_repo.get = AsyncMock(return_value=integration)
+        mock_repo.get_custom = AsyncMock(return_value=integration)
 
         result = await IntegrationResolver.resolve(CUSTOM_INTEGRATION_ID)
 
@@ -290,7 +290,7 @@ class TestIntegrationResolverResolve:
         doc = _make_custom_doc(requires_auth=False)
         doc["mcp_config"]["requires_auth"] = True
         doc["mcp_config"]["auth_type"] = "oauth"
-        mock_repo.get = AsyncMock(return_value=Integration.model_validate(doc))
+        mock_repo.get_custom = AsyncMock(return_value=Integration.model_validate(doc))
         mock_repo.heal_top_level_auth = AsyncMock()
 
         result = await IntegrationResolver.resolve(CUSTOM_INTEGRATION_ID)
@@ -307,7 +307,7 @@ class TestIntegrationResolverResolve:
         mock_get_by_id.return_value = None
         doc = _make_custom_doc(requires_auth=False)
         doc["mcp_config"]["requires_auth"] = True
-        mock_repo.get = AsyncMock(return_value=Integration.model_validate(doc))
+        mock_repo.get_custom = AsyncMock(return_value=Integration.model_validate(doc))
         mock_repo.heal_top_level_auth = AsyncMock(side_effect=Exception("DB write failed"))
 
         result = await IntegrationResolver.resolve(CUSTOM_INTEGRATION_ID)
@@ -319,7 +319,7 @@ class TestIntegrationResolverResolve:
     @patch("app.services.integrations.integration_resolver.get_integration_by_id")
     async def test_resolve_not_found_returns_none(self, mock_get_by_id, mock_repo):
         mock_get_by_id.return_value = None
-        mock_repo.get = AsyncMock(return_value=None)
+        mock_repo.get_custom = AsyncMock(return_value=None)
 
         result = await IntegrationResolver.resolve("nonexistent")
 

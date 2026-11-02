@@ -1080,7 +1080,7 @@ class TestIntegrationResolver:
         )
 
         with patch(
-            "app.services.integrations.integration_resolver.integration_repository.get",
+            "app.services.integrations.integration_resolver.integration_repository.get_custom",
             AsyncMock(return_value=custom),
         ):
             resolved = await IntegrationResolver.resolve("my-custom-server")
@@ -1096,7 +1096,7 @@ class TestIntegrationResolver:
     async def test_resolve_nonexistent_returns_none(self) -> None:
         """Resolving a non-existent integration returns None."""
         with patch(
-            "app.services.integrations.integration_resolver.integration_repository.get",
+            "app.services.integrations.integration_resolver.integration_repository.get_custom",
             AsyncMock(return_value=None),
         ):
             resolved = await IntegrationResolver.resolve("does_not_exist_xyz")
@@ -1118,7 +1118,7 @@ class TestIntegrationResolver:
             )
         )
         with patch(
-            "app.services.integrations.integration_resolver.integration_repository.get",
+            "app.services.integrations.integration_resolver.integration_repository.get_custom",
             mock_get,
         ):
             resolved = await IntegrationResolver.resolve("gmail")

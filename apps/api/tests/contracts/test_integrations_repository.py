@@ -15,6 +15,7 @@ from app.db.mongodb.indexes import (
 from app.db.repositories.integrations import IntegrationsRepository
 from app.models.integration_models import Integration, StoredIntegrationTool
 from app.models.mcp_config import MCPConfig
+from app.services.integrations.integration_resolver import IntegrationResolver
 
 
 @pytest.fixture
@@ -478,3 +479,23 @@ class TestCustomServerUrlDedup:
                     "https://host/mcp",
                 )
             )
+
+
+class TestResolverIgnoresToolsOnlyStubs:
+    """store_tools writes {integration_id, tools} for ids with no Integration document."""
+
+    async def test_a_tools_only_stub_does_not_resolve_as_an_integration(self, repo):
+        iid = f"stub-{uuid.uuid4().hex}"
+        await repo.store_tools(iid, [StoredIntegrationTool(name="t1", description="d1")])
+
+        assert await IntegrationResolver.resolve(iid) is None
+
+    async def test_a_custom_integration_still_resolves(self, repo):
+        iid = f"custom-{uuid.uuid4().hex}"
+        await repo.create(_integration(iid, "Mine"))
+
+        resolved = await IntegrationResolver.resolve(iid)
+
+        assert resolved is not None
+        assert resolved.source == "custom"
+        assert resolved.name == "Mine"
