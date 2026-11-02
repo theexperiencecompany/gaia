@@ -15,7 +15,8 @@ from httpx import AsyncClient
 import pytest
 from starlette.requests import Request
 
-from app.agents.skills.models import Skill, SkillAuthor
+from app.agents.skills.models import Skill, SkillAuthor, SkillSource
+from app.models.files_models import FileDocument
 from app.models.hil_models import ApprovalLedgerDocument, LedgerState
 from app.models.integration_models import Integration
 from app.models.mail_models import GmailMessageResource
@@ -388,7 +389,7 @@ def _make_skill() -> Skill:
         body_content="# My Skill",
         vfs_path="/skills/my-skill",
         enabled=True,
-        source="github",
+        source=SkillSource.GITHUB,
         installed_at=datetime(2025, 1, 1, tzinfo=UTC),
         files=["SKILL.md"],
     )
@@ -500,7 +501,8 @@ class TestMemoryNewEvents:
         mock_capture.assert_called_once_with(UserId(UID), MemoryUpdated())
 
     async def test_document_update_captures(self, client: AsyncClient) -> None:
-        from app.models.memory_models import MemoryDocType, MemoryDocument
+        from app.constants.memory import MemoryDocType
+        from app.models.memory_models import MemoryDocument
 
         with (
             patch(f"{_MEM}.memory_engine.update_document", new_callable=AsyncMock) as mock_upd,
@@ -523,9 +525,7 @@ class TestMemoryNewEvents:
 
 
 class TestFileNewEvents:
-    def _doc(self, **overrides: object) -> TodoDocument:
-        from app.models.files_models import FileDocument
-
+    def _doc(self, **overrides: object) -> FileDocument:
         data: dict = {
             "id": "0" * 24,
             "file_id": "file-001",

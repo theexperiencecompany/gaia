@@ -7,6 +7,7 @@ them the way a real regression would.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 import itertools
 import json
 from pathlib import Path
@@ -23,9 +24,14 @@ from tests.unit.scripts.analytics_ops.conftest import FakeReader
 
 USER = "6ac74a19fa5dfaf1f5770471"
 SESSION = "6be4c37a-8a72-4bbd-831f-6f793d241c95"
-WEB = {"actor": "user", "trigger": "interactive", "surface": "web", "$session_id": SESSION}
-WEBHOOK = {"actor": "agent", "trigger": "webhook", "surface": "worker"}
-BOT = {"actor": "user", "trigger": "interactive", "surface": "bot"}
+WEB: dict[str, object] = {
+    "actor": "user",
+    "trigger": "interactive",
+    "surface": "web",
+    "$session_id": SESSION,
+}
+WEBHOOK: dict[str, object] = {"actor": "agent", "trigger": "webhook", "surface": "worker"}
+BOT: dict[str, object] = {"actor": "user", "trigger": "interactive", "surface": "bot"}
 # The agent acts in the run tree the user's request started.
 AGENT_WEB = {**WEB, "actor": "agent"}
 AGENT_BOT = {**BOT, "actor": "agent"}
@@ -277,7 +283,7 @@ def test_a_query_that_fills_the_row_cap_stops_the_run() -> None:
     stack = Stack(api_url="http://unused", email="e", session_id=SESSION, user_id=UserId(USER))
 
     with pytest.raises(SystemExit, match="partial"):
-        e2e.fetch(reader, stack, e2e.datetime.now(e2e.UTC))
+        e2e.fetch(reader, stack, datetime.now(UTC))
 
 
 def test_a_workflow_run_the_worker_never_finished_fails() -> None:
@@ -327,7 +333,7 @@ def _poll(reader: FakeReader, monkeypatch: pytest.MonkeyPatch) -> list[e2e.Recei
     monkeypatch.setattr(e2e, "POLL_INTERVAL_S", 0)
     stack = Stack(api_url="http://unused", email="e", session_id=SESSION, user_id=UserId(USER))
     expects = [x for journey in e2e.build_journeys(Path("/dev/null")) for x in journey.expects]
-    return e2e.poll(reader, stack, e2e.datetime.now(e2e.UTC), expects, timeout_s=5)
+    return e2e.poll(reader, stack, datetime.now(UTC), expects, timeout_s=5)
 
 
 def test_sdk_events_still_arriving_do_not_hold_the_poll_open(

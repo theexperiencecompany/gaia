@@ -9,6 +9,7 @@ import pytest
 
 from app.constants.log_tags import LogTag
 from app.models.payment_models import PlanType
+from app.models.user_models import AuthenticatedUser
 from app.models.workflow_execution_models import WorkflowExecutionsResponse
 from app.models.workflow_models import (
     PromptTriggerHint,
@@ -793,7 +794,7 @@ class TestRegenerateSteps:
         )
 
     async def test_regenerate_steps_generation_failure_logs_workflow_user_and_reason(
-        self, client: AsyncClient, fake_user: dict
+        self, client: AsyncClient, fake_user: AuthenticatedUser
     ):
         """The 502 is only actionable in support if the log names which workflow, user, and provider reason produced it."""
         recorded: list[tuple[str, dict]] = []
@@ -1203,7 +1204,7 @@ class TestGeneratePrompt:
         assert data["suggested_trigger"]["type"] == "schedule"
 
     async def test_generate_prompt_forwards_every_request_field(
-        self, client: AsyncClient, fake_user: dict
+        self, client: AsyncClient, fake_user: AuthenticatedUser
     ):
         """A dropped field silently degrades the generated instructions (wrong trigger, unmentioned integrations) instead of failing loudly."""
         with (
