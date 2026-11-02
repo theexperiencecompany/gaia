@@ -79,9 +79,9 @@ jobs:
 
       - name: Remove source maps from the deployed bundle
         # Sentry uploads the maps during cf:build; the deployed artifact must
-        # not serve them. deleteSourcemapsAfterUpload is a no-op under
-        # Turbopack, and the live site served the full sourcesContent, so drop
-        # them here and fail if any survive.
+        # not serve them. This step is the one that removes them (Sentry's own
+        # deleteSourcemapsAfterUpload is off, next.config.mjs): from .open-next
+        # only, so the checks below still read .next's, and it fails if any survive.
         shell: bash
         run: |
           maps=$(find apps/web/.open-next -name '*.map' -type f | wc -l)
@@ -101,10 +101,8 @@ jobs:
       - name: Verify landing pages load no app-only code
         # The chat stack, the PostHog SDK and the OpenUI stylesheet slow every
         # marketing page without failing anything; the eager bundle is checked here.
-        # It reads the chunks' source maps, which only a build without the Sentry
-        # token keeps: the deploy build uploads and strips them, and the merge
-        # queue already checked this commit.
-        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+        # It reads .next's source maps, which the step above leaves in place: it
+        # cleans only .open-next, the tree that is deployed.
         run: pnpm --filter ./apps/web verify-landing-bundle
 
       # The build only proves the bundle assembles. Boot it in workerd and hit
