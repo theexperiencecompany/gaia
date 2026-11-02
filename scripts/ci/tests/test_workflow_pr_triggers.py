@@ -16,6 +16,7 @@ head's CI run through `runner.py rescope`.
 from __future__ import annotations
 
 from pathlib import Path
+import re
 from typing import Any
 
 from doc_shape import mapping
@@ -174,6 +175,38 @@ def test_the_secret_scan_runs_only_on_the_events_that_bring_commits(workflow: Wo
     )
 
 
+REPO = "theexperiencecompany/gaia"
+# (event, actor, PR head repo, whether statuses are posted)
+POSTING = [
+    ("pull_request", "aryan", REPO, True),
+    ("merge_group", "github-merge-queue[bot]", "", True),
+    ("push", "aryan", "", True),
+    ("workflow_dispatch", "aryan", "", False),
+    ("pull_request", "someone", "fork/gaia", False),
+    ("pull_request", "dependabot[bot]", REPO, False),
+]
+
+
+def _evaluate(expression: str, event: str, actor: str, head_repo: str) -> object:
+    """Evaluate the NO_POST expression; Python's and/or treat '' as falsy, as Actions does."""
+    body = expression.strip().removeprefix("${{").removesuffix("}}")
+    body = re.sub(
+        r"contains\(fromJSON\('(\[[^']*\])'\), github\.event_name\)",
+        lambda m: f"(github_event_name in {m.group(1)})",
+        body,
+    )
+    for ref, value in {
+        "github.event.pull_request.head.repo.full_name": head_repo,
+        "github.repository": REPO,
+        "github.event_name": event,
+        "github.actor": actor,
+    }.items():
+        body = body.replace(ref, repr(value))
+    body = body.replace("github_event_name", repr(event))
+    body = body.replace("&&", " and ").replace("||", " or ").replace("!(", " not (")
+    return eval(body)  # noqa: S307 - a workflow expression this repo wrote, over fixed literals
+
+
 def test_a_dispatch_never_posts_per_check_statuses(workflow: Workflow) -> None:
     """A dispatch shares its sha with an open PR's head and would overwrite that PR's `ci / <area> / <check>` statuses."""
     posts = [
@@ -190,8 +223,8 @@ def test_a_dispatch_never_posts_per_check_statuses(workflow: Workflow) -> None:
         ):
             continue
         no_post = str(mapping(job["env"])["NO_POST"])
-        assert '"pull_request", "merge_group", "push"' in no_post, name
-        assert "workflow_dispatch" not in no_post, name
-        assert no_post.endswith("&& '' || '--no-post' }}"), name
+        for event, actor, head_repo, posts_here in POSTING:
+            got = _evaluate(no_post, event, actor, head_repo)
+            assert got == ("" if posts_here else "--no-post"), (name, event, actor, head_repo, got)
     for step in posts:
         assert str(step["run"]).endswith(" $NO_POST"), step["name"]

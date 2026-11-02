@@ -333,7 +333,8 @@ jobs:
       HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       # Not on a dispatch (an open PR sharing the head would lose its statuses),
       # nor for a fork or Dependabot (read-only token).
-      NO_POST: ${{ (contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '' || '--no-post' }}
+      # Negated: `cond && '' || x` is always x, since '' is falsy in an expression.
+      NO_POST: ${{ !(contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '--no-post' || '' }}
       TASK_FILES: ${{ needs.detect.outputs.task_files }}
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
       AUDIT_SCOPE: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'introduced' || 'all' }}
@@ -387,7 +388,8 @@ jobs:
       HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       # Not on a dispatch (an open PR sharing the head would lose its statuses),
       # nor for a fork or Dependabot (read-only token).
-      NO_POST: ${{ (contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '' || '--no-post' }}
+      # Negated: `cond && '' || x` is always x, since '' is falsy in an expression.
+      NO_POST: ${{ !(contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '--no-post' || '' }}
       TASK_FILES: ${{ needs.detect.outputs.task_files }}
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
     timeout-minutes: 35
@@ -485,7 +487,8 @@ jobs:
       HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       # Not on a dispatch (an open PR sharing the head would lose its statuses),
       # nor for a fork or Dependabot (read-only token).
-      NO_POST: ${{ (contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '' || '--no-post' }}
+      # Negated: `cond && '' || x` is always x, since '' is falsy in an expression.
+      NO_POST: ${{ !(contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '--no-post' || '' }}
       TASK_FILES: ${{ needs.detect.outputs.task_files }}
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
       DEAD_CODE_LANE: lint-mixed/dead-code
@@ -593,7 +596,8 @@ jobs:
       HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       # Not on a dispatch (an open PR sharing the head would lose its statuses),
       # nor for a fork or Dependabot (read-only token).
-      NO_POST: ${{ (contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '' || '--no-post' }}
+      # Negated: `cond && '' || x` is always x, since '' is falsy in an expression.
+      NO_POST: ${{ !(contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '--no-post' || '' }}
       TASK_FILES: ${{ needs.detect.outputs.task_files }}
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
     timeout-minutes: 10
@@ -665,7 +669,8 @@ jobs:
       HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       # Not on a dispatch (an open PR sharing the head would lose its statuses),
       # nor for a fork or Dependabot (read-only token).
-      NO_POST: ${{ (contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '' || '--no-post' }}
+      # Negated: `cond && '' || x` is always x, since '' is falsy in an expression.
+      NO_POST: ${{ !(contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '--no-post' || '' }}
       TASK_FILES: ${{ needs.detect.outputs.task_files }}
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
       AUDIT_SCOPE: ${{ github.event_name == 'merge_group' && 'introduced' || 'all' }}
@@ -728,7 +733,8 @@ jobs:
       HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       # Not on a dispatch (an open PR sharing the head would lose its statuses),
       # nor for a fork or Dependabot (read-only token).
-      NO_POST: ${{ (contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '' || '--no-post' }}
+      # Negated: `cond && '' || x` is always x, since '' is falsy in an expression.
+      NO_POST: ${{ !(contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '--no-post' || '' }}
       TASK_FILES: ${{ needs.detect.outputs.task_files }}
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
       NEXT_PUBLIC_API_BASE_URL: https://api.heygaia.io/api/v1/
@@ -810,7 +816,8 @@ jobs:
       HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       # Not on a dispatch (an open PR sharing the head would lose its statuses),
       # nor for a fork or Dependabot (read-only token).
-      NO_POST: ${{ (contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '' || '--no-post' }}
+      # Negated: `cond && '' || x` is always x, since '' is falsy in an expression.
+      NO_POST: ${{ !(contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '--no-post' || '' }}
       TASK_FILES: ${{ needs.detect.outputs.task_files }}
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
     timeout-minutes: 20
