@@ -278,42 +278,44 @@ async def get_budget_stop_reason(
             user={"id": user_id},
         )
 
-    # Missing root_request_id → only the daily read is needed, so skip the
-    # second round trip. The threading-gap warning stays scoped to a run that
-    # is otherwise proceeding (daily wall not bound), exactly as before.
+    # One round trip for every read: this runs before every model call. Without a
+    # root_request_id there is no token read, so the request ceiling cannot bind.
+    used: int | None
     if root_request_id is None:
         spent, month_spent = await asyncio.gather(
             get_cost(user_id, RateLimitPeriod.DAY), get_cost(user_id, RateLimitPeriod.MONTH)
         )
-        if is_daily_budget_exhausted(spent, plan_type):
-            stop = DAILY_BUDGET_STOP_FREE if plan_type == PlanType.FREE else DAILY_BUDGET_STOP_PRO
-            return BudgetCheck(stop, spent, plan_type)
-        if is_monthly_budget_exhausted(month_spent, plan_type):
-            return BudgetCheck(monthly_budget_stop_text(), spent, plan_type)
+        used = None
+    else:
+        spent, month_spent, used = await asyncio.gather(
+            get_cost(user_id, RateLimitPeriod.DAY),
+            get_cost(user_id, RateLimitPeriod.MONTH),
+            get_request_tokens(root_request_id),
+        )
+
+    stop = _bound_wall_text(spent, month_spent, used, plan_type)
+    if stop is not None:
+        return BudgetCheck(stop, spent, plan_type)
+    if root_request_id is None:
         log.warning(
             f"{LogTag.AGENT} Per-request ceiling skipped — missing root_request_id "
             "in configurable (threading gap?)."
         )
-        return BudgetCheck(None, spent, plan_type, month_spent)
-
-    # Both reads are independent — issue them together so the hottest path (this
-    # runs before every model call) pays one round trip, not two. The daily wall
-    # still takes priority; the token read is harmless work when it binds.
-    spent, month_spent, used = await asyncio.gather(
-        get_cost(user_id, RateLimitPeriod.DAY),
-        get_cost(user_id, RateLimitPeriod.MONTH),
-        get_request_tokens(root_request_id),
-    )
-    if is_daily_budget_exhausted(spent, plan_type):
-        stop = DAILY_BUDGET_STOP_FREE if plan_type == PlanType.FREE else DAILY_BUDGET_STOP_PRO
-        return BudgetCheck(stop, spent, plan_type)
-    if is_monthly_budget_exhausted(month_spent, plan_type):
-        return BudgetCheck(monthly_budget_stop_text(), spent, plan_type)
-    if used >= get_per_request_token_ceiling(plan_type):
-        stop = REQUEST_CEILING_STOP_FREE if plan_type == PlanType.FREE else REQUEST_CEILING_STOP_PRO
-        return BudgetCheck(stop, spent, plan_type)
-
     return BudgetCheck(None, spent, plan_type, month_spent)
+
+
+def _bound_wall_text(
+    spent: float, month_spent: float, used: int | None, plan_type: PlanType
+) -> str | None:
+    """Return the stop text of the first wall that binds (daily, monthly, then request ceiling)."""
+    is_free = plan_type == PlanType.FREE
+    if is_daily_budget_exhausted(spent, plan_type):
+        return DAILY_BUDGET_STOP_FREE if is_free else DAILY_BUDGET_STOP_PRO
+    if is_monthly_budget_exhausted(month_spent, plan_type):
+        return monthly_budget_stop_text()
+    if used is not None and used >= get_per_request_token_ceiling(plan_type):
+        return REQUEST_CEILING_STOP_FREE if is_free else REQUEST_CEILING_STOP_PRO
+    return None
 
 
 def is_daily_budget_exhausted(spent: float, plan_type: PlanType) -> bool:
