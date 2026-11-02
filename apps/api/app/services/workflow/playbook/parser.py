@@ -24,7 +24,6 @@ import yaml
 
 from app.agents.core.subagents.call_record import ARG_TRUNCATION_MARKER, is_error_envelope
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
-from app.agents.tools.execute.unwrap import decode_json_object
 from app.constants.execute import EXECUTE_DATA_ARG, EXECUTE_LABEL_ARG, EXECUTE_TOOL_NAME
 from app.models.integrations.composio_hooks import JsonSchemaNode
 from app.models.playbook_models import (
@@ -61,6 +60,7 @@ from app.services.workflow.playbook.tool_space import (
     resolve_subagent_tools,
     tool_space_denial,
 )
+from app.utils.json_args import decode_json_container
 
 _JSON_TYPE_TO_PYTHON: dict[str, tuple[type, ...]] = {
     "string": (str,),
@@ -398,7 +398,7 @@ def _matched_call(step: ToolStep | ForEachStep, walk: _Walk) -> tuple[int, Recor
 def _as_dispatched(tool_name: str, key: str, recorded: object) -> object:
     """Return a recorded arg as the tool ran it: execute runs a JSON-encoded data as its object."""
     if tool_name == EXECUTE_TOOL_NAME and key == EXECUTE_DATA_ARG:
-        return decode_json_object(recorded)
+        return decode_json_container(recorded)
     return recorded
 
 

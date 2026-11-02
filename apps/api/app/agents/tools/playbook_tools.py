@@ -15,7 +15,7 @@ from langchain_core.messages import ToolMessage
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
-from pydantic import ValidationError
+from pydantic import BeforeValidator, ValidationError
 from pydantic.v1 import ValidationError as LegacyValidationError
 
 from app.agents.core.background.executor_capture import drain_executor_tool_data
@@ -48,6 +48,7 @@ from app.services.workflow.playbook.parser import (
 )
 from app.services.workflow.playbook.workflow_hash import workflow_hash
 from app.services.workflow.run_trace import build_trace
+from app.utils.json_args import decode_json_container
 from app.utils.workflow_utils import (
     WorkflowConfigError,
     error_response,
@@ -254,8 +255,10 @@ def _run_results(state: Mapping[str, Any] | None) -> RunResults | None:
 async def write_playbook(
     config: RunnableConfig,
     description: Annotated[str, "What this playbook does, in one or two lines."],
+    # Models often JSON-encode this list (prod: 7 refused writes); the schema stays an array.
     steps: Annotated[
         list[PlaybookStepInput],
+        BeforeValidator(decode_json_container),
         "The calls to replay, in the order you made them: only the calls that did "
         "the work, never discovery or dead ends. Writing the result is not a step; "
         "that is what result_brief is for.",

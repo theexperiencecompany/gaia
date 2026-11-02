@@ -5,10 +5,10 @@ streaming formatter, analytics, and the tool node's timeout check must agree on
 what a proxied call "is", and five private copies of this logic would drift.
 """
 
-import json
 from typing import TypedDict, cast
 
 from app.constants.execute import EXECUTE_TOOL_NAME
+from app.utils.json_args import decode_json_container
 
 
 class ExecuteCallArgs(TypedDict, total=False):
@@ -18,22 +18,6 @@ class ExecuteCallArgs(TypedDict, total=False):
     tool_name: object
     data: object
     account: object
-
-
-def decode_json_object(value: object) -> object:
-    """Read a JSON-encoded object as the object; anything else is returned unchanged.
-
-    Models often JSON-encode execute's data, and the proxy runs it, so every
-    seam that reads the args must decode it the same way.
-    """
-    if isinstance(value, str):
-        try:
-            decoded = json.loads(value)
-        except json.JSONDecodeError:
-            return value
-        if isinstance(decoded, dict):
-            return decoded
-    return value
 
 
 def unwrap_execute_call(name: str, args: dict[str, object]) -> tuple[str, dict[str, object]]:
@@ -50,7 +34,8 @@ def unwrap_execute_call(name: str, args: dict[str, object]) -> tuple[str, dict[s
     real_name = execute_args.get("tool_name")
     if not isinstance(real_name, str) or not real_name:
         return name, args
-    data = decode_json_object(execute_args.get("data"))
+    # The proxy runs a JSON-encoded data as its object, so every seam reads it that way.
+    data = decode_json_container(execute_args.get("data"))
     return real_name, data if isinstance(data, dict) else {}
 
 

@@ -355,6 +355,24 @@ class TestWritePlaybook:
         assert stored.description == "Read the day's events"
         assert stored.workflow_hash != "stale"
 
+    @pytest.mark.regression
+    async def test_steps_sent_as_json_text_are_written_as_the_steps_they_encode(
+        self, store: _FakePlaybookStore, workflows: MagicMock
+    ) -> None:
+        """Captured from prod (7 refused writes): the model JSON-encoded the steps list."""
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+            patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
+        ):
+            result = await write_playbook.ainvoke(
+                {**NEW_ARGS, "steps": json.dumps(NEW_STEPS)}, config=_config()
+            )
+
+        assert result["success"] is True
+        stored = store.documents[(WORKFLOW_ID, USER_ID)]
+        assert [step.to_document() for step in stored.steps] == NEW_STEPS
+
     async def test_the_rendered_yaml_matches_the_arguments_it_was_written_from(
         self, store: _FakePlaybookStore, workflows: MagicMock
     ) -> None:

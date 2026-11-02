@@ -9,9 +9,9 @@ from langchain_core.tools import BaseTool, tool
 from pydantic import BeforeValidator
 
 from app.agents.tools.execute.dispatch import ToolSpace, dispatch_tool
-from app.agents.tools.execute.unwrap import decode_json_object
 from app.constants.execute import RAN_AS_ACCOUNT_KEY
 from app.models.agent_models import AgentConfigurable, agent_configurable
+from app.utils.json_args import decode_json_container
 from shared.py.analytics.catalog.properties import Identifier
 
 
@@ -57,7 +57,7 @@ def build_execute_tool(scoped_tools: Mapping[str, BaseTool] | None = None) -> Ba
         # Models often JSON-encode this object; the decode keeps the schema an object.
         data: Annotated[
             dict[str, object],
-            BeforeValidator(decode_json_object),
+            BeforeValidator(decode_json_container),
             "Arguments for tool_name, matching the args schema retrieve_tools showed. "
             "Pass {} when the tool takes no arguments.",
         ],
