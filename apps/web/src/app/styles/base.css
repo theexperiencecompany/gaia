@@ -5,6 +5,12 @@
 @layer theme, base, openui, components, utilities;
 @import "tailwindcss" source(none);
 @import "@heroui/styles/themes/default" layer(theme);
+@import "@heroui/styles/components/scroll-shadow.css";
+@import "@heroui/styles/components/input.css";
+@import "@heroui/styles/components/field-error.css";
+@import "@heroui/styles/components/skeleton.css";
+@import "@heroui/styles/components/spinner.css";
+
 @import "@heroui/styles/components/tooltip.css";
 @import "@heroui/styles/components/kbd.css";
 @import "@heroui/styles/components/label.css";

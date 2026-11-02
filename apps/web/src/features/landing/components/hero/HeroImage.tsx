@@ -118,7 +118,7 @@ export default function HeroImage({
           >
             <ProgressiveImage
               webpSrc={WALLPAPERS[previousTime].webp}
-              pngSrc={WALLPAPERS[previousTime].png}
+              pngSrc={WALLPAPERS[previousTime].webp}
               alt="Hero wallpaper"
               className="object-cover"
               shouldHaveInitialFade={false}
@@ -139,7 +139,7 @@ export default function HeroImage({
         >
           <ProgressiveImage
             webpSrc={wallpaper.webp}
-            pngSrc={wallpaper.png}
+            pngSrc={wallpaper.webp}
             alt="Hero wallpaper"
             className="object-cover"
             // LCP element: render immediately (no JS-gated opacity fade) so it
