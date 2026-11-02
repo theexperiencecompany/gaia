@@ -113,12 +113,12 @@ class TestProductionRoutingIsPinned:
 
         assert (lane.provider, lane.model, lane.reasoning) == ("openai", "gpt-5.6-luna", None)
 
-    async def test_executor_runs_openrouter_deepseek_at_medium_reasoning(self) -> None:
+    async def test_executor_runs_openrouter_gpt_6_luna_at_medium_reasoning(self) -> None:
         lane, _ = await resolve_lane(None, AgentRole.EXECUTOR)
 
         assert (lane.provider, lane.model, lane.reasoning) == (
             "openrouter",
-            "deepseek/deepseek-v4.1-flash-1017",
+            "openai/gpt-6-luna",
             {"effort": "medium"},
         )
 
@@ -136,13 +136,13 @@ class TestProductionRoutingIsPinned:
         assert fallback is not None
         assert (fallback.provider, fallback.model) == (
             "openrouter",
-            "deepseek/deepseek-v4.1-flash-1017",
+            "openai/gpt-6-luna",
         )
 
     @pytest.mark.parametrize(
         ("use", "expected"),
         [
-            (ModelUse.HELPER, ("openrouter", "deepseek/deepseek-v4.1-flash-1017")),
+            (ModelUse.HELPER, ("openrouter", "openai/gpt-6-luna")),
             (ModelUse.JUDGE, ("openrouter", "google/gemini-3.5-flash-lite")),
             (ModelUse.MEMORY, ("gemini", "gemini-3.1-flash-lite")),
             (ModelUse.VISION, ("gemini", "gemini-3.1-flash-lite")),
@@ -157,7 +157,7 @@ class TestProductionRoutingIsPinned:
         assert isinstance(judge, ChatOpenRouter)
         assert (judge.model_kwargs or {})["models"] == [
             "google/gemini-3.5-flash-lite",
-            "deepseek/deepseek-v4.1-flash-1017",
+            "openai/gpt-6-luna",
         ]
 
     async def test_without_gemini_openai_is_never_the_executors_fallback(
@@ -177,7 +177,7 @@ class TestProductionRoutingIsPinned:
 
         lane, _ = await resolve_lane(None, AgentRole.EXECUTOR)
 
-        assert (lane.provider, lane.model) == ("openrouter", "deepseek/deepseek-v4.1-flash-1017")
+        assert (lane.provider, lane.model) == ("openrouter", "openai/gpt-6-luna")
 
     def test_openai_is_registered_last_as_a_by_name_alternative(self) -> None:
         available = {
