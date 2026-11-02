@@ -210,6 +210,8 @@ class TestListCalendars:
             "type": "integration",
             "code": INTEGRATION_NOT_CONNECTED,
             "toolkit": "googlecalendar",
+            # Lets the web's Reconnect start the calendar connect, not just open the page.
+            "integration_id": "googlecalendar",
             "message": "Reconnect Google Calendar to load your events.",
         }
 

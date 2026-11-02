@@ -28,6 +28,7 @@ class TestRequireIntegration:
             "type": "integration",
             "code": INTEGRATION_NOT_CONNECTED,
             "toolkit": "gmail",
+            "integration_id": "gmail",
             "message": "Missing connection: Gmail. Please connect integrations in settings.",
         }
 

@@ -88,14 +88,22 @@ const handleForbiddenError = (
   }
 
   if (code === API_ERROR_CODES.INTEGRATION_NOT_CONNECTED) {
-    const { toolkit } = errorData as { toolkit?: string };
+    const { toolkit, integration_id: integrationId } = errorData as {
+      toolkit?: string;
+      integration_id?: string;
+    };
     toast.error(message || "Integration required.", {
       id: `integration-${toolkit || "default"}`,
       duration: Infinity,
       action: {
         label: "Reconnect",
         onClick: () => {
-          router.push("/integrations");
+          // ?connect= starts that integration's connect flow on arrival.
+          router.push(
+            integrationId
+              ? `/integrations?connect=${encodeURIComponent(integrationId)}`
+              : "/integrations",
+          );
         },
       },
     });

@@ -121,17 +121,20 @@ async def event_account(
     return tagged
 
 
-def _not_connected(toolkit: str, why: str) -> AppError:
-    # 403, not 401: a 401 trips the web client's session-expiry interceptor.
-    return AppError(
-        message=f"No active {toolkit} connection",
-        why=why,
-        fix=f"Reconnect the {toolkit} integration",
-        status_code=403,
-        code=INTEGRATION_NOT_CONNECTED,
-        # The web interceptor keys its reconnect toast on `toolkit`.
-        public={"toolkit": toolkit},
-    )
+class IntegrationNotConnectedError(AppError):
+    """No account of a toolkit can act: it was never connected, or its primary expired."""
+
+    def __init__(self, toolkit: str, integration_id: str, why: str) -> None:
+        # 403, not 401: a 401 trips the web client's session-expiry interceptor.
+        super().__init__(
+            message=f"No active {toolkit} connection",
+            why=why,
+            fix=f"Reconnect the {toolkit} integration",
+            status_code=403,
+            code=INTEGRATION_NOT_CONNECTED,
+            # The web keys its reconnect toast on toolkit and starts the connect from integration_id.
+            public={"toolkit": toolkit, "integration_id": integration_id},
+        )
 
 
 async def primary_connected_account_id(user_id: str, toolkit: str) -> str:
@@ -146,9 +149,13 @@ async def primary_connected_account_id(user_id: str, toolkit: str) -> str:
     record = await get_account_record(user_id, integration.id)
     account = primary_account(record) if record else None
     if account is None:
-        raise _not_connected(toolkit, "This integration has no connected account")
+        raise IntegrationNotConnectedError(
+            toolkit, integration.id, "This integration has no connected account"
+        )
     if account.status != "connected":
-        raise _not_connected(
-            toolkit, f"The primary {integration.name} account ({account.display_name}) expired"
+        raise IntegrationNotConnectedError(
+            toolkit,
+            integration.id,
+            f"The primary {integration.name} account ({account.display_name}) expired",
         )
     return account.connected_account_id

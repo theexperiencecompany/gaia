@@ -202,30 +202,35 @@ def _background_message(prompt: _Prompt) -> str:
 
 
 def _ui_message(prompt: _Prompt) -> str:
-    """Point at the card a UI client renders, relaying any standalone URL."""
+    """Point at the card a UI client renders, relaying any standalone URL, and end the integration's part of the run."""
     ask = prompt.ask
+    # The run that showed the card cannot succeed with this integration: the
+    # user's click starts a new turn, so retrying here only stacks failures.
+    stop = (
+        f"Nothing more can be done with {prompt.integration_name} until they do, so do not "
+        f"call any {prompt.integration_name} tool again this run; finish the rest of the task "
+        "and say what is waiting on them."
+    )
     if prompt.auth.kind == "oauth" and prompt.auth.url:
         return (
             f"{ask.lead} A {ask.button} has been shown to the user, and a standalone "
             f"authorization URL is available: {prompt.auth.url}. Relay that URL verbatim as a "
-            f"clickable link so the user can {ask.verb} even if the card is not visible, "
-            "then try again."
+            f"clickable link so the user can {ask.verb} even if the card is not visible. {stop}"
         )
     if prompt.auth.kind == "token_only":
         return (
             f"{ask.lead} This integration authenticates with an API key, so no standalone "
             f"authorization URL exists. A {ask.button} has been shown to the user; ask "
-            "them to enter the API key there."
+            f"them to enter the API key there. {stop}"
         )
     if prompt.auth.kind == "unavailable":
         return (
             f"{ask.lead} A {ask.button} has been shown to the user, but no standalone "
-            "authorization URL is available right now. Ask the user to click it, then "
-            "try again."
+            f"authorization URL is available right now. Ask the user to click it. {stop}"
         )
     return (
         f"{ask.lead} A {ask.button} has been shown to the user, so do NOT include any URL in "
-        f"your reply, the UI card handles it. Ask the user to click it, then try again."
+        f"your reply, the UI card handles it. Ask the user to click it. {stop}"
     )
 
 

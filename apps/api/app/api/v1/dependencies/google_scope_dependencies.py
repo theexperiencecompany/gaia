@@ -58,6 +58,7 @@ def require_integration(
                     "type": "integration",
                     "code": INTEGRATION_NOT_CONNECTED,
                     "toolkit": integration_short_name,
+                    "integration_id": integration_id,
                     "message": f"Missing connection: {integration_config.name}. Please connect integrations in settings.",
                 }
                 raise HTTPException(

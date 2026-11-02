@@ -4,6 +4,7 @@ from fastapi import HTTPException
 
 from app.constants.calendar import DEFAULT_CALENDAR_COLOR
 from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
+from app.constants.integrations import GOOGLE_CALENDAR_INTEGRATION_ID
 from app.db.repositories.calendar import calendar_repository
 from app.models.calendar_models import (
     CalendarEventDisplay,
@@ -76,6 +77,7 @@ async def _proxy(
                     "type": "integration",
                     "code": INTEGRATION_NOT_CONNECTED,
                     "toolkit": exc.public.get("toolkit"),
+                    "integration_id": GOOGLE_CALENDAR_INTEGRATION_ID,
                     "message": "Reconnect Google Calendar to load your events.",
                 },
             ) from exc

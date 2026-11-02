@@ -13,6 +13,7 @@ from tests.integration_account_factories import (
 
 from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
 from app.services.integrations.integration_accounts import (
+    IntegrationNotConnectedError,
     derive_status,
     event_account,
     list_account_records,
@@ -120,17 +121,20 @@ class TestPrimaryConnectedAccountId:
         repo.get_for_user.assert_awaited_once_with(USER_ID, "gmail")
 
     async def test_no_accounts_is_the_reconnect_error(self, repo: MagicMock) -> None:
-        with pytest.raises(AppError) as exc:
+        # Typed so the Composio tool wrapper can answer it with the connect card.
+        with pytest.raises(IntegrationNotConnectedError) as exc:
             await primary_connected_account_id(USER_ID, "GMAIL")
 
-        assert exc.value == AppError(
-            message="No active GMAIL connection",
-            why="This integration has no connected account",
-            fix="Reconnect the GMAIL integration",
-            status_code=403,
-            code=INTEGRATION_NOT_CONNECTED,
-            public={"toolkit": "GMAIL"},
-        )
+        assert exc.value.status_code == 403
+        assert exc.value.to_dict() == {
+            "message": "No active GMAIL connection",
+            "why": "This integration has no connected account",
+            "fix": "Reconnect the GMAIL integration",
+            "code": INTEGRATION_NOT_CONNECTED,
+            "toolkit": "GMAIL",
+            # The web's Reconnect starts this integration's connect flow from it.
+            "integration_id": "gmail",
+        }
 
     async def test_an_expired_primary_is_named_in_the_reconnect_error(
         self, repo: MagicMock
@@ -144,7 +148,7 @@ class TestPrimaryConnectedAccountId:
             await primary_connected_account_id(USER_ID, "GMAIL")
 
         assert exc.value.code == INTEGRATION_NOT_CONNECTED
-        assert exc.value.public == {"toolkit": "GMAIL"}
+        assert exc.value.public == {"toolkit": "GMAIL", "integration_id": "gmail"}
         assert exc.value.why == "The primary Gmail account (ca_1@acme.com) expired"
 
     async def test_an_unknown_toolkit_is_a_server_error(self, repo: MagicMock) -> None:
