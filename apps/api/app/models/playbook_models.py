@@ -106,9 +106,7 @@ class DeclineKind(str, Enum):
     NO_WORK_TODAY = "no_work_today"
 
 
-#: Never counts toward PLAYBOOK_DECLINE_LIMIT: a workflow blocked on a
-#: disconnected integration fires twice a day and would exhaust 3 chances in
-#: under 2 days, staying locked out even after reconnecting (only an edit resets it).
+#: Kinds saying the run never reached the work, so there was no sequence to judge.
 BLOCKED_DECLINE_KINDS = frozenset(
     {
         DeclineKind.BLOCKED_MISSING_INTEGRATION,
@@ -149,11 +147,6 @@ def is_work_call(tool_name: str) -> bool:
     parts = tool_name.lower().replace("-", "_").split("_")
     return any(part in WORK_CALL_VERBS for part in parts)
 
-
-#: Kinds that don't count toward the limit: the blocked ones, and a quiet day.
-#: A playbook only freezes calls that ran, so a seasonal workflow would
-#: otherwise spend its chances on empty days and lock out on a busy one.
-UNCOUNTED_DECLINE_KINDS = BLOCKED_DECLINE_KINDS | {DeclineKind.NO_WORK_TODAY}
 
 #: Blocked kinds that name integrations and can therefore pause the workflow.
 INTEGRATION_DECLINE_KINDS = frozenset(
