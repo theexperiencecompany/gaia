@@ -22,7 +22,6 @@ from app.constants.browser import (
     BROWSER_AGENT_URL_QUERY_MAX_CHARS,
     BROWSER_ENGINE_RESUMED_NOTE,
     BROWSER_HUMAN_CHECKS,
-    BROWSER_TASK_QUOTE_RULE,
     JEV_FIRST_BURST_DONE_WHEN,
     JEV_FIRST_BURST_GOAL,
 )
@@ -64,7 +63,7 @@ def agent_options(
     return AgentOptions(
         # A resumed agent read its own "switch to the full browser" in its history,
         # and asked again: the request it reads every step says the move is done.
-        task=task + (secrets.mask(moved) if resumed else "") + BROWSER_TASK_QUOTE_RULE,
+        task=task + (secrets.mask(moved) if resumed else ""),
         # A resumed run's session already opened its last page; reopening the task's
         # first URL lost that page and the agent's place.
         directly_open_url=not resumed,

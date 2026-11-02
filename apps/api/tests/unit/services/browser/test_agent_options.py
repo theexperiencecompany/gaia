@@ -14,7 +14,6 @@ from app.constants.browser import (
     BROWSER_AGENT_URL_QUERY_MAX_CHARS,
     BROWSER_ENGINE_RESUMED_NOTE,
     BROWSER_HUMAN_CHECKS,
-    BROWSER_TASK_QUOTE_RULE,
     JEV_FIRST_BURST_DONE_WHEN,
     JEV_FIRST_BURST_GOAL,
 )
@@ -53,8 +52,7 @@ def test_jev_acts_first_on_the_part_of_the_task_the_start_page_is_for() -> None:
             }
         }
     ]
-    # What goes to the user is the system's rule, never words the agent reads as the user's.
-    assert options["task"] == TASK + BROWSER_TASK_QUOTE_RULE
+    assert options["task"] == TASK
     assert options["extend_system_message"] == BROWSER_AGENT_JEV_ROLE + BROWSER_HUMAN_CHECKS
     assert options["directly_open_url"] is True
 
@@ -128,7 +126,7 @@ def test_a_run_resumed_on_the_fallback_engine_is_told_where_it_is_and_stays_ther
     options = agent_options(TASK, config, RunSecrets({}), resumed=True, fast_engine=True)
 
     moved = BROWSER_ENGINE_RESUMED_NOTE.format(page=page)
-    assert options["task"] == TASK + moved + BROWSER_TASK_QUOTE_RULE
+    assert options["task"] == TASK + moved
     # Neither Jev on the whole task again, nor a reopen of its first page.
     assert (options["initial_actions"], options["directly_open_url"]) == (None, False)
 

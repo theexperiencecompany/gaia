@@ -329,11 +329,6 @@ BROWSER_HUMAN_CHECKS = (
     "credentials the task gives is done by the run itself, never handed over. Before you hand "
     "off a login, fill every non-secret field yourself (username, email, the account "
     "identifier), so the user is left only the secret step.\n"
-    # Measured on GitHub's device login: stuck on a disabled Authorize, the agent pressed
-    # Cancel, and the user's gh login came back access_denied.
-    "- A consent the task asks you to grant (Authorize, Allow, Approve): never press its "
-    "Cancel, Deny or Decline. A grant button the page shows disabled becomes usable after a "
-    f"moment, so wait for it; if it never does, call `{BrowserHandoffAction.REQUEST_HUMAN_TAKEOVER}`.\n"
     "- A CAPTCHA, reCAPTCHA, hCaptcha, an 'I'm not a robot' or image-grid challenge, or any "
     f"other bot check: call `{BrowserHandoffAction.SOLVE_CAPTCHA_WITH_HELP}` on the first one "
     "and do what its result says. Never try to solve one yourself or click challenge tiles.\n"
@@ -345,12 +340,6 @@ BROWSER_HUMAN_CHECKS = (
     "with category missing_value and say which field is missing, unless the task itself says "
     "the run is a test or that dummy values are fine."
 )
-# Read with the task, not the system message: there the agent reported only "Received!" for a
-# page whose heading is "Form submitted" in about a third of runs.
-BROWSER_TASK_QUOTE_RULE = (
-    "\n\nWhen you report what a page shows, says or displays, quote all of its visible text "
-    "that answers that, the page's heading included: a result page's title and its message."
-)
 #: What the agent reads when a bot check blocks a site the user never named: skip it, no pause.
 BROWSER_CAPTCHA_SKIP_SOURCE = (
     "{host} shows a bot check, and it is not a site the task names, so it is not put to the "
@@ -359,29 +348,15 @@ BROWSER_CAPTCHA_SKIP_SOURCE = (
 )
 
 # Appended to Browser-Use's system prompt; BROWSER_AGENT_JEV_ROLE when BROWSER_JEV registers Jev.
-# "Report only what the current page shows" made an agent back on a re-ordered
-# Hacker News drop its three opened stories as stale and quit (research3, 2026-10-02).
 _BROWSER_AGENT_ANSWER_RULE = (
-    "copy titles, messages, numbers and URLs "
-    "exactly. A list that changes while you work keeps the items you already chose from it. "
-    "Say plainly what was not done or could not be found. success=true means the user's "
-    "request was carried out and the answer it asks for delivered; a gap in supporting detail, "
-    "stated plainly, does not change that (one of three articles shows no text to summarise, a "
-    "page does not name the authors). success=false means the request itself could not be "
-    "done, however honestly you explain why: the button or page it names does not exist (no "
-    '"Buy now" button, so no order number), the site is unreachable (its address does not '
-    "resolve), or the action was refused. This replaces any rule for success above.\n"
+    "copy titles, messages, numbers and URLs exactly. Say plainly what was not done or could "
+    "not be found.\n"
 )
 _BROWSER_AGENT_READS = (
-    "read or summarise a page with `extract` (to "
-    "read a linked page, navigate to its exact URL from {link_source}, "
-    "then extract; never guess a URL), "
-    "search a long page with `search_page`, count with `find_elements` (a CSS selector "
-    "returns every match), never count by eye.\n"
+    "to read a linked page, navigate to its exact URL from {link_source}, then extract; never "
+    "guess a URL.\n"
 )
 _BROWSER_AGENT_CLOSING = (
-    "Work through every part of the task before you finish: a part is reported as not done "
-    "only after you tried it and it could not be done.\n"
     "Messages the user sends mid-task arrive as follow-up requests: "
     "weigh what each says against the task; it changes the task only where it says so."
 )
@@ -394,7 +369,7 @@ BROWSER_AGENT_ROLE = (
     "the current page and your reads; "
     + _BROWSER_AGENT_ANSWER_RULE
     + "2. Otherwise act on the page yourself: navigate to a URL you already know or go back, "
-    "click, type, choose, switch tabs, "
+    "click, type, choose, switch tabs; "
     + _BROWSER_AGENT_READS.format(link_source="a `find_elements` href")
     + _BROWSER_AGENT_CLOSING
 )
@@ -411,7 +386,7 @@ BROWSER_AGENT_JEV_ROLE = (
     + "2. Interactions remain on the page you are on (filling a form, searching and choosing): "
     "call `jev` with a goal for that page and the done_when that page will show.\n"
     "3. Anything else: do it yourself. Navigate to a URL you already know or go back, click "
-    "once, switch tabs, "
+    "once, switch tabs; "
     + _BROWSER_AGENT_READS.format(link_source="Jev's report or a `find_elements` href")
     + _BROWSER_AGENT_CLOSING
 )
