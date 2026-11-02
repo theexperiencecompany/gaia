@@ -313,8 +313,8 @@ class TestOnboardingPreferences:
 
         assert onboarding_preferences(onboarding) == ({"profession": "doctor"}, None)
 
-    @pytest.mark.parametrize("onboarding", [None, {}])
+    @pytest.mark.parametrize("onboarding", [None, OnboardingSubdocument()])
     def test_missing_onboarding_reads_as_a_pair_of_none(
-        self, onboarding: dict[str, Any] | None
+        self, onboarding: OnboardingSubdocument | None
     ) -> None:
         assert onboarding_preferences(onboarding) == (None, None)

@@ -21,6 +21,7 @@ from tests.helpers import captured_wide_event
 from app.agents.context import fetchers
 from app.agents.context.fetchers import (
     NEW_USER_CONVERSATION_LIMIT,
+    _ConnectedIntegration,
     _dedupe_by_provider,
     _split_core_context,
     _split_off_section,
@@ -585,7 +586,7 @@ class TestDedupeByProvider:
         self,
     ) -> None:
         """A later id-only entry for the same provider must not clobber an earlier resolved display name."""
-        items = [
+        items: list[_ConnectedIntegration] = [
             {"id": "slack", "name": "Slack Workspace"},
             {"id": "sl_ack", "name": "sl_ack"},
         ]
@@ -593,7 +594,7 @@ class TestDedupeByProvider:
         assert _dedupe_by_provider(items) == [{"id": "slack", "name": "Slack Workspace"}]
 
     def test_an_id_named_entry_held_first_is_replaced_once_a_real_name_arrives(self) -> None:
-        items = [
+        items: list[_ConnectedIntegration] = [
             {"id": "slack", "name": "slack"},
             {"id": "sl_ack", "name": "Slack Workspace"},
         ]
@@ -602,7 +603,7 @@ class TestDedupeByProvider:
 
     def test_the_first_real_name_wins_over_a_second_equally_real_name(self) -> None:
         """Once a provider has resolved to ANY display name, a second row for it must not overwrite it, even with another real name."""
-        items = [
+        items: list[_ConnectedIntegration] = [
             {"id": "calendar", "name": "Calendar One"},
             {"id": "cal_endar", "name": "Calendar Two"},
         ]
@@ -610,7 +611,7 @@ class TestDedupeByProvider:
         assert _dedupe_by_provider(items) == [{"id": "calendar", "name": "Calendar One"}]
 
     def test_distinct_providers_are_all_kept_in_first_seen_order(self) -> None:
-        items = [
+        items: list[_ConnectedIntegration] = [
             {"id": "gmail", "name": "Gmail"},
             {"id": "slack", "name": "Slack"},
             {"id": "notion", "name": "Notion"},
@@ -661,7 +662,7 @@ def _tracked_doc(todo_id: str, title: str) -> TodoDocument:
 
 
 @pytest.fixture
-def repo_reads() -> AsyncMock:
+def repo_reads() -> Iterator[AsyncMock]:
     """Fake the repository's Mongo read with the cached_query cache seams faked.
 
     The active-tracked finder is generation-cached; these fakes stand in for the
@@ -1368,9 +1369,12 @@ class TestASectionDeclinesWhenItsContextIsAbsent:
     @pytest.mark.parametrize("missing", ["user_id", "active_todo_id"])
     async def test_the_active_todo_banner_needs_both_ids(self, missing: str) -> None:
         todo = TodoDocument(id="todo-7", user_id="user1", title="Ship the refactor")
-        present: dict[str, str | None] = {"user_id": "user1", "active_todo_id": "todo-7"}
+        ids: dict[str, str | None] = {"user_id": "user1", "active_todo_id": "todo-7", missing: None}
         with patch("app.db.repositories.todos.todo_repository.get", AsyncMock(return_value=todo)):
-            assert await build_active_todo_banner(ctx(**{**present, missing: None})) == ""
+            banner = await build_active_todo_banner(
+                ctx(user_id=ids["user_id"], active_todo_id=ids["active_todo_id"])
+            )
+            assert banner == ""
 
 
 @pytest.mark.unit

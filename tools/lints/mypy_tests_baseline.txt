@@ -13,7 +13,6 @@
 # instead). Past the date it fails again: fix it, or renew the deferral with a
 # fresh reason. --update keeps the field.
 apps/api/tests/_harness/chroma_fakes.py	attr-defined
-apps/api/tests/_harness/context_chain.py	attr-defined
 apps/api/tests/composio/test_connection_expiry_live.py	attr-defined
 apps/api/tests/composio/test_connection_expiry_live.py	call-arg
 apps/api/tests/composio/test_connection_expiry_live.py	call-overload
@@ -147,14 +146,10 @@ apps/api/tests/model_onboarding/test_tool_media_support.py	arg-type
 apps/api/tests/stress/test_arq_idempotency.py	arg-type
 apps/api/tests/stress/test_arq_idempotency.py	misc
 apps/api/tests/stress/test_link_code_race.py	call-arg
-apps/api/tests/unit/agents/context/test_context_defects.py	attr-defined
 apps/api/tests/unit/agents/context/test_context_harness.py	attr-defined
 apps/api/tests/unit/agents/context/test_context_invariants.py	arg-type
 apps/api/tests/unit/agents/context/test_context_invariants.py	attr-defined
 apps/api/tests/unit/agents/context/test_context_snapshots.py	attr-defined
-apps/api/tests/unit/agents/context/test_fetchers.py	arg-type
-apps/api/tests/unit/agents/context/test_fetchers.py	call-arg
-apps/api/tests/unit/agents/context/test_fetchers.py	misc
 apps/api/tests/unit/agents/context/test_presence_note.py	arg-type
 apps/api/tests/unit/agents/context/test_presence_note.py	attr-defined
 apps/api/tests/unit/agents/context/test_sections.py	misc
@@ -238,8 +233,6 @@ apps/api/tests/unit/agents/test_llm_runtime_config.py	arg-type
 apps/api/tests/unit/agents/test_llm_runtime_config.py	attr-defined
 apps/api/tests/unit/agents/test_llm_runtime_config.py	index
 apps/api/tests/unit/agents/test_mail_templates.py	arg-type
-apps/api/tests/unit/agents/test_messages.py	arg-type
-apps/api/tests/unit/agents/test_messages.py	list-item
 apps/api/tests/unit/agents/test_middleware_chat_llm_wiring.py	arg-type
 apps/api/tests/unit/agents/test_middleware_chat_llm_wiring.py	attr-defined
 apps/api/tests/unit/agents/test_middleware_executor.py	arg-type
@@ -408,9 +401,6 @@ apps/api/tests/unit/helpers/test_agent_helpers_stream_frames.py	arg-type
 apps/api/tests/unit/helpers/test_email_helpers.py	call-arg
 apps/api/tests/unit/helpers/test_graph_driver_latency.py	arg-type
 apps/api/tests/unit/helpers/test_lifespan_helpers.py	arg-type
-apps/api/tests/unit/helpers/test_message_helpers.py	arg-type
-apps/api/tests/unit/helpers/test_message_helpers.py	attr-defined
-apps/api/tests/unit/helpers/test_message_helpers.py	list-item
 apps/api/tests/unit/memory/pg_store/test_memories.py	arg-type
 apps/api/tests/unit/memory/test_chroma_store.py	abstract
 apps/api/tests/unit/memory/test_consolidation.py	attr-defined
@@ -465,8 +455,6 @@ apps/api/tests/unit/models/test_recurring_schedule_entry_points.py	call-arg
 apps/api/tests/unit/models/test_schema_validation.py	call-arg
 apps/api/tests/unit/models/test_schema_validation.py	list-item
 apps/api/tests/unit/models/test_user_document_legacy_profession.py	call-arg
-apps/api/tests/unit/models/test_user_models.py	call-arg
-apps/api/tests/unit/models/test_user_models.py	list-item
 apps/api/tests/unit/models/test_workflow_models.py	arg-type
 apps/api/tests/unit/override/test_dynamic_tool_node.py	arg-type
 apps/api/tests/unit/override/test_dynamic_tool_node.py	union-attr
@@ -677,8 +665,6 @@ apps/api/tests/unit/services/test_payment_service.py	arg-type
 apps/api/tests/unit/services/test_payment_service.py	attr-defined
 apps/api/tests/unit/services/test_payment_service.py	return-value
 apps/api/tests/unit/services/test_payment_service_dodo_reconciliation.py	attr-defined
-apps/api/tests/unit/services/test_platform_link_code_service.py	attr-defined
-apps/api/tests/unit/services/test_platform_link_code_service.py	index
 apps/api/tests/unit/services/test_platform_link_service.py	index
 apps/api/tests/unit/services/test_platform_message_service.py	attr-defined
 apps/api/tests/unit/services/test_provider_credentials_service.py	arg-type
@@ -833,7 +819,6 @@ apps/api/tests/unit/utils/test_schema_fixes.py	index
 apps/api/tests/unit/utils/test_schema_fixes.py	operator
 apps/api/tests/unit/utils/test_search_utils.py	arg-type
 apps/api/tests/unit/utils/test_stream_utils.py	arg-type
-apps/api/tests/unit/utils/test_user_preferences_utils.py	arg-type
 apps/api/tests/unit/utils/test_webpage_fetch.py	arg-type
 apps/api/tests/unit/workers/tasks/test_onboarding_tasks.py	misc
 apps/api/tests/unit/workers/test_browser_tasks.py	attr-defined

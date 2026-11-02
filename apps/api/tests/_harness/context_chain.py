@@ -306,7 +306,7 @@ async def _seed_workflow(
     )
     # Through the module so the harness sees the same patched binding production
     # does, rather than a second reference resolved at import time.
-    hint = await workflow_subagent.build_connected_integrations_hint(user.user_id)
+    hint = await workflow_subagent.build_connected_integrations_hint(user.user_id)  # type: ignore[attr-defined]  # the module's own binding, the one tests patch
     human_message = HumanMessage(
         content=f"{hint}\n\n---\n\nRequest: {query}",
         additional_kwargs={"visible_to": {"workflow_agent"}},

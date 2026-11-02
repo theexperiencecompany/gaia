@@ -17,12 +17,14 @@ from app.helpers.message_helpers import (
     format_tool_selection_message,
     format_workflow_execution_message,
 )
+from app.models.calendar_models import GoogleCalendarEventDateTime
 from app.models.message_models import (
     FileData,
     ReplyToMessageData,
     SelectedCalendarEventData,
     SelectedWorkflowData,
 )
+from app.models.workflow_models import WorkflowStep
 
 # ---------------------------------------------------------------------------
 # create_system_message
@@ -113,7 +115,7 @@ class TestFormatWorkflowExecutionMessage:
             id="wf1",
             title="My Workflow",
             description="desc",
-            steps=[{"title": "Step 1", "category": "ai", "description": "Do AI"}],
+            steps=[WorkflowStep(title="Step 1", category="ai", description="Do AI")],
         )
         mock_wf = MagicMock()
         mock_wf.title = "DB Workflow"
@@ -143,7 +145,7 @@ class TestFormatWorkflowExecutionMessage:
             title="Fallback WF",
             description="fallback desc",
             prompt="custom prompt",
-            steps=[{"title": "S1", "category": "c1", "description": "d1"}],
+            steps=[WorkflowStep(title="S1", category="c1", description="d1")],
         )
 
         with patch(
@@ -161,7 +163,7 @@ class TestFormatWorkflowExecutionMessage:
             id="wf3",
             title="Email WF",
             description="email desc",
-            steps=[{"title": "ES", "category": "email", "description": "email step"}],
+            steps=[WorkflowStep(title="ES", category="email", description="email step")],
         )
         trigger_ctx = {
             "type": "gmail",
@@ -191,7 +193,7 @@ class TestFormatWorkflowExecutionMessage:
             id="wf4",
             title="No User WF",
             description="d",
-            steps=[{"title": "S", "category": "c", "description": "d"}],
+            steps=[WorkflowStep(title="S", category="c", description="d")],
         )
         result = await format_workflow_execution_message(selected)
         assert "No User WF" in result
@@ -202,7 +204,7 @@ class TestFormatWorkflowExecutionMessage:
             id="wf5",
             title="Error WF",
             description="err desc",
-            steps=[{"title": "E", "category": "e", "description": "e"}],
+            steps=[WorkflowStep(title="E", category="e", description="e")],
         )
 
         with patch(
@@ -221,7 +223,7 @@ class TestFormatWorkflowExecutionMessage:
             id="wf6",
             title="Long Email WF",
             description="d",
-            steps=[{"title": "S", "category": "c", "description": "d"}],
+            steps=[WorkflowStep(title="S", category="c", description="d")],
         )
         trigger_ctx = {
             "type": "gmail",
@@ -261,7 +263,9 @@ class TestSignalMatchingSectionRenders:
             id="wf_meeting",
             title="Meeting Reminder",
             description="Remind me before meetings",
-            steps=[{"title": "Remind", "category": "calendar", "description": "send the reminder"}],
+            steps=[
+                WorkflowStep(title="Remind", category="calendar", description="send the reminder")
+            ],
         )
         trigger_ctx = {
             "type": "googlecalendar",
@@ -289,8 +293,8 @@ class TestFormatCalendarEventContext:
             id="ev1",
             summary="Team Standup",
             description="Daily sync",
-            start={"dateTime": "2024-01-01T09:00:00"},
-            end={"dateTime": "2024-01-01T09:30:00"},
+            start=GoogleCalendarEventDateTime(dateTime="2024-01-01T09:00:00"),
+            end=GoogleCalendarEventDateTime(dateTime="2024-01-01T09:30:00"),
             calendarTitle="Work",
         )
         result = format_calendar_event_context(event, "What should I prepare?")
@@ -301,13 +305,22 @@ class TestFormatCalendarEventContext:
 
     def test_timed_event_without_bounds_reads_unknown(self) -> None:
         event = SelectedCalendarEventData(
-            id="ev1b", summary="Standup", description="", start={}, end={}
+            id="ev1b",
+            summary="Standup",
+            description="",
+            start=GoogleCalendarEventDateTime(),
+            end=GoogleCalendarEventDateTime(),
         )
         assert "Unknown to Unknown" in format_calendar_event_context(event)
 
     def test_all_day_event_without_a_date_reads_unknown_date(self) -> None:
         event = SelectedCalendarEventData(
-            id="ev2b", summary="Holiday", description="", start={}, end={}, isAllDay=True
+            id="ev2b",
+            summary="Holiday",
+            description="",
+            start=GoogleCalendarEventDateTime(),
+            end=GoogleCalendarEventDateTime(),
+            isAllDay=True,
         )
         assert "All day on Unknown date" in format_calendar_event_context(event)
 
@@ -316,8 +329,8 @@ class TestFormatCalendarEventContext:
             id="ev2",
             summary="Holiday",
             description="",
-            start={"date": "2024-12-25"},
-            end={"date": "2024-12-26"},
+            start=GoogleCalendarEventDateTime(date="2024-12-25"),
+            end=GoogleCalendarEventDateTime(date="2024-12-26"),
             isAllDay=True,
         )
         result = format_calendar_event_context(event)
@@ -328,8 +341,8 @@ class TestFormatCalendarEventContext:
             id="ev3",
             summary="Meeting",
             description="desc",
-            start={"dateTime": "2024-01-01T10:00:00"},
-            end={"dateTime": "2024-01-01T11:00:00"},
+            start=GoogleCalendarEventDateTime(dateTime="2024-01-01T10:00:00"),
+            end=GoogleCalendarEventDateTime(dateTime="2024-01-01T11:00:00"),
         )
         result = format_calendar_event_context(event)
         assert "Calendar:" not in result
@@ -467,7 +480,7 @@ class TestWorkflowExecutionMessageBranches:
             title="Morning Brief",
             description="desc",
             prompt="do the thing",
-            steps=[{"title": "S1", "category": "c1", "description": "d1"}],
+            steps=[WorkflowStep(title="S1", category="c1", description="d1")],
         )
 
     @staticmethod
@@ -716,7 +729,7 @@ class TestTheTriggeringAccountReachesTheWorkflow:
             title="Triage",
             description="desc",
             prompt="triage it",
-            steps=[{"title": "S1", "category": "c1", "description": "d1"}],
+            steps=[WorkflowStep(title="S1", category="c1", description="d1")],
         )
 
     @pytest.mark.asyncio

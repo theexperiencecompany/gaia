@@ -22,11 +22,9 @@ from app.models.user_models import (
 class TestOnboardingRequestTimezone:
     """The timezone field validator delegates to the canonical is_valid_timezone."""
 
-    def _build(self, timezone) -> OnboardingRequest:
-        return OnboardingRequest(
-            profession="Engineer",
-            needs=["inbox"],
-            timezone=timezone,
+    def _build(self, timezone: object) -> OnboardingRequest:
+        return OnboardingRequest.model_validate(
+            {"profession": "Engineer", "needs": ["inbox"], "timezone": timezone}
         )
 
     @pytest.mark.parametrize(
@@ -87,7 +85,7 @@ class TestStoredPreferencesFromBeforeTheQ2Rewrite:
 
     def test_the_request_model_still_rejects_an_unknown_need(self) -> None:
         with pytest.raises(ValidationError):
-            OnboardingRequest(profession="founder", needs=["todos"])
+            OnboardingRequest.model_validate({"profession": "founder", "needs": ["todos"]})
 
 
 # ---------------------------------------------------------------------------

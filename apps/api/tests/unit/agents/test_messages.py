@@ -27,6 +27,7 @@ from app.agents.core.messages import (
     MessageScope,
     construct_langchain_messages,
 )
+from app.models.calendar_models import GoogleCalendarEventDateTime
 from app.models.message_models import (
     FileData,
     ReplyToMessageData,
@@ -34,6 +35,7 @@ from app.models.message_models import (
     SelectedWorkflowData,
 )
 from app.models.user_models import AuthenticatedUser, OnboardingSubdocument
+from app.models.workflow_models import WorkflowStep
 
 SYSTEM_MSG = SystemMessage(content="System prompt here")
 DYNAMIC_MSG = SystemMessage(
@@ -264,7 +266,7 @@ class TestContentPriority:
             id="wf-1",
             title="Test WF",
             description="desc",
-            steps=[{"title": "s1", "category": "c1", "description": "d1"}],
+            steps=[WorkflowStep(title="s1", category="c1", description="d1")],
         )
         p = _patches(_Returns(workflow_msg="WORKFLOW OUTPUT"))
         with (
@@ -291,8 +293,8 @@ class TestContentPriority:
             id="e-1",
             summary="Meeting",
             description="Team sync",
-            start={"dateTime": "2025-01-01T10:00:00Z"},
-            end={"dateTime": "2025-01-01T11:00:00Z"},
+            start=GoogleCalendarEventDateTime(dateTime="2025-01-01T10:00:00Z"),
+            end=GoogleCalendarEventDateTime(dateTime="2025-01-01T11:00:00Z"),
         )
         p = _patches(_Returns(calendar_msg="CALENDAR OUTPUT"))
         with (
@@ -564,7 +566,7 @@ class TestTriggerContext:
             id="wf-1",
             title="Email WF",
             description="desc",
-            steps=[{"title": "s1", "category": "c1", "description": "d1"}],
+            steps=[WorkflowStep(title="s1", category="c1", description="d1")],
         )
         trigger = {"type": "gmail", "email_data": {"sender": "a@b.com"}}
         p = _patches()

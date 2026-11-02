@@ -13,10 +13,9 @@ error is not proof, and claiming the marker would assert a proof the gate
 cannot actually perform.
 """
 
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import AnyMessage, SystemMessage
 import pytest
 from tests._harness.context_chain import (
-    AgentTier,
     ContextSeed,
     bound_for,
     effective_context,
@@ -28,6 +27,7 @@ from tests._harness.context_chain import (
 from tests._harness.context_sources import ContextSources, memory
 
 from app.agents.context.slots import PromptSlot
+from app.agents.context.tiers import AgentTier
 from app.constants.llm import LLMProviderName
 
 VOLATILE_SOURCES = ContextSources(
@@ -193,7 +193,7 @@ class TestALegacyOnboardingPromptStaysInItsOwnSlot:
     """Checkpoints still replay the retired onboarding prompt; read as STATIC it would evict the real one."""
 
     async def test_replayed_copies_collapse_to_one_and_leave_the_static_prompt_alone(self) -> None:
-        stale = [
+        stale: list[AnyMessage] = [
             SystemMessage(
                 content=f"stale onboarding {n}", additional_kwargs={"onboarding_context": True}
             )
