@@ -267,7 +267,7 @@ async def test_a_handoff_note_reaches_the_run_and_the_agent_deciding_it() -> Non
 
     note = "skip the login, just tell me the opening hours"
     steps = [
-        ScriptedStep(actions=[], takeover=("Sign in and come back", "credentials")),
+        ScriptedStep(actions=[], takeover=("Sign in and come back", "sign_in")),
         ScriptedStep(actions=[("input", {"index": 1, "text": "hours"})]),
     ]
 
@@ -305,7 +305,7 @@ async def test_a_chat_redirect_makes_the_changed_instruction_lead_the_executors_
     """Regression: the run read what the chat reply asked for and the closing still reported the login it had been told to skip."""
     note = "never mind the login, just tell me the opening hours"
     steps = [
-        ScriptedStep(actions=[], takeover=("Sign in and come back", "credentials")),
+        ScriptedStep(actions=[], takeover=("Sign in and come back", "sign_in")),
         ScriptedStep(actions=[("input", {"index": 1, "text": "hours"})]),
     ]
 
@@ -353,7 +353,7 @@ async def _wait_for_pending_handoff(world: JobWorld, count: int = 1) -> str:
 LOGIN_URL = "https://example.test/login"
 SIGNED_IN_URL = "https://example.test/account"
 SIGN_IN = ScriptedStep(
-    actions=[], url=LOGIN_URL, takeover=("Enter your password and sign in.", "credentials")
+    actions=[], url=LOGIN_URL, takeover=("Enter your password and sign in.", "sign_in")
 )
 BOOK_SIGNED_IN = ScriptedStep(actions=[("click", {"index": 4})], url=SIGNED_IN_URL)
 
@@ -504,7 +504,7 @@ async def test_a_login_the_user_made_is_still_signed_in_after_the_run_moves_engi
     from app.services.browser.handoff import resolve_handoff
 
     steps = [
-        ScriptedStep(actions=[], takeover=("Sign in and come back", "credentials")),
+        ScriptedStep(actions=[], takeover=("Sign in and come back", "sign_in")),
         ScriptedStep(
             actions=[], switch=EngineSwitchReason.STAYS_EMPTY, url="https://example.test/book"
         ),

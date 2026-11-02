@@ -100,6 +100,26 @@ class SensitiveCategory(str, Enum):
     IRREVERSIBLE = "irreversible"
 
 
+# The model reads this docstring in the action schema. It has no "none": offered one, the
+# agent filed a sign-in wall under it and the user's login was never saved.
+class TakeoverKind(StrEnum):
+    """What kind of step request_human_takeover hands to the user."""
+
+    PAYMENT = "payment"
+    SIGN_IN = "sign_in"
+    IRREVERSIBLE = "irreversible"
+    MISSING_VALUE = "missing_value"
+
+
+#: The sensitive category each takeover kind's handoff carries.
+TAKEOVER_KIND_CATEGORY: dict[TakeoverKind, SensitiveCategory] = {
+    TakeoverKind.PAYMENT: SensitiveCategory.PAYMENT,
+    TakeoverKind.SIGN_IN: SensitiveCategory.CREDENTIALS,
+    TakeoverKind.IRREVERSIBLE: SensitiveCategory.IRREVERSIBLE,
+    TakeoverKind.MISSING_VALUE: SensitiveCategory.NONE,
+}
+
+
 # Shown on a CREDENTIALS handoff where BROWSER_PERSIST_LOGINS keeps logins: the
 # session is saved (Fernet-encrypted per user+site) and reused so the next task
 # skips the login. The Browser settings page can list/remove saved sites.
@@ -294,7 +314,8 @@ BROWSER_HUMAN_CHECKS = (
     "- A payment, a login whose credentials this task does not give as <secret>name</secret> "
     "placeholders, an OTP/2FA code, or an irreversible or legally-binding confirmation the "
     f"task did not ask for: call `{BrowserHandoffAction.REQUEST_HUMAN_TAKEOVER}` so the user "
-    "does that step in the live browser, then continue toward the goal. A login whose "
+    "does that step in the live browser, then continue toward the goal. Any page that asks "
+    "the user to sign in, log in or enter a code is a login, category sign_in. A login whose "
     "credentials the task gives is done by the run itself, never handed over. Before you hand "
     "off a login, fill every non-secret field yourself (username, email, the account "
     "identifier), so the user is left only the secret step.\n"
@@ -306,8 +327,8 @@ BROWSER_HUMAN_CHECKS = (
     "- A field you cannot leave empty that the task gives no value for: NEVER invent one (no "
     "made-up phone numbers, addresses, dates, amounts, countries or company details, and no "
     f"plausible-looking placeholder). Call `{BrowserHandoffAction.REQUEST_HUMAN_TAKEOVER}` "
-    "and say which field is missing, unless the task itself says the run is a test or that "
-    "dummy values are fine."
+    "with category missing_value and say which field is missing, unless the task itself says "
+    "the run is a test or that dummy values are fine."
 )
 # Read with the task, not the system message: there the agent reported only "Received!" for a
 # page whose heading is "Form submitted" in about a third of runs.

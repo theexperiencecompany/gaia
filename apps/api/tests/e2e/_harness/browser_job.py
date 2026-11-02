@@ -31,9 +31,11 @@ from app.constants.agents import AgentTag
 from app.constants.browser import (
     BROWSER_ANSWER_AFTER_STEP,
     BROWSER_JOB_STREAM_ID_PREFIX,
+    TAKEOVER_KIND_CATEGORY,
     BrowserEngine,
     EngineSwitchReason,
     SensitiveCategory,
+    TakeoverKind,
 )
 from app.core.stream_manager import StreamManager
 from app.models.agent_models import InboxEntry
@@ -301,7 +303,7 @@ class _ScriptedAgent:
     async def _hand_over(self, reason: str, category: str) -> object:
         assert self._double.takeover is not None, "the takeover action was never built"
         # Browser-Use validates the action's arguments into its param model first.
-        return await self._double.takeover(reason, SensitiveCategory(category))
+        return await self._double.takeover(reason, TAKEOVER_KIND_CATEGORY[TakeoverKind(category)])
 
     async def _wait_for_stop(self) -> None:
         """Sit on the page until the user's stop reaches the agent, as a real run would."""
