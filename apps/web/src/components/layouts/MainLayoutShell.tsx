@@ -177,11 +177,7 @@ export function MainLayoutShell({ children }: { children: ReactNode }) {
             onOpenChange={handleOpenChange}
             defaultOpen={defaultOpen}
           >
-            <div
-              className="relative flex h-screen w-full dark"
-              ref={dragRef}
-              translate="no"
-            >
+            <div className="relative flex h-screen w-full dark" ref={dragRef}>
               <SkipToContentLink />
               {appSessionEnabled && (
                 <SidebarLayout>
