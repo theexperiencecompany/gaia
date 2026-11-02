@@ -2736,3 +2736,31 @@ result_brief: x
             result = await validate_playbook(body, USER_ID, sources)
 
         assert [issue.where for issue in result.issues] == ["steps[0]"]
+
+    async def test_sources_that_run_out_inside_a_handoff_to_nowhere_name_the_child(self) -> None:
+        body = _body(
+            """
+description: x
+steps:
+  - handoff: nowhere
+    steps:
+      - id: a
+        tool: list_events
+        args:
+          calendar_id: primary
+      - id: b
+        tool: list_events
+        args:
+          calendar_id: primary
+result_brief: x
+"""
+        )
+
+        with (
+            patch(f"{MODULE}.get_tool_registry", return_value=_registry()),
+            patch(f"{MODULE}.resolve_subagent_tools", AsyncMock(return_value=None)),
+            pytest.raises(
+                ValueError, match=r"^no source for tool step steps\[0\]\.steps\[1\]: 1 sources$"
+            ),
+        ):
+            await validate_playbook(body, USER_ID, [_source({}, {"events": [1]})])
