@@ -1586,6 +1586,7 @@ class TestCompleteOnboardingOnPlatformLink:
         with patch(f"{SERVICE}.complete_onboarding", AsyncMock()) as complete:
             await complete_onboarding_on_platform_link(sample_user_id)
 
+        mock_repo.get.assert_awaited_once_with(sample_user_id)
         user_id, request = complete.await_args.args
         assert user_id == sample_user_id
         assert (request.profession, request.needs, request.other_need) == (
