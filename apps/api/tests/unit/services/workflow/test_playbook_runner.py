@@ -93,6 +93,11 @@ from app.services.workflow.playbook.tool_space import ToolSpace
 from app.utils.timezone import Timezone
 from tests.factories import make_user_id
 
+#: A replay records every call it makes into its run record, which lives in Redis;
+#: a per-test fake keeps that hermetic and off the import-time client, whose loop
+#: belongs to whichever test ran first when real services are up.
+pytestmark = pytest.mark.usefixtures("fake_redis")
+
 MODULE = "app.services.workflow.playbook.runner"
 #: A handoff resolves its subagent inside tool_space, not the runner, so that is
 #: where the lookup is stubbed. Everything below it (the scoped tool dict) runs
