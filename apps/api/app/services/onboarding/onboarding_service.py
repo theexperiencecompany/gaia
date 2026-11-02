@@ -253,7 +253,10 @@ async def save_onboarding_answers(user_id: str, answers: OnboardingAnswers) -> d
     first conversation are composed from these stored answers.
     """
     preferences = OnboardingPreferences(
-        profession=answers.profession, needs=answers.needs, other_need=answers.other_need
+        profession=answers.profession,
+        needs=answers.needs,
+        other_need=answers.other_need,
+        language=answers.language,
     )
     updated_user = await user_repository.update_onboarding_preferences(user_id, preferences)
     if updated_user is None:

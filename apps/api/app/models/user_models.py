@@ -293,6 +293,15 @@ class OnboardingAnswers(BaseModel):
         max_length=OTHER_NEED_MAX_LENGTH,
         description="What the user typed under 'Something else' in Q2, verbatim",
     )
+    language: str | None = Field(
+        default=None,
+        description='The web locale the wizard ran in, reduced to a primary subtag ("de", "pt")',
+    )
+
+    @field_validator("language", mode="before")
+    @classmethod
+    def validate_language(cls, v: object) -> object:
+        return clean_language(v) if isinstance(v, str) else v
 
     @field_validator("needs", mode="before")
     @classmethod

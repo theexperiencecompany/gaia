@@ -13031,6 +13031,18 @@
       "OnboardingAnswers": {
         "description": "The wizard's answers \u2014 Q1 (profession) and Q2 (needs).\n\nThe name is derived from the email server-side, so it is not submitted;\nnothing else is generated at onboarding, so nothing else is collected.",
         "properties": {
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The web locale the wizard ran in, reduced to a primary subtag (\"de\", \"pt\")",
+            "title": "Language"
+          },
           "needs": {
             "description": "The jobs the user handed GAIA (onboarding Q2, up to three)",
             "items": {
@@ -13211,6 +13223,18 @@
       "OnboardingRequest": {
         "description": "The onboarding submission: the answers again, plus the browser's timezone.",
         "properties": {
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The web locale the wizard ran in, reduced to a primary subtag (\"de\", \"pt\")",
+            "title": "Language"
+          },
           "needs": {
             "description": "The jobs the user handed GAIA (onboarding Q2, up to three)",
             "items": {

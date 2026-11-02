@@ -6,6 +6,7 @@ import {
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
+import { useLocale } from "next-intl";
 import { type Dispatch, useCallback, useEffect, useMemo, useRef } from "react";
 
 import { CURRENT_USER_QUERY_KEY } from "@/features/auth/hooks/useCurrentUser";
@@ -34,6 +35,8 @@ export function useOnboardingPreferences(
   const profession = state.responses[FIELD_NAMES.PROFESSION];
   const { selectedNeeds, preferencesPersisted, isRestarting } = state;
   const otherNeed = state.otherNeed.trim();
+  // The welcome thread is written in the language the wizard ran in.
+  const language = useLocale();
 
   const answers = useMemo<OnboardingAnswers | null>(() => {
     if (!profession || (selectedNeeds.length === 0 && !otherNeed)) return null;
@@ -41,8 +44,9 @@ export function useOnboardingPreferences(
       profession,
       needs: selectedNeeds,
       ...(otherNeed ? { other_need: otherNeed } : {}),
+      language,
     };
-  }, [profession, selectedNeeds, otherNeed]);
+  }, [profession, selectedNeeds, otherNeed, language]);
 
   const queryClient = useQueryClient();
   const { mutate, status, reset } = useMutation({

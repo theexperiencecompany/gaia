@@ -12391,6 +12391,11 @@ export interface components {
          */
         OnboardingAnswers: {
             /**
+             * Language
+             * @description The web locale the wizard ran in, reduced to a primary subtag ("de", "pt")
+             */
+            language?: string | null;
+            /**
              * Needs
              * @description The jobs the user handed GAIA (onboarding Q2, up to three)
              */
@@ -12471,6 +12476,11 @@ export interface components {
          * @description The onboarding submission: the answers again, plus the browser's timezone.
          */
         OnboardingRequest: {
+            /**
+             * Language
+             * @description The web locale the wizard ran in, reduced to a primary subtag ("de", "pt")
+             */
+            language?: string | null;
             /**
              * Needs
              * @description The jobs the user handed GAIA (onboarding Q2, up to three)

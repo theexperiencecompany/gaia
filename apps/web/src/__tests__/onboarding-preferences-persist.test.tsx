@@ -17,6 +17,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const saveOnboardingAnswers = vi.fn();
 
+vi.mock("next-intl", () => ({ useLocale: () => "pt-BR" }));
+
 vi.mock("@/features/onboarding/api/onboardingApi", () => ({
   saveOnboardingAnswers: (...args: unknown[]) => saveOnboardingAnswers(...args),
 }));
@@ -84,6 +86,7 @@ describe("useOnboardingPreferences", () => {
     expect(saveOnboardingAnswers).toHaveBeenCalledExactlyOnceWith({
       profession: "founder",
       needs: ["inbox", "tools"],
+      language: "pt-BR",
     });
   });
 

@@ -72,7 +72,7 @@ async def test_answers_save_stamps_questions_answered_not_a_settings_change(
     mongo_db, captured: MagicMock
 ) -> None:
     answers = OnboardingAnswers(
-        profession="founder", needs=[OnboardingNeed.INBOX], other_need="invoices"
+        profession="founder", needs=[OnboardingNeed.INBOX], other_need="invoices", language="de-DE"
     )
 
     await onboarding_service.save_onboarding_answers(USER_ID, answers)
@@ -87,6 +87,7 @@ async def test_answers_save_stamps_questions_answered_not_a_settings_change(
     assert not any(isinstance(e, SettingsPreferencesChanged) for e in events)
     onboarding = (await mongo_db["users"].find_one({"_id": USER_OID}))["onboarding"]
     assert onboarding["preferences"]["needs"] == ["inbox"]
+    assert onboarding["preferences"]["language"] == "de"
     assert "questions_answered" in onboarding["steps_reached"]
 
 
