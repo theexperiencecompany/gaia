@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock, patch
 from hypothesis import given, strategies as st
 from langchain_core.tools import BaseTool, StructuredTool
 from pydantic import create_model
+import pytest
 
 from app.agents.tools.execute.execute_tool import execute
 from app.agents.tools.execute.unwrap import execute_call_account, unwrap_execute_call
@@ -41,6 +42,7 @@ from app.services.workflow.playbook.record import (
     build_playbook,
     number_record,
     render_record,
+    result_shape,
 )
 from app.services.workflow.playbook.tool_space import SubagentTools
 
@@ -140,6 +142,18 @@ def _context(steps: Mapping[str, StepResult], item: object = None) -> RunContext
     return RunContext(user=USER, now=NOW, trigger={}, steps=steps, item=item)
 
 
+#: One recorded listing's elements: what a later call reads by index.
+_Items = list[dict[str, object]]
+
+
+def _items(result: object) -> _Items:
+    """Return a generated listing's elements, the shape _runs records every call with."""
+    assert isinstance(result, dict)
+    items = result["items"]
+    assert isinstance(items, list)
+    return items
+
+
 @dataclass
 class _Run:
     """A generated run: its calls in order, and the picks that freeze the work in it."""
@@ -171,7 +185,7 @@ def _value(draw: st.DrawFn, earlier: Sequence[tuple[str, object]]) -> tuple[obje
         recorded = resolve_args({"v": {"$time": placeholder, "format": layout}}, _context({}))["v"]
         return recorded, ({"$time": placeholder} if kind == "time" else placeholder)
     step_id, result = draw(st.sampled_from(list(earlier)))
-    items = result["items"]  # type: ignore[index]
+    items = _items(result)
     index = draw(st.integers(0, len(items) - 1))
     picked = items[index]["id"]
     if kind == "reference":
@@ -198,7 +212,7 @@ def _runs(draw: st.DrawFn) -> _Run:
         for_each: dict[str, object] = {}
         if earlier and draw(st.booleans()):
             source_id, source = draw(st.sampled_from(earlier))
-            args["first"] = source["items"][0]["id"]  # type: ignore[index]
+            args["first"] = _items(source)[0]["id"]
             vary["first"] = "$item.id"
             for_each = {"for_each": f"$steps.{source_id}.items"}
         for name in ARG_NAMES:
@@ -277,7 +291,7 @@ def _replayed(body: PlaybookBody, sources: Sequence[RecordedResult]) -> list[dic
         item = None
         if isinstance(step, ForEachStep):
             listing = steps[str(step.for_each).split(".")[1]].value
-            item = listing["items"][0]  # type: ignore[index]
+            item = _items(listing)[0]
         replayed.append(
             {
                 "tool": name,
@@ -320,12 +334,16 @@ def test_every_marked_value_is_what_the_step_stores(run: _Run) -> None:
     for pick in run.picks:
         number = int(str(pick["call"]))
         args = stored[str(pick["id"]) or f"call{number}"]
-        for path, marked in dict(pick["vary"]).items():  # type: ignore[call-overload]
+        vary = pick["vary"]
+        assert isinstance(vary, dict)
+        for path, marked in vary.items():
             value = _at(args, path)
             if isinstance(marked, dict):
-                assert {key: value[key] for key in marked} == marked  # type: ignore[index]
+                assert isinstance(value, dict)
+                assert {key: value[key] for key in marked} == marked
             elif value != marked:
-                assert value == {"$time": marked, "format": value["format"]}  # type: ignore[index]
+                assert isinstance(value, dict)
+                assert value == {"$time": marked, "format": value["format"]}
 
 
 @given(_runs())
@@ -621,3 +639,171 @@ def test_a_number_holds_as_the_record_grows() -> None:
     after = number_record([*calls, _call("retrieve_tools", {}, {}), *calls], EXCLUDED)
 
     assert after[: len(before)] == before
+
+
+# --- every refusal is reported at once, each where the author wrote it --------
+
+
+def test_every_bad_pick_is_reported_in_one_answer() -> None:
+    """A model told one problem per round trip gives up before the last one."""
+    calls = [
+        _call("tool_a", {"first": "x"}, "Error: no", failed=True),
+        _call("tool_b", {"first": "y"}, LISTING),
+        _call("tool_c", {"first": "z"}, LISTING),
+    ]
+
+    picks = [
+        {"call": 1},
+        {"call": 2, "vary": {"missing": "$today"}},
+        {"call": 2},
+        {"call": 9},
+        {"call": 3, "id": "call2"},
+        {"call": 8},
+    ]
+
+    # call2 is pick 2's default id, so naming call 3 that is a clash too.
+    assert [problem.split(":")[0] for problem in _problems(calls, picks)] == [
+        "steps[2].call",
+        "steps[3].call",
+        "steps[4].id",
+        "steps[5].call",
+        "steps[0].call",
+        "steps[1].vary.missing",
+    ]
+
+
+def test_picking_nothing_is_refused() -> None:
+    assert _problems([_call("tool_a", {"first": "x"}, LISTING)], []) == [
+        "steps: pick at least one call that did the work"
+    ]
+
+
+def test_every_number_the_record_has_is_listed() -> None:
+    calls = [_call("tool_a", {"first": "x"}, LISTING), _call("tool_b", {"first": "y"}, LISTING)]
+
+    (problem,) = _problems(calls, [{"call": 5}])
+
+    assert "the calls you can pick are 1, 2 (read_run_record" in problem
+
+
+def test_a_run_with_nothing_to_pick_says_so() -> None:
+    assert _problems([], [{"call": 1}]) == [
+        "steps[0].call: call 1 is not in this run's record; the calls you can pick are none "
+        "(read_run_record lists them)"
+    ]
+
+
+def test_a_for_each_source_woven_into_text_is_refused_where_it_was_written() -> None:
+    calls = [_call("tool_a", {"first": "x"}, LISTING), _call("tool_b", {"first": "e1"}, LISTING)]
+
+    assert _problems(
+        calls,
+        [
+            {"call": 1, "id": "list"},
+            {"call": 2, "for_each": "all-$steps.list.items", "vary": {"first": "$item.id"}},
+        ],
+    ) == [
+        "steps[1]: for_each must be the whole value, either one placeholder naming a list "
+        "($steps.<step_id>.<field>) or an $ask slot, but it is 'all-$steps.list.items'; a "
+        "placeholder inside a longer string resolves to text, and text is not a list"
+    ]
+
+
+def test_a_time_slot_naming_no_time_is_refused_with_the_grammar() -> None:
+    calls = [_call("tool_a", {"first": "2026-11-20"}, LISTING)]
+
+    assert _problems(
+        calls, [{"call": 1, "vary": {"first": {"$time": "$user.name", "format": "%Y-%m-%d"}}}]
+    ) == [
+        "steps[0].vary.first: $time takes one time placeholder ($now or $today, with an "
+        "optional offset and clock such as $today + 1d 09:00), not '$user.name'"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("path", "found"),
+    [
+        ("people.0.email", True),
+        ("people.1.email", False),
+        ("people.x.email", False),
+        ("first.0", False),
+        ("people", True),
+        ("", False),
+    ],
+)
+def test_a_path_reads_keys_and_list_indexes_that_exist(path: str, found: bool) -> None:
+    calls = [_call("tool_a", {"first": "x", "people": [{"email": "a@b.c"}]}, LISTING)]
+
+    problems = _problems(calls, [{"call": 1, "vary": {path: "$user.email"}}])
+
+    assert (problems == []) is found
+
+
+def test_a_call_with_many_args_lists_the_first_twenty_paths() -> None:
+    args: dict[str, object] = {f"arg{index:02}": "x" for index in range(25)}
+    calls = [_call("tool_a", args, LISTING)]
+
+    (problem,) = _problems(calls, [{"call": 1, "vary": {"nope": "$today"}}])
+
+    assert problem.endswith(", ".join(f"arg{index:02}" for index in range(20)) + ", ...")
+
+
+def test_a_call_with_exactly_twenty_args_lists_them_all() -> None:
+    args: dict[str, object] = {f"arg{index:02}": "x" for index in range(20)}
+
+    (problem,) = _problems(
+        [_call("tool_a", args, LISTING)], [{"call": 1, "vary": {"no": "$today"}}]
+    )
+
+    assert problem.endswith(", ".join(f"arg{index:02}" for index in range(20)))
+
+
+def test_a_call_with_no_args_says_it_has_no_paths() -> None:
+    (problem,) = _problems([_call("tool_a", {}, LISTING)], [{"call": 1, "vary": {"x": "$today"}}])
+
+    assert problem.endswith("its arg paths are: none")
+
+
+def test_a_nested_list_is_listed_down_to_its_leaves() -> None:
+    calls = [_call("tool_a", {"people": [{"email": "a"}, {"email": "b"}]}, LISTING)]
+
+    (problem,) = _problems(calls, [{"call": 1, "vary": {"x": "$today"}}])
+
+    assert problem.endswith("its arg paths are: people.0.email, people.1.email")
+
+
+# --- the record as the author reads it --------------------------------------
+
+
+def test_the_record_names_the_account_a_call_ran_as() -> None:
+    calls = [_call("GMAIL_SEND", {"to": "x"}, {"id": "m"}, proxied=True, account="w@acme.com")]
+
+    (line,) = render_record(number_record(calls, EXCLUDED))
+
+    assert line["account"] == "w@acme.com"
+
+
+def test_a_shape_goes_three_levels_deep_and_says_how_much_is_below() -> None:
+    deep = {"a": {"b": {"c": {"d": 1}}, "list": [{"x": [1]}]}}
+
+    assert result_shape(deep) == {
+        "a": {"b": {"c": "object with 1 keys"}, "list": {"list of 1": "object with 1 keys"}}
+    }
+
+
+def test_a_wide_object_shows_its_first_fifteen_keys_and_counts_the_rest() -> None:
+    wide = {f"k{index:02}": index for index in range(18)}
+
+    shape = result_shape(wide)
+
+    assert isinstance(shape, dict)
+    assert list(shape)[:15] == [f"k{index:02}" for index in range(15)]
+    assert shape["..."] == "3 more keys"
+    assert len(shape) == 16
+
+
+def test_an_object_of_exactly_fifteen_keys_is_shown_whole() -> None:
+    shape = result_shape({f"k{index:02}": index for index in range(15)})
+
+    assert isinstance(shape, dict)
+    assert "..." not in shape

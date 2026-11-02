@@ -1392,7 +1392,51 @@ class TestReadRunRecord:
     async def test_outside_a_workflow_run_it_refuses(self) -> None:
         result = await read_run_record.ainvoke({}, config={"configurable": {"user_id": USER_ID}})
 
-        assert result["error"] == "not_in_workflow_run"
+        assert result == {
+            "success": False,
+            "error": "not_in_workflow_run",
+            "message": "No workflow in this run's config: this tool only works inside a workflow "
+            "run.",
+        }
+
+    async def test_a_run_with_nothing_to_replay_says_so(self) -> None:
+        with patch(f"{TOOLS_MODULE}.read_recorded_calls", AsyncMock(return_value=[])) as reader:
+            result = await read_run_record.ainvoke({}, config=_config())
+
+        reader.assert_awaited_once_with(RUN_ID)
+        assert result == {
+            "success": True,
+            "data": {"calls": []},
+            "message": "This run has made no call a playbook can replay, so there is nothing "
+            "to freeze.",
+        }
+
+    async def test_a_read_records_the_tool_the_workflow_and_how_many_calls(self) -> None:
+        with patch(f"{TOOLS_MODULE}.log") as log:
+            await read_run_record.ainvoke({}, config=_config())
+
+        log.set.assert_called_once_with(
+            tool={"name": "read_run_record", "action": "read"}, workflow_id=WORKFLOW_ID
+        )
+        assert log.set_ns.call_args_list == [call("playbook", record_calls=1)]
+
+    async def test_a_write_refused_by_the_validator_logs_its_workflow(
+        self, store: _FakePlaybookStore, workflows: MagicMock, run_record: list[RecordedCall]
+    ) -> None:
+        run_record[:] = [_fetch({"messages": [{"id": "m1"}]}), _reply({"sent": [{"id": "1"}]})]
+        steps = [
+            {"call": 1, "id": "fetch"},
+            {"call": 2, "vary": {"thread_id": "$steps.fetch.threadId"}},
+        ]
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+            patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_GmailRegistry()),
+            patch(f"{TOOLS_MODULE}.log") as log,
+        ):
+            await write_playbook.ainvoke({**NEW_ARGS, "steps": steps}, config=_config())
+
+        assert log.warning.call_args.kwargs == {"issues": 1, "workflow_id": WORKFLOW_ID}
 
 
 PAUSE_TARGET = "app.services.workflow.integration_pause.pause_workflow_for_missing_integrations"

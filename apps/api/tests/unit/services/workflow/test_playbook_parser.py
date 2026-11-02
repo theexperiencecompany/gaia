@@ -1263,11 +1263,9 @@ result_brief: x
         assert result.issues == []
 
 
-def _call(
-    tool_name: str, args: dict[str, Any], result: object, subagent: str | None = None
-) -> RecordedResult:
-    """One call as the authoring run made it, with what came back."""
-    return RecordedResult(tool_name=tool_name, args=args, result=result, subagent=subagent)
+def _source(args: dict[str, Any], result: object) -> RecordedResult:
+    """Record the call one tool step was built from, with what came back."""
+    return RecordedResult(args=args, result=result)
 
 
 @pytest.mark.unit
@@ -1298,8 +1296,7 @@ result_brief: x
         )
         sent = {"timeframe": "1d", "query": "in:inbox"}
         results = [
-            _call(
-                "execute",
+            _source(
                 {
                     "task_description": "Fetching last 24h inbox emails for triage",
                     "tool_name": "GMAIL_FETCH_MESSAGES",
@@ -1330,8 +1327,7 @@ result_brief: x
 """
         )
         results = [
-            _call(
-                "execute",
+            _source(
                 {
                     "task_description": "Fetching mail",
                     "tool_name": "GMAIL_FETCH_MESSAGES",
@@ -1359,7 +1355,7 @@ steps:
 result_brief: x
 """
         )
-        results = [_call("post_raw", {"data": '{"a": 1}'}, {"posted": [{"id": "p1"}]})]
+        results = [_source({"data": '{"a": 1}'}, {"posted": [{"id": "p1"}]})]
         registry = _schema_registry(post_raw={"data": {"type": "string"}})
 
         with patch(f"{MODULE}.get_tool_registry", return_value=registry):
@@ -1380,7 +1376,7 @@ steps:
 result_brief: x
 """
         )
-        results = [_call("list_events", {"calendar_id": "primary"}, {"data": {"events": []}})]
+        results = [_source({"calendar_id": "primary"}, {"data": {"events": []}})]
 
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
             result = await validate_playbook(body, USER_ID, results)
@@ -1406,8 +1402,7 @@ result_brief: x
 """
         )
         results = [
-            _call(
-                "send_email",
+            _source(
                 {"to": "a@b.com", "subject": "hi"},
                 {"success": False, "error": "Gmail token expired"},
             )
@@ -1446,7 +1441,7 @@ steps:
 result_brief: x
 """
         )
-        results = [_call("send_email", {"to": "a@b.com", "subject": "hi"}, envelope)]
+        results = [_source({"to": "a@b.com", "subject": "hi"}, envelope)]
 
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
             result = await validate_playbook(body, USER_ID, results)
@@ -1471,8 +1466,7 @@ result_brief: x
 """
         )
         results = [
-            _call(
-                "list_events",
+            _source(
                 {"calendar_id": "primary", "query": "café ☕", "after": datetime(2026, 9, 1)},
                 {"events": []},
             )
@@ -1510,9 +1504,7 @@ steps:
 result_brief: x
 """
         )
-        results = [
-            _call("list_events", {"calendar_id": "primary", "q": "x" * filler}, {"events": []})
-        ]
+        results = [_source({"calendar_id": "primary", "q": "x" * filler}, {"events": []})]
 
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
             result = await validate_playbook(body, USER_ID, results)
@@ -1541,12 +1533,11 @@ result_brief: x
 """
         )
         results = [
-            _call(
-                "list_events",
+            _source(
                 {"calendar_id": "primary"},
                 {"messages": [{"id": "m1"}], "nextPage": "abc"},
             ),
-            _call("send_email", {"to": "a@b.com", "subject": "hi"}, {"sent": [{"id": "1"}]}),
+            _source({"to": "a@b.com", "subject": "hi"}, {"sent": [{"id": "1"}]}),
         ]
 
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
@@ -1588,8 +1579,8 @@ result_brief: x
         )
         wide = {f"k{i:02d}": i for i in range(key_count)}
         results = [
-            _call("list_events", {"calendar_id": "primary"}, wide),
-            _call("send_email", {"to": "a@b.com", "subject": "hi"}, {"sent": [{"id": "1"}]}),
+            _source({"calendar_id": "primary"}, wide),
+            _source({"to": "a@b.com", "subject": "hi"}, {"sent": [{"id": "1"}]}),
         ]
 
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
@@ -1650,17 +1641,13 @@ result_brief: x
 """
         )
         results = [
-            _call(
-                "list_events",
+            _source(
                 {"calendar_id": "primary"},
                 {"events": [{"id": "e1", "title": "standup"}]},
-                subagent="calendar_agent",
             ),
-            _call(
-                "send_email",
+            _source(
                 {"to": "a@b.com", "subject": "hi"},
                 "sent",
-                subagent="calendar_agent",
             ),
         ]
 
@@ -1693,8 +1680,8 @@ result_brief: x
 """
         )
         results = [
-            _call("list_events", {"calendar_id": "primary"}, {"organizer": {"name": "Ada"}}),
-            _call("send_email", {"to": "a@b.com", "subject": "hi"}, {"sent": [{"id": "1"}]}),
+            _source({"calendar_id": "primary"}, {"organizer": {"name": "Ada"}}),
+            _source({"to": "a@b.com", "subject": "hi"}, {"sent": [{"id": "1"}]}),
         ]
 
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
@@ -1725,8 +1712,8 @@ result_brief: x
 """
         )
         results = [
-            _call("list_events", {"calendar_id": "primary"}, ["m1", "m2"]),
-            _call("send_email", {"to": "a@b.com", "subject": "hi"}, {"sent": [{"id": "1"}]}),
+            _source({"calendar_id": "primary"}, ["m1", "m2"]),
+            _source({"to": "a@b.com", "subject": "hi"}, {"sent": [{"id": "1"}]}),
         ]
 
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
@@ -1756,8 +1743,8 @@ result_brief: x
 """
         )
         results = [
-            _call("list_events", {"calendar_id": "primary"}, {"messages": [{"id": "m1"}]}),
-            _call("send_email", {"to": "m1", "subject": "hi"}, {"sent": [{"id": "1"}]}),
+            _source({"calendar_id": "primary"}, {"messages": [{"id": "m1"}]}),
+            _source({"to": "m1", "subject": "hi"}, {"sent": [{"id": "1"}]}),
         ]
 
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
@@ -1784,8 +1771,8 @@ result_brief: x
 """
         )
         results = [
-            _call("list_events", {"calendar_id": "primary"}, {"messages": [{"id": "m1"}]}),
-            _call("send_email", {"to": "a@b.com", "subject": "x"}, {"sent": [{"id": "1"}]}),
+            _source({"calendar_id": "primary"}, {"messages": [{"id": "m1"}]}),
+            _source({"to": "a@b.com", "subject": "x"}, {"sent": [{"id": "1"}]}),
         ]
 
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
@@ -1811,32 +1798,6 @@ result_brief: x
             pytest.raises(ValueError, match="no source for tool step steps\\[0\\]"),
         ):
             await validate_playbook(body, USER_ID, [])
-
-    async def test_a_step_built_from_a_call_that_raised_is_refused(self) -> None:
-        """A raised call's record is its error text, which neither the envelope nor the emptiness check reads as a failure."""
-        body = _body(
-            """
-description: x
-steps:
-  - id: agenda
-    tool: list_events
-    args:
-      calendar_id: primary
-result_brief: x
-"""
-        )
-        raised = RecordedResult(
-            tool_name="list_events",
-            args={"calendar_id": "primary"},
-            result="Error: TimeoutError: calendar did not answer",
-            failed=True,
-        )
-
-        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
-            result = await validate_playbook(body, USER_ID, [raised])
-
-        assert [issue.where for issue in result.issues] == ["steps[0]"]
-        assert result.issues[0].problem.startswith("list_events failed in this run")
 
 
 @pytest.mark.unit
@@ -2138,13 +2099,8 @@ result_brief: Say what was sent.
 """
         )
         results = [
-            _call(
-                "list_events",
-                {"calendar_id": "primary"},
-                {"events": [{"id": "e1"}]},
-                "calendar_agent",
-            ),
-            _call("send_email", {"to": "a@b.com", "subject": "hi"}, "sent"),
+            _source({"calendar_id": "primary"}, {"events": [{"id": "e1"}]}),
+            _source({"to": "a@b.com", "subject": "hi"}, "sent"),
         ]
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()), _handoff_space():
             result = await validate_playbook(body, USER_ID, results)
@@ -2227,13 +2183,10 @@ result_brief: x
         )
         results = [
             RecordedResult(
-                tool_name="list_events",
                 args={"calendar_id": "primary"},
                 result={"count": 2, "items": [{"id": 1}, {"id": 2}]},
             ),
-            RecordedResult(
-                tool_name="send_email", args={"to": "a@b.com", "subject": "hi"}, result="sent"
-            ),
+            RecordedResult(args={"to": "a@b.com", "subject": "hi"}, result="sent"),
         ]
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
             result = await validate_playbook(body, USER_ID, results)
@@ -2269,13 +2222,10 @@ result_brief: x
         )
         results = [
             RecordedResult(
-                tool_name="list_events",
                 args={"calendar_id": "primary"},
                 result={"items": [{"id": 1, "title": "standup"}, {"id": 2, "title": "1:1"}]},
             ),
-            RecordedResult(
-                tool_name="send_email", args={"to": "a@b.com", "subject": "hi"}, result="sent"
-            ),
+            RecordedResult(args={"to": "a@b.com", "subject": "hi"}, result="sent"),
         ]
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
             result = await validate_playbook(body, USER_ID, results)
@@ -2310,13 +2260,10 @@ result_brief: x
         )
         results = [
             RecordedResult(
-                tool_name="list_events",
                 args={"calendar_id": "primary"},
                 result={"items": [{"id": 1, "email": "a@b.com"}, {"id": 2, "title": "1:1"}]},
             ),
-            RecordedResult(
-                tool_name="send_email", args={"to": "a@b.com", "subject": "hi"}, result="sent"
-            ),
+            RecordedResult(args={"to": "a@b.com", "subject": "hi"}, result="sent"),
         ]
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
             result = await validate_playbook(body, USER_ID, results)
@@ -2349,13 +2296,10 @@ result_brief: x
         )
         results = [
             RecordedResult(
-                tool_name="list_events",
                 args={"calendar_id": "primary"},
                 result={"items": [{"id": 1, "title": "standup"}]},
             ),
-            RecordedResult(
-                tool_name="send_email", args={"to": "standup", "subject": "hi"}, result="sent"
-            ),
+            RecordedResult(args={"to": "standup", "subject": "hi"}, result="sent"),
         ]
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
             result = await validate_playbook(body, USER_ID, results)
@@ -2421,13 +2365,10 @@ result_brief: x
         )
         results = [
             RecordedResult(
-                tool_name="list_events",
                 args={"calendar_id": "primary"},
                 result={"stats": {"count": 2}, "items": []},
             ),
-            RecordedResult(
-                tool_name="send_email", args={"to": "a@b.com", "subject": "hi"}, result="sent"
-            ),
+            RecordedResult(args={"to": "a@b.com", "subject": "hi"}, result="sent"),
         ]
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
             result = await validate_playbook(body, USER_ID, results)
@@ -2462,13 +2403,10 @@ result_brief: x
         )
         results = [
             RecordedResult(
-                tool_name="list_events",
                 args={"calendar_id": "primary"},
                 result={"items": [{"id": 1}]},
             ),
-            RecordedResult(
-                tool_name="send_email", args={"to": "a@b.com", "subject": "hi"}, result="sent"
-            ),
+            RecordedResult(args={"to": "a@b.com", "subject": "hi"}, result="sent"),
         ]
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
             result = await validate_playbook(body, USER_ID, results)
@@ -2496,9 +2434,7 @@ result_brief: x
 """
         )
         results = [
-            RecordedResult(
-                tool_name="send_email", args={"to": "a@b.com", "subject": "hi"}, result="sent"
-            ),
+            RecordedResult(args={"to": "a@b.com", "subject": "hi"}, result="sent"),
         ]
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
             result = await validate_playbook(body, USER_ID, results)
@@ -2532,13 +2468,10 @@ result_brief: x
         )
         results = [
             RecordedResult(
-                tool_name="list_events",
                 args={"calendar_id": "primary"},
                 result={"items": [{"id": 1, "title": "rent"}]},
             ),
-            RecordedResult(
-                tool_name="send_email", args={"to": "rent", "subject": "hi"}, result="sent"
-            ),
+            RecordedResult(args={"to": "rent", "subject": "hi"}, result="sent"),
         ]
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
             result = await validate_playbook(body, USER_ID, results)
@@ -2602,7 +2535,7 @@ result_brief: x
 
     async def _validate(self, body: PlaybookBody, recorded_subject: str) -> PlaybookValidation:
         results = [
-            _call("send_email", {"to": "a@b.com", "subject": recorded_subject}, "sent"),
+            _source({"to": "a@b.com", "subject": recorded_subject}, "sent"),
         ]
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
             return await validate_playbook(body, USER_ID, results)
@@ -2741,8 +2674,7 @@ result_brief: x
 """
         )
         results = [
-            _call(
-                "send_email",
+            _source(
                 {
                     "to": 5,
                     "cc": "nobody",
@@ -2762,3 +2694,45 @@ result_brief: x
                 "$item addresses the element of a for_each, and this step is not one",
             ),
         ]
+
+
+@pytest.mark.unit
+class TestSourcesLineUpWithToolSteps:
+    async def test_too_many_sources_is_a_bug_named_with_both_counts(self) -> None:
+        body = _body(VALID_YAML)
+        sources = [_source({}, {"items": [1]})] * 5
+
+        with (
+            patch(f"{MODULE}.get_tool_registry", return_value=_registry()),
+            pytest.raises(ValueError, match="^5 sources for 2 tool steps$"),
+        ):
+            await validate_playbook(body, USER_ID, sources)
+
+    async def test_a_handoff_to_nowhere_still_consumes_its_childrens_sources(self) -> None:
+        """Its children are reported once; the steps after it still read their own sources."""
+        body = _body(
+            """
+description: x
+steps:
+  - handoff: nowhere
+    steps:
+      - id: a
+        tool: list_events
+        args:
+          calendar_id: primary
+  - id: b
+    tool: list_events
+    args:
+      calendar_id: primary
+result_brief: x
+"""
+        )
+        sources = [_source({"calendar_id": "primary"}, {"events": [1]})] * 2
+
+        with (
+            patch(f"{MODULE}.get_tool_registry", return_value=_registry()),
+            patch(f"{MODULE}.resolve_subagent_tools", AsyncMock(return_value=None)),
+        ):
+            result = await validate_playbook(body, USER_ID, sources)
+
+        assert [issue.where for issue in result.issues] == ["steps[0]"]

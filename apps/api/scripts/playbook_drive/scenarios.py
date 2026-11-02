@@ -131,11 +131,6 @@ def edit_prompt(ctx: Context) -> None:
     ctx.store.edit_workflow_prompt(ctx.workflow_id, "edited by the drive")
 
 
-def complete_all_and_remember_playbook(ctx: Context) -> None:
-    complete_all(ctx)
-    remember_playbook_id(ctx)
-
-
 def mark_start(ctx: Context) -> None:
     """Mark the moment before the fire, in the database's own clock, so a count of what it created is not skewed by clock drift."""
     ctx.marks["started"] = ctx.store.db.command("serverStatus")["localTime"]

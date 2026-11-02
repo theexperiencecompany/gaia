@@ -68,15 +68,10 @@ class Observation(BaseModel):
     reasons: list[str] = Field(default_factory=list)
     discards: list[str] = Field(default_factory=list)
     for_each: list[ForEachCount] = Field(default_factory=list)
-    warnings: list[str] = Field(default_factory=list)
-    errors: list[str] = Field(default_factory=list)
     #: Each playbook decision this fire made, as "<tool>:<ok | error code>".
     decisions: list[str] = Field(default_factory=list)
     #: What each refused write_playbook told the model, from the fire's trace.
     refusals: list[str] = Field(default_factory=list)
-
-    def warned(self, needle: str) -> bool:
-        return any(needle in line for line in self.warnings + self.errors)
 
 
 class WorkerLog:
@@ -260,8 +255,6 @@ def _observe(
     )
     for event in log.events_since(position, workflow_id):
         _read_playbook_event(observation, event)
-        observation.warnings.extend(_message(w) for w in event.get("warnings") or [])
-        observation.errors.extend(_message(e) for e in event.get("errors") or [])
     return observation
 
 
@@ -277,10 +270,6 @@ def _read_playbook_event(observation: Observation, event: dict[str, Any]) -> Non
             observation.for_each.append(ForEachCount.model_validate(playbook["for_each"]))
     if str(event.get("message", "")).endswith("Playbook discarded"):
         observation.discards.append(str(event.get("reason")))
-
-
-def _message(entry: object) -> str:
-    return str(entry.get("msg", "")) if isinstance(entry, dict) else str(entry)
 
 
 def _tools(steps: list[dict[str, Any]]) -> list[str]:

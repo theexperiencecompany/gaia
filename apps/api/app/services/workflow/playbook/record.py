@@ -218,15 +218,7 @@ def build_playbook(
         if step is None:
             continue
         call = item.entry.call
-        built.sources.append(
-            RecordedResult(
-                tool_name=call.tool_name,
-                args=call.args,
-                result=item.entry.result,
-                subagent=call.subagent,
-                failed=call.failed,
-            )
-        )
+        built.sources.append(RecordedResult(args=call.args, result=item.entry.result))
         scope = call.subagent
         last = steps[-1] if steps else None
         if scope is None:
@@ -491,16 +483,23 @@ class _ArgSlot:
 
 def _locate(args: dict[str, object], path: str) -> _ArgSlot | None:
     """Return where path's value sits in args, or None when the call has no such value."""
-    located: _ArgSlot | None = None
+    *parents, last = path.split(".")
     node: object = args
-    for part in path.split("."):
-        found = isinstance(node, dict) and part in node
-        indexed = isinstance(node, list) and bool(_INDEX.fullmatch(part)) and int(part) < len(node)
-        if not (found or indexed) or not isinstance(node, dict | list):
+    for part in parents:
+        slot = _slot_in(node, part)
+        if slot is None:
             return None
-        located = _ArgSlot(container=node, key=part)
-        node = located.read()
-    return located
+        node = slot.read()
+    return _slot_in(node, last)
+
+
+def _slot_in(node: object, part: str) -> _ArgSlot | None:
+    """Return the slot part names in node: a key of a mapping, or an index within a list."""
+    if isinstance(node, dict):
+        return _ArgSlot(container=node, key=part) if part in node else None
+    if isinstance(node, list) and _INDEX.fullmatch(part) and int(part) < len(node):
+        return _ArgSlot(container=node, key=part)
+    return None
 
 
 def _arg_paths(value: object, prefix: str = "") -> list[str]:
@@ -515,7 +514,8 @@ def _arg_paths(value: object, prefix: str = "") -> list[str]:
         return [
             path
             for index, item in enumerate(value)
-            for path in _arg_paths(item, f"{prefix}.{index}" if prefix else str(index))
+            # A list is never the root: a call's args are a mapping.
+            for path in _arg_paths(item, f"{prefix}.{index}")
         ]
     return [prefix] if prefix else []
 

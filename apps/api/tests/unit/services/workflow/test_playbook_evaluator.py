@@ -9,6 +9,7 @@ path the tool's recorded result lacks, an unresolvable $steps / $trigger
 
 from datetime import datetime
 import re
+import time
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -191,11 +192,19 @@ def test_a_time_slot_that_is_not_a_time_is_refused_with_the_grammar() -> None:
     assert caught.value.fix == "write the time as $today + 1d 09:00 or similar"
 
 
-def test_a_layout_ending_in_z_is_rendered_in_utc() -> None:
-    """A trailing Z says UTC; the user's own clock with a Z on it is a different instant."""
+@pytest.mark.parametrize("host_zone", ["UTC", "Asia/Kolkata"])
+def test_a_layout_ending_in_z_is_rendered_in_utc(
+    host_zone: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A trailing Z says UTC; the user's own clock, or the host's, with a Z on it is a different instant."""
+    monkeypatch.setenv("TZ", host_zone)
+    time.tzset()
     slot = TimeSlot.model_validate({"$time": "$now", "format": "%Y-%m-%dT%H:%M:%SZ"})
-
-    assert _render_time_slot(slot, NOW) == "2026-03-14T08:30:00Z"
+    try:
+        assert _render_time_slot(slot, NOW) == "2026-03-14T08:30:00Z"
+    finally:
+        monkeypatch.undo()
+        time.tzset()
 
 
 def test_a_clock_makes_a_date_an_instant() -> None:

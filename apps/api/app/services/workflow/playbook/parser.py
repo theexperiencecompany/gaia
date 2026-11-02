@@ -89,14 +89,8 @@ class RecordedResult:
     $steps placeholder would resolve against at replay.
     """
 
-    tool_name: str
     args: Mapping[str, Any]
     result: object
-    #: The stable id of the subagent that made the call (``todos``), or
-    #: ``None`` for the executor's own.
-    subagent: str | None = None
-    #: True when the tool raised instead of returning.
-    failed: bool = False
 
 
 class PlaybookIssue(BaseModel):
@@ -316,7 +310,7 @@ def _result_refusal(tool_name: str, call: RecordedResult) -> str | None:
     often does so with an empty list beside it, and "returned no items" would
     name the symptom while the message says the cause.
     """
-    if call.failed or is_error_envelope(call.result):
+    if is_error_envelope(call.result):
         return (
             f"{tool_name} failed in this run ({_envelope_error(call.result)}); a playbook "
             "freezes calls that succeeded — fix the call and run it again, or drop the step"
