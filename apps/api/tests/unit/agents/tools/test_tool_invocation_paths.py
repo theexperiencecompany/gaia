@@ -36,7 +36,7 @@ from app.agents.tools.run_record import read_run_record
 from app.api.v1.endpoints.sandbox_execute import SandboxExecuteRequest, sandbox_execute
 from app.config.settings import settings
 from app.override.langgraph_bigtool.dynamic_tool_node import DynamicToolNode
-from app.services.sandbox.execute_token import mint_execute_token
+from app.services.sandbox.execute_client import mint_execute_env
 
 APP = Path(__file__).resolve().parents[4] / "app"
 INVOKING = frozenset({"ainvoke", "invoke", "arun", "_arun", "abatch", "batch"})
@@ -217,13 +217,24 @@ async def test_the_execute_proxy_records_the_real_tool_and_not_itself(fake_redis
     assert await _recorded() == [("probe", {"query": "q"}, "todos", "answered q")]
 
 
+@pytest.mark.parametrize("scope", [None, "linear"], ids=["executor", "subagent"])
 async def test_a_sandbox_script_calling_back_records_into_its_run(
-    fake_redis: Any, monkeypatch: pytest.MonkeyPatch
+    fake_redis: Any, monkeypatch: pytest.MonkeyPatch, scope: str | None
 ) -> None:
+    """The token minted for the bash run carries the run and the scope its calls land in."""
     monkeypatch.setattr(settings, "SANDBOX_EXECUTE_TOKEN_SECRET", "s" * 32)
-    token = mint_execute_token(
-        USER_ID, "bash-run-1", stream_id=STREAM_ID, scoped_tool_names=None, ttl_seconds=60
+    monkeypatch.setattr(
+        settings, "SANDBOX_EXECUTE_CALLBACK_URL", "https://api.test/sandbox/execute"
     )
+    configurable = {"stream_id": STREAM_ID, "user_id": USER_ID, "run_scope": scope}
+    token = mint_execute_env(
+        user_id=USER_ID,
+        run_id="bash-run-1",
+        config={"configurable": configurable},
+        sandbox_id=None,
+        command_timeout_seconds=60,
+        scoped_tool_names=None,
+    )["GAIA_EXECUTE_TOKEN"]
     resolved = ResolvedTool(name="probe", tool=probe, is_integration=True)
     with (
         patch("app.agents.tools.execute.dispatch.resolve_tool", AsyncMock(return_value=resolved)),
@@ -238,7 +249,7 @@ async def test_a_sandbox_script_calling_back_records_into_its_run(
         )
 
     assert response.ok
-    assert await _recorded() == [("probe", {"query": "q"}, None, "answered q")]
+    assert await _recorded() == [("probe", {"query": "q"}, scope, "answered q")]
 
 
 async def test_a_state_updating_tool_still_updates_state_and_is_recorded(fake_redis: Any) -> None:

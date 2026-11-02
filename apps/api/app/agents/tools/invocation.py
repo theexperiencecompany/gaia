@@ -22,10 +22,13 @@ from langgraph.errors import GraphBubbleUp
 from langgraph.types import Command
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.agents.core.subagents.call_record import is_error_envelope
 from app.agents.tools.run_record import append_call, append_call_sync
 from app.constants.execute import EXECUTE_TOOL_NAME
+from app.constants.log_tags import LogTag
 from app.models.agent_models import AgentConfigurable, agent_configurable
-from app.models.workflow_execution_models import RecordedCall, build_result_digest
+from app.models.workflow_execution_models import RecordedCall, build_result_digest, parse_result
+from shared.py.wide_events import log
 
 #: How a graph tool node marks its input as a ToolCall rather than plain args.
 GRAPH_TOOL_CALL_TYPE = "tool_call"
@@ -50,13 +53,9 @@ async def invoke_tool(
         # A pause for approval, not a finished call: recorded when it resumes and runs.
         raise
     except Exception as exc:
-        recorded = _recorded(tool, args, config, _error_text(exc), failed=True)
-        if recorded is not None:
-            await append_call(*recorded)
+        await _write(_recorded(tool, args, config, _error_text(exc), failed=True))
         raise
-    recorded = _recorded(tool, args, config, output, failed=False)
-    if recorded is not None:
-        await append_call(*recorded)
+    await _write(_recorded(tool, args, config, output, failed=False))
     return output
 
 
@@ -74,14 +73,41 @@ def invoke_tool_sync(
     except GraphBubbleUp:
         raise
     except Exception as exc:
-        recorded = _recorded(tool, args, config, _error_text(exc), failed=True)
-        if recorded is not None:
-            append_call_sync(*recorded)
+        _write_sync(_recorded(tool, args, config, _error_text(exc), failed=True))
         raise
-    recorded = _recorded(tool, args, config, output, failed=False)
-    if recorded is not None:
-        append_call_sync(*recorded)
+    _write_sync(_recorded(tool, args, config, output, failed=False))
     return output
+
+
+async def _write(recorded: tuple[str, RecordedCall] | None) -> None:
+    """Append a finished call to its run's record; a failed write is logged, never raised."""
+    if recorded is None:
+        return
+    try:
+        await append_call(*recorded)
+    except Exception as exc:
+        # The tool already ran: raising would report it failed and invite a repeat.
+        _log_unrecorded(recorded[1], exc)
+
+
+def _write_sync(recorded: tuple[str, RecordedCall] | None) -> None:
+    """Sync twin of _write."""
+    if recorded is None:
+        return
+    try:
+        append_call_sync(*recorded)
+    except Exception as exc:
+        # The tool already ran: raising would report it failed and invite a repeat.
+        _log_unrecorded(recorded[1], exc)
+
+
+def _log_unrecorded(call: RecordedCall, exc: Exception) -> None:
+    log.error(
+        f"{LogTag.TOOL} run record: a finished call was not recorded",
+        tool_name=call.tool_name,
+        error_type=type(exc).__name__,
+        exc_info=True,
+    )
 
 
 def _recorded(
@@ -99,13 +125,15 @@ def _recorded(
     stream_id = configurable.get("stream_id")
     if not stream_id:
         return None
+    digest = build_result_digest(_as_text(_result_payload(output)))
     call = RecordedCall(
         tool_name=tool.name,
         subagent_id=configurable.get("subagent_id"),
         subagent=configurable.get("run_scope"),
         args=args,
-        result_digest=build_result_digest(_as_text(_result_payload(output))),
-        failed=failed,
+        result_digest=digest,
+        # A tool that reports its own failure under a normal return failed all the same.
+        failed=failed or is_error_envelope(parse_result(digest)),
     )
     return stream_id, call
 
