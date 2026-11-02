@@ -26,14 +26,14 @@ export function saveOnboardingAnswers(answers: OnboardingAnswers) {
   });
 }
 
-export type ReportedOnboardingStep = OnboardingPhaseUpdateRequest["phase"];
-
 /**
  * Tells the server the wizard reached a step only the browser sees. The
  * server stamps it once per onboarding run and emits its analytics event, so
  * a reload re-reporting the same step is harmless.
  */
-export function reportOnboardingStep(phase: ReportedOnboardingStep) {
+export function reportOnboardingStep(
+  phase: OnboardingPhaseUpdateRequest["phase"],
+) {
   return api.post("/api/v1/onboarding/phase", {
     body: { phase },
     silent: true,

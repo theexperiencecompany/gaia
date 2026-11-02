@@ -1,19 +1,19 @@
 "use client";
 
+import type { OnboardingPhaseUpdateRequest } from "@shared/api/generated";
 import { useEffect, useMemo, useRef } from "react";
 
-import {
-  type ReportedOnboardingStep,
-  reportOnboardingStep,
-} from "../api/onboardingApi";
+import { reportOnboardingStep } from "../api/onboardingApi";
 import type { Stage } from "../state/types";
+
+type ReportedOnboardingStep = OnboardingPhaseUpdateRequest["phase"];
 
 /**
  * The browser-only steps the wizard has reached on this stage. The paywall
  * counts only once the plan status is known: while it loads, a paying user
  * is parked on the payment stage too.
  */
-export function stepsReachedOn(
+function stepsReachedOn(
   stage: Stage,
   planStatusKnown: boolean,
 ): ReportedOnboardingStep[] {
