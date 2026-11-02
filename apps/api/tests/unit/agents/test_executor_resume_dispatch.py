@@ -202,7 +202,7 @@ async def test_a_run_without_a_task_id_records_under_its_stream(fake_redis: Any)
 
 
 async def test_a_resume_is_driven_with_its_command(fake_redis: Any) -> None:
-    command = Command(resume={"status": "approved"})
+    command: Command[str] = Command(resume={"status": "approved"})
 
     seen = await _record_through_the_run("task-1", resume=command)
 

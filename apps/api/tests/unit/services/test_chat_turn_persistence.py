@@ -21,41 +21,23 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.constants import chat as chat_constants
+from app.constants.chat import EMPTY_RESPONSE_FALLBACK
 from app.constants.general import NEW_MESSAGE_BREAKER
+from app.constants.log_tags import LogTag
 from app.models.chat_models import MessageKind, MessageModel
 from app.models.message_models import MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
 from app.services.chat import stream as chat_stream
-from app.services.chat.chunks import process_data_chunk
+from app.services.chat.chunks import ChunkAccumulators, process_data_chunk
 from app.services.chat.persistence import save_user_message
 from app.services.chat.state import merge_tool_outputs
 from app.services.chat.stream import _persist_turn, _StreamState
+from app.utils.agent_utils import format_sse_response
 from tests.conftest import FAKE_USER
-
-# Read lazily so this module still collects on a base revision that predates the
-# fix (regression-proof runs it there and expects a failing assertion, not an error).
-EMPTY_RESPONSE_FALLBACK = getattr(chat_constants, "EMPTY_RESPONSE_FALLBACK", None)
 
 
 async def _dispatch(stream_id: str, chunk: str, state: _StreamState) -> tuple[list[str], bool]:
-    """Feed one chunk through the real dispatcher.
-
-    The accumulator bundle only exists on this branch; on the base revision the
-    dispatcher still takes the four accumulators positionally. Both shapes are
-    supported so regression-proof can run this module against master.
-    """
-    try:
-        from app.services.chat.chunks import ChunkAccumulators
-    except ImportError:
-        return await process_data_chunk(
-            stream_id,
-            chunk,
-            state.tool_data,  # type: ignore[arg-type]  # base-revision signature
-            state.tool_outputs,  # type: ignore[arg-type]  # base-revision signature
-            state.todo_progress_accumulated,  # type: ignore[arg-type]  # base-revision signature
-            state.follow_up_actions,  # type: ignore[arg-type]  # base-revision signature
-        )
+    """Feed one chunk through the real dispatcher."""
     return await process_data_chunk(
         stream_id,
         chunk,
@@ -68,7 +50,7 @@ async def _dispatch(stream_id: str, chunk: str, state: _StreamState) -> tuple[li
     )
 
 
-USER = {"user_id": "u1", "email": "u1@test.local"}
+USER = AuthenticatedUser(user_id="u1", email="u1@test.local")
 CONV = "conv-1"
 
 
@@ -81,7 +63,7 @@ def _body(message: str = "what's on my calendar?") -> MessageRequestWithHistory:
 
 
 async def persist(
-    state: _StreamState, user: AuthenticatedUser | dict[str, str] = USER
+    state: _StreamState, user: AuthenticatedUser = USER
 ) -> tuple[MessageModel, list[str]]:
     """Run the real persist path; return the saved bot message and what it published."""
     published: list[str] = []
@@ -366,8 +348,6 @@ class TestTheSubstitutionIsRecordedExactly:
     """The fallback line is indistinguishable from a real reply in the conversation; only the log records why it fired."""
 
     async def test_the_fallback_line_is_streamed_verbatim_on_this_stream(self):
-        from app.utils.agent_utils import format_sse_response
-
         state = _StreamState()
         state.complete_message = ""
 
@@ -376,8 +356,6 @@ class TestTheSubstitutionIsRecordedExactly:
         assert published == [("s1", format_sse_response(EMPTY_RESPONSE_FALLBACK))]
 
     async def test_a_model_that_spent_tokens_on_no_text_is_recorded_as_such(self):
-        from app.constants.log_tags import LogTag
-
         state = _StreamState()
         state.complete_message = ""
         state.usage_metadata = {"gemini": {"input_tokens": 120, "output_tokens": 64}}

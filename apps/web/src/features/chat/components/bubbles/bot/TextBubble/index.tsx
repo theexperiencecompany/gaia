@@ -26,7 +26,7 @@ import {
   type ApprovalResolver,
 } from "../ApprovalResolveContext";
 import { ChatItemBoundary } from "../ChatItemBoundary";
-import StoppedNote from "../StoppedNote";
+import { StoppedNote } from "../StoppedNote";
 import type { ApprovalOutcome } from "../SubagentRow";
 import TodoProgressSection from "../TodoProgressSection";
 import UnifiedToolThread from "../UnifiedToolThread";

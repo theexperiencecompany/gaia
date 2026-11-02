@@ -12,7 +12,7 @@ from contextlib import contextmanager
 import sys
 import time
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from prometheus_client import REGISTRY
@@ -27,6 +27,9 @@ from app.agents.core.background.executor_runner import _ExecutorResult, run_exec
 from app.agents.core.background.session import ExecutorRun, RunKind, get_session, teardown_session
 from app.agents.tools import executor_tool as et
 from app.constants.executor import EXECUTOR_PAUSED
+from app.constants.general import CALL_EXECUTOR_NAME
+from app.core.stream_manager import StreamManager
+from app.models.agent_models import AgentConfigurable
 from app.models.user_models import AuthenticatedUser
 from shared.py.analytics.catalog.agents import AgentRunCompleted, AgentRunFailed, AgentRunStarted
 
@@ -44,7 +47,7 @@ def _sum(name: str, labels: dict[str, str]) -> float:
     return REGISTRY.get_sample_value(f"{name}_sum", labels) or 0.0
 
 
-def _configurable(stream_id: str) -> dict[str, Any]:
+def _configurable(stream_id: str) -> AgentConfigurable:
     return {
         "stream_id": stream_id,
         "user_message_id": "umsg-1",
@@ -89,28 +92,26 @@ class TestDispatchLatency:
     async def test_free_lock_spawns_live_run_with_dispatch_stamp(self) -> None:
         stream_id = "dispatch-live"
         captured: dict[str, Any] = {}
-        real_from_config = ExecutorRun.from_configurable.__func__
+        real_from_config = ExecutorRun.from_configurable
 
         def _capture_from_config(
             cls: Any, configurable: Any, *, identity: Any, workflow_execution_id: Any = None
         ) -> ExecutorRun:
             run = real_from_config(
-                cls, configurable, identity=identity, workflow_execution_id=workflow_execution_id
+                configurable, identity=identity, workflow_execution_id=workflow_execution_id
             )
             captured["run"] = run
             return run
 
         with (
             patch.object(et, "try_acquire_lock", AsyncMock(return_value=True)),
-            patch.object(
-                et.ExecutorRun, "from_configurable", new=classmethod(_capture_from_config)
-            ),
+            patch.object(ExecutorRun, "from_configurable", new=classmethod(_capture_from_config)),
             patch.object(et, "spawn_background_task"),
         ):
             result = await et._dispatch_executor(
                 task="do the thing",
                 task_id="task-live",
-                configurable=_configurable(stream_id),  # type: ignore[arg-type] -- minimal dispatch bag
+                configurable=_configurable(stream_id),
                 conversation_id="conv-1",
             )
 
@@ -130,7 +131,7 @@ class TestDispatchLatency:
             result = await et._dispatch_executor(
                 task="do it again",
                 task_id="task-second",
-                configurable=_configurable(stream_id),  # type: ignore[arg-type] -- minimal dispatch bag
+                configurable=_configurable(stream_id),
                 conversation_id="conv-1",
             )
 
@@ -155,7 +156,7 @@ class TestDispatchLatency:
         with (
             patch.object(et, "try_acquire_lock", side_effect=_flaky_acquire),
             patch.object(et, "redis_cache", _mock_redis("dying-stream:old-task")),
-            patch.object(et.StreamManager, "is_cancelled", AsyncMock(return_value=True)),
+            patch.object(StreamManager, "is_cancelled", AsyncMock(return_value=True)),
             patch.object(et, "spawn_background_task"),
             patch.object(et, "log") as mock_log,
             patch.object(et, "time", new=fake_time),
@@ -163,7 +164,7 @@ class TestDispatchLatency:
             result = await et._dispatch_executor(
                 task="redirected work",
                 task_id="task-r",
-                configurable=_configurable(stream_id),  # type: ignore[arg-type] -- minimal dispatch bag
+                configurable=_configurable(stream_id),
                 conversation_id="conv-1",
             )
 
@@ -175,7 +176,7 @@ class TestDispatchLatency:
         ]
         assert tool_logs == [
             {
-                "name": et.CALL_EXECUTOR_NAME,
+                "name": CALL_EXECUTOR_NAME,
                 "action": "dispatch",
                 "task_id": "task-r",
                 "redirect_wait_ms": 123.46,
@@ -549,8 +550,8 @@ class TestBackgroundRunExactWiring:
             patch.object(er, "release_lock_if_owned", AsyncMock()),
             patch.object(er, "_close_queued_stream", AsyncMock()),
             patch("app.services.analytics_service.capture", MagicMock()),
-            patch.object(er.StreamManager, "is_cancelled", is_cancelled_mock),
-            patch.object(er.time, "perf_counter", side_effect=list(perf_values)),
+            patch.object(StreamManager, "is_cancelled", is_cancelled_mock),
+            patch.object(time, "perf_counter", side_effect=list(perf_values)),
         ):
             yield SimpleNamespace(execute=execute, is_cancelled=is_cancelled_mock)
 
@@ -560,7 +561,7 @@ class TestBackgroundRunExactWiring:
         result = _ExecutorResult("so far", "final", stopped=stopped)
         with self._env(run, perf_values=[1000.0, 1000.0, 1000.5], result=result):
             await run_executor_background(run=run, task="the task", configurable={})
-            finalize = er._finalize_executor_run
+            finalize = cast(AsyncMock, er._finalize_executor_run)
 
         assert finalize.await_args.kwargs == {"stopped": stopped}
 
@@ -726,7 +727,7 @@ class TestResumeForwarding:
                 run=run,
                 task="do the thing",
                 configurable={"conversation_source": "web"},
-                resume=sentinel,  # type: ignore[arg-type] -- sentinel object proves forwarding by identity; intentionally not a Command
+                resume=sentinel,
             )
 
         assert execute.await_args.args[3] is sentinel

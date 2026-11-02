@@ -15,6 +15,7 @@ frontend chunk.
 """
 
 from collections.abc import Mapping
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 import json
 import re
@@ -129,49 +130,56 @@ async def save_user_message(
     )
 
 
+@dataclass(frozen=True)
+class BotReply:
+    """What one turn's reply saves: its text, cards and the stamps a reload needs."""
+
+    complete_message: str
+    bot_message_id: str
+    tool_data: Mapping[str, object] = field(default_factory=dict)
+    metadata: dict[str, object] = field(default_factory=dict)
+    #: Comms-completion time, which keeps the reply sorted ahead of a delegated answer.
+    bot_timestamp: datetime | None = None
+    error: str | None = None
+    follow_up_actions: list[str] | None = None
+    #: A REACT turn: a one-emoji acknowledgment of reacts_to_message_id.
+    kind: MessageKind = MessageKind.TEXT
+    reacts_to_message_id: str | None = None
+    #: The user cut this turn off with Stop.
+    stopped: bool = False
+
+
 async def save_bot_reply(
     body: MessageRequestWithHistory,
     user: AuthenticatedUser,
     conversation_id: str,
-    complete_message: str,
-    tool_data: Mapping[str, object],
-    metadata: dict[str, object],
-    bot_message_id: str,
-    bot_timestamp: datetime | None = None,
-    error: str | None = None,
-    follow_up_actions: list[str] | None = None,
-    kind: MessageKind = MessageKind.TEXT,
-    reacts_to_message_id: str | None = None,
-    stopped: bool = False,
+    reply: BotReply,
 ) -> None:
     """Persist the turn's reply to Mongo; the user message was saved when the turn began.
 
     Artifact URLs are baked absolute so a stale frontend chunk still renders.
-    bot_timestamp stamps the reply at comms-completion time, keeping it sorted
-    ahead of a delegated executor answer in voice mode.
-    kind and reacts_to_message_id stamp a REACT turn; stopped, a turn cut off with Stop.
     """
-    bot_timestamp = bot_timestamp or datetime.now(UTC)
-    rendered_message = absolutize_artifact_urls(complete_message, conversation_id)
+    bot_timestamp = reply.bot_timestamp or datetime.now(UTC)
+    rendered_message = absolutize_artifact_urls(reply.complete_message, conversation_id)
 
     bot_message = MessageModel(
         type="bot",
         response=rendered_message,
         date=bot_timestamp.isoformat(),
         fileIds=body.fileIds,
-        metadata=metadata,
-        error=error,
+        metadata=reply.metadata,
+        error=reply.error,
         # Persisted here rather than patched in afterwards: the chips are part
         # of the turn the user saw, so a reload, a sync, or a second device must
         # rebuild them from the saved message alone.
-        follow_up_actions=follow_up_actions,
-        kind=kind,
-        reacts_to_message_id=reacts_to_message_id,
-        stopped=stopped or None,
+        follow_up_actions=reply.follow_up_actions,
+        kind=reply.kind,
+        reacts_to_message_id=reply.reacts_to_message_id,
+        stopped=reply.stopped or None,
     )
-    bot_message.message_id = bot_message_id
+    bot_message.message_id = reply.bot_message_id
 
-    for key, value in tool_data.items():
+    for key, value in reply.tool_data.items():
         setattr(bot_message, key, value)
 
     await update_messages(
