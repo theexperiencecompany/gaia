@@ -236,7 +236,12 @@ class TestCreateWorkflow:
         assert data["message"] == "Workflow created successfully"
         mock_capture.assert_called_once_with(
             UserId(FAKE_USER.user_id),
-            WorkflowCreated(trigger_type="manual", steps_count=1, generated_immediately=False),
+            WorkflowCreated(
+                origin="user_created",
+                trigger_type="manual",
+                steps_count=1,
+                generated_immediately=False,
+            ),
         )
         assert type(mock_capture.call_args.args[1].trigger_type) is str
         mock_log.set.assert_any_call(
@@ -273,7 +278,12 @@ class TestCreateWorkflow:
         assert response.status_code == 200
         mock_capture.assert_called_once_with(
             UserId(FAKE_USER.user_id),
-            WorkflowCreated(trigger_type="manual", steps_count=0, generated_immediately=False),
+            WorkflowCreated(
+                origin="user_created",
+                trigger_type="manual",
+                steps_count=0,
+                generated_immediately=False,
+            ),
         )
 
     async def test_create_workflow_captures_trigger_type(self, client: AsyncClient):
@@ -300,7 +310,12 @@ class TestCreateWorkflow:
         assert response.status_code == 200
         mock_capture.assert_called_once_with(
             UserId(FAKE_USER.user_id),
-            WorkflowCreated(trigger_type="schedule", steps_count=1, generated_immediately=False),
+            WorkflowCreated(
+                origin="user_created",
+                trigger_type="schedule",
+                steps_count=1,
+                generated_immediately=False,
+            ),
         )
         assert type(mock_capture.call_args.args[1].trigger_type) is str
 

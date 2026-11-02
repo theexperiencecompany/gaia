@@ -7,6 +7,7 @@ from typing import Any
 from app.constants.log_tags import LogTag
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
+from shared.py.analytics.catalog.workflows import TodoWorkflowOrigin
 from shared.py.wide_events import log
 
 
@@ -108,7 +109,12 @@ class WorkflowQueueService:
 
     @staticmethod
     async def queue_todo_workflow_generation(
-        todo_id: str, user_id: str, title: str, description: str = ""
+        todo_id: str,
+        user_id: str,
+        title: str,
+        description: str = "",
+        *,
+        origin: TodoWorkflowOrigin,
     ) -> bool:
         """Queue todo workflow generation as a background task.
 
@@ -127,6 +133,7 @@ class WorkflowQueueService:
                 user_id,
                 title,
                 description,
+                origin=origin,
             )
 
             if job:

@@ -128,7 +128,11 @@ from app.utils.timezone import Timezone, format_local_time
 from app.workers.config.worker_settings import WORKER_JOB_TIMEOUT_SECONDS
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.attribution import Actor, Trigger
-from shared.py.analytics.catalog.workflows import WorkflowCreated, WorkflowExecuted
+from shared.py.analytics.catalog.workflows import (
+    TodoWorkflowOrigin,
+    WorkflowCreated,
+    WorkflowExecuted,
+)
 from shared.py.analytics.context import (
     AnalyticsContext,
     analytics_context,
@@ -180,6 +184,8 @@ async def process_workflow_generation_task(
     user_id: str,
     title: str,
     description: str = "",
+    *,
+    origin: TodoWorkflowOrigin,
 ) -> str:
     """Generate a workflow for a todo, then broadcast a WebSocket event on completion."""
     log.set(todo_id=todo_id, user_id=user_id, user={"id": user_id})
@@ -240,9 +246,9 @@ async def process_workflow_generation_task(
                 capture(
                     UserId(user_id),
                     WorkflowCreated(
+                        origin=origin,
                         workflow_id=workflow.id,
                         steps_count=len(workflow.steps),
-                        is_todo_workflow=True,
                     ),
                 )
 

@@ -558,6 +558,7 @@ class TodoService:
                     user_id=user_id,
                     title=todo.title,
                     description=todo.description or "",
+                    origin="todo_auto",
                 ),
                 user={"id": user_id},
                 todo={"id": created.id},

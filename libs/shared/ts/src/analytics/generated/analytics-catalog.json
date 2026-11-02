@@ -8432,15 +8432,26 @@
       "class": "WorkflowCreated",
       "owner": "server",
       "domain": "workflow",
-      "description": "A workflow was created, by the user or generated for a todo.",
+      "description": "A workflow was created, by the user or generated for a todo; origin says which.",
       "previous_names": ["workflows:created"],
       "budget_per_user_day": 200,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "A workflow was created, by the user or generated for a todo.",
+        "description": "A workflow was created, by the user or generated for a todo; origin says which.",
         "properties": {
+          "origin": {
+            "enum": [
+              "user_created",
+              "chat_agent",
+              "todo_converted",
+              "todo_requested",
+              "todo_auto"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
           "workflow_id": {
             "anyOf": [
               {
@@ -8490,32 +8501,9 @@
             ],
             "default": null,
             "title": "Generated Immediately"
-          },
-          "from_todo": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "From Todo"
-          },
-          "is_todo_workflow": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Is Todo Workflow"
           }
         },
+        "required": ["origin"],
         "title": "WorkflowCreated",
         "type": "object"
       }

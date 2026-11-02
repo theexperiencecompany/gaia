@@ -10,6 +10,7 @@ __all__ = [
     "WorkflowActivated",
     "WorkflowCardNavigate",
     "WorkflowCreated",
+    "WorkflowCreatedOrigin",
     "WorkflowDeactivated",
     "WorkflowDeleted",
     "WorkflowExecuted",
@@ -19,22 +20,29 @@ __all__ = [
     "WorkflowStepsRegenerated",
     "WorkflowUnpublished",
     "WorkflowUpdated",
+    "TodoWorkflowOrigin",
 ]
 
 
+#: user_created: saved from the editor or a confirmed chat draft; chat_agent: the agent created
+#: it straight from a chat request; todo_converted: the user turned a todo into a workflow;
+#: todo_requested: the user asked a todo to generate one; todo_auto: generated unasked with a new todo.
+TodoWorkflowOrigin = Literal["todo_requested", "todo_auto"]
+WorkflowCreatedOrigin = Literal["user_created", "chat_agent", "todo_converted", TodoWorkflowOrigin]
+
+
 class WorkflowCreated(ServerEvent):
-    """A workflow was created, by the user or generated for a todo."""
+    """A workflow was created, by the user or generated for a todo; origin says which."""
 
     event: ClassVar[str] = "workflow:created"
     previous_names: ClassVar[tuple[str, ...]] = ("workflows:created",)
     budget_per_user_day: ClassVar[int] = 200
 
+    origin: WorkflowCreatedOrigin
     workflow_id: Identifier | None = None
     trigger_type: Identifier | None = None
     steps_count: int | None = None
     generated_immediately: bool | None = None
-    from_todo: bool | None = None
-    is_todo_workflow: bool | None = None
 
 
 class WorkflowExecuted(ServerEvent):

@@ -397,7 +397,11 @@ class TestCreateTodo:
         )
         # Queued as a fire-and-forget background task, so assert the call, not the await.
         mock_workflow_queue.queue_todo_workflow_generation.assert_called_once_with(
-            todo_id=FAKE_TODO_ID, user_id=FAKE_USER_ID, title="Buy milk", description="2%"
+            todo_id=FAKE_TODO_ID,
+            user_id=FAKE_USER_ID,
+            title="Buy milk",
+            description="2%",
+            origin="todo_auto",
         )
         assert result.id == FAKE_TODO_ID
 
@@ -417,7 +421,11 @@ class TestCreateTodo:
             "todo": {"id": FAKE_TODO_ID},
         }
         mock_workflow_queue.queue_todo_workflow_generation.assert_called_once_with(
-            todo_id=FAKE_TODO_ID, user_id=FAKE_USER_ID, title="Buy milk", description=""
+            todo_id=FAKE_TODO_ID,
+            user_id=FAKE_USER_ID,
+            title="Buy milk",
+            description="",
+            origin="todo_auto",
         )
         spawn.call_args.args[1].close()
 
