@@ -89,8 +89,9 @@ class TestPlanTierLimits:
 @pytest.mark.asyncio
 class TestTieredLimiterRealDecision:
     def setup_method(self) -> None:
+        self.redis = AsyncMock()
         self.limiter = TieredRateLimiter()
-        self.limiter.redis = AsyncMock()
+        self.limiter.redis = self.redis
 
     @patch(
         "app.api.v1.middleware.tiered_rate_limiter.spawn_logged_task",
@@ -98,8 +99,8 @@ class TestTieredLimiterRealDecision:
     )
     async def test_pro_under_limit_reports_real_pro_limits(self, mock_spawn: MagicMock) -> None:
         """A PRO user at zero usage gets the real PRO numbers in usage_info."""
-        self.limiter.redis.get = AsyncMock(return_value=None)
-        self.limiter.redis.redis = _pipeline_mock()
+        self.redis.get = AsyncMock(return_value=None)
+        self.redis.redis = _pipeline_mock()
 
         result = await self.limiter.check_and_increment(USER_ID, "generate_image", PlanType.PRO)
 
@@ -111,7 +112,7 @@ class TestTieredLimiterRealDecision:
     async def test_free_at_daily_limit_raises_429_signal(self) -> None:
         """generate_image free = 1/day: at 1 use, the limiter must raise the signal the endpoint layer turns into a 429."""
         reset_time = datetime.now(UTC) + timedelta(days=1)
-        self.limiter.redis.get = AsyncMock(return_value="1")
+        self.redis.get = AsyncMock(return_value="1")
         with patch(
             "app.api.v1.middleware.tiered_rate_limiter.get_reset_time",
             return_value=reset_time,
@@ -120,13 +121,15 @@ class TestTieredLimiterRealDecision:
                 await self.limiter.check_and_increment(USER_ID, "generate_image", PlanType.FREE)
 
         exc = exc_info.value
+        detail = exc.detail
+        assert isinstance(detail, dict)
         assert exc.status_code == 429
-        assert exc.detail["code"] == "rate_limit_exceeded"
-        assert exc.detail["feature"] == "generate_image"
-        assert exc.detail["reset_time"] == reset_time.isoformat()
+        assert detail["code"] == "rate_limit_exceeded"
+        assert detail["feature"] == "generate_image"
+        assert detail["reset_time"] == reset_time.isoformat()
         # FREE has nonzero daily limits for generate_image, so it is an
         # exhausted window, not a plan gate.
-        assert "plan_required" not in exc.detail
+        assert "plan_required" not in detail
 
     async def test_pro_only_feature_gated_for_free_user(self) -> None:
         """voice_mode: FREE (0/0) is plan-gated — raises before any Redis read."""
@@ -134,9 +137,11 @@ class TestTieredLimiterRealDecision:
             await self.limiter.check_and_increment(USER_ID, "voice_mode", PlanType.FREE)
 
         exc = exc_info.value
+        detail = exc.detail
+        assert isinstance(detail, dict)
         assert exc.status_code == 429
-        assert exc.detail["plan_required"] == "pro"
-        self.limiter.redis.get.assert_not_called()
+        assert detail["plan_required"] == "pro"
+        self.redis.get.assert_not_called()
 
     @patch(
         "app.api.v1.middleware.tiered_rate_limiter.spawn_logged_task",
@@ -144,8 +149,8 @@ class TestTieredLimiterRealDecision:
     )
     async def test_pro_user_passes_pro_only_feature(self, mock_spawn: MagicMock) -> None:
         """The same voice_mode feature is enforceable for a PRO subscriber."""
-        self.limiter.redis.get = AsyncMock(return_value=None)
-        self.limiter.redis.redis = _pipeline_mock()
+        self.redis.get = AsyncMock(return_value=None)
+        self.redis.redis = _pipeline_mock()
 
         result = await self.limiter.check_and_increment(USER_ID, "voice_mode", PlanType.PRO)
 

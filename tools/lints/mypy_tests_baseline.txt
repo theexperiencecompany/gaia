@@ -376,14 +376,6 @@ apps/api/tests/unit/db/test_rabbitmq_outbound.py	attr-defined
 apps/api/tests/unit/db/test_rabbitmq_outbound.py	method-assign
 apps/api/tests/unit/db/test_rabbitmq_outbound.py	syntax
 apps/api/tests/unit/decorators/test_entitlements.py	index
-apps/api/tests/unit/decorators/test_rate_limiter_tiers.py	attr-defined
-apps/api/tests/unit/decorators/test_rate_limiter_tiers.py	index
-apps/api/tests/unit/decorators/test_rate_limiter_tiers.py	method-assign
-apps/api/tests/unit/decorators/test_rate_limiting.py	arg-type
-apps/api/tests/unit/decorators/test_rate_limiting.py	assignment
-apps/api/tests/unit/decorators/test_rate_limiting.py	attr-defined
-apps/api/tests/unit/decorators/test_rate_limiting.py	index
-apps/api/tests/unit/decorators/test_rate_limiting.py	return-value
 apps/api/tests/unit/decorators/test_timing.py	arg-type
 apps/api/tests/unit/decorators/test_timing.py	func-returns-value
 apps/api/tests/unit/decorators/test_timing.py	var-annotated
@@ -424,8 +416,6 @@ apps/api/tests/unit/memory/test_management.py	misc
 apps/api/tests/unit/memory/test_reconciliation.py	attr-defined
 apps/api/tests/unit/memory/test_retrieval.py	attr-defined
 apps/api/tests/unit/memory/test_user_time.py	attr-defined
-apps/api/tests/unit/middleware/test_accounting.py	arg-type
-apps/api/tests/unit/middleware/test_accounting.py	attr-defined
 apps/api/tests/unit/middleware/test_compaction_offload_bind.py	arg-type
 apps/api/tests/unit/middleware/test_compaction_offload_bind.py	union-attr
 apps/api/tests/unit/middleware/test_compaction_offload_bind.py	var-annotated
@@ -610,7 +600,6 @@ apps/api/tests/unit/services/test_analytics_service.py	unused-ignore
 apps/api/tests/unit/services/test_artifact_events.py	arg-type
 apps/api/tests/unit/services/test_billing_visible_output.py	arg-type
 apps/api/tests/unit/services/test_billing_visible_output.py	attr-defined
-apps/api/tests/unit/services/test_bot_service.py	call-arg
 apps/api/tests/unit/services/test_calendar_service.py	call-arg
 apps/api/tests/unit/services/test_canvas_storage_atomic.py	arg-type
 apps/api/tests/unit/services/test_chat_service.py	attr-defined
@@ -628,9 +617,6 @@ apps/api/tests/unit/services/test_connect_link_service.py	attr-defined
 apps/api/tests/unit/services/test_conversation_service.py	arg-type
 apps/api/tests/unit/services/test_conversation_service.py	attr-defined
 apps/api/tests/unit/services/test_conversation_service.py	call-arg
-apps/api/tests/unit/services/test_cost_budget_metering.py	attr-defined
-apps/api/tests/unit/services/test_cost_budget_stop_reason.py	attr-defined
-apps/api/tests/unit/services/test_cost_budget_stop_reason.py	misc
 apps/api/tests/unit/services/test_desktop_releases.py	attr-defined
 apps/api/tests/unit/services/test_dev_agent_service.py	func-returns-value
 apps/api/tests/unit/services/test_device_manifest_cache.py	operator

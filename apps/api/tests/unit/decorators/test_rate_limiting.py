@@ -22,12 +22,15 @@ from app.api.v1.middleware.tiered_rate_limiter import (
     RateLimitExceededException,
 )
 from app.config.rate_limits import RateLimitPeriod
+from app.config.settings import settings
 from app.constants.llm import (
     FREE_DAILY_COST_BUDGET_USD,
     PRO_MONTHLY_COST_BUDGET_USD,
 )
+from app.constants.log_tags import LogTag
 from app.decorators import rate_limiting as rl
 from app.models.payment_models import PlanType
+from app.models.usage_models import UsageInfo
 from app.models.user_models import AuthenticatedUser
 from app.services.limit_upsell import LimitHitOrigin
 from shared.py.analytics import UserId
@@ -238,7 +241,7 @@ class TestAllowedCallRecordsTheContext:
     """
 
     @staticmethod
-    async def _run_allowed(plan: object) -> dict[str, object]:
+    async def _run_allowed(plan: object) -> rl.RateLimitUsage:
         decorated = rl.with_rate_limiting(feature_key="generate_image")(_limited_tool)
         with (
             patch(
@@ -323,7 +326,7 @@ class TestTokenCounting:
         log = await self._run(42)
 
         log.debug.assert_any_call(
-            f"{rl.LogTag.API} Token usage recorded",
+            f"{LogTag.API} Token usage recorded",
             tokens_used=42,
             feature_key="generate_image",
         )
@@ -337,7 +340,7 @@ class TestTokenCounting:
         log = await self._run(1)
 
         log.debug.assert_any_call(
-            f"{rl.LogTag.API} Token usage recorded",
+            f"{LogTag.API} Token usage recorded",
             tokens_used=1,
             feature_key="generate_image",
         )
@@ -373,8 +376,8 @@ class TestAttachUsageMetadata:
             {
                 "feature_key": "generate_image",
                 "usage_info": {
-                    "day": SimpleNamespace(used=3, limit=50, reset_time=RESET_AT),
-                    "month": SimpleNamespace(used=0, limit=100, reset_time=None),
+                    "day": UsageInfo(used=3, limit=50, reset_time=RESET_AT),
+                    "month": UsageInfo.model_construct(used=0, limit=100, reset_time=None),
                 },
                 "user_plan": "pro",
             }
@@ -599,7 +602,7 @@ class TestDailyCostBudget:
     async def test_the_dev_unlimited_flag_lifts_an_exhausted_budget(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(rl.settings, "DEV_UNLIMITED_RATE_LIMITS", True)
+        monkeypatch.setattr(settings, "DEV_UNLIMITED_RATE_LIMITS", True)
         with _budget_of(FREE_DAILY_COST_BUDGET_USD, PlanType.FREE) as mock_upsell:
             await rl.enforce_cost_budget(USER_ID, "chat_messages")
 
@@ -612,11 +615,13 @@ class TestDailyCostBudget:
         ):
             await rl.enforce_cost_budget(USER_ID, "chat_messages")
 
+        detail: object = raised.value.detail
+        assert isinstance(detail, dict)
         assert raised.value.status_code == 429
-        assert raised.value.detail["feature"] == "chat_messages"
-        assert raised.value.detail["plan_required"] == PlanType.PRO.value
-        assert raised.value.detail["current_plan"] == PlanType.FREE.value
-        assert raised.value.detail["message"] == (
+        assert detail["feature"] == "chat_messages"
+        assert detail["plan_required"] == PlanType.PRO.value
+        assert detail["current_plan"] == PlanType.FREE.value
+        assert detail["message"] == (
             "You've used today's AI usage allowance. Upgrade to Pro for higher limits."
         )
 
@@ -647,9 +652,11 @@ class TestDailyCostBudget:
         ):
             await rl.enforce_cost_budget(USER_ID, "chat_messages")
 
-        assert "plan_required" not in raised.value.detail
-        assert raised.value.detail["current_plan"] == PlanType.PRO.value
-        assert raised.value.detail["message"] == "You've used today's AI usage allowance."
+        detail: object = raised.value.detail
+        assert isinstance(detail, dict)
+        assert "plan_required" not in detail
+        assert detail["current_plan"] == PlanType.PRO.value
+        assert detail["message"] == "You've used today's AI usage allowance."
         assert raised.value.period is RateLimitPeriod.DAY
 
 
@@ -900,7 +907,7 @@ class TestEnforceFeatureLimit:
             "user_plan": "pro",
         }
         log.debug.assert_called_once_with(
-            f"{rl.LogTag.API} Rate limit check passed",
+            f"{LogTag.API} Rate limit check passed",
             user_id=USER_ID,
             actual_feature_key="generate_image",
         )
@@ -921,7 +928,7 @@ class TestEnforceFeatureLimit:
             await rl._enforce_feature_limit(USER_ID, "generate_image")
 
         log.error.assert_called_once_with(
-            f"{rl.LogTag.API} Rate limiting failed",
+            f"{LogTag.API} Rate limiting failed",
             user_id=USER_ID,
             actual_feature_key="generate_image",
             error="redis down",
@@ -961,12 +968,18 @@ class TestLimitHitException:
     async def test_warning_log_is_exact(self) -> None:
         _, _, log, exc = await self._hit()
         log.warning.assert_called_once_with(
-            f"{rl.LogTag.API} Rate limit exceeded",
+            f"{LogTag.API} Rate limit exceeded",
             user_id=USER_ID,
             actual_feature_key="generate_image",
             error=str(exc),
             error_type="RateLimitExceededException",
         )
+
+
+def _with_detail(exc: RateLimitExceededException, detail: object) -> RateLimitExceededException:
+    """Swap the 429's detail via FastAPI's init, which types it as the open value it is at runtime."""
+    HTTPException.__init__(exc, status_code=exc.status_code, detail=detail)
+    return exc
 
 
 class TestLimitHitExceptionDetailFallbacks:
@@ -983,8 +996,10 @@ class TestLimitHitExceptionDetailFallbacks:
         return result, writer
 
     async def test_a_reset_time_missing_from_detail_falls_back_to_the_attribute(self) -> None:
-        exc = RateLimitExceededException(feature="generate_image", reset_time=RESET_AT)
-        exc.detail = {"error": "rate_limit_exceeded"}
+        exc = _with_detail(
+            RateLimitExceededException(feature="generate_image", reset_time=RESET_AT),
+            {"error": "rate_limit_exceeded"},
+        )
 
         result, writer = await self._convert(exc)
 
@@ -992,24 +1007,29 @@ class TestLimitHitExceptionDetailFallbacks:
         assert writer.call_args.args[0]["tool_data"]["data"]["reset_time"] == RESET_AT.isoformat()
 
     async def test_a_plan_required_missing_from_detail_falls_back_to_the_attribute(self) -> None:
-        exc = RateLimitExceededException(feature="generate_image", plan_required="team")
-        exc.detail = {"error": "rate_limit_exceeded"}
+        exc = _with_detail(
+            RateLimitExceededException(feature="generate_image", plan_required="team"),
+            {"error": "rate_limit_exceeded"},
+        )
 
         result, writer = await self._convert(exc)
 
         assert writer.call_args.args[0]["tool_data"]["data"]["plan_required"] == "team"
 
     async def test_plan_required_comes_from_detail_over_the_attribute(self) -> None:
-        exc = RateLimitExceededException(feature="generate_image", plan_required="pro")
-        exc.detail = {"plan_required": "team"}
+        exc = _with_detail(
+            RateLimitExceededException(feature="generate_image", plan_required="pro"),
+            {"plan_required": "team"},
+        )
 
         _, writer = await self._convert(exc)
 
         assert writer.call_args.args[0]["tool_data"]["data"]["plan_required"] == "team"
 
     async def test_an_unrecognised_detail_shape_yields_an_empty_detail_dict(self) -> None:
-        exc = RateLimitExceededException(feature="generate_image", reset_time=RESET_AT)
-        exc.detail = 42
+        exc = _with_detail(
+            RateLimitExceededException(feature="generate_image", reset_time=RESET_AT), 42
+        )
 
         result, _ = await self._convert(exc)
 

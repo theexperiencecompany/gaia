@@ -17,6 +17,7 @@ from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.models.notification.notification_models import NotificationSourceEnum
 from app.services import usage_heads_up
+from app.services.notification_service import notification_service
 from app.services.usage_heads_up import notify_monthly_heads_up_once
 
 USER = "u-heads-up"
@@ -38,7 +39,7 @@ def created() -> Iterator[AsyncMock]:
     """Stub the notification write and answer the allowance window for known users only."""
     notify = AsyncMock()
     with (
-        patch.object(usage_heads_up.notification_service, "create_notification", notify),
+        patch.object(notification_service, "create_notification", notify),
         patch.object(
             usage_heads_up,
             "monthly_allowance_window",

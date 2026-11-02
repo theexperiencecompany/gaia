@@ -25,6 +25,7 @@ from app.config.rate_limits import (
     get_daily_cost_budget_usd,
     get_per_request_token_ceiling,
 )
+from app.config.settings import settings
 from app.constants.llm import (
     BUDGET_WRAPUP_REMAINING_FRACTION,
     PRO_MONTHLY_BUDGET_HEADS_UP_FRACTION,
@@ -46,6 +47,7 @@ from app.services.cost_budget import (
     is_monthly_heads_up_due,
     record_model_call_usage,
 )
+from app.services.payments.payment_service import payment_service
 from shared.py.wide_events import log
 
 USER = "u-wall"
@@ -62,7 +64,7 @@ async def fake_redis() -> AsyncIterator[fakeredis.aioredis.FakeRedis]:
 
 
 @pytest.fixture(autouse=True)
-def no_rollup() -> AsyncIterator[None]:
+def no_rollup() -> Iterator[None]:
     """Seeding spend uses the real Redis writer; the Mongo sibling is covered in test_usage_activity_rollup.py."""
     with patch("app.services.cost_budget.record_cost", AsyncMock()):
         yield
@@ -82,9 +84,10 @@ async def _burn_tokens(count: int) -> None:
 
 async def _spend_earlier_this_month(amount: float) -> None:
     """Spend booked on an earlier day: it sits in the month window, not today's."""
-    await redis_cache.redis.incrbyfloat(
-        await cost_budget._budget_key(USER, RateLimitPeriod.MONTH), amount
-    )
+    assert redis_cache.redis is not None
+    pipe = redis_cache.redis.pipeline(transaction=False)
+    pipe.incrbyfloat(await cost_budget._budget_key(USER, RateLimitPeriod.MONTH), amount)
+    await pipe.execute()
 
 
 #: The user bills on the 15th, and today is mid-cycle, so the allowance resets on the next 15th.
@@ -97,13 +100,13 @@ STOP_TEXT = (
 
 
 @pytest.fixture(autouse=True)
-def billing_day() -> Iterator[AsyncMock]:
+def billing_day() -> Iterator[None]:
     """Answer the billing-day lookup for USER only, so the month window is anchored on it."""
 
     async def _billing_day(user_id: str) -> int:
         return {USER: BILLING_DAY}[user_id]
 
-    with patch.object(cost_budget.payment_service, "get_cached_billing_day", _billing_day):
+    with patch.object(payment_service, "get_cached_billing_day", _billing_day):
         yield
 
 
@@ -180,7 +183,7 @@ class TestDailyWall:
     async def test_the_dev_unlimited_flag_lifts_a_bound_wall(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(cost_budget.settings, "DEV_UNLIMITED_RATE_LIMITS", True)
+        monkeypatch.setattr(settings, "DEV_UNLIMITED_RATE_LIMITS", True)
         await _spend(get_daily_cost_budget_usd(PlanType.FREE))
 
         check = await get_budget_stop_reason(USER, PlanType.FREE, REQUEST)
