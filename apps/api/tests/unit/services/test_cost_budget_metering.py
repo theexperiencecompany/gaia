@@ -12,10 +12,12 @@ per-user COGS stays measurable. See app.services.llm_metering.
 """
 
 from collections.abc import AsyncIterator, Iterator
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import fakeredis.aioredis
 import pytest
+import time_machine
 
 from app.config.rate_limits import RateLimitPeriod
 from app.db.redis import redis_cache
@@ -70,6 +72,20 @@ class TestChargedSpend:
         assert await get_cost(USER, RateLimitPeriod.DAY) == pytest.approx(0.01)
         assert await get_cost(USER, RateLimitPeriod.MONTH) == pytest.approx(0.01)
         assert await get_request_tokens(REQUEST) == 500
+
+    async def test_books_each_window_under_its_own_users_period_key(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        """A key missing the user or the period would pool spend across users or windows."""
+        with time_machine.travel(datetime(2099, 1, 20, 9, tzinfo=UTC), tick=False):
+            await record_model_call_usage(
+                USER, UsageDailyIncrement(cost=0.01), None, charge_to_budget=True
+            )
+
+        assert sorted(await fake_redis.keys("cost_budget:*")) == [
+            f"cost_budget:{USER}:day:20990120",
+            f"cost_budget:{USER}:month:209901",
+        ]
 
     async def test_is_booked_as_charged_in_the_durable_rollup(self, rollup: AsyncMock) -> None:
         await record_model_call_usage(

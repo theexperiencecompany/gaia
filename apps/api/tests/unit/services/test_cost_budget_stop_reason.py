@@ -179,6 +179,7 @@ class TestDailyWall:
         assert check.stop_reason == DAILY_BUDGET_STOP_FREE
         assert check.spent_usd == pytest.approx(get_daily_cost_budget_usd(PlanType.FREE))
         assert check.plan_type == PlanType.FREE
+        assert check.wall == "day"
 
     async def test_the_dev_unlimited_flag_lifts_a_bound_wall(
         self, monkeypatch: pytest.MonkeyPatch
@@ -229,6 +230,7 @@ class TestRequestCeiling:
         check = await get_budget_stop_reason(USER, PlanType.FREE, REQUEST)
 
         assert check.stop_reason == REQUEST_CEILING_STOP_FREE
+        assert check.wall == "request"
 
     async def test_still_reports_the_daily_spend_it_read(self) -> None:
         # The wrap-up nudge is decided from this number; a None here would mean
