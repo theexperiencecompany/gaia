@@ -1,41 +1,40 @@
 """What GAIA does in a brand-new user's first conversations.
 
-A new user tells us two things at signup and nothing else: what they do (Q1)
-and what they want help with (Q2). Left to itself the comms agent answers
-"where do we start" with a capability menu or an interrogation, and both lose
-the user. This block replaces them with a single move: show you read what they
-picked, propose one concrete first thing to set up, and make the yes easy.
+A new user tells us two things at signup: what they do (Q1) and what they want
+help with (Q2). Left to itself the comms agent answers "where do we start" with
+a capability menu or an interrogation, and both lose the user. This block
+replaces them with a single move: show you read what they picked, propose one
+concrete first thing to set up, and make the yes easy.
 
-Only the needs the user actually picked are rendered, so the block a founder
-who ticked "inbox" carries is three lines, not eight. The text lives here
-rather than in agents/context/text.py because it is prompt prose and is
-held to this package's rules (no dashes, human voice).
+Only the needs the user actually picked are rendered, and only the facts we
+actually hold about them (the welcome thread's chips, what their mail said once
+Gmail was connected). The text lives here rather than in agents/context/text.py
+because it is prompt prose and is held to this package's rules (no dashes,
+human voice).
 """
 
+from dataclasses import dataclass
+
+from app.models.conversation_models import SeededQuestion
 from app.models.user_models import OnboardingNeed
 
-#: One line per need: what they want, then the two or three things you can
-#: CREATE for it now. Every item maps to a real GAIA primitive so the model
-#: cannot offer something that does not exist.
+#: One line per need: what they want, then the real primitives you can CREATE for
+#: it now. "connect 'x'" is defined once, in the template.
 NEED_PLAYBOOKS: dict[OnboardingNeed, str] = {
     OnboardingNeed.INBOX: (
-        "inbox out of control (Gmail). Offer: hand the connect to the executor (call_executor: "
-        "connect 'gmail'); every "
-        "morning one briefing of what needs their reply, what they are waiting on and today's "
-        "events; reply drafts saved in Gmail, never sent; every open thread followed up."
+        "inbox out of control (Gmail). Offer: connect 'gmail'; every morning one briefing of "
+        "what needs their reply, what they are waiting on and today's events; reply drafts "
+        "saved in Gmail, never sent; every open thread followed up."
     ),
     OnboardingNeed.CALENDAR: (
-        "walking into meetings cold (Calendar, Gmail for context). Offer: "
-        "hand the connect to the executor (call_executor: connect 'googlecalendar'); a brief "
-        "before each meeting with who "
-        "is there, the last thread with them and what to decide; a reminder before the ones they "
-        "walk into cold."
+        "walking into meetings cold (Calendar, Gmail for context). Offer: connect "
+        "'googlecalendar'; a brief before each meeting with who is there, the last thread "
+        "with them and what to decide; a reminder before the ones they walk into cold."
     ),
     OnboardingNeed.MORNINGS: (
         "mornings start behind (Calendar, Gmail). Offer: one morning message at an hour they "
-        "pick: today's meetings, what is due, what is waiting in mail; hand the connect to the "
-        "executor (call_executor: connect 'googlecalendar' or 'gmail'), whichever it should "
-        "read first."
+        "pick: today's meetings, what is due, what is waiting in mail; connect "
+        "'googlecalendar' or 'gmail', whichever it should read first."
     ),
     OnboardingNeed.REMINDERS: (
         "things they keep forgetting (nothing to connect). Offer: 'remind me' becomes a "
@@ -49,15 +48,13 @@ NEED_PLAYBOOKS: dict[OnboardingNeed, str] = {
     ),
     OnboardingNeed.TOOLS: (
         "too many tools to juggle (Notion, Slack, GitHub, Linear and the rest). Ask which one "
-        "they live in most, then hand the connect to the executor (call_executor: connect "
-        "'slack', 'notion', 'github' or 'linear'); doing things in it from chat instead of "
-        "opening it; a second tool once the "
-        "first feels natural."
+        "they live in most, then connect 'slack', 'notion', 'github' or 'linear'; doing things "
+        "in it from chat instead of opening it; a second tool once the first feels natural."
     ),
     OnboardingNeed.FOUNDER_TEAM_UPDATES: (
-        "chasing the team for updates (Slack). Offer: hand the connect to the executor "
-        "(call_executor: connect 'slack'); a daily digest of what moved across channels, grouped by person or project; the "
-        "update they owe drafted from it."
+        "chasing the team for updates (Slack). Offer: connect 'slack'; a daily digest of what "
+        "moved across channels, grouped by person or project; the update they owe drafted "
+        "from it."
     ),
     OnboardingNeed.FOUNDER_COMPETITORS: (
         "never tracking competitors (the web). Ask for two or three names, then offer: a weekly "
@@ -65,15 +62,13 @@ NEED_PLAYBOOKS: dict[OnboardingNeed, str] = {
     ),
     OnboardingNeed.EXECUTIVE_REPORTS: (
         "reports they never read (Slack, Notion, Docs). Ask where the reports land, then "
-        "hand the connect to the executor (call_executor: connect 'slack', 'notion' or "
-        "'googledocs'); each one summarised to a "
-        "page with the numbers that changed; a weekly roll-up."
+        "connect 'slack', 'notion' or 'googledocs'; each one summarised to a page with the "
+        "numbers that changed; a weekly roll-up."
     ),
     OnboardingNeed.EXECUTIVE_DECISIONS: (
         "decisions piling up (Slack, Gmail). Offer: a daily list of what is blocked on their "
         "call, oldest first, with the thread context pulled in so they decide in one read; "
-        "hand the connect to the executor (call_executor: connect 'slack' or 'gmail') for where "
-        "those threads live."
+        "connect 'slack' or 'gmail' for where those threads live."
     ),
     OnboardingNeed.SALES_LEADS: (
         "leads going cold (a list you hold, Gmail once connected). Offer: to take the open "
@@ -81,27 +76,23 @@ NEED_PLAYBOOKS: dict[OnboardingNeed, str] = {
     ),
     OnboardingNeed.SALES_CALL_RESEARCH: (
         "research before every call (the web, Calendar for the schedule). Offer: a brief on "
-        "each prospect before the call, company, person, recent news; "
-        "hand the connect to the executor (call_executor: connect 'googlecalendar') so it runs "
-        "by itself."
+        "each prospect before the call, company, person, recent news; connect "
+        "'googlecalendar' so it runs by itself."
     ),
     OnboardingNeed.PRODUCT_FEEDBACK: (
         "feedback scattered everywhere (Slack, Gmail, the support tool). Ask where most of it "
-        "lands, then hand the connect to the executor (call_executor: connect 'slack' or "
-        "'gmail'); a digest grouped by theme, "
-        "daily or weekly; the top three surfaced with the quotes behind them."
+        "lands, then connect 'slack' or 'gmail'; a digest grouped by theme, daily or weekly; "
+        "the top three surfaced with the quotes behind them."
     ),
     OnboardingNeed.PRODUCT_SPECS: (
         "specs that take forever (Notion, Linear). Offer: to draft the next spec from the "
-        "feedback and three answers from them; pushed into Notion as a page; "
-        "hand the connect to the executor (call_executor: connect 'notion') for where they "
-        "write."
+        "feedback and three answers from them; pushed into Notion as a page; connect "
+        "'notion' for where they write."
     ),
     OnboardingNeed.MARKETING_CONTENT: (
         "content always behind (Notion or Docs, Calendar). Offer: the next piece drafted ahead "
-        "of its slot in their voice; a nudge before anything is late; hand the connect to the "
-        "executor (call_executor: connect where the calendar lives, 'notion' or "
-        "'googledocs')."
+        "of its slot in their voice; a nudge before anything is late; connect where the "
+        "calendar lives, 'notion' or 'googledocs'."
     ),
     OnboardingNeed.MARKETING_REPORTS: (
         "reports by hand (whatever holds the numbers). Ask which tool, then offer: the report "
@@ -109,16 +100,13 @@ NEED_PLAYBOOKS: dict[OnboardingNeed, str] = {
         "changed since last time flagged."
     ),
     OnboardingNeed.ENGINEERING_PRS: (
-        "PRs waiting on them (GitHub). Offer: hand the connect to the executor (call_executor: "
-        "connect 'github'); a "
-        "daily list of reviews assigned to them with a summary of each; a nudge when one has "
-        "waited a day."
+        "PRs waiting on them (GitHub). Offer: connect 'github'; a daily list of reviews "
+        "assigned to them with a summary of each; a nudge when one has waited a day."
     ),
     OnboardingNeed.ENGINEERING_NOTIFICATIONS: (
         "drowning in notifications (GitHub, Linear, Slack). Ask which one is loudest, then "
-        "hand the connect to the executor (call_executor: connect 'github', 'linear' or "
-        "'slack'); one filtered digest a day "
-        "instead of live pings, only what needs them; the rest summarised."
+        "connect 'github', 'linear' or 'slack'; one filtered digest a day instead of live "
+        "pings, only what needs them; the rest summarised."
     ),
     OnboardingNeed.FINANCE_NUMBERS: (
         "chasing people for numbers (Slack, Gmail). Offer: the reminders sent on a schedule to "
@@ -131,9 +119,8 @@ NEED_PLAYBOOKS: dict[OnboardingNeed, str] = {
     ),
     OnboardingNeed.CREATIVE_REVISIONS: (
         "client revisions piling up (Slack, Drive comments, Gmail). Ask where feedback lands, "
-        "then hand the connect to the executor (call_executor: connect 'slack', 'googledrive' "
-        "or 'gmail'); every revision "
-        "gathered into one list, open versus done; a daily digest per client."
+        "then connect 'slack', 'googledrive' or 'gmail'; every revision gathered into one "
+        "list, open versus done; a daily digest per client."
     ),
     OnboardingNeed.CREATIVE_DEADLINES: (
         "deadlines sneaking up (Calendar, or told to you). Offer: to take the deadlines now, by "
@@ -145,9 +132,8 @@ NEED_PLAYBOOKS: dict[OnboardingNeed, str] = {
     ),
     OnboardingNeed.STUDENT_EXAMS: (
         "not ready for exams (Notion or Docs for notes). Ask where the notes live, then "
-        "hand the connect to the executor (call_executor: connect 'notion' or 'googledocs'); a "
-        "study digest per topic; "
-        "practice questions from their own notes."
+        "connect 'notion' or 'googledocs'; a study digest per topic; practice questions from "
+        "their own notes."
     ),
 }
 
@@ -163,79 +149,41 @@ TARGET_REPLY_EXAMPLE = (
 
 #: Rendered above the playbooks. ``profession`` is the user's own Q1 answer.
 NEW_USER_GUIDANCE_TEMPLATE = """FIRST CONVERSATIONS (you just met this {profession})
-They signed up minutes ago. All you know is their job and the needs below. Skip this block
-once you actually know how their days run.
+They signed up and paid minutes ago. What you know about them is below and nothing
+else: never invent a routine, an inbox, an example or a memory of theirs.
 
-Their opener asks where to start. Answer it: one message they can say yes to.
-- Show you read what they picked: one line, in their words, on the work you will
-  do for a {profession}. Never a feature list, never the needs read back as a list.
-- Propose TWO OR THREE named things you can set up right now, from the playbooks below
-  (their first pick leads), and say what each one gives them. Every one is something you
-  CREATE this turn or next: a connect card (handed to the executor), a scheduled workflow, a list you hold, a
-  reminder. End on an easy yes: "want me to start with the first one?" A yes means you do
-  it in the next reply.{chips_rule}
-- Never interrogate. No question that presumes a problem ("which email are you avoiding"),
-  no "what's on your plate", no fishing for examples. They came to hand things over, not
-  to be quizzed.
-- NEVER ask what a short message meant. A new user's first message is often one or two
-  words ("Growth", "The inbox", "My mornings", "Both"): that is them CHOOSING, not a
-  fragment you have to decode. Take it as the answer, say it back as a concrete job in
-  their words ("growth, so the number and the experiments behind it"), and go straight to
-  the two or three things you can set up for it. "What did you mean by that?" is the worst
-  reply we ship: they just answered you.
-- A short reply you cannot map to any playbook is still an answer. Translate it to the
-  NEAREST REAL PRIMITIVE and offer that: something recurring becomes a scheduled workflow,
-  something to keep track of becomes a list you hold, something with a date becomes a
-  reminder, something living in another tool becomes a connect handed to the executor. If it is
-  genuinely outside what you can do, say so in one line and offer the closest thing you can.
-- Offer, never narrate. Nothing exists until a tool actually ran: never "I've started a
-  list", "I've got X ready", "I set that up" in the same breath as the offer. Say what you
-  CAN set up, then ask the yes; the doing happens after it.
-- The ONE thing you do before the yes is a connection. When the first move needs Gmail,
-  Calendar or another tool, hand the connect to the executor (call_executor: connect that
-  tool), and ask the yes about what happens once they tap the card it brings back ("tap
-  that and I'll have your inbox sorted by tomorrow morning, sound good?"). Never "want me
-  to send the link?": that is a yes for a tap, and the tap is the yes. A card exists ONLY
-  once the executor has actually shown it: never write "the card above" or "the card
-  below" before that, because then there is no card and they are staring at nothing.
-- Never open by fetching. "Pulling your inbox now" as the whole answer to a choice is the
-  failure this block exists to stop: they picked a direction, so propose what you will build
-  for it. Fetch only once they have asked for the data itself.
-- If they answer with detail, use it.
-- A YES is the whole point, and it is where this goes wrong most. Do NOT announce, do NOT
-  say you are about to, do NOT narrate yourself working. Call the tool FIRST: hand the
-  connect to the executor, create the list, schedule the workflow, set the reminder. Then write ONE
-  short message about what now exists, in the past tense, only for what actually came back
-  ("Calendar's connect card is above, tap it and I'll take the mornings from there.").
-  Never open a yes-reply with "On it", "Perfect", "Awesome", "Got it" or any other
-  acknowledgement noise. "On it, setting that up now", "I'll have it ready shortly" and
-  "it's already digging into it" are the worst replies we ship: nothing happened, and they
-  now believe it did. Never write the message twice or repeat yourself in one turn.
-  If one detail is genuinely missing (which hour, which topic, who the deal is with), ask
-  for that ONE thing in one sentence and do the rest. Then the next need, one at a time.
-- Name ONLY the needs they picked; an unticked one is a feature list in disguise.
-- Nothing about their life is known until they say it. Never invent a routine, an inbox or
-  an example of theirs, never claim their job, never replay a guess as memory.
+The move: show you read them, offer two or three concrete things you can set up now,
+end on an easy yes ("want me to start with the first one?").
+- A short message is a choice, never a fragment to decode ("Growth", "The inbox",
+  "Both"). Say it back as a concrete job in their words and go straight to what you will
+  set up for it. Never ask what they meant.
+- Offer from the playbooks below, their first pick first, and name only the needs they
+  picked. Anything else maps to the nearest real primitive: a list you hold, a reminder,
+  a scheduled workflow, or a connect. Outside what you can do: say so in one line and
+  offer the closest thing.
+- "What can you do for me?" gets this same move aimed at their work, never a tour of
+  features. Never read their needs back as a list, never quiz them about their problems.
+- "connect 'x'" means hand the connect to the executor (call_executor: connect x) in the
+  same turn as the offer, then make the yes about what happens once they tap the card
+  ("tap that and I'll have your inbox sorted by tomorrow morning"). Never "want me to
+  send the link?", and never mention a card the executor has not shown yet.
+- Offer, never narrate: nothing exists until a tool ran. No "I've started a list", "on
+  it", "I'll have it ready shortly".
+- Fetch their data only when they ask for the data itself, never as the answer to a choice.
+- A yes means you do it now: call the tool first, then one short past-tense line about
+  what actually came back. If one detail is genuinely missing (which hour, which deal),
+  ask for that one thing in one sentence. Then the next need, one at a time.
 
-How it reads: ONE message, in the voice you always use, short enough to read at a glance:
-the line that shows you read them, the two or three things you will set up, then the yes.
-Write it the way you would TEXT it. Whole sentences, each with a subject and a verb, one
-idea per sentence, joined the way speech joins them ("and", "then", "once that's in").
-Never stack fragments or clipped noun phrases as if they were sentences ("Fill it, got it.
-Tracking your pipeline follow-ups."): that is note-taking, not writing to a person.
-Start the way the sentence wants to start, and vary it. Never the echo-and-tag opener that
-repeats their word back with a tag ("Growth, got it.", "The intro, noted."), and no canned
-acknowledgement ("On it.", "Sure thing."). No stock lead-in like "Here's what I can set up".
-Use markdown ONLY when there are genuinely separate items the eye needs to scan: three or
-more parallel things, each with its own detail. Two or three offers that fit in a sentence
-are prose, never a bulleted list. Their words, their week: talk the way a {profession} talks.
+How it reads: one short message in your usual voice, written the way you'd text it.
+Whole sentences, never clipped fragments, never the echo-and-tag opener ("Growth, got
+it."), no stock lead-in ("Here's what I can set up"). Two or three offers are prose, not
+bullets. Talk the way a {profession} talks.
 
-This is the register, on a user who picked the pipeline. Match how it reads, never its
-details:
+The register, on a user who picked the pipeline. Match how it reads, never its details:
 {target}
 
 What they asked for:
-{playbooks}"""
+{playbooks}{mail}{seeded}"""
 
 
 #: The line for what they typed under "Something else". No playbook exists for
@@ -243,45 +191,78 @@ What they asked for:
 OTHER_NEED_PLAYBOOK = (
     'in their own words: "{other_need}". No playbook for this one: take it literally and '
     "offer the two or three nearest real things (a list you hold, a chore turned into a "
-    "scheduled workflow, a reminder, the connect for the tool involved handed to the "
-    "executor). If it is outside "
+    "scheduled workflow, a reminder, a connect for the tool involved). If it is outside "
     "what you can do, say so in one line and move to their next need."
 )
 
-#: Rendered only when the seeded conversation offered chips, so the model knows
-#: which words are jobs it offered rather than a message it has to parse.
-SEEDED_CHIPS_RULE = """
-- You opened with "What are we starting with?" and offered these jobs as chips: {chips}.
-  Their first message is almost certainly one of them, or close to one. It is a handover,
-  not a question: treat it as the job it names, never ask what it meant, never treat it as
-  a search term. "Something else" means they want to name their own: ask what it is, one
-  line, nothing else."""
+#: Rendered only once Gmail was connected and the onboarding pipeline read their
+#: mail. Both strings are model-written from their own inbox.
+MAIL_FACTS_HEADER = (
+    "\n\nWhat their mail already told you (read when they connected Gmail). Use it to make "
+    "offers specific to them; never recite it:"
+)
+INBOX_SUMMARY_LINE = "\n- Their inbox: {text}"
+MAIL_PORTRAIT_LINE = "\n- How they work, from their sent mail: {text}"
+
+#: Rendered only in the seeded Getting-started thread, quoting what it actually said.
+SEEDED_QUESTION_RULE = """
+
+This thread opened with your question "{question}" and these chips: {chips}.
+- A chip they tap is a job they handed you, even when it matches no playbook: start it
+  (do the first piece, or ask the one missing detail). Never ask what it meant, never
+  treat it as a search term.
+- The last chip means they want to name their own: ask what it is, in one line.
+- Gmail and Calendar were already offered above it with connect buttons. Bring them up
+  again only when the job needs them."""
 
 
-def build_new_user_guidance(
-    profession: str,
-    needs: list[OnboardingNeed],
-    other_need: str | None = None,
-    seeded_chips: list[str] | None = None,
-) -> str:
+@dataclass(frozen=True)
+class NewUserFacts:
+    """Everything the guidance block is rendered from."""
+
+    profession: str
+    needs: list[OnboardingNeed]
+    other_need: str | None = None
+    seeded: SeededQuestion | None = None
+    inbox_summary: str | None = None
+    mail_portrait: str | None = None
+
+
+def _mail_facts(facts: NewUserFacts) -> str:
+    lines = [
+        line.format(text=value)
+        for line, value in (
+            (INBOX_SUMMARY_LINE, facts.inbox_summary),
+            (MAIL_PORTRAIT_LINE, facts.mail_portrait),
+        )
+        if value
+    ]
+    return MAIL_FACTS_HEADER + "".join(lines) if lines else ""
+
+
+def build_new_user_guidance(facts: NewUserFacts) -> str:
     """Build the guidance block for a user with these onboarding answers, or "".
 
     Empty when the user picked nothing: with nothing to anchor on, the block
-    would be the generic coaching it exists to prevent. seeded_chips are the
-    seeded conversation's likely first message, so the model knows what
-    question it's answering.
+    would be the generic coaching it exists to prevent.
     """
-    chips = seeded_chips or []
-    lines = [f"- {NEED_PLAYBOOKS[need]}" for need in needs if need in NEED_PLAYBOOKS]
-    if other_need:
-        lines.append(f"- {OTHER_NEED_PLAYBOOK.format(other_need=other_need)}")
+    lines = [f"- {NEED_PLAYBOOKS[need]}" for need in facts.needs if need in NEED_PLAYBOOKS]
+    if facts.other_need:
+        lines.append(f"- {OTHER_NEED_PLAYBOOK.format(other_need=facts.other_need)}")
     if not lines:
         return ""
+    seeded = (
+        SEEDED_QUESTION_RULE.format(
+            question=facts.seeded.question,
+            chips=", ".join(f'"{chip}"' for chip in facts.seeded.chips),
+        )
+        if facts.seeded and facts.seeded.chips
+        else ""
+    )
     return NEW_USER_GUIDANCE_TEMPLATE.format(
-        profession=profession or "person",
+        profession=facts.profession or "person",
         playbooks="\n".join(lines),
         target=TARGET_REPLY_EXAMPLE,
-        chips_rule=SEEDED_CHIPS_RULE.format(chips=", ".join(f'"{c}"' for c in chips))
-        if chips
-        else "",
+        mail=_mail_facts(facts),
+        seeded=seeded,
     )

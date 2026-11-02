@@ -12441,6 +12441,11 @@ export interface components {
         /** OnboardingPreferences */
         OnboardingPreferences: {
             /**
+             * Language
+             * @description The user's browser language as a primary subtag ("de", "pt"), set at onboarding
+             */
+            language?: string | null;
+            /**
              * Needs
              * @description The jobs the user handed GAIA (onboarding Q2, up to three)
              */

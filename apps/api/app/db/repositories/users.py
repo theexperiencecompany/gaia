@@ -266,8 +266,9 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         """Atomically mark onboarding complete (gated on it not being complete yet).
 
         The gate is onboarding.completed, not the subdocument's existence,
-        since the wizard writes onboarding.preferences before payment. None
-        when the gate misses — already completed, or the user is gone.
+        since the wizard writes onboarding.preferences before payment. Only the
+        preferences the caller set are written, so one the wizard stored earlier
+        (the browser language) survives completion. None when the gate misses.
         """
         now = datetime.now(UTC)
         set_fields: dict[str, object] = {
@@ -275,8 +276,9 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             "onboarding.completed_at": completed_at or now,
             "onboarding.phase": phase,
             "onboarding.bio_status": bio_status,
-            "onboarding.preferences": preferences.model_dump(),
         }
+        for field, value in preferences.model_dump(exclude_unset=True).items():
+            set_fields[f"onboarding.preferences.{field}"] = value
         if timezone is not None:
             set_fields["timezone"] = timezone
         return await self._apply_raw_update(

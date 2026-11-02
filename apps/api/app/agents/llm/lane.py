@@ -220,8 +220,8 @@ def _default_lane() -> ModelLane:
 
 
 def _comms_lane() -> ModelLane | None:
-    """Return comms' own direct-OpenAI lane, or None when OpenAI is not configured."""
-    if not provider_configured(LLMProviderName.OPENAI):
+    """Return comms' own lane, or None when comms runs on the default lane."""
+    if settings.deployment.hosted_models or not provider_configured(LLMProviderName.OPENAI):
         return None
     return ModelLane(
         provider=LLMProviderName.OPENAI,

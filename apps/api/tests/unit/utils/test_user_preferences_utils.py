@@ -110,6 +110,7 @@ class TestBuildUserContextParts:
             operation="build_user_context_parts",
             has_profession=True,
             has_response_style=True,
+            has_language=False,
         )
 
     @patch("app.utils.user_preferences_utils.log")
@@ -126,6 +127,19 @@ class TestBuildUserContextParts:
     def test_only_response_style(self, mock_log: Any) -> None:
         parts = build_user_context_parts({"response_style": "casual"})
         assert parts == ["Communication Style: Use a casual and friendly tone"]
+
+    @patch("app.utils.user_preferences_utils.log")
+    def test_the_browser_language_is_rendered_after_the_style(self, mock_log: Any) -> None:
+        """The comms prompt greets in it before the user has written a word."""
+        parts = build_user_context_parts(
+            {"profession": "doctor", "response_style": "casual", "language": "de"}
+        )
+        assert parts == [
+            "User Profession: Doctor",
+            "Communication Style: Use a casual and friendly tone",
+            "Browser Language: de",
+        ]
+        assert mock_log.set.call_args.kwargs["has_language"] is True
 
     @patch("app.utils.user_preferences_utils.log")
     def test_a_legacy_custom_instructions_key_is_not_rendered(self, mock_log: Any) -> None:

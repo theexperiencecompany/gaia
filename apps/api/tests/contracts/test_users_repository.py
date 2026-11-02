@@ -204,6 +204,26 @@ class TestOnboardingWrites:
         stored = await raw_collection.find_one({"email": "tzkeep@y.com"})
         assert stored["timezone"] == "Asia/Kolkata"
 
+    async def test_complete_onboarding_keeps_preferences_the_wizard_stored_earlier(
+        self, repo, make_user
+    ):
+        """The browser language saved with the Q1/Q2 answers must survive completion."""
+        created = await repo.create(make_user(email="lang@y.com"))
+        await repo.update_onboarding_preferences(
+            created.id, OnboardingPreferences(profession="eng", language="de-DE")
+        )
+        completed = await repo.complete_onboarding(
+            created.id,
+            phase=OnboardingPhase.COMPLETED,
+            bio_status=BioStatus.PENDING,
+            preferences=OnboardingPreferences(profession="founder", response_style="casual"),
+        )
+        assert completed is not None
+        assert completed.onboarding is not None
+        stored = completed.onboarding.preferences
+        assert stored is not None
+        assert (stored.language, stored.profession) == ("de", "founder")
+
     async def test_update_preferences_patches_only_given_keys(self, repo, make_user):
         created = await repo.create(make_user())
         await repo.complete_onboarding(

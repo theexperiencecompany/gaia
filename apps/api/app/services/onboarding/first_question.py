@@ -98,7 +98,8 @@ under it. Write the four chips: the four jobs THIS person most wants handed \
 off, ambitious ones, the things they lie awake over, not chores. You can start \
 every one of them today with research, writing, a list you hold, a plan, or a \
 job you run on a schedule. Rules:
-- 2 to 4 words each. Verb first. No "the". No ending punctuation. No emoji.
+- 2 to 4 words each, in their language. Verb first. No "the". No ending \
+punctuation. No emoji.
 - Never the inbox or the calendar routines (sorting mail, drafting replies, \
 meeting prep): those are already on offer above the chips.
 - Never generic ("Help me", "Get organised", "Plan my day"). Each chip names a \
@@ -137,6 +138,10 @@ def _answers_block(preferences: OnboardingPreferences, connected_platform: str |
         lines.append(f'- In their own words: "{preferences.other_need}"')
     if connected_platform:
         lines.append(f"- They already text you on {connected_platform}")
+    if preferences.language:
+        lines.append(
+            f"- Their browser language, the one the chips are written in: {preferences.language}"
+        )
     return "\n".join(lines) or "- Nothing. They answered nothing."
 
 
@@ -199,19 +204,20 @@ async def compose_first_question(
 
 
 def answers_fingerprint(preferences: OnboardingPreferences) -> str:
-    """Return a stable hash of the three answers the question is written from.
+    """Return a stable hash of the answers the question is written from.
 
     Part of the cache key rather than a stored field, so changing an answer
     hashes to a fresh, unwritten key instead of reading a stale question.
     """
-    payload = json.dumps(
-        {
-            "profession": (preferences.profession or "").strip().lower(),
-            "needs": [need.value for need in preferences.needs or []],
-            "other_need": (preferences.other_need or "").strip().lower(),
-        },
-        sort_keys=True,
-    )
+    answers: dict[str, object] = {
+        "profession": (preferences.profession or "").strip().lower(),
+        "needs": [need.value for need in preferences.needs or []],
+        "other_need": (preferences.other_need or "").strip().lower(),
+    }
+    # Only when set, so a question cached before the language existed keeps its key.
+    if preferences.language:
+        answers["language"] = preferences.language
+    payload = json.dumps(answers, sort_keys=True)
     return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
 
@@ -285,26 +291,3 @@ async def resolve_first_question(
     else:
         log.info(f"{LogTag.ONBOARDING} first question resolved", user_id=user_id, outcome="live")
     return live
-
-
-async def seeded_chips(user_id: str, preferences: OnboardingPreferences) -> list[str]:
-    """Return the chips the seeded conversation offered this user, for the agent's prompt.
-
-    Read back from the same cache key the seeded turn was built from. An
-    expired key returns nothing rather than guessing a wrong list of chips.
-    """
-    try:
-        cached = await redis_cache.get(
-            first_question_cache_key(user_id, preferences), FirstQuestion
-        )
-    except Exception as e:
-        # A cache outage must not take the prompt down with it; the agent just
-        # loses the "these were your chips" hint for this turn.
-        log.warning(
-            f"{LogTag.ONBOARDING} seeded chips unreadable — prompt goes without them",
-            user_id=user_id,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        return []
-    return list(cached.chips) if cached else []

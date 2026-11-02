@@ -2,6 +2,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum, StrEnum
+import re
 from typing import Annotated, Any, TypedDict
 
 from pydantic import (
@@ -89,6 +90,18 @@ def clean_other_need(value: str | None) -> str | None:
     if value is None:
         return None
     return value.strip() or None
+
+
+#: A BCP-47 primary language subtag: two or three ASCII letters ("de", "pt", "fil").
+_LANGUAGE_SUBTAG = re.compile(r"[a-z]{2,3}")
+
+
+def clean_language(value: str | None) -> str | None:
+    """Reduce a browser locale ("de-DE", "pt_BR") to its lowercase primary subtag, or None."""
+    if value is None:
+        return None
+    primary = value.strip().replace("_", "-").split("-")[0].lower()
+    return primary if _LANGUAGE_SUBTAG.fullmatch(primary) else None
 
 
 class OnboardingPhase(str, Enum):
@@ -222,7 +235,16 @@ class OnboardingPreferences(BaseModel):
         max_length=OTHER_NEED_MAX_LENGTH,
         description="What the user typed under 'Something else' in onboarding Q2, verbatim",
     )
+    language: str | None = Field(
+        default=None,
+        description='The user\'s browser language as a primary subtag ("de", "pt"), set at onboarding',
+    )
     # Removed timezone field - now only stored at user.timezone root level
+
+    @field_validator("language", mode="before")
+    @classmethod
+    def validate_language(cls, v: object) -> object:
+        return clean_language(v) if isinstance(v, str) else v
 
     @field_validator("other_need")
     @classmethod

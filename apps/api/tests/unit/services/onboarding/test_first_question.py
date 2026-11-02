@@ -35,7 +35,6 @@ from app.services.onboarding.first_question import (
     first_question_cache_key,
     prewarm_first_question,
     resolve_first_question,
-    seeded_chips,
 )
 
 MODULE = "app.services.onboarding.first_question"
@@ -47,11 +46,13 @@ def _prefs(
     profession: str | None = "founder",
     needs: list[OnboardingNeed] | None = None,
     other_need: str | None = None,
+    language: str | None = None,
 ) -> OnboardingPreferences:
     return OnboardingPreferences(
         profession=profession,
         needs=needs if needs is not None else [OnboardingNeed.INBOX, OnboardingNeed.CALENDAR],
         other_need=other_need,
+        language=language,
     )
 
 
@@ -102,6 +103,13 @@ class TestAnswersBlock:
         block = _answers_block(_prefs(profession=profession, needs=[OnboardingNeed.INBOX]), None)
 
         assert block == "- In their words: inbox out of control"
+
+    def test_the_browser_language_closes_the_block_so_the_chips_are_written_in_it(self) -> None:
+        block = _answers_block(_prefs(language="pt-BR"), None)
+
+        assert block == (
+            f"{DEFAULT_BLOCK}\n- Their browser language, the one the chips are written in: pt"
+        )
 
     def test_a_platform_alone_still_renders_its_line(self) -> None:
         block = _answers_block(_prefs(profession=None, needs=[]), "whatsapp")
@@ -212,6 +220,10 @@ class TestAnswersFingerprintValue:
         assert fingerprint == "db8ff3619a26d6f8"
         assert len(fingerprint) == 16
 
+    def test_the_browser_language_is_part_of_the_pinned_digest(self) -> None:
+        """Chips are written in it, so a German and an English user must not share one."""
+        assert answers_fingerprint(_prefs(language="de-DE")) == "f7002d53b1c2eaaa"
+
     def test_an_empty_wizard_has_its_own_stable_digest(self) -> None:
         assert answers_fingerprint(_prefs(profession=None, needs=[], other_need=None)) == (
             "68b6d7c07ea25558"
@@ -236,6 +248,7 @@ class TestAnswersFingerprintValue:
             {"needs": [OnboardingNeed.INBOX]},
             {"needs": []},
             {"other_need": "chasing invoices"},
+            {"language": "de"},
         ],
     )
     def test_changing_any_answer_changes_the_digest(self, changed: dict[str, Any]) -> None:
@@ -531,51 +544,6 @@ class TestResolveBranches:
             assert await resolve_first_question("u1", _prefs(), None) is None
 
         compose.assert_awaited_once()
-
-
-class TestSeededChips:
-    """The agent's prompt reads back the chips the seeded turn actually offered, from the same cache key it was built from."""
-
-    async def test_reads_the_seed_key_and_returns_its_chips_as_a_list(self) -> None:
-        cached = FirstQuestion(chips=GOOD_CHIPS)
-        getter = AsyncMock(return_value=cached)
-        with patch(f"{MODULE}.redis_cache.get", getter):
-            chips = await seeded_chips("u1", _prefs())
-
-        assert chips == list(GOOD_CHIPS)
-        assert chips is not cached.chips
-        assert getter.await_args.args == (first_question_cache_key("u1", _prefs()), FirstQuestion)
-        assert getter.await_args.kwargs == {}
-
-    async def test_a_different_user_or_answer_set_reads_a_different_key(self) -> None:
-        getter = AsyncMock(return_value=None)
-        with patch(f"{MODULE}.redis_cache.get", getter):
-            await seeded_chips("u2", _prefs(profession="Dentist"))
-
-        assert getter.await_args.args[0] == first_question_cache_key(
-            "u2", _prefs(profession="Dentist")
-        )
-        assert getter.await_args.args[0] != first_question_cache_key("u1", _prefs())
-
-    async def test_an_expired_key_yields_no_chips_rather_than_a_guess(self) -> None:
-        with patch(f"{MODULE}.redis_cache.get", AsyncMock(return_value=None)):
-            assert await seeded_chips("u1", _prefs()) == []
-
-    async def test_a_cache_outage_is_logged_with_its_cause_and_yields_no_chips(self) -> None:
-        boom = ConnectionError("redis down")
-        warning = MagicMock()
-        with (
-            patch(f"{MODULE}.redis_cache.get", AsyncMock(side_effect=boom)),
-            patch(f"{MODULE}.log.warning", warning),
-        ):
-            assert await seeded_chips("u1", _prefs()) == []
-
-        warning.assert_called_once_with(
-            f"{LogTag.ONBOARDING} seeded chips unreadable — prompt goes without them",
-            user_id="u1",
-            error="redis down",
-            error_type="ConnectionError",
-        )
 
 
 class TestFallbackWarning:

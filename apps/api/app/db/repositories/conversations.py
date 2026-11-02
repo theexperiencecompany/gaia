@@ -23,6 +23,7 @@ from bson import ObjectId
 from pymongo.errors import DuplicateKeyError
 
 from app.constants.chat import (
+    BOT_MESSAGE_TYPE,
     CONVERSATION_MAX_RETAINED_PINS,
     FOLDED_CARDS_FIELD,
     FOLDED_CARDS_KEEP_SECONDS,
@@ -46,14 +47,23 @@ from app.models.conversation_models import (
     ConversationSearchResults,
     ConversationSummary,
     ConversationUpdate,
+    SeededQuestion,
     _ConversationIdRow,
     _ConversationOwnerRow,
     _MessageProjectionRow,
+    _SeededOpeningRow,
     _SourceRow,
     _SystemGeneratedRow,
     _TodoBindingRow,
 )
 
+#: The seeded Getting-started thread is three bot messages; its question is the last.
+SEEDED_OPENING_MESSAGES = 3
+_SEEDED_OPENING_PROJECTION: dict[str, object] = {
+    "_id": 0,
+    "system_purpose": 1,
+    "messages": {"$slice": SEEDED_OPENING_MESSAGES},
+}
 _BOT_SOURCE_VALUES: list[str] = [s.value for s in BOT_CONVERSATION_SOURCES]
 _SUMMARY_PROJECTION: dict[str, object] = {
     "_id": 0,
@@ -610,6 +620,24 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         if row is None or not row.messages:
             return None
         return row.messages[0]
+
+    async def get_seeded_question(
+        self, conversation_id: str, *, user_id: str
+    ) -> SeededQuestion | None:
+        """Return the question and chips a Getting-started thread opened with, or None for any other thread."""
+        row = await self._find_one_projected(
+            {"conversation_id": conversation_id, "user_id": user_id},
+            _SEEDED_OPENING_PROJECTION,
+            _SeededOpeningRow,
+        )
+        if row is None or row.system_purpose is not SystemPurpose.GETTING_STARTED:
+            return None
+        for message in row.messages:
+            if message.type == BOT_MESSAGE_TYPE and message.follow_up_actions:
+                return SeededQuestion(
+                    question=message.response, chips=list(message.follow_up_actions)
+                )
+        return None
 
     async def get_source(self, conversation_id: str, *, user_id: str) -> ConversationSource | None:
         """Return the conversation's source enum, or None when it doesn't exist."""

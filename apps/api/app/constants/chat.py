@@ -117,9 +117,10 @@ CONVERSATION_MAX_MESSAGES = 600
 # Past this many, the oldest pins fall out with the messages that carried them.
 CONVERSATION_MAX_RETAINED_PINS = 100
 
-# ``MessageModel.type`` of a message the human wrote (the other value is
-# ``"bot"``). Named so a stored-message query and the writers agree on the literal.
+# ``MessageModel.type`` of a message the human wrote, and of one GAIA wrote.
+# Named so a stored-message query and the writers agree on the literal.
 USER_MESSAGE_TYPE = "user"
+BOT_MESSAGE_TYPE = "bot"
 
 # Shown when a turn dies and the provider exception carries no message of its
 # own. Names the exception type so a support report still identifies the failure.
