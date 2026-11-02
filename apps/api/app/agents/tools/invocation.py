@@ -55,7 +55,7 @@ async def invoke_tool(
     except Exception as exc:
         await _write(_recorded(tool, args, config, _error_text(exc), failed=True))
         raise
-    await _write(_recorded(tool, args, config, output, failed=False))
+    await _write(_recorded(tool, args, config, output))
     return output
 
 
@@ -75,7 +75,7 @@ def invoke_tool_sync(
     except Exception as exc:
         _write_sync(_recorded(tool, args, config, _error_text(exc), failed=True))
         raise
-    _write_sync(_recorded(tool, args, config, output, failed=False))
+    _write_sync(_recorded(tool, args, config, output))
     return output
 
 
@@ -116,7 +116,7 @@ def _recorded(
     config: RunnableConfig | None,
     output: object,
     *,
-    failed: bool,
+    failed: bool = False,
 ) -> tuple[str, RecordedCall] | None:
     """Return (stream id, call) for a call that belongs to a run, else None."""
     if tool.name == EXECUTE_TOOL_NAME or config is None:

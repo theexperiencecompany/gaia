@@ -1291,8 +1291,12 @@ class TestExecuteWorkflowAsChat:
             )
 
         assert (conversation_id, trace) == ("conv_trace", [])
-        assert log.error.call_args.kwargs["workflow_id"] == workflow.id
-        assert log.error.call_args.kwargs["error_type"] == "ConnectionError"
+        assert log.error.call_args.args == ("[WORKER] workflow run record could not be read",)
+        assert log.error.call_args.kwargs == {
+            "workflow_id": workflow.id,
+            "error_type": "ConnectionError",
+            "exc_info": True,
+        }
 
 
 # ---------------------------------------------------------------------------

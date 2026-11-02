@@ -360,20 +360,23 @@ def _no_captured_loop_carryover() -> Iterator[None]:
     reset_captured_loop()
 
 
-@pytest.fixture(autouse=True)
-async def _redis_client_per_test_loop(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[None]:
-    """With real services up, give each test's event loop its own Redis client.
+if _USE_REAL_SERVICES:
+    # Defined only here: an autouse fixture takes part in every test's setup and
+    # teardown order, and the hermetic run has no client to replace.
 
-    The client built at import binds its connections to the first loop that uses it, so
-    every later test reaching redis_cache failed on "Event loop is closed".
-    """
-    if not _USE_REAL_SERVICES:
+    @pytest.fixture(autouse=True)
+    async def _redis_client_per_test_loop() -> AsyncIterator[None]:
+        """Give each test's event loop its own Redis client.
+
+        The client built at import binds its connections to the first loop that uses it,
+        so every later test reaching redis_cache failed on "Event loop is closed".
+        """
+        imported = redis_cache.redis
+        client = aioredis.from_url(redis_cache.redis_url, decode_responses=True)
+        redis_cache.redis = client
         yield
-        return
-    client = aioredis.from_url(redis_cache.redis_url, decode_responses=True)
-    monkeypatch.setattr(redis_cache, "redis", client)
-    yield
-    await client.aclose()
+        redis_cache.redis = imported
+        await client.aclose()
 
 
 @pytest.fixture
