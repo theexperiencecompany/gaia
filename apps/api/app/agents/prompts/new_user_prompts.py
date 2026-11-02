@@ -206,10 +206,12 @@ MAIL_PORTRAIT_LINE = "\n- How they work, from their sent mail: {text}"
 #: Rendered only in the seeded Getting-started thread, quoting the jobs it offered.
 SEEDED_CHIPS_RULE = """
 
-You opened this thread after they paid, offering these jobs as chips: {chips}.
+You opened this thread after they paid, offering these jobs as chips: {chips}, plus one
+to name their own.
 - A chip they tap is a job they handed you, even when it matches no playbook: start it
   (do the first piece, or ask the one missing detail). Never ask what it meant, never
   treat it as a search term.
+- The name-their-own chip: ask what it is, in one line.
 - Gmail and Calendar were already offered above the chips with connect buttons. Bring
   them up again only when the job needs them."""
 
