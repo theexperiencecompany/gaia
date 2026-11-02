@@ -143,18 +143,21 @@ class _UserStore:
     # -- onboarding lifecycle ---------------------------------------------
     async def complete_onboarding(self, user_id: str, **fields: Any) -> UserDocument | None:
         doc = self.docs.get(user_id)
-        if doc is None or "onboarding" in doc:
+        if doc is None or (doc.get("onboarding") or {}).get("completed"):
             return None
         if fields.get("timezone") is not None:
             doc["timezone"] = fields["timezone"]
-        sub: dict[str, Any] = {
-            "completed": True,
-            "completed_at": datetime.now(UTC),
-            "phase": fields["phase"],
-            "bio_status": fields["bio_status"],
-            "preferences": fields["preferences"].model_dump(),
-        }
-        doc["onboarding"] = sub
+        sub = doc.setdefault("onboarding", {})
+        sub.update(
+            completed=True,
+            completed_at=datetime.now(UTC),
+            phase=fields["phase"],
+            bio_status=fields["bio_status"],
+        )
+        # Field by field, as the repository writes them: earlier saves survive.
+        sub.setdefault("preferences", {}).update(
+            fields["preferences"].model_dump(exclude_unset=True)
+        )
         return await self.get(user_id)
 
     async def clear_onboarding(self, user_id: str) -> None:
