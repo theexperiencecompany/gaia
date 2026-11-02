@@ -29,7 +29,7 @@ USER_AGENT = "gaia-seo-audit/1.0 (+https://heygaia.io)"
 TIMEOUT_S = 30
 RETRIES = 2
 LOC = re.compile(r"<loc>\s*([^<\s]+)\s*</loc>")
-LOCALE_PREFIX = re.compile(r"^/(de|es|fr|ja|ko|pt-BR)(?=/|$)")
+LOCALE_PREFIX = re.compile(r"^/(de|es|fr|ja|ko|pt-br)(?=/|$)")
 SNIPPET_CONFIG = Path(__file__).resolve().parents[3] / "apps/web/src/config/seoSnippet.json"
 _SNIPPET = json.loads(SNIPPET_CONFIG.read_text())
 TITLE_RANGE = (_SNIPPET["titleLength"]["min"], _SNIPPET["titleLength"]["max"])

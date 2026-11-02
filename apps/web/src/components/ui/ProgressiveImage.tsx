@@ -8,7 +8,7 @@ interface ProgressiveImageProps {
   className?: string;
   shouldHaveInitialFade?: boolean;
   priority?: boolean;
-  sizes?: string;
+  sizes?: string | null;
   width?: number;
   height?: number;
 }
@@ -41,7 +41,7 @@ export default function ProgressiveImage({
         height={height}
         priority={priority}
         fetchPriority={priority ? "high" : undefined}
-        sizes={sizes}
+        sizes={sizes ?? undefined}
         onLoad={() => setInitialLoaded(true)}
         style={{ width: "100%", height: "100%", objectFit: "cover" }}
         className={`${className} transition duration-200 ${initialLoaded || !shouldHaveInitialFade ? "opacity-100" : "opacity-0"}`}
@@ -57,7 +57,7 @@ export default function ProgressiveImage({
           alt={`${alt} png`}
           width={width}
           height={height}
-          sizes={sizes}
+          sizes={sizes ?? undefined}
           loading="lazy"
           fetchPriority="low"
           onLoad={() => setLoaded(true)}

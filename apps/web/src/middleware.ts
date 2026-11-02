@@ -1,4 +1,4 @@
-import type { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import createMiddleware from "next-intl/middleware";
 
 import { selfhostHomeRedirect } from "./features/auth/api/selfhostHomeRedirect";
@@ -63,6 +63,15 @@ function localeResponse(request: NextRequest): NextResponse {
 }
 
 export default async function middleware(request: NextRequest) {
+  // Next's config redirects match case-insensitively, so /pt-BR cannot be
+  // distinguished from the canonical /pt-br there. Handle the legacy mixed-case
+  // prefix here, where the comparison is case-sensitive.
+  const { pathname } = request.nextUrl;
+  if (pathname === "/pt-BR" || pathname.startsWith("/pt-BR/")) {
+    const url = request.nextUrl.clone();
+    url.pathname = `/pt-br${pathname.slice("/pt-BR".length)}`;
+    return NextResponse.redirect(url, 301);
+  }
   // A self-hosted instance has no landing page: "/" goes into the product.
   if (request.nextUrl.pathname === "/") {
     const selfhostHome = await selfhostHomeRedirect(request);
