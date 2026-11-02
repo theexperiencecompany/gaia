@@ -172,61 +172,36 @@ jobs:
           RELEASE_IMAGES: ${{ inputs.release_images }}
         run: bash scripts/ci/release.sh cli-release-images
 
-      # Map affected project list to the image scopes: api (api + voice-agent),
-      # bots, and web.
+      # Which images this push changes: the nx.json release groups (apps = api +
+      # voice-agent, bots) with an affected docker:build task, and web's.
+      - name: Ask nx which images this push changes
+        id: nx
+        run: bash scripts/ci/changes.sh affected --since-last-success
+
       - name: Check affected projects
         id: affected
         env:
           CLI_RELEASE: ${{ steps.cli-release.outputs.required }}
+          API: ${{ contains(fromJSON(steps.nx.outputs.release_groups), 'apps') }}
+          BOTS: ${{ contains(fromJSON(steps.nx.outputs.release_groups), 'bots') }}
+          WEB: ${{ contains(fromJSON(steps.nx.outputs.tasks), 'web:docker:build') }}
         run: |
-          # Fail loud: a broken nx invocation must fail this job, not silently
-          # yield an empty list (which would skip image builds and deploys).
           set -euo pipefail
-          # nx may output JSON arrays or one-per-line; normalize to newline-separated.
-          AFFECTED="$(pnpm exec nx show projects --affected | tr -d '[]"' | tr ',' '\n' | sed '/^$/d')"
+          api=$API
+          bots=$BOTS
+          web=$WEB
 
-          echo "Affected projects:"
-          echo "$AFFECTED"
-
-          api=false
-          bots=false
-          web=false
-
-          if echo "$AFFECTED" | grep -qx "api" || echo "$AFFECTED" | grep -qx "voice-agent"; then
-            api=true
-          fi
-
-          if echo "$AFFECTED" | grep -qx "bot-discord" || echo "$AFFECTED" | grep -qx "bot-slack" || echo "$AFFECTED" | grep -qx "bot-telegram" || echo "$AFFECTED" | grep -qx "bot-whatsapp" || echo "$AFFECTED" | grep -qx "bot-imessage"; then
-            bots=true
-          fi
-
-          if echo "$AFFECTED" | grep -qx "web"; then
-            web=true
-          fi
-
-          # Force build if images don't exist in GHCR yet (first-time bootstrap).
-          # Only check on master branch to avoid unnecessary builds on feature branches.
+          # Force a group's build when one of its images has no :latest in GHCR
+          # yet (first-time bootstrap); the repos come from lib/image-repos.sh.
           if [ "${{ github.ref }}" = "refs/heads/master" ]; then
-            image_missing() {
-              ! docker manifest inspect "$1" > /dev/null 2>&1
-            }
-
-            if [ "$api" = "false" ]; then
-              if image_missing "ghcr.io/theexperiencecompany/gaia:latest" || image_missing "ghcr.io/theexperiencecompany/gaia-voice-agent:latest"; then
-                echo "⚠️ API/voice-agent image missing from GHCR — forcing build"
-                api=true
-              fi
+            missing="$(bash scripts/ci/release.sh missing-latest)"
+            if [[ "$missing" == *apps* && "$api" = "false" ]]; then
+              echo "⚠️ An apps image is missing from GHCR — forcing build"
+              api=true
             fi
-
-            if [ "$bots" = "false" ]; then
-               if image_missing "ghcr.io/theexperiencecompany/gaia-bot-discord:latest" || \
-                  image_missing "ghcr.io/theexperiencecompany/gaia-bot-slack:latest" || \
-                  image_missing "ghcr.io/theexperiencecompany/gaia-bot-telegram:latest" || \
-                  image_missing "ghcr.io/theexperiencecompany/gaia-bot-whatsapp:latest" || \
-                  image_missing "ghcr.io/theexperiencecompany/gaia-bot-imessage:latest"; then
-                echo "⚠️ Bot image(s) missing from GHCR — forcing build"
-                bots=true
-              fi
+            if [[ "$missing" == *bots* && "$bots" = "false" ]]; then
+              echo "⚠️ A bot image is missing from GHCR — forcing build"
+              bots=true
             fi
           fi
 

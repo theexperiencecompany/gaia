@@ -49,7 +49,7 @@ jobs:
     runs-on: ${{ vars.CI_DISPATCH_RUNNER || 'ubuntu-latest' }}
     steps:
       # fetch-depth: 0 gives React Doctor the full git history it needs to find the merge base with the target branch. Without it a shallow checkout has no merge base, so PR runs can't compare against the base and fall back to reporting every issue in the changed files (pre-existing ones included) instead of only the ones the PR introduced.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -61,10 +61,12 @@ jobs:
         # Full reference: https://www.react.doctor/ci
         with:
           blocking: warning
+          # The version pnpm-lock.yaml locks (root package.json devDependency):
+          # unpinned, a react-doctor release could red every PR overnight.
+          version: "0.9.12"
         #   scope: full              # On PRs, scan the whole project instead of just changed files
         #   comment: false           # Disable the sticky PR summary comment
         #   review-comments: false   # Disable inline review comments on changed lines
         #   commit-status: false     # Disable the commit status (score + counts, links to the run)
-        #   version: "0.4.0"         # Pin to a specific react-doctor version instead of "latest"
         #   directory: apps/web      # Scan a sub-directory (default: ".")
         #   project: "web,admin"     # In a monorepo, scan specific workspace project(s)

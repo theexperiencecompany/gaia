@@ -127,7 +127,7 @@ services:
     env_file: &backend_env_files
       - path: .env
         required: false
-      - path: ../../apps/api/.env
+      - path: ../../../apps/api/.env
         required: false
     environment: &backend_environment
       PYTHONUNBUFFERED: 1
@@ -271,7 +271,7 @@ services:
       - "${WEB_HOST_PORT:-3000}:80"
       - "${HTTPS_HOST_PORT:-3443}:443"
     volumes:
-      - ./selfhost/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     restart: unless-stopped
