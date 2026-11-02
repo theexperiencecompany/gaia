@@ -40,7 +40,9 @@ class GaiaBrowserSession(BrowserSession):
 
     _fingerprint_seed: int = PrivateAttr(default=_DEFAULT_SEED)
     #: Only Chrome takes our stealth script; Obscura's --stealth owns its own fingerprint.
-    _chrome_stealth: bool = PrivateAttr(default=True)
+    _chrome_stealth: bool = PrivateAttr(
+        default=True
+    )  # NOSONAR python:S5890 -- Pydantic's documented PrivateAttr form, as beside it
     #: Targets that already carry the stealth script: it is registered once per target.
     _stealthed: set[str] = PrivateAttr(default_factory=set)
 

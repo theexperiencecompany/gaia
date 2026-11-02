@@ -288,11 +288,34 @@
     return {first, runOf};
   }
 
+  // A box's label without the index it carries ("User code 0" -> "User code").
+  function stem(label) {
+    let end=label.length;
+    while (end>0 && label[end-1]>='0' && label[end-1]<='9') end--;
+    return label.slice(0,end).trimEnd() || label;
+  }
+
   // One code field for a run of boxes: typed into its first box, which the page carries on from.
   function segmentedAction(boxes, base, cache) {
-    return {...base,kind:'fill',label:base.label.replace(/\s*\d+$/,'') || base.label,
+    return {...base,kind:'fill',label:stem(base.label),
       value:boxes.map(b=>b.value).join(''),segments:boxes.map(b=>cache.identity(b))};
   }
+
+  // The name of a control the page shows but has disabled; '' for any other element.
+  const disabledName = e => isSafe(e) && isVisible(e) && isDisabled(e) && roleOf(e) ?
+    (accessibleName(e) || roleOf(e)).slice(0,LABEL_CHARS) : '';
+
+  // What one reachable control offers: a code's run is one field on its first box, nothing on the rest.
+  function actionsOf(e, ox, oy, cache, segments) {
+    const rname=offered(e) ? roleOf(e) : null;
+    if (!rname || !cache.pressPoint(e) || (segments.runOf.has(e) && !segments.first.has(e))) return [];
+    const base=describe(e, rname, ox, oy, cache), run=segments.first.get(e);
+    return run ? [segmentedAction(run, base, cache)] : controlActions(e, base);
+  }
+
+  // Whether focus is in e, or in any box of the code run e leads.
+  const holdsFocus = (e, active, segments) =>
+    e===active || (segments.first.has(e) && segments.runOf.get(active)===segments.first.get(e));
 
   // Every control a press reaches, Enter for the observed field that holds focus, and the
   // controls the page shows but has disabled, which Jev waits for instead of judging them absent.
@@ -300,18 +323,11 @@
     const active=deepActive(), actions=[], disabled=[], segments=segmentedFields(roots);
     let focused=null;
     for (const {root, ox, oy} of roots) for (const e of root.querySelectorAll(SELECTOR)) {
-      if (isSafe(e) && isVisible(e) && isDisabled(e) && roleOf(e)) {
-        disabled.push((accessibleName(e) || roleOf(e)).slice(0,LABEL_CHARS));
-        continue;
-      }
-      const rname=offered(e) ? roleOf(e) : null;
-      if (!rname || !cache.pressPoint(e)) continue;
-      if (segments.runOf.has(e) && !segments.first.has(e)) continue;
-      const base=describe(e, rname, ox, oy, cache);
-      const own=segments.first.has(e) ? [segmentedAction(segments.first.get(e), base, cache)] : controlActions(e, base);
+      const name=disabledName(e);
+      if (name) { disabled.push(name); continue; }
+      const own=actionsOf(e, ox, oy, cache, segments);
       actions.push(...own);
-      const holdsFocus=e===active || (segments.first.has(e) && segments.runOf.get(active)===segments.first.get(e));
-      if (holdsFocus && own.some(a=>a.kind==='fill' || a.kind==='secret'))
+      if (holdsFocus(e, active, segments) && own.some(a=>a.kind==='fill' || a.kind==='secret'))
         focused={id:'enter',kind:'enter',node:own[0].node,label:'Press Enter in '+own[0].label};
     }
     return {actions, focused, disabled};

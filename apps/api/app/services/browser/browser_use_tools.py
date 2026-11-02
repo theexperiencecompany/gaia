@@ -126,8 +126,13 @@ def _form_of(node: EnhancedDOMTreeNode) -> EnhancedDOMTreeNode | None:
 
 
 def _descendants(node: EnhancedDOMTreeNode) -> list[EnhancedDOMTreeNode]:
-    children = node.children_nodes or []
-    return [*children, *(d for child in children for d in _descendants(child))]
+    found: list[EnhancedDOMTreeNode] = []
+    pending = list(node.children_nodes or [])
+    while pending:
+        child = pending.pop()
+        found.append(child)
+        pending.extend(child.children_nodes or [])
+    return found
 
 
 async def _code_boxes(browser_session: BrowserSession, params: object) -> int:
