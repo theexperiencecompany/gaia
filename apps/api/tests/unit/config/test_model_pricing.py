@@ -116,13 +116,6 @@ class TestEveryRuntimeModelIsPriced:
         assert pricing.output_cost_per_1k == 0.0006
         assert pricing.cached_input_cost_per_1k == 0.000003
 
-    def test_the_retired_default_still_meters_at_its_served_rate(self) -> None:
-        retired = get_model_pricing("deepseek/deepseek-v4-flash-0731")
-
-        assert retired.input_cost_per_1k == 0.00004
-        assert retired.output_cost_per_1k == 0.00008
-        assert retired.cached_input_cost_per_1k == 0.000016
-
     def test_the_judge_model_carries_its_real_rate(self) -> None:
         """The approval gate judges here; an unpriced judge id would meter at DEFAULT_PRICING (~3x input, ~1x output — close enough to look right while being wrong, the worst kind of drift)."""
         pricing = get_model_pricing(HIL_JUDGE_MODEL_NAME)

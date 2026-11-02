@@ -82,7 +82,7 @@ from app.constants.llm import (
 )
 from app.constants.log_tags import LogTag
 from app.constants.providers import (
-    HOSTED_EXCLUDED_PROVIDERS,
+    HOSTED_COMMS_ONLY_PROVIDERS,
     HOSTED_ONE_SHOT_PROVIDERS,
     LLM_MODEL_PROFILES,
     LLM_PROVIDER_PRIORITY,
@@ -226,6 +226,16 @@ def chat_model(provider: LLMProviderName) -> str | None:
     config: ProviderConfig | None = resolved_config(CredentialProviderName(provider))
     configured = config.model if config else None
     return configured or LLM_MODEL_PROFILES[provider].chat
+
+
+def _is_hosted_comms_only(provider: LLMProviderName) -> bool:
+    """Whether production keeps provider to comms' own lane (see HOSTED_COMMS_ONLY_PROVIDERS)."""
+    return settings.deployment.hosted_models and provider in HOSTED_COMMS_ONLY_PROVIDERS
+
+
+def _chat_priority() -> tuple[LLMProviderName, ...]:
+    """Return the providers a default lane or fallback may take, in order; comms-only ones never in production."""
+    return tuple(p for p in LLM_PROVIDER_PRIORITY if not _is_hosted_comms_only(p))
 
 
 @cache
@@ -549,8 +559,6 @@ def provider_configured(provider_name: LLMProviderName) -> bool:
         # _sim_llm), mirroring the old behavior where the stub key satisfied
         # every import-time required_keys list.
         return True
-    if settings.deployment.hosted_models and provider_name in HOSTED_EXCLUDED_PROVIDERS:
-        return False
     credential = CredentialProviderName(provider_name)
     return is_usable(credential, resolved_config(credential))
 
@@ -563,7 +571,7 @@ def chat_routes() -> list[tuple[LLMProviderName, str]]:
     available = _get_available_providers()
     return [
         (name, model)
-        for name in LLM_PROVIDER_PRIORITY
+        for name in _chat_priority()
         if name in available and (model := chat_model(name))
     ]
 
@@ -601,8 +609,16 @@ def _get_ordered_providers(
     if fallback_enabled or not ordered:
         ordered.extend(
             LLMProvider(name=name, instance=remaining_providers[name])
-            for name in LLM_PROVIDER_PRIORITY
+            for name in _chat_priority()
             if name in remaining_providers
+        )
+
+    # Registered as alternatives so comms can select them by name, never as the primary.
+    if fallback_enabled and ordered:
+        ordered.extend(
+            LLMProvider(name=name, instance=instance)
+            for name, instance in remaining_providers.items()
+            if _is_hosted_comms_only(name)
         )
 
     return ordered

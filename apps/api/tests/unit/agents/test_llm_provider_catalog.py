@@ -18,6 +18,7 @@ from app.agents.llm.client import (
     _build_default_llm,
     _build_gemini_one_shot,
     _build_openai_wire_one_shot,
+    _get_ordered_providers,
     chat_model,
     init_custom_llm,
     init_gemini_llm,
@@ -32,6 +33,7 @@ from app.agents.llm.client import (
 )
 from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.llm.lane import AgentRole, resolve_lane
+from app.agents.llm.types import ProviderLLM
 from app.constants.llm import (
     DEFAULT_MAX_TOKENS,
     HELPER_MAX_OUTPUT_TOKENS,
@@ -106,7 +108,7 @@ class TestProductionRoutingIsPinned:
         monkeypatch.setattr(client_module.settings, "GOOGLE_API_KEY", "g-key")
         monkeypatch.setattr(client_module.settings, "OPENAI_API_KEY", "sk-openai")
 
-    async def test_executor_runs_openrouter_deepseek_v4_1_at_medium_reasoning(self) -> None:
+    async def test_executor_runs_openrouter_deepseek_at_medium_reasoning(self) -> None:
         lane, _ = await resolve_lane(None, AgentRole.EXECUTOR)
 
         assert (lane.provider, lane.model, lane.reasoning) == (
@@ -117,13 +119,6 @@ class TestProductionRoutingIsPinned:
 
     async def test_executor_falls_back_to_gemini_flash_lite(self) -> None:
         lane, _ = await resolve_lane(None, AgentRole.EXECUTOR)
-        fallback = lane.fallback()
-
-        assert fallback is not None
-        assert (fallback.provider, fallback.model) == ("gemini", "gemini-3.1-flash-lite")
-
-    async def test_comms_falls_back_to_gemini_flash_lite(self) -> None:
-        lane, _ = await resolve_lane(None, AgentRole.COMMS)
         fallback = lane.fallback()
 
         assert fallback is not None
@@ -161,13 +156,23 @@ class TestProductionRoutingIsPinned:
     async def test_without_openrouter_or_gemini_the_default_lane_stays_openrouter(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Production never runs OpenAI; a missing OpenRouter key fails loud at load time."""
+        """OpenAI is comms-only in production; a missing OpenRouter key fails loud at load time."""
         monkeypatch.setattr(client_module.settings, "OPENROUTER_API_KEY", None)
         monkeypatch.setattr(client_module.settings, "GOOGLE_API_KEY", None)
 
         lane, _ = await resolve_lane(None, AgentRole.EXECUTOR)
 
         assert (lane.provider, lane.model) == ("openrouter", "deepseek/deepseek-v4.1-flash-1017")
+
+    def test_openai_is_registered_last_as_a_by_name_alternative(self) -> None:
+        available = {
+            LLMProviderName(name): cast(ProviderLLM, object())
+            for name in ("openai", "gemini", "openrouter")
+        }
+
+        ordered = _get_ordered_providers(available, None, True)
+
+        assert [p.name for p in ordered] == ["openrouter", "gemini", "openai"]
 
     def test_a_missing_hosted_key_is_never_routed_around(
         self, monkeypatch: pytest.MonkeyPatch
