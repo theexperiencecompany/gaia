@@ -196,6 +196,17 @@ class TestListCalendars:
         assert exc.value.status_code == 500
         assert "boom" in str(exc.value.detail)
 
+    @pytest.mark.parametrize(
+        "body",
+        [{}, {"error": "invalid_grant"}, {"error": {"code": 500}}],
+        ids=["empty", "oauth_string_error", "no_message"],
+    )
+    async def test_a_body_without_a_google_message_keeps_the_proxy_message(self, mock_proxy, body):
+        mock_proxy.side_effect = _http_error(502, body)
+        with pytest.raises(HTTPException) as exc:
+            await list_calendars(USER_ID)
+        assert exc.value.detail == "GOOGLECALENDAR API error (502)"
+
     async def test_a_disconnected_integration_is_the_structured_reconnect_detail(self, mock_proxy):
         mock_proxy.side_effect = AppError(
             message="Google Calendar is not connected",
