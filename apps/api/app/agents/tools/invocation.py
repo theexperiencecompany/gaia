@@ -4,14 +4,15 @@ Every path that runs a tool (the graph tool node, the retrieve_tools node, the
 execute proxy's dispatch, a sandbox script's callback, an approved action run
 later) calls ``invoke_tool``, so the run record holds every call by
 construction rather than by each path remembering to report it.
-``tests/contracts/test_tool_invocation_paths.py`` fails CI on any other
-``.ainvoke``/``.invoke`` of a tool.
+tests/unit/agents/tools/test_tool_invocation_paths.py fails CI on any other
+invocation of a tool.
 
 The execute proxy itself is not recorded: its dispatch invokes the real tool
 through here, and that real call (name, args, result) is the record.
 """
 
 from collections.abc import Mapping
+import json
 from typing import cast
 
 from langchain_core.messages import ToolCall, ToolMessage
@@ -103,7 +104,7 @@ def _recorded(
         subagent_id=configurable.get("subagent_id"),
         subagent=configurable.get("run_scope"),
         args=args,
-        result_digest=build_result_digest(_result_payload(output)),
+        result_digest=build_result_digest(_as_text(_result_payload(output))),
         failed=failed,
     )
     return stream_id, call
@@ -144,6 +145,13 @@ def _result_payload(output: object) -> object:
         answers = [m.content for m in messages if isinstance(m, ToolMessage)]
         return answers[0] if answers else ""
     return output
+
+
+def _as_text(payload: object) -> str:
+    """Return a result as text: structured results as JSON, which $last_run paths and checks parse."""
+    if isinstance(payload, str):
+        return payload
+    return json.dumps(payload, default=str, ensure_ascii=False)
 
 
 def _error_text(exc: Exception) -> str:
