@@ -8446,8 +8446,7 @@
               "user_created",
               "chat_agent",
               "todo_converted",
-              "todo_requested",
-              "todo_auto"
+              "todo_requested"
             ],
             "title": "Origin",
             "type": "string"

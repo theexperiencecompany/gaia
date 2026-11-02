@@ -20,15 +20,13 @@ __all__ = [
     "WorkflowStepsRegenerated",
     "WorkflowUnpublished",
     "WorkflowUpdated",
-    "TodoWorkflowOrigin",
 ]
 
 
 #: user_created: saved from the editor or a confirmed chat draft; chat_agent: the agent created
 #: it straight from a chat request; todo_converted: the user turned a todo into a workflow;
-#: todo_requested: the user asked a todo to generate one; todo_auto: generated unasked with a new todo.
-TodoWorkflowOrigin = Literal["todo_requested", "todo_auto"]
-WorkflowCreatedOrigin = Literal["user_created", "chat_agent", "todo_converted", TodoWorkflowOrigin]
+#: todo_requested: the user pressed Generate Workflow on a todo.
+WorkflowCreatedOrigin = Literal["user_created", "chat_agent", "todo_converted", "todo_requested"]
 
 
 class WorkflowCreated(ServerEvent):

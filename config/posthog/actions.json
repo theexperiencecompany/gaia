@@ -45,7 +45,7 @@
     },
     {
       "name": "Workflow created (continuous)",
-      "description": "Workflows a user asked for. workflows:created (web client) before 2026-08-18 19:16:12.478 UTC, the first server-side workflow:* event, then workflow:created except the ones generated unasked with a new todo: origin todo_auto, or, on events from before origin existed, is_todo_workflow true (those also held the few a user requested from a todo, which cannot be told apart). The web emitter stopped on 2026-08-16, so the bound only guards the cutover.",
+      "description": "Workflows a user asked for. workflows:created (web client) before 2026-08-18 19:16:12.478 UTC, the first server-side workflow:* event, then workflow:created except, on events from before origin existed, is_todo_workflow true: the workflows generated unasked with every new todo (they also held the few a user requested from a todo, which cannot be told apart). Todos no longer generate workflows unasked. The web emitter stopped on 2026-08-16, so the bound only guards the cutover.",
       "tags": ["canonical"],
       "steps": [
         {
@@ -61,7 +61,7 @@
           "event": "workflow:created",
           "properties": [
             {
-              "key": "NOT (properties.origin = 'todo_auto' OR (properties.origin IS NULL AND properties.is_todo_workflow = true))",
+              "key": "NOT (properties.origin IS NULL AND properties.is_todo_workflow = true)",
               "type": "hogql"
             }
           ]

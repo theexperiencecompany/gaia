@@ -2301,7 +2301,7 @@ class TestWorkflowQueueService:
         mock_redis.get_pool = AsyncMock(return_value=mock_pool)
 
         result = await WorkflowQueueService.queue_todo_workflow_generation(
-            "todo_123", USER_ID, "Buy groceries", "Weekly shopping", origin="todo_auto"
+            "todo_123", USER_ID, "Buy groceries", "Weekly shopping"
         )
         assert result is True
         # Should set Redis flag
@@ -2314,7 +2314,7 @@ class TestWorkflowQueueService:
         mock_redis.get_pool = AsyncMock(return_value=mock_pool)
 
         result = await WorkflowQueueService.queue_todo_workflow_generation(
-            "todo_123", USER_ID, "title", origin="todo_auto"
+            "todo_123", USER_ID, "title"
         )
         assert result is False
 

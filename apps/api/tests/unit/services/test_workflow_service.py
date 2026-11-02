@@ -454,11 +454,9 @@ class TestWorkflowQueueServiceTodo:
             user_id=USER_ID,
             title="Buy groceries",
             description="Milk, eggs",
-            origin="todo_requested",
         )
 
         assert result is True
-        assert mock_redis_pool.enqueue_job.call_args.kwargs["origin"] == "todo_requested"
         mock_redis_pool.set.assert_awaited_once_with(
             f"todo_workflow_generating:{todo_id}", "1", ex=300
         )
@@ -469,9 +467,7 @@ class TestWorkflowQueueServiceTodo:
         mock_redis_pool.enqueue_job.return_value = mock_job
         mock_redis_pool.set = AsyncMock()
 
-        await WorkflowQueueService.queue_todo_workflow_generation(
-            "todo_x", USER_ID, "Title", origin="todo_auto"
-        )
+        await WorkflowQueueService.queue_todo_workflow_generation("todo_x", USER_ID, "Title")
 
         args = mock_redis_pool.enqueue_job.call_args[0]
         assert args == ("process_workflow_generation_task", "todo_x", USER_ID, "Title", "")
@@ -480,7 +476,7 @@ class TestWorkflowQueueServiceTodo:
         mock_redis_pool.enqueue_job.return_value = None
 
         result = await WorkflowQueueService.queue_todo_workflow_generation(
-            "todo_x", USER_ID, "Title", origin="todo_auto"
+            "todo_x", USER_ID, "Title"
         )
 
         assert result is False
@@ -489,7 +485,7 @@ class TestWorkflowQueueServiceTodo:
         mock_redis_pool.enqueue_job.side_effect = Exception("connection refused")
 
         result = await WorkflowQueueService.queue_todo_workflow_generation(
-            "todo_x", USER_ID, "Title", origin="todo_auto"
+            "todo_x", USER_ID, "Title"
         )
 
         assert result is False

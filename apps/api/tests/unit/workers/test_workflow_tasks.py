@@ -685,7 +685,7 @@ class TestProcessWorkflowGenerationTask:
             mock_ws_mgr.return_value = mock_ws
 
             result = await process_workflow_generation_task(
-                ctx, todo_id, user_id, "Buy groceries", "Get milk and eggs", origin="todo_requested"
+                ctx, todo_id, user_id, "Buy groceries", "Get milk and eggs"
             )
 
         assert "Successfully generated standalone workflow" in result
@@ -724,9 +724,7 @@ class TestProcessWorkflowGenerationTask:
             mock_ws_mgr.return_value = mock_ws
 
             with pytest.raises(AppError, match="Workflow generation failed"):
-                await process_workflow_generation_task(
-                    ctx, todo_id, user_id, "Todo title", origin="todo_auto"
-                )
+                await process_workflow_generation_task(ctx, todo_id, user_id, "Todo title")
 
     async def test_todo_not_updated_raises(self, ctx):
         # Must be a valid 24-char hex ObjectId string because production code
@@ -752,9 +750,7 @@ class TestProcessWorkflowGenerationTask:
             mock_ws_mgr.return_value = mock_ws
 
             with pytest.raises(AppError, match="not found or not updated") as refused:
-                await process_workflow_generation_task(
-                    ctx, todo_id, user_id, "Todo title", origin="todo_auto"
-                )
+                await process_workflow_generation_task(ctx, todo_id, user_id, "Todo title")
 
         assert refused.value.why == "the todo was deleted, or is tracked and never links a workflow"
         # A refused link (deleted or tracked todo) must not leave an orphan "Todo:" workflow.
@@ -781,9 +777,7 @@ class TestProcessWorkflowGenerationTask:
             mock_wf_svc.create_workflow = AsyncMock(side_effect=RuntimeError("DB error"))
 
             with pytest.raises(RuntimeError):
-                await process_workflow_generation_task(
-                    ctx, todo_id, user_id, "Todo title", origin="todo_auto"
-                )
+                await process_workflow_generation_task(ctx, todo_id, user_id, "Todo title")
 
         mock_ws.broadcast_to_user.assert_awaited()
         call_args = mock_ws.broadcast_to_user.call_args
@@ -822,9 +816,7 @@ class TestProcessWorkflowGenerationTask:
             mock_ws.broadcast_to_user = AsyncMock()
             mock_ws_mgr.return_value = mock_ws
 
-            await process_workflow_generation_task(
-                ctx, todo_id, user_id, "Buy groceries", origin="todo_auto"
-            )
+            await process_workflow_generation_task(ctx, todo_id, user_id, "Buy groceries")
 
         assert len(captured_requests) == 1
         # The **Details:** section should be absent when the (default) description is empty
@@ -1680,9 +1672,7 @@ class TestProcessWorkflowGenerationTaskAdditional:
             mock_ws_mgr.return_value = mock_ws
 
             with pytest.raises(AppError, match="has no steps"):
-                await process_workflow_generation_task(
-                    ctx, todo_id, user_id, "Empty Workflow", origin="todo_auto"
-                )
+                await process_workflow_generation_task(ctx, todo_id, user_id, "Empty Workflow")
 
     async def test_workflow_created_no_steps_error_message_none(self, ctx):
         """If workflow has no steps and error_message is None, 'unknown error' is used."""
@@ -1706,9 +1696,7 @@ class TestProcessWorkflowGenerationTaskAdditional:
             mock_ws_mgr.return_value = mock_ws
 
             with pytest.raises(AppError, match="unknown error"):
-                await process_workflow_generation_task(
-                    ctx, todo_id, user_id, "No Steps", origin="todo_auto"
-                )
+                await process_workflow_generation_task(ctx, todo_id, user_id, "No Steps")
 
     async def test_websocket_broadcast_failure_on_success_does_not_raise(self, ctx):
         """When the websocket broadcast fails during the success path, the function still returns success."""
@@ -1737,9 +1725,7 @@ class TestProcessWorkflowGenerationTaskAdditional:
             mock_wf_svc.create_workflow = AsyncMock(return_value=workflow)
             mock_repo.link_workflow = AsyncMock(return_value=mock_todo_result)
 
-            result = await process_workflow_generation_task(
-                ctx, todo_id, user_id, "Test Todo", origin="todo_auto"
-            )
+            result = await process_workflow_generation_task(ctx, todo_id, user_id, "Test Todo")
 
         assert "Successfully generated" in result
 
@@ -1762,9 +1748,7 @@ class TestProcessWorkflowGenerationTaskAdditional:
             mock_ws_mgr.return_value = mock_ws
 
             with pytest.raises(ValueError, match="Original error"):
-                await process_workflow_generation_task(
-                    ctx, todo_id, user_id, "Failing Todo", origin="todo_auto"
-                )
+                await process_workflow_generation_task(ctx, todo_id, user_id, "Failing Todo")
 
     async def test_websocket_failure_event_broadcast_fails_gracefully(self, ctx):
         """When the failure websocket broadcast itself fails, the original exception is still raised."""
@@ -1788,9 +1772,7 @@ class TestProcessWorkflowGenerationTaskAdditional:
             mock_wf_svc.create_workflow = AsyncMock(side_effect=RuntimeError("DB error"))
 
             with pytest.raises(RuntimeError, match="DB error"):
-                await process_workflow_generation_task(
-                    ctx, todo_id, user_id, "Todo title", origin="todo_auto"
-                )
+                await process_workflow_generation_task(ctx, todo_id, user_id, "Todo title")
 
     async def test_description_with_content_includes_details_section(self, ctx):
         """When description is provided, the prompt contains a **Details:** section."""
@@ -1828,7 +1810,6 @@ class TestProcessWorkflowGenerationTaskAdditional:
                 user_id,
                 "Buy groceries",
                 description="Milk, eggs, bread",
-                origin="todo_auto",
             )
 
         assert len(captured_requests) == 1
@@ -1855,9 +1836,7 @@ class TestProcessWorkflowGenerationTaskAdditional:
             mock_ws_mgr.return_value = mock_ws
 
             with pytest.raises(AppError, match="Workflow generation failed"):
-                await process_workflow_generation_task(
-                    ctx, todo_id, user_id, "Todo title", origin="todo_auto"
-                )
+                await process_workflow_generation_task(ctx, todo_id, user_id, "Todo title")
 
 
 # ---------------------------------------------------------------------------

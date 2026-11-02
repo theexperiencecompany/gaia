@@ -1660,7 +1660,7 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "origin": "user_created" | "chat_agent" | "todo_converted" | "todo_requested" | "todo_auto";
+    "origin": "user_created" | "chat_agent" | "todo_converted" | "todo_requested";
     "workflow_id"?: string;
     "trigger_type"?: string;
     "steps_count"?: number;

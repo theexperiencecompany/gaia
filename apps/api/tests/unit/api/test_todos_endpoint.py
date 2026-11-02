@@ -551,10 +551,7 @@ class TestGenerateTodoWorkflow:
         assert resp.status_code == 409
         queue.assert_not_awaited()
 
-    async def test_a_requested_generation_is_queued_as_user_requested(
-        self, client: AsyncClient
-    ) -> None:
-        """The Generate Workflow button counts as asked-for, unlike a todo's eager generation."""
+    async def test_the_generate_button_queues_the_todos_workflow(self, client: AsyncClient) -> None:
         queue = AsyncMock(return_value=True)
         with (
             patch(
@@ -575,7 +572,6 @@ class TestGenerateTodoWorkflow:
             user_id=_todo_response().user_id,
             title="Test todo",
             description="",
-            origin="todo_requested",
         )
 
 

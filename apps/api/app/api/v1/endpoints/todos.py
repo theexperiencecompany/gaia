@@ -435,7 +435,6 @@ async def generate_workflow(
             user_id=user_id,
             title=todo.title,
             description=todo.description or "",
-            origin="todo_requested",
         )
 
         if not success:
