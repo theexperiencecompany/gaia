@@ -31,3 +31,9 @@ ddc1ccc444cc4b81cf882bbb2da6b1272766a326:apps/api/tests/integration/real/test_de
 # The #1361 squash merge (ef01b95) re-introduced the one-line build_user_context call
 # in auth.py under a new commit id; the next commit splits it one kwarg per line.
 ef01b95063edeb9f4534557cfe8d893e704c7a79:apps/api/app/api/v1/middleware/auth.py:generic-api-key:348
+
+# A sha256 file hash next to docker-compose.bot-discord.yml in a self-host
+# bundle lock that was reverted in the same PR; discord-api-token matched the
+# hex digest, which authenticates nothing. The file no longer exists, but the
+# scan reads the PR's commits.
+d29c8c9dcb3e22e7c87f3c2f29f69dca002066c0:packages/cli/selfhost-bundle.json:discord-api-token:4

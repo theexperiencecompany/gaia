@@ -12,6 +12,7 @@ from app.constants.browser import (
     BROWSER_REPLAY_CODE_TTL_SECONDS,
     BROWSER_SHOT_CODE_KEY_PREFIX,
 )
+from app.db.redis import redis_cache
 from app.services.browser import shot_store
 from tests.helpers import captured_wide_event
 
@@ -90,7 +91,7 @@ async def test_an_unknown_code_or_a_session_id_opens_nothing(
 
 
 async def test_a_frame_redis_does_not_take_gets_no_url(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(shot_store.redis_cache, "redis", None)
+    monkeypatch.setattr(redis_cache, "redis", None)
 
     assert await shot_store.store_step_screenshot(b"a", "sess-1", 1) is None
 

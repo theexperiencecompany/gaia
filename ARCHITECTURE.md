@@ -558,7 +558,7 @@ Enforcement: the boundaries that matter are code, not prompt text (the HIL gate,
 ## Self-host
 
 - **CLI and installer**: `packages/cli/` (`gaia up` and every self-host command; see `packages/cli/CLAUDE.md`), `packages/cli/install.sh` hands its screen to `gaia up`.
-- **Stack**: `infra/docker/docker-compose.selfhost.yml` + `infra/docker/selfhost/` (Caddyfile, bot override); one-click templates in `deploy/` and `render.yaml` (see `infra/docker/CLAUDE.md`).
+- **Stack**: `packages/cli/selfhost/` (`docker-compose.selfhost.yml`, the sandbox, bot and build overlays, Caddyfile, bot override); one-click templates in `deploy/` and `render.yaml` (see `infra/docker/CLAUDE.md`).
 - **Deployment profile**: `apps/api/app/config/deployment.py` (capabilities off `ENV` / `AUTH_MODE` / `BLOB_STORE`) and `capability_requirements.py` (keys each capability needs).
 - **Instance credentials**: `apps/api/app/services/providers/` (one read path, one write path; see `apps/api/CLAUDE.md` → Providers & credentials), `services/runtime/` + `core/runtime_config_subscriber.py` (cross-pod invalidation).
 - **Endpoints**: `setup.py`, `setup_composio.py`, `setup_composio_toolkits.py` (first-run wizard, providers, Composio catalog), `auth_local.py` (local accounts), `members.py` (invites), `readiness.py`, `blob.py` (`services/blob_store.py`); `dependencies/instance_admin.py` guards admin routes.
