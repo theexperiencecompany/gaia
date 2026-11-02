@@ -7,6 +7,8 @@ re-asking would spend output tokens re-deciding it on every fire.
 
 from collections.abc import Iterator, Sequence
 
+from pydantic import BaseModel, ConfigDict
+
 from app.agents.prompts.playbook_prompts import (
     PLAYBOOK_CHECK_BRIEF,
     PLAYBOOK_HEAL_ALREADY_RAN,
@@ -101,9 +103,17 @@ def _wrote_a_playbook(trace: Sequence[RecordedCall]) -> bool:
         if call.tool_name != "write_playbook":
             continue
         result = parse_result(call.result_digest)
-        if isinstance(result, dict) and result.get("success") is True:
+        if isinstance(result, dict) and _ToolEnvelope.model_validate(result).success is True:
             return True
     return False
+
+
+class _ToolEnvelope(BaseModel):
+    """The outcome flag every GAIA tool envelope carries."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    success: object = None
 
 
 async def distrust_fresh_playbook(

@@ -243,12 +243,12 @@ class TimeSlot(BaseModel):
         return value
 
 
-def is_time_slot(value: object) -> TypeGuard[Mapping[str, Any]]:
+def is_time_slot(value: object) -> TypeGuard[Mapping[str, object]]:
     """Whether a value is a time placeholder with its layout."""
     return isinstance(value, Mapping) and TIME_KEY in value
 
 
-def is_ask_slot(value: object) -> TypeGuard[Mapping[str, Any]]:
+def is_ask_slot(value: object) -> TypeGuard[Mapping[str, object]]:
     """Whether a value stands for text a model writes, rather than being data.
 
     A ``TypeGuard`` rather than a plain ``bool`` so the callers that go on to
@@ -389,8 +389,8 @@ class _CallStep(BaseModel):
             for path, value in walk_ask_slots(self.args)
         ]
 
-    def _document_head(self) -> dict[str, Any]:
-        node: dict[str, Any] = {}
+    def _document_head(self) -> dict[str, object]:
+        node: dict[str, object] = {}
         if self.id:
             node["id"] = self.id
         node["tool"] = self.tool
@@ -405,7 +405,7 @@ class ToolStep(_CallStep):
     def ask_slots(self, prefix: str) -> list[LocatedAsk]:
         return self.arg_ask_slots(prefix)
 
-    def to_document(self) -> dict[str, Any]:
+    def to_document(self) -> dict[str, object]:
         """The step as the YAML the agent reads and edits."""
         return self._document_head()
 
@@ -455,7 +455,7 @@ class ForEachStep(_CallStep):
         located.extend(self.arg_ask_slots(prefix))
         return located
 
-    def to_document(self) -> dict[str, Any]:
+    def to_document(self) -> dict[str, object]:
         node = self._document_head()
         node["for_each"] = (
             self.for_each.model_dump(exclude_defaults=True)
@@ -472,9 +472,18 @@ def _call_shape(value: object) -> str:
         return "for_each"
     if isinstance(value, ToolStep):
         return "tool"
-    if isinstance(value, Mapping) and value.get("for_each") is not None:
+    if isinstance(value, Mapping) and _ShapeProbe.model_validate(dict(value)).for_each is not None:
         return "for_each"
     return "tool"
+
+
+class _ShapeProbe(BaseModel):
+    """The keys that tell a step's shape apart before it is parsed: a handoff, a repeating call."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    for_each: object = None
+    handoff: object = None
 
 
 #: A handoff's child: a call, plain or repeating, never another handoff. Depth
@@ -513,8 +522,8 @@ class HandoffStep(BaseModel):
         del prefix  # a handoff has no slots of its own; its children key themselves
         return [slot for child in self.steps for slot in child.ask_slots(child.label)]
 
-    def to_document(self) -> dict[str, Any]:
-        node: dict[str, Any] = {}
+    def to_document(self) -> dict[str, object]:
+        node: dict[str, object] = {}
         if self.id:
             node["id"] = self.id
         node["handoff"] = self.handoff
@@ -532,7 +541,7 @@ def _step_shape(value: object) -> str:
     """
     if isinstance(value, HandoffStep):
         return "handoff"
-    if isinstance(value, Mapping) and value.get("handoff") is not None:
+    if isinstance(value, Mapping) and _ShapeProbe.model_validate(dict(value)).handoff is not None:
         return "handoff"
     return _call_shape(value)
 
@@ -556,7 +565,7 @@ def ask_slots(steps: Sequence[ToolStep | ForEachStep | HandoffStep]) -> list[Loc
 
 def walk_ask_slots(
     value: object, path: tuple[str | int, ...] = ()
-) -> Iterator[tuple[tuple[str | int, ...], Mapping[str, Any]]]:
+) -> Iterator[tuple[tuple[str | int, ...], Mapping[str, object]]]:
     """Every ask slot inside one value, with the argument path that addresses it.
 
     A slot is a leaf: nothing inside one is walked, so a prompt that happens to
@@ -610,7 +619,7 @@ _ARGS_DESCRIPTION = (
 _ARGS_NEAR_MISSES = ("arguments", "input", "inputs", "params", "parameters", "kwargs")
 
 
-def _refuse_args_near_miss(data: Mapping[str, Any]) -> None:
+def _refuse_args_near_miss(data: Mapping[str, object]) -> None:
     if "args" in data:
         return
     for key in _ARGS_NEAR_MISSES:
