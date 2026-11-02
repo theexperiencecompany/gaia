@@ -55,6 +55,7 @@ from app.agents.middleware.completion import (
 from app.agents.middleware.executor import MiddlewareExecutor
 from app.agents.middleware.loop_guard import LoopGuardMiddleware
 from app.agents.middleware.runtime_adapter import BigtoolToolRuntime
+from app.agents.tools.invocation import invoke_tool, invoke_tool_sync
 from app.constants.agents import (
     MAX_PLAYBOOK_DECISION_NUDGES,
     PLAYBOOK_DECISION_NUDGE_MESSAGE,
@@ -543,7 +544,11 @@ def _select_tools_node(deps: _AgentDeps) -> RunnableCallable | Callable[..., Any
         response_texts: dict[str, str] = {}
         for tool_call in tool_calls:
             kwargs = _retrieval_call_kwargs(tool_call, deps.store_arg, store, config)
-            result = deps.retrieve_tools.invoke(kwargs, config=config)
+            # retrieve_tools declares this exact return type; the tool boundary types it object.
+            result = cast(
+                RetrieveToolsResponse,
+                invoke_tool_sync(deps.retrieve_tools, kwargs, config, call_args=tool_call["args"]),
+            )
             filtered_bind, response = _resolve_retrieval_result(
                 result, tool_call["id"], response_texts
             )
@@ -576,7 +581,13 @@ def _select_tools_node(deps: _AgentDeps) -> RunnableCallable | Callable[..., Any
             if tool_call_id is None:
                 raise ValueError("retrieve_tools call carries no id to answer it under")
             kwargs = _retrieval_call_kwargs(request.tool_call, deps.store_arg, store, config)
-            result = await retrieve_tools.ainvoke(kwargs, config=config)
+            # retrieve_tools declares this exact return type; the tool boundary types it object.
+            result = cast(
+                RetrieveToolsResponse,
+                await invoke_tool(
+                    retrieve_tools, kwargs, config, call_args=request.tool_call["args"]
+                ),
+            )
             response_texts: dict[str, str] = {}
             filtered_bind, response = _resolve_retrieval_result(
                 result, tool_call_id, response_texts

@@ -13479,6 +13479,11 @@ export interface components {
                 [key: string]: unknown;
             };
             /**
+             * Failed
+             * @default false
+             */
+            failed?: boolean;
+            /**
              * Replayed
              * @default false
              */

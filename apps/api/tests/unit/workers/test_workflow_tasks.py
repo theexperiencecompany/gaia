@@ -54,6 +54,7 @@ from tests.helpers import UNKNOWN_USER_ID, users_get
 #: The busy-lock value a fire reserves its conversation with. Tests that drive
 #: ``execute_workflow_as_chat`` directly stand in for the fire that took it.
 RESERVATION = ":fire-task-1"
+STREAM_ID = "stream-wf-1"
 
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
@@ -1019,7 +1020,9 @@ class TestExecuteWorkflowAsChat:
             patch(
                 "app.agents.core.agent.call_agent_silent",
                 new_callable=AsyncMock,
-                return_value=SilentRunResult(message="Result text", tool_data={}),
+                return_value=SilentRunResult(
+                    message="Result text", tool_data={}, stream_id=STREAM_ID
+                ),
             ) as mock_call_agent,
         ):
             conversation_id, _trace = await execute_workflow_as_chat(
@@ -1064,7 +1067,9 @@ class TestExecuteWorkflowAsChat:
             patch(
                 "app.agents.core.agent.call_agent_silent",
                 new_callable=AsyncMock,
-                return_value=SilentRunResult(message="Step 1 done. Step 2 done.", tool_data={}),
+                return_value=SilentRunResult(
+                    message="Step 1 done. Step 2 done.", tool_data={}, stream_id=STREAM_ID
+                ),
             ) as mock_call_agent,
         ):
             conversation_id, _trace = await execute_workflow_as_chat(
@@ -1091,7 +1096,7 @@ class TestExecuteWorkflowAsChat:
             patch(
                 "app.agents.core.agent.call_agent_silent",
                 new_callable=AsyncMock,
-                return_value=SilentRunResult(message="Done", tool_data={}),
+                return_value=SilentRunResult(message="Done", tool_data={}, stream_id=STREAM_ID),
             ) as mock_call_agent,
         ):
             await execute_workflow_as_chat(
@@ -1146,7 +1151,7 @@ class TestExecuteWorkflowAsChat:
             patch(
                 "app.agents.core.agent.call_agent_silent",
                 new_callable=AsyncMock,
-                return_value=SilentRunResult(message="Done", tool_data={}),
+                return_value=SilentRunResult(message="Done", tool_data={}, stream_id=STREAM_ID),
             ) as mock_call_agent,
         ):
             await execute_workflow_as_chat(
@@ -1179,7 +1184,7 @@ class TestExecuteWorkflowAsChat:
             patch(
                 "app.agents.core.agent.call_agent_silent",
                 new_callable=AsyncMock,
-                return_value=SilentRunResult(message="OK", tool_data={}),
+                return_value=SilentRunResult(message="OK", tool_data={}, stream_id=STREAM_ID),
             ),
         ):
             await execute_workflow_as_chat(
@@ -1211,7 +1216,7 @@ class TestExecuteWorkflowAsChat:
             patch(
                 "app.agents.core.agent.call_agent_silent",
                 new_callable=AsyncMock,
-                return_value=SilentRunResult(message="Done", tool_data={}),
+                return_value=SilentRunResult(message="Done", tool_data={}, stream_id=STREAM_ID),
             ),
         ):
             await execute_workflow_as_chat(
@@ -1220,19 +1225,17 @@ class TestExecuteWorkflowAsChat:
 
         reset_threads.assert_awaited_once_with("conv_reset")
 
-    async def test_it_returns_the_runs_tool_calls_as_the_trace(self):
-        """The trace is what the next run reads instead of the checkpoints."""
+    async def test_the_trace_is_the_runs_own_record(self):
+        """The trace is the record every tool call wrote as it ran, read under the run's stream id."""
         workflow = self._make_workflow()
-        tool_data = [
-            {
-                "tool_name": "tool_calls_data",
-                "data": {
-                    "tool_name": "GMAIL_FETCH",
-                    "inputs": {"query": "is:unread"},
-                    "output": "12 messages",
-                },
-            }
+        recorded = [
+            RecordedCall(
+                tool_name="GMAIL_FETCH_MESSAGES",
+                args={"query": "is:unread"},
+                result_digest="12 messages",
+            )
         ]
+        record = AsyncMock(return_value=recorded)
 
         with (
             patch(
@@ -1247,16 +1250,16 @@ class TestExecuteWorkflowAsChat:
             patch(
                 "app.agents.core.agent.call_agent_silent",
                 new_callable=AsyncMock,
-                return_value=SilentRunResult(message="Done", tool_data=tool_data),
+                return_value=SilentRunResult(message="Done", tool_data=[], stream_id=STREAM_ID),
             ),
+            patch("app.workers.tasks.workflow_tasks.read_run_record", record),
         ):
             _conversation_id, trace = await execute_workflow_as_chat(
                 workflow, AuthenticatedUser(user_id=workflow.user_id), {}, reservation=RESERVATION
             )
 
-        assert [c.tool_name for c in trace] == ["GMAIL_FETCH"]
-        assert trace[0].args == {"query": "is:unread"}
-        assert trace[0].result_digest == "12 messages"
+        record.assert_awaited_once_with(STREAM_ID)
+        assert trace == recorded
 
 
 # ---------------------------------------------------------------------------
@@ -2416,7 +2419,11 @@ class TestTheChatRunsTriggerTurnIsBuiltExactly:
             patch(f"{MODULE}.log", log_seam),
             patch(
                 "app.agents.core.agent.call_agent_silent",
-                AsyncMock(return_value=SilentRunResult(message="Result text", tool_data={})),
+                AsyncMock(
+                    return_value=SilentRunResult(
+                        message="Result text", tool_data={}, stream_id=STREAM_ID
+                    )
+                ),
             ) as agent,
         ):
             await execute_workflow_as_chat(
@@ -2480,7 +2487,11 @@ class TestTheChatRunsTriggerTurnIsBuiltExactly:
             patch(f"{MODULE}.reset_workflow_threads", AsyncMock()),
             patch(
                 "app.agents.core.agent.call_agent_silent",
-                AsyncMock(return_value=SilentRunResult(message="Result text", tool_data={})),
+                AsyncMock(
+                    return_value=SilentRunResult(
+                        message="Result text", tool_data={}, stream_id=STREAM_ID
+                    )
+                ),
             ) as agent,
         ):
             await execute_workflow_as_chat(

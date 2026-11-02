@@ -15320,6 +15320,11 @@
             "title": "Args",
             "type": "object"
           },
+          "failed": {
+            "default": false,
+            "title": "Failed",
+            "type": "boolean"
+          },
           "replayed": {
             "default": false,
             "title": "Replayed",

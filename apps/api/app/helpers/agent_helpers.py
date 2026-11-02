@@ -320,6 +320,7 @@ class _TurnScope:
     execution_mode: ExecutionMode | None
     presence: PresenceSnapshot | None
     stream_id: str | None = None
+    run_scope: str | None = None
 
 
 def _inherit_from_parent_configurable(
@@ -366,6 +367,7 @@ def _inherit_from_parent_configurable(
         execution_mode=current.execution_mode or parent.execution_mode,
         presence=current.presence or parent.presence,
         stream_id=parent.stream_id,
+        run_scope=current.run_scope or parent.run_scope,
     )
 
 
@@ -481,6 +483,10 @@ class AgentThread:
 
     subagent_id: str | None = None
     """The subagent this run embodies; also its memory namespace id."""
+
+    run_scope: str | None = None
+    """The handoff subagent id whose tool space this run executes in. Set by a handoff;
+    a spawn inherits its parent's, and the executor has none."""
 
     vfs_session_id: str | None = None
     """Shared VFS session ID held constant across the executor and the handoff
@@ -679,6 +685,7 @@ async def build_agent_config(
         writing_style=writing_style,
         execution_mode=execution_mode,
         presence=presence,
+        run_scope=thread.run_scope,
     )
     resolved = _inherit_from_parent_configurable(parent, current)
 
@@ -748,6 +755,7 @@ async def build_agent_config(
         "selected_tool": resolved.selected_tool,
         "tool_category": resolved.tool_category,
         "subagent_id": resolved.subagent_id,
+        "run_scope": resolved.run_scope,
         "vfs_session_id": resolved.vfs_session_id,
         "stream_id": resolved.stream_id,
         "active_todo_id": resolved.active_todo_id,
