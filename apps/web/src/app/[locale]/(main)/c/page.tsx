@@ -1,3 +1,4 @@
+import "@/features/chat/components/interface/markdown.css";
 import type { Metadata } from "next";
 
 import ChatPage from "@/features/chat/components/interface/ChatPage";

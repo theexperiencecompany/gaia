@@ -1,0 +1,5 @@
+/* Markdown-only styles, scoped to the routes that render MarkdownRenderer.
+   Keeping these out of the component module stops every app route from
+   blocking on KaTeX and Streamdown CSS. */
+@import "katex/dist/katex.min.css";
+@import "streamdown/styles.css";

@@ -1,3 +1,4 @@
+import "@/features/chat/components/interface/markdown.css";
 "use client";
 
 import {

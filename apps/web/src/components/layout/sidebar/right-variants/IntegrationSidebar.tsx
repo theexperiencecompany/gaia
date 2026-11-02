@@ -1,12 +1,12 @@
 "use client";
 
 import { Chip, Skeleton } from "@heroui/react";
+import nextDynamic from "next/dynamic";
 import { useState } from "react";
 
 import { SidebarContent, SidebarHeader } from "@/components/ui/sidebar";
 import { InstanceSetupCallout } from "@/features/integrations/components/InstanceSetupNotice";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
-import { IntegrationInstructionsEditor } from "@/features/integrations/components/IntegrationInstructionsEditor";
 import { IntegrationPermissionsModal } from "@/features/integrations/components/IntegrationPermissionsModal";
 import { IntegrationRelatedWorkflows } from "@/features/integrations/components/IntegrationRelatedWorkflows";
 import { useIntegrationOwnership } from "@/features/integrations/hooks/useIntegrationOwnership";
@@ -20,6 +20,16 @@ import { IntegrationAccounts } from "./integration-sidebar/IntegrationAccounts";
 import { IntegrationActions } from "./integration-sidebar/IntegrationActions";
 import { IntegrationHeaderChips } from "./integration-sidebar/IntegrationHeaderChips";
 import { IntegrationToolsHeading } from "./integration-sidebar/IntegrationToolsHeading";
+
+// Only needed when the instructions modal opens; keeps KaTeX/Streamdown CSS
+// out of the app shell's blocking stylesheets.
+const IntegrationInstructionsEditor = nextDynamic(
+  () =>
+    import(
+      "@/features/integrations/components/IntegrationInstructionsEditor"
+    ).then((mod) => ({ default: mod.IntegrationInstructionsEditor })),
+  { ssr: false },
+);
 
 // Placeholder chip widths shown while an integration's tools load (on-demand
 // fetch or post-connect discovery). Distinct values double as React keys.
