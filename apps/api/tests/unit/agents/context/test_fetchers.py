@@ -1133,6 +1133,20 @@ class TestNewUserGuidanceBlock:
             "- How they work, from their sent mail: Runs his inbox like a control tower." in block
         )
 
+    async def test_a_portrait_alone_still_renders_under_the_header(self) -> None:
+        """An inbox the pipeline could not summarise must not take the portrait down with it."""
+        block = build_new_user_guidance(
+            NewUserFacts(
+                "Founder", [OnboardingNeed.INBOX], mail_portrait="Answers in numbered steps."
+            )
+        )
+
+        assert block.endswith(
+            "What their mail already told you (read when they connected Gmail). Use it to make "
+            "offers specific to them; never recite it:\n"
+            "- How they work, from their sent mail: Answers in numbered steps."
+        )
+
     @pytest.mark.parametrize("status", [BioStatus.PENDING, BioStatus.NO_GMAIL, None])
     async def test_mail_facts_wait_for_the_pipeline_to_finish(
         self, status: BioStatus | None

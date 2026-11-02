@@ -201,8 +201,8 @@ MAIL_FACTS_HEADER = (
     "\n\nWhat their mail already told you (read when they connected Gmail). Use it to make "
     "offers specific to them; never recite it:"
 )
-INBOX_SUMMARY_LINE = "\n- Their inbox: {summary}"
-MAIL_PORTRAIT_LINE = "\n- How they work, from their sent mail: {portrait}"
+INBOX_SUMMARY_LINE = "\n- Their inbox: {text}"
+MAIL_PORTRAIT_LINE = "\n- How they work, from their sent mail: {text}"
 
 #: Rendered only in the seeded Getting-started thread, quoting what it actually said.
 SEEDED_QUESTION_RULE = """
@@ -229,12 +229,15 @@ class NewUserFacts:
 
 
 def _mail_facts(facts: NewUserFacts) -> str:
-    lines = ""
-    if facts.inbox_summary:
-        lines = INBOX_SUMMARY_LINE.format(summary=facts.inbox_summary)
-    if facts.mail_portrait:
-        lines += MAIL_PORTRAIT_LINE.format(portrait=facts.mail_portrait)
-    return f"{MAIL_FACTS_HEADER}{lines}" if lines else ""
+    lines = [
+        line.format(text=value)
+        for line, value in (
+            (INBOX_SUMMARY_LINE, facts.inbox_summary),
+            (MAIL_PORTRAIT_LINE, facts.mail_portrait),
+        )
+        if value
+    ]
+    return MAIL_FACTS_HEADER + "".join(lines) if lines else ""
 
 
 def build_new_user_guidance(facts: NewUserFacts) -> str:
