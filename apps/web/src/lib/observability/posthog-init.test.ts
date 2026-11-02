@@ -9,6 +9,8 @@
  * replay needs a code change to enable. This pins that init carries an
  * explicit `session_recording` block.
  */
+
+import type { BeforeSendFn, CaptureResult } from "posthog-js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const initMock = vi.fn();
@@ -56,6 +58,33 @@ describe("instrumentation-client posthog init", () => {
     expect(token).toBe("phc_test_token");
     expect(config["disable_session_recording"]).not.toBe(true);
     expect(config["session_recording"]).toEqual({});
+  });
+
+  it("scrubs Dodo's return params from every event before it is sent", async () => {
+    await runIdleLoader();
+    await vi.waitFor(() => {
+      expect(initMock).toHaveBeenCalledTimes(1);
+    });
+
+    const [, config] = initMock.mock.calls[0] as [
+      string,
+      { before_send: BeforeSendFn[] },
+    ];
+    // Run the chain the way posthog-js does, on the pageview a Dodo return lands.
+    const sent = config.before_send.reduce<CaptureResult | null>(
+      (event, hook) => hook(event),
+      {
+        uuid: "u1",
+        event: "$pageview",
+        properties: {
+          $current_url:
+            "https://heygaia.io/payment/success?payment_id=pay_1&email=pat%40example.com",
+        },
+      },
+    );
+    expect(sent?.properties.$current_url).toBe(
+      "https://heygaia.io/payment/success",
+    );
   });
 
   it("drops a legacy email identity before posthog's initial pageview", async () => {
