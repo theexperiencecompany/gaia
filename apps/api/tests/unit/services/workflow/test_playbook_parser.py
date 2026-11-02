@@ -1460,6 +1460,7 @@ result_brief: x
             )
         ]
 
+    @pytest.mark.regression
     async def test_an_execute_step_matches_its_call_whatever_card_label_it_carries(self) -> None:
         """Regression from prod (Oct 2026): only task_description, the card's label, differed, and the write was refused."""
         body = _body(
@@ -1483,6 +1484,38 @@ result_brief: x
                     "task_description": "Fetching last 24h inbox emails for triage",
                     "tool_name": "GMAIL_FETCH_MESSAGES",
                     "data": sent,
+                },
+                {"messages": [{"id": "m1"}]},
+            )
+        ]
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=_FakeRegistry({"execute": execute})):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert result.issues == []
+
+    async def test_an_execute_step_matches_a_call_that_sent_its_data_json_encoded(self) -> None:
+        """The proxy runs a JSON-encoded data as its object, so the record of that call is the same call."""
+        body = _body(
+            """
+description: Daily inbox triage
+steps:
+  - id: inbox
+    tool: execute
+    args:
+      task_description: Fetching mail
+      tool_name: GMAIL_FETCH_MESSAGES
+      data: {timeframe: 1d}
+result_brief: x
+"""
+        )
+        results = [
+            _call(
+                "execute",
+                {
+                    "task_description": "Fetching mail",
+                    "tool_name": "GMAIL_FETCH_MESSAGES",
+                    "data": '{"timeframe": "1d"}',
                 },
                 {"messages": [{"id": "m1"}]},
             )

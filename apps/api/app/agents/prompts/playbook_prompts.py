@@ -55,6 +55,15 @@ PLAYBOOK_FOR_EACH_EXAMPLE = _example(
     "Draft a reply to every email from a real person that expects one.",
     [
         {
+            "id": "inbox",
+            "tool": "execute",
+            "args": {
+                "task_description": "Listing today's mail",
+                "tool_name": "GMAIL_FETCH_MESSAGES",
+                "data": {"query": "in:inbox", "timeframe": "today"},
+            },
+        },
+        {
             "id": "replies",
             "tool": "execute",
             "for_each": {
@@ -72,7 +81,7 @@ PLAYBOOK_FOR_EACH_EXAMPLE = _example(
                     "body": {"$ask": "a reply to this one email"},
                 },
             },
-        }
+        },
     ],
     "Say how many replies were drafted and to whom, one line each.",
 )

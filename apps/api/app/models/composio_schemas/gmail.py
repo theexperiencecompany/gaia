@@ -107,16 +107,18 @@ def _known_timeframe(value: object) -> object:
 Timeframe = Annotated[NamedTimeframeLiteral | RelativeTimeframe, BeforeValidator(_known_timeframe)]
 
 
-def _canonical_fields(value: list[str] | None) -> list[str]:
+def _canonical_fields(value: object) -> object:
     """Read omitted fields as the default set and Gmail API spellings as the field they name.
 
     Tool wrappers pass an omitted arg as explicit None; an empty list is kept, it
-    means "all fields". Unknown names pass through for the Literal to refuse.
+    means "all fields". A non-list and unknown names pass through for the list
+    and Literal checks to refuse.
     """
     if value is None:
         return list(DEFAULT_SUMMARY_FIELDS)
-    canonical = [MESSAGE_FIELD_SYNONYMS.get(name, name) for name in value]
-    return list(dict.fromkeys(canonical))
+    if not isinstance(value, list) or not all(isinstance(name, str) for name in value):
+        return value
+    return list(dict.fromkeys(MESSAGE_FIELD_SYNONYMS.get(name, name) for name in value))
 
 
 ProjectedFields = Annotated[list[MessageFieldLiteral], BeforeValidator(_canonical_fields)]

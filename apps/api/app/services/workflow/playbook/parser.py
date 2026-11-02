@@ -24,7 +24,8 @@ import yaml
 
 from app.agents.core.subagents.call_record import ARG_TRUNCATION_MARKER, is_error_envelope
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
-from app.constants.execute import EXECUTE_LABEL_ARG, EXECUTE_TOOL_NAME
+from app.agents.tools.execute.unwrap import decode_json_object
+from app.constants.execute import EXECUTE_DATA_ARG, EXECUTE_LABEL_ARG, EXECUTE_TOOL_NAME
 from app.models.integrations.composio_hooks import JsonSchemaNode
 from app.models.playbook_models import (
     TIME_KEY,
@@ -387,10 +388,18 @@ def _matched_call(step: ToolStep | ForEachStep, walk: _Walk) -> tuple[int, Recor
         and call.subagent == walk.scope
         and index not in walk.consumed
         and all(
-            key in call.args and _agrees(value, call.args[key]) for key, value in deciding.items()
+            key in call.args and _agrees(value, _as_dispatched(step.tool, key, call.args[key]))
+            for key, value in deciding.items()
         )
     ]
     return agreeing[-1] if agreeing else None
+
+
+def _as_dispatched(tool_name: str, key: str, recorded: object) -> object:
+    """Return a recorded arg as the tool ran it: execute runs a JSON-encoded data as its object."""
+    if tool_name == EXECUTE_TOOL_NAME and key == EXECUTE_DATA_ARG:
+        return decode_json_object(recorded)
+    return recorded
 
 
 def _agrees(step_value: object, recorded_value: object) -> bool:

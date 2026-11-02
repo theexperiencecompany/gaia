@@ -1937,6 +1937,7 @@ class TestOneDecisionPerRun:
         assert result["message"].startswith("This run called create_todo, so the work happened")
         assert workflows.workflow.playbook_declines == 0
 
+    @pytest.mark.regression
     async def test_the_runs_own_bookkeeping_is_not_the_work(
         self, store: _FakePlaybookStore
     ) -> None:
@@ -1976,6 +1977,7 @@ class TestOneDecisionPerRun:
         assert result["success"] is True
         assert result["data"] == {"declined": True, "counted": False}
 
+    @pytest.mark.regression
     async def test_a_doing_call_run_through_execute_is_work(
         self, store: _FakePlaybookStore
     ) -> None:

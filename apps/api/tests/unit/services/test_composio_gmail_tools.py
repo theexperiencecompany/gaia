@@ -21,6 +21,7 @@ import time_machine
 from app.agents.prompts import todo_prompts
 from app.agents.tools.coding.query_json_tool import _apply_query
 from app.agents.tools.execute.dispatch import dispatch_config_for
+from app.constants.email import DEFAULT_SUMMARY_FIELDS
 from app.constants.offload import OFFLOAD_RESULT_KEY
 from app.models.agent_config import ComposioAccountSelection
 from app.models.common_models import GatherContextInput
@@ -405,6 +406,7 @@ class TestResolveTimeframe:
 class TestFetchInputsModelsSend:
     """Inputs captured from prod GMAIL_FETCH_MESSAGES/FETCH_THREAD calls that the schema refused."""
 
+    @pytest.mark.regression
     @pytest.mark.parametrize("timeframe", ["14d", "30d", "2d", "2m"])
     def test_a_relative_timeframe_of_any_length_is_accepted(self, timeframe: str):
         request = FetchMessagesInput.model_validate(
@@ -416,8 +418,20 @@ class TestFetchInputsModelsSend:
     def test_an_unsupported_timeframe_is_refused_naming_the_accepted_forms(self, timeframe: str):
         with pytest.raises(ValueError, match=r"timeframe") as refused:
             FetchMessagesInput.model_validate({"timeframe": timeframe})
-        assert "7d" in str(refused.value)
+        message = str(refused.value)
+        assert "7d" in message
+        assert (
+            "for anything else (hours, a calendar month) put after:/before: in `query`" in message
+        )
 
+    def test_omitted_fields_fall_back_to_the_default_set(self):
+        assert FetchMessagesInput.model_validate({"fields": None}).fields == DEFAULT_SUMMARY_FIELDS
+
+    def test_a_bare_field_name_is_refused_as_not_a_list(self):
+        with pytest.raises(ValueError, match="valid list"):
+            FetchMessagesInput.model_validate({"fields": "date"})
+
+    @pytest.mark.regression
     def test_the_field_names_models_reach_for_map_onto_the_projected_ones(self):
         request = FetchMessagesInput.model_validate(
             {
@@ -427,6 +441,7 @@ class TestFetchInputsModelsSend:
         )
         assert request.fields == ["id", "threadId", "from", "subject", "time", "labels"]
 
+    @pytest.mark.regression
     def test_internal_date_spellings_mean_the_message_time(self):
         thread = FetchThreadInput.model_validate(
             {"thread_ids": ["t1"], "fields": ["from", "internalDate", "internal_date", "date"]}

@@ -293,6 +293,7 @@ class TestExecuteToolCall:
         assert kwargs["data"] == {"to": "a"}
         assert kwargs["config"]["configurable"]["user_id"] == USER_ID
 
+    @pytest.mark.regression
     async def test_data_sent_as_a_json_encoded_object_is_dispatched_as_that_object(self) -> None:
         # Captured from prod: the model JSON-encoded `data` (18 refused calls, 6 users).
         with patch(f"{MODULE}.dispatch_tool", new=AsyncMock(return_value=_ok())) as dispatch:
@@ -319,6 +320,7 @@ class TestExecuteToolCall:
     def test_the_schema_the_model_sees_still_asks_for_an_object(self) -> None:
         assert execute.args["data"]["type"] == "object"
 
+    @pytest.mark.regression
     def test_the_gate_and_card_see_the_same_args_dispatch_runs(self) -> None:
         """Seen live: the card showed {} for a JSON-encoded data the proxy then ran, so the HIL gate judged empty args."""
         call = {"tool_name": "GMAIL_FETCH_MESSAGES", "data": '{"timeframe": "14d"}'}
