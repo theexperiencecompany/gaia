@@ -7,7 +7,14 @@ from pymongo.errors import ServerSelectionTimeoutError
 import pytest
 import time_machine
 
-from app.config.feature_flags import FEATURE_FLAGS, FeatureFlag, FeatureStage, kill_switch_key
+from app.config.feature_flags import (
+    FEATURE_FLAGS,
+    VARIANT_FLAGS,
+    FeatureFlag,
+    FeatureStage,
+    OnboardingPaywallVariant,
+    kill_switch_key,
+)
 from app.config.settings import Settings, settings as app_settings
 from app.constants.analytics import ANALYTICS_DAY_TIMEZONE
 from app.constants.error_codes import FEATURE_KILLED
@@ -28,6 +35,7 @@ from app.services.feature_flags import (
     is_code_mode_enabled,
     is_enabled,
     is_hil_ledger_enabled,
+    onboarding_paywall_variant,
     set_user_flag,
 )
 from app.utils.errors import AppError
@@ -791,3 +799,46 @@ class TestSetUserFlagRefusals:
             answer = await set_user_flag(USER_ID, "BROWSER_OBSCURA", False)
 
         assert (answer.enabled, answer.available, answer.unavailable_reason) == (False, True, None)
+
+
+def _answers(by_key: dict[str, object]) -> MagicMock:
+    """Build a PostHog get_feature_flag that answers per dashboard key, None for any other."""
+    return MagicMock(side_effect=lambda key, _user: by_key.get(key))
+
+
+class TestVariantFlags:
+    async def test_posthog_variant_is_served(self, mock_client: MagicMock) -> None:
+        mock_client.get_feature_flag = _answers({"onboarding-paywall": "classic"})
+        assert await onboarding_paywall_variant(USER_ID) is OnboardingPaywallVariant.CLASSIC
+
+    async def test_kill_switch_forces_the_known_good_variant_over_posthog(
+        self, mock_client: MagicMock
+    ) -> None:
+        mock_client.get_feature_flag = _answers(
+            {"onboarding-paywall": "value_preview", "onboarding-paywall_KILL": True}
+        )
+        assert await onboarding_paywall_variant(USER_ID) is OnboardingPaywallVariant.CLASSIC
+
+    async def test_unknown_variant_fails_open_to_the_default(self, mock_client: MagicMock) -> None:
+        mock_client.get_feature_flag = _answers({"onboarding-paywall": "trial"})
+        assert await onboarding_paywall_variant(USER_ID) is OnboardingPaywallVariant.VALUE_PREVIEW
+
+    async def test_boolean_answer_is_not_a_variant(self, mock_client: MagicMock) -> None:
+        mock_client.get_feature_flag = _answers({"onboarding-paywall": True})
+        assert await onboarding_paywall_variant(USER_ID) is OnboardingPaywallVariant.VALUE_PREVIEW
+
+    async def test_posthog_failure_fails_open_to_the_default(self, mock_client: MagicMock) -> None:
+        mock_client.get_feature_flag.side_effect = TimeoutError("posthog down")
+        assert await onboarding_paywall_variant(USER_ID) is OnboardingPaywallVariant.VALUE_PREVIEW
+
+    async def test_no_user_serves_the_default_without_io(self, mock_client: MagicMock) -> None:
+        assert await onboarding_paywall_variant(None) is OnboardingPaywallVariant.VALUE_PREVIEW
+        mock_client.get_feature_flag.assert_not_called()
+
+    async def test_no_posthog_serves_the_default(self, no_client: None) -> None:
+        assert await onboarding_paywall_variant(USER_ID) is OnboardingPaywallVariant.VALUE_PREVIEW
+
+    def test_every_variant_flag_serves_its_own_variants(self) -> None:
+        for spec in VARIANT_FLAGS.values():
+            assert isinstance(spec.default, spec.variants)
+            assert isinstance(spec.killed, spec.variants)

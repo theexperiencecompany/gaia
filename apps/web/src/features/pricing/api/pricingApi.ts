@@ -4,6 +4,7 @@ import type {
   CreateSubscriptionResponse,
   DiscountCodesResponse,
   PaymentVerificationResponse,
+  PaywallResponse,
   PlanResponse,
   SubscriptionDocument,
   UserSubscriptionStatus,
@@ -12,6 +13,7 @@ import type {
 export type {
   CheckoutSource,
   PaymentVerificationResponse,
+  PaywallResponse,
   UserSubscriptionStatus,
 } from "@shared/api/generated";
 
@@ -67,6 +69,12 @@ class PricingApi {
     return api.post("/api/v1/payments/verify-payment", {
       body: subscriptionId ? { subscription_id: subscriptionId } : {},
     });
+  }
+
+  // The onboarding paywall's variant and the jobs its preview lists. Silent:
+  // a failed read falls back to the classic paywall, with nothing to toast.
+  getPaywall(): Promise<PaywallResponse> {
+    return api.get("/api/v1/payments/paywall", { silent: true });
   }
 
   // Get user subscription status

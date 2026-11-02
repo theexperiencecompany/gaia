@@ -16,6 +16,7 @@ from app.models.payment_models import (
     CreateSubscriptionResponse,
     DiscountCodesResponse,
     PaymentVerificationResponse,
+    PaywallResponse,
     PlanResponse,
     UserSubscriptionStatus,
     VerifyPaymentRequest,
@@ -29,6 +30,7 @@ from app.services.analytics_service import capture
 from app.services.payments.discount_codes import get_discount_codes
 from app.services.payments.payment_service import payment_service
 from app.services.payments.payment_webhook_service import payment_webhook_service
+from app.services.payments.paywall import get_paywall
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.billing import (
     PaymentCheckoutStarted,
@@ -253,6 +255,18 @@ async def get_subscription_status_endpoint(
             error=str(e),
         )
         raise HTTPException(status_code=500, detail="Failed to get subscription status") from e
+
+
+@router.get("/paywall", response_model=PaywallResponse)
+@limiter.limit("60/minute")
+# evlog-map-disable-next-line audit -- read-only paywall lookup, no state change to audit
+async def get_paywall_endpoint(
+    request: Request,  # noqa: ARG001 -- framework contract
+    user_id: str = Depends(get_user_id),
+) -> PaywallResponse:
+    """Return the onboarding paywall variant for this user and the jobs its preview lists."""
+    log.set(user={"id": user_id}, payment={"operation": "get_paywall"})
+    return await get_paywall(user_id)
 
 
 @router.post("/webhooks/dodo")

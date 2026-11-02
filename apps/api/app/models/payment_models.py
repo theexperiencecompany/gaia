@@ -7,6 +7,7 @@ from enum import Enum, StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.config.feature_flags import OnboardingPaywallVariant
 from app.db.repositories.base import MongoDocument, UserScopedDocument
 from app.schemas.common import ResponseModel
 from shared.py.analytics.catalog.properties import Identifier
@@ -98,6 +99,18 @@ class CreateSubscriptionRequest(BaseModel):
     # checkout. A null source is honest in the funnel; a rejected sale is not.
     source: CheckoutSource | None = Field(
         None, description="Where in the product this checkout was started"
+    )
+
+
+class PaywallResponse(BaseModel):
+    """What the onboarding payment stage shows above the price, for this user."""
+
+    variant: OnboardingPaywallVariant
+    starting_jobs: list[str] = Field(
+        description=(
+            "The jobs drafted in the background from the user's onboarding answers; "
+            "empty until that draft lands, and always empty on the classic variant"
+        )
     )
 
 

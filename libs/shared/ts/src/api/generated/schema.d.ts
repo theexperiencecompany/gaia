@@ -3818,6 +3818,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/payments/paywall": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Paywall Endpoint
+         * @description Return the onboarding paywall variant for this user and the jobs its preview lists.
+         */
+        get: operations["payments_get_paywall_endpoint"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/payments/plans": {
         parameters: {
             query?: never;
@@ -12376,6 +12396,12 @@ export interface components {
          */
         OnboardingNeed: "inbox" | "calendar" | "mornings" | "reminders" | "grunt_work" | "tools" | "founder_team_updates" | "founder_competitors" | "executive_reports" | "executive_decisions" | "sales_leads" | "sales_call_research" | "product_feedback" | "product_specs" | "marketing_content" | "marketing_reports" | "engineering_prs" | "engineering_notifications" | "finance_numbers" | "finance_reports" | "creative_revisions" | "creative_deadlines" | "student_assignments" | "student_exams";
         /**
+         * OnboardingPaywallVariant
+         * @description What the onboarding payment stage shows above the price.
+         * @enum {string}
+         */
+        OnboardingPaywallVariant: "value_preview" | "classic";
+        /**
          * OnboardingPhase
          * @description Tracks the current phase of user onboarding
          * @enum {string}
@@ -12566,6 +12592,18 @@ export interface components {
             payment_completed: boolean;
             /** Subscription Id */
             subscription_id?: string | null;
+        };
+        /**
+         * PaywallResponse
+         * @description What the onboarding payment stage shows above the price, for this user.
+         */
+        PaywallResponse: {
+            /**
+             * Starting Jobs
+             * @description The jobs drafted in the background from the user's onboarding answers; empty until that draft lands, and always empty on the classic variant
+             */
+            starting_jobs: string[];
+            variant: components["schemas"]["OnboardingPaywallVariant"];
         };
         /**
          * PendingApprovalRef
@@ -17415,6 +17453,7 @@ export type NotionPageContentUpdatedConfig = components['schemas']['NotionPageCo
 export type NotionPageUpdatedConfig = components['schemas']['NotionPageUpdatedConfig'];
 export type OAuthClientMetadataResponse = components['schemas']['OAuthClientMetadataResponse'];
 export type OnboardingNeed = components['schemas']['OnboardingNeed'];
+export type OnboardingPaywallVariant = components['schemas']['OnboardingPaywallVariant'];
 export type OnboardingPhase = components['schemas']['OnboardingPhase'];
 export type OnboardingPhaseUpdateRequest = components['schemas']['OnboardingPhaseUpdateRequest'];
 export type OnboardingPhaseUpdateResponse = components['schemas']['OnboardingPhaseUpdateResponse'];
@@ -17426,6 +17465,7 @@ export type OnboardingStatusResponse = components['schemas']['OnboardingStatusRe
 export type PaginatedNotificationsResponse = components['schemas']['PaginatedNotificationsResponse'];
 export type PaginationMeta = components['schemas']['PaginationMeta'];
 export type PaymentVerificationResponse = components['schemas']['PaymentVerificationResponse'];
+export type PaywallResponse = components['schemas']['PaywallResponse'];
 export type PendingApprovalRef = components['schemas']['PendingApprovalRef'];
 export type PersistedTriageSummary = components['schemas']['PersistedTriageSummary'];
 export type PersonalizationResponse = components['schemas']['PersonalizationResponse'];
@@ -27824,6 +27864,53 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DiscountCodesResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    payments_get_paywall_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaywallResponse"];
                 };
             };
             /** @description Unprocessable Entity */

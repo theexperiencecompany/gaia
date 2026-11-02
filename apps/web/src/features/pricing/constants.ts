@@ -148,6 +148,12 @@ export const CHECKOUT_OVERLAY_LOAD_TIMEOUT_MS = 20_000;
 export const CHECKOUT_NOT_LOADED_COPY =
   "Checkout didn't load. Check your connection and try again.";
 
+/** How often the paywall re-reads while the jobs drafted from Q2 are still being written. */
+export const PAYWALL_JOBS_POLL_MS = 3_000;
+
+/** Reads before the preview gives up on drafted jobs and shows the plan without them. */
+export const PAYWALL_JOBS_MAX_READS = 8;
+
 /** A declined charge, in the overlay and on the return page alike. */
 export const CHECKOUT_DECLINED_COPY = {
   heading: "That payment didn't go through.",

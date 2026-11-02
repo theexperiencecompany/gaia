@@ -13059,6 +13059,15 @@
         "title": "OnboardingNeed",
         "type": "string"
       },
+      "OnboardingPaywallVariant": {
+        "description": "What the onboarding payment stage shows above the price.",
+        "enum": [
+          "value_preview",
+          "classic"
+        ],
+        "title": "OnboardingPaywallVariant",
+        "type": "string"
+      },
       "OnboardingPhase": {
         "description": "Tracks the current phase of user onboarding",
         "enum": [
@@ -13464,6 +13473,28 @@
           "message"
         ],
         "title": "PaymentVerificationResponse",
+        "type": "object"
+      },
+      "PaywallResponse": {
+        "description": "What the onboarding payment stage shows above the price, for this user.",
+        "properties": {
+          "starting_jobs": {
+            "description": "The jobs drafted in the background from the user's onboarding answers; empty until that draft lands, and always empty on the classic variant",
+            "items": {
+              "type": "string"
+            },
+            "title": "Starting Jobs",
+            "type": "array"
+          },
+          "variant": {
+            "$ref": "#/components/schemas/OnboardingPaywallVariant"
+          }
+        },
+        "required": [
+          "variant",
+          "starting_jobs"
+        ],
+        "title": "PaywallResponse",
         "type": "object"
       },
       "PendingApprovalRef": {
@@ -35780,6 +35811,58 @@
           }
         },
         "summary": "Get Discount Codes Endpoint",
+        "tags": [
+          "Payments"
+        ]
+      }
+    },
+    "/api/v1/payments/paywall": {
+      "get": {
+        "description": "Return the onboarding paywall variant for this user and the jobs its preview lists.",
+        "operationId": "payments_get_paywall_endpoint",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaywallResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Paywall Endpoint",
         "tags": [
           "Payments"
         ]

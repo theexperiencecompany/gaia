@@ -29,6 +29,12 @@ class FeatureFlag(StrEnum):
     BROWSER_OBSCURA = "BROWSER_OBSCURA"
 
 
+class VariantFlag(StrEnum):
+    """PostHog multivariate flag keys GAIA evaluates; the value is the dashboard key."""
+
+    ONBOARDING_PAYWALL = "onboarding-paywall"
+
+
 # A separate boolean flag, not a value of the rollout flag: stored choices beat the
 # rollout by design, so only a flag evaluated before them can override them.
 KILL_SWITCH_SUFFIX = "_KILL"
@@ -37,7 +43,7 @@ KILL_SWITCH_SUFFIX = "_KILL"
 KILL_SWITCH_REASON = "Paused for everyone while we fix a problem. Your choice is kept."
 
 
-def kill_switch_key(flag: FeatureFlag) -> str:
+def kill_switch_key(flag: FeatureFlag | VariantFlag) -> str:
     """Return the dashboard key that forces a user-facing flag off for everyone (BROWSER_OBSCURA_KILL)."""
     return f"{flag.value}{KILL_SWITCH_SUFFIX}"
 
@@ -120,5 +126,35 @@ FEATURE_FLAGS: dict[FeatureFlag, FlagSpec] = {
             ),
             stage=FeatureStage.EXPERIMENTAL,
         ),
+    ),
+}
+
+
+class OnboardingPaywallVariant(StrEnum):
+    """What the onboarding payment stage shows above the price."""
+
+    VALUE_PREVIEW = "value_preview"
+    CLASSIC = "classic"
+
+
+@dataclass(frozen=True, kw_only=True)
+class VariantSpec:
+    """One multivariate flag: its variants, the one served when PostHog cannot decide, and the one its kill switch forces."""
+
+    description: str
+    variants: type[StrEnum]
+    default: StrEnum
+    killed: StrEnum
+
+
+VARIANT_FLAGS: dict[VariantFlag, VariantSpec] = {
+    VariantFlag.ONBOARDING_PAYWALL: VariantSpec(
+        description=(
+            "value_preview shows a week-one plan built from the user's onboarding "
+            "answers above the price; classic shows the price alone."
+        ),
+        variants=OnboardingPaywallVariant,
+        default=OnboardingPaywallVariant.VALUE_PREVIEW,
+        killed=OnboardingPaywallVariant.CLASSIC,
     ),
 }

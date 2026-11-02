@@ -17,6 +17,7 @@ exposure record. Call sites never touch PostHog or settings.ENABLE_* directly.
 
 import asyncio
 from datetime import UTC, datetime
+from enum import StrEnum
 from typing import NamedTuple
 
 from posthog import Posthog
@@ -25,8 +26,11 @@ from pymongo.errors import PyMongoError
 from app.config.feature_flags import (
     FEATURE_FLAGS,
     KILL_SWITCH_REASON,
+    VARIANT_FLAGS,
     FeatureFlag,
+    OnboardingPaywallVariant,
     UserToggle,
+    VariantFlag,
     kill_switch_key,
 )
 from app.constants.analytics import FEATURE_CHOICE_PERSON_PROPERTY_PREFIX, POSTHOG_PROVIDER_KEY
@@ -106,7 +110,7 @@ class _Resolution(NamedTuple):
     killed: bool = False
 
 
-async def _kill_switch_engaged(flag: FeatureFlag, user_id: str) -> bool:
+async def _kill_switch_engaged(flag: FeatureFlag | VariantFlag, user_id: str) -> bool:
     """Whether ops forced the flag off; a kill switch never created, or a PostHog that cannot answer, never engages it."""
     client = _get_posthog_client()
     if client is None:
@@ -180,6 +184,56 @@ async def is_enabled(flag: FeatureFlag, user_id: str | None, default: bool | Non
     if not user_id:
         return fallback
     return (await _resolve(flag, user_id, fallback)).enabled
+
+
+def _variant_answer(flag: VariantFlag, answer: object) -> StrEnum | None:
+    """Return PostHog's answer as one of the flag's variants, or None when it gave none or one GAIA does not know."""
+    if answer is None:
+        return None
+    variants = VARIANT_FLAGS[flag].variants
+    known = next((variant for variant in variants if variant.value == answer), None)
+    if known is None:
+        log.warning(
+            "Feature flag answered a variant GAIA does not know; serving the default",
+            flag=flag.value,
+            answer_type=type(answer).__name__,
+        )
+    return known
+
+
+async def get_variant(flag: VariantFlag, user_id: str | None) -> StrEnum:
+    """Evaluate a multivariate flag for a user, live on every call: kill switch, PostHog, then the default.
+
+    A variant flag has no stored choice: users never pick an experiment arm.
+    The kill switch forces the spec's known-good variant; PostHog failing or
+    answering an unknown variant fails open to the default.
+    """
+    spec = VARIANT_FLAGS[flag]
+    if not user_id:
+        return spec.default
+    if await _kill_switch_engaged(flag, user_id):
+        variant = spec.killed
+    else:
+        client = _get_posthog_client()
+        answer: object = None
+        if client is not None:
+            try:
+                answer = await asyncio.to_thread(client.get_feature_flag, flag.value, user_id)
+            except Exception as e:
+                log.warning(
+                    "Feature flag evaluation failed, falling back to default",
+                    flag=flag.value,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+        variant = _variant_answer(flag, answer) or spec.default
+    log.set(flags={flag.value: variant.value})
+    return variant
+
+
+async def onboarding_paywall_variant(user_id: str | None) -> OnboardingPaywallVariant:
+    """Which onboarding paywall this user sees; value_preview unless PostHog or the kill switch says otherwise."""
+    return OnboardingPaywallVariant(await get_variant(VariantFlag.ONBOARDING_PAYWALL, user_id))
 
 
 def _track_evaluation(

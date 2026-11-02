@@ -20,11 +20,13 @@ import { CheckoutConfirming } from "@/features/pricing/components/CheckoutConfir
 import { CheckoutFailed } from "@/features/pricing/components/CheckoutFailed";
 import { PricingCards } from "@/features/pricing/components/PricingCards";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
+import { usePaywall } from "@/features/pricing/hooks/usePaywall";
 import { paymentIntroLines } from "../../constants/messages";
 import { MOTION_FADE_UP } from "../../constants/motion";
 import { useCheckoutReturn } from "../../hooks/useCheckoutReturn";
 import { usePaceDone } from "../../hooks/useTypedLines";
 import { OnboardingBotBubbles } from "../OnboardingBotBubbles";
+import { PaywallValuePreview } from "../PaywallValuePreview";
 
 const PAYMENT_REVEAL_KEY = "payment";
 
@@ -33,6 +35,10 @@ export function Payment() {
   const { isUnknown } = useIsPaid();
   const { returned, isLate, failed, timedOut, retry } = useCheckoutReturn();
   const gaiaDone = usePaceDone(PAYMENT_REVEAL_KEY);
+  // The variant is read while GAIA types its lines, so the stage renders in
+  // its final shape once; a failed read serves the classic paywall.
+  const { paywall, isError: paywallFailed, jobsStillDrafting } = usePaywall();
+  const paywallResolved = paywall !== undefined || paywallFailed;
   const { name, email } = useCurrentUser();
   const introLines = useMemo(
     () => paymentIntroLines(firstNameOf(name, email)),
@@ -64,13 +70,19 @@ export function Payment() {
         <div className="w-full max-w-sm">
           <CheckoutConfirming isLate={isLate} />
         </div>
-      ) : gaiaDone ? (
+      ) : gaiaDone && paywallResolved ? (
         // Scaled on laptop screens so the whole card fits without scrolling;
         // `zoom` shrinks the layout box too. Phones scroll, and keep full-size tap targets.
         <m.div
           className="flex w-full flex-col items-center gap-4 lg:[zoom:0.85]"
           {...MOTION_FADE_UP}
         >
+          {paywall?.variant === "value_preview" && (
+            <PaywallValuePreview
+              startingJobs={paywall.starting_jobs}
+              jobsStillDrafting={jobsStillDrafting}
+            />
+          )}
           <BillingPeriodTabs isYearly={isYearly} onChange={setIsYearly} />
           <PricingCards
             durationIsMonth={!isYearly}
