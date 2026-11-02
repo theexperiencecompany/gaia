@@ -167,7 +167,12 @@ def refused(needle: str) -> Expectation:
 
 
 def declined_ok(observation: Observation, _ctx: Context) -> bool:
-    return observation.decisions == ["decline_playbook:ok"] and observation.workflow.activated
+    # The scripted model voices one decision on every agent turn it is replayed to.
+    return (
+        bool(observation.decisions)
+        and all(d == "decline_playbook:ok" for d in observation.decisions)
+        and observation.workflow.activated
+    )
 
 
 def still_active() -> Expectation:
