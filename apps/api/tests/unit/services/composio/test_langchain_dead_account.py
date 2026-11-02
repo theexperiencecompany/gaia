@@ -438,6 +438,12 @@ class TestNonRaisingDeadAccountResult:
 
         mock_log.warning.assert_called_once()
         assert "dead connected account" in mock_log.warning.call_args.args[0]
+        assert mock_log.warning.call_args.kwargs == {
+            "tool": "GMAIL_FETCH_MESSAGES",
+            "toolkit": "GMAIL",
+            "user_id": "user-1",
+            "err_preview": failure["error"],
+        }
 
 
 class TestASuccessfulCallIsNeverReportedDead:
