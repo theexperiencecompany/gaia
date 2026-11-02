@@ -594,6 +594,19 @@ async def test_a_started_task_acks_at_once_and_folds_its_cards_into_this_turns_m
     }
 
 
+async def test_a_started_task_tells_the_executor_to_end_its_turn_instead_of_waiting_in_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: an ack that offered mid-turn delivery kept the executor polling to step 80 while a handoff sat paused."""
+    _install(monkeypatch)
+
+    out = (await _start({"task": "x"}, config=UI_CONFIG)).lower()
+
+    assert "end your turn" in out
+    assert "do not check on it" in out
+    assert "if you have already finished" not in out
+
+
 async def _run_headless_until(
     monkeypatch: pytest.MonkeyPatch,
     fake_redis: fakeredis.aioredis.FakeRedis,
