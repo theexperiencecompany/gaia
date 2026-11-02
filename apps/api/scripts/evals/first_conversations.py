@@ -47,6 +47,8 @@ JUDGE_TIMEOUT_SECONDS = 90.0
 TURN_OPTIONS = TurnOptions(timeout=240.0, delivery_wait_seconds=150.0, delivery_poll_seconds=4.0)
 #: The welcome thread's escape-hatch chip, in every language it ships in.
 SOMETHING_ELSE_LABELS = {copy.something_else for copy in WELCOME_COPY.values()}
+#: How long the wizard's next screens give the chips draft before completion.
+CHIPS_DRAFT_WAIT_SECONDS = 25
 #: A step whose message is this sends the welcome thread's first job chip.
 FIRST_CHIP = "<first chip>"
 
@@ -260,10 +262,15 @@ async def _run(api_url: str, scenario: Scenario) -> Row:
         body = preferences.model_dump(mode="json", exclude_none=True) | {
             "language": scenario.language
         }
-        (
-            await client.patch(f"{api_url}/api/v1/onboarding/preferences", json=body, timeout=60.0)
-        ).raise_for_status()
-        await asyncio.sleep(12)
+        # The wizard's own save, which starts the chips draft. Builds before the
+        # answers endpoint existed took the same answers on PATCH /preferences.
+        saved = await client.put(f"{api_url}/api/v1/onboarding/answers", json=body, timeout=60.0)
+        if saved.status_code in (404, 405):
+            saved = await client.patch(
+                f"{api_url}/api/v1/onboarding/preferences", json=body, timeout=60.0
+            )
+        saved.raise_for_status()
+        await asyncio.sleep(CHIPS_DRAFT_WAIT_SECONDS)
         completion = await client.post(
             f"{api_url}/api/v1/onboarding",
             json={
