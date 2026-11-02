@@ -8,7 +8,7 @@ Handles all calendar-specific trigger logic including:
 """
 
 from collections.abc import Mapping
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Final
 
 from app.constants.log_tags import LogTag
 from app.db.repositories.workflows import workflow_repository
@@ -25,6 +25,8 @@ from app.services.triggers.base import TriggerHandler
 from app.utils.exceptions import TriggerRegistrationError
 from shared.py.wide_events import TriggerContext, log
 
+STARTING_SOON_EVENT: Final = "GOOGLECALENDAR_EVENT_STARTING_SOON_TRIGGER"
+
 
 class CalendarTriggerHandler(TriggerHandler):
     """Handler for Google Calendar triggers."""
@@ -38,13 +40,13 @@ class CalendarTriggerHandler(TriggerHandler):
     # Composio event types this handler processes
     SUPPORTED_EVENTS: ClassVar[set[str]] = {
         "GOOGLECALENDAR_GOOGLE_CALENDAR_EVENT_CREATED_TRIGGER",
-        "GOOGLECALENDAR_EVENT_STARTING_SOON_TRIGGER",
+        STARTING_SOON_EVENT,
     }
 
     # Mapping from trigger_name to Composio slug
     TRIGGER_TO_COMPOSIO: ClassVar[dict[str, str]] = {
         "calendar_event_created": "GOOGLECALENDAR_GOOGLE_CALENDAR_EVENT_CREATED_TRIGGER",
-        "calendar_event_starting_soon": "GOOGLECALENDAR_EVENT_STARTING_SOON_TRIGGER",
+        "calendar_event_starting_soon": STARTING_SOON_EVENT,
     }
 
     @property
@@ -61,7 +63,7 @@ class CalendarTriggerHandler(TriggerHandler):
         "All calendars" subscribes every calendar, and a shared meeting arrives once per calendar
         it sits on. The start is part of the key so a rescheduled meeting reminds again.
         """
-        if event_type != self.TRIGGER_TO_COMPOSIO["calendar_event_starting_soon"]:
+        if event_type != STARTING_SOON_EVENT:
             return None
         event = GoogleCalendarEventStartingSoonPayload.model_validate(data)
         if not event.event_id:
@@ -160,7 +162,7 @@ class CalendarTriggerHandler(TriggerHandler):
         return trigger_ids
 
     async def find_workflows(
-        self, event_type: str, trigger_id: str, data: dict[str, Any]
+        self, event_type: str, trigger_id: str, data: Mapping[str, object]
     ) -> list[Workflow]:
         """Find workflows matching a calendar trigger event."""
         log.set_ns("trigger", integration_id="google_calendar", trigger_type=event_type)

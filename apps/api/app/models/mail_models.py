@@ -194,7 +194,7 @@ class GmailToolResult(BaseModel):
     thread_id: str | None = Field(default=None, alias="threadId")
     next_page_token: str | None = Field(default=None, alias="nextPageToken")
 
-    def as_payload(self) -> dict[str, Any]:
+    def as_payload(self) -> dict[str, object]:
         """The response exactly as the provider sent it — keys it omitted stay omitted."""
         return self.model_dump(exclude_unset=True, by_alias=True)
 
@@ -257,7 +257,7 @@ class GmailMessagesResponse(BaseModel):
     messages: list[GmailMessageSummary]
     next_page_token: str | None = Field(default=None, serialization_alias="nextPageToken")
 
-    def raw_messages(self) -> list[dict[str, Any]]:
+    def raw_messages(self) -> list[dict[str, object]]:
         """The messages as the dicts ``transform_gmail_message`` produced.
 
         The memory pipeline (``email_processor``, ``process_email_content``) still
@@ -450,7 +450,7 @@ class ComposioAttachment(TypedDict):
     s3key: str
 
 
-def attachment_references_param_schema(description: str) -> dict[str, Any]:
+def attachment_references_param_schema(description: str) -> dict[str, object]:
     """Agent-facing schema for the friendly ``attachments`` array param.
 
     Item properties are derived from ``AttachmentReference`` field descriptions,
