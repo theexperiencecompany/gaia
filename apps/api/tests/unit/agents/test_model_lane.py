@@ -37,7 +37,9 @@ from app.constants.llm import (
     OpenRouterModelKwargs,
 )
 from app.constants.log_tags import LogTag
+from app.constants.providers import CredentialProviderName
 from app.models.payment_models import PlanType
+from app.services.payments.payment_service import payment_service
 from app.services.providers.provider_credentials_service import ProviderConfig, resolved_configs
 
 
@@ -61,7 +63,7 @@ def _plan(plan: PlanType) -> Any:
     async def _cached_plan_type(user_id: str) -> PlanType:
         return {USER: plan}[user_id]
 
-    return patch.object(lane_module.payment_service, "get_cached_plan_type", _cached_plan_type)
+    return patch.object(payment_service, "get_cached_plan_type", _cached_plan_type)
 
 
 @contextmanager
@@ -119,7 +121,7 @@ class TestPlanRouting:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Every self-host user resolves to Pro; that must not route them to the hosted paid model."""
-        monkeypatch.setattr(lane_module.settings, "ENV", "selfhost")
+        monkeypatch.setattr(settings, "ENV", "selfhost")
         resolved, plan = await resolve_lane(USER, AgentRole.EXECUTOR)
 
         assert plan is PlanType.PRO
@@ -135,7 +137,7 @@ class TestPlanRouting:
     async def test_a_plan_lookup_failure_keeps_the_default_lane(self) -> None:
         """A Redis hiccup must not fail the user's turn."""
         with patch.object(
-            lane_module.payment_service,
+            payment_service,
             "get_cached_plan_type",
             AsyncMock(side_effect=ConnectionError("redis down")),
         ):
@@ -148,7 +150,7 @@ class TestPlanRouting:
         """Degrading a paying user to the free model must be visible in the event, with the cause attached."""
         with (
             patch.object(
-                lane_module.payment_service,
+                payment_service,
                 "get_cached_plan_type",
                 AsyncMock(side_effect=ConnectionError("redis down")),
             ),
@@ -243,7 +245,7 @@ class TestDevOverride:
         """Leaving the lane's model None left LLMAccountingMiddleware pricing against DEFAULT_PRICING, ~11x the real rate."""
         monkeypatch.setitem(
             resolved_configs,
-            "custom",
+            CredentialProviderName.CUSTOM,
             _custom_config(model="nous/deepseek-v4-flash-cheap"),
         )
         option = dev_option_for("custom", use_defaults=False)
@@ -259,7 +261,9 @@ class TestDevOverride:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """None is still right; the client raises its own unconfigured-endpoint error rather than being priced against a made-up name."""
-        monkeypatch.setitem(resolved_configs, "custom", _custom_config(model=None))
+        monkeypatch.setitem(
+            resolved_configs, CredentialProviderName.CUSTOM, _custom_config(model=None)
+        )
         option = dev_option_for("custom", use_defaults=False)
         assert option is not None
 

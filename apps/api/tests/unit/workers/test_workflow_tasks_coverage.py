@@ -47,7 +47,7 @@ def _user(completed: bool) -> UserDocument:
 
 async def _run_task(
     workflow: MagicMock,
-    user: MagicMock,
+    user: UserDocument,
     context: dict[str, Any] | None,
     rearm_error: Exception | None = None,
     budget_side_effect: Callable[..., Awaitable[None]] | None = None,

@@ -29,7 +29,7 @@ def _user(completed: bool) -> UserDocument:
 
 
 async def _run_task(
-    workflow: MagicMock, user: MagicMock, context: dict[str, Any] | None
+    workflow: MagicMock, user: UserDocument, context: dict[str, Any] | None
 ) -> tuple[str, AsyncMock, AsyncMock]:
     with (
         patch(f"{MODULE}.workflow_scheduler") as scheduler,

@@ -244,8 +244,6 @@ apps/api/tests/unit/agents/test_middleware_chat_llm_wiring.py	arg-type
 apps/api/tests/unit/agents/test_middleware_chat_llm_wiring.py	attr-defined
 apps/api/tests/unit/agents/test_middleware_executor.py	arg-type
 apps/api/tests/unit/agents/test_middleware_executor.py	union-attr
-apps/api/tests/unit/agents/test_model_lane.py	attr-defined
-apps/api/tests/unit/agents/test_model_lane.py	misc
 apps/api/tests/unit/agents/test_offload.py	attr-defined
 apps/api/tests/unit/agents/test_openui_prompts.py	assignment
 apps/api/tests/unit/agents/test_pause_checkpointing.py	arg-type
@@ -301,9 +299,6 @@ apps/api/tests/unit/api/test_analytics_new_events.py	attr-defined
 apps/api/tests/unit/api/test_analytics_new_events.py	return-value
 apps/api/tests/unit/api/test_approvals_endpoint.py	call-arg
 apps/api/tests/unit/api/test_auth_middleware.py	union-attr
-apps/api/tests/unit/api/test_bot_endpoint.py	attr-defined
-apps/api/tests/unit/api/test_bot_endpoint.py	call-arg
-apps/api/tests/unit/api/test_bot_endpoint.py	union-attr
 apps/api/tests/unit/api/test_bot_links_endpoint.py	arg-type
 apps/api/tests/unit/api/test_bot_links_endpoint.py	call-arg
 apps/api/tests/unit/api/test_bot_stream_helpers.py	arg-type
@@ -847,15 +842,7 @@ apps/api/tests/unit/workers/test_memory_sweep_tasks.py	func-returns-value
 apps/api/tests/unit/workers/test_paid_person_tasks.py	arg-type
 apps/api/tests/unit/workers/test_reminder_tasks.py	unused-ignore
 apps/api/tests/unit/workers/test_tracked_todo_recurrence.py	arg-type
-apps/api/tests/unit/workers/test_tracked_todo_tasks.py	arg-type
-apps/api/tests/unit/workers/test_tracked_todo_tasks.py	func-returns-value
-apps/api/tests/unit/workers/test_tracked_todo_tasks.py	has-type
-apps/api/tests/unit/workers/test_tracked_todo_tasks.py	misc
-apps/api/tests/unit/workers/test_tracked_todo_tasks.py	return-value
 apps/api/tests/unit/workers/test_worker_lifecycle.py	arg-type
-apps/api/tests/unit/workers/test_workflow_tasks.py	attr-defined
-apps/api/tests/unit/workers/test_workflow_tasks_coverage.py	arg-type
-apps/api/tests/unit/workers/test_workflow_tasks_onboarding_gate.py	arg-type
 apps/api/tests/unit/workers/test_workflow_tasks_playbook.py	arg-type
 apps/api/tests/unit/workers/test_workflow_tasks_playbook.py	attr-defined
 apps/api/tests/unit/workers/test_workflow_tasks_playbook.py	func-returns-value
