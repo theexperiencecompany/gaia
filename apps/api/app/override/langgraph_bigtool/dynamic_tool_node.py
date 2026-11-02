@@ -21,13 +21,15 @@ from langgraph.prebuilt.tool_node import (
     AsyncToolCallWrapper,
     ToolCallRequest,
     ToolCallWrapper,
+    ToolInvocationError,
     _default_handle_tool_errors,
+    _filter_validation_errors,
     _get_all_injected_args,
 )
 from langgraph.runtime import Runtime
 from langgraph.store.base import BaseStore
 from langgraph.types import Command
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from app.agents.middleware.executor import MiddlewareExecutor
 from app.agents.tools.execute.unwrap import unwrap_execute_call
@@ -51,7 +53,21 @@ def format_tool_error(exc: Exception) -> str:
     so parent-routed and middleware tool failures render identically. The
     type name is how the model tells a transient error from a permanent one.
     """
+    if isinstance(exc, ToolInvocationError):
+        return (
+            f"Error: {type(exc).__name__}: '{exc.tool_name}' was not run, its arguments "
+            f"are invalid:\n{_invalid_argument_lines(exc)}\n"
+            "Nothing happened yet. Call it again with these arguments fixed."
+        )
     return f"Error: {type(exc).__name__}: {exc}"
+
+
+def _invalid_argument_lines(exc: ToolInvocationError) -> str:
+    """One 'field: problem' line per model-controlled argument that failed validation."""
+    errors = exc.filtered_errors if exc.filtered_errors is not None else exc.source.errors()
+    return "\n".join(
+        f"{'.'.join(str(part) for part in error['loc'])}: {error['msg']}" for error in errors
+    )
 
 
 def _timeout_error_text(tool_name: str, seconds: float | None) -> str:
@@ -370,6 +386,21 @@ class DynamicToolNode(ToolNode):
             except TimeoutError:
                 return ToolMessage(
                     content=_timeout_error_text(tool_name, bound),
+                    tool_call_id=call_id,
+                    name=name,
+                    status="error",
+                )
+            except ValidationError as exc:
+                # Same translation the parent ToolNode path applies, so an invalid
+                # argument reads as a fixable call on both paths, not a failed run.
+                invocation_error = ToolInvocationError(
+                    name,
+                    exc,
+                    tc.get("args", {}),
+                    _filter_validation_errors(exc, self._injected_args.get(name)),
+                )
+                return ToolMessage(
+                    content=format_tool_error(invocation_error),
                     tool_call_id=call_id,
                     name=name,
                     status="error",

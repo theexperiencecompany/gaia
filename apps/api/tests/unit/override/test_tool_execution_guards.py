@@ -23,7 +23,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import ToolMessage
 from langgraph.errors import GraphInterrupt
+from langgraph.prebuilt.tool_node import ToolInvocationError
 from langgraph.types import Command
+from pydantic import BaseModel, ValidationError
 import pytest
 
 from app.agents.tools.execute.execute_tool import execute
@@ -207,6 +209,25 @@ class TestErrorText:
 
     def test_an_exception_with_no_message_still_reads_as_an_error(self):
         assert format_tool_error(ValueError()).startswith("Error: ValueError:")
+
+    def test_invalid_arguments_name_only_the_fields_the_model_controls(self):
+        """An injected argument is not the model's to fix, so naming it would send it chasing a field it cannot set."""
+
+        class _Args(BaseModel):
+            acceptance_criteria: list[str]
+            state: dict[str, Any]
+
+        with pytest.raises(ValidationError) as caught:
+            _Args.model_validate({})
+        model_errors = [e for e in caught.value.errors() if e["loc"] != ("state",)]
+
+        text = format_tool_error(
+            ToolInvocationError("call_executor", caught.value, {}, model_errors)
+        )
+
+        assert text.startswith("Error: ToolInvocationError: 'call_executor' was not run")
+        assert "acceptance_criteria: Field required" in text
+        assert "state" not in text
 
 
 async def _never_returns(_request: Any) -> ToolMessage:
