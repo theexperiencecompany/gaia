@@ -188,6 +188,15 @@ BROWSER_SESSION_LEASE_SECONDS = 90.0
 # Three renewals per lease, so one slow or lost renewal never costs a live run its browser.
 BROWSER_SESSION_LEASE_RENEW_SECONDS = BROWSER_SESSION_LEASE_SECONDS / 3
 
+#: What the agent reads when it types into one box of a code split one character per box.
+BROWSER_CODE_BOXES_TO_JEV = (
+    "This box holds one character of a code split across {count} boxes, and typing box by "
+    "box loses characters as the page moves the cursor. Nothing was typed: give the whole "
+    "code to `jev` (its goal quoting the code), which types it into the boxes as one field."
+)
+#: How many one-character boxes in one form make one code field (snapshot.js MIN_SEGMENTS).
+BROWSER_CODE_MIN_BOXES = 4
+
 #: Where the browser routers sit under API_V1_PREFIX. The routers spell it as a literal, the
 #: only form tools/evlog_map resolves; links build on this one.
 BROWSER_ROUTE_PREFIX = "/browser"

@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 
 from browser_use.agent.views import ActionResult
 from browser_use.browser.session import BrowserSession
+from browser_use.dom.views import EnhancedDOMTreeNode
 from browser_use.filesystem.file_system import FileSystem
 from browser_use.llm.base import BaseChatModel
 from browser_use.tools.registry.views import ActionModel
@@ -26,6 +27,7 @@ from browser_use.utils import match_url_with_domain_pattern
 from pydantic import TypeAdapter
 from typing_extensions import override
 
+from app.constants.browser import BROWSER_CODE_BOXES_TO_JEV, BROWSER_CODE_MIN_BOXES
 from app.services.browser.browser_use_session import GaiaBrowserSession
 from app.utils.sites import PLACEHOLDER
 
@@ -94,6 +96,42 @@ def _refusal(
     return f"{'; '.join(refused)}; nothing was typed." if refused else None
 
 
+class _TypedIndex(TypedDict, total=False):
+    """Browser-Use's input action, read for the element it types into."""
+
+    index: int
+
+
+_TYPED_INDEX: TypeAdapter[_TypedIndex] = TypeAdapter(_TypedIndex)
+
+
+def _is_code_box(node: EnhancedDOMTreeNode) -> bool:
+    return node.node_name.upper() == "INPUT" and node.attributes.get("maxlength") == "1"
+
+
+def _form_of(node: EnhancedDOMTreeNode) -> EnhancedDOMTreeNode | None:
+    """Return the form a field sits in, else its parent: where a code's boxes are siblings."""
+    ancestor = node.parent_node
+    while ancestor is not None and ancestor.node_name.upper() != "FORM":
+        ancestor = ancestor.parent_node
+    return ancestor or node.parent_node
+
+
+def _descendants(node: EnhancedDOMTreeNode) -> list[EnhancedDOMTreeNode]:
+    children = node.children_nodes or []
+    return [*children, *(d for child in children for d in _descendants(child))]
+
+
+async def _code_boxes(browser_session: BrowserSession, params: object) -> int:
+    """Return how many one-character boxes the input's target belongs to; 0 for an ordinary field."""
+    index = _TYPED_INDEX.validate_python(params).get("index")
+    node = await browser_session.get_element_by_index(index) if index is not None else None
+    if node is None or not _is_code_box(node) or (form := _form_of(node)) is None:
+        return 0
+    count = sum(1 for d in _descendants(form) if _is_code_box(d))
+    return count if count >= BROWSER_CODE_MIN_BOXES else 0
+
+
 class GaiaTools(Tools[None]):
     """The run's actions: secrets only where they are typed, and reads shown in full."""
 
@@ -113,6 +151,8 @@ class GaiaTools(Tools[None]):
         url = _focused_url(browser_session)
         if refused := _refusal(name, params, sensitive_data or {}, url):
             return ActionResult(error=refused)
+        if name == _SECRET_TYPING_ACTION and (boxes := await _code_boxes(browser_session, params)):
+            return ActionResult(error=BROWSER_CODE_BOXES_TO_JEV.format(count=boxes))
         result = await super().act(
             action=action,
             browser_session=browser_session,

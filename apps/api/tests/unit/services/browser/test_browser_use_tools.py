@@ -11,6 +11,7 @@ from browser_use.tools.service import Tools
 from pydantic import PrivateAttr
 import pytest
 
+from app.constants.browser import BrowserEngine
 from app.services.browser.browser_use_session import GaiaBrowserSession
 from app.services.browser.browser_use_tools import GaiaTools
 
@@ -59,15 +60,22 @@ class _Page(GaiaBrowserSession):
     """The run's session with its focused tab on url (no tab for None), titled title."""
 
     _title: str | None = PrivateAttr(default=None)
+    _elements: dict[int, Any] = PrivateAttr(default_factory=dict)
 
-    def __init__(self, url: str | None, title: str | None = None) -> None:
-        super().__init__(cdp_url="ws://host.test/x", user_id=None)
+    def __init__(
+        self, url: str | None, title: str | None = None, elements: dict[int, Any] | None = None
+    ) -> None:
+        super().__init__(cdp_url="ws://host.test/x", user_id=None, engine=BrowserEngine.CHROMIUM)
         self.agent_focus_target_id = "tab-1" if url else None
         self.session_manager = SimpleNamespace(get_target={"tab-1": SimpleNamespace(url=url)}.get)
         self._title = title
+        self._elements = elements or {}
 
     async def document_title(self) -> str | None:
         return self._title
+
+    async def get_element_by_index(self, index: int) -> Any:
+        return self._elements.get(index)
 
 
 async def _act(name: str, params: dict[str, Any], page: _Page) -> ActionResult:
@@ -177,3 +185,40 @@ async def test_an_extract_carries_the_pages_real_title(browser_use: _BrowserUse)
     untitled = ActionResult(extracted_content=READ)
     browser_use.result = untitled.model_copy()
     assert await _act("extract", {"query": "t"}, _Page("https://example.com/")) == untitled
+
+
+def _code_boxes() -> dict[int, Any]:
+    """GitHub's device code entry: eight one-character boxes and a read-only dash in one form, by index."""
+    form = SimpleNamespace(node_name="FORM", attributes={}, parent_node=None, children_nodes=[])
+    boxes = [
+        SimpleNamespace(
+            node_name="INPUT",
+            attributes={"maxlength": "1"} if n != 4 else {"readonly": ""},
+            parent_node=form,
+            children_nodes=[],
+        )
+        for n in range(9)
+    ]
+    form.children_nodes = boxes
+    return {10 + n: box for n, box in enumerate(boxes)}
+
+
+@pytest.mark.regression
+async def test_a_code_split_into_boxes_is_never_typed_box_by_box(browser_use: _BrowserUse) -> None:
+    """Regression for GAIA-715: the agent typed GitHub's device code box by box and lost characters."""
+    page = _Page("https://github.com/login/device", elements=_code_boxes())
+
+    result = await _act("input", {"index": 11, "text": "E"}, page)
+
+    assert result.error is not None
+    assert "jev" in result.error
+    assert browser_use.calls == []
+
+
+async def test_an_ordinary_field_is_typed_as_asked(browser_use: _BrowserUse) -> None:
+    field = SimpleNamespace(node_name="INPUT", attributes={}, parent_node=None, children_nodes=[])
+    page = _Page("https://example.test", elements={3: field})
+
+    await _act("input", {"index": 3, "text": "hello"}, page)
+
+    assert len(browser_use.calls) == 1
