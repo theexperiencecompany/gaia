@@ -26,6 +26,8 @@ SUBAGENT_CACHE_TTL = ONE_HOUR_TTL
 # routing). Eventually consistent: a plan change takes effect within the TTL.
 SUBSCRIPTION_PLAN_CACHE_PREFIX = "subscription:"
 SUBSCRIPTION_PLAN_CACHE_TTL = FIVE_MINUTES_TTL
+# The day of month a subscription bills on: anchors the Pro allowance month. Same TTL.
+SUBSCRIPTION_BILLING_DAY_CACHE_PREFIX = "subscription_billing_day:"
 # The plan catalogue itself, keyed by whether inactive plans are included. Seeded
 # by scripts/payment_setup.py, which drops every key after writing.
 ACTIVE_PLANS_CACHE_KEY = "plans:active"

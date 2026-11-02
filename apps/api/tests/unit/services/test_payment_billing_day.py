@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.config.settings import settings
+from app.constants.cache import SUBSCRIPTION_PLAN_CACHE_TTL
 from app.models.payment_models import PlanType, SubscriptionDocument, UserSubscriptionStatus
 from app.services.payments import payment_service as payment_service_module
 from app.services.payments.payment_service import _billing_day, payment_service
@@ -47,14 +48,15 @@ def cache() -> Iterator[MagicMock]:
 
 @pytest.fixture
 def subscription_lookup() -> Iterator[AsyncMock]:
-    status = UserSubscriptionStatus(
-        user_id=FAKE_USER_ID,
-        subscription=_subscription(next_billing_date="2026-11-22T22:45:10Z"),
-        is_subscribed=True,
-        has_subscription=True,
-        plan_type=PlanType.PRO,
+    lookup = AsyncMock(
+        return_value=UserSubscriptionStatus(
+            user_id=FAKE_USER_ID,
+            subscription=_subscription(next_billing_date="2026-11-22T22:45:10Z"),
+            is_subscribed=True,
+            has_subscription=True,
+            plan_type=PlanType.PRO,
+        )
     )
-    lookup = AsyncMock(return_value=status)
     with patch.object(payment_service, "get_user_subscription_status", lookup):
         yield lookup
 
@@ -65,23 +67,29 @@ class TestCachedBillingDay:
     ) -> None:
         assert await payment_service.get_cached_billing_day(FAKE_USER_ID) == 22
 
-        cached = cache.set.await_args.args[1]
-        assert cached == {"plan_type": "pro", "billing_day": 22}
+        subscription_lookup.assert_awaited_once_with(FAKE_USER_ID)
+        key, value = cache.set.await_args.args
+        assert key == f"subscription_billing_day:{FAKE_USER_ID}"
+        assert value == {"billing_day": 22}
+        assert cache.set.await_args.kwargs == {"ttl": SUBSCRIPTION_PLAN_CACHE_TTL}
 
-    async def test_a_record_cached_before_the_billing_day_existed_is_read_again(
+    async def test_a_user_with_no_subscription_caches_that_too(
         self, cache: MagicMock, subscription_lookup: AsyncMock
     ) -> None:
-        cache.get = AsyncMock(return_value={"plan_type": "pro"})
+        subscription_lookup.return_value = UserSubscriptionStatus(
+            user_id=FAKE_USER_ID, plan_type=PlanType.FREE
+        )
 
-        assert await payment_service.get_cached_billing_day(FAKE_USER_ID) == 22
-        subscription_lookup.assert_awaited_once()
+        assert await payment_service.get_cached_billing_day(FAKE_USER_ID) is None
+        assert cache.set.await_args.args[1] == {"billing_day": None}
 
     async def test_a_cached_billing_day_is_served_from_the_cache(
         self, cache: MagicMock, subscription_lookup: AsyncMock
     ) -> None:
-        cache.get = AsyncMock(return_value={"plan_type": "pro", "billing_day": 5})
+        cache.get = AsyncMock(return_value={"billing_day": 5})
 
         assert await payment_service.get_cached_billing_day(FAKE_USER_ID) == 5
+        cache.get.assert_awaited_once_with(f"subscription_billing_day:{FAKE_USER_ID}")
         subscription_lookup.assert_not_awaited()
 
     async def test_without_plans_there_is_no_billing_day(

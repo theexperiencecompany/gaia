@@ -89,6 +89,8 @@ _mock_subscription = MagicMock()
 # Mirror the real get_user_subscription_status return type: plan_type is a
 # PlanType enum, not a raw str. get_cached_plan_type relies on `.value`.
 _mock_subscription.plan_type = PlanType.FREE
+# A FREE status carries no subscription row; the billing-day read takes it from here.
+_mock_subscription.subscription = None
 
 # Always mock: Infisical secrets and rate limiting. These are external SaaS
 # services that must never be called in any test environment.
