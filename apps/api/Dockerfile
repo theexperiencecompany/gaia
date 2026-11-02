@@ -116,11 +116,10 @@ RUN find /usr/local/lib/python3.12/site-packages -type d -name tests -prune -exe
 # path crawl4ai never writes.
 
 # ---- Obscura build: compile the browser engine from source ----
-# Pinned to a commit past v0.2.2 that fixes the dynamic-import / frame-realm
-# SIGSEGV (upstream #850 + #841, PR #864) — not yet in a tagged release, and
-# v0.2.2's release tarball crashes the whole process on pages that use dynamic
-# import() (fingerprint.com and friends). Revert to the release tarball download
-# once v0.2.3 ships. deno_core's v8 crate pulls a PREBUILT V8, so this compiles
+# Built from source, never a release tarball: our fixes ride on the pinned commit
+# as a patch series (below), which no release artifact can carry. The pin is a
+# commit past v0.2.2 with the dynamic-import / frame-realm SIGSEGV fix (upstream
+# #850 + #841, PR #864). deno_core's v8 crate pulls a PREBUILT V8, so this compiles
 # Rust only (~few min), not V8. render+stealth = the build we launch with
 # --stealth (native rendering + TLS impersonation). libunwind-dev is required by
 # the stealth feature's BoringSSL (btls-sys); GitHub's runners preinstall it so
