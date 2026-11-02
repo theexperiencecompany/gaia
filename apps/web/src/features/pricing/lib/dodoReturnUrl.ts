@@ -10,6 +10,13 @@ export const DODO_RETURN_PARAM = {
   email: "email",
 } as const;
 
+/** The return params that identify the customer or their payment; analytics masks them. */
+export const DODO_RETURN_IDENTIFYING_PARAMS = [
+  DODO_RETURN_PARAM.subscriptionId,
+  DODO_RETURN_PARAM.paymentId,
+  DODO_RETURN_PARAM.email,
+] as const;
+
 /**
  * Removes Dodo's params, and any of the caller's own (`extra`), from the
  * address bar, leaving the rest of the URL untouched. The email must not
