@@ -341,6 +341,36 @@
         }
       }
     },
+    "mypy-tests": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python3 tools/lints/check_mypy_tests.py"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/tools/lints/check_mypy_tests.py",
+        "{workspaceRoot}/tools/lints/mypy_tests_baseline.txt",
+        "{workspaceRoot}/tools/lints/_ratchet.py",
+        "{workspaceRoot}/tools/lints/_common.py",
+        "{workspaceRoot}/pyproject.toml",
+        "{workspaceRoot}/apps/api/pyproject.toml",
+        "{workspaceRoot}/uv.lock",
+        "ciHarness",
+        "{workspaceRoot}/apps/api/tests/**/*.py",
+        "{workspaceRoot}/apps/api/app/**/*.py",
+        "{workspaceRoot}/libs/shared/py/**/*.py",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-python",
+          "check": "mypy-tests",
+          "area": "python"
+        }
+      }
+    },
     "typed-boundaries": {
       "executor": "nx:run-commands",
       "options": {

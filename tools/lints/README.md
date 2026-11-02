@@ -299,6 +299,32 @@ any other diff, and `--update` preserves the field.
 
 ---
 
+## mypy-tests-ratchet
+
+A touch-to-fix ratchet like `plr-complexity-ratchet`, sharing its mechanics
+(`_ratchet.py`) and its baseline format:
+
+```bash
+python3 tools/lints/check_mypy_tests.py           # check
+python3 tools/lints/check_mypy_tests.py --update  # record the current baseline
+```
+
+**Rule:** `mypy apps/api/tests` (the `api:type-check` environment and flags,
+under the root config's loose `tests.*` override) reports no error the
+baseline `tools/lints/mypy_tests_baseline.txt` does not already list per
+(file, error code), and none in a file the PR touches.
+
+**Why:** `api:type-check` covers `apps/api/app` only, so a test calling a
+renamed function, a removed attribute or a wrong signature type-checked clean
+and failed (or silently passed against a mock) at runtime. The existing debt
+was too large to fix in one pass; touching a file is when its debt gets paid.
+
+**Fix:** type the fixture, mock or call properly. If the file is
+grandfathered and your PR touches it, fix its listed errors and delete their
+lines from the baseline. Deferrals work exactly as in `plr-complexity-ratchet`.
+
+---
+
 ## typed-boundaries
 
 A touch-to-fix ratchet like `plr-complexity-ratchet`, sharing its mechanics
