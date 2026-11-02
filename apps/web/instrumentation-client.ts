@@ -8,6 +8,7 @@
 
 // Type-only import — zero runtime cost.
 import type * as SentryNs from "@sentry/nextjs";
+import { scrubCheckoutReturnParams } from "@/lib/observability/checkout-url-scrub";
 import {
   EXTENSION_URL_PATTERNS,
   filterExceptionBeforeSend,
@@ -115,9 +116,10 @@ if (typeof window !== "undefined") {
         // `session_recording` block the SDK sends events but no `$snapshot`
         // data, leaving Replay/Sessions empty.
         session_recording: {},
-        // Drop the same crawler / extension / third-party exception noise
-        // Sentry filters above so both sinks stay in agreement.
-        before_send: filterExceptionBeforeSend,
+        // The customer's email and payment id never leave on a Dodo return
+        // URL; then the same crawler / extension / third-party exception
+        // noise Sentry filters above is dropped, so both sinks agree.
+        before_send: [scrubCheckoutReturnParams, filterExceptionBeforeSend],
       });
 
       // Synchronously, before posthog's next-tick initial pageview can carry a
