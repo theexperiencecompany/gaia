@@ -15,6 +15,7 @@ import { shouldRetryQuery } from "@/lib/queryClient";
 import { saveOnboardingAnswers } from "../api/onboardingApi";
 import { FIELD_NAMES, questions } from "../constants";
 import type { Action, OnboardingState } from "../state/types";
+import { welcomeLanguage } from "../utils/welcomeLanguage";
 
 export interface AnswersSave {
   status: MutationStatus;
@@ -35,8 +36,7 @@ export function useOnboardingPreferences(
   const profession = state.responses[FIELD_NAMES.PROFESSION];
   const { selectedNeeds, preferencesPersisted, isRestarting } = state;
   const otherNeed = state.otherNeed.trim();
-  // The welcome thread is written in the language the wizard ran in.
-  const language = useLocale();
+  const appLocale = useLocale();
 
   const answers = useMemo<OnboardingAnswers | null>(() => {
     if (!profession || (selectedNeeds.length === 0 && !otherNeed)) return null;
@@ -44,9 +44,8 @@ export function useOnboardingPreferences(
       profession,
       needs: selectedNeeds,
       ...(otherNeed ? { other_need: otherNeed } : {}),
-      language,
     };
-  }, [profession, selectedNeeds, otherNeed, language]);
+  }, [profession, selectedNeeds, otherNeed]);
 
   const queryClient = useQueryClient();
   const { mutate, status, reset } = useMutation({
@@ -64,8 +63,13 @@ export function useOnboardingPreferences(
 
   const pending = questionsComplete && !preferencesPersisted && !isRestarting;
   const save = useCallback(() => {
-    if (pending && answers) mutate(answers);
-  }, [pending, answers, mutate]);
+    // Read at save time, in the browser: the server render has no navigator.
+    if (pending && answers)
+      mutate({
+        ...answers,
+        language: welcomeLanguage(navigator.languages, appLocale),
+      });
+  }, [pending, answers, appLocale, mutate]);
 
   // A ref, not the mutation status: StrictMode re-runs the effect before the
   // first mutate has re-rendered as pending, and the answers must go out once.

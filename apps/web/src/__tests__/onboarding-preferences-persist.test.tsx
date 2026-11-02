@@ -17,7 +17,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const saveOnboardingAnswers = vi.fn();
 
-vi.mock("next-intl", () => ({ useLocale: () => "pt-BR" }));
+vi.mock("next-intl", () => ({ useLocale: () => "en" }));
 
 vi.mock("@/features/onboarding/api/onboardingApi", () => ({
   saveOnboardingAnswers: (...args: unknown[]) => saveOnboardingAnswers(...args),
@@ -61,6 +61,8 @@ describe("useOnboardingPreferences", () => {
     vi.clearAllMocks();
     saveOnboardingAnswers.mockResolvedValue({ success: true });
     vi.spyOn(console, "error").mockImplementation(() => undefined);
+    // A German browser on the never-localised /onboarding route, whose app locale is "en".
+    vi.spyOn(navigator, "languages", "get").mockReturnValue(["de-DE", "en-US"]);
   });
 
   it("does not save until both questions are answered", async () => {
@@ -86,7 +88,7 @@ describe("useOnboardingPreferences", () => {
     expect(saveOnboardingAnswers).toHaveBeenCalledExactlyOnceWith({
       profession: "founder",
       needs: ["inbox", "tools"],
-      language: "pt-BR",
+      language: "de-DE",
     });
   });
 
