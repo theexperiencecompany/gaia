@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@heroui/button";
 import { Skeleton } from "@heroui/skeleton";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
@@ -45,6 +46,9 @@ const ENTERPRISE_CONTACT_HREF =
   "&description=" +
   encodeURIComponent(ENTERPRISE_CONTACT_TEMPLATE);
 
+/** The cards a loading grid stands in for: Pro, then Enterprise beside it. */
+const PLACEHOLDER_TIERS = ["pro", "enterprise"] as const;
+
 interface PricingCardsProps {
   durationIsMonth?: boolean;
   initialPlans?: Plan[];
@@ -77,12 +81,25 @@ export function PricingCards({
   // An instance that sells nothing has no plans to show or check out.
   if (!billingEnabled) return null;
 
+  // Placeholders take the shape of what replaces them: one card per tier the
+  // grid will show, stacked on a phone, so nothing jumps when plans land.
+  const placeholderTiers = hideEnterprise
+    ? PLACEHOLDER_TIERS.slice(0, 1)
+    : PLACEHOLDER_TIERS;
+  const placeholderGrid =
+    placeholderTiers.length === 1
+      ? "max-w-sm"
+      : "max-w-sm sm:max-w-2xl sm:grid-cols-2";
+
   // Only show loading if we're actually loading AND don't have any plans yet
   if (isLoading && (!plans || plans.length === 0)) {
     return (
-      <div className="grid w-full max-w-2xl grid-cols-2 gap-4">
-        <Skeleton className="h-96 w-full rounded-2xl" />
-        <Skeleton className="h-96 w-full rounded-2xl" />
+      <div
+        className={`mx-auto grid w-full grid-cols-1 gap-3 ${placeholderGrid}`}
+      >
+        {placeholderTiers.map((tier) => (
+          <Skeleton key={tier} className="h-[28rem] w-full rounded-2xl" />
+        ))}
       </div>
     );
   }
@@ -90,20 +107,18 @@ export function PricingCards({
   // Only show error if we have an error AND no plans to display
   if (error && (!plans || plans.length === 0)) {
     return (
-      <div className="grid w-full max-w-2xl grid-cols-2 gap-4">
-        <div className="col-span-2 flex flex-col items-center justify-center rounded-2xl bg-red-500/10 p-6">
-          <p className="text-center text-red-400">
-            Unable to load pricing plans. Please refresh the page or try again
-            later.
-          </p>
-          <button
-            type="button"
-            onClick={() => window.location.reload()}
-            className="mt-4 rounded-lg bg-red-500 px-4 py-2 text-white hover:bg-red-600"
-          >
-            Refresh Page
-          </button>
-        </div>
+      <div className="mx-auto flex w-full max-w-sm flex-col items-center gap-3 rounded-2xl bg-red-500/10 p-6 text-center">
+        <p className="text-sm text-red-400">
+          Unable to load pricing plans. Please refresh the page or try again
+          later.
+        </p>
+        <Button
+          color="danger"
+          variant="flat"
+          onPress={() => window.location.reload()}
+        >
+          Refresh page
+        </Button>
       </div>
     );
   }
@@ -111,12 +126,10 @@ export function PricingCards({
   // If we have no plans at all, show a message
   if (!plans || plans.length === 0) {
     return (
-      <div className="grid w-full max-w-2xl grid-cols-2 gap-3">
-        <div className="col-span-2 flex flex-col items-center justify-center rounded-2xl bg-gray-500/10 p-8">
-          <p className="text-center text-gray-400">
-            No pricing plans available at the moment.
-          </p>
-        </div>
+      <div className="mx-auto w-full max-w-sm rounded-2xl bg-zinc-800 p-8 text-center">
+        <p className="text-sm text-zinc-400">
+          No pricing plans available at the moment.
+        </p>
       </div>
     );
   }

@@ -8,6 +8,7 @@ from shared.py.analytics.catalog.properties import CurrencyCode, Identifier, Url
 
 __all__ = [
     "CheckoutFailureReason",
+    "PaymentCheckoutAbandoned",
     "PaymentCheckoutStarted",
     "PaymentFailed",
     "PaymentSucceeded",
@@ -64,6 +65,22 @@ class PaymentCheckoutStarted(ServerEvent):
     billing_cycle: Identifier | None = None
     # The Dodo product id of the plan being bought; replaces the client's pricing:plan_selected.
     plan_id: Identifier | None = None
+
+
+class PaymentCheckoutAbandoned(WebEvent):
+    """The embedded checkout closed without a charge; only the browser sees the sheet go away."""
+
+    event: ClassVar[str] = "payment:checkout_abandoned"
+    budget_per_user_day: ClassVar[int] = 20
+
+    source: Literal[
+        "paywall_modal", "pricing_card", "payment_retry", "checkout_resume", "onboarding"
+    ]
+    billing_cycle: Literal["monthly", "yearly"]
+    # The last overlay step reached; "not_loaded" means the sheet never rendered and was closed for the user.
+    furthest_step: Literal[
+        "not_loaded", "opened", "details_submitted", "payment_page", "pay_pressed"
+    ]
 
 
 class PaymentSucceeded(ServerEvent):

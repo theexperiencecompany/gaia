@@ -21,6 +21,7 @@ from app.constants.cache import (
 from app.constants.log_tags import LogTag
 from app.constants.payments import (
     CHECKOUT_SESSION_SCAN_LIMIT,
+    DODO_CHECKOUT_THEME,
     DODO_TEST_MODE_BILLING_ADDRESS,
     DODO_TEST_MODE_PHONE_NUMBER,
     PAYMENT_HISTORY_LIMIT,
@@ -209,6 +210,9 @@ class DodoPaymentService:
                     "allow_customer_editing_country": True,
                 },
                 "return_url": f"{settings.FRONTEND_URL}{return_path}",
+                # The app is dark-only; Dodo's default follows the OS, which
+                # flashed a white sheet over GAIA for every light-mode user.
+                "customization": {"theme": DODO_CHECKOUT_THEME},
                 "metadata": {"user_id": user_id, "product_id": product_id},
                 "subscription_data": {
                     # Use product's stored price; override trial if needed
