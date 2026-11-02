@@ -101,6 +101,10 @@ jobs:
       - name: Verify landing pages load no app-only code
         # The chat stack, the PostHog SDK and the OpenUI stylesheet slow every
         # marketing page without failing anything; the eager bundle is checked here.
+        # It reads the chunks' source maps, which only a build without the Sentry
+        # token keeps: the deploy build uploads and strips them, and the merge
+        # queue already checked this commit.
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
         run: pnpm --filter ./apps/web verify-landing-bundle
 
       # The build only proves the bundle assembles. Boot it in workerd and hit
