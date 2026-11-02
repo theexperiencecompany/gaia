@@ -3307,21 +3307,15 @@ class TestResumeTrackedTodo:
 
     async def _resume(
         self,
-        todo_id: str,
-        conversation_id: str,
-        approval_id: str,
-        receipt: str,
-        attempt: int = 0,
-        *,
+        *args: *tuple[str, str, str, str, *tuple[int, ...]],
         doc: TodoDocument | None = None,
         lock_acquired: bool = True,
         agent: AsyncMock | None = None,
     ) -> _ResumeRun:
+        """Call resume_tracked_todo with its own positional arguments (todo, conversation, approval, receipt[, attempt])."""
         run = self._build(doc=doc, lock_acquired=lock_acquired, agent=agent)
         with self._patched(run):
-            run.result = await resume_tracked_todo(
-                {}, todo_id, conversation_id, approval_id, receipt, attempt
-            )
+            run.result = await resume_tracked_todo({}, *args)
         return run
 
     async def test_continues_the_parked_conversation_not_a_fresh_one(self) -> None:
