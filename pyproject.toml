@@ -58,6 +58,8 @@ constraint-dependencies = [
   "certifi>=2026.10.19",
   "h2>=4.4.1",
   "hpack>=4.2.0",
+  "dnspython>=2.9.0",
+  "langgraph-sdk>=0.4.4",
 ]
 
 [tool.uv.workspace]

@@ -1657,7 +1657,7 @@ jobs:
         run: |
           rm -rf "$RUNNER_TEMP/trivy-src" && mkdir -p "$RUNNER_TEMP/trivy-src"
           git archive HEAD | tar -x -C "$RUNNER_TEMP/trivy-src"
-      - name: trivy — filesystem scan, CRITICAL and HIGH (advisory)
+      - name: trivy — filesystem scan, CRITICAL and HIGH
         id: trivy
         continue-on-error: true
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -1670,10 +1670,8 @@ jobs:
           cache: ${{ !startsWith(runner.name, 'gaia-home-') }}
           cache-dir: ${{ env.TRIVY_DB_DIR }}
           skip-dirs: "node_modules,.venv,.nx,apps/web/.next,.mypy_cache,.pytest_cache"
-          # TODO: make blocking (exit-code:1) after chore/trivy-npm-audit lands
-          # Currently 25 HIGH from pnpm-lock (axios/tar/undici) would red every
-          # change; keep advisory until that PR merges, then flip to exit-code:1.
-          exit-code: "0"
+          trivyignores: ".trivyignore.yaml"
+          exit-code: "1"
           ignore-unfixed: false
       - *upload-verdict-so-far
       - name: Post one commit status per check
