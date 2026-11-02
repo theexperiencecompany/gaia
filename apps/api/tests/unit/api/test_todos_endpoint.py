@@ -29,7 +29,7 @@ from app.models.todo_models import (
 from app.services.todos.errors import ExternalRefTakenError, TrackedTodoWorkflowError
 from app.utils.log_identifiers import user_text_shape
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.todos import TodosToggled, TodosUpdated
+from shared.py.analytics.catalog.todos import TodosChatOpened, TodosToggled, TodosUpdated
 from tests.conftest import FAKE_USER
 
 TODOS_ENDPOINT = "app.api.v1.endpoints.todos"
@@ -696,6 +696,71 @@ class TestTodoCanvas:
         assert resp.status_code == 404
         assert resp.json()["message"] == "Todo not found"
         get.assert_awaited_once_with("todo-1", user_id="507f1f77bcf86cd799439011")
+
+
+class TestOpenTodoConversation:
+    """The todo's "Open chat": its own chat, reached through the real service."""
+
+    SERVICE = "app.services.todos.todo_conversation"
+    OWNER = "507f1f77bcf86cd799439011"
+    TODO_ID = "6ab51f1ba7a1fcf0f00ab49a"
+
+    def _todo(self, labels: list[str]) -> TodoDocument:
+        return TodoDocument(id=self.TODO_ID, user_id=self.OWNER, title="Watch it", labels=labels)
+
+    async def test_a_tracked_todo_opens_its_own_chat(self, client: AsyncClient) -> None:
+        chat = AsyncMock(return_value="conv-todo")
+        with (
+            patch(
+                f"{self.SERVICE}.todo_repository.get",
+                new=AsyncMock(return_value=self._todo([GAIA_TRACKED_LABEL])),
+            ) as get,
+            patch(f"{self.SERVICE}.get_or_create_todo_conversation", new=chat),
+            patch(f"{self.SERVICE}.capture") as captured,
+            patch(f"{TODOS_ENDPOINT}.log") as log,
+        ):
+            resp = await client.post(f"/api/v1/todos/{self.TODO_ID}/conversation")
+
+        assert resp.status_code == 200
+        assert resp.json() == {"conversation_id": "conv-todo"}
+        log.set.assert_called_once_with(
+            user={"id": self.OWNER}, todo={"operation": "open_conversation", "id": self.TODO_ID}
+        )
+        log.set_ns.assert_called_once_with("todo", conversation_id="conv-todo")
+        # Only the caller's own todo: another user's id reads as missing.
+        get.assert_awaited_once_with(self.TODO_ID, user_id=self.OWNER)
+        chat.assert_awaited_once_with(self.OWNER, self.TODO_ID, "Watch it")
+        captured.assert_called_once_with(UserId(self.OWNER), TodosChatOpened(todo_id=self.TODO_ID))
+
+    async def test_a_todo_gaia_does_not_track_has_no_chat(self, client: AsyncClient) -> None:
+        chat = AsyncMock()
+        with (
+            patch(
+                f"{self.SERVICE}.todo_repository.get",
+                new=AsyncMock(return_value=self._todo(["errands"])),
+            ),
+            patch(f"{self.SERVICE}.get_or_create_todo_conversation", new=chat),
+        ):
+            resp = await client.post(f"/api/v1/todos/{self.TODO_ID}/conversation")
+
+        assert resp.status_code == 409
+        assert (resp.json()["code"], resp.json()["message"]) == (
+            "todo_not_tracked",
+            "Only a tracked todo has a chat",
+        )
+        chat.assert_not_awaited()
+
+    async def test_a_todo_that_is_not_the_callers_is_404(self, client: AsyncClient) -> None:
+        chat = AsyncMock()
+        with (
+            patch(f"{self.SERVICE}.todo_repository.get", new=AsyncMock(return_value=None)),
+            patch(f"{self.SERVICE}.get_or_create_todo_conversation", new=chat),
+        ):
+            resp = await client.post(f"/api/v1/todos/{self.TODO_ID}/conversation")
+
+        assert resp.status_code == 404
+        assert (resp.json()["code"], resp.json()["message"]) == ("todo_not_found", "Todo not found")
+        chat.assert_not_awaited()
 
 
 class TestReopenOfATakenThread:

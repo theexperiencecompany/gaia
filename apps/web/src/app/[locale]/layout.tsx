@@ -19,7 +19,7 @@ const OG_LOCALE_MAP: Record<string, string> = {
   fr: "fr_FR",
   ja: "ja_JP",
   ko: "ko_KR",
-  "pt-BR": "pt_BR",
+  "pt-br": "pt_BR",
 };
 
 type Props = {

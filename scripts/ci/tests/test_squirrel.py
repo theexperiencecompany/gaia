@@ -97,8 +97,8 @@ def test_a_site_wide_check_counts_its_items(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("rule", "path"),
     [
-        ("url/lowercase", "/pt-BR/compare"),
-        ("url/lowercase", "/pt-BR"),
+        ("url/lowercase", "/pt-br/compare"),
+        ("url/lowercase", "/pt-br"),
     ],
 )
 def test_the_two_known_false_positives_are_not_counted(
@@ -112,7 +112,7 @@ def test_the_two_known_false_positives_are_not_counted(
     ("rule", "path"),
     [
         ("crawl/sitemap-valid", "/sitemap/0.xml"),
-        ("url/lowercase", "/pt-BR/Compare"),
+        ("url/lowercase", "/pt-br/Compare"),
         ("url/lowercase", "/About"),
     ],
 )

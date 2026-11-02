@@ -1,4 +1,4 @@
-import type { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import createMiddleware from "next-intl/middleware";
 
 import { selfhostHomeRedirect } from "./features/auth/api/selfhostHomeRedirect";
@@ -32,9 +32,25 @@ const intlMiddlewareDefaultOnly = createMiddleware({
   localeDetection: false,
 });
 
+/** next-intl's CookieAttributes type omits HttpOnly, so harden its Set-Cookie here. */
+function hardenLocaleCookie(response: NextResponse): NextResponse {
+  const cookies = response.headers.getSetCookie();
+  if (!cookies.some((cookie) => cookie.startsWith("NEXT_LOCALE="))) {
+    return response;
+  }
+  response.headers.delete("set-cookie");
+  for (const cookie of cookies) {
+    response.headers.append(
+      "set-cookie",
+      cookie.startsWith("NEXT_LOCALE=") ? `${cookie}; HttpOnly` : cookie,
+    );
+  }
+  return response;
+}
+
 function localeResponse(request: NextRequest): NextResponse {
   if (isTranslatedRoute(request.nextUrl.pathname)) {
-    return intlMiddleware(request);
+    return hardenLocaleCookie(intlMiddleware(request));
   }
   // For non-translated routes: still run middleware (needed for [locale]
   // routing) but force default locale — no locale prefix in URL.
@@ -47,6 +63,15 @@ function localeResponse(request: NextRequest): NextResponse {
 }
 
 export default async function middleware(request: NextRequest) {
+  // Next's config redirects match case-insensitively, so /pt-BR cannot be
+  // distinguished from the canonical /pt-br there. Handle the legacy mixed-case
+  // prefix here, where the comparison is case-sensitive.
+  const { pathname } = request.nextUrl;
+  if (pathname === "/pt-BR" || pathname.startsWith("/pt-BR/")) {
+    const url = request.nextUrl.clone();
+    url.pathname = `/pt-br${pathname.slice("/pt-BR".length)}`;
+    return NextResponse.redirect(url, 301);
+  }
   // A self-hosted instance has no landing page: "/" goes into the product.
   if (request.nextUrl.pathname === "/") {
     const selfhostHome = await selfhostHomeRedirect(request);
@@ -60,7 +85,10 @@ export default async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // `connect` (src/app/connect) is a locale-invariant page with its own
-  // analytics-free layout; next-intl must not rewrite it into the [locale] tree.
-  matcher: ["/((?!api|connect|_next|_vercel|sitemap|ingest|.*\\..*).*)", "/"],
+  // `connect` and `feed` are route handlers outside [locale]; next-intl must
+  // not rewrite them (feed.xml 301s to /feed, which must resolve).
+  matcher: [
+    "/((?!api|connect|feed|_next|_vercel|sitemap|ingest|.*\\..*).*)",
+    "/",
+  ],
 };

@@ -27,6 +27,7 @@ export const mapStoredMessageToConversationMessage = (
     toolCategory: message.toolCategory ?? undefined,
     selectedWorkflow: message.selectedWorkflow ?? undefined,
     selectedCalendarEvent: message.selectedCalendarEvent ?? undefined,
+    todo_run_wake: message.todoRunWake ?? undefined,
     loading: message.status === "sending",
     queued: message.status === "queued",
     failed: message.status === "failed",

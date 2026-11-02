@@ -17,6 +17,7 @@ const BASE_BUBBLE_DEFAULTS = {
   toolCategory: undefined,
   selectedWorkflow: undefined,
   selectedCalendarEvent: undefined,
+  todo_run_wake: undefined,
   isConvoSystemGenerated: undefined,
   follow_up_actions: undefined,
   image_data: undefined,

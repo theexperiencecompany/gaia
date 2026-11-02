@@ -8,7 +8,7 @@ Both share _core_agent_logic() for common setup (messages, graph, config).
 
 import asyncio
 from collections.abc import AsyncGenerator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 from typing import Any, Literal, cast
 from uuid import uuid4
@@ -118,6 +118,9 @@ class AgentRunOptions:
     presence: PresenceSnapshot | None = None
     langfuse_trace_id: str | None = None
     langfuse_tags: list[str] | None = None
+    #: The tracked todo whose own chat an interactive turn is in, so the turn knows
+    #: which todo "this" is; a background run names its todo in trigger_context.
+    active_todo_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -155,9 +158,9 @@ async def _core_agent_logic(
     user_id = user.user_id
 
     # Extract active todo binding + execution mode from trigger_context (scheduled
-    # runs set these; interactive turns leave them unset / "interactive").
+    # runs set these; an interactive turn binds a todo only inside that todo's chat).
     trigger = _AgentTriggerContext.model_validate(trigger_context or {})
-    active_todo_id: str | None = None
+    active_todo_id: str | None = options.active_todo_id
     execution_mode: ExecutionMode = "interactive"
     if trigger_context:
         active_todo_id = trigger.active_todo_id or trigger.todo_id
@@ -324,10 +327,10 @@ async def call_agent(
                 request,
                 conversation_id,
                 user,
-                AgentRunOptions(
-                    usage_metadata_callback=options.usage_metadata_callback,
-                    source=options.source,
-                    presence=options.presence,
+                # The caller's options whole, only the trace stamped here: a field
+                # copied over by hand is a field a new option silently loses.
+                replace(
+                    options,
                     langfuse_trace_id=(
                         trace_id_for_message(ids.bot_message_id) if ids.bot_message_id else None
                     ),

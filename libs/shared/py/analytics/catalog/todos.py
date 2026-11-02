@@ -11,6 +11,7 @@ __all__ = [
     "ProjectsDeleted",
     "ProjectsUpdated",
     "SubscriptionFailureReason",
+    "TodosChatOpened",
     "TodosCreated",
     "TodosDeleted",
     "TodosInboxDeskProvisioned",
@@ -141,6 +142,15 @@ class TodosRunResultDelivered(ServerEvent):
     platform: Identifier | None = None
     destination: ProactiveDestinationKind | None = None
     destination_basis: ProactiveDestinationBasis | None = None
+
+
+class TodosChatOpened(ServerEvent):
+    """A user opened a tracked todo's chat from the todo."""
+
+    event: ClassVar[str] = "todos:chat_opened"
+    budget_per_user_day: ClassVar[int] = 100
+
+    todo_id: ObjectIdStr
 
 
 class TodosInboxDeskProvisioned(ServerEvent):

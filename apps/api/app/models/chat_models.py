@@ -8,7 +8,12 @@ from typing_extensions import TypedDict
 # app.constants.outbound can derive the outbound queue set without the model
 # stack. Re-exported here because this is the import site consumers use.
 from app.constants.chat import BOT_CONVERSATION_SOURCES, ConversationSource, SourceCategory
-from app.models.message_models import FileData, ReplyToMessageData, SelectedWorkflowData
+from app.models.message_models import (
+    FileData,
+    ReplyToMessageData,
+    SelectedWorkflowData,
+    TodoRunWake,
+)
 
 __all__ = [
     "BOT_CONVERSATION_SOURCES",
@@ -156,6 +161,8 @@ class MessageModel(BaseModel):
     selectedTool: str | None = None
     toolCategory: str | None = None
     selectedWorkflow: SelectedWorkflowData | None = None
+    # What woke a tracked todo's run, on the user's side of the todo's chat.
+    todo_run_wake: TodoRunWake | None = None
     tool_data: list[ToolDataEntry] | None = None
     follow_up_actions: list[str] | None = None
     metadata: dict[str, Any] | None = None

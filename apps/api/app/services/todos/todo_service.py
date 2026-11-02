@@ -12,6 +12,7 @@ from pymongo.errors import BulkWriteError, DuplicateKeyError
 
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.db.repositories.approval_ledger import approval_ledger_repository
+from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.projects import project_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflows import workflow_repository
@@ -43,6 +44,7 @@ from app.models.todo_models import (
 )
 from app.models.trigger_subscription_models import TriggerSubscription
 from app.services.analytics_service import capture
+from app.services.conversation_service import delete_todo_conversations
 from app.services.todos.errors import (
     ExternalRefReopenedTwiceError,
     ExternalRefTakenError,
@@ -395,6 +397,28 @@ def _drop_completion_fields(update: TodoUpdate) -> TodoUpdate:
     return TodoUpdate(**fields)
 
 
+async def _complete_if_tracked(todo_id: str, user_id: str, update: TodoUpdate) -> TodoUpdate:
+    """Complete a tracked todo through tracked_todo_service, then return update without its completion fields.
+
+    That service archives the canvas and sets the completion fields itself, so they are
+    stripped here and the update neither re-trips the guard nor clobbers vfs_path.
+    """
+    existing = await todo_repository.get(todo_id, user_id=user_id)
+    if not (existing and existing.vfs_path):
+        return update
+    try:
+        from app.services.tracked_todo_service import (  # noqa: PLC0415 -- tracked_todo_service imports this module at module level, so a top-level import back would be circular
+            tracked_todo_service,
+        )
+
+        await tracked_todo_service.complete_tracked_todo(
+            todo_id, user_id, summary="Completed via UI"
+        )
+    except Exception as e:
+        log.warning("tracked_todo.ui_complete_failed", todo_id=todo_id, error=str(e))
+    return _drop_completion_fields(update)
+
+
 class TodoService:
     """Persistence + caching live in the todos/projects repositories; this layer holds orchestration only."""
 
@@ -613,23 +637,13 @@ class TodoService:
         if update.completed is not None:
             update.completed_at = datetime.now(UTC) if update.completed else None
 
-        # A tracked todo (has a VFS canvas) must complete via tracked_todo_service first —
-        # it archives the canvas and sets the completion fields itself — then those fields
-        # are stripped here so this update doesn't re-trip the guard or clobber vfs_path.
         if update.completed is True:
-            existing = await todo_repository.get(todo_id, user_id=user_id)
-            if existing and existing.vfs_path:
-                try:
-                    from app.services.tracked_todo_service import (  # noqa: PLC0415 -- tracked_todo_service imports this module at module level, so a top-level import back would be circular
-                        tracked_todo_service,
-                    )
+            update = await _complete_if_tracked(todo_id, user_id, update)
 
-                    await tracked_todo_service.complete_tracked_todo(
-                        todo_id, user_id, summary="Completed via UI"
-                    )
-                except Exception as e:
-                    log.warning("tracked_todo.ui_complete_failed", todo_id=todo_id, error=str(e))
-                update = _drop_completion_fields(update)
+        if update.title is not None:
+            # A tracked todo's chat carries its title, as its tab and header name it. First,
+            # so a failure here saves nothing rather than half a rename.
+            await conversation_repository.retitle_todo_chats(user_id, [todo_id], update.title)
 
         async with _watching_refs_to_reopen(
             user_id, [todo_id], reopening=update.completed is False
@@ -696,6 +710,8 @@ class TodoService:
             except Exception as e:
                 log.warning("todo.canvas_embedding_delete_failed", todo_id=todo_id, error=str(e))
 
+        # Before the todo: a failed chat delete keeps the todo, so a retry deletes both.
+        await delete_todo_conversations(user_id, [todo_id])
         if not await todo_repository.delete(todo_id, user_id=user_id):
             raise ValueError(f"Todo {todo_id} not found")
 
@@ -719,6 +735,12 @@ class TodoService:
         if not update.model_fields_set:
             return BulkOperationResponse(
                 success=[], failed=[], total=len(request.todo_ids), message="No updates provided"
+            )
+
+        if update.title is not None:
+            # As in the single update: the chats first, so a failure renames nothing.
+            await conversation_repository.retitle_todo_chats(
+                user_id, request.todo_ids, update.title
             )
 
         completion = _TrackedCompletion(completed=[], failed=[], plain=request.todo_ids)
@@ -775,6 +797,8 @@ class TodoService:
                 except Exception as e:
                     log.warning("todo.canvas_embedding_delete_failed", todo_id=doc.id, error=str(e))
 
+        # As in the single delete: chats first, so a failure keeps their todos.
+        await delete_todo_conversations(user_id, [todo.id for todo in todos_to_delete])
         deleted = await todo_repository.bulk_delete(user_id, todo_ids)
 
         if deleted > 0:

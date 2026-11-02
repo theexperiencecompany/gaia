@@ -136,6 +136,7 @@ export type ServerEventName =
   | "subscription:lapsed"
   | "subscription:renewed"
   | "support:form_submitted"
+  | "todos:chat_opened"
   | "todos:created"
   | "todos:deleted"
   | "todos:inbox_desk_provisioned"
@@ -1449,6 +1450,12 @@ export interface EventProperties {
     "attachment_count": number;
   };
   "thanks:page_viewed": Record<string, never>;
+  "todos:chat_opened": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "todo_id": string;
+  };
   "todos:created": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";

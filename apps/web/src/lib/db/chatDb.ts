@@ -1,3 +1,4 @@
+import type { TodoRunWake } from "@shared/api/generated";
 import Dexie, { type IndexableType, type Table } from "dexie";
 import { EventEmitter } from "events";
 import type { MessageReaction } from "@/config/registries/baseMessageRegistry";
@@ -26,6 +27,8 @@ export interface IConversation {
   // Set while a background run holds a live approval here: the sidebar shows
   // the conversation for its card, and the row lights the approval dot.
   hasLiveApproval?: boolean;
+  // The tracked todo this is the chat of: opened from that todo, never listed.
+  todoId?: string | null;
   // Conversation-level artifact registry: the single source of truth for this
   // conversation's agent-written files. Messages store path references that
   // resolve against this (see FileArtifactSection / chatStore).
@@ -54,6 +57,7 @@ export interface IMessage {
   workflowId?: string | null;
   selectedWorkflow?: WorkflowData | null;
   selectedCalendarEvent?: SelectedCalendarEventData | null;
+  todoRunWake?: TodoRunWake | null;
 
   // Rich content data from BaseMessageData
   tool_data?: TypedToolDataEntry[] | null;

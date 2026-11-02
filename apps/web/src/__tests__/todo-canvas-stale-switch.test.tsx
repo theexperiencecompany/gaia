@@ -38,6 +38,11 @@ vi.mock("@/features/todo/components/shared/SubtaskManager", () => ({
 vi.mock("@/features/todo/components/shared/TodoFieldsRow", () => ({
   default: () => null,
 }));
+vi.mock("@/features/todo/components/OpenTodoChatButton", () => ({
+  OpenTodoChatButton: ({ todoId }: { todoId: string }) => (
+    <div data-testid="open-todo-chat">{todoId}</div>
+  ),
+}));
 
 vi.mock("@/features/todo/api/todoApi", () => ({
   getTodoCanvas: vi.fn(async (todoId: string) => ({
@@ -193,6 +198,34 @@ describe("TodoSidebar workflow section", () => {
     );
 
     expect(screen.getByTestId("workflow-section")).toBeTruthy();
+  });
+});
+
+describe("TodoSidebar Open chat", () => {
+  it("is offered for a tracked todo, whose runs execute in its own chat", () => {
+    render(
+      <TodoSidebar
+        todo={makeTodo("todo-a")}
+        onUpdate={noop}
+        onDelete={noop}
+        projects={[]}
+      />,
+    );
+
+    expect(screen.getByTestId("open-todo-chat").textContent).toBe("todo-a");
+  });
+
+  it("is absent for a classic todo, which never runs and has no chat", () => {
+    render(
+      <TodoSidebar
+        todo={makeTodo("todo-a", { vfs_path: null })}
+        onUpdate={noop}
+        onDelete={noop}
+        projects={[]}
+      />,
+    );
+
+    expect(screen.queryByTestId("open-todo-chat")).toBeNull();
   });
 });
 

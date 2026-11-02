@@ -28,12 +28,14 @@ from app.agents.core.background import (
 from app.agents.core.background.session import (
     ExecutorRun,
     RunKind,
+    TodoRun,
 )
 from app.agents.prompts.comms_prompts import (
     INTERACTIVE_DELIVERY_NOTE,
     PLATFORM_DELIVERY_NOTE,
     SILENCE_NOTE,
 )
+from app.constants.chat import CONVERSATION_MAX_MESSAGES
 from app.constants.executor import (
     EXECUTOR_NARRATION_FAILED_ERROR_MESSAGE,
     EXECUTOR_NARRATION_FAILED_MESSAGE,
@@ -41,10 +43,12 @@ from app.constants.executor import (
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.log_tags import LogTag
+from app.constants.todos import TODO_CONVERSATION_MAX_MESSAGES
 from app.models.chat_models import ConversationSource, MessageModel, ToolDataEntry
 from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
 from app.models.message_models import ReplyToMessageData
 from app.models.user_models import AuthenticatedUser
+from app.models.workflow_models import TriggerType
 from app.services.delivery.chat_channel import InApp
 from shared.py.analytics import Dedupe, UserId
 from shared.py.analytics.catalog.agents import AgentRunCompleted, AgentRunFailed, AgentRunStarted
@@ -487,6 +491,37 @@ class TestPersistCancelledRun:
         narrate.assert_not_awaited()  # the run was stopped — no re-voicing
         ws.assert_not_awaited()  # no re-broadcast of already-streamed data
 
+    @pytest.mark.parametrize(
+        ("todo_run", "cap"),
+        [
+            (None, CONVERSATION_MAX_MESSAGES),
+            (
+                TodoRun(todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO),
+                TODO_CONVERSATION_MAX_MESSAGES,
+            ),
+        ],
+        ids=["chat", "todo-chat"],
+    )
+    async def test_a_stopped_runs_cards_keep_the_conversations_cap(
+        self, todo_run: TodoRun | None, cap: int
+    ) -> None:
+        """Regression: an explicit None for a plain chat switched off the cap every conversation has."""
+        run = replace(
+            _run(RunKind.QUEUED, stream_id="queued_s1", task_id="task-9"), todo_run=todo_run
+        )
+
+        with patch.object(rd, "update_messages", new_callable=AsyncMock) as save:
+            await rd.persist_cancelled_run(run, CARDS)
+
+        assert save.await_args.kwargs["max_messages"] == cap
+
+    async def test_a_bot_reply_keeps_the_conversations_cap(self) -> None:
+        bot_message = MessageModel(type="bot", response="hi")
+        with patch.object(rd, "update_messages", new_callable=AsyncMock) as save:
+            await rd._save_message("conv-1", AuthenticatedUser(user_id=USER_ID), bot_message)
+
+        assert save.await_args.kwargs["max_messages"] == CONVERSATION_MAX_MESSAGES
+
     async def test_no_cards_writes_nothing(self) -> None:
         run = _run(RunKind.QUEUED, stream_id="queued_s1", task_id="task-9")
 
@@ -539,11 +574,11 @@ class TestDeliveryLatency:
             await rd._narrate_result(_run(), "raw", "final", "")
         assert _narration_count("success") == before + 1
 
-    async def test_save_bot_message_records_span(self) -> None:
+    async def test_save_message_records_span(self) -> None:
         before = _persist_count("save_bot_message")
         bot_message = MessageModel(type="bot", response="hi", date="2026-01-01")
         with patch.object(rd, "update_messages", new_callable=AsyncMock):
-            assert await rd._save_bot_message("conv-1", {"user_id": USER_ID}, bot_message) is True
+            assert await rd._save_message("conv-1", {"user_id": USER_ID}, bot_message) is True
         assert _persist_count("save_bot_message") == before + 1
 
     async def test_cancelled_persist_records_exact_seconds(self) -> None:
@@ -559,7 +594,7 @@ class TestDeliveryLatency:
             await rd.persist_cancelled_run(run, CARDS)
         assert REGISTRY.get_sample_value("delivery_persist_seconds_sum", labels) == before + 0.75
 
-    async def test_save_bot_message_records_exact_seconds(self) -> None:
+    async def test_save_message_records_exact_seconds(self) -> None:
         labels = {"op": "save_bot_message"}
         before = REGISTRY.get_sample_value("delivery_persist_seconds_sum", labels) or 0.0
         bot_message = MessageModel(type="bot", response="hi", date="2026-01-01")
@@ -567,7 +602,7 @@ class TestDeliveryLatency:
             patch.object(rd, "update_messages", new_callable=AsyncMock),
             patch.object(rd.time, "perf_counter", side_effect=[7.0, 7.25]),
         ):
-            assert await rd._save_bot_message("conv-1", {"user_id": USER_ID}, bot_message) is True
+            assert await rd._save_message("conv-1", {"user_id": USER_ID}, bot_message) is True
         assert REGISTRY.get_sample_value("delivery_persist_seconds_sum", labels) == before + 0.25
 
     async def test_narration_records_exact_seconds(self) -> None:

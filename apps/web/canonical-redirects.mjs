@@ -90,12 +90,12 @@ const CANONICAL_REDIRECT_PAIRS = [
   ["/automate/zoom-todoist", "/automate/todoist-zoom"],
 ];
 
-const NON_DEFAULT_LOCALE_PREFIXES = ["/de", "/es", "/fr", "/ja", "/ko", "/pt-BR"];
+const NON_DEFAULT_LOCALE_PREFIXES = ["/de", "/es", "/fr", "/ja", "/ko", "/pt-br"];
 
 /**
  * Expand pairs to Next's redirects() entries: one unprefixed row plus one per
  * non-default locale prefix, so a localized request keeps its locale
- * (e.g. /pt-BR/automate/teams-slack → /pt-BR/automate/slack-teams).
+ * (e.g. /pt-br/automate/teams-slack → /pt-br/automate/slack-teams).
  * Permanent = 308.
  */
 export function expandCanonicalRedirects(pairs = CANONICAL_REDIRECT_PAIRS) {

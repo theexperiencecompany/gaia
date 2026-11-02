@@ -52,6 +52,9 @@ interface DownloadSectionLayoutProps {
   extraContent?: ReactNode;
   /** False for a section that starts below the fold on every viewport. */
   imagePriority?: boolean;
+  imageWidth?: number;
+  imageHeight?: number;
+  imageSizes?: string | null;
 }
 
 const CONTENT_ALIGNMENT_CLASSES: Record<"left" | "right" | "center", string> = {
@@ -73,6 +76,9 @@ function DownloadSectionLayout({
   actions,
   extraContent,
   imagePriority = true,
+  imageWidth = 1920,
+  imageHeight = 1080,
+  imageSizes = "(max-width: 768px) 100vw, 512px",
 }: DownloadSectionLayoutProps) {
   return (
     <section className="relative z-10 w-full max-w-5xl px-4 sm:px-6 py-16">
@@ -87,6 +93,9 @@ function DownloadSectionLayout({
             alt={imageAlt}
             className={imageClassName}
             priority={imagePriority}
+            sizes={imageSizes}
+            width={imageWidth}
+            height={imageHeight}
           />
         </div>
 
@@ -308,12 +317,15 @@ function MobileSection() {
   return (
     <DownloadSectionLayout
       webpSrc="/images/screenshots/phone_dock.webp"
-      pngSrc="/images/screenshots/phone_dock.png"
+      pngSrc="/images/screenshots/phone_dock.webp"
       imageAlt="GAIA Mobile App"
       imagePosition="right"
       imageClassName="object-cover object-center"
       contentAlignment="left"
       imagePriority={false}
+      imageWidth={512}
+      imageHeight={288}
+      imageSizes={null}
       chip={
         <Chip variant="flat" color="warning">
           Waitlist

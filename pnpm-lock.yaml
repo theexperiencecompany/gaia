@@ -10,7 +10,8 @@ overrides:
   zod: 4.6.7
   fast-xml-parser@<4.5.5: 4.5.5
   fast-xml-parser@>=5.0.0 <5.7.0: 5.7.0
-  node-forge@<1.4.0: 1.4.0
+  decode-uri-component@<0.5.1: 0.5.1
+  node-forge@<1.4.1: 1.4.1
   minimatch@<3.1.4: 3.1.4
   minimatch@>=8.0.0 <8.0.6: 8.0.6
   minimatch@>=9.0.0 <9.0.7: 9.0.7
@@ -22,7 +23,7 @@ overrides:
   glob@>=10.2.0 <10.5.0: 10.5.0
   dompurify@<3.4.17: 3.4.17
   axios@<1.20.0: 1.20.0
-  follow-redirects@<1.16.1: 1.16.1
+  follow-redirects@<1.16.2: 1.16.2
   markdown-it@<14.3.3: 14.3.3
   launch-editor@<2.14.2: 2.14.2
   picomatch@<2.3.2: 2.3.2
@@ -60,8 +61,8 @@ overrides:
   js-yaml@>=3.0.0 <3.15.2: 3.15.2
   js-yaml@>=4.0.0 <4.3.2: 4.3.2
   nanoid@<3.3.18: 3.3.18
-  joi@>=17.0.0 <17.13.7: 17.13.7
-  joi@>=18.0.0 <18.2.6: 18.2.6
+  joi@<17.13.9: 17.13.9
+  joi@>=18.0.0 <18.3.1: 18.3.1
   '@smithy/config-resolver@<4.4.0': 4.4.0
   '@tootallnate/once@<3.0.1': 3.0.1
   proxy-addr@<2.0.8: 2.0.8
@@ -71,7 +72,7 @@ overrides:
   prosemirror-view@<1.42.6: 1.42.6
   prosemirror-model: 1.25.12
   markdown-it@>=14.0.0 <14.3.3: 14.3.3
-  follow-redirects@>=1.16.0 <1.16.1: 1.16.1
+  follow-redirects@>=1.16.0 <1.16.2: 1.16.2
   body-parser@>=2.0.0 <2.4.0: 2.4.0
 
 patchedDependencies:
@@ -11861,9 +11862,9 @@ packages:
   decode-named-character-reference@1.3.0:
     resolution: {integrity: sha512-GtpQYB283KrPp6nRw50q3U9/VfOutZOe103qlN7BPP6Ad27xYnOIWv4lPzo8HCAL+mMZofJ9KEy30fq6MfaK6Q==}
 
-  decode-uri-component@0.2.2:
-    resolution: {integrity: sha512-FqUYQ+8o158GyGTrMFJms9qh3CqTKvAqgqsTnkLI8sKu0028orqBhxNMFkFen0zGyg6epACD32pjVk58ngIErQ==}
-    engines: {node: '>=0.10'}
+  decode-uri-component@0.5.1:
+    resolution: {integrity: sha512-vWHQkXgg2cE3BB4rR0c+PYw9BCQzLoNIRMI7AunIkZst74tw/vpPp7VLoYtsR/cy1f55g3XDWUslfeCZjiZJyA==}
+    engines: {node: '>=14.16'}
 
   decompress-response@6.0.0:
     resolution: {integrity: sha512-aW35yZM6Bb/4oJlZncMH2LCoZtJXTRxES17vE3hoRiowU2kWHaJKFkSBDnDR+cm9J+9QhXmREyIfv0pji9ejCQ==}
@@ -12948,8 +12949,8 @@ packages:
   foldline@1.1.0:
     resolution: {integrity: sha512-9SheyADS50hjvFYjFJ3OB/GlDz2mD1T2CHd7auIk4Uto5YYWPBcw8iYo3F+gENJ+/SOeH9tT0loHZSqlUlumTA==}
 
-  follow-redirects@1.16.1:
-    resolution: {integrity: sha512-FNvFGzoMLWmE6Yj9spb/zjd7yiNCHiAW9/Tg9CXrQ8wuu32HtlJOwWO11OJafl5FfY3DxTdQ0vj42zU1kvv5jg==}
+  follow-redirects@1.16.2:
+    resolution: {integrity: sha512-/kVP2U8z596Ia0gwFrwyIeo74ta5aVmSeU1FfAUMAmcEP5EP7zydmag3SLiN64NaRKef3lxsq7i/g7ltJQDGow==}
     engines: {node: '>=4.0'}
     peerDependencies:
       debug: '*'
@@ -13864,11 +13865,11 @@ packages:
   jju@1.4.0:
     resolution: {integrity: sha512-8wb9Yw966OSxApiCt0K3yNJL8pnNeIv+OEq2YMidz4FKP6nonSRoOXc80iXY4JaN2FC11B9qsNmDsm+ZOfMROA==}
 
-  joi@17.13.7:
-    resolution: {integrity: sha512-MF80Dm5Y2veNy8QWVx9Bj3ui4mo7+VPSPsR1M+oaHXV0Gx6zGX9a2F+OZG3Blby9tOlzU9Rs5FUimlEhbKtfnQ==}
+  joi@17.13.9:
+    resolution: {integrity: sha512-llFCT2rVtfwgBCaIqxtjim+iHqrgss4ONiGSYiiGH9jnjWq90ppSRffqmqKvwpa8W+YfILyQV6XyGcegXX2T4g==}
 
-  joi@18.2.6:
-    resolution: {integrity: sha512-8MD5jy4xIcTQi/pHbc10auxclVoJS3pPNiLaTNfW0eh90GbOPU+Y2AjDQnuQsUcHUGNJxqTMmAW6Ho895RaKPA==}
+  joi@18.3.1:
+    resolution: {integrity: sha512-mV9M4Llh4va3NT90p7KBtQhoZqjs8xLX7EWYE4y/GG3yLF6REbIBEHSUb0UX1JXRht2w5tiLSsvmpYc5akiqIw==}
     engines: {node: '>= 20'}
 
   jose@6.2.3:
@@ -15301,8 +15302,8 @@ packages:
       encoding:
         optional: true
 
-  node-forge@1.4.0:
-    resolution: {integrity: sha512-LarFH0+6VfriEhqMMcLX2F7SwSXeWwnEAJEsYm5QKWchiVYVvJyV9v7UDvUv+w5HO23ZpQTXDv/GxdDdMyOuoQ==}
+  node-forge@1.4.1:
+    resolution: {integrity: sha512-w5/MfWaeMrpR/5ba6fZyAUTLSuE6aYz7H/3cYrqwZEmf5eQS3IaaLgJt4MBv7HglGFWmV22K8h4U18RJQmw/ow==}
     engines: {node: '>= 6.13.0'}
 
   node-gyp-build@4.8.4:
@@ -21491,7 +21492,7 @@ snapshots:
       glob: 13.0.6
       lan-network: 0.2.1
       multitars: 1.0.2
-      node-forge: 1.4.0
+      node-forge: 1.4.1
       npm-package-arg: 11.0.3
       ora: 3.4.0
       picomatch: 4.0.5
@@ -21528,7 +21529,7 @@ snapshots:
 
   '@expo/code-signing-certificates@0.0.6':
     dependencies:
-      node-forge: 1.4.0
+      node-forge: 1.4.1
 
   '@expo/config-plugins@57.0.10(typescript@7.0.2)':
     dependencies:
@@ -26752,7 +26753,7 @@ snapshots:
       cosmiconfig: 9.0.2(typescript@7.0.2)
       deepmerge: 4.3.1
       fast-glob: 3.3.3
-      joi: 17.13.7
+      joi: 17.13.9
       picocolors: 1.1.1
     transitivePeerDependencies:
       - typescript
@@ -26829,7 +26830,7 @@ snapshots:
 
   '@react-native-community/cli-types@20.2.0':
     dependencies:
-      joi: 17.13.7
+      joi: 17.13.9
 
   '@react-native-community/cli@20.2.0(typescript@7.0.2)':
     dependencies:
@@ -30368,7 +30369,7 @@ snapshots:
 
   axios@1.20.0:
     dependencies:
-      follow-redirects: 1.16.1
+      follow-redirects: 1.16.2
       form-data: 4.0.6
       https-proxy-agent: 5.0.1
       proxy-from-env: 2.1.0
@@ -31581,7 +31582,7 @@ snapshots:
     dependencies:
       character-entities: 2.0.2
 
-  decode-uri-component@0.2.2: {}
+  decode-uri-component@0.5.1: {}
 
   decompress-response@6.0.0:
     dependencies:
@@ -33003,7 +33004,7 @@ snapshots:
 
   foldline@1.1.0: {}
 
-  follow-redirects@1.16.1: {}
+  follow-redirects@1.16.2: {}
 
   fontfaceobserver@2.3.0: {}
 
@@ -33614,7 +33615,7 @@ snapshots:
   http-proxy@1.18.1:
     dependencies:
       eventemitter3: 4.0.7
-      follow-redirects: 1.16.1
+      follow-redirects: 1.16.2
       requires-port: 1.0.0
     transitivePeerDependencies:
       - debug
@@ -34052,7 +34053,7 @@ snapshots:
 
   jju@1.4.0: {}
 
-  joi@17.13.7:
+  joi@17.13.9:
     dependencies:
       '@hapi/hoek': 9.3.0
       '@hapi/topo': 5.1.0
@@ -34060,7 +34061,7 @@ snapshots:
       '@sideway/formula': 3.0.1
       '@sideway/pinpoint': 2.0.0
 
-  joi@18.2.6:
+  joi@18.3.1:
     dependencies:
       '@hapi/address': 5.1.1
       '@hapi/formula': 3.0.2
@@ -36131,7 +36132,7 @@ snapshots:
     optionalDependencies:
       encoding: 0.1.13
 
-  node-forge@1.4.0: {}
+  node-forge@1.4.1: {}
 
   node-gyp-build@4.8.4:
     optional: true
@@ -37303,7 +37304,7 @@ snapshots:
 
   query-string@7.1.3:
     dependencies:
-      decode-uri-component: 0.2.2
+      decode-uri-component: 0.5.1
       filter-obj: 1.1.0
       split-on-first: 1.1.0
       strict-uri-encode: 2.0.0
@@ -39919,7 +39920,7 @@ snapshots:
   wait-on@8.0.5:
     dependencies:
       axios: 1.20.0
-      joi: 18.2.6
+      joi: 18.3.1
       lodash: 4.18.1
       minimist: 1.2.8
       rxjs: 7.8.2

@@ -40,6 +40,7 @@ from app.agents.prompts.comms_prompts import (
     PLATFORM_DELIVERY_NOTE,
     SILENCE_NOTE,
 )
+from app.constants.chat import CONVERSATION_MAX_MESSAGES
 from app.constants.comms import CommsDirectiveKind
 from app.constants.executor import (
     EXECUTOR_NARRATION_FAILED_ERROR_MESSAGE,
@@ -47,6 +48,7 @@ from app.constants.executor import (
 )
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.log_tags import LogTag
+from app.constants.todos import TODO_CONVERSATION_MAX_MESSAGES
 from app.constants.websocket import WEBSOCKET_BROADCAST_RETRY_DELAY_SECONDS
 from app.core.websocket_manager import websocket_manager
 from app.db.repositories.conversations import conversation_repository
@@ -59,7 +61,7 @@ from app.models.chat_models import (
     UpdateMessagesRequest,
 )
 from app.models.hil_models import HILApprovalStatus
-from app.models.message_models import ReplyToMessageData
+from app.models.message_models import ReplyToMessageData, TodoRunWake
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
 from app.services.conversation_service import update_messages
@@ -89,9 +91,10 @@ class _DeliveryTarget:
     conversation_id: str
     task_id: str | None
     emit_task_id: bool
-    show_reply_quote: bool
-    user_message_id: str | None
-    user_msg_content: str
+    # No reply quote unless a run answers a user message it can quote.
+    show_reply_quote: bool = False
+    user_message_id: str | None = None
+    user_msg_content: str = ""
 
 
 @dataclass(frozen=True)
@@ -115,18 +118,87 @@ async def deliver_result(
     """Narrate a finished executor run through comms, persist it, and deliver it.
 
     Returns (narrated_text, message_id); (None, None) on failure or for a tracked
-    todo's own run, which has no conversation and goes to todo delivery. A REACT
-    gives (None, message_id). The message routes over EXACTLY ONE transport
-    chosen by the conversation's source (workflow notification, bot API, or WS).
+    todo's own run, whose report stays in its todo's chat and whose message goes
+    through todo delivery. A REACT gives (None, message_id). The message routes over
+    EXACTLY ONE transport chosen by the conversation's source.
     """
     try:
         if run.todo_run is not None:
+            await _record_todo_run_report(run, result_text, result_type, tool_data)
             await deliver_todo_run_result(run, run.todo_run, result_text, result_type)
             return None, None
         return await _narrate_and_deliver(run, result_text, result_type, tool_data, returned_note)
     except Exception as e:  # delivery is best-effort, never propagates
         log.error(f"{LogTag.AGENT} Background notification delivery failed", error=str(e))
         return None, None
+
+
+async def _record_todo_run_report(
+    run: ExecutorRun,
+    result_text: str,
+    result_type: str,
+    tool_data: list[ToolDataEntry] | None,
+) -> None:
+    """Save the executor's own report and cards in the todo's chat, under the placeholder its stream rendered.
+
+    A failed save leaves delivery to go ahead: the user's message does not depend on the record."""
+    failed = result_type == "error"
+    bot_message = MessageModel(
+        type="bot",
+        response="" if failed else result_text,
+        error=result_text if failed else None,
+        date=datetime.now(UTC).isoformat(),
+        message_id=run.render_message_id,
+        tool_data=tool_data or None,
+    )
+    if not await _save_message(
+        run.conversation_id, run.user, bot_message, max_messages=TODO_CONVERSATION_MAX_MESSAGES
+    ):
+        return
+    await _broadcast_bot_message(
+        target=_DeliveryTarget(
+            user_id=run.user.user_id,
+            conversation_id=run.conversation_id,
+            task_id=run.task_id,
+            emit_task_id=True,
+        ),
+        bot_message=bot_message,
+        notification_text=bot_message.response,
+        tool_data=bot_message.tool_data,
+    )
+
+
+async def record_todo_run_wake(
+    conversation_id: str, user: AuthenticatedUser, wake: TodoRunWake
+) -> None:
+    """Lead a tracked todo's run with what woke it, on the user's side of its chat.
+
+    Pushed as conversation.new_message so an open chat shows it live; a failed save lets the run go ahead."""
+    message = MessageModel(
+        type="user",
+        response="",
+        date=datetime.now(UTC).isoformat(),
+        message_id=str(uuid4()),
+        todo_run_wake=wake,
+    )
+    if not await _save_message(
+        conversation_id, user, message, max_messages=TODO_CONVERSATION_MAX_MESSAGES
+    ):
+        return
+    await _broadcast_message(
+        user.user_id,
+        {
+            "type": "conversation.new_message",
+            "conversation_id": conversation_id,
+            "message": {
+                "type": "user",
+                "response": "",
+                "message_id": message.message_id,
+                "date": message.date,
+                "todo_run_wake": wake.model_dump(mode="json"),
+            },
+        },
+    )
 
 
 async def persist_cancelled_run(run: ExecutorRun, tool_data: list[ToolDataEntry]) -> None:
@@ -160,6 +232,10 @@ async def persist_cancelled_run(run: ExecutorRun, tool_data: list[ToolDataEntry]
                 messages=[bot_message],
             ),
             user=run.user,
+            # A tracked todo's chat is reused by every run, so a stopped one is capped too.
+            max_messages=TODO_CONVERSATION_MAX_MESSAGES
+            if run.todo_run
+            else CONVERSATION_MAX_MESSAGES,
         )
     except HTTPException as e:
         if e.status_code == 404:  # conversation deleted mid-run — expected, not an error
@@ -211,7 +287,7 @@ async def deliver_message_to_conversation(
     )
     bot_message.message_id = str(uuid4())
 
-    if not await _save_bot_message(conversation_id, user, bot_message):
+    if not await _save_message(conversation_id, user, bot_message):
         return None
 
     source = await _get_conversation_source(conversation_id, user_id)
@@ -220,9 +296,6 @@ async def deliver_message_to_conversation(
         conversation_id=conversation_id,
         task_id=None,
         emit_task_id=False,
-        show_reply_quote=False,
-        user_message_id=None,
-        user_msg_content="",
     )
     if is_bot_platform(source):
         delivered = await deliver_message_to_platform(
@@ -336,7 +409,7 @@ async def _narrate_and_deliver(
     fresh_append, tool_data = await _resolve_append_mode(
         run, bot_message, tool_data, is_hil_resume=is_hil_resume
     )
-    if fresh_append and not await _save_bot_message(run.conversation_id, run.user, bot_message):
+    if fresh_append and not await _save_message(run.conversation_id, run.user, bot_message):
         return None, None
 
     # The bot message is already saved above, for the notification's "View Results".
@@ -651,18 +724,23 @@ async def _resolve_append_mode(
     return True, tool_data
 
 
-async def _save_bot_message(
-    conversation_id: str, user: AuthenticatedUser, bot_message: MessageModel
+async def _save_message(
+    conversation_id: str,
+    user: AuthenticatedUser,
+    message: MessageModel,
+    *,
+    max_messages: int = CONVERSATION_MAX_MESSAGES,
 ) -> bool:
-    """Append the bot message to the conversation; False when it wasn't saved."""
+    """Append the message, keeping the conversation's newest max_messages; False when it wasn't saved."""
     persist_start = time.perf_counter()
     try:
         await update_messages(
             UpdateMessagesRequest(
                 conversation_id=conversation_id,
-                messages=[bot_message],
+                messages=[message],
             ),
             user=user,
+            max_messages=max_messages,
         )
     except HTTPException as e:
         if e.status_code == 404:  # conversation deleted mid-run — expected, not an error
@@ -1146,6 +1224,8 @@ async def _broadcast_bot_message(
         "date": bot_message.date,
         "kind": bot_message.kind.value,
     }
+    if bot_message.error:
+        ws_payload["error"] = bot_message.error
     # An emoji-ack renders as a reaction badge on the message it answers,
     # not a new bubble — the client needs the target GAIA message id.
     if bot_message.kind is MessageKind.EMOJI_ACK and bot_message.reacts_to_message_id:
