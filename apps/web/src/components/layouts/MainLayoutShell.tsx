@@ -54,11 +54,58 @@ const HeaderSidebarTrigger = ({ className }: HeaderSidebarTriggerProps) => {
   );
 };
 
+interface ShellTitleBarProps {
+  collapsed: boolean;
+  /** The sidebar trigger and route header, mounted only with the paid session. */
+  showControls: boolean;
+}
+
+const ShellTitleBar = ({ collapsed, showControls }: ShellTitleBarProps) => {
+  const { isElectron } = useElectron();
+  const { isMac } = usePlatform();
+
+  // On macOS desktop, the top-left corner belongs to the hiddenInset window
+  // controls once the sidebar collapses (offcanvas), so the re-open trigger
+  // must clear them horizontally.
+  const clearTrafficLights = isElectron && isMac && collapsed;
+
+  return (
+    <header
+      className={cn(
+        // Desktop only: the 44px band centres the 36px controls at y=22,
+        // the macOS hiddenInset traffic-light centre (y=16, 12px tall).
+        isElectron
+          ? "flex h-11 shrink-0 items-center justify-between px-2"
+          : "flex shrink-0 items-center justify-between p-2",
+        clearTrafficLights && "pl-20",
+        // Collapsed sidebar no longer supplies the visual separation,
+        // so the top bar takes the border itself.
+        isElectron && collapsed && "border-b border-zinc-800",
+        // Makes the top bar the macOS hiddenInset drag region; buttons
+        // opt back out via the .electron-drag descendant rule in globals.css.
+        isElectron && isMac && "electron-drag",
+      )}
+    >
+      {showControls && (
+        <>
+          <HeaderSidebarTrigger
+            // The collapsed border eats 1px of the header's content box,
+            // which centres the 36px trigger 0.5px high (21.5 vs the
+            // lights' 22). Nudge it back down so it sits pixel-perfect.
+            className={
+              isElectron && collapsed ? "translate-y-[0.5px]" : undefined
+            }
+          />
+          <HeaderManager />
+        </>
+      )}
+    </header>
+  );
+};
+
 export function MainLayoutShell({ children }: { children: ReactNode }) {
   const { isOpen, isMobileOpen, setOpen, setMobileOpen } = useLayoutSidebar();
   const isMobile = useIsMobile();
-  const { isElectron } = useElectron();
-  const { isMac } = usePlatform();
   const [defaultOpen, setDefaultOpen] = useState(true);
   const dragRef = useRef<HTMLDivElement>(null);
   const billingEnabled = useDeployment().bills;
@@ -94,11 +141,6 @@ export function MainLayoutShell({ children }: { children: ReactNode }) {
 
   // Get the current open state based on mobile/desktop
   const currentOpen = isMobile ? isMobileOpen : isOpen;
-
-  // On macOS desktop, the top-left corner belongs to the hiddenInset window
-  // controls once the sidebar collapses (offcanvas), so the re-open trigger
-  // must clear them horizontally.
-  const clearTrafficLights = isElectron && isMac && !currentOpen;
 
   // @warning: Removing the `target` option from useDrag will cause the HeroUI Buttons to not work properly.
   // For more details, see: https://github.com/hey-gaia/gaia/issues/44
@@ -151,38 +193,10 @@ export function MainLayoutShell({ children }: { children: ReactNode }) {
                 {/* Tapping anywhere outside the mobile sidebar dismisses it via
                   the Sheet's own modal overlay (see ui/sidebar), so the shell
                   needs no click handler of its own here. */}
-                <header
-                  className={cn(
-                    // Desktop only: the 44px band centres the 36px controls at y=22,
-                    // the macOS hiddenInset traffic-light centre (y=16, 12px tall).
-                    isElectron
-                      ? "flex h-11 shrink-0 items-center justify-between px-2"
-                      : "flex shrink-0 items-center justify-between p-2",
-                    clearTrafficLights && "pl-20",
-                    // Collapsed sidebar no longer supplies the visual separation,
-                    // so the top bar takes the border itself.
-                    isElectron && !currentOpen && "border-b border-zinc-800",
-                    // Makes the top bar the macOS hiddenInset drag region; buttons
-                    // opt back out via the .electron-drag descendant rule in globals.css.
-                    isElectron && isMac && "electron-drag",
-                  )}
-                >
-                  {appSessionEnabled && (
-                    <>
-                      <HeaderSidebarTrigger
-                        // The collapsed border eats 1px of the header's content box,
-                        // which centres the 36px trigger 0.5px high (21.5 vs the
-                        // lights' 22). Nudge it back down so it sits pixel-perfect.
-                        className={
-                          isElectron && !currentOpen
-                            ? "translate-y-[0.5px]"
-                            : undefined
-                        }
-                      />
-                      <HeaderManager />
-                    </>
-                  )}
-                </header>
+                <ShellTitleBar
+                  collapsed={!currentOpen}
+                  showControls={appSessionEnabled}
+                />
                 {/* Below the title bar so a visible banner never shifts the
                   window controls out of alignment with the traffic lights. */}
                 <StatusBanner />
