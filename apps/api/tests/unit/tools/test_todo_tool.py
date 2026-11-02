@@ -148,6 +148,51 @@ class TestCreateTodo:
         assert owner == FAKE_USER_ID
 
     @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.TodoService.create_todo", new_callable=AsyncMock)
+    @patch(f"{MODULE}.TodoService.create_todo_with_workflow", new_callable=AsyncMock)
+    async def test_background_run_creates_todo_without_generating_a_workflow(
+        self,
+        mock_with_workflow: AsyncMock,
+        mock_plain_create: AsyncMock,
+        mock_writer_factory: MagicMock,
+    ) -> None:
+        """Regression: a scheduled Notion sync's 319 todos each spawned an LLM-generated workflow."""
+        mock_writer_factory.return_value = _writer_mock()
+        mock_plain_create.return_value = _make_todo_response(title="Synced row")
+        config = _make_config()
+        config["configurable"]["execution_mode"] = "background"
+
+        from app.agents.tools.todo_tool import create_todo
+
+        result = await create_todo.coroutine(config=config, title="Synced row")
+
+        assert result["error"] is None
+        mock_with_workflow.assert_not_awaited()
+        created, owner = mock_plain_create.await_args.args
+        assert (created.title, owner) == ("Synced row", FAKE_USER_ID)
+
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.TodoService.create_todo", new_callable=AsyncMock)
+    @patch(f"{MODULE}.TodoService.create_todo_with_workflow", new_callable=AsyncMock)
+    async def test_interactive_run_still_generates_the_todo_workflow(
+        self,
+        mock_with_workflow: AsyncMock,
+        mock_plain_create: AsyncMock,
+        mock_writer_factory: MagicMock,
+    ) -> None:
+        mock_writer_factory.return_value = _writer_mock()
+        mock_with_workflow.return_value = _make_todo_response(title="Call the bank")
+        config = _make_config()
+        config["configurable"]["execution_mode"] = "interactive"
+
+        from app.agents.tools.todo_tool import create_todo
+
+        await create_todo.coroutine(config=config, title="Call the bank")
+
+        mock_with_workflow.assert_awaited_once()
+        mock_plain_create.assert_not_awaited()
+
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.TodoService.create_todo_with_workflow", new_callable=AsyncMock)
     async def test_service_failure_returns_error(
         self,

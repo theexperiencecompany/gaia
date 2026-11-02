@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any, Literal, TypedDict
 
 from fastapi import UploadFile
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.db.repositories.base import UserScopedDocument
 from app.schemas.common import ResponseModel
@@ -206,6 +206,12 @@ class GmailFetchEmailsData(BaseModel):
 
     messages: list[dict[str, Any]] = Field(default_factory=list)
     next_page_token: str | None = Field(default=None, alias="nextPageToken")
+
+    @field_validator("next_page_token")
+    @classmethod
+    def _last_page_has_no_token(cls, token: str | None) -> str | None:
+        """Composio marks the last page with "", which the API contract spells None."""
+        return token or None
 
 
 class GmailMessageResource(BaseModel):

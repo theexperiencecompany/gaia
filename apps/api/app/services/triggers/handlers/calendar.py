@@ -7,6 +7,7 @@ Handles all calendar-specific trigger logic including:
 - Event-to-workflow matching
 """
 
+from collections.abc import Mapping
 from typing import Any, ClassVar
 
 from app.constants.log_tags import LogTag
@@ -53,6 +54,19 @@ class CalendarTriggerHandler(TriggerHandler):
     @property
     def event_types(self) -> set[str]:
         return self.SUPPORTED_EVENTS
+
+    def occurrence_key(self, event_type: str, data: Mapping[str, object]) -> str | None:
+        """Key a starting-soon event by event and start, so one meeting fires once across calendars.
+
+        "All calendars" subscribes every calendar, and a shared meeting arrives once per calendar
+        it sits on. The start is part of the key so a rescheduled meeting reminds again.
+        """
+        if event_type != self.TRIGGER_TO_COMPOSIO["calendar_event_starting_soon"]:
+            return None
+        event = GoogleCalendarEventStartingSoonPayload.model_validate(data)
+        if not event.event_id:
+            return None
+        return f"{event.event_id}:{event.start_time or event.start_timestamp}"
 
     async def register(
         self,
