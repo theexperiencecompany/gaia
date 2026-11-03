@@ -79,9 +79,11 @@ function stubApi() {
 describe("gaia status on a domain install", () => {
   it("shows the certificate: why it isn't ready, and nothing to fix once it is", async () => {
     const install = mkdtempSync(path.join(tmpdir(), "gaia-status-domain-"));
-    mkdirSync(path.join(install, "infra", "docker"), { recursive: true });
+    mkdirSync(path.join(install, "packages", "cli", "selfhost"), {
+      recursive: true,
+    });
     writeFileSync(
-      path.join(install, "infra", "docker", ".env"),
+      path.join(install, "packages", "cli", "selfhost", ".env"),
       "WEB_HOST_PORT=80\nHTTPS_HOST_PORT=443\nGAIA_DOMAIN=gaia.example.com\n",
     );
     findInstallRoot.mockReturnValue(install);

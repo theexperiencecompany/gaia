@@ -9,9 +9,9 @@ set -euo pipefail
 #   3. validate the extracted rule file with promtool check rules
 #   4. prove every rule fires and stays quiet with promtool test rules
 #
-# The tool versions match what production and CI use. CI installs pint and
-# promtool with `go install` and runs the identical commands; this script uses
-# the same images so it works on a machine without a Go toolchain.
+# The tool versions are tools/alert-rules/tool-versions.env, what production
+# runs. CI runs this script with the pinned binaries installed; elsewhere it
+# runs the same versions' images, so it works on a machine without them.
 #
 # Usage:
 #   tools/alert-rules/verify.sh
@@ -19,14 +19,27 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
-if ! command -v docker >/dev/null 2>&1; then
-  echo "error: docker is required for the pint/promtool stages of this script" >&2
-  echo "       (CI installs the same tool versions with 'go install' instead)" >&2
-  exit 1
-fi
+# shellcheck source=tools/alert-rules/tool-versions.env
+source tools/alert-rules/tool-versions.env
 
-PINT_IMAGE="ghcr.io/cloudflare/pint:0.87.0"
-PROMETHEUS_IMAGE="prom/prometheus:v3.1.0"
+# The binary on PATH when there is one (CI installs the pinned release with
+# `scripts/ci/audit.sh alert-rule-tools`), else the same version's image.
+run_tool() {
+  local tool="$1"
+  shift
+  if type -P "$tool" >/dev/null; then
+    "$tool" "$@"
+    return
+  fi
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "error: $tool is not on PATH and docker is not available to run its image" >&2
+    exit 1
+  fi
+  case "$tool" in
+    pint) docker run --rm -v "$PWD:/work" -w /work "ghcr.io/cloudflare/pint:$PINT_VERSION" pint "$@" ;;
+    promtool) docker run --rm --entrypoint promtool -v "$PWD:/work" -w /work "prom/prometheus:v$PROMETHEUS_VERSION" "$@" ;;
+  esac
+}
 
 RULES="tools/alert-rules/gaia-rules.yaml"
 TESTS="tools/alert-rules/tests"
@@ -39,21 +52,14 @@ uv run --no-build tools/alert-rules/extract_promql.py -o "$RULES" --test-dir "$T
 echo "extracted + coverage-checked -> $RULES"
 
 echo "==> pint (offline checks)"
-docker run --rm -v "$PWD:/work" -w /work "$PINT_IMAGE" pint \
-  --no-color --offline --config /work/config/pint.hcl lint "/work/$RULES"
+run_tool pint --no-color --offline --config config/pint.hcl lint "$RULES"
 
 echo "==> promtool check rules"
-docker run --rm --entrypoint promtool -v "$PWD:/work" -w /work "$PROMETHEUS_IMAGE" \
-  check rules "$RULES"
+run_tool promtool check rules "$RULES"
 
 echo "==> promtool test rules"
-# Expand on the host and remap to the container path; promtool takes explicit
-# file arguments, and rule_files inside each test is relative to the test file.
-test_args=()
-for test_file in "$TESTS"/*.yaml; do
-  test_args+=("/work/$test_file")
-done
-docker run --rm --entrypoint promtool -v "$PWD:/work" -w /work "$PROMETHEUS_IMAGE" \
-  test rules "${test_args[@]}"
+# rule_files inside each test is relative to the test file, so paths stay repo-relative.
+test_files=("$TESTS"/*.yaml)
+run_tool promtool test rules "${test_files[@]}"
 
-echo "OK: all ${#test_args[@]} alert-rule test files pass"
+echo "OK: all ${#test_files[@]} alert-rule test files pass"

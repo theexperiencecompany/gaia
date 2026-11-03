@@ -1,7 +1,7 @@
 /**
  * The chat bots a self-host install can run, and the env file they read.
  *
- * Each enabled bot is one compose override (infra/docker/docker-compose.bot-<bot>.yml)
+ * Each enabled bot is one compose override (packages/cli/selfhost/docker-compose.bot-<bot>.yml)
  * and one entry in the CLI config. apps/bots/.env holds the platform tokens,
  * the log-hash secret generated once, and the values a bot needs from
  * apps/api/.env, which are copied again on every start so a changed domain or
@@ -79,7 +79,7 @@ export function botContainerState(
   return { health: healthy ? "healthy" : "starting", detail };
 }
 
-/** The compose override (in infra/docker) that adds a bot to the stack. */
+/** The compose override (in the self-host folder) that adds a bot to the stack. */
 export function botComposeFile(bot: SelfhostBot): string {
   return `docker-compose.${botService(bot)}.yml`;
 }

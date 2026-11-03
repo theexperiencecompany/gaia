@@ -26,7 +26,6 @@ from app.agents.tools.execute.dispatch import ToolExecutionResult
 from app.api.v1.endpoints.sandbox_execute import SandboxExecuteRequest, sandbox_execute
 from app.config.settings import settings
 from app.constants.execute import SANDBOX_EXECUTE_MAX_CALLS_PER_TOKEN
-from app.services.sandbox import execute_token
 from app.services.sandbox.execute_token import ExecuteGrant, mint_execute_token
 from app.services.share_service import mint_share_url, redeem_share_grant
 from app.utils.errors import AppError
@@ -45,9 +44,8 @@ def _share_secret(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture
-def _exec_secret() -> None:
-    with patch.object(execute_token.settings, "SANDBOX_EXECUTE_TOKEN_SECRET", EXEC_SECRET):
-        yield
+def _exec_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "SANDBOX_EXECUTE_TOKEN_SECRET", EXEC_SECRET)
 
 
 @pytest.fixture

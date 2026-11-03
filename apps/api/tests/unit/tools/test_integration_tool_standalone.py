@@ -1,13 +1,12 @@
 """Unit tests for app.agents.tools.integration_tool."""
 
 from collections.abc import Iterator
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
+from langchain_core.runnables import RunnableConfig
 import pytest
 
 from app.agents.tools.integration_tool import (
-    build_search_patterns,
     check_integrations_status,
     connect_integration,
     list_integrations,
@@ -15,6 +14,7 @@ from app.agents.tools.integration_tool import (
 )
 from app.constants.integrations import MAX_SUGGESTED_FOR_LLM, ConnectMode
 from app.db.repositories.user_integrations import user_integration_repository
+from app.helpers.integration_helpers import build_search_patterns
 from tests.helpers import captured_wide_event
 
 # ---------------------------------------------------------------------------
@@ -35,11 +35,11 @@ FAKE_USER_ID = "507f1f77bcf86cd799439011"
 MODULE = "app.agents.tools.integration_tool"
 
 
-def _cfg(user_id: str = FAKE_USER_ID) -> dict[str, Any]:
+def _cfg(user_id: str = FAKE_USER_ID) -> RunnableConfig:
     return {"configurable": {"user_id": user_id}}
 
 
-def _cfg_no_user() -> dict[str, Any]:
+def _cfg_no_user() -> RunnableConfig:
     return {"configurable": {}}
 
 
@@ -115,7 +115,7 @@ def _custom_doc(
     return doc
 
 
-async def _list(config: dict[str, Any], search: str | None = None):
+async def _list(config: RunnableConfig, search: str | None = None):
     return await list_integrations.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
         config=config, search_public_query=search
     )

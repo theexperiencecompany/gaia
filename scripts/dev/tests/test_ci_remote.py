@@ -1434,6 +1434,22 @@ def test_fail_fast_on_a_green_run_waits_for_it_to_finish_and_exits_zero(
     assert fake.check_polls == 3
 
 
+def test_a_watch_started_before_the_run_registers_any_check_keeps_waiting(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression: right after a push the head had no checks yet, and the watch exited green on it."""
+    fake = wire(SequencedGh([[], [], [PENDING_CHECK], [PASSED_CHECK]]))
+    assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"]) == 0
+    assert fake.check_polls == 4
+
+
+def test_a_watch_that_runs_out_of_time_is_not_green(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    wire(SequencedGh([[PENDING_CHECK]]))
+    assert run_cli(monkeypatch, ["--watch", "--no-stack", "--max-wait", "1"]) == 1
+
+
 def test_fail_fast_without_watch_is_a_usage_error(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
