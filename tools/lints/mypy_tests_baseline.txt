@@ -43,8 +43,6 @@ apps/api/tests/e2e/test_executor_graph.py	return-value
 apps/api/tests/e2e/test_executor_interaction_scale.py	return-value
 apps/api/tests/e2e/test_executor_interjection.py	return-value
 apps/api/tests/e2e/test_executor_progress_e2e.py	arg-type
-apps/api/tests/e2e/test_file_share_sandbox_e2e.py	attr-defined
-apps/api/tests/e2e/test_file_share_sandbox_e2e.py	misc
 apps/api/tests/e2e/test_hil_spawn_e2e.py	arg-type
 apps/api/tests/e2e/test_hil_spawn_e2e.py	attr-defined
 apps/api/tests/e2e/test_hil_spawn_e2e.py	call-overload
@@ -162,10 +160,6 @@ apps/api/tests/unit/agents/nodes/test_manage_system_prompts.py	typeddict-item
 apps/api/tests/unit/agents/nodes/test_memory_node.py	arg-type
 apps/api/tests/unit/agents/nodes/test_pre_model_hooks.py	arg-type
 apps/api/tests/unit/agents/test_active_integrations.py	misc
-apps/api/tests/unit/agents/test_agent_core.py	arg-type
-apps/api/tests/unit/agents/test_agent_routing.py	attr-defined
-apps/api/tests/unit/agents/test_agent_routing.py	misc
-apps/api/tests/unit/agents/test_agent_routing.py	return-value
 apps/api/tests/unit/agents/test_browser_task_status_hook.py	arg-type
 apps/api/tests/unit/agents/test_call_record.py	arg-type
 apps/api/tests/unit/agents/test_comms_narrator.py	attr-defined
@@ -281,8 +275,6 @@ apps/api/tests/unit/api/test_bot_links_endpoint.py	call-arg
 apps/api/tests/unit/api/test_bot_stream_helpers.py	arg-type
 apps/api/tests/unit/api/test_device_self_pair.py	attr-defined
 apps/api/tests/unit/api/test_integrations_user.py	call-arg
-apps/api/tests/unit/api/test_lab_events.py	arg-type
-apps/api/tests/unit/api/test_lab_events.py	attr-defined
 apps/api/tests/unit/api/test_mail_endpoint.py	list-item
 apps/api/tests/unit/api/test_oauth_dependencies.py	attr-defined
 apps/api/tests/unit/api/test_onboarding_endpoint.py	arg-type
@@ -369,8 +361,6 @@ apps/api/tests/unit/evals/test_prompt_contracts_wiring.py	attr-defined
 apps/api/tests/unit/evals/test_token_attribution.py	arg-type
 apps/api/tests/unit/evals/test_tool_call_any_of_gate.py	arg-type
 apps/api/tests/unit/evals/test_tool_call_args_gate.py	arg-type
-apps/api/tests/unit/helpers/test_agent_helpers.py	arg-type
-apps/api/tests/unit/helpers/test_agent_helpers.py	call-arg
 apps/api/tests/unit/helpers/test_agent_helpers_message_hold.py	arg-type
 apps/api/tests/unit/helpers/test_agent_helpers_stream_frames.py	arg-type
 apps/api/tests/unit/helpers/test_email_helpers.py	call-arg
@@ -438,11 +428,6 @@ apps/api/tests/unit/models/test_user_models.py	list-item
 apps/api/tests/unit/models/test_workflow_models.py	arg-type
 apps/api/tests/unit/override/test_dynamic_tool_node.py	arg-type
 apps/api/tests/unit/override/test_dynamic_tool_node.py	union-attr
-apps/api/tests/unit/override/test_langgraph_bigtool.py	arg-type
-apps/api/tests/unit/override/test_langgraph_bigtool.py	list-item
-apps/api/tests/unit/override/test_langgraph_bigtool.py	typeddict-item
-apps/api/tests/unit/override/test_langgraph_bigtool.py	union-attr
-apps/api/tests/unit/override/test_langgraph_bigtool.py	unused-ignore
 apps/api/tests/unit/override/test_tool_execution_guards.py	arg-type
 apps/api/tests/unit/override/test_tool_execution_guards.py	union-attr
 apps/api/tests/unit/patches/test_browser_use_run_lock_patch.py	attr-defined
@@ -574,7 +559,6 @@ apps/api/tests/unit/services/photon/test_photon_client.py	attr-defined
 apps/api/tests/unit/services/photon/test_photon_client.py	index
 apps/api/tests/unit/services/sandbox/test_execute_client.py	arg-type
 apps/api/tests/unit/services/sandbox/test_execute_client.py	attr-defined
-apps/api/tests/unit/services/sandbox/test_execute_token.py	attr-defined
 apps/api/tests/unit/services/test_account_fs.py	arg-type
 apps/api/tests/unit/services/test_account_fs.py	return-value
 apps/api/tests/unit/services/test_artifact_events.py	arg-type
@@ -669,10 +653,6 @@ apps/api/tests/unit/services/triggers/test_subscription_service.py	union-attr
 apps/api/tests/unit/services/triggers/test_subscription_validation.py	var-annotated
 apps/api/tests/unit/services/workflow/test_playbook_evaluator.py	arg-type
 apps/api/tests/unit/services/workflow/test_playbook_evaluator.py	operator
-apps/api/tests/unit/services/workflow/test_playbook_runner.py	arg-type
-apps/api/tests/unit/services/workflow/test_playbook_runner.py	assignment
-apps/api/tests/unit/services/workflow/test_playbook_runner.py	call-arg
-apps/api/tests/unit/services/workflow/test_playbook_runner.py	union-attr
 apps/api/tests/unit/storage/test_gaia_tasks_vfs.py	attr-defined
 apps/api/tests/unit/storage/test_gaia_tasks_vfs.py	typeddict-item
 apps/api/tests/unit/storage/test_sessions_lifecycle.py	attr-defined
@@ -718,8 +698,6 @@ apps/api/tests/unit/tools/test_google_meet_tool.py	valid-type
 apps/api/tests/unit/tools/test_image_tool.py	attr-defined
 apps/api/tests/unit/tools/test_instructions_tools.py	attr-defined
 apps/api/tests/unit/tools/test_integration_tool_accounts.py	arg-type
-apps/api/tests/unit/tools/test_integration_tool_standalone.py	arg-type
-apps/api/tests/unit/tools/test_integration_tool_standalone.py	attr-defined
 apps/api/tests/unit/tools/test_integration_tools_proxy.py	call-arg
 apps/api/tests/unit/tools/test_linkedin_tool.py	call-arg
 apps/api/tests/unit/tools/test_manual_tool.py	attr-defined

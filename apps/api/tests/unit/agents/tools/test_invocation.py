@@ -260,10 +260,9 @@ def sync_redis(monkeypatch: pytest.MonkeyPatch) -> fakeredis.FakeRedis:
 
 
 def _sync_record(client: fakeredis.FakeRedis) -> list[RecordedCall]:
-    return [
-        RecordedCall.model_validate_json(raw)
-        for raw in client.lrange(f"{RUN_RECORD_PREFIX}{STREAM_ID}", 0, -1)
-    ]
+    recorded = client.lrange(f"{RUN_RECORD_PREFIX}{STREAM_ID}", 0, -1)
+    assert isinstance(recorded, list)
+    return [RecordedCall.model_validate_json(raw) for raw in recorded]
 
 
 def test_a_sync_call_is_recorded_with_the_models_args_and_kept_for_the_ttl(

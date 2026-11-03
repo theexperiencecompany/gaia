@@ -59,8 +59,8 @@ from shared.py.analytics.context import (
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
 
-def _make_request(**overrides) -> MessageRequestWithHistory:
-    defaults = {
+def _make_request(**overrides: object) -> MessageRequestWithHistory:
+    defaults: dict[str, object] = {
         "message": "Hello agent",
         "messages": [{"role": "user", "content": "Hello agent"}],
         "fileIds": [],
@@ -72,17 +72,17 @@ def _make_request(**overrides) -> MessageRequestWithHistory:
         "replyToMessage": None,
     }
     defaults.update(overrides)
-    return MessageRequestWithHistory(**defaults)  # type: ignore[arg-type]  # fixture spreads an untyped defaults dict into the model
+    return MessageRequestWithHistory.model_validate(defaults)
 
 
-def _make_user(**overrides) -> AuthenticatedUser:
+def _make_user(**overrides: object) -> AuthenticatedUser:
     defaults: dict[str, object] = {
         "user_id": USER_ID,
         "email": "test@example.com",
         "name": "Test User",
     }
     defaults.update(overrides)
-    return AuthenticatedUser(**defaults)
+    return AuthenticatedUser.model_validate(defaults)
 
 
 FAKE_HISTORY = [
