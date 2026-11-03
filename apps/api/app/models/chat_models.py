@@ -170,6 +170,9 @@ class MessageModel(BaseModel):
     # Terminal stream error for a bot turn that produced no response — rendered
     # on reload instead of an empty bubble.
     error: str | None = None
+    # True on a bot turn the user stopped with Stop; the client shows a quiet
+    # "Stopped" line under it. None everywhere else.
+    stopped: bool | None = None
     # Set by the pin-message endpoint on the embedded message; absent on most
     # messages, so it reads back as None unless the user pinned this one.
     pinned: bool | None = None

@@ -12,9 +12,8 @@ from httpx import AsyncClient
 import pytest
 import time_machine
 
-from app.models.reminder_models import ReminderCreation, ReminderDocument
-from shared.py.analytics import UserId
-from shared.py.analytics.catalog.reminders import ReminderCreated, ReminderDeleted
+from app.models.reminder_models import AgentType, ReminderCreation, ReminderDocument
+from app.models.scheduler_models import ScheduledTaskStatus
 from tests.conftest import FAKE_USER
 
 # ---------------------------------------------------------------------------
@@ -23,7 +22,7 @@ from tests.conftest import FAKE_USER
 
 API = "/api/v1/reminders"
 USER_ID = FAKE_USER.user_id
-ANALYTICS_PATCH = "app.api.v1.endpoints.reminders.capture"
+ANALYTICS_PATCH = "app.services.reminder_service.capture"
 REMINDER_REPO = "app.services.reminder_service.reminder_repository"
 
 
@@ -33,8 +32,7 @@ def _noop_analytics():
 
     The test app runs a no-op lifespan, so the PostHog provider is never
     registered; a bare capture call would raise KeyError on the
-    missing provider. Tests that assert on captures patch the call site again
-    and assert on their own mock.
+    missing provider. The captures themselves are proven in test_reminder_service.py.
     """
     with patch(ANALYTICS_PATCH):
         yield
@@ -140,90 +138,6 @@ class TestCreateReminder:
     async def test_create_reminder_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.post(API, json=_create_payload())
         assert resp.status_code == 401
-
-
-class TestReminderAnalytics:
-    """Analytics captures on reminder mutation endpoints."""
-
-    async def test_create_captures_reminder_created(self, client: AsyncClient) -> None:
-        mock_reminder = _reminder_model("rem_new")
-        with (
-            patch(
-                "app.api.v1.endpoints.reminders.reminder_scheduler.create_reminder",
-                new_callable=AsyncMock,
-                return_value=ReminderCreation(reminder_id="rem_new", created=True),
-            ),
-            patch(
-                "app.api.v1.endpoints.reminders.reminder_scheduler.get_reminder",
-                new_callable=AsyncMock,
-                return_value=mock_reminder,
-            ),
-            patch(ANALYTICS_PATCH) as mock_capture,
-        ):
-            resp = await client.post(API, json=_create_payload())
-
-        assert resp.status_code == 201
-        mock_capture.assert_called_once_with(UserId(USER_ID), ReminderCreated(is_recurring=False))
-
-    async def test_an_existing_identical_reminder_is_returned_and_not_counted(
-        self, client: AsyncClient
-    ) -> None:
-        with (
-            patch(
-                "app.api.v1.endpoints.reminders.reminder_scheduler.create_reminder",
-                new_callable=AsyncMock,
-                return_value=ReminderCreation(reminder_id="rem_old", created=False),
-            ),
-            patch(
-                "app.api.v1.endpoints.reminders.reminder_scheduler.get_reminder",
-                new_callable=AsyncMock,
-                return_value=_reminder_model("rem_old"),
-            ) as get_reminder,
-            patch(ANALYTICS_PATCH) as mock_capture,
-        ):
-            resp = await client.post(API, json=_create_payload())
-
-        assert resp.status_code == 201
-        assert resp.json()["id"] == "rem_old"
-        get_reminder.assert_awaited_once_with("rem_old", user_id=USER_ID)
-        mock_capture.assert_not_called()
-
-    async def test_create_recurring_reminder_captures_is_recurring(
-        self, client: AsyncClient
-    ) -> None:
-        mock_reminder = _reminder_model("rem_recur")
-        mock_reminder.repeat = "0 9 * * *"
-        with (
-            patch(
-                "app.api.v1.endpoints.reminders.reminder_scheduler.create_reminder",
-                new_callable=AsyncMock,
-                return_value=ReminderCreation(reminder_id="rem_recur", created=True),
-            ),
-            patch(
-                "app.api.v1.endpoints.reminders.reminder_scheduler.get_reminder",
-                new_callable=AsyncMock,
-                return_value=mock_reminder,
-            ),
-            patch(ANALYTICS_PATCH) as mock_capture,
-        ):
-            resp = await client.post(API, json={**_create_payload(), "repeat": "0 9 * * *"})
-
-        assert resp.status_code == 201
-        mock_capture.assert_called_once_with(UserId(USER_ID), ReminderCreated(is_recurring=True))
-
-    async def test_cancel_captures_reminder_deleted(self, client: AsyncClient) -> None:
-        with (
-            patch(
-                "app.api.v1.endpoints.reminders.reminder_scheduler.cancel_task",
-                new_callable=AsyncMock,
-                return_value=True,
-            ),
-            patch(ANALYTICS_PATCH) as mock_capture,
-        ):
-            resp = await client.delete(f"{API}/rem_1")
-
-        assert resp.status_code == 204
-        mock_capture.assert_called_once_with(UserId(USER_ID), ReminderDeleted())
 
 
 # ===========================================================================
@@ -442,10 +356,10 @@ class TestPauseReminder:
         mock_reminder = _reminder_model("rem_1", status="paused")
         with (
             patch(
-                "app.api.v1.endpoints.reminders.reminder_scheduler.update_reminder",
+                "app.api.v1.endpoints.reminders.reminder_scheduler.pause",
                 new_callable=AsyncMock,
                 return_value=True,
-            ),
+            ) as pause,
             patch(
                 "app.api.v1.endpoints.reminders.reminder_scheduler.get_reminder",
                 new_callable=AsyncMock,
@@ -455,10 +369,11 @@ class TestPauseReminder:
             resp = await client.post(f"{API}/rem_1/pause")
         assert resp.status_code == 200
         assert resp.json()["status"] == "paused"
+        pause.assert_awaited_once_with("rem_1", user_id=USER_ID)
 
     async def test_pause_failure(self, client: AsyncClient) -> None:
         with patch(
-            "app.api.v1.endpoints.reminders.reminder_scheduler.update_reminder",
+            "app.api.v1.endpoints.reminders.reminder_scheduler.pause",
             new_callable=AsyncMock,
             return_value=False,
         ):
@@ -467,7 +382,7 @@ class TestPauseReminder:
 
     async def test_pause_service_error(self, client: AsyncClient) -> None:
         with patch(
-            "app.api.v1.endpoints.reminders.reminder_scheduler.update_reminder",
+            "app.api.v1.endpoints.reminders.reminder_scheduler.pause",
             new_callable=AsyncMock,
             side_effect=Exception("DB down"),
         ):
@@ -499,7 +414,7 @@ class TestResumeReminder:
                 side_effect=[paused_reminder, resumed_reminder],
             ),
             patch(
-                "app.api.v1.endpoints.reminders.reminder_scheduler.update_reminder",
+                "app.api.v1.endpoints.reminders.reminder_scheduler.resume",
                 new_callable=AsyncMock,
                 return_value=True,
             ),
@@ -515,10 +430,10 @@ class TestResumeReminder:
         paused = ReminderDocument(
             id="64b64b64b64b64b64b64b64b",
             user_id=USER_ID,
-            agent="static",
+            agent=AgentType.STATIC,
             repeat="0 9 * * *",
             timezone="Asia/Kolkata",
-            status="paused",
+            status=ScheduledTaskStatus.PAUSED,
             scheduled_at=datetime(2026, 9, 1, 3, 30, tzinfo=UTC),
             payload={"title": "Meds", "body": "Take your meds"},
         )
@@ -541,9 +456,9 @@ class TestResumeReminder:
         paused = ReminderDocument(
             id="64b64b64b64b64b64b64b64b",
             user_id=USER_ID,
-            agent="static",
+            agent=AgentType.STATIC,
             repeat="* * * * *",
-            status="paused",
+            status=ScheduledTaskStatus.PAUSED,
             scheduled_at=datetime(2026, 9, 1, 3, 30, tzinfo=UTC),
             payload={"title": "Meds", "body": "Take your meds"},
         )
