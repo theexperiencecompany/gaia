@@ -14,3 +14,7 @@ GMAIL_NEW_MESSAGE_TRIGGER_NAME: Final = "gmail_new_message"
 PER_EMAIL_TRIGGER_NAMES: Final = frozenset(
     {GMAIL_NEW_MESSAGE_TRIGGER_NAME, GMAIL_EMAIL_SENT_TRIGGER_NAME}
 )
+
+# One workflow run per real-world occurrence (e.g. a meeting seen on several calendars).
+TRIGGER_OCCURRENCE_KEY: Final = "trigger_occurrence:{workflow_id}:{occurrence}"
+TRIGGER_OCCURRENCE_TTL_SECONDS: Final = 24 * 60 * 60

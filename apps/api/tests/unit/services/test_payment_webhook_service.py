@@ -1192,7 +1192,10 @@ class TestHandleSubscriptionExpired:
         } == {("sub_xyz789",)}
         mock_track_subscription.assert_called_once()
         mock_track_subscription.assert_called_once_with(
-            UserId(FAKE_USER_ID), SubscriptionExpired(subscription_id="sub_xyz789")
+            UserId(FAKE_USER_ID),
+            SubscriptionExpired(
+                subscription_id="sub_xyz789", product_id="prod_abc123", billing_interval="month"
+            ),
         )
 
     async def test_deactivates_this_users_workflows(

@@ -14,6 +14,7 @@ from app.constants.reminders import (
     REMINDER_CREATE_LOCK_LEASE_SECONDS,
     REMINDER_CREATE_LOCK_PREFIX,
 )
+from app.db.redis import redis_cache
 from app.models.reminder_models import (
     AgentType,
     CreateReminderRequest,
@@ -33,9 +34,16 @@ from app.models.scheduler_models import (
     TaskRearm,
 )
 from app.services.reminder_service import ReminderScheduler
-from app.utils import redis_lock
 from app.utils.schedule import InvalidScheduleError
 from app.utils.timezone import Timezone
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.reminders import (
+    ReminderCreated,
+    ReminderDeleted,
+    ReminderPaused,
+    ReminderResumed,
+    ReminderUpdated,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -100,8 +108,7 @@ def _reminder_document(**overrides) -> ReminderDocument:
         "scheduled_at": datetime.now(UTC) + timedelta(hours=1),
         "status": ScheduledTaskStatus.SCHEDULED,
     }
-    data.update(overrides)
-    return ReminderDocument(**data)
+    return ReminderDocument.model_validate({**data, **overrides})
 
 
 @pytest.fixture
@@ -162,7 +169,7 @@ class TestCreateReminder:
         lock = MagicMock(acquire=AsyncMock(return_value=True), release=AsyncMock())
         client = MagicMock()
         client.lock.return_value = lock
-        with patch.object(redis_lock.redis_cache, "redis", client):
+        with patch.object(redis_cache, "redis", client):
             yield lock
 
     async def test_creates_one_time_reminder(
@@ -326,7 +333,7 @@ class TestCreateReminderIsIdempotent:
         lock = MagicMock(acquire=AsyncMock(return_value=True), release=AsyncMock())
         client = MagicMock()
         client.lock.return_value = lock
-        with patch.object(redis_lock.redis_cache, "redis", client):
+        with patch.object(redis_cache, "redis", client):
             yield client
 
     @staticmethod
@@ -386,7 +393,7 @@ class TestCreateReminderIsIdempotent:
         assert same.startswith(REMINDER_CREATE_LOCK_PREFIX)
         assert await lease_name(FAKE_USER_ID, "Water") == same
         assert await lease_name(FAKE_USER_ID, "Stretch") != same
-        assert await lease_name("another-user", "Water") != same
+        assert await lease_name(str(ObjectId()), "Water") != same
         assert await lease_name(FAKE_USER_ID, "Water", repeat="0 9 * * *") != same
 
     async def test_no_lease_fails_loud_instead_of_risking_a_twin(
@@ -880,3 +887,103 @@ class TestGetPendingTask:
 class TestJobName:
     def test_get_job_name(self, scheduler):
         assert scheduler.get_job_name() == "process_reminder"
+
+
+# ---------------------------------------------------------------------------
+# analytics: the scheduler is the one emitter, so the agent's reminders count too
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.usefixtures("mock_scheduler_base")
+class TestEveryReminderChangeIsCountedOnceWhoeverMadeIt:
+    @pytest.fixture
+    def mock_capture(self) -> Iterator[MagicMock]:
+        with patch("app.services.reminder_service.capture") as m:
+            yield m
+
+    @pytest.fixture(autouse=True)
+    def creation_lease(self) -> Iterator[None]:
+        lock = MagicMock(acquire=AsyncMock(return_value=True), release=AsyncMock())
+        client = MagicMock()
+        client.lock.return_value = lock
+        with patch.object(redis_cache, "redis", client):
+            yield
+
+    @pytest.mark.parametrize(("repeat", "is_recurring"), [(None, False), ("0 9 * * *", True)])
+    async def test_a_new_reminder_is_counted_with_its_recurrence(
+        self, scheduler, mock_repo, mock_capture, repeat: str | None, is_recurring: bool
+    ):
+        mock_repo.create.return_value = _reminder_document()
+        request = CreateReminderRequest(
+            agent=AgentType.STATIC,
+            payload=StaticReminderPayload(title="Water", body="Drink"),
+            scheduled_at=datetime.now(UTC) + timedelta(hours=1),
+            repeat=repeat,
+        )
+
+        await scheduler.create_reminder(request, FAKE_USER_ID)
+
+        mock_capture.assert_called_once_with(
+            UserId(FAKE_USER_ID), ReminderCreated(is_recurring=is_recurring)
+        )
+
+    async def test_a_re_asked_reminder_is_not_counted_again(
+        self, scheduler, mock_repo, mock_capture, sample_payload, future_time
+    ):
+        mock_repo.find_active_twin.return_value = _reminder_document()
+        request = CreateReminderRequest(
+            agent=AgentType.STATIC, payload=sample_payload, scheduled_at=future_time
+        )
+
+        await scheduler.create_reminder(request, FAKE_USER_ID)
+
+        mock_capture.assert_not_called()
+
+    @pytest.mark.parametrize(("found", "expected"), [(True, [ReminderUpdated()]), (False, [])])
+    async def test_an_edit_is_counted_only_when_the_reminder_existed(
+        self, scheduler, mock_repo, mock_capture, found, expected
+    ):
+        mock_repo.update_for_user.return_value = _reminder_document() if found else None
+
+        await scheduler.update_reminder(
+            str(ObjectId()), ReminderUpdate(max_occurrences=5), FAKE_USER_ID
+        )
+
+        assert [c.args[1] for c in mock_capture.call_args_list] == expected
+
+    async def test_pausing_counts_a_pause_not_an_edit(self, scheduler, mock_repo, mock_capture):
+        mock_repo.update_for_user.return_value = _reminder_document()
+        reminder_id = str(ObjectId())
+
+        assert await scheduler.pause(reminder_id, FAKE_USER_ID) is True
+
+        owned_id, owner, update = mock_repo.update_for_user.call_args.args
+        assert (owned_id, owner, update.status) == (
+            reminder_id,
+            FAKE_USER_ID,
+            ReminderStatus.PAUSED,
+        )
+        mock_capture.assert_called_once_with(UserId(FAKE_USER_ID), ReminderPaused())
+
+    async def test_resuming_counts_a_resume_not_an_edit(self, scheduler, mock_repo, mock_capture):
+        reminder = _reminder_document(status=ScheduledTaskStatus.PAUSED)
+        mock_repo.update_for_user.return_value = reminder
+
+        await scheduler.resume(reminder)
+
+        mock_capture.assert_called_once_with(UserId(FAKE_USER_ID), ReminderResumed())
+
+    @pytest.mark.parametrize(("cancelled", "expected"), [(True, [ReminderDeleted()]), (False, [])])
+    async def test_a_cancel_is_counted_only_when_it_cancelled_something(
+        self, scheduler, mock_capture, cancelled, expected
+    ):
+        reminder_id = str(ObjectId())
+        with patch.object(
+            ReminderScheduler, "update_task_status", new_callable=AsyncMock, return_value=cancelled
+        ) as set_status:
+            assert await scheduler.cancel_task(reminder_id, FAKE_USER_ID) is cancelled
+
+        set_status.assert_awaited_once_with(
+            reminder_id, ScheduledTaskStatus.CANCELLED, user_id=FAKE_USER_ID
+        )
+        assert mock_capture.call_args_list == [call(UserId(FAKE_USER_ID), e) for e in expected]
