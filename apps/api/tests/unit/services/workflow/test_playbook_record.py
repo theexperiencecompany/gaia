@@ -898,3 +898,31 @@ def test_vary_sent_as_null_or_as_json_text_reads_as_the_mapping_it_means(vary: o
     calls = [_call("tool_a", _all_args(first="2026-11-20"), LISTING)]
 
     assert _problems(calls, [{"call": 1, "vary": vary}]) == []
+
+
+def test_a_for_each_marking_a_value_without_item_is_still_refused() -> None:
+    calls = [
+        _call("tool_a", _all_args(), LISTING),
+        _call("tool_b", _all_args(first="2026-11-20"), {"draft_id": "d1"}),
+    ]
+
+    problems = _problems(
+        calls,
+        [
+            {"call": 1, "id": "list"},
+            {"call": 2, "for_each": "$steps.list.items", "vary": {"first": "$today"}},
+        ],
+    )
+
+    assert [problem.split(":")[0] for problem in problems] == ["steps[1].vary"]
+
+
+def test_a_named_layout_over_a_value_with_no_date_says_it_does_not_write_it() -> None:
+    calls = [_call("tool_a", _all_args(first="soon"), LISTING)]
+
+    assert _problems(
+        calls, [{"call": 1, "vary": {"first": {"$time": "$today", "format": "%Y"}}}]
+    ) == [
+        "steps[0].vary.first: 'first' was 'soon', which is not written in '%Y'; give the "
+        "strftime layout that writes it"
+    ]
