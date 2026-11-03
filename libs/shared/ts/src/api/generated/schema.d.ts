@@ -13485,8 +13485,8 @@ export interface components {
              * @default false
              */
             failed?: boolean;
-            /** Item Ids */
-            item_ids?: string[] | null;
+            /** Item Fingerprint */
+            item_fingerprint?: string | null;
             /**
              * Proxied
              * @default false

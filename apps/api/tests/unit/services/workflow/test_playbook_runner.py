@@ -69,6 +69,7 @@ from app.services.workflow.playbook.evaluator import (
     RunContext,
     StepResult,
 )
+from app.services.workflow.playbook.nothing_new import item_fingerprint
 from app.services.workflow.playbook.runner import (
     PlaybookNarration,
     PlaybookRunResult,
@@ -1880,10 +1881,11 @@ def test_a_scripted_turn_is_a_bare_tool_call_and_nothing_else() -> None:
 # --- results that are wrong without being errors ----------------------------
 
 
-def _previous_run(*calls: RecordedCall) -> AsyncMock:
+def _previous_run(*calls: RecordedCall, status: str = "success") -> AsyncMock:
     """One previous execution's trace, as find_recent_with_trace hands it back."""
     previous = MagicMock()
     previous.trace = list(calls)
+    previous.status = status
     return AsyncMock(return_value=[previous])
 
 
@@ -3560,7 +3562,7 @@ class TestNothingNew:
         replayed=True,
         tool_name="list_events",
         result_digest='{"items": [{"id": "e1"}, {"id": "e2"}]}',
-        item_ids=["e1", "e2"],
+        item_fingerprint=item_fingerprint(frozenset({"e1", "e2"})),
     )
 
     async def test_a_replayed_read_records_its_ids_from_the_whole_result(self) -> None:
@@ -3571,7 +3573,10 @@ class TestNothingNew:
 
         result, _ = await _run(_playbook(AGENDA_STEPS), registry)
 
-        assert [call.item_ids for call in result.trace] == [["e1", "e2"], None]
+        assert [call.item_fingerprint for call in result.trace] == [
+            item_fingerprint(frozenset({"e1", "e2"})),
+            None,
+        ]
 
     async def test_an_opening_read_that_returns_nothing_ends_the_run_with_no_model_call(
         self,
@@ -3611,6 +3616,38 @@ class TestNothingNew:
         assert result.nothing_new == "list_events returned the same 2 items as the last run"
         assert [name for name, _ in recorder.calls] == ["list_events"]
         assert llm.await_count == 0
+
+    async def test_a_run_that_failed_is_no_baseline_so_the_next_fire_runs(self) -> None:
+        """Review of #1621: a failed fire never delivered its items, so they are not old news."""
+        recorder = _Recorder()
+        registry = _FakeRegistry(
+            _tools(recorder, events_result='{"items": [{"id": "e2"}, {"id": "e1"}]}')
+        )
+        failed = _previous_run(self.LAST_RUN_TWO, status="failed")
+
+        result, _ = await _run(
+            _playbook(AGENDA_STEPS), registry, seams=_Seams(find_previous=failed)
+        )
+
+        assert result.nothing_new is None
+        assert [name for name, _ in recorder.calls] == ["list_events", "send_email"]
+
+    async def test_the_baseline_is_the_newest_delivered_run_past_a_failed_one(self) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(
+            _tools(recorder, events_result='{"items": [{"id": "e2"}, {"id": "e1"}]}')
+        )
+        failed, delivered = MagicMock(status="failed"), MagicMock(status="success")
+        failed.trace = [RecordedCall(tool_name="list_events", replayed=True)]
+        delivered.trace = [self.LAST_RUN_TWO]
+
+        result, _ = await _run(
+            _playbook(AGENDA_STEPS),
+            registry,
+            seams=_Seams(find_previous=AsyncMock(return_value=[failed, delivered])),
+        )
+
+        assert result.nothing_new == "list_events returned the same 2 items as the last run"
 
     async def test_a_new_item_runs_the_playbook_through(self) -> None:
         recorder = _Recorder()

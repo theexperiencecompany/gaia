@@ -80,7 +80,12 @@ from app.services.workflow.playbook.evaluator import (
     resolve_args,
     resolve_value,
 )
-from app.services.workflow.playbook.nothing_new import is_opening_read, item_ids, nothing_new
+from app.services.workflow.playbook.nothing_new import (
+    is_opening_read,
+    item_fingerprint,
+    item_ids,
+    nothing_new,
+)
 from app.services.workflow.playbook.scripted_model import ScriptedCall, ScriptedModel
 from app.services.workflow.playbook.tool_space import (
     ToolSpace,
@@ -212,6 +217,8 @@ class _Run:
     llm_calls: int = 0
     #: The first deterministic reason a completed step was not trusted.
     suspect: str | None = None
+    #: The newest run that delivered its result: the only baseline for nothing new.
+    last_delivered: Sequence[RecordedCall] = ()
     #: Set once the first call has been recorded: only that one may end the run as nothing new.
     opened: bool = False
     nothing_new: str | None = None
@@ -251,6 +258,9 @@ async def run_playbook(
         ),
         configurable=configurable,
         recent_traces=[execution.trace for execution in recent],
+        last_delivered=next(
+            (execution.trace for execution in recent if execution.status == "success"), ()
+        ),
     )
     space = ToolSpace(tools=registry.get_tool_dict(), runtime=None, subagent_id=None)
 
@@ -602,8 +612,7 @@ def _record_step(
     opening = not run.opened
     run.opened = True
     if opening and _may_end_the_run(step, call):
-        previous = run.recent_traces[0] if run.recent_traces else ()
-        run.nothing_new = nothing_new(tool_name, call.args, value, previous)
+        run.nothing_new = nothing_new(tool_name, call.args, value, run.last_delivered)
     if run.suspect is None:
         run.suspect = _empty_where_previous_had_items(tool_name, value, run.recent_traces)
     # This line is the model's only view of what the tool returned, and it has
@@ -753,14 +762,14 @@ def _record(
             args=dict(args),
             result_digest=build_result_digest(text),
             replayed=True,
-            item_ids=_sorted_ids(text),
+            item_fingerprint=_fingerprint(text),
         )
     )
 
 
-def _sorted_ids(text: str) -> list[str] | None:
+def _fingerprint(text: str) -> str | None:
     ids = item_ids(parse_result(text))
-    return None if ids is None else sorted(ids)
+    return None if ids is None else item_fingerprint(ids)
 
 
 async def _subagent_space(

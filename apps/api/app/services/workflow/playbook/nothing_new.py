@@ -2,13 +2,16 @@
 
 Only a read can say so: a playbook that opens with a write has already done its
 work by the time it could look. Nothing new is either an empty result, or a
-list whose elements carry exactly the ids the previous fire's replay of the
-same read returned, as the same account. Those ids are recorded from the whole
-result (RecordedCall.item_ids), never read back from a bounded digest that may
-have shed elements. Elements without an id never count as the same.
+list whose elements carry exactly the ids the last delivered fire's replay of
+the same read returned, as the same account. Only a delivered (successful) run
+is a baseline: a failed one never told the user, so the next fire runs. The ids
+are fingerprinted from the whole result (RecordedCall.item_fingerprint), never
+read back from a bounded digest that may have shed elements. Elements without
+an id never count as the same.
 """
 
 from collections.abc import Mapping, Sequence
+import hashlib
 
 from pydantic import BaseModel, ConfigDict
 
@@ -52,7 +55,7 @@ def nothing_new(
             and call.replayed
             and execute_call_account(call.tool_name, call.args) == account
         ):
-            if call.item_ids is not None and frozenset(call.item_ids) == ids:
+            if call.item_fingerprint == item_fingerprint(ids):
                 return f"{real_name} returned the same {len(ids)} items as the last run"
             return None
     return None
@@ -72,3 +75,9 @@ def item_ids(value: object) -> frozenset[str] | None:
             return None
         ids.add(str(identified))
     return frozenset(ids)
+
+
+def item_fingerprint(ids: frozenset[str]) -> str:
+    """Return a fixed-size, order-free identity for a set of ids: its count and a hash of the sorted ids."""
+    digest = hashlib.sha256("\n".join(sorted(ids)).encode()).hexdigest()
+    return f"{len(ids)}:{digest}"

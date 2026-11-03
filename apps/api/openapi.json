@@ -15336,19 +15336,17 @@
             "title": "Failed",
             "type": "boolean"
           },
-          "item_ids": {
+          "item_fingerprint": {
             "anyOf": [
               {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
+                "maxLength": 77,
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Item Ids"
+            "title": "Item Fingerprint"
           },
           "proxied": {
             "default": false,

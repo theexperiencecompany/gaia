@@ -13,6 +13,8 @@ from app.schemas.common import ResponseModel
 #: what came back (ids, a count, a cursor) without storing message bodies — the
 #: whole point is that a run's history stops growing with the number of runs.
 RESULT_DIGEST_MAX_CHARS = 4000
+#: An item fingerprint: a count of at most 12 digits, a colon, 64 hex digits.
+ITEM_FINGERPRINT_MAX_CHARS = 77
 
 
 def build_result_digest(output: object, max_chars: int = RESULT_DIGEST_MAX_CHARS) -> str:
@@ -287,9 +289,10 @@ class RecordedCall(BaseModel):
     proxied: bool = False
     #: The connected account a proxied call named; None is the primary.
     account: str | None = None
-    #: A replayed read's element ids, taken from the whole result before it was
-    #: bounded into result_digest: what the next fire's nothing-new check compares.
-    item_ids: list[str] | None = None
+    #: A replayed read's elements as "<count>:<sha256 of the sorted ids>", taken
+    #: from the whole result before it was bounded into result_digest: what the
+    #: next fire's nothing-new check compares, at a fixed size however many there are.
+    item_fingerprint: str | None = Field(default=None, max_length=ITEM_FINGERPRINT_MAX_CHARS)
 
 
 class WorkflowExecution(ResponseModel):

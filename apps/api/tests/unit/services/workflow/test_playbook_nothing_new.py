@@ -5,7 +5,12 @@ import json
 import pytest
 
 from app.models.workflow_execution_models import RecordedCall
-from app.services.workflow.playbook.nothing_new import is_opening_read, item_ids, nothing_new
+from app.services.workflow.playbook.nothing_new import (
+    is_opening_read,
+    item_fingerprint,
+    item_ids,
+    nothing_new,
+)
 
 INBOX = {"data": {"messages": [{"id": "m1", "subject": "a"}, {"id": "m2", "subject": "b"}]}}
 INBOX_IDS = ["m1", "m2"]
@@ -20,7 +25,7 @@ def _replayed(
             "tool_name": tool,
             "result_digest": json.dumps(INBOX),
             "replayed": True,
-            "item_ids": ids,
+            "item_fingerprint": None if ids is None else item_fingerprint(frozenset(ids)),
             **fields,
         }
     )
@@ -116,3 +121,14 @@ def test_ids_are_read_off_the_largest_list_past_the_envelope() -> None:
 def test_elements_without_ids_or_with_an_empty_one_have_no_identity() -> None:
     assert item_ids({"events": [{"title": "standup"}]}) is None
     assert item_ids({"items": [{"id": "m1"}, {"id": ""}]}) is None
+
+
+def test_a_fingerprint_is_order_free_counts_its_ids_and_stays_one_size() -> None:
+    """Review of #1621: a read of ten thousand ids is recorded at the same size as one of two."""
+    many = frozenset(f"m{index}" for index in range(10_000))
+
+    assert item_fingerprint(frozenset({"a", "b"})) == item_fingerprint(frozenset({"b", "a"}))
+    assert item_fingerprint(frozenset({"a", "b"})) != item_fingerprint(frozenset({"a", "c"}))
+    assert item_fingerprint(many).startswith("10000:")
+    assert len(item_fingerprint(many)) == len("10000:") + 64
+    RecordedCall(tool_name="t", item_fingerprint=item_fingerprint(many))
