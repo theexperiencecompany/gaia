@@ -1,4 +1,4 @@
-"""Structured offload marker helpers — round-trip, lift, tolerance.
+"""Structured offload marker helpers — round-trip and tolerance.
 
 Pure unit tests (no I/O). Cover the read-side validators whose contracts must
 agree: read_offload only guarantees path, so tools_for_offload must tolerate a
@@ -14,9 +14,7 @@ from langchain_core.messages import ToolMessage
 import pytest
 
 from app.agents.workspace.offload import (
-    OFFLOAD_RESULT_KEY,
     mark_offload,
-    pop_offload_descriptor,
     read_offload,
     sniff_offload_fmt,
     tools_for_offload,
@@ -58,33 +56,6 @@ def test_read_offload_non_dict_additional_kwargs_returns_none() -> None:
     assert read_offload(SimpleNamespace(additional_kwargs="not-a-dict")) is None  # type: ignore[arg-type]  # SimpleNamespace fakes a ToolMessage
     assert read_offload(SimpleNamespace(additional_kwargs=None)) is None  # type: ignore[arg-type]  # SimpleNamespace fakes a ToolMessage
     assert read_offload(SimpleNamespace()) is None  # type: ignore[arg-type]  # SimpleNamespace fakes a ToolMessage
-
-
-# --- pop_offload_descriptor -------------------------------------------------- #
-
-
-def test_pop_descriptor_strips_key_and_keeps_real_fields() -> None:
-    result = {"total_messages": 5, "inline_preview": [1, 2], OFFLOAD_RESULT_KEY: INFO}
-    info = pop_offload_descriptor(result)
-    assert info == INFO
-    assert OFFLOAD_RESULT_KEY not in result  # popped so it can't leak into content
-    assert OFFLOAD_RESULT_KEY not in str(result)
-    assert result == {"total_messages": 5, "inline_preview": [1, 2]}  # real fields survive
-
-
-@pytest.mark.parametrize(
-    "descriptor",
-    [{"fmt": "jsonl"}, {"path": 5}, "not-a-dict", None, [1, 2]],
-)
-def test_pop_descriptor_malformed_returns_none_but_still_pops(descriptor: object) -> None:
-    result = {"a": 1, OFFLOAD_RESULT_KEY: descriptor}
-    assert pop_offload_descriptor(result) is None
-    assert OFFLOAD_RESULT_KEY not in result  # always removed, even when invalid
-
-
-@pytest.mark.parametrize("result", [[1, 2], "str", None, 42, {"a": 1}])
-def test_pop_descriptor_no_key_or_non_dict_is_none(result: object) -> None:
-    assert pop_offload_descriptor(result) is None
 
 
 # --- tools_for_offload ------------------------------------------------------- #

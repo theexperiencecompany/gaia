@@ -14,10 +14,16 @@ import socket
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from app.browser_host.memory import memory_usage_mb
 from app.browser_host.process import spawn_engine, stop_process, until_published
 from app.config.browser_host_settings import OBSCURA_PRIVATE_NETWORK_ENV, browser_host_settings
 
 _LOOPBACK = "127.0.0.1"
+# The --max-old-space-size in Obscura's DEFAULT_V8_FLAGS on 64-bit (crates/obscura-cli/src/main.rs).
+OBSCURA_DEFAULT_HEAP_MB = 4096
+_V8_HEAP_SHARE_OF_MEMORY = 4
+# A floor so a tiny memory limit still loads real pages.
+_MIN_PAGE_HEAP_MB = 128
 #: A command waits on the script phase it started, so its budget ends after that phase's.
 _COMMAND_OVER_SCRIPT_SECONDS = 10
 
@@ -53,15 +59,32 @@ def free_local_port() -> int:
     return port
 
 
+def obscura_page_heap_mb(memory_limit_mb: float) -> int | None:
+    """Return the per-page V8 heap cap for a memory limit; None while Obscura's own default fits.
+
+    Each page owns an isolate, so one page retaining memory without bound would get the
+    whole engine OOM-killed under a heap larger than the container. V8 sizes its heap to
+    a quarter of memory, as Node does for a cgroup limit.
+    """
+    quarter_mb = int(memory_limit_mb) // _V8_HEAP_SHARE_OF_MEMORY
+    if quarter_mb >= OBSCURA_DEFAULT_HEAP_MB:
+        return None
+    return max(quarter_mb, _MIN_PAGE_HEAP_MB)
+
+
 def obscura_serve_argv(port: int) -> list[str]:
-    """Build the obscura serve argv for port, stealthed.
+    """Build the obscura serve argv for port, stealthed, with each page's heap fitted to memory.
 
     Raises when OBSCURA_BIN is unset: fail loud, never silently fall back to another engine.
     """
     obscura_bin = browser_host_settings.OBSCURA_BIN
     if not obscura_bin:
         raise RuntimeError("Obscura requires OBSCURA_BIN to be set")
-    return [obscura_bin, "serve", "--port", str(port), "--stealth"]
+    _, memory_limit_mb = memory_usage_mb()
+    heap_mb = obscura_page_heap_mb(memory_limit_mb)
+    # --v8-flags is a top-level option, so it precedes the subcommand.
+    v8_flags = [] if heap_mb is None else ["--v8-flags", f"--max-old-space-size={heap_mb}"]
+    return [obscura_bin, *v8_flags, "serve", "--port", str(port), "--stealth"]
 
 
 def obscura_serve_env() -> dict[str, str]:

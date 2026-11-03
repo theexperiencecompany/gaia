@@ -340,9 +340,6 @@ jobs:
       # Negated: `cond && '' || x` is always x, since '' is falsy in an expression.
       NO_POST: ${{ !(contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '--no-post' || '' }}
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
-      AUDIT_SCOPE: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'introduced' || 'all' }}
-    # On a PR and in the merge queue pnpm-audit fails only on an advisory in a
-    # version the change added; master fails on any (scripts/ci/audit.sh).
     timeout-minutes: 30
     permissions:
       contents: read
@@ -676,9 +673,6 @@ jobs:
       # Negated: `cond && '' || x` is always x, since '' is falsy in an expression.
       NO_POST: ${{ !(contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '--no-post' || '' }}
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
-      AUDIT_SCOPE: ${{ github.event_name == 'merge_group' && 'introduced' || 'all' }}
-    # In the merge queue pip-audit fails only on an advisory in a version the
-    # change added; master fails on any (scripts/ci/audit.sh, AUDIT_SCOPE).
     # import-cost runs with --report (trend only): every module under app/utils
     # and app/models costs 6-15 s to import alone (measured 2026-09-17).
     timeout-minutes: 15
