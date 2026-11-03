@@ -315,6 +315,37 @@ class TestNumberCoercion:
         assert isinstance(outcome.conditions[0].value, float)
 
 
+class TestBooleanCoercion:
+    """A boolean field (Gmail's derived signals) takes true/false, never a truthy string."""
+
+    @pytest.mark.parametrize(
+        ("value", "expected"), [(True, True), ("true", True), ("False", False)]
+    )
+    def test_a_boolean_or_its_word_is_kept_as_a_bool(
+        self, value: bool | str, expected: bool
+    ) -> None:
+        outcome = validate_conditions(
+            GMAIL, [_condition("continues_thread", ConditionOperator.EQUALS, value)]
+        )
+
+        assert outcome.ok
+        assert outcome.conditions[0].value is expected
+
+    def test_any_other_value_is_rejected(self) -> None:
+        outcome = validate_conditions(
+            GMAIL, [_condition("continues_thread", ConditionOperator.EQUALS, "yes")]
+        )
+
+        assert not outcome.ok
+
+    def test_a_substring_operator_is_rejected(self) -> None:
+        outcome = validate_conditions(
+            GMAIL, [_condition("continues_thread", ConditionOperator.CONTAINS, True)]
+        )
+
+        assert not outcome.ok
+
+
 class TestValidateScope:
     """Scope is checked at the input boundary: unknown keys are dropped by Pydantic and a missing required field only fails at registration."""
 
@@ -327,7 +358,8 @@ class TestValidateScope:
 
     def test_a_missing_required_scope_field_is_rejected(self) -> None:
         # None, absent, and present-but-empty all mean "no resource to watch".
-        for scope in (None, {}, {"repos": []}):
+        scopes: tuple[dict[str, list[str]] | None, ...] = (None, {}, {"repos": []})
+        for scope in scopes:
             (error,) = validate_scope(GITHUB, scope)
             assert "requires a 'repos' scope" in error
 

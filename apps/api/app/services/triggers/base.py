@@ -17,6 +17,7 @@ from redis.exceptions import RedisError
 
 from app.config.oauth_config import get_integration_by_tool_slug
 from app.constants.log_tags import LogTag
+from app.constants.trigger_gates import TRIGGER_GATE_SKIPPED_SUMMARY, GateOwner
 from app.constants.triggers import TRIGGER_OCCURRENCE_KEY, TRIGGER_OCCURRENCE_TTL_SECONDS
 from app.db.redis import redis_cache
 from app.models.trigger_config import TriggerOption, TriggerOptionGroup, TriggerOptionsQuery
@@ -25,6 +26,8 @@ from app.services.composio.composio_service import get_composio_service
 from app.services.integrations.integration_accounts import primary_connected_account_id
 from app.services.todos.signal_context import get_signal_matching_context
 from app.services.triggers.batching import buffer_trigger_event, coalesce_window_seconds
+from app.services.triggers.trigger_gate import admit_event, automation_text
+from app.services.workflow.execution_service import record_skipped_execution
 from app.services.workflow.queue_service import WorkflowQueueService
 from app.utils.exceptions import TriggerRegistrationError
 from app.utils.redis_utils import RedisPoolManager
@@ -197,6 +200,14 @@ class TriggerHandler(ABC):
         A workflow runs once per occurrence key; None (the default) runs it on every event.
         """
         return None
+
+    def event_signals(
+        self,
+        event_type: str,  # noqa: ARG002 -- interface contract; a handler with derivable signals narrows by it
+        data: Mapping[str, object],  # noqa: ARG002 -- interface contract; read by handlers that override
+    ) -> Mapping[str, object]:
+        """Return fields to derive into an event before anything matches on it; none by default."""
+        return {}
 
     @property
     def registers_instances(self) -> bool:
@@ -401,6 +412,8 @@ class TriggerHandler(ABC):
         )
 
         _log_event_timing(data, now_utc)
+        # Derived once, so workflows, todo conditions and gates all read the same signals.
+        data.update(self.event_signals(event_type, data))
 
         # Find matching workflows using handler's find_workflows method
         # Each handler decides what identifiers it needs (trigger_id, user_id, etc.)
@@ -482,6 +495,24 @@ class TriggerHandler(ABC):
                     "trigger_workflow_missing_id",
                     event_type=event_type,
                     trigger_id=trigger_id,
+                )
+                return False
+            # Before the occurrence claim and the batch: a skipped event must leave
+            # nothing behind that marks it handled.
+            verdict = await admit_event(
+                workflow.trigger_config.gate,
+                owner=GateOwner.WORKFLOW,
+                user_id=workflow.user_id,
+                trigger_name=workflow.trigger_config.trigger_name or event_type,
+                payload=data,
+                automation=automation_text(workflow.title, workflow.description),
+            )
+            if verdict is not None and verdict.skips:
+                await record_skipped_execution(
+                    workflow.id,
+                    workflow.user_id,
+                    TriggerType.INTEGRATION.value,
+                    TRIGGER_GATE_SKIPPED_SUMMARY.format(reason=verdict.decision.detail),
                 )
                 return False
             occurrence = self.occurrence_key(event_type, data)

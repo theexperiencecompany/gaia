@@ -63,6 +63,7 @@ _EXPECTED_ANNOTATION: dict[MatchableFieldType, object] = {
     MatchableFieldType.INTEGER: int,
     MatchableFieldType.NUMBER: float,
     MatchableFieldType.STRING_LIST: list[str],
+    MatchableFieldType.BOOLEAN: bool,
 }
 
 _CATALOG_ITEMS = sorted(MATCHABLE_TRIGGERS.items())

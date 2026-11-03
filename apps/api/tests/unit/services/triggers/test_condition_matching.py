@@ -26,7 +26,7 @@ SHEETS = "google_sheets_new_row"
 DOCS = "google_docs_document_updated"
 
 
-def _c(field_name: str, operator: ConditionOperator, value: str | int | float):
+def _c(field_name: str, operator: ConditionOperator, value: bool | str | int | float):
     return SubscriptionCondition(field_name=field_name, operator=operator, value=value)
 
 
@@ -156,6 +156,36 @@ class TestListConditions:
             conditions_match(GMAIL, [_c("label_ids", ConditionOperator.EQUALS, "INBOX")], payload)
             is False
         )
+
+
+class TestBooleanConditions:
+    @pytest.mark.parametrize(
+        ("operator", "value", "actual", "expected"),
+        [
+            (ConditionOperator.EQUALS, True, True, True),
+            (ConditionOperator.EQUALS, "true", False, False),
+            (ConditionOperator.NOT_EQUALS, False, True, True),
+            (ConditionOperator.NOT_EQUALS, "false", False, False),
+        ],
+    )
+    def test_operators(
+        self, operator: ConditionOperator, value: bool | str, actual: bool, expected: bool
+    ) -> None:
+        condition = _c("continues_thread", operator, value)
+        assert (
+            evaluate_condition(condition, {"continues_thread": actual}, MatchableFieldType.BOOLEAN)
+            is expected
+        )
+
+    def test_a_truthy_non_boolean_payload_value_does_not_match(self) -> None:
+        condition = _c("continues_thread", ConditionOperator.EQUALS, True)
+        assert not evaluate_condition(
+            condition, {"continues_thread": 1}, MatchableFieldType.BOOLEAN
+        )
+
+    def test_an_absent_signal_satisfies_neither_operator(self) -> None:
+        for operator in (ConditionOperator.EQUALS, ConditionOperator.NOT_EQUALS):
+            assert not conditions_match(GMAIL, [_c("continues_thread", operator, True)], {})
 
 
 class TestChainSemantics:

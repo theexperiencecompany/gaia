@@ -100,6 +100,7 @@ from app.services.workflow.execution_service import (
     WorkflowRunFailed,
     complete_execution,
     create_execution,
+    record_skipped_execution,
 )
 from app.services.workflow.integration_pause import pause_workflow_before_fire
 from app.services.workflow.notifications import send_workflow_completion_notification
@@ -1376,15 +1377,11 @@ async def _record_overlapped_fire(
     # Minted here rather than reused: the overlap is caught before the fire has a
     # record. The skip still belongs in history — without a row the user sees a
     # scheduled workflow that simply stopped producing runs.
-    execution = await create_execution(
-        workflow_id=workflow_id,
-        user_id=overlapped.user_id,
-        trigger_type=trigger_type,
-    )
-    await complete_execution(
-        execution_id=execution.execution_id,
-        status="skipped",
-        summary=OVERLAPPED_AWAITING_APPROVAL_SUMMARY if awaiting_approval else OVERLAPPED_SUMMARY,
+    await record_skipped_execution(
+        workflow_id,
+        overlapped.user_id,
+        trigger_type,
+        OVERLAPPED_AWAITING_APPROVAL_SUMMARY if awaiting_approval else OVERLAPPED_SUMMARY,
         conversation_id=overlapped.conversation_id,
     )
     await WorkflowService.increment_execution_count(

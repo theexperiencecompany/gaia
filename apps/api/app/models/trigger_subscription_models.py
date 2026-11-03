@@ -8,10 +8,23 @@ dispatch path needs them without importing the todo domain.
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any
+from typing import Annotated, Any
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+
+from app.constants.trigger_gates import (
+    TRIGGER_GATE_DEFAULT_MIN_CONFIDENCE,
+    TRIGGER_GATE_DEFAULT_NO_MEANING,
+    TRIGGER_GATE_DEFAULT_YES_MEANING,
+    TRIGGER_GATE_MAX_CHOICES,
+    TRIGGER_GATE_MEANING_MAX_CHARS,
+    TRIGGER_GATE_MIN_CONFIDENCE_FLOOR,
+    TRIGGER_GATE_NO,
+    TRIGGER_GATE_QUESTION_MAX_CHARS,
+    TRIGGER_GATE_YES,
+    GateAuthor,
+)
 
 
 class MatchableFieldType(StrEnum):
@@ -25,6 +38,7 @@ class MatchableFieldType(StrEnum):
     INTEGER = "integer"
     NUMBER = "number"
     STRING_LIST = "string_list"
+    BOOLEAN = "boolean"
 
 
 class ConditionOperator(StrEnum):
@@ -62,6 +76,8 @@ _NUMERIC_OPERATORS = frozenset(
     }
 )
 
+_BOOLEAN_OPERATORS = frozenset({ConditionOperator.EQUALS, ConditionOperator.NOT_EQUALS})
+
 # On a list field the operators test membership, not substring.
 _LIST_OPERATORS = frozenset({ConditionOperator.CONTAINS, ConditionOperator.NOT_CONTAINS})
 
@@ -70,6 +86,7 @@ OPERATORS_BY_FIELD_TYPE: Mapping[MatchableFieldType, frozenset[ConditionOperator
     MatchableFieldType.INTEGER: _NUMERIC_OPERATORS,
     MatchableFieldType.NUMBER: _NUMERIC_OPERATORS,
     MatchableFieldType.STRING_LIST: _LIST_OPERATORS,
+    MatchableFieldType.BOOLEAN: _BOOLEAN_OPERATORS,
 }
 
 
@@ -155,7 +172,73 @@ class SubscriptionCondition(BaseModel):
 
     field_name: str = Field(description="A field name from the trigger's matchable catalog")
     operator: ConditionOperator
-    value: str | int | float
+    # bool first: in a smart union an int field would otherwise read True as 1.
+    value: bool | str | int | float
+
+
+ChoiceLabel = Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,31}$")]
+
+
+class GateChoice(BaseModel):
+    """One answer JEV may give, with what it means for this job."""
+
+    model_config = ConfigDict(frozen=True)
+
+    label: ChoiceLabel
+    meaning: str = Field(min_length=1, max_length=TRIGGER_GATE_MEANING_MAX_CHARS)
+
+
+def default_gate_choices() -> list[GateChoice]:
+    """The yes/no pair a gate gets when its author names no choices."""
+    return [
+        GateChoice(label=TRIGGER_GATE_YES, meaning=TRIGGER_GATE_DEFAULT_YES_MEANING),
+        GateChoice(label=TRIGGER_GATE_NO, meaning=TRIGGER_GATE_DEFAULT_NO_MEANING),
+    ]
+
+
+class TriggerGate(BaseModel):
+    """Runs unless a skip_when rule holds or JEV is sure it should skip; a run_when rule always runs."""
+
+    question: str = Field(
+        min_length=1,
+        max_length=TRIGGER_GATE_QUESTION_MAX_CHARS,
+        description="A yes/no question about the event, shown to the user as 'Runs only when'",
+    )
+    choices: list[GateChoice] = Field(
+        default_factory=default_gate_choices, min_length=2, max_length=TRIGGER_GATE_MAX_CHOICES
+    )
+    skip_on: list[ChoiceLabel] = Field(
+        default_factory=lambda: [TRIGGER_GATE_NO],
+        min_length=1,
+        description="Choices that skip the run when JEV picks one at min_confidence or above",
+    )
+    min_confidence: float = Field(
+        default=TRIGGER_GATE_DEFAULT_MIN_CONFIDENCE, ge=TRIGGER_GATE_MIN_CONFIDENCE_FLOOR, le=1.0
+    )
+    run_when: list[SubscriptionCondition] = Field(
+        default_factory=list,
+        description="Free payload rules checked first; any one that holds runs without asking JEV",
+    )
+    skip_when: list[SubscriptionCondition] = Field(
+        default_factory=list,
+        description="Free payload rules checked before JEV; any one that holds skips the run",
+    )
+    enabled: bool = True
+    author: GateAuthor
+
+    @model_validator(mode="after")
+    def _check_choices(self) -> "TriggerGate":
+        labels = [c.label for c in self.choices]
+        if len(set(labels)) != len(labels):
+            raise ValueError("gate choice labels must be unique")
+        unknown = set(self.skip_on) - set(labels)
+        if unknown:
+            raise ValueError(f"skip_on names choices the gate does not offer: {sorted(unknown)}")
+        if set(self.skip_on) >= set(labels):
+            raise ValueError("at least one gate choice must run the job")
+        # Stored nested in a subscription that is written with exclude_unset.
+        self.__pydantic_fields_set__.update(type(self).model_fields.keys())
+        return self
 
 
 class TriggerSubscription(BaseModel):
@@ -192,6 +275,10 @@ class TriggerSubscription(BaseModel):
             "minutes_before_start). Persisted so a resync rebuilds the trigger "
             "with the user's original config instead of resetting to defaults."
         ),
+    )
+    gate: TriggerGate | None = Field(
+        default=None,
+        description="The check a fired event must pass before this subscription acts",
     )
     status: TriggerSubscriptionStatus = TriggerSubscriptionStatus.ACTIVE
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
@@ -238,4 +325,4 @@ class ConditionArgs(BaseModel):
 
     field_name: str | int | float | None = None
     operator: str | int | float | None = None
-    value: str | int | float | None = None
+    value: bool | str | int | float | None = None

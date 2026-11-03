@@ -297,6 +297,11 @@ async def is_jev_reply_enabled(user_id: str | None) -> bool:
     return await is_enabled(FeatureFlag.HIL_JEV_REPLY, user_id)
 
 
+async def is_trigger_gates_enforced(user_id: str | None) -> bool:
+    """Whether the user's trigger gates may skip a run; off records each verdict and runs anyway."""
+    return await is_enabled(FeatureFlag.TRIGGER_GATES, user_id)
+
+
 async def is_agent_lab_enabled(user_id: str | None) -> bool:
     """Whether the user can run private agent lab sessions inside their sandbox."""
     return await is_enabled(FeatureFlag.AGENT_LAB, user_id)

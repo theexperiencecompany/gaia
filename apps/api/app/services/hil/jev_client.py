@@ -1,4 +1,4 @@
-"""Transport for the JEV Decisions API, shared by every HIL question asked of it.
+"""Transport for the JEV Decisions API, shared by every question asked of it (HIL, trigger gates).
 
 One POST per call, validated where received. Failure raises — each caller
 decides its own degradation (LLM fallback, ask, leave pending), never this
@@ -16,14 +16,17 @@ from app.services.providers.provider_credentials_service import ProviderConfig, 
 
 
 async def post_decisions(
-    state: Mapping[str, object], questions: Mapping[str, Mapping[str, object]]
+    state: Mapping[str, object],
+    questions: Mapping[str, Mapping[str, object]],
+    *,
+    timeout_seconds: float = HIL_JEV_TIMEOUT_SECONDS,
 ) -> JevDecisionsResponse:
     """One Decisions call on the saved or env OpenRouter key; raises on a missing key, transport failure, or a malformed body."""
     config: ProviderConfig | None = await resolve(CredentialProviderName.OPENROUTER)
     key = config.api_key if config else None
     if not key:
         raise RuntimeError("No OpenRouter key saved or set; cannot reach the JEV judge")
-    async with httpx.AsyncClient(timeout=HIL_JEV_TIMEOUT_SECONDS) as client:
+    async with httpx.AsyncClient(timeout=timeout_seconds) as client:
         resp = await client.post(
             HIL_JEV_URL,
             json={"model": HIL_JEV_MODEL_NAME, "state": state, "questions": questions},

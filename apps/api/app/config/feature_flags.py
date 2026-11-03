@@ -25,6 +25,7 @@ class FeatureFlag(StrEnum):
     HIL_LEDGER = "HIL_LEDGER"
     HIL_JEV_JUDGE = "HIL_JEV_JUDGE"
     HIL_JEV_REPLY = "HIL_JEV_REPLY"
+    TRIGGER_GATES = "TRIGGER_GATES"
     AGENT_LAB = "AGENT_LAB"
     BROWSER_OBSCURA = "BROWSER_OBSCURA"
 
@@ -97,6 +98,13 @@ FEATURE_FLAGS: dict[FeatureFlag, FlagSpec] = {
             "failure; off keeps the LLM classifier."
         ),
         default=lambda: settings.ENABLE_HIL_JEV_REPLY,
+    ),
+    FeatureFlag.TRIGGER_GATES: FlagSpec(
+        description=(
+            "A trigger gate's confident skip stops the run and records it as skipped; "
+            "off evaluates and records every gate but runs anyway (see ENABLE_TRIGGER_GATES)."
+        ),
+        default=lambda: settings.ENABLE_TRIGGER_GATES,
     ),
     FeatureFlag.AGENT_LAB: FlagSpec(
         description=(

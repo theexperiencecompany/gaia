@@ -25,6 +25,7 @@ from app.models.scheduler_models import (
     ScheduledTaskStatus,
 )
 from app.models.trigger_configs import TriggerConfigData
+from app.models.trigger_subscription_models import TriggerGate
 from app.schemas.common import ResponseModel
 from app.utils.cron_utils import get_next_run_time
 from app.utils.schedule import validate_recurring_schedule
@@ -110,6 +111,11 @@ class TriggerConfig(BaseModel):
     trigger_data: TriggerConfigData | None = Field(
         default=None,
         description="Provider-specific trigger configuration",
+    )
+
+    gate: TriggerGate | None = Field(
+        default=None,
+        description="The check a fired event must pass before this workflow runs",
     )
 
     # Composio trigger tracking

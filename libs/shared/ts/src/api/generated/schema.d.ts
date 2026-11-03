@@ -8517,7 +8517,7 @@ export interface components {
              */
             title: string;
             /** @description Trigger configuration */
-            trigger_config: components["schemas"]["TriggerConfig"];
+            trigger_config: components["schemas"]["TriggerConfigInput"];
         };
         /**
          * CredentialProviderName
@@ -9549,6 +9549,22 @@ export interface components {
              * Format: date-time
              */
             since: string;
+        };
+        /**
+         * GateAuthor
+         * @description Who wrote a gate: GAIA on create, the user in the editor, or a system default.
+         * @enum {string}
+         */
+        GateAuthor: "gaia" | "user" | "system";
+        /**
+         * GateChoice
+         * @description One answer JEV may give, with what it means for this job.
+         */
+        GateChoice: {
+            /** Label */
+            label: string;
+            /** Meaning */
+            meaning: string;
         };
         /**
          * GenerateWorkflowPromptRequest
@@ -13348,7 +13364,7 @@ export interface components {
             title: string;
             /** Total Executions */
             total_executions: number | null;
-            trigger_config: components["schemas"]["TriggerConfig"] | null;
+            trigger_config: components["schemas"]["TriggerConfigOutput"] | null;
         };
         /**
          * PublicWorkflowsResponse
@@ -14664,7 +14680,7 @@ export interface components {
             field_name: string;
             operator: components["schemas"]["ConditionOperator"];
             /** Value */
-            value: string | number;
+            value: boolean | string | number;
         };
         /**
          * SubscriptionDocument
@@ -15696,13 +15712,34 @@ export interface components {
             why_important?: string;
         };
         /**
+         * TriggerConfigFieldSchema
+         * @description Schema for a single trigger configuration field.
+         */
+        TriggerConfigFieldSchema: {
+            /** Default */
+            default: boolean | number | string;
+            /** Description */
+            description?: string | null;
+            /** Max */
+            max?: number | null;
+            /** Min */
+            min?: number | null;
+            /** Options Endpoint */
+            options_endpoint?: string | null;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "string" | "integer" | "boolean" | "number";
+        };
+        /**
          * TriggerConfig
          * @description Configuration for workflow triggers.
          *
          *     Uses a discriminated union pattern for type-safe provider configs.
          *     Provider-specific data is stored in `trigger_data` field.
          */
-        TriggerConfig: {
+        TriggerConfigInput: {
             /**
              * Composio Trigger Ids
              * @description List of Composio trigger IDs registered for this workflow
@@ -15719,6 +15756,8 @@ export interface components {
              * @default true
              */
             enabled?: boolean;
+            /** @description The check a fired event must pass before this workflow runs */
+            gate?: components["schemas"]["TriggerGateInput"] | null;
             /**
              * Next Run
              * @description Next scheduled execution time
@@ -15745,25 +15784,133 @@ export interface components {
             [key: string]: unknown;
         };
         /**
-         * TriggerConfigFieldSchema
-         * @description Schema for a single trigger configuration field.
+         * TriggerConfig
+         * @description Configuration for workflow triggers.
+         *
+         *     Uses a discriminated union pattern for type-safe provider configs.
+         *     Provider-specific data is stored in `trigger_data` field.
          */
-        TriggerConfigFieldSchema: {
-            /** Default */
-            default: boolean | number | string;
-            /** Description */
-            description?: string | null;
-            /** Max */
-            max?: number | null;
-            /** Min */
-            min?: number | null;
-            /** Options Endpoint */
-            options_endpoint?: string | null;
+        TriggerConfigOutput: {
             /**
-             * Type
-             * @enum {string}
+             * Composio Trigger Ids
+             * @description List of Composio trigger IDs registered for this workflow
              */
-            type: "string" | "integer" | "boolean" | "number";
+            composio_trigger_ids?: string[] | null;
+            /**
+             * Cron Expression
+             * @description Cron expression for scheduled workflows
+             */
+            cron_expression?: string | null;
+            /**
+             * Enabled
+             * @description Whether the trigger is enabled
+             * @default true
+             */
+            enabled?: boolean;
+            /** @description The check a fired event must pass before this workflow runs */
+            gate?: components["schemas"]["TriggerGateOutput"] | null;
+            /**
+             * Next Run
+             * @description Next scheduled execution time
+             */
+            next_run?: string | null;
+            /**
+             * Timezone
+             * @description Timezone for scheduled execution
+             */
+            timezone?: string | null;
+            /**
+             * Trigger Data
+             * @description Provider-specific trigger configuration
+             */
+            trigger_data?: (components["schemas"]["CalendarEventCreatedConfig"] | components["schemas"]["CalendarEventStartingSoonConfig"] | components["schemas"]["GmailNewMessageConfig"] | components["schemas"]["GmailEmailSentConfig"] | components["schemas"]["GmailPollInboxConfig"] | components["schemas"]["GitHubCommitEventConfig"] | components["schemas"]["GitHubPrEventConfig"] | components["schemas"]["GitHubStarAddedConfig"] | components["schemas"]["GitHubIssueAddedConfig"] | components["schemas"]["GoogleDocsNewDocumentConfig"] | components["schemas"]["GoogleDocsDocumentDeletedConfig"] | components["schemas"]["GoogleDocsDocumentUpdatedConfig"] | components["schemas"]["GoogleSheetsNewRowConfig"] | components["schemas"]["GoogleSheetsNewSheetConfig"] | components["schemas"]["LinearIssueCreatedConfig"] | components["schemas"]["LinearIssueUpdatedConfig"] | components["schemas"]["LinearCommentAddedConfig"] | components["schemas"]["NotionNewPageInDbConfig"] | components["schemas"]["NotionPageUpdatedConfig"] | components["schemas"]["NotionAllPageEventsConfig"] | components["schemas"]["NotionPageContentUpdatedConfig"] | components["schemas"]["SlackNewMessageConfig"] | components["schemas"]["SlackChannelCreatedConfig"] | components["schemas"]["TodoistNewTaskCreatedConfig"] | components["schemas"]["AsanaTaskTriggerConfig"]) | null;
+            /**
+             * Trigger Name
+             * @description Specific trigger slug for identification
+             */
+            trigger_name?: string | null;
+            /** @description Type of trigger */
+            type: components["schemas"]["TriggerType"];
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * TriggerGate
+         * @description Runs unless a skip_when rule holds or JEV is sure it should skip; a run_when rule always runs.
+         */
+        TriggerGateInput: {
+            author: components["schemas"]["GateAuthor"];
+            /** Choices */
+            choices?: components["schemas"]["GateChoice"][];
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled?: boolean;
+            /**
+             * Min Confidence
+             * @default 0.9
+             */
+            min_confidence?: number;
+            /**
+             * Question
+             * @description A yes/no question about the event, shown to the user as 'Runs only when'
+             */
+            question: string;
+            /**
+             * Run When
+             * @description Free payload rules checked first; any one that holds runs without asking JEV
+             */
+            run_when?: components["schemas"]["SubscriptionCondition"][];
+            /**
+             * Skip On
+             * @description Choices that skip the run when JEV picks one at min_confidence or above
+             */
+            skip_on?: string[];
+            /**
+             * Skip When
+             * @description Free payload rules checked before JEV; any one that holds skips the run
+             */
+            skip_when?: components["schemas"]["SubscriptionCondition"][];
+        };
+        /**
+         * TriggerGate
+         * @description Runs unless a skip_when rule holds or JEV is sure it should skip; a run_when rule always runs.
+         */
+        TriggerGateOutput: {
+            author: components["schemas"]["GateAuthor"];
+            /** Choices */
+            choices?: components["schemas"]["GateChoice"][];
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled?: boolean;
+            /**
+             * Min Confidence
+             * @default 0.9
+             */
+            min_confidence?: number;
+            /**
+             * Question
+             * @description A yes/no question about the event, shown to the user as 'Runs only when'
+             */
+            question: string;
+            /**
+             * Run When
+             * @description Free payload rules checked first; any one that holds runs without asking JEV
+             */
+            run_when?: components["schemas"]["SubscriptionCondition"][];
+            /**
+             * Skip On
+             * @description Choices that skip the run when JEV picks one at min_confidence or above
+             */
+            skip_on?: string[];
+            /**
+             * Skip When
+             * @description Free payload rules checked before JEV; any one that holds skips the run
+             */
+            skip_when?: components["schemas"]["SubscriptionCondition"][];
         };
         /**
          * TriggerOption
@@ -15822,6 +15969,8 @@ export interface components {
              * Format: date-time
              */
             created_at?: string;
+            /** @description The check a fired event must pass before this subscription acts */
+            gate?: components["schemas"]["TriggerGateOutput"] | null;
             /** Id */
             id?: string;
             /**
@@ -16179,7 +16328,7 @@ export interface components {
             steps?: components["schemas"]["WorkflowStepInput"][] | null;
             /** Title */
             title?: string | null;
-            trigger_config?: components["schemas"]["TriggerConfig"] | null;
+            trigger_config?: components["schemas"]["TriggerConfigInput"] | null;
         };
         /** URLRequest */
         URLRequest: {
@@ -17009,7 +17158,7 @@ export interface components {
              */
             total_executions: number;
             /** @description Trigger configuration */
-            trigger_config: components["schemas"]["TriggerConfig"];
+            trigger_config: components["schemas"]["TriggerConfigOutput"];
             /**
              * Updated At
              * @description Last update timestamp
@@ -17262,6 +17411,8 @@ export type FirstStepsCollapseRequest = components['schemas']['FirstStepsCollaps
 export type FirstStepsResponse = components['schemas']['FirstStepsResponse'];
 export type FirstStepsState = components['schemas']['FirstStepsState'];
 export type FoldedCards = components['schemas']['FoldedCards'];
+export type GateAuthor = components['schemas']['GateAuthor'];
+export type GateChoice = components['schemas']['GateChoice'];
 export type GenerateWorkflowPromptRequest = components['schemas']['GenerateWorkflowPromptRequest'];
 export type GenerateWorkflowPromptResponse = components['schemas']['GenerateWorkflowPromptResponse'];
 export type GetPlatformLinksResponse = components['schemas']['GetPlatformLinksResponse'];
@@ -17586,8 +17737,11 @@ export type ToolsListResponse = components['schemas']['ToolsListResponse'];
 export type TranscribeAudioResponse = components['schemas']['TranscribeAudioResponse'];
 export type TrashEmailsResponse = components['schemas']['TrashEmailsResponse'];
 export type TriageEmailSummary = components['schemas']['TriageEmailSummary'];
-export type TriggerConfig = components['schemas']['TriggerConfig'];
 export type TriggerConfigFieldSchema = components['schemas']['TriggerConfigFieldSchema'];
+export type TriggerConfigInput = components['schemas']['TriggerConfigInput'];
+export type TriggerConfigOutput = components['schemas']['TriggerConfigOutput'];
+export type TriggerGateInput = components['schemas']['TriggerGateInput'];
+export type TriggerGateOutput = components['schemas']['TriggerGateOutput'];
 export type TriggerOption = components['schemas']['TriggerOption'];
 export type TriggerOptionGroup = components['schemas']['TriggerOptionGroup'];
 export type TriggerOptionsResponse = components['schemas']['TriggerOptionsResponse'];

@@ -615,8 +615,6 @@ apps/api/tests/unit/services/test_device_server_lifecycle.py	attr-defined
 apps/api/tests/unit/services/test_device_server_lifecycle.py	misc
 apps/api/tests/unit/services/test_device_server_lifecycle.py	valid-type
 apps/api/tests/unit/services/test_email_delivery.py	arg-type
-apps/api/tests/unit/services/test_feature_flags.py	arg-type
-apps/api/tests/unit/services/test_feature_flags.py	misc
 apps/api/tests/unit/services/test_file_service.py	list-item
 apps/api/tests/unit/services/test_gaia_task_files.py	arg-type
 apps/api/tests/unit/services/test_integration_inference_service.py	misc
@@ -677,9 +675,7 @@ apps/api/tests/unit/services/test_workflow_subagent.py	arg-type
 apps/api/tests/unit/services/test_workflow_subagent.py	override
 apps/api/tests/unit/services/todos/test_inbox_desk.py	attr-defined
 apps/api/tests/unit/services/todos/test_signal_context.py	arg-type
-apps/api/tests/unit/services/triggers/test_subscription_dispatch.py	arg-type
 apps/api/tests/unit/services/triggers/test_subscription_service.py	union-attr
-apps/api/tests/unit/services/triggers/test_subscription_validation.py	var-annotated
 apps/api/tests/unit/services/workflow/test_playbook_check.py	arg-type
 apps/api/tests/unit/services/workflow/test_playbook_check.py	misc
 apps/api/tests/unit/services/workflow/test_playbook_evaluator.py	arg-type
@@ -813,9 +809,5 @@ apps/api/tests/unit/workers/test_tracked_todo_tasks.py	has-type
 apps/api/tests/unit/workers/test_tracked_todo_tasks.py	misc
 apps/api/tests/unit/workers/test_tracked_todo_tasks.py	return-value
 apps/api/tests/unit/workers/test_worker_lifecycle.py	arg-type
-apps/api/tests/unit/workers/test_workflow_tasks.py	attr-defined
 apps/api/tests/unit/workers/test_workflow_tasks_coverage.py	arg-type
 apps/api/tests/unit/workers/test_workflow_tasks_onboarding_gate.py	arg-type
-apps/api/tests/unit/workers/test_workflow_tasks_playbook.py	arg-type
-apps/api/tests/unit/workers/test_workflow_tasks_playbook.py	attr-defined
-apps/api/tests/unit/workers/test_workflow_tasks_playbook.py	func-returns-value

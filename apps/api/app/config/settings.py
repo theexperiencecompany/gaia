@@ -161,6 +161,10 @@ class Settings(BrowserHostSettings):
     # one structured decision call per reply (hil-reply calibration: 0 dangerous
     # approves vs the LLM's 2), LLM classifier as the transport-failure fallback.
     ENABLE_HIL_JEV_REPLY: bool = True
+    # Trigger gates skip a run JEV is sure its event does not need. Off by default:
+    # every gate is evaluated and recorded (shadow) but the run goes ahead, until
+    # the founder signs off on the eval's disagreement review.
+    ENABLE_TRIGGER_GATES: bool = False
     # Private agent lab — Claude Code / OpenCode CLIs inside the
     # per-user E2B sandbox, controllable from chat. Off by default; PostHog
     # targeting enables it for specific users.

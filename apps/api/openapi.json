@@ -4892,7 +4892,7 @@
             "type": "string"
           },
           "trigger_config": {
-            "$ref": "#/components/schemas/TriggerConfig",
+            "$ref": "#/components/schemas/TriggerConfigInput",
             "description": "Trigger configuration"
           }
         },
@@ -7096,6 +7096,38 @@
           "since"
         ],
         "title": "FoldedCards",
+        "type": "object"
+      },
+      "GateAuthor": {
+        "description": "Who wrote a gate: GAIA on create, the user in the editor, or a system default.",
+        "enum": [
+          "gaia",
+          "user",
+          "system"
+        ],
+        "title": "GateAuthor",
+        "type": "string"
+      },
+      "GateChoice": {
+        "description": "One answer JEV may give, with what it means for this job.",
+        "properties": {
+          "label": {
+            "pattern": "^[a-z][a-z0-9_]{0,31}$",
+            "title": "Label",
+            "type": "string"
+          },
+          "meaning": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Meaning",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "meaning"
+        ],
+        "title": "GateChoice",
         "type": "object"
       },
       "GenerateWorkflowPromptRequest": {
@@ -15090,7 +15122,7 @@
           "trigger_config": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/TriggerConfig"
+                "$ref": "#/components/schemas/TriggerConfigOutput"
               },
               {
                 "type": "null"
@@ -17712,6 +17744,9 @@
           "value": {
             "anyOf": [
               {
+                "type": "boolean"
+              },
+              {
                 "type": "string"
               },
               {
@@ -19690,7 +19725,89 @@
         "title": "TriageEmailSummary",
         "type": "object"
       },
-      "TriggerConfig": {
+      "TriggerConfigFieldSchema": {
+        "description": "Schema for a single trigger configuration field.",
+        "properties": {
+          "default": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Default"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max"
+          },
+          "min": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min"
+          },
+          "options_endpoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Options Endpoint"
+          },
+          "type": {
+            "enum": [
+              "string",
+              "integer",
+              "boolean",
+              "number"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "default"
+        ],
+        "title": "TriggerConfigFieldSchema",
+        "type": "object"
+      },
+      "TriggerConfigInput": {
         "additionalProperties": true,
         "description": "Configuration for workflow triggers.\n\nUses a discriminated union pattern for type-safe provider configs.\nProvider-specific data is stored in `trigger_data` field.",
         "properties": {
@@ -19726,6 +19843,17 @@
             "description": "Whether the trigger is enabled",
             "title": "Enabled",
             "type": "boolean"
+          },
+          "gate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TriggerGateInput"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The check a fired event must pass before this workflow runs"
           },
           "next_run": {
             "anyOf": [
@@ -19893,27 +20021,26 @@
         "title": "TriggerConfig",
         "type": "object"
       },
-      "TriggerConfigFieldSchema": {
-        "description": "Schema for a single trigger configuration field.",
+      "TriggerConfigOutput": {
+        "additionalProperties": true,
+        "description": "Configuration for workflow triggers.\n\nUses a discriminated union pattern for type-safe provider configs.\nProvider-specific data is stored in `trigger_data` field.",
         "properties": {
-          "default": {
+          "composio_trigger_ids": {
             "anyOf": [
               {
-                "type": "boolean"
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
               },
               {
-                "type": "integer"
-              },
-              {
-                "type": "number"
-              },
-              {
-                "type": "string"
+                "type": "null"
               }
             ],
-            "title": "Default"
+            "description": "List of Composio trigger IDs registered for this workflow",
+            "title": "Composio Trigger Ids"
           },
-          "description": {
+          "cron_expression": {
             "anyOf": [
               {
                 "type": "string"
@@ -19922,31 +20049,40 @@
                 "type": "null"
               }
             ],
-            "title": "Description"
+            "description": "Cron expression for scheduled workflows",
+            "title": "Cron Expression"
           },
-          "max": {
+          "enabled": {
+            "default": true,
+            "description": "Whether the trigger is enabled",
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "gate": {
             "anyOf": [
               {
-                "type": "integer"
+                "$ref": "#/components/schemas/TriggerGateOutput"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Max"
+            "description": "The check a fired event must pass before this workflow runs"
           },
-          "min": {
+          "next_run": {
             "anyOf": [
               {
-                "type": "integer"
+                "format": "date-time",
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Min"
+            "description": "Next scheduled execution time",
+            "title": "Next Run"
           },
-          "options_endpoint": {
+          "timezone": {
             "anyOf": [
               {
                 "type": "string"
@@ -19955,24 +20091,284 @@
                 "type": "null"
               }
             ],
-            "title": "Options Endpoint"
+            "description": "Timezone for scheduled execution",
+            "title": "Timezone"
+          },
+          "trigger_data": {
+            "anyOf": [
+              {
+                "discriminator": {
+                  "mapping": {
+                    "asana_task_trigger": "#/components/schemas/AsanaTaskTriggerConfig",
+                    "calendar_event_created": "#/components/schemas/CalendarEventCreatedConfig",
+                    "calendar_event_starting_soon": "#/components/schemas/CalendarEventStartingSoonConfig",
+                    "github_commit_event": "#/components/schemas/GitHubCommitEventConfig",
+                    "github_issue_added": "#/components/schemas/GitHubIssueAddedConfig",
+                    "github_pr_event": "#/components/schemas/GitHubPrEventConfig",
+                    "github_star_added": "#/components/schemas/GitHubStarAddedConfig",
+                    "gmail_email_sent": "#/components/schemas/GmailEmailSentConfig",
+                    "gmail_new_message": "#/components/schemas/GmailNewMessageConfig",
+                    "gmail_poll_inbox": "#/components/schemas/GmailPollInboxConfig",
+                    "google_docs_document_deleted": "#/components/schemas/GoogleDocsDocumentDeletedConfig",
+                    "google_docs_document_updated": "#/components/schemas/GoogleDocsDocumentUpdatedConfig",
+                    "google_docs_new_document": "#/components/schemas/GoogleDocsNewDocumentConfig",
+                    "google_sheets_new_row": "#/components/schemas/GoogleSheetsNewRowConfig",
+                    "google_sheets_new_sheet": "#/components/schemas/GoogleSheetsNewSheetConfig",
+                    "linear_comment_added": "#/components/schemas/LinearCommentAddedConfig",
+                    "linear_issue_created": "#/components/schemas/LinearIssueCreatedConfig",
+                    "linear_issue_updated": "#/components/schemas/LinearIssueUpdatedConfig",
+                    "notion_all_page_events": "#/components/schemas/NotionAllPageEventsConfig",
+                    "notion_new_page_in_db": "#/components/schemas/NotionNewPageInDbConfig",
+                    "notion_page_content_updated": "#/components/schemas/NotionPageContentUpdatedConfig",
+                    "notion_page_updated": "#/components/schemas/NotionPageUpdatedConfig",
+                    "slack_channel_created": "#/components/schemas/SlackChannelCreatedConfig",
+                    "slack_new_message": "#/components/schemas/SlackNewMessageConfig",
+                    "todoist_new_task_created": "#/components/schemas/TodoistNewTaskCreatedConfig"
+                  },
+                  "propertyName": "trigger_name"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/CalendarEventCreatedConfig"
+                  },
+                  {
+                    "$ref": "#/components/schemas/CalendarEventStartingSoonConfig"
+                  },
+                  {
+                    "$ref": "#/components/schemas/GmailNewMessageConfig"
+                  },
+                  {
+                    "$ref": "#/components/schemas/GmailEmailSentConfig"
+                  },
+                  {
+                    "$ref": "#/components/schemas/GmailPollInboxConfig"
+                  },
+                  {
+                    "$ref": "#/components/schemas/GitHubCommitEventConfig"
+                  },
+                  {
+                    "$ref": "#/components/schemas/GitHubPrEventConfig"
+                  },
+                  {
+                    "$ref": "#/components/schemas/GitHubStarAddedConfig"
+                  },
+                  {
+                    "$ref": "#/components/schemas/GitHubIssueAddedConfig"
+                  },
+                  {
+                    "$ref": "#/components/schemas/GoogleDocsNewDocumentConfig"
+                  },
+                  {
+                    "$ref": "#/components/schemas/GoogleDocsDocumentDeletedConfig"
+                  },
+                  {
+                    "$ref": "#/components/schemas/GoogleDocsDocumentUpdatedConfig"
+                  },
+                  {
+                    "$ref": "#/components/schemas/GoogleSheetsNewRowConfig"
+                  },
+                  {
+                    "$ref": "#/components/schemas/GoogleSheetsNewSheetConfig"
+                  },
+                  {
+                    "$ref": "#/components/schemas/LinearIssueCreatedConfig"
+                  },
+                  {
+                    "$ref": "#/components/schemas/LinearIssueUpdatedConfig"
+                  },
+                  {
+                    "$ref": "#/components/schemas/LinearCommentAddedConfig"
+                  },
+                  {
+                    "$ref": "#/components/schemas/NotionNewPageInDbConfig"
+                  },
+                  {
+                    "$ref": "#/components/schemas/NotionPageUpdatedConfig"
+                  },
+                  {
+                    "$ref": "#/components/schemas/NotionAllPageEventsConfig"
+                  },
+                  {
+                    "$ref": "#/components/schemas/NotionPageContentUpdatedConfig"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SlackNewMessageConfig"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SlackChannelCreatedConfig"
+                  },
+                  {
+                    "$ref": "#/components/schemas/TodoistNewTaskCreatedConfig"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AsanaTaskTriggerConfig"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Provider-specific trigger configuration",
+            "title": "Trigger Data"
+          },
+          "trigger_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Specific trigger slug for identification",
+            "title": "Trigger Name"
           },
           "type": {
-            "enum": [
-              "string",
-              "integer",
-              "boolean",
-              "number"
-            ],
-            "title": "Type",
-            "type": "string"
+            "$ref": "#/components/schemas/TriggerType",
+            "description": "Type of trigger"
           }
         },
         "required": [
-          "type",
-          "default"
+          "type"
         ],
-        "title": "TriggerConfigFieldSchema",
+        "title": "TriggerConfig",
+        "type": "object"
+      },
+      "TriggerGateInput": {
+        "description": "Runs unless a skip_when rule holds or JEV is sure it should skip; a run_when rule always runs.",
+        "properties": {
+          "author": {
+            "$ref": "#/components/schemas/GateAuthor"
+          },
+          "choices": {
+            "items": {
+              "$ref": "#/components/schemas/GateChoice"
+            },
+            "maxItems": 5,
+            "minItems": 2,
+            "title": "Choices",
+            "type": "array"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "min_confidence": {
+            "default": 0.9,
+            "maximum": 1.0,
+            "minimum": 0.5,
+            "title": "Min Confidence",
+            "type": "number"
+          },
+          "question": {
+            "description": "A yes/no question about the event, shown to the user as 'Runs only when'",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          },
+          "run_when": {
+            "description": "Free payload rules checked first; any one that holds runs without asking JEV",
+            "items": {
+              "$ref": "#/components/schemas/SubscriptionCondition"
+            },
+            "title": "Run When",
+            "type": "array"
+          },
+          "skip_on": {
+            "description": "Choices that skip the run when JEV picks one at min_confidence or above",
+            "items": {
+              "pattern": "^[a-z][a-z0-9_]{0,31}$",
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Skip On",
+            "type": "array"
+          },
+          "skip_when": {
+            "description": "Free payload rules checked before JEV; any one that holds skips the run",
+            "items": {
+              "$ref": "#/components/schemas/SubscriptionCondition"
+            },
+            "title": "Skip When",
+            "type": "array"
+          }
+        },
+        "required": [
+          "question",
+          "author"
+        ],
+        "title": "TriggerGate",
+        "type": "object"
+      },
+      "TriggerGateOutput": {
+        "description": "Runs unless a skip_when rule holds or JEV is sure it should skip; a run_when rule always runs.",
+        "properties": {
+          "author": {
+            "$ref": "#/components/schemas/GateAuthor"
+          },
+          "choices": {
+            "items": {
+              "$ref": "#/components/schemas/GateChoice"
+            },
+            "maxItems": 5,
+            "minItems": 2,
+            "title": "Choices",
+            "type": "array"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "min_confidence": {
+            "default": 0.9,
+            "maximum": 1.0,
+            "minimum": 0.5,
+            "title": "Min Confidence",
+            "type": "number"
+          },
+          "question": {
+            "description": "A yes/no question about the event, shown to the user as 'Runs only when'",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          },
+          "run_when": {
+            "description": "Free payload rules checked first; any one that holds runs without asking JEV",
+            "items": {
+              "$ref": "#/components/schemas/SubscriptionCondition"
+            },
+            "title": "Run When",
+            "type": "array"
+          },
+          "skip_on": {
+            "description": "Choices that skip the run when JEV picks one at min_confidence or above",
+            "items": {
+              "pattern": "^[a-z][a-z0-9_]{0,31}$",
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Skip On",
+            "type": "array"
+          },
+          "skip_when": {
+            "description": "Free payload rules checked before JEV; any one that holds skips the run",
+            "items": {
+              "$ref": "#/components/schemas/SubscriptionCondition"
+            },
+            "title": "Skip When",
+            "type": "array"
+          }
+        },
+        "required": [
+          "question",
+          "author"
+        ],
+        "title": "TriggerGate",
         "type": "object"
       },
       "TriggerOption": {
@@ -20084,6 +20480,17 @@
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "gate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TriggerGateOutput"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The check a fired event must pass before this subscription acts"
           },
           "id": {
             "title": "Id",
@@ -21003,7 +21410,7 @@
           "trigger_config": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/TriggerConfig"
+                "$ref": "#/components/schemas/TriggerConfigInput"
               },
               {
                 "type": "null"
@@ -22494,7 +22901,7 @@
             "type": "integer"
           },
           "trigger_config": {
-            "$ref": "#/components/schemas/TriggerConfig",
+            "$ref": "#/components/schemas/TriggerConfigOutput",
             "description": "Trigger configuration"
           },
           "updated_at": {

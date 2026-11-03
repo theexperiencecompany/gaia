@@ -8736,6 +8736,79 @@
       }
     },
     {
+      "event": "workflow:trigger_gate_decided",
+      "class": "WorkflowTriggerGateDecided",
+      "owner": "server",
+      "domain": "workflow",
+      "description": "A trigger gate decided whether a fired event runs its workflow or tracked todo.\n\n    skipped is what the run did; outcome is what the gate said, so a shadow gate\n    (enforced false) reports outcome skip with skipped false.",
+      "previous_names": [],
+      "budget_per_user_day": 500,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A trigger gate decided whether a fired event runs its workflow or tracked todo.\n\nskipped is what the run did; outcome is what the gate said, so a shadow gate\n(enforced false) reports outcome skip with skipped false.",
+        "properties": {
+          "owner_type": {
+            "enum": ["workflow", "todo"],
+            "title": "Owner Type",
+            "type": "string"
+          },
+          "trigger_name": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Trigger Name",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": ["run", "skip"],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "reason": {
+            "enum": ["rule", "jev_skip", "jev_run", "jev_unsure", "jev_error"],
+            "title": "Reason",
+            "type": "string"
+          },
+          "author": {
+            "enum": ["gaia", "user", "system"],
+            "title": "Author",
+            "type": "string"
+          },
+          "enforced": {
+            "title": "Enforced",
+            "type": "boolean"
+          },
+          "skipped": {
+            "title": "Skipped",
+            "type": "boolean"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Latency Ms"
+          }
+        },
+        "required": [
+          "owner_type",
+          "trigger_name",
+          "outcome",
+          "reason",
+          "author",
+          "enforced",
+          "skipped"
+        ],
+        "title": "WorkflowTriggerGateDecided",
+        "type": "object"
+      }
+    },
+    {
       "event": "workflow:unpublished",
       "class": "WorkflowUnpublished",
       "owner": "server",

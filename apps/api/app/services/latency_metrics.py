@@ -268,6 +268,15 @@ _TOOL_CALL_TOTAL = _register_once(
     ),
 )
 
+_TRIGGER_GATE_DECISION_TOTAL = _register_once(
+    "trigger_gate_decision_total",
+    lambda: Counter(
+        name="trigger_gate_decision_total",
+        documentation="Lifetime trigger gate decisions; reason jev_error is the JEV error rate",
+        labelnames=("owner", "outcome", "reason", "enforced"),
+    ),
+)
+
 _HIL_PAUSE_TOTAL = _register_once(
     "hil_pause_total",
     lambda: Counter(
@@ -308,6 +317,7 @@ ALL_COLLECTORS: Final[tuple[Histogram | Counter, ...]] = (
     _CHAT_TURN_TOTAL,
     _EXECUTOR_RUN_TOTAL,
     _TOOL_CALL_TOTAL,
+    _TRIGGER_GATE_DECISION_TOTAL,
     _HIL_PAUSE_TOTAL,
 )
 
@@ -454,6 +464,17 @@ def observe_subagent_run(seconds: float, *, subagent_id: str, status: str) -> No
     _observe(_SUBAGENT_RUN_SECONDS, seconds, subagent_id=subagent_id, status=status)
 
 
+def observe_trigger_gate_decision(*, owner: str, outcome: str, reason: str, enforced: bool) -> None:
+    """Count one trigger gate decision."""
+    _inc(
+        _TRIGGER_GATE_DECISION_TOTAL,
+        owner=owner,
+        outcome=outcome,
+        reason=reason,
+        enforced=_bool_label(enforced),
+    )
+
+
 def observe_hil_pause() -> None:
     """Increment the lifetime HIL-pause counter."""
     _inc(_HIL_PAUSE_TOTAL)
@@ -523,6 +544,7 @@ __all__ = [
     "observe_sse_delivery",
     "observe_subagent_run",
     "observe_tool_call",
+    "observe_trigger_gate_decision",
     "observe_transport_redis_publish",
     "span",
 ]

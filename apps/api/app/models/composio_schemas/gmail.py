@@ -39,6 +39,25 @@ class GmailNewMessagePayload(BaseModel):
     to: str | None = Field(None, description="Recipient email address")
 
 
+class GmailNewMessageEvent(GmailNewMessagePayload):
+    """A new-message payload plus the signals GAIA derives from it at dispatch (gmail_signals.py).
+
+    A signal the payload cannot back (no headers, no thread id) is absent, never false.
+    """
+
+    continues_thread: bool | None = Field(
+        None, description="The message joins a thread that already had messages"
+    )
+    gmail_category: str | None = Field(None, description="Gmail's inbox tab label, CATEGORY_*")
+    has_list_unsubscribe: bool | None = Field(None, description="Carries a List-Unsubscribe header")
+    bulk_or_auto_submitted: bool | None = Field(
+        None, description="Precedence bulk/list/junk, or Auto-Submitted other than no"
+    )
+    sender_looks_automated: bool | None = Field(
+        None, description="The sender address reads as a no-reply or notification sender"
+    )
+
+
 class GmailEmailSentPayload(BaseModel):
     """Payload for GMAIL_EMAIL_SENT_TRIGGER at the pinned toolkit 20260107_00.
 

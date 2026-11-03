@@ -1,5 +1,6 @@
 """Unit tests for app/services/feature_flags.py."""
 
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -28,6 +29,7 @@ from app.services.feature_flags import (
     is_code_mode_enabled,
     is_enabled,
     is_hil_ledger_enabled,
+    is_trigger_gates_enforced,
     set_user_flag,
 )
 from app.utils.errors import AppError
@@ -40,20 +42,20 @@ USER_ID = "64abc123def4567890abcdef"
 
 
 @pytest.fixture
-def mock_client() -> MagicMock:
+def mock_client() -> Iterator[MagicMock]:
     client = MagicMock()
     with patch("app.services.feature_flags._get_posthog_client", return_value=client):
         yield client
 
 
 @pytest.fixture
-def no_client() -> None:
+def no_client() -> Iterator[None]:
     with patch("app.services.feature_flags._get_posthog_client", return_value=None):
         yield
 
 
 @pytest.fixture
-def evaluated() -> MagicMock:
+def evaluated() -> Iterator[MagicMock]:
     with patch("app.services.feature_flags.capture") as mocked:
         yield mocked
 
@@ -333,12 +335,19 @@ FLAG_KILL_SWITCHES = {
     FeatureFlag.HIL_JEV_JUDGE: "ENABLE_HIL_JEV_JUDGE",
     FeatureFlag.HIL_JEV_REPLY: "ENABLE_HIL_JEV_REPLY",
     FeatureFlag.AGENT_LAB: "ENABLE_AGENT_LAB",
+    FeatureFlag.TRIGGER_GATES: "ENABLE_TRIGGER_GATES",
 }
 
 
 class TestAgentLab:
     async def test_agent_lab_flag_defaults_off(self, no_client: None) -> None:
         assert await is_agent_lab_enabled(USER_ID) is False
+
+
+class TestTriggerGates:
+    async def test_trigger_gates_ship_in_shadow(self, no_client: None) -> None:
+        # Off until the founder signs off on the eval review: every gate records, none skips.
+        assert await is_trigger_gates_enforced(USER_ID) is False
 
 
 class TestShippedDefaults:
@@ -447,7 +456,7 @@ class TestLogContract:
 
 
 def _user_with_choices(choices: dict[str, bool] | None) -> UserDocument:
-    return UserDocument(id=USER_ID, feature_flags=choices)
+    return UserDocument.model_validate({"id": USER_ID, "feature_flags": choices})
 
 
 def _posthog_serves(client: MagicMock, values: dict[str, object]) -> None:
@@ -462,7 +471,7 @@ def _queried_keys(client: MagicMock) -> list[str]:
 
 
 @pytest.fixture
-def stored_user() -> AsyncMock:
+def stored_user() -> Iterator[AsyncMock]:
     with patch("app.services.feature_flags.user_repository.get", new_callable=AsyncMock) as get:
         yield get
 
@@ -718,7 +727,7 @@ class TestWideEventCarriesTheValueInEffect:
 
 
 @pytest.fixture
-def stored_choice() -> AsyncMock:
+def stored_choice() -> Iterator[AsyncMock]:
     with patch(
         "app.services.feature_flags.user_repository.set_feature_flag", new_callable=AsyncMock
     ) as store:

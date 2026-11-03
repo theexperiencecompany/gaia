@@ -24,7 +24,7 @@ from app.models.composio_schemas import (
     GitHubPullRequestEventPayload,
     GitHubStarAddedEventPayload,
     GmailEmailSentPayload,
-    GmailNewMessagePayload,
+    GmailNewMessageEvent,
     GoogleCalendarEventCreatedPayload,
     GoogleCalendarEventStartingSoonPayload,
     GoogleDocsDocumentDeletedPayload,
@@ -55,6 +55,7 @@ _STRING = MatchableFieldType.STRING
 _INTEGER = MatchableFieldType.INTEGER
 _NUMBER = MatchableFieldType.NUMBER
 _STRING_LIST = MatchableFieldType.STRING_LIST
+_BOOLEAN = MatchableFieldType.BOOLEAN
 
 
 def _f(name: str, type_: MatchableFieldType, description: str, example: str) -> MatchableField:
@@ -62,7 +63,7 @@ def _f(name: str, type_: MatchableFieldType, description: str, example: str) -> 
 
 
 _GMAIL_NEW_MESSAGE = MatchableTrigger(
-    payload_model=GmailNewMessagePayload,
+    payload_model=GmailNewMessageEvent,
     fields=(
         _f("thread_id", _STRING, "Gmail thread the message belongs to", "18c9f0a1b2c3d4e5"),
         _f("message_id", _STRING, "Stable id of this message", "18c9f0a1b2c3d4e6"),
@@ -71,6 +72,26 @@ _GMAIL_NEW_MESSAGE = MatchableTrigger(
         _f("subject", _STRING, "Email subject line", "Re: Invoice 4021"),
         _f("message_text", _STRING, "Plain-text body of the message", "Thanks, approved."),
         _f("label_ids", _STRING_LIST, "Gmail labels applied to the message", "INBOX"),
+        _f(
+            "continues_thread",
+            _BOOLEAN,
+            "The message joins a thread that already had messages; a cold 'Re:' starts a new one",
+            "true",
+        ),
+        _f("gmail_category", _STRING, "Gmail's inbox tab", "CATEGORY_PERSONAL"),
+        _f("has_list_unsubscribe", _BOOLEAN, "Carries a List-Unsubscribe header", "false"),
+        _f(
+            "bulk_or_auto_submitted",
+            _BOOLEAN,
+            "Marked bulk or auto-submitted by its headers",
+            "false",
+        ),
+        _f(
+            "sender_looks_automated",
+            _BOOLEAN,
+            "The sender reads as a no-reply or notification address",
+            "false",
+        ),
     ),
     excluded={
         "id": "Raw Gmail message id; match on message_id, which is the stable one.",

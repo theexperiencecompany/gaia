@@ -6,13 +6,19 @@ trigger ids alone finds nothing there — and that is the entire reply-watching
 flow, failing silently.
 """
 
+from collections.abc import Iterator
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 from redis.exceptions import RedisError
+import respx
 
+from app.constants.hil import HIL_JEV_URL
 from app.constants.todos import TodoActivityEvent
+from app.constants.trigger_gates import GateAuthor
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
@@ -21,13 +27,16 @@ from app.models.todo_models import TodoDocument
 from app.models.trigger_subscription_models import (
     ConditionMatch,
     ConditionOperator,
+    GateChoice,
     SubscriptionAction,
     SubscriptionCondition,
     SubscriptionResolution,
+    TriggerGate,
     TriggerOrigin,
     TriggerSubscription,
     TriggerSubscriptionStatus,
 )
+from app.services.providers.provider_credentials_service import ProviderConfig
 from app.services.triggers.subscription_dispatch import (
     dispatch_to_subscribed_todos,
     fire_subscription,
@@ -293,7 +302,7 @@ class TestGating:
                 ]
             )
         ]
-        payload = {"gaia_account_id": event_account} if event_account else {}
+        payload: dict[str, object] = {"gaia_account_id": event_account} if event_account else {}
 
         assert await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, payload) == fired
 
@@ -302,7 +311,7 @@ class TestGating:
             _todo(trigger_subscriptions=[_subscription(action=SubscriptionAction.NOTIFY)])
         ]
 
-        payload = {"gaia_account_id": "acct_home"}
+        payload: dict[str, object] = {"gaia_account_id": "acct_home"}
         assert await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, payload) == 1
 
     async def test_failing_conditions_do_not_fire(self, deps) -> None:
@@ -372,7 +381,7 @@ class TestGating:
         deps.repo.find_active_by_user_and_trigger.return_value = [
             _todo(trigger_subscriptions=[sub])
         ]
-        payload = {"thread_id": "t-1", "message_id": "m-2"}
+        payload: dict[str, object] = {"thread_id": "t-1", "message_id": "m-2"}
 
         assert await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, payload) == 1
 
@@ -541,7 +550,7 @@ class TestActions:
 
     async def test_execute_enqueues_with_the_origin_and_payload(self, deps) -> None:
         deps.repo.find_active_by_user_and_trigger.return_value = [_todo()]
-        payload = {"thread_id": "t-1", "sender": "alice@acme.com"}
+        payload: dict[str, object] = {"thread_id": "t-1", "sender": "alice@acme.com"}
 
         await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, payload)
 
@@ -731,3 +740,113 @@ class TestDispatchAttribution:
             await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {})
 
         assert seen == [worker_context(Trigger.INTEGRATION_TRIGGER)]
+
+
+def _jev_body(not_needed: float) -> dict[str, object]:
+    choice = "not_needed" if not_needed >= 0.5 else "needs_you"
+    return {
+        "answers": {
+            "gate": {
+                "type": "choice",
+                "choice": choice,
+                "confidence": max(not_needed, 1 - not_needed),
+                "probabilities": {"not_needed": not_needed, "needs_you": 1 - not_needed},
+            }
+        }
+    }
+
+
+_GATE = TriggerGate(
+    question="Is someone waiting on the user?",
+    choices=[
+        GateChoice(label="needs_you", meaning="Someone is waiting."),
+        GateChoice(label="not_needed", meaning="Nobody is waiting."),
+    ],
+    skip_on=["not_needed"],
+    min_confidence=0.95,
+    author=GateAuthor.SYSTEM,
+)
+
+
+@pytest.fixture
+def jev() -> Iterator[respx.Route]:
+    with (
+        respx.mock(assert_all_called=False) as router,
+        patch(
+            "app.services.hil.jev_client.resolve",
+            AsyncMock(return_value=ProviderConfig(api_key="or-key")),  # pragma: allowlist secret
+        ),
+        patch(
+            "app.services.triggers.trigger_gate.is_trigger_gates_enforced",
+            AsyncMock(return_value=True),
+        ),
+    ):
+        yield router.post(HIL_JEV_URL)
+
+
+class TestTriggerGate:
+    async def test_a_confident_skip_runs_nothing_claims_nothing_and_says_why(
+        self, deps, jev: respx.Route
+    ) -> None:
+        jev.mock(return_value=httpx.Response(200, json=_jev_body(0.99)))
+        deps.repo.find_active_by_user_and_trigger.return_value = [
+            _todo(trigger_subscriptions=[_subscription(gate=_GATE)])
+        ]
+
+        fired = await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {"subject": "Sale!"})
+
+        assert fired == 0
+        deps.enqueue.assert_not_awaited()
+        deps.hold.assert_not_awaited()
+        # No window slot taken: the next real event must still wake the todo at once.
+        deps.redis.redis.set.assert_not_awaited()
+        deps.activity.assert_awaited_once()
+        event, detail = deps.activity.await_args.args[2:]
+        assert event is TodoActivityEvent.RUN_SKIPPED
+        assert detail == "Skipped by gate: Nobody is waiting. (not_needed, 0.99)"
+
+    @pytest.mark.parametrize(
+        "response",
+        [httpx.Response(200, json=_jev_body(0.94)), httpx.Response(503, text="down")],
+        ids=["unsure", "jev-down"],
+    )
+    async def test_unsure_or_failing_gate_runs_as_today(
+        self, deps, jev: respx.Route, response: httpx.Response
+    ) -> None:
+        jev.mock(return_value=response)
+        deps.repo.find_active_by_user_and_trigger.return_value = [
+            _todo(trigger_subscriptions=[_subscription(gate=_GATE)])
+        ]
+
+        assert await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {"subject": "?"}) == 1
+        deps.enqueue.assert_awaited_once()
+
+    async def test_the_gate_reads_the_todo_as_its_job(self, deps, jev: respx.Route) -> None:
+        jev.mock(return_value=httpx.Response(200, json=_jev_body(0.1)))
+        deps.repo.find_active_by_user_and_trigger.return_value = [
+            _todo(
+                description="Reply to Acme about the pilot",
+                trigger_subscriptions=[_subscription(gate=_GATE)],
+            )
+        ]
+
+        await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {"subject": "?"})
+
+        body = json.loads(jev.calls.last.request.content)
+        assert body["state"]["automation"] == "Chase Acme: Reply to Acme about the pilot"
+
+    async def test_conditions_still_decide_first(self, deps, jev: respx.Route) -> None:
+        sub = _subscription(
+            gate=_GATE,
+            conditions=[
+                SubscriptionCondition(
+                    field_name="thread_id", operator=ConditionOperator.EQUALS, value="t-9"
+                )
+            ],
+        )
+        deps.repo.find_active_by_user_and_trigger.return_value = [
+            _todo(trigger_subscriptions=[sub])
+        ]
+
+        assert await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {"thread_id": "t-1"}) == 0
+        assert not jev.called
