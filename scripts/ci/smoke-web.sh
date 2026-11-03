@@ -41,9 +41,10 @@
 # audit-build serves the web build nx's ci:seo task depends on (web:build), so
 # run it as `nx run ci:seo`, with the NEXT_PUBLIC_* values the build bakes in set.
 # indexnow env: SMOKE_BASE_URL; GITHUB_SHA (default HEAD); GITHUB_REPOSITORY,
-# GITHUB_RUN_ID, GH_TOKEN (actions:read), INDEXNOW_DEPLOY_JOB and INDEXNOW_JOB (the
-# deploy and IndexNow job names) to find the last notified deployed commit when
-# --previous is not given.
+# GITHUB_RUN_ID, GH_TOKEN (actions:read), INDEXNOW_DEPLOY_WORKFLOW (the workflow file
+# that declares the deploy, whose own runs are searched too), INDEXNOW_DEPLOY_JOB and
+# INDEXNOW_JOB (the deploy and IndexNow job names it declares) to find the last
+# notified deployed commit when --previous is not given.
 
 set -euo pipefail
 # shellcheck source=scripts/ci/lib/log.sh
