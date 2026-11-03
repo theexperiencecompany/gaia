@@ -83,7 +83,7 @@ class GeneratedStep(BaseModel):
 class GeneratedWorkflow(BaseModel):
     """Schema for LLM workflow generation output."""
 
-    steps: list[GeneratedStep] = Field(description="List of workflow steps")
+    steps: list[GeneratedStep] = Field(min_length=1, description="List of workflow steps")
 
 
 class TriggerConfig(BaseModel):

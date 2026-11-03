@@ -202,7 +202,7 @@ Similar structure to web app with React Native components. Uses React Navigation
 
 - **Every server and voice event carries `actor` (`user`/`agent`), `trigger` (`interactive`/`schedule`/`integration_trigger`/`webhook`/`system`) and `surface` (`web`/`desktop`/`bot`/`voice`/`worker`).** Capture stamps them from the `AnalyticsContext` contextvar (`libs/shared/py/analytics/context.py`) and raises when none is bound. Emitters never pass them. The context is bound once per entry point: the HTTP middleware, the ARQ envelope (jobs carry it in their payload), the scheduler and trigger dispatch, the workflow fire, the agent run tree (stamped on the configurable) and the voice worker. A new entry point binds its own.
 - **A re-sendable fact takes a `Dedupe(key, occurred_at)`**: PostHog merges rows only when uuid, event, timestamp and distinct_id all match, so both come from the fact, never `now()`. An event whose catalog model sets `at_most_once_ttl` goes through a Redis `SET NX` gate.
-- **`user:active` is the one active-user signal.** Capture emits it on a user's first `actor=user` event of the IST day; never emit it by hand.
+- **`user:active` is the one active-user signal, and it means the user used GAIA.** Capture emits it on a user's first event of the IST day that is in `ACTIVE_USE_EVENTS` (`libs/shared/py/analytics/activity.py`: a chat message on any surface, or a workflow the user ran), never on signup, onboarding, page loads, paywall hits or settings changes. Never emit it by hand. The "Active user (human)" action in `config/posthog/actions.json` lists the same events, and a test keeps them equal.
 
 ### Properties — no PII
 
