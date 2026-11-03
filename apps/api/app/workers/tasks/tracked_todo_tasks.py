@@ -51,7 +51,7 @@ from app.constants.todos import (
     TodoWakeKind,
 )
 from app.db.repositories.todos import todo_repository
-from app.decorators import enforce_daily_cost_budget
+from app.decorators import enforce_cost_budget
 from app.decorators.entitlements import capture_paywall_block, is_paid
 from app.models.message_models import TodoRunWake
 from app.models.notification.notification_models import (
@@ -292,7 +292,7 @@ async def _execute_todo_with_retry(
     if origin is not None:
         log.set(trigger_events=1 + len(coalesced))
         await open_trigger_window(trigger_window(doc))
-        await enforce_daily_cost_budget(user_id, feature_key=TRIGGER_TODO_FEATURE_KEY)
+        await enforce_cost_budget(user_id, feature_key=TRIGGER_TODO_FEATURE_KEY)
 
     outcome = "success"
     try:
@@ -784,7 +784,7 @@ async def _resume_holding_lock(
     user_id = doc.user_id
 
     try:
-        await enforce_daily_cost_budget(user_id, feature_key=TRIGGER_TODO_FEATURE_KEY)
+        await enforce_cost_budget(user_id, feature_key=TRIGGER_TODO_FEATURE_KEY)
 
         message = (
             f"Approval {approval_id} was granted: {receipt} "

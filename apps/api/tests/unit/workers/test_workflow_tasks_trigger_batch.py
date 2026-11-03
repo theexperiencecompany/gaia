@@ -44,9 +44,7 @@ async def _run_task(
         # The paid-only gate is defaulted to active by the workers-dir conftest's
         # autouse _subscription_active_by_default fixture — these tests are
         # about batching, not that one.
-        patch(
-            f"{MODULE}.enforce_daily_cost_budget", new_callable=AsyncMock, side_effect=budget_error
-        ),
+        patch(f"{MODULE}.enforce_cost_budget", new_callable=AsyncMock, side_effect=budget_error),
         patch(f"{MODULE}.reschedule_if_refilled", new_callable=AsyncMock) as refill,
         patch(f"{MODULE}.coalesce_window_seconds", return_value=900) as coalesce,
         patch(f"{MODULE}.notification_service", MagicMock(send_notification=AsyncMock())),
@@ -160,7 +158,7 @@ class TestRefillOnEveryExit:
                     return_value=_onboarded_user(),
                 ),
                 patch(f"{MODULE}.drain_trigger_batch", new_callable=AsyncMock, return_value=events),
-                patch(f"{MODULE}.enforce_daily_cost_budget", new_callable=AsyncMock),
+                patch(f"{MODULE}.enforce_cost_budget", new_callable=AsyncMock),
                 patch(f"{MODULE}.coalesce_window_seconds", return_value=900),
                 patch(f"{MODULE}.create_execution", new_callable=AsyncMock) as create,
                 patch(

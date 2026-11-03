@@ -5856,14 +5856,14 @@
       "class": "RateLimitHit",
       "owner": "server",
       "domain": "rate_limit",
-      "description": "A user ran into a tiered rate limit.",
+      "description": "A request was refused by a usage limit: a feature count, a cost budget or a burst limit.",
       "previous_names": ["rate_limit_hit"],
       "budget_per_user_day": 500,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "A user ran into a tiered rate limit.",
+        "description": "A request was refused by a usage limit: a feature count, a cost budget or a burst limit.",
         "properties": {
           "feature": {
             "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
@@ -5871,9 +5871,16 @@
             "type": "string"
           },
           "plan": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
-            "title": "Plan",
-            "type": "string"
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan"
           },
           "origin": {
             "anyOf": [
@@ -5887,6 +5894,19 @@
             ],
             "default": null,
             "title": "Origin"
+          },
+          "window": {
+            "anyOf": [
+              {
+                "enum": ["day", "month", "request", "burst"],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Window"
           }
         },
         "required": ["feature", "plan"],

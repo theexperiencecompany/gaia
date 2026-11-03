@@ -26,6 +26,8 @@ SUBAGENT_CACHE_TTL = ONE_HOUR_TTL
 # routing). Eventually consistent: a plan change takes effect within the TTL.
 SUBSCRIPTION_PLAN_CACHE_PREFIX = "subscription:"
 SUBSCRIPTION_PLAN_CACHE_TTL = FIVE_MINUTES_TTL
+# The day of month a subscription bills on: anchors the Pro allowance month. Same TTL.
+SUBSCRIPTION_BILLING_DAY_CACHE_PREFIX = "subscription_billing_day:"
 # The plan catalogue itself, keyed by whether inactive plans are included. Seeded
 # by scripts/payment_setup.py, which drops every key after writing.
 ACTIVE_PLANS_CACHE_KEY = "plans:active"
@@ -260,9 +262,9 @@ ELEVENLABS_SHARED_VOICES_CACHE_KEY = "voice:elevenlabs_shared_voices"
 # seconds; on timeout the answer still reaches the user via the WebSocket push.
 VOICE_EXECUTOR_RESULT_TIMEOUT_S = 90.0
 
-# One-shot gate (SET NX) for the "priority compute used this month" in-app notice,
-# so a degraded pro user is told once per month, not once per turn.
-COST_BUDGET_NOTIFIED_KEY = "cost_budget_notified:{user_id}:{window}"
+# One-shot gate (SET NX) for the heads-up at PRO_MONTHLY_BUDGET_HEADS_UP_FRACTION of
+# the month, so a pro user is told once per month, not once per request.
+COST_BUDGET_NEAR_NOTIFIED_KEY = "cost_budget_near_notified:{user_id}:{window}"
 
 # Keyed by user plus a hash of the answers it was written from, so a changed
 # Q1/Q2 answer reads a never-written key rather than a stale question. Two

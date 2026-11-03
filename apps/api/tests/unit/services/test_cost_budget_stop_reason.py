@@ -12,14 +12,25 @@ writer, so the numbers the wall compares are the numbers production would have
 written. Only the plan lookup — an external payments boundary — is stubbed.
 """
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import fakeredis.aioredis
 import pytest
+import time_machine
 
-from app.config.rate_limits import get_daily_cost_budget_usd, get_per_request_token_ceiling
-from app.constants.llm import BUDGET_WRAPUP_REMAINING_FRACTION
+from app.config.rate_limits import (
+    RateLimitPeriod,
+    get_daily_cost_budget_usd,
+    get_per_request_token_ceiling,
+)
+from app.config.settings import settings
+from app.constants.llm import (
+    BUDGET_WRAPUP_REMAINING_FRACTION,
+    PRO_MONTHLY_BUDGET_HEADS_UP_FRACTION,
+    PRO_MONTHLY_COST_BUDGET_USD,
+)
 from app.db.redis import redis_cache
 from app.db.repositories.usage_daily import UsageDailyIncrement
 from app.models.payment_models import PlanType
@@ -33,8 +44,10 @@ from app.services.cost_budget import (
     get_budget_stop_reason,
     is_budget_wrapup_threshold,
     is_daily_budget_exhausted,
+    is_monthly_heads_up_due,
     record_model_call_usage,
 )
+from app.services.payments.payment_service import payment_service
 from shared.py.wide_events import log
 
 USER = "u-wall"
@@ -51,7 +64,7 @@ async def fake_redis() -> AsyncIterator[fakeredis.aioredis.FakeRedis]:
 
 
 @pytest.fixture(autouse=True)
-def no_rollup() -> AsyncIterator[None]:
+def no_rollup() -> Iterator[None]:
     """Seeding spend uses the real Redis writer; the Mongo sibling is covered in test_usage_activity_rollup.py."""
     with patch("app.services.cost_budget.record_cost", AsyncMock()):
         yield
@@ -69,6 +82,93 @@ async def _burn_tokens(count: int) -> None:
     )
 
 
+async def _spend_earlier_this_month(amount: float) -> None:
+    """Spend booked on an earlier day: it sits in the month window, not today's."""
+    assert redis_cache.redis is not None
+    pipe = redis_cache.redis.pipeline(transaction=False)
+    pipe.incrbyfloat(await cost_budget._budget_key(USER, RateLimitPeriod.MONTH), amount)
+    await pipe.execute()
+
+
+#: The user bills on the 15th, and today is mid-cycle, so the allowance resets on the next 15th.
+BILLING_DAY = 15
+TODAY = datetime(2099, 1, 20, 9, tzinfo=UTC)
+STOP_TEXT = (
+    "You've used this month's AI usage allowance, so chat, workflows and tracked "
+    "todos are paused until February 15, when it resets."
+)
+
+
+@pytest.fixture(autouse=True)
+def billing_day() -> Iterator[None]:
+    """Answer the billing-day lookup for USER only, so the month window is anchored on it."""
+
+    async def _billing_day(user_id: str) -> int:
+        return {USER: BILLING_DAY}[user_id]
+
+    with patch.object(payment_service, "get_cached_billing_day", _billing_day):
+        yield
+
+
+@pytest.fixture
+def month_reset() -> Iterator[None]:
+    """Freeze the clock mid-cycle so the reset date in the copy is a fixed value."""
+    with time_machine.travel(TODAY, tick=False):
+        yield
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("month_reset")
+class TestMonthlyWall:
+    async def test_binds_a_pro_run_once_the_month_reaches_the_allowance(self) -> None:
+        await _spend_earlier_this_month(PRO_MONTHLY_COST_BUDGET_USD)
+
+        check = await get_budget_stop_reason(USER, PlanType.PRO, REQUEST)
+
+        assert check == BudgetCheck(STOP_TEXT, 0.0, PlanType.PRO, wall="month")
+
+    async def test_binds_without_a_request_id_too(self) -> None:
+        await _spend_earlier_this_month(PRO_MONTHLY_COST_BUDGET_USD)
+
+        check = await get_budget_stop_reason(USER, PlanType.PRO, None)
+
+        assert check == BudgetCheck(STOP_TEXT, 0.0, PlanType.PRO, wall="month")
+
+    async def test_lets_a_pro_run_through_one_cent_short_and_reports_the_month(self) -> None:
+        await _spend_earlier_this_month(PRO_MONTHLY_COST_BUDGET_USD - 0.01)
+
+        check = await get_budget_stop_reason(USER, PlanType.PRO, REQUEST)
+
+        assert check == BudgetCheck(None, 0.0, PlanType.PRO, PRO_MONTHLY_COST_BUDGET_USD - 0.01)
+
+    async def test_reports_the_month_without_a_request_id_too(self) -> None:
+        await _spend_earlier_this_month(1.5)
+
+        check = await get_budget_stop_reason(USER, PlanType.PRO, None)
+
+        assert check == BudgetCheck(None, 0.0, PlanType.PRO, 1.5)
+
+    async def test_free_has_no_monthly_wall(self) -> None:
+        await _spend_earlier_this_month(PRO_MONTHLY_COST_BUDGET_USD * 10)
+
+        check = await get_budget_stop_reason(USER, PlanType.FREE, REQUEST)
+
+        assert check.stop_reason is None
+
+
+@pytest.mark.unit
+class TestMonthlyHeadsUpBand:
+    def test_opens_at_the_heads_up_line(self) -> None:
+        line = PRO_MONTHLY_COST_BUDGET_USD * PRO_MONTHLY_BUDGET_HEADS_UP_FRACTION
+        assert is_monthly_heads_up_due(line, PlanType.PRO) is True
+
+    def test_closes_at_the_allowance_where_the_wall_takes_over(self) -> None:
+        assert is_monthly_heads_up_due(PRO_MONTHLY_COST_BUDGET_USD, PlanType.PRO) is False
+
+    def test_free_never_gets_it(self) -> None:
+        assert is_monthly_heads_up_due(PRO_MONTHLY_COST_BUDGET_USD * 0.9, PlanType.FREE) is False
+
+
 @pytest.mark.unit
 class TestDailyWall:
     async def test_binds_once_spend_reaches_the_plan_budget(self) -> None:
@@ -79,11 +179,12 @@ class TestDailyWall:
         assert check.stop_reason == DAILY_BUDGET_STOP_FREE
         assert check.spent_usd == pytest.approx(get_daily_cost_budget_usd(PlanType.FREE))
         assert check.plan_type == PlanType.FREE
+        assert check.wall == "day"
 
     async def test_the_dev_unlimited_flag_lifts_a_bound_wall(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(cost_budget.settings, "DEV_UNLIMITED_RATE_LIMITS", True)
+        monkeypatch.setattr(settings, "DEV_UNLIMITED_RATE_LIMITS", True)
         await _spend(get_daily_cost_budget_usd(PlanType.FREE))
 
         check = await get_budget_stop_reason(USER, PlanType.FREE, REQUEST)
@@ -129,6 +230,7 @@ class TestRequestCeiling:
         check = await get_budget_stop_reason(USER, PlanType.FREE, REQUEST)
 
         assert check.stop_reason == REQUEST_CEILING_STOP_FREE
+        assert check.wall == "request"
 
     async def test_still_reports_the_daily_spend_it_read(self) -> None:
         # The wrap-up nudge is decided from this number; a None here would mean
@@ -189,7 +291,7 @@ class TestThreadingGaps:
     async def test_no_user_id_reports_nothing_read_at_all(self) -> None:
         check = await get_budget_stop_reason(None, PlanType.FREE, REQUEST)
 
-        assert check == (None, None, None)
+        assert check == BudgetCheck(None, None, None)
 
     async def test_a_missing_plan_is_derived_and_reported_back(self) -> None:
         await _spend(0.01)
@@ -223,7 +325,7 @@ class TestThreadingGaps:
         ):
             check = await get_budget_stop_reason(USER, None, REQUEST)
 
-        assert check == (None, None, None)
+        assert check == BudgetCheck(None, None, None)
 
     async def test_a_plan_lookup_failure_names_the_user_it_stopped_enforcing_for(
         self,
@@ -341,3 +443,23 @@ class TestResolvedPlanSurvivesABoundWall:
 
         assert check.stop_reason == DAILY_BUDGET_STOP_FREE
         assert check.plan_type == PlanType.FREE
+
+
+@pytest.mark.unit
+class TestBillingAnchoredMonth:
+    async def test_spend_before_the_billing_day_does_not_count_after_it(self) -> None:
+        with time_machine.travel(datetime(2099, 1, 14, 23, tzinfo=UTC), tick=False):
+            await _spend_earlier_this_month(PRO_MONTHLY_COST_BUDGET_USD)
+        with time_machine.travel(datetime(2099, 1, 15, 1, tzinfo=UTC), tick=False):
+            check = await get_budget_stop_reason(USER, PlanType.PRO, REQUEST)
+
+        assert check == BudgetCheck(None, 0.0, PlanType.PRO, 0.0)
+
+    async def test_spend_early_in_the_cycle_still_counts_across_the_calendar_month(self) -> None:
+        with time_machine.travel(datetime(2099, 1, 20, tzinfo=UTC), tick=False):
+            await _spend_earlier_this_month(PRO_MONTHLY_COST_BUDGET_USD)
+        with time_machine.travel(datetime(2099, 2, 3, tzinfo=UTC), tick=False):
+            check = await get_budget_stop_reason(USER, PlanType.PRO, REQUEST)
+
+        assert check.stop_reason is not None
+        assert "February 15" in check.stop_reason

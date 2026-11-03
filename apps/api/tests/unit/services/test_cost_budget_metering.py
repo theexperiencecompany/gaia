@@ -12,10 +12,12 @@ per-user COGS stays measurable. See app.services.llm_metering.
 """
 
 from collections.abc import AsyncIterator, Iterator
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import fakeredis.aioredis
 import pytest
+import time_machine
 
 from app.config.rate_limits import RateLimitPeriod
 from app.db.redis import redis_cache
@@ -26,6 +28,7 @@ from app.services.cost_budget import (
     get_request_tokens,
     record_model_call_usage,
 )
+from app.services.payments.payment_service import payment_service
 from shared.py.wide_events import log
 
 USER = "u-metering"
@@ -39,6 +42,13 @@ async def fake_redis() -> AsyncIterator[fakeredis.aioredis.FakeRedis]:
         yield client
     await client.flushall()
     await client.connection_pool.disconnect()
+
+
+@pytest.fixture(autouse=True)
+def no_billing_day() -> Iterator[None]:
+    """Give the user no billing day, so the month window is the calendar month."""
+    with patch.object(payment_service, "get_cached_billing_day", AsyncMock(return_value=None)):
+        yield
 
 
 @pytest.fixture(autouse=True)
@@ -62,6 +72,20 @@ class TestChargedSpend:
         assert await get_cost(USER, RateLimitPeriod.DAY) == pytest.approx(0.01)
         assert await get_cost(USER, RateLimitPeriod.MONTH) == pytest.approx(0.01)
         assert await get_request_tokens(REQUEST) == 500
+
+    async def test_books_each_window_under_its_own_users_period_key(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        """A key missing the user or the period would pool spend across users or windows."""
+        with time_machine.travel(datetime(2099, 1, 20, 9, tzinfo=UTC), tick=False):
+            await record_model_call_usage(
+                USER, UsageDailyIncrement(cost=0.01), None, charge_to_budget=True
+            )
+
+        assert sorted(await fake_redis.keys("cost_budget:*")) == [
+            f"cost_budget:{USER}:day:20990120",
+            f"cost_budget:{USER}:month:209901",
+        ]
 
     async def test_is_booked_as_charged_in_the_durable_rollup(self, rollup: AsyncMock) -> None:
         await record_model_call_usage(
@@ -210,7 +234,7 @@ class TestDegradation:
     async def test_redis_being_down_does_not_fail_the_model_call(self, rollup: AsyncMock) -> None:
         with (
             patch.object(redis_cache, "redis", None),
-            patch.object(cost_budget.log, "warning") as warned,
+            patch.object(log, "warning") as warned,
         ):
             await record_model_call_usage(
                 USER,

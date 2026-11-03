@@ -6,8 +6,8 @@ model call; ainvoke_structured prices auxiliary one-shot calls the same way
 but with charge_to_budget=False, so background work never eats the user's
 allowance. The chat endpoint checks the daily window before running the
 agent (429 wall); awrap_model_call checks it plus the per-request token
-ceiling as the backstop, and the monthly window drives the pro model
-degrade in resolve_lane.
+ceiling as the backstop. Pro also has a monthly window, billing day to
+billing day: reaching it stops usage the same way until it resets.
 
 Follows RedisCache's degradation philosophy: when Redis is unavailable these
 helpers warn and no-op (enforcement fails open; startup verify_connection
@@ -16,12 +16,14 @@ fails hard in production).
 
 import asyncio
 from collections.abc import Awaitable
+from datetime import UTC, datetime
 from typing import Any, NamedTuple
 
 from redis.exceptions import RedisError
 
 from app.config.rate_limits import (
     RateLimitPeriod,
+    billing_month_window,
     get_daily_cost_budget_usd,
     get_per_request_token_ceiling,
     get_reset_time,
@@ -32,6 +34,7 @@ from app.constants.llm import (
     BUDGET_WRAPUP_REMAINING_FRACTION,
     DAILY_BUDGET_TTL_SECONDS,
     MONTHLY_BUDGET_TTL_SECONDS,
+    PRO_MONTHLY_BUDGET_HEADS_UP_FRACTION,
     PRO_MONTHLY_COST_BUDGET_USD,
     REQUEST_TOKEN_COUNTER_TTL_SECONDS,
 )
@@ -42,6 +45,7 @@ from app.models.payment_models import PlanType
 from app.schemas.usage import BudgetWindow, UsageBudget
 from app.services.payments.payment_service import payment_service
 from app.services.usage_activity import record_cost
+from shared.py.analytics.catalog.billing import LimitWindow
 from shared.py.wide_events import log
 
 _BUDGET_KEY = "cost_budget:{user_id}:{period}:{window}"
@@ -91,12 +95,23 @@ class BudgetCheck(NamedTuple):
     stop_reason: str | None
     spent_usd: float | None
     plan_type: PlanType | None
+    month_spent_usd: float | None = None
+    #: Which wall set stop_reason; None while nothing binds.
+    wall: LimitWindow | None = None
 
 
-def _budget_key(user_id: str, period: RateLimitPeriod) -> str:
-    return _BUDGET_KEY.format(
-        user_id=user_id, period=period.value, window=get_time_window_key(period)
-    )
+async def monthly_allowance_window(user_id: str) -> tuple[str, datetime]:
+    """Return the user's current allowance month as (Redis window key, reset instant)."""
+    billing_day = await payment_service.get_cached_billing_day(user_id)
+    return billing_month_window(billing_day, datetime.now(UTC))
+
+
+async def _budget_key(user_id: str, period: RateLimitPeriod) -> str:
+    if period is RateLimitPeriod.DAY:
+        window = get_time_window_key(period)
+    else:
+        window, _ = await monthly_allowance_window(user_id)
+    return _BUDGET_KEY.format(user_id=user_id, period=period.value, window=window)
 
 
 def _billable_request_tokens(input_tokens: int, cached_tokens: int, output_tokens: int) -> int:
@@ -162,7 +177,7 @@ async def record_model_call_usage(
         pipe = client.pipeline(transaction=False)
         if charge_to_budget and record_spend and user_id is not None:
             for period, ttl in _PERIOD_TTL_SECONDS.items():
-                key = _budget_key(user_id, period)
+                key = await _budget_key(user_id, period)
                 pipe.incrbyfloat(key, spend.cost)
                 pipe.expire(key, ttl)
         if record_tokens:
@@ -201,7 +216,7 @@ async def get_cost(user_id: str, period: RateLimitPeriod) -> float:
         log.warning(f"{LogTag.STORAGE} Redis unavailable — cost budget reads 0.")
         return 0.0
     try:
-        raw = await client.get(_budget_key(user_id, period))
+        raw = await client.get(await _budget_key(user_id, period))
     except (RedisError, OSError) as e:
         log.warning(
             f"{LogTag.STORAGE} Cost budget read failed — reading 0",
@@ -275,35 +290,46 @@ async def get_budget_stop_reason(
             user={"id": user_id},
         )
 
-    # Missing root_request_id → only the daily read is needed, so skip the
-    # second round trip. The threading-gap warning stays scoped to a run that
-    # is otherwise proceeding (daily wall not bound), exactly as before.
+    # One round trip for every read: this runs before every model call. Without a
+    # root_request_id there is no token read, so the request ceiling cannot bind.
+    used: int | None
     if root_request_id is None:
-        spent = await get_cost(user_id, RateLimitPeriod.DAY)
-        if is_daily_budget_exhausted(spent, plan_type):
-            stop = DAILY_BUDGET_STOP_FREE if plan_type == PlanType.FREE else DAILY_BUDGET_STOP_PRO
-            return BudgetCheck(stop, spent, plan_type)
+        spent, month_spent = await asyncio.gather(
+            get_cost(user_id, RateLimitPeriod.DAY), get_cost(user_id, RateLimitPeriod.MONTH)
+        )
+        used = None
+    else:
+        spent, month_spent, used = await asyncio.gather(
+            get_cost(user_id, RateLimitPeriod.DAY),
+            get_cost(user_id, RateLimitPeriod.MONTH),
+            get_request_tokens(root_request_id),
+        )
+
+    bound = await _bound_wall(user_id, spent, month_spent, used, plan_type)
+    if bound is not None:
+        stop, wall = bound
+        return BudgetCheck(stop, spent, plan_type, wall=wall)
+    if root_request_id is None:
         log.warning(
             f"{LogTag.AGENT} Per-request ceiling skipped — missing root_request_id "
             "in configurable (threading gap?)."
         )
-        return BudgetCheck(None, spent, plan_type)
+    return BudgetCheck(None, spent, plan_type, month_spent)
 
-    # Both reads are independent — issue them together so the hottest path (this
-    # runs before every model call) pays one round trip, not two. The daily wall
-    # still takes priority; the token read is harmless work when it binds.
-    spent, used = await asyncio.gather(
-        get_cost(user_id, RateLimitPeriod.DAY),
-        get_request_tokens(root_request_id),
-    )
+
+async def _bound_wall(
+    user_id: str, spent: float, month_spent: float, used: int | None, plan_type: PlanType
+) -> tuple[str, LimitWindow] | None:
+    """Return the stop text and window of the first wall that binds (day, month, then request)."""
+    is_free = plan_type == PlanType.FREE
     if is_daily_budget_exhausted(spent, plan_type):
-        stop = DAILY_BUDGET_STOP_FREE if plan_type == PlanType.FREE else DAILY_BUDGET_STOP_PRO
-        return BudgetCheck(stop, spent, plan_type)
-    if used >= get_per_request_token_ceiling(plan_type):
-        stop = REQUEST_CEILING_STOP_FREE if plan_type == PlanType.FREE else REQUEST_CEILING_STOP_PRO
-        return BudgetCheck(stop, spent, plan_type)
-
-    return BudgetCheck(None, spent, plan_type)
+        return (DAILY_BUDGET_STOP_FREE if is_free else DAILY_BUDGET_STOP_PRO), "day"
+    if is_monthly_budget_exhausted(month_spent, plan_type):
+        _, reset = await monthly_allowance_window(user_id)
+        return monthly_budget_stop_text(reset), "month"
+    if used is not None and used >= get_per_request_token_ceiling(plan_type):
+        return (REQUEST_CEILING_STOP_FREE if is_free else REQUEST_CEILING_STOP_PRO), "request"
+    return None
 
 
 def is_daily_budget_exhausted(spent: float, plan_type: PlanType) -> bool:
@@ -317,6 +343,35 @@ def is_daily_budget_exhausted(spent: float, plan_type: PlanType) -> bool:
     return spent >= get_daily_cost_budget_usd(plan_type)
 
 
+def is_monthly_budget_exhausted(month_spent: float, plan_type: PlanType) -> bool:
+    """Check whether a pro user's month has consumed the monthly allowance (free has none)."""
+    return plan_type == PlanType.PRO and month_spent >= PRO_MONTHLY_COST_BUDGET_USD
+
+
+def is_monthly_heads_up_due(month_spent: float, plan_type: PlanType) -> bool:
+    """Check whether a pro user's month sits in the heads-up band below the allowance."""
+    return (
+        plan_type == PlanType.PRO
+        and PRO_MONTHLY_COST_BUDGET_USD * PRO_MONTHLY_BUDGET_HEADS_UP_FRACTION
+        <= month_spent
+        < PRO_MONTHLY_COST_BUDGET_USD
+    )
+
+
+def format_reset_date(reset: datetime) -> str:
+    """Render a budget reset as a day the user reads, e.g. "December 1"."""
+    return f"{reset:%B} {reset.day}"
+
+
+def monthly_budget_stop_text(reset_at: datetime) -> str:
+    """Return the user-facing stop for a bound monthly allowance, naming the day it resets."""
+    reset = format_reset_date(reset_at)
+    return (
+        "You've used this month's AI usage allowance, so chat, workflows and tracked "
+        f"todos are paused until {reset}, when it resets."
+    )
+
+
 def is_budget_wrapup_threshold(spent: float, plan_type: PlanType) -> bool:
     """Check whether spend has crossed BUDGET_WRAPUP_REMAINING_FRACTION headroom.
 
@@ -327,10 +382,10 @@ def is_budget_wrapup_threshold(spent: float, plan_type: PlanType) -> bool:
     return budget > 0 and spent >= budget * (1 - BUDGET_WRAPUP_REMAINING_FRACTION)
 
 
-def _allowance_used(spent: float, budget: float, period: RateLimitPeriod) -> BudgetWindow:
+def _allowance_used(spent: float, budget: float, reset: datetime) -> BudgetWindow:
     """One window's allowance as a 0-100 percentage + when it resets. No dollars."""
     pct = round(min(spent / budget * 100, 100.0), 1) if budget > 0 else 0.0
-    return BudgetWindow(percentage=pct, reset_time=get_reset_time(period).isoformat())
+    return BudgetWindow(percentage=pct, reset_time=reset.isoformat())
 
 
 async def get_budget_status(user_id: str, plan_type: PlanType) -> UsageBudget:
@@ -343,18 +398,21 @@ async def get_budget_status(user_id: str, plan_type: PlanType) -> UsageBudget:
     """
     # Pro reads both windows concurrently (one round trip); Free reads only day.
     if plan_type == PlanType.PRO:
-        daily_spent, monthly_spent = await asyncio.gather(
+        daily_spent, monthly_spent, (_, month_reset) = await asyncio.gather(
             get_cost(user_id, RateLimitPeriod.DAY),
             get_cost(user_id, RateLimitPeriod.MONTH),
+            monthly_allowance_window(user_id),
         )
-        monthly = _allowance_used(monthly_spent, PRO_MONTHLY_COST_BUDGET_USD, RateLimitPeriod.MONTH)
+        monthly = _allowance_used(monthly_spent, PRO_MONTHLY_COST_BUDGET_USD, month_reset)
     else:
         daily_spent = await get_cost(user_id, RateLimitPeriod.DAY)
         monthly = None
 
     return UsageBudget(
         daily=_allowance_used(
-            daily_spent, get_daily_cost_budget_usd(plan_type), RateLimitPeriod.DAY
+            daily_spent,
+            get_daily_cost_budget_usd(plan_type),
+            get_reset_time(RateLimitPeriod.DAY),
         ),
         monthly=monthly,
         per_request_token_ceiling=get_per_request_token_ceiling(plan_type),

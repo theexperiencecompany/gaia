@@ -8,8 +8,18 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  MAX_FILES,
+  SUPPORTED_FILE_TYPES_LABEL,
+} from "@/features/chat/constants/files";
 import { useFileAttachments } from "@/features/chat/hooks/useFileAttachments";
 import { useComposerStore } from "@/stores/composerStore";
+
+const toastError = vi.fn();
+
+vi.mock("@/lib/toast", () => ({
+  toast: { error: (message: string) => toastError(message) },
+}));
 
 const uploadFile = vi.fn(async (_file: File, _conversationId?: string) => ({
   fileId: "file-1",
@@ -35,6 +45,7 @@ function png(): File {
 describe("useFileAttachments", () => {
   beforeEach(() => {
     uploadFile.mockClear();
+    toastError.mockClear();
     useComposerStore.setState({ uploadedFiles: [] });
     // jsdom has no object-URL implementation; the hook only mints previews.
     vi.stubGlobal("URL", {
@@ -68,5 +79,44 @@ describe("useFileAttachments", () => {
     });
 
     expect(uploadFile).toHaveBeenCalledWith(expect.any(File), undefined);
+  });
+
+  it("attaches the files that fit when a pick exceeds the per-message limit", async () => {
+    useComposerStore.setState({
+      uploadedFiles: [1, 2, 3].map((n) => ({
+        id: `existing-${n}`,
+        url: "",
+        name: `existing-${n}.png`,
+        type: "image/png",
+        size: 4,
+        isUploading: false,
+      })),
+    });
+    const { result } = renderHook(() => useFileAttachments());
+
+    await act(async () => {
+      await result.current.attachFiles([png(), png(), png(), png()]);
+    });
+
+    expect(uploadFile).toHaveBeenCalledTimes(MAX_FILES - 3);
+    expect(toastError).toHaveBeenCalledWith(
+      `Up to ${MAX_FILES} files per message. Attached 2, skipped 2.`,
+    );
+  });
+
+  it("names the supported types when a file type is rejected", async () => {
+    const { result } = renderHook(() => useFileAttachments());
+    const zip = new File([new Uint8Array([80, 75, 3, 4])], "photos.zip", {
+      type: "application/zip",
+    });
+
+    await act(async () => {
+      await result.current.attachFiles([zip]);
+    });
+
+    expect(uploadFile).not.toHaveBeenCalled();
+    expect(toastError).toHaveBeenCalledWith(
+      `photos.zip: this file type isn't supported. ${SUPPORTED_FILE_TYPES_LABEL}.`,
+    );
   });
 });

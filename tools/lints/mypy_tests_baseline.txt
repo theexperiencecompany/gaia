@@ -227,8 +227,6 @@ apps/api/tests/unit/agents/test_middleware_chat_llm_wiring.py	arg-type
 apps/api/tests/unit/agents/test_middleware_chat_llm_wiring.py	attr-defined
 apps/api/tests/unit/agents/test_middleware_executor.py	arg-type
 apps/api/tests/unit/agents/test_middleware_executor.py	union-attr
-apps/api/tests/unit/agents/test_model_lane.py	attr-defined
-apps/api/tests/unit/agents/test_model_lane.py	misc
 apps/api/tests/unit/agents/test_offload.py	attr-defined
 apps/api/tests/unit/agents/test_openui_prompts.py	assignment
 apps/api/tests/unit/agents/test_pause_checkpointing.py	arg-type
@@ -281,9 +279,6 @@ apps/api/tests/unit/agents/tools/test_playbook_tools.py	typeddict-item
 apps/api/tests/unit/agents/tools/test_playbook_tools.py	union-attr
 apps/api/tests/unit/api/test_approvals_endpoint.py	call-arg
 apps/api/tests/unit/api/test_auth_middleware.py	union-attr
-apps/api/tests/unit/api/test_bot_endpoint.py	attr-defined
-apps/api/tests/unit/api/test_bot_endpoint.py	call-arg
-apps/api/tests/unit/api/test_bot_endpoint.py	union-attr
 apps/api/tests/unit/api/test_bot_links_endpoint.py	arg-type
 apps/api/tests/unit/api/test_bot_links_endpoint.py	call-arg
 apps/api/tests/unit/api/test_bot_stream_helpers.py	arg-type
@@ -359,14 +354,6 @@ apps/api/tests/unit/db/test_rabbitmq_outbound.py	attr-defined
 apps/api/tests/unit/db/test_rabbitmq_outbound.py	method-assign
 apps/api/tests/unit/db/test_rabbitmq_outbound.py	syntax
 apps/api/tests/unit/decorators/test_entitlements.py	index
-apps/api/tests/unit/decorators/test_rate_limiter_tiers.py	attr-defined
-apps/api/tests/unit/decorators/test_rate_limiter_tiers.py	index
-apps/api/tests/unit/decorators/test_rate_limiter_tiers.py	method-assign
-apps/api/tests/unit/decorators/test_rate_limiting.py	arg-type
-apps/api/tests/unit/decorators/test_rate_limiting.py	assignment
-apps/api/tests/unit/decorators/test_rate_limiting.py	attr-defined
-apps/api/tests/unit/decorators/test_rate_limiting.py	index
-apps/api/tests/unit/decorators/test_rate_limiting.py	return-value
 apps/api/tests/unit/decorators/test_timing.py	arg-type
 apps/api/tests/unit/decorators/test_timing.py	func-returns-value
 apps/api/tests/unit/decorators/test_timing.py	var-annotated
@@ -407,8 +394,6 @@ apps/api/tests/unit/memory/test_management.py	misc
 apps/api/tests/unit/memory/test_reconciliation.py	attr-defined
 apps/api/tests/unit/memory/test_retrieval.py	attr-defined
 apps/api/tests/unit/memory/test_user_time.py	attr-defined
-apps/api/tests/unit/middleware/test_accounting.py	arg-type
-apps/api/tests/unit/middleware/test_accounting.py	attr-defined
 apps/api/tests/unit/middleware/test_compaction_offload_bind.py	arg-type
 apps/api/tests/unit/middleware/test_compaction_offload_bind.py	union-attr
 apps/api/tests/unit/middleware/test_compaction_offload_bind.py	var-annotated
@@ -591,7 +576,6 @@ apps/api/tests/unit/services/test_analytics_service.py	unused-ignore
 apps/api/tests/unit/services/test_artifact_events.py	arg-type
 apps/api/tests/unit/services/test_billing_visible_output.py	arg-type
 apps/api/tests/unit/services/test_billing_visible_output.py	attr-defined
-apps/api/tests/unit/services/test_bot_service.py	call-arg
 apps/api/tests/unit/services/test_calendar_service.py	call-arg
 apps/api/tests/unit/services/test_canvas_storage_atomic.py	arg-type
 apps/api/tests/unit/services/test_chat_stream_attach.py	arg-type
@@ -604,9 +588,6 @@ apps/api/tests/unit/services/test_connect_link_service.py	attr-defined
 apps/api/tests/unit/services/test_conversation_service.py	arg-type
 apps/api/tests/unit/services/test_conversation_service.py	attr-defined
 apps/api/tests/unit/services/test_conversation_service.py	call-arg
-apps/api/tests/unit/services/test_cost_budget_metering.py	attr-defined
-apps/api/tests/unit/services/test_cost_budget_stop_reason.py	attr-defined
-apps/api/tests/unit/services/test_cost_budget_stop_reason.py	misc
 apps/api/tests/unit/services/test_desktop_releases.py	attr-defined
 apps/api/tests/unit/services/test_dev_agent_service.py	func-returns-value
 apps/api/tests/unit/services/test_device_manifest_cache.py	operator
@@ -807,15 +788,7 @@ apps/api/tests/unit/workers/test_memory_sweep_tasks.py	func-returns-value
 apps/api/tests/unit/workers/test_paid_person_tasks.py	arg-type
 apps/api/tests/unit/workers/test_reminder_tasks.py	unused-ignore
 apps/api/tests/unit/workers/test_tracked_todo_recurrence.py	arg-type
-apps/api/tests/unit/workers/test_tracked_todo_tasks.py	arg-type
-apps/api/tests/unit/workers/test_tracked_todo_tasks.py	func-returns-value
-apps/api/tests/unit/workers/test_tracked_todo_tasks.py	has-type
-apps/api/tests/unit/workers/test_tracked_todo_tasks.py	misc
-apps/api/tests/unit/workers/test_tracked_todo_tasks.py	return-value
 apps/api/tests/unit/workers/test_worker_lifecycle.py	arg-type
-apps/api/tests/unit/workers/test_workflow_tasks.py	attr-defined
-apps/api/tests/unit/workers/test_workflow_tasks_coverage.py	arg-type
-apps/api/tests/unit/workers/test_workflow_tasks_onboarding_gate.py	arg-type
 apps/api/tests/unit/workers/test_workflow_tasks_playbook.py	arg-type
 apps/api/tests/unit/workers/test_workflow_tasks_playbook.py	attr-defined
 apps/api/tests/unit/workers/test_workflow_tasks_playbook.py	func-returns-value
