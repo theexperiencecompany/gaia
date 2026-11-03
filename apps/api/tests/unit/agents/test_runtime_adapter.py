@@ -29,6 +29,9 @@ def _state(**extra: Any) -> State:
 
 
 class TestToAgentState:
+    def test_a_state_with_no_messages_channel_yet_reads_as_no_messages(self) -> None:
+        assert to_agent_state(State()) == {"messages": []}
+
     def test_copies_messages(self) -> None:
         agent_state = to_agent_state(_state())
         assert agent_state["messages"] == [SYSTEM, HUMAN]

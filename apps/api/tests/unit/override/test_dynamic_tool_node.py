@@ -102,6 +102,68 @@ class _Recorder(AgentMiddleware):
         return await handler(request)
 
 
+class _SwapsInTool(AgentMiddleware):
+    """Hand the call to a tool the node never registered, as a wrap_tool_call may."""
+
+    def __init__(self, replacement: Any) -> None:
+        super().__init__()
+        self.replacement = replacement
+
+    async def awrap_tool_call(self, request: ToolCallRequest, handler: Any) -> Any:
+        return await handler(request.override(tool=self.replacement))
+
+
+class TestToolsBoundAfterCompilation:
+    """The registry is live: a tool added after the node was built runs, and is checked, like any other."""
+
+    async def test_a_tool_added_to_the_registry_later_runs(self) -> None:
+        @tool
+        def added_later(query: str) -> str:
+            """Answer late."""
+            return f"late {query}"
+
+        registry: dict[str, Any] = {}
+        node = DynamicToolNode(registry, middleware_executor=MiddlewareExecutor([_Passthrough()]))
+        registry["added_later"] = added_later
+
+        message = await _run(node, "added_later", {"query": "q"})
+
+        assert message.content == "late q"
+
+    async def test_a_later_tools_injected_arguments_are_never_blamed_on_the_model(self) -> None:
+        @tool
+        def counts(limit: int, todos: Annotated[list[int], InjectedState("todos")]) -> str:
+            """Count todos up to a limit."""
+            raise AssertionError("the tool ran with invalid arguments")
+
+        registry: dict[str, Any] = {}
+        node = DynamicToolNode(registry, middleware_executor=MiddlewareExecutor([_Passthrough()]))
+        registry["counts"] = counts
+        state = {**_one_call("counts", {"limit": "many"}), "todos": ["not-an-int"]}
+
+        result = await node._afunc(state, {}, Runtime())
+
+        (message,) = result["messages"]
+        _, *fields, _ = message.text.splitlines()
+        assert fields == [
+            "limit: Input should be a valid integer, unable to parse string as an integer"
+        ]
+
+    async def test_a_tool_a_middleware_swaps_in_gets_its_injected_arguments(self) -> None:
+        @tool
+        async def keeps_notes(note: str, store: Annotated[BaseStore, InjectedStore()]) -> str:
+            """Store a note."""
+            return f"kept {note}"
+
+        node = DynamicToolNode(
+            {}, middleware_executor=MiddlewareExecutor([_SwapsInTool(keeps_notes)])
+        )
+
+        message = await _run(node, "keeps_notes", {"note": "n"})
+
+        assert message.content == "kept n"
+
+
 class TestEveryCallTakesTheOnePath:
     """Injection, Commands and interrupts all come back through the middleware chain."""
 
