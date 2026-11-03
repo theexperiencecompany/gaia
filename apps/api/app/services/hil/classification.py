@@ -7,21 +7,28 @@ Resolution order (first match wins):
    untrusted MCP server may flag danger but never clear it, so readOnlyHint and
    destructiveHint=False are ignored; a true hint gates even a reviewed-safe flag.
 3. The tool registry's flag — authoritative for internal tools and curated slugs.
-4. A cached Mongo classification for a previously-seen custom tool.
-5. A one-shot LLM classification, persisted to Mongo + the live registry.
+4. The curated review of the integration the tool was resolved from (keyed by
+   provenance, never by name, so no MCP server can borrow a reviewed slug).
+5. A cached Mongo classification for a previously-seen custom tool.
+6. A one-shot LLM classification, persisted to Mongo + the live registry.
 
-Any failure — registry unavailable, LLM error, or a tool absent from every
-source — resolves to destructive (fail closed).
+Any failure resolves to destructive (fail closed).
 """
 
 import hashlib
 
 from langchain_core.tools import BaseTool
+from mcp.types import ToolAnnotations
 from pydantic import BaseModel, Field
 
 from app.agents.llm.client import SILENT_LLM_CONFIG, StructuredCallOptions, ainvoke_structured
-from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
+from app.agents.tools.core.registry import (
+    ToolRegistry,
+    get_tool_registry,
+    integration_destructive_tools,
+)
 from app.constants.hil import HIL_EXEMPT_TOOLS, HIL_LLM_TIMEOUT_SECONDS
+from app.constants.integrations import TOOL_INTEGRATION_ID_METADATA_KEY
 from app.constants.log_tags import LogTag
 from app.db.repositories.hil import hil_tool_risk_repository
 from app.models.hil_models import HILToolRiskRecord
@@ -40,12 +47,14 @@ async def is_tool_destructive(
     description: str = "",
     *,
     destructive_hint: bool | None = None,
+    integration_id: str | None = None,
 ) -> bool:
     """Return whether tool_name must be gated by HIL. Fails closed.
 
     destructive_hint is the caller-read MCP destructiveHint (see
     :func:mcp_destructive_hint); it escalates an otherwise-unclassified tool
-    to destructive without an LLM call.
+    to destructive without an LLM call. integration_id is the tool's provenance
+    (see :func:tool_integration_id).
     """
     if tool_name in HIL_EXEMPT_TOOLS:
         return False
@@ -58,6 +67,9 @@ async def is_tool_destructive(
         flag = registry.is_tool_destructive(tool_name)
         if flag is not None:
             return flag
+        reviewed = _curated_verdict(tool_name, integration_id)
+        if reviewed is not None:
+            return reviewed
         return await _classify_unknown_tool(registry, tool_name, description)
     except Exception as e:
         # Fail closed: every failure mode (registry/LLM/Mongo down, unknown tool)
@@ -82,9 +94,26 @@ def mcp_destructive_hint(tool: BaseTool | None) -> bool | None:
     if not isinstance(metadata, dict):
         return None
     annotations = metadata.get(MCP_ANNOTATIONS_METADATA_KEY)
-    if isinstance(annotations, dict) and annotations.get("destructiveHint") is True:
+    if isinstance(annotations, ToolAnnotations) and annotations.destructiveHint is True:
         return True
     return None
+
+
+def tool_integration_id(tool: BaseTool | None) -> str | None:
+    """Return the integration a resolved tool was stamped as coming from, or None."""
+    metadata = getattr(tool, "metadata", None)
+    if not isinstance(metadata, dict):
+        return None
+    integration_id = metadata.get(TOOL_INTEGRATION_ID_METADATA_KEY)
+    return integration_id if isinstance(integration_id, str) and integration_id else None
+
+
+def _curated_verdict(tool_name: str, integration_id: str | None) -> bool | None:
+    """Membership in the tool's integration's curated set; None when it has none."""
+    if integration_id is None:
+        return None
+    curated = integration_destructive_tools(integration_id)
+    return None if curated is None else tool_name in curated
 
 
 async def _classify_unknown_tool(registry: ToolRegistry, tool_name: str, description: str) -> bool:

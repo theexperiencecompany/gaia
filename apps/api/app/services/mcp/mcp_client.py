@@ -28,6 +28,7 @@ from app.config.settings import settings
 from app.constants.cache import OAUTH_DISCOVERY_PREFIX
 from app.constants.device_bridge import DEVICE_TRANSPORT
 from app.constants.execute import TICKET_NAMES
+from app.constants.integrations import TOOL_INTEGRATION_ID_METADATA_KEY
 from app.constants.log_tags import LogTag
 from app.constants.mcp import (
     COMPOSIO_MCP_HOST,
@@ -840,7 +841,7 @@ class MCPClient:
         for raw_tool in raw_tools:
             if raw_tool.metadata is None:
                 raw_tool.metadata = {}
-            raw_tool.metadata["integration_id"] = integration_id
+            raw_tool.metadata[TOOL_INTEGRATION_ID_METADATA_KEY] = integration_id
 
     def _make_evict_callback(self, iid: str) -> Callable[[], None]:
         """Build a callback that evicts a stale session after a connection error.

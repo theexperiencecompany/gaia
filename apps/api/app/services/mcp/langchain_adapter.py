@@ -71,7 +71,7 @@ _ADDITIONAL_PROPERTIES = "additionalProperties"
 _ARGUMENTS: TypeAdapter[dict[str, object]] = TypeAdapter(dict[str, object])
 
 # Key under a LangChain tool's ``metadata`` where we stash the MCP tool's
-# ``annotations`` dict. Written here, read by ``app/services/hil/classification``.
+# ``ToolAnnotations`` model. Written here, read by ``app/services/hil/classification``.
 MCP_ANNOTATIONS_METADATA_KEY = "mcp_annotations"
 
 
@@ -321,6 +321,6 @@ class SanitizingLangChainAdapter(LangChainAdapter):
         if mcp_tool.annotations is not None:
             tool.metadata = {
                 **(tool.metadata or {}),
-                MCP_ANNOTATIONS_METADATA_KEY: mcp_tool.annotations.model_dump(),
+                MCP_ANNOTATIONS_METADATA_KEY: mcp_tool.annotations,
             }
         return tool

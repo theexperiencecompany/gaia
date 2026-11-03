@@ -9,6 +9,7 @@ import pytest
 from app.agents.tools.core.registry import CategoryOptions, CategoryRisk, ToolRegistry
 from app.agents.tools.execute import resolver
 from app.agents.tools.execute.resolver import ResolvedTool
+from app.constants.integrations import TOOL_INTEGRATION_ID_METADATA_KEY
 from tests.helpers import captured_wide_event
 
 MODULE = "app.agents.tools.execute.resolver"
@@ -288,3 +289,22 @@ class TestCatalogMaterialization:
         ):
             await resolver.resolve_tool("u1", "ASANA_CREATE_TASK")
         service.get_tools_by_name.assert_awaited_once_with(["ASANA_CREATE_TASK"])
+
+    async def test_a_materialized_tool_carries_the_integration_it_came_from(self) -> None:
+        # The HIL gate reviews a catalog tool by its integration's curated list; a
+        # tool materialized outside the registry has only this stamp to say which.
+        catalog_tool = StructuredTool.from_function(
+            func=lambda: None, name="GMAIL_FETCH_EMAILS", description="Fetch emails."
+        )
+        client = MagicMock()
+        client.find_integration.return_value = None
+        service = MagicMock()
+        service.get_tools_by_name = AsyncMock(return_value=[catalog_tool])
+        with (
+            patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=_registry_with({}))),
+            patch(f"{MODULE}.get_mcp_client", new=AsyncMock(return_value=client)),
+            patch(f"{MODULE}.get_composio_service", return_value=service),
+        ):
+            resolved = await resolver.resolve_tool("u1", "GMAIL_FETCH_EMAILS")
+        assert resolved is not None
+        assert resolved.tool.metadata == {TOOL_INTEGRATION_ID_METADATA_KEY: "gmail"}
