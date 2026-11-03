@@ -463,7 +463,6 @@ apps/api/tests/unit/models/test_user_models.py	list-item
 apps/api/tests/unit/models/test_workflow_models.py	arg-type
 apps/api/tests/unit/patches/test_browser_use_run_lock_patch.py	attr-defined
 apps/api/tests/unit/patches/test_composio_input_patch.py	attr-defined
-apps/api/tests/unit/patches/test_composio_langchain_patch.py	arg-type
 apps/api/tests/unit/patches/test_langchain_merge_dicts_model_name_patch.py	attr-defined
 apps/api/tests/unit/patches/test_openrouter_cumulative_usage_patch.py	arg-type
 apps/api/tests/unit/patches/test_openrouter_cumulative_usage_patch.py	method-assign
@@ -549,8 +548,6 @@ apps/api/tests/unit/services/chat/test_artifact_forwarder.py	arg-type
 apps/api/tests/unit/services/chat/test_normalize_custom_event.py	arg-type
 apps/api/tests/unit/services/chat/test_stream_presence.py	attr-defined
 apps/api/tests/unit/services/chat/test_workspace.py	attr-defined
-apps/api/tests/unit/services/composio/test_langchain_composio_service.py	arg-type
-apps/api/tests/unit/services/composio/test_langchain_composio_service.py	return-value
 apps/api/tests/unit/services/composio/test_langchain_dead_account.py	attr-defined
 apps/api/tests/unit/services/composio/test_langchain_dead_account.py	index
 apps/api/tests/unit/services/composio/test_toolkit_enablement.py	arg-type

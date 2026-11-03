@@ -346,7 +346,7 @@ class TestRealMiddlewarePath:
         assert "Nothing happened" not in message.text
 
     async def test_a_tool_that_explains_its_own_invalid_arguments_keeps_its_text(self) -> None:
-        """write_playbook and every Composio tool render their own argument errors."""
+        """write_playbook renders its own argument errors."""
 
         @tool
         async def explains_itself(steps: list[int]) -> str:

@@ -174,15 +174,24 @@ class ValidationFailure(t.TypedDict):
 def _validation_failure_as_result(
     run: t.Callable[_P, _R],
 ) -> t.Callable[_P, _R | ValidationFailure]:
-    """Wrap a tool's run so invalid arguments come back as a failure result, not a raise."""
+    """Wrap a tool's run so invalid arguments come back as a failure result before the body runs.
+
+    Only the argument parse is caught: a ValidationError the body raises after its
+    provider call propagates as the execution error it is.
+    """
 
     def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R | ValidationFailure:
-        try:
-            # Unmutated: this wraps run at class definition, before mutmut can switch a
-            # mutant in; replaying the edit shows TestInvalidArgumentsReturnAFailure fails.
-            return run(*args, **kwargs)  # pragma: no mutate
-        except pydantic.ValidationError as e:
-            return {"successful": False, "error": parse_pydantic_error(e), "data": None}
+        # run(self, tool_input, ...): LangChain always passes both positionally.
+        tool, tool_input = args[0], args[1]
+        if isinstance(tool, BaseStructuredTool) and isinstance(tool_input, dict):
+            try:
+                # The parse run performs before the body; langchain exposes no public twin.
+                tool._to_args_and_kwargs(dict(tool_input), None)
+            except pydantic.ValidationError as e:
+                return {"successful": False, "error": parse_pydantic_error(e), "data": None}
+        # Unmutated: this wraps run at class definition, before mutmut can switch a
+        # mutant in; replaying the edit shows TestInvalidArgumentsReturnAFailure fails.
+        return run(*args, **kwargs)  # pragma: no mutate
 
     return wrapper
 
@@ -455,7 +464,6 @@ class LangchainProvider(
                     toolkit=getattr(getattr(tool, "toolkit", None), "slug", None),
                 ),
                 handle_tool_error=True,
-                handle_validation_error=True,
                 metadata=metadata,
             ),
         )

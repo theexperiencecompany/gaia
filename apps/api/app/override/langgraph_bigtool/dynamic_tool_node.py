@@ -198,7 +198,7 @@ class DynamicToolNode(ToolNode):
 
         Injected state/store/runtime are filled first, as LangGraph's execute does, so
         only arguments the model controls can fail. An unknown tool is execute's to answer, and
-        a tool with its own handle_validation_error (write_playbook, Composio) keeps its own text.
+        a tool with its own handle_validation_error (write_playbook) keeps its own text.
         """
         tool = request.tool
         if tool is None or tool.handle_validation_error:
