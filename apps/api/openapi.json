@@ -34709,7 +34709,7 @@
     },
     "/api/v1/oauth/login/workos": {
       "get": {
-        "description": "Start the WorkOS SSO authentication flow.\n\nArgs:\n    return_url: Optional URL to redirect to after authentication.\n\nReturns:\n    RedirectResponse: Redirects the user to the WorkOS SSO authorization URL",
+        "description": "Start the WorkOS SSO authentication flow.\n\nArgs:\n    return_url: Optional URL to redirect to after authentication.\n    screen_hint: The AuthKit screen to open on; /signup asks for sign-up.\n\nReturns:\n    RedirectResponse: Redirects the user to the WorkOS SSO authorization URL",
         "operationId": "oauth_login_workos",
         "parameters": [
           {
@@ -34726,6 +34726,26 @@
                 }
               ],
               "title": "Return Url"
+            }
+          },
+          {
+            "in": "query",
+            "name": "screen_hint",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "sign-up",
+                    "sign-in"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Screen Hint"
             }
           }
         ],

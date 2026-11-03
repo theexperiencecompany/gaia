@@ -17,6 +17,7 @@ from app.agents.prompts.playbook_prompts import (
 )
 from app.agents.tools.core.registry import ToolRegistry
 from app.models.playbook_models import ForEachStep, PlaybookBody, ToolStep
+from app.services.composio.custom_tools.gmail_constants import OFFLOAD_MIN_MESSAGES
 from app.services.workflow.playbook.parser import RecordedResult, dump_playbook, validate_playbook
 
 PARSER = "app.services.workflow.playbook.parser"
@@ -71,6 +72,24 @@ async def test_a_run_that_made_the_examples_calls_can_write_the_example(
 )
 def test_the_brief_shows_each_example_as_read_playbook_renders_it(body: PlaybookBody) -> None:
     assert dump_playbook(body) in PLAYBOOK_CHECK_BRIEF
+
+
+@pytest.mark.parametrize(
+    "body", [PLAYBOOK_EXAMPLE, PLAYBOOK_FOR_EACH_EXAMPLE], ids=["flat", "for_each"]
+)
+def test_each_examples_mail_fetch_stays_inline_for_the_ask_that_reads_it(
+    body: PlaybookBody,
+) -> None:
+    fetches = [
+        step
+        for step in body.steps
+        if isinstance(step, ToolStep) and step.args.get("tool_name") == "GMAIL_FETCH_MESSAGES"
+    ]
+    assert fetches
+    for step in fetches:
+        data = step.args["data"]
+        assert isinstance(data, dict)
+        assert data["max_messages"] <= OFFLOAD_MIN_MESSAGES
 
 
 def test_the_brief_never_shows_activate_integration_as_a_step() -> None:
