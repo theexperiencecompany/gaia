@@ -4052,6 +4052,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform-links/{platform}/conversation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open Platform Chat Endpoint
+         * @description Open the DM chat of a linked Telegram, WhatsApp or iMessage account.
+         */
+        post: operations["platform_links_open_platform_chat_endpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform-links/code": {
         parameters: {
             query?: never;
@@ -12867,6 +12887,17 @@ export interface components {
          */
         PlanType: "free" | "pro";
         /**
+         * PlatformConversationResponse
+         * @description The linked platform's DM chat, opened from the settings page.
+         */
+        PlatformConversationResponse: {
+            /**
+             * Conversation Id
+             * @description Conversation id of the platform's DM chat
+             */
+            conversation_id: string;
+        };
+        /**
          * PlatformLinkEntry
          * @description One linked platform account — the single shape for this entry.
          *
@@ -17466,6 +17497,7 @@ export type PlanDuration = components['schemas']['PlanDuration'];
 export type PlanResponse = components['schemas']['PlanResponse'];
 export type PlanTier = components['schemas']['PlanTier'];
 export type PlanType = components['schemas']['PlanType'];
+export type PlatformConversationResponse = components['schemas']['PlatformConversationResponse'];
 export type PlatformLinkEntry = components['schemas']['PlatformLinkEntry'];
 export type PlatformType = components['schemas']['PlatformType'];
 export type PollPairingRequest = components['schemas']['PollPairingRequest'];
@@ -28449,6 +28481,55 @@ export interface operations {
                 };
             };
             /** @description iMessage requires an E.164 phone number in the body. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    platform_links_open_platform_chat_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                platform: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformConversationResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
