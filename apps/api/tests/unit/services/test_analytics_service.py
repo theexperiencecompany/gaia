@@ -28,13 +28,18 @@ from shared.py.analytics import Dedupe, PlatformIdentity, UserId
 from shared.py.analytics.catalog.agents import AgentRunCompleted, AgentRunFailed, AgentRunStarted
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.catalog.auth import UserActive, UserLoggedOut, UserSignedUp
+from shared.py.analytics.catalog.base import ServerEvent
 from shared.py.analytics.catalog.billing import (
     PaymentSucceeded,
+    PaywallBlocked,
     SubscriptionActivated,
     SubscriptionCancelled,
 )
-from shared.py.analytics.catalog.chat import ChatComposerPlusMenuClicked
+from shared.py.analytics.catalog.chat import ChatComposerPlusMenuClicked, ChatMessageSubmitted
 from shared.py.analytics.catalog.memory import MemoryCleared
+from shared.py.analytics.catalog.onboarding import OnboardingCompleted
+from shared.py.analytics.catalog.settings import SettingsPreferencesChanged
+from shared.py.analytics.catalog.workflows import WorkflowExecuted
 from shared.py.analytics.context import (
     AnalyticsContext,
     MissingAnalyticsContextError,
@@ -57,6 +62,7 @@ OCCURRED_AT = datetime(2026, 10, 8, 6, 30, tzinfo=UTC)
 #: 23:00 IST on Oct 8, which is still Oct 8 17:30 UTC; two hours later is Oct 9 in IST.
 LATE_EVENING_IST = datetime(2026, 10, 8, 17, 30, tzinfo=UTC)
 IST_DAY_START = datetime(2026, 10, 8, tzinfo=ANALYTICS_DAY_TIMEZONE)
+SUBMITTED = ChatMessageSubmitted(source="web", has_files=False, stream_id="s-1", is_retry=False)
 ACTIVATED = SubscriptionActivated(
     subscription_id="sub123", plan_name="Pro", currency="USD", amount=9.99
 )
@@ -205,18 +211,18 @@ class TestCapture:
 class TestCaptureRefusesUntypedInput:
     """A raw name or id must fail loud, even with no client configured, so local runs catch it."""
 
-    def test_a_raw_event_name_cannot_be_captured(self, mock_posthog_none):
+    def test_a_raw_event_name_cannot_be_captured(self, mock_posthog_none: MagicMock) -> None:
         with pytest.raises(TypeError, match="catalog event model"):
-            capture(USER_1, "user:logged_out")  # type: ignore[arg-type]  # the wrong type is the point: capture must refuse it at runtime
+            capture(USER_1, "user:logged_out")
 
     def test_a_raw_string_user_id_cannot_be_captured(self, mock_posthog_none):
         with pytest.raises(TypeError, match="UserId or PlatformIdentity"):
-            capture("6812f0b3c9a14e2b7d5a91cc", UserLoggedOut())  # type: ignore[arg-type]  # the wrong type is the point: capture must refuse it at runtime
+            capture("6812f0b3c9a14e2b7d5a91cc", UserLoggedOut())
 
     def test_a_web_owned_event_cannot_be_captured_by_the_server(self, mock_posthog):
         web_event = ChatComposerPlusMenuClicked(item_id="upload_file", is_mode=False)
         with pytest.raises(TypeError, match="web event; server may not emit it"):
-            capture(USER_1, web_event)  # type: ignore[arg-type]  # the wrong type is the point: capture must refuse it at runtime
+            capture(USER_1, web_event)
         mock_posthog.capture.assert_not_called()
 
     @pytest.mark.parametrize("raw", ["system", "someone@example.com", ""])
@@ -318,7 +324,7 @@ class TestAttribution:
 
     def test_an_emitter_cannot_pass_attribution_by_hand(self):
         with pytest.raises(ValidationError):
-            MemoryCleared(deleted_count=1, actor="user")  # type: ignore[call-arg]  # the extra field is the point: the model must refuse it
+            MemoryCleared(deleted_count=1, actor="user")
 
     def test_a_capture_with_no_context_bound_fails(self, mock_posthog_none):
         """Fails even with no client configured, so a missing entry point shows up in every local run."""
@@ -346,7 +352,7 @@ class TestAnalyticsDayStart:
 
 @pytest.mark.usefixtures("fake_redis")
 class TestUserActive:
-    """user:active is the one definition of an active user: once per user per IST day, any surface."""
+    """user:active marks a day a user used GAIA: once per user per IST day, any surface, from a qualifying event only."""
 
     @staticmethod
     def _active_marks(events: list[dict[str, object]]) -> list[dict[str, object]]:
@@ -357,12 +363,12 @@ class TestUserActive:
     ):
         with time_machine.travel(LATE_EVENING_IST, tick=False):
             with analytics_context(_user_context(EntrySurface.WEB)):
-                capture(USER_1, MemoryCleared(deleted_count=1))
+                capture(USER_1, SUBMITTED)
                 capture(USER_1, UserLoggedOut())
             with analytics_context(_user_context(EntrySurface.BOT)):
-                capture(USER_1, MemoryCleared(deleted_count=2))
+                capture(USER_1, SUBMITTED)
             with analytics_context(_user_context(EntrySurface.VOICE)):
-                capture(USER_1, MemoryCleared(deleted_count=3))
+                capture(USER_1, SUBMITTED)
             await drain_at_most_once_sends()
 
         [mark] = self._active_marks(posthog_events)
@@ -374,18 +380,18 @@ class TestUserActive:
     async def test_the_next_ist_day_marks_the_user_active_again(self, posthog_events):
         with analytics_context(_user_context(EntrySurface.WEB)):
             with time_machine.travel(LATE_EVENING_IST, tick=False):
-                capture(USER_1, MemoryCleared(deleted_count=1))
+                capture(USER_1, SUBMITTED)
                 await drain_at_most_once_sends()
             with time_machine.travel(LATE_EVENING_IST + timedelta(hours=2), tick=False):
-                capture(USER_1, MemoryCleared(deleted_count=1))
+                capture(USER_1, SUBMITTED)
                 await drain_at_most_once_sends()
 
         assert len(self._active_marks(posthog_events)) == 2
 
     async def test_each_user_is_marked_on_their_own(self, posthog_events):
         with analytics_context(_user_context(EntrySurface.WEB)):
-            capture(USER_1, MemoryCleared(deleted_count=1))
-            capture(USER_2, MemoryCleared(deleted_count=1))
+            capture(USER_1, SUBMITTED)
+            capture(USER_2, SUBMITTED)
             await drain_at_most_once_sends()
 
         assert {mark["distinct_id"] for mark in self._active_marks(posthog_events)} == {
@@ -396,16 +402,46 @@ class TestUserActive:
     async def test_agent_work_never_marks_the_user_active(self, posthog_events):
         """A scheduled workflow running for an idle user is not that user being active."""
         with analytics_context(worker_context(Trigger.SCHEDULE)):
-            capture(USER_1, MemoryCleared(deleted_count=1))
+            capture(USER_1, WorkflowExecuted(trigger_type="schedule"))
         with analytics_context(_user_context(EntrySurface.WEB).acting_as(Actor.AGENT)):
-            capture(USER_1, MemoryCleared(deleted_count=1))
+            capture(USER_1, WorkflowExecuted())
         await drain_at_most_once_sends()
 
         assert self._active_marks(posthog_events) == []
 
+    async def test_a_workflow_the_user_runs_marks_them_active(self, posthog_events):
+        with analytics_context(_user_context(EntrySurface.WEB)):
+            capture(USER_1, WorkflowExecuted())
+            await drain_at_most_once_sends()
+
+        assert [mark["distinct_id"] for mark in self._active_marks(posthog_events)] == [
+            USER_1.value
+        ]
+
+    @pytest.mark.parametrize(
+        "event",
+        [
+            UserSignedUp(),
+            OnboardingCompleted(needs=[], has_other_need=False),
+            PaywallBlocked(feature="/api/v1/conversations"),
+            SettingsPreferencesChanged(setting="onboarding_preferences"),
+            UserLoggedOut(),
+            MemoryCleared(deleted_count=1),
+        ],
+    )
+    async def test_a_user_event_that_is_not_use_leaves_the_day_inactive(
+        self, posthog_events, event: ServerEvent
+    ):
+        """Signing up, onboarding, a page load blocked by the paywall or a settings change is not using GAIA."""
+        with analytics_context(_user_context(EntrySurface.WEB)):
+            capture(USER_1, event, Dedupe("request-1", OCCURRED_AT))
+            await drain_at_most_once_sends()
+
+        assert [e["event"] for e in posthog_events] == [event.event]
+
     async def test_the_gate_outlives_the_day_it_keys(self, posthog_events, fake_redis):
         with analytics_context(_user_context(EntrySurface.WEB)):
-            capture(USER_1, MemoryCleared(deleted_count=1))
+            capture(USER_1, SUBMITTED)
             await drain_at_most_once_sends()
 
         [key] = await fake_redis.keys(f"{AT_MOST_ONCE_KEY_PREFIX}*")
@@ -416,7 +452,7 @@ class TestUserActive:
     async def test_an_unlinked_bot_user_is_not_marked(self, posthog_events):
         """Only a GAIA user has a day to be active on; the platform id merges in on linking."""
         with analytics_context(_user_context(EntrySurface.BOT)):
-            capture(PlatformIdentity("telegram", "42"), UserLoggedOut())
+            capture(PlatformIdentity("telegram", "42"), SUBMITTED)
             await drain_at_most_once_sends()
 
         assert self._active_marks(posthog_events) == []

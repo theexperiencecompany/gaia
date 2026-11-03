@@ -300,7 +300,6 @@ apps/api/tests/unit/api/test_analytics_new_events.py	arg-type
 apps/api/tests/unit/api/test_analytics_new_events.py	attr-defined
 apps/api/tests/unit/api/test_analytics_new_events.py	return-value
 apps/api/tests/unit/api/test_approvals_endpoint.py	call-arg
-apps/api/tests/unit/api/test_auth_middleware.py	union-attr
 apps/api/tests/unit/api/test_bot_endpoint.py	attr-defined
 apps/api/tests/unit/api/test_bot_endpoint.py	call-arg
 apps/api/tests/unit/api/test_bot_endpoint.py	union-attr
@@ -611,7 +610,6 @@ apps/api/tests/unit/services/sandbox/test_execute_client.py	attr-defined
 apps/api/tests/unit/services/sandbox/test_execute_token.py	attr-defined
 apps/api/tests/unit/services/test_account_fs.py	arg-type
 apps/api/tests/unit/services/test_account_fs.py	return-value
-apps/api/tests/unit/services/test_analytics_service.py	unused-ignore
 apps/api/tests/unit/services/test_artifact_events.py	arg-type
 apps/api/tests/unit/services/test_billing_visible_output.py	arg-type
 apps/api/tests/unit/services/test_billing_visible_output.py	attr-defined

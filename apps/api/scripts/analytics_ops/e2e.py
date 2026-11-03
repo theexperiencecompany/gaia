@@ -213,7 +213,6 @@ def build_journeys(transcript: Path) -> list[Journey]:
             (
                 Expect(OnboardingCompleted.event, BROWSER, True),
                 Expect(OnboardingPhaseCompleted.event, BROWSER, True),
-                Expect(UserActive.event, BROWSER, True),
                 # Onboarding opens the user's first conversation.
                 Expect(
                     ChatConversationCreated.event,
@@ -237,6 +236,8 @@ def build_journeys(transcript: Path) -> list[Journey]:
             journeys.chat,
             (
                 Expect(ChatMessageSubmitted.event, BROWSER, True, (("source", web),)),
+                # The user's first use of GAIA today; onboarding before it is not use.
+                Expect(UserActive.event, BROWSER, True),
                 # The agent titles the conversation.
                 Expect(ChatConversationRenamed.event, BROWSER_AGENT, True),
                 *_agent_turn(BROWSER, True, web),
