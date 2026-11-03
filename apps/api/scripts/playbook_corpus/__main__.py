@@ -81,7 +81,7 @@ def export(since: datetime, out: Path) -> int:
     return len(runs)
 
 
-def build(source: Path, out: Path) -> Counter[str]:
+def build(source: Path) -> Counter[str]:
     """Anonymise and translate every exported run, replay each attempt, write the fixtures."""
     with gzip.open(source, "rt") as handle:
         raw = json_util.loads(handle.read())
@@ -89,6 +89,8 @@ def build(source: Path, out: Path) -> Counter[str]:
     names = {call.tool_name for run in runs for call in run.trace}
     anonymiser = Anonymiser.fresh(kept=names | _integration_ids(runs) | _step_ids(runs))
     tally: Counter[str] = Counter()
+    # Always the corpus directory, never a path from the command line: build deletes what is there.
+    out = CORPUS_DIR
     if out.exists():
         shutil.rmtree(out)
     out.mkdir(parents=True)
@@ -222,13 +224,12 @@ def main(argv: list[str]) -> int:
     exporting.add_argument("--out", required=True, type=Path)
     building = commands.add_parser("build", help="anonymise, replay and write the fixtures")
     building.add_argument("--source", required=True, type=Path)
-    building.add_argument("--out", type=Path, default=CORPUS_DIR)
     args = parser.parse_args(argv)
     if args.command == "export":
         since = args.since if args.since.tzinfo else args.since.replace(tzinfo=UTC)
         print(f"exported {export(since, args.out)} runs to {args.out}")
         return 0
-    tally = build(args.source, args.out)
+    tally = build(args.source)
     print(json.dumps(dict(sorted(tally.items(), key=lambda item: -item[1])), indent=1))
     return 0
 
