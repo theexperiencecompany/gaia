@@ -28,6 +28,7 @@ from app.models.playbook_models import (
     ForEachStep,
     HandoffStep,
     PlaybookBody,
+    PlaybookRefusal,
     TimeSlot,
     ToolStep,
 )
@@ -35,10 +36,9 @@ from app.models.workflow_execution_models import RecordedCall, parse_result
 from app.services.workflow.playbook.parser import PlaybookIssue, RecordedResult
 from app.services.workflow.playbook.placeholders import PLACEHOLDER_TOKEN, placeholder_tokens
 from app.services.workflow.playbook.time_layouts import (
-    detect_layout,
     renders_inside,
+    slot_layout,
     time_slot_layout,
-    written_in,
 )
 
 #: Most keys a result shape lists per object, and how deep it goes.
@@ -231,7 +231,11 @@ def build_playbook(
         return built
     if not steps:
         built.issues.append(
-            PlaybookIssue(where="steps", problem="pick at least one call that did the work")
+            PlaybookIssue(
+                kind=PlaybookRefusal.NO_STEPS,
+                where="steps",
+                problem="pick at least one call that did the work",
+            )
         )
         return built
     built.body = PlaybookBody(description=description, steps=steps, result_brief=result_brief)
@@ -253,6 +257,7 @@ def _place(
         if entry is None:
             issues.append(
                 PlaybookIssue(
+                    kind=PlaybookRefusal.NOT_IN_RECORD,
                     where=f"{where}.call",
                     problem=f"call {pick.call} is not in this run's record; the calls you "
                     f"can pick are {numbers} (read_run_record lists them)",
@@ -262,6 +267,7 @@ def _place(
         if pick.call in seen_calls:
             issues.append(
                 PlaybookIssue(
+                    kind=PlaybookRefusal.PICKED_TWICE,
                     where=f"{where}.call",
                     problem=f"call {pick.call} is picked twice; one recorded call is one "
                     "step, so pick it once",
@@ -272,6 +278,7 @@ def _place(
         if step_id in seen_ids:
             issues.append(
                 PlaybookIssue(
+                    kind=PlaybookRefusal.DUPLICATE_ID,
                     where=f"{where}.id",
                     problem=f"id {step_id!r} is already used by another step; give each "
                     "step its own",
@@ -295,6 +302,7 @@ def _build_step(item: _Placed, issues: list[PlaybookIssue]) -> ToolStep | ForEac
     if call.failed:
         issues.append(
             PlaybookIssue(
+                kind=PlaybookRefusal.FAILED_CALL,
                 where=f"{item.where}.call",
                 problem=f"call {pick.call} ({call.tool_name}) failed in this run "
                 f"({call.result_digest[:_FAILURE_MAX_CHARS]}); pick the call that succeeded",
@@ -305,13 +313,15 @@ def _build_step(item: _Placed, issues: list[PlaybookIssue]) -> ToolStep | ForEac
     before = len(issues)
     for path, value in pick.vary.items():
         _vary(args, path, value, f"{item.where}.vary.{path}", call, issues)
-    if pick.for_each is not None and not _reads_item(pick.vary):
+    if pick.for_each is not None and not _varies_per_element(pick.vary):
         issues.append(
             PlaybookIssue(
+                kind=PlaybookRefusal.FOR_EACH_UNMARKED,
                 where=f"{item.where}.vary",
                 problem="a for_each step runs its call once per element, so mark the value "
-                'that changes per element with $item, e.g. vary: {"<arg>": "$item.id"}; '
-                "otherwise every element repeats the recorded call",
+                'that changes per element with $item (vary: {"<arg>": "$item.id"}) or with '
+                'text written per element (vary: {"<arg>": {"$ask": "..."}}); otherwise every '
+                "element repeats the recorded call",
             )
         )
     if len(issues) > before:
@@ -328,7 +338,13 @@ def _build_step(item: _Placed, issues: list[PlaybookIssue]) -> ToolStep | ForEac
             max_items=pick.max_items or MAX_FOR_EACH_ITEMS,
         )
     except ValidationError as error:
-        issues.append(PlaybookIssue(where=item.where, problem=_first_message(error)))
+        issues.append(
+            PlaybookIssue(
+                kind=PlaybookRefusal.FOR_EACH_SOURCE,
+                where=item.where,
+                problem=_first_message(error),
+            )
+        )
         return None
 
 
@@ -346,12 +362,15 @@ def _addressed(call: RecordedCall, args: dict[str, object]) -> tuple[str, dict[s
     return EXECUTE_TOOL_NAME, dict(proxied)
 
 
-def _reads_item(vary: Mapping[str, VariedValue]) -> bool:
+def _varies_per_element(vary: Mapping[str, VariedValue]) -> bool:
+    """Whether a for_each call changes per element: an $item value, or text a model writes for each."""
     return any(
-        match.group("root") == "item"
+        isinstance(value, AskSlot)
+        or (
+            isinstance(value, str)
+            and any(match.group("root") == "item" for match in placeholder_tokens(value))
+        )
         for value in vary.values()
-        if isinstance(value, str)
-        for match in placeholder_tokens(value)
     )
 
 
@@ -372,6 +391,7 @@ def _vary(
         )
         issues.append(
             PlaybookIssue(
+                kind=PlaybookRefusal.NO_SUCH_ARG,
                 where=where,
                 problem=f"{call.tool_name} was called with no value at {path!r}; its arg "
                 f"paths are: {listed or 'none'}",
@@ -395,6 +415,7 @@ def _stored_value(
     if not tokens:
         issues.append(
             PlaybookIssue(
+                kind=PlaybookRefusal.NO_PLACEHOLDER,
                 where=where,
                 problem=f"{value!r} holds no placeholder, so it does not change per run; "
                 f"leave {path!r} out to replay the recorded {example!r}, or write one "
@@ -415,6 +436,7 @@ def _stored_value(
         return value
     issues.append(
         PlaybookIssue(
+            kind=PlaybookRefusal.TIME_LAYOUT,
             where=where,
             problem=f"{path!r} was {example!r}; a time inside other text renders as ISO 8601, "
             f'not that layout. Write the whole value as {{"$time": "{times[0].group(0)}"}}',
@@ -426,32 +448,31 @@ def _stored_value(
 def _time_slot(
     value: TimeValue, example: object, path: str, issues: list[PlaybookIssue], where: str
 ) -> object | None:
-    if value.format is not None and not (
-        isinstance(example, str) and written_in(example, value.format)
-    ):
-        issues.append(
-            PlaybookIssue(
-                where=where,
-                problem=f"{path!r} was {example!r}, which is not written in {value.format!r}; "
-                "leave format out to keep the recorded layout",
-            )
-        )
-        return None
-    # A layout the author names wins: 03/11/2026 reads as March or November.
-    chosen = value.format or detect_layout(example)
+    """Return the slot a varied time stores, in the layout the recorded value is written in.
+
+    A layout the author names wins when it writes the recorded value back
+    (03/11/2026 reads as March or November); otherwise the record's own layout does.
+    """
+    named = value.format
+    chosen = slot_layout(example, named)
     if chosen is None:
-        issues.append(
-            PlaybookIssue(
-                where=where,
-                problem=f"{path!r} was {example!r}, which reads as no date layout; give the "
-                'strftime layout the tool takes as "format"',
-            )
+        problem = (
+            f"{path!r} was {example!r}, which is not written in {named!r}; give the "
+            "strftime layout that writes it"
+            if named is not None
+            else f"{path!r} was {example!r}, which reads as no date layout; give the "
+            'strftime layout the tool takes as "format"'
         )
+        issues.append(PlaybookIssue(kind=PlaybookRefusal.TIME_LAYOUT, where=where, problem=problem))
         return None
     try:
         return _time_slot_value(value.placeholder, chosen)
     except ValidationError as error:
-        issues.append(PlaybookIssue(where=where, problem=_first_message(error)))
+        issues.append(
+            PlaybookIssue(
+                kind=PlaybookRefusal.TIME_EXPRESSION, where=where, problem=_first_message(error)
+            )
+        )
         return None
 
 

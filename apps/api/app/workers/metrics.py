@@ -31,6 +31,7 @@ from app.services.storage.metrics import (
     _FS_OP_TOTAL,
     _SANDBOX_POOL_SIZE,
 )
+from app.services.workflow.playbook.metrics import ALL_PLAYBOOK_COLLECTORS
 
 T = TypeVar("T")
 P = ParamSpec("P")
@@ -64,6 +65,8 @@ for _collector in (
     _SANDBOX_POOL_SIZE,
     # Turn/executor/HIL latency: the sweep and re-dispatched runs emit here.
     *ALL_COLLECTORS,
+    # Playbook decisions and replays: workflow runs execute on the worker.
+    *ALL_PLAYBOOK_COLLECTORS,
 ):
     # Already registered on this registry (re-import under reload).
     with contextlib.suppress(ValueError):

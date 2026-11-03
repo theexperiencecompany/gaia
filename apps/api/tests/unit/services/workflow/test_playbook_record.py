@@ -110,6 +110,11 @@ def _problems(calls: Sequence[RecordedCall], picks: Sequence[Mapping[str, object
 LISTING = {"items": [{"id": "e1", "n": 1}, {"id": "e2", "n": 2}], "total": 2}
 
 
+def _all_args(**given: object) -> dict[str, object]:
+    """Return a call's args with every arg the fake tools require, the given ones as written."""
+    return {name: f"{name} value" for name in ARG_NAMES} | given
+
+
 # --- the property: picks validate and replay to the calls the run made ------
 
 _TEXT = st.text(alphabet=string.ascii_letters + " ", min_size=1, max_size=12).filter(str.strip)
@@ -453,15 +458,68 @@ def test_a_time_with_no_layout_to_read_needs_one() -> None:
     ]
 
 
-def test_a_layout_that_cannot_have_produced_the_recorded_value_is_refused() -> None:
+def test_a_named_layout_that_cannot_have_produced_the_recorded_value_gives_way_to_it() -> None:
     calls = [_call("tool_a", {"first": "2026-11-20 09:00:00"}, LISTING)]
 
-    assert _problems(
+    built = _build(
         calls, [{"call": 1, "vary": {"first": {"$time": "$today", "format": "%d/%m/%Y"}}}]
-    ) == [
-        "steps[0].vary.first: 'first' was '2026-11-20 09:00:00', which is not written in "
-        "'%d/%m/%Y'; leave format out to keep the recorded layout"
-    ]
+    )
+
+    assert built.issues == []
+    assert built.body is not None
+    step = built.body.steps[0]
+    assert isinstance(step, ToolStep)
+    assert step.args["first"] == {"$time": "$today", "format": "%Y-%m-%d %H:%M:%S"}
+
+
+@pytest.mark.parametrize(
+    ("recorded", "named", "kept"),
+    [
+        # prod 2026-09-22: %z reads the Z, but would write +0000 at replay.
+        ("2026-10-08T14:50:20Z", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%SZ"),
+        # prod 2026-09-10: %z writes -0400 where the tool took -04:00.
+        ("2026-09-10T14:50:00-04:00", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S%:z"),
+    ],
+)
+def test_a_named_layout_that_reads_the_value_but_writes_it_otherwise_takes_the_recorded_one(
+    recorded: str, named: str, kept: str
+) -> None:
+    calls = [_call("tool_a", _all_args(first=recorded), LISTING)]
+
+    built = _build(calls, [{"call": 1, "vary": {"first": {"$time": "$now", "format": named}}}])
+
+    assert built.issues == []
+    assert built.body is not None
+    step = built.body.steps[0]
+    assert isinstance(step, ToolStep)
+    assert step.args["first"] == {"$time": "$now", "format": kept}
+    assert _validate(built.body, built.sources) == []
+
+
+def test_an_ambiguous_date_in_the_authors_layout_validates() -> None:
+    calls = [_call("tool_a", _all_args(first="03/11/2026"), LISTING)]
+
+    built = _build(
+        calls, [{"call": 1, "vary": {"first": {"$time": "$today", "format": "%m/%d/%Y"}}}]
+    )
+
+    assert built.body is not None
+    assert _validate(built.body, built.sources) == []
+
+
+@pytest.mark.parametrize("offset", ["$now + 15min", "$now + 15 minutes", "$now + 15mins"])
+def test_an_offset_unit_written_out_is_a_time(offset: str) -> None:
+    """Prod 2026-09-24: "$now + 15min" read as $now followed by text, and was refused."""
+    calls = [_call("tool_a", _all_args(first="2026-11-20T09:45:00Z"), LISTING)]
+
+    built = _build(calls, [{"call": 1, "vary": {"first": offset}}])
+
+    assert built.issues == []
+    assert built.body is not None
+    assert _validate(built.body, built.sources) == []
+    step = built.body.steps[0]
+    assert isinstance(step, ToolStep)
+    assert resolve_args(step.args, _context({}))["first"] == "2026-11-20T09:45:00Z"
 
 
 def test_an_ambiguous_date_takes_the_layout_the_author_names() -> None:
@@ -489,9 +547,34 @@ def test_a_for_each_must_mark_what_changes_per_element() -> None:
         calls, [{"call": 1, "id": "list"}, {"call": 2, "for_each": "$steps.list.items"}]
     ) == [
         "steps[1].vary: a for_each step runs its call once per element, so mark the value that "
-        'changes per element with $item, e.g. vary: {"<arg>": "$item.id"}; otherwise every '
-        "element repeats the recorded call"
+        'changes per element with $item (vary: {"<arg>": "$item.id"}) or with text written per '
+        'element (vary: {"<arg>": {"$ask": "..."}}); otherwise every element repeats the '
+        "recorded call"
     ]
+
+
+def test_a_for_each_whose_values_are_written_per_element_is_accepted() -> None:
+    """Prod 2026-09-26: a draft per picked email, every arg an $ask, was refused for lacking $item."""
+    calls = [
+        _call("tool_a", _all_args(), LISTING),
+        _call("tool_b", _all_args(first="Hi Dana", second="Re: plan"), {"draft_id": "d1"}),
+    ]
+
+    built = _build(
+        calls,
+        [
+            {"call": 1, "id": "list"},
+            {
+                "call": 2,
+                "for_each": {"$ask": "the emails above that expect a reply"},
+                "vary": {"first": {"$ask": "the reply"}, "second": {"$ask": "Re: its subject"}},
+            },
+        ],
+    )
+
+    assert built.issues == []
+    assert built.body is not None
+    assert _validate(built.body, built.sources) == []
 
 
 # --- what a pick builds ------------------------------------------------------

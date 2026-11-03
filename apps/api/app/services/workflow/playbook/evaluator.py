@@ -33,18 +33,9 @@ from app.models.playbook_models import (
     is_time_slot,
 )
 from app.models.workflow_execution_models import RECORD_CUT_MARKER, RecordedCall, parse_result
-from app.services.workflow.playbook.placeholders import PLACEHOLDER_TOKEN
+from app.services.workflow.playbook.placeholders import OFFSET_UNITS, PLACEHOLDER_TOKEN
 from app.services.workflow.playbook.time_layouts import render_iso, renders_in_utc
 from app.utils.errors import AppError
-
-#: Offset suffixes ``$now``/``$today`` accept, as ``timedelta`` keywords.
-_OFFSET_UNITS: dict[str, str] = {
-    "w": "weeks",
-    "d": "days",
-    "h": "hours",
-    "m": "minutes",
-    "s": "seconds",
-}
 
 #: The only fields ``$user`` exposes.
 _USER_FIELDS = ("email", "name", "timezone")
@@ -370,7 +361,7 @@ def _resolve_moment(match: re.Match[str], now: datetime) -> datetime:
     moment = now
     unit, amount = match.group("unit"), match.group("amount")
     if unit is not None and amount is not None:
-        offset = timedelta(**{_OFFSET_UNITS[unit]: int(amount)})
+        offset = timedelta(**{OFFSET_UNITS[unit]: int(amount)})
         moment = now - offset if match.group("sign") == "-" else now + offset
     clock = match.group("clock")
     if clock is not None:

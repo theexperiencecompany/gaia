@@ -104,13 +104,29 @@ def time_slot_layout(placeholder: re.Match[str], example: object) -> str | None:
     return None if layout == _iso_layout(placeholder) else layout
 
 
-def written_in(value: str, layout: str) -> bool:
-    """Whether value is written in layout, so the layout can render it again."""
+def slot_layout(value: object, named: str | None) -> str | None:
+    """Return the layout a time slot over a recorded value renders in, or None when it has none.
+
+    The author's layout when it is the recorded one or writes the value back
+    (03/11/2026 reads as March or November); otherwise the recorded value's own.
+    The builder and the validator both answer with this, so they cannot disagree.
+    """
+    detected = detect_layout(value)
+    if named is not None and (
+        named == detected or (isinstance(value, str) and _renders_back(value, named))
+    ):
+        return named
+    return detected
+
+
+def _renders_back(value: str, layout: str) -> bool:
+    """Whether layout reads value and writes it again unchanged; %z reads a Z but writes +0000."""
+    text = value.strip()
     try:
-        datetime.strptime(value.strip(), layout.replace("%:z", "%z"))
+        moment = datetime.strptime(text, layout.replace("%:z", "%z"))
     except ValueError:
         return False
-    return True
+    return moment.strftime(layout) == text
 
 
 def renders_in_utc(layout: str) -> bool:
