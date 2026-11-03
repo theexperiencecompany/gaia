@@ -143,11 +143,11 @@ def test_run_hands_each_task_its_own_result_and_output() -> None:
 def test_run_reports_a_failed_task_and_still_runs_the_rest(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("AUDIT_SCOPE", "bogus")
+    monkeypatch.setenv("PNPM_AUDIT_LEVEL", "bogus")
     results, _, passed = _run(["ci:pnpm-audit", "ci:ignore-whys"])
     assert not passed
     assert results["ci:pnpm-audit"]["status"] == "failure"
-    assert "AUDIT_SCOPE must be all or introduced" in results["ci:pnpm-audit"]["output"]
+    assert "PNPM_AUDIT_LEVEL must be one of" in results["ci:pnpm-audit"]["output"]
     assert results["ci:ignore-whys"]["status"] == "success"
 
 

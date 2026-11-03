@@ -18,23 +18,18 @@
 #                      pyproject.toml (`uv lock --check`), standalone projects
 #                      outside the root workspace included.
 #
-# Both audits take AUDIT_SCOPE. `all` (master, dispatch) fails on any
-# advisory. `introduced` (a PR push, the merge queue) fails only on an advisory
-# in a package version the change itself put in the lockfile — one absent from
-# the lockfile at the merge-base with the base (`changes.sh base-rev`). An
-# advisory published against a version the base already ships reds master,
-# where it belongs, and is a ::warning:: on the PR: the PR did not cause it and
-# could not fix it without a bump that does not belong in it (CLAUDE.md §9).
+# Both audits fail on every advisory at or above their level, on a PR as on
+# master, as trivy does: a CVE in what master already ships blocks the next
+# change until the package is bumped or the advisory is allowlisted with a
+# reason. Dependabot security updates open the bump.
 #
 # Env contract:
-#   pnpm              AUDIT_SCOPE (all), PNPM_AUDIT_LEVEL (high),
+#   pnpm              PNPM_AUDIT_LEVEL (high),
 #                     PNPM_AUDIT_ALLOWLIST (config/pnpm-audit-allowlist.json),
-#                     PNPM_AUDIT_TODAY (tests), PNPM_AUDIT_ROOT (tests),
-#                     GAIA_PR_BASE (introduced scope).
+#                     PNPM_AUDIT_TODAY (tests), PNPM_AUDIT_ROOT (tests).
 #                     Exit: 0 clean / all allowlisted; 1 findings or expired
 #                     entries; 2 the audit itself could not run.
-#   pip               AUDIT_SCOPE (all), PIP_AUDIT_ROOT (tests), GAIA_PR_BASE
-#                     (introduced scope), RUNNER_TEMP. Exit codes as pnpm's.
+#   pip               PIP_AUDIT_ROOT (tests), RUNNER_TEMP. Exit codes as pnpm's.
 #   playwright-pin    none.
 #   model-pin         none.
 #   alert-rule-tools  RUNNER_TEMP (required), GITHUB_PATH.
@@ -50,36 +45,9 @@ source "$(dirname "$0")/lib/log.sh"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-# The scope an audit runs at, validated: anything but the two values is a typo
-# that would silently pick one of them.
-_audit_scope() {
-  local scope="${AUDIT_SCOPE:-all}"
-  case "$scope" in
-    all|introduced) printf '%s' "$scope" ;;
-    *) echo "::error::audit: AUDIT_SCOPE must be all or introduced, got '$scope'" >&2; exit 2 ;;
-  esac
-}
-
-# Write <lockfile> as it stood at the merge-base with the change's base to <out>.
-# A base that cannot be resolved is exit 2: comparing against nothing would call
-# every advisory introduced, or none.
-_base_lockfile() {
-  local root="$1" lockfile="$2" out="$3" rev merge_base
-  rev="$(cd "$root" && bash "$REPO_ROOT/scripts/ci/changes.sh" base-rev)" || exit 2
-  merge_base="$(git -C "$root" merge-base "$rev" HEAD)" || {
-    echo "::error::audit: no merge-base between $rev and HEAD" >&2
-    exit 2
-  }
-  if ! git -C "$root" show "$merge_base:$lockfile" > "$out" 2> /dev/null; then
-    # A lockfile the base does not have at all: every version in it is new.
-    : > "$out"
-  fi
-}
-
 cmd_pnpm() {
 
   ROOT="${PNPM_AUDIT_ROOT:-$REPO_ROOT}"
-  SCOPE="$(_audit_scope)"
   ALLOWLIST="${PNPM_AUDIT_ALLOWLIST:-$ROOT/config/pnpm-audit-allowlist.json}"
   LEVEL="${PNPM_AUDIT_LEVEL:-high}"
   TODAY="${PNPM_AUDIT_TODAY:-$(date -u +%Y-%m-%d)}"
@@ -100,16 +68,10 @@ cmd_pnpm() {
   pnpm_exit=$?
   set -e
 
-  BASE_LOCK=""
-  if [ "$SCOPE" = "introduced" ]; then
-    BASE_LOCK="$tmp/base-pnpm-lock.yaml"
-    _base_lockfile "$ROOT" pnpm-lock.yaml "$BASE_LOCK"
-  fi
-
   AUDIT_JSON="$tmp/audit.json" AUDIT_ERR="$tmp/audit.err" PNPM_EXIT="$pnpm_exit" \
-  ALLOWLIST="$ALLOWLIST" LEVEL="$LEVEL" TODAY="$TODAY" BASE_LOCK="$BASE_LOCK" node - <<'NODE'
+  ALLOWLIST="$ALLOWLIST" LEVEL="$LEVEL" TODAY="$TODAY" node - <<'NODE'
 const fs = require("node:fs");
-const { AUDIT_JSON, AUDIT_ERR, PNPM_EXIT, ALLOWLIST, LEVEL, TODAY, BASE_LOCK } = process.env;
+const { AUDIT_JSON, AUDIT_ERR, PNPM_EXIT, ALLOWLIST, LEVEL, TODAY } = process.env;
 const RANK = { low: 0, moderate: 1, high: 2, critical: 3 };
 const fail = (msg, code) => { console.error(`::error::pnpm-audit: ${msg}`); process.exit(code); };
 
@@ -138,24 +100,6 @@ try {
   fail(`malformed allowlist ${ALLOWLIST}: ${e.message}`, 2);
 }
 
-// Every `name@version` the base lockfile resolves: the keys of its `packages:`
-// section ('@scope/name@1.2.3': or name@1.2.3:). The overrides and importers
-// sections sit at the same indent and are not packages, so only that section counts.
-const baseVersions = (() => {
-  if (!BASE_LOCK) return null;
-  const seen = new Set();
-  let inPackages = false;
-  for (const line of fs.readFileSync(BASE_LOCK, "utf8").split("\n")) {
-    if (/^\S/.test(line)) inPackages = line === "packages:";
-    const key = inPackages && line.match(/^  '?([^\s']+?)'?:$/);
-    if (key) seen.add(key[1]);
-  }
-  return seen;
-})();
-const introduced = (a) =>
-  baseVersions === null ||
-  (a.findings || []).some((f) => !baseVersions.has(`${a.module_name}@${f.version}`));
-
 const expired = allow.filter((e) => e.expires < TODAY);
 const active = new Map(allow.filter((e) => e.expires >= TODAY).map((e) => [e.id, e]));
 const used = new Set();
@@ -163,7 +107,6 @@ const used = new Set();
 const bySeverity = { low: 0, moderate: 0, high: 0, critical: 0 };
 const failing = [];
 const suppressed = [];
-const preexisting = [];
 for (const a of Object.values(report.advisories)) {
   bySeverity[a.severity] = (bySeverity[a.severity] || 0) + 1;
   if ((RANK[a.severity] ?? -1) < RANK[LEVEL]) continue;
@@ -180,23 +123,20 @@ for (const a of Object.values(report.advisories)) {
     paths: (a.findings || []).flatMap((f) => f.paths || []).slice(0, 3),
   };
   if (hit) { used.add(hit.id); suppressed.push({ ...row, allowlisted_by: hit.id, reason: hit.reason, expires: hit.expires }); }
-  else if (introduced(a)) failing.push(row);
-  else preexisting.push(row);
+  else failing.push(row);
 }
 const unused = [...active.keys()].filter((id) => !used.has(id));
 
 console.log(JSON.stringify({
   level: LEVEL, today: TODAY,
   advisories: Object.keys(report.advisories).length, by_severity: bySeverity,
-  scope: baseVersions === null ? "all" : "introduced",
-  failing: failing.length, suppressed: suppressed.length, preexisting: preexisting.length,
+  failing: failing.length, suppressed: suppressed.length,
   expired: expired.length, unused_allowlist: unused,
-  details: { failing, suppressed, preexisting, expired },
+  details: { failing, suppressed, expired },
 }, null, 2));
 
 for (const e of expired) console.error(`::error::pnpm-audit: allowlist entry ${e.id} expired on ${e.expires} (${e.reason})`);
 for (const f of failing) console.error(`::error::pnpm-audit: ${f.severity} ${f.module} ${f.id} ${f.cves.join(",")} ${f.url}`);
-for (const f of preexisting) console.warn(`::warning::pnpm-audit: ${f.severity} ${f.module} ${f.id} is in a version the base already ships — not this change's to fix; master fails on it ${f.url}`);
 for (const id of unused) console.warn(`::warning::pnpm-audit: allowlist entry ${id} no longer matches any advisory; remove it`);
 
 if (failing.length || expired.length) process.exit(1);
@@ -219,9 +159,8 @@ PIP_AUDIT_IGNORED=(
 
 cmd_pip() {
 
-  local ROOT SCOPE ignore=() pip_exit base_lock=""
+  local ROOT ignore=() pip_exit
   ROOT="${PIP_AUDIT_ROOT:-$REPO_ROOT}"
-  SCOPE="$(_audit_scope)"
   # $RUNNER_TEMP, not /tmp: twenty runner instances share the box's /tmp, and
   # two jobs from different PRs would audit each other's export.
   tmp="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/pip-audit.XXXXXX")"
@@ -236,23 +175,12 @@ cmd_pip() {
   pip_exit=$?
   set -e
 
-  if [ "$SCOPE" = "introduced" ]; then
-    base_lock="$tmp/base-uv.lock"
-    _base_lockfile "$ROOT" uv.lock "$base_lock"
-  fi
-
   AUDIT_JSON="$tmp/audit.json" AUDIT_ERR="$tmp/audit.err" PIP_EXIT="$pip_exit" \
-  BASE_LOCK="$base_lock" python3 - <<'PY'
+  python3 - <<'PY'
 import json
 import os
-import re
 import sys
-import tomllib
 from pathlib import Path
-
-
-def norm(name: str) -> str:
-    return re.sub(r"[-_.]+", "-", name).lower()
 
 
 def fail(message: str, code: int) -> None:
@@ -267,31 +195,20 @@ try:
 except (OSError, ValueError, KeyError) as exc:
     fail(f"pip-audit produced no usable report (exit {os.environ['PIP_EXIT']}): {exc}\n{err}", 2)
 
-base_lock = os.environ["BASE_LOCK"]
-base: set[tuple[str, str]] | None = None
-if base_lock:
-    text = Path(base_lock).read_text()
-    packages = tomllib.loads(text).get("package", []) if text else []
-    base = {(norm(p["name"]), str(p.get("version", ""))) for p in packages}
-
-failing, preexisting = [], []
-for dep in dependencies:
-    for vuln in dep.get("vulns", []):
-        row = f"{dep['name']} {dep['version']} {vuln['id']} (fix: {', '.join(vuln.get('fix_versions') or []) or 'none'})"
-        new = base is None or (norm(dep["name"]), str(dep["version"])) not in base
-        (failing if new else preexisting).append(row)
-
+failing = [
+    f"{dep['name']} {dep['version']} {vuln['id']} (fix: {', '.join(vuln.get('fix_versions') or []) or 'none'})"
+    for dep in dependencies
+    for vuln in dep.get("vulns", [])
+]
 for row in failing:
     print(f"::error::pip-audit: {row}")
-for row in preexisting:
-    print(f"::warning::pip-audit: {row} is in a version the base already ships — not this change's to fix; master fails on it")
 if failing:
-    print(f"pip-audit: {len(failing)} advisory(ies) to fix, {len(preexisting)} pre-existing")
+    print(f"pip-audit: {len(failing)} advisory(ies) to fix")
     raise SystemExit(1)
-if os.environ["PIP_EXIT"] != "0" and not preexisting:
+if os.environ["PIP_EXIT"] != "0":
     # --strict failures (a dependency it could not audit) leave no vulns at all.
     fail(f"pip-audit exited {os.environ['PIP_EXIT']} with no advisory to show for it:\n{err}", 2)
-print(f"pip-audit: OK ({len(preexisting)} pre-existing advisory(ies) warned, scope {'introduced' if base is not None else 'all'})")
+print("pip-audit: OK (no advisory outside PIP_AUDIT_IGNORED)")
 PY
 }
 

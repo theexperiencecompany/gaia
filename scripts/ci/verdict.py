@@ -1406,9 +1406,17 @@ def _this_job_url(gh: GitHub, repo: str, run_id: int, attempt: int) -> str | Non
 
 
 def _one_line(finding: Finding) -> str:
+    if not finding["file"]:
+        # No location: the attached output's last line is where a tool states its conclusion.
+        lines = [
+            line
+            for line in (finding.get("detail") or finding["message"]).splitlines()
+            if line.strip()
+        ]
+        return " ".join((lines[-1] if lines else finding["message"]).split())
     message = " ".join(finding["message"].split())
     # Most tools' lines already open with their location; a bare message gets one.
-    if not finding["file"] or finding["file"] in message:
+    if finding["file"] in message:
         return message
     return f"{finding['file']}:{finding['line']} {message}"
 

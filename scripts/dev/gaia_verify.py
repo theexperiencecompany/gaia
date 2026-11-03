@@ -248,13 +248,13 @@ def main() -> int:
     t0 = time.monotonic()
     log_dir = root / LOG_ROOT / (started_at.strftime("%Y%m%d-%H%M%S") + f"-{os.getpid()}")
     log_dir.mkdir(parents=True, exist_ok=True)
-    # The env detect publishes in CI (JOB_TASKS, TASK_FILES_PATH, …), from the same nx answer.
-    affected_selection = selection or nx_affected.Selection(tasks={})
-    detected = nx_affected.outputs(affected_selection, LOCAL_EVENTS[0], None)
+    # What detect hands a CI job (JOB_TASKS, …, and the task-files file), from the same nx answer.
+    answer = selection or nx_affected.Selection(tasks={})
+    detected = nx_affected.outputs(answer, LOCAL_EVENTS[0], None)
     os.environ.update({key.upper(): value for key, value in detected.items()})
-    task_files_path = log_dir / "task-files.json"
-    nx_affected.write_task_files(affected_selection, task_files_path)
-    os.environ[nx_affected.TASK_FILES_ENV] = str(task_files_path)
+    task_files = log_dir / "task-files.json"
+    task_files.write_text(json.dumps(nx_affected.task_files(answer)))
+    os.environ[nx_affected.TASK_FILES_ENV] = str(task_files)
     tasks = [task for check_tasks in to_run.values() for task in check_tasks]
     results: dict[str, nx_affected.TaskResult] = {}
 

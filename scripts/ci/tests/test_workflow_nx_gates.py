@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 import tempfile
 from typing import Any
 
@@ -226,23 +227,36 @@ def test_a_list_too_long_to_carry_is_a_full_scan() -> None:
     assert nx_affected.task_files(selection) == {"ci:ruff": nx_affected.FULL_SCAN}
 
 
-def test_every_detect_output_fits_one_environment_string_on_the_largest_scoped_change() -> None:
-    """A job reads each output as an env var; Linux caps one at 128 KiB.
+def test_a_check_gets_every_file_however_large_the_map(tmp_path: Path) -> None:
+    """Regression: a 233-file PR's map (139,600 bytes) rode one env var, over Linux's 128 KiB cap."""
+    files = [f"apps/api/app/services/module_{n:04}.py" for n in range(250)]
+    task_map = {f"ci:check-{i}": files for i in range(15)}
+    path = tmp_path / "task-files.json"
+    path.write_text(json.dumps(task_map))
+    assert len(path.read_text()) > 128 * 1024
+    out = subprocess.run(
+        [sys.executable, str(nx_affected.REPO_ROOT / "scripts/ci/lib/nx_affected.py"),
+         "--files-for", "ci:check-7", "--base", "HEAD"],
+        env={**os.environ, nx_affected.TASK_FILES_ENV: str(path)},
+        capture_output=True, text=True, check=True,
+    ).stdout  # fmt: skip
+    assert out.split() == files
 
-    A 233-file PR's task_files output was 150 KB, and every step of the five
-    lanes that carried it failed to start ("Argument list too long").
-    """
-    reasons = [
-        {
-            "kind": "input-file",
-            "file": f"apps/api/app/feature/module_{n:03}.py",
-            "pattern": "**/*.py",
-        }
-        for n in range(nx_affected.SCOPED_FILES_MAX)
-    ]
-    selection = nx_affected.Selection(tasks=dict.fromkeys(CHECKS, reasons))
-    for key, value in nx_affected.outputs(selection, "pull_request", None).items():
-        assert len(value.encode()) < 128 * 1024, f"{key} is {len(value.encode())} bytes"
+
+def test_no_job_carries_task_files_in_its_environment() -> None:
+    text = (WORKFLOWS / "ci.yml").read_text()
+    assert "outputs.task_files" not in text
+    jobs = mapping(yaml.safe_load(text))["jobs"]
+    for name, job in jobs.items():
+        steps = job.get("steps", [])
+        runs = [i for i, st in enumerate(steps) if "runner.py run-job" in str(st.get("run", ""))]
+        if runs:
+            fetch = [
+                i for i, st in enumerate(steps) if st.get("uses") == "./.github/actions/task-files"
+            ]
+            assert fetch and fetch[0] < runs[0], (
+                f"{name} runs its checks without detect's task files"
+            )
 
 
 def test_a_check_lists_its_config_before_its_source_globs() -> None:

@@ -37,12 +37,12 @@ FULL_SCAN = "__FULL__"
 # A source input names files by extension (apps/api/**/*.py, **/*.{ts,tsx});
 # a config input names one file (pyproject.toml) or a whole tree (scripts/ci/**/*).
 SOURCE_GLOB = re.compile(r"(?:^|/)\*\.(\w+|\{[\w,]+\})$")
-# Past this many files a scoped list costs more to hand a tool than a full scan
-# costs to run.
+# Past this many files a scoped list costs more to carry in detect's outputs
+# (1 MB per job) than a full scan costs to run.
 SCOPED_FILES_MAX = 300
-# Where detect's task_files JSON lives: a file, never an env var or a job
-# output, since it grows with the change and Linux caps one env string at
-# 128 KiB. detect writes it there and uploads it; each lane downloads it.
+# Where detect writes each task's files and a job reads them back. A file, never
+# an env var or job output: Linux refuses one env string over 128 KiB
+# (MAX_ARG_STRLEN), and a 233-file PR's map was 139,600 bytes.
 TASK_FILES_ENV = "TASK_FILES_PATH"
 
 
@@ -313,11 +313,6 @@ def task_files(selection: Selection) -> dict[str, str | list[str]]:
     return scoped
 
 
-def write_task_files(selection: Selection, path: Path) -> None:
-    """Write task_files(selection) where $TASK_FILES_PATH points a lane's checks."""
-    path.write_text(json.dumps(task_files(selection)), encoding="utf-8")
-
-
 def _is_source(reason: dict[str, str]) -> bool:
     return reason.get("kind") == "input-file" and bool(
         SOURCE_GLOB.search(reason.get("pattern", ""))
@@ -351,7 +346,7 @@ def main() -> int:
     parser.add_argument(
         "--files-for",
         metavar="TASK",
-        help=f"print one task's files, or FULL_SCAN; read from ${TASK_FILES_ENV} (detect's) when set",
+        help="print one task's files, or FULL_SCAN; read from $TASK_FILES_PATH (detect's) when set",
     )
     opts = parser.parse_args()
 
@@ -363,8 +358,9 @@ def main() -> int:
     )
     if opts.files_for:
         from_detect = os.environ.get(TASK_FILES_ENV)
+        # Set but unreadable is a broken handoff, not a reason to ask nx again.
         scoped = (
-            json.loads(Path(from_detect).read_text(encoding="utf-8"))
+            json.loads(Path(from_detect).read_text())
             if from_detect
             else task_files(select(range_args))
         )
@@ -375,14 +371,14 @@ def main() -> int:
         return 0
 
     selection = select(range_args)
+    target = os.environ.get(TASK_FILES_ENV)
+    if target:
+        Path(target).write_text(json.dumps(task_files(selection)))
     published = outputs(
         selection,
         os.environ.get("GITHUB_EVENT_NAME", LOCAL_EVENT),
         os.environ.get("GITHUB_REF_NAME"),
     )
-    task_files_path = os.environ.get(TASK_FILES_ENV)
-    if task_files_path:
-        write_task_files(selection, Path(task_files_path))
     lines = "".join(f"{key}={value}\n" for key, value in published.items())
     sink = os.environ.get("GITHUB_OUTPUT")
     if sink:
