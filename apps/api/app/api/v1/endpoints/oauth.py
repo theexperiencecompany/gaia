@@ -5,6 +5,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from fastapi.responses import RedirectResponse
 import httpx
+from workos.types.user_management.screen_hint import ScreenHintType
 
 from app.config.settings import settings
 from app.config.workos import get_workos_client
@@ -73,12 +74,15 @@ async def get_client_metadata() -> OAuthClientMetadataResponse:
 
 @router.get("/login/workos", response_class=RedirectResponse)
 # evlog-map-disable-next-line audit -- pre-auth redirect; the auth event is audited at the callback
-async def login_workos(return_url: str | None = None) -> RedirectResponse:
+async def login_workos(
+    return_url: str | None = None, screen_hint: ScreenHintType | None = None
+) -> RedirectResponse:
     """
     Start the WorkOS SSO authentication flow.
 
     Args:
         return_url: Optional URL to redirect to after authentication.
+        screen_hint: The AuthKit screen to open on; /signup asks for sign-up.
 
     Returns:
         RedirectResponse: Redirects the user to the WorkOS SSO authorization URL
@@ -97,6 +101,7 @@ async def login_workos(return_url: str | None = None) -> RedirectResponse:
         provider="authkit",
         redirect_uri=settings.WORKOS_REDIRECT_URI,
         state=state,
+        screen_hint=screen_hint,
     )
 
     return RedirectResponse(url=authorization_url)
