@@ -31,6 +31,7 @@ from app.models.workflow_models import (
     CreateWorkflowRequest,
     GeneratedStep,
     TriggerConfig,
+    TriggerType,
     UpdateWorkflowRequest,
     Workflow,
     WorkflowDocument,
@@ -84,7 +85,7 @@ def _owners_are_users():
         yield
 
 
-def _make_trigger_config(trigger_type: str = "manual", **kwargs) -> TriggerConfig:
+def _make_trigger_config(trigger_type: TriggerType = TriggerType.MANUAL, **kwargs) -> TriggerConfig:
     """Build a TriggerConfig with sensible defaults."""
     return TriggerConfig(type=trigger_type, enabled=True, **kwargs)
 
@@ -106,7 +107,7 @@ def _make_create_request(
     title: str = "Test Workflow",
     prompt: str = "Do something useful",
     steps: list[WorkflowStep] | None = None,
-    trigger_type: str = "manual",
+    trigger_type: TriggerType = TriggerType.MANUAL,
     **trigger_kwargs,
 ) -> CreateWorkflowRequest:
     """Build a CreateWorkflowRequest with defaults."""
@@ -125,7 +126,7 @@ def _make_workflow(
     title: str = "Test Workflow",
     activated: bool = True,
     steps: list[WorkflowStep] | None = None,
-    trigger_type: str = "manual",
+    trigger_type: TriggerType = TriggerType.MANUAL,
 ) -> Workflow:
     """Build a Workflow model instance for testing."""
     return Workflow(
@@ -336,7 +337,7 @@ class TestExecutionTracking:
             execution = await create_execution(
                 workflow_id=FAKE_WORKFLOW_ID,
                 user_id=FAKE_USER_ID,
-                trigger_type="manual",
+                trigger_type=TriggerType.MANUAL,
             )
 
         assert execution.status == "running"
@@ -434,7 +435,7 @@ class TestExecutionTracking:
                 user_id=FAKE_USER_ID,
                 status="success",
                 started_at=datetime(2026, 1, 1, 12, i, 0, tzinfo=UTC),
-                trigger_type="manual",
+                trigger_type=TriggerType.MANUAL,
             )
             for i in range(3)
         ]
@@ -469,7 +470,7 @@ class TestTriggerRegistration:
     async def test_register_integration_triggers_calls_trigger_service(self):
         """_register_integration_triggers delegates to TriggerService for integration type."""
         trigger_config = _make_trigger_config(
-            trigger_type="integration",
+            trigger_type=TriggerType.INTEGRATION,
             trigger_name="calendar_event_created",
         )
 
@@ -508,7 +509,7 @@ class TestTriggerRegistration:
 
     async def test_register_skips_non_integration_triggers(self):
         """_register_integration_triggers returns ([], True) for manual triggers."""
-        trigger_config = _make_trigger_config(trigger_type="manual")
+        trigger_config = _make_trigger_config(trigger_type=TriggerType.MANUAL)
 
         result = await WorkflowService._register_integration_triggers(
             workflow_id=FAKE_WORKFLOW_ID,
@@ -523,7 +524,7 @@ class TestTriggerRegistration:
         """_register_integration_triggers raises when integration trigger has no name."""
 
         trigger_config = _make_trigger_config(
-            trigger_type="integration",
+            trigger_type=TriggerType.INTEGRATION,
             trigger_name=None,
         )
 
@@ -538,7 +539,7 @@ class TestTriggerRegistration:
         """If trigger registration fails, the pending workflow is deleted."""
 
         request = _make_create_request(
-            trigger_type="integration",
+            trigger_type=TriggerType.INTEGRATION,
             trigger_name="calendar_event_created",
         )
 
@@ -953,8 +954,8 @@ class TestActivateDeactivateLifecycle:
 
     async def test_activate_workflow_enables_and_registers_triggers(self):
         """activate_workflow sets activated=True and registers integration triggers."""
-        pending = _make_workflow(activated=False, trigger_type="manual")
-        activated = _make_workflow(activated=True, trigger_type="manual")
+        pending = _make_workflow(activated=False, trigger_type=TriggerType.MANUAL)
+        activated = _make_workflow(activated=True, trigger_type=TriggerType.MANUAL)
 
         with (
             # get_workflow: first the pending workflow, then the re-read after activation.
