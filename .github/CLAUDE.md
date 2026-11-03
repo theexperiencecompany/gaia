@@ -168,7 +168,7 @@ Four layers, from cheap to precise, all decided in the one `detect` job:
    exact changed files. Contract: prints `__FULL__` (push/dispatch → full
    scan), nothing (no relevant changes → skip & pass), or one path per line.
    With `--task`, the paths are the ones nx matched to that task's inputs
-   (`detect`'s `task_files`; ci:local passes the same), so a check is never
+   (`detect`'s `task-files` artifact, read through the `task-files` composite as `$TASK_FILES_PATH`; ci:local writes the same file), so a check is never
    handed a file outside what it reads, and `__FULL__` when nx reached the
    task through its config or the CI harness.
    The base is `detect`'s `base_ref`: the PR's real parent, or on a merge

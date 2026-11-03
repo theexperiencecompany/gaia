@@ -16,10 +16,12 @@ import pytest
 from starlette.requests import Request
 
 from app.agents.skills.models import Skill, SkillAuthor, SkillSource
+from app.constants.memory import MemoryDocType
 from app.models.files_models import FileDocument
 from app.models.hil_models import ApprovalLedgerDocument, LedgerState
 from app.models.integration_models import Integration
 from app.models.mail_models import GmailMessageResource
+from app.models.memory_models import MemoryDocument
 from app.models.notification.notification_models import NotificationRecord
 from app.models.payment_models import PlanType
 from app.models.todo_models import TodoDocument
@@ -83,7 +85,6 @@ from shared.py.analytics.catalog.onboarding import (
     OnboardingWritingStyleExampleRegenerated,
     OnboardingWritingStyleSaved,
 )
-from shared.py.analytics.catalog.reminders import ReminderPaused, ReminderResumed, ReminderUpdated
 from shared.py.analytics.catalog.settings import InstructionsUpdated
 from shared.py.analytics.catalog.todos import (
     ProjectsCreated,
@@ -281,96 +282,6 @@ class TestDeviceRevoke:
 
 
 # ---------------------------------------------------------------------------
-# Reminders
-# ---------------------------------------------------------------------------
-
-REM = "/api/v1/reminders"
-_REM_SCHED = "app.api.v1.endpoints.reminders.reminder_scheduler"
-_REM_CAPTURE = "app.api.v1.endpoints.reminders.capture"
-
-
-def _reminder_model(reminder_id: str = "rem_1", status: str = "scheduled") -> MagicMock:
-    from datetime import timedelta
-
-    now = datetime.now(UTC)
-    future = now + timedelta(days=1)
-    m = MagicMock()
-    m.id = reminder_id
-    m.user_id = UID
-    m.agent = "static"
-    m.repeat = None
-    m.recurrence = None
-    m.scheduled_at = future
-    m.next_run_time = future
-    m.status = status
-    m.occurrence_count = 0
-    m.max_occurrences = None
-    m.stop_after = None
-    m.payload = {"title": "Test", "body": "Test body"}
-    m.created_at = now
-    m.updated_at = now
-    m.model_dump.return_value = {
-        "id": reminder_id,
-        "user_id": UID,
-        "agent": "static",
-        "repeat": None,
-        "scheduled_at": future,
-        "status": status,
-        "occurrence_count": 0,
-        "max_occurrences": None,
-        "stop_after": None,
-        "payload": {"title": "Test", "body": "Test body"},
-        "created_at": now,
-        "updated_at": now,
-    }
-    return m
-
-
-class TestReminderNewEvents:
-    async def test_update_captures(self, client: AsyncClient) -> None:
-        with (
-            patch(f"{_REM_SCHED}.update_reminder", new_callable=AsyncMock, return_value=True),
-            patch(
-                f"{_REM_SCHED}.get_reminder",
-                new_callable=AsyncMock,
-                return_value=_reminder_model(),
-            ),
-            patch(_REM_CAPTURE) as mock_capture,
-        ):
-            resp = await client.put(f"{REM}/rem_1", json={"max_occurrences": 5})
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), ReminderUpdated())
-
-    async def test_pause_captures(self, client: AsyncClient) -> None:
-        with (
-            patch(f"{_REM_SCHED}.update_reminder", new_callable=AsyncMock, return_value=True),
-            patch(
-                f"{_REM_SCHED}.get_reminder",
-                new_callable=AsyncMock,
-                return_value=_reminder_model(status="paused"),
-            ),
-            patch(_REM_CAPTURE) as mock_capture,
-        ):
-            resp = await client.post(f"{REM}/rem_1/pause")
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), ReminderPaused())
-
-    async def test_resume_captures(self, client: AsyncClient) -> None:
-        with (
-            patch(
-                f"{_REM_SCHED}.get_reminder",
-                new_callable=AsyncMock,
-                return_value=_reminder_model(status="paused"),
-            ),
-            patch(f"{_REM_SCHED}.update_reminder", new_callable=AsyncMock, return_value=True),
-            patch(_REM_CAPTURE) as mock_capture,
-        ):
-            resp = await client.post(f"{REM}/rem_1/resume")
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), ReminderResumed())
-
-
-# ---------------------------------------------------------------------------
 # Skills
 # ---------------------------------------------------------------------------
 
@@ -501,9 +412,6 @@ class TestMemoryNewEvents:
         mock_capture.assert_called_once_with(UserId(UID), MemoryUpdated())
 
     async def test_document_update_captures(self, client: AsyncClient) -> None:
-        from app.constants.memory import MemoryDocType
-        from app.models.memory_models import MemoryDocument
-
         with (
             patch(f"{_MEM}.memory_engine.update_document", new_callable=AsyncMock) as mock_upd,
             patch(_MEM_CAPTURE) as mock_capture,

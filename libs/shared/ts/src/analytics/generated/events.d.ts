@@ -232,8 +232,6 @@ export type WebEventName =
 
 export type BotEventName =
   | "bot:auth_initiated"
-  | "bot:chat_completed"
-  | "bot:chat_started"
   | "bot:command_executed"
   | "bot:error"
   | "bot:file_delivered"
@@ -354,15 +352,6 @@ export interface EventProperties {
     "transcript_length": number;
   };
   "bot:auth_initiated": Record<string, never>;
-  "bot:chat_completed": {
-    "duration_ms": number;
-    "response_length": number;
-    "streaming_enabled": boolean;
-  };
-  "bot:chat_started": {
-    "message_length": number;
-    "streaming_enabled": boolean;
-  };
   "bot:command_executed": {
     "command": string;
     "duration_ms": number;
@@ -1387,6 +1376,8 @@ export interface EventProperties {
     "subscription_id": string;
     "plan_name": "Pro";
     "currency": string;
+    "product_id"?: string;
+    "billing_interval"?: string;
     "amount"?: number;
     "amount_charged_pre_tax"?: number;
     "currency_charged"?: string;
@@ -1410,6 +1401,8 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "subscription_id": string;
+    "product_id": string;
+    "billing_interval": string;
   };
   "subscription:failed": {
     "source": "onboarding" | "payment_success_page";
@@ -1421,6 +1414,8 @@ export interface EventProperties {
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "subscription_id": string;
     "status": "failed" | "on_hold";
+    "product_id": string;
+    "billing_interval": string;
   };
   "subscription:page_viewed": {
     "source": "landing_pricing";
@@ -1436,6 +1431,8 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "subscription_id": string;
+    "product_id": string;
+    "billing_interval": string;
     "currency": string;
     "amount_charged_pre_tax"?: number;
     "currency_charged"?: string;

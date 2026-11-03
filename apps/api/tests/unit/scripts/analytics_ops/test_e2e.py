@@ -33,14 +33,22 @@ WEB: dict[str, object] = {
 WEBHOOK: dict[str, object] = {"actor": "agent", "trigger": "webhook", "surface": "worker"}
 BOT: dict[str, object] = {"actor": "user", "trigger": "interactive", "surface": "bot"}
 # The agent acts in the run tree the user's request started.
-AGENT_WEB = {**WEB, "actor": "agent"}
-AGENT_BOT = {**BOT, "actor": "agent"}
+AGENT_WEB: dict[str, object] = {**WEB, "actor": "agent"}
+AGENT_BOT: dict[str, object] = {**BOT, "actor": "agent"}
 CONVERSATION = "6d3dbe42-7de8-4f11-a897-fedb2cb44193"
 BOT_CONVERSATION = "2014a5eb-fff2-4414-9a74-530e562a9f96"
 WORKFLOW_CONVERSATION = "acd858d4-2d9b-46a6-ade1-ca7de0f1ada1"
-TURN = {"conversation_id": CONVERSATION, "mode": "interactive", "agent": "comms"}
-BOT_TURN = {"conversation_id": BOT_CONVERSATION, "mode": "interactive", "agent": "comms"}
-WORKFLOW_RUN = {"conversation_id": WORKFLOW_CONVERSATION, "mode": "background", "agent": "comms"}
+TURN: dict[str, object] = {"conversation_id": CONVERSATION, "mode": "interactive", "agent": "comms"}
+BOT_TURN: dict[str, object] = {
+    "conversation_id": BOT_CONVERSATION,
+    "mode": "interactive",
+    "agent": "comms",
+}
+WORKFLOW_RUN: dict[str, object] = {
+    "conversation_id": WORKFLOW_CONVERSATION,
+    "mode": "background",
+    "agent": "comms",
+}
 COMPLETED = {
     "delegated": False,
     "queued": False,
@@ -127,7 +135,6 @@ CLEAN: list[tuple[str, dict[str, object]]] = [
         {**BOT, "is_onboarding_demo": False, "is_system_generated": False},
     ),
     ("agent:run_started", {**AGENT_BOT, **BOT_TURN}),
-    ("bot:chat_started", {"message_length": 21, "streaming_enabled": True}),
     ("bot:message_received", {"interaction_type": "chat", "message_length": 21}),
     ("agent:run_completed", {**AGENT_BOT, **BOT_TURN}),
     (
@@ -141,7 +148,6 @@ CLEAN: list[tuple[str, dict[str, object]]] = [
             "is_new_conversation": False,
         },
     ),
-    ("bot:chat_completed", {"duration_ms": 4348, "response_length": 13, "streaming_enabled": True}),
 ]
 
 
