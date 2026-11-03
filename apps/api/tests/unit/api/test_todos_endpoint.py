@@ -552,6 +552,29 @@ class TestGenerateTodoWorkflow:
         assert resp.status_code == 409
         queue.assert_not_awaited()
 
+    async def test_the_generate_button_queues_the_todos_workflow(self, client: AsyncClient) -> None:
+        queue = AsyncMock(return_value=True)
+        with (
+            patch(
+                f"{TODOS_ENDPOINT}.TodoService.get_todo",
+                new=AsyncMock(return_value=_todo_response()),
+            ),
+            patch(f"{TODOS_ENDPOINT}.delete_cache", new=AsyncMock()),
+            patch(
+                "app.services.workflow.queue_service.WorkflowQueueService.queue_todo_workflow_generation",
+                new=queue,
+            ),
+        ):
+            resp = await client.post("/api/v1/todos/todo-1/workflow")
+
+        assert resp.status_code == 200
+        queue.assert_awaited_once_with(
+            todo_id="todo-1",
+            user_id=_todo_response().user_id,
+            title="Test todo",
+            description="",
+        )
+
 
 class TestUpdateTodoWorkflowLink:
     async def test_linking_a_workflow_to_a_tracked_todo_is_409(self, client: AsyncClient) -> None:

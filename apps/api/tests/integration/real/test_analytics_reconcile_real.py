@@ -114,6 +114,23 @@ def test_the_linking_message_written_as_first_contact_is_not_a_submitted_turn(
     assert mongo_signals(db, WINDOW).messages_by_source == {"whatsapp": 1}
 
 
+def test_a_tracked_todo_run_woken_by_a_schedule_or_trigger_is_not_a_human_turn(
+    db: Database[Document],
+) -> None:
+    wake = {"kind": "schedule", "trigger_names": [], "approval_summary": None}
+    db.conversations.insert_one(
+        {
+            "messages": [
+                {**_message("user", INSIDE), "todo_run_wake": wake},
+                _message("bot", INSIDE),
+                _message("user", INSIDE),
+            ],
+        }
+    )
+
+    assert mongo_signals(db, WINDOW).messages_by_source == {"web+desktop": 1}
+
+
 def test_billing_counts_only_processed_deliveries_in_the_window(db: Database[Document]) -> None:
     db.processed_webhooks.insert_many(
         [

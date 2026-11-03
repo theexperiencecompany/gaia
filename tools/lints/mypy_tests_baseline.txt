@@ -132,7 +132,6 @@ apps/api/tests/integration/test_rate_limiting.py	index
 apps/api/tests/integration/test_websocket_lifecycle.py	assignment
 apps/api/tests/integration/test_websocket_lifecycle.py	method-assign
 apps/api/tests/integration/test_websocket_lifecycle.py	misc
-apps/api/tests/integration/test_workflow_execution.py	arg-type
 apps/api/tests/meta/conftest.py	attr-defined
 apps/api/tests/meta/test_route_contract.py	arg-type
 apps/api/tests/meta/test_route_contract.py	attr-defined
@@ -268,7 +267,6 @@ apps/api/tests/unit/agents/tools/test_mutations_factory.py	assignment
 apps/api/tests/unit/agents/tools/test_mutations_factory.py	index
 apps/api/tests/unit/agents/tools/test_mutations_factory.py	var-annotated
 apps/api/tests/unit/api/test_approvals_endpoint.py	call-arg
-apps/api/tests/unit/api/test_auth_middleware.py	union-attr
 apps/api/tests/unit/api/test_bot_endpoint.py	attr-defined
 apps/api/tests/unit/api/test_bot_endpoint.py	call-arg
 apps/api/tests/unit/api/test_bot_endpoint.py	union-attr
@@ -279,7 +277,6 @@ apps/api/tests/unit/api/test_device_self_pair.py	attr-defined
 apps/api/tests/unit/api/test_integrations_user.py	call-arg
 apps/api/tests/unit/api/test_mail_endpoint.py	list-item
 apps/api/tests/unit/api/test_oauth_dependencies.py	attr-defined
-apps/api/tests/unit/api/test_oauth_endpoint.py	arg-type
 apps/api/tests/unit/api/test_onboarding_endpoint.py	arg-type
 apps/api/tests/unit/api/test_payments_smoke.py	arg-type
 apps/api/tests/unit/api/test_payments_smoke.py	call-arg
@@ -289,7 +286,6 @@ apps/api/tests/unit/api/test_tiered_rate_limiter.py	index
 apps/api/tests/unit/api/test_tiered_rate_limiter.py	method-assign
 apps/api/tests/unit/api/test_user_endpoint.py	arg-type
 apps/api/tests/unit/api/test_voice_endpoint.py	misc
-apps/api/tests/unit/api/test_workflows_endpoint.py	attr-defined
 apps/api/tests/unit/api/v1/endpoints/test_browser.py	attr-defined
 apps/api/tests/unit/api/v1/endpoints/test_features.py	arg-type
 apps/api/tests/unit/api/v1/endpoints/test_features.py	index
@@ -564,7 +560,6 @@ apps/api/tests/unit/services/sandbox/test_execute_client.py	arg-type
 apps/api/tests/unit/services/sandbox/test_execute_client.py	attr-defined
 apps/api/tests/unit/services/test_account_fs.py	arg-type
 apps/api/tests/unit/services/test_account_fs.py	return-value
-apps/api/tests/unit/services/test_analytics_service.py	unused-ignore
 apps/api/tests/unit/services/test_artifact_events.py	arg-type
 apps/api/tests/unit/services/test_billing_visible_output.py	arg-type
 apps/api/tests/unit/services/test_billing_visible_output.py	attr-defined

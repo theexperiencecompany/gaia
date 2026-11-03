@@ -16,6 +16,7 @@ the finished result. Two reasons, both load-bearing:
 import json
 
 from app.models.workflow_execution_models import RecordedCall
+from app.services.composio.custom_tools.gmail_constants import OFFLOAD_MIN_MESSAGES
 from app.services.workflow.playbook.record import number_record, render_record
 
 
@@ -37,7 +38,7 @@ def _show_record(calls: list[RecordedCall]) -> str:
 PLAYBOOK_EXAMPLE_RECORD = [
     _recorded(
         "GMAIL_FETCH_MESSAGES",
-        {"query": "is:unread", "timeframe": "1d"},
+        {"query": "is:unread", "timeframe": "1d", "max_messages": OFFLOAD_MIN_MESSAGES},
         {"messages": [{"id": "18c2a", "from": "Dana <dana@acme.com>", "subject": "Q3 numbers"}]},
     ),
     _recorded(
@@ -70,7 +71,7 @@ PLAYBOOK_EXAMPLE_WRITE: dict[str, object] = {
 PLAYBOOK_FOR_EACH_RECORD = [
     _recorded(
         "GMAIL_FETCH_MESSAGES",
-        {"query": "in:inbox", "timeframe": "today"},
+        {"query": "in:inbox", "timeframe": "today", "max_messages": OFFLOAD_MIN_MESSAGES},
         {
             "messages": [
                 {"threadId": "t1", "from": "Dana <dana@acme.com>", "subject": "Q3 numbers"},
