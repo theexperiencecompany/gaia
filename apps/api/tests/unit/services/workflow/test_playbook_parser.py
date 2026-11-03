@@ -2764,3 +2764,26 @@ result_brief: x
             ),
         ):
             await validate_playbook(body, USER_ID, [_source({}, {"events": [1]})])
+
+
+async def test_a_value_an_enum_reference_accepts_is_not_refused_as_the_null_beside_it() -> None:
+    """Live gpt-5.6-luna 2026-11-03: priority "none" under anyOf [$ref, null] was refused as "expected null"."""
+    registry = _schema_registry(
+        create_todo={"priority": {"anyOf": [{"$ref": "#/$defs/Priority"}, {"type": "null"}]}}
+    )
+    body = _body(
+        """
+description: A todo with a priority
+steps:
+  - id: todo
+    tool: create_todo
+    args:
+      priority: none
+result_brief: x
+"""
+    )
+
+    with patch(f"{MODULE}.get_tool_registry", return_value=registry):
+        result = await validate_playbook(body, USER_ID)
+
+    assert result.issues == []

@@ -890,3 +890,11 @@ def test_an_object_of_exactly_fifteen_keys_is_shown_whole() -> None:
 
     assert isinstance(shape, dict)
     assert "..." not in shape
+
+
+@pytest.mark.parametrize("vary", [None, "{}", '{"first": "$today"}'])
+def test_vary_sent_as_null_or_as_json_text_reads_as_the_mapping_it_means(vary: object) -> None:
+    """Live gpt-5.6-luna, 2026-11-03: vary: null was refused as not a dictionary."""
+    calls = [_call("tool_a", _all_args(first="2026-11-20"), LISTING)]
+
+    assert _problems(calls, [{"call": 1, "vary": vary}]) == []
