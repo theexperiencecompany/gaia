@@ -20,12 +20,12 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.constants.account import ACCOUNT_DIR, ACCOUNT_LINKED_ACCOUNTS_DIRNAME
+from app.constants.platform_links import Platform
 from app.models.payment_models import PlanDuration, PlanResponse, PlanType, SubscriptionDocument
 from app.models.user_instructions_models import GLOBAL_INSTRUCTIONS_SCOPE, UserInstructionsDocument
 from app.models.user_models import UserDocument
 from app.schemas.usage import FeatureUsageSummary, UsageBudget
 from app.services import account_fs
-from app.services.platform_link_service import Platform
 from tests.helpers import captured_wide_event
 
 MODULE = "app.services.account_fs"

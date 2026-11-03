@@ -8,7 +8,6 @@ unlinked.
 
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from enum import Enum
 from urllib.parse import quote
 
 from pydantic import BaseModel, ConfigDict
@@ -19,6 +18,7 @@ from app.constants.platform_links import (
     IMESSAGE_PENDING_REGISTRATION_TTL,
     LINK_CONFLICT_ACCOUNT_HAS_OTHER,
     LINK_CONFLICT_PLATFORM_TAKEN,
+    Platform,
 )
 from app.db.redis import redis_cache
 from app.db.repositories.pending_platform_registrations import (
@@ -33,8 +33,9 @@ from app.models.platform_models import (
     PlatformLinkEntry,
     PlatformLinkResult,
 )
-from app.models.user_models import PlatformLinkRecord, UserDocument
+from app.models.user_models import AuthenticatedUser, PlatformLinkRecord, UserDocument
 from app.services.analytics_service import capture
+from app.services.bot_service import BotService
 from app.services.oauth.oauth_state_service import create_oauth_state
 from app.services.payments.payment_service import payment_service
 from app.services.photon.photon_client import (
@@ -44,33 +45,9 @@ from app.services.photon.photon_client import (
 )
 from app.utils.errors import AppError, create_error
 from shared.py.analytics import UserId
+from shared.py.analytics.catalog.bots import BotChatOpened
 from shared.py.analytics.catalog.integrations import IntegrationDisconnected
 from shared.py.wide_events import log
-
-
-class Platform(str, Enum):
-    """Supported platforms for account linking."""
-
-    DISCORD = "discord"
-    SLACK = "slack"
-    TELEGRAM = "telegram"
-    WHATSAPP = "whatsapp"
-    IMESSAGE = "imessage"
-
-    @classmethod
-    def is_valid(cls, platform: str) -> bool:
-        """Check if platform is supported."""
-        try:
-            cls(platform)
-            return True
-        except ValueError:
-            return False
-
-    @classmethod
-    def values(cls) -> list[str]:
-        """Get list of all platform values."""
-        return [p.value for p in cls]
-
 
 PREMIUM_PLATFORMS: frozenset[str] = frozenset({Platform.IMESSAGE.value})
 
@@ -450,6 +427,24 @@ async def disconnect_platform_account(user_id: str, platform: str) -> Disconnect
         await redis_cache.client.delete(cache_key)
 
     return result
+
+
+async def open_platform_chat(user_id: str, platform: str, user: AuthenticatedUser) -> str:
+    """Return the linked platform's DM conversation, creating it before its first message."""
+    links = await PlatformLinkService.get_linked_platforms(user_id)
+    entry = links.get(platform)
+    if entry is None:
+        raise create_error(
+            message=f"No {platform} account is linked",
+            fix="Check account/linked-accounts for what is actually connected",
+            status_code=404,
+        )
+
+    conversation_id = await BotService.get_or_create_session(
+        platform, entry["platformUserId"], None, user, is_dm=True
+    )
+    capture(UserId(user_id), BotChatOpened(platform=platform))
+    return conversation_id
 
 
 def linked_platforms_of(user: UserDocument) -> dict[str, PlatformLinkEntry]:
