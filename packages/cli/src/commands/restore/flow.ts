@@ -21,7 +21,11 @@ import {
   readDockerComposePortOverrides,
 } from "../../lib/env-writer.js";
 import { apiEnvPath, findInstallRoot } from "../../lib/install-root.js";
-import { homeRelative } from "../../lib/paths.js";
+import {
+  homeRelative,
+  SELFHOST_COMPOSE_FILE,
+  selfhostDir,
+} from "../../lib/paths.js";
 import { startServices } from "../../lib/service-starter.js";
 import {
   type VolumeFile,
@@ -141,8 +145,8 @@ export async function runRestore(
       "GAIA isn't installed here, so there is nothing to restore into.\nInstall it with 'gaia up', then restore.",
     );
   }
-  const dockerDir = path.join(repoPath, "infra", "docker");
-  const composeFile = path.join(dockerDir, "docker-compose.selfhost.yml");
+  const dockerDir = selfhostDir(repoPath);
+  const composeFile = path.join(dockerDir, SELFHOST_COMPOSE_FILE);
   if (!fs.existsSync(composeFile)) {
     throw new Error(
       `${homeRelative(repoPath)} is missing its setup files, so nothing can be restored.\nRun 'gaia up' to restore them.`,
@@ -192,7 +196,7 @@ export async function runRestore(
         [
           "compose",
           "-f",
-          "docker-compose.selfhost.yml",
+          SELFHOST_COMPOSE_FILE,
           "exec",
           "-T",
           "mongo",
@@ -221,7 +225,7 @@ export async function runRestore(
         [
           "compose",
           "-f",
-          "docker-compose.selfhost.yml",
+          SELFHOST_COMPOSE_FILE,
           "exec",
           "-T",
           "postgres",
@@ -247,7 +251,7 @@ export async function runRestore(
         [
           "compose",
           "-f",
-          "docker-compose.selfhost.yml",
+          SELFHOST_COMPOSE_FILE,
           "exec",
           "-T",
           "postgres",

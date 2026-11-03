@@ -27,8 +27,12 @@ import type { UpdateReporter } from "../../src/commands/update/flow.types.js";
 import { readBundleManifest } from "../../src/lib/selfhost-bundle.js";
 import { buildBundle, serveBundles, writeFile } from "../lib/bundle-fixture.js";
 
-const COMPOSE = "infra/docker/docker-compose.selfhost.yml";
-const CADDYFILE = "infra/docker/selfhost/Caddyfile";
+const COMPOSE = "packages/cli/selfhost/docker-compose.selfhost.yml";
+const CADDYFILE = "packages/cli/selfhost/Caddyfile";
+/** Where releases before the move to packages/cli kept the compose files and their .env. */
+const OLD_COMPOSE = "infra/docker/docker-compose.selfhost.yml";
+const OLD_COMPOSE_ENV = "infra/docker/.env";
+const COMPOSE_ENV = "packages/cli/selfhost/.env";
 const GIT_IDENTITY = [
   "-c",
   "user.name=test",
@@ -55,8 +59,10 @@ const read = (file: string) =>
   fs.readFileSync(path.join(install, file), "utf-8");
 const exists = (file: string) => fs.existsSync(path.join(install, file));
 
+/** The compose env file the install runs with: the current layout's, else the pre-move one. */
 function composeEnv(): string {
-  return exists("infra/docker/.env") ? read("infra/docker/.env") : "";
+  if (exists(COMPOSE)) return exists(COMPOSE_ENV) ? read(COMPOSE_ENV) : "";
+  return exists(OLD_COMPOSE_ENV) ? read(OLD_COMPOSE_ENV) : "";
 }
 
 /**
@@ -66,7 +72,7 @@ function composeEnv(): string {
 async function gitCheckoutInstall(): Promise<void> {
   fs.mkdirSync(install);
   await git(install, "init", "-q", "-b", "master");
-  writeFile(install, COMPOSE, "checkout compose");
+  writeFile(install, OLD_COMPOSE, "checkout compose");
   writeFile(install, "apps/api/app/main.py", "source");
   writeFile(install, ".gitignore", ".env\nbackups/\n");
   await git(install, "add", ".");
@@ -74,7 +80,11 @@ async function gitCheckoutInstall(): Promise<void> {
   await git(install, "tag", "cli-v1.2.2");
   await git(install, "checkout", "-q", "--detach", "cli-v1.2.2");
   writeFile(install, "apps/api/.env", "INSTANCE_SECRET=keep");
-  writeFile(install, "infra/docker/.env", "GAIA_VERSION=v1.2.2\n");
+  writeFile(
+    install,
+    OLD_COMPOSE_ENV,
+    "GAIA_VERSION=v1.2.2\nWEB_HOST_PORT=3100\n",
+  );
   writeFile(install, "backups/2026-10-01/mongo.archive", "data");
 }
 
@@ -113,6 +123,10 @@ describe("gaia update (release mode)", () => {
 
     expect(read(COMPOSE)).toBe("1.2.3 compose");
     expect(read(CADDYFILE)).toBe("1.2.3 caddy");
+    // The compose settings moved with the files; nothing is left where they were.
+    expect(composeEnv()).toMatch(/^WEB_HOST_PORT=3100$/m);
+    expect(exists(OLD_COMPOSE)).toBe(false);
+    expect(exists("infra")).toBe(false);
     expect(exists(".git")).toBe(false);
     expect(exists("apps/api/app/main.py")).toBe(false);
     expect(read("apps/api/.env")).toBe("INSTANCE_SECRET=keep");
@@ -155,7 +169,7 @@ describe("gaia update (release mode)", () => {
       "manifest unknown",
     );
 
-    expect(read(COMPOSE)).toBe("checkout compose");
+    expect(read(OLD_COMPOSE)).toBe("checkout compose");
     expect(exists(".git")).toBe(true);
     expect(composeEnv()).toMatch(/^GAIA_VERSION=v1\.2\.2$/m);
     expect(exists(".gaia-selfhost-staging")).toBe(false);
@@ -171,7 +185,7 @@ describe("gaia update (release mode)", () => {
       /GAIA v9\.9\.9 has no published setup files/,
     );
     expect(pullSelfhostImages).not.toHaveBeenCalled();
-    expect(read(COMPOSE)).toBe("checkout compose");
+    expect(read(OLD_COMPOSE)).toBe("checkout compose");
   });
 
   it("--version refuses an image tag that names no release", async () => {
@@ -183,12 +197,12 @@ describe("gaia update (release mode)", () => {
 
   it("refuses to replace a checkout with local edits to its files", async () => {
     await gitCheckoutInstall();
-    fs.writeFileSync(path.join(install, COMPOSE), "hand edited");
+    fs.writeFileSync(path.join(install, OLD_COMPOSE), "hand edited");
 
     await expect(planReleaseUpdate(install, "v1.2.3")).rejects.toThrow(
       /Local changes[\s\S]*docker-compose\.selfhost\.yml/,
     );
-    expect(read(COMPOSE)).toBe("hand edited");
+    expect(read(OLD_COMPOSE)).toBe("hand edited");
   });
 
   it("leaves a developer's checkout on a branch to --git", async () => {

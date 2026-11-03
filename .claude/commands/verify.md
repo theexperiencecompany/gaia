@@ -4,7 +4,7 @@ Run the gates CI runs, per what changed (CLAUDE.md, "Verify with the CI command"
 
 | Changed | Run |
 |---|---|
-| any `.py` | `mise run lint:py` and `mise ci:local --only python-mypy` |
+| any `.py` | `mise run lint:py` and `mise ci:local` (it runs the mypy lanes — api, shared, voice-agent, tooling — nx says the change reaches) |
 | `apps/api/app/**` | the above, plus `mise ci:local --only custom-lints,lint-imports` |
 | any `.ts`/`.tsx` | `mise run lint` and `mise run type-check` |
 | `apps/api` routes or models | `mise api:types` |
