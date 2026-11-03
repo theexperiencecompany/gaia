@@ -111,6 +111,8 @@ export interface paths {
         /**
          * Set Tool Approval
          * @description Set (``ask`` true/false) or clear (``ask`` null) one tool's approval override.
+         *
+         *     tool_name is the HIL tool key the client was given (an MCP tool's is server-scoped).
          */
         put: operations["approvals_set_tool_approval"];
         post?: never;
@@ -10575,6 +10577,23 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** IntegrationToolApproval */
+        IntegrationToolApproval: {
+            /**
+             * Approval Key
+             * @description Key the user's per-tool approval override is stored under; send it back unchanged.
+             */
+            approval_key: string;
+            /** Description */
+            description?: string | null;
+            /**
+             * Destructive
+             * @default false
+             */
+            destructive?: boolean;
+            /** Name */
+            name: string;
+        };
         /**
          * IntegrationToolsResponse
          * @description Full tool list for a single integration (catalog data, on demand).
@@ -10591,7 +10610,7 @@ export interface components {
              * Tools
              * @default []
              */
-            tools: components["schemas"]["IntegrationTool"][];
+            tools: components["schemas"]["IntegrationToolApproval"][];
         };
         /**
          * InviteCreatedResponse
@@ -17354,6 +17373,7 @@ export type IntegrationsConfigResponse = components['schemas']['IntegrationsConf
 export type IntegrationStatusesResponse = components['schemas']['IntegrationStatusesResponse'];
 export type IntegrationSuccessResponse = components['schemas']['IntegrationSuccessResponse'];
 export type IntegrationTool = components['schemas']['IntegrationTool'];
+export type IntegrationToolApproval = components['schemas']['IntegrationToolApproval'];
 export type IntegrationToolsResponse = components['schemas']['IntegrationToolsResponse'];
 export type InviteCreatedResponse = components['schemas']['InviteCreatedResponse'];
 export type InviteResponse = components['schemas']['InviteResponse'];

@@ -105,9 +105,6 @@ USER_PRESENCE_PREFIX = "user_presence"
 # Cache key prefixes
 TEAM_CACHE_PREFIX = "team"
 CUSTOM_INT_METADATA_CACHE_PREFIX = "custom_int_metadata"
-HANDOFF_METADATA_CACHE_PREFIX = "handoff_metadata"
-# Custom-MCP display name resolved for handoff (keyed by integration id).
-HANDOFF_NAME_CACHE_PREFIX = "handoff_name"
 SUBAGENT_CACHE_PREFIX = "subagent_info"
 OAUTH_STATE_PREFIX = "mcp_oauth_state"
 OAUTH_EXCLUDED_SCOPES_PREFIX = "mcp_oauth_excluded_scopes"

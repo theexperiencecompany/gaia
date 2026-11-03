@@ -1079,12 +1079,16 @@ class TestMcpConnectionTested:
     async def test_requires_oauth_captures(self, client: AsyncClient) -> None:
         probe_client = self._mocks({"requires_auth": True, "auth_type": "oauth"})
         probe_client.update_integration_auth_status.return_value = None
-        probe_client.build_oauth_auth_url.return_value = "https://auth.example/xyz"
         with (
             patch(
                 "app.api.v1.endpoints.mcp.get_mcp_client",
                 new_callable=AsyncMock,
                 return_value=probe_client,
+            ),
+            patch(
+                "app.api.v1.endpoints.mcp.build_oauth_auth_url",
+                new_callable=AsyncMock,
+                return_value="https://auth.example/xyz",
             ),
             patch(
                 "app.api.v1.endpoints.mcp.IntegrationResolver.resolve",
