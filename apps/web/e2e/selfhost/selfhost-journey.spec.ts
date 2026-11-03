@@ -9,6 +9,7 @@ import type {
 import {
   type Browser,
   expect,
+  type Locator,
   type Page,
   type Response,
   request,
@@ -57,6 +58,15 @@ function mongo(action: "pause" | "unpause"): void {
   );
 }
 
+/**
+ * The auth card's subtitle as the user sees it. The page streams in behind
+ * (landing)/loading.tsx, and until React reveals it a hidden copy sits in
+ * <div hidden id="S:n">, which a bare getByText also matches.
+ */
+function authSubtitle(page: Page, text: string): Locator {
+  return page.getByText(text).filter({ visible: true });
+}
+
 async function signUp(page: Page, email: string, password: string) {
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password", { exact: true }).fill(password);
@@ -100,7 +110,8 @@ test.describe("self-host journey", () => {
   test("the first signup becomes the admin and configures the stub provider", async () => {
     await adminPage.goto("/signup");
     await expect(
-      adminPage.getByText(
+      authSubtitle(
+        adminPage,
         "Set up the administrator account for this GAIA instance.",
       ),
     ).toBeVisible();
@@ -171,7 +182,7 @@ test.describe("self-host journey", () => {
     const memberPage = await newPage(browser);
     await memberPage.goto(`/signup?invite=${encodeURIComponent(inviteToken)}`);
     await expect(
-      memberPage.getByText("Join this GAIA instance."),
+      authSubtitle(memberPage, "Join this GAIA instance."),
     ).toBeVisible();
     await signUp(memberPage, MEMBER.email, MEMBER.password);
     await expect(memberPage).toHaveURL(/\/c/);
