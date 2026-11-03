@@ -59,10 +59,6 @@ services:
       # A custom MCP server added as localhost runs on the developer's machine,
       # which this container reaches as host.docker.internal.
       LOOPBACK_HOST_ALIAS: host.docker.internal
-      # Public base for the recap and step-screenshot links (served by THIS api).
-      # Left unset so it falls back to HOST; a friendly vhost such as
-      # browser.heygaia.io must reverse-proxy here, never to the browser host.
-      # BROWSER_LIVE_VIEW_BASE_URL: https://browser.heygaia.io
       # Persistent workspace storage (JuiceFS on Cloudflare R2). Sidecar mount
       # at /mnt/jfs is created on the host (or as a tmpfs in dev when R2 is
       # unset — the storage helper short-circuits gracefully in that case).
@@ -276,7 +272,7 @@ services:
       # Required for Linux kernel 7.x: block rseq (ENOSYS) so TCMalloc falls
       # back from per-CPU caches to a safe path. Using rseq on kernel 7.x causes
       # a SIGSEGV in mongo:8's TCMalloc ~30s after startup (SERVER-121912).
-      - seccomp:seccomp-mongo.json
+      - seccomp:../../packages/cli/selfhost/seccomp-mongo.json
     ports:
       - "${MONGO_HOST_PORT:-27017}:27017"
     healthcheck:

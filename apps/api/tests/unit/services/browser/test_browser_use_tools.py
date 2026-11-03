@@ -11,8 +11,11 @@ from browser_use.tools.service import Tools
 from pydantic import PrivateAttr
 import pytest
 
+from app.constants.browser import BROWSER_CODE_BOXES_TO_JEV, BrowserEngine
+from app.schemas.browser import BrowserAction
 from app.services.browser.browser_use_session import GaiaBrowserSession
 from app.services.browser.browser_use_tools import GaiaTools
+from app.services.browser.jev.tool import Bursts, JevDelegate, register_jev
 
 pytestmark = pytest.mark.unit
 
@@ -59,15 +62,22 @@ class _Page(GaiaBrowserSession):
     """The run's session with its focused tab on url (no tab for None), titled title."""
 
     _title: str | None = PrivateAttr(default=None)
+    _elements: dict[int, Any] = PrivateAttr(default_factory=dict)
 
-    def __init__(self, url: str | None, title: str | None = None) -> None:
-        super().__init__(cdp_url="ws://host.test/x", user_id=None)
+    def __init__(
+        self, url: str | None, title: str | None = None, elements: dict[int, Any] | None = None
+    ) -> None:
+        super().__init__(cdp_url="ws://host.test/x", user_id=None, engine=BrowserEngine.CHROMIUM)
         self.agent_focus_target_id = "tab-1" if url else None
         self.session_manager = SimpleNamespace(get_target={"tab-1": SimpleNamespace(url=url)}.get)
         self._title = title
+        self._elements = elements or {}
 
     async def document_title(self) -> str | None:
         return self._title
+
+    async def get_element_by_index(self, index: int) -> Any:
+        return self._elements.get(index)
 
 
 async def _act(name: str, params: dict[str, Any], page: _Page) -> ActionResult:
@@ -177,3 +187,118 @@ async def test_an_extract_carries_the_pages_real_title(browser_use: _BrowserUse)
     untitled = ActionResult(extracted_content=READ)
     browser_use.result = untitled.model_copy()
     assert await _act("extract", {"query": "t"}, _Page("https://example.com/")) == untitled
+
+
+def _node(name: str, attributes: dict[str, str] | None = None) -> SimpleNamespace:
+    return SimpleNamespace(
+        node_name=name, attributes=attributes or {}, parent_node=None, children_nodes=[]
+    )
+
+
+def _adopt(parent: SimpleNamespace, *children: SimpleNamespace) -> None:
+    parent.children_nodes = [*parent.children_nodes, *children]
+    for child in children:
+        child.parent_node = parent
+
+
+def _code_boxes(boxes: int = 8, *, container: str = "FORM", halves: bool = False) -> dict[int, Any]:
+    """Build a code entry by index: one-character boxes, a read-only dash after the fourth, in container.
+
+    With halves, each side of the dash sits in its own wrapper, as GitHub lays its code out.
+    """
+    outer = _node(container)
+    holders = [_node("DIV"), _node("DIV")] if halves else [outer]
+    if halves:
+        _adopt(outer, *holders)
+    for n in range(boxes):
+        holder = holders[min(n // 4, len(holders) - 1)]
+        _adopt(holder, _node("INPUT", {"maxlength": "1"}))
+        if n == 3:
+            _adopt(holder, _node("INPUT", {"readonly": ""}))
+    _adopt(_node("BODY"), outer)
+    return {10 + n: box for n, box in enumerate(b for h in holders for b in h.children_nodes)}
+
+
+def _no_bursts() -> Bursts:
+    raise AssertionError("typing into a box never runs Jev")
+
+
+async def _no_emit(actions: list[BrowserAction], url: str, title: str) -> None:
+    raise AssertionError("typing into a box never shows a burst")
+
+
+async def _typed(
+    browser_use: _BrowserUse, elements: dict[int, Any], index: int, *, jev: bool = True
+) -> ActionResult:
+    """Type one character into the element at index, on a run whose tools have jev or not."""
+    tools = GaiaTools()
+    if jev:
+        register_jev(tools, JevDelegate(runner_for=_no_bursts, emit=_no_emit))
+    page = _Page("https://github.com/login/device", elements=elements)
+    action = _Actions(input={"index": index, "text": "E"})
+    return await tools.act(action=action, browser_session=page, sensitive_data=SECRETS)
+
+
+@pytest.mark.regression
+async def test_a_code_split_into_boxes_is_never_typed_box_by_box(browser_use: _BrowserUse) -> None:
+    """Regression for GAIA-715: the agent typed GitHub's device code box by box and lost characters."""
+    result = await _typed(browser_use, _code_boxes(), 11)
+
+    assert result.error == BROWSER_CODE_BOXES_TO_JEV.format(count=8)
+    assert browser_use.calls == []
+
+
+@pytest.mark.parametrize(
+    "boxes", [_code_boxes(halves=True), _code_boxes(container="DIV")], ids=["halves", "no-form"]
+)
+async def test_boxes_split_across_their_form_or_in_no_form_are_one_code(
+    browser_use: _BrowserUse, boxes: dict[int, Any]
+) -> None:
+    result = await _typed(browser_use, boxes, 10)
+
+    assert result.error == BROWSER_CODE_BOXES_TO_JEV.format(count=8)
+
+
+async def test_four_boxes_make_a_code_and_three_do_not(browser_use: _BrowserUse) -> None:
+    four = await _typed(browser_use, _code_boxes(4), 10)
+    three = await _typed(browser_use, _code_boxes(3), 10)
+
+    assert four.error == BROWSER_CODE_BOXES_TO_JEV.format(count=4)
+    assert three.error is None
+    assert len(browser_use.calls) == 1
+
+
+@pytest.mark.parametrize(
+    "target",
+    [_node("DIV", {"maxlength": "1"}), _node("INPUT")],
+    ids=["one-character-non-input", "input-of-any-length"],
+)
+async def test_a_field_beside_a_code_is_typed_as_asked(
+    browser_use: _BrowserUse, target: SimpleNamespace
+) -> None:
+    boxes = _code_boxes()
+    _adopt(next(iter(boxes.values())).parent_node, target)
+
+    result = await _typed(browser_use, {**boxes, 3: target}, 3)
+
+    assert result.error is None
+    assert len(browser_use.calls) == 1
+
+
+async def test_a_run_without_jev_types_into_a_code_box_as_asked(
+    browser_use: _BrowserUse,
+) -> None:
+    """With BROWSER_JEV off there is no jev to hand the code to, so the agent's input runs."""
+    result = await _typed(browser_use, _code_boxes(), 11, jev=False)
+
+    assert result.error is None
+    assert len(browser_use.calls) == 1
+
+
+async def test_an_element_the_page_no_longer_has_is_left_to_browser_use(
+    browser_use: _BrowserUse,
+) -> None:
+    result = await _typed(browser_use, {}, 3)
+
+    assert result.error is None
+    assert len(browser_use.calls) == 1

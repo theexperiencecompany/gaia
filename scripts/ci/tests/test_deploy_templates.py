@@ -26,7 +26,7 @@ def _load(text: str) -> dict[str, Any]:
 
 @pytest.fixture
 def compose() -> dict[str, Any]:
-    return _load((REPO_ROOT / "infra/docker/docker-compose.selfhost.yml").read_text())
+    return _load((REPO_ROOT / "packages/cli/selfhost/docker-compose.selfhost.yml").read_text())
 
 
 @pytest.fixture

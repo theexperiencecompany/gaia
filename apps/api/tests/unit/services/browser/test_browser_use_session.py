@@ -11,7 +11,7 @@ from browser_use.browser.views import TabInfo
 import pytest
 
 from app.browser_host.stealth import build_stealth_script
-from app.constants.browser import BROWSER_VIEWPORT_HEIGHT, BROWSER_VIEWPORT_WIDTH
+from app.constants.browser import BROWSER_VIEWPORT_HEIGHT, BROWSER_VIEWPORT_WIDTH, BrowserEngine
 from app.services.browser import browser_use_session as session_mod
 from app.services.browser.browser_use_session import GaiaBrowserSession, seed_for_user
 from tests.helpers import captured_wide_event
@@ -19,8 +19,10 @@ from tests.helpers import captured_wide_event
 pytestmark = pytest.mark.unit
 
 
-def _session(user_id: str | None = "user-1") -> GaiaBrowserSession:
-    return GaiaBrowserSession(cdp_url="ws://host.test/x", user_id=user_id)
+def _session(
+    user_id: str | None = "user-1", engine: BrowserEngine = BrowserEngine.CHROMIUM
+) -> GaiaBrowserSession:
+    return GaiaBrowserSession(cdp_url="ws://host.test/x", user_id=user_id, engine=engine)
 
 
 def _tabs(
@@ -79,6 +81,20 @@ async def test_every_tab_gets_the_users_stealth_script_once(
         {"params": {"source": source, "runImmediately": True}, "session_id": "sess-t2"},
     ]
     assert focuses == [True, True, False]
+
+
+@pytest.mark.regression
+async def test_an_obscura_tab_keeps_its_own_stealth_and_gets_no_chrome_disguise(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression for GAIA-715: Chrome's window.chrome and PDF plugins on top of Obscura's --stealth fingerprint."""
+    add_script = AsyncMock(return_value={"identifier": "1"})
+    _tabs(monkeypatch, add_script)
+    session = _session(engine=BrowserEngine.OBSCURA)
+
+    await session.get_or_create_cdp_session(target_id="t1")
+
+    add_script.assert_not_awaited()
 
 
 async def test_a_script_that_did_not_register_is_tried_again_and_the_page_goes_on(
