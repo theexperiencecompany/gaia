@@ -8595,6 +8595,19 @@
             ],
             "default": null,
             "title": "Trigger Type"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "enum": ["ran", "nothing_new"],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Outcome"
           }
         },
         "title": "WorkflowExecuted",

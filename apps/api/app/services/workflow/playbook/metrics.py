@@ -55,9 +55,18 @@ PLAYBOOK_REPLAY_TOTAL = _register_once(
     ),
 )
 
+PLAYBOOK_NOTHING_NEW_TOTAL = _register_once(
+    "gaia_playbook_nothing_new_total",
+    lambda: Counter(
+        name="gaia_playbook_nothing_new_total",
+        documentation="Workflow fires skipped because the playbook's opening read found nothing new",
+    ),
+)
+
 ALL_PLAYBOOK_COLLECTORS: Final[tuple[Counter, ...]] = (
     PLAYBOOK_DECISION_TOTAL,
     PLAYBOOK_REPLAY_TOTAL,
+    PLAYBOOK_NOTHING_NEW_TOTAL,
 )
 
 #: The statuses a finished replay can end in; NOT_RUN is the absence of one.

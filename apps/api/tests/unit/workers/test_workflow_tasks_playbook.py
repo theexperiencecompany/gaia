@@ -481,6 +481,58 @@ async def test_a_failed_outcome_write_after_a_replay_still_records_its_calls() -
     harness.chat.assert_not_awaited()
 
 
+@pytest.mark.asyncio
+class TestNothingNew:
+    """A replay whose opening read found nothing new is a skipped run: recorded, never delivered."""
+
+    def _harness(self) -> _Harness:
+        workflow = _workflow()
+        harness = _Harness(workflow)
+        harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
+        harness.playbook_run = AsyncMock(
+            return_value=(
+                "conv_1",
+                PlaybookRunResult(
+                    ok=True,
+                    nothing_new="list_events returned nothing",
+                    trace=[RecordedCall(tool_name="list_events", replayed=True)],
+                ),
+            )
+        )
+        return harness
+
+    async def test_the_run_is_recorded_skipped_with_what_it_read(self) -> None:
+        harness = self._harness()
+
+        await _fire(harness)
+
+        recorded = harness.complete_execution.await_args.kwargs
+        assert recorded["status"] == "skipped"
+        assert recorded["summary"] == "Skipped: nothing new since the last run"
+        assert [call.tool_name for call in recorded["trace"]] == ["list_events"]
+
+    async def test_nothing_is_delivered_notified_or_judged(self) -> None:
+        harness = self._harness()
+
+        await _fire(harness)
+
+        harness.add_messages.assert_not_awaited()
+        harness.platform_delivery.assert_not_awaited()
+        harness.completion_notification.assert_not_awaited()
+        harness.chat.assert_not_awaited()
+        harness.record_run_outcome.assert_not_awaited()
+
+    async def test_the_skip_is_counted_and_named_on_the_wide_event(self) -> None:
+        harness = self._harness()
+        before = REGISTRY.get_sample_value("gaia_playbook_nothing_new_total") or 0.0
+
+        await _fire(harness)
+
+        assert (REGISTRY.get_sample_value("gaia_playbook_nothing_new_total") or 0.0) - before == 1
+        event = harness.playbook_event()
+        assert (event["mode"], event["reason"]) == ("skipped", "nothing_new")
+
+
 def _replays_counted(status: PlaybookRunStatus) -> float:
     value = REGISTRY.get_sample_value("gaia_playbook_replay_total", {"status": status.value})
     assert value is not None, "every replay status is a series from import, at zero"
