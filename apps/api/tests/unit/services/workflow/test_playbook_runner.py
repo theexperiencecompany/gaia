@@ -3559,7 +3559,18 @@ class TestNothingNew:
         replayed=True,
         tool_name="list_events",
         result_digest='{"items": [{"id": "e1"}, {"id": "e2"}]}',
+        item_ids=["e1", "e2"],
     )
+
+    async def test_a_replayed_read_records_its_ids_from_the_whole_result(self) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(
+            _tools(recorder, events_result='{"items": [{"id": "e2"}, {"id": "e1"}]}')
+        )
+
+        result, _ = await _run(_playbook(AGENDA_STEPS), registry)
+
+        assert [call.item_ids for call in result.trace] == [["e1", "e2"], None]
 
     async def test_an_opening_read_that_returns_nothing_ends_the_run_with_no_model_call(
         self,

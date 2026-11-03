@@ -13480,6 +13480,8 @@ export interface components {
              * @default false
              */
             failed?: boolean;
+            /** Item Ids */
+            item_ids?: string[] | null;
             /**
              * Proxied
              * @default false

@@ -168,6 +168,17 @@ WORK_CALL_VERBS = frozenset(
 )
 
 
+#: A call that only reads, by its name: a read verb and no work verb. Names with
+#: neither (file_notes) are not reads, so nothing that might write is skipped past.
+READ_CALL_VERBS = frozenset({"fetch", "list", "get", "search", "find", "read", "query"})
+
+
+def is_read_call(tool_name: str) -> bool:
+    """Whether a tool call, by its name, only reads."""
+    parts = tool_name.lower().replace("-", "_").split("_")
+    return any(part in READ_CALL_VERBS for part in parts) and not is_work_call(tool_name)
+
+
 def is_work_call(tool_name: str) -> bool:
     """Whether a tool call, by its name, changed something."""
     parts = tool_name.lower().replace("-", "_").split("_")

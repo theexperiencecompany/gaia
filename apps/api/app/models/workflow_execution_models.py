@@ -287,6 +287,9 @@ class RecordedCall(BaseModel):
     proxied: bool = False
     #: The connected account a proxied call named; None is the primary.
     account: str | None = None
+    #: A replayed read's element ids, taken from the whole result before it was
+    #: bounded into result_digest: what the next fire's nothing-new check compares.
+    item_ids: list[str] | None = None
 
 
 class WorkflowExecution(ResponseModel):

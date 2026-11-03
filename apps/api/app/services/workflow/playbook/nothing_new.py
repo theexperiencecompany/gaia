@@ -2,23 +2,19 @@
 
 Only a read can say so: a playbook that opens with a write has already done its
 work by the time it could look. Nothing new is either an empty result, or a
-list whose elements carry exactly the ids the previous run's same read
-returned. Elements without an id cannot be told apart from changed ones, so
-they never count as the same.
+list whose elements carry exactly the ids the previous fire's replay of the
+same read returned, as the same account. Those ids are recorded from the whole
+result (RecordedCall.item_ids), never read back from a bounded digest that may
+have shed elements. Elements without an id never count as the same.
 """
 
 from collections.abc import Mapping, Sequence
 
 from pydantic import BaseModel, ConfigDict
 
-from app.agents.tools.execute.unwrap import unwrap_execute_call
-from app.models.playbook_models import is_work_call
-from app.models.workflow_execution_models import (
-    RecordedCall,
-    carries_no_data,
-    largest_list,
-    parse_result,
-)
+from app.agents.tools.execute.unwrap import execute_call_account, unwrap_execute_call
+from app.models.playbook_models import is_read_call
+from app.models.workflow_execution_models import RecordedCall, carries_no_data, largest_list
 
 
 class _Identified(BaseModel):
@@ -32,7 +28,7 @@ class _Identified(BaseModel):
 def is_opening_read(tool_name: str, args: Mapping[str, object]) -> bool:
     """Whether a call, seen through execute, reads rather than changes something."""
     real_name, _ = unwrap_execute_call(tool_name, dict(args))
-    return not is_work_call(real_name)
+    return is_read_call(real_name)
 
 
 def nothing_new(
@@ -41,20 +37,24 @@ def nothing_new(
     value: object,
     previous: Sequence[RecordedCall],
 ) -> str | None:
-    """Return why an opening read found nothing new since the previous run, or None."""
+    """Return why an opening read found nothing new since the previous fire, or None."""
     real_name, _ = unwrap_execute_call(tool_name, dict(args))
     if carries_no_data(value):
         return f"{real_name} returned nothing"
     ids = item_ids(value)
     if ids is None:
         return None
+    account = execute_call_account(tool_name, dict(args))
     for call in previous:
         name, _ = unwrap_execute_call(call.tool_name, call.args)
-        if name != real_name or call.failed:
-            continue
-        if item_ids(parse_result(call.result_digest)) == ids:
-            return f"{real_name} returned the same {len(ids)} items as the last run"
-        return None
+        if (
+            name == real_name
+            and call.replayed
+            and execute_call_account(call.tool_name, call.args) == account
+        ):
+            if call.item_ids is not None and frozenset(call.item_ids) == ids:
+                return f"{real_name} returned the same {len(ids)} items as the last run"
+            return None
     return None
 
 
