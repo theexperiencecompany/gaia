@@ -37,7 +37,7 @@ from app.helpers.agent_helpers import (
     opens_thread,
     recent_user_messages,
 )
-from app.models.agent_models import run_analytics_context
+from app.models.agent_models import AgentUserContext, run_analytics_context
 from app.models.integration_models import Integration
 from app.models.mcp_config import SubAgentConfig
 from app.models.payment_models import PlanType
@@ -50,13 +50,15 @@ from shared.py.analytics.context import AnalyticsContext, analytics_context, wor
 
 
 def _integration(integration_id: str, name: str, icon_url: str | None = None) -> Integration:
-    return Integration(
-        integration_id=integration_id,
-        name=name,
-        description="",
-        category="custom",
-        managed_by="mcp",
-        icon_url=icon_url,
+    return Integration.model_validate(
+        {
+            "integration_id": integration_id,
+            "name": name,
+            "description": "",
+            "category": "custom",
+            "managed_by": "mcp",
+            "icon_url": icon_url,
+        }
     )
 
 
@@ -103,7 +105,7 @@ def _no_real_presence_read() -> Iterator[AsyncMock]:
         yield mock_read
 
 
-FAKE_USER = {
+FAKE_USER: AgentUserContext = {
     "user_id": USER_ID,
     "email": "test@example.com",
     "name": "Test User",

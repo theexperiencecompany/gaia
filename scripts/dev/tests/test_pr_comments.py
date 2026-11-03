@@ -17,6 +17,7 @@ Run: python3 scripts/dev/tests/test_pr_comments.py   (no pytest dependency; stdl
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -197,9 +198,7 @@ def check(label: str, cond: bool, detail: str = "") -> None:
         FAILURES.append(label)
 
 
-def main() -> int:
-    print("pr_comments fault-injection fixtures:")
-
+def check_happy_path() -> None:
     rc, out, _err = run_scenario("happy", ["--json"])
     d = json.loads(out)
     check("two_pages: thread_count==51", d["thread_count"] == 51, f"got {d['thread_count']}")
@@ -225,6 +224,8 @@ def main() -> int:
     check("sanitize: html stripped", "<b>" not in json.dumps(d))
     check("exit: happy -> 0", rc == 0)
 
+
+def check_failure_exits() -> None:
     rc, out, _err = run_scenario("pagination_cap", ["--json"])
     d = json.loads(out)
     check("cap: truncated True", d["truncated"] is True)
@@ -254,10 +255,9 @@ def main() -> int:
         d["thread_count"] == 0 and d["unresolved_count"] == 0 and rc == 0,
     )
 
-    # ---- red-team regressions (sanitize hardening + loader/usage contracts) ----
-    print("red-team regressions:")
-    import importlib.util
 
+def check_red_team_regressions() -> None:
+    """Sanitize hardening and the usage contracts."""
     spec = importlib.util.spec_from_file_location("pr_comments_mod", SCRIPT)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -279,38 +279,6 @@ def main() -> int:
     check("sanitize: renamed-summary details collapsed", "do bad" not in ex2)
     check("sanitize: agent-ish details sets flag", red2 is True)
 
-    vjson = Path("scripts/dev/verify-lanes.json")
-    spec2 = importlib.util.spec_from_file_location(
-        "gaia_verify_mod", Path(__file__).resolve().parent.parent / "gaia_verify.py"
-    )
-    gv = importlib.util.module_from_spec(spec2)
-    sys.modules["gaia_verify_mod"] = gv
-    spec2.loader.exec_module(gv)
-
-    def loader_exit(payload_json: str) -> int:
-        with tempfile.TemporaryDirectory() as td2:
-            f = Path(td2) / "lanes.json"
-            f.write_text(payload_json)
-            try:
-                gv.load_lanes(f)
-                return 0
-            except SystemExit as exc:
-                return exc.code if isinstance(exc.code, int) else 1
-
-    base_ok = json.loads(vjson.read_text())
-    import copy
-
-    row_bad_name = copy.deepcopy(base_ok)
-    row_bad_name["lanes"][0]["name"] = "../../evil"
-    check("loader: traversal lane-name -> exit 2", loader_exit(json.dumps(row_bad_name)) == 2)
-    row_neg = copy.deepcopy(base_ok)
-    row_neg["lanes"][0]["timeout_s"] = -5
-    check("loader: negative timeout -> exit 2", loader_exit(json.dumps(row_neg)) == 2)
-    check("loader: malformed JSON -> exit 2 (no traceback)", loader_exit("{not json") == 2)
-    arr = copy.deepcopy(base_ok)
-    arr["lanes"] = {"a": 1}
-    check("loader: non-list lanes -> exit 2", loader_exit(json.dumps(arr)) == 2)
-
     rc, out, _err = run_scenario("happy", [])  # sanity: normal path unaffected
     check("happy path still exit 0 after hardening", rc == 0)
 
@@ -323,6 +291,13 @@ def main() -> int:
         ok = False
     check("no_pr --json: valid JSON w/ pr:null, exit 0", ok, f"rc={rc} out={out[:80]}")
 
+
+def main() -> int:
+    print("pr_comments fault-injection fixtures:")
+    check_happy_path()
+    check_failure_exits()
+    print("red-team regressions:")
+    check_red_team_regressions()
     print()
     if FAILURES:
         print(f"{len(FAILURES)} FAILED: {FAILURES}")

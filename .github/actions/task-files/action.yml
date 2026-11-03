@@ -1,0 +1,16 @@
+name: Read detect's task files
+description: >-
+  Download the changed files nx matched to each affected task (detect's
+  task-files artifact) and export TASK_FILES_PATH, which changes.sh files
+  --task reads. A file, not an env var: one env string over 128 KiB stops
+  every process in the job from starting.
+runs:
+  using: composite
+  steps:
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      with:
+        name: task-files
+        path: ${{ runner.temp }}/task-files
+    - name: Export TASK_FILES_PATH
+      shell: bash
+      run: echo "TASK_FILES_PATH=$RUNNER_TEMP/task-files/task-files.json" >> "$GITHUB_ENV"

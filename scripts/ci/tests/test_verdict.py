@@ -17,6 +17,7 @@ from typing import Any, NamedTuple
 
 from doc_shape import mapping
 from github_fake import FakeGitHub, Reply, Request
+from lib import nx_affected
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -721,13 +722,46 @@ def _run_of(req: Request) -> int:
 # head OR on the base the run merged it into — and never carries forward a
 # failure, a pass on another base, or a pass it cannot diff against.
 
-REUSE_LANES = {
-    "lanes": [
-        {"name": "biome", "ci_check": "biome", "scope": r"\.(ts|tsx)$"},
-        {"name": "python-ruff", "ci_check": "ruff", "scope": r"\.py$"},
-        {"name": "py-tests", "scope": r"\.py$"},
+
+def _reuse_check(task: str, check: str | None, area: str | None, **extra: Any) -> nx_affected.Check:
+    return nx_affected.Check(
+        task=task, job="lint", check=check, area=area, events=None, branch=None,
+        reuse=extra.pop("reuse", True), runner=extra.pop("runner", "nx"),
+    )  # fmt: skip
+
+
+REUSE_CHECKS = {
+    c.task: c
+    for c in [
+        _reuse_check("ci:biome", "biome", "node"),
+        _reuse_check("ci:ruff", "ruff", "python"),
+        # Only gates its job; it posts no status, so there is no pass to reuse.
+        _reuse_check("api:test", None, None),
+        _reuse_check("ci:knip", "knip", "node", reuse=False),
+        _reuse_check("ci:gitleaks", "gitleaks", "security", runner="action"),
     ]
 }
+AREAS = {c.check: c.area for c in REUSE_CHECKS.values() if c.check and c.area}
+
+
+def _nx_stand_in(changed: list[str]) -> dict[str, list[dict[str, str]]]:
+    """Answer as nx would for these lanes; the real file-to-task mapping is pinned in test_workflow_nx_gates."""
+    reached: dict[str, list[dict[str, str]]] = {}
+    for path in changed:
+        tasks = (
+            ["ci:biome", "ci:ruff"]
+            if path.startswith(".github/")
+            else ["ci:biome"]
+            if path.endswith(".ts")
+            else ["ci:ruff"]
+            if path.endswith(".py")
+            else []
+        )
+        for task in tasks:
+            reached.setdefault(task, []).append({"kind": "input-file", "file": path})
+    return reached
+
+
 PASSED = {"biome": "passed", "ruff": "passed"}
 
 
@@ -768,11 +802,12 @@ def reuse_pr(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> _Pr:
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init", "-q", "-b", "master")
-    (repo / "lanes.json").write_text(json.dumps(REUSE_LANES))
     base = _commit(repo, "apps/web/a.ts", "one")
     _git(repo, "checkout", "-q", "-b", "pr")
     head = _commit(repo, "apps/api/x.py", "one")
     monkeypatch.setattr(verdict, "REPO_ROOT", repo)
+    monkeypatch.setattr(verdict, "_affected_tasks", _nx_stand_in)
+    monkeypatch.setattr(nx_affected, "checks", lambda: REUSE_CHECKS)
     return _Pr(repo, base, head)
 
 
@@ -813,7 +848,7 @@ def _stub_runs(
     statuses = {
         sha: [
             {
-                "context": verdict.status_context(check),
+                "context": verdict.status_context(check, AREAS[check]),
                 "state": "failure" if description.startswith("failed") else "success",
                 "description": description,
                 "target_url": f"https://github.com/{REPO}/actions/runs/{posted_by or run_id}/job/1",
@@ -873,11 +908,18 @@ def _plan(
     argv = [
         "--repo", REPO, "--workflow", "ci.yml", "--branch", "pr",
         "--base", "master", "--head-sha", head, "--run-id", str(CURRENT_RUN),
-        "--event", "pull_request", "--lanes", str(pr.repo / "lanes.json"), *extra,
+        "--event", "pull_request", *extra,
     ]  # fmt: skip
     assert verdict.cmd_reuse_plan(argv) == 0
     fields = dict(line.split("=", 1) for line in out.read_text().splitlines())
     return mapping(json.loads(fields["reused"]))
+
+
+def test_reuse_asks_the_nx_that_gates_the_checks() -> None:
+    """The stand-in above is only honest while the real answer agrees with it."""
+    reached = verdict._affected_tasks(["apps/api/app/main.py"])
+    assert "ci:ruff" in reached
+    assert "ci:biome" not in reached
 
 
 def test_a_lane_whose_scope_did_not_change_since_its_pass_is_reused(
@@ -1069,10 +1111,22 @@ def test_a_status_another_run_posted_is_not_this_runs_proof(
     assert _plan(reuse_pr, monkeypatch, tmp_path, head) == {}
 
 
-def test_the_plan_names_only_checks_the_lane_table_maps() -> None:
-    # A lane without ci_check is not reusable at all (py-tests above): reuse is
-    # opt-in per check, so a missing mapping means "always runs", never "reused".
-    lanes = json.loads((REPO_ROOT / "scripts" / "dev" / "verify-lanes.json").read_text())
-    assert all("ci_job" not in lane for lane in lanes["lanes"]), (
-        "verify-lanes.json still names ci_job; reuse-plan reads ci_check"
+def test_a_check_that_opts_out_of_reuse_or_no_nx_task_decides_always_runs(
+    reuse_pr: _Pr, api: FakeGitHub, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # knip is reuse: false and gitleaks is an action nx cannot diff; both passed and nothing changed.
+    head = _push(reuse_pr, "docs/a.md", "x")
+    _stub_runs(
+        api,
+        [
+            (
+                7,
+                reuse_pr.head,
+                "master",
+                reuse_pr.base,
+                {**PASSED, "knip": "passed", "gitleaks": "passed"},
+            )
+        ],
     )
+
+    assert sorted(_plan(reuse_pr, monkeypatch, tmp_path, head)) == ["biome", "ruff"]

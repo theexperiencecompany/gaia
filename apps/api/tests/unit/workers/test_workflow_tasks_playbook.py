@@ -47,8 +47,8 @@ from app.models.workflow_models import (
     Workflow,
     WorkflowStep,
 )
-from app.services.workflow.playbook.check import HEAL_STATUSES
 from app.services.workflow.playbook.evaluator import PlaybookUser
+from app.services.workflow.playbook.lifecycle import HEAL_STATUSES
 from app.services.workflow.playbook.metrics import REPLAY_STATUSES
 from app.services.workflow.playbook.runner import FALLBACK_LINE_MAX_CHARS, PlaybookRunResult
 from app.services.workflow.playbook.workflow_hash import workflow_hash
@@ -1097,15 +1097,17 @@ class TestHealAttemptsAreBounded:
         playbook = _distrusted(workflow)
         harness.get_for_workflow = AsyncMock(return_value=playbook)
         order: list[str] = []
-        harness.chat = AsyncMock(
-            side_effect=lambda *a, **k: (order.append("agent"), ("conv_1", []))[1]
-        )
-        harness.increment_heal_attempts = AsyncMock(
-            side_effect=lambda *a, **k: (
-                order.append("count"),
-                _distrusted(workflow, 1),
-            )[1]
-        )
+
+        def _agent_ran(*_args: object, **_kwargs: object) -> tuple[str, list[object]]:
+            order.append("agent")
+            return ("conv_1", [])
+
+        def _heal_counted(*_args: object, **_kwargs: object) -> PlaybookDocument:
+            order.append("count")
+            return _distrusted(workflow, 1)
+
+        harness.chat = AsyncMock(side_effect=_agent_ran)
+        harness.increment_heal_attempts = AsyncMock(side_effect=_heal_counted)
 
         await _fire(harness)
 
@@ -2215,7 +2217,7 @@ class TestTheReplayRunsAsTheWorkflowsOwnerInItsOwnConversation:
                 timezone="Asia/Kolkata",
             )
         )
-        context = {"trigger_type": TriggerType.MANUAL.value, "note": "run it"}
+        context: dict[str, object] = {"trigger_type": TriggerType.MANUAL.value, "note": "run it"}
 
         await _fire_with_context(harness, context)
 
