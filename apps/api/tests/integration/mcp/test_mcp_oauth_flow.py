@@ -135,15 +135,15 @@ def _make_oauth_discovery(
     )
 
 
-def _make_mcp_config(**overrides) -> MCPConfig:
-    defaults = {
+def _make_mcp_config(**overrides: object) -> MCPConfig:
+    defaults: dict[str, object] = {
         "server_url": "https://mcp.example.com",
         "requires_auth": True,
         "auth_type": "oauth",
         "transport": "streamable-http",
     }
     defaults.update(overrides)
-    return MCPConfig(**defaults)
+    return MCPConfig.model_validate(defaults)
 
 
 def _stub_tool(name: str, description: str) -> MagicMock:

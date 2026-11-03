@@ -115,7 +115,7 @@ def _mcp_tool_entry() -> dict[str, Any]:
 
 
 def test_buffer_mcp_app_records_every_field_of_the_pending_app() -> None:
-    pending: dict[str, dict[str, Any]] = {}
+    pending: dict[str, _PendingMcpApp] = {}
 
     _buffer_mcp_app(_mcp_tool_entry(), pending)
 
@@ -127,7 +127,7 @@ def test_buffer_mcp_app_records_every_field_of_the_pending_app() -> None:
 
 
 def test_buffer_mcp_app_falls_back_to_empty_values_for_absent_fields() -> None:
-    pending: dict[str, dict[str, Any]] = {}
+    pending: dict[str, _PendingMcpApp] = {}
 
     _buffer_mcp_app(
         {
@@ -184,9 +184,9 @@ def test_buffer_mcp_app_falls_back_to_empty_values_for_absent_fields() -> None:
     ],
 )
 def test_buffer_mcp_app_buffers_nothing_for(entry: dict[str, Any]) -> None:
-    pending: dict[str, dict[str, Any]] = {}
+    pending: dict[str, _PendingMcpApp] = {}
 
-    _buffer_mcp_app(entry, pending)  # type: ignore[arg-type]  # a scripted fake stands in for the compiled graph
+    _buffer_mcp_app(entry, pending)
 
     assert pending == {}
 
@@ -195,7 +195,7 @@ def test_buffer_mcp_app_buffers_nothing_for(entry: dict[str, Any]) -> None:
 
 
 async def test_buffer_subagent_mcp_app_records_every_field_of_the_pending_app() -> None:
-    pending: dict[str, dict[str, Any]] = {}
+    pending: dict[str, _PendingMcpApp] = {}
 
     await _drain(
         _stream_custom(
@@ -211,7 +211,7 @@ async def test_buffer_subagent_mcp_app_records_every_field_of_the_pending_app() 
 
 
 async def test_buffer_subagent_mcp_app_falls_back_to_empty_values_for_absent_fields() -> None:
-    pending: dict[str, dict[str, Any]] = {}
+    pending: dict[str, _PendingMcpApp] = {}
 
     await _drain(
         _stream_custom(
@@ -291,7 +291,7 @@ async def test_buffer_subagent_mcp_app_falls_back_to_empty_values_for_absent_fie
     ],
 )
 async def test_buffer_subagent_mcp_app_buffers_nothing_for(payload: Any) -> None:
-    pending: dict[str, dict[str, Any]] = {}
+    pending: dict[str, _PendingMcpApp] = {}
 
     await _drain(_stream_custom(payload, _StreamAccumulators(pending_mcp_apps=pending), "u"))
 
@@ -342,7 +342,7 @@ def _tc(tc_id: str | None, name: str = "search_web", args: Any = None) -> dict[s
 async def test_tool_call_frames_emit_one_entry_per_new_call_in_order() -> None:
     formatter = _RecordingFormatter([{"tool_name": "a"}, {"tool_name": "b"}])
     emitted: set[str] = set()
-    pending: dict[str, dict[str, Any]] = {}
+    pending: dict[str, _PendingMcpApp] = {}
     msg = AIMessage.model_construct(
         content="", tool_calls=[_tc("call_1"), _tc("call_2", name="fetch_page")]
     )
@@ -437,7 +437,7 @@ async def test_tool_call_frames_emit_nothing_when_the_entry_cannot_be_formatted(
 @pytest.mark.asyncio
 async def test_tool_call_frames_buffer_the_mcp_app_for_deferred_emission() -> None:
     formatter = _RecordingFormatter([_mcp_tool_entry()])
-    pending: dict[str, dict[str, Any]] = {}
+    pending: dict[str, _PendingMcpApp] = {}
 
     with patch(f"{HELPERS}.format_tool_call_entry", formatter):
         frames = await _drain(

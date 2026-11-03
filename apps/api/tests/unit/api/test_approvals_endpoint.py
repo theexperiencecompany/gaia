@@ -541,7 +541,9 @@ class TestLedgerAlwaysToolScope:
         mock_decide.assert_awaited_once_with(
             "ap_1",
             user_id=USER_ID,
-            tap=ApprovalDecisionRequest(decision="approve", scope="always_tool", v=0),
+            tap=ApprovalDecisionRequest(
+                decision="approve", feedback=None, scope="always_tool", v=0
+            ),
         )
 
     async def test_a_call_that_always_asks_refuses_the_scope_with_422(

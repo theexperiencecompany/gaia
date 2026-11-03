@@ -9,6 +9,7 @@ import pytest
 
 from app.agents.tools.core import retrieval
 from app.constants.log_tags import LogTag
+from app.override.langgraph_bigtool.utils import RetrieveToolsResult
 
 
 def _item(key: str, namespace: tuple[str, ...]) -> SearchItem:
@@ -40,13 +41,18 @@ class TestEverySearchFailed:
 
 class TestSearchHitStats:
     def test_hits_are_counted_per_source_and_per_namespace(self) -> None:
+        linear_and_jira: list[dict[str, object]] = [
+            {"id": "integration:linear"},
+            {"id": "integration:jira"},
+        ]
+        asana: list[dict[str, object]] = [{"id": "integration:asana"}]
         stats = retrieval._search_hit_stats(
             [
                 [],
-                [{"id": "integration:linear"}, {"id": "integration:jira"}],
+                linear_and_jira,
                 [_item("GMAIL_SEND_EMAIL", ("gmail",)), _item("x", ("users", "u1"))],
                 RuntimeError("search failed"),
-                [{"id": "integration:asana"}],
+                asana,
                 [_item("create_todo", ())],
             ]
         )
@@ -75,7 +81,7 @@ class TestSearchHitStats:
 
 async def _discover(
     hits: list[SearchItem], mcp_names_for: dict[str, set[str]]
-) -> tuple[dict, MagicMock, MagicMock]:
+) -> tuple[RetrieveToolsResult, MagicMock, MagicMock | AsyncMock]:
     store = MagicMock()
     store.asearch = AsyncMock(return_value=hits)
     registry = MagicMock()

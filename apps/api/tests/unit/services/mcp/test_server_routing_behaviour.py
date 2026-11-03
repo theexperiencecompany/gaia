@@ -473,7 +473,7 @@ class TestReadUiResourceDetails:
         content = TextResourceContents(
             uri=AnyUrl("ui://app"),
             text="<u>z</u>",
-            _meta={"ui": {"csp": {"c": 3}}},  # type: ignore[call-arg]
+            _meta={"ui": {"csp": {"c": 3}}},
         )
         client = _ui_client(AsyncMock(return_value=_result(content)))
         repo_patch, resolve_patch = _route_to({})

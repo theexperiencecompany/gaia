@@ -4,7 +4,9 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from langchain_core.tools import tool as langchain_tool
+from langchain_core.messages import ToolCall
+from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import BaseTool, tool as langchain_tool
 from langgraph.types import Command
 import pytest
 
@@ -25,6 +27,7 @@ from app.agents.tools.execute.resolver import ResolvedTool
 from app.constants.integrations import ConnectMode
 from app.constants.log_tags import LogTag
 from app.constants.mcp import MCP_PRELOAD_ALL_MAX
+from app.db.repositories.integrations import integration_repository
 from app.services.mcp.mcp_errors import MCPAuthorizationRequiredError
 from tests.helpers import captured_wide_event
 from tests.integration_account_factories import make_integration_account, make_integration_record
@@ -79,8 +82,8 @@ def _custom_mcp() -> CustomMcpSubagent:
     return CustomMcpSubagent(id="abc123", name="Scholar", managed_by="mcp")
 
 
-def _named_tools(*names: str) -> list[MagicMock]:
-    tools = []
+def _named_tools(*names: str) -> list[BaseTool]:
+    tools: list[BaseTool] = []
     for name in names:
         fake = MagicMock()
         fake.name = name
@@ -88,7 +91,7 @@ def _named_tools(*names: str) -> list[MagicMock]:
     return tools
 
 
-def _mcp_client(tools: list[MagicMock]) -> MagicMock:
+def _mcp_client(tools: list[BaseTool]) -> MagicMock:
     client = MagicMock()
     client.ensure_connected = AsyncMock(return_value=tools)
     return client
@@ -166,7 +169,7 @@ class TestActivationContext:
         """A custom MCP has no static config: its name, description and skills come from the user's own integration."""
         doc = MagicMock(description="Searches papers.")
         lookup = AsyncMock(return_value=doc)
-        monkeypatch.setattr(integration_activation.integration_repository, "get", lookup)
+        monkeypatch.setattr(integration_repository, "get", lookup)
         custom = CustomMcpSubagent(id="abc123", name="Scholar", managed_by="mcp")
 
         context = await _activation_context(custom, "u1", True)
@@ -519,7 +522,9 @@ class TestActivationHeader:
 
 class TestActivateIntegrationTool:
     @staticmethod
-    def _invoke(configurable: dict | None = None, **kwargs: str) -> tuple[dict, dict]:
+    def _invoke(
+        configurable: dict[str, str] | None = None, **kwargs: str
+    ) -> tuple[ToolCall, RunnableConfig]:
         return (
             {"args": kwargs, "name": "activate_integration", "type": "tool_call", "id": "call1"},
             {"configurable": configurable or {}},

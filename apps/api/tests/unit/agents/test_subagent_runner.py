@@ -923,7 +923,10 @@ class TestConsumeStreamEvent:
         run = _make_run(
             stream_writer=writer, subagent_id="sub-1", ctx_overrides={"stream_id": stream_id}
         )
-        payload = (ToolMessage(content="3 unread", tool_call_id="tc-1", name="read"), {})
+        payload: tuple[ToolMessage, dict[str, object]] = (
+            ToolMessage(content="3 unread", tool_call_id="tc-1", name="read"),
+            {},
+        )
 
         with patch(
             "app.agents.core.subagents.subagent_runner.claim_tool_output", return_value=True
@@ -2068,7 +2071,10 @@ class TestReasoningDeltaSources:
 # ---------------------------------------------------------------------------
 
 SUBAGENT_THREAD = "spawn_c1_call-1"
-_SUPERSTEP = ("updates", {"agent": {"messages": []}})
+_SUPERSTEP: tuple[str, dict[str, dict[str, list[AIMessage]]]] = (
+    "updates",
+    {"agent": {"messages": []}},
+)
 
 
 def _cancellable_run(*events: tuple[str, Any], stream_id: str | None = "s-1") -> Any:

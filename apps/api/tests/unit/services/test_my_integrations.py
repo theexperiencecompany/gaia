@@ -54,7 +54,7 @@ def _config_item(**overrides: object) -> IntegrationConfigItem:
         "slug": "github",
     }
     data.update(overrides)
-    return IntegrationConfigItem(**data)
+    return IntegrationConfigItem.model_validate(data)
 
 
 def _integration_response(**overrides: object) -> IntegrationResponse:
@@ -72,7 +72,7 @@ def _integration_response(**overrides: object) -> IntegrationResponse:
         "created_by": USER_ID,
     }
     data.update(overrides)
-    return IntegrationResponse(**data)
+    return IntegrationResponse.model_validate(data)
 
 
 def _user_integration(**overrides: object) -> UserIntegrationResponse:
@@ -83,7 +83,7 @@ def _user_integration(**overrides: object) -> UserIntegrationResponse:
         "integration": _integration_response(),
     }
     data.update(overrides)
-    return UserIntegrationResponse(**data)
+    return UserIntegrationResponse.model_validate(data)
 
 
 @pytest.fixture

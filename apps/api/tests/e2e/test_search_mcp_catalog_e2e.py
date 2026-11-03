@@ -106,7 +106,7 @@ class TestSearchWaterfall:
         assert [r.url for r in response.results] == ["https://example.com/a"]
 
     async def test_all_empty_is_an_empty_response_not_an_error(self) -> None:
-        providers = [_FakeProvider(name="p1"), _FakeProvider(name="p2")]
+        providers: list[SearchProvider] = [_FakeProvider(name="p1"), _FakeProvider(name="p2")]
         response = await SearchEngine(providers=providers).search("q", 5)
 
         assert response.results == []
@@ -249,7 +249,14 @@ class TestMarketplaceCatalog:
             description="Custom acme integration",
             category="developer",
             managed_by="mcp",
+            source="custom",
             is_public=True,
+            created_by=None,
+            published_at=None,
+            clone_count=0,
+            icon_url=None,
+            display_priority=0,
+            is_featured=False,
         )
         with (
             patch(f"{MARKETPLACE}.get_all_mcp_tools", AsyncMock(return_value={})),

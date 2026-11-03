@@ -1,7 +1,7 @@
 """Behaviour tests for MCPClient's connect, disconnect and name-resolution lifecycle."""
 
 import asyncio
-from collections.abc import Awaitable, Callable, Iterator
+from collections.abc import Awaitable, Callable, Coroutine, Iterator
 from contextlib import contextmanager
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -12,7 +12,6 @@ import pytest
 from app.constants.log_tags import LogTag
 from app.constants.mcp import MCP_UNLISTED_CONNECT_MAX
 from app.helpers.namespace_utils import derive_integration_namespace
-from app.services.mcp import mcp_client
 from app.services.mcp.mcp_client import MCPClient, get_mcp_client
 from tests.helpers import captured_wide_event
 
@@ -26,10 +25,10 @@ SERVER_URL = "https://mcp.example.com/api"
 
 def _closing_spawn(
     result: MagicMock | None, spawned: list[str]
-) -> Callable[[Awaitable[None], str], MagicMock | None]:
-    def spawn(coro: Awaitable[None], label: str) -> MagicMock | None:
+) -> Callable[[Coroutine[object, object, None], str], MagicMock | None]:
+    def spawn(coro: Coroutine[object, object, None], label: str) -> MagicMock | None:
         spawned.append(label)
-        coro.close()  # type: ignore[attr-defined]
+        coro.close()
         return result
 
     return spawn
@@ -43,8 +42,8 @@ def _tool(name: str, metadata: dict[str, Any] | None = None) -> MagicMock:
     return tool
 
 
-def _close_task(operation: str, coro: Awaitable[None], **context: Any) -> MagicMock:
-    coro.close()  # type: ignore[attr-defined]
+def _close_task(operation: str, coro: Coroutine[object, object, None], **context: Any) -> MagicMock:
+    coro.close()
     return MagicMock()
 
 
@@ -169,7 +168,7 @@ class TestDropLocal:
             timeouts.append(timeout)
             return await real_wait_for(awaitable, timeout)
 
-        with patch.object(mcp_client.asyncio, "wait_for", recording):
+        with patch.object(asyncio, "wait_for", recording):
             await client.drop_local(INTEGRATION_ID)
 
         assert timeouts == [2.0]
@@ -182,7 +181,7 @@ class TestDropLocal:
             awaitable.close()
             raise TimeoutError
 
-        with patch.object(mcp_client.asyncio, "wait_for", timing_out):
+        with patch.object(asyncio, "wait_for", timing_out):
             async with captured_wide_event() as event:
                 await client.drop_local(INTEGRATION_ID)
 
@@ -349,14 +348,16 @@ def _unlisted_client(
         client._tools[integration_id] = [_tool("t")]
     connect = AsyncMock()
     get_connected = AsyncMock(return_value=connected)
-    client.connect = connect  # type: ignore[method-assign]
     return client, connect, get_connected
 
 
 class TestConnectUnlisted:
     @contextmanager
-    def _seams(self, get_connected: AsyncMock) -> Iterator[None]:
+    def _seams(
+        self, client: MCPClient, connect: AsyncMock, get_connected: AsyncMock
+    ) -> Iterator[None]:
         with (
+            patch.object(client, "connect", connect),
             patch(f"{_MODULE}.get_connected_integration_ids", get_connected),
             patch(
                 f"{_MODULE}.IntegrationResolver.resolve",
@@ -370,7 +371,7 @@ class TestConnectUnlisted:
             ["listed", "warm", "fresh"], warm=["warm"]
         )
 
-        with self._seams(get_connected):
+        with self._seams(client, connect, get_connected):
             await client._connect_unlisted(listed=["listed"])
 
         get_connected.assert_awaited_once_with(USER_ID)
@@ -380,7 +381,7 @@ class TestConnectUnlisted:
         ids = [f"mcp-{n}" for n in range(MCP_UNLISTED_CONNECT_MAX)]
         client, connect, get_connected = _unlisted_client(ids, warm=[])
 
-        with self._seams(get_connected):
+        with self._seams(client, connect, get_connected):
             async with captured_wide_event() as event:
                 await client._connect_unlisted(listed=[])
 
@@ -393,7 +394,7 @@ class TestConnectUnlisted:
         ids = [f"mcp-{n}" for n in range(MCP_UNLISTED_CONNECT_MAX + 1)]
         client, connect, get_connected = _unlisted_client(ids, warm=[])
 
-        with self._seams(get_connected):
+        with self._seams(client, connect, get_connected):
             async with captured_wide_event() as event:
                 await client._connect_unlisted(listed=[])
 

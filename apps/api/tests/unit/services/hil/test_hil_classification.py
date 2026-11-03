@@ -9,6 +9,7 @@ Two invariants carry the security weight, and both are attacked here:
   clear it: destructiveHint=False and readOnlyHint=True mean "defer", not "safe".
 """
 
+from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -39,7 +40,7 @@ def registry_with(flag: bool | None) -> MagicMock:
 
 
 @pytest.fixture
-def mongo() -> MagicMock:
+def mongo() -> Iterator[MagicMock]:
     with patch(f"{MODULE}.hil_tool_risk_repository") as repo:
         repo.find_classification = AsyncMock(return_value=None)
         repo.upsert_classification = AsyncMock()
@@ -109,7 +110,9 @@ class TestMcpHintEscalatesOnly:
         "metadata",
         [None, {}, {MCP_ANNOTATIONS_METADATA_KEY: None}, {MCP_ANNOTATIONS_METADATA_KEY: "yes"}],
     )
-    def test_missing_or_malformed_annotations_yield_no_opinion(self, metadata: object) -> None:
+    def test_missing_or_malformed_annotations_yield_no_opinion(
+        self, metadata: dict[str, object] | None
+    ) -> None:
         assert mcp_destructive_hint(make_tool(metadata=metadata)) is None
 
     def test_a_truthy_but_non_true_hint_is_not_accepted(self) -> None:

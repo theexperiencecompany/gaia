@@ -7,13 +7,16 @@ from types import SimpleNamespace
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
+from langchain_core.tools import BaseTool
 from langgraph.store.base import SearchItem
 import pytest
 
 from app.agents.core.subagents.integration_resolution import CustomMcpSubagent
+from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.tools.core import retrieval
 from app.models.integration_models import UserToolNamespaces
 from app.models.mcp_config import MCPConfig
+from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp import tool_naming
 from app.services.mcp.tool_naming import stamp_tool_metadata
 from app.utils.log_identifiers import user_text_shape
@@ -1512,14 +1515,14 @@ _OTHER_NAMESPACE = "mcp.rival.dev"
 class TestActivatedMcpIntegrations:
     async def test_a_stamped_custom_mcp_resolves_to_its_url_derived_namespace(self) -> None:
         get_server_url = AsyncMock(return_value="https://mcp.acme.dev/v1")
-        with patch.object(retrieval.IntegrationResolver, "get_server_url", new=get_server_url):
+        with patch.object(IntegrationResolver, "get_server_url", new=get_server_url):
             spaces = await retrieval._active_tool_spaces({_CUSTOM_MCP.id: _CUSTOM_MCP})
 
         assert spaces == {"mcp.acme.dev/v1"}
         get_server_url.assert_awaited_once_with(_CUSTOM_MCP.id)
 
     async def test_a_stamped_platform_integration_resolves_to_its_tool_space(self) -> None:
-        github = retrieval.get_subagent_by_id("github")
+        github = get_subagent_by_id("github")
         assert github is not None
 
         assert await retrieval._active_tool_spaces({"github": github}) == {github.config.tool_space}
@@ -1561,7 +1564,7 @@ class TestActivatedMcpIntegrations:
 
     @pytest.mark.usefixtures("core_tool_registry")
     async def test_only_activated_per_user_mcps_are_warmed_for_their_tool_names(self) -> None:
-        github = retrieval.get_subagent_by_id("github")
+        github = get_subagent_by_id("github")
         assert github is not None
         mcp_client = MagicMock()
         mcp_client._tools = {"warm_mcp": [_live_mcp_tool("WARM_TOOL", "warm_mcp")]}
@@ -1684,11 +1687,10 @@ class TestActivatedMcpIntegrations:
         assert warning["error_type"] == "ConnectionError"
 
 
-def _live_mcp_tool(
-    server_name: str, integration_id: str, source_name: str = "Acme"
-) -> SimpleNamespace:
+def _live_mcp_tool(server_name: str, integration_id: str, source_name: str = "Acme") -> BaseTool:
     """Build a live MCP tool as MCPClient holds it, stamped with its server identity."""
-    tool = SimpleNamespace(name=server_name, description="", metadata=None)
+    # Only name/description/metadata are read or written along the MCP naming path.
+    tool = cast(BaseTool, SimpleNamespace(name=server_name, description="", metadata=None))
     stamp_tool_metadata([tool], integration_id, "https://mcp.acme.dev", source_name)
     return tool
 

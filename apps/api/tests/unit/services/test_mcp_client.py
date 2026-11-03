@@ -31,7 +31,7 @@ from mcp.types import (
     TextResourceContents,
     Tool,
 )
-from pydantic import AnyUrl, ValidationError
+from pydantic import AnyUrl, BaseModel, ValidationError
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 import time_machine
@@ -64,6 +64,7 @@ from app.services.mcp.mcp_client import (
 from app.services.mcp.mcp_client_pool import MCPClientPool, PooledClient
 from app.services.mcp.mcp_errors import (
     DCRNotSupportedError,
+    MCPAuthorizationRequiredError,
     StepUpAuthRequiredError,
     _extract_response_signal,
     is_terminal_auth_failure,
@@ -76,6 +77,7 @@ from app.services.mcp.mcp_oauth import (
     _obtain_auth_client_id,
     _register_client,
     _resolve_token_exchange_credentials,
+    _TokenExchangeRequest,
     build_oauth_auth_url,
     handle_oauth_callback,
 )
@@ -105,6 +107,7 @@ from app.services.mcp.token_management import (
 from app.services.mcp.tool_naming import stamp_tool_metadata
 from app.services.providers.provider_credentials_service import ProviderConfig
 from app.utils.mcp_oauth_utils import MCP_PROTOCOL_VERSION
+from app.utils.mcp_utils import gaia_tool_names
 from shared.py.wide_events import log
 from tests.helpers import captured_wide_event
 
@@ -186,12 +189,14 @@ def _api_error(status_code: int) -> Exception:
 
 def _custom_doc(name: str, description: str) -> dict[str, object]:
     """Build a custom_doc the way IntegrationResolver does: a dumped Integration."""
-    return Integration(
-        integration_id=INTEGRATION_ID,
-        name=name,
-        description=description,
-        category="custom",
-        managed_by="mcp",
+    return Integration.model_validate(
+        {
+            "integration_id": INTEGRATION_ID,
+            "name": name,
+            "description": description,
+            "category": "custom",
+            "managed_by": "mcp",
+        }
     ).model_dump()
 
 
@@ -958,10 +963,11 @@ class TestMCPClientCallToolOnServer:
             "_find_integration_id_by_server_url",
             AsyncMock(return_value=INTEGRATION_ID),
         )
-        client.ensure_connected = AsyncMock(return_value=[_mock_tool()])
+        monkeypatch.setattr(client, "ensure_connected", AsyncMock(return_value=[_mock_tool()]))
 
         result = await call_tool_on_server(client, SERVER_URL, "test_tool", {"arg": "val"})
         assert result.isError is False
+        assert isinstance(result.content[0], TextContent)
         assert result.content[0].text == "result"
 
     async def test_successful_call_stamps_latency_on_wide_event(
@@ -985,7 +991,7 @@ class TestMCPClientCallToolOnServer:
             "_find_integration_id_by_server_url",
             AsyncMock(return_value=INTEGRATION_ID),
         )
-        client.ensure_connected = AsyncMock(return_value=[_mock_tool()])
+        monkeypatch.setattr(client, "ensure_connected", AsyncMock(return_value=[_mock_tool()]))
 
         # Pin the clock so the reported latency is exact: this is what makes the
         # arithmetic (subtract start, *1000, round to 2dp) load-bearing — a range
@@ -1021,7 +1027,7 @@ class TestMCPClientCallToolOnServer:
             "_find_integration_id_by_server_url",
             AsyncMock(return_value=INTEGRATION_ID),
         )
-        client.ensure_connected = AsyncMock(return_value=[_mock_tool()])
+        monkeypatch.setattr(client, "ensure_connected", AsyncMock(return_value=[_mock_tool()]))
 
         with (
             patch(
@@ -2814,7 +2820,9 @@ class TestAToolWithUnderscoredArguments:
             Tool(name="put", description="d", inputSchema=schema), connector
         )
         assert tool is not None
-        assert set(tool.args_schema.model_json_schema()["required"]) == {"id", "id_2"}
+        args_schema = tool.args_schema
+        assert isinstance(args_schema, type) and issubclass(args_schema, BaseModel)
+        assert set(args_schema.model_json_schema()["required"]) == {"id", "id_2"}
 
         await tool.ainvoke({"id": "public", "id_2": "internal"})
 
@@ -2976,7 +2984,9 @@ class TestAToolWithUnderscoredArguments:
         )
 
     def test_the_model_sees_names_pydantic_accepts(self) -> None:
-        properties = self._tool(MagicMock()).args_schema.model_json_schema()["properties"]
+        args_schema = self._tool(MagicMock()).args_schema
+        assert isinstance(args_schema, type) and issubclass(args_schema, BaseModel)
+        properties = args_schema.model_json_schema()["properties"]
 
         assert set(properties) == {"id", "name", "meta", "items"}
 
@@ -3491,6 +3501,7 @@ class TestMCPClientReadResourceOnServer:
         )
 
         result = await read_resource_on_server(client, SERVER_URL, "file://test.txt")
+        assert isinstance(result.contents[0], TextResourceContents)
         assert result.contents[0].text == "hello"
 
 
@@ -3530,7 +3541,7 @@ class TestMCPClientReadUiResource:
             "_find_integration_id_by_server_url",
             AsyncMock(return_value=INTEGRATION_ID),
         )
-        client.ensure_connected = AsyncMock()
+        monkeypatch.setattr(client, "ensure_connected", AsyncMock())
 
         result = await read_ui_resource_details(client, SERVER_URL, "ui://tool/app.html")
         assert result is not None
@@ -3556,7 +3567,7 @@ class TestMCPClientReadUiResource:
             "_find_integration_id_by_server_url",
             AsyncMock(return_value=INTEGRATION_ID),
         )
-        client.ensure_connected = AsyncMock()
+        monkeypatch.setattr(client, "ensure_connected", AsyncMock())
         result = await read_ui_resource_details(client, SERVER_URL, "ui://tool/app.html")
         assert result is None
 
@@ -3582,7 +3593,7 @@ class TestMCPClientReadUiResource:
             "_find_integration_id_by_server_url",
             AsyncMock(return_value=INTEGRATION_ID),
         )
-        client.ensure_connected = AsyncMock()
+        monkeypatch.setattr(client, "ensure_connected", AsyncMock())
 
         result = await read_ui_resource_details(client, SERVER_URL, "ui://tool/app.html")
         assert result is not None
@@ -3609,7 +3620,7 @@ class TestMCPClientReadUiResource:
             "_find_integration_id_by_server_url",
             AsyncMock(return_value=INTEGRATION_ID),
         )
-        client.ensure_connected = AsyncMock()
+        monkeypatch.setattr(client, "ensure_connected", AsyncMock())
 
         result = await read_ui_resource_details(client, SERVER_URL, "ui://tool/app.html")
         assert result is None
@@ -3627,7 +3638,7 @@ class TestMCPClientReadUiResource:
             "_find_integration_id_by_server_url",
             AsyncMock(return_value=INTEGRATION_ID),
         )
-        client.ensure_connected = AsyncMock()
+        monkeypatch.setattr(client, "ensure_connected", AsyncMock())
 
         result = await read_ui_resource_details(client, SERVER_URL, "ui://tool/app.html")
         assert result is None
@@ -3639,7 +3650,7 @@ class TestMCPClientReadUiResource:
             "_find_integration_id_by_server_url",
             AsyncMock(return_value=INTEGRATION_ID),
         )
-        client.ensure_connected = AsyncMock()
+        monkeypatch.setattr(client, "ensure_connected", AsyncMock())
         # No client in _clients
 
         result = await read_ui_resource_details(client, SERVER_URL, "ui://tool/app.html")
@@ -3837,7 +3848,7 @@ class TestMCPClientGetSessionForServer:
             "_find_integration_id_by_server_url",
             AsyncMock(return_value=INTEGRATION_ID),
         )
-        client.ensure_connected = AsyncMock()
+        monkeypatch.setattr(client, "ensure_connected", AsyncMock())
 
         result = await _get_session_for_server(client, SERVER_URL)
         assert result is mock_session
@@ -3858,7 +3869,7 @@ class TestMCPClientGetSessionForServer:
             "_find_integration_id_by_server_url",
             AsyncMock(return_value=INTEGRATION_ID),
         )
-        client.ensure_connected = AsyncMock()
+        monkeypatch.setattr(client, "ensure_connected", AsyncMock())
         # No client in _clients
 
         with pytest.raises(ValueError, match="not connected in memory"):
@@ -4410,10 +4421,11 @@ class TestMCPClientCallToolOnServerAdditional:
             "_find_integration_id_by_server_url",
             AsyncMock(return_value=INTEGRATION_ID),
         )
-        client.ensure_connected = AsyncMock(return_value=[_mock_tool()])
+        monkeypatch.setattr(client, "ensure_connected", AsyncMock(return_value=[_mock_tool()]))
 
         result = await call_tool_on_server(client, SERVER_URL, "test_tool", {"arg": "val"})
         assert result.isError is True
+        assert isinstance(result.content[0], TextContent)
         assert result.content[0].text == "boom"
 
 
@@ -4899,14 +4911,14 @@ class TestPersistAndIndexToolsExact:
         ],
     )
     async def test_only_the_exact_custom_source_takes_the_custom_index_path(
-        self, source: str, label: str
+        self, monkeypatch: pytest.MonkeyPatch, source: str, label: str
     ) -> None:
         """The source picks which Chroma namespace the tools index into; getting it wrong hides a user's own server from retrieval."""
         resolved = self._resolved()
         resolved.source = source
         client = MCPClient(user_id=USER_ID)
-        client._handle_custom_integration_connect = AsyncMock()
-        client._index_platform_mcp_tools = AsyncMock()
+        monkeypatch.setattr(client, "_handle_custom_integration_connect", AsyncMock())
+        monkeypatch.setattr(client, "_index_platform_mcp_tools", AsyncMock())
 
         with (
             patch("app.services.mcp.mcp_client.store_mcp_tools", new_callable=AsyncMock),
@@ -4932,12 +4944,15 @@ class TestHandleConnectFailureExact:
     @pytest.mark.regression
     async def test_missing_oauth_token_marks_the_integration_unconnected_without_deleting_credentials(
         self,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         client = MCPClient(user_id=USER_ID)
-        client.token_store.get_bearer_token = AsyncMock(return_value=None)
-        client.token_store.is_token_expiring_soon = AsyncMock(return_value=False)
-        client.token_store.get_oauth_token = AsyncMock(return_value=None)
-        client.token_store.get_refresh_token = AsyncMock(return_value=None)
+        monkeypatch.setattr(client.token_store, "get_bearer_token", AsyncMock(return_value=None))
+        monkeypatch.setattr(
+            client.token_store, "is_token_expiring_soon", AsyncMock(return_value=False)
+        )
+        monkeypatch.setattr(client.token_store, "get_oauth_token", AsyncMock(return_value=None))
+        monkeypatch.setattr(client.token_store, "get_refresh_token", AsyncMock(return_value=None))
         mcp_config = _make_mcp_config(requires_auth=True)
 
         with (
@@ -4967,10 +4982,12 @@ class TestHandleConnectFailureExact:
 
     async def test_retained_refresh_token_keeps_saved_status_on_transient_failure(
         self,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """A stored refresh token keeps the saved status on transient failure."""
         client = MCPClient(user_id=USER_ID)
-        client.token_store.get_refresh_token = AsyncMock(return_value="enc-refresh")
+        get_refresh_token = AsyncMock(return_value="enc-refresh")
+        monkeypatch.setattr(client.token_store, "get_refresh_token", get_refresh_token)
         mcp_config = _make_mcp_config(requires_auth=True)
 
         with (
@@ -4981,13 +4998,13 @@ class TestHandleConnectFailureExact:
             patch.object(client, "_reset_to_disconnected", new_callable=AsyncMock) as reset,
             patch("app.services.mcp.mcp_client.log") as mock_log,
         ):
-            err = mcp_client.MCPAuthorizationRequiredError(INTEGRATION_ID)
+            err = MCPAuthorizationRequiredError(INTEGRATION_ID)
             result = await client._handle_connect_failure(err, INTEGRATION_ID, mcp_config)
 
         assert result is None
         update_status.assert_not_awaited()
         reset.assert_not_awaited()
-        client.token_store.get_refresh_token.assert_awaited_once_with(INTEGRATION_ID)
+        get_refresh_token.assert_awaited_once_with(INTEGRATION_ID)
         mock_log.warning.assert_called_once_with(
             f"{LogTag.MCP} OAuth token unavailable but refresh retained for",
             integration_id=INTEGRATION_ID,
@@ -5121,11 +5138,13 @@ class TestSmallOauthHelpersExact:
 
         assert scope_str == "read write offline_access"
 
-    async def test_the_dcr_fallback_is_asked_for_this_integration_and_redirect(self) -> None:
+    async def test_the_dcr_fallback_is_asked_for_this_integration_and_redirect(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """A dropped redirect_uri registers a client the auth server will then refuse to redirect back to."""
         client = MCPClient(user_id=USER_ID)
         oauth_config = _make_oauth_discovery()
-        client.token_store.get_dcr_client = AsyncMock(return_value=None)
+        monkeypatch.setattr(client.token_store, "get_dcr_client", AsyncMock(return_value=None))
 
         with (
             patch(
@@ -5153,11 +5172,16 @@ class TestConnectFailureClassification:
     """Both decisions string-match the provider's error text; a marker that stops matching turns a recoverable 401 into a dead integration, or vice versa."""
 
     @staticmethod
-    def _client() -> MCPClient:
+    def _client(
+        monkeypatch: pytest.MonkeyPatch, *, refresh_succeeds: bool = False
+    ) -> tuple[MCPClient, AsyncMock, AsyncMock]:
+        """Client whose refresh and reset are mocks, returned alongside it for assertions."""
         client = MCPClient(user_id=USER_ID)
-        client._try_refresh_token = AsyncMock(return_value=False)
-        client._reset_to_disconnected = AsyncMock()
-        return client
+        try_refresh = AsyncMock(return_value=refresh_succeeds)
+        reset = AsyncMock()
+        monkeypatch.setattr(client, "_try_refresh_token", try_refresh)
+        monkeypatch.setattr(client, "_reset_to_disconnected", reset)
+        return client, try_refresh, reset
 
     @pytest.mark.parametrize(
         "message",
@@ -5172,30 +5196,36 @@ class TestConnectFailureClassification:
             "server said method not allowed",
         ],
     )
-    async def test_each_auth_marker_earns_one_refresh_attempt(self, message: str) -> None:
-        client = self._client()
+    async def test_each_auth_marker_earns_one_refresh_attempt(
+        self, monkeypatch: pytest.MonkeyPatch, message: str
+    ) -> None:
+        client, try_refresh, _ = self._client(monkeypatch)
         with patch("app.services.mcp.mcp_client.log"):
             await client._handle_connect_failure(
                 RuntimeError(message), INTEGRATION_ID, _make_mcp_config(requires_auth=True)
             )
 
-        client._try_refresh_token.assert_awaited_once()
+        try_refresh.assert_awaited_once()
 
     @pytest.mark.parametrize(
         "message",
         ["500 Internal Server Error", "connection reset by peer", "transport mismatch"],
     )
-    async def test_a_non_auth_failure_never_refreshes(self, message: str) -> None:
-        client = self._client()
+    async def test_a_non_auth_failure_never_refreshes(
+        self, monkeypatch: pytest.MonkeyPatch, message: str
+    ) -> None:
+        client, try_refresh, _ = self._client(monkeypatch)
         with patch("app.services.mcp.mcp_client.log"):
             await client._handle_connect_failure(
                 RuntimeError(message), INTEGRATION_ID, _make_mcp_config(requires_auth=True)
             )
 
-        client._try_refresh_token.assert_not_awaited()
+        try_refresh.assert_not_awaited()
 
-    async def test_an_auth_failure_on_a_server_without_auth_never_refreshes(self) -> None:
-        client = self._client()
+    async def test_an_auth_failure_on_a_server_without_auth_never_refreshes(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        client, try_refresh, _ = self._client(monkeypatch)
         with patch("app.services.mcp.mcp_client.log"):
             await client._handle_connect_failure(
                 RuntimeError("401 Unauthorized"),
@@ -5203,12 +5233,13 @@ class TestConnectFailureClassification:
                 _make_mcp_config(requires_auth=False),
             )
 
-        client._try_refresh_token.assert_not_awaited()
+        try_refresh.assert_not_awaited()
 
-    async def test_the_retry_marker_stops_a_second_refresh_on_re_entry(self) -> None:
+    async def test_the_retry_marker_stops_a_second_refresh_on_re_entry(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Without the marker, a retry that fails the same way would refresh forever against itself."""
-        client = self._client()
-        client._try_refresh_token = AsyncMock(return_value=True)
+        client, try_refresh, _ = self._client(monkeypatch, refresh_succeeds=True)
         mcp_config = _make_mcp_config(requires_auth=True)
 
         async def _reconnect_and_fail_again(iid: str) -> list[Any]:
@@ -5216,7 +5247,7 @@ class TestConnectFailureClassification:
                 RuntimeError("401 Unauthorized"), iid, mcp_config
             )
 
-        client._do_connect = AsyncMock(side_effect=_reconnect_and_fail_again)
+        monkeypatch.setattr(client, "_do_connect", AsyncMock(side_effect=_reconnect_and_fail_again))
 
         with patch("app.services.mcp.mcp_client.log"):
             await client._handle_connect_failure(
@@ -5224,11 +5255,13 @@ class TestConnectFailureClassification:
             )
 
         # The inner frame saw the marker and did not refresh a second time.
-        client._try_refresh_token.assert_awaited_once()
+        try_refresh.assert_awaited_once()
 
-    async def test_a_later_failure_gets_its_own_refresh(self) -> None:
+    async def test_a_later_failure_gets_its_own_refresh(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """The marker is scoped to one call stack; leaving it set would cost every later reconnect its retry."""
-        client = self._client()
+        client, try_refresh, _ = self._client(monkeypatch)
         mcp_config = _make_mcp_config(requires_auth=True)
 
         with patch("app.services.mcp.mcp_client.log"):
@@ -5237,11 +5270,12 @@ class TestConnectFailureClassification:
                     RuntimeError("401 Unauthorized"), INTEGRATION_ID, mcp_config
                 )
 
-        assert client._try_refresh_token.await_count == 2
+        assert try_refresh.await_count == 2
 
-    async def test_a_refresh_for_one_integration_does_not_block_another(self) -> None:
-        client = self._client()
-        client._try_refresh_token = AsyncMock(return_value=True)
+    async def test_a_refresh_for_one_integration_does_not_block_another(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        client, try_refresh, _ = self._client(monkeypatch, refresh_succeeds=True)
         mcp_config = _make_mcp_config(requires_auth=True)
 
         async def _fail_a_different_integration(_iid: str) -> list[Any]:
@@ -5249,33 +5283,37 @@ class TestConnectFailureClassification:
                 RuntimeError("401 Unauthorized"), "other_integration", mcp_config
             )
 
-        client._do_connect = AsyncMock(side_effect=_fail_a_different_integration)
+        monkeypatch.setattr(
+            client, "_do_connect", AsyncMock(side_effect=_fail_a_different_integration)
+        )
 
         with patch("app.services.mcp.mcp_client.log"):
             await client._handle_connect_failure(
                 RuntimeError("401 Unauthorized"), INTEGRATION_ID, mcp_config
             )
 
-        assert client._try_refresh_token.await_count == 2
+        assert try_refresh.await_count == 2
 
-    async def test_a_401_is_terminal_only_after_a_refresh_was_attempted(self) -> None:
+    async def test_a_401_is_terminal_only_after_a_refresh_was_attempted(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Before a refresh a 401 may be an expired token; only after a failed refresh is it dead credentials."""
         err = _api_error(401)
 
-        without_refresh = self._client()
+        without_refresh, _, without_refresh_reset = self._client(monkeypatch)
         with patch("app.services.mcp.mcp_client.log"):
             await without_refresh._handle_connect_failure(
                 err, INTEGRATION_ID, _make_mcp_config(requires_auth=False)
             )
-        without_refresh._reset_to_disconnected.assert_not_awaited()
+        without_refresh_reset.assert_not_awaited()
 
-        after_refresh = self._client()
+        after_refresh, after_refresh_try_refresh, after_refresh_reset = self._client(monkeypatch)
         with patch("app.services.mcp.mcp_client.log") as mock_log:
             await after_refresh._handle_connect_failure(
                 err, INTEGRATION_ID, _make_mcp_config(requires_auth=True)
             )
-        after_refresh._try_refresh_token.assert_awaited_once()
-        after_refresh._reset_to_disconnected.assert_awaited_once_with(INTEGRATION_ID)
+        after_refresh_try_refresh.assert_awaited_once()
+        after_refresh_reset.assert_awaited_once_with(INTEGRATION_ID)
         assert [
             c
             for c in mock_log.warning.call_args_list
@@ -5284,8 +5322,10 @@ class TestConnectFailureClassification:
         ] == []
 
     @pytest.mark.regression
-    async def test_plain_401_without_response_resets_after_failed_refresh(self) -> None:
-        client = self._client()
+    async def test_plain_401_without_response_resets_after_failed_refresh(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        client, try_refresh, reset = self._client(monkeypatch)
         with patch("app.services.mcp.mcp_client.log") as mock_log:
             await client._handle_connect_failure(
                 RuntimeError("401 Unauthorized from PostHog"),
@@ -5293,8 +5333,8 @@ class TestConnectFailureClassification:
                 _make_mcp_config(requires_auth=True),
             )
 
-        client._try_refresh_token.assert_awaited_once()
-        client._reset_to_disconnected.assert_awaited_once_with(INTEGRATION_ID)
+        try_refresh.assert_awaited_once()
+        reset.assert_awaited_once_with(INTEGRATION_ID)
         mock_log.warning.assert_any_call(
             f"{LogTag.MCP} Resetting on message-only status signal after refresh",
             integration_id=INTEGRATION_ID,
@@ -5302,8 +5342,10 @@ class TestConnectFailureClassification:
             error_type="RuntimeError",
         )
 
-    async def test_http_status_word_boundary_does_not_match_401k(self) -> None:
-        client = self._client()
+    async def test_http_status_word_boundary_does_not_match_401k(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        client, try_refresh, reset = self._client(monkeypatch)
         with patch("app.services.mcp.mcp_client.log"):
             await client._handle_connect_failure(
                 RuntimeError("401k is not an HTTP status"),
@@ -5311,12 +5353,14 @@ class TestConnectFailureClassification:
                 _make_mcp_config(requires_auth=True),
             )
 
-        client._try_refresh_token.assert_awaited_once()
-        client._reset_to_disconnected.assert_not_awaited()
+        try_refresh.assert_awaited_once()
+        reset.assert_not_awaited()
 
-    async def test_url_port_is_not_an_authorization_signal(self) -> None:
+    async def test_url_port_is_not_an_authorization_signal(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """A :403 port in a connection URL must not delete saved credentials."""
-        client = self._client()
+        client, try_refresh, reset = self._client(monkeypatch)
         with patch("app.services.mcp.mcp_client.log") as mock_log:
             await client._handle_connect_failure(
                 RuntimeError("connect to https://mcp.example.com:403/sse failed"),
@@ -5324,8 +5368,8 @@ class TestConnectFailureClassification:
                 _make_mcp_config(requires_auth=True),
             )
 
-        client._try_refresh_token.assert_awaited_once()
-        client._reset_to_disconnected.assert_not_awaited()
+        try_refresh.assert_awaited_once()
+        reset.assert_not_awaited()
         assert [
             c
             for c in mock_log.warning.call_args_list
@@ -5337,9 +5381,11 @@ class TestConnectFailureClassification:
         "message",
         ["403 something else entirely", 'insufficient_scope scope="read"'],
     )
-    async def test_step_up_needs_both_the_403_and_the_scope_marker(self, message: str) -> None:
+    async def test_step_up_needs_both_the_403_and_the_scope_marker(
+        self, monkeypatch: pytest.MonkeyPatch, message: str
+    ) -> None:
         """Either half alone is an ordinary failure; raising on just one turns every 403 into an unrequested step-up prompt."""
-        client = self._client()
+        client, _, _ = self._client(monkeypatch)
         with patch("app.services.mcp.mcp_client.log"):
             result = await client._handle_connect_failure(
                 RuntimeError(message), INTEGRATION_ID, _make_mcp_config()
@@ -5347,9 +5393,11 @@ class TestConnectFailureClassification:
 
         assert result is None
 
-    async def test_step_up_without_a_scope_parameter_reports_no_scopes(self) -> None:
+    async def test_step_up_without_a_scope_parameter_reports_no_scopes(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """An omitted scope= must reach the caller as an empty list, not None, since the caller iterates it."""
-        client = self._client()
+        client, _, _ = self._client(monkeypatch)
         with patch("app.services.mcp.mcp_client.log"):
             with pytest.raises(StepUpAuthRequiredError) as exc_info:
                 await client._handle_connect_failure(
@@ -5358,8 +5406,10 @@ class TestConnectFailureClassification:
 
         assert exc_info.value.required_scopes == []
 
-    async def test_the_failure_is_logged_with_its_full_detail_and_traceback(self) -> None:
-        client = self._client()
+    async def test_the_failure_is_logged_with_its_full_detail_and_traceback(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        client, _, _ = self._client(monkeypatch)
         err = RuntimeError("connection reset by peer")
         with patch("app.services.mcp.mcp_client.log") as mock_log:
             await client._handle_connect_failure(err, INTEGRATION_ID, _make_mcp_config())
@@ -5372,16 +5422,17 @@ class TestConnectFailureClassification:
             exc_info=True,
         )
 
-    async def test_the_retry_flag_is_cleared_even_when_the_retry_deletes_it_first(self) -> None:
+    async def test_the_retry_flag_is_cleared_even_when_the_retry_deletes_it_first(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """A recursive _do_connect runs the same finally block, so by this frame the attribute may already be gone."""
-        client = self._client()
-        client._try_refresh_token = AsyncMock(return_value=True)
+        client, _, _ = self._client(monkeypatch, refresh_succeeds=True)
 
         async def _reconnect(_iid: str) -> list[Any]:
             client._refresh_attempts.discard(INTEGRATION_ID)
             return []
 
-        client._do_connect = AsyncMock(side_effect=_reconnect)
+        monkeypatch.setattr(client, "_do_connect", AsyncMock(side_effect=_reconnect))
 
         with patch("app.services.mcp.mcp_client.log"):
             result = await client._handle_connect_failure(
@@ -5419,10 +5470,10 @@ class TestExtractResponseSignal:
 @pytest.mark.usefixtures("core_tool_registry")
 class TestRenameShadowingTools:
     @staticmethod
-    async def _apply_reserved_only(tools: list[MagicMock], source_name: str) -> dict[str, str]:
+    async def _apply_reserved_only(tools: list[BaseTool], source_name: str) -> dict[str, str]:
         for tool in tools:
             stamp_tool_metadata([tool], INTEGRATION_ID, SERVER_URL, source_name)
-        names = tool_naming.gaia_tool_names(
+        names = gaia_tool_names(
             source_name,
             [tool.name for tool in tools],
             await tool_naming.reserved_tool_names(),
@@ -5453,7 +5504,7 @@ class TestRenameShadowingTools:
 
     async def test_two_renamed_tools_never_share_a_name(self) -> None:
         registry = MagicMock(get_tool_names=MagicMock(return_value=["grep", "grep_2"]))
-        tools = [_mock_tool("grep"), _mock_tool("grep_2"), _mock_tool("acme_grep")]
+        tools: list[BaseTool] = [_mock_tool("grep"), _mock_tool("grep_2"), _mock_tool("acme_grep")]
         with patch(
             "app.services.mcp.tool_naming.get_tool_registry",
             new=AsyncMock(return_value=registry),
@@ -5484,11 +5535,13 @@ def _resolved_named(source_name: str) -> MagicMock:
     return resolved
 
 
-def _serve(client: MCPClient, server_tools: list[MagicMock]) -> None:
+def _serve(
+    monkeypatch: pytest.MonkeyPatch, client: MCPClient, server_tools: list[MagicMock]
+) -> None:
     """Make the client's next _do_connect open a fake session exposing server_tools."""
-    client._open_session = AsyncMock(return_value=AsyncMock())
-    client._convert_tools_safe = AsyncMock(return_value=server_tools)
-    client._record_connection = AsyncMock()
+    monkeypatch.setattr(client, "_open_session", AsyncMock(return_value=AsyncMock()))
+    monkeypatch.setattr(client, "_convert_tools_safe", AsyncMock(return_value=server_tools))
+    monkeypatch.setattr(client, "_record_connection", AsyncMock())
 
 
 @pytest.mark.usefixtures("core_tool_registry")
@@ -5510,20 +5563,24 @@ class TestCrossMcpToolNameCollisions:
             mock_resolver.resolve = AsyncMock(return_value=resolved)
             await client._do_connect(integration_id)
 
-    async def _connect_in_order(self, order: list[str]) -> dict[str, list[str]]:
+    async def _connect_in_order(
+        self, monkeypatch: pytest.MonkeyPatch, order: list[str]
+    ) -> dict[str, list[str]]:
         servers = {"posthog": ("PostHog", "search"), "context7": ("Context7", "search")}
         client = MCPClient(user_id=USER_ID)
         for integration_id in order:
             source_name, tool_name = servers[integration_id]
-            _serve(client, [_mock_tool(tool_name), _mock_tool(f"{integration_id}_only")])
+            _serve(
+                monkeypatch, client, [_mock_tool(tool_name), _mock_tool(f"{integration_id}_only")]
+            )
             await self._connect(client, integration_id, _resolved_named(source_name))
         return {iid: [t.name for t in tools] for iid, tools in client._tools.items()}
 
     @pytest.mark.parametrize("order", [["posthog", "context7"], ["context7", "posthog"]])
     async def test_a_shared_name_is_prefixed_on_both_servers_whichever_connects_first(
-        self, order: list[str]
+        self, monkeypatch: pytest.MonkeyPatch, order: list[str]
     ) -> None:
-        names = await self._connect_in_order(order)
+        names = await self._connect_in_order(monkeypatch, order)
 
         assert names == {
             "posthog": ["posthog_search", "posthog_only"],
@@ -5532,13 +5589,13 @@ class TestCrossMcpToolNameCollisions:
 
     @pytest.mark.parametrize("order", [["notion-a", "notion-b"], ["notion-b", "notion-a"]])
     async def test_two_sources_whose_names_slug_the_same_never_share_a_name(
-        self, order: list[str]
+        self, monkeypatch: pytest.MonkeyPatch, order: list[str]
     ) -> None:
         """Seen on this branch: "Notion" and "notion" both became notion_search, so execute hit whichever scanned first."""
         sources = {"notion-a": "Notion", "notion-b": "notion"}
         client = MCPClient(user_id=USER_ID)
         for integration_id in order:
-            _serve(client, [_mock_tool("search")])
+            _serve(monkeypatch, client, [_mock_tool("search")])
             await self._connect(client, integration_id, _resolved_named(sources[integration_id]))
 
         names = {iid: [t.name for t in tools] for iid, tools in client._tools.items()}
@@ -5558,11 +5615,13 @@ class TestCrossMcpToolNameCollisions:
         assert names["acme"] == {"notion_search": "notion_search"}
         assert names["notion"] == {"search": "notion_search_2"}
 
-    async def test_a_prefixed_tool_still_calls_the_server_by_its_own_name(self) -> None:
+    async def test_a_prefixed_tool_still_calls_the_server_by_its_own_name(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         client = MCPClient(user_id=USER_ID)
         client._tools["context7"] = [_stamped_tool("search", "Docs.", "Context7", "context7")]
         tool = _mock_tool("search", "Events.")
-        _serve(client, [tool])
+        _serve(monkeypatch, client, [tool])
 
         await self._connect(client, "posthog", _resolved_named("PostHog"))
 
@@ -5573,12 +5632,12 @@ class TestCrossMcpToolNameCollisions:
         )
 
     async def test_a_collision_with_a_cold_connected_server_comes_from_its_stored_names(
-        self,
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Another replica holds the other server warm; this one must still prefix from Mongo."""
         tool = _mock_tool("search")
         client = MCPClient(user_id=USER_ID)
-        _serve(client, [tool])
+        _serve(monkeypatch, client, [tool])
         resolved = _resolved_named("PostHog")
         stored = MagicMock(integration_id="context7", tools=[MagicMock()])
         stored.tools[0].name = "search"
@@ -5607,7 +5666,7 @@ class TestCrossMcpToolNameCollisions:
         client._tools["context7"][0].name = "context7_search"
         client._tools["posthog"] = [_stamped_tool("search", "Events.", "PostHog", "posthog")]
         monkeypatch.setattr(mcp_client, "revoke_integration_tokens", AsyncMock())
-        client._reset_to_disconnected = AsyncMock()
+        monkeypatch.setattr(client, "_reset_to_disconnected", AsyncMock())
 
         with patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver:
             mock_resolver.resolve = AsyncMock(return_value=None)
@@ -5625,7 +5684,7 @@ class TestCrossMcpToolNameCollisions:
         survivor.name = "context7_search"
         client._tools["context7"] = [survivor]
         monkeypatch.setattr(mcp_client, "revoke_integration_tokens", AsyncMock())
-        client._reset_to_disconnected = AsyncMock()
+        monkeypatch.setattr(client, "_reset_to_disconnected", AsyncMock())
         leaving = MagicMock(integration_id="posthog", tools=[MagicMock()])
         leaving.tools[0].name = "search"
         posthog = MagicMock(mcp_config=_make_mcp_config())
@@ -5645,11 +5704,13 @@ class TestCrossMcpToolNameCollisions:
 
 
 class TestADeletedOrRemotelyDisconnectedIntegration:
-    async def test_the_local_session_is_dropped_without_recreating_its_link_row(self) -> None:
+    async def test_the_local_session_is_dropped_without_recreating_its_link_row(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Seen live: tearing down a deleted integration upserted a 'created' row for it."""
         client = MCPClient(user_id=USER_ID)
         client._tools[INTEGRATION_ID] = [_stamped_tool("search")]
-        client.is_connected_db = AsyncMock(return_value=False)
+        monkeypatch.setattr(client, "is_connected_db", AsyncMock(return_value=False))
 
         with patch(
             "app.services.mcp.mcp_client.update_user_integration_status", new_callable=AsyncMock
@@ -5679,10 +5740,12 @@ class TestADeletedOrRemotelyDisconnectedIntegration:
 
 
 class TestResolveToolOwner:
-    async def test_a_warm_owner_is_found_without_reading_the_stored_tool_lists(self) -> None:
+    async def test_a_warm_owner_is_found_without_reading_the_stored_tool_lists(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         client = MCPClient(user_id=USER_ID)
         client._tools[INTEGRATION_ID] = [_stamped_tool("search")]
-        client.is_connected_db = AsyncMock(return_value=True)
+        monkeypatch.setattr(client, "is_connected_db", AsyncMock(return_value=True))
 
         with patch(
             "app.services.mcp.mcp_client.connected_tool_records",
@@ -5690,25 +5753,30 @@ class TestResolveToolOwner:
             assert await client.resolve_tool_owner("search") == INTEGRATION_ID
         connected.assert_not_called()
 
-    async def test_a_warm_owner_disconnected_on_another_replica_owns_nothing(self) -> None:
+    async def test_a_warm_owner_disconnected_on_another_replica_owns_nothing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Seen on this branch: a warm session kept running a tool after another replica disconnected it."""
         client = MCPClient(user_id=USER_ID)
         client._tools[INTEGRATION_ID] = [_stamped_tool("search")]
-        client.is_connected_db = AsyncMock(return_value=False)
-        client.drop_local = AsyncMock()
+        is_connected_db = AsyncMock(return_value=False)
+        monkeypatch.setattr(client, "is_connected_db", is_connected_db)
+        drop_local = AsyncMock()
+        monkeypatch.setattr(client, "drop_local", drop_local)
 
         assert await client.resolve_tool_owner("search") is None
-        client.is_connected_db.assert_awaited_once_with(INTEGRATION_ID)
-        client.drop_local.assert_awaited_once_with(INTEGRATION_ID)
+        is_connected_db.assert_awaited_once_with(INTEGRATION_ID)
+        drop_local.assert_awaited_once_with(INTEGRATION_ID)
 
     @pytest.mark.usefixtures("core_tool_registry")
     async def test_a_warm_tool_renamed_by_another_process_resolves_under_its_new_name(
         self,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Another replica connected context7, so the warm posthog search is now posthog_search."""
         client = MCPClient(user_id=USER_ID)
         client._tools["posthog"] = [_stamped_tool("search", "Events.", "PostHog", "posthog")]
-        client.is_connected_db = AsyncMock(return_value=True)
+        monkeypatch.setattr(client, "is_connected_db", AsyncMock(return_value=True))
         stored = MagicMock(integration_id="context7", tools=[MagicMock()])
         stored.tools[0].name = "search"
         context7 = MagicMock(mcp_config=_make_mcp_config())
@@ -5732,11 +5800,12 @@ class TestResolveToolOwner:
         [("posthog_search", "posthog"), ("context7_search", "context7"), ("search", None)],
     )
     async def test_a_cold_owner_is_found_from_stored_names_and_connected(
-        self, tool_name: str, owner: str | None
+        self, monkeypatch: pytest.MonkeyPatch, tool_name: str, owner: str | None
     ) -> None:
         """After a restart the activated MCP is cold; its collision-prefixed name must still resolve."""
         client = MCPClient(user_id=USER_ID)
-        client.is_connected_db = AsyncMock(return_value=True)
+        is_connected_db = AsyncMock(return_value=True)
+        monkeypatch.setattr(client, "is_connected_db", is_connected_db)
         records = []
         for integration_id in ("posthog", "context7"):
             record = MagicMock(integration_id=integration_id, tools=[MagicMock()])
@@ -5765,9 +5834,9 @@ class TestResolveToolOwner:
 
         connected_tool_records.assert_awaited_once_with(USER_ID)
         if owner is None:
-            client.is_connected_db.assert_not_awaited()
+            is_connected_db.assert_not_awaited()
         else:
-            client.is_connected_db.assert_awaited_once_with(owner)
+            is_connected_db.assert_awaited_once_with(owner)
 
     @pytest.mark.usefixtures("core_tool_registry")
     async def test_a_connected_non_mcp_integration_never_owns_an_mcp_name(self) -> None:
@@ -5795,16 +5864,18 @@ class TestOwnerOfAnUnlistedConnectedMcp:
     """Seen on this branch: master's disconnect wiped the stored list, so a connected MCP's tools resolved to nothing after a restart."""
 
     @staticmethod
-    def _client() -> MCPClient:
+    def _client(monkeypatch: pytest.MonkeyPatch) -> tuple[MCPClient, AsyncMock]:
+        """Client that connects any integration to one stamped search tool; returned with its connect mock."""
         client = MCPClient(user_id=USER_ID)
-        client.is_connected_db = AsyncMock(return_value=True)
+        monkeypatch.setattr(client, "is_connected_db", AsyncMock(return_value=True))
 
         async def connect(integration_id: str) -> list[BaseTool]:
             client._tools[integration_id] = [_stamped_tool("search", integration_id=integration_id)]
             return client._tools[integration_id]
 
-        client.connect = AsyncMock(side_effect=connect)
-        return client
+        connect_mock = AsyncMock(side_effect=connect)
+        monkeypatch.setattr(client, "connect", connect_mock)
+        return client, connect_mock
 
     @staticmethod
     @contextmanager
@@ -5830,43 +5901,51 @@ class TestOwnerOfAnUnlistedConnectedMcp:
         ):
             yield
 
-    async def test_a_name_no_stored_list_holds_connects_the_connected_mcp_without_one(self) -> None:
-        client = self._client()
+    async def test_a_name_no_stored_list_holds_connects_the_connected_mcp_without_one(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        client, connect_mock = self._client(monkeypatch)
 
         with self._connected({"posthog"}):
             assert await client.resolve_tool_owner("search") == "posthog"
 
-        client.connect.assert_awaited_once_with("posthog")
+        connect_mock.assert_awaited_once_with("posthog")
 
-    async def test_only_connected_mcps_with_no_stored_list_are_connected(self) -> None:
-        client = self._client()
+    async def test_only_connected_mcps_with_no_stored_list_are_connected(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        client, connect_mock = self._client(monkeypatch)
 
         with self._connected({"posthog"}, frozenset({"gmail"})):
             assert await client.resolve_tool_owner("nothing_here") is None
 
-        client.connect.assert_awaited_once_with("posthog")
+        connect_mock.assert_awaited_once_with("posthog")
 
-    async def test_the_fallback_connects_at_most_the_bound_and_logs_it(self) -> None:
-        client = self._client()
+    async def test_the_fallback_connects_at_most_the_bound_and_logs_it(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        client, connect_mock = self._client(monkeypatch)
         mcp_ids = {f"mcp{n}" for n in range(MCP_UNLISTED_CONNECT_MAX + 2)}
 
         with self._connected(mcp_ids):
             async with captured_wide_event() as event:
                 await client.resolve_tool_owner("nothing_here")
 
-        assert client.connect.await_count == MCP_UNLISTED_CONNECT_MAX
+        assert connect_mock.await_count == MCP_UNLISTED_CONNECT_MAX
         assert any(warning["skipped"] == 2 for warning in event["warnings"] if "skipped" in warning)
 
-    async def test_one_unreachable_mcp_does_not_stop_the_next(self) -> None:
-        client = self._client()
-        connect = client.connect.side_effect
+    async def test_one_unreachable_mcp_does_not_stop_the_next(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        client, connect_mock = self._client(monkeypatch)
+        connect = connect_mock.side_effect
 
         async def flaky(integration_id: str) -> list[BaseTool]:
             if integration_id == "a_mcp":
                 raise ConnectionError("down")
             return await connect(integration_id)
 
-        client.connect = AsyncMock(side_effect=flaky)
+        monkeypatch.setattr(client, "connect", AsyncMock(side_effect=flaky))
 
         with self._connected({"a_mcp", "b_mcp"}):
             async with captured_wide_event() as event:
@@ -5877,8 +5956,10 @@ class TestOwnerOfAnUnlistedConnectedMcp:
             for warning in event["warnings"]
         )
 
-    async def test_a_name_a_stored_list_holds_connects_nothing(self) -> None:
-        client = self._client()
+    async def test_a_name_a_stored_list_holds_connects_nothing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        client, connect_mock = self._client(monkeypatch)
         record = MagicMock(integration_id="posthog", tools=[MagicMock()])
         record.tools[0].name = "search"
         posthog = MagicMock(mcp_config=_make_mcp_config())
@@ -5894,7 +5975,7 @@ class TestOwnerOfAnUnlistedConnectedMcp:
             resolver.resolve = AsyncMock(return_value=posthog)
             assert await client.resolve_tool_owner("search") == "posthog"
 
-        client.connect.assert_not_awaited()
+        connect_mock.assert_not_awaited()
 
 
 class _SharedPosthogStore:
@@ -5954,10 +6035,10 @@ class TestOneUsersDisconnectLeavesTheSharedToolList:
     async def _disconnect_a(self) -> MagicMock:
         client = MCPClient(user_id=self.USER_A)
         client._tools["posthog"] = [_stamped_tool("search", "Events.", "PostHog", "posthog")]
-        client.token_store.delete_credentials = AsyncMock()
-        client.token_store.delete_dcr_client = AsyncMock()
         integrations = create_autospec(IntegrationsRepository, instance=True)
         with (
+            patch.object(client.token_store, "delete_credentials", AsyncMock()),
+            patch.object(client.token_store, "delete_dcr_client", AsyncMock()),
             patch.object(mcp_client, "revoke_integration_tokens", AsyncMock()),
             patch.object(mcp_client, "integration_repository", integrations),
         ):
@@ -5970,20 +6051,20 @@ class TestOneUsersDisconnectLeavesTheSharedToolList:
         assert integrations.mock_calls == []
 
     async def test_another_users_cold_lookup_still_finds_the_tool(
-        self, store: _SharedPosthogStore
+        self, monkeypatch: pytest.MonkeyPatch, store: _SharedPosthogStore
     ) -> None:
         await self._disconnect_a()
         user_b = MCPClient(user_id=self.USER_B)
-        user_b.is_connected_db = AsyncMock(return_value=True)
+        monkeypatch.setattr(user_b, "is_connected_db", AsyncMock(return_value=True))
 
         assert await user_b.resolve_tool_owner("search") == "posthog"
 
     async def test_the_disconnected_user_no_longer_resolves_it(
-        self, store: _SharedPosthogStore
+        self, monkeypatch: pytest.MonkeyPatch, store: _SharedPosthogStore
     ) -> None:
         await self._disconnect_a()
         user_a = MCPClient(user_id=self.USER_A)
-        user_a.is_connected_db = AsyncMock(return_value=False)
+        monkeypatch.setattr(user_a, "is_connected_db", AsyncMock(return_value=False))
 
         assert await user_a.resolve_tool_owner("search") is None
 
@@ -6006,7 +6087,7 @@ class TestDoConnectWiringExact:
         return resolved
 
     async def test_every_stage_is_handed_this_integration_and_its_config(
-        self, _no_persisted_mcp_state: MagicMock
+        self, monkeypatch: pytest.MonkeyPatch, _no_persisted_mcp_state: MagicMock
     ) -> None:
         """A stage that drops the resolved id connects the right server but stamps, indexes or persists against the wrong record, silently."""
         resolved = self._resolved_for()
@@ -6014,10 +6095,14 @@ class TestDoConnectWiringExact:
         client = MCPClient(user_id=USER_ID)
         session = AsyncMock()
         tools = [_mock_tool("t1")]
-        client._open_session = AsyncMock(return_value=session)
-        client._convert_tools_safe = AsyncMock(return_value=tools)
-        client._record_connection = AsyncMock()
-        client._persist_and_index_tools = MagicMock(return_value=AsyncMock()())
+        open_session = AsyncMock(return_value=session)
+        monkeypatch.setattr(client, "_open_session", open_session)
+        convert_tools_safe = AsyncMock(return_value=tools)
+        monkeypatch.setattr(client, "_convert_tools_safe", convert_tools_safe)
+        record_connection = AsyncMock()
+        monkeypatch.setattr(client, "_record_connection", record_connection)
+        persist_and_index_tools = MagicMock(return_value=AsyncMock()())
+        monkeypatch.setattr(client, "_persist_and_index_tools", persist_and_index_tools)
 
         with (
             patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
@@ -6028,24 +6113,26 @@ class TestDoConnectWiringExact:
             await client._do_connect(INTEGRATION_ID)
 
         mock_resolver.resolve.assert_awaited_once_with(INTEGRATION_ID)
-        client._open_session.assert_awaited_once_with(INTEGRATION_ID, resolved.mcp_config)
-        client._convert_tools_safe.assert_awaited_once_with(session, INTEGRATION_ID)
+        open_session.assert_awaited_once_with(INTEGRATION_ID, resolved.mcp_config)
+        convert_tools_safe.assert_awaited_once_with(session, INTEGRATION_ID)
         assert tools[0].metadata["integration_id"] == INTEGRATION_ID
         assert tools[0].metadata["mcp_source_name"] == "PostHog"
-        client._record_connection.assert_awaited_once_with(resolved.mcp_config, INTEGRATION_ID)
-        client._persist_and_index_tools.assert_called_once_with(
+        record_connection.assert_awaited_once_with(resolved.mcp_config, INTEGRATION_ID)
+        persist_and_index_tools.assert_called_once_with(
             resolved, resolved.mcp_config, INTEGRATION_ID, tools
         )
 
     async def test_tool_persistence_and_indexing_run_off_the_connect_path(
-        self, _no_persisted_mcp_state: MagicMock
+        self, monkeypatch: pytest.MonkeyPatch, _no_persisted_mcp_state: MagicMock
     ) -> None:
         """Chroma indexing on the connect path made every cold activation wait for it."""
         resolved = self._resolved_for()
         client = MCPClient(user_id=USER_ID)
-        client._open_session = AsyncMock(return_value=AsyncMock())
-        client._convert_tools_safe = AsyncMock(return_value=[_mock_tool("t1")])
-        client._record_connection = AsyncMock()
+        monkeypatch.setattr(client, "_open_session", AsyncMock(return_value=AsyncMock()))
+        monkeypatch.setattr(
+            client, "_convert_tools_safe", AsyncMock(return_value=[_mock_tool("t1")])
+        )
+        monkeypatch.setattr(client, "_record_connection", AsyncMock())
 
         with (
             patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
@@ -6065,10 +6152,13 @@ class TestDoConnectWiringExact:
         assert _no_persisted_mcp_state.call_args.kwargs == {"integration_id": INTEGRATION_ID}
         assert coro.cr_code is MCPClient._persist_and_index_tools.__code__
 
-    async def test_the_outbound_config_is_built_for_this_integration(self) -> None:
+    async def test_the_outbound_config_is_built_for_this_integration(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         client = MCPClient(user_id=USER_ID)
         mcp_config = _make_mcp_config()
-        client._build_config = AsyncMock(return_value={"mcpServers": {}})
+        build_config = AsyncMock(return_value={"mcpServers": {}})
+        monkeypatch.setattr(client, "_build_config", build_config)
 
         with (
             patch("app.services.mcp.mcp_client.BaseMCPClient", return_value=AsyncMock()),
@@ -6076,7 +6166,7 @@ class TestDoConnectWiringExact:
         ):
             await client._open_session(INTEGRATION_ID, mcp_config)
 
-        client._build_config.assert_awaited_once_with(INTEGRATION_ID, mcp_config)
+        build_config.assert_awaited_once_with(INTEGRATION_ID, mcp_config)
 
     async def test_wraps_stamped_tools_with_live_callbacks_and_persists(self):
         raw = [_mock_tool("raw1"), _mock_tool("raw2")]
@@ -6165,7 +6255,7 @@ class TestDoConnectWiringExact:
 
 
 class TestBuildOauthAuthUrlExactParams:
-    async def _build(self, redirect_path: str | None = None):
+    async def _build(self, redirect_path: str | None = None) -> str:
         client = MCPClient(user_id=USER_ID)
         resolved = MagicMock()
         resolved.mcp_config = _make_mcp_config(
@@ -6187,16 +6277,25 @@ class TestBuildOauthAuthUrlExactParams:
                     code_verifier="verifier_123", code_challenge="challenge_456"
                 ),
             ),
+            patch.object(
+                client.token_store, "create_oauth_state", AsyncMock(return_value="state_abc")
+            ),
         ):
             mock_resolver.resolve = AsyncMock(return_value=resolved)
-            client.token_store.create_oauth_state = AsyncMock(return_value="state_abc")
 
             # Omitted entirely when the test does not care: that is the only way
             # the signature's own default is ever exercised.
-            kwargs = {} if redirect_path is None else {"redirect_path": redirect_path}
-            url = await build_oauth_auth_url(
-                client.token_store, INTEGRATION_ID, "https://myapp.com/callback", **kwargs
-            )
+            if redirect_path is None:
+                url = await build_oauth_auth_url(
+                    client.token_store, INTEGRATION_ID, "https://myapp.com/callback"
+                )
+            else:
+                url = await build_oauth_auth_url(
+                    client.token_store,
+                    INTEGRATION_ID,
+                    "https://myapp.com/callback",
+                    redirect_path=redirect_path,
+                )
 
         return url
 
@@ -6224,7 +6323,9 @@ class TestBuildOauthAuthUrlExactParams:
         query = parse_qs(urlparse(await self._build()).query)
         assert query["state"] == [f"state_abc:{INTEGRATION_ID}:/integrations"]
 
-    async def test_every_stage_is_handed_this_integration_and_its_discovery(self) -> None:
+    async def test_every_stage_is_handed_this_integration_and_its_discovery(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Losing the integration id on any one stage builds an authorize URL for the wrong server or client, and it still looks well-formed."""
         client = MCPClient(user_id=USER_ID)
         resolved = MagicMock()
@@ -6255,7 +6356,8 @@ class TestBuildOauthAuthUrlExactParams:
             ),
         ):
             mock_resolver.resolve = AsyncMock(return_value=resolved)
-            client.token_store.create_oauth_state = AsyncMock(return_value="state_abc")
+            create_oauth_state = AsyncMock(return_value="state_abc")
+            monkeypatch.setattr(client.token_store, "create_oauth_state", create_oauth_state)
 
             await build_oauth_auth_url(
                 client.token_store,
@@ -6277,9 +6379,7 @@ class TestBuildOauthAuthUrlExactParams:
             "https://myapp.com/callback",
         )
         pkce_check.assert_called_once_with(oauth_config.as_metadata, INTEGRATION_ID)
-        client.token_store.create_oauth_state.assert_awaited_once_with(
-            INTEGRATION_ID, "verifier_123"
-        )
+        create_oauth_state.assert_awaited_once_with(INTEGRATION_ID, "verifier_123")
         scopes.assert_called_once_with(INTEGRATION_ID, resolved.mcp_config, oauth_config, excluded)
 
     async def test_state_carries_custom_redirect_path(self):
@@ -6477,17 +6577,17 @@ class TestResolveTokenExchangeCredentialsExact:
 
 
 class TestExchangeCodeForTokensExact:
-    def _exchange(self, **overrides: Any) -> dict[str, Any]:
-        exchange: dict[str, Any] = {
-            "code": "authcode",
-            "redirect_uri": "https://myapp.com/callback",
-            "resource": SERVER_URL,
-            "client_id": "cid",
-            "client_secret": None,
-            "code_verifier": "verifier123",
-        }
-        exchange.update(overrides)
-        return exchange
+    def _exchange(
+        self, *, client_secret: str | None = None, code_verifier: str | None = "verifier123"
+    ) -> _TokenExchangeRequest:
+        return _TokenExchangeRequest(
+            code="authcode",
+            redirect_uri="https://myapp.com/callback",
+            resource=SERVER_URL,
+            client_id="cid",
+            client_secret=client_secret,
+            code_verifier=code_verifier,
+        )
 
     async def test_posts_exact_form_data_headers_and_timeout(self):
         post = AsyncMock(return_value=_ok_response({"access_token": "at"}))
@@ -6683,12 +6783,16 @@ class TestExchangeCodeForTokensExact:
 class TestHandleOauthCallbackNonceEnforcement:
     """A stored nonce must gate the whole exchange — every mismatch path fails loud."""
 
-    def _make_client(self) -> MCPClient:
+    def _make_client(self, monkeypatch: pytest.MonkeyPatch) -> tuple[MCPClient, AsyncMock]:
+        """Client with a verified state; returned with its store_oauth_tokens mock."""
         client = MCPClient(user_id=USER_ID)
-        client.token_store.verify_oauth_state = AsyncMock(return_value=(True, "verifier"))
-        client.token_store.get_and_delete_oauth_nonce = AsyncMock()
-        client.token_store.store_oauth_tokens = AsyncMock()
-        return client
+        store_oauth_tokens = AsyncMock()
+        monkeypatch.setattr(
+            client.token_store, "verify_oauth_state", AsyncMock(return_value=(True, "verifier"))
+        )
+        monkeypatch.setattr(client.token_store, "get_and_delete_oauth_nonce", AsyncMock())
+        monkeypatch.setattr(client.token_store, "store_oauth_tokens", store_oauth_tokens)
+        return client, store_oauth_tokens
 
     async def _run_callback(
         self,
@@ -6697,11 +6801,15 @@ class TestHandleOauthCallbackNonceEnforcement:
         stored_nonce: str | None,
         connect_after_oauth: AsyncMock | None = None,
     ) -> None:
-        client.token_store.get_and_delete_oauth_nonce = AsyncMock(return_value=stored_nonce)
         resolved = MagicMock()
         resolved.mcp_config = _make_mcp_config(requires_auth=True, client_id="cid")
 
         with (
+            patch.object(
+                client.token_store,
+                "get_and_delete_oauth_nonce",
+                AsyncMock(return_value=stored_nonce),
+            ),
             patch("app.services.mcp.mcp_oauth.IntegrationResolver") as mock_resolver,
             patch(
                 "app.services.mcp.mcp_oauth.discover_oauth_config",
@@ -6733,11 +6841,12 @@ class TestHandleOauthCallbackNonceEnforcement:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Losing the integration id on any hop exchanges the code against the wrong token endpoint or the wrong stored nonce."""
-        client = self._make_client()
+        client, _ = self._make_client(monkeypatch)
         tokens = OidcTokenResponse(
             access_token="at", id_token=_make_id_token({"nonce": "stored_nonce"})
         )
-        monkeypatch.setattr(mcp_oauth, "_validate_oidc_nonce", MagicMock())
+        validate_oidc_nonce = MagicMock()
+        monkeypatch.setattr(mcp_oauth, "_validate_oidc_nonce", validate_oidc_nonce)
         resolved = MagicMock()
         resolved.mcp_config = _make_mcp_config(requires_auth=True, client_id="cid")
         oauth_config = _make_oauth_discovery()
@@ -6761,7 +6870,11 @@ class TestHandleOauthCallbackNonceEnforcement:
             ) as credentials,
         ):
             mock_resolver.resolve = AsyncMock(return_value=resolved)
-            client.token_store.get_and_delete_oauth_nonce = AsyncMock(return_value="stored_nonce")
+            monkeypatch.setattr(
+                client.token_store,
+                "get_and_delete_oauth_nonce",
+                AsyncMock(return_value="stored_nonce"),
+            )
             await handle_oauth_callback(
                 client.token_store,
                 INTEGRATION_ID,
@@ -6777,12 +6890,12 @@ class TestHandleOauthCallbackNonceEnforcement:
         )
         assert exchange.await_args.kwargs["integration_id"] == INTEGRATION_ID
         assert exchange.await_args.kwargs["token_endpoint"] == "https://auth.example.com/token"
-        mcp_oauth._validate_oidc_nonce.assert_called_once_with(
-            INTEGRATION_ID, "stored_nonce", tokens.id_token
-        )
+        validate_oidc_nonce.assert_called_once_with(INTEGRATION_ID, "stored_nonce", tokens.id_token)
 
-    async def test_nonce_mismatch_aborts_before_tokens_are_stored(self):
-        client = self._make_client()
+    async def test_nonce_mismatch_aborts_before_tokens_are_stored(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        client, store_oauth_tokens = self._make_client(monkeypatch)
         tokens = {
             "access_token": "at",
             "token_type": "Bearer",
@@ -6790,10 +6903,12 @@ class TestHandleOauthCallbackNonceEnforcement:
         }
         with pytest.raises(ValueError, match=r"^OIDC nonce mismatch .* possible replay attack$"):
             await self._run_callback(client, tokens, stored_nonce="stored_nonce")
-        client.token_store.store_oauth_tokens.assert_not_awaited()
+        store_oauth_tokens.assert_not_awaited()
 
-    async def test_missing_id_token_with_stored_nonce_raises(self):
-        client = self._make_client()
+    async def test_missing_id_token_with_stored_nonce_raises(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        client, store_oauth_tokens = self._make_client(monkeypatch)
         tokens = {"access_token": "at", "token_type": "Bearer"}
         with pytest.raises(ValueError) as exc_info:
             await self._run_callback(client, tokens, stored_nonce="stored_nonce")
@@ -6801,10 +6916,10 @@ class TestHandleOauthCallbackNonceEnforcement:
             f"OIDC nonce validation failed for {INTEGRATION_ID}: "
             "token response contained no id_token"
         )
-        client.token_store.store_oauth_tokens.assert_not_awaited()
+        store_oauth_tokens.assert_not_awaited()
 
-    async def test_undecodable_id_token_raises(self):
-        client = self._make_client()
+    async def test_undecodable_id_token_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        client, store_oauth_tokens = self._make_client(monkeypatch)
         tokens = {
             "access_token": "at",
             "token_type": "Bearer",
@@ -6812,10 +6927,12 @@ class TestHandleOauthCallbackNonceEnforcement:
         }
         with pytest.raises(ValueError, match="could not decode id_token"):
             await self._run_callback(client, tokens, stored_nonce="stored_nonce")
-        client.token_store.store_oauth_tokens.assert_not_awaited()
+        store_oauth_tokens.assert_not_awaited()
 
-    async def test_id_token_without_nonce_claim_raises(self):
-        client = self._make_client()
+    async def test_id_token_without_nonce_claim_raises(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        client, store_oauth_tokens = self._make_client(monkeypatch)
         tokens = {
             "access_token": "at",
             "token_type": "Bearer",
@@ -6826,10 +6943,12 @@ class TestHandleOauthCallbackNonceEnforcement:
         assert str(exc_info.value) == (
             f"OIDC nonce validation failed for {INTEGRATION_ID}: id_token carries no nonce claim"
         )
-        client.token_store.store_oauth_tokens.assert_not_awaited()
+        store_oauth_tokens.assert_not_awaited()
 
-    async def test_matching_nonce_proceeds_to_storage_then_connects(self):
-        client = self._make_client()
+    async def test_matching_nonce_proceeds_to_storage_then_connects(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        client, store_oauth_tokens = self._make_client(monkeypatch)
         tokens = {
             "access_token": "at",
             "token_type": "Bearer",
@@ -6842,8 +6961,9 @@ class TestHandleOauthCallbackNonceEnforcement:
         )
 
         connect_after_oauth.assert_awaited_once_with(INTEGRATION_ID)
-        client.token_store.store_oauth_tokens.assert_awaited_once()
-        call_kwargs = client.token_store.store_oauth_tokens.await_args.kwargs
+        store_oauth_tokens.assert_awaited_once()
+        assert store_oauth_tokens.await_args is not None
+        call_kwargs = store_oauth_tokens.await_args.kwargs
         assert call_kwargs["integration_id"] == INTEGRATION_ID
         assert call_kwargs["access_token"] == "at"
         assert call_kwargs["refresh_token"] is None
@@ -6966,38 +7086,50 @@ class TestConnectAfterOauth:
         with patch("app.services.mcp.mcp_client._spawn_background", side_effect=_no_loop):
             yield
 
-    async def test_connects_the_authorized_integration(self) -> None:
+    async def test_connects_the_authorized_integration(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         client = MCPClient(user_id=USER_ID)
-        client.connect = AsyncMock(return_value=[])
-        client._reset_to_disconnected = AsyncMock()
+        connect = AsyncMock(return_value=[])
+        monkeypatch.setattr(client, "connect", connect)
+        reset_to_disconnected = AsyncMock()
+        monkeypatch.setattr(client, "_reset_to_disconnected", reset_to_disconnected)
 
         await client.connect_after_oauth(INTEGRATION_ID)
 
-        client.connect.assert_awaited_once_with(INTEGRATION_ID)
-        client._reset_to_disconnected.assert_not_awaited()
+        connect.assert_awaited_once_with(INTEGRATION_ID)
+        reset_to_disconnected.assert_not_awaited()
 
     @pytest.mark.parametrize(
         "error", [RuntimeError("401 Unauthorized"), RuntimeError("authentication rejected")]
     )
-    async def test_an_auth_failure_resets_the_integration(self, error: Exception) -> None:
+    async def test_an_auth_failure_resets_the_integration(
+        self, monkeypatch: pytest.MonkeyPatch, error: Exception
+    ) -> None:
         client = MCPClient(user_id=USER_ID)
-        client.connect = AsyncMock(side_effect=error)
-        client._reset_to_disconnected = AsyncMock()
+        monkeypatch.setattr(client, "connect", AsyncMock(side_effect=error))
+        reset_to_disconnected = AsyncMock()
+        monkeypatch.setattr(client, "_reset_to_disconnected", reset_to_disconnected)
 
         with patch("app.services.mcp.mcp_client.log"):
             await client.connect_after_oauth(INTEGRATION_ID)
 
-        client._reset_to_disconnected.assert_awaited_once_with(INTEGRATION_ID)
+        reset_to_disconnected.assert_awaited_once_with(INTEGRATION_ID)
 
-    async def test_a_transient_failure_keeps_the_fresh_tokens(self) -> None:
+    async def test_a_transient_failure_keeps_the_fresh_tokens(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         client = MCPClient(user_id=USER_ID)
-        client.connect = AsyncMock(side_effect=RuntimeError("503 Service Unavailable"))
-        client._reset_to_disconnected = AsyncMock()
+        monkeypatch.setattr(
+            client, "connect", AsyncMock(side_effect=RuntimeError("503 Service Unavailable"))
+        )
+        reset_to_disconnected = AsyncMock()
+        monkeypatch.setattr(client, "_reset_to_disconnected", reset_to_disconnected)
 
         with patch("app.services.mcp.mcp_client.log") as mock_log:
             await client.connect_after_oauth(INTEGRATION_ID)
 
-        client._reset_to_disconnected.assert_not_awaited()
+        reset_to_disconnected.assert_not_awaited()
         mock_log.error.assert_called_once_with(
             f"{LogTag.MCP} background connect after OAuth failed",
             integration_id=INTEGRATION_ID,

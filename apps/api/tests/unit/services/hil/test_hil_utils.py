@@ -26,6 +26,7 @@ from app.constants.hil import (
     HIL_JUDGE_MAX_PRIOR_OUTPUT_CHARS,
 )
 from app.models.agent_config import SubagentKind, SubagentResumeItem
+from app.models.hil_models import HILApprovalRecord
 from app.services.hil.approvals_store import (
     approval_id_for,
     record_auto_approval,
@@ -178,9 +179,9 @@ class TestApprovalId:
 STORE = "app.services.hil.approvals_store"
 
 
-def written_record(repository: AsyncMock) -> object:
+def written_record(repository: AsyncMock) -> HILApprovalRecord:
     """Return the record the store actually handed the repository."""
-    return repository.create_if_absent.await_args.args[0]
+    return cast(HILApprovalRecord, repository.create_if_absent.await_args.args[0])
 
 
 class TestTheAutoApprovalReceipt:

@@ -4,8 +4,8 @@ from unittest.mock import patch
 
 import pytest
 
-from app.services.mcp import mcp_errors
 from app.services.mcp.mcp_errors import _extract_response_signal, is_terminal_auth_failure
+from shared.py.wide_events import log
 
 
 class _Response:
@@ -47,7 +47,7 @@ class TestExtractResponseSignal:
     def test_response_without_json_is_not_a_parse_failure(self) -> None:
         error = _HttpError("boom", _NoJsonResponse())
 
-        with patch.object(mcp_errors.log, "debug") as debug:
+        with patch.object(log, "debug") as debug:
             assert _extract_response_signal(error) == (500, None)
 
         debug.assert_not_called()

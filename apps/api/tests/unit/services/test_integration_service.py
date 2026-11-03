@@ -15,10 +15,11 @@ Covers:
   delete_custom_integration, create_and_connect_custom_integration)
 """
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
+import inspect
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, TypeVar, cast
 from unittest.mock import AsyncMock, MagicMock, call, patch
 import uuid
 
@@ -44,8 +45,15 @@ from app.models.integration_models import (
     UpdateCustomIntegrationRequest,
     UserIntegrationDocument,
     UserIntegrationsListResponse,
+    UserIntegrationStatus,
 )
-from app.models.mcp_config import ComposioConfig, MCPConfig, SubAgentConfig
+from app.models.mcp_config import (
+    ComposioConfig,
+    McpAuthChallenge,
+    MCPConfig,
+    McpProbeResult,
+    SubAgentConfig,
+)
 from app.models.oauth_models import OAuthIntegration
 from app.schemas.integrations.responses import (
     CommunityIntegrationItem,
@@ -98,6 +106,13 @@ USER_ID_2 = "507f1f77bcf86cd799439022"
 INTEGRATION_ID = "test-integration-123"
 CUSTOM_INTEGRATION_ID = "custom-int-uuid-456"
 SERVER_URL = "https://mcp.example.com/v1"
+
+_Fn = TypeVar("_Fn", bound=Callable[..., object])
+
+
+def _uncached(fn: _Fn) -> _Fn:
+    """Reach past a functools.wraps cache decorator; the original has the wrapper's signature."""
+    return cast(_Fn, inspect.unwrap(fn))
 
 
 @pytest.fixture
@@ -395,7 +410,7 @@ class TestGetUserAvailableToolNamespaces:
     ):
         mock_status.return_value = {}
 
-        result = (await get_user_available_tool_namespaces.__wrapped__(USER_ID)).namespaces
+        result = (await _uncached(get_user_available_tool_namespaces)(USER_ID)).namespaces
 
         assert "general" in result
         assert "subagents" in result
@@ -421,7 +436,7 @@ class TestGetUserAvailableToolNamespaces:
     ):
         mock_status.return_value = {}
 
-        result = (await get_user_available_tool_namespaces.__wrapped__(USER_ID)).namespaces
+        result = (await _uncached(get_user_available_tool_namespaces)(USER_ID)).namespaces
 
         assert "todos" in result
 
@@ -453,7 +468,7 @@ class TestGetUserAvailableToolNamespaces:
         )
         mock_get_by_id.return_value = platform_int
 
-        result = (await get_user_available_tool_namespaces.__wrapped__(USER_ID)).namespaces
+        result = (await _uncached(get_user_available_tool_namespaces)(USER_ID)).namespaces
 
         assert "github" in result
 
@@ -476,7 +491,7 @@ class TestGetUserAvailableToolNamespaces:
         mock_server_url.return_value = SERVER_URL
         mock_derive.return_value = "mcp.example.com/v1"
 
-        result = (await get_user_available_tool_namespaces.__wrapped__(USER_ID)).namespaces
+        result = (await _uncached(get_user_available_tool_namespaces)(USER_ID)).namespaces
 
         assert "mcp.example.com/v1" in result
         mock_derive.assert_called_once_with(CUSTOM_INTEGRATION_ID, SERVER_URL, is_custom=True)
@@ -497,7 +512,7 @@ class TestGetUserAvailableToolNamespaces:
     ):
         mock_status.return_value = {"github": False, "slack": False}
 
-        result = (await get_user_available_tool_namespaces.__wrapped__(USER_ID)).namespaces
+        result = (await _uncached(get_user_available_tool_namespaces)(USER_ID)).namespaces
 
         # Only core namespaces should remain
         assert result == {"general", "subagents"}
@@ -525,7 +540,7 @@ class TestGetUserAvailableToolNamespaces:
     ):
         mock_status.return_value = {}
 
-        result = (await get_user_available_tool_namespaces.__wrapped__(USER_ID)).namespaces
+        result = (await _uncached(get_user_available_tool_namespaces)(USER_ID)).namespaces
 
         assert "reminders" not in result
 
@@ -553,7 +568,7 @@ class TestGetUserAvailableToolNamespaces:
         mock_server_url.return_value = "https://some-server.com"
         mock_derive.return_value = "some-server.com"
 
-        result = (await get_user_available_tool_namespaces.__wrapped__(USER_ID)).namespaces
+        result = (await _uncached(get_user_available_tool_namespaces)(USER_ID)).namespaces
 
         assert "some-server.com" in result
 
@@ -640,7 +655,7 @@ class TestUpdateUserIntegrationStatus:
         mock_repo.set_status = AsyncMock(return_value=True)
         mock_ws.broadcast_to_user = AsyncMock()
 
-        result = await update_user_integration_status.__wrapped__(
+        result = await _uncached(update_user_integration_status)(
             USER_ID, INTEGRATION_ID, "connected"
         )
 
@@ -673,7 +688,7 @@ class TestUpdateUserIntegrationStatus:
         mock_ws.broadcast_to_user = AsyncMock(side_effect=RuntimeError("redis down"))
 
         async with captured_wide_event() as event:
-            result = await update_user_integration_status.__wrapped__(
+            result = await _uncached(update_user_integration_status)(
                 USER_ID, INTEGRATION_ID, "connected"
             )
 
@@ -691,9 +706,7 @@ class TestUpdateUserIntegrationStatus:
         mock_repo.set_status = AsyncMock(return_value=True)
         mock_ws.broadcast_to_user = AsyncMock()
 
-        result = await update_user_integration_status.__wrapped__(
-            USER_ID, INTEGRATION_ID, "created"
-        )
+        result = await _uncached(update_user_integration_status)(USER_ID, INTEGRATION_ID, "created")
 
         assert result is True
         mock_repo.set_status.assert_awaited_once_with(
@@ -713,7 +726,7 @@ class TestUpdateUserIntegrationStatus:
         # must keep scheduling it only on connect.
         mock_repo.set_status = AsyncMock(return_value=True)
 
-        result = await update_user_integration_status.__wrapped__(
+        result = await _uncached(update_user_integration_status)(
             USER_ID, INTEGRATION_ID, "expired", expired_reason="refresh_token_revoked"
         )
 
@@ -735,7 +748,7 @@ class TestUpdateUserIntegrationStatus:
         mock_repo.set_status = AsyncMock(return_value=False)
         mock_ws.broadcast_to_user = AsyncMock()
 
-        result = await update_user_integration_status.__wrapped__(
+        result = await _uncached(update_user_integration_status)(
             USER_ID, INTEGRATION_ID, "connected"
         )
 
@@ -764,7 +777,7 @@ def _async_find_cursor(docs: list[dict]) -> MagicMock:
 def _ui_doc(
     integration_id: str,
     *,
-    status: str = "connected",
+    status: UserIntegrationStatus = "connected",
     connected: bool = True,
     expired_at: datetime | None = None,
 ):
@@ -993,7 +1006,7 @@ class TestAddUserIntegration:
         mock_repo.exists = AsyncMock(return_value=False)
         mock_repo.create = AsyncMock()
 
-        result = await add_user_integration.__wrapped__(USER_ID, "my-int")
+        result = await _uncached(add_user_integration)(USER_ID, "my-int")
 
         assert result.status == "connected"
         assert result.connected_at is not None
@@ -1019,7 +1032,7 @@ class TestAddUserIntegration:
         mock_repo.exists = AsyncMock(return_value=False)
         mock_repo.create = AsyncMock()
 
-        result = await add_user_integration.__wrapped__(USER_ID, "oauth-int")
+        result = await _uncached(add_user_integration)(USER_ID, "oauth-int")
 
         assert result.status == "created"
         assert result.connected_at is None
@@ -1044,7 +1057,7 @@ class TestAddUserIntegration:
         mock_repo.exists = AsyncMock(return_value=False)
         mock_repo.create = AsyncMock()
 
-        result = await add_user_integration.__wrapped__(USER_ID, "x", initial_status="connected")
+        result = await _uncached(add_user_integration)(USER_ID, "x", initial_status="connected")
 
         assert result.status == "connected"
 
@@ -1057,7 +1070,7 @@ class TestAddUserIntegration:
         mock_get_details.return_value = None
 
         with pytest.raises(ValueError, match="not found"):
-            await add_user_integration.__wrapped__(USER_ID, "nonexistent")
+            await _uncached(add_user_integration)(USER_ID, "nonexistent")
 
     @patch("app.services.integrations.user_integrations.user_integration_repository")
     @patch(
@@ -1078,20 +1091,20 @@ class TestAddUserIntegration:
         mock_repo.exists = AsyncMock(return_value=True)
 
         with pytest.raises(ValueError, match="already added"):
-            await add_user_integration.__wrapped__(USER_ID, "dup")
+            await _uncached(add_user_integration)(USER_ID, "dup")
 
 
 class TestRemoveUserIntegration:
     @patch("app.services.integrations.user_integrations.user_integration_repository")
     async def test_remove_success(self, mock_repo):
         mock_repo.delete_for_user = AsyncMock(return_value=True)
-        result = await remove_user_integration.__wrapped__(USER_ID, INTEGRATION_ID)
+        result = await _uncached(remove_user_integration)(USER_ID, INTEGRATION_ID)
         assert result is True
 
     @patch("app.services.integrations.user_integrations.user_integration_repository")
     async def test_remove_not_found(self, mock_repo):
         mock_repo.delete_for_user = AsyncMock(return_value=False)
-        result = await remove_user_integration.__wrapped__(USER_ID, "missing")
+        result = await _uncached(remove_user_integration)(USER_ID, "missing")
         assert result is False
 
 
@@ -1189,7 +1202,7 @@ class TestCapabilitiesPayloadAndArguments:
                 f"{CAPABILITIES_MODULE}.get_integration_details", AsyncMock(side_effect=_details)
             ),
         ):
-            result = await get_user_integration_capabilities.__wrapped__(USER_ID)
+            result = await _uncached(get_user_integration_capabilities)(USER_ID)
 
         assert result.capabilities == {
             "github": IntegrationCapability(
@@ -1219,7 +1232,7 @@ class TestCapabilitiesPayloadAndArguments:
                 ),
             ),
         ):
-            result = await get_user_integration_capabilities.__wrapped__(USER_ID)
+            result = await _uncached(get_user_integration_capabilities)(USER_ID)
 
         assert result.capabilities["github"].tools == [
             StoredIntegrationTool(name="create_issue", description=None)
@@ -1250,7 +1263,7 @@ class TestCapabilitiesPayloadAndArguments:
                 f"{CAPABILITIES_MODULE}.get_integration_details", AsyncMock(side_effect=_details)
             ),
         ):
-            result = await get_user_integration_capabilities.__wrapped__(USER_ID)
+            result = await _uncached(get_user_integration_capabilities)(USER_ID)
 
         assert result.integration_names == ["GitHub"]
         assert "github" in result.capabilities
@@ -1296,7 +1309,7 @@ class TestGetUserIntegrationCapabilities:
             tools=[int_tool],
         )
 
-        result = await get_user_integration_capabilities.__wrapped__(USER_ID)
+        result = await _uncached(get_user_integration_capabilities)(USER_ID)
 
         assert "web_search" in result.tool_names
         assert "create_issue" in result.tool_names
@@ -1325,7 +1338,7 @@ class TestGetUserIntegrationCapabilities:
         mock_connected.return_value = {"deleted"}
         mock_details.return_value = None
 
-        result = await get_user_integration_capabilities.__wrapped__(USER_ID)
+        result = await _uncached(get_user_integration_capabilities)(USER_ID)
 
         assert result.integration_names == []
         assert result.capabilities == {}
@@ -1348,7 +1361,7 @@ class TestGetUserIntegrationCapabilities:
         mock_registry.return_value = registry
         mock_connected.return_value = set()
 
-        result = await get_user_integration_capabilities.__wrapped__(USER_ID)
+        result = await _uncached(get_user_integration_capabilities)(USER_ID)
 
         assert result.integration_names == []
         assert result.tool_names == []
@@ -1840,15 +1853,6 @@ class TestDeleteCustomIntegration:
         seams.get_db.return_value = ctx
         return session
 
-    def _db_session(self, seams) -> AsyncMock:
-        """Wire a mock Postgres session into the seams; returns the session."""
-        session = AsyncMock()
-        ctx = AsyncMock()
-        ctx.__aenter__ = AsyncMock(return_value=session)
-        ctx.__aexit__ = AsyncMock(return_value=False)
-        seams.get_db.return_value = ctx
-        return session
-
     async def test_delete_as_creator_success(self, _delete_seams) -> None:
         seams = _delete_seams
         doc = _make_custom_integration(created_by=USER_ID, is_public=False)
@@ -2284,7 +2288,14 @@ class TestCreateAndConnectCustomIntegration:
             category="custom",
             managed_by="mcp",
             source="custom",
+            is_public=False,
+            created_by=None,
+            published_at=None,
+            clone_count=0,
             mcp_config=MCPConfig(server_url=SERVER_URL),
+            icon_url=None,
+            display_priority=0,
+            is_featured=False,
         )
         mock_create.return_value = integration
 
@@ -2366,7 +2377,14 @@ class TestCreateAndConnectCustomIntegration:
             category="custom",
             managed_by="mcp",
             source="custom",
+            is_public=False,
+            created_by=None,
+            published_at=None,
+            clone_count=0,
             mcp_config=MCPConfig(server_url=SERVER_URL),
+            icon_url=None,
+            display_priority=0,
+            is_featured=False,
         )
         mock_create.return_value = integration
 
@@ -2905,9 +2923,10 @@ class TestConnectComposioIntegration:
         self, seams: dict[str, MagicMock], last: IntegrationAccountStatus
     ) -> None:
         """An expired account counts: reconnecting it happens in place, never as an addition."""
-        seams["record"].return_value = _slack_accounts(
-            *(["connected"] * (MAX_ACCOUNTS_PER_INTEGRATION - 1)), last
+        connected: list[IntegrationAccountStatus] = ["connected"] * (
+            MAX_ACCOUNTS_PER_INTEGRATION - 1
         )
+        seams["record"].return_value = _slack_accounts(*connected, last)
 
         result = await self._connect()
 
@@ -2922,9 +2941,10 @@ class TestConnectComposioIntegration:
     async def test_reconnecting_an_expired_account_signs_in_that_same_account(
         self, seams: dict[str, MagicMock]
     ) -> None:
-        seams["record"].return_value = _slack_accounts(
-            *(["connected"] * (MAX_ACCOUNTS_PER_INTEGRATION - 1)), "expired"
+        connected: list[IntegrationAccountStatus] = ["connected"] * (
+            MAX_ACCOUNTS_PER_INTEGRATION - 1
         )
+        seams["record"].return_value = _slack_accounts(*connected, "expired")
         last = MAX_ACCOUNTS_PER_INTEGRATION - 1
         seams["service"].reauthorize_account.return_value["connection_id"] = f"ca_{last}"
 
@@ -3430,7 +3450,7 @@ class TestRedirectToOauth:
     async def test_passes_challenge_data_through(self, build_oauth_auth_url: AsyncMock) -> None:
         mcp_client = AsyncMock()
         build_oauth_auth_url.return_value = "https://auth.example.com/start"
-        challenge = {"state": "abc"}
+        challenge: McpAuthChallenge = {"scope": "abc"}
 
         await _redirect_to_oauth(mcp_client, "int-1", "gmail", "/cb", challenge_data=challenge)
 
@@ -3470,7 +3490,7 @@ class TestHandleAuthRequired:
     ) -> None:
         mcp_client = AsyncMock()
         build_oauth_auth_url.return_value = "https://auth.example.com/start"
-        probe = {"oauth_challenge": {"state": "s"}}
+        probe: McpProbeResult = {"oauth_challenge": {"scope": "s"}}
 
         response = await _handle_auth_required(
             _PLATFORM_TARGET, mcp_client, detected_auth_type="oauth", probe_result=probe
@@ -3478,7 +3498,7 @@ class TestHandleAuthRequired:
 
         assert response.status == "redirect"
         kwargs = build_oauth_auth_url.await_args.kwargs
-        assert kwargs["challenge_data"] == {"state": "s"}
+        assert kwargs["challenge_data"] == {"scope": "s"}
         assert kwargs["redirect_path"] == "/cb"
 
 
@@ -3506,12 +3526,12 @@ class TestConnectProbeDetection:
             integration_name="Test",
             requires_auth=False,
             redirect_path="/integrations",
-            probe_result={"requires_auth": True, "auth_type": "custom"},
+            probe_result={"requires_auth": True, "auth_type": "unknown"},
         )
 
         assert result.status == "redirect"
         mock_client.update_integration_auth_status.assert_awaited_once_with(
-            INTEGRATION_ID, requires_auth=True, auth_type="custom"
+            INTEGRATION_ID, requires_auth=True, auth_type="unknown"
         )
 
     @patch(
@@ -3621,7 +3641,7 @@ class TestConnectProbeDetection:
             integration_name="Test",
             requires_auth=True,
             redirect_path="/integrations",
-            probe_result={"requires_auth": True, "auth_type": "custom"},
+            probe_result={"requires_auth": True, "auth_type": "unknown"},
         )
 
         assert result.status == "redirect"

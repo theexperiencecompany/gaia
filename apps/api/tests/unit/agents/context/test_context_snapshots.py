@@ -10,7 +10,6 @@ test_context_invariants.py or test_context_defects.py.
 import pytest
 from tests._harness.context_chain import (
     FIXED_NOW,
-    AgentTier,
     ContextSeed,
     HarnessUser,
     effective_context,
@@ -18,6 +17,7 @@ from tests._harness.context_chain import (
 from tests._harness.context_snapshot import assert_snapshot
 from tests._harness.context_sources import ContextSources, knowledge, memory
 
+from app.agents.context.tiers import AgentTier
 from app.models.todo_models import TodoDocument
 
 #: One fixture across every tier, so a difference between two snapshots is a

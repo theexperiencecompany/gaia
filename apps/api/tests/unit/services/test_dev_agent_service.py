@@ -39,7 +39,7 @@ def test_a_paused_outcome_raises_conflict_instead_of_returning_empty_text() -> N
 
 
 def test_a_finished_outcome_passes_through() -> None:
-    assert _reject_pause(SubagentOutcome(text="done"), "executor_agent") is None
+    _reject_pause(SubagentOutcome(text="done"), "executor_agent")
 
 
 class TestTheParentConfigurableADirectRunBuilds:

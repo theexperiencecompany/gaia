@@ -26,9 +26,9 @@ from app.helpers.agent_helpers import (
     AgentTurn,
     build_agent_config,
 )
-from app.models.agent_models import AgentUserContext
+from app.models.agent_models import AgentUserContext, agent_configurable
 from app.models.todo_models import TodoDocument
-from app.models.user_models import UserDocument
+from app.models.user_models import OnboardingSubdocument, UserDocument
 from app.utils.user_preferences_utils import onboarding_preferences
 
 
@@ -40,10 +40,12 @@ class TestPreferencesSurviveTheRealMultiHopChain:
             UserDocument(
                 email="prefs-multi-hop@gaia.local",
                 name="Multi Hop",
-                onboarding={
-                    "preferences": {"profession": "architect"},
-                    "writing_style": {"summary": "warm and concise"},
-                },
+                onboarding=OnboardingSubdocument.model_validate(
+                    {
+                        "preferences": {"profession": "architect"},
+                        "writing_style": {"summary": "warm and concise"},
+                    }
+                ),
             )
         )
 
@@ -79,7 +81,7 @@ class TestPreferencesSurviveTheRealMultiHopChain:
                 agent_name="executor_agent",
             ),
             thread=AgentThread(
-                base_configurable=comms_config["configurable"],
+                base_configurable=agent_configurable(comms_config),
             ),
         )
 
@@ -95,7 +97,7 @@ class TestPreferencesSurviveTheRealMultiHopChain:
                 agent_name=SPAWN_AGENT_NAME,
             ),
             thread=AgentThread(
-                base_configurable=executor_config["configurable"],
+                base_configurable=agent_configurable(executor_config),
                 subagent_id=SPAWN_AGENT_NAME,
             ),
             turn=AgentTurn(
@@ -103,7 +105,7 @@ class TestPreferencesSurviveTheRealMultiHopChain:
             ),
         )
 
-        configurable = subagent_config["configurable"]
+        configurable = agent_configurable(subagent_config)
         assert configurable["user_preferences"] == {"profession": "architect"}
         assert configurable["writing_style"] == {"summary": "warm and concise"}
 

@@ -358,7 +358,7 @@ class TestAPendingRecordParksInsteadOfRunning:
                 await run_through_gate(make_request(), handler)
 
         interrupt.assert_called_once()
-        handler.assert_not_awaited(), "an unanswered call must not run"
+        handler.assert_not_awaited()  # an unanswered call must not run
 
     async def test_the_judge_is_not_re_run_over_an_existing_record(self) -> None:
         # A record means a card is already up and the answer is the user's to give.
@@ -423,7 +423,7 @@ class TestAResumeWithNoDecisionFailsClosed:
             stack.enter_context(patch(f"{GATE}.interrupt", return_value={"status": "approved"}))
             result = await run_through_gate(make_request(), handler)
 
-        handler.assert_not_awaited(), "no record decision means no execution, ever"
+        handler.assert_not_awaited()  # no record decision means no execution, ever
         # System error, not a denial: the run could pause (it just did), but no
         # decision landed on its record. "denied" would lie about the cause.
         assert result.additional_kwargs[HIL_STATUS_KWARG] == "error"

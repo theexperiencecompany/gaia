@@ -24,7 +24,9 @@ from unittest.mock import AsyncMock, patch
 from langchain_core.messages import AIMessage, AIMessageChunk
 import pytest
 
+from app.agents.core.graph_manager import CompiledAgentGraph
 from app.helpers.agent_helpers import execute_graph_streaming
+from app.models.agent_models import AgentRunnableConfig
 from tests.e2e._harness import (
     DONE,
     TOOL_CALLS_DATA,
@@ -72,8 +74,11 @@ async def run_stream(
     configurable: dict[str, str] = {"thread_id": "t-1"}
     if stream_id is not None:
         configurable["stream_id"] = stream_id
-    config = {"configurable": configurable, "agent_name": agent_name}
-    chunks = [chunk async for chunk in execute_graph_streaming(scripted, {}, cast(Any, config))]
+    config: AgentRunnableConfig = {"configurable": configurable, "agent_name": agent_name}
+    chunks = [
+        chunk
+        async for chunk in execute_graph_streaming(cast(CompiledAgentGraph, scripted), {}, config)
+    ]
     return Transcript.from_chunks(chunks)
 
 

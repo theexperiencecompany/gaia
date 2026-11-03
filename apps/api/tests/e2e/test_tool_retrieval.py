@@ -15,7 +15,6 @@ instead of silently becoming non-deterministic.
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -26,6 +25,7 @@ from tests.e2e._harness.graph_run import (
     SELECT_NODE,
     TOOLS_NODE,
     RecordingStore,
+    ToolCall,
     call,
     executor_graph,
     run_graph,
@@ -38,7 +38,7 @@ pytestmark = pytest.mark.e2e
 RETRIEVABLE = "web_search_tool"
 
 
-def retrieve(*names: str, retrieve_id: str = "r1") -> dict[str, Any]:
+def retrieve(*names: str, retrieve_id: str = "r1") -> ToolCall:
     return call(
         "retrieve_tools", {"query": " ".join(names), "exact_tool_names": list(names)}, retrieve_id
     )

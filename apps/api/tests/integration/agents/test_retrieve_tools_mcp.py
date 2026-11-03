@@ -23,6 +23,8 @@ import pytest
 from app.agents.core.subagents.integration_resolution import CustomMcpSubagent
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.models.integration_models import UserToolNamespaces
+from app.models.mcp_config import MCPConfig
+from app.override.langgraph_bigtool.utils import RetrieveToolsResult
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.custom_mcp_index import CustomMcpIndexRequest, index_custom_mcp_as_subagent
 from app.services.mcp.tool_naming import stamp_tool_metadata
@@ -249,7 +251,7 @@ _ACME = CustomMcpSubagent(
     id="abc123def456",
     name="Acme MCP",
     managed_by="mcp",
-    mcp_config={"server_url": "https://mcp.acme.dev/v1", "requires_auth": True},
+    mcp_config=MCPConfig(server_url="https://mcp.acme.dev/v1", requires_auth=True),
 )
 _ACME_NAMESPACE = "mcp.acme.dev/v1"
 
@@ -267,7 +269,7 @@ async def _discover_with_activated_acme(
     user_namespaces: set[str],
     live_tool: MagicMock | None = None,
     chroma_key: str = "ACME_LIST_INVOICES",
-) -> tuple[dict, list, MagicMock]:
+) -> tuple[RetrieveToolsResult, list[tuple[str, ...]], MagicMock]:
     """Discovery in a conversation that activated Acme, against a cold MCPClient."""
     searched: list[tuple[str, ...]] = []
 

@@ -23,7 +23,7 @@ from app.services.hil.intent import (
     JudgedCall,
     judge_intent,
 )
-from app.services.hil.utils import PriorCall
+from app.services.hil.utils import PriorCall, unpack_tool_call
 
 from .conftest import CONVERSATION_ID, STREAM_ID, USER_ID, make_request, make_tool
 
@@ -115,7 +115,7 @@ async def test_gate_threads_never_auto_prefs_into_the_judge() -> None:
             new=AsyncMock(return_value=IntentDecision(outcome="ask", reason="x")),
         ) as judge,
     ):
-        await gate._judge(request, context, gate.unpack_tool_call(request), None, "s")
+        await gate._judge(request, context, unpack_tool_call(request), None, "s")
     assert judge.await_args.args[0].never_auto is True
 
 
@@ -136,7 +136,7 @@ async def _never_auto_for(request: ToolCallRequest, never_auto_tools: list[str])
             new=AsyncMock(return_value=IntentDecision(outcome="ask", reason="x")),
         ) as judge,
     ):
-        await gate._judge(request, context, gate.unpack_tool_call(request), None, "s")
+        await gate._judge(request, context, unpack_tool_call(request), None, "s")
     return bool(judge.await_args.args[0].never_auto)
 
 
@@ -175,7 +175,7 @@ async def test_unreadable_prefs_do_not_take_the_judge_down() -> None:
             new=AsyncMock(return_value=IntentDecision(outcome="ask", reason="x")),
         ) as judge,
     ):
-        await gate._judge(request, context, gate.unpack_tool_call(request), None, "s")
+        await gate._judge(request, context, unpack_tool_call(request), None, "s")
     assert judge.await_args.args[0].never_auto is False
 
 

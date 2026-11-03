@@ -12,6 +12,7 @@ External reads are pinned by fake_context_sources and fenced beneath it,
 so a new read fails loudly instead of reaching a real store.
 """
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any, cast
@@ -280,8 +281,12 @@ async def _seed_workflow(
         )
     )
     # Through the module so the harness sees the same patched binding production
-    # does, rather than a second reference resolved at import time.
-    hint = await workflow_subagent.build_connected_integrations_hint(user.user_id)
+    # does, rather than a second reference resolved at import time. Read from
+    # the module namespace because the name is an import there, not an export.
+    build_hint: Callable[[str], Awaitable[str]] = vars(workflow_subagent)[
+        "build_connected_integrations_hint"
+    ]
+    hint = await build_hint(user.user_id)
     human_message = HumanMessage(
         content=f"{hint}\n\n---\n\nRequest: {query}",
         additional_kwargs={"visible_to": {"workflow_agent"}},

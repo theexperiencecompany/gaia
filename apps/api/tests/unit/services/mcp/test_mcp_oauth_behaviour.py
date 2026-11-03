@@ -13,12 +13,14 @@ import pytest
 import respx
 import time_machine
 
+from app.constants.log_tags import LogTag
 from app.constants.mcp import (
     GAIA_OAUTH_LOGO_PATH,
     GAIA_OAUTH_PRIVACY_PATH,
     GAIA_OAUTH_TOS_PATH,
 )
 from app.models.mcp_config import MCPConfig, OAuthDiscovery
+from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp import mcp_oauth
 from app.services.mcp.mcp_errors import DCRNotSupportedError
 from app.services.mcp.mcp_oauth import (
@@ -29,6 +31,7 @@ from app.services.mcp.mcp_oauth import (
     handle_oauth_callback,
 )
 from app.services.mcp.mcp_token_store import MCPTokenStore
+from shared.py.wide_events import log
 
 AUTH = "https://auth.mcp.example"
 INTEGRATION_ID = "custom_oauth"
@@ -58,8 +61,8 @@ def _metadata(
 
 
 def _prm(scopes: list[str]) -> ProtectedResourceMetadata:
-    return ProtectedResourceMetadata(
-        resource=RESOURCE, authorization_servers=[AUTH], scopes_supported=scopes
+    return ProtectedResourceMetadata.model_validate(
+        {"resource": RESOURCE, "authorization_servers": [AUTH], "scopes_supported": scopes}
     )
 
 
@@ -207,13 +210,9 @@ class TestBuildOauthAuthUrlNonce:
         discovery = _discovery(initial_scope="openid")
 
         with (
-            patch.object(
-                mcp_oauth.IntegrationResolver, "resolve", AsyncMock(return_value=resolved)
-            ),
+            patch.object(IntegrationResolver, "resolve", AsyncMock(return_value=resolved)),
             patch.object(mcp_oauth, "discover_oauth_config", AsyncMock(return_value=discovery)),
-            patch.object(
-                mcp_oauth.secrets, "token_urlsafe", wraps=secrets.token_urlsafe
-            ) as token_urlsafe,
+            patch.object(secrets, "token_urlsafe", wraps=secrets.token_urlsafe) as token_urlsafe,
         ):
             url = await build_oauth_auth_url(store, INTEGRATION_ID, REDIRECT_URI)
 
@@ -343,7 +342,7 @@ class _Callback:
         discovered = discovery or _discovery()
         with (
             patch.object(
-                mcp_oauth.IntegrationResolver,
+                IntegrationResolver,
                 "resolve",
                 AsyncMock(return_value=resolved or SimpleNamespace(mcp_config=self.config)),
             ) as resolve,
@@ -406,11 +405,11 @@ class TestHandleOauthCallback:
         respx_mock.post(insecure).respond(200, json=flow.token_json)
         discovery = _discovery(metadata=_metadata(token_endpoint=insecure))
 
-        with patch.object(mcp_oauth.log, "warning") as warning:
+        with patch.object(log, "warning") as warning:
             await flow.run(respx_mock, discovery=discovery)
 
         warning.assert_called_once_with(
-            f"{mcp_oauth.LogTag.MCP} Token endpoint security warning",
+            f"{LogTag.MCP} Token endpoint security warning",
             error=(
                 f"OAuth endpoint must use HTTPS: {insecure}. "
                 "HTTP is only allowed for localhost during development."
@@ -443,11 +442,11 @@ class TestHandleOauthCallback:
     ) -> None:
         flow = _Callback()
 
-        with patch.object(mcp_oauth.log, "warning") as warning:
+        with patch.object(log, "warning") as warning:
             await flow.run(respx_mock, issuer_ok=False)
 
         warning.assert_called_once_with(
-            f"{mcp_oauth.LogTag.MCP} JWT issuer validation failed for",
+            f"{LogTag.MCP} JWT issuer validation failed for",
             integration_id=INTEGRATION_ID,
         )
         flow.connect.assert_awaited_once_with(INTEGRATION_ID)
@@ -474,11 +473,11 @@ class TestHandleOauthCallback:
         flow = _Callback()
         flow.status.side_effect = RuntimeError("mongo down")
 
-        with patch.object(mcp_oauth.log, "warning") as warning:
+        with patch.object(log, "warning") as warning:
             await flow.run(respx_mock)
 
         warning.assert_called_once_with(
-            f"{mcp_oauth.LogTag.MCP} optimistic status flip failed (will retry in background connect)",
+            f"{LogTag.MCP} optimistic status flip failed (will retry in background connect)",
             integration_id=INTEGRATION_ID,
             error="mongo down",
             error_type="RuntimeError",

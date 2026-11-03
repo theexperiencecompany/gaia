@@ -21,7 +21,7 @@ from langchain_core.tools import BaseTool
 import pytest
 
 from app.constants.execute import EXECUTE_TOOL_NAME
-from app.models.hil_models import HILPreferences
+from app.models.hil_models import HILMode, HILPreferences
 from app.services.hil.policy import (
     gated_tool_key,
     gated_tool_object,
@@ -42,7 +42,7 @@ from .conftest import (
 MODULE = "app.services.hil.policy"
 
 
-def prefs(mode: str = "always_ask", **overrides: bool) -> HILPreferences:
+def prefs(mode: HILMode = "always_ask", **overrides: bool) -> HILPreferences:
     return HILPreferences(mode=mode, tool_overrides=overrides)
 
 
@@ -85,7 +85,7 @@ class TestResolvePolicy:
         ],
     )
     async def test_mode_and_destructiveness_resolve_to_the_right_policy(
-        self, mode: str, destructive: bool, expected: str
+        self, mode: HILMode, destructive: bool, expected: str
     ) -> None:
         with (
             patch(f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs(mode))),

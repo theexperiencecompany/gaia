@@ -17,14 +17,16 @@ from app.models.subagent_models import Subagent
 
 
 def _integration_doc(integration_id: str, server_url: str) -> Integration:
-    return Integration(
-        integration_id=integration_id,
-        name="Custom MCP",
-        description="",
-        category="custom",
-        managed_by="mcp",
-        source="custom",
-        mcp_config=MCPConfig(server_url=server_url),
+    return Integration.model_validate(
+        {
+            "integration_id": integration_id,
+            "name": "Custom MCP",
+            "description": "",
+            "category": "custom",
+            "managed_by": "mcp",
+            "source": "custom",
+            "mcp_config": MCPConfig(server_url=server_url),
+        }
     )
 
 
@@ -416,7 +418,7 @@ class TestRegisterIntegrationTools:
         integration = _make_integration(
             "gmail",
             managed_by="composio",
-            composio_config=ComposioConfig(auth_config_id="a", toolkit="GMAIL"),  # type: ignore[arg-type]  # helper types this param as MagicMock
+            composio_config=ComposioConfig(auth_config_id="a", toolkit="GMAIL"),
         )
 
         with (

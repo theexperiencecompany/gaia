@@ -1,6 +1,6 @@
 """Ledger decide: CAS commit, stale-v refresh, queued approvals, no execution yet."""
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -12,7 +12,6 @@ import pytest
 
 from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.executor_queue import hold_run_alive
-from app.agents.tools.execute.dispatch import DispatchErrorKind
 from app.constants.agents import AgentTag
 from app.constants.cache import (
     EXECUTOR_BUSY_PREFIX,
@@ -20,6 +19,7 @@ from app.constants.cache import (
     EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS,
 )
 from app.constants.log_tags import LogTag
+from app.models.execute_models import DispatchError, DispatchErrorKind
 from app.models.hil_models import ApprovalLedgerDocument, LedgerState
 from app.models.user_models import AuthenticatedUser
 from app.schemas.hil_schemas import ApprovalDecisionRequest, BatchDecisionItem, BatchDecisionOutcome
@@ -282,7 +282,8 @@ class TestDecisionSubmittedEvent:
             patch.object(ledger_decide, "capture") as capture,
         ):
             await decide_ledger_batch(
-                USER_ID, [BatchDecisionItem(approval_id="ap_abc", decision="approve", v=3)]
+                USER_ID,
+                [BatchDecisionItem(approval_id="ap_abc", decision="approve", feedback=None, v=3)],
             )
 
         assert capture.call_args.args[1].via == "batch"
@@ -531,7 +532,6 @@ class TestRedeemExecution:
         }
 
     async def test_provider_timeout_lands_unknown_never_failed(self) -> None:
-        from app.agents.tools.execute.dispatch import DispatchError, DispatchErrorKind
         from app.models.hil_models import LedgerState as LS
         from app.services.hil import ledger_decide
         from app.services.hil.ledger_decide import redeem_approved
@@ -698,7 +698,6 @@ class TestRedeemTerminalStates:
         assert "deleted xyz" in result.detail
 
     async def test_failed_returns_error_detail(self) -> None:
-        from app.agents.tools.execute.dispatch import DispatchError, DispatchErrorKind
         from app.models.hil_models import LedgerState as LS
         from app.services.hil import ledger_decide
         from app.services.hil.ledger_decide import redeem_approved
@@ -1322,7 +1321,6 @@ class TestRedeemSettlesTerminalFrame:
         assert broadcast.await_args.args[1] == "executed"
 
     async def test_failed_settles_card_as_failed(self) -> None:
-        from app.agents.tools.execute.dispatch import DispatchError, DispatchErrorKind
         from app.services.hil import ledger_decide
         from app.services.hil.ledger_decide import redeem_approved
 
@@ -1460,7 +1458,7 @@ def _inbox_lines(seams: LedgerSeams) -> list[tuple[str, str, str]]:
     return lines
 
 
-def _warned(log_level: MagicMock) -> dict[str, dict[str, object]]:
+def _warned(log_level: MagicMock) -> dict[str, Mapping[str, object]]:
     return {c.args[0]: c.kwargs for c in log_level.call_args_list}
 
 

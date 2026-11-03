@@ -5,8 +5,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.constants.log_tags import LogTag
+from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp import token_management
 from app.services.mcp.token_management import revoke_integration_tokens
+from shared.py.wide_events import log
 
 INTEGRATION_ID = "custom_revoke"
 
@@ -23,7 +26,7 @@ class TestRevokeIntegrationTokens:
         store = _store(None)
 
         with (
-            patch.object(token_management.IntegrationResolver, "resolve", AsyncMock()) as resolve,
+            patch.object(IntegrationResolver, "resolve", AsyncMock()) as resolve,
             patch.object(token_management, "revoke_tokens", AsyncMock()) as revoke,
         ):
             await revoke_integration_tokens(store, INTEGRATION_ID)
@@ -36,9 +39,7 @@ class TestRevokeIntegrationTokens:
         store = _store(object())
 
         with (
-            patch.object(
-                token_management.IntegrationResolver, "resolve", AsyncMock(return_value=None)
-            ) as resolve,
+            patch.object(IntegrationResolver, "resolve", AsyncMock(return_value=None)) as resolve,
             patch.object(token_management, "revoke_tokens", AsyncMock()) as revoke,
         ):
             await revoke_integration_tokens(store, INTEGRATION_ID)
@@ -51,9 +52,7 @@ class TestRevokeIntegrationTokens:
         resolved = SimpleNamespace(mcp_config=None)
 
         with (
-            patch.object(
-                token_management.IntegrationResolver, "resolve", AsyncMock(return_value=resolved)
-            ),
+            patch.object(IntegrationResolver, "resolve", AsyncMock(return_value=resolved)),
             patch.object(token_management, "revoke_tokens", AsyncMock()) as revoke,
         ):
             await revoke_integration_tokens(store, INTEGRATION_ID)
@@ -67,9 +66,7 @@ class TestRevokeIntegrationTokens:
         resolved = SimpleNamespace(mcp_config=mcp_config)
 
         with (
-            patch.object(
-                token_management.IntegrationResolver, "resolve", AsyncMock(return_value=resolved)
-            ),
+            patch.object(IntegrationResolver, "resolve", AsyncMock(return_value=resolved)),
             patch.object(token_management, "revoke_tokens", AsyncMock()) as revoke,
         ):
             await revoke_integration_tokens(store, INTEGRATION_ID)
@@ -79,11 +76,11 @@ class TestRevokeIntegrationTokens:
     async def test_failure_is_logged_and_swallowed(self) -> None:
         store = _store(None, error=RuntimeError("db down"))
 
-        with patch.object(token_management.log, "warning") as warning:
+        with patch.object(log, "warning") as warning:
             await revoke_integration_tokens(store, INTEGRATION_ID)
 
         warning.assert_called_once_with(
-            f"{token_management.LogTag.MCP} Token revocation failed for",
+            f"{LogTag.MCP} Token revocation failed for",
             integration_id=INTEGRATION_ID,
             error="db down",
             error_type="RuntimeError",

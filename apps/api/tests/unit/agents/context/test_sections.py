@@ -52,7 +52,6 @@ class _CtxOverrides(TypedDict, total=False):
     user_timezone: str | None
     user_preferences: dict[str, Any] | None
     writing_style: dict[str, Any] | None
-    user_id: str | None
     subagent_id: str | None
     source: str | None
 

@@ -37,12 +37,14 @@ from app.utils.stream_publishers import ExtractedToolData, publish_tool_output
 
 
 def _integration(integration_id: str, name: str) -> Integration:
-    return Integration(
-        integration_id=integration_id,
-        name=name,
-        description="",
-        category="custom",
-        managed_by="mcp",
+    return Integration.model_validate(
+        {
+            "integration_id": integration_id,
+            "name": name,
+            "description": "",
+            "category": "custom",
+            "managed_by": "mcp",
+        }
     )
 
 
@@ -171,8 +173,8 @@ class TestFormatToolCallEntry:
                 integration_name="My Service",
             )
 
-        assert result["data"]["icon_url"] == "https://icon.png"  # type: ignore[index]  # runtime returns a dict though the signature says str
-        assert result["data"]["integration_name"] == "My Service"  # type: ignore[index]  # runtime returns a dict though the signature says str
+        assert result["data"]["icon_url"] == "https://icon.png"
+        assert result["data"]["integration_name"] == "My Service"
 
 
 # ---------------------------------------------------------------------------
@@ -182,7 +184,7 @@ class TestFormatToolCallEntry:
 
 class TestFormatBrowserActionEntry:
     def test_navigate_action_produces_a_real_caption_and_exact_shape(self) -> None:
-        inputs = {"url": "https://www.github.com/x"}
+        inputs: dict[str, object] = {"url": "https://www.github.com/x"}
         before = datetime.now(UTC)
 
         entry = format_browser_action_entry(
@@ -218,7 +220,7 @@ class TestFormatBrowserActionEntry:
         assert before <= timestamp <= after + timedelta(seconds=5)
 
     def test_typing_action_with_a_target_names_both_text_and_field(self) -> None:
-        inputs = {"text": "hello world"}
+        inputs: dict[str, object] = {"text": "hello world"}
         target = "Search box"
 
         entry = format_browser_action_entry(
@@ -543,7 +545,7 @@ class TestFormatToolCallEntryCategoryWiring:
         registry_patch, ui_patch, icon_patch = self._patches(_FakeRegistry({"vfs_cmd": "files"}))
         with registry_patch, ui_patch, icon_patch, _mcp_lookup("wrong_integration"):
             result = await format_tool_call_entry(
-                {"name": "vfs_cmd", "args": {}, "id": "tc"},  # type: ignore[arg-type]  # hand-built dict stands in for a ToolCall
+                {"name": "vfs_cmd", "args": {}, "id": "tc"},
                 user_id="u1",
             )
 
@@ -556,7 +558,7 @@ class TestFormatToolCallEntryCategoryWiring:
         registry_patch, ui_patch, icon_patch = self._patches(_FakeRegistry({}))
         with registry_patch, ui_patch, icon_patch, _mcp_lookup():
             result = await format_tool_call_entry(
-                {"name": "notion_tool", "args": {}, "id": "tc"},  # type: ignore[arg-type]  # hand-built dict stands in for a ToolCall
+                {"name": "notion_tool", "args": {}, "id": "tc"},
                 user_id="u1",
             )
 
@@ -573,7 +575,7 @@ class TestFormatToolCallEntryCategoryWiring:
         )
         with registry_patch, ui_patch, display:
             result = await format_tool_call_entry(
-                {"name": "vfs_cmd", "args": {}, "id": "tc"},  # type: ignore[arg-type]  # hand-built dict stands in for a ToolCall
+                {"name": "vfs_cmd", "args": {}, "id": "tc"},
             )
 
         assert result is not None

@@ -348,7 +348,7 @@ class TestDeclineMemory:
         # The retry loop: the executor never learns its subagent was declined, so it
         # tries again. Re-prompting the user for the same thing is the bug.
         handler = _Handler()
-        declined = ApprovalOutcome(status="denied", feedback="wrong person")
+        declined = ApprovalOutcome(status=HILApprovalStatus.DENIED, feedback="wrong person")
         with (
             patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="ask")),
             patch(f"{MODULE}.recall_declined_call", new=AsyncMock(return_value=declined)),

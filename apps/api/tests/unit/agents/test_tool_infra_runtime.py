@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 import json
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import AIMessage, HumanMessage
@@ -39,11 +39,8 @@ from app.agents.tools.instructions_tools import (
 )
 from app.constants.general import FINISH_TASK_NAME, SPAWN_AGENT_NAME
 from app.models.integration_models import UserToolNamespaces
-from app.override.langgraph_bigtool.create_agent import (
-    AgentConfig,
-    ToolRetrievalConfig,
-    create_agent,
-)
+from app.override.langgraph_bigtool.agent_config import AgentConfig, ToolRetrievalConfig
+from app.override.langgraph_bigtool.create_agent import create_agent
 from tests.helpers import BindableToolsFakeModel, PassthroughFakeLLM
 
 
@@ -78,9 +75,9 @@ class _FakeLLM(PassthroughFakeLLM):
         self.bind_calls: list[list[str]] = []
         self._invoke_count = 0
 
-    def bind_tools(self, tools: Any, **_kwargs: Any) -> "_FakeLLM":
+    def bind_tools(self, _tools: Any, **_kwargs: Any) -> "_FakeLLM":
         # Overridden only to record what was bound; the assertions read this.
-        names = [getattr(t, "name", str(t)) for t in tools]
+        names = [getattr(t, "name", str(t)) for t in _tools]
         self.bind_calls.append(names)
         return self
 
@@ -1027,7 +1024,9 @@ async def test_a_provider_subagent_drains_its_own_mailbox_not_the_executors():
 
 def _scoped_provider_tools() -> tuple[dict[str, BaseTool], list[str]]:
     return build_scoped_tool_dict(
-        tool_registry=_DummyRegistry([normal_tool], {"normal_tool": normal_tool}),
+        tool_registry=cast(
+            ToolRegistry, _DummyRegistry([normal_tool], {"normal_tool": normal_tool})
+        ),
         tool_space="provider_space",
         include_finish_task=True,
     )
@@ -1121,7 +1120,7 @@ def _render_text(
     opts = options or _DiscoveryOptions()
     return _render_discovery_response(
         _RankedHits(final_tools, opts.total_candidates, opts.limit),
-        _DiscoveryRegistry(opts.categories or {}, opts.destructive),
+        cast(ToolRegistry, _DiscoveryRegistry(opts.categories or {}, opts.destructive)),
         opts.connected or {},
         query,
         (),

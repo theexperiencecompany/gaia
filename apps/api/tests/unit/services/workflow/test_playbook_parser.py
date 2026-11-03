@@ -21,6 +21,7 @@ from app.agents.core.subagents.call_record import ARG_TRUNCATION_MARKER
 from app.agents.tools.execute.execute_tool import execute
 from app.constants.execute import EXECUTE_TOOL_NAME
 from app.models.playbook_models import (
+    ForEachStep,
     PlaybookBody,
     PlaybookStep,
     PlaybookStepInput,
@@ -35,7 +36,7 @@ from app.services.workflow.playbook.parser import (
 )
 
 MODULE = "app.services.workflow.playbook.parser"
-PlaybookStep_adapter = TypeAdapter(PlaybookStep)
+PlaybookStep_adapter: TypeAdapter[ToolStep | ForEachStep] = TypeAdapter(PlaybookStep)
 
 
 @tool
@@ -2215,9 +2216,12 @@ class TestDumpKeepsTheLoop:
 
         rendered = dump_playbook(body)
         again = PlaybookBody.model_validate(yaml.safe_load(rendered))
+        loop, original = again.steps[1], body.steps[1]
 
-        assert again.steps[1].for_each == body.steps[1].for_each
-        assert again.steps[1].max_items == 5
+        assert isinstance(loop, ForEachStep)
+        assert isinstance(original, ForEachStep)
+        assert loop.for_each == original.for_each
+        assert loop.max_items == 5
         assert "for_each" in rendered and "max_items" in rendered
 
     def test_a_plain_step_still_dumps_without_loop_keys(self) -> None:

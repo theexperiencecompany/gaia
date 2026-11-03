@@ -35,7 +35,7 @@ from app.helpers.agent_helpers import (
     opens_thread,
     recent_user_messages,
 )
-from app.models.agent_models import run_analytics_context
+from app.models.agent_models import AgentUserContext, run_analytics_context
 from app.models.payment_models import PlanType
 from app.models.presence_models import PresenceSnapshot
 from app.utils.stream_publishers import ExtractedToolData
@@ -60,7 +60,7 @@ def _no_real_presence_read() -> Iterator[AsyncMock]:
         yield mock_read
 
 
-FAKE_USER = {
+FAKE_USER: AgentUserContext = {
     "user_id": USER_ID,
     "email": "test@example.com",
     "name": "Test User",

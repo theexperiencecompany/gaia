@@ -16,7 +16,6 @@ cannot actually perform.
 from langchain_core.messages import SystemMessage
 import pytest
 from tests._harness.context_chain import (
-    AgentTier,
     ContextSeed,
     HarnessUser,
     bound_for,
@@ -29,6 +28,7 @@ from tests._harness.context_chain import (
 from tests._harness.context_sources import ContextSources, memory
 
 from app.agents.context.slots import PromptSlot
+from app.agents.context.tiers import AgentTier
 from app.constants.llm import LLMProviderName
 
 VOLATILE_SOURCES = ContextSources(

@@ -1,14 +1,17 @@
 """Exact arguments, ordering and log output of retrieval's activated-MCP handling."""
 
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from langchain_core.tools import BaseTool
 import pytest
 
 from app.agents.core.subagents.integration_resolution import CustomMcpSubagent
 from app.agents.tools.core import retrieval
 from app.constants.log_tags import LogTag
 from app.models.mcp_config import MCPConfig
+from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.tool_naming import stamp_tool_metadata
 from tests.helpers import captured_wide_event
 
@@ -24,8 +27,9 @@ def _mcp(integration_id: str) -> CustomMcpSubagent:
     )
 
 
-def _live_tool(name: str, integration_id: str) -> SimpleNamespace:
-    tool = SimpleNamespace(name=name, description="", metadata=None)
+def _live_tool(name: str, integration_id: str) -> BaseTool:
+    # Only name/description/metadata are read or written along the MCP naming path.
+    tool = cast(BaseTool, SimpleNamespace(name=name, description="", metadata=None))
     stamp_tool_metadata([tool], integration_id, "https://bbb.example.com", "Bbb")
     return tool
 
@@ -37,7 +41,7 @@ class TestUserMcpToolsAcrossSeveralActivatedServers:
         client = MagicMock()
         client._tools = {}
 
-        async def _connect(integration_id: str) -> list[SimpleNamespace]:
+        async def _connect(integration_id: str) -> list[BaseTool]:
             if integration_id == "aaa":
                 raise ConnectionError("down")
             return [_live_tool("BBB_LIST", "bbb")]
@@ -85,7 +89,7 @@ class TestTargetToolSpace:
         derive = MagicMock(return_value="mcp.derived")
         get_server_url = AsyncMock(return_value="https://abc.example.com")
         with (
-            patch.object(retrieval.IntegrationResolver, "get_server_url", new=get_server_url),
+            patch.object(IntegrationResolver, "get_server_url", new=get_server_url),
             patch.object(retrieval, "derive_integration_namespace", new=derive),
         ):
             result = await retrieval._target_tool_space(_mcp("abc"))

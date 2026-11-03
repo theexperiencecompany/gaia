@@ -32,6 +32,7 @@ from app.constants.agents import PLAYBOOK_CHECK_TAG, PLAYBOOK_DECLINE_LIMIT
 from app.constants.log_tags import LogTag
 from app.models.playbook_models import (
     DeclineKind,
+    ForEachStep,
     PlaybookDocument,
     PlaybookRunOutcome,
     PlaybookRunStatus,
@@ -533,7 +534,7 @@ REFUSED = "Error: ValidationError: 1 validation error for write_playbook"
 
 
 def _frozen(*tools: str) -> PlaybookDocument:
-    steps = [ToolStep(id=t, tool=t, args={}) for t in tools]
+    steps: list[ToolStep | ForEachStep] = [ToolStep(id=t, tool=t, args={}) for t in tools]
     return PlaybookDocument(
         playbook_id="pb_1",
         workflow_id=WORKFLOW_ID,
