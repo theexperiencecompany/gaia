@@ -226,6 +226,25 @@ def test_a_list_too_long_to_carry_is_a_full_scan() -> None:
     assert nx_affected.task_files(selection) == {"ci:ruff": nx_affected.FULL_SCAN}
 
 
+def test_every_detect_output_fits_one_environment_string_on_the_largest_scoped_change() -> None:
+    """A job reads each output as an env var; Linux caps one at 128 KiB.
+
+    A 233-file PR's task_files output was 150 KB, and every step of the five
+    lanes that carried it failed to start ("Argument list too long").
+    """
+    reasons = [
+        {
+            "kind": "input-file",
+            "file": f"apps/api/app/feature/module_{n:03}.py",
+            "pattern": "**/*.py",
+        }
+        for n in range(nx_affected.SCOPED_FILES_MAX)
+    ]
+    selection = nx_affected.Selection(tasks=dict.fromkeys(CHECKS, reasons))
+    for key, value in nx_affected.outputs(selection, "pull_request", None).items():
+        assert len(value.encode()) < 128 * 1024, f"{key} is {len(value.encode())} bytes"
+
+
 def test_a_check_lists_its_config_before_its_source_globs() -> None:
     """Nx names the first input a file matches; biome.json read as a source file scoped biome to itself."""
     for path in [REPO_ROOT / "tools" / "ci" / "project.json"]:

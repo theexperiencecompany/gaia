@@ -189,10 +189,9 @@ jobs:
       tasks: ${{ steps.affected.outputs.tasks }}
       jobs: ${{ steps.affected.outputs.jobs }}
       job_tasks: ${{ steps.affected.outputs.job_tasks }}
-      # Each task's changed files that nx matched to its inputs, or __FULL__
-      # when nx reached it through config or the CI harness:
-      # `changes.sh files --task` hands a check exactly these.
-      task_files: ${{ steps.affected.outputs.task_files }}
+      # Each task's changed files travel as the task-files artifact, not an
+      # output: the list grows with the change (TASK_FILES_ENV in
+      # scripts/ci/lib/nx_affected.py).
       # The test-python matrices, from the one slice definition
       # (scripts/ci/lib/test-slices.json), cut to this run's tier.
       # Slice NAMES (the matrix value, so a job row reads `test-python
@@ -263,7 +262,19 @@ jobs:
         id: affected
         env:
           GAIA_PR_BASE: ${{ steps.base.outputs.base_ref }}
+          TASK_FILES_PATH: ${{ runner.temp }}/task-files.json
         run: bash scripts/ci/changes.sh affected
+
+      # Each task's changed files that nx matched to its inputs, or __FULL__
+      # when nx reached it through config or the CI harness:
+      # `changes.sh files --task` hands a check exactly these.
+      - name: Upload each check's changed files
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: task-files
+          path: ${{ runner.temp }}/task-files.json
+          if-no-files-found: error
+          retention-days: 1
 
       # Last, so everything above is decided even when this fails: it is ALSO
       # the step that fails loudly when changed app code has no test file
@@ -335,7 +346,6 @@ jobs:
       # nor for a fork or Dependabot (read-only token).
       # Negated: `cond && '' || x` is always x, since '' is falsy in an expression.
       NO_POST: ${{ !(contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '--no-post' || '' }}
-      TASK_FILES: ${{ needs.detect.outputs.task_files }}
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
       AUDIT_SCOPE: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'introduced' || 'all' }}
     # On a PR and in the merge queue pnpm-audit fails only on an advisory in a
@@ -352,12 +362,18 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
+      # The changed files each check reads (detect's task-files artifact).
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: task-files
+          path: ${{ runner.temp }}
       # Every check detect picked for this job, through nx (tools/ci/project.json and
       # the code projects' targets); each check's status is posted as it finishes.
       - name: Run this job's checks through nx
         continue-on-error: true
         env:
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
+          TASK_FILES_PATH: ${{ runner.temp }}/task-files.json
         run: python3 scripts/ci/runner.py run-job lint-node
       # Every status run-job did not post (a step's check, a skip, a lost post),
       # a verdict per failed check, then the job's.
@@ -390,7 +406,6 @@ jobs:
       # nor for a fork or Dependabot (read-only token).
       # Negated: `cond && '' || x` is always x, since '' is falsy in an expression.
       NO_POST: ${{ !(contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '--no-post' || '' }}
-      TASK_FILES: ${{ needs.detect.outputs.task_files }}
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
     timeout-minutes: 35
     permissions:
@@ -451,12 +466,18 @@ jobs:
       - name: Install pint + promtool (pinned release binaries, same versions prod runs)
         if: contains(fromJSON(needs.detect.outputs.job_tasks)['lint-python'], 'alert-rules:check')
         run: bash scripts/ci/audit.sh alert-rule-tools
+      # The changed files each check reads (detect's task-files artifact).
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: task-files
+          path: ${{ runner.temp }}
       # Every check detect picked for this job, through nx (tools/ci/project.json and
       # the code projects' targets); each check's status is posted as it finishes.
       - name: Run this job's checks through nx
         continue-on-error: true
         env:
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
+          TASK_FILES_PATH: ${{ runner.temp }}/task-files.json
         run: python3 scripts/ci/runner.py run-job lint-python
       # Every status run-job did not post (a step's check, a skip, a lost post),
       # a verdict per failed check, then the job's.
@@ -489,7 +510,6 @@ jobs:
       # nor for a fork or Dependabot (read-only token).
       # Negated: `cond && '' || x` is always x, since '' is falsy in an expression.
       NO_POST: ${{ !(contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '--no-post' || '' }}
-      TASK_FILES: ${{ needs.detect.outputs.task_files }}
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
       DEAD_CODE_LANE: lint-mixed/dead-code
     timeout-minutes: 35
@@ -524,12 +544,18 @@ jobs:
         if: contains(fromJSON(needs.detect.outputs.job_tasks)['lint-mixed'], 'ci:dead-code')
         run: uv tool install vulture
 
+      # The changed files each check reads (detect's task-files artifact).
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: task-files
+          path: ${{ runner.temp }}
       # Every check detect picked for this job, through nx (tools/ci/project.json and
       # the code projects' targets); each check's status is posted as it finishes.
       - name: Run this job's checks through nx
         continue-on-error: true
         env:
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
+          TASK_FILES_PATH: ${{ runner.temp }}/task-files.json
         run: python3 scripts/ci/runner.py run-job lint-mixed
 
       # Reads the LIVE PostHog project against the event catalog and
@@ -598,7 +624,6 @@ jobs:
       # nor for a fork or Dependabot (read-only token).
       # Negated: `cond && '' || x` is always x, since '' is falsy in an expression.
       NO_POST: ${{ !(contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '--no-post' || '' }}
-      TASK_FILES: ${{ needs.detect.outputs.task_files }}
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
     timeout-minutes: 10
     permissions:
@@ -613,12 +638,18 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
 
+      # The changed files each check reads (detect's task-files artifact).
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: task-files
+          path: ${{ runner.temp }}
       # Every check detect picked for this job, through nx (tools/ci/project.json and
       # the code projects' targets); each check's status is posted as it finishes.
       - name: Run this job's checks through nx
         continue-on-error: true
         env:
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
+          TASK_FILES_PATH: ${{ runner.temp }}/task-files.json
         run: python3 scripts/ci/runner.py run-job repo-policy
 
       # Only the events that bring new commits, scanned as a range (ci:gitleaks's
@@ -671,7 +702,6 @@ jobs:
       # nor for a fork or Dependabot (read-only token).
       # Negated: `cond && '' || x` is always x, since '' is falsy in an expression.
       NO_POST: ${{ !(contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '--no-post' || '' }}
-      TASK_FILES: ${{ needs.detect.outputs.task_files }}
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
       AUDIT_SCOPE: ${{ github.event_name == 'merge_group' && 'introduced' || 'all' }}
     # In the merge queue pip-audit fails only on an advisory in a version the
@@ -697,12 +727,18 @@ jobs:
           services: "false"
           node: "false"
           restore-models: "false"
+      # The changed files each check reads (detect's task-files artifact).
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: task-files
+          path: ${{ runner.temp }}
       # Every check detect picked for this job, through nx (tools/ci/project.json and
       # the code projects' targets); each check's status is posted as it finishes.
       - name: Run this job's checks through nx
         continue-on-error: true
         env:
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
+          TASK_FILES_PATH: ${{ runner.temp }}/task-files.json
         run: python3 scripts/ci/runner.py run-job python-audit
       # Every status run-job did not post (a step's check, a skip, a lost post),
       # a verdict per failed check, then the job's.
@@ -735,7 +771,6 @@ jobs:
       # nor for a fork or Dependabot (read-only token).
       # Negated: `cond && '' || x` is always x, since '' is falsy in an expression.
       NO_POST: ${{ !(contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '--no-post' || '' }}
-      TASK_FILES: ${{ needs.detect.outputs.task_files }}
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
       NEXT_PUBLIC_API_BASE_URL: https://api.heygaia.io/api/v1/
       NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${{ vars.NEXT_PUBLIC_TURNSTILE_SITE_KEY }}
@@ -760,12 +795,18 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       - uses: ./.github/actions/restore-nextjs-cache
+      # The changed files each check reads (detect's task-files artifact).
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: task-files
+          path: ${{ runner.temp }}
       # Every check detect picked for this job, through nx (tools/ci/project.json and
       # the code projects' targets); each check's status is posted as it finishes.
       - name: Run this job's checks through nx
         continue-on-error: true
         env:
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
+          TASK_FILES_PATH: ${{ runner.temp }}/task-files.json
         run: python3 scripts/ci/runner.py run-job ts-build-test
       # Every status run-job did not post (a step's check, a skip, a lost post),
       # a verdict per failed check, then the job's.
@@ -818,7 +859,6 @@ jobs:
       # nor for a fork or Dependabot (read-only token).
       # Negated: `cond && '' || x` is always x, since '' is falsy in an expression.
       NO_POST: ${{ !(contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '--no-post' || '' }}
-      TASK_FILES: ${{ needs.detect.outputs.task_files }}
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
     timeout-minutes: 20
     permissions:

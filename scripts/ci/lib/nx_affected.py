@@ -37,9 +37,13 @@ FULL_SCAN = "__FULL__"
 # A source input names files by extension (apps/api/**/*.py, **/*.{ts,tsx});
 # a config input names one file (pyproject.toml) or a whole tree (scripts/ci/**/*).
 SOURCE_GLOB = re.compile(r"(?:^|/)\*\.(\w+|\{[\w,]+\})$")
-# Past this many files a scoped list costs more to carry in detect's outputs
-# (1 MB per job) than a full scan costs to run.
+# Past this many files a scoped list costs more to hand a tool than a full scan
+# costs to run.
 SCOPED_FILES_MAX = 300
+# Where detect's task_files JSON lives: a file, never an env var or a job
+# output, since it grows with the change and Linux caps one env string at
+# 128 KiB. detect writes it there and uploads it; each lane downloads it.
+TASK_FILES_ENV = "TASK_FILES_PATH"
 
 
 @dataclass(frozen=True)
@@ -309,6 +313,11 @@ def task_files(selection: Selection) -> dict[str, str | list[str]]:
     return scoped
 
 
+def write_task_files(selection: Selection, path: Path) -> None:
+    """Write task_files(selection) where $TASK_FILES_PATH points a lane's checks."""
+    path.write_text(json.dumps(task_files(selection)), encoding="utf-8")
+
+
 def _is_source(reason: dict[str, str]) -> bool:
     return reason.get("kind") == "input-file" and bool(
         SOURCE_GLOB.search(reason.get("pattern", ""))
@@ -323,7 +332,6 @@ def outputs(selection: Selection, event: str, branch: str | None) -> dict[str, s
         "jobs": json.dumps(sorted(jobs)),
         "job_tasks": json.dumps(jobs),
         "release_groups": json.dumps(release_groups(selection)),
-        "task_files": json.dumps(task_files(selection)),
     }
 
 
@@ -343,7 +351,7 @@ def main() -> int:
     parser.add_argument(
         "--files-for",
         metavar="TASK",
-        help="print one task's files, or FULL_SCAN; read from $TASK_FILES (detect's) when set",
+        help=f"print one task's files, or FULL_SCAN; read from ${TASK_FILES_ENV} (detect's) when set",
     )
     opts = parser.parse_args()
 
@@ -354,8 +362,12 @@ def main() -> int:
         else [f"--base={opts.base}", *([f"--head={opts.head}"] if opts.head else [])]
     )
     if opts.files_for:
-        from_detect = os.environ.get("TASK_FILES")
-        scoped = json.loads(from_detect) if from_detect else task_files(select(range_args))
+        from_detect = os.environ.get(TASK_FILES_ENV)
+        scoped = (
+            json.loads(Path(from_detect).read_text(encoding="utf-8"))
+            if from_detect
+            else task_files(select(range_args))
+        )
         entry = scoped.get(opts.files_for, [])
         sys.stdout.write(
             f"{entry}\n" if isinstance(entry, str) else "".join(f"{f}\n" for f in entry)
@@ -368,6 +380,9 @@ def main() -> int:
         os.environ.get("GITHUB_EVENT_NAME", LOCAL_EVENT),
         os.environ.get("GITHUB_REF_NAME"),
     )
+    task_files_path = os.environ.get(TASK_FILES_ENV)
+    if task_files_path:
+        write_task_files(selection, Path(task_files_path))
     lines = "".join(f"{key}={value}\n" for key, value in published.items())
     sink = os.environ.get("GITHUB_OUTPUT")
     if sink:
