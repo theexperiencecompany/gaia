@@ -14,17 +14,19 @@ import asyncio
 import pytest
 from scripts.playbook_corpus.fixture import (
     AUTHOR_CHOICE_REFUSALS,
+    CORPUS_DIR,
     CorpusAttempt,
     CorpusRun,
     Verdict,
-    load_corpus,
 )
 from scripts.playbook_corpus.replay import numbered, replay
 from scripts.playbook_corpus.translate import Unmappable
 
 from app.models.playbook_models import PlaybookRefusal
 
-CORPUS = load_corpus()
+CORPUS = [
+    CorpusRun.model_validate_json(path.read_text()) for path in sorted(CORPUS_DIR.glob("*.json"))
+]
 ATTEMPTS = [(run, attempt) for run in CORPUS for attempt in run.attempts]
 EXPRESSIBLE = [(run, attempt) for run, attempt in ATTEMPTS if attempt.picks is not None]
 
