@@ -19,6 +19,7 @@ from fastapi import HTTPException
 import pytest
 
 from app.config.deployment import DeploymentKind, baseline_profile
+from app.config.settings import settings
 from app.constants.cache import (
     ACTIVE_PLANS_CACHE_KEY,
     CHECKOUT_SCAN_MISS_CACHE_PREFIX,
@@ -39,7 +40,6 @@ from app.models.payment_models import (
     SubscriptionStatus,
     UserSubscriptionStatus,
 )
-from app.services.payments import payment_service as payment_service_module
 from app.services.payments.payment_service import DodoPaymentService
 from app.services.payments.subscription_events import (
     SubscriptionEventKind,
@@ -95,7 +95,7 @@ SAMPLE_PLAN = PlanDocument(
     description="Pro features billed monthly",
     amount=999,
     currency="USD",
-    duration="monthly",
+    duration=PlanDuration.MONTHLY,
     max_users=5,
     features=["feature_a", "feature_b"],
     is_active=True,
@@ -682,7 +682,7 @@ class TestCreateSubscription:
         mock_dodo_client.checkout_sessions.create = MagicMock(return_value=checkout_response)
         mock_plan_repository.list_plans = AsyncMock(return_value=[])
 
-        with patch.object(payment_service_module.settings, "ENV", "development"):
+        with patch.object(settings, "ENV", "development"):
             await payment_service.create_subscription(
                 user_id=FAKE_USER_ID, product_id="prod_abc123"
             )
@@ -697,7 +697,7 @@ class TestCreateSubscription:
         assert dev_kwargs["customer"]["phone_number"] == "+14155550123"
         assert dev_kwargs["show_saved_payment_methods"] is True
 
-        with patch.object(payment_service_module.settings, "ENV", "production"):
+        with patch.object(settings, "ENV", "production"):
             await payment_service.create_subscription(
                 user_id=FAKE_USER_ID, product_id="prod_abc123"
             )
@@ -731,7 +731,7 @@ class TestCreateSubscription:
             return_value=SimpleNamespace(session_id="sess_004", checkout_url="https://pay/x")
         )
 
-        with patch.object(payment_service_module.settings, "ENV", "production"):
+        with patch.object(settings, "ENV", "production"):
             await payment_service.create_subscription(
                 user_id=FAKE_USER_ID, product_id="prod_abc123"
             )
@@ -1049,7 +1049,7 @@ class TestGetCachedPlanType:
     async def test_every_user_is_pro_where_plans_are_not_enforced(
         self, payment_service, mock_redis_cache, mock_subscription_repository, monkeypatch
     ):
-        monkeypatch.setattr(payment_service_module.settings, "ENV", "selfhost")
+        monkeypatch.setattr(settings, "ENV", "selfhost")
         mock_redis_cache.get = AsyncMock(side_effect=AssertionError("no cache read"))
         mock_subscription_repository.get_active_for_user = AsyncMock(
             side_effect=AssertionError("no subscription read")
@@ -1064,7 +1064,7 @@ class TestGetCachedPlanType:
     async def test_the_status_the_web_reads_is_pro_where_plans_are_not_enforced(
         self, payment_service, mock_subscription_repository, monkeypatch
     ):
-        monkeypatch.setattr(payment_service_module.settings, "ENV", "selfhost")
+        monkeypatch.setattr(settings, "ENV", "selfhost")
         mock_subscription_repository.get_active_for_user = AsyncMock(
             side_effect=AssertionError("no subscription read")
         )
@@ -1088,7 +1088,7 @@ class TestGetCachedPlanType:
     async def test_the_details_the_agent_reads_are_pro_where_plans_are_not_enforced(
         self, payment_service, mock_subscription_repository, monkeypatch
     ):
-        monkeypatch.setattr(payment_service_module.settings, "ENV", "selfhost")
+        monkeypatch.setattr(settings, "ENV", "selfhost")
         mock_subscription_repository.get_active_for_user = AsyncMock(
             side_effect=AssertionError("no subscription read")
         )
@@ -1217,7 +1217,7 @@ class TestVerifyPaymentCompletion:
         payment_status: str | None = "succeeded",
         subscription_id: str | None = "sub_from_checkout",
         subscription_status: str = "active",
-    ) -> SimpleNamespace:
+    ) -> Subscription:
         """checkout_sessions.retrieve -> payments.retrieve -> subscriptions.retrieve, each answering only its own id."""
         checkout_status = SimpleNamespace(payment_id=payment_id, payment_status=payment_status)
         payment = SimpleNamespace(subscription_id=subscription_id)
@@ -1859,7 +1859,7 @@ def _plan(
     name: str,
     plan_type: PlanTier = PlanTier.PRO,
     amount: int,
-    duration: str,
+    duration: PlanDuration,
     product_id: str,
     active: bool = True,
 ) -> PlanDocument:
@@ -1886,16 +1886,16 @@ CATALOGUE = [
         name="Free",
         plan_type=PlanTier.FREE,
         amount=0,
-        duration="monthly",
+        duration=PlanDuration.MONTHLY,
         product_id="",
     ),
-    _plan(name="Pro", amount=3000, duration="monthly", product_id="prod_m"),
-    _plan(name="Pro", amount=30000, duration="yearly", product_id="prod_y"),
+    _plan(name="Pro", amount=3000, duration=PlanDuration.MONTHLY, product_id="prod_m"),
+    _plan(name="Pro", amount=30000, duration=PlanDuration.YEARLY, product_id="prod_y"),
     _plan(
         name="Enterprise",
         plan_type=PlanTier.ENTERPRISE,
         amount=0,
-        duration="monthly",
+        duration=PlanDuration.MONTHLY,
         product_id="",
     ),
 ]

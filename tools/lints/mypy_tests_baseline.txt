@@ -673,9 +673,6 @@ apps/api/tests/unit/services/test_onboarding_service.py	call-arg
 apps/api/tests/unit/services/test_onboarding_service.py	list-item
 apps/api/tests/unit/services/test_outbound_delivery.py	arg-type
 apps/api/tests/unit/services/test_outbound_delivery.py	attr-defined
-apps/api/tests/unit/services/test_payment_service.py	arg-type
-apps/api/tests/unit/services/test_payment_service.py	attr-defined
-apps/api/tests/unit/services/test_payment_service.py	return-value
 apps/api/tests/unit/services/test_payment_service_dodo_reconciliation.py	attr-defined
 apps/api/tests/unit/services/test_platform_link_code_service.py	attr-defined
 apps/api/tests/unit/services/test_platform_link_code_service.py	index
