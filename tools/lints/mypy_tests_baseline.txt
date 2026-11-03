@@ -302,7 +302,6 @@ apps/api/tests/unit/api/test_tiered_rate_limiter.py	index
 apps/api/tests/unit/api/test_tiered_rate_limiter.py	method-assign
 apps/api/tests/unit/api/test_user_endpoint.py	arg-type
 apps/api/tests/unit/api/test_voice_endpoint.py	misc
-apps/api/tests/unit/api/test_workflows_endpoint.py	attr-defined
 apps/api/tests/unit/api/v1/endpoints/test_browser.py	attr-defined
 apps/api/tests/unit/api/v1/endpoints/test_features.py	arg-type
 apps/api/tests/unit/api/v1/endpoints/test_features.py	index
@@ -812,7 +811,6 @@ apps/api/tests/unit/workers/test_tracked_todo_tasks.py	has-type
 apps/api/tests/unit/workers/test_tracked_todo_tasks.py	misc
 apps/api/tests/unit/workers/test_tracked_todo_tasks.py	return-value
 apps/api/tests/unit/workers/test_worker_lifecycle.py	arg-type
-apps/api/tests/unit/workers/test_workflow_tasks.py	attr-defined
 apps/api/tests/unit/workers/test_workflow_tasks_coverage.py	arg-type
 apps/api/tests/unit/workers/test_workflow_tasks_onboarding_gate.py	arg-type
 apps/api/tests/unit/workers/test_workflow_tasks_playbook.py	arg-type
