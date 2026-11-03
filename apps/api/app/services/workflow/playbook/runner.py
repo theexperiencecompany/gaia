@@ -68,6 +68,7 @@ from app.models.workflow_execution_models import (
 from app.override.langgraph_bigtool.agent_config import AgentConfig, ToolRetrievalConfig
 from app.override.langgraph_bigtool.create_agent import create_agent
 from app.override.langgraph_bigtool.utils import State
+from app.services.workflow.playbook.dry_run import DryRun
 from app.services.workflow.playbook.evaluator import (
     NO_ITEM,
     AskAnswers,
@@ -212,6 +213,8 @@ class _Run:
     llm_calls: int = 0
     #: The first deterministic reason a completed step was not trusted.
     suspect: str | None = None
+    #: Set on a dry run: only its allowlisted reads reach a tool.
+    dry_run: DryRun | None = None
     #: Set once the first call has been recorded: only that one may end the run as nothing new.
     opened: bool = False
     nothing_new: str | None = None
@@ -224,11 +227,13 @@ async def run_playbook(
     user: PlaybookUser,
     conversation_id: str,
     trigger: Mapping[str, object],
+    dry_run: DryRun | None = None,
 ) -> PlaybookRunResult:
     """Replay playbook and report what happened.
 
     trigger is the fire's own context (the webhook payload, the batched
-    events), addressable as $trigger.<path>.
+    events), addressable as $trigger.<path>. A dry run calls only its
+    allowlisted reads; every other step answers with what it would have called.
     """
     registry = await get_tool_registry()
     recent = await workflow_executions_repository.find_recent_with_trace(
@@ -251,6 +256,7 @@ async def run_playbook(
         ),
         configurable=configurable,
         recent_traces=[execution.trace for execution in recent],
+        dry_run=dry_run,
     )
     space = ToolSpace(tools=registry.get_tool_dict(), runtime=None, subagent_id=None)
 
@@ -533,6 +539,12 @@ async def _call_step(
     # A raise out of the graph is a stopped step, not a dead run: the steps
     # before it already had their side effects, and only a result that carries
     # the trace lets the worker hand the rest to the agent without repeating them.
+    if run.dry_run is not None and not run.dry_run.runs(call.tool_name, call.args):
+        return ToolMessage(
+            content=run.dry_run.would_call(call.tool_name, call.args),
+            tool_call_id=f"dry_run_{call.position}",
+            name=call.tool_name,
+        )
     try:
         message = await _replay_call(ScriptedCall(name=call.tool_name, args=call.args), run, space)
     except Exception as exc:

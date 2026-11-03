@@ -36,6 +36,7 @@ from app.models.workflow_models import (
 )
 from app.services.notification_service import NotificationService
 from app.services.system_workflows.definitions import SYSTEM_WORKFLOWS_BY_INTEGRATION
+from app.services.system_workflows.recipes import install_recipe
 from app.services.user_service import get_profile_timezone
 from app.services.workflow.scheduler import workflow_scheduler
 from app.services.workflow.service import WorkflowService
@@ -111,6 +112,7 @@ async def provision_system_workflows(
                 trigger_config.timezone = user_timezone
                 request.trigger_config = trigger_config
             workflow = await WorkflowService.create_workflow(request, user_id)
+            await install_recipe(key, workflow.id, user_id, workflow.prompt, workflow.steps)
             created.append(request)
             log.info(
                 f"{LogTag.WORKFLOW} Provisioned system workflow for user", key=key, user_id=user_id
@@ -376,7 +378,7 @@ async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bo
     # Only unregister old triggers AFTER new ones are confirmed registered
     await _unregister_old_triggers_for_reset(old_trigger_ids, trigger_name, workflow_id, user_id)
 
-    await workflow_repository.reset_system_workflow(
+    reset = await workflow_repository.reset_system_workflow(
         workflow_id,
         SystemWorkflowDefinition(
             title=request.title,
@@ -387,6 +389,11 @@ async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bo
             composio_trigger_ids=new_trigger_ids,
         ),
     )
+    if reset is None:
+        return False
+    # The reset definition is a new workflow hash: the old playbook is stale,
+    # and the recipe it ships with replaces it.
+    await install_recipe(key, workflow_id, user_id, reset.prompt, reset.steps)
 
     # A failed re-arm must fail the reset: reporting success would leave a
     # workflow that looks reset but never fires (retrying re-arms it).
