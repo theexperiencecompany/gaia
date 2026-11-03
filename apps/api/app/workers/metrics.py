@@ -31,7 +31,7 @@ from app.services.storage.metrics import (
     _FS_OP_TOTAL,
     _SANDBOX_POOL_SIZE,
 )
-from app.services.workflow.playbook.metrics import ALL_PLAYBOOK_COLLECTORS
+from app.services.workflow.playbook.metrics import ALL_PLAYBOOK_COLLECTORS, create_alerted_series
 
 T = TypeVar("T")
 P = ParamSpec("P")
@@ -74,5 +74,6 @@ for _collector in (
 
 
 def start_metrics_server(port: int) -> None:
-    """Start the Prometheus metrics HTTP server on the given port."""
+    """Start the Prometheus metrics HTTP server on the given port, the alerted series already at zero."""
+    create_alerted_series()
     start_http_server(port, registry=REGISTRY)

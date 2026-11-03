@@ -2,8 +2,8 @@
 
 Every label is a closed set: the decision tool, its outcome, and a reason that is
 a PlaybookRefusal or a DeclineKind value. Every series an alert reads is created
-at zero on import, so the first refusal after a worker restart is an increase
-from 0 rather than a new series increase() cannot see.
+at zero when the worker starts serving metrics, so the first refusal after a
+restart is an increase from 0 rather than a new series increase() cannot see.
 """
 
 from __future__ import annotations
@@ -82,9 +82,8 @@ def record_decline(kind: DeclineKind, *, refused: bool) -> None:
     ).inc()
 
 
-def record_disable(*, refused: bool) -> None:
+def record_disable(outcome: PlaybookDecisionOutcome) -> None:
     """Count one disable_playbook call."""
-    outcome = PlaybookDecisionOutcome.REFUSED if refused else PlaybookDecisionOutcome.ACCEPTED
     PLAYBOOK_DECISION_TOTAL.labels(
         PlaybookDecisionTool.DISABLE.value, outcome.value, NO_REASON
     ).inc()
@@ -95,7 +94,8 @@ def record_replay(status: PlaybookRunStatus) -> None:
     PLAYBOOK_REPLAY_TOTAL.labels(status.value).inc()
 
 
-def _create_alerted_series() -> None:
+def create_alerted_series() -> None:
+    """Create every series a playbook alert reads, at zero, so its first increment is visible."""
     for outcome in (PlaybookDecisionOutcome.ACCEPTED, PlaybookDecisionOutcome.ERROR):
         PLAYBOOK_DECISION_TOTAL.labels(PlaybookDecisionTool.WRITE.value, outcome.value, NO_REASON)
     for refusal in PlaybookRefusal:
@@ -104,6 +104,3 @@ def _create_alerted_series() -> None:
         )
     for status in REPLAY_STATUSES:
         PLAYBOOK_REPLAY_TOTAL.labels(status.value)
-
-
-_create_alerted_series()

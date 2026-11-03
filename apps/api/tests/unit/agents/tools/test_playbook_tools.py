@@ -35,7 +35,6 @@ from app.models.playbook_models import (
     DeclineKind,
     PlaybookBody,
     PlaybookDocument,
-    PlaybookRefusal,
     PlaybookRunStatus,
 )
 from app.models.workflow_execution_models import RecordedCall
@@ -2083,16 +2082,3 @@ class TestDecisionCounter:
 
         assert _decisions("disable", "accepted", "none") - accepted == 1
         assert _decisions("disable", "refused", "none") - refused == 1
-
-    def test_every_write_refusal_kind_is_a_series_before_the_first_one(self) -> None:
-        missing = [
-            kind.value
-            for kind in PlaybookRefusal
-            if REGISTRY.get_sample_value(
-                "gaia_playbook_decision_total",
-                {"tool": "write", "outcome": "refused", "reason": kind.value},
-            )
-            is None
-        ]
-
-        assert missing == []

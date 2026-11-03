@@ -1,9 +1,9 @@
-"""The playbook series an alert reads exist from import, at zero, under their real labels."""
+"""The playbook series an alert reads are created at zero, under their real labels."""
 
 from prometheus_client import REGISTRY
 
 from app.models.playbook_models import PlaybookRefusal
-from app.services.workflow.playbook.metrics import REPLAY_STATUSES
+from app.services.workflow.playbook.metrics import REPLAY_STATUSES, create_alerted_series
 
 
 def _label_sets(metric: str) -> list[dict[str, str]]:
@@ -16,7 +16,9 @@ def _label_sets(metric: str) -> list[dict[str, str]]:
     ]
 
 
-def test_every_write_outcome_an_alert_reads_is_a_series_from_import() -> None:
+def test_every_write_outcome_an_alert_reads_is_created() -> None:
+    create_alerted_series()
+
     present = {
         (labels["tool"], labels["outcome"], labels["reason"])
         for labels in _label_sets("gaia_playbook_decision")
@@ -29,7 +31,9 @@ def test_every_write_outcome_an_alert_reads_is_a_series_from_import() -> None:
     assert not any("None" in labels for labels in present)
 
 
-def test_every_replay_status_is_a_series_from_import() -> None:
+def test_every_replay_status_is_created() -> None:
+    create_alerted_series()
+
     present = {labels["status"] for labels in _label_sets("gaia_playbook_replay")}
 
     assert {status.value for status in REPLAY_STATUSES} <= present
