@@ -101,8 +101,7 @@ def _add_step(title: str, step_id: str = "add") -> dict[str, Any]:
 ITEM_ID = "$item.id"
 WHY_NO_PLAYBOOK = "no playbook"
 WHY_REPLAY_SUCCESS = "replay success"
-WHY_DECLINES_0 = "declines 0"
-WHY_DECLINES_1 = "declines 1"
+WHY_STILL_ACTIVE = "still active"
 BRANCH_ON_INBOX = "whether inbox has mail"
 
 
@@ -167,12 +166,18 @@ def refused(needle: str) -> Expectation:
     return check
 
 
-def declines(count: int, *, active: bool = True) -> Expectation:
+def declined_ok(observation: Observation, _ctx: Context) -> bool:
+    # The scripted model voices one decision on every agent turn it is replayed to.
+    return (
+        bool(observation.decisions)
+        and all(d == "decline_playbook:ok" for d in observation.decisions)
+        and observation.workflow.activated
+    )
+
+
+def still_active() -> Expectation:
     def check(observation: Observation, _ctx: Context) -> bool:
-        return (
-            observation.workflow.playbook_declines == count
-            and observation.workflow.activated is active
-        )
+        return observation.workflow.activated
 
     return check
 
@@ -180,11 +185,7 @@ def declines(count: int, *, active: bool = True) -> Expectation:
 def paused_on(integration: str) -> Expectation:
     def check(observation: Observation, _ctx: Context) -> bool:
         workflow = observation.workflow
-        return (
-            not workflow.activated
-            and workflow.blocked_on_integrations == [integration]
-            and workflow.playbook_declines == 0
-        )
+        return not workflow.activated and workflow.blocked_on_integrations == [integration]
 
     return check
 
@@ -342,25 +343,10 @@ SCENARIOS: list[Scenario] = [
         fires=[Fire("refused at the write", refused("addresses the handoff"), WHY_NO_PLAYBOOK)],
     ),
     Scenario(
-        key="SD",
-        title="one strike per run",
-        script=script(
-            decline("order_branches", branch_on=BRANCH_ON_INBOX),
-            decline("order_branches", branch_on=BRANCH_ON_INBOX),
-            decline("order_branches", branch_on=BRANCH_ON_INBOX),
-        ),
-        fires=[
-            Fire("three declines in one run count once", declines(1), WHY_DECLINES_1),
-            Fire("a second run counts a second strike", declines(2), "declines 2"),
-        ],
-    ),
-    Scenario(
         key="S5",
-        title="a blocked integration pauses without a strike",
+        title="a blocked integration pauses the workflow",
         script=script(decline("blocked_missing_integration", integrations=["github"])),
-        fires=[
-            Fire("paused on github", paused_on("github"), "paused, blocked_on [github], no strike")
-        ],
+        fires=[Fire("paused on github", paused_on("github"), "paused, blocked_on [github]")],
     ),
     Scenario(
         key="S9",
@@ -476,17 +462,17 @@ SCENARIOS: list[Scenario] = [
         key="X9",
         title="order_branches without branch_on is not a decision",
         script=script(decline("order_branches")),
-        fires=[Fire("not counted", declines(0), WHY_DECLINES_0)],
+        fires=[Fire("still active", still_active(), WHY_STILL_ACTIVE)],
     ),
     Scenario(
         key="X10",
         title="blocked without integrations is not a decision",
         script=script(decline("blocked_missing_integration")),
-        fires=[Fire("not counted", declines(0), WHY_DECLINES_0)],
+        fires=[Fire("still active", still_active(), WHY_STILL_ACTIVE)],
     ),
     Scenario(
         key="X11",
-        title="blocked_auth_expired pauses without a strike",
+        title="blocked_auth_expired pauses the workflow",
         script=script(decline("blocked_auth_expired", integrations=["gmail"])),
         fires=[Fire("paused on gmail", paused_on("gmail"), "paused, blocked_on [gmail]")],
     ),
@@ -494,34 +480,24 @@ SCENARIOS: list[Scenario] = [
         key="X13",
         title="blocked_no_budget is free",
         script=script(decline("blocked_no_budget")),
-        fires=[Fire("not counted, still active", declines(0), WHY_DECLINES_0)],
+        fires=[Fire("still active", still_active(), WHY_STILL_ACTIVE)],
     ),
     Scenario(
         key="X14",
-        title="the decline lockout, and an edit resets it",
+        title="a workflow is asked on every run, however many times it declined",
         script=script(decline("unstable_discovery")),
         fires=[
-            Fire("strike 1", declines(1), WHY_DECLINES_1),
-            Fire("strike 2", declines(2), "declines 2"),
-            Fire("strike 3", declines(3), "declines 3"),
-            Fire("past the limit a decline is not asked", declines(3), "declines stay 3"),
-            Fire(
-                "an edited workflow starts a fresh tally",
-                declines(1),
-                WHY_DECLINES_1,
-                before=edit_prompt,
-            ),
+            Fire(f"decline {n}", declined_ok, "decline accepted, workflow active")
+            for n in range(1, 5)
         ],
     ),
     Scenario(
         key="X16",
-        title="a write after a decline clears the tally",
+        title="a write after a decline in the same run stores the playbook",
         script=script(
             decline("unstable_discovery"), _todo("drive x16"), write([_add_step("drive x16")])
         ),
-        fires=[
-            Fire("stored, declines 0", both(authored, declines(0)), "playbook stored, declines 0")
-        ],
+        fires=[Fire("stored", authored, "playbook stored")],
     ),
     Scenario(
         key="X17",
