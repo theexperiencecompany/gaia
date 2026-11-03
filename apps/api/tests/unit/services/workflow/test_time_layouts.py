@@ -154,6 +154,7 @@ class TestTimeSlotLayout:
         ("2026-10-08T14:50:20Z", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%SZ"),
         ("2026-09-10T14:50:00-04:00", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S%:z"),
         ("03/11/2026", "%m/%d/%Y", "%m/%d/%Y"),
+        ("10/09/2026 14:50 -04:00", "%d/%m/%Y %H:%M %:z", "%d/%m/%Y %H:%M %:z"),
         ("2026-11-20", None, "%Y-%m-%d"),
         ("Plan for September 5, 2026", "Plan for %B %d, %Y", "Plan for %B %d, %Y"),
         ("soon", "%Y", None),

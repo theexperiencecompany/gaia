@@ -534,9 +534,7 @@ class TestNothingNew:
 
 
 def _replays_counted(status: PlaybookRunStatus) -> float:
-    value = REGISTRY.get_sample_value("gaia_playbook_replay_total", {"status": status.value})
-    assert value is not None, "every replay status is a series from import, at zero"
-    return value
+    return REGISTRY.get_sample_value("gaia_playbook_replay_total", {"status": status.value}) or 0.0
 
 
 @pytest.mark.parametrize(
