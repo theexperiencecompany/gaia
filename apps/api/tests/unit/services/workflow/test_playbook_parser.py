@@ -1235,6 +1235,127 @@ result_brief: x
             )
         ]
 
+    @pytest.mark.regression
+    async def test_an_execute_step_matches_its_call_whatever_card_label_it_carries(self) -> None:
+        """Regression from prod (Oct 2026): only task_description, the card's label, differed, and the write was refused."""
+        body = _body(
+            """
+description: Daily inbox triage
+steps:
+  - id: inbox
+    tool: execute
+    args:
+      task_description: Fetching last 24h inbox emails
+      tool_name: GMAIL_FETCH_MESSAGES
+      data: {timeframe: 1d, query: "in:inbox"}
+result_brief: x
+"""
+        )
+        sent = {"timeframe": "1d", "query": "in:inbox"}
+        results = [
+            _call(
+                "execute",
+                {
+                    "task_description": "Fetching last 24h inbox emails for triage",
+                    "tool_name": "GMAIL_FETCH_MESSAGES",
+                    "data": sent,
+                },
+                {"messages": [{"id": "m1"}]},
+            )
+        ]
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=_FakeRegistry({"execute": execute})):
+            result = await validate_playbook(body, results)
+
+        assert result.issues == []
+
+    @pytest.mark.regression
+    async def test_an_execute_step_matches_a_call_that_sent_its_data_json_encoded(self) -> None:
+        """The proxy runs a JSON-encoded data as its object, so the record of that call is the same call."""
+        body = _body(
+            """
+description: Daily inbox triage
+steps:
+  - id: inbox
+    tool: execute
+    args:
+      task_description: Fetching mail
+      tool_name: GMAIL_FETCH_MESSAGES
+      data: {timeframe: 1d}
+result_brief: x
+"""
+        )
+        results = [
+            _call(
+                "execute",
+                {
+                    "task_description": "Fetching mail",
+                    "tool_name": "GMAIL_FETCH_MESSAGES",
+                    "data": '{"timeframe": "1d"}',
+                },
+                {"messages": [{"id": "m1"}]},
+            )
+        ]
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=_FakeRegistry({"execute": execute})):
+            result = await validate_playbook(body, results)
+
+        assert result.issues == []
+
+    async def test_only_executes_data_is_read_as_dispatched(self) -> None:
+        """Another tool's data arg that holds JSON text is text: decoding it would refuse the call it froze."""
+        body = _body(
+            """
+description: Post a raw payload
+steps:
+  - id: post
+    tool: post_raw
+    args:
+      data: '{"a": 1}'
+result_brief: x
+"""
+        )
+        results = [_call("post_raw", {"data": '{"a": 1}'}, {"posted": [{"id": "p1"}]})]
+        registry = _schema_registry(post_raw={"data": {"type": "string"}})
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=registry):
+            result = await validate_playbook(body, results)
+
+        assert result.issues == []
+
+    async def test_an_execute_step_with_other_data_is_still_refused(self) -> None:
+        body = _body(
+            """
+description: Daily inbox triage
+steps:
+  - id: inbox
+    tool: execute
+    args:
+      task_description: Fetching mail
+      tool_name: GMAIL_FETCH_MESSAGES
+      data: {timeframe: 7d}
+result_brief: x
+"""
+        )
+        results = [
+            _call(
+                "execute",
+                {
+                    "task_description": "Fetching mail",
+                    "tool_name": "GMAIL_FETCH_MESSAGES",
+                    "data": {"timeframe": "1d"},
+                },
+                {"messages": [{"id": "m1"}]},
+            )
+        ]
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=_FakeRegistry({"execute": execute})):
+            result = await validate_playbook(body, results)
+
+        assert [issue.problem.split(" (")[0] for issue in result.issues] == [
+            "execute ran 1 time(s) in this run, but never with these args"
+        ]
+
     async def test_the_refusal_shows_the_args_of_the_last_call_still_unfrozen(self) -> None:
         """Of four calls, one already frozen by an earlier step, the refusal must show the run's last still-unfrozen attempt."""
         body = _body(
@@ -2108,7 +2229,9 @@ class TestAuthoredPlaybookBecomesTheStoredOne:
             result_brief="Say how many events there were.",
         )
 
-        assert body.steps[1].args["subject"] == {"$ask": "Write the digest."}
+        mail = body.steps[1]
+        assert isinstance(mail, ToolStep)
+        assert mail.args["subject"] == {"$ask": "Write the digest."}
         assert body.result_brief == "Say how many events there were."
 
 

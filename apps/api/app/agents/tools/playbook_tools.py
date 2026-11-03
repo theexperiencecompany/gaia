@@ -15,9 +15,11 @@ from langchain_core.messages import ToolMessage
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
-from pydantic import ValidationError
+from pydantic import BeforeValidator, ValidationError
 from pydantic.v1 import ValidationError as LegacyValidationError
 
+from app.agents.tools.execute.unwrap import unwrap_execute_call
+from app.agents.tools.todo_tools import TODO_TOOL_NAMES
 from app.constants.agents import PLAYBOOK_REPLAYED_CALLS_KEY
 from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME
 from app.constants.log_tags import LogTag
@@ -36,7 +38,6 @@ from app.models.playbook_models import (
 )
 from app.models.workflow_execution_models import RecordedCall, parse_result
 from app.models.workflow_models import WorkflowDocument, WorkflowUpdate
-from app.services.workflow.playbook.check import declined_for_good
 from app.services.workflow.playbook.lifecycle import HEAL_STATUSES
 from app.services.workflow.playbook.parser import (
     RecordedResult,
@@ -45,6 +46,7 @@ from app.services.workflow.playbook.parser import (
     validate_playbook,
 )
 from app.services.workflow.playbook.workflow_hash import workflow_hash
+from app.utils.json_args import decode_json_container
 from app.utils.workflow_utils import (
     WorkflowConfigError,
     error_response,
@@ -134,7 +136,7 @@ def _activated_integrations(state: Mapping[str, Any] | None) -> list[str]:
 
 
 def _invoked_call_names(state: Mapping[str, Any] | None) -> list[str]:
-    """Every tool the run has called so far, answered or still in flight.
+    """Every tool the run has called so far, answered or still in flight, seen through execute.
 
     The quiet-day check reads this rather than the answered record: a model
     can issue ``create_todo`` and the decline in one parallel batch, and the
@@ -146,7 +148,7 @@ def _invoked_call_names(state: Mapping[str, Any] | None) -> list[str]:
     if not isinstance(messages, list):
         return []
     return [
-        str(call["name"])
+        unwrap_execute_call(str(call["name"]), dict(call.get("args") or {}))[0]
         for message in messages
         for call in getattr(message, "tool_calls", None) or []
         if call.get("name")
@@ -212,8 +214,10 @@ def _run_results(state: Mapping[str, Any] | None) -> RunResults | None:
 async def write_playbook(
     config: RunnableConfig,
     description: Annotated[str, "What this playbook does, in one or two lines."],
+    # Models often JSON-encode this list (prod: 7 refused writes); the schema stays an array.
     steps: Annotated[
         list[PlaybookStepInput],
+        BeforeValidator(decode_json_container),
         "The calls to replay, in the order you made them: only the calls that did "
         "the work, never discovery or dead ends. Writing the result is not a step; "
         "that is what result_brief is for.",
@@ -301,14 +305,10 @@ async def write_playbook(
                 result_brief=body.result_brief,
             )
         )
-        # A written playbook answers the question the declines were about, and
-        # supersedes the discard that recorded why the last one was thrown away.
+        # A written playbook supersedes the discard that recorded why the last one
+        # was thrown away.
         await workflow_repository.update_for_user(
-            workflow_id,
-            user_id,
-            WorkflowUpdate(
-                playbook_declines=0, playbook_declined_hash=None, last_playbook_discard=None
-            ),
+            workflow_id, user_id, WorkflowUpdate(last_playbook_discard=None)
         )
         log.set_ns("playbook", id=stored.playbook_id, steps=len(stored.steps))
         return success_response(
@@ -378,11 +378,10 @@ async def _record_blocked_run(
 ) -> dict[str, Any]:
     """Settle a run that never reached the work.
 
-    Nothing is counted against the workflow — see :data:`BLOCKED_DECLINE_KINDS`
-    for why a strike here is the bug rather than the record. The stored playbook
-    is deliberately left alone even mid-heal: a heal run that could not run at
-    all has learned nothing about whether the frozen sequence still holds, and
-    deleting it would throw away a working shortcut over a disconnected account.
+    The stored playbook is deliberately left alone even mid-heal: a heal run that
+    could not run at all has learned nothing about whether the frozen sequence
+    still holds, and deleting it would throw away a working shortcut over a
+    disconnected account.
     """
     # Deferred: integration_pause reaches WorkflowService, which pulls the
     # generation service and the whole LLM client stack behind it. A tools module
@@ -394,9 +393,9 @@ async def _record_blocked_run(
     log.set_ns("playbook", blocked=True, blocked_integrations=integrations)
     if kind not in INTEGRATION_DECLINE_KINDS:
         return success_response(
-            {"declined": True, "blocked": True, "counted": False},
-            "Noted — this run never reached the work, so it does not count against the "
-            "workflow. It will be asked again on a run that gets further.",
+            {"declined": True, "blocked": True},
+            "Noted — this run never reached the work. It will be asked again on a run that "
+            "gets further.",
         )
 
     outcome = await pause_workflow_for_missing_integrations(
@@ -416,11 +415,9 @@ async def _record_blocked_run(
         )
     paused = outcome.paused
     if not paused:
-        # The claim did not check out. Say so rather than pausing on it, and
-        # still do not count a strike: a run that believed it was blocked did
-        # not judge the sequence either.
+        # The claim did not check out. Say so rather than pausing on it.
         return success_response(
-            {"declined": True, "blocked": True, "counted": False, "paused": False},
+            {"declined": True, "blocked": True, "paused": False},
             "Noted, but those integrations look connected from here, so the workflow is "
             "still active.",
         )
@@ -428,7 +425,6 @@ async def _record_blocked_run(
         {
             "declined": True,
             "blocked": True,
-            "counted": False,
             "paused": True,
             "integrations": paused,
         },
@@ -487,14 +483,6 @@ async def decline_playbook(
         workflow = await workflow_repository.get_for_user(workflow_id, user_id)
         if workflow is None:
             return error_response("workflow_not_found", f"No workflow {workflow_id} for this user.")
-        # Past the limit the check is no longer asked; a decline now answers a
-        # question nobody put, and counting it would let a copied "step" grow
-        # the tally forever.
-        if declined_for_good(workflow):
-            return error_response(
-                "not_asked",
-                "This workflow is no longer asked about a playbook; nothing to decline.",
-            )
         return await _record_decline(
             workflow,
             kind=kind,
@@ -542,10 +530,12 @@ async def _record_decline(
     state: Mapping[str, Any] | None,
     config: RunnableConfig,
 ) -> dict[str, Any]:
-    """What one decline means for the workflow, by its kind, once it is known
-    to be asked and well-formed: a blocked run pauses, a quiet day is free, a
-    decline after this run's own write is the same decision, and the rest
-    count once per run."""
+    """What one well-formed decline means for the workflow, by its kind.
+
+    A blocked run pauses, a quiet day is checked against the run's own calls, and
+    a decline inside a heal run removes the playbook that failed. Nothing is
+    counted: the workflow is asked again on its next run until it has a playbook.
+    """
     workflow_id, user_id = workflow.id, workflow.user_id
     if kind in BLOCKED_DECLINE_KINDS:
         return await _record_blocked_run(
@@ -558,7 +548,11 @@ async def _record_decline(
     if kind is DeclineKind.NO_WORK_TODAY:
         # The claim is checked against the run's own record, not taken on
         # trust: a run that made a doing-call had work to freeze.
-        worked = [name for name in _invoked_call_names(state) if is_work_call(name)]
+        worked = [
+            name
+            for name in _invoked_call_names(state)
+            if name not in _RUN_BOOKKEEPING_TOOLS and is_work_call(name)
+        ]
         if worked:
             return error_response(
                 "work_happened",
@@ -566,56 +560,38 @@ async def _record_decline(
                 "today. Freeze it with write_playbook, or decline with the kind that "
                 "says why the sequence cannot hold.",
             )
-        # Not a verdict on the sequence: the work never happened, so there
-        # was nothing to freeze. Asked again on a day it does.
+        # The work never happened, so there was nothing to freeze.
         log.set_ns("playbook", quiet_day=True)
         return success_response(
-            {"declined": True, "counted": False},
-            "Noted: nothing to freeze on a day the work did not happen. This does not "
-            "count against the workflow.",
+            {"declined": True},
+            "Noted: nothing to freeze on a day the work did not happen. The next run is "
+            "asked again.",
         )
 
-    run_id = get_stream_id(config)
-    written = await playbook_repository.get_for_workflow(workflow_id, user_id)
-    if written is not None and written.authored_run == run_id:
+    playbook = await playbook_repository.get_for_workflow(workflow_id, user_id)
+    if playbook is not None and playbook.authored_run == get_stream_id(config):
         # Seen on the real model: a valid write, then a decline in the same
         # turn. The write was checked against the run and stored; the
         # decline is a second voice of a decision already made.
         return success_response(
-            {"declined": True, "counted": False},
+            {"declined": True},
             "This run already wrote a playbook, and that is its decision; nothing to record.",
         )
-
-    # Counted once per run, however many times this run voices it: the
-    # calls a model issues in one turn run in parallel on one state, so no
-    # call can see another's answer. The repository matches on the run.
-    declines = await workflow_repository.count_playbook_decline(
-        workflow_id,
-        user_id,
-        run_id=run_id,
-        workflow_hash=workflow_hash(workflow.prompt, workflow.steps),
-    )
-    if declines is None:
-        return success_response(
-            {"declined": True, "counted": False},
-            "Already noted for this run. A run is one decision; nothing more to record.",
-        )
-    log.set_ns("playbook", declines=declines)
 
     # A decline inside a heal run is the agent saying the stored sequence
     # cannot hold. Leaving it FAILED/SUSPECT would brief every later fire
     # to heal it again.
-    playbook = await playbook_repository.get_for_workflow(workflow_id, user_id)
     if playbook is not None and playbook.last_run_status in HEAL_STATUSES:
         await playbook_repository.delete_for_workflow(workflow_id, user_id)
         log.set_ns("playbook", disabled=True, reason=reason)
         return success_response(
-            {"declined": True, "counted": True, "declines": declines, "disabled": True},
-            "Noted. The stored playbook was removed; this workflow reasons out every run again.",
+            {"declined": True, "disabled": True},
+            "Noted. The stored playbook was removed; the next run reasons it out and is "
+            "asked again.",
         )
     return success_response(
-        {"declined": True, "counted": True, "declines": declines},
-        "Noted. This workflow keeps reasoning out every run for now.",
+        {"declined": True},
+        "Noted. This run reasons it out; the next run is asked again.",
     )
 
 
@@ -658,3 +634,6 @@ async def disable_playbook(
 
 
 tools = [write_playbook, read_playbook, decline_playbook, disable_playbook]
+
+#: The run tracking its own plan and deciding its playbook: never the workflow's work.
+_RUN_BOOKKEEPING_TOOLS = frozenset(TODO_TOOL_NAMES | {t.name for t in tools})

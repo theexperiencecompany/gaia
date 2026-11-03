@@ -30,7 +30,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Annotated, Any, Self, TypedDict, TypeGuard, cast
+from typing import Annotated, Any, Self, TypeGuard
 import uuid
 
 from pydantic import (
@@ -106,9 +106,7 @@ class DeclineKind(str, Enum):
     NO_WORK_TODAY = "no_work_today"
 
 
-#: Never counts toward PLAYBOOK_DECLINE_LIMIT: a workflow blocked on a
-#: disconnected integration fires twice a day and would exhaust 3 chances in
-#: under 2 days, staying locked out even after reconnecting (only an edit resets it).
+#: Kinds saying the run never reached the work, so there was no sequence to judge.
 BLOCKED_DECLINE_KINDS = frozenset(
     {
         DeclineKind.BLOCKED_MISSING_INTEGRATION,
@@ -149,11 +147,6 @@ def is_work_call(tool_name: str) -> bool:
     parts = tool_name.lower().replace("-", "_").split("_")
     return any(part in WORK_CALL_VERBS for part in parts)
 
-
-#: Kinds that don't count toward the limit: the blocked ones, and a quiet day.
-#: A playbook only freezes calls that ran, so a seasonal workflow would
-#: otherwise spend its chances on empty days and lock out on a busy one.
-UNCOUNTED_DECLINE_KINDS = BLOCKED_DECLINE_KINDS | {DeclineKind.NO_WORK_TODAY}
 
 #: Blocked kinds that name integrations and can therefore pause the workflow.
 INTEGRATION_DECLINE_KINDS = frozenset(
@@ -473,12 +466,6 @@ class ForEachStep(_CallStep):
         return node
 
 
-class _StepDocument(TypedDict, total=False):
-    """The key of a raw step document its variant is read from."""
-
-    for_each: object
-
-
 def _step_shape(value: object) -> str:
     """Which variant a value is, read off its shape: the one that carries ``for_each``.
 
@@ -489,11 +476,17 @@ def _step_shape(value: object) -> str:
         return "for_each"
     if isinstance(value, ToolStep):
         return "tool"
-    if isinstance(value, Mapping):
-        document: _StepDocument = cast(_StepDocument, value)
-        if document.get("for_each") is not None:
-            return "for_each"
+    if isinstance(value, Mapping) and _ShapeProbe.model_validate(dict(value)).for_each is not None:
+        return "for_each"
     return "tool"
+
+
+class _ShapeProbe(BaseModel):
+    """The key that tells a step's shape apart before it is parsed: a repeating call."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    for_each: object = None
 
 
 PlaybookStep = Annotated[

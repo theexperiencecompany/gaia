@@ -23,7 +23,6 @@ apps/api/tests/contracts/test_folded_cards.py	list-item
 apps/api/tests/contracts/test_notifications_repository.py	arg-type
 apps/api/tests/contracts/test_user_instructions_repository.py	assignment
 apps/api/tests/contracts/test_user_integrations_repository.py	arg-type
-apps/api/tests/contracts/test_workflows_repository.py	arg-type
 apps/api/tests/contracts/test_workflows_repository_reset_schedule.py	attr-defined
 apps/api/tests/e2e/_harness/agent_lab.py	attr-defined
 apps/api/tests/e2e/_harness/background.py	attr-defined
@@ -221,7 +220,6 @@ apps/api/tests/unit/agents/tools/coding/test_write_tool.py	arg-type
 apps/api/tests/unit/agents/tools/coding/test_write_tool.py	misc
 apps/api/tests/unit/agents/tools/coding/test_write_tool.py	return-value
 apps/api/tests/unit/agents/tools/execute/test_dispatch.py	arg-type
-apps/api/tests/unit/agents/tools/execute/test_execute_tool.py	arg-type
 apps/api/tests/unit/agents/tools/execute/test_schema_notation.py	dict-item
 apps/api/tests/unit/agents/tools/execute/test_schema_notation.py	list-item
 apps/api/tests/unit/agents/tools/execute/test_schema_tool.py	arg-type
@@ -534,8 +532,6 @@ apps/api/tests/unit/services/test_canvas_storage_atomic.py	arg-type
 apps/api/tests/unit/services/test_chat_stream_attach.py	arg-type
 apps/api/tests/unit/services/test_chat_stream_attach.py	attr-defined
 apps/api/tests/unit/services/test_chat_stream_attach.py	typeddict-item
-apps/api/tests/unit/services/test_composio_gmail_tools.py	arg-type
-apps/api/tests/unit/services/test_composio_gmail_tools.py	call-arg
 apps/api/tests/unit/services/test_composio_service.py	assignment
 apps/api/tests/unit/services/test_connect_link_service.py	attr-defined
 apps/api/tests/unit/services/test_conversation_service.py	arg-type

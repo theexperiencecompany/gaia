@@ -1,7 +1,7 @@
 from collections.abc import Callable, Mapping
 from datetime import datetime
 import json
-from typing import Any, Literal, TypedDict, cast
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -178,19 +178,6 @@ def parse_result(text: str) -> object:
     if rest.strip() and not rest.startswith(TOOL_RESULT_NOTE_SEPARATOR):
         return text
     return value
-
-
-class ToolResultEnvelope(TypedDict, total=False):
-    """The bookkeeping keys a tool's JSON result may carry beside its data."""
-
-    success: object
-    error: object
-    message: object
-
-
-def as_envelope(result: object) -> ToolResultEnvelope | None:
-    """Return a parsed result's envelope keys when it is a JSON object, else None."""
-    return cast(ToolResultEnvelope, result) if isinstance(result, dict) else None
 
 
 def carries_no_data(value: object) -> bool:

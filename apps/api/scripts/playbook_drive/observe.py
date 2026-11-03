@@ -12,6 +12,7 @@ from collections.abc import Iterator
 from datetime import datetime
 import json
 from pathlib import Path
+import re
 import time
 from typing import Any, cast
 
@@ -27,6 +28,8 @@ from app.db.mongodb.mongodb import MONGO_DATABASE_NAME
 from .client import EXECUTION_WAIT_SECONDS, SETTLE_SECONDS, Execution, GaiaClient
 
 FINISHED = frozenset({"success", "failed", "skipped"})
+PLAYBOOK_DECISION_TOOLS = frozenset({"write_playbook", "decline_playbook", "disable_playbook"})
+ERROR_CODE = re.compile(r'"error":\s*"(\w+)"')
 #: How long to wait for the previous fire's executor to let go of the conversation.
 LOCK_WAIT_SECONDS = 180
 
@@ -44,7 +47,6 @@ class PlaybookState(BaseModel):
 class WorkflowState(BaseModel):
     activated: bool
     deactivated_reason: str | None
-    playbook_declines: int
     blocked_on_integrations: list[str]
     last_discard_reason: str | None
 
@@ -67,6 +69,8 @@ class Observation(BaseModel):
     for_each: list[ForEachCount] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
+    #: Each playbook decision this fire made, as "<tool>:<ok | error code>".
+    decisions: list[str] = Field(default_factory=list)
 
     def warned(self, needle: str) -> bool:
         return any(needle in line for line in self.warnings + self.errors)
@@ -160,10 +164,20 @@ class Store:
         return WorkflowState(
             activated=bool(raw.get("activated")),
             deactivated_reason=raw.get("deactivated_reason"),
-            playbook_declines=raw.get("playbook_declines") or 0,
             blocked_on_integrations=list(raw.get("blocked_on_integrations") or []),
             last_discard_reason=discard.get("reason"),
         )
+
+    def decisions(self, execution_id: str) -> list[str]:
+        """Each playbook decision in the fire's trace, as "<tool>:<ok | error code>"."""
+        row = self.db["workflow_executions"].find_one({"execution_id": execution_id}) or {}
+        found: list[str] = []
+        for call in row.get("trace") or []:
+            name = str(call.get("tool_name"))
+            if name in PLAYBOOK_DECISION_TOOLS:
+                error = ERROR_CODE.search(str(call.get("result_digest")))
+                found.append(f"{name}:{error.group(1) if error else 'ok'}")
+        return found
 
     def executions(self, workflow_id: str) -> list[Execution]:
         rows = self.db["workflow_executions"].find({"workflow_id": workflow_id})
@@ -223,6 +237,7 @@ def _observe(
         execution=execution,
         playbook=store.playbook(workflow_id),
         workflow=store.workflow(workflow_id),
+        decisions=store.decisions(execution.execution_id),
     )
     for event in log.events_since(position, workflow_id):
         _read_playbook_event(observation, event)

@@ -7,6 +7,8 @@ re-asking would spend output tokens re-deciding it on every fire.
 
 from collections.abc import Sequence
 
+from pydantic import BaseModel, ConfigDict
+
 from app.agents.prompts.playbook_prompts import (
     PLAYBOOK_CHECK_BRIEF,
     PLAYBOOK_HEAL_ALREADY_RAN,
@@ -14,21 +16,11 @@ from app.agents.prompts.playbook_prompts import (
     PLAYBOOK_HEAL_NO_REASON,
     PLAYBOOK_HEAL_VERDICTS,
 )
-from app.constants.agents import PLAYBOOK_DECLINE_LIMIT
 from app.constants.log_tags import LogTag
 from app.db.repositories.playbooks import playbook_repository
-from app.db.repositories.workflows import workflow_repository
 from app.models.playbook_models import PlaybookDocument, PlaybookRunOutcome, PlaybookRunStatus
-from app.models.workflow_execution_models import (
-    RecordedCall,
-    ToolResultEnvelope,
-    as_envelope,
-    carries_no_data,
-    parse_result,
-)
-from app.models.workflow_models import WorkflowDocument
+from app.models.workflow_execution_models import RecordedCall, carries_no_data, parse_result
 from app.services.workflow.playbook.lifecycle import HEAL_STATUSES
-from app.services.workflow.playbook.workflow_hash import workflow_hash
 from shared.py.wide_events import log
 
 
@@ -37,18 +29,13 @@ async def playbook_check_brief(
 ) -> str:
     """Return the <playbook_check> block for this run, or "" to stay silent.
 
-    The check brief with no playbook (unless declined too many times), the
-    heal brief when the last replay stopped or was untrusted, or "" when it
-    ran cleanly. fallback_note (a replay that stopped partway this fire)
-    merges into the heal brief. Never raises — a failure just costs a playbook.
+    The check brief while there is no playbook (every run, until one is
+    written), the heal brief when the last replay stopped or was untrusted, or
+    "" when it ran cleanly. fallback_note (a replay that stopped partway this
+    fire) merges into the heal brief. Never raises — a failure just costs a playbook.
     """
     try:
         playbook = await playbook_repository.get_for_workflow(workflow_id, user_id)
-        workflow = (
-            await workflow_repository.get_for_user(workflow_id, user_id)
-            if playbook is None
-            else None
-        )
     except Exception as e:
         log.warning(
             f"{LogTag.WORKFLOW} playbook_check_brief: lookup failed; skipping the check",
@@ -59,27 +46,12 @@ async def playbook_check_brief(
         return ""
 
     if playbook is None:
-        if workflow is not None and declined_for_good(workflow):
-            log.set_ns(
-                "playbook",
-                check_skipped="declined",
-                declines=workflow.playbook_declines,
-            )
-            return ""
         if fallback_note:
             return f"{fallback_note.strip()}\n\n{PLAYBOOK_CHECK_BRIEF}"
         return PLAYBOOK_CHECK_BRIEF
     if fallback_note or playbook.last_run_status in HEAL_STATUSES:
         return heal_brief(playbook, fallback_note=fallback_note)
     return ""
-
-
-def declined_for_good(workflow: WorkflowDocument) -> bool:
-    """Declined past the limit for the workflow exactly as it stands now."""
-    return (
-        workflow.playbook_declines >= PLAYBOOK_DECLINE_LIMIT
-        and workflow.playbook_declined_hash == workflow_hash(workflow.prompt, workflow.steps)
-    )
 
 
 def heal_brief(playbook: PlaybookDocument, *, fallback_note: str | None = None) -> str:
@@ -113,10 +85,18 @@ def _wrote_a_playbook(trace: Sequence[RecordedCall]) -> bool:
     for call in trace:
         if call.tool_name != "write_playbook":
             continue
-        envelope: ToolResultEnvelope | None = as_envelope(parse_result(call.result_digest))
-        if envelope is not None and envelope.get("success") is True:
+        result = parse_result(call.result_digest)
+        if isinstance(result, dict) and _ToolEnvelope.model_validate(result).success is True:
             return True
     return False
+
+
+class _ToolEnvelope(BaseModel):
+    """The outcome flag every GAIA tool envelope carries."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    success: object = None
 
 
 async def distrust_fresh_playbook(
