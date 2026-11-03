@@ -260,7 +260,6 @@ apps/api/tests/unit/agents/tools/coding/test_write_tool.py	arg-type
 apps/api/tests/unit/agents/tools/coding/test_write_tool.py	misc
 apps/api/tests/unit/agents/tools/coding/test_write_tool.py	return-value
 apps/api/tests/unit/agents/tools/execute/test_dispatch.py	arg-type
-apps/api/tests/unit/agents/tools/execute/test_execute_tool.py	arg-type
 apps/api/tests/unit/agents/tools/execute/test_schema_notation.py	dict-item
 apps/api/tests/unit/agents/tools/execute/test_schema_notation.py	list-item
 apps/api/tests/unit/agents/tools/execute/test_schema_tool.py	arg-type
@@ -274,11 +273,6 @@ apps/api/tests/unit/agents/tools/test_mutations_factory.py	arg-type
 apps/api/tests/unit/agents/tools/test_mutations_factory.py	assignment
 apps/api/tests/unit/agents/tools/test_mutations_factory.py	index
 apps/api/tests/unit/agents/tools/test_mutations_factory.py	var-annotated
-apps/api/tests/unit/agents/tools/test_playbook_tools.py	arg-type
-apps/api/tests/unit/agents/tools/test_playbook_tools.py	list-item
-apps/api/tests/unit/agents/tools/test_playbook_tools.py	method-assign
-apps/api/tests/unit/agents/tools/test_playbook_tools.py	typeddict-item
-apps/api/tests/unit/agents/tools/test_playbook_tools.py	union-attr
 apps/api/tests/unit/api/test_approvals_endpoint.py	call-arg
 apps/api/tests/unit/api/test_bot_endpoint.py	attr-defined
 apps/api/tests/unit/api/test_bot_endpoint.py	call-arg
@@ -593,8 +587,6 @@ apps/api/tests/unit/services/test_canvas_storage_atomic.py	arg-type
 apps/api/tests/unit/services/test_chat_stream_attach.py	arg-type
 apps/api/tests/unit/services/test_chat_stream_attach.py	attr-defined
 apps/api/tests/unit/services/test_chat_stream_attach.py	typeddict-item
-apps/api/tests/unit/services/test_composio_gmail_tools.py	arg-type
-apps/api/tests/unit/services/test_composio_gmail_tools.py	call-arg
 apps/api/tests/unit/services/test_composio_service.py	assignment
 apps/api/tests/unit/services/test_connect_link_service.py	attr-defined
 apps/api/tests/unit/services/test_conversation_service.py	arg-type
@@ -680,8 +672,6 @@ apps/api/tests/unit/services/workflow/test_playbook_check.py	arg-type
 apps/api/tests/unit/services/workflow/test_playbook_check.py	misc
 apps/api/tests/unit/services/workflow/test_playbook_evaluator.py	arg-type
 apps/api/tests/unit/services/workflow/test_playbook_evaluator.py	operator
-apps/api/tests/unit/services/workflow/test_playbook_parser.py	union-attr
-apps/api/tests/unit/services/workflow/test_playbook_parser.py	var-annotated
 apps/api/tests/unit/services/workflow/test_playbook_runner.py	arg-type
 apps/api/tests/unit/services/workflow/test_playbook_runner.py	assignment
 apps/api/tests/unit/services/workflow/test_playbook_runner.py	call-arg

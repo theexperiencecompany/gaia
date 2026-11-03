@@ -13,7 +13,90 @@ the finished result. Two reasons, both load-bearing:
   anyway: this run's is only persisted after the run returns.
 """
 
-PLAYBOOK_CHECK_BRIEF = """<playbook_check>
+from app.models.playbook_models import PlaybookBody, PlaybookStepInput, playbook_body_from_input
+from app.services.composio.custom_tools.gmail_constants import OFFLOAD_MIN_MESSAGES
+from app.services.workflow.playbook.parser import dump_playbook
+
+
+def _example(description: str, steps: list[dict[str, object]], result_brief: str) -> PlaybookBody:
+    return playbook_body_from_input(
+        description, [PlaybookStepInput.model_validate(step) for step in steps], result_brief
+    )
+
+
+#: The end-to-end example: flat execute calls, then a built-in tool with an $ask slot.
+PLAYBOOK_EXAMPLE = _example(
+    "Brief the user on today's unread mail.",
+    [
+        {
+            "id": "inbox",
+            "tool": "execute",
+            "args": {
+                "task_description": "Listing unread mail",
+                "tool_name": "GMAIL_FETCH_MESSAGES",
+                "data": {
+                    "query": "is:unread",
+                    "timeframe": "1d",
+                    "max_messages": OFFLOAD_MIN_MESSAGES,
+                },
+            },
+        },
+        {
+            "id": "background",
+            "tool": "web_search_tool",
+            "args": {
+                "query_text": {
+                    "$ask": "one web search that would give background on the most "
+                    "important mail listed above"
+                }
+            },
+        },
+    ],
+    "Lead with what the unread mail is about, then what the search added. Two short paragraphs.",
+)
+
+#: The for_each example: one execute call repeated over the elements a model picks.
+PLAYBOOK_FOR_EACH_EXAMPLE = _example(
+    "Draft a reply to every email from a real person that expects one.",
+    [
+        {
+            "id": "inbox",
+            "tool": "execute",
+            "args": {
+                "task_description": "Listing today's mail",
+                "tool_name": "GMAIL_FETCH_MESSAGES",
+                "data": {
+                    "query": "in:inbox",
+                    "timeframe": "today",
+                    "max_messages": OFFLOAD_MIN_MESSAGES,
+                },
+            },
+        },
+        {
+            "id": "replies",
+            "tool": "execute",
+            "for_each": {
+                "$ask": "the thread ids above from a real person expecting a reply, "
+                "skipping newsletters and receipts"
+            },
+            "max_items": 10,
+            "args": {
+                "task_description": "Drafting a reply",
+                "tool_name": "GMAIL_CREATE_EMAIL_DRAFT",
+                "data": {
+                    "thread_id": "$item",
+                    "recipient_email": {"$ask": "the address of the person this reply goes to"},
+                    "subject": {"$ask": "the subject line of this thread"},
+                    "body": {"$ask": "a reply to this one email"},
+                },
+            },
+        },
+    ],
+    "Say how many replies were drafted and to whom, one line each.",
+)
+
+PLAYBOOK_CHECK_BRIEF = (
+    """<playbook_check>
 This workflow has no working playbook. When you have finished the work above (and only then), decide whether the sequence you just ran is worth freezing so future runs can replay it instead of reasoning it out again.
 
 Work through these five for yourself, against the calls you actually made. This is your own reasoning, not part of the run's result:
@@ -23,31 +106,16 @@ Work through these five for yourself, against the calls you actually made. This 
 4. Now look at the list from question 2. Changing data is NEVER a reason to answer no: results, and the words you write from them, are supposed to differ every run, and result_brief and $ask are where that lives. The attendees of today's meeting, the subject of today's mail, the id you just looked up: you have already handled every one of those by writing a placeholder for it, so none of them can be your reason. The only question left is whether the list of CALLS changes: is there a call in it that would not happen tomorrow, or a call missing from it that would? If you cannot point to one such call by name, the answer is yes and you write the playbook.
 5. Did every call you are freezing return the data the workflow needs, as it stands? If a step came back empty, with an error, or partial, and you compensated by reasoning around it, that call is not the work. A playbook replays the call, not your reasoning, so the next run would hand the user the gap you papered over. Fix its args before freezing, or decline.
 
-If 4 and 5 are both yes, call write_playbook. Its arguments carry the shape: a description, the steps in the order you ran them, and a result_brief saying how to write the user's result from the steps' results (this is where classification, judgement and summarising go). A step is EITHER a tool call OR, for work a per-user MCP subagent ran via handoff, a handoff carrying the record of the calls that subagent ran as its nested steps. Provider and built-in integrations never produce handoff steps: their work is the flat sequence of activate_integration + execute calls you actually made. Use the real tool names and argument names you actually called, with those exact names and args, minus the subagent's own discovery, since they are checked against the live tools and a playbook naming a tool that does not exist is refused. The shape, end to end:
+If 4 and 5 are both yes, call write_playbook. Its arguments carry the shape: a description, the steps in the order you ran them, and a result_brief saying how to write the user's result from the steps' results (this is where classification, judgement and summarising go). A step is EITHER a tool call OR, for work a per-user MCP subagent ran via handoff, a handoff carrying the record of the calls that subagent ran as its nested steps. Provider and built-in integrations never produce handoff steps: their work is the flat sequence of execute calls you actually made, each frozen as tool: execute with its tool_name and data. activate_integration only binds tools, like retrieve_tools, so it is discovery and never a step. Use the real tool names and argument names you actually called, with those exact names and args, minus the subagent's own discovery, since they are checked against the live tools and a playbook naming a tool that does not exist is refused. The shape, end to end:
 
-steps:
-  - id: activate
-    tool: activate_integration
-    args: {integration_id: "gmail"}
-  - id: inbox
-    tool: execute
-    args: {task_description: "Listing unread mail", tool_name: "GMAIL_FETCH_MESSAGES", data: {query: "is:unread newer_than:1d"}}
-  - id: background
-    tool: web_search_tool
-    args:
-      query_text: {"$ask": "one web search that would give background on the most important mail listed above"}
-result_brief: Lead with what the unread mail is about, then what the search added. Two short paragraphs.
+"""
+    + dump_playbook(PLAYBOOK_EXAMPLE)
+    + """
+If the NUMBER of calls depended on what you found, that is a for_each step, not a reason to decline. Give the tool step (never a handoff) a for_each naming the list to repeat over, a max_items ceiling, and write its arguments with $item for the current element. for_each is the WHOLE value: one placeholder, or one $ask. Never a placeholder inside a sentence, because that resolves to text and text is not a list. The list is either a previous step's, or one a model picks at replay. Which one is not a style choice: a $steps list acts on EVERY item the step returned, and $item.field reads a field of one of its items; an $ask list acts on the items a model picks, and each pick is one text value, so its arguments use $item alone. If only some items should be acted on (the overdue ones, the ones from a real person, the ones without a follow-up) the source must be an $ask that picks them, and the picking is the judgement you would otherwise have re-done every run:
 
-If the NUMBER of calls depended on what you found, that is a for_each step, not a reason to decline. Give the step a for_each naming the list to repeat over, a max_items ceiling, and write its arguments with $item for the current element ($item.field for a field of it). for_each is the WHOLE value: one placeholder, or one $ask. Never a placeholder inside a sentence, because that resolves to text and text is not a list. The list is either a previous step's, or one a model picks at replay. Which one is not a style choice: a $steps list acts on EVERY item the step returned, so if only some of them should be acted on (the overdue ones, the ones from a real person, the ones without a follow-up) the source must be an $ask that picks them, and the picking is the judgement you would otherwise have re-done every run:
-
-  - id: replies
-    tool: GMAIL_CREATE_EMAIL_DRAFT
-    for_each: {"$ask": "the ids above from a real person expecting a reply, skipping newsletters and receipts"}
-    max_items: 10
-    args:
-      thread_id: $item
-      body: {"$ask": "a reply to this one email"}
-
+"""
+    + dump_playbook(PLAYBOOK_FOR_EACH_EXAMPLE)
+    + """
 Zero elements is a normal run, not a failure: a day with nothing to act on simply makes no calls for that step. max_items is a cost ceiling, not today's count: set it to the most this workflow should ever act on in one run (up to 25), because a list longer than it is cut, and the user hears nothing about what was cut.
 
 If either 4 or 5 is no, call decline_playbook. It takes a kind, not just prose, and the kind has to match what actually happened:
@@ -63,6 +131,7 @@ You MUST end this run by calling exactly one of write_playbook or decline_playbo
 
 Either way, keep all of this out of what you return. The result you hand back is the workflow's own output, the thing the user asked for, and nothing else. Do not narrate the check, do not list your answers, do not mention playbooks or freezing or this decision at all. Whether you called the tool is the entire record of it.
 </playbook_check>"""
+)
 
 
 PLAYBOOK_HEAL_BRIEF = """<playbook_check>

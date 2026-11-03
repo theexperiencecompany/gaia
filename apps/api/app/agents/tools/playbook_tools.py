@@ -15,10 +15,12 @@ from langchain_core.messages import ToolMessage
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
-from pydantic import ValidationError
+from pydantic import BeforeValidator, ValidationError
 from pydantic.v1 import ValidationError as LegacyValidationError
 
 from app.agents.core.background.executor_capture import drain_executor_tool_data
+from app.agents.tools.execute.unwrap import unwrap_execute_call
+from app.agents.tools.todo_tools import TODO_TOOL_NAMES
 from app.constants.agents import PLAYBOOK_REPLAYED_CALLS_KEY
 from app.constants.log_tags import LogTag
 from app.db.repositories.playbooks import playbook_repository
@@ -46,6 +48,7 @@ from app.services.workflow.playbook.parser import (
 )
 from app.services.workflow.playbook.workflow_hash import workflow_hash
 from app.services.workflow.run_trace import build_trace
+from app.utils.json_args import decode_json_container
 from app.utils.workflow_utils import (
     WorkflowConfigError,
     error_response,
@@ -135,7 +138,7 @@ def _handoff_targets(state: Mapping[str, Any] | None) -> list[str]:
 
 
 def _invoked_call_names(state: Mapping[str, Any] | None) -> list[str]:
-    """Every tool the run has called so far, answered or still in flight.
+    """Every tool the run has called so far, answered or still in flight, seen through execute.
 
     The quiet-day check reads this rather than the answered record: a model
     can issue ``create_todo`` and the decline in one parallel batch, and the
@@ -147,7 +150,7 @@ def _invoked_call_names(state: Mapping[str, Any] | None) -> list[str]:
     if not isinstance(messages, list):
         return []
     return [
-        str(call["name"])
+        unwrap_execute_call(str(call["name"]), dict(call.get("args") or {}))[0]
         for message in messages
         for call in getattr(message, "tool_calls", None) or []
         if call.get("name")
@@ -252,8 +255,10 @@ def _run_results(state: Mapping[str, Any] | None) -> RunResults | None:
 async def write_playbook(
     config: RunnableConfig,
     description: Annotated[str, "What this playbook does, in one or two lines."],
+    # Models often JSON-encode this list (prod: 7 refused writes); the schema stays an array.
     steps: Annotated[
         list[PlaybookStepInput],
+        BeforeValidator(decode_json_container),
         "The calls to replay, in the order you made them: only the calls that did "
         "the work, never discovery or dead ends. Writing the result is not a step; "
         "that is what result_brief is for.",
@@ -595,7 +600,11 @@ async def _record_decline(
     if kind is DeclineKind.NO_WORK_TODAY:
         # The claim is checked against the run's own record, not taken on
         # trust: a run that made a doing-call had work to freeze.
-        worked = [name for name in _invoked_call_names(state) if is_work_call(name)]
+        worked = [
+            name
+            for name in _invoked_call_names(state)
+            if name not in _RUN_BOOKKEEPING_TOOLS and is_work_call(name)
+        ]
         if worked:
             return error_response(
                 "work_happened",
@@ -695,3 +704,6 @@ async def disable_playbook(
 
 
 tools = [write_playbook, read_playbook, decline_playbook, disable_playbook]
+
+#: The run tracking its own plan and deciding its playbook: never the workflow's work.
+_RUN_BOOKKEEPING_TOOLS = frozenset(TODO_TOOL_NAMES | {t.name for t in tools})

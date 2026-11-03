@@ -18,8 +18,10 @@ import pytest
 import yaml
 
 from app.agents.core.subagents.call_record import ARG_TRUNCATION_MARKER
+from app.agents.tools.execute.execute_tool import execute
 from app.models.mcp_config import SubAgentConfig
 from app.models.playbook_models import (
+    ForEachStep,
     PlaybookBody,
     PlaybookHandoffStepInput,
     PlaybookStep,
@@ -37,7 +39,7 @@ from app.services.workflow.playbook.parser import (
 from app.services.workflow.playbook.tool_space import SubagentTools
 
 MODULE = "app.services.workflow.playbook.parser"
-PlaybookStep_adapter = TypeAdapter(PlaybookStep)
+PlaybookStep_adapter: TypeAdapter[PlaybookStep] = TypeAdapter(PlaybookStep)
 USER_ID = "user-1"
 
 
@@ -1459,6 +1461,127 @@ result_brief: x
             )
         ]
 
+    @pytest.mark.regression
+    async def test_an_execute_step_matches_its_call_whatever_card_label_it_carries(self) -> None:
+        """Regression from prod (Oct 2026): only task_description, the card's label, differed, and the write was refused."""
+        body = _body(
+            """
+description: Daily inbox triage
+steps:
+  - id: inbox
+    tool: execute
+    args:
+      task_description: Fetching last 24h inbox emails
+      tool_name: GMAIL_FETCH_MESSAGES
+      data: {timeframe: 1d, query: "in:inbox"}
+result_brief: x
+"""
+        )
+        sent = {"timeframe": "1d", "query": "in:inbox"}
+        results = [
+            _call(
+                "execute",
+                {
+                    "task_description": "Fetching last 24h inbox emails for triage",
+                    "tool_name": "GMAIL_FETCH_MESSAGES",
+                    "data": sent,
+                },
+                {"messages": [{"id": "m1"}]},
+            )
+        ]
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=_FakeRegistry({"execute": execute})):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert result.issues == []
+
+    @pytest.mark.regression
+    async def test_an_execute_step_matches_a_call_that_sent_its_data_json_encoded(self) -> None:
+        """The proxy runs a JSON-encoded data as its object, so the record of that call is the same call."""
+        body = _body(
+            """
+description: Daily inbox triage
+steps:
+  - id: inbox
+    tool: execute
+    args:
+      task_description: Fetching mail
+      tool_name: GMAIL_FETCH_MESSAGES
+      data: {timeframe: 1d}
+result_brief: x
+"""
+        )
+        results = [
+            _call(
+                "execute",
+                {
+                    "task_description": "Fetching mail",
+                    "tool_name": "GMAIL_FETCH_MESSAGES",
+                    "data": '{"timeframe": "1d"}',
+                },
+                {"messages": [{"id": "m1"}]},
+            )
+        ]
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=_FakeRegistry({"execute": execute})):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert result.issues == []
+
+    async def test_only_executes_data_is_read_as_dispatched(self) -> None:
+        """Another tool's data arg that holds JSON text is text: decoding it would refuse the call it froze."""
+        body = _body(
+            """
+description: Post a raw payload
+steps:
+  - id: post
+    tool: post_raw
+    args:
+      data: '{"a": 1}'
+result_brief: x
+"""
+        )
+        results = [_call("post_raw", {"data": '{"a": 1}'}, {"posted": [{"id": "p1"}]})]
+        registry = _schema_registry(post_raw={"data": {"type": "string"}})
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=registry):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert result.issues == []
+
+    async def test_an_execute_step_with_other_data_is_still_refused(self) -> None:
+        body = _body(
+            """
+description: Daily inbox triage
+steps:
+  - id: inbox
+    tool: execute
+    args:
+      task_description: Fetching mail
+      tool_name: GMAIL_FETCH_MESSAGES
+      data: {timeframe: 7d}
+result_brief: x
+"""
+        )
+        results = [
+            _call(
+                "execute",
+                {
+                    "task_description": "Fetching mail",
+                    "tool_name": "GMAIL_FETCH_MESSAGES",
+                    "data": {"timeframe": "1d"},
+                },
+                {"messages": [{"id": "m1"}]},
+            )
+        ]
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=_FakeRegistry({"execute": execute})):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert [issue.problem.split(" (")[0] for issue in result.issues] == [
+            "execute ran 1 time(s) in this run, but never with these args"
+        ]
+
     async def test_the_refusal_shows_the_args_of_the_last_call_still_unfrozen(self) -> None:
         """Of four calls, one already frozen by an earlier step, the refusal must show the run's last still-unfrozen attempt."""
         body = _body(
@@ -2435,7 +2558,9 @@ class TestAuthoredPlaybookBecomesTheStoredOne:
             result_brief="Say how many events there were.",
         )
 
-        assert body.steps[1].args["subject"] == {"$ask": "Write the digest."}
+        mail = body.steps[1]
+        assert isinstance(mail, ToolStep)
+        assert mail.args["subject"] == {"$ask": "Write the digest."}
         assert body.result_brief == "Say how many events there were."
 
     def test_an_ask_slot_inside_a_handoff_child_survives_the_conversion(self) -> None:
@@ -2552,8 +2677,11 @@ class TestDumpKeepsTheLoop:
         rendered = dump_playbook(body)
         again = PlaybookBody.model_validate(yaml.safe_load(rendered))
 
-        assert again.steps[1].for_each == body.steps[1].for_each
-        assert again.steps[1].max_items == 5
+        looped, original = again.steps[1], body.steps[1]
+        assert isinstance(looped, ForEachStep)
+        assert isinstance(original, ForEachStep)
+        assert looped.for_each == original.for_each
+        assert looped.max_items == 5
         assert "for_each" in rendered and "max_items" in rendered
 
     def test_a_plain_step_still_dumps_without_loop_keys(self) -> None:

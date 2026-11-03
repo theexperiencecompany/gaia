@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import BaseTool, tool
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 import pytest
 import yaml
 
@@ -36,6 +36,7 @@ from app.models.playbook_models import (
     PlaybookDocument,
     PlaybookRunStatus,
     PlaybookStepInput,
+    ToolStep,
     playbook_body_from_input,
 )
 from app.models.workflow_execution_models import RecordedCall
@@ -115,6 +116,12 @@ def _config_for_run(run_id: str) -> RunnableConfig:
     }
 
 
+def _write_playbook_call_schema() -> type[BaseModel]:
+    schema = write_playbook.tool_call_schema
+    assert isinstance(schema, type) and issubclass(schema, BaseModel)
+    return schema
+
+
 def _workflow() -> WorkflowDocument:
     return WorkflowDocument(
         id=WORKFLOW_ID,
@@ -189,7 +196,7 @@ def _existing(store: _FakePlaybookStore) -> PlaybookDocument:
         user_id=USER_ID,
         workflow_hash="stale",
         description="Old",
-        steps=[{"id": "one", "tool": "list_events", "args": {"calendar_id": "primary"}}],
+        steps=[ToolStep(id="one", tool="list_events", args={"calendar_id": "primary"})],
         result_brief="Old synthesis.",
         last_run_status=PlaybookRunStatus.SUCCESS,
         created_at=now,
@@ -269,9 +276,7 @@ class TestWritePlaybook:
             patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
             patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
         ):
-            result = await write_playbook.ainvoke(
-                {**NEW_ARGS, "steps": annotated}, config=_config()
-            )
+            result = await write_playbook.ainvoke(NEW_ARGS | {"steps": annotated}, config=_config())
 
         assert result["success"] is True
         stored = store.documents[(WORKFLOW_ID, USER_ID)]
@@ -311,7 +316,7 @@ class TestWritePlaybook:
                 ),
             ),
         ):
-            result = await write_playbook.ainvoke({**NEW_ARGS, "steps": deeper}, config=_config())
+            result = await write_playbook.ainvoke(NEW_ARGS | {"steps": deeper}, config=_config())
 
         assert isinstance(result, str), "refused at the boundary, through handle_validation_error"
         parsed = json.loads(result)
@@ -330,7 +335,7 @@ class TestWritePlaybook:
             patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
         ):
             result = await write_playbook.ainvoke(
-                {**NEW_ARGS, "steps": [{"id": "one", "tool": "send_owl", "args": {}}]},
+                NEW_ARGS | {"steps": [{"id": "one", "tool": "send_owl", "args": {}}]},
                 config=_config(),
             )
 
@@ -354,6 +359,24 @@ class TestWritePlaybook:
         stored = store.documents[(WORKFLOW_ID, USER_ID)]
         assert stored.description == "Read the day's events"
         assert stored.workflow_hash != "stale"
+
+    @pytest.mark.regression
+    async def test_steps_sent_as_json_text_are_written_as_the_steps_they_encode(
+        self, store: _FakePlaybookStore, workflows: MagicMock
+    ) -> None:
+        """Captured from prod (7 refused writes): the model JSON-encoded the steps list."""
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+            patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
+        ):
+            result = await write_playbook.ainvoke(
+                NEW_ARGS | {"steps": json.dumps(NEW_STEPS)}, config=_config()
+            )
+
+        assert result["success"] is True
+        stored = store.documents[(WORKFLOW_ID, USER_ID)]
+        assert [step.to_document() for step in stored.steps] == NEW_STEPS
 
     async def test_the_rendered_yaml_matches_the_arguments_it_was_written_from(
         self, store: _FakePlaybookStore, workflows: MagicMock
@@ -389,7 +412,7 @@ class TestWritePlaybook:
                 ),
             ),
         ):
-            result = await write_playbook.ainvoke({**NEW_ARGS, "steps": steps}, config=_config())
+            result = await write_playbook.ainvoke(NEW_ARGS | {"steps": steps}, config=_config())
 
         assert result["success"] is True
         stored = store.documents[(WORKFLOW_ID, USER_ID)]
@@ -793,9 +816,10 @@ class TestPlaybookToolContract:
         self, store: _FakePlaybookStore, workflows: MagicMock
     ) -> None:
         """The agent must learn the write did not happen, or it moves on believing it did."""
-        store.upsert_for_workflow = AsyncMock(side_effect=RuntimeError("mongo down"))
-
         with (
+            patch.object(
+                store, "upsert_for_workflow", new=AsyncMock(side_effect=RuntimeError("mongo down"))
+            ),
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
             patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
             patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
@@ -821,9 +845,10 @@ class TestPlaybookToolContract:
         }
 
     async def test_a_read_failure_is_reported_as_a_failure(self, store: _FakePlaybookStore) -> None:
-        store.get_for_workflow = AsyncMock(side_effect=RuntimeError("mongo down"))
-
         with (
+            patch.object(
+                store, "get_for_workflow", new=AsyncMock(side_effect=RuntimeError("mongo down"))
+            ),
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
             patch(f"{TOOLS_MODULE}.log") as log,
         ):
@@ -859,9 +884,10 @@ class TestPlaybookToolContract:
     async def test_a_disable_failure_is_reported_as_a_failure(
         self, store: _FakePlaybookStore
     ) -> None:
-        store.delete_for_workflow = AsyncMock(side_effect=RuntimeError("mongo down"))
-
         with (
+            patch.object(
+                store, "delete_for_workflow", new=AsyncMock(side_effect=RuntimeError("mongo down"))
+            ),
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
             patch(f"{TOOLS_MODULE}.log") as log,
         ):
@@ -921,7 +947,7 @@ class TestPlaybookStorageDetails:
             patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
             patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
         ):
-            result = await write_playbook.ainvoke({**NEW_ARGS, "steps": steps}, config=_config())
+            result = await write_playbook.ainvoke(NEW_ARGS | {"steps": steps}, config=_config())
 
         assert result == {
             "success": False,
@@ -943,7 +969,7 @@ class TestPlaybookStorageDetails:
             patch(f"{TOOLS_MODULE}.log") as log,
         ):
             result = await write_playbook.ainvoke(
-                {**NEW_ARGS, "steps": SIX_INVALID_STEPS}, config=_config()
+                NEW_ARGS | {"steps": SIX_INVALID_STEPS}, config=_config()
             )
 
         log.warning.assert_called_once_with(
@@ -1108,7 +1134,7 @@ class TestPlaybookWideEvents:
             patch(f"{TOOLS_MODULE}.log") as log,
         ):
             await write_playbook.ainvoke(
-                {**NEW_ARGS, "steps": [{"id": "one", "tool": "send_owl", "args": {}}]},
+                NEW_ARGS | {"steps": [{"id": "one", "tool": "send_owl", "args": {}}]},
                 config=_config(),
             )
 
@@ -1174,7 +1200,7 @@ class TestWritePlaybookBoundary:
 
     def test_the_schema_asks_for_three_things_and_no_ask_section(self) -> None:
         """The top-level ask table was removed after 5 of the 8 asks ever written went unreferenced by any step; a reappearing ask property is that mistake returning."""
-        schema = write_playbook.tool_call_schema.model_json_schema()
+        schema = _write_playbook_call_schema().model_json_schema()
 
         assert schema["required"] == ["description", "steps", "result_brief"]
         assert "ask" not in schema["properties"]
@@ -1183,7 +1209,7 @@ class TestWritePlaybookBoundary:
 
     def test_the_step_schema_does_not_forbid_extra_keys(self) -> None:
         """additionalProperties: false is what a provider reads as "no other keys allowed"; its absence is the leniency, expressed where the model reads it."""
-        schema = write_playbook.tool_call_schema.model_json_schema()
+        schema = _write_playbook_call_schema().model_json_schema()
 
         step = schema["$defs"][PlaybookStepInput.__name__]
         assert step.get("additionalProperties") is not False
@@ -1241,7 +1267,7 @@ class TestWritePlaybookBoundary:
     def test_a_refusal_with_no_field_to_point_at_names_the_arguments_as_a_whole(self) -> None:
         """A pydantic error on the call as a whole carries no location, so it must point at the arguments rather than render an empty field path."""
         with pytest.raises(ValidationError) as raised:
-            write_playbook.tool_call_schema.model_validate("not a mapping")
+            _write_playbook_call_schema().model_validate("not a mapping")
 
         assert json.loads(_explain_validation_error(raised.value))["message"] == (
             "The playbook was not written. Fix these and call write_playbook again: "
@@ -1263,11 +1289,11 @@ class TestReadPlaybookYaml:
             workflow_hash="h",
             description="Read the day's events",
             steps=[
-                {
-                    "id": "agenda",
-                    "tool": "list_events",
-                    "args": {"calendar_id": {"$ask": "which calendar to read"}},
-                }
+                ToolStep(
+                    id="agenda",
+                    tool="list_events",
+                    args={"calendar_id": {"$ask": "which calendar to read"}},
+                )
             ],
             result_brief="Say what is on today.",
             created_at=now,
@@ -1359,7 +1385,7 @@ class TestWritePlaybookAgainstTheAuthoringRun:
             patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_GmailRegistry()),
         ):
             result = await write_playbook.ainvoke(
-                {**NEW_ARGS, "steps": steps, "state": state}, config=_config()
+                NEW_ARGS | {"steps": steps, "state": state}, config=_config()
             )
 
         assert result["success"] is False
@@ -1381,7 +1407,7 @@ class TestWritePlaybookAgainstTheAuthoringRun:
             patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_GmailRegistry()),
         ):
             result = await write_playbook.ainvoke(
-                {**NEW_ARGS, "steps": [FETCH_STEP], "state": state}, config=_config()
+                NEW_ARGS | {"steps": [FETCH_STEP], "state": state}, config=_config()
             )
 
         assert result["success"] is False
@@ -1414,7 +1440,7 @@ class TestWritePlaybookAgainstTheAuthoringRun:
             patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_GmailRegistry()),
         ):
             result = await write_playbook.ainvoke(
-                {**NEW_ARGS, "steps": steps, "state": state}, config=_config()
+                NEW_ARGS | {"steps": steps, "state": state}, config=_config()
             )
 
         assert result["success"] is True
@@ -1422,7 +1448,7 @@ class TestWritePlaybookAgainstTheAuthoringRun:
 
     def test_the_run_state_is_injected_and_never_shown_to_the_model(self) -> None:
         """State is filled by the graph; if it appeared in the schema, the model would write its own invented transcript back as an argument."""
-        schema = write_playbook.tool_call_schema.model_json_schema()
+        schema = _write_playbook_call_schema().model_json_schema()
 
         assert "state" not in schema["properties"]
         assert schema["required"] == ["description", "steps", "result_brief"]
@@ -1508,7 +1534,7 @@ class TestTheRunTheWriteIsCheckedAgainst:
             patch(f"{TOOLS_MODULE}.log") as log,
         ):
             await write_playbook.ainvoke(
-                {**NEW_ARGS, "steps": [FETCH_STEP], "state": state}, config=_config()
+                NEW_ARGS | {"steps": [FETCH_STEP], "state": state}, config=_config()
             )
 
         # The capture telemetry (what the write could see in each scope) comes
@@ -1937,6 +1963,84 @@ class TestOneDecisionPerRun:
         assert result["message"].startswith("This run called create_todo, so the work happened")
         assert workflows.workflow.playbook_declines == 0
 
+    @pytest.mark.regression
+    async def test_the_runs_own_bookkeeping_is_not_the_work(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        """Regression from prod (95 refused quiet-day declines): update_tasks and a refused write_playbook were counted as doing-calls."""
+        workflows = _FakeWorkflowStore()
+        bookkeeping = AIMessage(
+            content="",
+            tool_calls=[
+                {"id": "c1", "name": "plan_tasks", "args": {"tasks": []}, "type": "tool_call"},
+                {"id": "c2", "name": "update_tasks", "args": {"updates": []}, "type": "tool_call"},
+                {"id": "c3", "name": "write_playbook", "args": {}, "type": "tool_call"},
+                {
+                    "id": "c4",
+                    "name": "execute",
+                    "args": {
+                        "task_description": "Listing unread mail",
+                        "tool_name": "GMAIL_FETCH_MESSAGES",
+                        "data": {"timeframe": "1d"},
+                    },
+                    "type": "tool_call",
+                },
+            ],
+        )
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+        ):
+            result = await decline_playbook.ainvoke(
+                {
+                    "kind": "no_work_today",
+                    "reason": "only newsletters arrived",
+                    "state": {"messages": [bookkeeping]},
+                },
+                config=_config(),
+            )
+
+        assert result["success"] is True
+        assert result["data"] == {"declined": True, "counted": False}
+
+    @pytest.mark.regression
+    async def test_a_doing_call_run_through_execute_is_work(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        workflows = _FakeWorkflowStore()
+        drafted = AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "c1",
+                    "name": "execute",
+                    "args": {
+                        "task_description": "Drafting a reply",
+                        "tool_name": "GMAIL_CREATE_EMAIL_DRAFT",
+                        "data": {"thread_id": "t1", "body": "Thanks"},
+                    },
+                    "type": "tool_call",
+                }
+            ],
+        )
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+        ):
+            result = await decline_playbook.ainvoke(
+                {
+                    "kind": "no_work_today",
+                    "reason": "nothing to do",
+                    "state": {"messages": [drafted]},
+                },
+                config=_config(),
+            )
+
+        assert result["error"] == "work_happened"
+        assert result["message"].startswith(
+            "This run called GMAIL_CREATE_EMAIL_DRAFT, so the work happened"
+        )
+
     async def test_a_quiet_day_is_not_a_verdict(self, store: _FakePlaybookStore) -> None:
         """No calls at all means nothing to act on; counting that would spend a seasonal workflow's limited decline chances on empty days."""
         workflows = _FakeWorkflowStore()
@@ -1971,7 +2075,7 @@ class TestAStoppedReplaysCallsCountAsThisRuns:
             result_digest='{"todos": [{"id": "a"}]}',
             subagent="todos",
         )
-        config = {
+        config: RunnableConfig = {
             "configurable": {
                 **_config()["configurable"],
                 PLAYBOOK_REPLAYED_CALLS_KEY: [replayed.model_dump(mode="json")],
@@ -2054,7 +2158,7 @@ async def test_a_shape_the_body_cannot_take_is_a_refusal_not_an_exception(
         patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
         patch(f"{TOOLS_MODULE}.log") as log,
     ):
-        result = await write_playbook.ainvoke({**NEW_ARGS, "steps": steps}, config=_config())
+        result = await write_playbook.ainvoke(NEW_ARGS | {"steps": steps}, config=_config())
 
     assert isinstance(result, dict), "refused inside the tool, not at the boundary"
     assert result["success"] is False
@@ -2110,7 +2214,7 @@ class TestASubagentsCallsReachTheValidator:
             ),
         ):
             result = await write_playbook.ainvoke(
-                {**NEW_ARGS, "steps": self.STEPS, "state": self._state()}, config=_config()
+                NEW_ARGS | {"steps": self.STEPS, "state": self._state()}, config=_config()
             )
         return result if isinstance(result, dict) else json.loads(result)
 
