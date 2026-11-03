@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import UTC
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -57,6 +58,8 @@ class TestPlaybookDryRun:
             },
         }
         assert kwargs["user"] == PlaybookUser(email="dana@acme.com", name="Dana", timezone="UTC")
+        assert kwargs["conversation_id"] == "dry_run_wf_1"
+        assert run.await_args.args[0].created_at.tzinfo is UTC
         playbook = run.await_args.args[0]
         assert (playbook.workflow_id, playbook.user_id) == ("wf_1", "u1")
         assert playbook.authored_run == f"recipe:{REMINDER}"
@@ -88,8 +91,18 @@ class TestPlaybookDryRun:
         workflow = MagicMock(id="wf_1", prompt="p", steps=[])
         first, second, third, fourth = _patches(workflow, [], AsyncMock())
 
-        with first, second, third, fourth, pytest.raises(SystemExit, match="no upcoming"):
+        with (
+            first,
+            second,
+            third,
+            fourth,
+            pytest.raises(SystemExit) as stopped,
+        ):
             await script._run(argparse.Namespace(user_id="u1", key=REMINDER))
+
+        assert str(stopped.value) == (
+            "the user has no upcoming calendar event to dry-run a calendar recipe on"
+        )
 
     async def test_it_reads_the_users_next_events_and_prints_what_each_recipe_did(
         self, capsys: pytest.CaptureFixture[str]
@@ -107,12 +120,19 @@ class TestPlaybookDryRun:
             clock.now.return_value.isoformat.return_value = "2026-11-03T10:00:00+00:00"
             await script._run(argparse.Namespace(user_id="u1", key=REMINDER))
             calendar = script.get_calendar_events
+            lookup = script.get_user_by_id
 
         calendar.assert_awaited_once_with(
             user_id="u1", time_min="2026-11-03T10:00:00+00:00", max_results=5
         )
+        clock.now.assert_any_call(UTC)
+        lookup.assert_awaited_once_with("u1")
         out = capsys.readouterr().out
-        assert f"== {REMINDER} (wf_1)\n" in out
+        assert (
+            f"== {REMINDER} (wf_1)\ntrigger: "
+            '{"trigger_type": "integration", "trigger_data": {"event_id": "evt_9", '
+            '"calendar_id": "primary", "summary": "1:1", "start_time": null, "html_link": null}}\n'
+        ) in out
         assert "  step: " + ("event (get) -> x" * 200)[:400] + "\n" in out
         assert "  model calls: 1; flagged: no\n" in out
         assert "  narration (not delivered):\nHeads-up.\n" in out
@@ -125,7 +145,7 @@ class TestPlaybookDryRun:
         run = AsyncMock(
             side_effect=[
                 PlaybookRunResult(ok=False, failure="no such event"),
-                PlaybookRunResult(ok=True, text="t", nothing_new="nothing came back"),
+                PlaybookRunResult(ok=True, text="t", suspect="came back empty"),
             ]
         )
         first, second, third, fourth = _patches(workflow, [event], run)
@@ -136,7 +156,7 @@ class TestPlaybookDryRun:
         out = capsys.readouterr().out
         assert failed == 1
         assert "  STOPPED: no such event\n" in out
-        assert "flagged: nothing came back\n" in out
+        assert "flagged: came back empty\n" in out
 
     async def test_a_missing_workflow_skips_only_that_recipe(
         self, capsys: pytest.CaptureFixture[str]
@@ -186,3 +206,15 @@ class TestPlaybookDryRun:
             await script._run(argparse.Namespace(user_id="u1", key=REMINDER))
 
         assert run.await_args.kwargs["user"] == PlaybookUser(email="", name="", timezone="UTC")
+
+    async def test_every_stopped_recipe_is_counted(self) -> None:
+        workflow = MagicMock(id="wf_1", prompt="p", steps=[])
+        run = AsyncMock(return_value=PlaybookRunResult(ok=False, failure="stopped"))
+        first, second, third, fourth = _patches(
+            workflow, [GoogleCalendarEventResource(id="e")], run
+        )
+
+        with first, second, third, fourth:
+            failed = await script._run(argparse.Namespace(user_id="u1", key=None))
+
+        assert failed == len(SYSTEM_RECIPES)

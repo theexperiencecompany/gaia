@@ -150,12 +150,18 @@ async def test_installing_a_recipe_stores_it_against_the_workflow_as_provisioned
     store = MagicMock()
     store.upsert_for_workflow = AsyncMock(side_effect=lambda document: document)
 
-    with patch(f"{RECIPES}.playbook_repository", store):
+    with patch(f"{RECIPES}.playbook_repository", store), patch(f"{RECIPES}.log") as log:
         stored = await install_recipe(
             "calendar:meeting_reminder", "wf_1", USER_ID, "Send a reminder.", steps
         )
 
     assert isinstance(stored, PlaybookDocument)
+    assert stored.created_at.tzinfo is UTC
+    log.set_ns.assert_called_once_with(
+        "system_workflow",
+        recipe_installed="calendar:meeting_reminder",
+        playbook_id=stored.playbook_id,
+    )
     assert stored.workflow_hash == workflow_hash("Send a reminder.", steps)
     assert stored.authored_run == "recipe:calendar:meeting_reminder"
     expected = SYSTEM_RECIPES["calendar:meeting_reminder"]()

@@ -351,6 +351,34 @@ class TestResetSystemWorkflowToDefault:
     @pytest.mark.asyncio
     @patch(f"{MODULE}.install_recipe", new_callable=AsyncMock)
     @patch(f"{MODULE}.workflow_repository")
+    async def test_a_reset_that_wrote_nothing_fails_and_stores_no_recipe(
+        self, mock_repo: MagicMock, install: AsyncMock
+    ) -> None:
+        mock_repo.get_system_workflow_for_user = AsyncMock(
+            return_value=_existing_wf(
+                key="calendar:meeting_reminder", composio_trigger_ids=None, trigger_name=None
+            )
+        )
+        mock_repo.reset_system_workflow = AsyncMock(return_value=None)
+        request = _make_workflow_request()
+        request.trigger_config = TriggerConfig(type=TriggerType.MANUAL, timezone="UTC")
+
+        with patch.dict(
+            f"{MODULE}.SYSTEM_WORKFLOW_REGISTRY",
+            {"calendar:meeting_reminder": MagicMock(return_value=request)},
+        ):
+            from app.services.system_workflows.provisioner import (
+                reset_system_workflow_to_default,
+            )
+
+            result = await reset_system_workflow_to_default("wf-1", "user-1")
+
+        assert result is False
+        install.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.install_recipe", new_callable=AsyncMock)
+    @patch(f"{MODULE}.workflow_repository")
     async def test_a_reset_stores_the_recipe_against_the_reset_workflow(
         self, mock_repo: MagicMock, install: AsyncMock
     ) -> None:

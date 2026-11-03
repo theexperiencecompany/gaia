@@ -20,7 +20,9 @@ def _workflow(workflow_id: str, prompt: str) -> MagicMock:
     return workflow
 
 
-async def _run(apply: bool, workflows: list[MagicMock], has_playbook: set[str]) -> AsyncMock:
+async def _run(
+    apply: bool, workflows: list[MagicMock], has_playbook: set[str]
+) -> tuple[AsyncMock, MagicMock]:
     install = AsyncMock()
     repo = MagicMock()
     repo.find_live_system_workflows = AsyncMock(
@@ -36,7 +38,7 @@ async def _run(apply: bool, workflows: list[MagicMock], has_playbook: set[str]) 
         patch(f"{MODULE}.install_recipe", install),
     ):
         await script._run(argparse.Namespace(apply=apply))
-    return install
+    return install, playbooks
 
 
 @pytest.mark.unit
@@ -44,20 +46,35 @@ class TestInstallSystemRecipes:
     current = SYSTEM_WORKFLOW_REGISTRY[REMINDER]().prompt
     earlier = PREVIOUSLY_SHIPPED_PROMPTS[REMINDER][0]
 
-    async def test_a_dry_run_writes_nothing(self) -> None:
-        install = await _run(False, [_workflow("wf_1", self.current)], set())
+    async def test_a_dry_run_writes_nothing_and_says_what_it_would(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        install, _ = await _run(False, [_workflow("wf_1", self.current)], set())
 
         install.assert_not_awaited()
+        assert capsys.readouterr().out == (
+            f"    1  {REMINDER}: recipe to install\n"
+            "\ndry run: nothing written. Re-run with --apply to install the recipes.\n"
+        )
 
-    async def test_apply_installs_on_current_and_earlier_shipped_prompts_only(self) -> None:
+    async def test_apply_installs_on_current_and_earlier_shipped_prompts_only(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         workflows = [
-            _workflow("wf_current", self.current),
-            _workflow("wf_earlier", self.earlier),
             _workflow("wf_edited", "Remind me in French."),
             _workflow("wf_has_one", self.current),
+            _workflow("wf_current", self.current),
+            _workflow("wf_earlier", self.earlier),
+            _workflow("wf_edited_too", "Remind me in Hindi."),
         ]
 
-        install = await _run(True, workflows, {"wf_has_one"})
+        install, playbooks = await _run(True, workflows, {"wf_has_one"})
 
         assert [call.args[1] for call in install.await_args_list] == ["wf_current", "wf_earlier"]
         assert install.await_args_list[0].args == (REMINDER, "wf_current", "u1", self.current, [])
+        assert playbooks.get_for_workflow.await_args_list[0].args == ("wf_has_one", "u1")
+        assert capsys.readouterr().out == (
+            f"    1  {REMINDER}: already has a playbook\n"
+            f"    2  {REMINDER}: edited by the user, left alone\n"
+            f"    2  {REMINDER}: recipe installed\n"
+        )
