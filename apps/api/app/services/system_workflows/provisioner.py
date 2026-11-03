@@ -112,12 +112,14 @@ async def provision_system_workflows(
                 trigger_config.timezone = user_timezone
                 request.trigger_config = trigger_config
             workflow = await WorkflowService.create_workflow(request, user_id)
-            await install_recipe(key, workflow.id, user_id, workflow.prompt, workflow.steps)
             created.append(request)
             log.info(
                 f"{LogTag.WORKFLOW} Provisioned system workflow for user", key=key, user_id=user_id
             )
             await _activate_for_paying_user(workflow.id, user_id, key)
+            # Last: the workflow runs without its recipe (the agent authors one), so a
+            # failed install is logged below and costs only the shortcut.
+            await install_recipe(key, workflow.id, user_id, workflow.prompt, workflow.steps)
         except DuplicateKeyError:
             log.info(
                 f"{LogTag.WORKFLOW} System workflow already exists for user (concurrent creation), skipping",
