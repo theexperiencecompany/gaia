@@ -13,7 +13,7 @@ GITHUB_API_BACKOFF_SECS (2).
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 import json
 import os
@@ -191,16 +191,18 @@ class GitHub:
             raise GitHubError(f"graphql query failed — {json.dumps(errors)[:ERROR_BODY_CHARS]}")
         return field_of(doc, "data", dict)
 
-    def collect(self, path: str, key: str) -> list[Json]:
-        """Collect every record under key across all pages."""
-        out: list[Json] = []
+    def each(self, path: str, key: str) -> Iterator[Json]:
+        """Yield every record under key, fetching a page only once the one before it is spent."""
         url: str | None = path
         while url:
             raw, link = self.send("GET", url)
-            out.extend(records(_decode_object(raw, url), key))
+            yield from records(_decode_object(raw, url), key)
             match = LINK_NEXT.search(link)
             url = match.group(1) if match else None
-        return out
+
+    def collect(self, path: str, key: str) -> list[Json]:
+        """Collect every record under key across all pages."""
+        return list(self.each(path, key))
 
 
 def _decode(raw: bytes, path: str) -> object:
