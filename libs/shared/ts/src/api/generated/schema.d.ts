@@ -11641,6 +11641,8 @@ export interface components {
             /** Selectedtool */
             selectedTool?: string | null;
             selectedWorkflow?: components["schemas"]["SelectedWorkflowDataInput"] | null;
+            /** Stopped */
+            stopped?: boolean | null;
             /** Subtype */
             subtype?: string | null;
             todo_run_wake?: components["schemas"]["TodoRunWake"] | null;
@@ -11703,6 +11705,8 @@ export interface components {
             /** Selectedtool */
             selectedTool?: string | null;
             selectedWorkflow?: components["schemas"]["SelectedWorkflowDataOutput"] | null;
+            /** Stopped */
+            stopped?: boolean | null;
             /** Subtype */
             subtype?: string | null;
             todo_run_wake?: components["schemas"]["TodoRunWake"] | null;
