@@ -21,6 +21,7 @@ from app.agents.core.subagents.call_record import ARG_TRUNCATION_MARKER
 from app.agents.tools.execute.execute_tool import execute
 from app.models.mcp_config import SubAgentConfig
 from app.models.playbook_models import (
+    ForEachStep,
     PlaybookBody,
     PlaybookHandoffStepInput,
     PlaybookStep,
@@ -38,7 +39,7 @@ from app.services.workflow.playbook.parser import (
 from app.services.workflow.playbook.tool_space import SubagentTools
 
 MODULE = "app.services.workflow.playbook.parser"
-PlaybookStep_adapter = TypeAdapter(PlaybookStep)
+PlaybookStep_adapter: TypeAdapter[PlaybookStep] = TypeAdapter(PlaybookStep)
 USER_ID = "user-1"
 
 
@@ -2556,7 +2557,9 @@ class TestAuthoredPlaybookBecomesTheStoredOne:
             result_brief="Say how many events there were.",
         )
 
-        assert body.steps[1].args["subject"] == {"$ask": "Write the digest."}
+        mail = body.steps[1]
+        assert isinstance(mail, ToolStep)
+        assert mail.args["subject"] == {"$ask": "Write the digest."}
         assert body.result_brief == "Say how many events there were."
 
     def test_an_ask_slot_inside_a_handoff_child_survives_the_conversion(self) -> None:
@@ -2673,8 +2676,11 @@ class TestDumpKeepsTheLoop:
         rendered = dump_playbook(body)
         again = PlaybookBody.model_validate(yaml.safe_load(rendered))
 
-        assert again.steps[1].for_each == body.steps[1].for_each
-        assert again.steps[1].max_items == 5
+        looped, original = again.steps[1], body.steps[1]
+        assert isinstance(looped, ForEachStep)
+        assert isinstance(original, ForEachStep)
+        assert looped.for_each == original.for_each
+        assert looped.max_items == 5
         assert "for_each" in rendered and "max_items" in rendered
 
     def test_a_plain_step_still_dumps_without_loop_keys(self) -> None:

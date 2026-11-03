@@ -37,6 +37,7 @@ from app.models.playbook_models import (
     PlaybookDocument,
     PlaybookRunOutcome,
     PlaybookRunStatus,
+    PlaybookStep,
     PlaybookStepInput,
     ToolStep,
 )
@@ -473,6 +474,7 @@ REFUSED = "Error: ValidationError: 1 validation error for write_playbook"
 
 
 def _frozen(*tools: str, handoff: str | None = None) -> PlaybookDocument:
+    steps: list[PlaybookStep]
     if handoff:
         steps = [
             HandoffStep(

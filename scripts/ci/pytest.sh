@@ -17,16 +17,18 @@
 #                            select` wrote. Reads its inputs from the env.
 #   shared-suite             Run libs/shared/py/tests (the unit-b slice's "after").
 #   contract-fuzz            Run the schemathesis API fuzz (integration's "after").
-#   flake-gate <cmd...>      Run a pytest command; on failure rerun ONLY the
-#                            failures once and fail the build if they pass on
-#                            rerun (CPython's --fail-rerun lesson).
+#   flake-gate <cmd...>      Run a pytest command under pytest-rerunfailures: a
+#                            failure reruns once, and one that passes only on
+#                            the rerun fails a PR (warns in the queue/master).
 #   regression-proof <base>  Prove the NEW @pytest.mark.regression tests in this
 #                            diff FAIL on <base-ref> — red-first, mechanically.
 #
 # Env contract:
 #   slice             SLICE_NAME, SLICE_PATHS, XDIST_N (all required);
 #                     SLICE_IGNORE, COVERAGE, COV_CONTEXT, RUNNER_TEMP.
-#   flake-gate        none — the arguments ARE the pytest command line.
+#   flake-gate        FLAKE_GATE_SELECTION=1 when a test-impact selection chose the
+#                     tests (an empty run then passes); the arguments ARE the
+#                     pytest command line.
 #   regression-proof  none, but needs a fetch-depth: 0 checkout (it does
 #                     `git worktree add <base>`) and a synced .venv in the main
 #                     checkout (setup-python-test-env leaves one).
@@ -139,8 +141,14 @@ cmd_slice() {
   # If a fixture goes missing after a dependency change, the plugin belongs in
   # this list — that is a visible error, unlike the silent per-worker cost.
   export PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
-  EXTRA+=(-p asyncio -p xdist -p timeout -p pytest_mock -p randomly
+  EXTRA+=(-p asyncio -p xdist -p timeout -p pytest_mock -p randomly -p pytest_rerunfailures
           -p hypothesis.extra.pytestplugin -p respx.plugin -p time_machine -p anyio.pytest_plugin -p pytest_check)
+  # One shuffle, and on master one Hypothesis draw, per commit: unseeded, both
+  # changed every run, so a failure came and went on the same commit. The seed
+  # is in pytest's header; `--randomly-seed=<n> --hypothesis-seed=<n>` replays it.
+  local SEED_SHA="${GITHUB_SHA:-$(git rev-parse HEAD)}"
+  local SEED=$((16#${SEED_SHA:0:8}))
+  EXTRA+=("--randomly-seed=$SEED" "--hypothesis-seed=$SEED")
   # Coverage only where something reads it: the master gate and the test-impact
   # map. A PR run is report-only by design (selection makes the total
   # meaningless), and tracing costs ~35 CPU-points per lane — pure waste there.
@@ -165,11 +173,11 @@ cmd_slice() {
   # path above all: that is the run whose findings somebody has to go read.
   local rc=0
   set +e
-  /usr/bin/time -v bash "$SCRIPT_DIR/pytest.sh" flake-gate \
+  FLAKE_GATE_SELECTION="$([ "$SELECTION" = "FILE" ] && echo 1)" \
+    /usr/bin/time -v bash "$SCRIPT_DIR/pytest.sh" flake-gate \
     uv run --frozen pytest -n "$N_SLOTS" --dist worksteal \
     "${TARGETS[@]}" ${EXTRA[@]+"${EXTRA[@]}"} \
-    -m 'not composio and not model_onboarding and not schemathesis' \
-    --tb=short -q --override-ini=addopts=--strict-markers --timeout=300 \
+    --tb=short -q \
     --junitxml="$JUNIT" --durations=30 2>&1 \
     | stdbuf -oL cut -c-20000 | tee "${SCRATCH}/pytest-${SLICE}.time"
   rc=${PIPESTATUS[0]}
@@ -209,8 +217,10 @@ cmd_slice() {
 # rootdir and ini intact.
 cmd_shared_suite() {
   cd "$REPO_ROOT/apps/api"
-  uv run --frozen pytest ../../libs/shared/py/tests \
-    --tb=short -q --override-ini=addopts=--strict-markers
+  # libs/ has no pytest config of its own: -c gives the suite apps/api's
+  # markers, --strict-markers, timeout and warning filters.
+  uv run --frozen pytest -c pytest.ini ../../libs/shared/py/tests \
+    --tb=short -q
   ci_ok "gaia-shared tests: OK"
 }
 
@@ -230,102 +240,47 @@ cmd_contract_fuzz() {
 cmd_flake_gate() {
   [ "$#" -gt 0 ] || { echo "usage: pytest.sh flake-gate <pytest-command...>" >&2; exit 2; }
 
-  # Capture the first run's output (while still streaming it live) so we can
-  # tell a coverage-threshold failure apart from an actual test failure: both
-  # exit pytest with 1, but only one of them is a flake-gate concern.
-  local tmp_out first rerun arg
-  tmp_out="$(mktemp)"
-  # The rerun's `--lf` reads lastfailed from pytest's cache, and the default one
-  # lives in the box's persistent workspace, where an earlier job's failures sit
-  # beside this one's. A cache only this gate writes holds exactly this run's.
-  CACHE_DIR="$(mktemp -d)"
-  trap 'rm -rf "$tmp_out" "$CACHE_DIR"' EXIT
-
-  # Capture the first run's exit code without tripping `set -e` on the `if`.
+  # pytest-rerunfailures reruns each failing test once, in its own worker. A test
+  # that passes only on the rerun proved the code fine and the test not: on a PR
+  # push that still fails the lane (--fail-on-flaky, exit 7), since a human is
+  # there to stabilise it. In the merge queue and on master it warns, because
+  # failing costs a whole group run and ejects a PR that just proved itself.
+  local flaky=(--reruns 1) rc out
+  case "${GITHUB_EVENT_NAME:-}" in
+    merge_group | push) ;;
+    *) flaky+=(--fail-on-flaky) ;;
+  esac
+  out="$(mktemp)"
+  trap 'rm -f "$out"' EXIT
   set +e
-  "$@" -o "cache_dir=$CACHE_DIR" 2>&1 | tee "$tmp_out"
-  first=${PIPESTATUS[0]}
+  "$@" "${flaky[@]}" 2>&1 | tee "$out"
+  rc=${PIPESTATUS[0]}
   set -e
 
-  if [ "$first" -eq 0 ]; then
-    exit 0
-  fi
-
-  # pytest exit 5 is "nothing collected", not "something failed" — the same
-  # meaning `regression-proof` already relies on below. A slice legitimately
-  # collects nothing when the PR's diff touches none of its directories, which
-  # is normal for a small stacked PR: #1175's three-file diff left unit-a empty
-  # and the rerun then reported "genuine failure, exit code 4" for a lane that
-  # had no work. Announced rather than silent, because the other way to collect
-  # nothing is a selector that is broken, and that must not read as a pass.
-  if [ "$first" -eq 5 ]; then
-    printf '::notice::%s\n' "No tests collected for this slice — the diff touches none of its paths. Passing; if you expected tests here, the selection is what to check." >&2
-    exit 0
-  fi
-
-  # pytest-cov exits 1 on a coverage-threshold miss even when every test
-  # passed. Rerunning with --lf against an empty/stale lastfailed cache would
-  # then replay the WHOLE suite (which passes) and get misreported as
-  # "FLAKY TESTS DETECTED" — while ci.yml's `coverage` job, which would
-  # give the correct diagnosis, never runs because this step already failed.
-  if grep -qE '^FAIL Required test coverage of [0-9.]+% not reached\.' "$tmp_out" \
-    && ! grep -qE '^FAILED ' "$tmp_out" \
-    && ! grep -qE '^[0-9]+ failed' "$tmp_out"; then
-    printf '::error::%s\n' "Coverage gate failed (coverage below threshold) — not a test failure, not a flake. Write tests covering your changed lines." >&2
-    exit "$first"
-  fi
-
-  ci_group "First run failed (exit $first) — rerunning only failures once"
-  # Strip coverage/junit flags on the rerun: they'd measure/emit for a 2-test
-  # subset and the coverage gate would always fail (masking the flake signal).
-  local rerun_args=()
-  local skip_next=0
-  for arg in "$@"; do
-    case "$arg" in
-      --cov=*|--cov-report=*|--cov-fail-under=*|--junitxml=*|--junitxml)
-        # --junitxml takes a value; skip the next arg too.
-        [ "$arg" = "--junitxml" ] && skip_next=1
-        continue
-        ;;
-    esac
-    if [ "$skip_next" = "1" ]; then
-      skip_next=0
-      continue
-    fi
-    rerun_args+=("$arg")
-  done
-  # One process for the rerun. Measured 2026-08-28 on the integration slice: the
-  # rerun of a single 3.7 s test cost 295 s because it replayed "-n 6" — six
-  # workers each re-importing conftest and re-collecting 2003 tests. A later
-  # "-n" wins in pytest's parser, so this overrides whatever the caller passed.
-  rerun_args+=(-n 0 --lf -q -o "cache_dir=$CACHE_DIR")
-
-  set +e
-  "${rerun_args[@]}"
-  rerun=$?
-  set -e
-  ci_endgroup
-
-  if [ "$rerun" -eq 0 ]; then
-    # A rerun that passes is evidence the code is fine and the test is not. On a PR
-    # push that still fails the lane: a human is there, and the fix is to stabilise
-    # the test. In the merge queue (and on master) failing it costs a whole group
-    # run — 8-15 minutes — and it ejects a PR that just proved itself, so it warns
-    # instead. The tests are named in the annotation, so this is recorded, not
-    # hidden; flake rates are the thing to watch, not the individual ejection.
-    case "${GITHUB_EVENT_NAME:-}" in
-      merge_group|push)
-        printf '::warning::%s\n' "FLAKY TESTS (passed on rerun, not blocking this run): see the first-run traceback above" >&2
+  case "$rc" in
+    0)
+      if grep -qE '[0-9]+ rerun' "$out"; then
+        printf '::warning::%s\n' "FLAKY TESTS (passed on rerun, not blocking this run): see the RERUN lines above" >&2
+      fi
+      exit 0
+      ;;
+    5)
+      # Nothing collected. Only a test-impact selection can be legitimately empty
+      # (its tests all deselected by the slice's -m); a whole slice or a marker run
+      # that collects nothing has a broken path or marker.
+      if [ "${FLAKE_GATE_SELECTION:-}" = "1" ]; then
+        printf '::notice::%s\n' "The selected tests were all deselected by this slice's markers. Passing; if you expected tests here, the selection is what to check." >&2
         exit 0
-        ;;
-    esac
-    printf '::error::%s\n' "FLAKY TESTS DETECTED — the following passed only on rerun:" >&2
-    echo "       (see the first-run traceback above)"
-    exit 1
-  fi
-
-  printf '::error::%s\n' "First run and rerun both failed — genuine failure, exit code $rerun" >&2
-  exit "$rerun"
+      fi
+      echo "::error::pytest collected no tests — a slice path or -m marker matches nothing" >&2
+      exit 5
+      ;;
+    7)
+      printf '::error::%s\n' "FLAKY TESTS DETECTED — passed only on rerun: see the RERUN lines above" >&2
+      exit 1
+      ;;
+  esac
+  exit "$rc"
 }
 
 # ── regression-proof ──────────────────────────────────────────────────────
@@ -371,32 +326,6 @@ cmd_regression_proof() {
 
   git worktree add --detach "$WT" "$BASE" >/dev/null
 
-  # Only files that actually claim to pin a bug are worth running here, and
-  # importing just those keeps an unrelated file's collection error from
-  # aborting the run.
-  #
-  # Anchored on the DECORATOR, not on any mention of it. A plain substring match
-  # enlists a file that merely names the marker in prose: it picked up
-  # tests/unit/agents/test_llm_helper_output_cap.py, which holds no marked test
-  # but whose docstring spells the decorator out while explaining this very lane
-  # — the file documenting the trap tripped it. The lane then ran that file on
-  # base, where the symbol under test does not exist, and reported an ERROR.
-  # This stays a pre-filter; the authoritative selection is pytest's own
-  # `-m regression` below, which reports "nothing collected" (exit 5) if the
-  # grep were ever over-eager again.
-  local regression_files=()
-  for f in "${changed[@]}"; do
-    if grep -qE '^[[:space:]]*@pytest\.mark\.regression' "$REPO_ROOT/$f"; then
-      regression_files+=("$f")
-    fi
-  done
-  if [ "${#regression_files[@]}" -eq 0 ]; then
-    ci_verdict --lane regression-proof --status skip \
-      --summary "no @pytest.mark.regression tests in this diff — nothing to prove"
-    exit 0
-  fi
-  echo "regression-proof: ${#regression_files[@]} file(s) with regression-marked tests:"
-  printf '  %s\n' "${regression_files[@]}"
 
   # Overlay the PR's WHOLE test tree and pytest.ini, not just the changed files.
   # The boundary that makes this meaningful is tests-vs-product: the harness
@@ -455,7 +384,10 @@ cmd_regression_proof() {
   # prove it once: in the PR that introduces it. Paths are repo-root-relative from
   # git diff; node ids are made relative to apps/api for pytest.
   local select_args=() base_copy SELECTED
-  for f in "${regression_files[@]}"; do
+  # verdict.py parses each changed file for its marked tests (decorator, class,
+  # pytestmark, pytest.param), so only the tests that claim to pin a bug run, and
+  # an unrelated file's collection error cannot abort the lane.
+  for f in "${changed[@]}"; do
     base_copy="$(mktemp -p "$BASE_COPIES")"
     if git -C "$REPO_ROOT" show "$BASE:$f" > "$base_copy" 2>/dev/null; then
       select_args+=("$API_DIR/${f#apps/api/}" "$base_copy")
@@ -497,11 +429,12 @@ cmd_regression_proof() {
   rc=$?
   set -e
 
-  # pytest exit 5 = nothing collected: no regression-marked tests in this diff.
+  # Exit 5: verdict.py named marked tests that pytest's own `-m regression` then
+  # did not collect. The two disagree, so nothing was proven.
   if [ "$rc" -eq 5 ]; then
-    ci_verdict --lane regression-proof --status skip \
-      --summary "no @pytest.mark.regression tests among the changed files — nothing to prove"
-    exit 0
+    ci_verdict_die --lane regression-proof --status fail \
+      --summary "pytest collected none of the ${#new_regression_ids[@]} regression test(s) verdict.py selected" \
+      --advice "The mark is on something pytest -m regression does not see; put it on the test, its class, pytestmark, or a pytest.param case."
   fi
 
   # No report at all means pytest never ran (missing interpreter, unwritable path,
