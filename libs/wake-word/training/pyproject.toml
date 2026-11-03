@@ -27,8 +27,9 @@ build-backend = "hatchling.build"
 # root's 3-day supply-chain cooldown is restated here rather than lost.
 [tool.uv]
 exclude-newer = "3 days"
-# CVE-2026-112907/112913/112940, same floor as the root constraint-dependencies.
-constraint-dependencies = ["filelock>=4.2.1"]
+# filelock: CVE-2026-112907/112913/112940, same floor as the root constraint-dependencies.
+# msgpack: CVE-2026-114613.
+constraint-dependencies = ["filelock>=4.2.1", "msgpack>=1.2.3"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]

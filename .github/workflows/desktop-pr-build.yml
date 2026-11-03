@@ -12,42 +12,15 @@ name: Desktop PR Build
 # signs and verifies the bundle seal.
 #
 # Tiered: a PR push packages Linux only; the merge queue (and a dispatch)
-# packages every OS. No paths filter: a merge group ignores one, so the
-# `inputs` job decides relevance for every event (`changes.sh desktop-inputs`)
-# and a change that touches no desktop input skips in seconds.
+# packages every OS. ci.yml calls it whenever nx says desktop:build (which
+# depends on web and shared-typescript) or this workflow is affected.
 on:
-  pull_request:
-  merge_group:
-  workflow_dispatch:
-
-concurrency:
-  group: desktop-pr-build-${{ github.ref }}
-  cancel-in-progress: true
+  workflow_call:
 
 env:
   NEXT_PUBLIC_API_BASE_URL: https://api.heygaia.io/api/v1/
 
 jobs:
-  inputs:
-    name: Decide whether the desktop app's inputs changed
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      build: ${{ steps.inputs.outputs.build }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: github.event_name != 'workflow_dispatch'
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Diff the desktop inputs against the base
-        id: inputs
-        if: github.event_name != 'workflow_dispatch'
-        env:
-          # A merge group's base is the commit it was built on, not master's tip.
-          BASE_BRANCH: ${{ github.event.merge_group.base_sha || github.base_ref }}
-        run: bash scripts/ci/changes.sh desktop-inputs
-
   # ---------------------------------------------------------------------------
   # All platform-agnostic build work, done once on cheap Linux:
   # web standalone -> electron-vite out/ -> prepare/prune (+ wake-word canary).
@@ -55,8 +28,6 @@ jobs:
   # ---------------------------------------------------------------------------
   prepare:
     name: Build + prepare payload
-    needs: inputs
-    if: needs.inputs.outputs.build != 'false'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -180,3 +151,21 @@ jobs:
           echo "Verifying $APP"
           codesign --verify --deep --strict --verbose=1 "$APP"
           echo "macOS bundle seal is valid"
+
+  # One verdict for ci.yml's gate, from Linux: the composite runs python3,
+  # which the Windows leg does not promise.
+  verdict:
+    name: Desktop build verdict
+    needs: [prepare, package]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Upload the verdict
+        uses: ./.github/actions/upload-verdict
+        with:
+          status: ${{ (needs.prepare.result == 'success' && needs.package.result == 'success') && 'success' || (contains(needs.*.result, 'cancelled') && 'cancelled' || 'failure') }}
+          name: desktop-build

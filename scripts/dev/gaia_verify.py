@@ -1,51 +1,44 @@
 #!/usr/bin/env python3
-"""mise ci:local — run GAIA's CI quality gates locally with agent-legible results.
+"""mise ci:local — run the CI checks this change reaches, through nx, as CI runs them.
 
-Lane definitions live in scripts/dev/verify-lanes.json (mirror CI gates; edit
-both in the same commit — intentionally-unmirrored CI jobs are listed there). Sequential execution by design: predictable logs,
-bounded memory, no shared-state races between lanes.
+Every check is an nx target whose metadata.ci names its ci.yml job and status
+(tools/ci/project.json and the code projects' targets). This selects with the
+same nx answer CI's detect publishes and runs the same tasks the same way
+(nx_affected.run), so local and CI cannot disagree. A check a workflow step
+runs (an action, a live secret) stays CI's and is listed as such.
 
 Usage:
   mise ci:local [--json] [--all] [--only a,b] [--skip a,b] [--with-heavy]
-              [--verbose] [--list] [--base REF]
+              [--list] [--dry-run] [--base REF]
 
-Exit codes: 0 = all executed lanes passed (unchanged/skipped don't count);
-            1 = at least one lane failed (code-quality signal — takes precedence);
-            2 = infra/config problem (lane error/timeout, bad config, bad usage — not a code verdict).
+Exit codes: 0 = every check that ran passed; 1 = a check failed;
+            2 = bad usage, or nx could not run a check (not a code verdict).
 """
 
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
 from datetime import UTC, datetime
 import json
 import os
 from pathlib import Path
-import re
-import shutil
 import subprocess
 import sys
 import time
 
-SCHEMA_VERSION = 1
-LANES_FILE = Path(__file__).resolve().parent / "verify-lanes.json"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ci"))
+from lib import nx_affected
+
+SCHEMA_VERSION = 2
 LOG_ROOT = "verify-logs"
+# A PR's checks run by default; --with-heavy adds the builds, tests and audits.
+HEAVY_JOBS = frozenset({"python-audit", "ts-build-test"})
+# What a change meets before master: its PR, then the merge queue.
+LOCAL_EVENTS = ("pull_request", "merge_group")
 
 
 def eprint(*args: str) -> None:
     print(*args, file=sys.stderr, flush=True)
-
-
-@dataclass
-class Lane:
-    name: str
-    scope_re: re.Pattern[str]
-    heavy: bool
-    timeout_s: int
-    require_cmd: list[str]
-    require_env: list[str]
-    command: str
 
 
 def _die(msg: str) -> None:
@@ -53,54 +46,9 @@ def _die(msg: str) -> None:
     sys.exit(2)
 
 
-def load_lanes(path: Path) -> list[Lane]:
-    try:
-        data = json.loads(path.read_text())
-        rows = data["lanes"]
-    except Exception as exc:
-        _die(f"config error: {path}: unreadable lanes file: {exc}")
-    if not isinstance(rows, list):
-        _die(f"config error: {path}: top-level 'lanes' must be a list")
-    lanes: list[Lane] = []
-    seen: set[str] = set()
-    for i, row in enumerate(rows, start=1):
-        if not isinstance(row, dict):
-            _die(f"config error: {path} lane #{i}: row must be an object")
-        try:
-            name = row["name"]
-            if name in seen:
-                raise ValueError(f"duplicate lane name '{name}'")
-            if not re.fullmatch(r"[\w.-]+", name):
-                raise ValueError(
-                    f"lane name may contain only [A-Za-z0-9_.-] (log-file safety): {name!r}"
-                )
-            seen.add(name)
-            lanes.append(
-                Lane(
-                    name=name,
-                    scope_re=re.compile(row["scope"]),
-                    heavy=bool(row["heavy"]),
-                    timeout_s=int(row["timeout_s"]),
-                    require_cmd=list(row.get("require_cmd", [])),
-                    require_env=list(row.get("require_env", [])),
-                    command=row["command"],
-                )
-            )
-        except Exception as exc:
-            _die(f"config error: {path} lane #{i}: {exc}")
-    for ln in lanes:
-        if ln.timeout_s <= 0:
-            _die(f"config error: {path}: lane '{ln.name}' timeout must be >= 1 second")
-    if not lanes:
-        _die(f"config error: {path}: no lanes defined")
-    return lanes
-
-
-def run(
-    cmd: list[str], timeout_s: int, cwd: Path | None = None
-) -> subprocess.CompletedProcess[str]:
+def _git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        cmd, capture_output=True, text=True, timeout=timeout_s, cwd=cwd, check=False
+        ["git", *args], capture_output=True, text=True, timeout=30, cwd=root, check=False
     )
 
 
@@ -112,8 +60,13 @@ def pick_base(root: Path, explicit: str | None) -> str:
     if env_base:
         return env_base
     try:
-        proc = run(
-            ["gh", "pr", "view", "--json", "baseRefName", "--jq", ".baseRefName"], 20, cwd=root
+        proc = subprocess.run(
+            ["gh", "pr", "view", "--json", "baseRefName", "--jq", ".baseRefName"],
+            capture_output=True,
+            text=True,
+            timeout=20,
+            cwd=root,
+            check=False,
         )
         if proc.returncode == 0 and proc.stdout.strip():
             return f"origin/{proc.stdout.strip()}"
@@ -122,295 +75,217 @@ def pick_base(root: Path, explicit: str | None) -> str:
     return "origin/master"
 
 
-def changed_files(root: Path, base: str, strict_base: bool = False) -> list[str]:
-    def base_unusable(detail: str) -> None:
-        if strict_base:
-            _die(
-                f"--base '{base}' is unusable ({detail}) — refusing to guess scope and report a false green"
-            )
+def changed_files(root: Path, base: str) -> list[str]:
+    """List the branch's diff from its merge-base with `base`, plus uncommitted and untracked files."""
+    branch = _git(root, "diff", "--name-only", f"{base}...HEAD")
+    if branch.returncode != 0:
+        _die(f"base '{base}' is unusable ({branch.stderr.strip()[:200]}); pass --base")
+    files = branch.stdout.splitlines()
+    files += _git(root, "diff", "--name-only", "HEAD").stdout.splitlines()
+    files += _git(root, "ls-files", "--others", "--exclude-standard").stdout.splitlines()
+    return list(dict.fromkeys(f for f in files if f.strip()))
 
-    files: list[str] = []
-    cmds = [
-        (["git", "diff", "--name-only", f"{base}...HEAD"], True),
-        (["git", "diff", "--name-only", "HEAD"], False),
-        (["git", "ls-files", "--others", "--exclude-standard"], False),
-    ]
-    for cmd, uses_base in cmds:
-        try:
-            proc = run(cmd, 30, cwd=root)
-        except subprocess.TimeoutExpired:
-            eprint(f"warning: {' '.join(cmd)} timed out; continuing without it")
+
+def local_checks() -> dict[str, list[nx_affected.Check]]:
+    """Each check nx runs before master, by its status name."""
+    by_name: dict[str, list[nx_affected.Check]] = {}
+    for check in nx_affected.checks().values():
+        if (
+            check.check
+            and check.runner == "nx"
+            and any(check.runs_on(event, None) for event in LOCAL_EVENTS)
+        ):
+            by_name.setdefault(check.check, []).append(check)
+    return dict(sorted(by_name.items()))
+
+
+def ci_only_checks() -> list[str]:
+    """Name the checks a workflow step runs, which ci:local cannot."""
+    return sorted({c.check for c in nx_affected.checks().values() if c.check and c.runner != "nx"})
+
+
+def _names(raw: str, flag: str, known: dict[str, list[nx_affected.Check]]) -> set[str]:
+    names = {s.strip() for s in raw.split(",") if s.strip()}
+    if raw and not names:
+        _die(f"usage error: {flag} given but no check names parsed")
+    missing = names - set(known)
+    if missing:
+        _die(f"usage error: unknown checks: {sorted(missing)}. `mise ci:local --list` shows them.")
+    return names
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run GAIA's CI checks locally, through nx.")
+    parser.add_argument("--json", action="store_true", help="emit only the JSON report on stdout")
+    parser.add_argument("--all", action="store_true", help="every check, changed or not")
+    parser.add_argument("--only", default="", help="comma-separated checks (overrides scoping)")
+    parser.add_argument("--skip", default="", help="comma-separated checks to leave out")
+    parser.add_argument(
+        "--with-heavy", action="store_true", help=f"include {', '.join(sorted(HEAVY_JOBS))}"
+    )
+    parser.add_argument("--list", action="store_true", help="print every check and exit")
+    parser.add_argument("--dry-run", action="store_true", help="show the plan; run nothing")
+    parser.add_argument("--base", help="git ref to diff against (default: PR base, origin/master)")
+    return parser.parse_args()
+
+
+def print_table(known: dict[str, list[nx_affected.Check]]) -> None:
+    for name, parts in known.items():
+        job = parts[0].job
+        heavy = " (heavy)" if job in HEAVY_JOBS else ""
+        print(f"{name:28} {job + heavy:28} {', '.join(p.task for p in parts)}")
+    print(f"\nRun only in CI (a workflow step): {', '.join(ci_only_checks())}")
+
+
+def plan(
+    known: dict[str, list[nx_affected.Check]],
+    affected: set[str] | None,
+    args: argparse.Namespace,
+) -> tuple[dict[str, list[str]], dict[str, str]]:
+    """Each check to run and its tasks, and each check left out with why."""
+    only = _names(args.only, "--only", known)
+    skip = _names(args.skip, "--skip", known)
+    run: dict[str, list[str]] = {}
+    left_out: dict[str, str] = {}
+    for name, parts in known.items():
+        tasks = [p.task for p in parts if affected is None or p.task in affected]
+        if only and name not in only:
             continue
-        if proc.returncode == 0:
-            files.extend(f for f in proc.stdout.splitlines() if f.strip())
-        elif strict_base and uses_base:
-            base_unusable(proc.stderr.strip()[:200])
+        if name in skip:
+            left_out[name] = "--skip"
+        elif not only and parts[0].job in HEAVY_JOBS and not args.with_heavy:
+            left_out[name] = "heavy (--with-heavy)"
+        elif not tasks:
+            left_out[name] = "unchanged"
         else:
-            # Unknown/missing base ref is common on fresh clones; fall back to HEAD-only diffs.
-            eprint(f"warning: {' '.join(cmd)} failed: {proc.stderr.strip()[:200]}")
-    seen: set[str] = set()
-    return [f for f in files if not (f in seen or seen.add(f))]
+            run[name] = tasks
+    return run, left_out
+
+
+def _nx_parallel(root: Path) -> int:
+    out = subprocess.run(
+        [sys.executable, "scripts/ci/runner.py", "parallel", "--nx"],
+        capture_output=True,
+        text=True,
+        cwd=root,
+        check=True,
+    ).stdout
+    return int(out.strip())
+
+
+def _outcome(tasks: list[str], results: dict[str, nx_affected.TaskResult]) -> str:
+    if any(task not in results for task in tasks):
+        return "error"
+    return "passed" if all(results[t]["status"] in nx_affected.PASSED for t in tasks) else "failed"
+
+
+def run_report(
+    to_run: dict[str, list[str]],
+    left_out: dict[str, str],
+    results: dict[str, nx_affected.TaskResult],
+    log_dir: Path,
+    root: Path,
+) -> list[dict[str, object]]:
+    """Write each check's log and return one report entry per check, left-out ones included."""
+    report: list[dict[str, object]] = []
+    for name, check_tasks in to_run.items():
+        log_file = log_dir / f"{name}.log"
+        log_file.write_text("".join(results[t]["output"] for t in check_tasks if t in results))
+        report.append(
+            {
+                "name": name,
+                "status": _outcome(check_tasks, results),
+                "tasks": check_tasks,
+                "logFile": str(log_file.relative_to(root)),
+            }
+        )
+    return report + [
+        {"name": name, "status": "skipped", "reason": why} for name, why in left_out.items()
+    ]
+
+
+def print_summary(report: list[dict[str, object]], counts: dict[str, int], logs: Path) -> None:
+    for r in report:
+        if r["status"] != "skipped":
+            print(f"  {str(r['status']).upper():7} {r['name']}  ({r['logFile']})")
+    failing = [str(r["name"]) for r in report if r["status"] in ("failed", "error")]
+    print(
+        f"\nci:local: {counts['passed']} passed, {counts['failed']} failed, "
+        f"{counts['error']} did not run, {counts['skipped']} left out (logs: {logs}/)"
+    )
+    print(f"CI only (a workflow step runs them): {', '.join(ci_only_checks())}")
+    if failing:
+        print(f"NEXT: fix them, then: mise ci:local --only {','.join(failing)}")
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run GAIA CI quality lanes locally.")
-    parser.add_argument(
-        "--json", action="store_true", help="emit only the final JSON report on stdout"
-    )
-    parser.add_argument(
-        "--all", action="store_true", help="run every lane regardless of changed files"
-    )
-    parser.add_argument("--only", default="", help="comma-separated lane names (overrides scoping)")
-    parser.add_argument("--skip", default="", help="comma-separated lane names to exclude")
-    parser.add_argument(
-        "--with-heavy", action="store_true", help="include heavy lanes (tests, docker, network)"
-    )
-    parser.add_argument(
-        "--verbose", action="store_true", help="list matched files per selected lane"
-    )
-    parser.add_argument("--list", action="store_true", help="print the lane table and exit")
-    parser.add_argument(
-        "--dry-run", action="store_true", help="show the execution plan without running any lane"
-    )
-    parser.add_argument(
-        "--base",
-        default=None,
-        help="git ref to diff against (default: PR base, then origin/master)",
-    )
-    args = parser.parse_args()
-
-    try:
-        root = Path(
-            subprocess.run(
-                ["git", "rev-parse", "--show-toplevel"],
-                capture_output=True,
-                text=True,
-                timeout=15,
-                check=True,
-            ).stdout.strip()
-        )
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
-        eprint(f"not inside a git repository ({exc})")
-        sys.exit(2)
-    lanes = load_lanes(LANES_FILE)
-
+    args = _parse_args()
+    root = Path(_git(Path.cwd(), "rev-parse", "--show-toplevel").stdout.strip() or ".")
+    known = local_checks()
     if args.list:
-        for ln in lanes:
-            reqs = "+".join(ln.require_cmd) if ln.require_cmd else "-"
-            print(
-                f"{ln.name:32} heavy={ln.heavy!s:5} timeout={ln.timeout_s:>5}s requires={reqs:20} {ln.command[:90]}"
-            )
+        print_table(known)
         return 0
-
-    only = {s.strip() for s in args.only.split(",") if s.strip()}
-    skip = {s.strip() for s in args.skip.split(",") if s.strip()}
-    if args.only and not only:
-        _die("usage error: --only given but no lane names parsed")
-    if args.skip and not skip:
-        _die("usage error: --skip given but no lane names parsed")
-    unknown = only | skip
-    known = {ln.name for ln in lanes}
-    missing = unknown - known
-    if missing:
-        eprint(
-            f"usage error: unknown lanes: {sorted(missing)}. `mise ci:local --list` shows the table."
-        )
-        sys.exit(2)
-
-    base = pick_base(root, args.base)
-    files = changed_files(root, base, strict_base=args.base is not None)
-
-    started_at = datetime.now(UTC)
-    t0 = time.monotonic()
-    results: list[dict[str, object]] = []
-
-    stamp = started_at.strftime("%Y%m%d-%H%M%S") + f"-{os.getpid()}"
-    log_dir = root / LOG_ROOT / stamp
 
     def say(msg: str) -> None:
         if not args.json:
             print(msg, flush=True)
 
-    MIN_PYTHON = (3, 11)  # tomllib / match-statements used by several lane tools
-    if sys.version_info < MIN_PYTHON:
-        eprint(
-            f"warning: running under python {sys.version.split()[0]}; several lanes need >=3.11 "
-            "(tomllib, match-statements). Run through mise so PATH resolves python 3.12: `mise ci:local …`"
-        )
-    say(f"ci:local: base={base} changed_files={len(files)} lanes_total={len(lanes)}")
-
-    selected: list[tuple[Lane, list[str]]] = []
-    skipped_pre: list[tuple[Lane, str]] = []
-    for ln in lanes:
-        if only:
-            if ln.name not in only:
-                continue
-        elif ln.name in skip:
-            skipped_pre.append((ln, "skipped by --skip"))
-            continue
-        if not only:
-            if ln.heavy and not args.with_heavy:
-                skipped_pre.append((ln, "heavy (use --with-heavy)"))
-                continue
-            matched = [f for f in files if ln.scope_re.search(f)]
-            if not matched and not args.all:
-                skipped_pre.append((ln, "unchanged"))
-                continue
-        else:
-            matched = [f for f in files if ln.scope_re.search(f)]
-        missing_tools = [c for c in ln.require_cmd if not shutil.which(c)]
-        if missing_tools:
-            skipped_pre.append((ln, f"missing tool(s): {','.join(missing_tools)}"))
-            continue
-        # A lane named with --only runs regardless, so its own missing-credential error shows.
-        missing_env = [v for v in ln.require_env if not os.environ.get(v)]
-        if missing_env and not only:
-            skipped_pre.append(
-                (ln, f"missing env: {','.join(missing_env)} (--only {ln.name} runs it)")
-            )
-            continue
-        selected.append((ln, matched))
-
-    for ln, why in skipped_pre:
-        status = "unchanged" if why == "unchanged" else "skipped"
-        results.append({"name": ln.name, "status": status, "reason": why})
-    if skipped_pre and not args.json:
-        for ln, why in skipped_pre:
-            print(f"  - {ln.name}: {why}")
-
+    base = pick_base(root, args.base)
+    files = changed_files(root, base)
+    scoped = not (args.all or args.only)
+    selection = nx_affected.select(["--files", *files]) if scoped and files else None
+    affected = (set(selection.tasks) if selection else set()) if scoped else None
+    to_run, left_out = plan(known, affected, args)
+    say(f"ci:local: base={base} changed_files={len(files)} checks={len(to_run)} of {len(known)}")
+    for name, why in left_out.items():
+        say(f"  - {name}: {why}")
     if args.dry_run:
-        say(f"dry-run: would execute {len(selected)} of {len(lanes)} lanes:")
-        for i, (ln, matched) in enumerate(selected, 1):
-            extra = f", {len(matched)} matched files" if not args.all else ", --all"
-            say(f"  [{i}/{len(selected)}] {ln.name} (timeout {ln.timeout_s}s{extra})")
-        say("dry-run: nothing was executed.")
+        for name, tasks in to_run.items():
+            say(f"  would run {name}: {', '.join(tasks)}")
         return 0
+
+    started_at = datetime.now(UTC)
+    t0 = time.monotonic()
+    log_dir = root / LOG_ROOT / (started_at.strftime("%Y%m%d-%H%M%S") + f"-{os.getpid()}")
     log_dir.mkdir(parents=True, exist_ok=True)
+    # What detect hands a CI job (JOB_TASKS, …, and the task-files file), from the same nx answer.
+    answer = selection or nx_affected.Selection(tasks={})
+    detected = nx_affected.outputs(answer, LOCAL_EVENTS[0], None)
+    os.environ.update({key.upper(): value for key, value in detected.items()})
+    task_files = log_dir / "task-files.json"
+    task_files.write_text(json.dumps(nx_affected.task_files(answer)))
+    os.environ[nx_affected.TASK_FILES_ENV] = str(task_files)
+    tasks = [task for check_tasks in to_run.values() for task in check_tasks]
+    results: dict[str, nx_affected.TaskResult] = {}
 
-    failures = 0
-    errors = 0
-    for i, (ln, matched) in enumerate(selected, 1):
-        suffix = f" ({len(matched)} matched files)" if not args.all else ""
-        detail = (
-            f" — {', '.join(matched[:5])}{'…' if len(matched) > 5 else ''}"
-            if args.verbose and matched
-            else ""
-        )
-        say(f"[{i}/{len(selected)}] {ln.name}{suffix}{detail} … running (timeout {ln.timeout_s}s)")
-        log_file = log_dir / f"{ln.name}.log"
-        status = "passed"
-        reason = None
-        exit_code: int | None = None
-        lane_t0 = time.monotonic()
-        try:
-            with open(log_file, "w") as logfh:
-                proc = subprocess.run(  # noqa: S602 - lanes ARE shell pipelines (&& chains); config is repo-trusted
-                    ln.command,
-                    shell=True,
-                    check=False,
-                    cwd=root,
-                    stdout=logfh,
-                    stderr=subprocess.STDOUT,
-                    timeout=ln.timeout_s,
-                )
-            exit_code = proc.returncode
-            if proc.returncode != 0:
-                status = "failed"
-        except subprocess.TimeoutExpired:
-            status = "timeout"
-            reason = f"exceeded {ln.timeout_s}s"
-        except Exception as exc:
-            status = "error"
-            reason = str(exc)[:300]
-        duration_ms = int((time.monotonic() - lane_t0) * 1000)
+    def on_done(task: str, result: nx_affected.TaskResult) -> None:
+        results[task] = result
+        say(f"  {'pass' if result['status'] in nx_affected.PASSED else 'FAIL':5} {task}")
 
-        icon = {"passed": "pass", "failed": "FAIL", "timeout": "TIMEOUT", "error": "ERROR"}[status]
-        say(f"      -> {icon:7} {ln.name} [{duration_ms} ms]" + (f" — {reason}" if reason else ""))
-        if status == "failed":
-            failures += 1
-            tail = Path(log_file).read_text(errors="replace").splitlines()[-40:]
-            say(
-                "      ┌─ last 40 lines "
-                + "─" * 30
-                + "\n      │ "
-                + "\n      │ ".join(tail)
-                + "\n      └"
-                + "─" * 48
-            )
-        elif status in ("error", "timeout"):
-            errors += 1
+    nx_affected.run(tasks, _nx_parallel(root), lambda _cores: [], on_done)
 
-        entry: dict[str, object] = {
-            "name": ln.name,
-            "status": status,
-            "durationMs": duration_ms,
-            "logFile": str(log_file.relative_to(root)),
-        }
-        if exit_code is not None:
-            entry["exitCode"] = exit_code
-        if reason:
-            entry["reason"] = reason
-        if matched and not args.all:
-            entry["matchedFiles"] = len(matched)
-        results.append(entry)
-
-    total_ms = int((time.monotonic() - t0) * 1000)
+    report = run_report(to_run, left_out, results, log_dir, root)
     counts = {
-        k: sum(1 for r in results if r["status"] == k)
-        for k in ("passed", "failed", "unchanged", "skipped", "error", "timeout")
+        k: sum(r["status"] == k for r in report) for k in ("passed", "failed", "error", "skipped")
     }
-    finished_at = datetime.now(UTC)
-
-    report = {
+    summary = {
         "schema_version": SCHEMA_VERSION,
         "base": base,
         "started_at": started_at.isoformat(),
-        "finished_at": finished_at.isoformat(),
-        "totalMs": total_ms,
+        "totalMs": int((time.monotonic() - t0) * 1000),
         "changedFileCount": len(files),
         "summary": counts,
-        "lanes": results,
+        "checks": report,
+        "ciOnly": ci_only_checks(),
         "logDir": str(log_dir.relative_to(root)),
     }
-
     if args.json:
-        print(json.dumps(report, indent=2))
+        print(json.dumps(summary, indent=2))
     else:
-        worst = next((r["name"] for r in results if r["status"] == "failed"), None)
-        skip_breakdown: dict[str, int] = {}
-        for r in results:
-            if r["status"] == "skipped":
-                key = str(r.get("reason", "unknown")).split(":")[0]
-                skip_breakdown[key] = skip_breakdown.get(key, 0) + 1
-        skips_txt = ", ".join(f"{k} x{v}" for k, v in sorted(skip_breakdown.items())) or "-"
-        print(
-            f"\nci:local: {counts['passed']} passed, {counts['failed']} failed, "
-            f"{counts['unchanged']} unchanged (lane not touched by this diff), {counts['skipped']} skipped [{skips_txt}]"
-            + (
-                f", {counts['error']} error, {counts['timeout']} timeout"
-                if (counts["error"] or counts["timeout"])
-                else ""
-            )
-            + f" — total {total_ms / 1000:.1f}s (logs: {LOG_ROOT}/{stamp}/)"
-        )
-        failing = [r["name"] for r in results if r["status"] == "failed"]
-        broken = [r["name"] for r in results if r["status"] in ("error", "timeout")]
-        if failing:
-            print("NEXT: fix the failing lanes above, then rerun:")
-            print(f"  mise ci:local --only {','.join(failing)}")
-            if worst:
-                print(f"  worst offender: {worst} — full log: {LOG_ROOT}/{stamp}/{worst}.log")
-        if broken:
-            print("NEXT: infra/config problems (not code): inspect logs, fix environment, rerun:")
-            print(f"  mise ci:local --only {','.join(broken)}")
-        if not failing and not broken:
-            print("NEXT: all local gates green — push, then `mise ci:remote` for GitHub gate state")
-
-    if failures:
+        print_summary(report, counts, log_dir.relative_to(root))
+    if counts["failed"]:
         return 1
-    if errors:
-        return 2
-    return 0
+    return 2 if counts["error"] else 0
 
 
 if __name__ == "__main__":

@@ -35,12 +35,18 @@
       "dependsOn": ["^build"],
       "inputs": [
         "typecheck",
-        { "env": "NEXT_PUBLIC_API_BASE_URL" },
-        { "env": "NEXT_PUBLIC_DISCORD_CLIENT_ID" },
-        { "env": "NEXT_PUBLIC_SLACK_CLIENT_ID" },
+        "^production",
+        {
+          "env": "NEXT_PUBLIC_API_BASE_URL"
+        },
+        {
+          "env": "NEXT_PUBLIC_DISCORD_CLIENT_ID"
+        },
+        {
+          "env": "NEXT_PUBLIC_SLACK_CLIENT_ID"
+        },
         "{workspaceRoot}/apps/web/next.config.mjs",
-        "{workspaceRoot}/apps/web/tsconfig.json",
-        "{workspaceRoot}/apps/web/tailwind.config.ts"
+        "{workspaceRoot}/apps/web/tsconfig.json"
       ],
       "outputs": ["{projectRoot}/.next", "{projectRoot}/.next/cache"]
     },
@@ -112,6 +118,9 @@
         "command": "pnpm vitest run --config vitest.config.ts",
         "cwd": "{projectRoot}"
       }
+    },
+    "docker:build": {
+      "inputs": ["production", "^production", "{workspaceRoot}/.dockerignore"]
     }
   }
 }
