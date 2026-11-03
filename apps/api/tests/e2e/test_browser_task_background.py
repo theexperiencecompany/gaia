@@ -265,7 +265,7 @@ async def test_a_handoff_note_reaches_the_run_and_the_agent_deciding_it() -> Non
 
     note = "skip the login, just tell me the opening hours"
     steps = [
-        ScriptedStep(actions=[], takeover=("Sign in and come back", "credentials")),
+        ScriptedStep(actions=[], takeover=("Sign in and come back", "sign_in")),
         ScriptedStep(actions=[("input", {"index": 1, "text": "hours"})]),
     ]
 
@@ -303,7 +303,7 @@ async def test_a_chat_redirect_makes_the_changed_instruction_lead_the_executors_
     """Regression: the run read what the chat reply asked for and the closing still reported the login it had been told to skip."""
     note = "never mind the login, just tell me the opening hours"
     steps = [
-        ScriptedStep(actions=[], takeover=("Sign in and come back", "credentials")),
+        ScriptedStep(actions=[], takeover=("Sign in and come back", "sign_in")),
         ScriptedStep(actions=[("input", {"index": 1, "text": "hours"})]),
     ]
 
@@ -351,7 +351,7 @@ async def _wait_for_pending_handoff(world: JobWorld, count: int = 1) -> str:
 LOGIN_URL = "https://example.test/login"
 SIGNED_IN_URL = "https://example.test/account"
 SIGN_IN = ScriptedStep(
-    actions=[], url=LOGIN_URL, takeover=("Enter your password and sign in.", "credentials")
+    actions=[], url=LOGIN_URL, takeover=("Enter your password and sign in.", "sign_in")
 )
 BOOK_SIGNED_IN = ScriptedStep(actions=[("click", {"index": 4})], url=SIGNED_IN_URL)
 
@@ -384,7 +384,7 @@ async def test_a_signed_in_page_does_not_end_a_login_handoff_until_the_user_says
 
                 await _reply_in_chat(browser_step_done, {})
                 await run_task
-        saves = world.saved_storage.await_args_list
+        saves = world.save_storage_state.await_args_list
 
     handoffs = [card for card in world.cards() if card["kind"] == "handoff"]
     assert [card["status"] for card in handoffs] == ["pending", "completed"]
@@ -408,7 +408,7 @@ async def test_a_done_that_left_the_user_signed_out_is_asked_again_and_saves_not
             await _wait_for_pending_handoff(world, count=2)
             await _reply_in_chat(stop_browser_task, {})
             await run_task
-        saves = world.saved_storage.await_args_list
+        saves = world.save_storage_state.await_args_list
 
     handoffs = [card for card in world.cards() if card["kind"] == "handoff"]
     assert [card["status"] for card in handoffs] == ["pending", "completed", "pending", "cancelled"]
@@ -469,7 +469,7 @@ async def test_a_run_whose_engine_dies_mid_task_finishes_on_the_fallback_engine(
     ) as world:
         async with executor_graph([RETRIEVE, START, "Started."]) as graph:
             await _drive(graph, world)
-        history = world.recorded_task.await_args.kwargs
+        history = world.record_browser_task.await_args.kwargs
 
     sessions = [card["session_id"] for card in world.cards() if card["kind"] == "session"]
     assert sessions == ["sess-1", "sess-2"]
@@ -501,7 +501,7 @@ async def test_a_login_the_user_made_is_still_signed_in_after_the_run_moves_engi
     from app.services.browser.handoff import resolve_handoff
 
     steps = [
-        ScriptedStep(actions=[], takeover=("Sign in and come back", "credentials")),
+        ScriptedStep(actions=[], takeover=("Sign in and come back", "sign_in")),
         ScriptedStep(
             actions=[], switch=EngineSwitchReason.STAYS_EMPTY, url="https://example.test/book"
         ),
@@ -520,7 +520,7 @@ async def test_a_login_the_user_made_is_still_signed_in_after_the_run_moves_engi
                 HandoffStatus.COMPLETED
             )
             await run_task
-        saves = world.saved_storage.await_args_list
+        saves = world.save_storage_state.await_args_list
 
     sessions = [card["session_id"] for card in world.cards() if card["kind"] == "session"]
     assert sessions == ["sess-1", "sess-2"]

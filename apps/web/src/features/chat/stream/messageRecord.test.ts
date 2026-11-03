@@ -46,4 +46,13 @@ describe("buildTurnMessageRecord", () => {
     expect(record.kind).toBe("emoji_ack");
     expect(record.reacts_to_message_id).toBe("umsg-1");
   });
+
+  it("marks a turn the user stopped, and only that turn", () => {
+    const acc = createTurnAccumulator("Looking into dentists");
+
+    expect(
+      buildTurnMessageRecord(meta, acc, "sent", null, null, true).stopped,
+    ).toBe(true);
+    expect(buildTurnMessageRecord(meta, acc, "sent").stopped).toBeNull();
+  });
 });

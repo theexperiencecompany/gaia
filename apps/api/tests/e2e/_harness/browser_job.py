@@ -12,6 +12,7 @@ import asyncio
 from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import AbstractContextManager, ExitStack, asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
+from functools import partial
 import inspect
 import json
 import tempfile
@@ -22,18 +23,21 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from browser_use.agent.views import ActionResult, AgentHistoryList, AgentState
 from browser_use.browser.events import BrowserConnectedEvent
 import fakeredis.aioredis
+from pydantic import BaseModel
 
 from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.session import RunKind, create_session
 from app.browser_host.wire import SessionInfo
+from app.config.feature_flags import FeatureFlag
 from app.config.settings import settings
 from app.constants.agents import AgentTag
 from app.constants.browser import (
     BROWSER_ANSWER_AFTER_STEP,
     BROWSER_JOB_STREAM_ID_PREFIX,
+    TAKEOVER_KIND_CATEGORY,
     BrowserEngine,
     EngineSwitchReason,
-    SensitiveCategory,
+    TakeoverKind,
 )
 from app.core.stream_manager import StreamManager
 from app.models.agent_models import InboxEntry
@@ -41,6 +45,7 @@ from app.models.chat_models import MessageModel
 from app.models.hil_models import HILPreferences
 from app.schemas.browser_job import BrowserJobRequest
 from app.services.browser.exceptions import BrowserSessionGone
+from app.services.browser.tools import EngineSwitchFn, TakeoverFn
 from app.workers.tasks import browser_tasks
 from shared.py import wide_events
 
@@ -162,7 +167,7 @@ class BrowserDouble:
         self.stop_observed = False
         #: What each takeover handed back to the agent — the user's note.
         self.takeover_notes: list[str | None] = []
-        self.takeover: Callable[[str, SensitiveCategory], Any] | None = None
+        self.takeover: TakeoverFn | None = None
         #: The next step to play: a run moved to the fallback engine picks up
         #: where the run on the dead engine stopped.
         self.next_step = 0
@@ -171,7 +176,7 @@ class BrowserDouble:
         #: Where the scripted browser is now, for the run's resume on a fallback engine.
         self.url: str | None = None
         #: The continue_in_full_browser action, when the run on this engine was offered it.
-        self.switch: Callable[[EngineSwitchReason], Any] | None = None
+        self.switch: EngineSwitchFn | None = None
 
     def agent(self, **kwargs: Any) -> _ScriptedAgent:
         return _ScriptedAgent(self, **kwargs)
@@ -223,7 +228,7 @@ class _ScriptedAgent:
         self._stopped = False
         self.state = kwargs.get("injected_agent_state") or _agent_state([])
         # Its steps are scripted results, not model outputs: nothing it read to report.
-        self.history: AgentHistoryList[Any] = AgentHistoryList(history=[])
+        self.history: AgentHistoryList[BaseModel] = AgentHistoryList(history=[])
         self.browser_session = _BrowserSession(double)
         self.new_tasks: list[str] = []
         self.message_manager = SimpleNamespace(add_new_task=self.new_tasks.append)
@@ -298,10 +303,10 @@ class _ScriptedAgent:
             await self._double.switch(step.switch)
         return None
 
-    async def _hand_over(self, reason: str, category: str) -> str | None:
+    async def _hand_over(self, reason: str, category: str) -> str:
         assert self._double.takeover is not None, "the takeover action was never built"
         # Browser-Use validates the action's arguments into its param model first.
-        return await self._double.takeover(reason, SensitiveCategory(category))
+        return await self._double.takeover(reason, TAKEOVER_KIND_CATEGORY[TakeoverKind(category)])
 
     async def _wait_for_stop(self) -> None:
         """Sit on the page until the user's stop reaches the agent, as a real run would."""
@@ -351,10 +356,6 @@ class JobWorld:
         self.saved: list[tuple[str, list[dict[str, Any]]]] = []
         #: The conversation's executor inbox once the job settled: how its ending was told.
         self.told: list[InboxEntry] = []
-        #: Every storage_state the run saved for the user's next session.
-        self.saved_storage = AsyncMock()
-        #: The run's task record, as the job wrote it on ending.
-        self.recorded_task = AsyncMock()
         self.jobs: list[asyncio.Task[Any]] = []
         self.host_sessions = 0
         #: Sessions whose engine died; the host answers 404 for them.
@@ -367,6 +368,10 @@ class JobWorld:
         self.lease_renewals: list[str] = []
         #: Each job a stop asked ARQ to abort.
         self.aborted: list[str] = []
+        #: Stands in for the login store: each sign-in the job saved.
+        self.save_storage_state = AsyncMock()
+        #: Stands in for the task history: each run the job recorded.
+        self.record_browser_task = AsyncMock()
 
     def frames(self, stream_id: str | None = None) -> list[dict[str, Any]]:
         """Return each SSE chunk the job's own stream (or a named one) carried, decoded."""
@@ -493,17 +498,17 @@ async def browser_job_world(
         ),
         *_host_patches(world, scripted_host),
         # A world with a fallback host is an Obscura user's (Chrome behind it); any
-        # other runs on Chrome, the default engine.
+        # other runs on Chrome, the default engine. Jev stays off, its default.
         patch(
             "app.services.browser.job_runner.is_enabled",
-            AsyncMock(return_value=scripted_host.fallback_url is not None),
+            partial(_obscura_only, scripted_host.fallback_url is not None),
         ),
         # The models and Jev's gateway are never called: the agent and Jev are scripted.
         patch("app.services.browser.agent_run.build_agent_llm", MagicMock(return_value=object())),
         patch("app.services.browser.agent_run.build_text_model", lambda ledger: object()),
         patch("app.services.browser.agent_run.open_jev_client", _unused_jev_client),
         patch("app.services.browser.agent_run.JevPage", _Page),
-        patch("app.services.browser.job_runner.record_browser_task", world.recorded_task),
+        patch("app.services.browser.job_runner.record_browser_task", world.record_browser_task),
         patch("app.services.browser.job_runner.capture", MagicMock()),
         patch("app.services.browser.agent_run.build_browser_tools", _tools_of(double)),
         patch(
@@ -594,7 +599,7 @@ def _host_patches(
         patch("app.services.browser.session.host_client.renew_session_lease", _renew_host_lease),
         patch.object(settings, "BROWSER_FALLBACK_HOST_URL", scripted_host.fallback_url),
         patch("app.services.browser.session.load_storage_state", AsyncMock(return_value=None)),
-        patch("app.services.browser.session.save_storage_state", world.saved_storage),
+        patch("app.services.browser.session.save_storage_state", world.save_storage_state),
     ]
 
 
@@ -670,8 +675,8 @@ def _tools_of(double: BrowserDouble) -> Callable[..., object]:
         *,
         solve_captcha: bool,
         user_sites: object,
-        handle_takeover: Callable[[str, SensitiveCategory], Any],
-        handle_engine_switch: Callable[[EngineSwitchReason], Any] | None = None,
+        handle_takeover: TakeoverFn,
+        handle_engine_switch: EngineSwitchFn | None = None,
     ) -> object:
         double.takeover = handle_takeover
         double.switch = handle_engine_switch
@@ -703,6 +708,13 @@ class _Page:
 
 async def _shot_url(index: int) -> str:
     return SHOT_URL_TEMPLATE.format(index=index)
+
+
+async def _obscura_only(
+    obscura: bool, flag: FeatureFlag, user_id: str | None, default: bool | None = None
+) -> bool:
+    """Evaluate a browser flag as this world's user chose: Obscura as given, every other flag off."""
+    return obscura and flag is FeatureFlag.BROWSER_OBSCURA
 
 
 @asynccontextmanager

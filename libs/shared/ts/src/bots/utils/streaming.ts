@@ -565,7 +565,6 @@ async function runStreamingChat(
 ): Promise<void> {
   const startMs = Date.now();
   let responseLength = 0;
-  let hadError = false;
   let firstChunkMs: number | null = null;
   let chunkCount = 0;
   let discardedMessages = 0;
@@ -580,14 +579,7 @@ async function runStreamingChat(
     message_length: request.message.length,
   });
 
-  analytics?.client.capture(analytics.distinctId, "bot:chat_started", {
-    message_length: request.message.length,
-    streaming_enabled: options.streaming,
-  });
-
   const wrappedOnAuthError = async (authUrl: string) => {
-    // Auth failures are terminal — skip chat_completed in the finally block.
-    hadError = true;
     // A fresh auth link was minted for this user (createLinkToken in
     // _handleStream) — leave an audit trail like the backend's auth routes do.
     wideLog.audit("auth_link_issued", { user_hash: userHash });
@@ -599,7 +591,6 @@ async function runStreamingChat(
     formattedError: string,
     cause: unknown,
   ) => {
-    hadError = true;
     // The failure with its reason and full latency context — a real-time line,
     // an errors[] entry, and outcome "failed" on this chat's wide event.
     const reason = recordBotFailure("chat_stream_failed", cause, {
@@ -715,12 +706,5 @@ async function runStreamingChat(
       reaction_delivery: reactionDelivered?.delivery,
       reaction_reason: reactionDelivered?.reason,
     });
-    if (!hadError) {
-      analytics?.client.capture(analytics.distinctId, "bot:chat_completed", {
-        duration_ms: Date.now() - startMs,
-        response_length: responseLength,
-        streaming_enabled: options.streaming,
-      });
-    }
   }
 }

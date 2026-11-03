@@ -4,5 +4,6 @@ The agent tool app/agents/tools/browser_tool.py is the only entry point.
 It calls runner.BrowserTaskRunner, which owns progress, handoff, budgets and
 metering for one task, then hands the steps to agent_run.BrowserAgentRun:
 Browser-Use's Agent on the browser agent model, with Jev (jev/, described
-once in jev/tool.py JEV_DESCRIPTION) as its first action.
+once in jev/tool.py JEV_DESCRIPTION) as its first action when the user's
+BROWSER_JEV flag is on.
 """
