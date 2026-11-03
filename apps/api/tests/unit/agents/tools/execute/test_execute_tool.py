@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 import json
 from unittest.mock import AsyncMock, patch
 
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import StructuredTool
 from pydantic import ValidationError
 import pytest
@@ -28,7 +29,7 @@ from app.models.execute_models import DispatchError, DispatchErrorKind
 MODULE = "app.agents.tools.execute.execute_tool"
 SENT_AT = datetime(2026, 10, 10, 12, 0, tzinfo=UTC)
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
-CONFIG = {"configurable": {"user_id": USER_ID}}
+CONFIG: RunnableConfig = {"configurable": {"user_id": USER_ID}}
 
 
 def _ok() -> ToolExecutionResult:
@@ -45,7 +46,7 @@ async def _invoke(tool, tool_name: str = "GMAIL_SEND_EMAIL") -> str:
 class TestDispatchTicketNames:
     """Ticket operations ride the proxy under reserved names — no bound tool, no schema; the branch runs before resolution, space checks, and validation."""
 
-    def _config(self) -> dict[str, object]:
+    def _config(self) -> RunnableConfig:
         return {
             "configurable": {
                 "thread_id": "executor_conv-1",
@@ -323,7 +324,10 @@ class TestExecuteToolCall:
     @pytest.mark.regression
     def test_the_gate_and_card_see_the_same_args_dispatch_runs(self) -> None:
         """Seen live: the card showed {} for a JSON-encoded data the proxy then ran, so the HIL gate judged empty args."""
-        call = {"tool_name": "GMAIL_FETCH_MESSAGES", "data": '{"timeframe": "14d"}'}
+        call: dict[str, object] = {
+            "tool_name": "GMAIL_FETCH_MESSAGES",
+            "data": '{"timeframe": "14d"}',
+        }
         assert unwrap_execute_call(EXECUTE_TOOL_NAME, call) == (
             "GMAIL_FETCH_MESSAGES",
             {"timeframe": "14d"},
