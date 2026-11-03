@@ -996,7 +996,9 @@ class TestDisconnectPlatformAccount:
         [event] = posthog_events
         assert event["event"] == IntegrationDisconnected.event
         assert event["distinct_id"] == sample_user_id
-        assert event["properties"]["integration_id"] == "discord"
+        properties = event["properties"]
+        assert isinstance(properties, dict)
+        assert properties["integration_id"] == "discord"
 
     async def test_never_linked_platform_is_a_404_not_a_silent_noop(self, sample_user_id):
         with (
@@ -1061,7 +1063,7 @@ class TestOpenPlatformChat:
                 "app.services.platform_link_service.PlatformLinkService.get_linked_platforms",
                 new_callable=AsyncMock,
                 return_value={"telegram": {"platformUserId": "12345"}},
-            ),
+            ) as mock_linked,
             patch(
                 "app.services.platform_link_service.BotService.get_or_create_session",
                 new_callable=AsyncMock,
@@ -1071,11 +1073,14 @@ class TestOpenPlatformChat:
             result = await open_platform_chat(sample_user_id, "telegram", user)
 
         assert result == "conv-telegram"
+        mock_linked.assert_awaited_once_with(sample_user_id)
         mock_session.assert_awaited_once_with("telegram", "12345", None, user, is_dm=True)
         [event] = posthog_events
         assert event["event"] == "bot:chat_opened"
         assert event["distinct_id"] == sample_user_id
-        assert event["properties"]["platform"] == "telegram"
+        properties = event["properties"]
+        assert isinstance(properties, dict)
+        assert properties["platform"] == "telegram"
 
     async def test_unlinked_platform_is_a_404(self, sample_user_id: str) -> None:
         user = AuthenticatedUser(user_id=sample_user_id, email="test@example.com")
@@ -1095,4 +1100,5 @@ class TestOpenPlatformChat:
 
         assert exc_info.value.status_code == 404
         assert exc_info.value.message == "No telegram account is linked"
+        assert exc_info.value.fix == "Check account/linked-accounts for what is actually connected"
         mock_session.assert_not_awaited()

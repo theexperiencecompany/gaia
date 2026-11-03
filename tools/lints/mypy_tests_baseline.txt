@@ -575,8 +575,6 @@ apps/api/tests/unit/services/photon/test_photon_client.py	index
 apps/api/tests/unit/services/sandbox/test_execute_client.py	arg-type
 apps/api/tests/unit/services/sandbox/test_execute_client.py	attr-defined
 apps/api/tests/unit/services/sandbox/test_execute_token.py	attr-defined
-apps/api/tests/unit/services/test_account_fs.py	arg-type
-apps/api/tests/unit/services/test_account_fs.py	return-value
 apps/api/tests/unit/services/test_artifact_events.py	arg-type
 apps/api/tests/unit/services/test_billing_visible_output.py	arg-type
 apps/api/tests/unit/services/test_billing_visible_output.py	attr-defined
@@ -634,7 +632,6 @@ apps/api/tests/unit/services/test_outbound_delivery.py	attr-defined
 apps/api/tests/unit/services/test_payment_service_dodo_reconciliation.py	attr-defined
 apps/api/tests/unit/services/test_platform_link_code_service.py	attr-defined
 apps/api/tests/unit/services/test_platform_link_code_service.py	index
-apps/api/tests/unit/services/test_platform_link_service.py	index
 apps/api/tests/unit/services/test_platform_message_service.py	attr-defined
 apps/api/tests/unit/services/test_provider_credentials_service.py	arg-type
 apps/api/tests/unit/services/test_provider_credentials_service.py	assignment

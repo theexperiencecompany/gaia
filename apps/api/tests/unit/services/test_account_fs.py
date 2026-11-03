@@ -26,6 +26,7 @@ from app.models.user_instructions_models import GLOBAL_INSTRUCTIONS_SCOPE, UserI
 from app.models.user_models import UserDocument
 from app.schemas.usage import FeatureUsageSummary, UsageBudget
 from app.services import account_fs
+from app.services.storage.account_vfs import AccountFileProjection
 from tests.helpers import captured_wide_event
 
 MODULE = "app.services.account_fs"
@@ -103,7 +104,7 @@ def _plan(overrides: dict[str, object] | None) -> PlanResponse | None:
         "updated_at": _NOW,
     }
     fields.update(overrides or {})
-    return PlanResponse(**fields)
+    return PlanResponse.model_validate(fields)
 
 
 def _subscription(overrides: dict[str, object] | None) -> SubscriptionDocument | None:
@@ -115,7 +116,7 @@ def _subscription(overrides: dict[str, object] | None) -> SubscriptionDocument |
         "status": "active",
     }
     fields.update(overrides or {})
-    return SubscriptionDocument(**fields)
+    return SubscriptionDocument.model_validate(fields)
 
 
 def _subscription_status(
@@ -175,11 +176,11 @@ def sources():
         )
 
 
-async def _build(user_id: str = USER_ID) -> tuple[list[dict], set[str]]:
+async def _build(user_id: str = USER_ID) -> tuple[list[AccountFileProjection], set[str]]:
     return await account_fs.build_account_projections(user_id)
 
 
-def _ids(files: list[dict]) -> set[str]:
+def _ids(files: list[AccountFileProjection]) -> set[str]:
     return {f["id"] for f in files}
 
 
