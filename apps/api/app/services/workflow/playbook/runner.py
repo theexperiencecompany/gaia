@@ -268,7 +268,6 @@ async def run_playbook(
             ok=True,
             trace=run.trace,
             completed=run.completed,
-            llm_calls=run.llm_calls,
             nothing_new=run.nothing_new,
         )
     if run.suspect is not None:
@@ -605,9 +604,7 @@ def _record_step(
     if opening and _may_end_the_run(step, call):
         previous = run.recent_traces[0] if run.recent_traces else ()
         run.nothing_new = nothing_new(tool_name, call.args, value, previous)
-        if run.nothing_new is not None:
-            return None
-    if run.suspect is None:
+    if run.suspect is None and run.nothing_new is None:
         run.suspect = _empty_where_previous_had_items(tool_name, value, run.recent_traces)
     # This line is the model's only view of what the tool returned, and it has
     # to write the user's result from it: bounded for the model, not the record.
