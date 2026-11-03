@@ -465,7 +465,7 @@ class TestExecuteWorkflowById:
         assert "executed successfully" in result
         _no_real_analytics.assert_called_once_with(
             UserId(workflow.user_id),
-            WorkflowExecuted(workflow_id=workflow.id, trigger_type="schedule"),
+            WorkflowExecuted(workflow_id=workflow.id, trigger_type="schedule", outcome="ran"),
         )
 
     async def test_integration_execution_captures_workflow_executed(self, ctx, _no_real_analytics):
@@ -501,7 +501,7 @@ class TestExecuteWorkflowById:
         assert "executed successfully" in result
         _no_real_analytics.assert_called_once_with(
             UserId(workflow.user_id),
-            WorkflowExecuted(workflow_id=workflow.id, trigger_type="integration"),
+            WorkflowExecuted(workflow_id=workflow.id, trigger_type="integration", outcome="ran"),
         )
 
     async def test_explicit_trigger_type_wins_over_trigger_data(self, ctx, _no_real_analytics):
@@ -543,7 +543,7 @@ class TestExecuteWorkflowById:
         assert "executed successfully" in result
         _no_real_analytics.assert_called_once_with(
             UserId(workflow.user_id),
-            WorkflowExecuted(workflow_id=workflow.id, trigger_type="schedule"),
+            WorkflowExecuted(workflow_id=workflow.id, trigger_type="schedule", outcome="ran"),
         )
 
     async def test_manual_execution_does_not_capture_workflow_executed(
@@ -2181,7 +2181,9 @@ class TestTheByIdTaskThreadsItsIdsThrough:
 
         _no_real_analytics.assert_any_call(
             UserId(workflow.user_id),
-            WorkflowExecuted(workflow_id=workflow.id, trigger_type=TriggerType.INTEGRATION.value),
+            WorkflowExecuted(
+                workflow_id=workflow.id, trigger_type=TriggerType.INTEGRATION.value, outcome="ran"
+            ),
         )
 
 

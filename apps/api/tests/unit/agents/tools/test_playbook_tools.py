@@ -2012,6 +2012,78 @@ class TestDecisionCounter:
 
         assert _decisions("decline", "refused", "order_branches") - before == 1
 
+    async def test_a_quiet_day_claim_on_a_run_that_did_work_is_counted_refused(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        did_work = AIMessage(
+            content="",
+            tool_calls=[{"id": "c1", "name": "create_todo", "args": {}, "type": "tool_call"}],
+        )
+        before = _decisions("decline", "refused", "no_work_today")
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", _FakeWorkflowStore()),
+        ):
+            await decline_playbook.ainvoke(
+                {"kind": "no_work_today", "reason": "r", "messages": [did_work]},
+                config=_config(),
+            )
+
+        assert _decisions("decline", "refused", "no_work_today") - before == 1
+
+    async def test_a_quiet_day_that_was_quiet_is_counted_accepted(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        before = _decisions("decline", "accepted", "no_work_today")
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", _FakeWorkflowStore()),
+        ):
+            await decline_playbook.ainvoke(
+                {"kind": "no_work_today", "reason": "r", "messages": []}, config=_config()
+            )
+
+        assert _decisions("decline", "accepted", "no_work_today") - before == 1
+
+    async def test_a_blocked_claim_on_an_integration_the_run_never_used_is_counted_refused(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        before = _decisions("decline", "refused", "blocked_missing_integration")
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", _FakeWorkflowStore()),
+            patch(
+                PAUSE_TARGET,
+                AsyncMock(return_value=PauseOutcome(paused=[], unrelated=["slack"])),
+            ),
+        ):
+            await decline_playbook.ainvoke(
+                {
+                    "kind": "blocked_missing_integration",
+                    "integrations": ["slack"],
+                    "reason": "r",
+                    "messages": [],
+                },
+                config=_config(),
+            )
+
+        assert _decisions("decline", "refused", "blocked_missing_integration") - before == 1
+
+    async def test_a_disable_is_counted_accepted_and_disabling_nothing_refused(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        _existing(store)
+        accepted, refused = (
+            _decisions("disable", "accepted", "none"),
+            _decisions("disable", "refused", "none"),
+        )
+        with patch(f"{TOOLS_MODULE}.playbook_repository", store):
+            await disable_playbook.ainvoke({"reason": "r"}, config=_config())
+            await disable_playbook.ainvoke({"reason": "r"}, config=_config())
+
+        assert _decisions("disable", "accepted", "none") - accepted == 1
+        assert _decisions("disable", "refused", "none") - refused == 1
+
     def test_every_write_refusal_kind_is_a_series_before_the_first_one(self) -> None:
         missing = [
             kind.value
