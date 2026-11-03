@@ -42,6 +42,7 @@ export const mapStoredMessageToConversationMessage = (
     replyToMessage: message.replyToMessageData ?? undefined,
     kind: message.kind ?? undefined,
     reacts_to_message_id: message.reacts_to_message_id ?? undefined,
+    stopped: message.stopped ?? undefined,
     reactions: message.reactions ?? undefined,
   } as MessageType;
 

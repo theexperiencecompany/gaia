@@ -224,7 +224,7 @@ async def create_todo(
             project_id=project_id,
         )
 
-        result = await TodoService.create_todo_with_workflow(todo_data, user_id)
+        result = await TodoService.create_todo(todo_data, user_id)
         todo_dict = result.model_dump(mode="json")
 
         # Prepare response data

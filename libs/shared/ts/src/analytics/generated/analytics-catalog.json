@@ -829,66 +829,6 @@
       }
     },
     {
-      "event": "bot:chat_completed",
-      "class": "BotChatCompleted",
-      "owner": "bot",
-      "domain": "bot",
-      "description": "A bot chat turn finished without an auth or generic error.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": null,
-      "properties": {
-        "additionalProperties": false,
-        "description": "A bot chat turn finished without an auth or generic error.",
-        "properties": {
-          "duration_ms": {
-            "title": "Duration Ms",
-            "type": "integer"
-          },
-          "response_length": {
-            "title": "Response Length",
-            "type": "integer"
-          },
-          "streaming_enabled": {
-            "title": "Streaming Enabled",
-            "type": "boolean"
-          }
-        },
-        "required": ["duration_ms", "response_length", "streaming_enabled"],
-        "title": "BotChatCompleted",
-        "type": "object"
-      }
-    },
-    {
-      "event": "bot:chat_started",
-      "class": "BotChatStarted",
-      "owner": "bot",
-      "domain": "bot",
-      "description": "A bot began streaming a chat turn for a platform user.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": null,
-      "properties": {
-        "additionalProperties": false,
-        "description": "A bot began streaming a chat turn for a platform user.",
-        "properties": {
-          "message_length": {
-            "title": "Message Length",
-            "type": "integer"
-          },
-          "streaming_enabled": {
-            "title": "Streaming Enabled",
-            "type": "boolean"
-          }
-        },
-        "required": ["message_length", "streaming_enabled"],
-        "title": "BotChatStarted",
-        "type": "object"
-      }
-    },
-    {
       "event": "bot:command_executed",
       "class": "BotCommandExecuted",
       "owner": "bot",
@@ -6682,6 +6622,32 @@
             "title": "Currency",
             "type": "string"
           },
+          "product_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Product Id"
+          },
+          "billing_interval": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Billing Interval"
+          },
           "amount": {
             "anyOf": [
               {
@@ -6808,9 +6774,19 @@
             "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Subscription Id",
             "type": "string"
+          },
+          "product_id": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Product Id",
+            "type": "string"
+          },
+          "billing_interval": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Billing Interval",
+            "type": "string"
           }
         },
-        "required": ["subscription_id"],
+        "required": ["subscription_id", "product_id", "billing_interval"],
         "title": "SubscriptionExpired",
         "type": "object"
       }
@@ -6868,9 +6844,24 @@
             "enum": ["failed", "on_hold"],
             "title": "Status",
             "type": "string"
+          },
+          "product_id": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Product Id",
+            "type": "string"
+          },
+          "billing_interval": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Billing Interval",
+            "type": "string"
           }
         },
-        "required": ["subscription_id", "status"],
+        "required": [
+          "subscription_id",
+          "status",
+          "product_id",
+          "billing_interval"
+        ],
         "title": "SubscriptionLapsed",
         "type": "object"
       }
@@ -6973,6 +6964,16 @@
             "title": "Subscription Id",
             "type": "string"
           },
+          "product_id": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Product Id",
+            "type": "string"
+          },
+          "billing_interval": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Billing Interval",
+            "type": "string"
+          },
           "currency": {
             "pattern": "^[A-Za-z]{3}$",
             "title": "Currency",
@@ -7004,7 +7005,12 @@
             "title": "Currency Charged"
           }
         },
-        "required": ["subscription_id", "currency"],
+        "required": [
+          "subscription_id",
+          "product_id",
+          "billing_interval",
+          "currency"
+        ],
         "title": "SubscriptionRenewed",
         "type": "object"
       }
