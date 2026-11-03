@@ -63,18 +63,19 @@ class TestInstallSystemRecipes:
         workflows = [
             _workflow("wf_edited", "Remind me in French."),
             _workflow("wf_has_one", self.current),
+            _workflow("wf_has_two", self.current),
             _workflow("wf_current", self.current),
             _workflow("wf_earlier", self.earlier),
             _workflow("wf_edited_too", "Remind me in Hindi."),
         ]
 
-        install, playbooks = await _run(True, workflows, {"wf_has_one"})
+        install, playbooks = await _run(True, workflows, {"wf_has_one", "wf_has_two"})
 
         assert [call.args[1] for call in install.await_args_list] == ["wf_current", "wf_earlier"]
         assert install.await_args_list[0].args == (REMINDER, "wf_current", "u1", self.current, [])
         assert playbooks.get_for_workflow.await_args_list[0].args == ("wf_has_one", "u1")
         assert capsys.readouterr().out == (
-            f"    1  {REMINDER}: already has a playbook\n"
+            f"    2  {REMINDER}: already has a playbook\n"
             f"    2  {REMINDER}: edited by the user, left alone\n"
             f"    2  {REMINDER}: recipe installed\n"
         )

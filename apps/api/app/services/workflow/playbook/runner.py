@@ -542,7 +542,6 @@ async def _call_step(
         return ToolMessage(
             content=run.dry_run.would_call(call.tool_name, call.args),
             tool_call_id=f"dry_run_{call.position}",
-            name=call.tool_name,
         )
     try:
         message = await _replay_call(ScriptedCall(name=call.tool_name, args=call.args), run, space)

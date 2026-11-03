@@ -92,7 +92,7 @@ async def _run(args: argparse.Namespace) -> int:
             result_brief=body.result_brief,
         )
         trigger = await _next_event_trigger(args.user_id) if key in _CALENDAR_KEYS else {}
-        print(f"== {key} ({workflow.id})\ntrigger: {json.dumps(trigger, default=str)}")
+        print(f"== {key} ({workflow.id})\ntrigger: {json.dumps(trigger)}")
         result = await run_playbook(
             playbook,
             user=playbook_user,

@@ -125,7 +125,7 @@ class TestPlaybookDryRun:
         calendar.assert_awaited_once_with(
             user_id="u1", time_min="2026-11-03T10:00:00+00:00", max_results=5
         )
-        clock.now.assert_any_call(UTC)
+        assert clock.now.call_args_list == [((UTC,),), ((UTC,),)]
         lookup.assert_awaited_once_with("u1")
         out = capsys.readouterr().out
         assert (
