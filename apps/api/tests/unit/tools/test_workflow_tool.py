@@ -9,6 +9,7 @@ from app.constants.integrations import (
 )
 from app.constants.log_tags import LogTag
 from app.models.trigger_config import TriggerSearchResult
+from app.models.workflow_models import TriggerType
 from app.schemas.integrations.responses import (
     CommunityIntegrationItem,
     MyIntegrationItem,
@@ -18,6 +19,8 @@ from app.schemas.integrations.responses import (
 # Pre-import to break circular dependency chain:
 # workflow_tool -> workflow_utils -> workflow.subagent_output -> workflow.__init__ -> service -> workflow_utils
 import app.services.workflow.service  # noqa: F401  # side-effect import breaks the documented circular-dependency chain
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.workflows import WorkflowCreated
 from tests.helpers import captured_wide_event
 
 # ---------------------------------------------------------------------------
@@ -220,10 +223,12 @@ class TestCreateWorkflow:
         from app.agents.tools.workflow_tool import create_workflow
 
         draft = _make_draft(direct_create=True)
+        draft.backend_trigger_type = TriggerType.SCHEDULE
         parsed = _make_parsed_result(mode="finalized", draft=draft)
         direct_result = {"success": True, "data": {"id": "wf-new"}}
 
         with (
+            patch(f"{MODULE}.capture") as capture,
             patch(f"{MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.parse_subagent_response", return_value=parsed),
             patch(f"{MODULE}.WorkflowSubagentRunner") as mock_runner,
@@ -243,6 +248,9 @@ class TestCreateWorkflow:
             )
 
         assert result == direct_result
+        capture.assert_called_once_with(
+            UserId(FAKE_USER_ID), WorkflowCreated(origin="chat_agent", trigger_type="schedule")
+        )
 
     async def test_direct_creation_fallback_to_draft(self) -> None:
         """When direct creation fails, falls back to streaming draft."""
@@ -252,6 +260,7 @@ class TestCreateWorkflow:
         parsed = _make_parsed_result(mode="finalized", draft=draft)
 
         with (
+            patch(f"{MODULE}.capture") as capture,
             patch(f"{MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.parse_subagent_response", return_value=parsed),
             patch(f"{MODULE}.WorkflowSubagentRunner") as mock_runner,
@@ -274,6 +283,7 @@ class TestCreateWorkflow:
         assert result["success"] is True
         assert result["data"]["status"] == "draft_sent"
         draft.to_stream_payload.assert_called_once()
+        capture.assert_not_called()  # the confirmed draft is counted by POST /workflows
 
 
 # ---------------------------------------------------------------------------

@@ -20,6 +20,7 @@ from app.agents.prompts.playbook_prompts import (
 from app.agents.tools.core.registry import ToolRegistry
 from app.models.playbook_models import ForEachStep, ToolStep
 from app.models.workflow_execution_models import RecordedCall
+from app.services.composio.custom_tools.gmail_constants import OFFLOAD_MIN_MESSAGES
 from app.services.workflow.playbook.parser import validate_playbook
 from app.services.workflow.playbook.record import PlaybookPick, build_playbook, number_record
 
@@ -72,6 +73,31 @@ def test_the_for_each_example_repeats_one_draft_call_over_the_picked_threads() -
     assert isinstance(fetch, ToolStep)
     assert isinstance(drafts, ForEachStep)
     assert drafts.args["tool_name"] == "GMAIL_CREATE_EMAIL_DRAFT"
+
+
+@pytest.mark.parametrize(("record", "write"), EXAMPLES, ids=["flat", "for_each"])
+def test_each_examples_mail_fetch_stays_inline_for_the_ask_that_reads_it(
+    record: list[RecordedCall], write: dict[str, object]
+) -> None:
+    steps = write["steps"]
+    assert isinstance(steps, list)
+    built = build_playbook(
+        str(write["description"]),
+        [PlaybookPick.model_validate(step) for step in steps],
+        str(write["result_brief"]),
+        number_record(record, ()),
+    )
+    assert built.body is not None
+    fetches = [
+        step
+        for step in built.body.steps
+        if isinstance(step, ToolStep) and step.args.get("tool_name") == "GMAIL_FETCH_MESSAGES"
+    ]
+    assert fetches
+    for step in fetches:
+        data = step.args["data"]
+        assert isinstance(data, dict)
+        assert data["max_messages"] <= OFFLOAD_MIN_MESSAGES
 
 
 def test_the_brief_never_shows_activate_integration() -> None:

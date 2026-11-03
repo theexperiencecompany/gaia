@@ -1730,68 +1730,10 @@ class TestGenerateStepsWithLLM:
         "app.services.workflow.generation_service.get_tool_registry",
         new_callable=AsyncMock,
     )
-    async def test_generate_invalid_output_regenerates_then_succeeds(
-        self, mock_registry_fn: AsyncMock, mock_structured: AsyncMock
-    ) -> None:
-        """A schema-invalid first attempt triggers one regeneration, which succeeds."""
-        mock_registry = MagicMock()
-        mock_registry.get_all_category_objects.return_value = {}
-        mock_registry.get_core_tools.return_value = []
-        mock_registry_fn.return_value = mock_registry
-
-        generated = GeneratedWorkflow(
-            steps=[GeneratedStep(title="Parsed", category="gaia", description="Second try")]
-        )
-        mock_structured.side_effect = [OutputParserException("bad output"), generated]
-
-        result = await WorkflowGenerationService.generate_steps_with_llm(
-            "Test prompt", "Test Title", user_id="test-user"
-        )
-
-        assert len(result) == 1
-        assert result[0].title == "Parsed"
-        assert mock_structured.await_count == 2
-
-    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
-    @patch(
-        "app.services.workflow.generation_service.ainvoke_structured",
-        new_callable=AsyncMock,
-    )
-    @patch(
-        "app.services.workflow.generation_service.get_tool_registry",
-        new_callable=AsyncMock,
-    )
-    async def test_generate_empty_steps_retries_then_fails(
-        self, mock_registry_fn: AsyncMock, mock_structured: AsyncMock
-    ) -> None:
-        """If LLM returns empty steps, retry and ultimately fail with a reason."""
-        mock_registry = MagicMock()
-        mock_registry.get_all_category_objects.return_value = {}
-        mock_registry.get_core_tools.return_value = []
-        mock_registry_fn.return_value = mock_registry
-
-        mock_structured.return_value = GeneratedWorkflow(steps=[])
-
-        with pytest.raises(WorkflowStepGenerationError, match="no usable steps"):
-            await WorkflowGenerationService.generate_steps_with_llm(
-                "Test prompt", "Test Title", user_id="test-user"
-            )
-
-        assert mock_structured.await_count == 2
-
-    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
-    @patch(
-        "app.services.workflow.generation_service.ainvoke_structured",
-        new_callable=AsyncMock,
-    )
-    @patch(
-        "app.services.workflow.generation_service.get_tool_registry",
-        new_callable=AsyncMock,
-    )
     async def test_generate_llm_error_propagates(
         self, mock_registry_fn: AsyncMock, mock_structured: AsyncMock
     ) -> None:
-        """Provider errors surface as WorkflowStepGenerationError; retry lives in ainvoke_llm, not the generation loop."""
+        """Provider errors surface as WorkflowStepGenerationError; retry lives in ainvoke_llm, not the service."""
         mock_registry = MagicMock()
         mock_registry.get_all_category_objects.return_value = {}
         mock_registry.get_core_tools.return_value = []
@@ -1807,7 +1749,7 @@ class TestGenerateStepsWithLLM:
         # The reason names the underlying failure so the modal can show it.
         assert excinfo.value.reason == "RuntimeError: provider down"
         assert isinstance(excinfo.value.__cause__, RuntimeError)
-        # Called exactly once — the loop does not retry provider errors.
+        # Called exactly once — re-asking lives in ainvoke_llm.
         assert mock_structured.await_count == 1
 
     @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
@@ -1839,38 +1781,6 @@ class TestGenerateStepsWithLLM:
         # Verify description was included in the formatted prompt
         formatted_prompt = mock_structured.await_args[0][1]
         assert "Short description" in formatted_prompt
-
-    @patch("app.config.oauth_config.OAUTH_INTEGRATIONS", [])
-    @patch(
-        "app.services.workflow.generation_service.ainvoke_structured",
-        new_callable=AsyncMock,
-    )
-    @patch(
-        "app.services.workflow.generation_service.get_tool_registry",
-        new_callable=AsyncMock,
-    )
-    async def test_generate_invalid_output_exhausts_attempts(
-        self, mock_registry_fn: AsyncMock, mock_structured: AsyncMock
-    ) -> None:
-        """Schema-invalid output on every attempt fails with a reason after retries."""
-        mock_registry = MagicMock()
-        mock_registry.get_all_category_objects.return_value = {}
-        mock_registry.get_core_tools.return_value = []
-        mock_registry_fn.return_value = mock_registry
-
-        mock_structured.side_effect = OutputParserException("bad output")
-
-        with pytest.raises(WorkflowStepGenerationError, match="no usable steps"):
-            await WorkflowGenerationService.generate_steps_with_llm(
-                "Prompt", "Title", user_id="test-user"
-            )
-
-        assert mock_structured.await_count == 2
-
-
-# ===========================================================================
-# WorkflowGenerationService.generate_workflow_prompt tests
-# ===========================================================================
 
 
 class TestGenerateWorkflowPrompt:
