@@ -824,6 +824,45 @@ class TestSearchMessages:
         assert result.next_page_token == "tok123"
         assert mock_transform.call_count == 2
 
+    async def test_last_page_empty_token_means_no_next_page(self, mock_invoke_gmail_tool):
+        """Regression: Composio's "" end-of-results token made the dashboard refetch page 1 (2 unread shown as 8)."""
+        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
+            {
+                "successful": True,
+                "error": None,
+                "data": {
+                    "messages": [
+                        {
+                            "messageId": "1a0ce452407833e5",
+                            "threadId": "1a0ce452407833e5",
+                            "sender": "Aryan from GAIA <aryan@heygaia.io>",
+                            "subject": "Welcome to GAIA Pro!",
+                            "messageTimestamp": "2026-09-23T12:37:12Z",
+                            "labelIds": ["UNREAD", "CATEGORY_PERSONAL", "INBOX"],
+                            "preview": {"subject": "Welcome to GAIA Pro!", "body": "Thanks for"},
+                        },
+                        {
+                            "messageId": "1a0ce3bab478825b",
+                            "threadId": "1a0ce3bab478825b",
+                            "sender": "Google <noreply-accounts@google.com>",
+                            "subject": "You shared some Google Account data with Hey GAIA",
+                            "messageTimestamp": "2026-09-23T12:26:51Z",
+                            "labelIds": ["UNREAD", "CATEGORY_UPDATES", "INBOX"],
+                            "preview": {"subject": "You shared some", "body": "Hey GAIA"},
+                        },
+                    ],
+                    "nextPageToken": "",
+                    "resultSizeEstimate": 2,
+                },
+            }
+        )
+
+        result = await search_messages(USER_ID, query="is:unread", max_results=10)
+
+        assert [m.id for m in result.messages] == ["1a0ce452407833e5", "1a0ce3bab478825b"]
+        assert result.next_page_token is None
+        assert json.loads(result.model_dump_json(by_alias=True))["nextPageToken"] is None
+
     async def test_includes_page_token_when_provided(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
             {

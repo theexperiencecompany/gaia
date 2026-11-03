@@ -160,6 +160,9 @@ async def _run_executor(
     ):
         result_text = ""
         result_type = "final"
+        # Equivalent under mutation: read only if execute raised, when result_text is
+        # still empty and finalize has nothing to deliver either way.
+        stopped = False  # pragma: no mutate
         # Equivalent under mutation: read only if execute raised, when result_type is still
         # "final" and finalize's `if ctx` treats any falsy placeholder alike.
         run_ctx: SubagentExecutionContext | None = None  # pragma: no mutate
@@ -180,6 +183,7 @@ async def _run_executor(
                     result = await _execute_executor(task, configurable, run, resume)
                 active_ms = round(elapsed_active() * 1000.0, 2)
                 result_text, result_type, run_ctx = result.text, result.type, result.ctx
+                stopped = result.stopped
                 error_type = result.error_type
                 ttft_ms = _executor_ttft_ms(run, run_start)
                 if ttft_ms is not None:
@@ -218,7 +222,9 @@ async def _run_executor(
                     lifecycle.failure_reason = error_type
             finally:
                 alive.cancel()
-                await _finalize_executor_run(run, task, result_text, result_type, run_ctx)
+                await _finalize_executor_run(
+                    run, task, result_text, result_type, run_ctx, stopped=stopped
+                )
                 if resume is not None:
                     # This run held the conversation's resume slot (claimed at dispatch).
                     # Freeing it AFTER finalize means the next decision can dispatch only
@@ -336,7 +342,8 @@ class _ExecutorResult(NamedTuple):
     instead of finishing. ctx is the prepared execution context, kept so finalize
     can read the thread this run wrote; None when preparation itself failed, in
     which case no model call happened and nothing was committed. error_type is
-    the cause of an error result, reported as the run's failure reason.
+    the cause of an error result, reported as the run's failure reason. stopped
+    is True when the user's Stop cut the graph off before it finished.
     """
 
     text: str
@@ -344,6 +351,7 @@ class _ExecutorResult(NamedTuple):
     paused_on: tuple[str, ...] = ()
     ctx: SubagentExecutionContext | None = None
     error_type: str | None = None
+    stopped: bool = False
 
 
 async def _cancel_orphaned_browser_job(conversation_id: str, stream_id: str) -> None:
@@ -433,7 +441,7 @@ async def _execute_executor(
                     error_type=EXECUTOR_ERROR_MALFORMED_APPROVAL,
                 )
             return _ExecutorResult("", EXECUTOR_PAUSED, approval_ids, ctx=ctx)
-        return _ExecutorResult(outcome.text, "final", ctx=ctx)
+        return _ExecutorResult(outcome.text, "final", ctx=ctx, stopped=outcome.stopped)
     except GraphRecursionError as e:
         # The executor exhausted its recursion budget. Log the real cause loudly,
         # but hand comms a friendly message instead of the raw traceback string so
@@ -464,13 +472,22 @@ async def _finalize_executor_run(
     result_text: str,
     result_type: str,
     ctx: SubagentExecutionContext | None = None,
+    *,
+    stopped: bool = False,
 ) -> None:
-    """Post-run cleanup, in order: signal done → deliver → free the lock → hand it on."""
+    """Post-run cleanup, in order: signal done → deliver → free the lock → hand it on.
+
+    A Stop discards only what it cut short: a run that finished its answer before
+    the cancel landed (stopped False, a final result) is delivered whatever the flag says.
+    """
     if result_type == EXECUTOR_PAUSED:
         await _finalize_paused_run(run)
         return
 
-    was_cancelled = bool(run.stream_id) and await StreamManager.is_cancelled(run.stream_id)
+    finished = result_type == "final" and not stopped
+    was_cancelled = (
+        bool(run.stream_id) and not finished and await StreamManager.is_cancelled(run.stream_id)
+    )
 
     # Snapshot returned-cards BEFORE signalling done: live streams tear down the
     # session in parallel once done_event fires, so reading after would race it.

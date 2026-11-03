@@ -114,6 +114,9 @@ class SubscriptionActivated(ServerEvent):
     subscription_id: Identifier
     plan_name: Literal["Pro"]
     currency: CurrencyCode
+    # Dodo's product and interval ("Month", "Year"); absent on a backfill, whose row knows only the current plan.
+    product_id: Identifier | None = None
+    billing_interval: Identifier | None = None
     amount: float | None = None
     # Pre-tax revenue in the charge's own currency (#1332); a 0 is a real discount-code charge.
     amount_charged_pre_tax: float | None = None
@@ -129,6 +132,8 @@ class SubscriptionRenewed(ServerEvent):
     budget_per_user_day: ClassVar[int] = 10
 
     subscription_id: Identifier
+    product_id: Identifier
+    billing_interval: Identifier
     currency: CurrencyCode
     # Pre-tax revenue in the charge's own currency (#1332); a 0 is a real discount-code charge.
     amount_charged_pre_tax: float | None = None
@@ -153,6 +158,8 @@ class SubscriptionExpired(ServerEvent):
     budget_per_user_day: ClassVar[int] = 50
 
     subscription_id: Identifier
+    product_id: Identifier
+    billing_interval: Identifier
 
 
 class SubscriptionLapsed(ServerEvent):
@@ -163,6 +170,8 @@ class SubscriptionLapsed(ServerEvent):
 
     subscription_id: Identifier
     status: Literal["failed", "on_hold"]
+    product_id: Identifier
+    billing_interval: Identifier
 
 
 class SubscriptionPageViewed(WebEvent):

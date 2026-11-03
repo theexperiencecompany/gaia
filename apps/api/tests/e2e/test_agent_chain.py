@@ -22,7 +22,6 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
-import fakeredis.aioredis
 from langchain_core.callbacks import AsyncCallbackManagerForLLMRun
 from langchain_core.messages import AIMessageChunk, BaseMessage, HumanMessage, ToolMessage
 from langchain_core.outputs import ChatGenerationChunk
@@ -39,6 +38,7 @@ from app.core.lazy_loader import providers
 from app.core.stream_manager import stream_manager
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
+from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.todos import todo_repository
 from app.memory.ingestion import RetainedMemory
 from app.models.chat_models import ToolDataEntry
@@ -54,7 +54,8 @@ from tests.e2e._harness.graph_run import RecordingFakeModel, call, scripted_mode
 from tests.e2e._harness.saved_messages import SavedToolData
 from tests.e2e._harness.transcript import UNKNOWN, Transcript
 
-pytestmark = pytest.mark.e2e
+# Per-test fakeredis is the outer half of isolation; run_chain deleting the busy lock is the inner.
+pytestmark = [pytest.mark.e2e, pytest.mark.usefixtures("fake_redis")]
 
 USER = AuthenticatedUser(
     user_id="6812f0b3c9a14e2b7d5a91cc", email="chain@test.local", name="Test User"
@@ -72,23 +73,6 @@ FOLLOW_UP_NODE = "app.agents.core.nodes.follow_up_actions_node"
 @pytest.fixture(autouse=True)
 def _registry(real_tool_registry: Any) -> None:
     """Real tool categories — every tool_data frame resolves through them."""
-
-
-@pytest.fixture(autouse=True)
-async def fake_redis() -> Any:
-    """Point the module singleton at an in-process Redis with real Streams.
-
-    The outer half of test isolation; the inner half (deleting
-    executor:busy:{conversation}, done in run_chain) matters because a leaked
-    busy lock silently queues the next test's executor onto a different stream id.
-    """
-    client = fakeredis.aioredis.FakeRedis(decode_responses=True)
-    original = redis_cache.redis
-    redis_cache.redis = client
-    yield client
-    redis_cache.redis = original
-    await client.flushall()
-    await client.connection_pool.disconnect()
 
 
 class StreamingScriptedModel(RecordingFakeModel):
@@ -260,14 +244,12 @@ async def run_chain(
         patch("app.agents.core.nodes.memory_node.memory_engine", memory),
         patch("app.services.chat.stream.save_user_message", new=AsyncMock()),
         patch("app.services.chat.stream.save_bot_reply", new=_save),
-        patch.object(chat_stream.conversation_repository, "append_message_tool_data", new=_attach),
-        patch.object(chat_stream.conversation_repository, "get_message", new=saved.get_message),
+        patch.object(conversation_repository, "append_message_tool_data", new=_attach),
+        patch.object(conversation_repository, "get_message", new=saved.get_message),
         # The turn's conversation is no tracked todo's chat.
+        patch.object(conversation_repository, "get_todo_id", new=AsyncMock(return_value=None)),
         patch.object(
-            chat_stream.conversation_repository, "get_todo_id", new=AsyncMock(return_value=None)
-        ),
-        patch.object(
-            chat_stream.conversation_repository,
+            conversation_repository,
             "extend_subagent_group",
             new=saved.extend_subagent_group,
         ),
@@ -522,14 +504,14 @@ class TestCommsToExecutor:
         )
 
         assert len(run.saved) == 1
-        assert run.saved[0]["complete_message"] == "On it."
+        assert run.saved[0]["reply"].complete_message == "On it."
         saved_names = [
-            entry["data"]["tool_name"] for entry in run.saved[0]["tool_data"]["tool_data"]
+            entry["data"]["tool_name"] for entry in run.saved[0]["reply"].tool_data["tool_data"]
         ]
         assert saved_names == ["call_executor"]
 
         assert len(run.attached) == 1
-        assert run.attached[0]["message_id"] == run.saved[0]["bot_message_id"]
+        assert run.attached[0]["message_id"] == run.saved[0]["reply"].bot_message_id
         assert run.attached_tool_names() == ["retrieve_tools", "create_flowchart"]
 
     async def test_a_persisted_executor_card_carries_the_result_the_user_watched(self) -> None:
@@ -655,7 +637,7 @@ class TestExecutorToSubagent:
 
         row_id = run.transcript.subagent_ids()[0]
         (announced,) = [payload for payload in run.announced if payload["task_id"] == row_id]
-        assert announced["bot_message_id"] == run.saved[0]["bot_message_id"]
+        assert announced["bot_message_id"] == run.saved[0]["reply"].bot_message_id
         assert run.by_stream[str(announced["stream_id"])].tool_names() == ["fetch_webpages"]
 
     async def test_the_subagents_tool_call_carries_its_subagent_id(self) -> None:
@@ -760,7 +742,7 @@ class TestExecutorToSubagent:
             for call_ in run.attached
             if any(entry["tool_name"] == "subagent_group" for entry in call_["entries"])
         ]
-        assert saved_on == run.saved[0]["bot_message_id"]
+        assert saved_on == run.saved[0]["reply"].bot_message_id
         group = next(
             entry for entry in run.attached_entries() if entry["tool_name"] == "subagent_group"
         )
