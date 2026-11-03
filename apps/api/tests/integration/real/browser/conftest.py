@@ -5,9 +5,9 @@ site, the observer, the Redis and Motor clients its helpers use) live on the
 module's loop, so every test here runs on it too
 (pytest.mark.asyncio(loop_scope="module")). Real services only, like the
 rest of tests/integration/real; Chrome is required (CHROMIUM_BIN, which CI
-points at the Fortress build production runs, or google-chrome on PATH), and so
-are OBSCURA_BIN and the self-host proxy (CADDY_BIN or caddy on PATH): a missing
-binary fails the tier.
+points at the pinned Fortress build with BROWSER_HOST_FORTRESS on, or
+google-chrome on PATH), and so are OBSCURA_BIN and the self-host proxy (CADDY_BIN
+or caddy on PATH): a missing binary fails the tier.
 """
 
 from __future__ import annotations

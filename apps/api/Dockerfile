@@ -1,14 +1,14 @@
 # syntax=docker/dockerfile:1
 
-# ---- Browsers: crawl4ai's Chromium, keyed ONLY on its version ----
-# crawl4ai's dedicated crawls launch Playwright's Chromium (no UndetectedAdapter
-# anywhere in app/, so crawl4ai never takes its patchright path), so only
-# Playwright's revision is downloaded, and patchright is excluded from the lock
-# (root pyproject.toml exclude-dependencies). The browser host's Chromium is
-# Fortress (the runtime stage below, CHROMIUM_BIN), not this one.
+# ---- Browsers: Playwright's Chromium, keyed ONLY on its version ----
+# crawl4ai's dedicated crawls (no UndetectedAdapter anywhere in app/, so crawl4ai
+# never takes its patchright path) and the browser host's default Chromium
+# (resolve_chromium_path) launch Playwright's, so only Playwright's revision is
+# downloaded, and patchright is excluded from the lock (root pyproject.toml
+# exclude-dependencies). Fortress, the host's opt-in engine, is installed below.
 #
-# --only-shell: crawl4ai launches headless with no channel, so it takes
-# Playwright's headless shell and the full ~620 MB Chromium build was never started.
+# --only-shell: both launchers run headless and take Playwright's headless shell,
+# so the full ~620 MB Chromium build was never started.
 #
 # No --force (re-downloads unconditionally) and no --with-deps (an apt install
 # into this throwaway rootfs; the runtime installs its own deps further down).
@@ -177,13 +177,14 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # Early in the stage so code and dependency changes never re-key this ~1.5 GB layer.
 COPY --from=models /opt/models /opt/models
 
-# Fortress — the browser host's Chromium (BROWSER_ENGINE=chromium): a Chromium
-# fork that sets the fingerprint in C++, driven over CDP like Chrome. Pinned to a
-# release and its SHA-256 per arch (the release's SHA256SUMS); scripts/ci/browser.sh
-# reads these ARGs, so CI's browser stack runs this exact build. CHROMIUM_BIN names
-# its launcher, which applies the persona and fonts; its runtime libraries are
-# Chromium's, installed by playwright install-deps below. TILION_LICENSE_KEY
-# (browser_host_settings) selects the licensed v3 engine; unset, the public v1 engine.
+# Fortress — the browser host's opt-in Chromium (BROWSER_HOST_FORTRESS, off by
+# default): a Chromium fork that sets the fingerprint in C++, driven over CDP like
+# Chrome. Pinned to a release and its SHA-256 per arch (the release's SHA256SUMS);
+# scripts/ci/browser.sh reads these ARGs, so CI's browser stack runs this exact
+# build. The host launches /opt/fortress/tilion (FORTRESS_IMAGE_BIN), its launcher,
+# which sets up the fonts; its runtime libraries are Chromium's, installed by
+# playwright install-deps below. TILION_LICENSE_KEY (browser_host_settings) selects
+# the licensed v3 engine; unset, the public v1 engine.
 ARG TARGETARCH
 ARG FORTRESS_VERSION=156.0.8078.47
 ARG FORTRESS_SHA256_AMD64=181512397a027e65099c8f2c7c8591c98dfd19649fe7bdbb4fc629989237d3c9
@@ -267,7 +268,6 @@ ENV ENV=production \
     PYTHONPATH=/app/apps/api \
     PLAYWRIGHT_BROWSERS_PATH=/opt/browsers \
     OBSCURA_BIN=/opt/obscura/obscura \
-    CHROMIUM_BIN=/opt/fortress/tilion \
     MEMORY_BAKED_MODELS_DIR=/opt/models \
     GIT_COMMIT_SHA=${GIT_COMMIT_SHA}
 

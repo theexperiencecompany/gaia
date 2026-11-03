@@ -22,13 +22,14 @@ from app.browser_host.engine import Engine
 from app.browser_host.host import BrowserHost
 from app.browser_host.obscura_launch import LaunchedEngine
 from app.browser_host.process import EngineLaunchError, ProcessSampler
-from app.config.browser_host_settings import browser_host_settings
+from app.config.browser_host_settings import BrowserHostSettings, browser_host_settings
 from app.constants.browser import (
     BROWSER_VIEWPORT_HEIGHT,
     BROWSER_VIEWPORT_WIDTH,
     BrowserEngine,
     EngineExit,
 )
+from app.constants.fortress import FORTRESS_PERSONA_ARGS, FORTRESS_VOICES
 from shared.py.wide_events import log
 from tests.unit.browser_host.conftest import FakeMux
 
@@ -105,8 +106,23 @@ def test_a_configured_binary_wins_and_a_missing_one_fails_loud(
     assert engine_mod.resolve_chromium_path() == str(binary)
 
     monkeypatch.setattr(browser_host_settings, "CHROMIUM_BIN", str(tmp_path))
-    with pytest.raises(RuntimeError, match="CHROMIUM_BIN is set but is not a file"):
+    with pytest.raises(RuntimeError, match="the Chromium binary is not a file"):
         engine_mod.resolve_chromium_path()
+
+
+def test_fortress_on_without_a_configured_binary_launches_the_images_and_fails_loud_without_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    launcher = tmp_path / "tilion"
+    monkeypatch.setattr(browser_host_settings, "CHROMIUM_BIN", None)
+    monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_FORTRESS", True)
+    monkeypatch.setattr(engine_mod, "FORTRESS_IMAGE_BIN", str(launcher))
+    with pytest.raises(RuntimeError, match="the Chromium binary is not a file"):
+        engine_mod.resolve_chromium_path()
+
+    launcher.write_text("")
+
+    assert engine_mod.resolve_chromium_path() == str(launcher)
 
 
 @pytest.mark.parametrize("shell", ["headless_shell", None])
@@ -115,6 +131,7 @@ def test_without_a_configured_binary_playwrights_own_is_used(
 ) -> None:
     full = _playwright_install(tmp_path, shell_name=shell)
     monkeypatch.setattr(browser_host_settings, "CHROMIUM_BIN", None)
+    monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_FORTRESS", False)
     playwright = MagicMock()
     playwright.__enter__.return_value.chromium.executable_path = str(full)
     monkeypatch.setattr(engine_mod, "sync_playwright", lambda: playwright)
@@ -186,6 +203,83 @@ def test_chrome_accepts_a_test_stacks_ca_only_while_one_is_set(
     assert f"--ignore-certificate-errors-spki-list={_TEST_CA_PIN}" in engine_mod.chromium_argv(
         _SHELL, "/p"
     )
+
+
+# --- Fortress's one persona ---
+
+#: Every surface Fortress draws per context unless pinned; one left out splits the identity.
+_FORTRESS_SURFACES = frozenset(
+    {
+        "--uxr-platform", "--uxr-ua-platform", "--uxr-ua-os", "--uxr-ua-arch",
+        "--uxr-ua-bitness", "--uxr-ua-platform-version", "--uxr-ua-brand",
+        "--uxr-hw-concurrency", "--uxr-device-memory", "--uxr-webgl-vendor",
+        "--uxr-webgl-renderer", "--uxr-webgl-fullparams", "--uxr-webgl-max-viewport-dims",
+        "--uxr-webgl-max-texture-size", "--uxr-webgl-max-cube", "--uxr-webgl-max-renderbuffer",
+        "--uxr-webgpu-vendor", "--uxr-webgpu-architecture", "--uxr-webgpu-description",
+        "--uxr-screen-width", "--uxr-screen-height", "--uxr-device-pixel-ratio",
+        "--uxr-screen-avail-width", "--uxr-screen-avail-height", "--uxr-screen-avail-top",
+        "--uxr-screen-avail-left", "--uxr-screen-color-depth", "--uxr-outer-width",
+        "--uxr-outer-height", "--uxr-color-gamut", "--uxr-dynamic-range", "--uxr-color-scheme",
+        "--uxr-battery-level", "--uxr-battery-charging", "--uxr-battery-charging-time",
+        "--uxr-net-effective-type", "--uxr-net-rtt", "--uxr-net-downlink", "--uxr-net-save-data",
+        "--uxr-storage-quota", "--uxr-media-devices", "--uxr-voices-list", "--uxr-timezone",
+        "--uxr-languages", "--accept-lang",
+    }
+)  # fmt: skip
+
+
+def _persona_flags(args: list[str]) -> dict[str, str]:
+    return dict(a.split("=", 1) for a in args if a.startswith(("--uxr-", "--accept-lang")))
+
+
+def test_a_chromium_host_launches_no_persona_unless_fortress_is_switched_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("BROWSER_HOST_FORTRESS", raising=False)
+    assert BrowserHostSettings().BROWSER_HOST_FORTRESS is False
+
+    monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_FORTRESS", False)
+
+    args = engine_mod.chromium_argv(_SHELL, "/p")
+
+    assert _persona_flags(args) == {}
+    assert {"--disable-speech-synthesis-api", "--disable-speech-api"} <= set(args)
+
+
+def test_fortress_launches_with_every_surface_pinned_and_its_timezone_and_languages_from_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_FORTRESS", True)
+    monkeypatch.setattr(browser_host_settings, "FORTRESS_TIMEZONE", "Europe/Berlin")
+    monkeypatch.setattr(browser_host_settings, "FORTRESS_LANGUAGES", ("en-US", "de"))
+
+    args = engine_mod.chromium_argv("/opt/fortress/tilion", "/p")
+    flags = _persona_flags(args)
+
+    assert set(flags) == _FORTRESS_SURFACES
+    assert len(args) == len(set(args))
+    assert flags["--uxr-timezone"] == "Europe/Berlin"
+    # JS's navigator.languages and the Accept-Language header must say the same thing.
+    assert flags["--uxr-languages"] == flags["--accept-lang"] == "en-US,de"
+    assert flags["--uxr-media-devices"] == "ai:1,vi:1,ao:1"
+    assert not any(a.startswith(("--user-agent=", "--enable-automation")) for a in args)
+    # Measured on the real host: with browser-use's speech flags a pinned voice list has no API.
+    assert not {"--disable-speech-synthesis-api", "--disable-speech-api"} & set(args)
+    # outerWidth/Height agree with the window the host opens (inner is its viewport).
+    assert (flags["--uxr-outer-width"], flags["--uxr-outer-height"]) == (
+        str(BROWSER_VIEWPORT_WIDTH),
+        str(BROWSER_VIEWPORT_HEIGHT),
+    )
+
+
+def test_fortress_voices_are_ascii_entries_of_name_lang_local_default() -> None:
+    voices = _persona_flags(list(FORTRESS_PERSONA_ARGS))["--uxr-voices-list"]
+
+    assert voices.isascii()
+    entries = [entry.split("|") for entry in voices.split(";")]
+    assert len(entries) == len(FORTRESS_VOICES)
+    assert all(len(e) == 4 and e[2] in "01" and e[3] in "01" for e in entries)
+    assert [e[3] for e in entries].count("1") == 1
 
 
 # --- the DevTools endpoint file ---

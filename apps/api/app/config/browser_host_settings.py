@@ -8,6 +8,7 @@ through their own settings, so both sides read one declaration.
 
 import os
 from typing import Annotated, Self
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from dotenv import load_dotenv
 from pydantic import SecretStr, field_validator, model_validator
@@ -15,6 +16,11 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from app.config.deployment import DeploymentKind
 from app.constants.browser import BrowserEngine
+from app.constants.fortress import (
+    FORTRESS_DEFAULT_LANGUAGES,
+    FORTRESS_DEFAULT_TIMEZONE,
+    FORTRESS_REQUIRED_FIRST_LANGUAGE,
+)
 from app.utils.url_safety import http_origin
 
 #: Obscura's own switch that lets it fetch loopback and private addresses.
@@ -60,10 +66,18 @@ class BrowserHostSettings(BaseSettings):
     # while the old one drains. A safety bound on growth (patch 0033 keeps 60
     # churned sessions at ~170 MB); None disables it.
     BROWSER_ENGINE_RECYCLE_MB: int | None = 1500
-    # Path to a Chromium/Chrome binary for BROWSER_ENGINE=chromium. The gaia image
-    # sets Fortress's launcher (/opt/fortress/tilion); a dev box points it at any
-    # Chromium it has. Unset, the host resolves Playwright's headless shell.
+    # Path to a Chromium/Chrome binary for BROWSER_ENGINE=chromium; a dev box points
+    # it at any Chromium it has. Unset, the host resolves Playwright's headless shell,
+    # or with BROWSER_HOST_FORTRESS the image's Fortress launcher.
     CHROMIUM_BIN: str | None = None
+    # Off by default: run the Chromium engine as Fortress (a Chromium fork that sets the
+    # fingerprint in C++) with the one pinned persona of app/constants/fortress.py, every
+    # context presenting it. CHROMIUM_BIN then names Fortress's launcher, else the image's.
+    BROWSER_HOST_FORTRESS: bool = False
+    # The persona's timezone and languages. A pinned timezone turns off Fortress's
+    # egress-geo matching, so production sets both to its egress country's.
+    FORTRESS_TIMEZONE: str = FORTRESS_DEFAULT_TIMEZONE
+    FORTRESS_LANGUAGES: Annotated[tuple[str, ...], NoDecode] = FORTRESS_DEFAULT_LANGUAGES
     # Fortress's license, which its binary verifies offline at launch: set, the
     # Chromium engine runs Fortress's v3 engine; unset, its public v1 engine.
     TILION_LICENSE_KEY: SecretStr | None = None
@@ -80,6 +94,30 @@ class BrowserHostSettings(BaseSettings):
     def _blank_key_is_unset(cls, v: str | None) -> str | None:
         # Compose spells an unset key ${BROWSER_HOST_KEY:-}, an empty string: that is no key.
         return v or None
+
+    @field_validator("FORTRESS_TIMEZONE", mode="before")
+    @classmethod
+    def _known_timezone(cls, v: str) -> str:
+        # Compose spells an unset one ${FORTRESS_TIMEZONE:-}: blank is the persona's own.
+        timezone = v or FORTRESS_DEFAULT_TIMEZONE
+        try:
+            ZoneInfo(timezone)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError(f"FORTRESS_TIMEZONE {timezone!r} is not an IANA timezone") from exc
+        return timezone
+
+    @field_validator("FORTRESS_LANGUAGES", mode="before")
+    @classmethod
+    def _en_us_first(cls, v: str | tuple[str, ...]) -> tuple[str, ...]:
+        """Read the comma-separated list (blank is the persona's own); en-US must lead, or headers drift."""
+        entries = v.split(",") if isinstance(v, str) else v
+        languages = tuple(entry.strip() for entry in entries if entry.strip())
+        languages = languages or FORTRESS_DEFAULT_LANGUAGES
+        if languages[0] != FORTRESS_REQUIRED_FIRST_LANGUAGE:
+            raise ValueError(
+                f"FORTRESS_LANGUAGES must start with {FORTRESS_REQUIRED_FIRST_LANGUAGE}, got {v!r}"
+            )
+        return languages
 
     @field_validator("BROWSER_HOST_ALLOW_PRIVATE_ORIGINS", mode="before")
     @classmethod

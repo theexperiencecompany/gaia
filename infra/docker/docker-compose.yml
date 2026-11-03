@@ -758,7 +758,8 @@ services:
   # gaia-browser-host — our own browser hosts for browser automation, two of them
   # off the same image: browser-host runs Obscura (a self-contained Rust CDP
   # server baked into the image) for users who opted in, and browser-host-chrome
-  # runs Fortress (the image's Chromium fork, CHROMIUM_BIN) for every default user,
+  # runs Chromium (headless-shell under /opt/browsers; Fortress, the image's
+  # Chromium fork, with BROWSER_HOST_FORTRESS=true) for every default user,
   # and takes Obscura runs that fall back. Each runs one long-lived engine, one
   # isolated context per session, a per-session CDP-filtering proxy and an
   # authenticated screencast live view. The API + worker reach them over the
@@ -842,6 +843,11 @@ services:
       BROWSER_HOST_URL: http://browser-host-chrome:8931
       BROWSER_HOST_PORT: 8931
       BROWSER_HOST_KEY: ${BROWSER_HOST_KEY:-}
+      # Off by default. On, Fortress presents one pinned persona; a deployment sets
+      # the timezone and languages to its egress country's (blank: the persona's own).
+      BROWSER_HOST_FORTRESS: ${BROWSER_HOST_FORTRESS:-false}
+      FORTRESS_TIMEZONE: ${FORTRESS_TIMEZONE:-}
+      FORTRESS_LANGUAGES: ${FORTRESS_LANGUAGES:-}
       # Fortress's license: set, its v3 engine; empty, its public v1 engine.
       TILION_LICENSE_KEY: ${TILION_LICENSE_KEY:-}
     networks:

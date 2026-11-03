@@ -2,12 +2,13 @@
 # browser.sh — the real browsers a lane drives: finding them, and serving one.
 #
 # Subcommands:
-#   locate          Install the Fortress build the gaia image ships (its Chromium),
-#                   find the Obscura binary the obscura-bin build stage exported
-#                   to $RUNNER_TEMP/obscura, install the Caddy self-host ships (the
-#                   proxy a user's live view goes through), and publish
-#                   CHROMIUM_BIN / OBSCURA_BIN / CADDY_BIN to $GITHUB_ENV. Any one
-#                   missing fails: the browser slice never skips a scenario.
+#   locate          Install the Fortress build the gaia image ships (its opt-in
+#                   Chromium), find the Obscura binary the obscura-bin build stage
+#                   exported to $RUNNER_TEMP/obscura, install the Caddy self-host
+#                   ships (the proxy a user's live view goes through), and publish
+#                   CHROMIUM_BIN / BROWSER_HOST_FORTRESS / OBSCURA_BIN / CADDY_BIN
+#                   to $GITHUB_ENV. Any one missing fails: the browser slice never
+#                   skips a scenario.
 #   chrome-host     Start a Chromium browser host (python -m app.browser_host) on
 #                   Fortress in the background on BROWSER_HOST_PORT with a fresh
 #                   host key, publish the key and a login-encryption key to
@@ -20,7 +21,8 @@
 #   locate        RUNNER_TEMP, GITHUB_ENV; CADDY_RELEASE_URL / CADDY_SHA512 and
 #                 FORTRESS_RELEASE_URL / FORTRESS_SHA256 replace the pinned releases
 #                 only for the script's own tests.
-#   chrome-host   RUNNER_TEMP, GITHUB_ENV, BROWSER_HOST_PORT; CHROMIUM_BIN, else Fortress.
+#   chrome-host   RUNNER_TEMP, GITHUB_ENV, BROWSER_HOST_PORT; CHROMIUM_BIN (a Fortress
+#                 launcher), else the pinned Fortress release.
 #                 TILION_LICENSE_KEY, when set, runs Fortress's licensed engine.
 #   eval          what the suite reads (BROWSER_HOST_URL, OPENROUTER_API_KEY, ...), and
 #                 OPENROUTER_MODEL: the model the browser agent runs on, which the
@@ -88,6 +90,7 @@ cmd_locate() {
   chrome="$(install_fortress)"
   {
     echo "CHROMIUM_BIN=$chrome"
+    echo "BROWSER_HOST_FORTRESS=true"
     echo "OBSCURA_BIN=$obscura"
   } >> "${GITHUB_ENV:?GITHUB_ENV required}"
   caddy="$(install_caddy)"
@@ -107,7 +110,7 @@ cmd_chrome_host() {
   } >> "${GITHUB_ENV:?GITHUB_ENV required}"
   (
     cd "$REPO_ROOT/apps/api"
-    BROWSER_HOST_KEY="$key" BROWSER_ENGINE=chromium CHROMIUM_BIN="$chrome" \
+    BROWSER_HOST_KEY="$key" BROWSER_ENGINE=chromium CHROMIUM_BIN="$chrome" BROWSER_HOST_FORTRESS=true \
       nohup uv run --frozen --group backend python -m app.browser_host > "$log" 2>&1 &
   )
   local waited=0
@@ -132,7 +135,7 @@ cmd_eval() {
 }
 
 usage() {
-  sed -n '2,27p' "$0" >&2
+  sed -n '2,29p' "$0" >&2
 }
 
 main() {

@@ -103,6 +103,8 @@ def test_both_engines_are_published_to_the_job(tmp_path: Path) -> None:
     published = dict(line.split("=", 1) for line in github_env.read_text().splitlines())
     # Fortress's launcher, unpacked out of the release's versioned top directory.
     assert published["CHROMIUM_BIN"] == str(tmp_path / "runner" / "fortress" / "tilion")
+    # The image installs Fortress off by default; CI's stack turns it on.
+    assert published["BROWSER_HOST_FORTRESS"] == "true"
     assert published["OBSCURA_BIN"] == str(tmp_path / "runner" / "obscura" / "obscura")
     assert published["CADDY_BIN"] == str(tmp_path / "runner" / "caddy" / "caddy")
 

@@ -41,6 +41,11 @@ from app.constants.browser import (
     BrowserEngine,
     EngineExit,
 )
+from app.constants.fortress import (
+    FORTRESS_IMAGE_BIN,
+    FORTRESS_PERSONA_ARGS,
+    FORTRESS_UNSUPPRESSED_DEFAULT_ARGS,
+)
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
@@ -49,7 +54,7 @@ from shared.py.wide_events import log
 # Compensating controls: browser-only network island, per-context download deny, http(s)-only proxy.
 _HOST_EXTRA_ARGS: tuple[str, ...] = ("--no-sandbox",)
 # Playwright names the shell binary per platform: headless_shell on Linux,
-# chrome-headless-shell on macOS, .exe on Windows. Production sets CHROMIUM_BIN (Fortress).
+# chrome-headless-shell on macOS, .exe on Windows.
 _HEADLESS_SHELL_BINARIES = ("headless_shell", "chrome-headless-shell", "headless_shell.exe")
 # Per-renderer V8 heap ceiling: one runaway page must not OOM every other user's session.
 _JS_HEAP_MB = 512
@@ -82,15 +87,18 @@ def _headless_shell_beside(chromium: Path) -> Path | None:
 
 
 def resolve_chromium_path() -> str:
-    """Resolve the browser binary: CHROMIUM_BIN when set, else Playwright's headless shell.
+    """Resolve the browser binary: CHROMIUM_BIN, else the image's Fortress when on, else Playwright's shell.
 
     The shell build drops the browser-UI layer (three contexts: 702 MB versus
     1419 MB). Playwright's resolver is sync-only, so call this in a worker thread.
     """
-    if browser_host_settings.CHROMIUM_BIN:
-        configured = Path(browser_host_settings.CHROMIUM_BIN)
+    configured_bin = browser_host_settings.CHROMIUM_BIN or (
+        FORTRESS_IMAGE_BIN if browser_host_settings.BROWSER_HOST_FORTRESS else None
+    )
+    if configured_bin:
+        configured = Path(configured_bin)
         if not configured.is_file():
-            raise RuntimeError(f"CHROMIUM_BIN is set but is not a file: {configured}")
+            raise RuntimeError(f"the Chromium binary is not a file: {configured}")
         return str(configured)
     with sync_playwright() as p:
         full = Path(p.chromium.executable_path)
@@ -107,8 +115,11 @@ def spki_pin(pem_path: str) -> str:
 
 def chromium_argv(chromium_path: str, profile_dir: str) -> list[str]:
     """Build the full Chromium argv for one launch into its own fresh profile."""
+    fortress = browser_host_settings.BROWSER_HOST_FORTRESS
     args = [chromium_path, "--remote-debugging-port=0", f"--user-data-dir={profile_dir}"]
-    args.extend(CHROME_DEFAULT_ARGS)
+    args.extend(
+        a for a in CHROME_DEFAULT_ARGS if not (fortress and a in FORTRESS_UNSUPPRESSED_DEFAULT_ARGS)
+    )
     args.extend(_HOST_EXTRA_ARGS)
     # Bounds the JS heap only (DOM, images and raster live outside V8): a ceiling, not a saving.
     args.append(f"--js-flags=--max-old-space-size={_JS_HEAP_MB}")
@@ -123,7 +134,20 @@ def chromium_argv(chromium_path: str, profile_dir: str) -> list[str]:
         # The shell build is headless by construction and only knows the bare flag.
         is_shell = Path(chromium_path).name in _HEADLESS_SHELL_BINARIES
         args.append("--headless" if is_shell else "--headless=new")
+    if fortress:
+        args.extend(_fortress_persona_argv())
     return args
+
+
+def _fortress_persona_argv() -> list[str]:
+    """Pin every Fortress surface, so all contexts of the one engine present one identity."""
+    languages = ",".join(browser_host_settings.FORTRESS_LANGUAGES)
+    return [
+        *FORTRESS_PERSONA_ARGS,
+        f"--uxr-timezone={browser_host_settings.FORTRESS_TIMEZONE}",
+        f"--uxr-languages={languages}",
+        f"--accept-lang={languages}",
+    ]
 
 
 def chromium_env() -> dict[str, str]:
