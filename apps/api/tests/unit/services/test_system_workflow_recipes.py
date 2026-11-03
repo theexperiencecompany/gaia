@@ -15,9 +15,10 @@ from app.services.system_workflows.definitions import (
     SYSTEM_RECIPES,
     SYSTEM_WORKFLOWS_BY_INTEGRATION,
 )
+from app.services.system_workflows.definitions.calendar import CALENDAR_SYSTEM_RECIPES
 from app.services.system_workflows.recipes import install_recipe
 from app.services.workflow.playbook.evaluator import PlaybookUser, RunContext, resolve_args
-from app.services.workflow.playbook.parser import validate_playbook
+from app.services.workflow.playbook.parser import dump_playbook, validate_playbook
 from app.services.workflow.playbook.workflow_hash import workflow_hash
 
 PARSER = "app.services.workflow.playbook.parser"
@@ -25,6 +26,64 @@ RECIPES = "app.services.system_workflows.recipes"
 USER_ID = "507f1f77bcf86cd799439011"
 #: The custom tools a recipe reaches through execute, by the input model they validate against.
 LOCAL_INPUTS = {"GOOGLECALENDAR_CUSTOM_GET_EVENT": GetEventInput}
+
+
+#: Each recipe exactly as it ships, as the YAML read_playbook renders it.
+#: A recipe change is an edit here too, so it is reviewed as one.
+SHIPPED_YAML = {
+    "calendar:meeting_prep": (
+        "description: Look up the event, recall what memory holds about its people and topic,\n"
+        "  research its external attendees, then write the briefing.\n"
+        "steps:\n"
+        "- id: event\n"
+        "  tool: execute\n"
+        "  args:\n"
+        "    task_description: Looking up the event\n"
+        "    tool_name: GOOGLECALENDAR_CUSTOM_GET_EVENT\n"
+        "    data:\n"
+        "      events:\n"
+        "      - event_id: $trigger.trigger_data.event_id\n"
+        "        calendar_id: $trigger.trigger_data.calendar_id\n"
+        "- id: memory\n"
+        "  tool: search_memory\n"
+        "  args:\n"
+        "    query:\n"
+        "      $ask: a memory search for the people in this event and its topic\n"
+        "- id: research\n"
+        "  tool: web_search_tool\n"
+        "  args:\n"
+        "    query_text:\n"
+        "      $ask: 'a web search for this attendee: their name, company and role'\n"
+        "  for_each:\n"
+        "    $ask: 'the external attendees of this event worth researching: not the user and\n"
+        "      not people at the user''s own company; none for a solo or internal event'\n"
+        "  max_items: 3\n"
+        "result_brief: 'If the event is a solo personal one (gym, lunch, focus time, no other\n"
+        "  attendees), say in one line that no briefing is needed. Otherwise write a structured\n"
+        "  brief from the event, memory and research steps: (1) who the user is meeting and\n"
+        "  the key context about them, (2) suggested agenda or talking points, (3) open action\n"
+        "  items to raise, (4) relevant background from past interactions, (5) the join link\n"
+        "  or location. Never mention workflows, shortcuts or steps.'\n"
+    ),
+    "calendar:meeting_reminder": (
+        "description: Look up the event that is about to start, then write a short heads-up.\n"
+        "steps:\n"
+        "- id: event\n"
+        "  tool: execute\n"
+        "  args:\n"
+        "    task_description: Looking up the event\n"
+        "    tool_name: GOOGLECALENDAR_CUSTOM_GET_EVENT\n"
+        "    data:\n"
+        "      events:\n"
+        "      - event_id: $trigger.trigger_data.event_id\n"
+        "        calendar_id: $trigger.trigger_data.calendar_id\n"
+        "result_brief: 'Write a 2-3 line heads-up for the event the event step returned: its\n"
+        "  title, when it starts in the user''s local time, and its video join link or location\n"
+        "  if it has one (say plainly if it has neither). It is a heads-up, not a briefing.\n"
+        "  Never mention workflows, shortcuts or steps.'\n"
+    ),
+}
+
 STARTING_SOON = {
     "event_id": "evt_42",
     "calendar_id": "dana@acme.com",
@@ -115,3 +174,8 @@ async def test_a_key_that_ships_no_recipe_stores_nothing() -> None:
 
     assert stored is None
     store.upsert_for_workflow.assert_not_awaited()
+
+
+@pytest.mark.parametrize("key", sorted(CALENDAR_SYSTEM_RECIPES))
+def test_each_calendar_recipe_ships_exactly_as_reviewed(key: str) -> None:
+    assert dump_playbook(CALENDAR_SYSTEM_RECIPES[key]()) == SHIPPED_YAML[key]
