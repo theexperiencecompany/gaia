@@ -77,7 +77,7 @@ class TestAskSlotKeys:
         assert [item.key for item in located] == ["fetch.query"]
 
     def test_slots_come_back_in_execution_order(self) -> None:
-        steps = [
+        steps: list[PlaybookStep] = [
             ToolStep(id="first", tool="a", args={"x": {"$ask": "one"}}),
             HandoffStep(
                 id="handed",

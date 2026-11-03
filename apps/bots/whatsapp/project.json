@@ -4,7 +4,7 @@
   "root": "apps/bots/whatsapp",
   "sourceRoot": "apps/bots/whatsapp/src",
   "projectType": "application",
-  "tags": ["scope:typescript"],
+  "tags": ["scope:typescript", "release:bots"],
   "release": {
     "docker": {
       "repositoryName": "theexperiencecompany/gaia-bot-whatsapp"
@@ -61,7 +61,14 @@
         "cwd": "."
       },
       "cache": true,
-      "inputs": ["production", "^production"],
+      "inputs": [
+        "production",
+        "^production",
+        "{workspaceRoot}/apps/bots/Dockerfile",
+        "{workspaceRoot}/apps/bots/package.json",
+        "{workspaceRoot}/pnpm-workspace.yaml",
+        "{workspaceRoot}/.dockerignore"
+      ],
       "metadata": {
         "technologies": ["docker"]
       }

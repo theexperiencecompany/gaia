@@ -32,7 +32,8 @@ GH_STUB = (
     + REPLAY
     + """\
 case "$1 $2" in
-  "workflow run") exit 0 ;;
+  "workflow run") touch "$STATE/dispatched"; exit 0 ;;
+  "release view") [ "$(next_answer release)" = complete ] && echo gaia-selfhost-1.2.3.tar.gz; exit 0 ;;
   "run list")
     answer=$(next_answer gh)
     [ "$answer" = fail ] && { echo "HTTP 502" >&2; exit 1; }
@@ -52,11 +53,14 @@ exit 1
 )
 
 
-def _publish(tmp_path: Path, *, gh: list[str], npm: list[str]) -> subprocess.CompletedProcess[str]:
+def _publish(
+    tmp_path: Path, *, gh: list[str], npm: list[str], release: tuple[str, ...] = ("complete",)
+) -> subprocess.CompletedProcess[str]:
     state = tmp_path / "state"
     state.mkdir()
     (state / "gh").write_text("\n".join(gh) + "\n")
     (state / "npm").write_text("\n".join(npm) + "\n")
+    (state / "release").write_text("\n".join(release) + "\n")
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     for name, body in (("gh", GH_STUB), ("npm", NPM_STUB), ("sleep", "#!/bin/sh\n")):
@@ -100,3 +104,20 @@ def test_a_publish_that_never_lands_still_fails(tmp_path: Path) -> None:
     result = _publish(tmp_path, gh=["1", "0"], npm=["absent"])
     assert result.returncode != 0
     assert "Publish finished but @heygaia/cli@1.2.3 is not on npm" in result.stderr
+
+
+def test_a_version_already_on_npm_still_gets_its_release_outputs(tmp_path: Path) -> None:
+    """A hand-published version skipped the dispatch, so its bundle, binaries and image pin never came."""
+    result = _publish(
+        tmp_path, gh=["0"], npm=["present"], release=("missing", "missing", "complete")
+    )
+
+    assert (tmp_path / "state" / "dispatched").exists(), result.stdout + result.stderr
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_a_complete_release_dispatches_nothing(tmp_path: Path) -> None:
+    result = _publish(tmp_path, gh=["0"], npm=["present"])
+
+    assert not (tmp_path / "state" / "dispatched").exists()
+    assert result.returncode == 0, result.stdout + result.stderr

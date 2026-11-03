@@ -38,8 +38,8 @@
 # to rewrite the baseline instead of checking it, SMOKE_SQUIRREL_STRICT=1 to fail on
 # an improvement the baseline does not record,
 # SQUIRREL_CACHE (where the binary is kept; default RUNNER_TOOL_CACHE or ~/.cache).
-# audit-build builds web first (`nx run web:build`, a cache hit after the lane's
-# build step), with the NEXT_PUBLIC_* values the build bakes in already set.
+# audit-build serves the web build nx's ci:seo task depends on (web:build), so
+# run it as `nx run ci:seo`, with the NEXT_PUBLIC_* values the build bakes in set.
 # indexnow env: SMOKE_BASE_URL; GITHUB_SHA (default HEAD); GITHUB_REPOSITORY,
 # GITHUB_RUN_ID, GH_TOKEN (actions:read), INDEXNOW_DEPLOY_JOB and INDEXNOW_JOB (the
 # deploy and IndexNow job names) to find the last notified deployed commit when
@@ -195,7 +195,7 @@ stop_web() {
 # Start the production build on a free port; set WEB_URL once it is ready.
 start_web() {
   local web="$REPO_ROOT/apps/web" log="$1" port
-  port="$(node -e "const s=require('net').createServer().listen(0,'127.0.0.1',()=>{console.log(s.address().port);s.close()})")"
+  port="$(node -e "const s=require('net').createServer().listen(0,'127.0.0.1',()=>{process.stdout.write(String(s.address().port));s.close()})")"
   # Its own process group, so next and its workers stop together.
   set -m
   (builtin cd "$web" && exec node_modules/.bin/next start --port "$port" >"$log" 2>&1) &
@@ -215,10 +215,6 @@ start_web() {
 
 cmd_audit_build() {
   local log status=0
-  # A cache hit when the lane's build step already built web with the same env.
-  ci_group "nx run web:build"
-  (builtin cd "$REPO_ROOT" && pnpm exec nx run web:build --output-style=stream)
-  ci_endgroup
   log="$(mktemp)"
   trap stop_web EXIT
   start_web "$log"

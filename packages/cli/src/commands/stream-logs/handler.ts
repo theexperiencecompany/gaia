@@ -14,19 +14,13 @@ import {
   readDockerComposePortOverrides,
 } from "../../lib/env-writer.js";
 import { detectSetupMode, findInstallRoot } from "../../lib/install-root.js";
+import { DEV_DOCKER_DIR, selfhostDir } from "../../lib/paths.js";
 import {
   composeFileArgs,
+  getEnvFileArgs,
   selfhostComposeFiles,
 } from "../../lib/service-starter.js";
 import { printHeader } from "../../ui/header/header-lines.js";
-
-function getDockerEnvFileArgs(dockerDir: string): string[] {
-  const envPath = path.join(dockerDir, ".env");
-  if (fs.existsSync(envPath)) {
-    return ["--env-file", ".env"];
-  }
-  return [];
-}
 
 function out(line: string): void {
   process.stdout.write(`${line}\n`);
@@ -50,8 +44,11 @@ export async function runLogs(): Promise<void> {
   out("  Following GAIA's logs. Ctrl-C stops.");
   out("");
 
-  const dockerDir = path.join(repoPath, "infra", "docker");
-  const envArgs = getDockerEnvFileArgs(dockerDir);
+  const dockerDir =
+    setupMode === "selfhost"
+      ? selfhostDir(repoPath)
+      : path.join(repoPath, DEV_DOCKER_DIR);
+  const envArgs = getEnvFileArgs(dockerDir);
   const portOverrides = readDockerComposePortOverrides(repoPath);
   const dockerEnv =
     Object.keys(portOverrides).length > 0

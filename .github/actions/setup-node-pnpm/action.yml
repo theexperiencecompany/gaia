@@ -1,6 +1,7 @@
 name: Setup Node.js + pnpm
 description: >
-  Install pnpm 10.17.1, Node.js (from .node-version), and project dependencies.
+  Install pnpm (package.json#packageManager), Node.js (.node-version) and the
+  project dependencies.
 
   Store strategy is runner-dependent. On GitHub-hosted runners the machine is
   discarded after the job, so setup-node's GH-cache save/restore of the pnpm
@@ -18,6 +19,12 @@ inputs:
       api-schema check runs. Every other job skips it.
     required: false
     default: "false"
+  registry-url:
+    description: >
+      The npm registry to authenticate against, for a job that publishes
+      (actions/setup-node writes the .npmrc). Empty for every other job.
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -34,11 +41,12 @@ runs:
     - name: Setup pnpm (corepack)
       shell: bash
       env:
-        PNPM_VERSION: "10.17.1"
         COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
       run: |
         set -euo pipefail
         source scripts/ci/lib/runner-host.sh
+        # package.json#packageManager is the one declaration; corepack reads it too.
+        PNPM_VERSION="$(node -p 'require("./package.json").packageManager.replace(/^pnpm@/, "")')"
         if command -v pnpm >/dev/null 2>&1 && [ "$(pnpm --version 2>/dev/null || true)" = "$PNPM_VERSION" ]; then
           echo "pnpm $PNPM_VERSION already on PATH ($(command -v pnpm))"
           exit 0
@@ -73,6 +81,7 @@ runs:
       uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.1
       with:
         node-version-file: ".node-version"
+        registry-url: ${{ inputs.registry-url }}
 
     - name: Setup Node.js (off the box — cache pnpm store)
       if: ${{ !startsWith(runner.name, 'gaia-home-') }}
@@ -81,6 +90,7 @@ runs:
         node-version-file: ".node-version"
         cache: "pnpm"
         cache-dependency-path: pnpm-lock.yaml
+        registry-url: ${{ inputs.registry-url }}
 
     # Persistent workspace (self-hosted): actions/checkout runs with
     # clean: false there and the runner's job-started hook does one scoped
