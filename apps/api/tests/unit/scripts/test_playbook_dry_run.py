@@ -116,11 +116,15 @@ class TestPlaybookDryRun:
         )
         first, second, third, fourth = _patches(workflow, [event], run)
 
-        with first, second, third, fourth as _, patch(f"{MODULE}.datetime") as clock:
+        with (
+            first as lookup,
+            second,
+            third as calendar,
+            fourth,
+            patch(f"{MODULE}.datetime") as clock,
+        ):
             clock.now.return_value.isoformat.return_value = "2026-11-03T10:00:00+00:00"
             await script._run(argparse.Namespace(user_id="u1", key=REMINDER))
-            calendar = script.get_calendar_events
-            lookup = script.get_user_by_id
 
         calendar.assert_awaited_once_with(
             user_id="u1", time_min="2026-11-03T10:00:00+00:00", max_results=5
