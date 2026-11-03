@@ -38,8 +38,6 @@ apps/api/app/agents/tools/discovery_tools.py	TB001
 apps/api/app/agents/tools/discovery_tools.py	TB002
 apps/api/app/agents/tools/file_tools.py	TB002
 apps/api/app/agents/tools/integration_tool.py	TB002	deferred-until=2026-10-15; master's custom-MCP add path (#1208) reads the untyped connection dict create_and_connect_custom_integration returns; typing it changes custom_crud's return shape, a product change kept out of this merge (decided 2026-09-14)
-apps/api/app/agents/tools/playbook_tools.py	TB001	deferred-until=2026-11-08; the only change here moves the get_user_id import to the one canonical helper in app.models.agent_models (run-owner fix); typing these tool returns and config reads is its own change (decided 2026-10-08)
-apps/api/app/agents/tools/playbook_tools.py	TB002	deferred-until=2026-11-08; the only change here moves the get_user_id import to the one canonical helper in app.models.agent_models (run-owner fix); typing these tool returns and config reads is its own change (decided 2026-10-08)
 apps/api/app/agents/tools/workflow_shared_tools.py	TB001	deferred-until=2026-11-08; touched for the get_user_id import move (run-owner fix) and for search_triggers reading TriggerSearchResult attributes; the remaining dict[str, Any] tool returns and string-key reads belong to the other workflow tools, and typing them is its own change (decided 2026-10-08, reason refreshed 2026-10-15)
 apps/api/app/agents/tools/workflow_shared_tools.py	TB002	deferred-until=2026-11-08; touched for the get_user_id import move (run-owner fix) and for search_triggers reading TriggerSearchResult attributes; the remaining dict[str, Any] tool returns and string-key reads belong to the other workflow tools, and typing them is its own change (decided 2026-10-08, reason refreshed 2026-10-15)
 apps/api/app/agents/tools/workflow_tool.py	TB001	deferred-until=2026-11-08; the only change here moves the get_user_id import to the one canonical helper in app.models.agent_models (run-owner fix); typing these tool returns and config reads is its own change (decided 2026-10-08)
@@ -127,7 +125,6 @@ apps/api/app/services/triggers/handlers/linear.py	TB001
 apps/api/app/services/triggers/handlers/notion.py	TB001
 apps/api/app/services/triggers/handlers/notion.py	TB002
 apps/api/app/services/triggers/handlers/todoist.py	TB001
-apps/api/app/services/workflow/playbook/evaluator.py	TB001
 apps/api/app/services/workflow/playbook/scripted_model.py	TB001
 apps/api/app/services/workflow/queue_service.py	TB001
 apps/api/app/services/workflow/subagent_output.py	TB001

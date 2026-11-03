@@ -15,6 +15,7 @@ from typing import Literal
 from unittest.mock import AsyncMock, MagicMock, call, patch
 from uuid import UUID
 
+from prometheus_client import REGISTRY
 import pytest
 
 from app.agents.prompts.playbook_prompts import (
@@ -48,6 +49,7 @@ from app.models.workflow_models import (
 )
 from app.services.workflow.playbook.check import HEAL_STATUSES
 from app.services.workflow.playbook.evaluator import PlaybookUser
+from app.services.workflow.playbook.metrics import REPLAY_STATUSES
 from app.services.workflow.playbook.runner import FALLBACK_LINE_MAX_CHARS, PlaybookRunResult
 from app.services.workflow.playbook.workflow_hash import workflow_hash
 from app.utils.timezone import Timezone
@@ -477,6 +479,110 @@ async def test_a_failed_outcome_write_after_a_replay_still_records_its_calls() -
     assert kwargs["error_message"] == "mongo away"
     assert [call.tool_name for call in kwargs["trace"]] == ["list_events"]
     harness.chat.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+class TestNothingNew:
+    """A replay whose opening read found nothing new is a skipped run: recorded, never delivered."""
+
+    def _harness(self) -> _Harness:
+        workflow = _workflow()
+        harness = _Harness(workflow)
+        harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
+        harness.playbook_run = AsyncMock(
+            return_value=(
+                "conv_1",
+                PlaybookRunResult(
+                    ok=True,
+                    nothing_new="list_events returned nothing",
+                    trace=[RecordedCall(tool_name="list_events", replayed=True)],
+                ),
+            )
+        )
+        return harness
+
+    async def test_the_run_is_recorded_skipped_with_what_it_read(self) -> None:
+        harness = self._harness()
+
+        await _fire(harness)
+
+        recorded = harness.complete_execution.await_args.kwargs
+        assert recorded["status"] == "skipped"
+        assert recorded["summary"] == "Skipped: nothing new since the last run"
+        assert [call.tool_name for call in recorded["trace"]] == ["list_events"]
+
+    async def test_nothing_is_delivered_notified_or_judged(self) -> None:
+        harness = self._harness()
+
+        await _fire(harness)
+
+        harness.add_messages.assert_not_awaited()
+        harness.platform_delivery.assert_not_awaited()
+        harness.completion_notification.assert_not_awaited()
+        harness.chat.assert_not_awaited()
+        harness.record_run_outcome.assert_not_awaited()
+
+    async def test_the_skip_is_counted_and_named_on_the_wide_event(self) -> None:
+        harness = self._harness()
+        before = REGISTRY.get_sample_value("gaia_playbook_nothing_new_total") or 0.0
+
+        await _fire(harness)
+
+        assert (REGISTRY.get_sample_value("gaia_playbook_nothing_new_total") or 0.0) - before == 1
+        assert harness.playbook_event() == {
+            "mode": "skipped",
+            "reason": "nothing_new",
+            "playbook_id": "pb_1",
+            "nothing_new": "list_events returned nothing",
+            "llm_calls": 0,
+        }
+
+    async def test_the_skip_is_captured_as_a_nothing_new_execution(self) -> None:
+        harness = self._harness()
+        capture = MagicMock()
+        harness.extra.append(patch(f"{MODULE}.capture", capture))
+
+        with ExitStack() as stack:
+            for patcher in harness.patches():
+                stack.enter_context(patcher)
+            await execute_workflow_by_id(
+                {}, harness.workflow.id or "", {"trigger_type": "schedule"}
+            )
+
+        assert capture.call_args.args[1].outcome == "nothing_new"
+
+
+def _replays_counted(status: PlaybookRunStatus) -> float:
+    return REGISTRY.get_sample_value("gaia_playbook_replay_total", {"status": status.value}) or 0.0
+
+
+@pytest.mark.parametrize(
+    ("result", "status"),
+    [
+        (PlaybookRunResult(ok=True, text="done", llm_calls=1), PlaybookRunStatus.SUCCESS),
+        (
+            PlaybookRunResult(ok=True, text="t", suspect="empty", trace=[], llm_calls=1),
+            PlaybookRunStatus.SUSPECT,
+        ),
+        (PlaybookRunResult(ok=False, failure="stopped", llm_calls=0), PlaybookRunStatus.FAILED),
+    ],
+    ids=["success", "suspect", "failed"],
+)
+async def test_each_replay_is_counted_once_by_its_outcome(
+    result: PlaybookRunResult, status: PlaybookRunStatus
+) -> None:
+    workflow = _workflow()
+    harness = _Harness(workflow)
+    harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
+    harness.playbook_run = AsyncMock(return_value=("conv_1", result))
+    before = {each: _replays_counted(each) for each in REPLAY_STATUSES}
+
+    await _fire(harness)
+
+    after = {each: _replays_counted(each) for each in before}
+    assert {each: after[each] - before[each] for each in before} == {
+        each: 1.0 if each is status else 0.0 for each in before
+    }
 
 
 def _suspect_replay(

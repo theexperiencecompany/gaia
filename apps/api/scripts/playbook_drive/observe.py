@@ -68,13 +68,10 @@ class Observation(BaseModel):
     reasons: list[str] = Field(default_factory=list)
     discards: list[str] = Field(default_factory=list)
     for_each: list[ForEachCount] = Field(default_factory=list)
-    warnings: list[str] = Field(default_factory=list)
-    errors: list[str] = Field(default_factory=list)
     #: Each playbook decision this fire made, as "<tool>:<ok | error code>".
     decisions: list[str] = Field(default_factory=list)
-
-    def warned(self, needle: str) -> bool:
-        return any(needle in line for line in self.warnings + self.errors)
+    #: What each refused write_playbook told the model, from the fire's trace.
+    refusals: list[str] = Field(default_factory=list)
 
 
 class WorkerLog:
@@ -181,6 +178,20 @@ class Store:
                 found.append(f"{name}:{error.group(1) if error else 'ok'}")
         return found
 
+    def refusals(self, execution_id: str) -> list[str]:
+        """What each refused write_playbook in the fire's trace answered.
+
+        Read from the trace, written with the execution, rather than the worker's
+        log: the executor's wide event can land seconds after the fire settles.
+        """
+        row = self.db["workflow_executions"].find_one({"execution_id": execution_id}) or {}
+        return [
+            str(call.get("result_digest"))
+            for call in row.get("trace") or []
+            if call.get("tool_name") == "write_playbook"
+            and ERROR_CODE.search(str(call.get("result_digest")))
+        ]
+
     def executions(self, workflow_id: str) -> list[Execution]:
         rows = self.db["workflow_executions"].find({"workflow_id": workflow_id})
         return [
@@ -240,11 +251,10 @@ def _observe(
         playbook=store.playbook(workflow_id),
         workflow=store.workflow(workflow_id),
         decisions=store.decisions(execution.execution_id),
+        refusals=store.refusals(execution.execution_id),
     )
     for event in log.events_since(position, workflow_id):
         _read_playbook_event(observation, event)
-        observation.warnings.extend(_message(w) for w in event.get("warnings") or [])
-        observation.errors.extend(_message(e) for e in event.get("errors") or [])
     return observation
 
 
@@ -260,10 +270,6 @@ def _read_playbook_event(observation: Observation, event: dict[str, Any]) -> Non
             observation.for_each.append(ForEachCount.model_validate(playbook["for_each"]))
     if str(event.get("message", "")).endswith("Playbook discarded"):
         observation.discards.append(str(event.get("reason")))
-
-
-def _message(entry: object) -> str:
-    return str(entry.get("msg", "")) if isinstance(entry, dict) else str(entry)
 
 
 def _tools(steps: list[dict[str, Any]]) -> list[str]:

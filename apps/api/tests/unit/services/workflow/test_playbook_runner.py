@@ -50,9 +50,7 @@ from app.models.playbook_models import (
     PlaybookAskAnswer,
     PlaybookAskFill,
     PlaybookDocument,
-    PlaybookHandoffStepInput,
     PlaybookStep,
-    PlaybookStepInput,
     ToolStep,
 )
 from app.models.workflow_execution_models import (
@@ -63,6 +61,7 @@ from app.models.workflow_execution_models import (
 )
 from app.override.langgraph_bigtool.create_agent import create_agent as real_create_agent
 from app.services.hil.prompts import UNPAUSABLE_DENIAL_TEMPLATE
+from app.services.workflow.playbook.dry_run import DRY_RUN_READ_TOOLS, DryRun
 from app.services.workflow.playbook.evaluator import (
     NO_ITEM,
     AskAnswers,
@@ -277,6 +276,8 @@ class _Seams:
     subagent: _FakeSubagent | None = None
     find_previous: AsyncMock | None = None
     llm: AsyncMock | None = None
+    #: Runs the replay as a dry run, letting only these reads reach a tool.
+    dry_run: DryRun | None = None
 
 
 async def _run(
@@ -325,7 +326,11 @@ async def _run(
         _gate_policy(policy),
     ):
         result = await run_playbook(
-            playbook, user=USER, conversation_id="conv_1", trigger={"to": "team@example.com"}
+            playbook,
+            user=USER,
+            conversation_id="conv_1",
+            trigger={"to": "team@example.com"},
+            dry_run=seams.dry_run,
         )
     return result, llm
 
@@ -333,6 +338,12 @@ async def _run(
 AGENDA_STEPS = [
     ToolStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
     ToolStep(id="mail", tool="send_email", args={"to": "$trigger.to"}),
+]
+#: The agenda after a write: its read is not the opening one, so an empty result there is
+#: judged against earlier replays instead of ending the run as nothing new.
+AFTER_A_WRITE = [
+    ToolStep(id="note", tool="file_notes", args={"items": ["start"]}),
+    *AGENDA_STEPS,
 ]
 
 
@@ -1978,9 +1989,8 @@ class TestSuspectVerdict:
         """The record's verdict is known the moment the step returns, so later steps must not run on distrusted data, and no narration follows."""
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder, events_result='{"items": []}'))
-
         result, llm = await _run(
-            _playbook(AGENDA_STEPS),
+            _playbook(AFTER_A_WRITE),
             registry,
             seams=_Seams(find_previous=_previous_run(self.PREVIOUS_HAD_THREE)),
         )
@@ -1991,7 +2001,7 @@ class TestSuspectVerdict:
             == "list_events returned no items where the last replay with results returned 3"
         )
         assert result.suspect_source == "record"
-        assert [name for name, _ in recorder.calls] == ["list_events"]
+        assert [name for name, _ in recorder.calls] == ["file_notes", "list_events"]
         assert result.text == ""
         assert llm.await_count == 0
 
@@ -2063,11 +2073,11 @@ class TestSuspectVerdict:
         )
 
         result, _ = await _run(
-            _playbook(AGENDA_STEPS), registry, seams=_Seams(find_previous=previous)
+            _playbook(AFTER_A_WRITE), registry, seams=_Seams(find_previous=previous)
         )
 
         assert result.suspect is None
-        assert [name for name, _ in recorder.calls] == ["list_events", "send_email"]
+        assert [name for name, _ in recorder.calls] == ["file_notes", "list_events", "send_email"]
 
     async def test_an_empty_list_inside_a_result_envelope_counts_as_empty(self) -> None:
         """GAIA tool envelopes nest the list at data.messages, not the top: {"data": {"fetched_count": 0, "messages": []}}."""
@@ -2084,7 +2094,7 @@ class TestSuspectVerdict:
         )
 
         result, _ = await _run(
-            _playbook(AGENDA_STEPS), registry, seams=_Seams(find_previous=previous)
+            _playbook(AFTER_A_WRITE), registry, seams=_Seams(find_previous=previous)
         )
 
         assert result.ok is True, result.failure
@@ -2124,7 +2134,7 @@ class TestSuspectVerdict:
         )
 
         result, _ = await _run(
-            _playbook(AGENDA_STEPS), registry, seams=_Seams(find_previous=previous)
+            _playbook(AFTER_A_WRITE), registry, seams=_Seams(find_previous=previous)
         )
 
         assert (
@@ -2142,7 +2152,7 @@ class TestSuspectVerdict:
         )
 
         result, _ = await _run(
-            _playbook(AGENDA_STEPS), registry, seams=_Seams(find_previous=previous)
+            _playbook(AFTER_A_WRITE), registry, seams=_Seams(find_previous=previous)
         )
 
         assert (
@@ -2184,7 +2194,7 @@ class TestSuspectVerdict:
         )
 
         result, _ = await _run(
-            _playbook(AGENDA_STEPS),
+            _playbook(AFTER_A_WRITE),
             registry,
             narration=narration,
             seams=_Seams(find_previous=_previous_run(self.PREVIOUS_HAD_THREE)),
@@ -2201,7 +2211,7 @@ class TestSuspectVerdict:
         registry = _FakeRegistry(_tools(recorder, events_result='{"items": []}'))
 
         result, _ = await _run(
-            _playbook(AGENDA_STEPS),
+            _playbook(AFTER_A_WRITE),
             registry,
             seams=_Seams(find_previous=_previous_run(self.PREVIOUS_HAD_THREE)),
         )
@@ -2229,7 +2239,7 @@ class TestSuspectVerdict:
         )
 
         result, _ = await _run(
-            _playbook(AGENDA_STEPS),
+            _playbook(AFTER_A_WRITE),
             registry,
             narration=narration,
             seams=_Seams(find_previous=_previous_run(self.PREVIOUS_HAD_THREE)),
@@ -3115,24 +3125,6 @@ class TestForEachShape:
         with pytest.raises(ValidationError):
             ForEachStep(id="s", tool="send_email", args={}, for_each="$steps.x.ids", max_items=1000)
 
-    def test_an_authored_loop_without_a_ceiling_is_refused_by_name(self) -> None:
-        with pytest.raises(ValueError, match="needs max_items"):
-            PlaybookStepInput(id="s", tool="send_email", for_each="$steps.x.ids").to_step()
-
-    def test_an_authored_ceiling_without_a_loop_is_refused_by_name(self) -> None:
-        with pytest.raises(ValidationError, match="only means something with for_each"):
-            PlaybookStepInput(id="s", tool="send_email", max_items=5)
-
-    def test_an_authored_handoff_cannot_repeat(self) -> None:
-        with pytest.raises(ValidationError, match="cannot sit on a handoff"):
-            PlaybookStepInput(
-                id="h",
-                handoff="calendar_agent",
-                steps=[PlaybookHandoffStepInput(id="c", tool="list_events")],
-                for_each="$steps.x.ids",
-                max_items=2,
-            )
-
 
 class TestAskAnswerShape:
     """text is optional so a for_each source can answer with items instead.
@@ -3274,7 +3266,7 @@ async def test_an_empty_replay_is_measured_against_the_last_replay_with_results_
     ]
 
     result, _ = await _run(
-        _playbook(AGENDA_STEPS),
+        _playbook(AFTER_A_WRITE),
         registry,
         seams=_Seams(find_previous=AsyncMock(return_value=[heal_run, suspect_replay, full_replay])),
     )
@@ -3410,6 +3402,7 @@ class TestForEachRecord:
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder, events_result='{"ids": null}'))
         steps = [
+            *AFTER_A_WRITE[:1],
             ToolStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
             ForEachStep(
                 id="mails",
@@ -3557,3 +3550,157 @@ class TestItemOutsideForEach:
         assert result.failure is not None
         assert "$item is only meaningful inside a for_each step" in result.failure
         assert recorder.calls == []
+
+
+class TestNothingNew:
+    """A playbook that opens with a read stops there, before any model call, when the read found nothing new."""
+
+    LAST_RUN_TWO = RecordedCall(
+        replayed=True,
+        tool_name="list_events",
+        result_digest='{"items": [{"id": "e1"}, {"id": "e2"}]}',
+        item_ids=["e1", "e2"],
+    )
+
+    async def test_a_replayed_read_records_its_ids_from_the_whole_result(self) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(
+            _tools(recorder, events_result='{"items": [{"id": "e2"}, {"id": "e1"}]}')
+        )
+
+        result, _ = await _run(_playbook(AGENDA_STEPS), registry)
+
+        assert [call.item_ids for call in result.trace] == [["e1", "e2"], None]
+
+    async def test_an_opening_read_that_returns_nothing_ends_the_run_with_no_model_call(
+        self,
+    ) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder, events_result='{"items": []}'))
+
+        result, llm = await _run(
+            _playbook(AGENDA_STEPS),
+            registry,
+            seams=_Seams(find_previous=_previous_run(self.LAST_RUN_TWO)),
+        )
+
+        assert result.ok is True, result.failure
+        assert result.nothing_new == "list_events returned nothing"
+        assert result.completed == [
+            'events (list_events {"calendar_id":"primary"}) -> {"items": []}'
+        ]
+        assert result.suspect is None
+        assert [name for name, _ in recorder.calls] == ["list_events"]
+        assert [call.tool_name for call in result.trace] == ["list_events"]
+        assert llm.await_count == 0
+        assert result.llm_calls == 0
+
+    async def test_the_same_items_as_the_last_run_end_the_run(self) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(
+            _tools(recorder, events_result='{"items": [{"id": "e2"}, {"id": "e1"}]}')
+        )
+
+        result, llm = await _run(
+            _playbook(AGENDA_STEPS),
+            registry,
+            seams=_Seams(find_previous=_previous_run(self.LAST_RUN_TWO)),
+        )
+
+        assert result.nothing_new == "list_events returned the same 2 items as the last run"
+        assert [name for name, _ in recorder.calls] == ["list_events"]
+        assert llm.await_count == 0
+
+    async def test_a_new_item_runs_the_playbook_through(self) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(
+            _tools(recorder, events_result='{"items": [{"id": "e1"}, {"id": "e3"}]}')
+        )
+
+        result, llm = await _run(
+            _playbook(AGENDA_STEPS),
+            registry,
+            seams=_Seams(find_previous=_previous_run(self.LAST_RUN_TWO)),
+        )
+
+        assert result.nothing_new is None
+        assert [name for name, _ in recorder.calls] == ["list_events", "send_email"]
+        assert llm.await_count == 1
+
+    async def test_with_no_earlier_run_the_same_items_cannot_be_judged_and_the_run_goes_on(
+        self,
+    ) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder, events_result='{"items": [{"id": "e1"}]}'))
+
+        result, _ = await _run(_playbook(AGENDA_STEPS), registry)
+
+        assert result.nothing_new is None
+        assert [name for name, _ in recorder.calls] == ["list_events", "send_email"]
+
+    async def test_a_playbook_that_opens_with_a_write_is_never_ended_early(self) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder, events_result='{"items": []}'))
+        playbook = _playbook(
+            [
+                ToolStep(id="mail", tool="send_email", args={"to": "$trigger.to"}),
+                ToolStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
+            ]
+        )
+
+        result, _ = await _run(playbook, registry)
+
+        assert result.nothing_new is None
+        assert [name for name, _ in recorder.calls] == ["send_email", "list_events"]
+
+    async def test_an_opening_read_that_needed_a_model_call_is_not_ended_early(self) -> None:
+        """Its model call already ran; ending there would save nothing and hide the run."""
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder, events_result='{"items": []}'))
+        playbook = _playbook(
+            [
+                ToolStep(
+                    id="events", tool="list_events", args={"calendar_id": _slot("Which one.")}
+                ),
+                ToolStep(id="mail", tool="send_email", args={"to": "$trigger.to"}),
+            ]
+        )
+
+        result, _ = await _run(playbook, registry, ask_fill=_ask_fill({"events.calendar_id": "x"}))
+
+        assert result.nothing_new is None
+        assert [name for name, _ in recorder.calls] == ["list_events", "send_email"]
+
+
+class TestDryRun:
+    """A dry run reaches only its allowlisted reads; every other step is only described."""
+
+    READS = DryRun(reads=frozenset({"list_events"}))
+
+    async def test_a_write_never_reaches_its_tool_and_says_what_it_would_have_called(
+        self,
+    ) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder))
+
+        result, llm = await _run(
+            _playbook(AGENDA_STEPS), registry, seams=_Seams(dry_run=self.READS)
+        )
+
+        assert result.ok is True, result.failure
+        assert [name for name, _ in recorder.calls] == ["list_events"]
+        assert result.completed[1] == (
+            'mail (send_email {"to":"team@example.com"}) -> '
+            '{"dry_run": "would call send_email", "args": {"to": "team@example.com"}}'
+        )
+        assert llm.await_count == 1, "the narration still runs, over what the run would have done"
+
+    async def test_a_write_proxied_through_execute_is_held_back_by_its_real_name(self) -> None:
+        held = DryRun(reads=frozenset({"list_events"}))
+        proxied = {"tool_name": "GMAIL_SEND_EMAIL", "data": {"to": "a@b.c"}}
+
+        assert held.runs("execute", proxied) is False
+        assert held.runs("execute", {"tool_name": "list_events", "data": {}}) is True
+
+    async def test_the_default_allowlist_holds_back_every_write_a_recipe_can_make(self) -> None:
+        assert not {"send_email", "create_todo", "GMAIL_CREATE_EMAIL_DRAFT"} & DRY_RUN_READ_TOOLS

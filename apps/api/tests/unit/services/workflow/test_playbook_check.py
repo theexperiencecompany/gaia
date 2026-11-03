@@ -37,7 +37,6 @@ from app.models.playbook_models import (
     PlaybookDocument,
     PlaybookRunOutcome,
     PlaybookRunStatus,
-    PlaybookStepInput,
     ToolStep,
 )
 from app.models.workflow_execution_models import RecordedCall
@@ -48,6 +47,7 @@ from app.services.workflow.playbook.check import (
     heal_brief,
     playbook_check_brief,
 )
+from app.services.workflow.playbook.record import PlaybookPick
 from app.services.workflow.playbook.workflow_hash import workflow_hash
 
 MODULE = "app.services.workflow.playbook.check"
@@ -373,12 +373,13 @@ def test_the_check_teaches_the_inline_ask_slot_and_no_ask_section():
     assert "ask entry" not in PLAYBOOK_CHECK_BRIEF
 
 
-def test_the_check_shows_a_literal_example_of_the_shape_it_asks_for():
-    """Prose about the shape is what the schema already says; the example is what shows flat activate+execute calls, a slot sitting inside an argument, and the result_brief at the end."""
-    assert "result_brief:" in PLAYBOOK_CHECK_BRIEF
-    assert "GMAIL_FETCH_MESSAGES" in PLAYBOOK_CHECK_BRIEF
-    assert "activate_integration" in PLAYBOOK_CHECK_BRIEF
-    assert "tool: web_search_tool" in PLAYBOOK_CHECK_BRIEF
+def test_the_check_shows_a_record_and_the_write_picked_from_it():
+    """The example is a record as read_run_record shows it and the picks made over it, not steps to retype."""
+    assert '"call": 1, "tool": "GMAIL_FETCH_MESSAGES"' in PLAYBOOK_CHECK_BRIEF
+    assert '"call": 2,' in PLAYBOOK_CHECK_BRIEF
+    assert '"vary"' in PLAYBOOK_CHECK_BRIEF
+    assert '"result_brief"' in PLAYBOOK_CHECK_BRIEF
+    assert "Call read_run_record" in PLAYBOOK_CHECK_BRIEF
 
 
 def test_the_heal_brief_names_the_tools_the_executor_needs():
@@ -416,14 +417,12 @@ def test_the_heal_brief_demands_a_decision_even_when_no_more_calls_are_needed():
         assert "—" not in text
 
 
-def test_the_check_points_at_the_handoff_result_for_a_handoffs_nested_steps():
-    # A handoff step must carry the calls its subagent ran, and the only place
-    # the executor can copy them from is the handoff's own result record.
-    assert "record of the calls" in PLAYBOOK_CHECK_BRIEF
-    assert "nested steps" in PLAYBOOK_CHECK_BRIEF
+def test_the_check_says_nothing_is_retyped():
+    # 88% of refused hand-written writes were a call retyped wrong (prod, Sep-Oct 2026).
+    assert "You never retype a tool name or an argument" in PLAYBOOK_CHECK_BRIEF
 
 
-def test_the_tools_own_schema_carries_the_step_shape():
+def test_the_tools_own_schema_carries_the_pick_shape():
     """Regression: an opaque YAML string schema ("argument 2 is a string") let a live run invent a goal field three times running."""
     schema = write_playbook.tool_call_schema.model_json_schema()
 
@@ -431,24 +430,15 @@ def test_the_tools_own_schema_carries_the_step_shape():
     # The workflow is resolved from the run's config server-side. Exposing it as
     # an argument is what let a live run hallucinate "inbox-triage" as an id.
     assert "workflow_id" not in schema["properties"]
-    step = schema["$defs"][PlaybookStepInput.__name__]
-    assert {"id", "tool", "args", "handoff", "steps"} <= set(step["properties"])
+    step = schema["$defs"][PlaybookPick.__name__]
+    assert set(step["properties"]) == {"call", "id", "vary", "for_each", "max_items"}
+    assert step["required"] == ["call"]
 
-    child_name = step["properties"]["steps"]["items"]["$ref"].rsplit("/", 1)[-1]
-    child = schema["$defs"][child_name]
-    assert {"id", "tool", "args"} <= set(child["properties"])
-    # Depth-1 by construction: the child cannot carry steps, so the schema has
-    # no self-$ref for a provider to mishandle.
-    assert "steps" not in child["properties"]
-
-    # A key the schema never asked for is dropped, not refused: the shape rule
-    # is the only thing worth failing a write over.
-    step_input = PlaybookStepInput.model_validate(
-        {"id": "agenda", "tool": "list_events", "goal": "read the events"}
-    )
-    assert not hasattr(step_input, "goal")
-    with pytest.raises(ValidationError, match="exactly one of"):
-        PlaybookStepInput.model_validate({"id": "agenda", "goal": "read the events"})
+    # A key the schema never asked for is dropped, not refused.
+    pick = PlaybookPick.model_validate({"call": 3, "goal": "read the events"})
+    assert not hasattr(pick, "goal")
+    with pytest.raises(ValidationError, match="call"):
+        PlaybookPick.model_validate({"id": "agenda", "goal": "read the events"})
 
 
 class TestBriefsCarryTheDecisionTag:

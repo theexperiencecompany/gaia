@@ -13469,6 +13469,8 @@ export interface components {
          *     reads to author a playbook, and the cursor a later run picks up from.
          */
         RecordedCall: {
+            /** Account */
+            account?: string | null;
             /** Args */
             args?: {
                 [key: string]: unknown;
@@ -13478,6 +13480,13 @@ export interface components {
              * @default false
              */
             failed?: boolean;
+            /** Item Ids */
+            item_ids?: string[] | null;
+            /**
+             * Proxied
+             * @default false
+             */
+            proxied?: boolean;
             /**
              * Replayed
              * @default false

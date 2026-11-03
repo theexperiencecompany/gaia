@@ -16,7 +16,7 @@ from langgraph.types import Command
 import pytest
 
 from app.agents.tools import run_record
-from app.agents.tools.invocation import invoke_tool, invoke_tool_sync
+from app.agents.tools.invocation import ViaExecute, invoke_tool, invoke_tool_sync
 from app.agents.tools.run_record import read_run_record
 from app.constants.cache import RUN_RECORD_PREFIX, RUN_RECORD_TTL
 from app.models.workflow_execution_models import RecordedCall
@@ -181,6 +181,17 @@ async def test_every_call_of_a_run_reads_back_in_order(fake_redis: Any) -> None:
         {"query": "two"},
         {"query": "three"},
     ]
+
+
+async def test_a_call_the_execute_proxy_made_is_recorded_as_proxied_with_its_account(
+    fake_redis: Any,
+) -> None:
+    await invoke_tool(answers, {"query": "q"}, CONFIG, via=ViaExecute("work@acme.com"))
+    await invoke_tool(answers, {"query": "direct"}, CONFIG)
+
+    proxied, direct = await read_run_record(STREAM_ID)
+    assert (proxied.proxied, proxied.account) == (True, "work@acme.com")
+    assert (direct.proxied, direct.account) == (False, None)
 
 
 @tool

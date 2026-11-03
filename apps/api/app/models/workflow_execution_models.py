@@ -216,29 +216,35 @@ def carries_no_data(value: object) -> bool:
     return False
 
 
-def largest_list_len(value: object) -> int | None:
-    """Length of the largest list anywhere inside ``value``; ``None`` when it has none.
+def largest_list(value: object) -> list[object] | None:
+    """The largest list anywhere inside ``value``, the first on a tie; ``None`` when it has none.
 
-    Tool results are envelopes (``{"data": {"messages": [...]}}``), so "did this
-    call return any items" has to look past the top level. Shared by the replay's
-    empty-result check and the handoff call record, so both agree on what empty
-    means.
+    Tool results are envelopes (``{"data": {"messages": [...]}}``), so "what did
+    this call return" has to look past the top level.
     """
-    best: int | None = None
+    best: list[object] | None = None
     if isinstance(value, list):
-        best = len(value)
+        best = value
         children: list[object] = value
     elif isinstance(value, dict):
         children = list(value.values())
     else:
         return None
     for child in children:
-        nested = largest_list_len(child)
-        # On a tie, re-assigning an equal int is a no-op, so > and >= are
-        # equivalent here; the strict form documents first-wins.
-        if nested is not None and (best is None or nested > best):  # pragma: no mutate
+        nested = largest_list(child)
+        if nested is not None and (best is None or len(nested) > len(best)):
             best = nested
     return best
+
+
+def largest_list_len(value: object) -> int | None:
+    """Length of the largest list anywhere inside ``value``; ``None`` when it has none.
+
+    Shared by the replay's empty-result check and the handoff call record, so
+    both agree on what empty means.
+    """
+    items = largest_list(value)
+    return None if items is None else len(items)
 
 
 # Run-states an execution record may hold (Type Safety items 3, 5): created as
@@ -277,6 +283,13 @@ class RecordedCall(BaseModel):
     replayed: bool = False
     #: True when the tool raised instead of returning; result_digest holds the error.
     failed: bool = False
+    #: True when the call ran through the execute proxy, as a replay must run it again.
+    proxied: bool = False
+    #: The connected account a proxied call named; None is the primary.
+    account: str | None = None
+    #: A replayed read's element ids, taken from the whole result before it was
+    #: bounded into result_digest: what the next fire's nothing-new check compares.
+    item_ids: list[str] | None = None
 
 
 class WorkflowExecution(ResponseModel):

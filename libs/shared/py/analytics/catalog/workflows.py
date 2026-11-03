@@ -37,6 +37,11 @@ class WorkflowCreated(ServerEvent):
     is_todo_workflow: bool | None = None
 
 
+#: ran: the fire did its work; nothing_new: its shortcut's first read found nothing since the
+#: last run, so it stopped there and was recorded skipped.
+WorkflowRunOutcome = Literal["ran", "nothing_new"]
+
+
 class WorkflowExecuted(ServerEvent):
     """A workflow run was queued manually, or a background-triggered run completed."""
 
@@ -46,6 +51,8 @@ class WorkflowExecuted(ServerEvent):
 
     workflow_id: Identifier | None = None
     trigger_type: Identifier | None = None
+    #: Background fires only; a manual queue does not know yet.
+    outcome: WorkflowRunOutcome | None = None
 
 
 #: delivered: it reached its place (the GAIA app keeps the saved result); undelivered: the

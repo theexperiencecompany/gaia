@@ -13,33 +13,47 @@ the finished result. Two reasons, both load-bearing:
   anyway: this run's is only persisted after the run returns.
 """
 
-from app.models.playbook_models import PlaybookBody, PlaybookStepInput, playbook_body_from_input
-from app.services.workflow.playbook.parser import dump_playbook
+import json
+
+from app.models.workflow_execution_models import RecordedCall
+from app.services.workflow.playbook.record import number_record, render_record
 
 
-def _example(description: str, steps: list[dict[str, object]], result_brief: str) -> PlaybookBody:
-    return playbook_body_from_input(
-        description, [PlaybookStepInput.model_validate(step) for step in steps], result_brief
+def _recorded(tool_name: str, args: dict[str, object], result: object) -> RecordedCall:
+    return RecordedCall(
+        tool_name=tool_name,
+        args=args,
+        result_digest=json.dumps(result),
+        proxied=tool_name.isupper(),
     )
 
 
-#: The end-to-end example: flat execute calls, then a built-in tool with an $ask slot.
-PLAYBOOK_EXAMPLE = _example(
-    "Brief the user on today's unread mail.",
-    [
+def _show_record(calls: list[RecordedCall]) -> str:
+    """Return a record as read_run_record shows it, one call per line."""
+    return "\n".join(json.dumps(line) for line in render_record(number_record(calls, ())))
+
+
+#: A run that read unread mail and searched the web about it.
+PLAYBOOK_EXAMPLE_RECORD = [
+    _recorded(
+        "GMAIL_FETCH_MESSAGES",
+        {"query": "is:unread", "timeframe": "1d"},
+        {"messages": [{"id": "18c2a", "from": "Dana <dana@acme.com>", "subject": "Q3 numbers"}]},
+    ),
+    _recorded(
+        "web_search_tool",
+        {"query_text": "Acme Q3 earnings"},
+        {"results": [{"title": "Acme reports Q3", "url": "https://example.com/acme-q3"}]},
+    ),
+]
+#: The write over that run: the search query is the one value that changes.
+PLAYBOOK_EXAMPLE_WRITE: dict[str, object] = {
+    "description": "Brief the user on today's unread mail.",
+    "steps": [
+        {"call": 1, "id": "inbox"},
         {
-            "id": "inbox",
-            "tool": "execute",
-            "args": {
-                "task_description": "Listing unread mail",
-                "tool_name": "GMAIL_FETCH_MESSAGES",
-                "data": {"query": "is:unread", "timeframe": "1d"},
-            },
-        },
-        {
-            "id": "background",
-            "tool": "web_search_tool",
-            "args": {
+            "call": 2,
+            "vary": {
                 "query_text": {
                     "$ask": "one web search that would give background on the most "
                     "important mail listed above"
@@ -47,66 +61,103 @@ PLAYBOOK_EXAMPLE = _example(
             },
         },
     ],
-    "Lead with what the unread mail is about, then what the search added. Two short paragraphs.",
-)
+    "result_brief": (
+        "Lead with what the unread mail is about, then what the search added. Two short paragraphs."
+    ),
+}
 
-#: The for_each example: one execute call repeated over the elements a model picks.
-PLAYBOOK_FOR_EACH_EXAMPLE = _example(
-    "Draft a reply to every email from a real person that expects one.",
-    [
+#: A run that fetched today's mail and drafted a reply to two of the threads.
+PLAYBOOK_FOR_EACH_RECORD = [
+    _recorded(
+        "GMAIL_FETCH_MESSAGES",
+        {"query": "in:inbox", "timeframe": "today"},
         {
-            "id": "inbox",
-            "tool": "execute",
-            "args": {
-                "task_description": "Listing today's mail",
-                "tool_name": "GMAIL_FETCH_MESSAGES",
-                "data": {"query": "in:inbox", "timeframe": "today"},
-            },
+            "messages": [
+                {"threadId": "t1", "from": "Dana <dana@acme.com>", "subject": "Q3 numbers"},
+                {"threadId": "t2", "from": "Lee <lee@acme.com>", "subject": "Offsite dates"},
+            ]
         },
+    ),
+    _recorded(
+        "GMAIL_CREATE_EMAIL_DRAFT",
         {
+            "thread_id": "t1",
+            "recipient_email": "dana@acme.com",
+            "subject": "Re: Q3 numbers",
+            "body": "Thanks Dana, I will review the numbers today.",
+        },
+        {"id": "d1"},
+    ),
+    _recorded(
+        "GMAIL_CREATE_EMAIL_DRAFT",
+        {
+            "thread_id": "t2",
+            "recipient_email": "lee@acme.com",
+            "subject": "Re: Offsite dates",
+            "body": "Both dates work for me.",
+        },
+        {"id": "d2"},
+    ),
+]
+#: The write over that run: one draft call, repeated over the threads a model picks.
+PLAYBOOK_FOR_EACH_WRITE: dict[str, object] = {
+    "description": "Draft a reply to every email from a real person that expects one.",
+    "steps": [
+        {"call": 1, "id": "inbox"},
+        {
+            "call": 2,
             "id": "replies",
-            "tool": "execute",
             "for_each": {
                 "$ask": "the thread ids above from a real person expecting a reply, "
                 "skipping newsletters and receipts"
             },
             "max_items": 10,
-            "args": {
-                "task_description": "Drafting a reply",
-                "tool_name": "GMAIL_CREATE_EMAIL_DRAFT",
-                "data": {
-                    "thread_id": "$item",
-                    "recipient_email": {"$ask": "the address of the person this reply goes to"},
-                    "subject": {"$ask": "the subject line of this thread"},
-                    "body": {"$ask": "a reply to this one email"},
-                },
+            "vary": {
+                "thread_id": "$item",
+                "recipient_email": {"$ask": "the address of the person this reply goes to"},
+                "subject": {"$ask": "the subject line of this thread"},
+                "body": {"$ask": "a reply to this one email"},
             },
         },
     ],
-    "Say how many replies were drafted and to whom, one line each.",
-)
+    "result_brief": "Say how many replies were drafted and to whom, one line each.",
+}
 
 PLAYBOOK_CHECK_BRIEF = (
     """<playbook_check>
-This workflow has no working playbook. When you have finished the work above (and only then), decide whether the sequence you just ran is worth freezing so future runs can replay it instead of reasoning it out again.
+This workflow has no working playbook. When you have finished the work above (and only then), decide whether the calls you just made are worth freezing so future runs can replay them instead of reasoning it out again.
 
 Work through these five for yourself, against the calls you actually made. This is your own reasoning, not part of the run's result:
-1. Which of your calls were discovery or dead ends (finding an id, a channel, a folder, a file, recovering from an error, or an attempt that came back empty, wrong or refused that you then did differently) rather than the work itself? Those must not go in a playbook. A playbook records what WORKED: freeze the call that actually produced the result, with the arguments that made it produce one, not the first thing you tried.
-2. WRITE THE SEQUENCE OUT, before you judge anything. List the calls that did the work, in order, and replace every value that was specific to today with a placeholder. The vocabulary is: $now, $today, $now + 1d, $today + 1d 09:00 (a clock time); $user.email, $user.name, $user.timezone; $trigger.<path>; $steps.<step_id>.<path> and $steps.<step_id>.file; $last_run.<TOOL_NAME>.<path>. If a value genuinely cannot be frozen or built from those, write {"$ask": "what to write"} as that value and a model writes it at replay, right before that step runs. This is rare: a search query usually freezes fine, and anything about the RESULT belongs in result_brief, not in a step. Do this even if you expect to decline; question 4 is about the list you write here, not about your memory of the run.
+1. Which of your calls were discovery or dead ends (finding an id, a channel, a folder, a file, recovering from an error, or an attempt that came back empty, wrong or refused that you then did differently) rather than the work itself? Those are not steps. A playbook replays what WORKED: the call that actually produced the result, with the arguments that made it produce one, not the first thing you tried.
+2. WRITE THE SEQUENCE OUT, before you judge anything. Call read_run_record: it lists every call this run made, numbered, with the args it was sent and the shape of what it returned. Note the numbers of the calls that did the work, and in each one the values that were specific to today. Those values are what you will mark as changing per run, with a placeholder: $now, $today, $now + 1d, $today + 1d 09:00 (a clock time); $user.email, $user.name, $user.timezone; $trigger.<path>; $steps.<step_id>.<path> and $steps.<step_id>.file; $last_run.<TOOL_NAME>.<path>. A time the tool takes in its own layout is {"$time": "$today + 1d 09:00"}, and the layout is kept from the recorded value. If a value genuinely cannot be frozen or built from those, mark it {"$ask": "what to write"} and a model writes it at replay, right before that step runs. This is rare: a search query usually freezes fine, and anything about the RESULT belongs in result_brief, not in a step. Do this even if you expect to decline; question 4 is about the list you write here, not about your memory of the run.
 3. What has to carry over to the next run (a cursor, a last seen id, a timestamp) so it does not redo work or repeat something someone would notice?
-4. Now look at the list from question 2. Changing data is NEVER a reason to answer no: results, and the words you write from them, are supposed to differ every run, and result_brief and $ask are where that lives. The attendees of today's meeting, the subject of today's mail, the id you just looked up: you have already handled every one of those by writing a placeholder for it, so none of them can be your reason. The only question left is whether the list of CALLS changes: is there a call in it that would not happen tomorrow, or a call missing from it that would? If you cannot point to one such call by name, the answer is yes and you write the playbook.
-5. Did every call you are freezing return the data the workflow needs, as it stands? If a step came back empty, with an error, or partial, and you compensated by reasoning around it, that call is not the work. A playbook replays the call, not your reasoning, so the next run would hand the user the gap you papered over. Fix its args before freezing, or decline.
+4. Now look at the list from question 2. Changing data is NEVER a reason to answer no: results, and the words you write from them, are supposed to differ every run, and result_brief and $ask are where that lives. The attendees of today's meeting, the subject of today's mail, the id you just looked up: you have already handled every one of those by marking it with a placeholder, so none of them can be your reason. The only question left is whether the list of CALLS changes: is there a call in it that would not happen tomorrow, or a call missing from it that would? If you cannot point to one such call by name, the answer is yes and you write the playbook.
+5. Did every call you are freezing return the data the workflow needs, as it stands? If a step came back empty, with an error, or partial, and you compensated by reasoning around it, that call is not the work. A playbook replays the call, not your reasoning, so the next run would hand the user the gap you papered over. Run the call that works before freezing, or decline.
 
-If 4 and 5 are both yes, call write_playbook. Its arguments carry the shape: a description, the steps in the order you ran them, and a result_brief saying how to write the user's result from the steps' results (this is where classification, judgement and summarising go). A step is EITHER a tool call OR, for work a per-user MCP subagent ran via handoff, a handoff carrying the record of the calls that subagent ran as its nested steps. Provider and built-in integrations never produce handoff steps: their work is the flat sequence of execute calls you actually made, each frozen as tool: execute with its tool_name and data. activate_integration only binds tools, like retrieve_tools, so it is discovery and never a step. Use the real tool names and argument names you actually called, with those exact names and args, minus the subagent's own discovery, since they are checked against the live tools and a playbook naming a tool that does not exist is refused. The shape, end to end:
-
-"""
-    + dump_playbook(PLAYBOOK_EXAMPLE)
-    + """
-If the NUMBER of calls depended on what you found, that is a for_each step, not a reason to decline. Give the tool step (never a handoff) a for_each naming the list to repeat over, a max_items ceiling, and write its arguments with $item for the current element. for_each is the WHOLE value: one placeholder, or one $ask. Never a placeholder inside a sentence, because that resolves to text and text is not a list. The list is either a previous step's, or one a model picks at replay. Which one is not a style choice: a $steps list acts on EVERY item the step returned, and $item.field reads a field of one of its items; an $ask list acts on the items a model picks, and each pick is one text value, so its arguments use $item alone. If only some items should be acted on (the overdue ones, the ones from a real person, the ones without a follow-up) the source must be an $ask that picks them, and the picking is the judgement you would otherwise have re-done every run:
+If 4 and 5 are both yes, call write_playbook with a description, the steps, and a result_brief saying how to write the user's result from the steps' results (this is where classification, judgement and summarising go). Each step is one call from read_run_record, by its number. Give it an id when a later step reads its result as $steps.<id>.<path>, and list in vary the values that change per run, by their path in the call's args. Everything you do not mark replays exactly as it was recorded: the tool, every other argument, where the call ran and the account it ran as. You never retype a tool name or an argument. For a run whose record reads:
 
 """
-    + dump_playbook(PLAYBOOK_FOR_EACH_EXAMPLE)
+    + _show_record(PLAYBOOK_EXAMPLE_RECORD)
     + """
+
+the playbook is:
+
+"""
+    + json.dumps(PLAYBOOK_EXAMPLE_WRITE, indent=2)
+    + """
+
+If the NUMBER of calls depended on what you found, that is a for_each step, not a reason to decline. Pick ONE of the calls that ran once per element, give it a for_each naming the list to repeat over and a max_items ceiling, and mark its per-element values with $item in vary. The other per-element calls are not steps. for_each is the WHOLE value: one placeholder, or one $ask. Never a placeholder inside a sentence, because that resolves to text and text is not a list. The list is either a previous step's, or one a model picks at replay. Which one is not a style choice: a $steps list acts on EVERY item the step returned, and $item.field reads a field of one of its items; an $ask list acts on the items a model picks, and each pick is one text value, so its values use $item alone. If only some items should be acted on (the overdue ones, the ones from a real person, the ones without a follow-up) the source must be an $ask that picks them, and the picking is the judgement you would otherwise have re-done every run. For a run whose record reads:
+
+"""
+    + _show_record(PLAYBOOK_FOR_EACH_RECORD)
+    + """
+
+the playbook is:
+
+"""
+    + json.dumps(PLAYBOOK_FOR_EACH_WRITE, indent=2)
+    + """
+
 Zero elements is a normal run, not a failure: a day with nothing to act on simply makes no calls for that step. max_items is a cost ceiling, not today's count: set it to the most this workflow should ever act on in one run (up to 25), because a list longer than it is cut, and the user hears nothing about what was cut.
 
 If either 4 or 5 is no, call decline_playbook. It takes a kind, not just prose, and the kind has to match what actually happened:
@@ -115,7 +166,7 @@ If either 4 or 5 is no, call decline_playbook. It takes a kind, not just prose, 
 - blocked_no_budget: the allowance was spent before any call ran.
 - order_branches, with branch_on naming the ONE call that runs on some days and not others. Before you pick this, check it is not a fan-out: a call that runs once per thing you found, including zero times on a day when you found nothing, is a for_each step and NOT a branch. "It made three create calls today and none yesterday" is a for_each over an empty list, not a changing order. Pick order_branches only when a DIFFERENT call, not just a different count of the same call, happens on another day. If you cannot name that call, the order does not branch and you should be writing a playbook instead.
 - unstable_discovery: you had to work something out mid-run that a later run would have to work out differently.
-- no_work_today: the run found nothing to act on (no overdue items, no mail that needs a reply), so the calls that do the work never happened and there is nothing to freeze yet. A playbook freezes calls that ran, so a for_each whose element step made zero calls today cannot be written today. You are asked again on the next run.
+- no_work_today: the run found nothing to act on (no overdue items, no mail that needs a reply), so the calls that do the work never happened and there is nothing to freeze yet. A playbook freezes calls that ran, so a for_each whose element call never ran today cannot be written today. You are asked again on the next run.
 There is no kind for "the arguments were different", because question 2 already handled that.
 
 You MUST end this run by calling exactly one of write_playbook or decline_playbook: staying silent is not a decision, and a run that was asked and called neither is a lapse, not a no.
@@ -135,7 +186,7 @@ If the recorded reason is that a call returned nothing, do not accept that empti
 
 The decision is about the playbook only. Do not pause, deactivate, edit or delete the workflow itself, and do not change its schedule: a source that has nothing today is not a reason to stop a workflow the user set up, and that call is theirs to make.
 
-When the work is finished (and only then), end this run by calling exactly one of write_playbook or disable_playbook. That holds even if you make no further calls because the steps that already ran answer the task: the decision is part of the work, not something that happens only after tool calls. Call write_playbook with the corrected sequence, or with the same sequence if it turns out to have been right after all and the recorded reason was a one-off. Call disable_playbook with the reason if the sequence cannot hold, because the order of calls depends on what each run finds. Staying silent is not a decision, and a run that was asked and called neither is a lapse, not a no.
+When the work is finished (and only then), end this run by calling exactly one of write_playbook or disable_playbook. That holds even if you make no further calls because the steps that already ran answer the task: the decision is part of the work, not something that happens only after tool calls. Call read_run_record, then write_playbook with the corrected sequence, or with the same sequence if it turns out to have been right after all and the recorded reason was a one-off. Call disable_playbook with the reason if the sequence cannot hold, because the order of calls depends on what each run finds. Staying silent is not a decision, and a run that was asked and called neither is a lapse, not a no.
 
 Keep all of this out of what you return. The result you hand back is the workflow's own output, the thing the user asked for, and nothing else. Do not narrate the check, do not mention playbooks or this decision at all. Whether you called the tool is the entire record of it.
 </playbook_check>"""

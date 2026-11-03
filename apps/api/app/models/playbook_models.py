@@ -30,7 +30,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Annotated, Any, Self, TypeGuard, cast
+from typing import Annotated, Any, Self, TypeGuard
 import uuid
 
 from pydantic import (
@@ -106,6 +106,32 @@ class DeclineKind(str, Enum):
     NO_WORK_TODAY = "no_work_today"
 
 
+class PlaybookRefusal(str, Enum):
+    """Why a write_playbook call was refused: the closed set its refusals are counted by."""
+
+    #: The arguments missed the tool's own schema before any pick was read.
+    MALFORMED = "malformed"
+    NOT_IN_RECORD = "not_in_record"
+    PICKED_TWICE = "picked_twice"
+    DUPLICATE_ID = "duplicate_id"
+    NO_STEPS = "no_steps"
+    FAILED_CALL = "failed_call"
+    #: The picked call returned nothing: a quiet day, which declines no_work_today.
+    EMPTY_RESULT = "empty_result"
+    NO_SUCH_ARG = "no_such_arg"
+    NO_PLACEHOLDER = "no_placeholder"
+    #: A time the placeholder vocabulary cannot say ($trigger.start + 1d).
+    TIME_EXPRESSION = "time_expression"
+    TIME_LAYOUT = "time_layout"
+    FOR_EACH_UNMARKED = "for_each_unmarked"
+    FOR_EACH_SOURCE = "for_each_source"
+    #: A $steps or $item reference to a step or field that does not exist.
+    STEP_REFERENCE = "step_reference"
+    ASK_SLOT = "ask_slot"
+    TOOL_SPACE = "tool_space"
+    ARG_SCHEMA = "arg_schema"
+
+
 #: Kinds saying the run never reached the work, so there was no sequence to judge.
 BLOCKED_DECLINE_KINDS = frozenset(
     {
@@ -140,6 +166,17 @@ WORK_CALL_VERBS = frozenset(
         "cancel",
     }
 )
+
+
+#: A call that only reads, by its name: a read verb and no work verb. Names with
+#: neither (file_notes) are not reads, so nothing that might write is skipped past.
+READ_CALL_VERBS = frozenset({"fetch", "list", "get", "search", "find", "read", "query"})
+
+
+def is_read_call(tool_name: str) -> bool:
+    """Whether a tool call, by its name, only reads."""
+    parts = tool_name.lower().replace("-", "_").split("_")
+    return any(part in READ_CALL_VERBS for part in parts) and not is_work_call(tool_name)
 
 
 def is_work_call(tool_name: str) -> bool:
@@ -593,187 +630,6 @@ class PlaybookBody(BaseModel):
     steps: list[PlaybookStep] = Field(min_length=1)
     result_brief: str = Field(
         description="How to write the run's result for the user, from every step's result."
-    )
-
-
-#: The placeholder vocabulary, spelled out for the tool-boundary schema. A JSON
-#: Schema cannot express "this string may be a reference", so the model only
-#: learns the namespaces if the ``args`` description carries them.
-_ARGS_DESCRIPTION = (
-    "The call's arguments, exactly as the tool takes them. A value may be a "
-    "placeholder resolved at replay: $now, $today, $now + 1d; $user.email, "
-    "$user.name, $user.timezone; $trigger.<path>; $steps.<step_id>.<path>; "
-    "$last_run.<TOOL_NAME>.<path>. A time may carry a clock: $today + 1d 09:00. "
-    "A time argument the tool takes in its own layout is written as "
-    '{"$time": "$today + 1d 09:00", "format": "%Y-%m-%d %H:%M:%S"}, the format '
-    "being the layout of the value you actually sent. $ask is not a placeholder; "
-    "if a value genuinely cannot be frozen or built from $now/$today/$user/$trigger/"
-    '$steps/$last_run, write {"$ask": "what to write"} as that value and a '
-    "model fills it at replay."
-)
-
-
-#: Names a model reaches for when it means args. If dropped as unknown keys,
-#: the call would store with no arguments and pass as authored — refusing
-#: them by name keeps lenience from swallowing the one key a step needs.
-_ARGS_NEAR_MISSES = ("arguments", "input", "inputs", "params", "parameters", "kwargs")
-
-
-def _refuse_args_near_miss(data: Mapping[str, object]) -> None:
-    if "args" in data:
-        return
-    for key in _ARGS_NEAR_MISSES:
-        if key in data:
-            raise ValueError(f"a step's arguments go under 'args', not {key!r}; rename it")
-
-
-_FOR_EACH_DESCRIPTION = (
-    "Repeat this step once per element of a list, with $item addressing the "
-    "element ($item.field for a field of it). This is the WHOLE value and "
-    "nothing else: either one placeholder naming a previous step's list, e.g. "
-    '$steps.inbox.messages, or {"$ask": "which of the above to act on"} for a '
-    "list a model picks at replay. A placeholder inside a longer string, like "
-    "'overdue-from-$steps.list', resolves to text, and text is not a list. Use "
-    "this when the NUMBER of calls depends on what the run found; it is not a "
-    "reason to decline."
-)
-_MAX_ITEMS_DESCRIPTION = (
-    f"Required with for_each, at most {MAX_FOR_EACH_ITEMS}: the most elements this "
-    "step may ever run for."
-)
-
-
-class _CallInput(BaseModel):
-    """What every authored call carries, at the tool boundary.
-
-    Unknown keys are dropped rather than refused. A model that adds a ``goal``
-    or a ``note`` to a step it otherwise wrote correctly has said everything the
-    playbook needs; refusing the whole write over a stray key threw away 17 of
-    the 57 authoring attempts made in production. The near-miss spellings of
-    ``args`` are the one exception, refused by name, because dropping one of
-    those would store a call with no arguments and pass it off as authored.
-    """
-
-    id: str = Field(default="", description=_STEP_ID_DESCRIPTION)
-    args: dict[str, Any] = Field(default_factory=dict, description=_ARGS_DESCRIPTION)
-    for_each: str | AskSlot | None = Field(default=None, description=_FOR_EACH_DESCRIPTION)
-    max_items: int | None = Field(default=None, description=_MAX_ITEMS_DESCRIPTION)
-
-    @model_validator(mode="before")
-    @classmethod
-    def _args_spelled_right(cls, data: object) -> object:
-        if isinstance(data, Mapping):
-            _refuse_args_near_miss(data)
-        return data
-
-    @model_validator(mode="after")
-    def _ceiling_only_with_a_loop(self) -> Self:
-        # Unrepresentable on the executed model; a model can still send it here.
-        if self.for_each is None and self.max_items is not None:
-            raise ValueError(
-                f"step {self.id or '<unnamed>'}: max_items only means something with for_each"
-            )
-        return self
-
-    def _call(self, tool: str) -> ToolStep | ForEachStep:
-        if self.for_each is None:
-            return ToolStep(id=self.id, tool=tool, args=self.args)
-        if self.max_items is None:
-            raise ValueError(
-                f"step {self.id or tool}: for_each needs max_items, at most {MAX_FOR_EACH_ITEMS}, "
-                "so the replay's cost is known before it runs"
-            )
-        return ForEachStep(
-            id=self.id, tool=tool, args=self.args, for_each=self.for_each, max_items=self.max_items
-        )
-
-
-class PlaybookHandoffStepInput(_CallInput):
-    """A tool call recorded inside a handoff, as the authoring tool takes it.
-
-    Flat by design: playbooks are depth-1, so a handoff's children are always
-    calls. Modelling that here instead of reusing the step union keeps the
-    tool's JSON Schema free of the self-``$ref`` that several function-calling
-    providers mishandle.
-    """
-
-    tool: str = Field(description="Exact name of the tool this step calls")
-
-    @model_validator(mode="before")
-    @classmethod
-    def _flat_or_refused(cls, data: object) -> object:
-        # Lenient about unknown keys, but not these two: a child carrying its own
-        # steps/handoff nests delegation deeper than a playbook goes. Dropping it
-        # silently would store a playbook that runs only a fraction of what was written.
-        if isinstance(data, Mapping):
-            nested = sorted(key for key in ("steps", "handoff") if key in data)
-            if nested:
-                raise ValueError(
-                    f"a handoff's child is one tool call and cannot carry {' or '.join(nested)}: "
-                    "playbooks are one level deep, so list the calls that subagent made "
-                    "as the handoff's own steps"
-                )
-        return data
-
-    def to_step(self) -> ToolStep | ForEachStep:
-        return self._call(self.tool)
-
-
-class PlaybookStepInput(_CallInput):
-    """One top-level step as the authoring tool takes it: a tool call, or a
-    handoff carrying the calls that subagent ran."""
-
-    tool: str | None = Field(
-        default=None, description="Exact name of the tool this step calls, for a tool step"
-    )
-    handoff: str | None = Field(
-        default=None, description="Subagent id, for a handoff step. Leave 'tool' unset."
-    )
-    steps: list[PlaybookHandoffStepInput] = Field(
-        default_factory=list,
-        description="The tool calls the handoff's subagent ran. Only a handoff carries these.",
-    )
-
-    @model_validator(mode="after")
-    def exactly_one_shape(self) -> Self:
-        """A model can send any combination; the executed types cannot hold one."""
-        where = self.id or "<unnamed>"
-        if bool(self.tool) == bool(self.handoff):
-            raise ValueError(f"step {where}: set exactly one of 'tool' or 'handoff'")
-        if self.handoff and not self.steps:
-            raise ValueError(
-                f"handoff {self.handoff}: carries no steps, so it would do nothing; list "
-                "the calls that subagent ran (its handoff result records them) in this "
-                "step's 'steps' field"
-            )
-        if self.handoff and self.for_each is not None:
-            raise ValueError(
-                f"step {where}: for_each repeats a single tool call, so it cannot sit on a "
-                "handoff; put it on the call inside the handoff that repeats"
-            )
-        if self.tool and self.steps:
-            raise ValueError(f"step {where}: only a handoff may carry nested steps")
-        return self
-
-    def to_step(self) -> ToolStep | ForEachStep | HandoffStep:
-        if self.handoff is not None:
-            return HandoffStep(
-                id=self.id, handoff=self.handoff, steps=[child.to_step() for child in self.steps]
-            )
-        # exactly_one_shape guarantees a tool when there is no handoff.
-        return self._call(cast(str, self.tool))
-
-
-def playbook_body_from_input(
-    description: str,
-    steps: Sequence[PlaybookStepInput],
-    result_brief: str,
-) -> PlaybookBody:
-    """Turn the tool boundary's flat arguments into the stored playbook body."""
-    return PlaybookBody(
-        description=description,
-        steps=[step.to_step() for step in steps],
-        result_brief=result_brief,
     )
 
 
