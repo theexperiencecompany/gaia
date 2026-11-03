@@ -59,12 +59,12 @@ function mongo(action: "pause" | "unpause"): void {
 }
 
 /**
- * The auth card's subtitle as the user sees it. The page streams in behind
- * (landing)/loading.tsx, and until React reveals it a hidden copy sits in
- * <div hidden id="S:n">, which a bare getByText also matches.
+ * Hold a text or placeholder locator to what the user sees. Streamed pages
+ * (/signup, /c) park a hidden copy in <div hidden id="S:n"> until React
+ * reveals them, and getByText/getByPlaceholder match that copy too.
  */
-function authSubtitle(page: Page, text: string): Locator {
-  return page.getByText(text).filter({ visible: true });
+function visible(locator: Locator): Locator {
+  return locator.filter({ visible: true });
 }
 
 async function signUp(page: Page, email: string, password: string) {
@@ -76,9 +76,9 @@ async function signUp(page: Page, email: string, password: string) {
 /** Send one chat message and return the whole streamed response body. */
 async function sendChat(page: Page, message: string): Promise<string> {
   await page.goto("/c");
-  const composer = page.getByPlaceholder(COMPOSER_PLACEHOLDER, {
-    exact: false,
-  });
+  const composer = visible(
+    page.getByPlaceholder(COMPOSER_PLACEHOLDER, { exact: false }),
+  );
   await expect(composer).toBeVisible();
   const stream = page.waitForResponse(
     (response: Response) =>
@@ -110,9 +110,10 @@ test.describe("self-host journey", () => {
   test("the first signup becomes the admin and configures the stub provider", async () => {
     await adminPage.goto("/signup");
     await expect(
-      authSubtitle(
-        adminPage,
-        "Set up the administrator account for this GAIA instance.",
+      visible(
+        adminPage.getByText(
+          "Set up the administrator account for this GAIA instance.",
+        ),
       ),
     ).toBeVisible();
     await signUp(adminPage, ADMIN.email, ADMIN.password);
@@ -137,7 +138,7 @@ test.describe("self-host journey", () => {
   test("a chat message gets the stub's reply", async () => {
     const reply = "Hello from the self-host stub.";
     await sendChat(adminPage, `[[say:${reply}]]`);
-    await expect(adminPage.getByText(reply).first()).toBeVisible();
+    await expect(visible(adminPage.getByText(reply)).first()).toBeVisible();
   });
 
   test("a scripted tool call creates a todo", async () => {
@@ -146,7 +147,9 @@ test.describe("self-host journey", () => {
       adminPage,
       `[[tool:create_todo {"title":"${title}"}]] [[say:Todo added.]]`,
     );
-    await expect(adminPage.getByText("Todo added.").first()).toBeVisible();
+    await expect(
+      visible(adminPage.getByText("Todo added.")).first(),
+    ).toBeVisible();
 
     const todos = await adminPage.request.get("/api/v1/todos");
     expect(todos.status()).toBe(200);
@@ -182,7 +185,7 @@ test.describe("self-host journey", () => {
     const memberPage = await newPage(browser);
     await memberPage.goto(`/signup?invite=${encodeURIComponent(inviteToken)}`);
     await expect(
-      authSubtitle(memberPage, "Join this GAIA instance."),
+      visible(memberPage.getByText("Join this GAIA instance.")),
     ).toBeVisible();
     await signUp(memberPage, MEMBER.email, MEMBER.password);
     await expect(memberPage).toHaveURL(/\/c/);
@@ -254,7 +257,9 @@ test.describe("self-host journey", () => {
       adminPage,
       `[[tool:bash {"command":"echo $((6*7*1000003))"}]] [[say:Code ran.]]`,
     );
-    await expect(adminPage.getByText("Code ran.").first()).toBeVisible();
+    await expect(
+      visible(adminPage.getByText("Code ran.")).first(),
+    ).toBeVisible();
     expect(streamed).toContain("42000126");
   });
 });
