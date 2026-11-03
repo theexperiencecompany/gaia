@@ -31,6 +31,7 @@ from app.models.composio_schemas.gmail import (
     FetchThreadInput,
 )
 from app.services.composio import account_scope as account_scope_module
+from app.services.composio.custom_tools import gmail_tools as gmail_tools_module
 from app.services.composio.custom_tools.gmail_constants import (
     FETCH_CONCURRENCY,
     OFFLOAD_MIN_MESSAGES,
@@ -44,7 +45,6 @@ from app.services.composio.custom_tools.gmail_tools import (
     StarEmailInput,
     _count_inline_fit,
     _format_partial_result,
-    _relative_days,
     _resolve_timeframe,
     _timeframe_clause,
     register_gmail_custom_tools,
@@ -397,7 +397,7 @@ class TestResolveTimeframe:
 
     def test_a_named_timeframe_has_no_day_count(self):
         with pytest.raises(ValueError, match=r"^not a relative timeframe: 'today'$"):
-            _relative_days("today")
+            gmail_tools_module._relative_days("today")
 
     @pytest.mark.parametrize(
         ("timeframe", "expected_max"),
