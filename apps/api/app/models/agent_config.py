@@ -151,6 +151,10 @@ class AgentConfigurable(TypedDict, total=False):
     #: the narrated run still holds the busy lock.
     is_result_narration: bool
     subagent_id: str | None
+    #: The handoff subagent id (``gmail``, ``todos``) whose tool space this run executes
+    #: in, None at the executor. Stamped on every recorded call: a playbook step
+    #: replays in exactly this scope.
+    run_scope: str | None
     #: Shared VFS session, held constant across the executor and the handoff
     #: subagents it spawns so all resolve paths against one workspace.
     vfs_session_id: str | None
@@ -257,6 +261,7 @@ class AgentConfigurableView(BaseModel):
     selected_tool: str | None = None
     tool_category: str | None = None
     subagent_id: str | None = None
+    run_scope: str | None = None
     vfs_session_id: str | None = None
     stream_id: str | None = None
     active_todo_id: str | None = None

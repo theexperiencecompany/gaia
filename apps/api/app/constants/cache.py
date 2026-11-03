@@ -203,6 +203,11 @@ WORKFLOW_LIMIT_NOTICE_TTL = ONE_DAY_TTL
 BOT_UPGRADE_LINK_PREFIX = "bot:upgrade-link:"
 BOT_UPGRADE_LINK_TTL = ONE_HOUR_TTL
 
+# Every tool call one run made, in order, keyed by the run's stream id. Outlives
+# the longest run (a parked approval) so the trace and a playbook write read it whole.
+RUN_RECORD_PREFIX = "run_record:"
+RUN_RECORD_TTL = ONE_DAY_TTL * 2
+
 EXECUTOR_BUSY_PREFIX = "executor:busy:"
 EXECUTOR_BUSY_TTL = THIRTY_MINUTES_TTL
 # Keyed by holder: whatever holds the busy lock renews this while its process lives (a parked

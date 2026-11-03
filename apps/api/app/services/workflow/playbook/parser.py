@@ -19,11 +19,13 @@ import re
 from typing import Any
 
 from langchain_core.tools import BaseTool
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 import yaml
 
 from app.agents.core.subagents.call_record import ARG_TRUNCATION_MARKER, is_error_envelope
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
+from app.constants.execute import EXECUTE_DATA_ARG, EXECUTE_LABEL_ARG, EXECUTE_TOOL_NAME
+from app.models.integrations.composio_hooks import JsonSchemaNode
 from app.models.playbook_models import (
     TIME_KEY,
     AskSlot,
@@ -58,6 +60,7 @@ from app.services.workflow.playbook.tool_space import (
     resolve_subagent_tools,
     tool_space_denial,
 )
+from app.utils.json_args import decode_json_container
 
 _JSON_TYPE_TO_PYTHON: dict[str, tuple[type, ...]] = {
     "string": (str,),
@@ -124,14 +127,14 @@ def dump_playbook(body: PlaybookBody) -> str:
     entirely, so a playbook reads like something a person wrote rather than a
     dump of every model field.
     """
-    document: dict[str, Any] = {
-        "description": body.description,
-        "steps": [step.to_document() for step in body.steps],
-    }
     # Args are dumped as authored, so an inline ask slot renders as a nested
     # ``$ask:`` mapping right where its value belongs — which is exactly how the
     # agent should read it back when it revises the playbook.
-    document["result_brief"] = body.result_brief
+    document = {
+        "description": body.description,
+        "steps": [step.to_document() for step in body.steps],
+        "result_brief": body.result_brief,
+    }
     # sort_keys=False and sort_keys=None are byte-identical to PyYAML (it only
     # tests truthiness), so that mutation is provably equivalent and exempt.
     return yaml.safe_dump(document, sort_keys=False, allow_unicode=True)  # pragma: no mutate
@@ -371,6 +374,13 @@ def _matched_call(step: ToolStep | ForEachStep, walk: _Walk) -> tuple[int, Recor
     that agree, the LAST wins; a step agreeing with none is unmatched, and an
     already-consumed call is never offered again.
     """
+    # execute's card label is rewritten freely between the call and the write, and
+    # changes nothing the call does (prod: refused writes differing only in it).
+    deciding = {
+        key: value
+        for key, value in step.args.items()
+        if not (step.tool == EXECUTE_TOOL_NAME and key == EXECUTE_LABEL_ARG)
+    }
     agreeing = [
         (index, call)
         for index, call in enumerate(walk.results or ())
@@ -378,10 +388,18 @@ def _matched_call(step: ToolStep | ForEachStep, walk: _Walk) -> tuple[int, Recor
         and call.subagent == walk.scope
         and index not in walk.consumed
         and all(
-            key in call.args and _agrees(value, call.args[key]) for key, value in step.args.items()
+            key in call.args and _agrees(value, _as_dispatched(step.tool, key, call.args[key]))
+            for key, value in deciding.items()
         )
     ]
     return agreeing[-1] if agreeing else None
+
+
+def _as_dispatched(tool_name: str, key: str, recorded: object) -> object:
+    """Return a recorded arg as the tool ran it: execute runs a JSON-encoded data as its object."""
+    if tool_name == EXECUTE_TOOL_NAME and key == EXECUTE_DATA_ARG:
+        return decode_json_container(recorded)
+    return recorded
 
 
 def _agrees(step_value: object, recorded_value: object) -> bool:
@@ -442,16 +460,26 @@ def _result_refusal(tool_name: str, call: RecordedResult) -> str | None:
     return None
 
 
+class _ToolFailure(BaseModel):
+    """The parts of a tool's own failure envelope that say why it failed."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    error: object = None
+    message: object = None
+
+
 def _envelope_error(result: object) -> str:
     """Return what a failed tool said about its own failure, as one phrase."""
     if isinstance(result, dict):
-        reported = result.get("error") or result.get("message")
+        failure = _ToolFailure.model_validate(result)
+        reported = failure.error or failure.message
         if reported:
             return str(reported)[:_ARGS_IN_MESSAGE_MAX_CHARS]
     return "the call reported success: false"
 
 
-def _rendered_args(args: Mapping[str, Any]) -> str:
+def _rendered_args(args: Mapping[str, object]) -> str:
     # ensure_ascii=False and ensure_ascii=None are byte-identical to json (it
     # only tests truthiness), so that mutation is provably equivalent and exempt.
     rendered = json.dumps(dict(args), default=str, ensure_ascii=False)  # pragma: no mutate
@@ -538,15 +566,15 @@ def _required_args(tool: BaseTool) -> set[str]:
     """
     schema = tool.tool_call_schema
     if isinstance(schema, dict):
-        rendered: Mapping[str, Any] = schema
+        rendered: object = schema
     elif issubclass(schema, BaseModel):
         rendered = schema.model_json_schema()
     else:
         rendered = schema.schema()
-    return set(rendered.get("required") or [])
+    return set(JsonSchemaNode.model_validate(rendered).required or [])
 
 
-def _check_ask_slot(slot: Mapping[str, Any], where: str, walk: _Walk) -> None:
+def _check_ask_slot(slot: Mapping[str, object], where: str, walk: _Walk) -> None:
     """One inline ask slot, checked as the model wrote it.
 
     The whole slot vocabulary is two keys, so the message names both rather than
@@ -711,7 +739,7 @@ def _time_slot_hint(placeholder: str, layout: str) -> str:
 
 
 def _check_time_slot(
-    value: Mapping[str, Any], key: str, where: str, recorded: RecordedResult | None, walk: _Walk
+    value: Mapping[str, object], key: str, where: str, recorded: RecordedResult | None, walk: _Walk
 ) -> None:
     """Check a $time slot is well-formed and its layout is the one the tool took."""
     try:
@@ -775,8 +803,16 @@ def _check_time_layout(
     walk.issues.append(PlaybookIssue(where=where, problem=problem))
 
 
+class _ErrorDetail(BaseModel):
+    """The one part of a pydantic error detail the author is shown."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    msg: str
+
+
 def _first_validation_message(error: ValidationError) -> str:
-    return error.errors()[0]["msg"].removeprefix("Value error, ")
+    return _ErrorDetail.model_validate(error.errors()[0]).msg.removeprefix("Value error, ")
 
 
 def _check_value_type(
@@ -784,7 +820,8 @@ def _check_value_type(
 ) -> None:
     if not isinstance(arg_schema, dict):
         return
-    accepted = _accepted_types(arg_schema)
+    node = JsonSchemaNode.model_validate(arg_schema)
+    accepted = _accepted_types(node)
     if not accepted:
         return
     numeric_only = accepted in ((int,), (int, float))
@@ -793,27 +830,26 @@ def _check_value_type(
     issues.append(
         PlaybookIssue(
             where=where,
-            problem=f"expected {_describe(arg_schema)}, got {type(value).__name__}",
+            problem=f"expected {_describe(node)}, got {type(value).__name__}",
         )
     )
 
 
-def _accepted_types(arg_schema: dict[str, Any]) -> tuple[type, ...]:
-    declared = arg_schema.get("type")
-    if isinstance(declared, str):
-        return _JSON_TYPE_TO_PYTHON.get(declared, ())
-    variants = arg_schema.get("anyOf") or arg_schema.get("oneOf") or []
+def _variants(node: JsonSchemaNode) -> list[JsonSchemaNode]:
+    return node.anyOf or node.oneOf or []
+
+
+def _accepted_types(node: JsonSchemaNode) -> tuple[type, ...]:
+    if isinstance(node.type, str):
+        return _JSON_TYPE_TO_PYTHON.get(node.type, ())
     accepted: list[type] = []
-    for variant in variants:
-        if isinstance(variant, dict):
-            accepted.extend(_accepted_types(variant))
+    for variant in _variants(node):
+        accepted.extend(_accepted_types(variant))
     return tuple(accepted)
 
 
-def _describe(arg_schema: dict[str, Any]) -> str:
-    declared = arg_schema.get("type")
-    if isinstance(declared, str):
-        return declared
-    variants = arg_schema.get("anyOf") or arg_schema.get("oneOf") or []
-    names = [v["type"] for v in variants if isinstance(v, dict) and isinstance(v.get("type"), str)]
+def _describe(node: JsonSchemaNode) -> str:
+    if isinstance(node.type, str):
+        return node.type
+    names = [variant.type for variant in _variants(node) if isinstance(variant.type, str)]
     return " or ".join(names) if names else "another type"

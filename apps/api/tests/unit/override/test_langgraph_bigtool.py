@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from typing import Any, Protocol, cast
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
+import fakeredis
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 from langchain_core.runnables import RunnableBinding, RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool, tool
@@ -25,6 +26,8 @@ from app.agents.llm import lane as lane_module
 from app.agents.llm.client import _sim_llm
 from app.agents.llm.lane import ModelLane
 from app.agents.middleware.executor import BeforeModelResult
+from app.agents.tools import run_record
+from app.agents.tools.run_record import read_run_record
 from app.constants.general import FINISH_TASK_NAME, NEW_MESSAGE_BREAKER
 from app.constants.llm import (
     COMPLETION_NUDGE_MESSAGE,
@@ -37,6 +40,7 @@ from app.constants.llm import (
     LLMProviderName,
 )
 from app.models.agent_models import AgentConfigurable
+from app.models.workflow_execution_models import RecordedCall
 from app.override.langgraph_bigtool.agent_config import (
     AgentConfig,
     HookConfig,
@@ -977,6 +981,55 @@ class TestSelectTools:
         assert "subagent:gmail" not in bind_ids
 
     @pytest.mark.asyncio
+    def test_a_sync_retrieval_records_only_what_the_model_asked_for(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The node injects the user id into the call; the record holds what the model sent."""
+        client = fakeredis.FakeRedis(decode_responses=True)
+        monkeypatch.setattr(run_record, "_sync_client", lambda: client)
+
+        def my_func(**kwargs: Any) -> list:
+            """Retrieve tools."""
+            return ["dummy_tool_a"]
+
+        builder = create_agent(
+            _make_llm(),
+            _make_tool_registry(dummy_tool_a),
+            tools_config=ToolRetrievalConfig(retrieve_tools_function=my_func),
+        )
+        select_node = builder.nodes["select_tools"]
+        config = _make_config(user_id="u1", stream_id="stream-select")
+
+        select_node.runnable.func(
+            [{"id": "tc1", "args": {"query": "mail"}}], config, store=MagicMock()
+        )  # type: ignore[union-attr]  # RunnableCallable types func/afunc as Optional
+
+        (raw,) = client.lrange("run_record:stream-select", 0, -1)
+        assert RecordedCall.model_validate_json(raw).args == {"query": "mail"}
+
+    async def test_an_async_retrieval_records_only_what_the_model_asked_for(
+        self, fake_redis: Any
+    ) -> None:
+        """The node injects the user id into the call; the record holds what the model sent."""
+
+        async def my_coro(**kwargs: Any) -> list:
+            """Retrieve tools."""
+            return ["dummy_tool_a"]
+
+        builder = create_agent(
+            _make_llm(),
+            _make_tool_registry(dummy_tool_a),
+            tools_config=ToolRetrievalConfig(retrieve_tools_coroutine=my_coro),
+        )
+        select_node = builder.nodes["select_tools"]
+        config = _make_config(user_id="u1", stream_id="stream-select")
+
+        await select_node.runnable.afunc(
+            [{"id": "tc1", "args": {"query": "mail"}}], config, store=MagicMock()
+        )  # type: ignore[union-attr]  # RunnableCallable types func/afunc as Optional
+
+        assert [call.args for call in await read_run_record("stream-select")] == [{"query": "mail"}]
+
     async def test_aselect_tools(self) -> None:
         llm = _make_llm()
         registry = _make_tool_registry(dummy_tool_a)

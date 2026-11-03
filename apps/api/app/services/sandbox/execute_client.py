@@ -27,7 +27,7 @@ from app.constants.execute import (
 )
 from app.constants.llm import TOOL_EXECUTION_TIMEOUT_SECONDS
 from app.models.agent_models import AgentConfigurable, agent_configurable
-from app.services.sandbox.execute_token import mint_execute_token
+from app.services.sandbox.execute_token import ExecuteGrant, mint_execute_token
 
 # Stdlib-only client seeded into the sandbox per bash invocation (idempotent
 # write, no template rebuild, no network install). The __TOKEN__ placeholders
@@ -143,11 +143,14 @@ def mint_execute_env(
     """
     configurable: AgentConfigurable = agent_configurable(config)
     token = mint_execute_token(
-        user_id,
-        run_id,
-        stream_id=configurable.get("stream_id"),
-        sandbox_id=sandbox_id,
-        scoped_tool_names=scoped_tool_names,
+        ExecuteGrant(
+            user_id=user_id,
+            run_id=run_id,
+            stream_id=configurable.get("stream_id"),
+            run_scope=configurable.get("run_scope"),
+            sandbox_id=sandbox_id,
+            scoped_tool_names=scoped_tool_names,
+        ),
         ttl_seconds=command_timeout_seconds + SANDBOX_EXECUTE_TOKEN_TTL_BUFFER_SECONDS,
     )
     execute_url = str(settings.SANDBOX_EXECUTE_CALLBACK_URL)

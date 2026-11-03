@@ -24,6 +24,7 @@ from httpx import ASGITransport, AsyncClient
 from hypothesis import HealthCheck, settings as _hypothesis_settings
 from posthog import Posthog
 import pytest
+import redis.asyncio as aioredis
 from starlette.types import Receive, Scope, Send
 
 # Hypothesis profiles: PR lanes select "ci" (25 examples) to keep feedback
@@ -346,6 +347,25 @@ def _no_captured_loop_carryover() -> Iterator[None]:
     """Forget a server loop a test captured (unified_startup does); the next test's loop is new, that one closed."""
     yield
     reset_captured_loop()
+
+
+if _USE_REAL_SERVICES:
+    # Defined only here: an autouse fixture takes part in every test's setup and
+    # teardown order, and the hermetic run has no client to replace.
+
+    @pytest.fixture(autouse=True)
+    async def _redis_client_per_test_loop() -> AsyncIterator[None]:
+        """Give each test's event loop its own Redis client.
+
+        The client built at import binds its connections to the first loop that uses it,
+        so every later test reaching redis_cache failed on "Event loop is closed".
+        """
+        imported = redis_cache.redis
+        client = aioredis.from_url(redis_cache.redis_url, decode_responses=True)
+        redis_cache.redis = client
+        yield
+        redis_cache.redis = imported
+        await client.aclose()
 
 
 @pytest.fixture

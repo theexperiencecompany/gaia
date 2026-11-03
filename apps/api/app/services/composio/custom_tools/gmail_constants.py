@@ -31,26 +31,24 @@ FETCH_CONCURRENCY = 8
 # higher can't be reached without more pages and would change semantics.
 MAX_ABSOLUTE_MESSAGES = 2 * GMAIL_MAX_PAGE_SIZE
 
-# Default per-timeframe message cap. Tuned to Gmail's per-page cap (500)
+# Default message cap per named timeframe. Tuned to Gmail's per-page cap (500)
 # and the GAIA compaction threshold (~8KB inline).
-TIMEFRAME_DEFAULT_MAX: dict[str, int] = {
+NAMED_TIMEFRAME_DEFAULT_MAX: dict[str, int] = {
     "today": 100,
     "yesterday": 100,
     "tomorrow": 100,
     "this_week": 200,
     "last_week": 200,
     "next_week": 200,
-    "1d": 100,
-    "3d": 100,
-    "5d": 200,
-    "7d": 200,
-    "1w": 200,
-    "2w": 400,
-    "1m": 500,
-    "3m": 500,
-    "6m": 500,
-    "1y": 500,
 }
+
+# Default cap for a relative "last N days" window, by its length: the first
+# (max_days, cap) covering the window wins, longer ones take the long cap.
+RELATIVE_TIMEFRAME_DEFAULT_MAX: tuple[tuple[int, int], ...] = ((3, 100), (7, 200), (14, 400))
+RELATIVE_TIMEFRAME_LONG_MAX = 500
+
+# Cap when the call names no timeframe.
+NO_TIMEFRAME_DEFAULT_MAX = 100
 
 # Crossing this many chars (~30k tokens) writes a JSONL file (one message per
 # line) and returns a digest + read_plan. GMAIL_FETCH_MESSAGES is excluded from

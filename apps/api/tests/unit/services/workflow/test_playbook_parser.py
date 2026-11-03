@@ -18,6 +18,7 @@ import pytest
 import yaml
 
 from app.agents.core.subagents.call_record import ARG_TRUNCATION_MARKER
+from app.agents.tools.execute.execute_tool import execute
 from app.models.mcp_config import SubAgentConfig
 from app.models.playbook_models import (
     PlaybookBody,
@@ -1457,6 +1458,126 @@ result_brief: x
                 'call used {"calendar_id": "primary"}); freeze the call that ran, with the '
                 "args that produced its result, or run it with these args",
             )
+        ]
+
+    @pytest.mark.regression
+    async def test_an_execute_step_matches_its_call_whatever_card_label_it_carries(self) -> None:
+        """Regression from prod (Oct 2026): only task_description, the card's label, differed, and the write was refused."""
+        body = _body(
+            """
+description: Daily inbox triage
+steps:
+  - id: inbox
+    tool: execute
+    args:
+      task_description: Fetching last 24h inbox emails
+      tool_name: GMAIL_FETCH_MESSAGES
+      data: {timeframe: 1d, query: "in:inbox"}
+result_brief: x
+"""
+        )
+        sent = {"timeframe": "1d", "query": "in:inbox"}
+        results = [
+            _call(
+                "execute",
+                {
+                    "task_description": "Fetching last 24h inbox emails for triage",
+                    "tool_name": "GMAIL_FETCH_MESSAGES",
+                    "data": sent,
+                },
+                {"messages": [{"id": "m1"}]},
+            )
+        ]
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=_FakeRegistry({"execute": execute})):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert result.issues == []
+
+    async def test_an_execute_step_matches_a_call_that_sent_its_data_json_encoded(self) -> None:
+        """The proxy runs a JSON-encoded data as its object, so the record of that call is the same call."""
+        body = _body(
+            """
+description: Daily inbox triage
+steps:
+  - id: inbox
+    tool: execute
+    args:
+      task_description: Fetching mail
+      tool_name: GMAIL_FETCH_MESSAGES
+      data: {timeframe: 1d}
+result_brief: x
+"""
+        )
+        results = [
+            _call(
+                "execute",
+                {
+                    "task_description": "Fetching mail",
+                    "tool_name": "GMAIL_FETCH_MESSAGES",
+                    "data": '{"timeframe": "1d"}',
+                },
+                {"messages": [{"id": "m1"}]},
+            )
+        ]
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=_FakeRegistry({"execute": execute})):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert result.issues == []
+
+    async def test_only_executes_data_is_read_as_dispatched(self) -> None:
+        """Another tool's data arg that holds JSON text is text: decoding it would refuse the call it froze."""
+        body = _body(
+            """
+description: Post a raw payload
+steps:
+  - id: post
+    tool: post_raw
+    args:
+      data: '{"a": 1}'
+result_brief: x
+"""
+        )
+        results = [_call("post_raw", {"data": '{"a": 1}'}, {"posted": [{"id": "p1"}]})]
+        registry = _schema_registry(post_raw={"data": {"type": "string"}})
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=registry):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert result.issues == []
+
+    async def test_an_execute_step_with_other_data_is_still_refused(self) -> None:
+        body = _body(
+            """
+description: Daily inbox triage
+steps:
+  - id: inbox
+    tool: execute
+    args:
+      task_description: Fetching mail
+      tool_name: GMAIL_FETCH_MESSAGES
+      data: {timeframe: 7d}
+result_brief: x
+"""
+        )
+        results = [
+            _call(
+                "execute",
+                {
+                    "task_description": "Fetching mail",
+                    "tool_name": "GMAIL_FETCH_MESSAGES",
+                    "data": {"timeframe": "1d"},
+                },
+                {"messages": [{"id": "m1"}]},
+            )
+        ]
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=_FakeRegistry({"execute": execute})):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert [issue.problem.split(" (")[0] for issue in result.issues] == [
+            "execute ran 1 time(s) in this run, but never with these args"
         ]
 
     async def test_the_refusal_shows_the_args_of_the_last_call_still_unfrozen(self) -> None:

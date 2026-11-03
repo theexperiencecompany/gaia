@@ -28,8 +28,9 @@ from app.agents.prompts.playbook_prompts import (
     PLAYBOOK_SUSPECT_FALLBACK_TEMPLATE,
 )
 from app.agents.tools.playbook_tools import write_playbook
-from app.constants.agents import PLAYBOOK_CHECK_TAG, PLAYBOOK_DECLINE_LIMIT
+from app.constants.agents import PLAYBOOK_CHECK_TAG
 from app.constants.log_tags import LogTag
+from app.db.repositories.workflows import workflow_repository
 from app.models.playbook_models import (
     DeclineKind,
     HandoffStep,
@@ -52,28 +53,6 @@ from app.services.workflow.playbook.workflow_hash import workflow_hash
 MODULE = "app.services.workflow.playbook.check"
 USER_ID = "user-1"
 WORKFLOW_ID = "wf-1"
-
-
-def _workflow(*, declines: int = 0, declined_hash: str | None = None) -> WorkflowDocument:
-    return WorkflowDocument(
-        id=WORKFLOW_ID,
-        user_id=USER_ID,
-        title="Daily agenda",
-        prompt="Mail the agenda",
-        steps=[],
-        trigger_config=TriggerConfig(type=TriggerType.SCHEDULE, enabled=True),
-        playbook_declines=declines,
-        playbook_declined_hash=declined_hash,
-    )
-
-
-@pytest.fixture(autouse=True)
-def _workflow_lookup():
-    """Look up the workflow behind the decline gate; return a fresh workflow by default."""
-    with patch(
-        f"{MODULE}.workflow_repository.get_for_user", AsyncMock(return_value=_workflow())
-    ) as lookup:
-        yield lookup
 
 
 def _playbook(status: PlaybookRunStatus, reason: str | None = None) -> PlaybookDocument:
@@ -214,81 +193,31 @@ class TestTheLookupsAreScopedToTheOwner:
         assert calls == [(WORKFLOW_ID, USER_ID)]
         assert brief == PLAYBOOK_CHECK_BRIEF
 
-    async def test_the_workflow_behind_the_decline_gate_is_read_for_the_same_pair(self):
-        calls: list = []
-        with (
-            patch(f"{MODULE}.playbook_repository.get_for_workflow", AsyncMock(return_value=None)),
-            patch(
-                f"{MODULE}.workflow_repository.get_for_user",
-                new=_recording_lookup(calls, _workflow()),
-            ),
-        ):
-            brief = await playbook_check_brief(WORKFLOW_ID, USER_ID)
 
-        assert calls == [(WORKFLOW_ID, USER_ID)]
-        assert brief == PLAYBOOK_CHECK_BRIEF
-
-
+@pytest.mark.regression
 @pytest.mark.asyncio
-class TestDeclinesAreRemembered:
-    """Declining used to persist nothing.
+async def test_a_workflow_is_asked_on_every_run_until_it_has_a_playbook():
+    """Regression: three declines used to retire a workflow for good (316 of them by 2026-09-30)."""
+    prompt = "Mail the agenda"
+    declined_thrice = WorkflowDocument.model_validate(
+        {
+            "id": WORKFLOW_ID,
+            "user_id": USER_ID,
+            "title": "Daily agenda",
+            "prompt": prompt,
+            "steps": [],
+            "trigger_config": TriggerConfig(type=TriggerType.SCHEDULE, enabled=True),
+            "playbook_declines": 3,
+            "playbook_declined_hash": workflow_hash(prompt, []),
+        }
+    )
+    with (
+        patch(f"{MODULE}.playbook_repository.get_for_workflow", AsyncMock(return_value=None)),
+        patch.object(workflow_repository, "get_for_user", AsyncMock(return_value=declined_thrice)),
+    ):
+        briefs = [await playbook_check_brief(WORKFLOW_ID, USER_ID) for _ in range(5)]
 
-    A workflow whose order genuinely varies was asked the ~600-token question on every fire, forever.
-    """
-
-    def _hash(self) -> str:
-        workflow = _workflow()
-        return workflow_hash(workflow.prompt, workflow.steps)
-
-    async def test_stays_silent_after_the_limit_on_the_same_workflow(self, _workflow_lookup):
-        _workflow_lookup.return_value = _workflow(
-            declines=PLAYBOOK_DECLINE_LIMIT, declined_hash=self._hash()
-        )
-        with patch(f"{MODULE}.playbook_repository.get_for_workflow", AsyncMock(return_value=None)):
-            assert await playbook_check_brief(WORKFLOW_ID, USER_ID) == ""
-
-    async def test_the_skipped_check_says_why_and_how_many_declines(self, _workflow_lookup):
-        """A check that stops happening has to be readable in the wide event; the decline count says how close it got."""
-        _workflow_lookup.return_value = _workflow(
-            declines=PLAYBOOK_DECLINE_LIMIT, declined_hash=self._hash()
-        )
-        with (
-            patch(f"{MODULE}.playbook_repository.get_for_workflow", AsyncMock(return_value=None)),
-            patch(f"{MODULE}.log.set_ns") as set_ns,
-        ):
-            assert await playbook_check_brief(WORKFLOW_ID, USER_ID) == ""
-
-        set_ns.assert_called_once_with(
-            "playbook", check_skipped="declined", declines=PLAYBOOK_DECLINE_LIMIT
-        )
-
-    async def test_keeps_asking_below_the_limit(self, _workflow_lookup):
-        _workflow_lookup.return_value = _workflow(
-            declines=PLAYBOOK_DECLINE_LIMIT - 1, declined_hash=self._hash()
-        )
-        with patch(f"{MODULE}.playbook_repository.get_for_workflow", AsyncMock(return_value=None)):
-            assert await playbook_check_brief(WORKFLOW_ID, USER_ID) == PLAYBOOK_CHECK_BRIEF
-
-    async def test_asks_again_once_the_workflow_is_edited(self, _workflow_lookup):
-        """The declines were about a different workflow; an edit changes the hash."""
-        _workflow_lookup.return_value = _workflow(
-            declines=PLAYBOOK_DECLINE_LIMIT, declined_hash="hash-of-the-workflow-before-the-edit"
-        )
-        with patch(f"{MODULE}.playbook_repository.get_for_workflow", AsyncMock(return_value=None)):
-            assert await playbook_check_brief(WORKFLOW_ID, USER_ID) == PLAYBOOK_CHECK_BRIEF
-
-    async def test_a_stored_playbook_never_consults_the_declines(self, _workflow_lookup):
-        _workflow_lookup.return_value = _workflow(
-            declines=PLAYBOOK_DECLINE_LIMIT, declined_hash=self._hash()
-        )
-        with patch(
-            f"{MODULE}.playbook_repository.get_for_workflow",
-            AsyncMock(return_value=_playbook(PlaybookRunStatus.FAILED, "boom")),
-        ):
-            brief = await playbook_check_brief(WORKFLOW_ID, USER_ID)
-
-        assert "boom" in brief
-        _workflow_lookup.assert_not_awaited()
+    assert briefs == [PLAYBOOK_CHECK_BRIEF] * 5
 
 
 FALLBACK_NOTE = (
