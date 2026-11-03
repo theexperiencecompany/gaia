@@ -126,6 +126,7 @@ async def create_workflow(
         capture(
             UserId(user.user_id),
             WorkflowCreated(
+                origin="user_created",
                 trigger_type=trigger_type,
                 steps_count=len(workflow.steps) if workflow.steps else 0,
                 generated_immediately=request.generate_immediately,
@@ -534,7 +535,7 @@ async def create_workflow_from_todo(
             ),
             outcome="success",
         )
-        capture(UserId(user.user_id), WorkflowCreated(from_todo=True))
+        capture(UserId(user.user_id), WorkflowCreated(origin="todo_converted"))
         return WorkflowResponse(
             workflow=as_read_view(workflow), message="Workflow created from todo successfully"
         )

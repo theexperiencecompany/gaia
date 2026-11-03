@@ -110,7 +110,13 @@ CLEAN: list[tuple[str, dict[str, object]]] = [
     ),
     (
         "workflow:created",
-        {**WEB, "steps_count": 1, "generated_immediately": False, "trigger_type": "manual"},
+        {
+            **WEB,
+            "origin": "user_created",
+            "steps_count": 1,
+            "generated_immediately": False,
+            "trigger_type": "manual",
+        },
     ),
     ("workflow:executed", WEB),
     # The ARQ worker's run of that workflow.

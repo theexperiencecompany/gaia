@@ -14,6 +14,7 @@ the finished result. Two reasons, both load-bearing:
 """
 
 from app.models.playbook_models import PlaybookBody, PlaybookStepInput, playbook_body_from_input
+from app.services.composio.custom_tools.gmail_constants import OFFLOAD_MIN_MESSAGES
 from app.services.workflow.playbook.parser import dump_playbook
 
 
@@ -33,7 +34,11 @@ PLAYBOOK_EXAMPLE = _example(
             "args": {
                 "task_description": "Listing unread mail",
                 "tool_name": "GMAIL_FETCH_MESSAGES",
-                "data": {"query": "is:unread", "timeframe": "1d"},
+                "data": {
+                    "query": "is:unread",
+                    "timeframe": "1d",
+                    "max_messages": OFFLOAD_MIN_MESSAGES,
+                },
             },
         },
         {
@@ -60,7 +65,11 @@ PLAYBOOK_FOR_EACH_EXAMPLE = _example(
             "args": {
                 "task_description": "Listing today's mail",
                 "tool_name": "GMAIL_FETCH_MESSAGES",
-                "data": {"query": "in:inbox", "timeframe": "today"},
+                "data": {
+                    "query": "in:inbox",
+                    "timeframe": "today",
+                    "max_messages": OFFLOAD_MIN_MESSAGES,
+                },
             },
         },
         {

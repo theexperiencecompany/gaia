@@ -14,5 +14,11 @@ export const SESSION_COOKIES = [
 const AUTH_PAGES = ["/login", "/signup"];
 export const PUBLIC_PAGES = [...AUTH_PAGES, "/terms", "/privacy", "/contact"];
 
+/**
+ * Signed-in routes that render before the plan allows the app: the wizard and
+ * its paywall, the OAuth landing, the self-host setup. They call no paid API.
+ */
+export const UNPAID_APP_ROUTES = ["/onboarding", "/redirect", "/setup"];
+
 /** The shortest password a local (self-host) account accepts; the API enforces the same. */
 export const MIN_PASSWORD_LENGTH = 8;
