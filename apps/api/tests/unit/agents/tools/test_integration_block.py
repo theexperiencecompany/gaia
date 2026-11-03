@@ -118,15 +118,21 @@ async def test_an_mcp_server_rejecting_its_token_asks_for_a_reconnect(fake_redis
         """List meetings."""
         raise IntegrationNotConnectedError(
             integration_id="readai",
-            integration_name="Read.ai",
+            integration_name=None,
             why="401",
             grant_died=True,
         )
 
-    list_meetings.metadata = {"integration_id": "readai", "integration_name": "Read.ai"}
+    list_meetings.metadata = {"integration_id": "readai"}
+    resolved = MagicMock()
+    resolved.name = "Read.ai"
 
     with (
         _ui_run() as writer,
+        patch(
+            "app.agents.tools.invocation.IntegrationResolver.resolve",
+            AsyncMock(return_value=resolved),
+        ),
         patch(
             f"{CHECKER}._standalone_mcp_auth",
             AsyncMock(return_value=MagicMock(kind="unavailable", url=None)),
@@ -137,7 +143,11 @@ async def test_an_mcp_server_rejecting_its_token_asks_for_a_reconnect(fake_redis
             await invoke_tool(list_meetings, {"limit": 5}, CONFIG)
 
     (card,) = _cards(writer)
-    assert (card["integration_id"], card["expired"]) == ("readai", True)
+    assert (card["integration_id"], card["integration_name"], card["expired"]) == (
+        "readai",
+        "Read.ai",
+        True,
+    )
 
 
 async def test_the_connect_card_is_shown_once_per_run(fake_redis: Any) -> None:

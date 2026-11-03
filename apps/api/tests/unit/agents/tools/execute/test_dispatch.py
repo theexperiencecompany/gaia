@@ -43,7 +43,6 @@ class _SendEmailArgs(BaseModel):
 def _tool(name: str = "GMAIL_SEND_EMAIL", schema: object = _SendEmailArgs) -> MagicMock:
     tool = MagicMock()
     tool.name = name
-    tool.metadata = None
     tool.args_schema = schema
     tool.ainvoke = AsyncMock(return_value={"status": "sent"})
     return tool

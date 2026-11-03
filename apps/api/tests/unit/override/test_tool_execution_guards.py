@@ -139,7 +139,6 @@ class TestTimeoutGuard:
         )
 
         hung = MagicMock()
-        hung.metadata = None
         hung.name = "GMAIL_SEND_EMAIL"
         hung.args_schema = None
 

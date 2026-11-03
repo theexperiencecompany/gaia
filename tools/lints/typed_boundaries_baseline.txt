@@ -69,8 +69,6 @@ apps/api/app/models/composio_schemas/github_tools.py	TB002
 apps/api/app/models/composio_schemas/slack_tools.py	TB002
 apps/api/app/models/mail_models.py	TB001
 apps/api/app/schemas/desktop_schemas.py	TB001
-apps/api/app/schemas/errors.py	TB001
-apps/api/app/schemas/errors.py	TB002
 apps/api/app/scripts/backfill_public_workflow_descriptions.py	TB001
 apps/api/app/scripts/backfill_public_workflow_descriptions.py	TB002
 apps/api/app/scripts/delete_user_account.py	TB001

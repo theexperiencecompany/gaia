@@ -559,15 +559,17 @@ class BaseCalendarEvent(BaseModel):
     """Base model for calendar events with common fields shared across models."""
 
     summary: str = Field(..., title="Event Summary")
-    description: str = Field("", title="Event Description")
-    is_all_day: bool = Field(False, title="Is All Day Event")
-    calendar_id: str | None = Field(None, title="Calendar ID")
+    description: str = Field(default="", title="Event Description")
+    is_all_day: bool = Field(default=False, title="Is All Day Event")
+    calendar_id: str | None = Field(default=None, title="Calendar ID")
     recurrence: RecurrenceData | None = Field(
-        None, title="Recurrence rules for creating a recurring event"
+        default=None, title="Recurrence rules for creating a recurring event"
     )
-    attendees: list[str] | None = Field(None, title="List of attendee email addresses to invite")
+    attendees: list[str] | None = Field(
+        default=None, title="List of attendee email addresses to invite"
+    )
     create_meeting_room: bool = Field(
-        False,
+        default=False,
         title="If True, create a Google Meet video conference link for this event",
     )
 
@@ -579,10 +581,12 @@ class EventCreateRequest(BaseCalendarEvent):
 
     # Optional on the wire: an all-day event may omit them (service picks
     # bounds); a timed event without them is rejected by the service, not the schema.
-    start: str | None = Field(None, title="Start time in ISO format or date for all-day events")
-    end: str | None = Field(None, title="End time in ISO format or date for all-day events")
+    start: str | None = Field(
+        default=None, title="Start time in ISO format or date for all-day events"
+    )
+    end: str | None = Field(default=None, title="End time in ISO format or date for all-day events")
     timezone: str | None = Field(
-        None, title="Timezone for the event (e.g., 'America/Los_Angeles', 'UTC')"
+        default=None, title="Timezone for the event (e.g., 'America/Los_Angeles', 'UTC')"
     )
 
     # Validate that start and end times are in ISO format or date format

@@ -103,7 +103,6 @@ class McpToolProvenance(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     integration_id: str | None = None
-    integration_name: str | None = None
 
 
 class MCPUseConfig(TypedDict):

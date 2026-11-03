@@ -95,20 +95,20 @@ class TestWrapToolWithNullFilter:
     async def test_a_401_on_a_stamped_tool_asks_the_user_to_sign_in_again(self) -> None:
         """Regression: the raw 401 reached the agent as text, with no reconnect card and a retry."""
         tool = _make_tool(arun=AsyncMock(side_effect=Exception("HTTP 401 Unauthorized")))
-        tool.metadata = {"integration_id": "readai", "integration_name": "Read.ai"}
+        tool.metadata = {"integration_id": "readai"}
 
         wrapped = wrap_tool_with_null_filter(tool)
         with pytest.raises(IntegrationNotConnectedError) as raised:
             await wrapped._arun()
 
-        assert (raised.value.integration_id, raised.value.integration_name) == ("readai", "Read.ai")
+        assert (raised.value.integration_id, raised.value.integration_name) == ("readai", None)
         assert raised.value.grant_died is True
 
     @pytest.mark.regression
     async def test_a_reconnect_with_no_token_asks_the_user_to_sign_in(self) -> None:
         """The standalone-auth MCP whose token is gone: the reconnect itself cannot authenticate."""
         tool = _make_tool(arun=AsyncMock(side_effect=Exception("connection closed")))
-        tool.metadata = {"integration_id": "readai", "integration_name": "Read.ai"}
+        tool.metadata = {"integration_id": "readai"}
         reconnect = AsyncMock(side_effect=MCPAuthorizationRequiredError("readai"))
 
         wrapped = wrap_tool_with_null_filter(tool, reconnect_and_retry=reconnect)

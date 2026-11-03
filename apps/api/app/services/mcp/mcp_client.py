@@ -815,7 +815,6 @@ class MCPClient:
     def _stamp_tool_metadata(
         raw_tools: list[BaseTool],
         integration_id: str,
-        integration_name: str,
         server_url: str,
     ) -> None:
         """Attach provenance metadata to every converted tool.
@@ -833,7 +832,6 @@ class MCPClient:
             if raw_tool.metadata is None:
                 raw_tool.metadata = {}
             raw_tool.metadata["integration_id"] = integration_id
-            raw_tool.metadata["integration_name"] = integration_name
 
     def _make_evict_callback(self, iid: str) -> Callable[[], None]:
         """Build a callback that evicts a stale session after a connection error.
@@ -1086,9 +1084,7 @@ class MCPClient:
             # CRITICAL: Wrap tools to filter None values before MCP invocation.
             # MCP servers expect optional params to be OMITTED, not sent as null.
             # Without this, Pydantic defaults (None) cause MCP validation errors.
-            self._stamp_tool_metadata(
-                raw_tools, integration_id, resolved.name, mcp_config.server_url
-            )
+            self._stamp_tool_metadata(raw_tools, integration_id, mcp_config.server_url)
 
             tools = wrap_tools_with_null_filter(
                 raw_tools,

@@ -37,6 +37,7 @@ from app.constants.log_tags import LogTag
 from app.models.agent_config import read_agent_configurable
 from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.models.workflow_execution_models import RecordedCall, build_result_digest, parse_result
+from app.services.integrations.integration_resolver import IntegrationResolver
 from app.utils.errors import IntegrationNotConnectedError
 from app.utils.integration_checker import request_integration_connection
 from shared.py.wide_events import log
@@ -127,10 +128,10 @@ def _blocked_run(tool: BaseTool, config: RunnableConfig | None) -> tuple[str, st
     if config is None:
         return None
     stream_id = read_agent_configurable(config).stream_id
-    integration_id = tool_integration_id(tool)
-    if not stream_id or integration_id is None:
+    if not stream_id:
         return None
-    return stream_id, integration_id
+    integration_id = tool_integration_id(tool)
+    return (stream_id, integration_id) if integration_id is not None else None
 
 
 async def _connect_prompt(exc: IntegrationNotConnectedError, config: RunnableConfig | None) -> str:
@@ -139,9 +140,14 @@ async def _connect_prompt(exc: IntegrationNotConnectedError, config: RunnableCon
     if not user_id:
         # No user behind the run (a trigger option lookup): nobody to show a card to.
         return str(exc)
+    name = exc.integration_name
+    if name is None:
+        # An MCP tool knows only its server's id; the card names the integration.
+        resolved = await IntegrationResolver.resolve(exc.integration_id)
+        name = resolved.name if resolved else exc.integration_id
     return await request_integration_connection(
         exc.integration_id,
-        exc.integration_name,
+        name,
         user_id,
         mode=ConnectMode.RECONNECT if exc.grant_died else ConnectMode.CONNECT,
     )

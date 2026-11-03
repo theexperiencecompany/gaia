@@ -25,6 +25,7 @@ import pytest
 
 from app.constants.integrations import ACCOUNT_NEEDS_RECONNECT_HINT
 from app.db.repositories.user_integrations import user_integration_repository
+from app.models.agent_config import ComposioAccountSelection
 from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from app.services.composio import langchain_composio_service as wrapper
 from app.services.composio.account_scope import current_selection, scoped_connected_account_id
@@ -586,7 +587,7 @@ class TestTheReconnectPromptIsBounded:
 class TestTheCallRunsScopedToItsAccount:
     def test_the_dispatched_account_is_in_scope_while_composio_executes(self) -> None:
         """The hook and the proxy read the scope; outside the call it must not linger."""
-        seen: dict[str, object] = {}
+        seen: dict[str, ComposioAccountSelection | None] = {}
 
         def execute_tool(_tool: str, _kwargs: dict[str, Any]) -> dict[str, Any]:
             seen["selection"] = current_selection("GMAIL")
@@ -611,18 +612,19 @@ class TestTheCallRunsScopedToItsAccount:
 class TestTheToolCallItselfIsForwarded:
     async def test_the_named_tool_and_its_arguments_reach_composio(self) -> None:
         """A dropped tool name or argument bag would execute the wrong call — a fixed-value stub would look identical to that."""
-        seen: dict[str, object] = {}
+        seen_tool: list[str] = []
+        seen_kwargs: list[dict[str, Any]] = []
 
         def execute_tool(tool: str, kwargs: dict[str, Any]) -> dict[str, Any]:
-            seen["tool"] = tool
-            seen["kwargs"] = kwargs
+            seen_tool.append(tool)
+            seen_kwargs.append(kwargs)
             return {"successful": True, "data": {}, "error": None}
 
         action_func = _action_func(LangchainProvider(), execute_tool)
         action_func(subject="hello", __runnable_config__={"metadata": {"user_id": "user-1"}})
 
-        assert seen["tool"] == "GMAIL_FETCH_MESSAGES"
-        assert seen["kwargs"]["subject"] == "hello"
+        assert seen_tool == ["GMAIL_FETCH_MESSAGES"]
+        assert seen_kwargs[0]["subject"] == "hello"
 
 
 def _pins_the_primary_account(_tool: str, _kwargs: dict[str, Any]) -> dict[str, Any]:

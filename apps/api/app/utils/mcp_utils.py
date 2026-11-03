@@ -91,7 +91,7 @@ def _sign_in_required(tool: BaseTool, cause: Exception) -> Exception:
         return cause
     return IntegrationNotConnectedError(
         integration_id=provenance.integration_id,
-        integration_name=provenance.integration_name or provenance.integration_id,
+        integration_name=None,
         why=f"The MCP server rejected the stored credentials: {cause}",
         grant_died=True,
     )

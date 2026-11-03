@@ -74,23 +74,25 @@ class IntegrationNotConnectedError(AppError):
     grant_died is True when the call's own grant died just now (a provider 401 after
     the refresh failed, a connected account the provider no longer holds), so the
     stored account must be expired; False when nothing usable was connected.
+    integration_name is None when the raiser knows only the id (an MCP tool).
     """
 
     def __init__(
         self,
         *,
         integration_id: str,
-        integration_name: str,
+        integration_name: str | None,
         why: str,
         toolkit: str | None = None,
         grant_died: bool = False,
         meta: dict[str, object] | None = None,
     ) -> None:
+        name = integration_name or integration_id
         # 403, not 401: a 401 trips the web client's session-expiry interceptor.
         super().__init__(
-            message=f"{integration_name} is not connected. Reconnect it to continue.",
+            message=f"{name} is not connected. Reconnect it to continue.",
             why=why,
-            fix=f"Reconnect {integration_name}",
+            fix=f"Reconnect {name}",
             status_code=403,
             code=INTEGRATION_NOT_CONNECTED,
             # The web keys its reconnect toast on toolkit and starts the connect from integration_id.

@@ -4377,26 +4377,22 @@ class TestStampToolMetadataExact:
         plain_tool = _mock_tool("plain_tool")
         plain_tool.metadata = None
 
-        MCPClient._stamp_tool_metadata([ui_tool, plain_tool], INTEGRATION_ID, "Read.ai", SERVER_URL)
+        MCPClient._stamp_tool_metadata([ui_tool, plain_tool], INTEGRATION_ID, SERVER_URL)
 
         assert ui_tool.metadata == {
             "mcp_ui": {"csp": "default-src 'self'"},
             "mcp_server_url": SERVER_URL,
             "integration_id": INTEGRATION_ID,
-            "integration_name": "Read.ai",
         }
-        assert plain_tool.metadata == {
-            "integration_id": INTEGRATION_ID,
-            "integration_name": "Read.ai",
-        }
+        assert plain_tool.metadata == {"integration_id": INTEGRATION_ID}
 
     def test_non_ui_tool_never_gets_server_url(self):
         tool = _mock_tool()
         tool.metadata = {}
 
-        MCPClient._stamp_tool_metadata([tool], INTEGRATION_ID, "Read.ai", SERVER_URL)
+        MCPClient._stamp_tool_metadata([tool], INTEGRATION_ID, SERVER_URL)
 
-        assert tool.metadata == {"integration_id": INTEGRATION_ID, "integration_name": "Read.ai"}
+        assert tool.metadata == {"integration_id": INTEGRATION_ID}
 
 
 class TestOpenSessionExact:
@@ -5287,9 +5283,7 @@ class TestDoConnectWiringExact:
         client._open_session.assert_awaited_once_with(INTEGRATION_ID, resolved.mcp_config)
         client._convert_tools_safe.assert_awaited_once_with(session, INTEGRATION_ID)
         client._rename_shadowing_tools.assert_awaited_once_with(tools, resolved.name)
-        client._stamp_tool_metadata.assert_called_once_with(
-            tools, INTEGRATION_ID, resolved.name, SERVER_URL
-        )
+        client._stamp_tool_metadata.assert_called_once_with(tools, INTEGRATION_ID, SERVER_URL)
         client._run_post_connect_tasks.assert_awaited_once_with(
             resolved, resolved.mcp_config, False, INTEGRATION_ID, tools
         )
