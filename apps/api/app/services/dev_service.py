@@ -199,7 +199,7 @@ async def seed_dev_data(
 
     await asyncio.gather(
         *(
-            TodoService.create_todo_with_workflow(TodoModel(title=f"Sample todo {i + 1}"), user_id)
+            TodoService.create_todo(TodoModel(title=f"Sample todo {i + 1}"), user_id)
             for i in range(todos)
         ),
         *(

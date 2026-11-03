@@ -97,7 +97,6 @@ apps/api/tests/integration/agents/test_thread_writes_carry_ids.py	call-overload
 apps/api/tests/integration/agents/test_ticket_redeem.py	call-overload
 apps/api/tests/integration/agents/test_tool_execution.py	attr-defined
 apps/api/tests/integration/agents/test_turn_memory_recall.py	attr-defined
-apps/api/tests/integration/api/test_dev_endpoints.py	attr-defined
 apps/api/tests/integration/api/test_integration_endpoints.py	arg-type
 apps/api/tests/integration/api/test_share_download_flow.py	unused-ignore
 apps/api/tests/integration/api/test_tools_endpoints.py	arg-type
@@ -308,7 +307,6 @@ apps/api/tests/unit/api/test_reminders_endpoint.py	arg-type
 apps/api/tests/unit/api/test_support_endpoint.py	call-arg
 apps/api/tests/unit/api/test_tiered_rate_limiter.py	index
 apps/api/tests/unit/api/test_tiered_rate_limiter.py	method-assign
-apps/api/tests/unit/api/test_todos_endpoint.py	override
 apps/api/tests/unit/api/test_user_endpoint.py	arg-type
 apps/api/tests/unit/api/test_voice_endpoint.py	misc
 apps/api/tests/unit/api/test_workflows_endpoint.py	attr-defined
@@ -677,14 +675,11 @@ apps/api/tests/unit/services/test_share_fetcher_compat.py	str-bytes-safe
 apps/api/tests/unit/services/test_social_profile_service.py	arg-type
 apps/api/tests/unit/services/test_startup_validation.py	func-returns-value
 apps/api/tests/unit/services/test_todo_canvas_storage.py	arg-type
-apps/api/tests/unit/services/test_todo_service.py	arg-type
 apps/api/tests/unit/services/test_tracked_todo_service.py	arg-type
 apps/api/tests/unit/services/test_trigger_handler_base.py	arg-type
 apps/api/tests/unit/services/test_trigger_handlers.py	union-attr
 apps/api/tests/unit/services/test_trigger_handlers_extras.py	arg-type
 apps/api/tests/unit/services/test_trigger_handlers_extras.py	attr-defined
-apps/api/tests/unit/services/test_trigger_service.py	arg-type
-apps/api/tests/unit/services/test_trigger_service.py	method-assign
 apps/api/tests/unit/services/test_turnstile_service.py	arg-type
 apps/api/tests/unit/services/test_usage_activity_rollup.py	arg-type
 apps/api/tests/unit/services/test_usage_activity_rollup.py	attr-defined
@@ -772,8 +767,6 @@ apps/api/tests/unit/tools/test_skill_tools.py	typeddict-item
 apps/api/tests/unit/tools/test_subagent_control_tool.py	arg-type
 apps/api/tests/unit/tools/test_subscription_tool.py	attr-defined
 apps/api/tests/unit/tools/test_support_tool.py	attr-defined
-apps/api/tests/unit/tools/test_todo_tool.py	arg-type
-apps/api/tests/unit/tools/test_todo_tool.py	attr-defined
 apps/api/tests/unit/tools/test_todo_tools.py	attr-defined
 apps/api/tests/unit/tools/test_tracked_todo_subscription_tools.py	arg-type
 apps/api/tests/unit/tools/test_tracked_todo_subscription_tools.py	attr-defined
