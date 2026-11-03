@@ -23,6 +23,7 @@ import pytest
 from app.constants.execute import EXECUTE_TOOL_NAME
 from app.models.hil_models import HILPreferences
 from app.services.hil.policy import (
+    gated_tool_key,
     gated_tool_object,
     has_pausing_sibling,
     is_gated,
@@ -798,6 +799,19 @@ class TestTheRealToolBehindACall:
             "error": "mcp down",
             "error_type": "RuntimeError",
         }
+
+    async def test_a_registry_tools_key_is_its_bare_name(self) -> None:
+        request = make_request(name="send_email", tool=make_tool(name="send_email"))
+        with patch(f"{MODULE}.resolve_tool", new=resolver_returning()):
+            assert await gated_tool_key(request, USER_ID, "send_email") == "send_email"
+
+    async def test_a_proxied_mcp_tools_key_is_scoped_to_its_server(self) -> None:
+        real = _mcp_tool("posthog_delete_item", integration_id="srv_a", server_name="delete_item")
+        with patch(f"{MODULE}.resolve_tool", new=resolver_returning(real)):
+            key = await gated_tool_key(
+                _proxied("posthog_delete_item"), USER_ID, "posthog_delete_item"
+            )
+        assert key == "mcp:srv_a:delete_item"
 
     async def test_a_proxied_calls_real_hint_gates_it(self) -> None:
         real = make_tool(name="mcp_wipe", description="Tidy up.", metadata=_HINTED)
