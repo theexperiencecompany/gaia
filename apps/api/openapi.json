@@ -11229,6 +11229,17 @@
               }
             ]
           },
+          "stopped": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stopped"
+          },
           "subtype": {
             "anyOf": [
               {
@@ -11516,6 +11527,17 @@
                 "type": "null"
               }
             ]
+          },
+          "stopped": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stopped"
           },
           "subtype": {
             "anyOf": [
