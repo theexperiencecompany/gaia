@@ -29,15 +29,11 @@ apps/api/tests/contracts/test_workflows_repository.py	arg-type
 apps/api/tests/contracts/test_workflows_repository_reset_schedule.py	attr-defined
 apps/api/tests/e2e/_harness/agent_lab.py	attr-defined
 apps/api/tests/e2e/_harness/background.py	attr-defined
-apps/api/tests/e2e/_harness/browser_job.py	arg-type
-apps/api/tests/e2e/_harness/browser_job.py	var-annotated
 apps/api/tests/e2e/_harness/graph_double.py	attr-defined
 apps/api/tests/e2e/_harness/saved_messages.py	arg-type
 apps/api/tests/e2e/conftest.py	attr-defined
 apps/api/tests/e2e/test_agent_chain.py	assignment
 apps/api/tests/e2e/test_agent_chain.py	attr-defined
-apps/api/tests/e2e/test_browser_task_background.py	attr-defined
-apps/api/tests/e2e/test_browser_task_background.py	list-item
 apps/api/tests/e2e/test_browser_task_full_flow.py	list-item
 apps/api/tests/e2e/test_comms_narration_retired_integration.py	attr-defined
 apps/api/tests/e2e/test_executor_channel_matrix.py	arg-type

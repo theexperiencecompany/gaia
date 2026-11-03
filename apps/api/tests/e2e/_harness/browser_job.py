@@ -223,7 +223,7 @@ class _ScriptedAgent:
         self._stopped = False
         self.state = kwargs.get("injected_agent_state") or _agent_state([])
         # Its steps are scripted results, not model outputs: nothing it read to report.
-        self.history = AgentHistoryList(history=[])
+        self.history: AgentHistoryList[Any] = AgentHistoryList(history=[])
         self.browser_session = _BrowserSession(double)
         self.new_tasks: list[str] = []
         self.message_manager = SimpleNamespace(add_new_task=self.new_tasks.append)
@@ -289,7 +289,7 @@ class _ScriptedAgent:
         # A done action ends the run where Browser-Use ends it, with its own text and verdict.
         return _ended_by(step_actions)
 
-    async def _act(self, step: ScriptedStep) -> object:
+    async def _act(self, step: ScriptedStep) -> str | None:
         """Run the step's takeover or switch; return what a takeover answered."""
         if step.takeover is not None:
             return await self._hand_over(*step.takeover)
@@ -298,7 +298,7 @@ class _ScriptedAgent:
             await self._double.switch(step.switch)
         return None
 
-    async def _hand_over(self, reason: str, category: str) -> object:
+    async def _hand_over(self, reason: str, category: str) -> str | None:
         assert self._double.takeover is not None, "the takeover action was never built"
         # Browser-Use validates the action's arguments into its param model first.
         return await self._double.takeover(reason, SensitiveCategory(category))
@@ -351,6 +351,10 @@ class JobWorld:
         self.saved: list[tuple[str, list[dict[str, Any]]]] = []
         #: The conversation's executor inbox once the job settled: how its ending was told.
         self.told: list[InboxEntry] = []
+        #: Every storage_state the run saved for the user's next session.
+        self.saved_storage = AsyncMock()
+        #: The run's task record, as the job wrote it on ending.
+        self.recorded_task = AsyncMock()
         self.jobs: list[asyncio.Task[Any]] = []
         self.host_sessions = 0
         #: Sessions whose engine died; the host answers 404 for them.
@@ -476,7 +480,7 @@ async def browser_job_world(
         world.aborted.append(job_id)
         return bool(running)
 
-    patches = [
+    patches: list[AbstractContextManager[object]] = [
         patch("app.db.redis.redis_cache.redis", redis),
         patch("app.services.browser.job_stop._abort_if_started", _abort),
         patch("app.services.browser.agent_run.Agent", double.agent),
@@ -499,7 +503,7 @@ async def browser_job_world(
         patch("app.services.browser.agent_run.build_text_model", lambda ledger: object()),
         patch("app.services.browser.agent_run.open_jev_client", _unused_jev_client),
         patch("app.services.browser.agent_run.JevPage", _Page),
-        patch("app.services.browser.job_runner.record_browser_task", AsyncMock()),
+        patch("app.services.browser.job_runner.record_browser_task", world.recorded_task),
         patch("app.services.browser.job_runner.capture", MagicMock()),
         patch("app.services.browser.agent_run.build_browser_tools", _tools_of(double)),
         patch(
@@ -590,7 +594,7 @@ def _host_patches(
         patch("app.services.browser.session.host_client.renew_session_lease", _renew_host_lease),
         patch.object(settings, "BROWSER_FALLBACK_HOST_URL", scripted_host.fallback_url),
         patch("app.services.browser.session.load_storage_state", AsyncMock(return_value=None)),
-        patch("app.services.browser.session.save_storage_state", AsyncMock()),
+        patch("app.services.browser.session.save_storage_state", world.saved_storage),
     ]
 
 

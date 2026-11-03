@@ -332,7 +332,7 @@ class CallAllToolsModel(RecordingFakeModel):
 
 @asynccontextmanager
 async def executor_graph(
-    script: Sequence[dict[str, Any] | str],
+    script: Sequence[ToolCall | dict[str, Any] | str],
     store: InMemoryStore | None = None,
     model: RecordingFakeModel | None = None,
 ) -> AsyncIterator[Any]:
