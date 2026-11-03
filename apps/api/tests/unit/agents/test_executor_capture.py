@@ -11,6 +11,7 @@ import asyncio
 from collections.abc import Coroutine, Generator
 import json
 import re
+import time
 from unittest.mock import AsyncMock, call, patch
 
 import pytest
@@ -361,7 +362,9 @@ class TestRedisStreamWriter:
     async def test_an_awaited_publish_reaches_the_stream_and_its_collector_alike(self) -> None:
         """A replayed card must land on the live stream and on the message saved for a reload."""
         create_session("s1", RunKind.LIVE)
-        card = {"tool_data": {"tool_name": "browser_task_data", "data": {"step": 1}}}
+        card: dict[str, object] = {
+            "tool_data": {"tool_name": "browser_task_data", "data": {"step": 1}}
+        }
         with patch.object(rw, "stream_manager") as sm:
             sm.publish_chunk = AsyncMock()
             await rw.publish_to_stream("s1", card)
@@ -395,7 +398,7 @@ class TestRedisStreamWriter:
         with (
             patch.object(rw, "stream_manager") as sm,
             patch.object(rw, "spawn_background_task"),
-            patch.object(rw.time, "perf_counter", side_effect=[42.0, 43.0]),
+            patch.object(time, "perf_counter", side_effect=[42.0, 43.0]),
         ):
             sm.publish_chunk = AsyncMock()
             writer = make_redis_stream_writer("s1")
@@ -415,15 +418,19 @@ class TestAnExecutorThatNeverFinishes:
     failing, and says what was still running.
     """
 
-    async def test_a_timed_out_wait_marks_the_executor_failed_with_a_reason(self) -> None:
+    @pytest.mark.regression
+    async def test_a_timed_out_wait_leaves_the_still_running_executor_free_to_deliver(
+        self,
+    ) -> None:
+        """The waiter only stops waiting; the run goes on and its result is delivered as its own message."""
         register_executor_capture("s1")
         sess.mark_executor_spawned("s1")
 
         finished = await await_executor_done("s1", timeout=0.01)
 
         assert finished is False
-        assert sess.executor_failed("s1") is True
-        assert "did not finish within" in (sess.executor_failure("s1") or "")
+        assert sess.executor_abandoned("s1") is False
+        assert sess.executor_failed("s1") is False
 
     async def test_a_timed_out_wait_names_the_tasks_still_running(self) -> None:
         register_executor_capture("s1")
@@ -474,7 +481,7 @@ class TestAnExecutorThatNeverFinishes:
                 return self._inner.send(value)
 
             def throw(self, *args: object) -> object:
-                return self._inner.throw(*args)  # type: ignore[arg-type] -- delegating verbatim
+                return self._inner.throw(*args)  # type: ignore[call-overload]  # delegates Coroutine.throw's overloads verbatim
 
             def close(self) -> None:
                 self._inner.close()

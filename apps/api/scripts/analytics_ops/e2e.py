@@ -37,7 +37,7 @@ from shared.py.analytics.catalog.billing import (
     PaywallBlocked,
     SubscriptionActivated,
 )
-from shared.py.analytics.catalog.bots import BotChatCompleted, BotChatStarted, BotMessageReceived
+from shared.py.analytics.catalog.bots import BotMessageReceived
 from shared.py.analytics.catalog.chat import (
     ChatConversationCreated,
     ChatConversationRenamed,
@@ -258,8 +258,6 @@ def build_journeys(transcript: Path) -> list[Journey]:
                 Expect(ChatMessageSubmitted.event, BOT, False, (("source", telegram),)),
                 *_agent_turn(BOT, False, telegram),
                 Expect(BotMessageReceived.event, None, False),
-                Expect(BotChatStarted.event, None, False),
-                Expect(BotChatCompleted.event, None, False),
             ),
         ),
     ]

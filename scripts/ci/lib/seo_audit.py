@@ -16,6 +16,7 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
+import http.client
 import json
 from pathlib import Path
 import re
@@ -70,7 +71,8 @@ def fetch(url: str, method: str = "GET", host: str | None = None) -> Response:
         except urllib.error.HTTPError as exc:
             if exc.code < 500 or attempt == RETRIES:
                 return Response(exc.code, {k.lower(): v for k, v in exc.headers.items()}, "")
-        except (urllib.error.URLError, TimeoutError) as exc:
+        # HTTPException: a body cut short (IncompleteRead) or a dropped connection (RemoteDisconnected).
+        except (urllib.error.URLError, TimeoutError, http.client.HTTPException) as exc:
             if attempt == RETRIES:
                 return Response(0, {}, f"transport error: {exc}")
         time.sleep(2**attempt)

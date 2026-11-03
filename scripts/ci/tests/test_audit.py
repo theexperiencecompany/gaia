@@ -1,9 +1,9 @@
 """audit.sh: the standing dependency and pin gates.
 
 `pnpm` allowlist and expiry handling, exercised with a stubbed pnpm; `pip`
-with a stubbed uv and pip-audit. Both are also exercised at the `introduced`
-scope a PR push and the merge queue run at, against a real throwaway git repo
-whose base lockfile already ships some of the vulnerable versions.
+with a stubbed uv and pip-audit. Both are also run as a PR runs them, against a
+real throwaway git repo whose base lockfile already ships the vulnerable
+versions: those still fail.
 
 The real registry is never contacted: a fake ``pnpm`` on PATH prints a canned
 ``pnpm audit --json`` report and exits 1 the way the real one does whenever it
@@ -199,12 +199,8 @@ def test_registry_failure_is_never_a_pass(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# AUDIT_SCOPE=introduced — a PR fails only on what it put in the lockfile.
-#
-# 38% of the red PR rounds sampled over 30 days were infra or external, and six
-# of those were an advisory published overnight against a version master
-# already shipped: the PR could not have caused it and could not fix it without
-# a dependency bump that does not belong in it. Master still fails on it.
+# A PR's audit is the same audit as master's: an advisory against a version the
+# base already ships still blocks it (trivy holds the same line).
 # ---------------------------------------------------------------------------
 
 GIT_ENV = {
@@ -246,41 +242,8 @@ def _pnpm_lock(*packages: str) -> str:
     )
 
 
-def test_introduced_scope_fails_only_on_a_version_the_change_added(tmp_path: Path) -> None:
-    # undici@0.9.0 shipped on the base already; sharp@0.9.0 is new in this change.
-    repo, base = _repo(
-        tmp_path,
-        "pnpm-lock.yaml",
-        _pnpm_lock("undici@0.9.0", "axios@0.9.0"),
-        _pnpm_lock("undici@0.9.0", "axios@0.9.0", "sharp@0.9.0"),
-    )
-
-    proc = run(
-        tmp_path, allow=[], AUDIT_SCOPE="introduced", PNPM_AUDIT_ROOT=str(repo), GAIA_PR_BASE=base
-    )
-
-    assert proc.returncode == 1, proc.stderr
-    out = summary(proc)
-    assert out["scope"] == "introduced"
-    assert [f["module"] for f in out["details"]["failing"]] == ["sharp"]
-    assert [f["module"] for f in out["details"]["preexisting"]] == ["undici"]
-    assert "::warning::pnpm-audit: high undici" in proc.stderr
-
-
-def test_introduced_scope_passes_when_every_advisory_predates_the_change(tmp_path: Path) -> None:
-    lock = _pnpm_lock("undici@0.9.0", "sharp@0.9.0")
-    repo, base = _repo(tmp_path, "pnpm-lock.yaml", lock, lock + "\n")
-
-    proc = run(
-        tmp_path, allow=[], AUDIT_SCOPE="introduced", PNPM_AUDIT_ROOT=str(repo), GAIA_PR_BASE=base
-    )
-
-    assert proc.returncode == 0, proc.stderr
-    assert summary(proc)["preexisting"] == 2
-
-
-def test_the_default_scope_still_fails_on_every_advisory(tmp_path: Path) -> None:
-    # Master and dispatch runs set no scope: a pre-existing advisory reds them.
+def test_a_pr_fails_on_an_advisory_the_base_already_ships(tmp_path: Path) -> None:
+    # A CVE blocks every PR, the one it was published against included.
     lock = _pnpm_lock("undici@0.9.0", "sharp@0.9.0")
     repo, base = _repo(tmp_path, "pnpm-lock.yaml", lock, lock)
 
@@ -288,25 +251,6 @@ def test_the_default_scope_still_fails_on_every_advisory(tmp_path: Path) -> None
 
     assert proc.returncode == 1
     assert summary(proc)["failing"] == 2
-
-
-def test_an_unknown_scope_is_a_hard_error(tmp_path: Path) -> None:
-    assert run(tmp_path, allow=[], AUDIT_SCOPE="introduce").returncode == 2
-
-
-def test_an_unresolvable_base_is_a_hard_error_not_a_pass(tmp_path: Path) -> None:
-    lock = _pnpm_lock("sharp@0.9.0")
-    repo, _ = _repo(tmp_path, "pnpm-lock.yaml", lock, lock)
-
-    proc = run(
-        tmp_path,
-        allow=[],
-        AUDIT_SCOPE="introduced",
-        PNPM_AUDIT_ROOT=str(repo),
-        GAIA_PR_BASE="no-such-branch",
-    )
-
-    assert proc.returncode == 2
 
 
 # --- pip --------------------------------------------------------------------
@@ -377,35 +321,14 @@ def test_pip_fails_on_any_advisory_by_default(tmp_path: Path) -> None:
     assert "Pillow 10.0.0 GHSA-2" in proc.stdout
 
 
-def test_pip_introduced_scope_warns_on_what_the_base_already_ships(tmp_path: Path) -> None:
-    # pillow is the base's (spelled differently in the lock: names normalise);
-    # aiohttp 3.9.0 is this change's downgrade.
-    repo, base = _repo(
-        tmp_path,
-        "uv.lock",
-        _uv_lock(("aiohttp", "3.9.5"), ("pillow", "10.0.0")),
-        _uv_lock(("aiohttp", "3.9.0"), ("pillow", "10.0.0")),
-    )
-
-    proc = _pip(
-        tmp_path, PIP_REPORT, AUDIT_SCOPE="introduced", PIP_AUDIT_ROOT=str(repo), GAIA_PR_BASE=base
-    )
-
-    assert proc.returncode == 1, proc.stderr
-    assert "::error::pip-audit: aiohttp 3.9.0 PYSEC-1" in proc.stdout
-    assert "::warning::pip-audit: Pillow 10.0.0 GHSA-2" in proc.stdout
-
-
-def test_pip_introduced_scope_passes_when_nothing_is_new(tmp_path: Path) -> None:
+def test_pip_on_a_pr_fails_on_what_the_base_already_ships(tmp_path: Path) -> None:
     lock = _uv_lock(("aiohttp", "3.9.0"), ("pillow", "10.0.0"))
     repo, base = _repo(tmp_path, "uv.lock", lock, lock + "\n")
 
-    proc = _pip(
-        tmp_path, PIP_REPORT, AUDIT_SCOPE="introduced", PIP_AUDIT_ROOT=str(repo), GAIA_PR_BASE=base
-    )
+    proc = _pip(tmp_path, PIP_REPORT, PIP_AUDIT_ROOT=str(repo), GAIA_PR_BASE=base)
 
-    assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert proc.stdout.count("::warning::") == 2
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "::error::pip-audit: Pillow 10.0.0 GHSA-2" in proc.stdout
 
 
 def test_pip_with_no_report_is_never_a_pass(tmp_path: Path) -> None:
@@ -491,3 +414,9 @@ def test_uv_lock_with_no_tracked_lockfile_is_an_error(tmp_path: Path) -> None:
     proc = run_uv_lock(tmp_path)
     assert proc.returncode == 1
     assert "no tracked uv.lock" in proc.stderr
+
+
+def test_a_pr_audit_is_never_narrowed_to_what_the_pr_added() -> None:
+    """A CVE blocks every PR, as trivy's does: an advisory against what master ships is not a warning."""
+    workflow = (SCRIPT.parents[2] / ".github" / "workflows" / "ci.yml").read_text()
+    assert "AUDIT_SCOPE" not in workflow

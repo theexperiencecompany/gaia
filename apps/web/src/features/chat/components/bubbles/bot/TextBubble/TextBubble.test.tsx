@@ -45,3 +45,31 @@ describe("TextBubble with a card that throws while rendering", () => {
     );
   });
 });
+
+const turn = (over: Partial<ChatBubbleBotProps>) =>
+  ({
+    message_id: "bot-1",
+    text: "Looking into dentists",
+    ...over,
+  }) as ChatBubbleBotProps;
+
+describe("a turn the user stopped", () => {
+  it("says Stopped under what had streamed", () => {
+    render(<TextBubble {...turn({ stopped: true })} />);
+
+    expect(screen.getByText("Looking into dentists")).toBeDefined();
+    expect(screen.getByText("Stopped")).toBeDefined();
+  });
+
+  it("says nothing extra on a turn that finished", () => {
+    render(<TextBubble {...turn({})} />);
+
+    expect(screen.queryByText("Stopped")).toBeNull();
+  });
+
+  it("leaves a failed turn to its own failure line", () => {
+    render(<TextBubble {...turn({ stopped: true, error: "Provider down" })} />);
+
+    expect(screen.queryByText("Stopped")).toBeNull();
+  });
+});
