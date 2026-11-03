@@ -23,18 +23,9 @@ from app.models.reminder_models import (
     UpdateReminderRequest,
 )
 from app.models.user_models import AuthenticatedUser
-from app.services.analytics_service import capture
 from app.services.reminder_service import reminder_scheduler
 from app.utils.cron_utils import calculate_next_occurrences
 from app.utils.schedule import InvalidScheduleError, schedule_rejection
-from shared.py.analytics import UserId
-from shared.py.analytics.catalog.reminders import (
-    ReminderCreated,
-    ReminderDeleted,
-    ReminderPaused,
-    ReminderResumed,
-    ReminderUpdated,
-)
 from shared.py.wide_events import ReminderContext, log
 
 _CRON_PREVIEW_RUNS = 5
@@ -111,8 +102,6 @@ async def create_reminder_endpoint(
         log.set(reminder=_reminder_context("create", reminder))
         log.set(outcome="success")
 
-        if creation.created:
-            capture(UserId(user_id), ReminderCreated(is_recurring=bool(reminder.repeat)))
         return ReminderResponse.model_validate(reminder)
 
     except HTTPException:
@@ -243,7 +232,6 @@ async def update_reminder_endpoint(
 
         log.set(reminder=_reminder_context("update", updated_reminder))
         log.set(outcome="success")
-        capture(UserId(user_id), ReminderUpdated())
 
         return ReminderResponse.model_validate(updated_reminder)
 
@@ -297,7 +285,6 @@ async def cancel_reminder_endpoint(
                 detail="Failed to cancel reminder",
             )
 
-        capture(UserId(user_id), ReminderDeleted())
         log.set(outcome="success")
 
     except HTTPException:
@@ -406,10 +393,7 @@ async def pause_reminder_endpoint(
 
         log.set(user={"id": user_id}, reminder={"id": reminder_id})
 
-        # Update status to paused
-        success = await reminder_scheduler.update_reminder(
-            reminder_id, ReminderUpdate(status=ReminderStatus.PAUSED), user_id=user_id
-        )
+        success = await reminder_scheduler.pause(reminder_id, user_id=user_id)
 
         if not success:
             raise HTTPException(
@@ -424,7 +408,6 @@ async def pause_reminder_endpoint(
                 detail="Failed to retrieve updated reminder",
             )
 
-        capture(UserId(user_id), ReminderPaused())
         return ReminderResponse.model_validate(updated_reminder)
 
     except HTTPException:
@@ -501,7 +484,6 @@ async def resume_reminder_endpoint(
                 detail="Failed to retrieve updated reminder",
             )
 
-        capture(UserId(user_id), ReminderResumed())
         return ReminderResponse(**updated_reminder.model_dump())
 
     except HTTPException:
