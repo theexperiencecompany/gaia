@@ -22,6 +22,7 @@ from app.models.playbook_models import (
     TimeSlot,
     ToolStep,
     ask_slots,
+    is_read_call,
     is_work_call,
     walk_ask_slots,
 )
@@ -231,3 +232,18 @@ class TestIsWorkCall:
         self, tool_name: str, expected: bool
     ) -> None:
         assert is_work_call(tool_name) is expected
+
+
+@pytest.mark.parametrize(
+    ("tool", "reads"),
+    [
+        ("GMAIL_FETCH_MESSAGES", True),
+        ("gmail-fetch-messages", True),
+        ("list_todos", True),
+        ("search_and_delete_mail", False),
+        ("file_notes", False),
+        ("GMAIL_SEND_EMAIL", False),
+    ],
+)
+def test_a_call_reads_only_with_a_read_verb_and_no_work_verb(tool: str, reads: bool) -> None:
+    assert is_read_call(tool) is reads
