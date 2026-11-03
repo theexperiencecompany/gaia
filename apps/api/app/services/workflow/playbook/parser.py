@@ -758,10 +758,17 @@ def _variants(node: JsonSchemaNode) -> list[JsonSchemaNode]:
 
 
 def _accepted_types(node: JsonSchemaNode) -> tuple[type, ...]:
+    """Return the Python types a node accepts; () when it cannot tell.
+
+    A variant that declares no type at all (a $ref to an enum, a bare {}) could
+    be anything, so the union is unknown; a declared type with no mapping is skipped.
+    """
     if isinstance(node.type, str):
         return _JSON_TYPE_TO_PYTHON.get(node.type, ())
     accepted: list[type] = []
     for variant in _variants(node):
+        if variant.type is None and not _variants(variant):
+            return ()
         accepted.extend(_accepted_types(variant))
     return tuple(accepted)
 

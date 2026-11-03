@@ -12,8 +12,9 @@ from collections.abc import Collection, Mapping, Sequence
 import copy
 from dataclasses import dataclass, field
 import re
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, ValidationError
 
 from app.agents.tools.execute.unwrap import (
     ExecuteCallArgs,
@@ -40,6 +41,7 @@ from app.services.workflow.playbook.time_layouts import (
     slot_layout,
     time_slot_layout,
 )
+from app.utils.json_args import decode_json_container
 
 #: Most keys a result shape lists per object, and how deep it goes.
 _SHAPE_MAX_KEYS = 15
@@ -162,6 +164,10 @@ _FOR_EACH_DESCRIPTION = (
 )
 
 
+def _vary_mapping(value: object) -> object:
+    return {} if value is None else decode_json_container(value)
+
+
 class PlaybookPick(BaseModel):
     """One step of a playbook, picked from this run's record."""
 
@@ -172,7 +178,10 @@ class PlaybookPick(BaseModel):
         default="",
         description="A name later steps read this call's result by, as $steps.<id>.<path>",
     )
-    vary: dict[str, VariedValue] = Field(default_factory=dict, description=_VARY_DESCRIPTION)
+    # Models send "no values vary" as null and the mapping as JSON text; both mean the mapping.
+    vary: Annotated[dict[str, VariedValue], BeforeValidator(_vary_mapping)] = Field(
+        default_factory=dict, description=_VARY_DESCRIPTION
+    )
     for_each: str | AskSlot | None = Field(default=None, description=_FOR_EACH_DESCRIPTION)
     max_items: int | None = Field(
         default=None,
