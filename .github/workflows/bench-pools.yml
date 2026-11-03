@@ -24,10 +24,9 @@ jobs:
           - { name: lint, checks: "ruff mypy-api mypy biome type-check harness-tests" }
           - { name: build, checks: "build test-typescript" }
     runs-on: ${{ fromJSON(matrix.pool.labels) }}
-    timeout-minutes: 60
+    timeout-minutes: 120
     env:
-      # Every pool does the full work: the home box's persistent nx cache would otherwise replay results.
-      NX_SKIP_NX_CACHE: "true"
+      # bench-pools.sh skips the nx cache for the cold pass and uses it for the warm one.
       NX_NO_CLOUD: "true"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
