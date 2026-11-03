@@ -42,7 +42,7 @@ from app.core.request_context import get_authenticated_user
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.services.analytics_service import capture
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.memory import NotesCreated
+from shared.py.analytics.catalog.chat import ChatMessageSubmitted
 from tests.helpers import captured_wide_event, session_set_cookie
 
 
@@ -643,6 +643,7 @@ class TestAuthenticateSession:
 # breaks cross-surface funnel joins.
 
 GAIA_USER_ID = "6812f0b3c9a14e2b7d5a91cc"
+CHAT_TURN = ChatMessageSubmitted(source="web", has_files=False, stream_id="s-1", is_retry=False)
 REQUEST_PATH = "/api/v1/notes"
 
 
@@ -784,8 +785,8 @@ class TestPostHogRequestContextIdentity:
 
 
 def _route_events(events: list[dict]) -> list[dict]:
-    """Return the events the route captured, without the user:active mark a user's request adds."""
-    return [event for event in events if event["event"] == NotesCreated.event]
+    """Return the events the route captured, without the user:active mark a user's chat turn adds."""
+    return [event for event in events if event["event"] == ChatMessageSubmitted.event]
 
 
 class TestPostHogSessionJoin:
@@ -812,7 +813,7 @@ class TestPostHogSessionJoin:
 
         @app.post("/notes")
         async def notes() -> dict:
-            capture(UserId(GAIA_USER_ID), NotesCreated())
+            capture(UserId(GAIA_USER_ID), CHAT_TURN)
             return {"ok": True}
 
         return app
@@ -880,7 +881,7 @@ class TestRequestAttribution:
         @app.post("/api/v1/chat-stream")
         @app.post("/api/v1/payments/webhooks/dodo")
         async def route() -> dict:
-            capture(UserId(GAIA_USER_ID), NotesCreated())
+            capture(UserId(GAIA_USER_ID), CHAT_TURN)
             return {"ok": True}
 
         return app
@@ -1062,7 +1063,7 @@ def _build_local_probe_app() -> FastAPI:
     async def probe(request: Request) -> dict[str, object]:
         user = getattr(request.state, "user", "unset")
         return {
-            "user": user if user in (None, "unset") else user.email,
+            "user": user.email if isinstance(user, AuthenticatedUser) else user,
             "auth_provider": getattr(user, "auth_provider", None),
             "authenticated": getattr(request.state, "authenticated", "unset"),
             "new_session": getattr(request.state, "new_session", "unset"),
