@@ -20,6 +20,7 @@ from app.services.integrations.integration_accounts import (
     pick_primary,
     primary_connected_account_id,
     set_account_nickname,
+    toolkit_not_connected,
 )
 from app.services.triggers.base import primary_account_for_trigger
 from app.utils.errors import AppError, IntegrationNotConnectedError
@@ -244,3 +245,11 @@ class TestPrimaryAccountForTrigger:
     async def test_a_slug_no_integration_owns_fails_registration(self) -> None:
         with pytest.raises(TriggerRegistrationError):
             await primary_account_for_trigger(USER_ID, "WEATHER_ALERT")
+
+
+class TestToolkitNotConnected:
+    def test_a_toolkit_with_no_gaia_integration_is_named_after_itself(self) -> None:
+        error = toolkit_not_connected("NOT_A_TOOLKIT", "gone", meta={"cause": "404"})
+
+        assert (error.integration_id, error.integration_name) == ("not_a_toolkit", "NOT_A_TOOLKIT")
+        assert error.meta == {"cause": "404"}

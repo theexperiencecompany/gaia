@@ -32,6 +32,7 @@ class TestRequireIntegration:
             "gmail",
         )
         assert envelope.message == "Gmail is not connected. Reconnect it to continue."
+        assert envelope.why == "The integration has no connected account"
 
     async def test_a_connected_integration_passes_the_user_through(self) -> None:
         dependency = require_integration("gmail")

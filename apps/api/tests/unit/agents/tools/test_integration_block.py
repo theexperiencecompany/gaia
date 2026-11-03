@@ -5,13 +5,16 @@ from contextlib import contextmanager
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import fakeredis
 from langchain_core.messages import ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, tool
 import pytest
 
-from app.agents.tools.invocation import IntegrationBlockedError, invoke_tool
+from app.agents.tools import run_record
+from app.agents.tools.invocation import IntegrationBlockedError, invoke_tool, invoke_tool_sync
 from app.agents.tools.run_record import read_run_record
+from app.constants.cache import RUN_BLOCKED_INTEGRATIONS_PREFIX
 from app.constants.integrations import ConnectMode
 from app.db.repositories.user_integrations import user_integration_repository
 from app.services.integrations.integration_accounts import toolkit_not_connected
@@ -24,16 +27,28 @@ CONFIG: RunnableConfig = {
     "configurable": {"stream_id": STREAM_ID, "user_id": USER_ID, "source_category": "ui"}
 }
 CHECKER = "app.utils.integration_checker"
+INVOCATION = "app.agents.tools.invocation"
+BLOCKED_GMAIL = (
+    "'gmail' is not connected and the user was already shown how to connect it this run, so "
+    "this call was not sent. Do not call gmail again this run; finish the rest of the task and "
+    "say what is waiting on the connection."
+)
 
 
 @contextmanager
 def _ui_run(*, expired: bool = False) -> Iterator[MagicMock]:
     """Run inside the graph run the connect card is written into, yielding its stream writer."""
     writer = MagicMock()
+
+    async def _is_expired(user_id: str, _integration_id: str) -> bool:
+        # Checks who it is asked about: a card for no user would read every grant as new.
+        assert user_id == USER_ID
+        return expired
+
     with (
         patch(f"{CHECKER}.get_config", return_value=CONFIG),
         patch(f"{CHECKER}.current_stream_writer", return_value=writer),
-        patch.object(user_integration_repository, "is_expired", AsyncMock(return_value=expired)),
+        patch.object(user_integration_repository, "is_expired", AsyncMock(side_effect=_is_expired)),
     ):
         yield writer
 
@@ -66,22 +81,36 @@ async def test_a_second_call_to_a_blocked_integration_is_refused_without_reachin
     calls: list[str] = []
     gmail = _gmail_tool(calls)
 
-    with _ui_run() as writer:
+    # A Composio error already names its integration; a lookup would rename the card.
+    elsewhere = MagicMock(managed_by="composio")
+    elsewhere.name = "Looked Up"
+    with (
+        _ui_run() as writer,
+        patch(f"{INVOCATION}.IntegrationResolver.resolve", AsyncMock(return_value=elsewhere)),
+    ):
         first = await invoke_tool(gmail, {"query": "one"}, CONFIG)
-        with pytest.raises(IntegrationBlockedError, match="was not sent"):
+        with pytest.raises(IntegrationBlockedError) as refused:
             await invoke_tool(gmail, {"query": "two"}, CONFIG)
+
+    assert str(refused.value) == BLOCKED_GMAIL
 
     assert calls == ["one"]
     assert isinstance(first, str)
     assert first.startswith("Gmail needs to be connected.")
     assert "do not call any Gmail tool again this run" in first
     (card,) = _cards(writer)
-    assert (card["integration_id"], card["expired"]) == ("gmail", False)
+    assert (card["integration_id"], card["integration_name"], card["expired"]) == (
+        "gmail",
+        "Gmail",
+        False,
+    )
     recorded = await read_run_record(STREAM_ID)
     assert [(c.args, c.failed) for c in recorded] == [
         ({"query": "one"}, True),
         ({"query": "two"}, True),
     ]
+    assert recorded[0].result_digest == first
+    assert recorded[1].result_digest == f"Error: IntegrationBlockedError: {BLOCKED_GMAIL}"
 
 
 async def test_another_integration_in_the_same_run_still_runs(fake_redis: Any) -> None:
@@ -130,9 +159,8 @@ async def test_an_mcp_server_rejecting_its_token_asks_for_a_reconnect(fake_redis
     with (
         _ui_run() as writer,
         patch(
-            "app.agents.tools.invocation.IntegrationResolver.resolve",
-            AsyncMock(return_value=resolved),
-        ),
+            f"{INVOCATION}.IntegrationResolver.resolve", AsyncMock(return_value=resolved)
+        ) as lookup,
         patch(
             f"{CHECKER}._standalone_mcp_auth",
             AsyncMock(return_value=MagicMock(kind="unavailable", url=None)),
@@ -142,6 +170,7 @@ async def test_an_mcp_server_rejecting_its_token_asks_for_a_reconnect(fake_redis
         with pytest.raises(IntegrationBlockedError):
             await invoke_tool(list_meetings, {"limit": 5}, CONFIG)
 
+    lookup.assert_awaited_once_with("readai")
     (card,) = _cards(writer)
     assert (card["integration_id"], card["integration_name"], card["expired"]) == (
         "readai",
@@ -214,3 +243,46 @@ async def test_bot_and_workflow_runs_stop_calling_the_integration_too(
             await invoke_tool(gmail, {"query": "two"}, config)
 
     assert calls == ["one"]
+
+
+async def test_a_call_with_no_user_behind_it_gets_the_error_and_no_card(fake_redis: Any) -> None:
+    """A trigger option lookup has nobody to show a card to."""
+    config: RunnableConfig = {"configurable": {"stream_id": STREAM_ID}}
+
+    with _ui_run() as writer:
+        answer = await invoke_tool(_gmail_tool([]), {"query": "q"}, config)
+
+    assert answer == "Gmail is not connected. Reconnect it to continue."
+    assert _cards(writer) == []
+
+
+async def test_a_graph_tool_call_without_an_id_is_answered_with_an_empty_one(
+    fake_redis: Any,
+) -> None:
+    gmail = _gmail_tool([])
+    call = {"type": "tool_call", "id": None, "name": gmail.name, "args": {"query": "q"}}
+
+    with _ui_run():
+        answer = await invoke_tool(gmail, call, CONFIG)
+
+    assert isinstance(answer, ToolMessage)
+    assert answer.tool_call_id == ""
+
+
+def test_the_sync_twin_refuses_a_blocked_integration_too(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = fakeredis.FakeRedis(decode_responses=True)
+    monkeypatch.setattr(run_record, "_sync_client", lambda: client)
+    client.sadd(f"{RUN_BLOCKED_INTEGRATIONS_PREFIX}{STREAM_ID}", "gmail")
+    calls: list[str] = []
+
+    @tool("GMAIL_SEND_EMAIL")
+    def send(to: str) -> str:
+        """Send an email."""
+        calls.append(to)
+        return "sent"
+
+    with pytest.raises(IntegrationBlockedError) as refused:
+        invoke_tool_sync(send, {"to": "a@b.c"}, CONFIG)
+
+    assert str(refused.value) == BLOCKED_GMAIL
+    assert calls == []

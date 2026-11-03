@@ -103,6 +103,11 @@ class TestWrapToolWithNullFilter:
 
         assert (raised.value.integration_id, raised.value.integration_name) == ("readai", None)
         assert raised.value.grant_died is True
+        assert (
+            raised.value.why
+            == "The MCP server rejected the stored credentials: HTTP 401 Unauthorized"
+        )
+        assert str(raised.value.__cause__) == "HTTP 401 Unauthorized"
 
     @pytest.mark.regression
     async def test_a_reconnect_with_no_token_asks_the_user_to_sign_in(self) -> None:
@@ -117,6 +122,35 @@ class TestWrapToolWithNullFilter:
 
         reconnect.assert_awaited_once()
         assert raised.value.integration_id == "readai"
+        assert isinstance(raised.value.__cause__, MCPAuthorizationRequiredError)
+        assert str(raised.value.__cause__) == (
+            "No valid token for readai. "
+            "OAuth authorization required - user must complete the OAuth flow."
+        )
+
+    @pytest.mark.parametrize("rejection", ["HTTP 401", "Request UNAUTHORIZED by server"])
+    async def test_a_reconnect_the_server_still_rejects_asks_the_user_to_sign_in(
+        self, rejection: str
+    ) -> None:
+        tool = _make_tool(arun=AsyncMock(side_effect=Exception("connection closed")))
+        tool.metadata = {"integration_id": "readai"}
+        retry_error = Exception(rejection)
+        reconnect = AsyncMock(side_effect=retry_error)
+
+        wrapped = wrap_tool_with_null_filter(tool, reconnect_and_retry=reconnect)
+        with pytest.raises(IntegrationNotConnectedError) as raised:
+            await wrapped._arun()
+
+        assert raised.value.__cause__ is retry_error
+
+    async def test_a_reconnect_failing_for_another_reason_is_reported_not_raised(self) -> None:
+        tool = _make_tool(arun=AsyncMock(side_effect=Exception("connection closed")))
+        tool.metadata = {"integration_id": "readai"}
+        reconnect = AsyncMock(side_effect=Exception("server busy"))
+
+        wrapped = wrap_tool_with_null_filter(tool, reconnect_and_retry=reconnect)
+
+        assert await wrapped._arun() == "MCP tool error after reconnect: server busy"
 
     async def test_reraises_unauthorized_error_case_insensitive(self) -> None:
         original = AsyncMock(side_effect=Exception("Access Unauthorized for user"))

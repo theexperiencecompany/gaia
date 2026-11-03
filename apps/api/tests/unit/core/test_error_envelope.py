@@ -392,6 +392,8 @@ class TestTheNotConnectedEnvelope:
 
         envelope = ErrorEnvelope.from_app_error(error)
 
+        # Nothing died unless the raiser says so: a dead grant is expired, a missing one is not.
+        assert error.grant_died is False
         assert (envelope.code, envelope.toolkit, envelope.integration_id) == (
             "INTEGRATION_NOT_CONNECTED",
             "GOOGLECALENDAR",
