@@ -71,10 +71,3 @@ class CorpusRun(BaseModel):
     trigger_type: str
     record: list[RecordedCall] = Field(description="The run's pickable calls, in order")
     attempts: list[CorpusAttempt]
-
-
-def load_corpus(directory: Path = CORPUS_DIR) -> list[CorpusRun]:
-    """Every fixture in the corpus, in file order."""
-    return [
-        CorpusRun.model_validate_json(path.read_text()) for path in sorted(directory.glob("*.json"))
-    ]
