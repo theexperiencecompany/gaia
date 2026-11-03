@@ -1,0 +1,51 @@
+name: Bench runner pools
+
+# Throwaway: times the same CI checks on each runner pool at one commit, so the
+# M4 pool can be judged on measurements. Lives only on bench/* branches.
+on:
+  push:
+    branches: [bench/m4-pools]
+
+permissions:
+  contents: read
+
+jobs:
+  bench:
+    name: bench (${{ matrix.pool.name }}, ${{ matrix.set.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        pool:
+          - { name: github, labels: '["ubuntu-latest"]' }
+          - { name: home, labels: '["self-hosted", "gaia-home"]' }
+          - { name: m4-lint, labels: '["self-hosted", "gaia-m4-lint"]' }
+          - { name: m4, labels: '["self-hosted", "gaia-m4"]' }
+        set:
+          - { name: lint, checks: "ruff mypy-api mypy biome type-check harness-tests" }
+          - { name: build, checks: "build test-typescript" }
+    runs-on: ${{ fromJSON(matrix.pool.labels) }}
+    timeout-minutes: 60
+    env:
+      # Every pool does the full work: the home box's persistent nx cache would otherwise replay results.
+      NX_SKIP_NX_CACHE: "true"
+      NX_NO_CLOUD: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          clean: ${{ !startsWith(runner.name, 'gaia-home-') }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-uv
+      - uses: ./.github/actions/setup-node-pnpm
+      - uses: ./.github/actions/setup-python-test-env
+        with:
+          services: "false"
+          node: "false"
+          restore-models: "false"
+      - name: Runner facts
+        run: echo "runner=$RUNNER_NAME arch=$(uname -m) nproc=$(nproc) mem=$(free -g | awk '/^Mem:/{print $2}')G load=$(cut -d' ' -f1-3 /proc/loadavg)"
+      - name: Run each check, timed
+        continue-on-error: true
+        env:
+          CHECKS: ${{ matrix.set.checks }}
+        run: bash scripts/ci/bench-pools.sh
