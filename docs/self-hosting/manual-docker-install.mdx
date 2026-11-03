@@ -82,7 +82,7 @@ Run GAIA with plain `docker compose`, no `gaia` CLI needed.
 
   <Step title="Write the Compose settings">
     ```bash
-    printf 'COMPOSE_PROFILES=proxy\nGAIA_VERSION=v0.7.0\n' > ~/gaia/infra/docker/.env
+    printf 'COMPOSE_PROFILES=proxy\nGAIA_VERSION=v0.7.0\n' > ~/gaia/packages/cli/selfhost/.env
     ```
 
     `proxy` opens port 3000. `GAIA_VERSION` must match the version you downloaded.
@@ -90,7 +90,7 @@ Run GAIA with plain `docker compose`, no `gaia` CLI needed.
 
   <Step title="Start GAIA">
     ```bash
-    cd ~/gaia/infra/docker && docker compose -f docker-compose.selfhost.yml up -d
+    cd ~/gaia/packages/cli/selfhost && docker compose -f docker-compose.selfhost.yml up -d
     ```
 
     The first start can take several minutes. Always pass `-f docker-compose.selfhost.yml`.
@@ -105,7 +105,7 @@ Run GAIA with plain `docker compose`, no `gaia` CLI needed.
 
 ## Options
 
-Set these in `infra/docker/.env`, then run `docker compose -f docker-compose.selfhost.yml up -d` again to apply them.
+Set these in `packages/cli/selfhost/.env`, then run `docker compose -f docker-compose.selfhost.yml up -d` again to apply them.
 
 | Variable | What it does | Default |
 | --- | --- | --- |
@@ -122,7 +122,7 @@ API settings such as provider keys and `BLOB_STORE` go in `apps/api/.env`; see [
 
 ### Your own domain with HTTPS
 
-Point your domain at the server and open ports 80 and 443. Set `HOST` and `FRONTEND_URL` in `apps/api/.env` to `https://gaia.example.com`, add these to `infra/docker/.env`, and run `up -d` again:
+Point your domain at the server and open ports 80 and 443. Set `HOST` and `FRONTEND_URL` in `apps/api/.env` to `https://gaia.example.com`, add these to `packages/cli/selfhost/.env`, and run `up -d` again:
 
 ```bash
 GAIA_DOMAIN=gaia.example.com
@@ -141,11 +141,11 @@ Platforms with their own proxy (Coolify, Traefik and others) don't need the bund
 | `/api/v1/*` and `/health/ready` | `gaia-backend:8000` |
 | Everything else | `gaia-web:3000` |
 
-Don't buffer streamed responses, allow WebSocket upgrades on `/api/v1`, and make your proxy replace, not append to, any `X-Forwarded-For` header a client sends: the API trusts it for rate limits. If you put another proxy in front of the bundled one instead (Cloudflare Tunnel, a load balancer), add its address to [`trusted_proxies`](https://caddyserver.com/docs/caddyfile/options#trusted-proxies) in `infra/docker/selfhost/Caddyfile`, or every visitor shares one rate limit.
+Don't buffer streamed responses, allow WebSocket upgrades on `/api/v1`, and make your proxy replace, not append to, any `X-Forwarded-For` header a client sends: the API trusts it for rate limits. If you put another proxy in front of the bundled one instead (Cloudflare Tunnel, a load balancer), add its address to [`trusted_proxies`](https://caddyserver.com/docs/caddyfile/options#trusted-proxies) in `packages/cli/selfhost/Caddyfile`, or every visitor shares one rate limit.
 
 ## Day-to-day commands
 
-Run these from `~/gaia/infra/docker`.
+Run these from `~/gaia/packages/cli/selfhost`.
 
 | To | Run |
 | --- | --- |
@@ -189,7 +189,7 @@ The databases run without passwords (RabbitMQ uses the well-known `guest`/`guest
 
 <AccordionGroup>
   <Accordion icon="plug" title="http://localhost:3000 doesn't load">
-    Check that `infra/docker/.env` has `COMPOSE_PROFILES=proxy` and that `docker compose -f docker-compose.selfhost.yml ps` lists `proxy`. Without the profile no port is opened. If something else uses port 3000, set `WEB_HOST_PORT` to another port.
+    Check that `packages/cli/selfhost/.env` has `COMPOSE_PROFILES=proxy` and that `docker compose -f docker-compose.selfhost.yml ps` lists `proxy`. Without the profile no port is opened. If something else uses port 3000, set `WEB_HOST_PORT` to another port.
   </Accordion>
   <Accordion icon="hourglass" title="gaia-backend stays unhealthy">
     The first start sets up the databases and can take up to 10 minutes on a small machine. Watch it with `docker compose -f docker-compose.selfhost.yml logs -f gaia-backend`. An error that names a missing setting means a line is missing from `apps/api/.env`: compare it with step 2 above.
@@ -207,7 +207,7 @@ The databases run without passwords (RabbitMQ uses the well-known `guest`/`guest
 
 ## Building from source
 
-To run your own changes, build the images from a source checkout instead of pulling them. From `infra/docker/` in the checkout:
+To run your own changes, build the images from a source checkout instead of pulling them. From `packages/cli/selfhost/` in the checkout:
 
 ```bash
 docker compose -f docker-compose.selfhost.yml -f docker-compose.build.yml up -d --build
