@@ -86,6 +86,8 @@ export interface IMessage {
   kind?: string | null;
   // GAIA id of the message an emoji_ack reacts to.
   reacts_to_message_id?: string | null;
+  // The user stopped this turn with Stop (server's stopped).
+  stopped?: boolean | null;
   // Reactions folded onto this message for render (see foldReactionAcks).
   reactions?: MessageReaction[] | null;
 }
