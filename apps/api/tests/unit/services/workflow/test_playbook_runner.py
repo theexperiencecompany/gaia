@@ -12,12 +12,12 @@ made immediately before that step so the slots are written from what has actuall
 run. The scripted model's turns are not model calls and never reach a provider.
 """
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import json
-from typing import Annotated, Any, ClassVar
+from typing import Annotated, Any, ClassVar, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
@@ -35,6 +35,7 @@ from app.agents.middleware.factory import (
     create_middleware_stack as real_create_middleware_stack,
 )
 from app.agents.prompts.playbook_prompts import PLAYBOOK_ASK_ELEMENT
+from app.agents.tools.core.registry import ToolRegistry
 from app.agents.workspace.offload import mark_offload
 from app.constants.agents import PLAYBOOK_SUSPECT_BASELINE_WINDOW
 from app.constants.hil import HIL_STATUS_KWARG
@@ -201,14 +202,14 @@ class _FakeSubagentConfig:
 class _FakeSubagent:
     id = "calendar_agent"
     managed_by = "internal"
-    mcp_config = None
+    mcp_config: object | None = None
     config = _FakeSubagentConfig()
 
 
-def _playbook(steps: list[PlaybookStep]) -> PlaybookDocument:
+def _playbook(steps: Sequence[PlaybookStep]) -> PlaybookDocument:
     return PlaybookDocument(
         description="Mail the day's agenda",
-        steps=steps,
+        steps=list(steps),
         result_brief="Say how many events there were and that the mail went out.",
         workflow_id="wf_1",
         user_id=USER_ID,
@@ -1793,8 +1794,8 @@ class TestNonStringResults:
         assert result.ok is True, result.failure
         assert recorder.calls[1][1]["body"] == "/workspace/report.jsonl"
 
-    async def test_a_call_that_produced_no_result_stops_the_run_and_says_so(self) -> None:
-        """A state-only tool answers nothing; treating that as an empty success would let every later $steps reference resolve against a hole."""
+    async def test_a_command_with_no_reply_stops_the_run_and_says_so(self) -> None:
+        """A state-only Command answers nothing; an empty success would let every later $steps reference resolve against a hole."""
         recorder = _Recorder()
         registry = _FakeRegistry(_special_tools(recorder))
         playbook = _playbook([ToolStep(id="s", tool="stash", args={"note": "later"})])
@@ -1802,10 +1803,12 @@ class TestNonStringResults:
         result, _ = await _run(playbook, registry)
 
         assert result.ok is False
-        assert result.failure == (
-            "Playbook stopped at step 1 (stash): the graph produced no result for this call. "
-            "Completed: nothing. Nothing after that step ran."
+        assert result.failure is not None
+        assert result.failure.startswith(
+            "Playbook stopped at step 1 (stash): Error: ValueError: Expected to have a matching "
+            "ToolMessage in Command.update for tool 'stash'"
         )
+        assert result.failure.endswith("Completed: nothing. Nothing after that step ran.")
 
     async def test_a_content_block_result_is_recorded_as_its_text_not_as_nothing(self) -> None:
         recorder = _Recorder()
@@ -2742,13 +2745,14 @@ async def test_the_ask_fill_adds_to_the_runs_llm_count_rather_than_resetting_it(
     """The llm_calls counter is a running total; the ask fill adds its one call rather than resetting the tally."""
     run = _bare_run()
     run.llm_calls = 5
-    playbook = _playbook([ToolStep(id="mail", tool="list_events", args={})])
+    step = ToolStep(id="mail", tool="list_events", args={})
+    playbook = _playbook([step])
     fill = PlaybookAskFill(asks=[])
 
     with (
         patch(f"{MODULE}.ainvoke_structured", AsyncMock(return_value=fill)),
     ):
-        await _fill_asks(playbook, run, playbook.steps[0].arg_ask_slots("mail"), pending=[])
+        await _fill_asks(playbook, run, step.arg_ask_slots("mail"), pending=[])
 
     assert run.llm_calls == 6
     assert run.ask_fill is fill
@@ -2757,17 +2761,17 @@ async def test_the_ask_fill_adds_to_the_runs_llm_count_rather_than_resetting_it(
 # --- guards on states the models rule out ------------------------------------
 
 
-def _bare_run(registry: Any = None) -> _Run:
+def _bare_run() -> _Run:
     """Build a _Run for calling one internal tool directly."""
     return _Run(
-        registry=registry or _FakeRegistry({}),
+        registry=cast("ToolRegistry", _FakeRegistry({})),
         base=RunContext(
             user=USER,
             now=datetime.now(UTC),
             trigger={},
             steps={},
             last_run={},
-            asks={},
+            asks=AskAnswers(),
         ),
         configurable={
             "stream_id": "playbook_test",
@@ -2834,7 +2838,7 @@ class TestGuardsOnStatesTheModelsRuleOut:
 # --- for_each: bounded repetition -------------------------------------------
 
 
-def _fan_out(source: object = "$steps.events.ids", max_items: int = 25) -> list[PlaybookStep]:
+def _fan_out(source: str = "$steps.events.ids", max_items: int = 25) -> list[PlaybookStep]:
     """Fetch a list, then act once per element of it."""
     return [
         ToolStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
@@ -2899,7 +2903,7 @@ class TestForEach:
         """Seen on the real model: id-less for_each steps had 'ran' counted off id-keyed results, so a loop that ran once logged ran: 0."""
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder, events_result='{"ids": ["a", "b"]}'))
-        steps = [
+        steps: list[PlaybookStep] = [
             ToolStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
             ForEachStep(
                 tool="send_email", args={"to": "$item"}, for_each="$steps.events.ids", max_items=5
@@ -2921,13 +2925,13 @@ class TestForEach:
         """Seen live: a pick id one character off errored mid-loop; a pick must be an exact copy from the results above."""
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder, events_result='{"ids": ["a1b2", "c3d4"]}'))
-        steps = [
+        steps: list[PlaybookStep] = [
             ToolStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
             ForEachStep(
                 id="mails",
                 tool="send_email",
                 args={"to": "$item"},
-                for_each=_slot("the ones that want a reply"),
+                for_each=AskSlot.model_validate(_slot("the ones that want a reply")),
                 max_items=5,
             ),
         ]
@@ -2948,13 +2952,13 @@ class TestForEach:
     async def test_a_pick_copied_from_the_results_runs(self) -> None:
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder, events_result='{"ids": ["a1b2", "c3d4"]}'))
-        steps = [
+        steps: list[PlaybookStep] = [
             ToolStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
             ForEachStep(
                 id="mails",
                 tool="send_email",
                 args={"to": "$item"},
-                for_each=_slot("the ones that want a reply"),
+                for_each=AskSlot.model_validate(_slot("the ones that want a reply")),
                 max_items=5,
             ),
         ]
@@ -3020,7 +3024,7 @@ class TestForEach:
     async def test_a_step_without_an_id_runs_every_element_and_keeps_no_result(self) -> None:
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder, events_result='{"ids": ["a", "b"]}'))
-        steps = [
+        steps: list[PlaybookStep] = [
             ToolStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
             ForEachStep(
                 tool="send_email", args={"to": "$item"}, for_each="$steps.events.ids", max_items=5
@@ -3089,21 +3093,25 @@ class TestForEachShape:
 
     def test_the_stored_step_cannot_lack_a_ceiling(self) -> None:
         with pytest.raises(ValidationError):
-            ForEachStep(id="s", tool="send_email", args={}, for_each="$steps.x.ids")
+            ForEachStep.model_validate(
+                {"id": "s", "tool": "send_email", "args": {}, "for_each": "$steps.x.ids"}
+            )
 
     def test_the_stored_step_cannot_carry_a_ceiling_without_a_loop(self) -> None:
         with pytest.raises(ValidationError):
-            ToolStep(id="s", tool="send_email", args={}, max_items=5)
+            ToolStep.model_validate({"id": "s", "tool": "send_email", "args": {}, "max_items": 5})
 
     def test_the_stored_handoff_cannot_repeat(self) -> None:
         """for_each repeats one call; a stored handoff is a subagent's whole recorded sequence, a different feature entirely."""
         with pytest.raises(ValidationError):
-            HandoffStep(
-                id="h",
-                handoff="calendar_agent",
-                steps=[ToolStep(id="c", tool="list_events", args={})],
-                for_each="$steps.x.ids",
-                max_items=2,
+            HandoffStep.model_validate(
+                {
+                    "id": "h",
+                    "handoff": "calendar_agent",
+                    "steps": [ToolStep(id="c", tool="list_events", args={})],
+                    "for_each": "$steps.x.ids",
+                    "max_items": 2,
+                }
             )
 
     def test_the_ceiling_is_capped(self) -> None:
@@ -3302,13 +3310,13 @@ class TestAnEmptySelectionIsAnAnswer:
     async def test_an_empty_pick_is_a_completed_run_with_zero_iterations(self) -> None:
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder, events_result='{"ids": ["a", "b"]}'))
-        steps = [
+        steps: list[PlaybookStep] = [
             ToolStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
             ForEachStep(
                 id="mails",
                 tool="send_email",
                 args={"to": "$item"},
-                for_each=_slot("the ones that want a reply"),
+                for_each=AskSlot.model_validate(_slot("the ones that want a reply")),
                 max_items=5,
             ),
         ]
@@ -3338,7 +3346,7 @@ class TestForEachRecord:
     ) -> None:
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder, events_result='{"ids": ["a", "b", "c"]}'))
-        steps = [
+        steps: list[PlaybookStep] = [
             ToolStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
             ForEachStep(
                 id="mails",
@@ -3370,7 +3378,7 @@ class TestForEachRecord:
     async def test_a_suspect_element_stops_the_loop_after_that_element(self) -> None:
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder, events_result='{"ids": ["a", "b"]}'))
-        steps = [
+        steps: list[PlaybookStep] = [
             ToolStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
             ForEachStep(
                 id="mails",
@@ -3404,7 +3412,7 @@ class TestForEachRecord:
     async def test_a_source_that_is_null_runs_zero_times_and_says_so(self) -> None:
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder, events_result='{"ids": null}'))
-        steps = [
+        steps: list[PlaybookStep] = [
             ToolStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
             ForEachStep(
                 id="mails",
@@ -3426,7 +3434,7 @@ class TestForEachRecord:
     async def test_a_source_that_is_not_a_list_stops_naming_what_it_was(self) -> None:
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder, events_result='{"ids": {"a": 1}}'))
-        steps = [
+        steps: list[PlaybookStep] = [
             ToolStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
             ForEachStep(
                 id="mails",
@@ -3449,7 +3457,7 @@ class TestForEachRecord:
     async def test_each_element_gets_its_own_ask_call_and_the_element_in_it(self) -> None:
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder, events_result='{"ids": ["a", "b"]}'))
-        steps = [
+        steps: list[PlaybookStep] = [
             ToolStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
             ForEachStep(
                 id="mails",

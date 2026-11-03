@@ -212,24 +212,30 @@ class TestErrorText:
     def test_an_exception_with_no_message_still_reads_as_an_error(self):
         assert format_tool_error(ValueError()).startswith("Error: ValueError:")
 
-    def test_invalid_arguments_name_only_the_fields_the_model_controls(self):
-        """An injected argument is not the model's to fix, so naming it would send it chasing a field it cannot set."""
+    def test_a_validation_error_from_a_running_tool_never_claims_it_did_not_run(self):
+        """Arguments are checked before the body; a ValidationError after that may follow a side effect."""
 
-        class _Args(BaseModel):
-            acceptance_criteria: list[str]
-            state: dict[str, Any]
+        class _ProviderReply(BaseModel):
+            message_id: str
 
         with pytest.raises(ValidationError) as caught:
-            _Args.model_validate({})
-        model_errors = [e for e in caught.value.errors() if e["loc"] != ("state",)]
+            _ProviderReply.model_validate({})
 
-        text = format_tool_error(
-            ToolInvocationError("call_executor", caught.value, {}, model_errors)
-        )
+        text = format_tool_error(ToolInvocationError("send_email", caught.value, {}, []))
 
-        assert text.startswith("Error: ToolInvocationError: 'call_executor' was not run")
-        assert "acceptance_criteria: Field required" in text
-        assert "state" not in text
+        assert text.startswith("Error: ValidationError: 1 validation error for _ProviderReply")
+        assert "message_id" in text
+        assert "not run" not in text
+        assert "Nothing happened" not in text
+
+    def test_an_interrupt_is_raised_again_instead_of_formatted(self):
+        """ToolNode hands a wrapper's exceptions to this formatter unfiltered, interrupts included."""
+        interrupt = GraphInterrupt(())
+
+        with pytest.raises(GraphInterrupt) as caught:
+            format_tool_error(interrupt)
+
+        assert caught.value is interrupt
 
 
 async def _never_returns(_request: Any) -> ToolMessage:

@@ -242,11 +242,8 @@ apps/api/tests/unit/agents/test_messages.py	arg-type
 apps/api/tests/unit/agents/test_messages.py	list-item
 apps/api/tests/unit/agents/test_middleware_chat_llm_wiring.py	arg-type
 apps/api/tests/unit/agents/test_middleware_chat_llm_wiring.py	attr-defined
-apps/api/tests/unit/agents/test_middleware_executor.py	arg-type
-apps/api/tests/unit/agents/test_middleware_executor.py	union-attr
 apps/api/tests/unit/agents/test_model_lane.py	attr-defined
 apps/api/tests/unit/agents/test_model_lane.py	misc
-apps/api/tests/unit/agents/test_offload.py	attr-defined
 apps/api/tests/unit/agents/test_openui_prompts.py	assignment
 apps/api/tests/unit/agents/test_pause_checkpointing.py	arg-type
 apps/api/tests/unit/agents/test_pause_checkpointing.py	list-item
@@ -254,7 +251,6 @@ apps/api/tests/unit/agents/test_profile_crawler.py	return-value
 apps/api/tests/unit/agents/test_provider_subagents.py	call-arg
 apps/api/tests/unit/agents/test_provider_subagents.py	unused-ignore
 apps/api/tests/unit/agents/test_result_delivery.py	arg-type
-apps/api/tests/unit/agents/test_runtime_adapter.py	arg-type
 apps/api/tests/unit/agents/test_stream_session.py	arg-type
 apps/api/tests/unit/agents/test_subagent_channel.py	arg-type
 apps/api/tests/unit/agents/test_subagent_landing_wake.py	arg-type
@@ -444,9 +440,6 @@ apps/api/tests/unit/middleware/test_summarization.py	attr-defined
 apps/api/tests/unit/middleware/test_summarization.py	call-overload
 apps/api/tests/unit/middleware/test_summarization.py	typeddict-item
 apps/api/tests/unit/middleware/test_summarization.py	union-attr
-apps/api/tests/unit/middleware/test_tool_latency.py	arg-type
-apps/api/tests/unit/middleware/test_tool_latency.py	syntax
-apps/api/tests/unit/middleware/test_tool_latency.py	var-annotated
 apps/api/tests/unit/middleware/test_unhandled_exception_middleware.py	arg-type
 apps/api/tests/unit/models/composio_schemas/test_github_tools.py	arg-type
 apps/api/tests/unit/models/composio_schemas/test_github_tools.py	call-arg
@@ -468,11 +461,6 @@ apps/api/tests/unit/models/test_user_document_legacy_profession.py	call-arg
 apps/api/tests/unit/models/test_user_models.py	call-arg
 apps/api/tests/unit/models/test_user_models.py	list-item
 apps/api/tests/unit/models/test_workflow_models.py	arg-type
-apps/api/tests/unit/override/test_langgraph_bigtool.py	arg-type
-apps/api/tests/unit/override/test_langgraph_bigtool.py	list-item
-apps/api/tests/unit/override/test_langgraph_bigtool.py	typeddict-item
-apps/api/tests/unit/override/test_langgraph_bigtool.py	union-attr
-apps/api/tests/unit/override/test_langgraph_bigtool.py	unused-ignore
 apps/api/tests/unit/patches/test_browser_use_run_lock_patch.py	attr-defined
 apps/api/tests/unit/patches/test_composio_input_patch.py	attr-defined
 apps/api/tests/unit/patches/test_composio_langchain_patch.py	arg-type
@@ -581,7 +569,6 @@ apps/api/tests/unit/services/desktop/test_bridge.py	attr-defined
 apps/api/tests/unit/services/desktop/test_bridge.py	list-item
 apps/api/tests/unit/services/embedding_sidecar/test_server.py	attr-defined
 apps/api/tests/unit/services/files/test_sandbox.py	arg-type
-apps/api/tests/unit/services/hil/conftest.py	arg-type
 apps/api/tests/unit/services/hil/test_hil_auto_outcome.py	attr-defined
 apps/api/tests/unit/services/hil/test_hil_classification.py	arg-type
 apps/api/tests/unit/services/hil/test_hil_classification.py	misc
@@ -720,10 +707,6 @@ apps/api/tests/unit/services/workflow/test_playbook_evaluator.py	arg-type
 apps/api/tests/unit/services/workflow/test_playbook_evaluator.py	operator
 apps/api/tests/unit/services/workflow/test_playbook_parser.py	union-attr
 apps/api/tests/unit/services/workflow/test_playbook_parser.py	var-annotated
-apps/api/tests/unit/services/workflow/test_playbook_runner.py	arg-type
-apps/api/tests/unit/services/workflow/test_playbook_runner.py	assignment
-apps/api/tests/unit/services/workflow/test_playbook_runner.py	call-arg
-apps/api/tests/unit/services/workflow/test_playbook_runner.py	union-attr
 apps/api/tests/unit/storage/test_gaia_tasks_vfs.py	attr-defined
 apps/api/tests/unit/storage/test_gaia_tasks_vfs.py	typeddict-item
 apps/api/tests/unit/storage/test_sessions_lifecycle.py	attr-defined
