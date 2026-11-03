@@ -299,6 +299,32 @@ any other diff, and `--update` preserves the field.
 
 ---
 
+## mypy-tests-ratchet
+
+A touch-to-fix ratchet like `plr-complexity-ratchet`, sharing its mechanics
+(`_ratchet.py`) and its baseline format:
+
+```bash
+python3 tools/lints/check_mypy_tests.py           # check
+python3 tools/lints/check_mypy_tests.py --update  # record the current baseline
+```
+
+**Rule:** `mypy apps/api/tests` (the `api:type-check` environment and flags,
+under the root config's loose `tests.*` override) reports no error the
+baseline `tools/lints/mypy_tests_baseline.txt` does not already list per
+(file, error code), and none in a file the PR touches.
+
+**Why:** `api:type-check` covers `apps/api/app` only, so a test calling a
+renamed function, a removed attribute or a wrong signature type-checked clean
+and failed (or silently passed against a mock) at runtime. The existing debt
+was too large to fix in one pass; touching a file is when its debt gets paid.
+
+**Fix:** type the fixture, mock or call properly. If the file is
+grandfathered and your PR touches it, fix its listed errors and delete their
+lines from the baseline. Deferrals work exactly as in `plr-complexity-ratchet`.
+
+---
+
 ## typed-boundaries
 
 A touch-to-fix ratchet like `plr-complexity-ratchet`, sharing its mechanics
@@ -394,9 +420,9 @@ change no answer.
 Measured on the home box, every module under `app/utils` and `app/models`
 costs 6-15 s alone, because those layers import upward
 (`app.utils.chat_utils` -> `app.agents.llm.chatbot`). Gating today would red
-~200 modules on a PR that caused none of them. Drop `--report` from the step
-in `ci.yml` and from `scripts/dev/verify-lanes.json` once the
-layering is fixed — that is the whole change.
+~200 modules on a PR that caused none of them. Drop `--report` from the
+`ci:import-cost` target in `tools/ci/project.json` once the layering is fixed —
+that is the whole change.
 
 ---
 
@@ -561,19 +587,21 @@ big enough to be a named helper or a paragraph in the PR — not a comment.
 
 ## tool-pins
 
-**Rule:** every surface that runs a linter runs the version in the `EXPECTED`
-table of `check_tool_pins.py` — ruff, mypy, bandit, pip-audit, interrogate,
-xenon, biome. Surfaces: both pre-commit configs, `ci.yml`,
-`scripts/dev/verify-lanes.json`, the root `package.json` quality scripts,
-`apps/api/mise.toml`, the ignore-staleness guard's own ruff call, `uv.lock`,
-and for biome every `package.json` that declares it (exact, caret-free) plus
-every `biome.json` `$schema` URL.
+**Rule:** the Python lint and audit tools (ruff, bandit, interrogate, xenon,
+import-linter, pip-audit, and mypy's version) are declared once, in the root
+`pyproject.toml`'s `lint` dependency group at exact versions, and locked in
+`uv.lock`. Every surface runs them from it (`uv run --frozen --no-build
+--isolated --only-group lint <tool>`), and the guard fails on a `uvx` run of
+any of them, which would name a version of its own. The `EXPECTED` table is
+left with what no lockfile pins for every consumer: biome (the version
+pnpm-lock.yaml resolved, mirrored in every `biome.json` `$schema` URL) and uv
+itself.
 
 Node is handled differently on purpose. Rather than restate one version on nine
 surfaces and compare them, there is exactly one declaration — `.node-version` —
 and every consumer derives from it: mise (root and every per-app `mise.toml`)
-via `idiomatic_version_file_enable_tools`, actions/setup-node in
-`setup-node-pnpm`, `publish-cli.yml` and `desktop-release.yml` via
+via `idiomatic_version_file_enable_tools`, and actions/setup-node in
+`setup-node-pnpm` (which every workflow installs through) via
 `node-version-file: .node-version`. The single permitted mirror is one
 `ARG NODE_VERSION` default per Dockerfile (`infra/docker/ci-base.Dockerfile`, `apps/web/Dockerfile`,
 `apps/bots/Dockerfile`), because Docker cannot read a file in a `FROM` line.

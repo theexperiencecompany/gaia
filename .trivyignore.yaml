@@ -1,0 +1,23 @@
+# Findings trivy may ignore, each pinned to its path. Vulnerabilities: no fixed
+# release and a reason it cannot reach us (the same reasons as PIP_AUDIT_IGNORED
+# in scripts/ci/audit.sh); drop the entry once a fix exists.
+vulnerabilities:
+  - id: CVE-2024-23342
+    paths: ["uv.lock"]
+    statement: >-
+      ecdsa (via python-jose), GHSA-wj6h-64fc-37mp, no fixed release. Minerva
+      side-channel timing attack, out of the project's own scope upstream.
+    expired_at: 2027-05-01
+  - id: CVE-2026-85394
+    paths: ["uv.lock"]
+    statement: >-
+      python-jose 3.5.0 is the latest release, GHSA-6c5p-j8vq-pqhj. Algorithm
+      confusion using a public key as an HMAC secret; every jose.jwt.decode call
+      site passes an explicit algorithms=[HS256] with a symmetric secret.
+    expired_at: 2027-05-01
+secrets:
+  - id: stripe-secret-token
+    paths: [".gitleaks.toml"]
+    statement: >-
+      The gitleaks allowlist names the fake Stripe-shaped key the WorkOS
+      settings test uses; it is a placeholder pattern, not a credential.
