@@ -967,6 +967,15 @@ async def _deliver_replay(
     return conversation_id, result.trace, summary
 
 
+def _replay_verdict(result: PlaybookRunResult) -> tuple[PlaybookRunStatus, str | None]:
+    """Return how a finished replay went for its playbook, and why when it did not succeed."""
+    if not result.ok:
+        return PlaybookRunStatus.FAILED, result.failure
+    if result.suspect:
+        return PlaybookRunStatus.SUSPECT, result.suspect
+    return PlaybookRunStatus.SUCCESS, None
+
+
 async def _finish_after_replay(
     fire: _Fire,
     playbook: PlaybookDocument,
@@ -994,15 +1003,7 @@ async def _finish_after_replay(
             llm_calls=result.llm_calls,
         )
         return conversation_id, result.trace, NOTHING_NEW_SUMMARY
-    if not result.ok:
-        status = PlaybookRunStatus.FAILED
-        reason = result.failure
-    elif result.suspect:
-        status = PlaybookRunStatus.SUSPECT
-        reason = result.suspect
-    else:
-        status = PlaybookRunStatus.SUCCESS
-        reason = None
+    status, reason = _replay_verdict(result)
     record_replay(status)
     updated = await playbook_repository.record_run_outcome(
         workflow_id,
