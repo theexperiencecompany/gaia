@@ -1,5 +1,6 @@
 "use client";
 
+import { Chip } from "@heroui/chip";
 import { Textarea } from "@heroui/input";
 import { Tab, Tabs } from "@heroui/tabs";
 import { ComputerIcon, SmartPhone01Icon } from "@icons";
@@ -9,11 +10,13 @@ import type { PaywallConcept } from "./concepts";
 import { DeviceFrame, type FrameDevice } from "./DeviceFrame";
 import { usePaywallLabFeedback } from "./feedbackStore";
 import type { PaywallSubject } from "./labData";
+import type { LabMock } from "./mockLive";
 
 interface ConceptSectionProps {
   index: number;
   concept: PaywallConcept;
   subject: PaywallSubject;
+  mock: LabMock;
   /** Remounts the concept so its entrance and demo run replay. */
   subjectKey: string;
   onCheckout: (concept: PaywallConcept, period: PlanDuration) => void;
@@ -21,15 +24,17 @@ interface ConceptSectionProps {
 
 const RATIONALE_ROWS = [
   ["The bet", "bet"],
-  ["Why it might convert", "whyItConverts"],
+  ["Why it should lift conversion", "lift"],
   ["The risk", "risk"],
   ["Cost to build for real", "buildCost"],
+  ["Data and permissions", "needs"],
 ] as const;
 
 export function ConceptSection({
   index,
   concept,
   subject,
+  mock,
   subjectKey,
   onCheckout,
 }: ConceptSectionProps) {
@@ -81,12 +86,21 @@ export function ConceptSection({
           <Component
             key={`${subjectKey}-${device}`}
             subject={subject}
+            mock={mock}
             onCheckout={(period) => onCheckout(concept, period)}
           />
         </DeviceFrame>
       </div>
 
       <aside className="flex flex-col gap-4 self-start rounded-2xl bg-zinc-900/60 p-5">
+        <div className="flex items-start gap-2">
+          <Chip size="sm" variant="flat" color="warning" className="shrink-0">
+            Mock
+          </Chip>
+          <p className="text-[13px] leading-relaxed text-zinc-400">
+            {concept.mocked}
+          </p>
+        </div>
         <dl className="space-y-4">
           {RATIONALE_ROWS.map(([label, field]) => (
             <div key={field}>

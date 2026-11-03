@@ -1,65 +1,77 @@
 import type { ComponentType } from "react";
-import { OfferLetter } from "./concepts/OfferLetter";
-import { OnePrice } from "./concepts/OnePrice";
-import { ThePromise } from "./concepts/ThePromise";
-import { WatchMeWork } from "./concepts/WatchMeWork";
+import { Homework } from "./concepts/Homework";
+import { LiveInbox } from "./concepts/LiveInbox";
+import { TomorrowBriefed } from "./concepts/TomorrowBriefed";
+import { WeekBack } from "./concepts/WeekBack";
 import type { PaywallConceptProps } from "./labData";
 
-export type ConceptId = "watch" | "offer" | "simple" | "promise";
+export type ConceptId = "inbox" | "calendar" | "week" | "homework";
 
 export interface PaywallConcept {
   id: ConceptId;
   name: string;
   Component: ComponentType<PaywallConceptProps>;
+  /** What in the frame is a stand-in for a pipeline the lab does not call. */
+  mocked: string;
   bet: string;
-  whyItConverts: string;
+  lift: string;
   risk: string;
   buildCost: string;
+  needs: string;
 }
 
+/** Per-user costs below are from prod llm_calls, last 90 days, cost / distinct users per lane. */
 export const PAYWALL_CONCEPTS: PaywallConcept[] = [
   {
-    id: "watch",
-    name: "Watch me work",
-    Component: WatchMeWork,
-    bet: "People don't pay for a promise of help; they pay after seeing it. GAIA runs one job in front of them (their drafted starting job, or a sample for their top need) before the price appears.",
-    whyItConverts:
-      "The 76% who never open checkout have only read claims so far. Four seconds of visible work is the first proof in the whole flow, and the price lands right after it.",
-    risk: "Sample data is not their data, so it can read as a canned animation. Adds a beat before the price, and skeptics may wait it out and still leave.",
+    id: "inbox",
+    name: "Your inbox, live",
+    Component: LiveInbox,
+    mocked: "Gmail connect, the 100-email read and the drafts",
+    bet: "Nothing sells an assistant like watching it clear your own inbox. Connect Gmail before the price, GAIA triages it live, and the price is framed as keeping that every morning.",
+    lift: "It's the only concept where the proof is their own data. Today the 76% who never open checkout have seen zero work. Seeing their own investor email flagged with a reply already drafted is the moment people screenshot.",
+    risk: "Adds a Google OAuth screen before the price, and some people will drop there instead. A thin or empty inbox reads as a dud. Promising 'read-only' means a new read-only Gmail config, and Google's restricted-scope review applies.",
     buildCost:
-      "Sample version: about a day. A run on their real inbox needs a read-only connect before payment plus a preview job on the backend: one to two weeks, and an OAuth step before the paywall.",
+      "About a week. The triage pipeline already exists. New work: allow one Gmail connect before payment, a read-only auth config, a reply-drafting step, and moving connect ahead of the paywall. Cost per trial user is about $0.03: triage $0.0017, writing style $0.0086, todos $0.0024, social and card $0.002, plus 3 drafts at about $0.005 each. At 140 paywall viewers a month that's about $4 a month.",
+    needs:
+      "Gmail OAuth before payment. Today POST /api/v1/integrations/connect/{id} is not on the entitlement allowlist, so unpaid users get a 402, and the Gmail config asks for gmail.modify, not read-only. Existing pieces: process_onboarding_intelligence runs on Gmail connect and writes onboarding.triage_summary (100 emails scanned, important_emails with a reason each). 88 users have one, 50 from the last 90 days. No step drafts replies yet.",
   },
   {
-    id: "offer",
-    name: "The offer letter",
-    Component: OfferLetter,
-    bet: "Lean all the way into hiring. The paywall is a one-page offer letter written from their answers, and paying is signing it.",
-    whyItConverts:
-      "Turns the price into a salary comparison without saying so, and makes the duties concrete in their own words. The signing moment is a ritual, not a form.",
-    risk: "Can read as a gimmick to someone who wanted a straight price. 'Offer letter' hints at a commitment, which may add anxiety at the exact moment it should drop.",
+    id: "calendar",
+    name: "Tomorrow, briefed",
+    Component: TomorrowBriefed,
+    mocked: "Calendar connect, the meeting read and every brief",
+    bet: "A briefing for tomorrow is the most concrete 'it already did something' moment for anyone with meetings. Connect the calendar, GAIA briefs each meeting tomorrow, and flags the one that needs a decision first.",
+    lift: "It's about tomorrow, which feels urgent in a way 'your inbox' doesn't, and the flagged meeting gives a reason to pay tonight. It also works for people who don't live in email.",
+    risk: "An empty tomorrow (weekends, students, ICs) is an anticlimax. Briefs are only as good as the email and context behind them, and they're thin without Gmail. Calendar tools are flaky today: GOOGLECALENDAR_CUSTOM_GET_EVENT fails 58% of the time, plus 'Future attached to a different loop' errors.",
     buildCost:
-      "About a day: copy plus the needs-to-duties map, on the existing checkout. Duties for 'Something else' answers need an LLM line or a generic fallback.",
+      "One to two weeks. There's no onboarding calendar pipeline yet; the calendar:meeting_prep system workflow exists but runs per event after payment. Needs the same pre-pay connect allowance, a batch brief job, and the calendar tool fixes first. About $0.03 to $0.04 per trial user (googlecalendar_agent is about $0.004 a call, times 2 calls per meeting).",
+    needs:
+      "Google Calendar OAuth before payment (same 402 today). The config already includes calendar.readonly, but it also asks for calendar.events. A Gmail read makes the briefs much better.",
   },
   {
-    id: "simple",
-    name: "One price",
-    Component: OnePrice,
-    bet: "The paywall is losing people to friction, not doubt. Remove the monthly/yearly choice entirely and answer the three questions replays show people leaving to find.",
-    whyItConverts:
-      "Replays show minutes of toggling and FAQ reading, and yearly converts 0/14. One number and one button leave nothing to deliberate; the answers kill the 'is it free?' detour.",
-    risk: "Adds no new reason to pay. If the 76% are unconvinced rather than confused, this changes nothing. Gives up yearly cash up front for now.",
+    id: "week",
+    name: "Your week back",
+    Component: WeekBack,
+    mocked: "Nothing live. Job wording and time estimates are drafted copy",
+    bet: "No permissions, no wait. Turn their two answers into a ledger of specific jobs GAIA takes from today, each with when it happens and the time it gives back, so $30 reads as about $1 an hour.",
+    lift: "Removes the abstract 'dollar a day' and replaces it with their own week, in numbers. No OAuth means nothing to drop off on, and it costs nothing to show everyone, including the 53 mobile signups.",
+    risk: "It's still a claim, not proof, so it can't produce a 'holy shit' moment. The time estimates are ours, and a skeptic will discount them. 'Something else' answers need an LLM line.",
     buildCost:
-      "Half a day. Plus a decision on where yearly moves (post-payment receipt or settings), about a day more.",
+      "Two to three days: the copy table above, plus an LLM line for 'Something else' answers (about $0.002 per user at the onboarding_workflow_suggestions rate). It uses the existing checkout.",
+    needs:
+      "Nothing new. Profession and needs are already saved before the paywall. Starting jobs, when drafted, add an 'already drafted' line.",
   },
   {
-    id: "promise",
-    name: "The promise",
-    Component: ThePromise,
-    bet: "Trust is the blocker. Replace the pitch with a checkable week-one promise built from their needs, and a full refund if GAIA misses. Still a hard paywall: they pay first.",
-    whyItConverts:
-      "Moves the risk from them to us without a free trial. The promises are specific enough to believe, and 'text me refund' is the lowest-effort exit anyone offers.",
-    risk: "6 of 15 payers asked to cancel within 6 days; this turns those into refunds. Promises we can't verify invite disputes, and it needs real refund handling.",
+    id: "homework",
+    name: "I did my homework",
+    Component: Homework,
+    mocked: "The public-web research and every finding",
+    bet: "GAIA researches them from public sources while they answer the two questions, then opens with what it found and what it would do about each thing. That's a good assistant's first day: they already know who you are.",
+    lift: "It's the 'it already knows me' moment without any OAuth, so no permission screen to drop off on. Each finding comes with a concrete next action, so the value is specific to them, not generic.",
+    risk: "Can feel creepy, and the wrong-person risk is real (common names, gmail.com addresses give little to go on). Email-only signups get a thin result. A single wrong fact kills trust instantly.",
     buildCost:
-      "UI about a day. For real: refund policy and terms, a Dodo refund path, support handling for 'refund' messages, and tracking which promises were kept. About a week.",
+      "Three to five days. The social-profile step (onboarding_social_profile, about $0.0013 per user) and the holo-card bio (about $0.0008) run today, but only inside the Gmail pipeline. Run them at signup with web search, add a findings-to-actions call, and add a 'not me' path. About $0.01 per user.",
+    needs:
+      "Name and email, which we already have. Public web search. Runs under /api/v1/onboarding, which is already on the allowlist. Needs a privacy line in the terms.",
   },
 ];

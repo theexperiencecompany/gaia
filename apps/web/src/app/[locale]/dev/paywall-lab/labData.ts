@@ -5,6 +5,7 @@ import type {
 } from "@shared/api/generated";
 import type { ProfessionValue } from "@/features/onboarding/constants/options.types";
 import { ADVERTISED_PRO_MONTHLY } from "@/features/pricing/advertisedPrice";
+import { LAB_MOCKS, type LabMock } from "./mockLive";
 
 /** What the paywall knows about the person by the time it renders: the two
  * onboarding answers, their name, and the starting jobs when drafting finished. */
@@ -17,6 +18,8 @@ export interface PaywallSubject {
 
 export interface PaywallConceptProps {
   subject: PaywallSubject;
+  /** What the live pipelines would have returned for this person. */
+  mock: LabMock;
   onCheckout: (period: PlanDuration) => void;
 }
 
@@ -24,6 +27,7 @@ export interface LabPersona {
   id: string;
   label: string;
   subject: PaywallSubject;
+  mock: LabMock;
 }
 
 export const MONTHLY_PRICE_MINOR = ADVERTISED_PRO_MONTHLY.amount;
@@ -102,6 +106,7 @@ export const LAB_PERSONAS: LabPersona[] = [
       needs: ["inbox", "founder_team_updates", "calendar"],
       startingJobs: FOUNDER_JOBS,
     },
+    mock: LAB_MOCKS.founder,
   },
   {
     id: "sales",
@@ -112,6 +117,7 @@ export const LAB_PERSONAS: LabPersona[] = [
       needs: ["sales_leads", "sales_call_research"],
       startingJobs: [],
     },
+    mock: LAB_MOCKS.sales,
   },
   {
     id: "student",
@@ -122,5 +128,6 @@ export const LAB_PERSONAS: LabPersona[] = [
       needs: ["student_assignments", "reminders"],
       startingJobs: [],
     },
+    mock: LAB_MOCKS.student,
   },
 ];

@@ -33,9 +33,10 @@ export function PaywallLab() {
           <div>
             <h1 className="text-3xl font-bold text-zinc-100">Paywall lab</h1>
             <p className="mt-2 max-w-[70ch] text-base text-zinc-400">
-              Four different bets for the onboarding paywall, each a working
-              component fed by the onboarding answers. Pick who is signing up,
-              flip each to mobile, leave notes, copy them back.
+              Round 2: four ways to show value before the price, each aiming for
+              an "it already did something for me" moment. Live parts are mocked
+              and labelled. Pick who is signing up, run each one, flip to
+              mobile, leave notes, copy them back.
             </p>
             <p className="mt-2 text-[13px] text-zinc-500">
               {FUNNEL_FACTS.join(". ")}.
@@ -59,6 +60,7 @@ export function PaywallLab() {
             index={index}
             concept={concept}
             subject={persona.subject}
+            mock={persona.mock}
             subjectKey={persona.id}
             onCheckout={announceCheckout}
           />

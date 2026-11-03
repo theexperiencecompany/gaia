@@ -13,19 +13,21 @@ interface CheckoutDockProps {
   children?: ReactNode;
 }
 
-/** The primary action; pinned to the bottom of a phone-width frame so it never scrolls away. */
+/** The primary action, pinned to the bottom of the frame so it never scrolls away. */
 export function CheckoutDock({ label, onPress, children }: CheckoutDockProps) {
   return (
-    <div className="flex flex-col items-center gap-2 @max-md:sticky @max-md:bottom-0 @max-md:-mx-5 @max-md:mt-auto @max-md:bg-primary-bg/95 @max-md:px-5 @max-md:pt-3 @max-md:pb-5 @max-md:backdrop-blur-xl">
+    <div className="sticky bottom-0 -mx-8 mt-auto flex flex-col items-start gap-1 bg-primary-bg/95 px-8 pt-3 pb-4 backdrop-blur-xl @max-md:-mx-5 @max-md:items-stretch @max-md:px-5">
       <RaisedButton
-        className="w-full max-w-sm"
+        className="w-full max-w-sm @max-md:max-w-none"
         color={CTA_COLOR}
         size="lg"
         onClick={onPress}
       >
         {label}
       </RaisedButton>
-      {children}
+      <div className="flex w-full max-w-sm justify-center @max-md:max-w-none">
+        {children}
+      </div>
     </div>
   );
 }

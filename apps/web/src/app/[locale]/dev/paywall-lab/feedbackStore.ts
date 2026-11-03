@@ -26,7 +26,8 @@ export const usePaywallLabFeedback = create<PaywallLabFeedbackState>()(
         clear: () => set({ overall: "", notes: {} }, false, "clear"),
       }),
       {
-        name: "gaia-paywall-lab-feedback",
+        // Per round: round 1 notes were about concepts that no longer exist.
+        name: "gaia-paywall-lab-feedback-round-2",
         partialize: ({ overall, notes }) => ({ overall, notes }),
       },
     ),
