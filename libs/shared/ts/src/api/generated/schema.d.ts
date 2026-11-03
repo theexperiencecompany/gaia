@@ -3455,6 +3455,7 @@ export interface paths {
          *
          *     Args:
          *         return_url: Optional URL to redirect to after authentication.
+         *         screen_hint: The AuthKit screen to open on; /signup asks for sign-up.
          *
          *     Returns:
          *         RedirectResponse: Redirects the user to the WorkOS SSO authorization URL
@@ -26988,6 +26989,7 @@ export interface operations {
         parameters: {
             query?: {
                 return_url?: string | null;
+                screen_hint?: ("sign-up" | "sign-in") | null;
             };
             header?: never;
             path?: never;
