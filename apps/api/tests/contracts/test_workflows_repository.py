@@ -47,7 +47,7 @@ def _workflow(**overrides: object) -> WorkflowDocument:
         "trigger_config": TriggerConfig(type=TriggerType.MANUAL),
     }
     data.update(overrides)
-    return WorkflowDocument(**data)
+    return WorkflowDocument.model_validate(data)
 
 
 @pytest.fixture

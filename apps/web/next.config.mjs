@@ -321,10 +321,10 @@ export default withSentryConfig(
   // Upload a larger set of source maps for prettier stack traces (increases build time)
   widenClientFileUpload: true,
 
-  // Delete the maps only after Sentry accepts them. v10 renamed this from
-  // hideSourceMaps (a no-op): without a token nothing uploads, so they stay.
+  // Sentry uploads the maps but never deletes them: web-build.yml removes them
+  // from the deployed .open-next tree, and the build checks after it read .next's.
   sourcemaps: {
-    deleteSourcemapsAfterUpload: Boolean(process.env.SENTRY_AUTH_TOKEN),
+    deleteSourcemapsAfterUpload: false,
   },
 
   // Uncomment to route Sentry requests through a Next.js rewrite to bypass

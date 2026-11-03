@@ -2,8 +2,10 @@
 # Single source of truth for the GHCR repos each deployable image group maps
 # to. Sourced by `release.sh resolve-image-tags` (build), `deploy.sh retag`
 # (deploy/rollback) and `release.sh promote-latest` (gate) so the ends of the
-# pipeline can never disagree about which repos share a tag. Keep in sync with the
-# image: lines in the prod compose (lives in gaia-infra) and nx.json release groups.
+# pipeline can never disagree about which repos share a tag. The groups mirror the
+# nx release groups (their projects' release:apps / release:bots tags) and the
+# CLI's SELFHOST_BOTS, held equal by scripts/ci/tests/test_release_image_repos.py;
+# the prod compose's image: lines (gaia-infra) must name the same repos.
 # shellcheck disable=SC2034  # consumed by sourcing scripts
 GHCR_NAMESPACE="ghcr.io/theexperiencecompany"
 # nx release group "apps" — one commit produces the same tag for both.

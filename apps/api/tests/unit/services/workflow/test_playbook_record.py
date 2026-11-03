@@ -16,7 +16,7 @@ from unittest.mock import AsyncMock, patch
 
 from hypothesis import given, strategies as st
 from langchain_core.tools import BaseTool, StructuredTool
-from pydantic import create_model
+from pydantic import BaseModel
 import pytest
 
 from app.agents.tools.execute.execute_tool import execute
@@ -53,18 +53,24 @@ NOW = datetime(2026, 11, 20, 9, 30, tzinfo=UTC)
 USER = PlaybookUser(email="dana@acme.com", name="Dana", timezone="UTC")
 SCOPE = "linear"
 TOOL_NAMES = ("tool_a", "tool_b", "tool_c")
-ARG_NAMES = ("first", "second", "nested")
+
+
+class _FakeToolArgs(BaseModel):
+    first: object
+    second: object
+    nested: object
+
+
+ARG_NAMES = tuple(_FakeToolArgs.model_fields)
 EXCLUDED = frozenset({"retrieve_tools"})
 
 
 def _fake_tool(name: str) -> BaseTool:
-    schema = create_model(f"{name}_args", **dict.fromkeys(ARG_NAMES, (object, ...)))
-
     async def run(**kwargs: object) -> str:
         return json.dumps(kwargs, default=str)
 
     return StructuredTool.from_function(
-        coroutine=run, name=name, description=f"{name}.", args_schema=schema
+        coroutine=run, name=name, description=f"{name}.", args_schema=_FakeToolArgs
     )
 
 
@@ -215,7 +221,7 @@ def _runs(draw: st.DrawFn) -> _Run:
         args: dict[str, object] = {}
         vary: dict[str, object] = {}
         for_each: dict[str, object] = {}
-        if earlier and draw(st.booleans()):
+        if bool(earlier) and draw(st.booleans()):
             source_id, source = draw(st.sampled_from(earlier))
             args["first"] = _items(source)[0]["id"]
             vary["first"] = "$item.id"
@@ -735,7 +741,7 @@ def test_every_bad_pick_is_reported_in_one_answer() -> None:
         _call("tool_c", {"first": "z"}, LISTING),
     ]
 
-    picks = [
+    picks: list[dict[str, object]] = [
         {"call": 1},
         {"call": 2, "vary": {"missing": "$today"}},
         {"call": 2},

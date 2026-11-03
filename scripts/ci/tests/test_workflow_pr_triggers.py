@@ -16,9 +16,11 @@ head's CI run through `runner.py rescope`.
 from __future__ import annotations
 
 from pathlib import Path
+import re
 from typing import Any
 
 from doc_shape import mapping
+from lib import nx_affected
 import pytest
 import yaml
 
@@ -138,10 +140,17 @@ def test_the_gate_reports_on_a_merge_group(workflow: Workflow) -> None:
 
 
 def test_a_pr_push_runs_only_the_fast_tier(workflow: Workflow) -> None:
-    # The full-tier jobs gate on detect's tier; a PR push never starts them.
+    # The full-tier jobs never start on a PR push: docker-image gates on detect's
+    # tier, and python-audit's and scan's checks name the events they run on.
     jobs = workflow["jobs"]
-    for name in ("python-audit", "scan", "docker-image"):
-        assert "needs.detect.outputs.tier == 'full'" in jobs[name]["if"], name
+    assert "needs.detect.outputs.tier == 'full'" in jobs["docker-image"]["if"]
+    full_tier = [c for c in nx_affected.checks().values() if c.job in ("python-audit", "scan")]
+    assert {c.check for c in full_tier} == {"import-cost", "pip-audit", "semgrep", "trivy"}
+    for check in full_tier:
+        assert not check.runs_on("pull_request", None), check.task
+        assert check.runs_on("merge_group", None), check.task
+    for name in ("python-audit", "scan"):
+        assert f"contains(fromJSON(needs.detect.outputs.jobs), '{name}')" in jobs[name]["if"]
     # Mutation is in both tiers: a survivor found only in the queue ejects the
     # group and costs a fix round.
     (plan,) = [s for s in jobs["detect"]["steps"] if s.get("id") == "plan"]
@@ -159,10 +168,43 @@ def test_the_secret_scan_runs_only_on_the_events_that_bring_commits(workflow: Wo
         if "gitleaks/gitleaks-action" in str(mapping(step).get("uses", ""))
     ]
     assert len(steps) == 1
-    condition = str(steps[0]["if"])
-    assert "github.event_name == 'pull_request'" in condition
-    assert "github.event_name == 'push'" in condition
-    assert "!=" not in condition.split("&&")[0], "an exclusion list lets workflow_dispatch through"
+    assert "'ci:gitleaks'" in str(steps[0]["if"])
+    gitleaks = nx_affected.checks()["ci:gitleaks"]
+    assert gitleaks.events == ("pull_request", "push"), (
+        "an exclusion list lets workflow_dispatch through"
+    )
+
+
+REPO = "theexperiencecompany/gaia"
+# (event, actor, PR head repo, whether statuses are posted)
+POSTING = [
+    ("pull_request", "aryan", REPO, True),
+    ("merge_group", "github-merge-queue[bot]", "", True),
+    ("push", "aryan", "", True),
+    ("workflow_dispatch", "aryan", "", False),
+    ("pull_request", "someone", "fork/gaia", False),
+    ("pull_request", "dependabot[bot]", REPO, False),
+]
+
+
+def _evaluate(expression: str, event: str, actor: str, head_repo: str) -> object:
+    """Evaluate the NO_POST expression; Python's and/or treat '' as falsy, as Actions does."""
+    body = expression.strip().removeprefix("${{").removesuffix("}}")
+    body = re.sub(
+        r"contains\(fromJSON\('(\[[^']*\])'\), github\.event_name\)",
+        lambda m: f"(github_event_name in {m.group(1)})",
+        body,
+    )
+    for ref, value in {
+        "github.event.pull_request.head.repo.full_name": head_repo,
+        "github.repository": REPO,
+        "github.event_name": event,
+        "github.actor": actor,
+    }.items():
+        body = body.replace(ref, repr(value))
+    body = body.replace("github_event_name", repr(event))
+    body = body.replace("&&", " and ").replace("||", " or ").replace("!(", " not (")
+    return eval(body)  # noqa: S307 - a workflow expression this repo wrote, over fixed literals
 
 
 def test_a_dispatch_never_posts_per_check_statuses(workflow: Workflow) -> None:
@@ -174,7 +216,15 @@ def test_a_dispatch_never_posts_per_check_statuses(workflow: Workflow) -> None:
         if "verdict.py post-statuses" in str(mapping(step).get("run", ""))
     ]
     assert posts, "found no post-statuses step"
+    for name, job in mapping(workflow["jobs"]).items():
+        if not any(
+            "verdict.py post-statuses" in str(mapping(s).get("run", ""))
+            for s in job.get("steps", [])
+        ):
+            continue
+        no_post = str(mapping(job["env"])["NO_POST"])
+        for event, actor, head_repo, posts_here in POSTING:
+            got = _evaluate(no_post, event, actor, head_repo)
+            assert got == ("" if posts_here else "--no-post"), (name, event, actor, head_repo, got)
     for step in posts:
-        condition = str(step.get("if", ""))
-        assert '"pull_request", "merge_group", "push"' in condition, step["name"]
-        assert "workflow_dispatch" not in condition, step["name"]
+        assert str(step["run"]).endswith(" $NO_POST"), step["name"]
