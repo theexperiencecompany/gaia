@@ -19,10 +19,13 @@ import zoneinfo
 from bson import ObjectId
 from bson.errors import InvalidId
 from cryptography.fernet import Fernet
+from langchain.agents.middleware.types import ToolCallRequest
+from langchain.tools import ToolRuntime
+from langchain_core.language_models import ModelProfile
 from langchain_core.language_models.fake_chat_models import (
     FakeMessagesListChatModel,
 )
-from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, ToolCall
 from pydantic import Field
 import pytest
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -199,7 +202,7 @@ class BindableToolsFakeModel(FakeMessagesListChatModel):
 
     # bind_tools() override stays on purpose: the inherited implementation
     # returns a NEW RunnableBinding, but callers rely on the fake staying the same object.
-    profile: dict[str, int] = Field(default={"max_input_tokens": 100_000})
+    profile: ModelProfile | None = Field(default=ModelProfile(max_input_tokens=100_000))
 
     def bind_tools(self, tools: Any, **kwargs: Any) -> "BindableToolsFakeModel":
         return self
@@ -407,7 +410,7 @@ class AssertNumDbCalls:
         event.listen(self.engine, "before_cursor_execute", self._record)
         return self
 
-    def __exit__(self, *_exc: Any) -> bool:
+    def __exit__(self, *_exc: Any) -> None:
         from sqlalchemy import event
 
         event.remove(self.engine, "before_cursor_execute", self._record)
@@ -416,7 +419,6 @@ class AssertNumDbCalls:
             f"expected {self.expected} DB query(ies), got {actual}:\n"
             + "\n".join(f"  {statement}" for statement in self.statements)
         )
-        return False
 
 
 def assert_num_db_calls(expected: int, engine: Any, *, warmup: int = 0) -> AssertNumDbCalls:
@@ -589,3 +591,25 @@ class InMemoryCredentialStore:
 
     async def delete(self, provider: str) -> bool:
         return self.configs.pop(provider, None) is not None
+
+
+def tool_call_request(
+    tool_call: ToolCall,
+    *,
+    configurable: dict[str, object] | None = None,
+    state: dict[str, object] | None = None,
+) -> ToolCallRequest:
+    """Build the request middleware sees for one tool call, run under configurable."""
+    return ToolCallRequest(
+        tool_call=tool_call,
+        tool=None,
+        state=state,
+        runtime=ToolRuntime(
+            state=state or {},
+            context=None,
+            config={"configurable": configurable or {}},
+            stream_writer=None,
+            tool_call_id=tool_call["id"],
+            store=None,
+        ),
+    )

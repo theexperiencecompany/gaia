@@ -124,8 +124,8 @@ def build_scoped_tool_dict(
         scoped_bash = build_bash_tool(scoped_tool_dict)
         scoped_tool_dict[scoped_bash.name] = scoped_bash
         # Resolvable for every subagent (retrieve-on-demand); gmail additionally
-        # binds these two into its initial set below, since it always offloads
-        # large inboxes and must mine them sandbox-free.
+        # binds these two into its initial set below, since compaction files its
+        # large inboxes and it must mine them sandbox-free.
         scoped_tool_dict[query_json.name] = query_json
         scoped_tool_dict[grep.name] = grep
         scoped_tool_dict[web_search_tool.name] = web_search_tool
