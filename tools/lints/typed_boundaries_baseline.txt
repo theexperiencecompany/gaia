@@ -36,8 +36,6 @@ apps/api/app/agents/tools/coding/query_json_tool.py	TB002
 apps/api/app/agents/tools/coding/read_tool.py	TB001
 apps/api/app/agents/tools/discovery_tools.py	TB001
 apps/api/app/agents/tools/discovery_tools.py	TB002
-apps/api/app/agents/tools/file_tools.py	TB002
-apps/api/app/agents/tools/integration_tool.py	TB002	deferred-until=2026-10-15; master's custom-MCP add path (#1208) reads the untyped connection dict create_and_connect_custom_integration returns; typing it changes custom_crud's return shape, a product change kept out of this merge (decided 2026-09-14)
 apps/api/app/agents/tools/playbook_tools.py	TB001	deferred-until=2026-11-08; the only change here moves the get_user_id import to the one canonical helper in app.models.agent_models (run-owner fix); typing these tool returns and config reads is its own change (decided 2026-10-08)
 apps/api/app/agents/tools/playbook_tools.py	TB002	deferred-until=2026-11-08; the only change here moves the get_user_id import to the one canonical helper in app.models.agent_models (run-owner fix); typing these tool returns and config reads is its own change (decided 2026-10-08)
 apps/api/app/agents/tools/workflow_shared_tools.py	TB001	deferred-until=2026-11-08; touched for the get_user_id import move (run-owner fix) and for search_triggers reading TriggerSearchResult attributes; the remaining dict[str, Any] tool returns and string-key reads belong to the other workflow tools, and typing them is its own change (decided 2026-10-08, reason refreshed 2026-10-15)
@@ -69,7 +67,6 @@ apps/api/app/memory/projection.py	TB002
 apps/api/app/models/composio_schemas/github_tools.py	TB001
 apps/api/app/models/composio_schemas/github_tools.py	TB002
 apps/api/app/models/composio_schemas/slack_tools.py	TB002
-apps/api/app/models/mail_models.py	TB001
 apps/api/app/schemas/desktop_schemas.py	TB001
 apps/api/app/schemas/errors.py	TB001
 apps/api/app/schemas/errors.py	TB002
@@ -77,7 +74,6 @@ apps/api/app/scripts/backfill_public_workflow_descriptions.py	TB001
 apps/api/app/scripts/backfill_public_workflow_descriptions.py	TB002
 apps/api/app/scripts/delete_user_account.py	TB001
 apps/api/app/scripts/delete_user_account.py	TB002
-apps/api/app/scripts/reset_playbook_declines.py	TB002
 apps/api/app/scripts/sync_user_workspaces.py	TB002
 apps/api/app/services/_vfs_scheduler.py	TB002
 apps/api/app/services/bot_token_service.py	TB001
@@ -119,7 +115,6 @@ apps/api/app/services/storage/metrics.py	TB002
 apps/api/app/services/storage/sessions/meta.py	TB002
 apps/api/app/services/triggers/condition_matching.py	TB001
 apps/api/app/services/triggers/handlers/asana.py	TB001
-apps/api/app/services/triggers/handlers/calendar.py	TB001
 apps/api/app/services/triggers/handlers/github.py	TB001
 apps/api/app/services/triggers/handlers/gmail_poll.py	TB001
 apps/api/app/services/triggers/handlers/google_docs.py	TB001

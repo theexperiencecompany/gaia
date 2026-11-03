@@ -20,7 +20,6 @@ from app.agents.core.background.session import (
     RunKind,
     create_session,
     get_session,
-    mark_executor_failed,
     teardown_session,
 )
 from app.constants.agents import AgentTag, wrap_agent_payload
@@ -59,10 +58,10 @@ async def await_executor_done(
 ) -> bool:
     """Block until the background executor for this stream signals completion.
 
-    True when it finished (or none was spawned). On timeout the executor is
-    recorded as failed with the reason, the tasks still running are logged so
-    the stall can be read, and False comes back so the caller can still
-    drain whatever events were collected.
+    True when it finished (or none was spawned). On timeout only the waiting
+    stops: the tasks still running are logged so the stall can be read, False
+    comes back so the caller can drain what was collected, and the executor
+    goes on to deliver its result as a message of its own.
     """
     session = get_session(stream_id)
     if session is None or not session.executor_spawned:
@@ -72,8 +71,6 @@ async def await_executor_done(
         async with asyncio.timeout(timeout):
             await session.done_event.wait()
     except TimeoutError:
-        reason = f"the executor did not finish within {int(timeout)}s"
-        mark_executor_failed(stream_id, reason)
         log.error(
             f"{LogTag.AGENT} Timed out waiting for executor; draining what it produced",
             stream_id=stream_id,

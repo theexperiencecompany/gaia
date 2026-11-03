@@ -92,6 +92,7 @@ export default function ChatBubbleBot(
     isConvoSystemGenerated,
     systemPurpose,
     toolDataLength: props.tool_data?.length,
+    stopped: props.stopped,
     emailProcessingPurpose: SystemPurpose.EMAIL_PROCESSING,
   });
 
