@@ -198,7 +198,9 @@ def test_the_sync_graph_tool_node_records_the_call(monkeypatch: pytest.MonkeyPat
 
     node._func(_one_call("probe_sync"), _run_config(), Runtime())
 
-    (raw,) = client.lrange(f"run_record:{STREAM_ID}", 0, -1)
+    recorded = client.lrange(f"run_record:{STREAM_ID}", 0, -1)
+    assert isinstance(recorded, list)
+    (raw,) = recorded
     assert '"tool_name":"probe_sync"' in raw
 
 
