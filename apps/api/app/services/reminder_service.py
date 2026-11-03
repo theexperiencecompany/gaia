@@ -32,12 +32,21 @@ from app.models.scheduler_models import (
     TaskOutcome,
     TaskRearm,
 )
+from app.services.analytics_service import capture
 from app.services.scheduler_service import BaseSchedulerService
 from app.utils.cron_utils import get_next_run_time
 from app.utils.occurrence import occurrence_stamp
 from app.utils.redis_lock import DistributedLock
 from app.utils.schedule import InvalidScheduleError, validate_recurring_schedule
 from app.utils.timezone import Timezone
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.reminders import (
+    ReminderCreated,
+    ReminderDeleted,
+    ReminderPaused,
+    ReminderResumed,
+    ReminderUpdated,
+)
 from shared.py.wide_events import log
 
 
@@ -136,9 +145,33 @@ class ReminderScheduler(BaseSchedulerService):
             reminder_id=reminder_id,
             scheduled_at=created.scheduled_at,
         )
+        capture(UserId(user_id), ReminderCreated(is_recurring=is_recurring))
         return ReminderCreation(reminder_id=reminder_id, created=True)
 
     async def update_reminder(self, reminder_id: str, update: ReminderUpdate, user_id: str) -> bool:
+        """Edit a reminder's fields; True when the user's reminder was found."""
+        updated = await self._apply_update(reminder_id, update, user_id)
+        if updated:
+            capture(UserId(user_id), ReminderUpdated())
+        return updated
+
+    async def pause(self, reminder_id: str, user_id: str) -> bool:
+        """Pause the user's reminder; True when it was found."""
+        paused = await self._apply_update(
+            reminder_id, ReminderUpdate(status=ReminderStatus.PAUSED), user_id
+        )
+        if paused:
+            capture(UserId(user_id), ReminderPaused())
+        return paused
+
+    async def cancel_task(self, task_id: str, user_id: str) -> bool:
+        """Cancel the user's reminder; True when one was cancelled."""
+        cancelled = await super().cancel_task(task_id, user_id)
+        if cancelled:
+            capture(UserId(user_id), ReminderDeleted())
+        return cancelled
+
+    async def _apply_update(self, reminder_id: str, update: ReminderUpdate, user_id: str) -> bool:
         """Update an existing reminder, rescheduling if scheduled_at changed.
 
         Returns True when a matching reminder was found. (The prior direct-Mongo path
@@ -184,7 +217,10 @@ class ReminderScheduler(BaseSchedulerService):
         elif reminder.scheduled_at is not None:
             # Its job may have fired and been refused while paused; re-arm it (a past time fires now).
             update.scheduled_at = reminder.scheduled_at
-        return await self.update_reminder(reminder.id, update, reminder.user_id)
+        resumed = await self._apply_update(reminder.id, update, reminder.user_id)
+        if resumed:
+            capture(UserId(reminder.user_id), ReminderResumed())
+        return resumed
 
     async def resume_paused_for(self, user_id: str, reason: DeactivationReason) -> int:
         """Resume every reminder the system paused for reason; return the count resumed.
