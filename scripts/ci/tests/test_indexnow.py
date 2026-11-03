@@ -9,6 +9,7 @@ from pathlib import Path
 import subprocess
 import sys
 
+from github_fake import FakeGitHub, Reply
 from http_stub import Routes, serve
 import pytest
 
@@ -284,132 +285,173 @@ def test_fails_without_exactly_one_key_file(
     assert "key file" in result.stderr
 
 
-def _github(repo: str, run_id: int, runs: list[tuple[int, str, str, str | None]]) -> Routes:
-    """Serve the Actions API for one workflow.
+Run = tuple[int, str, str, str | None]
+CI, DEPLOY_WEB = 7, 8
+# ci.yml calls deploy-web.yml as its deploy-web job, which prefixes the job names;
+# deploy-web.yml's own push runs, from before that move, carry them bare.
+JOB_PREFIX = {CI: "deploy-web / ", DEPLOY_WEB: ""}
 
-    runs are (id, head_sha, deploy job conclusion, IndexNow job conclusion or None
-    when the run predates the job), newest first.
+
+def _actions(github: FakeGitHub, run_id: int, runs: dict[int, list[Run]]) -> None:
+    """Serve the Actions API for a run of ci.yml.
+
+    runs maps a workflow id to its master runs, newest first, as (id, head_sha,
+    deploy job conclusion, IndexNow job conclusion or None when it predates the job).
     """
-    api = f"/repos/{repo}/actions"
-    routes: Routes = {
-        f"{api}/runs/{run_id}": (200, {}, json.dumps({"id": run_id, "workflow_id": 7})),
-        f"{api}/workflows/7/runs?branch=master&per_page=100&page=1": (
-            200,
-            {},
-            json.dumps({"workflow_runs": [{"id": i, "head_sha": sha} for i, sha, *_ in runs]}),
-        ),
-        f"{api}/workflows/7/runs?branch=master&per_page=100&page=2": (
-            200,
-            {},
-            json.dumps({"workflow_runs": []}),
-        ),
-    }
-    for run, _sha, deploy, indexnow in runs:
-        jobs = [
-            {"name": "build (cf:build)", "conclusion": "success"},
-            {"name": "deploy (production)", "conclusion": deploy},
-        ]
-        if indexnow is not None:
-            jobs.append({"name": "IndexNow (post-deploy)", "conclusion": indexnow})
-        routes[f"{api}/runs/{run}/jobs?filter=latest&per_page=100"] = (
-            200,
-            {},
-            json.dumps({"jobs": jobs}),
+    api = "/repos/o/r/actions"
+    github.on("GET", rf"^{api}/runs/{run_id}$", Reply(body={"id": run_id, "workflow_id": CI}))
+    github.on("GET", rf"^{api}/workflows/deploy-web\.yml$", Reply(body={"id": DEPLOY_WEB}))
+    for workflow in (CI, DEPLOY_WEB):
+        listed = runs.get(workflow, [])
+        github.on(
+            "GET",
+            rf"^{api}/workflows/{workflow}/runs$",
+            Reply(body={"workflow_runs": [{"id": i, "head_sha": sha} for i, sha, *_ in listed]}),
+            query={"branch": "master"},
         )
-    return routes
+        prefix = JOB_PREFIX[workflow]
+        for run, _sha, deploy, indexnow in listed:
+            jobs = [
+                {"name": "build / cf-build", "conclusion": "success"},
+                {"name": f"{prefix}deploy-production", "conclusion": deploy},
+            ]
+            if indexnow is not None:
+                jobs.append({"name": f"{prefix}IndexNow (post-deploy)", "conclusion": indexnow})
+            github.on("GET", rf"^{api}/runs/{run}/jobs$", Reply(body={"jobs": jobs}))
 
 
-def _actions_env(api: str, run_id: int) -> dict[str, str]:
+def _actions_env(github: FakeGitHub, run_id: int) -> dict[str, str]:
     return {
-        "GITHUB_API_URL": api,
+        "GITHUB_API_URL": github.url,
+        "GITHUB_API_BACKOFF_SECS": "0",
         "GITHUB_REPOSITORY": "o/r",
         "GITHUB_RUN_ID": str(run_id),
         "GH_TOKEN": "t",
-        "INDEXNOW_DEPLOY_JOB": "deploy (production)",
+        "INDEXNOW_DEPLOY_WORKFLOW": "deploy-web.yml",
+        "INDEXNOW_DEPLOY_JOB": "deploy-production",
         "INDEXNOW_JOB": "IndexNow (post-deploy)",
     }
 
 
 def test_previous_is_the_last_run_whose_deploy_job_succeeded(
-    repo: Path, site: tuple[str, Routes, list[tuple[str, bytes]]]
+    repo: Path, site: tuple[str, Routes, list[tuple[str, bytes]]], github: FakeGitHub
 ) -> None:
-    base, routes, _posts = site
+    base, _routes, _posts = site
     previous, head = _shipped(repo)
     coalesced = _write(repo, {"apps/web/public/data/personas/z.json": '{"name": "Z2"}'})
     head = _write(repo, {"apps/web/public/data/personas/z.json": '{"name": "Z3"}'})
     # This run (30); 29 was cancelled by a newer queued push before it deployed;
     # 28 deployed but its seo-audit went red, so the run itself failed.
-    routes.update(
-        _github(
-            "o/r",
-            30,
-            [
+    _actions(
+        github,
+        30,
+        {
+            CI: [
                 (30, head, "success", None),
                 (29, coalesced, "cancelled", "skipped"),
                 (28, previous, "success", None),
-            ],
-        )
+            ]
+        },
     )
 
-    result = _run(repo, base, "--head", head, "--dry-run", env=_actions_env(base, 30))
+    result = _run(repo, base, "--head", head, "--dry-run", env=_actions_env(github, 30))
 
     assert result.returncode == 0, result.stdout + result.stderr
     updated = _listed(result.stdout, "updated", base)
     assert {"/compare/a", "/for/z", "/de/for/z", "/for"} <= updated
 
 
-def test_no_earlier_successful_deploy_fails_the_run(
-    repo: Path, site: tuple[str, Routes, list[tuple[str, bytes]]]
+def test_previous_carries_across_the_deploys_move_into_ci(
+    repo: Path, site: tuple[str, Routes, list[tuple[str, bytes]]], github: FakeGitHub
 ) -> None:
-    base, routes, _posts = site
-    _previous, head = _shipped(repo)
-    routes.update(
-        _github("o/r", 30, [(30, head, "success", None), (29, "dead" * 10, "skipped", "skipped")])
+    base, _routes, _posts = site
+    previous, undelivered = _shipped(repo)
+    head = _write(repo, {"apps/web/public/data/personas/z.json": '{"name": "Z2"}'})
+    # 29, ci.yml's first deploy, failed IndexNow; 28 is deploy-web.yml's own last push run.
+    _actions(
+        github,
+        30,
+        {
+            CI: [(30, head, "success", None), (29, undelivered, "success", "failure")],
+            DEPLOY_WEB: [(28, previous, "success", "success"), (27, "dead" * 10, "success", None)],
+        },
     )
 
-    result = _run(repo, base, "--head", head, "--dry-run", env=_actions_env(base, 30))
+    result = _run(repo, base, "--head", head, "--dry-run", env=_actions_env(github, 30))
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert f"in {previous[:7]}..{head[:7]}" in result.stdout
+    assert {"/compare/a", "/for/z"} <= _listed(result.stdout, "updated", base)
+
+
+def test_a_github_server_error_is_retried(
+    repo: Path, site: tuple[str, Routes, list[tuple[str, bytes]]], github: FakeGitHub
+) -> None:
+    base, _routes, _posts = site
+    previous, head = _shipped(repo)
+    _actions(github, 30, {CI: [(30, head, "success", None), (28, previous, "success", None)]})
+    jobs = {"jobs": [{"name": "deploy-web / deploy-production", "conclusion": "success"}]}
+    github.on("GET", r"^/repos/o/r/actions/runs/28/jobs$", Reply(502), Reply(body=jobs))
+
+    result = _run(repo, base, "--head", head, "--dry-run", env=_actions_env(github, 30))
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert f"in {previous[:7]}..{head[:7]}" in result.stdout
+
+
+def test_no_earlier_successful_deploy_fails_the_run(
+    repo: Path, site: tuple[str, Routes, list[tuple[str, bytes]]], github: FakeGitHub
+) -> None:
+    base, _routes, _posts = site
+    _previous, head = _shipped(repo)
+    _actions(
+        github, 30, {CI: [(30, head, "success", None), (29, "dead" * 10, "skipped", "skipped")]}
+    )
+
+    result = _run(repo, base, "--head", head, "--dry-run", env=_actions_env(github, 30))
 
     assert result.returncode != 0
-    assert "deploy (production)" in result.stderr
+    assert "'deploy-production'" in result.stderr
 
 
 def test_a_malformed_actions_answer_fails_the_run(
-    repo: Path, site: tuple[str, Routes, list[tuple[str, bytes]]]
+    repo: Path, site: tuple[str, Routes, list[tuple[str, bytes]]], github: FakeGitHub
 ) -> None:
-    base, routes, _posts = site
+    base, _routes, _posts = site
     previous, head = _shipped(repo)
-    routes.update(
-        _github("o/r", 30, [(30, head, "success", None), (28, previous, "success", None)])
+    _actions(github, 30, {CI: [(30, head, "success", None), (28, previous, "success", None)]})
+    github.on(
+        "GET",
+        rf"^/repos/o/r/actions/workflows/{CI}/runs$",
+        Reply(body={"workflow_runs": [{"id": 28}]}),
     )
-    page = "/repos/o/r/actions/workflows/7/runs?branch=master&per_page=100&page=1"
-    routes[page] = (200, {}, json.dumps({"workflow_runs": [{"id": 28}]}))
 
-    result = _run(repo, base, "--head", head, "--dry-run", env=_actions_env(base, 30))
+    result = _run(repo, base, "--head", head, "--dry-run", env=_actions_env(github, 30))
 
     assert result.returncode != 0
-    assert "GitHub API field 'head_sha'" in result.stderr
+    assert "'head_sha'" in result.stderr
 
 
 def test_previous_skips_a_deploy_whose_indexnow_submission_failed(
-    repo: Path, site: tuple[str, Routes, list[tuple[str, bytes]]]
+    repo: Path, site: tuple[str, Routes, list[tuple[str, bytes]]], github: FakeGitHub
 ) -> None:
-    base, routes, _posts = site
+    base, _routes, _posts = site
     previous, undelivered = _shipped(repo)
     head = _write(repo, {"apps/web/public/data/personas/z.json": '{"name": "Z2"}'})
     # 29 deployed but IndexNow rejected its batch, so its changes were never delivered.
-    routes.update(
-        _github(
-            "o/r",
-            30,
-            [
+    _actions(
+        github,
+        30,
+        {
+            CI: [
                 (30, head, "success", None),
                 (29, undelivered, "success", "failure"),
                 (28, previous, "success", "success"),
-            ],
-        )
+            ]
+        },
     )
 
-    result = _run(repo, base, "--head", head, "--dry-run", env=_actions_env(base, 30))
+    result = _run(repo, base, "--head", head, "--dry-run", env=_actions_env(github, 30))
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert {"/compare/a", "/for/z"} <= _listed(result.stdout, "updated", base)
