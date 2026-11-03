@@ -280,7 +280,6 @@ apps/api/tests/unit/agents/tools/test_playbook_tools.py	method-assign
 apps/api/tests/unit/agents/tools/test_playbook_tools.py	typeddict-item
 apps/api/tests/unit/agents/tools/test_playbook_tools.py	union-attr
 apps/api/tests/unit/api/test_approvals_endpoint.py	call-arg
-apps/api/tests/unit/api/test_auth_middleware.py	union-attr
 apps/api/tests/unit/api/test_bot_endpoint.py	attr-defined
 apps/api/tests/unit/api/test_bot_endpoint.py	call-arg
 apps/api/tests/unit/api/test_bot_endpoint.py	union-attr
@@ -293,7 +292,6 @@ apps/api/tests/unit/api/test_lab_events.py	arg-type
 apps/api/tests/unit/api/test_lab_events.py	attr-defined
 apps/api/tests/unit/api/test_mail_endpoint.py	list-item
 apps/api/tests/unit/api/test_oauth_dependencies.py	attr-defined
-apps/api/tests/unit/api/test_oauth_endpoint.py	arg-type
 apps/api/tests/unit/api/test_onboarding_endpoint.py	arg-type
 apps/api/tests/unit/api/test_payments_smoke.py	arg-type
 apps/api/tests/unit/api/test_payments_smoke.py	call-arg
@@ -303,7 +301,6 @@ apps/api/tests/unit/api/test_tiered_rate_limiter.py	index
 apps/api/tests/unit/api/test_tiered_rate_limiter.py	method-assign
 apps/api/tests/unit/api/test_user_endpoint.py	arg-type
 apps/api/tests/unit/api/test_voice_endpoint.py	misc
-apps/api/tests/unit/api/test_workflows_endpoint.py	attr-defined
 apps/api/tests/unit/api/v1/endpoints/test_browser.py	attr-defined
 apps/api/tests/unit/api/v1/endpoints/test_features.py	arg-type
 apps/api/tests/unit/api/v1/endpoints/test_features.py	index
@@ -587,7 +584,6 @@ apps/api/tests/unit/services/sandbox/test_execute_client.py	attr-defined
 apps/api/tests/unit/services/sandbox/test_execute_token.py	attr-defined
 apps/api/tests/unit/services/test_account_fs.py	arg-type
 apps/api/tests/unit/services/test_account_fs.py	return-value
-apps/api/tests/unit/services/test_analytics_service.py	unused-ignore
 apps/api/tests/unit/services/test_artifact_events.py	arg-type
 apps/api/tests/unit/services/test_billing_visible_output.py	arg-type
 apps/api/tests/unit/services/test_billing_visible_output.py	attr-defined
@@ -813,7 +809,6 @@ apps/api/tests/unit/workers/test_tracked_todo_tasks.py	has-type
 apps/api/tests/unit/workers/test_tracked_todo_tasks.py	misc
 apps/api/tests/unit/workers/test_tracked_todo_tasks.py	return-value
 apps/api/tests/unit/workers/test_worker_lifecycle.py	arg-type
-apps/api/tests/unit/workers/test_workflow_tasks.py	attr-defined
 apps/api/tests/unit/workers/test_workflow_tasks_coverage.py	arg-type
 apps/api/tests/unit/workers/test_workflow_tasks_onboarding_gate.py	arg-type
 apps/api/tests/unit/workers/test_workflow_tasks_playbook.py	arg-type
