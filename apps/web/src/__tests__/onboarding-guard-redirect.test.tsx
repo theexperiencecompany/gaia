@@ -8,13 +8,12 @@
  * the user staring at an empty composer.
  */
 
-import { renderHook } from "@testing-library/react";
+import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const redirect = vi.fn();
 const usePathname = vi.fn();
 const useCurrentUser = vi.fn();
-const readPendingCheckout = vi.fn();
 const useEntitlement = vi.fn();
 
 vi.mock("next/navigation", () => ({
@@ -34,11 +33,11 @@ vi.mock("@/features/pricing/hooks/useEntitlement", () => ({
   useEntitlement: () => useEntitlement(),
 }));
 
-vi.mock("@/features/pricing/lib/pendingCheckout", () => ({
-  readPendingCheckout: () => readPendingCheckout(),
-}));
-
 import { useOnboardingGuard } from "@/features/auth/hooks/useOnboardingGuard";
+import {
+  clearPendingCheckout,
+  writePendingCheckout,
+} from "@/features/pricing/lib/pendingCheckout";
 
 const completedUser = (firstConversationId?: string) => ({
   email: "a@b.com",
@@ -53,7 +52,7 @@ const completedUser = (firstConversationId?: string) => ({
 describe("useOnboardingGuard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    readPendingCheckout.mockReturnValue(null);
+    clearPendingCheckout();
     useEntitlement.mockReturnValue("entitled");
     usePathname.mockReturnValue("/onboarding");
   });
@@ -87,7 +86,7 @@ describe("useOnboardingGuard", () => {
   });
 
   it("does not redirect while a checkout is pending", () => {
-    readPendingCheckout.mockReturnValue({ planId: "pro" });
+    writePendingCheckout("pro");
     useCurrentUser.mockReturnValue(completedUser("conv-123"));
 
     renderHook(() => useOnboardingGuard());
@@ -136,12 +135,39 @@ describe("useOnboardingGuard", () => {
   });
 
   it("lets a pending checkout resume before unpaid routing", () => {
-    readPendingCheckout.mockReturnValue({ planId: "pro" });
+    writePendingCheckout("pro");
     usePathname.mockReturnValue("/c");
     useEntitlement.mockReturnValue("never_subscribed");
     useCurrentUser.mockReturnValue(completedUser("conv-123"));
 
     renderHook(() => useOnboardingGuard());
+
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
+  // Regression: a failed checkout resume cleared the pending plan without a
+  // re-render, so the guard never re-ran and the user sat on the shell spinner.
+  it("routes a never-subscribed account to the paywall once a resume fails", () => {
+    writePendingCheckout("pro");
+    usePathname.mockReturnValue("/c");
+    useEntitlement.mockReturnValue("never_subscribed");
+    useCurrentUser.mockReturnValue(completedUser("conv-123"));
+    renderHook(() => useOnboardingGuard());
+    expect(redirect).not.toHaveBeenCalled();
+
+    act(() => clearPendingCheckout());
+
+    expect(redirect).toHaveBeenCalledWith("/onboarding", "replace");
+  });
+
+  it("leaves a lapsed account under the UpgradeModal once a resume fails", () => {
+    writePendingCheckout("pro");
+    usePathname.mockReturnValue("/c");
+    useEntitlement.mockReturnValue("lapsed");
+    useCurrentUser.mockReturnValue(completedUser("conv-123"));
+    renderHook(() => useOnboardingGuard());
+
+    act(() => clearPendingCheckout());
 
     expect(redirect).not.toHaveBeenCalled();
   });

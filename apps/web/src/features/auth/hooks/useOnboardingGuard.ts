@@ -1,6 +1,6 @@
 import { RedirectType, redirect } from "next/navigation";
 import { useEntitlement } from "@/features/pricing/hooks/useEntitlement";
-import { readPendingCheckout } from "@/features/pricing/lib/pendingCheckout";
+import { usePendingCheckout } from "@/features/pricing/hooks/usePendingCheckout";
 import { usePathname } from "@/i18n/navigation";
 
 import { useCurrentUser } from "./useCurrentUser";
@@ -9,9 +9,10 @@ export const useOnboardingGuard = () => {
   const user = useCurrentUser();
   const pathname = usePathname();
   const entitlement = useEntitlement();
+  const pendingCheckout = usePendingCheckout();
 
   // A pending checkout must resume before onboarding routing kicks in.
-  if (readPendingCheckout()) return;
+  if (pendingCheckout) return;
 
   // Only proceed if user data is loaded with email and onboarding data is available
   if (!user.email || user.onboarding === undefined) return;
