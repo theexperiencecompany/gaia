@@ -88,10 +88,8 @@ const handleForbiddenError = (
   }
 
   if (code === API_ERROR_CODES.INTEGRATION_NOT_CONNECTED) {
-    const { toolkit, integration_id: integrationId } = errorData as {
-      toolkit?: string;
-      integration_id?: string;
-    };
+    const toolkit = envelope?.toolkit;
+    const integrationId = envelope?.integration_id;
     toast.error(message || "Integration required.", {
       id: `integration-${toolkit || "default"}`,
       duration: Infinity,

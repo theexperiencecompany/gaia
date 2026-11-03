@@ -3,7 +3,7 @@
 from typing import Any, Literal, TypedDict
 
 from mcp.shared.auth import OAuthMetadata, OAuthToken, ProtectedResourceMetadata
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 # Auth kinds a probe can report. The extra ``unknown`` (vs MCPConfig.auth_type)
 # is what probing reports when the server could not be reached at all.
@@ -95,6 +95,15 @@ class MCPUseServerConfig(TypedDict, total=False):
     transport: str
     auth: str | None
     headers: dict[str, str]
+
+
+class McpToolProvenance(BaseModel):
+    """The integration the MCP client stamps on every tool it converts (tool.metadata)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    integration_id: str | None = None
+    integration_name: str | None = None
 
 
 class MCPUseConfig(TypedDict):

@@ -21,7 +21,6 @@ from langchain_core.tools import StructuredTool as BaseStructuredTool
 import pydantic
 
 from app.config.oauth_config import get_integration_by_toolkit
-from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
 from app.constants.integrations import INTEGRATION_STATUS_EXPIRED, ConnectMode
 from app.constants.log_tags import LogTag
 from app.models.agent_config import RunMetadata
@@ -31,12 +30,11 @@ from app.services.composio.dead_account import (
     message_mentions_dead_account,
 )
 from app.services.integrations.integration_accounts import (
-    IntegrationNotConnectedError,
     get_account_record,
     primary_account,
 )
 from app.services.integrations.integration_expiry import expire_account
-from app.utils.errors import AppError
+from app.utils.errors import IntegrationNotConnectedError
 from app.utils.integration_checker import request_integration_connection
 from shared.py.wide_events import log, log_context
 
@@ -259,19 +257,18 @@ class LangchainProvider(
         # here and dispatched via run_coroutine_threadsafe; wrap_tools tops it up if this capture missed the loop.
         self._loop: asyncio.AbstractEventLoop | None = _running_loop_or_none()
 
-    def _ask_user_to_connect(
+    def _handle_dead_connected_account(
         self,
         tool: str,
         toolkit: str | None,
         run_metadata: RunMetadata,
         reason: str,
-        *,
-        grant_died: bool,
     ) -> dict[str, object]:
-        """Answer a call no account could serve with the connect instruction and, on UI surfaces, the card.
+        """Reconcile a confirmed dead connected account and ask the user to reconnect.
 
-        A grant that died in this call is first marked expired, so the integrations
-        page, the tool registry and the pre-flight guard stop treating it as usable.
+        Marks the integration expired (so the integrations page, the tool registry
+        and the pre-flight guard all stop treating it as usable) and hands the
+        agent the connect instruction plus, on UI surfaces, the connect card.
         """
         user_id = run_metadata.user_id
         integration = get_integration_by_toolkit(toolkit) if toolkit else None
@@ -281,13 +278,11 @@ class LangchainProvider(
                 "toolkit": toolkit,
                 "user_id": user_id,
                 "successful": False,
-                "outcome": "dead_connected_account" if grant_died else "integration_not_connected",
+                "outcome": "dead_connected_account",
             }
         )
         log.warning(
-            f"{LogTag.COMPOSIO} Composio tool failed on a dead connected account"
-            if grant_died
-            else f"{LogTag.COMPOSIO} Composio tool called with no usable connected account",
+            f"{LogTag.COMPOSIO} Composio tool failed on a dead connected account",
             tool=tool,
             toolkit=toolkit,
             user_id=user_id,
@@ -310,18 +305,16 @@ class LangchainProvider(
         # the workflow layer, which cannot be imported from inside this wrapper. The
         # connection webhook is what pauses them, off the same dead account.
         selection = run_metadata.composio_account
-        prompt = (
+        message = self._run_on_loop(
             _expire_and_request_reconnect(
                 user_id,
                 integration.id,
                 integration.name,
                 selection.connected_account_id if selection else None,
                 reason,
-            )
-            if grant_died
-            else request_integration_connection(integration.id, integration.name, user_id)
+            ),
+            timeout=_RECONNECT_PROMPT_TIMEOUT_S,
         )
-        message = self._run_on_loop(prompt, timeout=_RECONNECT_PROMPT_TIMEOUT_S)
 
         return {"successful": False, "error": message or reason, "data": None}
 
@@ -383,21 +376,13 @@ class LangchainProvider(
                 # loud so it still reaches Sentry.
                 if not is_dead_account_error(e):
                     raise
-                return self._ask_user_to_connect(
-                    tool, toolkit, run_metadata, str(e), grant_died=True
-                )
-            except AppError as e:
-                if e.code != INTEGRATION_NOT_CONNECTED:
+                return self._handle_dead_connected_account(tool, toolkit, run_metadata, str(e))
+            except IntegrationNotConnectedError as e:
+                # Nothing usable was connected: invoke_tool shows the connect card and
+                # blocks the integration for the run. A grant that died here is expired first.
+                if not e.grant_died:
                     raise
-                # The account pin finding nothing that can act kills no grant; the
-                # proxy's dead account and a provider 401 after a failed refresh do.
-                return self._ask_user_to_connect(
-                    tool,
-                    toolkit,
-                    run_metadata,
-                    str(e),
-                    grant_died=not isinstance(e, IntegrationNotConnectedError),
-                )
+                return self._handle_dead_connected_account(tool, toolkit, run_metadata, str(e))
 
             _log_invocation_outcome(tool, toolkit, user_id, result)
             return result

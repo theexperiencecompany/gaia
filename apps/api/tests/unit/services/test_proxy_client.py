@@ -12,7 +12,6 @@ from app.constants.log_tags import LogTag
 from app.models.agent_config import ComposioAccountSelection
 from app.services.composio import proxy_client
 from app.services.composio.account_scope import account_scope
-from app.services.composio.dead_account import ConnectedAccountGoneError
 from app.services.composio.proxy_client import (
     ProxyRequest,
     _build_parameters,
@@ -20,7 +19,7 @@ from app.services.composio.proxy_client import (
     proxy_request,
     proxy_request_sync,
 )
-from app.utils.errors import AppError
+from app.utils.errors import AppError, IntegrationNotConnectedError
 from shared.py.wide_events import log
 from tests.factories import make_composio_not_found
 
@@ -213,9 +212,11 @@ class TestProxyRequestSync:
                 proxy_request_sync(
                     ProxyRequest(user_id="u1", toolkit="GMAIL", endpoint="/x", method="GET")
                 )
+        assert isinstance(exc.value, IntegrationNotConnectedError)
+        assert exc.value.grant_died is True
         assert exc.value.status_code == 403
         assert exc.value.code == INTEGRATION_NOT_CONNECTED
-        assert exc.value.public == {"toolkit": "GMAIL"}
+        assert exc.value.public == {"toolkit": "GMAIL", "integration_id": "gmail"}
         assert exc.value.meta == {
             "endpoint": "/x",
             "method": "GET",
@@ -263,12 +264,13 @@ class TestProxyRequestSync:
         )
         composio.tools.proxy.side_effect = not_found
         with _patch_primary("ca_gone"), _patch_composio(composio):
-            with pytest.raises(ConnectedAccountGoneError) as exc:
+            with pytest.raises(IntegrationNotConnectedError) as exc:
                 proxy_request_sync(
                     ProxyRequest(user_id="u1", toolkit="GMAIL", endpoint="/x", method="GET")
                 )
+        assert exc.value.grant_died is True
         assert exc.value.code == INTEGRATION_NOT_CONNECTED
-        assert exc.value.public == {"toolkit": "GMAIL"}
+        assert exc.value.public == {"toolkit": "GMAIL", "integration_id": "gmail"}
         assert exc.value.meta == {"cause": str(not_found)}
 
     def test_any_other_composio_404_stays_a_loud_502(self) -> None:
@@ -282,7 +284,7 @@ class TestProxyRequestSync:
                 proxy_request_sync(
                     ProxyRequest(user_id="u1", toolkit="GMAIL", endpoint="/x", method="GET")
                 )
-        assert not isinstance(exc.value, ConnectedAccountGoneError)
+        assert not isinstance(exc.value, IntegrationNotConnectedError)
         assert exc.value.status_code == 502
         assert exc.value.message == f"Composio tools.proxy failed: {not_found}"
         assert exc.value.meta["exception"] == str(not_found)

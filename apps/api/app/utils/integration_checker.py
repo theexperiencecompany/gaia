@@ -16,6 +16,7 @@ from typing import Literal, NamedTuple
 
 from langgraph.config import get_config
 
+from app.agents.tools.run_record import block_integration
 from app.config.settings import settings
 from app.constants.cache import OAUTH_STATE_TTL
 from app.constants.integrations import (
@@ -272,6 +273,17 @@ async def _text_only_message(prompt: _Prompt) -> str:
     )
 
 
+async def _block_for_run(run: AgentConfigurableView | None, integration_id: str) -> bool:
+    """Block the integration for the rest of the run; False when the run already asked once.
+
+    invoke_tool refuses a blocked integration's calls, so the stop the agent is told
+    about does not depend on the model obeying it.
+    """
+    if run is None or not run.stream_id:
+        return True
+    return await block_integration(run.stream_id, integration_id)
+
+
 async def request_integration_connection(
     integration_id: str,
     integration_name: str,
@@ -293,11 +305,13 @@ async def request_integration_connection(
     ask = _ask(mode, expired, integration_name, account.display_name if account else None)
     run = _current_run()
     source_category = run.source_category if run is not None else None
+    adding = mode is ConnectMode.ADD_ACCOUNT
+    first_ask = await _block_for_run(run, integration_id) if not adding else True
 
     # None means no runnable context at all (e.g. the dev direct-invocation
-    # endpoints), so there is no stream for a card to travel on.
-    if source_category is not None:
-        adding = mode is ConnectMode.ADD_ACCOUNT
+    # endpoints), so there is no stream for a card to travel on. A run shows
+    # one card per integration however many calls hit the gap.
+    if source_category is not None and first_ask:
         current_stream_writer()(
             {
                 "integration_connection_required": {

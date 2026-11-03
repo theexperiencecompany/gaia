@@ -868,6 +868,7 @@ class TestCheckIntegrationsStatus:
 class TestSuggestIntegrations:
     @patch(f"{MODULE}.list_integrations")
     async def test_delegates_to_list(self, mock_list: MagicMock) -> None:
+        mock_list.metadata = None
         mock_list.ainvoke = AsyncMock(
             return_value={"connected": [], "available": [], "suggested": []}
         )

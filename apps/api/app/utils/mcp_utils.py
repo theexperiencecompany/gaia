@@ -18,6 +18,8 @@ from app.constants.mcp import (
     MCP_TOOL_NAME_SEPARATOR,
     MCP_UNNAMED_SOURCE_PREFIX,
 )
+from app.models.mcp_config import McpToolProvenance
+from app.utils.errors import IntegrationNotConnectedError
 from shared.py.wide_events import log
 
 
@@ -70,6 +72,29 @@ _CONNECTION_ERROR_PATTERNS = (
     "ssl",
     "certificate",
 )
+
+
+class MCPAuthorizationRequiredError(ValueError):
+    """Raised when an authenticated MCP has no usable access token."""
+
+    def __init__(self, integration_id: str) -> None:
+        super().__init__(
+            f"No valid token for {integration_id}. "
+            "OAuth authorization required - user must complete the OAuth flow."
+        )
+
+
+def _sign_in_required(tool: BaseTool, cause: Exception) -> Exception:
+    """Return the not-connected error for the MCP server a tool belongs to, or the cause when unstamped."""
+    provenance = McpToolProvenance.model_validate(tool.metadata or {})
+    if not provenance.integration_id:
+        return cause
+    return IntegrationNotConnectedError(
+        integration_id=provenance.integration_id,
+        integration_name=provenance.integration_name or provenance.integration_id,
+        why=f"The MCP server rejected the stored credentials: {cause}",
+        grant_died=True,
+    )
 
 
 def wrap_tool_with_null_filter(
@@ -150,14 +175,16 @@ def wrap_tool_with_null_filter(
                             tool_name=tool.name,
                             error_type=type(retry_err).__name__,
                         )
-                        # A 401 that survives a fresh token = server rejecting a valid
-                        # token; surface it so the user can re-authenticate.
-                        if "401" in str(retry_err) or "unauthorized" in str(retry_err).lower():
-                            raise
+                        # A 401 that survives a fresh token, or no token at all: only
+                        # the user can fix it, by signing in again.
+                        if isinstance(retry_err, MCPAuthorizationRequiredError) or (
+                            "401" in str(retry_err) or "unauthorized" in str(retry_err).lower()
+                        ):
+                            raise _sign_in_required(tool, retry_err) from retry_err
                         return f"MCP tool error after reconnect: {retry_err}"
 
                 if is_auth_error:
-                    raise
+                    raise _sign_in_required(tool, e) from e
 
             if "Cannot read properties of undefined" in error_msg:
                 return (

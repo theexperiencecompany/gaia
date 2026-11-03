@@ -2119,6 +2119,7 @@ class TestSelectToolsTwinWiring:
         self, mock_call_kwargs: MagicMock
     ) -> None:
         retrieve_tools = MagicMock(name="retrieve_tools")
+        retrieve_tools.metadata = None
         retrieve_tools.invoke.return_value = ["dummy_tool_a"]
         deps = _make_branch_deps(retrieve_tools=retrieve_tools, store_arg="store")
         node = _select_tools_node(deps)
@@ -2139,6 +2140,7 @@ class TestSelectToolsTwinWiring:
         self, mock_call_kwargs: MagicMock
     ) -> None:
         retrieve_tools = MagicMock(name="retrieve_tools")
+        retrieve_tools.metadata = None
         retrieve_tools.ainvoke = AsyncMock(return_value=["dummy_tool_a"])
         deps = _make_branch_deps(retrieve_tools=retrieve_tools, store_arg="store")
         node = _select_tools_node(deps)

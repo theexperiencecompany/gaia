@@ -9213,10 +9213,20 @@ export interface components {
             /** Fix */
             fix?: string | null;
             /**
+             * Integration Id
+             * @description Integration an INTEGRATION_NOT_CONNECTED error asks to connect.
+             */
+            integration_id?: string | null;
+            /**
              * Message
              * @description Human-readable description of the failure.
              */
             message: string;
+            /**
+             * Toolkit
+             * @description Composio toolkit an INTEGRATION_NOT_CONNECTED error is about.
+             */
+            toolkit?: string | null;
             /** Why */
             why?: string | null;
         } & {

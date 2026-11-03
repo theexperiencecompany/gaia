@@ -2,7 +2,6 @@
 
 from app.config.oauth_config import get_integration_by_tool_slug, get_integration_by_toolkit
 from app.constants.cache import USER_INTEGRATION_CACHE_PATTERNS
-from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
 from app.constants.integrations import MAX_ACCOUNTS_PER_INTEGRATION
 from app.db.repositories.user_integrations import user_integration_repository
 from app.decorators.caching import CacheInvalidator
@@ -12,7 +11,7 @@ from app.models.integration_models import (
     UserIntegrationStatus,
 )
 from app.models.webhook_models import TriggerEventAccount
-from app.utils.errors import AppError
+from app.utils.errors import AppError, IntegrationNotConnectedError
 
 
 def derive_status(accounts: list[IntegrationAccount]) -> UserIntegrationStatus:
@@ -121,20 +120,23 @@ async def event_account(
     return tagged
 
 
-class IntegrationNotConnectedError(AppError):
-    """No account of a toolkit can act: it was never connected, or its primary expired."""
-
-    def __init__(self, toolkit: str, integration_id: str, why: str) -> None:
-        # 403, not 401: a 401 trips the web client's session-expiry interceptor.
-        super().__init__(
-            message=f"No active {toolkit} connection",
-            why=why,
-            fix=f"Reconnect the {toolkit} integration",
-            status_code=403,
-            code=INTEGRATION_NOT_CONNECTED,
-            # The web keys its reconnect toast on toolkit and starts the connect from integration_id.
-            public={"toolkit": toolkit, "integration_id": integration_id},
-        )
+def toolkit_not_connected(
+    toolkit: str,
+    why: str,
+    *,
+    grant_died: bool = False,
+    meta: dict[str, object] | None = None,
+) -> IntegrationNotConnectedError:
+    """Build the not-connected error for a Composio toolkit, named after its GAIA integration."""
+    integration = get_integration_by_toolkit(toolkit)
+    return IntegrationNotConnectedError(
+        integration_id=integration.id if integration else toolkit.lower(),
+        integration_name=integration.name if integration else toolkit,
+        why=why,
+        toolkit=toolkit,
+        grant_died=grant_died,
+        meta=meta,
+    )
 
 
 async def primary_connected_account_id(user_id: str, toolkit: str) -> str:
@@ -149,13 +151,10 @@ async def primary_connected_account_id(user_id: str, toolkit: str) -> str:
     record = await get_account_record(user_id, integration.id)
     account = primary_account(record) if record else None
     if account is None:
-        raise IntegrationNotConnectedError(
-            toolkit, integration.id, "This integration has no connected account"
-        )
+        raise toolkit_not_connected(toolkit, "This integration has no connected account")
     if account.status != "connected":
-        raise IntegrationNotConnectedError(
+        raise toolkit_not_connected(
             toolkit,
-            integration.id,
             f"The primary {integration.name} account ({account.display_name}) expired",
         )
     return account.connected_account_id

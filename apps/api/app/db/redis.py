@@ -185,6 +185,10 @@ class AsyncRedisCommands(Protocol):
         """SMEMBERS — empty set for a missing key."""
         ...
 
+    async def sismember(self, name: str, value: str) -> int:
+        """SISMEMBER — 1 when value is in the set, 0 otherwise (or for a missing key)."""
+        ...
+
     async def srem(self, name: str, *values: str) -> int:
         """SREM — returns how many members were removed."""
         ...

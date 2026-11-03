@@ -30,7 +30,7 @@ _UNKNOWN_STATUS_PHRASE = "Error"
 #: Declared envelope fields whose type an arbitrary context mapping could
 #: violate. A wrong type here would make ``model_validate`` raise inside an
 #: exception handler, so the key is dropped instead.
-_STRING_FIELDS = ("code", "why", "fix")
+_STRING_FIELDS = ("code", "why", "fix", "toolkit", "integration_id")
 
 
 class ValidationIssue(BaseModel):
@@ -53,6 +53,12 @@ class ErrorEnvelope(BaseModel):
     code: str | None = Field(default=None, description="Machine-readable error code.")
     why: str | None = None
     fix: str | None = None
+    toolkit: str | None = Field(
+        default=None, description="Composio toolkit an INTEGRATION_NOT_CONNECTED error is about."
+    )
+    integration_id: str | None = Field(
+        default=None, description="Integration an INTEGRATION_NOT_CONNECTED error asks to connect."
+    )
     errors: list[ValidationIssue] | None = Field(
         default=None, description="Field-level failures; present only on 422."
     )

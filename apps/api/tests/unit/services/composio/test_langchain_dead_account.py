@@ -23,15 +23,14 @@ import composio_client
 import httpx
 import pytest
 
-from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
 from app.constants.integrations import ACCOUNT_NEEDS_RECONNECT_HINT
 from app.db.repositories.user_integrations import user_integration_repository
 from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from app.services.composio import langchain_composio_service as wrapper
 from app.services.composio.account_scope import current_selection, scoped_connected_account_id
-from app.services.composio.dead_account import ConnectedAccountGoneError
 from app.services.composio.langchain_composio_service import LangchainProvider
-from app.utils.errors import AppError
+from app.services.integrations.integration_accounts import toolkit_not_connected
+from app.utils.errors import AppError, IntegrationNotConnectedError
 from tests.factories import make_composio_not_found, make_composio_tool
 
 MODULE = "app.services.composio.langchain_composio_service"
@@ -257,7 +256,9 @@ class TestDeadAccountReconciles:
         """Custom tools reach the provider through the proxy; its dead account is not a raised 404."""
         provider = LangchainProvider()
         provider._loop = asyncio.get_running_loop()
-        gone = ConnectedAccountGoneError("GMAIL", 'Connected account "ca_gone" not found')
+        gone = toolkit_not_connected(
+            "GMAIL", 'Connected account "ca_gone" not found', grant_died=True
+        )
         action_func = _action_func(provider, _raises(gone))
         metadata = {
             "user_id": "user-1",
@@ -630,76 +631,24 @@ def _pins_the_primary_account(_tool: str, _kwargs: dict[str, Any]) -> dict[str, 
     return {"successful": True, "data": {}, "error": None}
 
 
-class TestAnIntegrationWithNoUsableAccountShowsTheConnectCard:
-    """Regression: 89 GMAIL_FETCH_MESSAGES calls in 20 days answered "Error: AppError: No active GMAIL connection", up to 16 per chat.
-
-    The pin's not-connected error escaped the wrapper as a raw tool error, so no
-    card was shown and the agent kept calling the tool.
-    """
+class TestAnIntegrationWithNoUsableAccount:
+    """Nothing usable was connected: the wrapper expires nothing and leaves the card to invoke_tool."""
 
     @pytest.mark.regression
-    async def test_a_never_connected_integration_asks_for_a_first_connect(self) -> None:
-        provider = LangchainProvider()
-        provider._loop = asyncio.get_running_loop()
-        action_func = _action_func(provider, _pins_the_primary_account)
-        writer = MagicMock()
+    def test_the_typed_not_connected_error_reaches_the_invocation_layer(self) -> None:
+        """Regression: it used to surface as "Error: AppError: No active GMAIL connection", no card."""
+        action_func = _action_func(LangchainProvider(), _pins_the_primary_account)
 
         with (
             patch(f"{ACCOUNTS}.get_account_record", AsyncMock(return_value=None)),
             patch(f"{MODULE}.expire_account", AsyncMock()) as expire,
-            patch(f"{MODULE}.log") as mock_log,
-            _ui_chat_turn(writer, expired=False),
+            pytest.raises(IntegrationNotConnectedError) as raised,
         ):
-            result = await asyncio.to_thread(
-                action_func, __runnable_config__={"metadata": {"user_id": "user-1"}}
-            )
+            action_func(__runnable_config__={"metadata": {"user_id": "user-1"}})
 
-        # Nothing was connected, so nothing died and nothing is expired.
         expire.assert_not_awaited()
-        invocation = mock_log.set.call_args.kwargs["composio_tool_invocation"]
-        assert invocation["outcome"] == "integration_not_connected"
-        assert mock_log.warning.call_args.kwargs["tool"] == "GMAIL_FETCH_MESSAGES"
-        assert "no usable connected account" in mock_log.warning.call_args.args[0]
-        card = writer.call_args.args[0]["integration_connection_required"]
-        assert card["integration_id"] == "gmail"
-        assert card["expired"] is False
-        assert card["message"] == "To use Gmail features, please connect your account first."
-        assert result["successful"] is False
-        assert result["error"].startswith("Gmail needs to be connected.")
-        assert "do not call any Gmail tool again this run" in result["error"]
-
-    @pytest.mark.regression
-    async def test_an_expired_primary_with_no_live_account_asks_for_a_reconnect(self) -> None:
-        provider = LangchainProvider()
-        provider._loop = asyncio.get_running_loop()
-        action_func = _action_func(provider, _pins_the_primary_account)
-        writer = MagicMock()
-        record = UserIntegrationDocument(
-            user_id="user-1",
-            integration_id="gmail",
-            accounts=[
-                IntegrationAccount(
-                    id="ca_home",
-                    connected_account_id="ca_home",
-                    label="me@gmail.com",
-                    status="expired",
-                )
-            ],
-            primary_account_id="ca_home",
-        )
-
-        with (
-            patch(f"{ACCOUNTS}.get_account_record", AsyncMock(return_value=record)),
-            _ui_chat_turn(writer, expired=True),
-        ):
-            result = await asyncio.to_thread(
-                action_func, __runnable_config__={"metadata": {"user_id": "user-1"}}
-            )
-
-        card = writer.call_args.args[0]["integration_connection_required"]
-        assert card["expired"] is True
-        assert card["message"] == "Your Gmail connection expired. Sign in again to keep using it."
-        assert "Do NOT tell them to connect Gmail for the first time." in result["error"]
+        assert raised.value.grant_died is False
+        assert (raised.value.integration_id, raised.value.integration_name) == ("gmail", "Gmail")
 
 
 class TestAProviderRejectingTheGrantShowsTheReconnectCard:
@@ -708,13 +657,7 @@ class TestAProviderRejectingTheGrantShowsTheReconnectCard:
         """Composio's token was rejected and its refresh failed: the grant is dead, like a 1810."""
         provider = LangchainProvider()
         provider._loop = asyncio.get_running_loop()
-        rejected = AppError(
-            message="GMAIL API error (401)",
-            status_code=403,
-            code=INTEGRATION_NOT_CONNECTED,
-            public={"toolkit": "GMAIL"},
-            meta={"provider_status": 401},
-        )
+        rejected = toolkit_not_connected("GMAIL", "token rejected", grant_died=True)
         action_func = _action_func(provider, _raises(rejected))
         writer = MagicMock()
 
@@ -727,7 +670,7 @@ class TestAProviderRejectingTheGrantShowsTheReconnectCard:
             )
 
         expire.assert_awaited_once_with(
-            "user-1", "gmail", None, trigger="tool_execution", reason="GMAIL API error (401)"
+            "user-1", "gmail", None, trigger="tool_execution", reason=str(rejected)
         )
         card = writer.call_args.args[0]["integration_connection_required"]
         assert card["expired"] is True

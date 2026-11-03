@@ -13,7 +13,6 @@ from tests.integration_account_factories import (
 
 from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
 from app.services.integrations.integration_accounts import (
-    IntegrationNotConnectedError,
     derive_status,
     event_account,
     list_account_records,
@@ -23,7 +22,7 @@ from app.services.integrations.integration_accounts import (
     set_account_nickname,
 )
 from app.services.triggers.base import primary_account_for_trigger
-from app.utils.errors import AppError
+from app.utils.errors import AppError, IntegrationNotConnectedError
 from app.utils.exceptions import TriggerRegistrationError
 
 USER_ID = "u1"
@@ -127,14 +126,15 @@ class TestPrimaryConnectedAccountId:
 
         assert exc.value.status_code == 403
         assert exc.value.to_dict() == {
-            "message": "No active GMAIL connection",
+            "message": "Gmail is not connected. Reconnect it to continue.",
             "why": "This integration has no connected account",
-            "fix": "Reconnect the GMAIL integration",
+            "fix": "Reconnect Gmail",
             "code": INTEGRATION_NOT_CONNECTED,
-            "toolkit": "GMAIL",
             # The web's Reconnect starts this integration's connect flow from it.
             "integration_id": "gmail",
+            "toolkit": "GMAIL",
         }
+        assert exc.value.grant_died is False
 
     async def test_an_expired_primary_is_named_in_the_reconnect_error(
         self, repo: MagicMock

@@ -3,8 +3,6 @@ from datetime import UTC, datetime, timedelta
 from fastapi import HTTPException
 
 from app.constants.calendar import DEFAULT_CALENDAR_COLOR
-from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
-from app.constants.integrations import GOOGLE_CALENDAR_INTEGRATION_ID
 from app.db.repositories.calendar import calendar_repository
 from app.models.calendar_models import (
     CalendarEventDisplay,
@@ -35,7 +33,7 @@ from app.models.calendar_models import (
 from app.models.integrations.composio import ProxyErrorMeta
 from app.services.composio.proxy_client import ProxyMethod, ProxyRequest, proxy_request
 from app.utils.calendar_utils import CALENDAR_API_BASE, calendar_events_endpoint
-from app.utils.errors import AppError
+from app.utils.errors import AppError, IntegrationNotConnectedError
 from shared.py.wide_events import log
 
 CALENDAR_TOOLKIT = "GOOGLECALENDAR"
@@ -69,21 +67,11 @@ async def _proxy(
                 query=query,
             )
         )
+    except IntegrationNotConnectedError:
+        # The typed error renders as the one not-connected envelope the web's
+        # Reconnect toast reads; rebuilding it here would be a second copy.
+        raise
     except AppError as exc:
-        # Integration not connected → emit the structured "integration" detail
-        # the web client already understands (same shape as require_integration),
-        # so it shows an actionable reconnect toast instead of the login modal.
-        if exc.code == INTEGRATION_NOT_CONNECTED:
-            raise HTTPException(
-                status_code=exc.status_code,
-                detail={
-                    "type": "integration",
-                    "code": INTEGRATION_NOT_CONNECTED,
-                    "toolkit": CALENDAR_TOOLKIT,
-                    "integration_id": GOOGLE_CALENDAR_INTEGRATION_ID,
-                    "message": "Reconnect Google Calendar to load your events.",
-                },
-            ) from exc
         provider_response = ProxyErrorMeta.model_validate(exc.meta).provider_response
         detail = exc.message
         if isinstance(provider_response, dict):
