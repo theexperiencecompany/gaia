@@ -94,6 +94,17 @@ class TestInvalidArgumentsReturnAFailure:
     def test_valid_arguments_still_run_the_tool(self) -> None:
         assert self._tool().run({"recipient": "a@b.c", "count": 2}) == "sent 2 to a@b.c"
 
+    def test_a_plain_string_input_reaches_the_tool_as_langchain_maps_it(self) -> None:
+        class _Query(BaseModel):
+            query: str
+
+        def search(query: str) -> str:
+            return f"searched {query}"
+
+        tool = StructuredTool(name="search", description="Search.", func=search, args_schema=_Query)
+
+        assert tool.run("invoices") == "searched invoices"
+
     def test_a_validation_error_from_the_body_is_raised_not_blamed_on_the_arguments(self) -> None:
         sent: list[str] = []
 
