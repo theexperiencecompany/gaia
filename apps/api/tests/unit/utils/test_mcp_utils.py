@@ -142,6 +142,7 @@ class TestWrapToolWithNullFilter:
             await wrapped._arun()
 
         assert raised.value.__cause__ is retry_error
+        assert raised.value.why == f"The MCP server rejected the stored credentials: {rejection}"
 
     async def test_a_reconnect_failing_for_another_reason_is_reported_not_raised(self) -> None:
         tool = _make_tool(arun=AsyncMock(side_effect=Exception("connection closed")))
