@@ -1312,6 +1312,7 @@ result_brief: x
 
         assert result.issues == []
 
+    @pytest.mark.regression
     async def test_an_execute_step_matches_a_call_that_sent_its_data_json_encoded(self) -> None:
         """The proxy runs a JSON-encoded data as its object, so the record of that call is the same call."""
         body = _body(

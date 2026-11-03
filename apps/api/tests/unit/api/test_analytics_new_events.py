@@ -230,7 +230,7 @@ class TestWorkflowNewEvents:
                 json={"todo_id": "todo_123", "todo_title": "Buy groceries"},
             )
         assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), WorkflowCreated(from_todo=True))
+        mock_capture.assert_called_once_with(UserId(UID), WorkflowCreated(origin="todo_converted"))
 
 
 # ---------------------------------------------------------------------------

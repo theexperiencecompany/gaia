@@ -9,20 +9,21 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass, field
+import heapq
 import json
 import os
 from pathlib import Path
 import re
 import subprocess
 import sys
-from typing import TypeVar
 import urllib.error
 import urllib.parse
 import urllib.request
 
-# python -I leaves the script's own directory off sys.path; the sitemap reader is shared with the audit.
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from seo_audit import Site, sitemap_urls
+# python -I leaves scripts/ci off sys.path; the sitemap reader is shared with the audit.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from lib.github import GitHub, Json, field_of, text_of
+from lib.seo_audit import Site, sitemap_urls
 
 ENDPOINT = "https://api.indexnow.org/indexnow"
 BATCH_MAX = 10_000
@@ -139,9 +140,6 @@ def read_key(root: Path) -> str:
     if files[0].read_text().strip() != key:
         raise SystemExit(f"indexnow: key file {files[0].name} does not contain its own key")
     return key
-
-
-_T = TypeVar("_T")
 
 
 def _json_at(repo: Repo, rev: str | None, path: str) -> object:
@@ -327,82 +325,61 @@ def classify(changes: Changes, live: set[str], site: str, repo: Repo) -> tuple[s
     return updated, deleted
 
 
-def _github(path: str) -> dict[str, object]:
-    api = os.environ.get("GITHUB_API_URL", "https://api.github.com")
-    request = urllib.request.Request(  # noqa: S310 - the Actions API origin from the runner's own env
-        f"{api}{path}",
-        headers={
-            "Authorization": f"Bearer {os.environ['GH_TOKEN']}",
-            "Accept": "application/vnd.github+json",
-        },
-    )
-    with urllib.request.urlopen(request, timeout=TIMEOUT_S) as resp:  # noqa: S310 - see above
-        body = json.load(resp)
-    if not isinstance(body, dict):
-        raise SystemExit(f"indexnow: GitHub {path} answered {type(body).__name__}, not an object")
-    return body
+def _conclusion(jobs: list[Json], name: str) -> str | None:
+    """Read the conclusion of the job a workflow declares as name, bare or under a caller's prefix."""
+    for job in jobs:
+        declared = field_of(job, "name", str)
+        if declared == name or declared.endswith(f" / {name}"):
+            return text_of(job, "conclusion")
+    return None
 
 
-def _field(obj: dict[str, object], key: str, kind: type[_T]) -> _T:
-    """Read one field of a GitHub API object, failing the run when it is missing or mistyped."""
-    value = obj.get(key)
-    if not isinstance(value, kind):
-        raise SystemExit(f"indexnow: GitHub API field '{key}' is not {kind.__name__}: {value!r}")
-    return value
-
-
-def _objects(obj: dict[str, object], key: str) -> list[dict[str, object]]:
-    """Read a GitHub API field that lists objects (workflow_runs, jobs)."""
-    items = _field(obj, key, list)
-    if not all(isinstance(item, dict) for item in items):
-        raise SystemExit(f"indexnow: GitHub API field '{key}' is not a list of objects")
-    return items
-
-
-def _notified(jobs: list[dict[str, object]], deploy: str, indexnow: str) -> bool:
+def _notified(jobs: list[Json], deploy: str, indexnow: str) -> bool:
     """Whether a run deployed and its pages reached IndexNow, or it predates the IndexNow job."""
-    conclusions = {j["name"]: j["conclusion"] for j in jobs}
-    return (
-        conclusions.get(deploy) == "success" and conclusions.get(indexnow, "success") == "success"
-    )
+    return _conclusion(jobs, deploy) == "success" and _conclusion(jobs, indexnow) in {
+        "success",
+        None,
+    }
 
 
 def last_notified_sha() -> str:
     """Find the head SHA of the newest earlier run whose deploy succeeded and was submitted.
 
-    A run whose IndexNow job failed is skipped, so its undelivered changes stay in the next diff.
+    Runs of this workflow and the deploy workflow's own push runs, from before a caller
+    took it over, are searched together. A run whose IndexNow job failed is skipped, so
+    its undelivered changes stay in the next diff.
     """
     names = (
         "GITHUB_REPOSITORY",
         "GITHUB_RUN_ID",
-        "GH_TOKEN",
+        "INDEXNOW_DEPLOY_WORKFLOW",
         "INDEXNOW_DEPLOY_JOB",
         "INDEXNOW_JOB",
     )
     for name in names:
         if not os.environ.get(name):
             raise SystemExit(f"indexnow: {name} is unset; pass --previous outside Actions")
-    repo, job = os.environ["GITHUB_REPOSITORY"], os.environ["INDEXNOW_DEPLOY_JOB"]
-    indexnow = os.environ["INDEXNOW_JOB"]
+    deploy, indexnow = os.environ["INDEXNOW_DEPLOY_JOB"], os.environ["INDEXNOW_JOB"]
     run_id = int(os.environ["GITHUB_RUN_ID"])
-    workflow = _field(_github(f"/repos/{repo}/actions/runs/{run_id}"), "workflow_id", int)
-    page = 1
-    while runs := _objects(
-        _github(
-            f"/repos/{repo}/actions/workflows/{workflow}/runs?branch={DEPLOY_BRANCH}&per_page=100&page={page}"
-        ),
-        "workflow_runs",
-    ):
-        for run in runs:
-            run_n = _field(run, "id", int)
-            if run_n >= run_id:
-                continue  # this run, and pushes queued behind it
-            jobs = _github(f"/repos/{repo}/actions/runs/{run_n}/jobs?filter=latest&per_page=100")
-            if _notified(_objects(jobs, "jobs"), job, indexnow):
-                return _field(run, "head_sha", str)
-        page += 1
+    api = f"repos/{os.environ['GITHUB_REPOSITORY']}/actions"
+    gh = GitHub.from_env()
+    workflows = {
+        field_of(gh.get(f"{api}/runs/{run_id}"), "workflow_id", int),
+        field_of(gh.get(f"{api}/workflows/{os.environ['INDEXNOW_DEPLOY_WORKFLOW']}"), "id", int),
+    }
+    listings = (
+        gh.each(f"{api}/workflows/{w}/runs?branch={DEPLOY_BRANCH}&per_page=100", "workflow_runs")
+        for w in sorted(workflows)
+    )
+    for run in heapq.merge(*listings, key=lambda run: -field_of(run, "id", int)):
+        run_n = field_of(run, "id", int)
+        if run_n >= run_id:
+            continue  # this run, and pushes queued behind it
+        jobs = gh.collect(f"{api}/runs/{run_n}/jobs?filter=latest&per_page=100", "jobs")
+        if _notified(jobs, deploy, indexnow):
+            return field_of(run, "head_sha", str)
     raise SystemExit(
-        f"indexnow: no earlier {DEPLOY_BRANCH} run has a successful '{job}' job "
+        f"indexnow: no earlier {DEPLOY_BRANCH} run has a successful '{deploy}' job "
         f"and no failed '{indexnow}' job to diff from"
     )
 
