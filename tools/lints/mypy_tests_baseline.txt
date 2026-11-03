@@ -22,7 +22,6 @@ apps/api/tests/contracts/test_browser_profiles_repository.py	misc
 apps/api/tests/contracts/test_conversations_repository.py	assignment
 apps/api/tests/contracts/test_folded_cards.py	list-item
 apps/api/tests/contracts/test_notifications_repository.py	arg-type
-apps/api/tests/contracts/test_reminders_repository.py	arg-type
 apps/api/tests/contracts/test_user_instructions_repository.py	assignment
 apps/api/tests/contracts/test_user_integrations_repository.py	arg-type
 apps/api/tests/contracts/test_workflows_repository.py	arg-type
@@ -281,9 +280,6 @@ apps/api/tests/unit/agents/tools/test_playbook_tools.py	list-item
 apps/api/tests/unit/agents/tools/test_playbook_tools.py	method-assign
 apps/api/tests/unit/agents/tools/test_playbook_tools.py	typeddict-item
 apps/api/tests/unit/agents/tools/test_playbook_tools.py	union-attr
-apps/api/tests/unit/api/test_analytics_new_events.py	arg-type
-apps/api/tests/unit/api/test_analytics_new_events.py	attr-defined
-apps/api/tests/unit/api/test_analytics_new_events.py	return-value
 apps/api/tests/unit/api/test_approvals_endpoint.py	call-arg
 apps/api/tests/unit/api/test_auth_middleware.py	union-attr
 apps/api/tests/unit/api/test_bot_endpoint.py	attr-defined
@@ -303,7 +299,6 @@ apps/api/tests/unit/api/test_onboarding_endpoint.py	arg-type
 apps/api/tests/unit/api/test_payments_smoke.py	arg-type
 apps/api/tests/unit/api/test_payments_smoke.py	call-arg
 apps/api/tests/unit/api/test_platform_auth_endpoint.py	override
-apps/api/tests/unit/api/test_reminders_endpoint.py	arg-type
 apps/api/tests/unit/api/test_support_endpoint.py	call-arg
 apps/api/tests/unit/api/test_tiered_rate_limiter.py	index
 apps/api/tests/unit/api/test_tiered_rate_limiter.py	method-assign
@@ -492,8 +487,6 @@ apps/api/tests/unit/scripts/analytics_ops/test_backfill_history.py	arg-type
 apps/api/tests/unit/scripts/analytics_ops/test_backfill_history.py	index
 apps/api/tests/unit/scripts/analytics_ops/test_backfill_history.py	operator
 apps/api/tests/unit/scripts/analytics_ops/test_backfill_paid_status.py	index
-apps/api/tests/unit/scripts/analytics_ops/test_e2e.py	attr-defined
-apps/api/tests/unit/scripts/analytics_ops/test_e2e.py	list-item
 apps/api/tests/unit/scripts/analytics_ops/test_merge_email_persons.py	attr-defined
 apps/api/tests/unit/scripts/analytics_ops/test_merge_email_persons.py	index
 apps/api/tests/unit/scripts/analytics_ops/test_reconcile.py	arg-type
@@ -652,9 +645,6 @@ apps/api/tests/unit/services/test_onboarding_service.py	call-arg
 apps/api/tests/unit/services/test_onboarding_service.py	list-item
 apps/api/tests/unit/services/test_outbound_delivery.py	arg-type
 apps/api/tests/unit/services/test_outbound_delivery.py	attr-defined
-apps/api/tests/unit/services/test_payment_service.py	arg-type
-apps/api/tests/unit/services/test_payment_service.py	attr-defined
-apps/api/tests/unit/services/test_payment_service.py	return-value
 apps/api/tests/unit/services/test_payment_service_dodo_reconciliation.py	attr-defined
 apps/api/tests/unit/services/test_platform_link_code_service.py	attr-defined
 apps/api/tests/unit/services/test_platform_link_code_service.py	index
@@ -664,9 +654,6 @@ apps/api/tests/unit/services/test_provider_credentials_service.py	arg-type
 apps/api/tests/unit/services/test_provider_credentials_service.py	assignment
 apps/api/tests/unit/services/test_provider_credentials_service.py	index
 apps/api/tests/unit/services/test_publish_service.py	arg-type
-apps/api/tests/unit/services/test_reminder_service.py	arg-type
-apps/api/tests/unit/services/test_reminder_service.py	attr-defined
-apps/api/tests/unit/services/test_reminder_service.py	call-arg
 apps/api/tests/unit/services/test_s3_blob_store.py	union-attr
 apps/api/tests/unit/services/test_search_service.py	arg-type
 apps/api/tests/unit/services/test_share_fetcher_compat.py	attr-defined
