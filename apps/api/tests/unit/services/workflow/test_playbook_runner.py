@@ -3575,6 +3575,9 @@ class TestNothingNew:
 
         assert result.ok is True, result.failure
         assert result.nothing_new == "list_events returned nothing"
+        assert result.completed == [
+            'events (list_events {"calendar_id":"primary"}) -> {"items": []}'
+        ]
         assert result.suspect is None
         assert [name for name, _ in recorder.calls] == ["list_events"]
         assert [call.tool_name for call in result.trace] == ["list_events"]

@@ -79,3 +79,20 @@ def test_only_a_call_that_changes_nothing_opens_a_run_it_may_end(
 
 def test_ids_are_read_off_the_largest_list_past_the_envelope() -> None:
     assert item_ids(INBOX) == frozenset({"m1", "m2"})
+
+
+def test_the_last_runs_read_is_found_past_its_other_calls_and_through_execute() -> None:
+    proxied = RecordedCall(
+        tool_name="execute",
+        args={"tool_name": "GMAIL_FETCH_MESSAGES", "data": {}},
+        result_digest=json.dumps(INBOX),
+    )
+    previous = [RecordedCall(tool_name="list_todos", result_digest="[]"), proxied]
+
+    assert nothing_new("GMAIL_FETCH_MESSAGES", {}, INBOX, previous) == (
+        "GMAIL_FETCH_MESSAGES returned the same 2 items as the last run"
+    )
+
+
+def test_an_element_with_an_empty_id_has_no_identity() -> None:
+    assert item_ids({"items": [{"id": "m1"}, {"id": ""}]}) is None

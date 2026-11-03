@@ -13,6 +13,7 @@ from app.models.workflow_execution_models import (
     _trim_strings,
     build_result_digest,
     carries_no_data,
+    largest_list,
     largest_list_len,
     parse_result,
 )
@@ -151,3 +152,8 @@ class TestCarriesNoDataOnOtherObjects:
     def test_anything_that_is_not_a_json_shape_is_data(self) -> None:
         assert carries_no_data(object()) is False
         assert carries_no_data(datetime(2026, 9, 5, tzinfo=UTC)) is False
+
+
+def test_the_largest_list_is_the_first_of_equal_length_and_none_without_any() -> None:
+    assert largest_list({"a": [1], "b": [2]}) == [1]
+    assert largest_list({"a": 1, "b": {"c": "x"}}) is None

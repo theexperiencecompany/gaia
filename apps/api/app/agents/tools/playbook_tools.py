@@ -628,14 +628,14 @@ async def disable_playbook(
         if not removed:
             # Not a decision: there was nothing to decide about. A briefed run
             # that has no playbook must write or decline, not disable air.
-            record_disable(refused=True)
+            record_disable(PlaybookDecisionOutcome.REFUSED)
             return error_response(
                 "nothing_to_disable",
                 f"Workflow {workflow_id} has no playbook. Call write_playbook or "
                 "decline_playbook instead.",
             )
         log.set_ns("playbook", disabled=True, reason=reason)
-        record_disable(refused=False)
+        record_disable(PlaybookDecisionOutcome.ACCEPTED)
         return success_response(
             {"disabled": True}, "Playbook removed. This workflow reasons out every run again."
         )

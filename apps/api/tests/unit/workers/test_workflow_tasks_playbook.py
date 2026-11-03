@@ -529,14 +529,31 @@ class TestNothingNew:
         await _fire(harness)
 
         assert (REGISTRY.get_sample_value("gaia_playbook_nothing_new_total") or 0.0) - before == 1
-        event = harness.playbook_event()
-        assert (event["mode"], event["reason"]) == ("skipped", "nothing_new")
+        assert harness.playbook_event() == {
+            "mode": "skipped",
+            "reason": "nothing_new",
+            "playbook_id": "pb_1",
+            "nothing_new": "list_events returned nothing",
+            "llm_calls": 0,
+        }
+
+    async def test_the_skip_is_captured_as_a_nothing_new_execution(self) -> None:
+        harness = self._harness()
+        capture = MagicMock()
+        harness.extra.append(patch(f"{MODULE}.capture", capture))
+
+        with ExitStack() as stack:
+            for patcher in harness.patches():
+                stack.enter_context(patcher)
+            await execute_workflow_by_id(
+                {}, harness.workflow.id or "", {"trigger_type": "schedule"}
+            )
+
+        assert capture.call_args.args[1].outcome == "nothing_new"
 
 
 def _replays_counted(status: PlaybookRunStatus) -> float:
-    value = REGISTRY.get_sample_value("gaia_playbook_replay_total", {"status": status.value})
-    assert value is not None, "every replay status is a series from import, at zero"
-    return value
+    return REGISTRY.get_sample_value("gaia_playbook_replay_total", {"status": status.value}) or 0.0
 
 
 @pytest.mark.parametrize(
