@@ -80,7 +80,7 @@ from app.services.workflow.playbook.evaluator import (
     resolve_args,
     resolve_value,
 )
-from app.services.workflow.playbook.nothing_new import is_opening_read, nothing_new
+from app.services.workflow.playbook.nothing_new import is_opening_read, item_ids, nothing_new
 from app.services.workflow.playbook.scripted_model import ScriptedCall, ScriptedModel
 from app.services.workflow.playbook.tool_space import (
     ToolSpace,
@@ -604,7 +604,7 @@ def _record_step(
     if opening and _may_end_the_run(step, call):
         previous = run.recent_traces[0] if run.recent_traces else ()
         run.nothing_new = nothing_new(tool_name, call.args, value, previous)
-    if run.suspect is None and run.nothing_new is None:
+    if run.suspect is None:
         run.suspect = _empty_where_previous_had_items(tool_name, value, run.recent_traces)
     # This line is the model's only view of what the tool returned, and it has
     # to write the user's result from it: bounded for the model, not the record.
@@ -753,8 +753,14 @@ def _record(
             args=dict(args),
             result_digest=build_result_digest(text),
             replayed=True,
+            item_ids=_sorted_ids(text),
         )
     )
+
+
+def _sorted_ids(text: str) -> list[str] | None:
+    ids = item_ids(parse_result(text))
+    return None if ids is None else sorted(ids)
 
 
 async def _subagent_space(

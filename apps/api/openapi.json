@@ -15314,6 +15314,20 @@
             "title": "Failed",
             "type": "boolean"
           },
+          "item_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Ids"
+          },
           "proxied": {
             "default": false,
             "title": "Proxied",
