@@ -44,6 +44,9 @@ def _private_job_state(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("GAIA_CPU_SLOTS_DIR", str(tmp_path / "cpu-slots"))
     monkeypatch.setenv("GAIA_CPU_TOKENS", PRIVATE_POOL_TOKENS)
     monkeypatch.setenv("GAIA_VERDICT_DIR", str(tmp_path / "verdicts"))
+    # Off Linux there is no tmpfs, and mutation.py would stage inside apps/api,
+    # under the tree other tests are walking.
+    monkeypatch.setenv("MUTMUT_WORKDIR_BASE", str(tmp_path / "mutation-work"))
 
 
 @pytest.fixture
