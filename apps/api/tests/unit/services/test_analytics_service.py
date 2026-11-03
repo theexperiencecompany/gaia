@@ -418,6 +418,7 @@ class TestUserActive:
             USER_1.value
         ]
 
+    @pytest.mark.regression
     @pytest.mark.parametrize(
         "event",
         [
