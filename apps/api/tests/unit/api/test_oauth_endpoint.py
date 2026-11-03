@@ -4,6 +4,7 @@ Tests the OAuth endpoints with mocked WorkOS client and service layer
 to verify routing, status codes, redirects, and cookie handling.
 """
 
+from typing import Literal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import BackgroundTasks
@@ -23,6 +24,7 @@ from tests.helpers import session_set_cookie
 
 OAUTH_BASE = "/api/v1/oauth"
 FRONTEND = settings.FRONTEND_URL
+RejectionReason = Literal["account_not_found", "user_missing", "config_missing", "user_mismatch"]
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
 
@@ -800,7 +802,7 @@ class TestComposioCallback:
     @pytest.mark.usefixtures("composio_state")
     async def test_a_rejected_connection_redirects_by_reason(
         self,
-        reason: str,
+        reason: RejectionReason,
         location: str,
         completed_connection: AsyncMock,
         route_log: MagicMock,

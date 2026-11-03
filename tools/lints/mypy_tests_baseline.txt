@@ -313,7 +313,6 @@ apps/api/tests/unit/api/test_lab_events.py	arg-type
 apps/api/tests/unit/api/test_lab_events.py	attr-defined
 apps/api/tests/unit/api/test_mail_endpoint.py	list-item
 apps/api/tests/unit/api/test_oauth_dependencies.py	attr-defined
-apps/api/tests/unit/api/test_oauth_endpoint.py	arg-type
 apps/api/tests/unit/api/test_onboarding_endpoint.py	arg-type
 apps/api/tests/unit/api/test_payments_smoke.py	arg-type
 apps/api/tests/unit/api/test_payments_smoke.py	call-arg
