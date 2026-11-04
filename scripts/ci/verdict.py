@@ -1453,11 +1453,14 @@ def _post(
         )
         return False
     if url is None:
-        print(
-            f"::error::post-statuses: no single in-progress job of run {opts.run_id} "
-            f"runs on {os.environ.get('RUNNER_NAME', '<unset RUNNER_NAME>')} — nothing posted"
+        # GitHub's jobs listing drops runner_name for live jobs during incidents; the link is all that is lost.
+        url = (
+            f"https://github.com/{opts.repo}/actions/runs/{opts.run_id}/attempts/{opts.run_attempt}"
         )
-        return False
+        print(
+            f"::warning::post-statuses: no single in-progress job of run {opts.run_id} "
+            f"runs on {os.environ.get('RUNNER_NAME', '<unset RUNNER_NAME>')} — statuses link to the run"
+        )
     areas = check_areas()
     endpoint = f"repos/{opts.repo}/statuses/{opts.sha}"
     lost: list[str] = []
