@@ -119,6 +119,12 @@ def test_extract_offload_records_unwraps_a_composio_envelope() -> None:
     assert extracted.metadata == {"error": None, "successful": True, "data.fetched_count": 2}
 
 
+def test_extract_offload_records_ignores_leading_whitespace() -> None:
+    extracted = extract_offload_records('\n  {"data": [{"id": "a"}]}')
+
+    assert extracted is not None and extracted.records == [{"id": "a"}]
+
+
 @pytest.mark.parametrize(
     "text",
     [

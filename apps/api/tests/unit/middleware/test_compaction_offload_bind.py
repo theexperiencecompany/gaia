@@ -350,3 +350,35 @@ async def test_awrap_a_record_limited_tool_at_its_limit_stays_inline() -> None:
         return original
 
     assert await mw.awrap_tool_call(_execute_request("GMAIL_FETCH_MESSAGES"), handler) is original
+
+
+async def test_awrap_a_record_limited_tool_with_no_records_stays_inline() -> None:
+    mw = WorkspaceCompactionMiddleware(max_output_records={"GMAIL_FETCH_MESSAGES": 50})
+    original = ToolMessage(content="plain text " * 100, tool_call_id="1", name="execute")
+
+    async def handler(_req: ToolCallRequest) -> ToolMessage | Command[str]:
+        return original
+
+    assert await mw.awrap_tool_call(_execute_request("GMAIL_FETCH_MESSAGES"), handler) is original
+
+
+class _AttributeCall:
+    """A tool call handed over as an object, the form some framework versions use."""
+
+    def __init__(self, name: str, args: dict[str, object]) -> None:
+        self.name = name
+        self.args = args
+        self.id = "1"
+
+
+async def test_awrap_an_attribute_form_execute_call_is_judged_as_its_real_tool() -> None:
+    mw = WorkspaceCompactionMiddleware(max_output_chars=100, excluded_tools={"NOISY_TOOL"})
+    request = _execute_request("NOISY_TOOL")
+    args: dict[str, object] = {"task_description": "t", "tool_name": "NOISY_TOOL", "data": {}}
+    object.__setattr__(request, "tool_call", _AttributeCall("execute", args))
+    original = ToolMessage(content="x" * 5000, tool_call_id="1", name="execute")
+
+    async def handler(_req: ToolCallRequest) -> ToolMessage | Command[str]:
+        return original
+
+    assert await mw.awrap_tool_call(request, handler) is original

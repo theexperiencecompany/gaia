@@ -390,6 +390,22 @@ class TestSummary:
         summary = _summarize_output(json.dumps({"a": 1, "b": 2}), "fetch")
         assert "keys" in summary and "fetch" in summary
 
+    def test_an_enveloped_record_list_previews_its_first_three_records(self) -> None:
+        content = json.dumps({"ok": True, "data": [{"i": i} for i in range(5)]})
+
+        assert _summarize_output(content, "t") == (
+            '[t] Returned 5 records (alongside {"ok": true}). '
+            'Preview: [{"i": 0}, {"i": 1}, {"i": 2}]...'
+        )
+
+    def test_an_enveloped_record_preview_is_capped_at_200_chars(self) -> None:
+        records = [{"i": "x" * 100} for _ in range(3)]
+
+        summary = _summarize_output(json.dumps({"data": records}), "t")
+
+        preview = summary.split("Preview: ", 1)[1]
+        assert preview == json.dumps(records)[:200] + "..."
+
     def test_plain_text_is_truncated(self) -> None:
         summary = _summarize_output("z" * 2000, "bash")
         assert summary.endswith("...")

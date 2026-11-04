@@ -140,8 +140,8 @@ def _summarize_output(content: str, tool_name: str) -> str:
         # The spilled file holds only the records, so the fields around them stay here.
         return (
             f"[{tool_name}] Returned {len(extracted.records)} records "
-            f"(alongside {json.dumps(extracted.metadata, default=str)}). "
-            f"Preview: {json.dumps(extracted.records[:3], default=str)[:200]}..."
+            f"(alongside {json.dumps(extracted.metadata)}). "
+            f"Preview: {json.dumps(extracted.records[:3])[:200]}..."
         )
     try:
         data = json.loads(content)
@@ -263,7 +263,7 @@ async def _write_raw_output(
     fmt: OffloadFmt
     if extracted is not None:
         fmt = "jsonl"
-        file_content = "\n".join(json.dumps(record, default=str) for record in extracted.records)
+        file_content = "\n".join(json.dumps(record) for record in extracted.records)
     else:
         fmt = sniff_offload_fmt(content_str)
         file_content = content_str
@@ -694,7 +694,7 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
         # attribute form; the union keeps the else-branch from being narrowed away.
         tool_call: ToolCall | _AttributeToolCall = request.tool_call
         if isinstance(tool_call, dict):
-            call_name = tool_call.get("name", "")
+            call_name = tool_call["name"]
             call_args = tool_call.get("args") or {}
             tool_call_id = tool_call.get("id", "")
         else:
