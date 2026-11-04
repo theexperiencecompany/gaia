@@ -137,6 +137,29 @@ class TestShouldCompact:
         ok, reason = _decide(mw, _tool_msg("tiny"), "search", 0.0)
         assert ok is True and reason == "always_persist_tool"
 
+    @pytest.mark.parametrize(
+        ("count", "expected"),
+        [(3, (False, "")), (4, (True, "record_limit (4 records)"))],
+        ids=["at_limit", "one_over"],
+    )
+    def test_a_record_limit_spills_only_past_its_count(
+        self, count: int, expected: tuple[bool, str]
+    ) -> None:
+        content = json.dumps({"data": [{"i": i} for i in range(count)]})
+
+        decision = should_compact_output(
+            content,
+            "t",
+            0.0,
+            max_output_chars=10_000,
+            compaction_threshold=1.0,
+            always_persist=False,
+            excluded=False,
+            max_records=3,
+        )
+
+        assert decision == expected
+
     def test_excluded_beats_always_persist(self) -> None:
         # excluded is checked first; a tool in both lists must NOT compact
         mw = WorkspaceCompactionMiddleware(

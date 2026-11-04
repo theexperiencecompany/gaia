@@ -1113,6 +1113,59 @@ class TestTheFetchQueryAndItsCursor:
         assert result["fetched_at"] == int(FETCH_STARTED.timestamp())
 
 
+class TestAFileBoundFetch:
+    """Past OFFLOAD_MIN_MESSAGES a fetch comes back whole for compaction to file."""
+
+    @staticmethod
+    def _inbox(size: int) -> Callable[[ProxyRequest], dict[str, Any]]:
+        def serve(request: ProxyRequest) -> dict[str, Any]:
+            if re.match(r".+/users/me/messages/?$", request.endpoint):
+                return {"messages": [{"id": f"m{i}"} for i in range(size)]}
+            n = request.endpoint.rsplit("/", 1)[1]
+            return {"id": n, "threadId": f"t-{n}", "payload": {"headers": []}}
+
+        return serve
+
+    def test_a_cut_at_the_cap_says_so_and_renders_no_card(self, mock_proxy: MagicMock) -> None:
+        writer = MagicMock()
+        mock_proxy.side_effect = self._inbox(OFFLOAD_MIN_MESSAGES + 10)
+
+        with patch(f"{GMAIL_TOOLS}.current_stream_writer", return_value=writer):
+            result = _register_and_get_tools()["FETCH_MESSAGES"](
+                request=FetchMessagesInput(
+                    query="after:1790000000", max_messages=OFFLOAD_MIN_MESSAGES + 5
+                ),
+                execute_request=MagicMock(),
+                auth_credentials=AUTH_CREDS,
+            )
+
+        assert result["fetched_count"] == OFFLOAD_MIN_MESSAGES + 5
+        assert result["truncated"] is True
+        writer.assert_not_called()
+
+    def test_a_timeframe_is_resolved_in_the_runs_home_timezone(self, mock_proxy: MagicMock) -> None:
+        queries: list[object] = []
+        mailbox = self._inbox(1)
+
+        def serve(request: ProxyRequest) -> dict[str, Any]:
+            queries.append((request.query or {}).get("q"))
+            return mailbox(request)
+
+        mock_proxy.side_effect = serve
+        with patch(
+            f"{GMAIL_TOOLS}.current_run_config",
+            return_value={"configurable": {"user_timezone": "+05:30"}},
+        ):
+            _register_and_get_tools()["FETCH_MESSAGES"](
+                request=FetchMessagesInput(timeframe="today"),
+                execute_request=MagicMock(),
+                auth_credentials=AUTH_CREDS,
+            )
+
+        expected, _ = _resolve_timeframe("today", None, Timezone.parse("+05:30"))
+        assert queries[0] == expected
+
+
 class TestTheThreadRead:
     """FETCH_THREAD rebuilds a conversation; every message of it has to arrive."""
 
@@ -1160,6 +1213,41 @@ class TestTheThreadRead:
             "msg-2",
             "msg-3",
         ]
+
+    def test_a_small_thread_read_reports_its_counts_and_renders_the_card(
+        self, mock_proxy: MagicMock
+    ) -> None:
+        writer = MagicMock()
+        mock_proxy.side_effect = self._threads(count=3)
+
+        with patch(f"{GMAIL_TOOLS}.current_stream_writer", return_value=writer):
+            result = _register_and_get_tools()["FETCH_THREAD"](
+                request=FetchThreadInput(thread_ids=["thread-1"]),
+                execute_request=MagicMock(),
+                auth_credentials=AUTH_CREDS,
+            )
+
+        assert (result["fetched_threads"], result["total_messages"]) == (1, 3)
+        assert writer.call_args.args[0]["resultSize"] == 3
+
+    def test_a_large_thread_read_cut_at_its_cap_says_so_and_renders_no_card(
+        self, mock_proxy: MagicMock
+    ) -> None:
+        writer = MagicMock()
+        mock_proxy.side_effect = self._threads(count=OFFLOAD_MIN_MESSAGES + 5)
+
+        with patch(f"{GMAIL_TOOLS}.current_stream_writer", return_value=writer):
+            result = _register_and_get_tools()["FETCH_THREAD"](
+                request=FetchThreadInput(
+                    thread_ids=["thread-1"], max_messages=OFFLOAD_MIN_MESSAGES + 1
+                ),
+                execute_request=MagicMock(),
+                auth_credentials=AUTH_CREDS,
+            )
+
+        assert result["fetched_count"] == OFFLOAD_MIN_MESSAGES + 1
+        assert result["truncated"] is True
+        writer.assert_not_called()
 
     def test_the_body_is_only_fetched_when_a_field_asks_for_it(self, mock_proxy: MagicMock) -> None:
         """format=full costs a full MIME fetch per thread; a metadata one does not."""
