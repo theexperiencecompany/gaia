@@ -13,6 +13,8 @@ from app.schemas.common import ResponseModel
 #: what came back (ids, a count, a cursor) without storing message bodies — the
 #: whole point is that a run's history stops growing with the number of runs.
 RESULT_DIGEST_MAX_CHARS = 4000
+#: An item fingerprint: a count of at most 12 digits, a colon, 64 hex digits.
+ITEM_FINGERPRINT_MAX_CHARS = 77
 
 
 def build_result_digest(output: object, max_chars: int = RESULT_DIGEST_MAX_CHARS) -> str:
@@ -254,25 +256,18 @@ WorkflowExecutionStatus = Literal["running", "success", "failed", "skipped"]
 
 
 class RecordedCall(BaseModel):
-    """One tool call as it actually ran.
+    """One tool call as it actually ran, recorded by app.agents.tools.invocation.
 
-    Captured from the run's own tool events — the same stream the chat UI
-    renders — so recording costs nothing beyond persisting what was already
-    collected. ``args`` is what makes this useful: it is the material an agent
-    reads to author a playbook, and the cursor a later run picks up from.
+    args is what makes this useful: it is the material an agent reads to author
+    a playbook, and the cursor a later run picks up from.
     """
 
     model_config = ConfigDict(extra="ignore")
 
     tool_name: str
     tool_category: str = ""
-    #: Which subagent ran it, so a recorded handoff keeps its children — a trace
-    #: flattened to the executor level is just one ``handoff`` call and useless.
+    #: The subagent whose graph ran it (a spawned subagent), None for the executor.
     subagent_id: str | None = None
-    #: The stable id of the subagent that made the call (``todos``), or
-    #: ``None`` for the executor's own. What a playbook step inside
-    #: ``handoff: todos`` is matched against; ``subagent_id`` is the dispatch.
-    subagent: str | None = None
     args: dict[str, Any] = Field(default_factory=dict)
     result_digest: str = Field(
         default="", max_length=RESULT_DIGEST_MAX_CHARS, description="Bounded result summary"
@@ -287,9 +282,10 @@ class RecordedCall(BaseModel):
     proxied: bool = False
     #: The connected account a proxied call named; None is the primary.
     account: str | None = None
-    #: A replayed read's element ids, taken from the whole result before it was
-    #: bounded into result_digest: what the next fire's nothing-new check compares.
-    item_ids: list[str] | None = None
+    #: A replayed read's elements as "<count>:<sha256 of the sorted ids>", taken
+    #: from the whole result before it was bounded into result_digest: what the
+    #: next fire's nothing-new check compares, at a fixed size however many there are.
+    item_fingerprint: str | None = Field(default=None, max_length=ITEM_FINGERPRINT_MAX_CHARS)
 
 
 class WorkflowExecution(ResponseModel):

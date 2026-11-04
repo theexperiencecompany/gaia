@@ -23,6 +23,13 @@ from app.schemas.mcp import (
 )
 from app.services.analytics_service import capture
 from app.services.mcp.mcp_client import get_mcp_client
+from app.services.mcp.server_routing import (
+    call_tool_on_server,
+    list_prompts_on_server,
+    list_resource_templates_on_server,
+    list_resources_on_server,
+    read_resource_on_server,
+)
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.agents import ToolUsed
 from shared.py.wide_events import McpContext, log
@@ -56,7 +63,8 @@ async def proxy_mcp_tool_call(
 
     try:
         mcp_client = await get_mcp_client(user_id=str(user_id))
-        result = await mcp_client.call_tool_on_server(
+        result = await call_tool_on_server(
+            mcp_client,
             server_url=request.server_url,
             tool_name=request.tool_name,
             arguments=request.arguments,
@@ -106,7 +114,8 @@ async def proxy_mcp_resources_list(
 
     try:
         mcp_client = await get_mcp_client(user_id=str(user_id))
-        result = await mcp_client.list_resources_on_server(
+        result = await list_resources_on_server(
+            mcp_client,
             server_url=request.server_url,
             cursor=request.cursor,
         )
@@ -153,7 +162,8 @@ async def proxy_mcp_resource_templates_list(
 
     try:
         mcp_client = await get_mcp_client(user_id=str(user_id))
-        result = await mcp_client.list_resource_templates_on_server(
+        result = await list_resource_templates_on_server(
+            mcp_client,
             server_url=request.server_url,
             cursor=request.cursor,
         )
@@ -206,7 +216,8 @@ async def proxy_mcp_resource_read(
 
     try:
         mcp_client = await get_mcp_client(user_id=str(user_id))
-        result = await mcp_client.read_resource_on_server(
+        result = await read_resource_on_server(
+            mcp_client,
             server_url=request.server_url,
             uri=request.uri,
         )
@@ -253,7 +264,8 @@ async def proxy_mcp_prompts_list(
 
     try:
         mcp_client = await get_mcp_client(user_id=str(user_id))
-        result = await mcp_client.list_prompts_on_server(
+        result = await list_prompts_on_server(
+            mcp_client,
             server_url=request.server_url,
             cursor=request.cursor,
         )

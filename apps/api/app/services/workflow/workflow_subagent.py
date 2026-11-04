@@ -168,7 +168,7 @@ class WorkflowSubagentRunner:
         base_configurable is the parent (executor) configurable so the subagent
         inherits its plan tier, plan-routed model, provider pin, and root_request_id
         — keeping pro users on the paid model and the budget wall enforced across the
-        whole turn tree, exactly like other handoff subagents.
+        whole turn tree, exactly like spawned subagents.
         """
         ctx = context or SubagentRunContext()
         user_name = ctx.user_name

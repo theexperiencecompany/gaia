@@ -16,6 +16,7 @@ the finished result. Two reasons, both load-bearing:
 import json
 
 from app.models.workflow_execution_models import RecordedCall
+from app.services.composio.custom_tools.gmail_constants import OFFLOAD_MIN_MESSAGES
 from app.services.workflow.playbook.record import number_record, render_record
 
 
@@ -37,7 +38,7 @@ def _show_record(calls: list[RecordedCall]) -> str:
 PLAYBOOK_EXAMPLE_RECORD = [
     _recorded(
         "GMAIL_FETCH_MESSAGES",
-        {"query": "is:unread", "timeframe": "1d"},
+        {"query": "is:unread", "timeframe": "1d", "max_messages": OFFLOAD_MIN_MESSAGES},
         {"messages": [{"id": "18c2a", "from": "Dana <dana@acme.com>", "subject": "Q3 numbers"}]},
     ),
     _recorded(
@@ -70,7 +71,7 @@ PLAYBOOK_EXAMPLE_WRITE: dict[str, object] = {
 PLAYBOOK_FOR_EACH_RECORD = [
     _recorded(
         "GMAIL_FETCH_MESSAGES",
-        {"query": "in:inbox", "timeframe": "today"},
+        {"query": "in:inbox", "timeframe": "today", "max_messages": OFFLOAD_MIN_MESSAGES},
         {
             "messages": [
                 {"threadId": "t1", "from": "Dana <dana@acme.com>", "subject": "Q3 numbers"},
@@ -134,7 +135,7 @@ Work through these five for yourself, against the calls you actually made. This 
 4. Now look at the list from question 2. Changing data is NEVER a reason to answer no: results, and the words you write from them, are supposed to differ every run, and result_brief and $ask are where that lives. The attendees of today's meeting, the subject of today's mail, the id you just looked up: you have already handled every one of those by marking it with a placeholder, so none of them can be your reason. The only question left is whether the list of CALLS changes: is there a call in it that would not happen tomorrow, or a call missing from it that would? If you cannot point to one such call by name, the answer is yes and you write the playbook.
 5. Did every call you are freezing return the data the workflow needs, as it stands? If a step came back empty, with an error, or partial, and you compensated by reasoning around it, that call is not the work. A playbook replays the call, not your reasoning, so the next run would hand the user the gap you papered over. Run the call that works before freezing, or decline.
 
-If 4 and 5 are both yes, call write_playbook with a description, the steps, and a result_brief saying how to write the user's result from the steps' results (this is where classification, judgement and summarising go). Each step is one call from read_run_record, by its number. Give it an id when a later step reads its result as $steps.<id>.<path>, and list in vary the values that change per run, by their path in the call's args. Everything you do not mark replays exactly as it was recorded: the tool, every other argument, where the call ran and the account it ran as. You never retype a tool name or an argument. For a run whose record reads:
+If 4 and 5 are both yes, call write_playbook with a description, the steps, and a result_brief saying how to write the user's result from the steps' results (this is where classification, judgement and summarising go). Each step is one call from read_run_record, by its number. Give it an id when a later step reads its result as $steps.<id>.<path>, and list in vary the values that change per run, by their path in the call's args. Everything you do not mark replays exactly as it was recorded: the tool, every other argument and the account it ran as. You never retype a tool name or an argument. For a run whose record reads:
 
 """
     + _show_record(PLAYBOOK_EXAMPLE_RECORD)

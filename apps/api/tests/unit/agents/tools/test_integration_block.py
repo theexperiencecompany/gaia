@@ -11,6 +11,8 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, tool
 import pytest
 
+from app.agents.core.subagents.integration_activation import activate_integration
+from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.tools import run_record
 from app.agents.tools.invocation import IntegrationBlockedError, invoke_tool, invoke_tool_sync
 from app.agents.tools.run_record import read_run_record
@@ -27,6 +29,8 @@ CONFIG: RunnableConfig = {
     "configurable": {"stream_id": STREAM_ID, "user_id": USER_ID, "source_category": "ui"}
 }
 CHECKER = "app.utils.integration_checker"
+ACTIVATION = "app.agents.core.subagents.integration_activation"
+RESOLUTION = "app.agents.core.subagents.integration_resolution"
 INVOCATION = "app.agents.tools.invocation"
 BLOCKED_GMAIL = (
     "'gmail' is not connected and the user was already shown how to connect it this run, so "
@@ -180,13 +184,40 @@ async def test_an_mcp_server_rejecting_its_token_asks_for_a_reconnect(fake_redis
 
 
 async def test_the_connect_card_is_shown_once_per_run(fake_redis: Any) -> None:
-    """Activation, a handoff and a tool call can each ask; the user sees one card."""
+    """Activation and a tool call can each ask; the user sees one card."""
     with _ui_run() as writer:
         first = await request_integration_connection("gmail", "Gmail", USER_ID)
         again = await request_integration_connection("gmail", "Gmail", USER_ID)
 
     assert len(_cards(writer)) == 1
     assert first == again
+
+
+async def test_activating_an_unconnected_integration_blocks_its_calls(fake_redis: Any) -> None:
+    """activate_integration is where an unconnected integration shows its card in a chat."""
+    calls: list[str] = []
+    activation_call = {
+        "type": "tool_call",
+        "id": "call-activate",
+        "name": "activate_integration",
+        "args": {"integration_id": "gmail"},
+    }
+
+    with (
+        _ui_run() as writer,
+        patch(
+            f"{ACTIVATION}.get_integration_target",
+            AsyncMock(return_value=get_subagent_by_id("gmail")),
+        ),
+        patch(f"{RESOLUTION}.check_integration_status", AsyncMock(return_value=False)),
+    ):
+        await activate_integration.ainvoke(activation_call, CONFIG)
+        with pytest.raises(IntegrationBlockedError):
+            await invoke_tool(_gmail_tool(calls), {"query": "q"}, CONFIG)
+
+    assert calls == []
+    (card,) = _cards(writer)
+    assert card["integration_id"] == "gmail"
 
 
 async def test_adding_an_account_does_not_block_the_integration(fake_redis: Any) -> None:

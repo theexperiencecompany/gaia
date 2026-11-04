@@ -21,7 +21,7 @@ import time_machine
 from app.agents.prompts import todo_prompts
 from app.agents.tools.coding.query_json_tool import _apply_query
 from app.agents.tools.execute.dispatch import dispatch_config_for
-from app.constants.email import DEFAULT_SUMMARY_FIELDS
+from app.constants.email import DEFAULT_SUMMARY_FIELDS, MessageFieldLiteral
 from app.constants.offload import OFFLOAD_RESULT_KEY
 from app.models.agent_config import ComposioAccountSelection
 from app.models.common_models import GatherContextInput
@@ -31,6 +31,7 @@ from app.models.composio_schemas.gmail import (
     FetchThreadInput,
 )
 from app.services.composio import account_scope as account_scope_module
+from app.services.composio.custom_tools import gmail_tools as gmail_tools_module
 from app.services.composio.custom_tools.gmail_constants import (
     FETCH_CONCURRENCY,
     OFFLOAD_MIN_MESSAGES,
@@ -44,7 +45,6 @@ from app.services.composio.custom_tools.gmail_tools import (
     StarEmailInput,
     _count_inline_fit,
     _format_partial_result,
-    _relative_days,
     _resolve_timeframe,
     _timeframe_clause,
     register_gmail_custom_tools,
@@ -397,7 +397,7 @@ class TestResolveTimeframe:
 
     def test_a_named_timeframe_has_no_day_count(self):
         with pytest.raises(ValueError, match=r"^not a relative timeframe: 'today'$"):
-            _relative_days("today")
+            gmail_tools_module._relative_days("today")
 
     @pytest.mark.parametrize(
         ("timeframe", "expected_max"),
@@ -866,7 +866,7 @@ class TestFetchedAt:
                 FetchMessagesInput(
                     query="newer_than:1d",
                     per_page=10,
-                    fields=[*FetchMessagesInput.model_fields["fields"].default_factory(), "body"],
+                    fields=[*DEFAULT_SUMMARY_FIELDS, "body"],
                     body_processing="raw",
                 )
             )
@@ -1080,9 +1080,7 @@ class TestTheDesksSweep:
             "app.services.composio.custom_tools.gmail_tools.current_run_config",
             return_value={"configurable": {}},
         ):
-            fields_with_body = list(FetchMessagesInput.model_fields["fields"].default_factory()) + [
-                "body"
-            ]
+            fields_with_body: list[MessageFieldLiteral] = [*DEFAULT_SUMMARY_FIELDS, "body"]
             result = _register_and_get_tools()["FETCH_MESSAGES"](
                 request=FetchMessagesInput(
                     timeframe="today",
@@ -1122,9 +1120,7 @@ class TestTheDesksSweep:
             "app.services.composio.custom_tools.gmail_tools.current_run_config",
             return_value={"configurable": configurable},
         ):
-            fields_with_body = list(FetchThreadInput.model_fields["fields"].default_factory()) + [
-                "body"
-            ]
+            fields_with_body: list[MessageFieldLiteral] = [*DEFAULT_SUMMARY_FIELDS, "body"]
             return _register_and_get_tools()["FETCH_THREAD"](
                 request=FetchThreadInput(
                     thread_ids=["thread-1"], fields=fields_with_body, body_processing="raw"
@@ -1656,12 +1652,13 @@ class TestTheThreadRead:
 
     def test_the_body_is_only_fetched_when_a_field_asks_for_it(self, mock_proxy: MagicMock) -> None:
         """format=full costs a full MIME fetch per thread; a metadata one does not."""
-        for fields, processing, expected in (
+        cases: tuple[tuple[list[MessageFieldLiteral], BodyProcessingLiteral, str], ...] = (
             (["id"], "none", "metadata"),
             (["subject"], "none", "metadata"),
             (["body"], "raw", "full"),
             (["attachments"], "none", "full"),
-        ):
+        )
+        for fields, processing, expected in cases:
             mock_proxy.reset_mock()
             mock_proxy.side_effect = self._threads()
             _register_and_get_tools()["FETCH_THREAD"](
@@ -1754,7 +1751,7 @@ class TestTheUnreadCountShape:
         mock_proxy.return_value = {"resultSizeEstimate": "12", "messagesUnreadEstimate": "4"}
 
         result = _register_and_get_tools()["GET_UNREAD_COUNT"](
-            request=GetUnreadCountInput(mode="query", query="is:unread", label_ids=["INBOX"]),
+            request=GetUnreadCountInput(query="is:unread", label_ids=["INBOX"]),
             execute_request=MagicMock(),
             auth_credentials=AUTH_CREDS,
         )
@@ -1767,9 +1764,7 @@ class TestTheUnreadCountShape:
         mock_proxy.return_value = {"resultSizeEstimate": "12", "messagesUnreadEstimate": "4"}
 
         result = _register_and_get_tools()["GET_UNREAD_COUNT"](
-            request=GetUnreadCountInput(
-                mode="query", query="is:unread", label_ids=["INBOX", "STARRED"]
-            ),
+            request=GetUnreadCountInput(query="is:unread", label_ids=["INBOX", "STARRED"]),
             execute_request=MagicMock(),
             auth_credentials=AUTH_CREDS,
         )

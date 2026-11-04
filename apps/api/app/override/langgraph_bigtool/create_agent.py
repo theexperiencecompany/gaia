@@ -37,6 +37,7 @@ from langgraph.prebuilt.tool_node import ToolCallWithContext
 from langgraph.store.base import BaseStore
 from langgraph.types import RetryPolicy, Send
 from langgraph_bigtool.tools import get_default_retrieval_tool, get_store_arg
+from pydantic import TypeAdapter
 
 from app.agents.llm.client import (
     LLMInvokeOptions,
@@ -106,6 +107,8 @@ from shared.py.wide_events import log
 #: tool. langgraph derives this same name from reject_unbound_tools itself,
 #: so the router, both edges, and the registration below must all agree.
 REJECT_UNBOUND_TOOLS_NODE = "reject_unbound_tools"
+
+_RETRIEVE_TOOLS_RESPONSE: TypeAdapter[RetrieveToolsResponse] = TypeAdapter(RetrieveToolsResponse)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -307,7 +310,7 @@ def _log_message_preview(state: State) -> None:
         for msg in recent_messages:
             role = msg.__class__.__name__
             # The text's length, not the raw content's: inline media is megabytes of base64.
-            content = extract_text_content(getattr(msg, "content", ""))
+            content = extract_text_content(msg.content)
             preview.append({"role": role, "content_length": len(content)})
         log.info("acall_model message preview", preview=preview)
     except Exception as e:
@@ -470,27 +473,23 @@ def _retrieval_call_kwargs(
 
 
 def _resolve_retrieval_result(
-    result: RetrieveToolsResponse,
+    output: object,
     tool_call_id: str,
     response_texts: dict[str, str],
 ) -> tuple[list[str], list[str]]:
-    """Split a retrieve_tools result into ids to bind vs ids to echo, recording response text by call id."""
-    # Handle both RetrieveToolsResult dict and plain list
-    if isinstance(result, dict):
-        tools_to_bind = [
-            tool_id for tool_id in result.get("tools_to_bind", []) if isinstance(tool_id, str)
-        ]
-        response = [tool_id for tool_id in result.get("response", []) if isinstance(tool_id, str)]
-        rendered = result.get("response_text")
-        if isinstance(rendered, str) and rendered:
-            response_texts[tool_call_id] = rendered
+    """Split a retrieve_tools output into ids to bind vs ids to echo, recording response text by call id.
+
+    Raises pydantic.ValidationError when the output is not a RetrieveToolsResponse.
+    """
+    result = _RETRIEVE_TOOLS_RESPONSE.validate_python(output)
+    if isinstance(result, list):
+        tools_to_bind = response = result
     else:
-        tools_to_bind = [
-            tool_id
-            for tool_id in (result if isinstance(result, list) else [])
-            if isinstance(tool_id, str)
-        ]
-        response = tools_to_bind
+        tools_to_bind = result["tools_to_bind"]
+        response = result["response"]
+        rendered = result.get("response_text")
+        if rendered:
+            response_texts[tool_call_id] = rendered
 
     # Filter out subagent: prefixed tools from binding
     filtered_bind = [tool_id for tool_id in tools_to_bind if not tool_id.startswith("subagent:")]
@@ -544,10 +543,8 @@ def _select_tools_node(deps: _AgentDeps) -> RunnableCallable | Callable[..., Any
         response_texts: dict[str, str] = {}
         for tool_call in tool_calls:
             kwargs = _retrieval_call_kwargs(tool_call, deps.store_arg, store, config)
-            # retrieve_tools declares this exact return type; the tool boundary types it object.
-            result = cast(
-                RetrieveToolsResponse,
-                invoke_tool_sync(deps.retrieve_tools, kwargs, config, call_args=tool_call["args"]),
+            result = invoke_tool_sync(
+                deps.retrieve_tools, kwargs, config, call_args=tool_call["args"]
             )
             filtered_bind, response = _resolve_retrieval_result(
                 result, tool_call["id"], response_texts
@@ -581,12 +578,8 @@ def _select_tools_node(deps: _AgentDeps) -> RunnableCallable | Callable[..., Any
             if tool_call_id is None:
                 raise ValueError("retrieve_tools call carries no id to answer it under")
             kwargs = _retrieval_call_kwargs(request.tool_call, deps.store_arg, store, config)
-            # retrieve_tools declares this exact return type; the tool boundary types it object.
-            result = cast(
-                RetrieveToolsResponse,
-                await invoke_tool(
-                    retrieve_tools, kwargs, config, call_args=request.tool_call["args"]
-                ),
+            result = await invoke_tool(
+                retrieve_tools, kwargs, config, call_args=request.tool_call["args"]
             )
             response_texts: dict[str, str] = {}
             filtered_bind, response = _resolve_retrieval_result(
@@ -673,13 +666,12 @@ def finish_task_node(tool_calls: list[ToolCall], *, store: BaseStore) -> State: 
     """Answer each finish_task call with its result as the tool message."""
     messages = []
     for call in tool_calls:
-        args = call.get("args", {}) if isinstance(call, dict) else {}
-        result = args.get("result")
+        result = call["args"].get("result")
         content = str(result) if result is not None else "Task completed."
         messages.append(
             ToolMessage(
                 content=content,
-                tool_call_id=call.get("id", ""),
+                tool_call_id=call["id"] or "",
                 name=FINISH_TASK_NAME,
             )
         )
@@ -759,9 +751,7 @@ def _get_bound_tool_names(deps: _AgentDeps, state: State) -> set[str]:
         if tool_id in deps.tool_registry:
             bound.add(deps.tool_registry[tool_id].name)
     # Middleware tools (e.g. spawn_subagent, plan_tasks)
-    for tool in deps.middleware_tools:
-        if hasattr(tool, "name"):
-            bound.add(tool.name)
+    bound.update(tool.name for tool in deps.middleware_tools)
     return bound
 
 

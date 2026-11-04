@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
+from app.config.settings import settings
 from app.constants.execute import SANDBOX_EXECUTE_TOKEN_SECRET_MIN_CHARS
 from app.services.sandbox import execute_token
 from app.services.sandbox.execute_token import (
@@ -22,7 +23,7 @@ SECRET = "unit-test-secret-0123456789abcdef0123456789abcdef"
 
 @pytest.fixture(autouse=True)
 def _secret():
-    with patch.object(execute_token.settings, "SANDBOX_EXECUTE_TOKEN_SECRET", SECRET):
+    with patch.object(settings, "SANDBOX_EXECUTE_TOKEN_SECRET", SECRET):
         yield
 
 
@@ -93,7 +94,7 @@ class TestExecuteToken:
 
     def test_unset_secret_refuses_to_mint(self) -> None:
         with (
-            patch.object(execute_token.settings, "SANDBOX_EXECUTE_TOKEN_SECRET", None),
+            patch.object(settings, "SANDBOX_EXECUTE_TOKEN_SECRET", None),
             pytest.raises(AppError) as err,
         ):
             mint_execute_token(

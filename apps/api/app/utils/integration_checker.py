@@ -36,6 +36,7 @@ from app.models.integration_models import IntegrationAccount
 from app.services.connect_link_service import build_connect_link_url
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_client import get_mcp_client
+from app.services.mcp.mcp_oauth import build_oauth_auth_url
 from shared.py.wide_events import log
 
 
@@ -80,7 +81,8 @@ async def _standalone_mcp_auth(
             return _StandaloneAuth(kind="oauth")
 
         mcp_client = await get_mcp_client(user_id=user_id)
-        auth_url = await mcp_client.build_oauth_auth_url(
+        auth_url = await build_oauth_auth_url(
+            mcp_client.token_store,
             integration_id=integration_id,
             redirect_uri=get_mcp_oauth_redirect_uri(),
             redirect_path="/integrations",

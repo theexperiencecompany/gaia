@@ -393,14 +393,14 @@ async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bo
     )
     if reset is None:
         return False
-    # The reset definition is a new workflow hash: the old playbook is stale,
-    # and the recipe it ships with replaces it.
-    await install_recipe(key, workflow_id, user_id, reset.prompt, reset.steps)
 
     # A failed re-arm must fail the reset: reporting success would leave a
     # workflow that looks reset but never fires (retrying re-arms it).
     if not await _rearm_reset_schedule(existing, trigger_config, workflow_id, user_id):
         return False
+    # After the re-arm: the reset's new hash makes the old playbook stale and the
+    # shipped recipe replaces it, but a failed install must not cost the next fire.
+    await install_recipe(key, workflow_id, user_id, reset.prompt, reset.steps)
 
     log.info(
         f"{LogTag.WORKFLOW} Reset system workflow to default for user",

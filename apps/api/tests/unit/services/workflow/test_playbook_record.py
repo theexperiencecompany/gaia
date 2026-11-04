@@ -3,11 +3,11 @@
 The property tests are the contract write_playbook stands on. For any run and
 any valid picks over it, the built playbook validates, and resolving each step
 the way the replay does (with this run's own results, clock and written text)
-gives back exactly the calls the run made: tool, args, scope and account.
+gives back exactly the calls the run made: tool, args and account.
 """
 
 import asyncio
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import json
@@ -16,7 +16,7 @@ from unittest.mock import AsyncMock, patch
 
 from hypothesis import given, strategies as st
 from langchain_core.tools import BaseTool, StructuredTool
-from pydantic import create_model
+from pydantic import BaseModel
 import pytest
 
 from app.agents.tools.execute.execute_tool import execute
@@ -24,7 +24,6 @@ from app.agents.tools.execute.unwrap import execute_call_account, unwrap_execute
 from app.models.playbook_models import (
     MAX_FOR_EACH_ITEMS,
     ForEachStep,
-    HandoffStep,
     PlaybookBody,
     ToolStep,
     is_ask_slot,
@@ -44,27 +43,30 @@ from app.services.workflow.playbook.record import (
     render_record,
     result_shape,
 )
-from app.services.workflow.playbook.tool_space import SubagentTools
 
 PARSER = "app.services.workflow.playbook.parser"
-USER_ID = "507f1f77bcf86cd799439011"
 #: Every day within the offsets below is past the 12th, so no recorded date reads as two layouts.
 NOW = datetime(2026, 11, 20, 9, 30, tzinfo=UTC)
 USER = PlaybookUser(email="dana@acme.com", name="Dana", timezone="UTC")
-SCOPE = "linear"
 TOOL_NAMES = ("tool_a", "tool_b", "tool_c")
-ARG_NAMES = ("first", "second", "nested")
+
+
+class _FakeToolArgs(BaseModel):
+    first: object
+    second: object
+    nested: object
+
+
+ARG_NAMES = tuple(_FakeToolArgs.model_fields)
 EXCLUDED = frozenset({"retrieve_tools"})
 
 
 def _fake_tool(name: str) -> BaseTool:
-    schema = create_model(f"{name}_args", **dict.fromkeys(ARG_NAMES, (object, ...)))
-
     async def run(**kwargs: object) -> str:
         return json.dumps(kwargs, default=str)
 
     return StructuredTool.from_function(
-        coroutine=run, name=name, description=f"{name}.", args_schema=schema
+        coroutine=run, name=name, description=f"{name}.", args_schema=_FakeToolArgs
     )
 
 
@@ -77,19 +79,15 @@ class _Registry:
 
 
 def _validate(body: PlaybookBody, sources: list[RecordedResult]) -> list[str]:
-    space = SubagentTools(tools=TOOLS, initial_tool_ids=[])
-    with (
-        patch(f"{PARSER}.get_tool_registry", AsyncMock(return_value=_Registry())),
-        patch(f"{PARSER}.resolve_subagent_tools", AsyncMock(return_value=space)),
-    ):
-        validation = asyncio.run(validate_playbook(body, USER_ID, sources))
+    with patch(f"{PARSER}.get_tool_registry", AsyncMock(return_value=_Registry())):
+        validation = asyncio.run(validate_playbook(body, sources))
     return [f"{issue.where}: {issue.problem}" for issue in validation.issues]
 
 
 def _call(
     tool: str, args: dict[str, object], result: object, **flags: str | bool | None
 ) -> RecordedCall:
-    """Record one call; flags set its scope, proxy, account or failure."""
+    """Record one call; flags set its proxy, account or failure."""
     call = RecordedCall(tool_name=tool, args=args, result_digest=json.dumps(result))
     return RecordedCall.model_validate({**call.model_dump(), **flags})
 
@@ -215,7 +213,7 @@ def _runs(draw: st.DrawFn) -> _Run:
         args: dict[str, object] = {}
         vary: dict[str, object] = {}
         for_each: dict[str, object] = {}
-        if earlier and draw(st.booleans()):
+        if bool(earlier) and draw(st.booleans()):
             source_id, source = draw(st.sampled_from(earlier))
             args["first"] = _items(source)[0]["id"]
             vary["first"] = "$item.id"
@@ -232,14 +230,12 @@ def _runs(draw: st.DrawFn) -> _Run:
                 args[name] = recorded
                 if marked is not None:
                     vary[name] = marked
-        subagent = draw(st.sampled_from([None, SCOPE]))
         proxied = draw(st.booleans())
         calls.append(
             _call(
                 draw(st.sampled_from(TOOL_NAMES)),
                 args,
                 listing,
-                subagent=subagent,
                 proxied=proxied,
                 account=draw(st.sampled_from([None, "work@acme.com"])) if proxied else None,
             )
@@ -263,17 +259,6 @@ def _noise_call(draw: st.DrawFn) -> RecordedCall:
     )
 
 
-def _flatten(
-    steps: Sequence[ToolStep | ForEachStep | HandoffStep],
-) -> Iterator[tuple[ToolStep | ForEachStep, str | None]]:
-    for step in steps:
-        if isinstance(step, HandoffStep):
-            for child in step.steps:
-                yield child, step.handoff
-        else:
-            yield step, None
-
-
 def _with_written_text(value: object, recorded: object) -> object:
     """Stand the run's own value in where a pick asked a model to write one."""
     if is_ask_slot(value):
@@ -287,7 +272,7 @@ def _replayed(body: PlaybookBody, sources: Sequence[RecordedResult]) -> list[dic
     """Resolve every step as the replay does, against this run's results."""
     replayed: list[dict[str, object]] = []
     steps: dict[str, StepResult] = {}
-    for (step, scope), source in zip(_flatten(body.steps), sources, strict=True):
+    for step, source in zip(body.steps, sources, strict=True):
         name, args = unwrap_execute_call(step.tool, step.args)
         recorded_args = dict(source.args)
         written = {
@@ -301,7 +286,6 @@ def _replayed(body: PlaybookBody, sources: Sequence[RecordedResult]) -> list[dic
             {
                 "tool": name,
                 "args": resolve_args(written, _context(steps, item)),
-                "subagent": scope,
                 "account": execute_call_account(step.tool, step.args),
             }
         )
@@ -332,10 +316,7 @@ def test_every_marked_value_is_what_the_step_stores(run: _Run) -> None:
     built = _build(run.calls, run.picks)
     assert built.body is not None
 
-    stored = {
-        step.id: unwrap_execute_call(step.tool, step.args)[1]
-        for step, _ in _flatten(built.body.steps)
-    }
+    stored = {step.id: unwrap_execute_call(step.tool, step.args)[1] for step in built.body.steps}
     for pick in run.picks:
         number = int(str(pick["call"]))
         args = stored[str(pick["id"]) or f"call{number}"]
@@ -362,7 +343,6 @@ def test_a_built_playbook_replays_the_calls_the_run_made(run: _Run) -> None:
         {
             "tool": call.tool_name,
             "args": call.args,
-            "subagent": call.subagent,
             "account": call.account,
         }
         for call in made
@@ -592,25 +572,6 @@ def test_steps_follow_the_order_the_run_made_the_calls_and_take_default_ids() ->
     ]
 
 
-def test_a_subagents_consecutive_calls_become_one_handoff() -> None:
-    calls = [
-        _call("tool_a", {"first": "x"}, LISTING, subagent=SCOPE),
-        _call("tool_b", {"first": "y"}, LISTING, subagent=SCOPE),
-        _call("tool_c", {"first": "z"}, LISTING),
-        _call("tool_a", {"first": "w"}, LISTING, subagent=SCOPE),
-    ]
-
-    built = _build(calls, [{"call": n} for n in (1, 2, 3, 4)])
-
-    assert built.body is not None
-    assert [
-        (step.handoff, [child.tool for child in step.steps])
-        if isinstance(step, HandoffStep)
-        else (None, [step.tool])
-        for step in built.body.steps
-    ] == [(SCOPE, ["tool_a", "tool_b"]), (None, ["tool_c"]), (SCOPE, ["tool_a"])]
-
-
 def test_a_call_made_through_execute_replays_through_it_as_its_account() -> None:
     calls = [_call("GMAIL_SEND", {"to": "x"}, {"id": "m"}, proxied=True, account="work@acme.com")]
 
@@ -735,7 +696,7 @@ def test_every_bad_pick_is_reported_in_one_answer() -> None:
         _call("tool_c", {"first": "z"}, LISTING),
     ]
 
-    picks = [
+    picks: list[dict[str, object]] = [
         {"call": 1},
         {"call": 2, "vary": {"missing": "$today"}},
         {"call": 2},

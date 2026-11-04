@@ -22,9 +22,7 @@ from app.constants.cache import RUN_RECORD_PREFIX, RUN_RECORD_TTL
 from app.models.workflow_execution_models import RecordedCall
 
 STREAM_ID = "stream-invocation"
-CONFIG: RunnableConfig = {
-    "configurable": {"stream_id": STREAM_ID, "subagent_id": "todos_agent", "run_scope": "todos"}
-}
+CONFIG: RunnableConfig = {"configurable": {"stream_id": STREAM_ID, "subagent_id": "todos_agent"}}
 
 
 @tool
@@ -76,11 +74,10 @@ async def test_a_finished_call_is_recorded_with_its_args_and_result(fake_redis: 
     await invoke_tool(answers, {"query": "q"}, CONFIG)
 
     (call,) = await read_run_record(STREAM_ID)
-    assert (call.tool_name, call.args, call.subagent_id, call.subagent, call.failed) == (
+    assert (call.tool_name, call.args, call.subagent_id, call.failed) == (
         "answers",
         {"query": "q"},
         "todos_agent",
-        "todos",
         False,
     )
     assert json.loads(call.result_digest) == {"items": ["q"]}
@@ -230,6 +227,38 @@ async def test_a_call_the_record_could_not_take_keeps_its_own_outcome(
     }
 
 
+@tool
+async def answers_unencodable(query: str) -> dict[tuple[int, int], str]:
+    """Answer with a result JSON cannot encode (a tuple key)."""
+    return {(1, 2): query}
+
+
+@tool
+def answers_unencodable_sync(query: str) -> dict[tuple[int, int], str]:
+    """Answer synchronously with a result JSON cannot encode."""
+    return {(1, 2): query}
+
+
+async def test_a_result_the_record_cannot_encode_still_returns(fake_redis: Any) -> None:
+    """Review of #1618: building the record raised TypeError after the tool had already run."""
+    with patch("app.agents.tools.invocation.log") as log:
+        assert await invoke_tool(answers_unencodable, {"query": "q"}, CONFIG) == {(1, 2): "q"}
+
+    assert await read_run_record(STREAM_ID) == []
+    assert log.error.call_args.kwargs == {
+        "tool_name": "answers_unencodable",
+        "error_type": "TypeError",
+        "exc_info": True,
+    }
+
+
+def test_a_sync_result_the_record_cannot_encode_still_returns() -> None:
+    with patch("app.agents.tools.invocation.log") as log:
+        assert invoke_tool_sync(answers_unencodable_sync, {"query": "q"}, CONFIG) == {(1, 2): "q"}
+
+    assert log.error.call_args.kwargs["error_type"] == "TypeError"
+
+
 def test_a_sync_call_the_record_could_not_take_still_returns() -> None:
     with (
         patch("app.agents.tools.invocation.append_call_sync", MagicMock(side_effect=OSError("x"))),
@@ -271,10 +300,9 @@ def sync_redis(monkeypatch: pytest.MonkeyPatch) -> fakeredis.FakeRedis:
 
 
 def _sync_record(client: fakeredis.FakeRedis) -> list[RecordedCall]:
-    return [
-        RecordedCall.model_validate_json(raw)
-        for raw in client.lrange(f"{RUN_RECORD_PREFIX}{STREAM_ID}", 0, -1)
-    ]
+    recorded = client.lrange(f"{RUN_RECORD_PREFIX}{STREAM_ID}", 0, -1)
+    assert isinstance(recorded, list)
+    return [RecordedCall.model_validate_json(raw) for raw in recorded]
 
 
 def test_a_sync_call_is_recorded_with_the_models_args_and_kept_for_the_ttl(
@@ -286,10 +314,9 @@ def test_a_sync_call_is_recorded_with_the_models_args_and_kept_for_the_ttl(
 
     assert output == f"q in {STREAM_ID}"
     (call,) = _sync_record(sync_redis)
-    assert (call.tool_name, call.args, call.subagent, call.failed) == (
+    assert (call.tool_name, call.args, call.failed) == (
         "reads_config_sync",
         {"query": "asked"},
-        "todos",
         False,
     )
     assert call.result_digest == f"q in {STREAM_ID}"

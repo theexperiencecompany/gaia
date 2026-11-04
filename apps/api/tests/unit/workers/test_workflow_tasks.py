@@ -20,9 +20,10 @@ from app.models.notification.notification_models import (
     NotificationSourceEnum,
 )
 from app.models.playbook_models import PlaybookRunStatus
+from app.models.scheduler_models import DeactivationReason
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.models.workflow_execution_models import RecordedCall
-from app.models.workflow_models import DeactivationReason, TriggerType, WorkflowStep
+from app.models.workflow_models import TriggerType, WorkflowStep
 from app.services.workflow.conversation_service import build_selected_workflow_data
 from app.services.workflow.execution_service import WorkflowFireTimedOut
 from app.services.workflow.notifications import (
@@ -700,7 +701,10 @@ class TestProcessWorkflowGenerationTask:
         assert _no_real_analytics.call_args.args == (
             UserId(user_id),
             WorkflowCreated(
-                workflow_id=workflow.id, steps_count=len(workflow.steps), is_todo_workflow=True
+                origin="todo_requested",
+                workflow_id=workflow.id,
+                steps_count=len(workflow.steps),
+                is_todo_workflow=True,
             ),
         )
 
@@ -1842,7 +1846,11 @@ class TestProcessWorkflowGenerationTaskAdditional:
             mock_ws_mgr.return_value = mock_ws
 
             await process_workflow_generation_task(
-                ctx, todo_id, user_id, "Buy groceries", description="Milk, eggs, bread"
+                ctx,
+                todo_id,
+                user_id,
+                "Buy groceries",
+                description="Milk, eggs, bread",
             )
 
         assert len(captured_requests) == 1

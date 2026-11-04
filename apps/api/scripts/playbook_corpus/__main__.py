@@ -30,6 +30,7 @@ from bson import json_util
 from pydantic import BaseModel, ConfigDict, Field
 import pymongo
 
+from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.config.settings import settings
 from app.db.mongodb.mongodb import MONGO_DATABASE_NAME
 from app.models.workflow_execution_models import RecordedCall
@@ -45,7 +46,7 @@ from .fixture import (
     Verdict,
 )
 from .replay import numbered, replay
-from .translate import silent_handoffs, translate
+from .translate import translate
 
 WRITE_TOOL = "write_playbook"
 
@@ -87,7 +88,8 @@ def build(source: Path) -> Counter[str]:
         raw = json_util.loads(handle.read())
     runs = [_ExportedRun.model_validate(item) for item in raw]
     names = {call.tool_name for run in runs for call in run.trace}
-    anonymiser = Anonymiser.fresh(kept=names | _integration_ids(runs) | _step_ids(runs))
+    integration_ids = {integration.id for integration in OAUTH_INTEGRATIONS}
+    anonymiser = Anonymiser.fresh(kept=names | integration_ids | _step_ids(runs))
     tally: Counter[str] = Counter()
     # Always the corpus directory, never a path from the command line: build deletes what is there.
     out = CORPUS_DIR
@@ -102,10 +104,6 @@ def build(source: Path) -> Counter[str]:
             fixture.model_dump_json(indent=1, exclude_defaults=True) + "\n"
         )
     return tally
-
-
-def _integration_ids(runs: list[_ExportedRun]) -> set[str]:
-    return {call.subagent for run in runs for call in run.trace if call.subagent}
 
 
 class _StepId(BaseModel):
@@ -146,7 +144,7 @@ async def _fixture(run: _ExportedRun, anonymiser: Anonymiser) -> CorpusRun:
         before = trace[:position]
         record_len = len(numbered(before, len(before)))
         record = numbered(pickable, record_len)
-        translation = translate(call.args, record, frozenset(), silent=silent_handoffs(before))
+        translation = translate(call.args, record, frozenset())
         old = OldOutcome.ACCEPTED if _accepted(call) else OldOutcome.REFUSED
         written = {key: decode_json_container(value) for key, value in call.args.items()}
         if translation.unmappable is not None:
@@ -194,7 +192,7 @@ def _needed(pickable: list[RecordedCall], attempts: list[CorpusAttempt]) -> list
     picked = {pick.call for attempt in attempts for pick in attempt.picks or []}
     longest = max((attempt.record_len for attempt in attempts), default=0)
     return [
-        call if number in picked else RecordedCall(tool_name=call.tool_name, subagent=call.subagent)
+        call if number in picked else RecordedCall(tool_name=call.tool_name)
         for number, call in enumerate(pickable[:longest], start=1)
     ]
 

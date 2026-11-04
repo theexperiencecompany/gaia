@@ -57,8 +57,8 @@ NOT_A_TOOL: dict[tuple[str, str], str] = {
     ("utils/crawl4ai_utils.py", "crawler"): "a web crawler",
     ("services/browser/llm.py", "self._inner"): "the browser agent's LLM",
     ("services/browser/jev/loop.py", "self._text_model"): "the browser agent's LLM",
-    ("agents/core/subagents/handoff_tools.py", "store"): "a LangGraph store batch write",
     ("db/chroma/chroma_store.py", "self"): "the Chroma store's own batch of store ops",
+    ("services/mcp/custom_mcp_index.py", "store"): "a LangGraph store batch write",
     ("db/chroma/index_warmup.py", "store"): "a LangGraph store batch write",
     ("utils/file_utils.py", "with_llm_retry(self.llm)"): "an LLM summarising file chunks",
     ("services/workflow/playbook/runner.py", "builder.compile()"): (
@@ -155,7 +155,7 @@ class _Passthrough(AgentMiddleware):
 
 
 def _run_config() -> RunnableConfig:
-    return {"configurable": {"stream_id": STREAM_ID, "user_id": USER_ID, "run_scope": "todos"}}
+    return {"configurable": {"stream_id": STREAM_ID, "user_id": USER_ID}}
 
 
 def _one_call(name: str) -> dict[str, Any]:
@@ -163,10 +163,8 @@ def _one_call(name: str) -> dict[str, Any]:
     return {"messages": [AIMessage(content="", tool_calls=[call])]}
 
 
-async def _recorded() -> list[tuple[str, dict[str, object], str | None, str]]:
-    return [
-        (c.tool_name, c.args, c.subagent, c.result_digest) for c in await read_run_record(STREAM_ID)
-    ]
+async def _recorded() -> list[tuple[str, dict[str, object], str]]:
+    return [(c.tool_name, c.args, c.result_digest) for c in await read_run_record(STREAM_ID)]
 
 
 @pytest.mark.parametrize(
@@ -188,7 +186,7 @@ async def test_the_graph_tool_node_records_the_call(
 
     await node._afunc(_one_call(tool_name), _run_config(), Runtime())
 
-    assert await _recorded() == [(tool_name, {"query": "q"}, "todos", "answered q")]
+    assert await _recorded() == [(tool_name, {"query": "q"}, "answered q")]
 
 
 def test_the_sync_graph_tool_node_records_the_call(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -198,7 +196,9 @@ def test_the_sync_graph_tool_node_records_the_call(monkeypatch: pytest.MonkeyPat
 
     node._func(_one_call("probe_sync"), _run_config(), Runtime())
 
-    (raw,) = client.lrange(f"run_record:{STREAM_ID}", 0, -1)
+    recorded = client.lrange(f"run_record:{STREAM_ID}", 0, -1)
+    assert isinstance(recorded, list)
+    (raw,) = recorded
     assert '"tool_name":"probe_sync"' in raw
 
 
@@ -219,7 +219,7 @@ async def test_the_execute_proxy_records_the_real_tool_and_not_itself(fake_redis
             config=_run_config(),
         )
 
-    assert await _recorded() == [("probe", {"query": "q"}, "todos", "answered q")]
+    assert await _recorded() == [("probe", {"query": "q"}, "answered q")]
     # A playbook replays it the way it ran: through execute, as the account it named.
     (call,) = await read_run_record(STREAM_ID)
     assert (call.proxied, call.account) == (True, "work@acme.com")
@@ -232,16 +232,15 @@ async def test_a_directly_bound_call_is_not_recorded_as_proxied(fake_redis: Any)
     assert (call.proxied, call.account) == (False, None)
 
 
-@pytest.mark.parametrize("scope", [None, "linear"], ids=["executor", "subagent"])
 async def test_a_sandbox_script_calling_back_records_into_its_run(
-    fake_redis: Any, monkeypatch: pytest.MonkeyPatch, scope: str | None
+    fake_redis: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The token minted for the bash run carries the run and the scope its calls land in."""
+    """The token minted for the bash run carries the run its calls land in."""
     monkeypatch.setattr(settings, "SANDBOX_EXECUTE_TOKEN_SECRET", "s" * 32)
     monkeypatch.setattr(
         settings, "SANDBOX_EXECUTE_CALLBACK_URL", "https://api.test/sandbox/execute"
     )
-    configurable = {"stream_id": STREAM_ID, "user_id": USER_ID, "run_scope": scope}
+    configurable = {"stream_id": STREAM_ID, "user_id": USER_ID}
     token = mint_execute_env(
         user_id=USER_ID,
         run_id="bash-run-1",
@@ -264,7 +263,7 @@ async def test_a_sandbox_script_calling_back_records_into_its_run(
         )
 
     assert response.ok
-    assert await _recorded() == [("probe", {"query": "q"}, scope, "answered q")]
+    assert await _recorded() == [("probe", {"query": "q"}, "answered q")]
 
 
 async def test_a_state_updating_tool_still_updates_state_and_is_recorded(fake_redis: Any) -> None:
@@ -274,7 +273,7 @@ async def test_a_state_updating_tool_still_updates_state_and_is_recorded(fake_re
     output = await node._afunc(_one_call("probe_command"), _run_config(), Runtime())
 
     assert [type(item) for item in output] == [Command]
-    assert await _recorded() == [("probe_command", {"query": "q"}, "todos", "answered q")]
+    assert await _recorded() == [("probe_command", {"query": "q"}, "answered q")]
 
 
 def test_a_sync_state_updating_tool_still_updates_state(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -5,7 +5,7 @@ Contains helper functions for MCP client operations including
 PKCE generation, tool wrapping, and schema handling.
 """
 
-from collections.abc import Awaitable, Callable, Collection, Iterable
+from collections.abc import Awaitable, Callable, Collection, Iterable, Sequence
 from functools import wraps
 import inspect
 import re
@@ -19,6 +19,7 @@ from app.constants.mcp import (
     MCP_UNNAMED_SOURCE_PREFIX,
 )
 from app.models.mcp_config import McpToolProvenance
+from app.services.mcp.mcp_errors import MCPAuthorizationRequiredError
 from app.utils.errors import IntegrationNotConnectedError
 from shared.py.wide_events import log
 
@@ -52,6 +53,31 @@ def source_prefixed_tool_name(source_name: str, tool_name: str, taken: Collectio
         attempt += 1
 
 
+def gaia_tool_names(
+    source_name: str,
+    server_names: Sequence[str],
+    reserved: Collection[str],
+    shared: Collection[str],
+    taken: Collection[str] = (),
+) -> dict[str, str]:
+    """Map each server tool name to its GAIA-facing name.
+
+    A name is source-prefixed iff GAIA reserves it or another of the user's MCP
+    servers exposes it (shared), so the result never depends on connect order.
+    A prefixed name never lands on one in taken (another server's GAIA names).
+    """
+    clashing = {name for name in server_names if name in reserved or name in shared}
+    taken = {*reserved, *(set(server_names) - clashing), *taken}
+    names: dict[str, str] = {}
+    for name in server_names:
+        if name in clashing:
+            names[name] = source_prefixed_tool_name(source_name, name, taken)
+            taken.add(names[name])
+        else:
+            names[name] = name
+    return names
+
+
 _CONNECTION_ERROR_PATTERNS = (
     "timeout",
     "connection reset",
@@ -72,16 +98,6 @@ _CONNECTION_ERROR_PATTERNS = (
     "ssl",
     "certificate",
 )
-
-
-class MCPAuthorizationRequiredError(ValueError):
-    """Raised when an authenticated MCP has no usable access token."""
-
-    def __init__(self, integration_id: str) -> None:
-        super().__init__(
-            f"No valid token for {integration_id}. "
-            "OAuth authorization required - user must complete the OAuth flow."
-        )
 
 
 def _sign_in_required(tool: BaseTool, cause: Exception) -> Exception:

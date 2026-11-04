@@ -17,6 +17,7 @@ from app.constants.log_tags import LogTag
 from app.models.payment_models import PlanType
 from app.models.user_models import UserDocument
 from app.models.workflow_models import TriggerConfig, TriggerType
+from app.services.system_workflows.provisioner import reset_system_workflow_to_default
 
 MODULE = "app.services.system_workflows.provisioner"
 
@@ -954,6 +955,40 @@ class TestResetSystemWorkflowToDefault:
             f"{LogTag.WORKFLOW} Reset applied but re-arming the schedule failed",
             workflow_id="wf-1",
             user_id="user-1",
+        )
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.install_recipe", new_callable=AsyncMock)
+    @patch("app.services.user_service.get_user_by_id")
+    @patch(f"{MODULE}.workflow_scheduler")
+    @patch(f"{MODULE}.workflow_repository")
+    @patch(f"{MODULE}.ensure_trigger_config_object")
+    async def test_a_failed_recipe_install_still_leaves_the_reset_schedule_armed(
+        self,
+        mock_ensure: MagicMock,
+        mock_repo: MagicMock,
+        mock_scheduler: MagicMock,
+        mock_get_user: MagicMock,
+        install: AsyncMock,
+    ) -> None:
+        """The recipe is only a shortcut: its failure surfaces, but the reset workflow still has its next fire queued."""
+        existing = _existing_wf(key="sched_wf", composio_trigger_ids=None, trigger_name=None)
+        existing.activated = True
+        mock_repo.get_system_workflow_for_user = AsyncMock(return_value=existing)
+        mock_repo.reset_system_workflow = AsyncMock()
+        mock_get_user.return_value = UserDocument(timezone="UTC")
+        mock_scheduler.schedule_workflow_execution = AsyncMock(return_value=True)
+        install.side_effect = RuntimeError("recipe store down")
+        trigger_config = self._schedule_trigger_config()
+        mock_ensure.return_value = trigger_config
+        factory = MagicMock(return_value=_make_workflow_request())
+
+        with patch.dict(f"{MODULE}.SYSTEM_WORKFLOW_REGISTRY", {"sched_wf": factory}):
+            with pytest.raises(RuntimeError, match="recipe store down"):
+                await reset_system_workflow_to_default("wf-1", "user-1")
+
+        mock_scheduler.schedule_workflow_execution.assert_awaited_once_with(
+            "wf-1", trigger_config.next_run, repeat="0 8 * * *"
         )
 
     @pytest.mark.asyncio

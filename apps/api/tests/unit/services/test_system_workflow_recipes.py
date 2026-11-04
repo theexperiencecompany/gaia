@@ -106,7 +106,7 @@ async def test_each_recipe_validates_against_the_real_registry(
     body = SYSTEM_RECIPES[key]()
 
     with patch(f"{PARSER}.get_tool_registry", new=AsyncMock(return_value=registry)):
-        validation = await validate_playbook(body, USER_ID)
+        validation = await validate_playbook(body)
 
     assert validation.issues == []
 

@@ -23,15 +23,10 @@ from app.agents.core.held_replies import (
     last_ai_message,
 )
 from app.agents.core.interruption import record_interruption
-from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.llm.lane import AgentRole, ModelLane, inherits_lane, resolve_lane
 from app.agents.llm.reasoning import extract_reasoning_delta
 from app.agents.llm.ttft import LLMTtftCallback
 from app.config.langfuse import build_langfuse_callback
-from app.constants.cache import (
-    CUSTOM_INT_METADATA_TTL,
-    HANDOFF_METADATA_CACHE_PREFIX,
-)
 from app.constants.hil import HIL_JUDGE_MAX_TURN_CHARS, HIL_JUDGE_MAX_USER_TURNS
 from app.constants.llm import (
     AGENT_RECURSION_LIMIT,
@@ -39,8 +34,6 @@ from app.constants.llm import (
 )
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
-from app.db.redis import get_cache, set_cache
-from app.db.repositories.integrations import integration_repository
 from app.models.agent_models import (
     AgentConfigurable,
     AgentConfigurableView,
@@ -67,14 +60,11 @@ from app.services.delivery.presence import read_presence
 from app.services.latency_metrics import observe_comms_graph, span
 from app.services.mcp.mcp_resource_fetcher import fetch_mcp_ui_resource
 from app.utils.agent_utils import (
-    HandoffCallArgs,
-    IntegrationDisplayMetadata,
     NodeMessagesUpdate,
     ToolCallView,
     format_sse_data,
     format_sse_response,
     format_tool_call_entry,
-    parse_subagent_id,
     process_custom_event_for_tools,
 )
 from app.utils.general_utils import clip_text
@@ -226,58 +216,6 @@ def message_boundary_frame(message_id: str, *, discarded: bool) -> str:
     )
 
 
-async def get_handoff_metadata(subagent_id: str) -> IntegrationDisplayMetadata:
-    """Look up icon_url, integration_id, integration_name for handoff subagents.
-
-    Checks platform integrations (in-memory) and custom MCPs (MongoDB, Redis-cached).
-    Returns an empty instance if not found.
-    """
-
-    clean_id, _ = parse_subagent_id(subagent_id)
-    clean_id = clean_id.lower()
-
-    # Check platform/builtin subagents first (in-memory, no caching needed)
-    subagent = get_subagent_by_id(clean_id)
-    if subagent:
-        log.set(integration_type="platform")
-        # No icon_url: platform/builtin subagents use category-based icons.
-        return IntegrationDisplayMetadata(
-            integration_id=subagent.id,
-            integration_name=subagent.name,
-        )
-
-    # Check Redis cache for custom integrations
-    cache_key = f"{HANDOFF_METADATA_CACHE_PREFIX}:{clean_id}"
-    cached = await get_cache(cache_key, IntegrationDisplayMetadata)
-    if cached is not None:
-        return cached
-
-    # Find the integration by ID or name.
-    # No source filter - we need to find ANY integration (custom OR public).
-    # Public integrations created by OTHER users also need metadata lookup.
-    try:
-        custom = await integration_repository.find_by_id_prefix_or_name(clean_id)
-
-        if not custom:
-            # Cache negative result
-            await set_cache(cache_key, {}, ttl=CUSTOM_INT_METADATA_TTL)
-            return IntegrationDisplayMetadata()
-
-        metadata = IntegrationDisplayMetadata(
-            icon_url=custom.icon_url,
-            integration_id=custom.integration_id,
-            integration_name=custom.name,
-        )
-
-        log.set(integration_type="custom")
-        await set_cache(cache_key, metadata, ttl=CUSTOM_INT_METADATA_TTL)
-        return metadata
-
-    except Exception as e:
-        log.warning("Failed to lookup handoff metadata", error=str(e), error_type=type(e).__name__)
-        return IntegrationDisplayMetadata()
-
-
 def _build_agent_callbacks(
     usage_metadata_callback: UsageMetadataCallbackHandler | None,
 ) -> list[BaseCallbackHandler]:
@@ -320,7 +258,6 @@ class _TurnScope:
     execution_mode: ExecutionMode | None
     presence: PresenceSnapshot | None
     stream_id: str | None = None
-    run_scope: str | None = None
 
 
 def _inherit_from_parent_configurable(
@@ -367,7 +304,6 @@ def _inherit_from_parent_configurable(
         execution_mode=current.execution_mode or parent.execution_mode,
         presence=current.presence or parent.presence,
         stream_id=parent.stream_id,
-        run_scope=current.run_scope or parent.run_scope,
     )
 
 
@@ -483,10 +419,6 @@ class AgentThread:
 
     subagent_id: str | None = None
     """The subagent this run embodies; also its memory namespace id."""
-
-    run_scope: str | None = None
-    """The handoff subagent id whose tool space this run executes in. Set by a handoff;
-    a spawn inherits its parent's, and the executor has none."""
 
     vfs_session_id: str | None = None
     """Shared VFS session ID held constant across the executor and the handoff
@@ -685,7 +617,6 @@ async def build_agent_config(
         writing_style=writing_style,
         execution_mode=execution_mode,
         presence=presence,
-        run_scope=thread.run_scope,
     )
     resolved = _inherit_from_parent_configurable(parent, current)
 
@@ -755,7 +686,6 @@ async def build_agent_config(
         "selected_tool": resolved.selected_tool,
         "tool_category": resolved.tool_category,
         "subagent_id": resolved.subagent_id,
-        "run_scope": resolved.run_scope,
         "vfs_session_id": resolved.vfs_session_id,
         "stream_id": resolved.stream_id,
         "active_todo_id": resolved.active_todo_id,
@@ -857,21 +787,6 @@ def build_initial_state(
     return state
 
 
-async def _handoff_metadata_for(call: ToolCallView) -> IntegrationDisplayMetadata:
-    """Return the display metadata a handoff call's card carries; empty for any other tool.
-
-    Handoff metadata stays pre-resolved here (it's a special subagent-display
-    path). MCP tool metadata is resolved inside format_tool_call_entry when
-    user_id is passed.
-    """
-    if call.name != "handoff":
-        return IntegrationDisplayMetadata()
-    subagent_id = HandoffCallArgs.model_validate(call.args).subagent_id
-    if not subagent_id:
-        return IntegrationDisplayMetadata()
-    return await get_handoff_metadata(subagent_id)
-
-
 async def _collect_silent_tool_entries(
     messages: Sequence[object],
     emitted_tool_calls: set[str],
@@ -892,14 +807,7 @@ async def _collect_silent_tool_entries(
             if call.name in {"plan_tasks", "update_tasks"}:
                 continue
 
-            tool_metadata = await _handoff_metadata_for(call)
-            tool_entry = await format_tool_call_entry(
-                tc,
-                icon_url=tool_metadata.icon_url,
-                integration_id=tool_metadata.integration_id,
-                integration_name=tool_metadata.integration_name,
-                user_id=user_id,
-            )
+            tool_entry = await format_tool_call_entry(tc, user_id=user_id)
             if tool_entry:
                 entries.append(tool_entry)
                 emitted_tool_calls.add(call.id)
@@ -1166,16 +1074,7 @@ async def _stream_tool_call_frames(
         if not call.id or call.id in emitted_tool_calls:
             continue
 
-        tool_metadata = await _handoff_metadata_for(call)
-
-        # Format and emit tool_data entry
-        tool_entry = await format_tool_call_entry(
-            tc,
-            icon_url=tool_metadata.icon_url,
-            integration_id=tool_metadata.integration_id,
-            integration_name=tool_metadata.integration_name,
-            user_id=user_id,
-        )
+        tool_entry = await format_tool_call_entry(tc, user_id=user_id)
         if tool_entry:
             yield format_sse_data({"tool_data": tool_entry})
             emitted_tool_calls.add(call.id)

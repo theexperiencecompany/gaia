@@ -240,7 +240,6 @@ TOOL_TIMEOUT_EXEMPT_TOOLS = frozenset(
         "call_executor",
         "cancel_executor",
         "spawn_subagent",
-        "handoff",
         "deep_research",
         "browser_task",
         # bash carries its own deadline down (the e2b server-side command timeout,
@@ -283,7 +282,7 @@ DEFAULT_MAX_TOKENS = 1_000_000
 # Changing the default model is high blast radius: update DEFAULT_MAX_TOKENS
 # (else fractional-token middleware fails to build) and add a MODEL_PRICING entry.
 # Text-only default for every tier: image tool results are captioned, not shown.
-DEFAULT_MODEL_NAME = "deepseek/deepseek-v4.1-flash-1017"
+DEFAULT_MODEL_NAME = "openai/gpt-6-luna"
 # The HIL intent judge runs here, not AUX_MODEL_NAME: accuracy and tail latency
 # beat sharing the graph lane's cache. The eval (50 scenarios, real LLMs) put
 # this at 42/50 in 1.9s p95 vs the default's 40/50 in 20s p95. Changing re-runs it.

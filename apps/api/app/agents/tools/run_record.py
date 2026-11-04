@@ -2,8 +2,7 @@
 
 Written by ``app.agents.tools.invocation`` and nothing else, so a call is in the
 record because it ran, whatever path ran it: a graph tool node, the execute
-proxy, a handoff's subagent, a sandbox script calling back, an approved action
-run later. Redis, not process memory, because those paths run in different
+proxy, a sandbox script calling back, an approved action run later. Redis, not process memory, because those paths run in different
 processes (the workflow worker, the API serving a sandbox callback).
 """
 

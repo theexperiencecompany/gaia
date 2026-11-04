@@ -103,3 +103,14 @@ def test_a_step_that_never_ran_is_absent_from_the_record_the_author_saw(
     ran = {entry.call.tool_name for entry in numbered(run.record, attempt.record_len)}
 
     assert tool not in ran
+
+
+@pytest.mark.parametrize(
+    "case",
+    [case for case in ATTEMPTS if case[1].unmappable is Unmappable.EMPTY_RECORD],
+    ids=_id,
+)
+def test_an_empty_record_holds_no_pickable_call(case: tuple[CorpusRun, CorpusAttempt]) -> None:
+    run, attempt = case
+
+    assert numbered(run.record, attempt.record_len) == []
