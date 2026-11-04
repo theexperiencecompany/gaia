@@ -39,6 +39,7 @@ class Reply:
     status: int = 200
     body: object = None
     link: str = ""
+    headers: dict[str, str] = field(default_factory=dict)
 
 
 Responder = Callable[[Request], Reply]
@@ -126,6 +127,8 @@ def _handler_for(fake: FakeGitHub) -> type[BaseHTTPRequestHandler]:
             self.send_header("Content-Length", str(len(payload)))
             if reply.link:
                 self.send_header("Link", reply.link)
+            for name, value in reply.headers.items():
+                self.send_header(name, value)
             self.end_headers()
             self.wfile.write(payload)
 
