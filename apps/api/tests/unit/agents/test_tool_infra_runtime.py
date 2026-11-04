@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 import json
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import AIMessage, HumanMessage
@@ -39,11 +39,8 @@ from app.agents.tools.instructions_tools import (
 )
 from app.constants.general import FINISH_TASK_NAME, SPAWN_AGENT_NAME
 from app.models.integration_models import UserToolNamespaces
-from app.override.langgraph_bigtool.create_agent import (
-    AgentConfig,
-    ToolRetrievalConfig,
-    create_agent,
-)
+from app.override.langgraph_bigtool.agent_config import AgentConfig, ToolRetrievalConfig
+from app.override.langgraph_bigtool.create_agent import create_agent
 from tests.helpers import BindableToolsFakeModel, PassthroughFakeLLM
 
 
@@ -78,9 +75,9 @@ class _FakeLLM(PassthroughFakeLLM):
         self.bind_calls: list[list[str]] = []
         self._invoke_count = 0
 
-    def bind_tools(self, tools: Any, **_kwargs: Any) -> "_FakeLLM":
+    def bind_tools(self, _tools: Any, **_kwargs: Any) -> "_FakeLLM":
         # Overridden only to record what was bound; the assertions read this.
-        names = [getattr(t, "name", str(t)) for t in tools]
+        names = [getattr(t, "name", str(t)) for t in _tools]
         self.bind_calls.append(names)
         return self
 
@@ -1027,9 +1024,10 @@ async def test_a_provider_subagent_drains_its_own_mailbox_not_the_executors():
 
 def _scoped_provider_tools() -> tuple[dict[str, BaseTool], list[str]]:
     return build_scoped_tool_dict(
-        tool_registry=_DummyRegistry([normal_tool], {"normal_tool": normal_tool}),
+        tool_registry=cast(
+            ToolRegistry, _DummyRegistry([normal_tool], {"normal_tool": normal_tool})
+        ),
         tool_space="provider_space",
-        mcp_tools=None,
         include_finish_task=True,
     )
 
@@ -1122,7 +1120,7 @@ def _render_text(
     opts = options or _DiscoveryOptions()
     return _render_discovery_response(
         _RankedHits(final_tools, opts.total_candidates, opts.limit),
-        _DiscoveryRegistry(opts.categories or {}, opts.destructive),
+        cast(ToolRegistry, _DiscoveryRegistry(opts.categories or {}, opts.destructive)),
         opts.connected or {},
         query,
         (),
@@ -1179,7 +1177,7 @@ class TestDiscoveryResponseIsIndentedJson:
 
 
 class TestDiscoveryHasNoProviderSubagentSurface:
-    """Discovery returns real tools plus two narrow entry kinds: subagent: pointers to per-user MCP integrations (the sole subagent surface) and integration: pointers to not-yet-connected integrations.
+    """Discovery returns real tools plus two pointer kinds for activate_integration: mcp_integration: (per-user MCP integrations) and integration: (not-yet-connected integrations).
 
     Provider and built-in integrations surface as tools, never as pointers.
     """
@@ -1190,19 +1188,21 @@ class TestDiscoveryHasNoProviderSubagentSurface:
             options=_DiscoveryOptions(categories={"web_search_tool": "search"}),
         )
 
-        assert payload["mcp_subagents"] == []
+        assert payload["mcp_integrations"] == []
         assert payload["new_integrations"] == []
+        assert "mcp_subagents" not in payload
         assert "subagents_builtin" not in payload
         assert "subagents_connected" not in payload
         assert "subagents_needing_connection" not in payload
         assert "handoff" not in payload["next"]
 
     def test_mcp_entries_land_in_the_mcp_bucket(self) -> None:
-        payload = _render(["subagent:my-mcp (My MCP)"])
+        payload = _render(["mcp_integration:my-mcp (My MCP)"])
 
-        assert payload["mcp_subagents"] == [{"id": "my-mcp", "name": "My MCP"}]
+        assert payload["mcp_integrations"] == [{"id": "my-mcp", "name": "My MCP"}]
         assert [t["name"] for t in payload["tools_to_bind"]] == []
-        assert "handoff" in payload["next"]
+        assert "activate_integration" in payload["next"]
+        assert "handoff" not in payload["next"]
 
     def test_integration_entries_land_in_the_new_bucket(self) -> None:
         payload = _render(["integration:linear (Linear)"])
@@ -1299,8 +1299,7 @@ class TestDiscoveryZeroMatchSignal:
         assert _render(["x"], options=_DiscoveryOptions(total_candidates=1))["next"] == (
             "Load with retrieve_tools(exact_tool_names=[...]): internal tools bind "
             "and are called by name, integration tools (ALLCAPS) return schemas to "
-            "run via execute and are never bound. Integrations are not subagents: "
-            "act on them yourself."
+            "run via execute and are never bound. Act on integrations yourself."
         )
 
 

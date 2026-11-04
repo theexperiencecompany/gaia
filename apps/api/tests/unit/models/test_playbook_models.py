@@ -16,9 +16,7 @@ from app.models.playbook_models import (
     DEFAULT_ASK_MAX_TOKENS,
     AskSlot,
     ForEachStep,
-    HandoffStep,
     PlaybookAskAnswer,
-    PlaybookHandoffStepInput,
     PlaybookStep,
     PlaybookStepInput,
     TimeSlot,
@@ -57,34 +55,10 @@ class TestAskSlotKeys:
 
         assert [item.key for item in ask_slots(steps)] == ["web_search_tool.query_text"]
 
-    def test_a_slot_inside_a_handoff_child_is_keyed_by_the_child_not_the_handoff(self) -> None:
-        """Keying by the handoff would look the value up under a prefix no step ever passes."""
-        steps = [
-            HandoffStep(
-                id="mail",
-                handoff="gmail",
-                steps=[
-                    ToolStep(
-                        id="fetch",
-                        tool="GMAIL_FETCH_MESSAGES",
-                        args={"query": {"$ask": "what to search the inbox for"}},
-                    )
-                ],
-            )
-        ]
-
-        located = ask_slots(steps)
-
-        assert [item.key for item in located] == ["fetch.query"]
-
     def test_slots_come_back_in_execution_order(self) -> None:
         steps = [
             ToolStep(id="first", tool="a", args={"x": {"$ask": "one"}}),
-            HandoffStep(
-                id="handed",
-                handoff="gmail",
-                steps=[ToolStep(id="second", tool="b", args={"y": {"$ask": "two"}})],
-            ),
+            ToolStep(id="second", tool="b", args={"y": {"$ask": "two"}}),
             ToolStep(id="third", tool="c", args={"z": {"$ask": "three"}}),
         ]
 
@@ -103,60 +77,31 @@ class TestPlaybookStepInput:
             "tool": "list_events",
         }
 
+    def test_a_step_without_a_tool_is_refused(self) -> None:
+        """A step naming no tool would replay nothing where the author wrote a call."""
+        with pytest.raises(ValidationError, match="tool"):
+            PlaybookStepInput.model_validate({"id": "agenda"})
+
     @pytest.mark.parametrize(
-        "step",
+        ("step", "named"),
         [
-            {"id": "agenda", "tool": "list_events", "handoff": "gmail"},
-            {"id": "agenda"},
+            ({"id": "h", "tool": "list_events", "handoff": "gmail"}, "handoff"),
+            ({"id": "h", "tool": "list_events", "steps": [{"tool": "y"}]}, "steps"),
+            ({"id": "h", "handoff": "gmail", "steps": [{"tool": "y"}]}, "handoff or steps"),
         ],
-        ids=["both", "neither"],
+        ids=["handoff", "steps", "both"],
     )
-    def test_a_node_is_a_tool_call_or_a_handoff_and_never_both_or_neither(
-        self, step: dict[str, Any]
+    def test_a_retired_handoff_shape_is_refused_by_name(
+        self, step: dict[str, Any], named: str
     ) -> None:
-        """A malformed node means the runner would silently skip a step instead of running it."""
-        with pytest.raises(ValidationError, match="exactly one of"):
+        """Unknown keys are dropped, so without this a handoff's calls would be stored as nothing."""
+        with pytest.raises(ValidationError) as raised:
             PlaybookStepInput.model_validate(step)
 
-
-class TestPlaybookHandoffStepInput:
-    @pytest.mark.parametrize(
-        ("child", "named"),
-        [
-            (
-                {"id": "mail", "tool": "list_events", "steps": [{"id": "x", "tool": "y"}]},
-                "steps",
-            ),
-            ({"id": "mail", "tool": "list_events", "handoff": "todos"}, "handoff"),
-            (
-                {"id": "mail", "tool": "list_events", "handoff": "todos", "steps": []},
-                "handoff or steps",
-            ),
-        ],
-        ids=["steps", "handoff", "both"],
-    )
-    def test_a_child_that_nests_a_level_deeper_is_refused_by_name(
-        self, child: dict[str, Any], named: str
-    ) -> None:
-        """Without this the child model drops steps/handoff as unknown keys, discarding a grandchild delegation silently."""
-        with pytest.raises(ValidationError) as raised:
-            PlaybookHandoffStepInput.model_validate(child)
-
         assert (
-            f"a handoff's child is one tool call and cannot carry {named}: playbooks are "
-            "one level deep, so list the calls that subagent made as the handoff's own steps"
+            f"a step is one tool call and cannot carry {named}: list every call the run made "
+            "as its own step, in order"
         ) in str(raised.value)
-
-    def test_a_stray_annotation_on_a_child_is_still_dropped(self) -> None:
-        """A goal on a child is the same harmless annotation it is on a top-level step."""
-        child = PlaybookHandoffStepInput.model_validate(
-            {"id": "mail", "tool": "list_events", "goal": "read the agenda"}
-        )
-
-        assert child.to_step().model_dump(exclude_defaults=True) == {
-            "id": "mail",
-            "tool": "list_events",
-        }
 
 
 class TestArgsSpelledRight:
@@ -166,31 +111,19 @@ class TestArgsSpelledRight:
         "near_miss",
         ["arguments", "input", "inputs", "params", "parameters", "kwargs"],
     )
-    @pytest.mark.parametrize(
-        "model",
-        [PlaybookStepInput, PlaybookHandoffStepInput],
-        ids=["top-level", "handoff-child"],
-    )
-    def test_arguments_under_another_name_are_refused_by_that_name(
-        self, model: type[PlaybookStepInput] | type[PlaybookHandoffStepInput], near_miss: str
-    ) -> None:
+    def test_arguments_under_another_name_are_refused_by_that_name(self, near_miss: str) -> None:
         with pytest.raises(ValidationError) as raised:
-            model.model_validate({"id": "mail", "tool": "send_email", near_miss: {"to": "a@b.com"}})
+            PlaybookStepInput.model_validate(
+                {"id": "mail", "tool": "send_email", near_miss: {"to": "a@b.com"}}
+            )
 
         assert f"a step's arguments go under 'args', not {near_miss!r}; rename it" in str(
             raised.value
         )
 
-    @pytest.mark.parametrize(
-        "model",
-        [PlaybookStepInput, PlaybookHandoffStepInput],
-        ids=["top-level", "handoff-child"],
-    )
-    def test_a_stray_alias_beside_real_args_is_dropped_not_refused(
-        self, model: type[PlaybookStepInput] | type[PlaybookHandoffStepInput]
-    ) -> None:
+    def test_a_stray_alias_beside_real_args_is_dropped_not_refused(self) -> None:
         """With args present nothing is lost, so the extra key is the same harmless annotation any other unknown key is."""
-        step = model.model_validate(
+        step = PlaybookStepInput.model_validate(
             {
                 "id": "mail",
                 "tool": "send_email",
@@ -248,18 +181,6 @@ class TestStepInputBecomesAStep:
             max_items=5,
         )
 
-    def test_a_handoff_keeps_its_id_and_converts_every_child(self) -> None:
-        step = PlaybookStepInput(
-            id="sweep",
-            handoff="calendar",
-            steps=[PlaybookHandoffStepInput(id="agenda", tool="list_events")],
-        ).to_step()
-        assert step == HandoffStep(
-            id="sweep",
-            handoff="calendar",
-            steps=[ToolStep(id="agenda", tool="list_events", args={})],
-        )
-
     @pytest.mark.parametrize(("step_id", "named"), [("mails", "mails"), ("", "send_email")])
     def test_a_loop_without_a_ceiling_is_refused_naming_the_step(
         self, step_id: str, named: str
@@ -292,17 +213,6 @@ class TestStepInputBecomesAStep:
 
 @pytest.mark.unit
 class TestStoredDocuments:
-    def test_a_handoff_document_carries_its_id_only_when_it_has_one(self) -> None:
-        child = ToolStep(id="agenda", tool="list_events", args={"calendar_id": "primary"})
-        named = HandoffStep(id="sweep", handoff="calendar", steps=[child]).to_document()
-        unnamed = HandoffStep(handoff="calendar", steps=[child]).to_document()
-        assert named == {
-            "id": "sweep",
-            "handoff": "calendar",
-            "steps": [{"id": "agenda", "tool": "list_events", "args": {"calendar_id": "primary"}}],
-        }
-        assert "id" not in unnamed
-
     def test_an_ask_source_is_stored_without_its_defaults(self) -> None:
         step = ForEachStep(
             id="s",
@@ -327,6 +237,19 @@ class TestStoredDocuments:
         assert TypeAdapter(PlaybookStep).validate_python(stored) == ToolStep(
             id="agenda", tool="list_events", args={}
         )
+
+    @pytest.mark.parametrize(
+        "stored",
+        [
+            {"id": "h", "handoff": "gmail", "steps": [{"id": "f", "tool": "GMAIL_FETCH_EMAILS"}]},
+            {"id": "h", "tool": "GMAIL_FETCH_EMAILS", "handoff": "gmail"},
+        ],
+        ids=["handoff-step", "tool-with-handoff"],
+    )
+    def test_a_stored_handoff_step_is_refused(self, stored: dict[str, Any]) -> None:
+        """No compat read: the flatten migration rewrites these before the deploy."""
+        with pytest.raises(ValidationError, match="handoff"):
+            TypeAdapter(PlaybookStep).validate_python(stored)
 
     def test_a_step_that_is_already_a_model_passes_through(self) -> None:
         step = ToolStep(id="agenda", tool="list_events", args={})

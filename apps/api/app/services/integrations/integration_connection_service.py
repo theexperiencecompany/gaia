@@ -44,6 +44,7 @@ from app.services.integrations.user_integrations import (
 )
 from app.services.integrations_fs import schedule_user_integrations_sync
 from app.services.mcp.mcp_client import MCPClient, get_mcp_client
+from app.services.mcp.mcp_oauth import build_oauth_auth_url
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.oauth.oauth_state_service import attach_connected_account, create_oauth_state
 from app.utils.oauth_utils import build_google_oauth_url
@@ -107,7 +108,8 @@ async def _redirect_to_oauth(
     challenge_data: McpAuthChallenge | None = None,
 ) -> ConnectIntegrationResponse:
     """Build the provider OAuth URL and wrap it in a redirect response."""
-    auth_url = await mcp_client.build_oauth_auth_url(
+    auth_url = await build_oauth_auth_url(
+        mcp_client.token_store,
         integration_id=integration_id,
         redirect_uri=get_mcp_oauth_redirect_uri(),
         redirect_path=redirect_path,
