@@ -65,5 +65,5 @@ def test_a_fortress_timezone_is_a_known_zone_and_a_blank_one_the_personas(
     assert read == BrowserHostSettings().FORTRESS_TIMEZONE
 
     monkeypatch.setenv("FORTRESS_TIMEZONE", "Mars/Olympus")
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match="Mars/Olympus. is not an IANA timezone"):
         BrowserHostSettings()

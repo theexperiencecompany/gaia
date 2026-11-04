@@ -7,23 +7,7 @@ audio noise stay per context by Fortress's design. Timezone and languages are
 settings (browser_host_settings), whose defaults are below.
 """
 
-from typing import NamedTuple
-
 from app.constants.browser import BROWSER_VIEWPORT_HEIGHT, BROWSER_VIEWPORT_WIDTH
-
-
-class FortressVoice(NamedTuple):
-    """One speechSynthesis voice; Fortress reads only ASCII names."""
-
-    name: str
-    lang: str
-    local: bool
-    default: bool
-
-    def flag_entry(self) -> str:
-        """Spell the voice as one --uxr-voices-list entry: name|lang|local|default."""
-        return f"{self.name}|{self.lang}|{int(self.local)}|{int(self.default)}"
-
 
 #: Where the gaia image installs Fortress's launcher, which sets up its persona and fonts.
 FORTRESS_IMAGE_BIN = "/opt/fortress/tilion"
@@ -34,18 +18,19 @@ FORTRESS_DEFAULT_TIMEZONE = "Asia/Kolkata"
 FORTRESS_REQUIRED_FIRST_LANGUAGE = "en-US"
 FORTRESS_DEFAULT_LANGUAGES: tuple[str, ...] = (FORTRESS_REQUIRED_FIRST_LANGUAGE, "en")
 
-FORTRESS_VOICES: tuple[FortressVoice, ...] = (
-    FortressVoice("Microsoft David - English (United States)", "en-US", local=True, default=True),
-    FortressVoice("Microsoft Zira - English (United States)", "en-US", local=True, default=False),
-    FortressVoice("Microsoft Mark - English (United States)", "en-US", local=True, default=False),
-    FortressVoice("Google Deutsch", "de-DE", local=False, default=False),
-    FortressVoice("Google US English", "en-US", local=False, default=False),
-    FortressVoice("Google UK English Female", "en-GB", local=False, default=False),
-    FortressVoice("Google UK English Male", "en-GB", local=False, default=False),
-    FortressVoice("Google Bahasa Indonesia", "id-ID", local=False, default=False),
-    FortressVoice("Google italiano", "it-IT", local=False, default=False),
-    FortressVoice("Google Nederlands", "nl-NL", local=False, default=False),
-    FortressVoice("Google polski", "pl-PL", local=False, default=False),
+#: speechSynthesis voices as --uxr-voices-list entries, name|lang|local|default; ASCII only.
+FORTRESS_VOICES: tuple[str, ...] = (
+    "Microsoft David - English (United States)|en-US|1|1",
+    "Microsoft Zira - English (United States)|en-US|1|0",
+    "Microsoft Mark - English (United States)|en-US|1|0",
+    "Google Deutsch|de-DE|0|0",
+    "Google US English|en-US|0|0",
+    "Google UK English Female|en-GB|0|0",
+    "Google UK English Male|en-GB|0|0",
+    "Google Bahasa Indonesia|id-ID|0|0",
+    "Google italiano|it-IT|0|0",
+    "Google Nederlands|nl-NL|0|0",
+    "Google polski|pl-PL|0|0",
 )
 
 #: browser-use defaults that delete a surface the persona pins: a Windows Chrome has speechSynthesis.
@@ -97,5 +82,5 @@ FORTRESS_PERSONA_ARGS: tuple[str, ...] = (
     "--uxr-net-save-data=0",
     "--uxr-storage-quota=300000000000",
     "--uxr-media-devices=ai:1,vi:1,ao:1",
-    "--uxr-voices-list=" + ";".join(voice.flag_entry() for voice in FORTRESS_VOICES),
+    "--uxr-voices-list=" + ";".join(FORTRESS_VOICES),
 )
