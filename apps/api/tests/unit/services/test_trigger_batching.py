@@ -639,11 +639,14 @@ class TestHoldTriggerBatch:
         ):
             cache.redis = fake_redis
             assert await hold_trigger_batch("wf_1", _MORNING, context) is True
+            # A second drain due that night meets the same morning job, never a second run.
+            assert await hold_trigger_batch("wf_1", _MORNING, context) is True
             (job,) = await queue.queued_jobs()
         await server.aclose()
 
         assert fake_redis.expires[TRIGGER_BATCH_KEY.format(workflow_id="wf_1")] == 4 * 5.5 * 3600
         assert (job.function, job.args) == ("execute_workflow_by_id", ("wf_1", _HELD_CONTEXT))
+        assert job.job_id == _HELD_JOB_ID
         assert job.score == int(_MORNING.timestamp() * 1000)
 
     async def test_redis_down_holds_nothing_and_says_so(self) -> None:
