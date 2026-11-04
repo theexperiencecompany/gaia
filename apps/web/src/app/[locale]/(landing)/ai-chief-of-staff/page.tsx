@@ -1,4 +1,3 @@
-import "../../../styles/content.css";
 import type { Metadata } from "next";
 import JsonLd from "@/components/seo/JsonLd";
 import {

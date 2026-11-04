@@ -1,4 +1,3 @@
-import "../../../../styles/marketing.css";
 import { Chip } from "@heroui/react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";

@@ -1,4 +1,3 @@
-import "../../../styles/content.css";
 import type { Metadata } from "next";
 
 import BestAssistantHub from "@/components/seo/BestAssistantHub";

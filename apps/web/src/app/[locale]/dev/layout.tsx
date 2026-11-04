@@ -1,4 +1,3 @@
-import "../../styles/app.css";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { Toaster } from "@/components/ui/Toaster";

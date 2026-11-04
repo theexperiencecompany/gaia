@@ -1,4 +1,3 @@
-import "../../../styles/marketing.css";
 import type { Metadata } from "next";
 import type { SoftwareApplication, WithContext } from "schema-dts";
 import JsonLd from "@/components/seo/JsonLd";

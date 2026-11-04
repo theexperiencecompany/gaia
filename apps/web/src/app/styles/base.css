@@ -3,11 +3,9 @@
    but BELOW GAIA's components/utilities (so GAIA still wins real conflicts).
    The react-ui styles load with the OpenUI library: config/openui/openui.css. */
 @layer theme, base, openui, components, utilities;
-@import "tailwindcss" source(none);
-@import "@heroui/styles/themes/default" layer(theme);
+@import "tailwindcss";
+@import "./heroui.css";
 @import "./theme.css";
-@import "@heroui/styles/utilities";
-@import "@heroui/styles/variants";
 
 
 

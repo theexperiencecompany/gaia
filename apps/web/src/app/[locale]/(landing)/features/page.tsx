@@ -1,4 +1,3 @@
-import "../../../styles/marketing.css";
 import type { Metadata } from "next";
 import { FeaturesAtAGlance } from "@/features/landing/components/features/FeaturesAtAGlance";
 import { FeaturesGrid } from "@/features/landing/components/features/FeaturesGrid";

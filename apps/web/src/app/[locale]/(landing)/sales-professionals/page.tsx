@@ -1,4 +1,3 @@
-import "../../../styles/marketing.css";
 import type { Metadata } from "next";
 import JsonLd from "@/components/seo/JsonLd";
 import { SALES_FAQS } from "@/features/landing/data/personaFaqs";
