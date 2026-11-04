@@ -3,14 +3,14 @@
 Implements only what those paths touch: the bash tool's lookup, the run
 subscription's append and its removal, the receiver's open-todos-by-trigger
 query (incomplete todos with an ACTIVE subscription on that trigger, like the
-real query), and the gate write the desk gate uses.
+real query), and the open-todos-by-ref read and gate write the desk gate uses.
 """
 
 from __future__ import annotations
 
 from collections.abc import Collection
 
-from app.models.todo_models import TodoDocument
+from app.models.todo_models import ExternalRef, TodoDocument
 from app.models.trigger_gate_models import AuthoredGate, SystemGate
 from app.models.trigger_subscription_models import (
     TriggerSubscription,
@@ -62,6 +62,9 @@ class InMemoryTodos:
                 for s in todo.trigger_subscriptions
             )
         ]
+
+    async def list_open_by_external_ref_all_users(self, ref: ExternalRef) -> list[TodoDocument]:
+        return [t for t in self._by_id.values() if not t.completed and t.external_ref == ref]
 
     async def gate_ungated_subscriptions(
         self,

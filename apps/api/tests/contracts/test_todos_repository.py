@@ -24,6 +24,8 @@ from app.db.repositories.todos import TodosRepository
 from app.models import todo_models
 from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import (
+    ExternalRef,
+    ExternalRefSource,
     Priority,
     SearchMode,
     SubTask,
@@ -728,6 +730,24 @@ class TestTodosRepository(UserScopedRepositoryContract):
         assert gated is None
         stored = await repo.get(doc.id, user_id="u")
         assert [w.gate for w in stored.trigger_subscriptions] == [None]
+
+    async def test_every_users_open_todo_about_a_ref_is_listed(self, repo, make_doc):
+        desk = {"source": ExternalRefSource.INBOX_DESK, "id": "gmail"}
+        mine = await repo.create(make_doc(user_id="u1", external_ref=desk))
+        theirs = await repo.create(make_doc(user_id="u2", external_ref=desk))
+        await repo.create(make_doc(user_id="u3", external_ref=desk, completed=True))
+        await repo.create(
+            make_doc(
+                user_id="u1", external_ref={"source": ExternalRefSource.GMAIL_THREAD, "id": "t"}
+            )
+        )
+        await repo.create(make_doc(user_id="u1"))
+
+        found = await repo.list_open_by_external_ref_all_users(
+            ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
+        )
+
+        assert sorted(t.id for t in found) == sorted([mine.id, theirs.id])
 
     async def test_count_trigger_references_counts_across_users(self, repo, make_doc):
         sub = _subscription(

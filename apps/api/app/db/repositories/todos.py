@@ -434,6 +434,10 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
             {"user_id": user_id, **_external_ref_filter(ref)}, sort=[("created_at", -1)]
         )
 
+    async def list_open_by_external_ref_all_users(self, ref: ExternalRef) -> list[TodoDocument]:
+        """Every user's open todo about ref, like each user's Inbox desk; uncached."""
+        return await self._find({**_external_ref_filter(ref), "completed": False})
+
     async def list_active_tracked_all_users(self, *, limit: int) -> list[TodoDocument]:
         """Every user's active tracked todos — the maintenance sweep's scan set."""
         return await self._find({"completed": False, "labels": GAIA_TRACKED_LABEL}, limit=limit)
