@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 import json
 from unittest.mock import AsyncMock, patch
 
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import StructuredTool
 from pydantic import ValidationError
 import pytest
@@ -21,13 +22,14 @@ from app.agents.tools.execute.dispatch import (
     dispatch_tool,
 )
 from app.agents.tools.execute.execute_tool import build_execute_tool, execute
+from app.agents.tools.execute.unwrap import unwrap_execute_call
 from app.constants.execute import EXECUTE_TOOL_NAME
 from app.models.execute_models import DispatchError, DispatchErrorKind
 
 MODULE = "app.agents.tools.execute.execute_tool"
 SENT_AT = datetime(2026, 10, 10, 12, 0, tzinfo=UTC)
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
-CONFIG = {"configurable": {"user_id": USER_ID}}
+CONFIG: RunnableConfig = {"configurable": {"user_id": USER_ID}}
 
 
 def _ok() -> ToolExecutionResult:
@@ -44,7 +46,7 @@ async def _invoke(tool, tool_name: str = "GMAIL_SEND_EMAIL") -> str:
 class TestDispatchTicketNames:
     """Ticket operations ride the proxy under reserved names — no bound tool, no schema; the branch runs before resolution, space checks, and validation."""
 
-    def _config(self) -> dict[str, object]:
+    def _config(self) -> RunnableConfig:
         return {
             "configurable": {
                 "thread_id": "executor_conv-1",
@@ -291,6 +293,45 @@ class TestExecuteToolCall:
         assert kwargs["tool_name"] == "GMAIL_SEND_EMAIL"
         assert kwargs["data"] == {"to": "a"}
         assert kwargs["config"]["configurable"]["user_id"] == USER_ID
+
+    @pytest.mark.regression
+    async def test_data_sent_as_a_json_encoded_object_is_dispatched_as_that_object(self) -> None:
+        # Captured from prod: the model JSON-encoded `data` (18 refused calls, 6 users).
+        with patch(f"{MODULE}.dispatch_tool", new=AsyncMock(return_value=_ok())) as dispatch:
+            await execute.ainvoke(
+                {
+                    "task_description": "Fetching last month's mail",
+                    "tool_name": "GMAIL_FETCH_MESSAGES",
+                    "data": '{"fields": ["id", "from"], "timeframe": "1m"}',
+                },
+                config=CONFIG,
+            )
+        assert dispatch.await_args.kwargs["data"] == {"fields": ["id", "from"], "timeframe": "1m"}
+
+    @pytest.mark.parametrize("data", ['["a", "b"]', "not json", "{broken"])
+    async def test_data_that_is_not_an_object_still_fails_the_args_schema(self, data: str) -> None:
+        with patch(f"{MODULE}.dispatch_tool", new=AsyncMock(return_value=_ok())) as dispatch:
+            with pytest.raises(ValidationError, match="data"):
+                await execute.ainvoke(
+                    {"task_description": "d", "tool_name": "GMAIL_SEND_EMAIL", "data": data},
+                    config=CONFIG,
+                )
+        dispatch.assert_not_awaited()
+
+    def test_the_schema_the_model_sees_still_asks_for_an_object(self) -> None:
+        assert execute.args["data"]["type"] == "object"
+
+    @pytest.mark.regression
+    def test_the_gate_and_card_see_the_same_args_dispatch_runs(self) -> None:
+        """Seen live: the card showed {} for a JSON-encoded data the proxy then ran, so the HIL gate judged empty args."""
+        call: dict[str, object] = {
+            "tool_name": "GMAIL_FETCH_MESSAGES",
+            "data": '{"timeframe": "14d"}',
+        }
+        assert unwrap_execute_call(EXECUTE_TOOL_NAME, call) == (
+            "GMAIL_FETCH_MESSAGES",
+            {"timeframe": "14d"},
+        )
 
     async def test_a_tool_name_analytics_cannot_carry_fails_the_args_schema_before_dispatch(
         self,

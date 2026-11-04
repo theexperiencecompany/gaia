@@ -4,9 +4,9 @@ Unit tests for this plumbing (tests/unit/helpers/test_agent_helpers.py,
 tests/unit/agents/test_agent_core.py et al.) each prove one hop at a time
 against a hand-built base_configurable dict. This proves the real chain:
 comms reads a real user document, the executor inherits from comms's live
-configurable, and a handoff subagent inherits from the executor's — three
+configurable, and a spawned subagent inherits from the executor's — three
 real, unmocked build_agent_config calls, chained the same way
-_core_agent_logic / prepare_executor_execution / prepare_subagent_execution
+_core_agent_logic / prepare_executor_execution / spawn_subagent
 chain them in production.
 """
 
@@ -17,6 +17,7 @@ import pytest
 from app.agents.context.assemble import assemble_context
 from app.agents.context.section_context import SectionContext, SectionScope
 from app.agents.context.tiers import AgentTier
+from app.constants.general import SPAWN_AGENT_NAME
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.users import user_repository
 from app.helpers.agent_helpers import (
@@ -25,9 +26,9 @@ from app.helpers.agent_helpers import (
     AgentTurn,
     build_agent_config,
 )
-from app.models.agent_models import AgentUserContext
+from app.models.agent_models import AgentUserContext, agent_configurable
 from app.models.todo_models import TodoDocument
-from app.models.user_models import UserDocument
+from app.models.user_models import OnboardingSubdocument, UserDocument
 from app.utils.user_preferences_utils import onboarding_preferences
 
 
@@ -39,10 +40,12 @@ class TestPreferencesSurviveTheRealMultiHopChain:
             UserDocument(
                 email="prefs-multi-hop@gaia.local",
                 name="Multi Hop",
-                onboarding={
-                    "preferences": {"profession": "architect"},
-                    "writing_style": {"summary": "warm and concise"},
-                },
+                onboarding=OnboardingSubdocument.model_validate(
+                    {
+                        "preferences": {"profession": "architect"},
+                        "writing_style": {"summary": "warm and concise"},
+                    }
+                ),
             )
         )
 
@@ -78,11 +81,11 @@ class TestPreferencesSurviveTheRealMultiHopChain:
                 agent_name="executor_agent",
             ),
             thread=AgentThread(
-                base_configurable=comms_config["configurable"],
+                base_configurable=agent_configurable(comms_config),
             ),
         )
 
-        # Hop 3 — subagent handoff. Mirrors prepare_subagent_execution. Also
+        # Hop 3 — spawned subagent. Mirrors spawn_subagent. Also
         # where the run gets bound to a real todo, seeded below.
         todo = await todo_repository.create(
             TodoDocument(user_id=real_user.id, title="Draft the quarterly update")
@@ -91,25 +94,25 @@ class TestPreferencesSurviveTheRealMultiHopChain:
             identity=AgentIdentity(
                 conversation_id="conv-multi-hop",
                 user=agent_user,
-                agent_name="gmail_agent",
+                agent_name=SPAWN_AGENT_NAME,
             ),
             thread=AgentThread(
-                base_configurable=executor_config["configurable"],
-                subagent_id="gmail_agent",
+                base_configurable=agent_configurable(executor_config),
+                subagent_id=SPAWN_AGENT_NAME,
             ),
             turn=AgentTurn(
                 active_todo_id=todo.id,
             ),
         )
 
-        configurable = subagent_config["configurable"]
+        configurable = agent_configurable(subagent_config)
         assert configurable["user_preferences"] == {"profession": "architect"}
         assert configurable["writing_style"] == {"summary": "warm and concise"}
 
         # The active-todo banner is a fresh MongoDB read at assembly time, not
         # carried through the chain above.
         ctx = SectionContext.from_configurable(
-            AgentTier.PROVIDER_SUBAGENT, configurable, SectionScope(user_id=real_user.id)
+            AgentTier.SPAWN, configurable, SectionScope(user_id=real_user.id)
         )
         assembled = await assemble_context(ctx)
 

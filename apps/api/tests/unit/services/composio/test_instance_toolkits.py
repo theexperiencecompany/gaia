@@ -7,8 +7,8 @@ import pytest
 
 from app.agents.core.subagents.registry import (
     all_subagents,
-    foreign_provider_named_in,
     get_subagent_by_id,
+    providers_named_in,
 )
 from app.config import oauth_config
 from app.config.oauth_config import (
@@ -117,7 +117,7 @@ async def test_a_loaded_toolkit_reaches_every_catalog_reader(
     assert subagent is not None
     assert subagent.managed_by == "composio"
     assert subagent.config.tool_space == "attio"
-    assert foreign_provider_named_in("add the deal to Attio", "gmail") == subagent
+    assert providers_named_in("add the deal to Attio") == [subagent]
     config_item = next(i for i in build_integrations_config().integrations if i.id == "attio")
     assert config_item.origin == "instance"
     assert config_item.icon_url == ATTIO.logo

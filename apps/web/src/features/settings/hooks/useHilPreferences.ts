@@ -11,7 +11,8 @@ const HIL_PREFS_KEY = ["hil", "preferences"] as const;
 
 /** One tool's desired approval setting, alongside the default it deviates from. */
 export interface ToolApprovalUpdate {
-  name: string;
+  /** The server-issued HIL key, never the tool's display name. */
+  approvalKey: string;
   ask: boolean;
   destructive: boolean;
 }
@@ -37,8 +38,13 @@ export function useHilPreferences() {
   });
 
   const overrideMutation = useMutation({
-    mutationFn: ({ name, ask }: { name: string; ask: boolean | null }) =>
-      approvalsApi.setToolOverride(name, ask),
+    mutationFn: ({
+      approvalKey,
+      ask,
+    }: {
+      approvalKey: string;
+      ask: boolean | null;
+    }) => approvalsApi.setToolOverride(approvalKey, ask),
     onSuccess: (data) => {
       qc.setQueryData(HIL_PREFS_KEY, data);
     },
@@ -54,7 +60,7 @@ export function useHilPreferences() {
     mutationFn: async ([first, ...rest]: ToolApprovalUpdate[]) => {
       const save = (update: ToolApprovalUpdate) =>
         approvalsApi.setToolOverride(
-          update.name,
+          update.approvalKey,
           toolOverrideValue(update.ask, update.destructive),
         );
       let latest = await save(first);
@@ -77,9 +83,13 @@ export function useHilPreferences() {
       if (updates.length > 0) bulkMutation.mutate(updates);
     },
     /** Set whether a tool needs approval, storing only diffs from its default. */
-    setToolApproval: (name: string, ask: boolean, destructive: boolean) =>
+    setToolApproval: (
+      approvalKey: string,
+      ask: boolean,
+      destructive: boolean,
+    ) =>
       overrideMutation.mutate({
-        name,
+        approvalKey,
         ask: toolOverrideValue(ask, destructive),
       }),
   };

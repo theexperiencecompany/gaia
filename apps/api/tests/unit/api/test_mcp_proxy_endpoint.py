@@ -42,10 +42,13 @@ class TestProxyToolCall:
                 "app.api.v1.endpoints.mcp_proxy.get_mcp_client",
                 new_callable=AsyncMock,
             ) as mock_get,
+            patch(
+                "app.api.v1.endpoints.mcp_proxy.call_tool_on_server", new_callable=AsyncMock
+            ) as mock_fn,
             patch("app.api.v1.endpoints.mcp_proxy.capture") as mock_capture,
         ):
             mock_client = AsyncMock()
-            mock_client.call_tool_on_server.return_value = mock_result
+            mock_fn.return_value = mock_result
             mock_get.return_value = mock_client
             resp = await client.post(
                 f"{API}/proxy/tool-call",
@@ -71,10 +74,13 @@ class TestProxyToolCall:
                 "app.api.v1.endpoints.mcp_proxy.get_mcp_client",
                 new_callable=AsyncMock,
             ) as mock_get,
+            patch(
+                "app.api.v1.endpoints.mcp_proxy.call_tool_on_server", new_callable=AsyncMock
+            ) as mock_fn,
             patch("app.api.v1.endpoints.mcp_proxy.capture") as mock_capture,
         ):
             mock_client = AsyncMock()
-            mock_client.call_tool_on_server.return_value = mock_result
+            mock_fn.return_value = mock_result
             mock_get.return_value = mock_client
             resp = await client.post(
                 f"{API}/proxy/tool-call",
@@ -90,12 +96,16 @@ class TestProxyToolCall:
         )
 
     async def test_tool_call_service_error(self, client: AsyncClient) -> None:
-        with patch(
-            "app.api.v1.endpoints.mcp_proxy.get_mcp_client",
-            new_callable=AsyncMock,
-        ) as mock_get:
+        with (
+            patch(
+                "app.api.v1.endpoints.mcp_proxy.get_mcp_client", new_callable=AsyncMock
+            ) as mock_get,
+            patch(
+                "app.api.v1.endpoints.mcp_proxy.call_tool_on_server", new_callable=AsyncMock
+            ) as mock_fn,
+        ):
             mock_client = AsyncMock()
-            mock_client.call_tool_on_server.side_effect = RuntimeError("conn refused")
+            mock_fn.side_effect = RuntimeError("conn refused")
             mock_get.return_value = mock_client
             resp = await client.post(
                 f"{API}/proxy/tool-call",
@@ -143,12 +153,16 @@ class TestProxyResourcesList:
             resources=[Resource(uri=AnyUrl("file:///a.txt"), name="a.txt")],
             nextCursor="cur1",
         )
-        with patch(
-            "app.api.v1.endpoints.mcp_proxy.get_mcp_client",
-            new_callable=AsyncMock,
-        ) as mock_get:
+        with (
+            patch(
+                "app.api.v1.endpoints.mcp_proxy.get_mcp_client", new_callable=AsyncMock
+            ) as mock_get,
+            patch(
+                "app.api.v1.endpoints.mcp_proxy.list_resources_on_server", new_callable=AsyncMock
+            ) as mock_fn,
+        ):
             mock_client = AsyncMock()
-            mock_client.list_resources_on_server.return_value = mock_result
+            mock_fn.return_value = mock_result
             mock_get.return_value = mock_client
             resp = await client.post(
                 f"{API}/proxy/resources/list",
@@ -161,12 +175,16 @@ class TestProxyResourcesList:
 
     async def test_resources_list_with_cursor(self, client: AsyncClient) -> None:
         mock_result = ListResourcesResult(resources=[])
-        with patch(
-            "app.api.v1.endpoints.mcp_proxy.get_mcp_client",
-            new_callable=AsyncMock,
-        ) as mock_get:
+        with (
+            patch(
+                "app.api.v1.endpoints.mcp_proxy.get_mcp_client", new_callable=AsyncMock
+            ) as mock_get,
+            patch(
+                "app.api.v1.endpoints.mcp_proxy.list_resources_on_server", new_callable=AsyncMock
+            ) as mock_fn,
+        ):
             mock_client = AsyncMock()
-            mock_client.list_resources_on_server.return_value = mock_result
+            mock_fn.return_value = mock_result
             mock_get.return_value = mock_client
             resp = await client.post(
                 f"{API}/proxy/resources/list",
@@ -176,12 +194,16 @@ class TestProxyResourcesList:
         assert resp.json()["resources"] == []
 
     async def test_resources_list_service_error(self, client: AsyncClient) -> None:
-        with patch(
-            "app.api.v1.endpoints.mcp_proxy.get_mcp_client",
-            new_callable=AsyncMock,
-        ) as mock_get:
+        with (
+            patch(
+                "app.api.v1.endpoints.mcp_proxy.get_mcp_client", new_callable=AsyncMock
+            ) as mock_get,
+            patch(
+                "app.api.v1.endpoints.mcp_proxy.list_resources_on_server", new_callable=AsyncMock
+            ) as mock_fn,
+        ):
             mock_client = AsyncMock()
-            mock_client.list_resources_on_server.side_effect = RuntimeError("boom")
+            mock_fn.side_effect = RuntimeError("boom")
             mock_get.return_value = mock_client
             resp = await client.post(
                 f"{API}/proxy/resources/list",
@@ -205,12 +227,17 @@ class TestProxyResourceTemplatesList:
         mock_result = ListResourceTemplatesResult(
             resourceTemplates=[ResourceTemplate(uriTemplate="file:///{path}", name="file")]
         )
-        with patch(
-            "app.api.v1.endpoints.mcp_proxy.get_mcp_client",
-            new_callable=AsyncMock,
-        ) as mock_get:
+        with (
+            patch(
+                "app.api.v1.endpoints.mcp_proxy.get_mcp_client", new_callable=AsyncMock
+            ) as mock_get,
+            patch(
+                "app.api.v1.endpoints.mcp_proxy.list_resource_templates_on_server",
+                new_callable=AsyncMock,
+            ) as mock_fn,
+        ):
             mock_client = AsyncMock()
-            mock_client.list_resource_templates_on_server.return_value = mock_result
+            mock_fn.return_value = mock_result
             mock_get.return_value = mock_client
             resp = await client.post(
                 f"{API}/proxy/resources/templates/list",
@@ -226,12 +253,17 @@ class TestProxyResourceTemplatesList:
             resourceTemplates=[ResourceTemplate(uriTemplate="file:///{x}", name="t")],
             nextCursor="c2",
         )
-        with patch(
-            "app.api.v1.endpoints.mcp_proxy.get_mcp_client",
-            new_callable=AsyncMock,
-        ) as mock_get:
+        with (
+            patch(
+                "app.api.v1.endpoints.mcp_proxy.get_mcp_client", new_callable=AsyncMock
+            ) as mock_get,
+            patch(
+                "app.api.v1.endpoints.mcp_proxy.list_resource_templates_on_server",
+                new_callable=AsyncMock,
+            ) as mock_fn,
+        ):
             mock_client = AsyncMock()
-            mock_client.list_resource_templates_on_server.return_value = mock_result
+            mock_fn.return_value = mock_result
             mock_get.return_value = mock_client
             resp = await client.post(
                 f"{API}/proxy/resources/templates/list",
@@ -243,12 +275,17 @@ class TestProxyResourceTemplatesList:
         assert data["next_cursor"] == "c2"
 
     async def test_templates_list_service_error(self, client: AsyncClient) -> None:
-        with patch(
-            "app.api.v1.endpoints.mcp_proxy.get_mcp_client",
-            new_callable=AsyncMock,
-        ) as mock_get:
+        with (
+            patch(
+                "app.api.v1.endpoints.mcp_proxy.get_mcp_client", new_callable=AsyncMock
+            ) as mock_get,
+            patch(
+                "app.api.v1.endpoints.mcp_proxy.list_resource_templates_on_server",
+                new_callable=AsyncMock,
+            ) as mock_fn,
+        ):
             mock_client = AsyncMock()
-            mock_client.list_resource_templates_on_server.side_effect = RuntimeError("err")
+            mock_fn.side_effect = RuntimeError("err")
             mock_get.return_value = mock_client
             resp = await client.post(
                 f"{API}/proxy/resources/templates/list",
@@ -271,12 +308,16 @@ class TestProxyResourceRead:
         mock_result = ReadResourceResult(
             contents=[TextResourceContents(uri=AnyUrl("file:///a.txt"), text="hello world")]
         )
-        with patch(
-            "app.api.v1.endpoints.mcp_proxy.get_mcp_client",
-            new_callable=AsyncMock,
-        ) as mock_get:
+        with (
+            patch(
+                "app.api.v1.endpoints.mcp_proxy.get_mcp_client", new_callable=AsyncMock
+            ) as mock_get,
+            patch(
+                "app.api.v1.endpoints.mcp_proxy.read_resource_on_server", new_callable=AsyncMock
+            ) as mock_fn,
+        ):
             mock_client = AsyncMock()
-            mock_client.read_resource_on_server.return_value = mock_result
+            mock_fn.return_value = mock_result
             mock_get.return_value = mock_client
             resp = await client.post(
                 f"{API}/proxy/resources/read",
@@ -291,12 +332,16 @@ class TestProxyResourceRead:
         assert data["contents"][0]["text"] == "hello world"
 
     async def test_resource_read_service_error(self, client: AsyncClient) -> None:
-        with patch(
-            "app.api.v1.endpoints.mcp_proxy.get_mcp_client",
-            new_callable=AsyncMock,
-        ) as mock_get:
+        with (
+            patch(
+                "app.api.v1.endpoints.mcp_proxy.get_mcp_client", new_callable=AsyncMock
+            ) as mock_get,
+            patch(
+                "app.api.v1.endpoints.mcp_proxy.read_resource_on_server", new_callable=AsyncMock
+            ) as mock_fn,
+        ):
             mock_client = AsyncMock()
-            mock_client.read_resource_on_server.side_effect = RuntimeError("boom")
+            mock_fn.side_effect = RuntimeError("boom")
             mock_get.return_value = mock_client
             resp = await client.post(
                 f"{API}/proxy/resources/read",
@@ -325,12 +370,16 @@ class TestProxyPromptsList:
 
     async def test_prompts_list_success(self, client: AsyncClient) -> None:
         mock_result = ListPromptsResult(prompts=[Prompt(name="greet", description="Say hi")])
-        with patch(
-            "app.api.v1.endpoints.mcp_proxy.get_mcp_client",
-            new_callable=AsyncMock,
-        ) as mock_get:
+        with (
+            patch(
+                "app.api.v1.endpoints.mcp_proxy.get_mcp_client", new_callable=AsyncMock
+            ) as mock_get,
+            patch(
+                "app.api.v1.endpoints.mcp_proxy.list_prompts_on_server", new_callable=AsyncMock
+            ) as mock_fn,
+        ):
             mock_client = AsyncMock()
-            mock_client.list_prompts_on_server.return_value = mock_result
+            mock_fn.return_value = mock_result
             mock_get.return_value = mock_client
             resp = await client.post(
                 f"{API}/proxy/prompts/list",
@@ -343,12 +392,16 @@ class TestProxyPromptsList:
 
     async def test_prompts_list_with_cursor(self, client: AsyncClient) -> None:
         mock_result = ListPromptsResult(prompts=[], nextCursor="c3")
-        with patch(
-            "app.api.v1.endpoints.mcp_proxy.get_mcp_client",
-            new_callable=AsyncMock,
-        ) as mock_get:
+        with (
+            patch(
+                "app.api.v1.endpoints.mcp_proxy.get_mcp_client", new_callable=AsyncMock
+            ) as mock_get,
+            patch(
+                "app.api.v1.endpoints.mcp_proxy.list_prompts_on_server", new_callable=AsyncMock
+            ) as mock_fn,
+        ):
             mock_client = AsyncMock()
-            mock_client.list_prompts_on_server.return_value = mock_result
+            mock_fn.return_value = mock_result
             mock_get.return_value = mock_client
             resp = await client.post(
                 f"{API}/proxy/prompts/list",
@@ -358,12 +411,16 @@ class TestProxyPromptsList:
         assert resp.json()["next_cursor"] == "c3"
 
     async def test_prompts_list_service_error(self, client: AsyncClient) -> None:
-        with patch(
-            "app.api.v1.endpoints.mcp_proxy.get_mcp_client",
-            new_callable=AsyncMock,
-        ) as mock_get:
+        with (
+            patch(
+                "app.api.v1.endpoints.mcp_proxy.get_mcp_client", new_callable=AsyncMock
+            ) as mock_get,
+            patch(
+                "app.api.v1.endpoints.mcp_proxy.list_prompts_on_server", new_callable=AsyncMock
+            ) as mock_fn,
+        ):
             mock_client = AsyncMock()
-            mock_client.list_prompts_on_server.side_effect = RuntimeError("err")
+            mock_fn.side_effect = RuntimeError("err")
             mock_get.return_value = mock_client
             resp = await client.post(
                 f"{API}/proxy/prompts/list",
