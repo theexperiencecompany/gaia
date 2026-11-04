@@ -8,7 +8,6 @@ unlinked.
 
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from enum import Enum
 from urllib.parse import quote
 
 from pydantic import BaseModel, ConfigDict
@@ -19,8 +18,10 @@ from app.constants.platform_links import (
     IMESSAGE_PENDING_REGISTRATION_TTL,
     LINK_CONFLICT_ACCOUNT_HAS_OTHER,
     LINK_CONFLICT_PLATFORM_TAKEN,
+    Platform,
 )
 from app.db.redis import redis_cache
+from app.db.repositories.bot_sessions import bot_session_repository
 from app.db.repositories.pending_platform_registrations import (
     pending_platform_registration_repository,
 )
@@ -46,31 +47,6 @@ from app.utils.errors import AppError, create_error
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import IntegrationDisconnected
 from shared.py.wide_events import log
-
-
-class Platform(str, Enum):
-    """Supported platforms for account linking."""
-
-    DISCORD = "discord"
-    SLACK = "slack"
-    TELEGRAM = "telegram"
-    WHATSAPP = "whatsapp"
-    IMESSAGE = "imessage"
-
-    @classmethod
-    def is_valid(cls, platform: str) -> bool:
-        """Check if platform is supported."""
-        try:
-            cls(platform)
-            return True
-        except ValueError:
-            return False
-
-    @classmethod
-    def values(cls) -> list[str]:
-        """Get list of all platform values."""
-        return [p.value for p in cls]
-
 
 PREMIUM_PLATFORMS: frozenset[str] = frozenset({Platform.IMESSAGE.value})
 
@@ -578,6 +554,13 @@ class PlatformLinkService:
         result = await user_repository.unlink_platform(user_id, platform)
         if result is None:
             raise ValueError("User not found")
+
+        # A session outlives nothing but its link: left in place, the next GAIA user
+        # this account links to would continue this user's conversation and agent thread.
+        if entry is not None:
+            await bot_session_repository.delete_for_platform_user(
+                platform=platform, platform_user_id=entry["platformUserId"]
+            )
 
         if platform != Platform.IMESSAGE.value:
             await pending_platform_registration_repository.delete_for_user(user_id, platform)

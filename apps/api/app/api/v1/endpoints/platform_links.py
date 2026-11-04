@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.constants.cache import PLATFORM_LINK_TOKEN_PREFIX
-from app.constants.platform_links import PLATFORM_LINK_CODE_FEATURE_KEY
+from app.constants.platform_links import PLATFORM_LINK_CODE_FEATURE_KEY, Platform
 from app.db.redis import redis_cache
 from app.decorators import enforce_rate_limit
 from app.models.bot_models import LinkTokenRecord
@@ -28,7 +28,6 @@ from app.services.platform_link_code_service import (
 )
 from app.services.platform_link_completion import complete_platform_link
 from app.services.platform_link_service import (
-    Platform,
     PlatformLinkService,
     disconnect_platform_account,
     require_platform_plan,

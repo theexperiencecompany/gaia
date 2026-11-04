@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, call, patch
 from bson import ObjectId
 import pytest
 
-from app.constants.platform_links import IMESSAGE_PENDING_REGISTRATION_TTL
+from app.constants.platform_links import IMESSAGE_PENDING_REGISTRATION_TTL, Platform
 from app.models.payment_models import PlanType
 from app.models.platform_models import (
     DisconnectPlatformResponse,
@@ -22,7 +22,6 @@ from app.models.platform_models import (
 )
 from app.models.user_models import UserDocument
 from app.services.platform_link_service import (
-    Platform,
     PlatformLinkService,
     disconnect_platform_account,
     platform_requires_upgrade,
@@ -79,6 +78,13 @@ def mock_pending_repo(sample_user_id):
         repo.find_older_than = AsyncMock(return_value=[])
         repo.delete_for_user = AsyncMock(return_value=0)
         repo.delete_by_platform_user_id = AsyncMock(return_value=0)
+        yield repo
+
+
+@pytest.fixture(autouse=True)
+def mock_bot_session_repo():
+    with patch("app.services.platform_link_service.bot_session_repository") as repo:
+        repo.delete_for_platform_user = AsyncMock(return_value=0)
         yield repo
 
 
@@ -192,6 +198,32 @@ class TestLinkAccount:
 
         with pytest.raises(ValueError, match="already has a different discord account linked"):
             await PlatformLinkService.link_account(sample_user_id, "discord", "new_id")
+
+    async def test_unlink_ends_the_platform_accounts_bot_sessions(
+        self, mock_repo, mock_bot_session_repo, sample_user_id
+    ):
+        mock_repo.get.return_value = _user(
+            id=sample_user_id, platform_links={"telegram": {"id": "tg-42"}}
+        )
+        mock_repo.unlink_platform.return_value = _user(id=sample_user_id)
+
+        await PlatformLinkService.unlink_account(sample_user_id, "telegram")
+
+        mock_bot_session_repo.delete_for_platform_user.assert_awaited_once_with(
+            platform="telegram", platform_user_id="tg-42"
+        )
+
+    async def test_unlink_with_no_link_on_that_platform_deletes_no_sessions(
+        self, mock_repo, mock_bot_session_repo, sample_user_id
+    ):
+        mock_repo.get.return_value = _user(
+            id=sample_user_id, platform_links={"discord": {"id": "d-1"}}
+        )
+        mock_repo.unlink_platform.return_value = _user(id=sample_user_id)
+
+        await PlatformLinkService.unlink_account(sample_user_id, "telegram")
+
+        mock_bot_session_repo.delete_for_platform_user.assert_not_awaited()
 
     async def test_raises_on_user_not_found(self, mock_repo, sample_user_id):
         mock_repo.get.return_value = None
@@ -996,7 +1028,9 @@ class TestDisconnectPlatformAccount:
         [event] = posthog_events
         assert event["event"] == IntegrationDisconnected.event
         assert event["distinct_id"] == sample_user_id
-        assert event["properties"]["integration_id"] == "discord"
+        properties = event["properties"]
+        assert isinstance(properties, dict)
+        assert properties["integration_id"] == "discord"
 
     async def test_never_linked_platform_is_a_404_not_a_silent_noop(self, sample_user_id):
         with (
