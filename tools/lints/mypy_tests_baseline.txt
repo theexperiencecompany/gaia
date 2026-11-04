@@ -576,8 +576,6 @@ apps/api/tests/unit/tools/test_subagent_control_tool.py	arg-type
 apps/api/tests/unit/tools/test_subscription_tool.py	attr-defined
 apps/api/tests/unit/tools/test_support_tool.py	attr-defined
 apps/api/tests/unit/tools/test_todo_tools.py	attr-defined
-apps/api/tests/unit/tools/test_tracked_todo_subscription_tools.py	arg-type
-apps/api/tests/unit/tools/test_tracked_todo_subscription_tools.py	attr-defined
 apps/api/tests/unit/tools/test_tracked_todo_tools.py	arg-type
 apps/api/tests/unit/tools/test_tracked_todo_tools.py	attr-defined
 apps/api/tests/unit/tools/test_twitter_tool.py	call-arg
