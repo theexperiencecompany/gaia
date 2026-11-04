@@ -148,6 +148,35 @@ class TestFormatWorkflowExecutionMessage:
         assert "DB Step" in result
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("trigger_type", ["gmail", None], ids=["email", "other"])
+    async def test_a_run_let_through_quiet_hours_is_told_to_say_why(
+        self, trigger_type: str | None
+    ) -> None:
+        selected = SelectedWorkflowData(id="wf9", title="Replies", description="d", steps=[])
+        reason = "someone is waiting on you for a meeting happening soon"
+        context = {
+            "type": trigger_type,
+            "quiet_hours": {"kind": "bypass", "reason": reason},
+            "workflow_id": "wf9",
+        }
+
+        with patch(
+            "app.helpers.message_helpers.WorkflowService.get_workflow",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            let_through = await format_workflow_execution_message(
+                selected, user_id="u1", trigger_context=context
+            )
+            held = await format_workflow_execution_message(
+                selected, user_id="u1", trigger_context={**context, "quiet_hours": {"kind": "hold"}}
+            )
+
+        assert f"quiet-hours bypass: {reason}." in let_through
+        assert f"I'm interrupting your quiet hours because {reason}." in let_through
+        assert "quiet-hours bypass" not in held
+
+    @pytest.mark.asyncio
     async def test_manual_fallback_to_selected_data(self) -> None:
         selected = SelectedWorkflowData(
             id="wf2",

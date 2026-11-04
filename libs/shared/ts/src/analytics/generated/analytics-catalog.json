@@ -7837,14 +7837,14 @@
       "class": "TriggerGateDecided",
       "owner": "server",
       "domain": "trigger",
-      "description": "A trigger gate decided whether a fired event runs its workflow or tracked todo.\n\n    outcome is what the run did and reason is why, so a shadow gate (enforced\n    false) reports reason jev_skip with outcome run.",
+      "description": "A trigger gate decided what a fired event does to its workflow or tracked todo.\n\n    outcome is what the run did and reason is why, so a shadow gate (enforced\n    false) reports reason jev_skip with outcome run. Inside the user's quiet hours\n    an event is held for the morning or let through now; urgent_choice names why\n    a let-through one could not wait.",
       "previous_names": [],
       "budget_per_user_day": 500,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "A trigger gate decided whether a fired event runs its workflow or tracked todo.\n\noutcome is what the run did and reason is why, so a shadow gate (enforced\nfalse) reports reason jev_skip with outcome run.",
+        "description": "A trigger gate decided what a fired event does to its workflow or tracked todo.\n\noutcome is what the run did and reason is why, so a shadow gate (enforced\nfalse) reports reason jev_skip with outcome run. Inside the user's quiet hours\nan event is held for the morning or let through now; urgent_choice names why\na let-through one could not wait.",
         "properties": {
           "owner_type": {
             "enum": ["workflow", "todo"],
@@ -7875,7 +7875,7 @@
             "title": "Author"
           },
           "outcome": {
-            "enum": ["run", "skip"],
+            "enum": ["run", "skip", "hold", "bypass"],
             "title": "Outcome",
             "type": "string"
           },
@@ -7883,6 +7883,8 @@
             "enum": [
               "jev_run",
               "jev_skip",
+              "jev_urgent",
+              "jev_can_wait",
               "free_run",
               "jev_error",
               "jev_timeout",
@@ -7891,6 +7893,19 @@
             ],
             "title": "Reason",
             "type": "string"
+          },
+          "urgent_choice": {
+            "anyOf": [
+              {
+                "enum": ["incident", "service_down", "meeting"],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Urgent Choice"
           },
           "enforced": {
             "title": "Enforced",

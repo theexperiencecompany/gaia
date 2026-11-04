@@ -1,5 +1,6 @@
 """Unified workflow queue service for background job management."""
 
+from datetime import datetime
 import hashlib
 import json
 
@@ -47,9 +48,13 @@ class WorkflowQueueService:
 
     @staticmethod
     async def queue_workflow_execution(
-        workflow_id: str, user_id: str, context: dict[str, object] | None = None
+        workflow_id: str,
+        user_id: str,
+        context: dict[str, object] | None = None,
+        *,
+        defer_until: datetime | None = None,
     ) -> bool:
-        """Queue workflow execution as a background task.
+        """Queue workflow execution as a background task, now or at defer_until.
 
         Uses a deterministic _job_id hashed from workflow + user + context so
         a duplicate enqueue collapses to one run while queued/executing (ARQ
@@ -69,7 +74,12 @@ class WorkflowQueueService:
             )
 
             job = await enqueue_worker_job(
-                pool, "execute_workflow_by_id", workflow_id, context or {}, _job_id=job_id
+                pool,
+                "execute_workflow_by_id",
+                workflow_id,
+                context or {},
+                _job_id=job_id,
+                _defer_until=defer_until,
             )
 
             if job is None:
@@ -85,8 +95,8 @@ class WorkflowQueueService:
             log.set(
                 workflow={"id": workflow_id, "status": "execution_queued"},
                 arq_job_id=job.job_id,
-                queue_mode="immediate",
-                defer_seconds=0,
+                queue_mode="deferred" if defer_until else "immediate",
+                defer_until=defer_until.isoformat() if defer_until else None,
             )
             log.info(
                 f"{LogTag.WORKFLOW} Queued workflow execution for with job ID",

@@ -287,16 +287,7 @@ async def _execute_todo_with_retry(
         return owner
     user_data, user_tz = owner
 
-    # Cost wall before any LLM work: a trigger fire is not a user action. The
-    # window opens first, so a walled run still counts as its window's one run.
-    if origin is not None:
-        log.set(trigger_events=1 + len(coalesced))
-        await open_trigger_window(trigger_window(doc))
-        await enforce_daily_cost_budget(user_id, feature_key=TRIGGER_TODO_FEATURE_KEY)
-    elif doc.external_ref is not None and doc.external_ref.source in WAKE_OPENINGS:
-        # Its steps read what changed, so a scheduled run answers every wake-up held for it.
-        answered = await drain_todo_trigger_events(todo_id)
-        log.set(trigger_events_answered=len(answered or []))
+    await _begin_run(doc, origin, coalesced)
 
     outcome = "success"
     try:
@@ -331,6 +322,24 @@ async def _execute_todo_with_retry(
             todo_id, user_id=user_id, update=TodoUpdate(gaia_retry_count=0)
         )
     return f"{outcome}:{todo_id}"
+
+
+async def _begin_run(
+    doc: TodoDocument, origin: TriggerOrigin | None, coalesced: Sequence[TriggerOrigin]
+) -> None:
+    """Settle what a run answers for before any LLM work.
+
+    A trigger run opens its window, then meets the cost wall, so a walled run still
+    counts as its window's one run: a trigger fire is not a user action. A desk's
+    scheduled run answers every wake-up held for it, since its steps read what changed.
+    """
+    if origin is not None:
+        log.set(trigger_events=1 + len(coalesced))
+        await open_trigger_window(trigger_window(doc))
+        await enforce_daily_cost_budget(doc.user_id, feature_key=TRIGGER_TODO_FEATURE_KEY)
+    elif doc.external_ref is not None and doc.external_ref.source in WAKE_OPENINGS:
+        answered = await drain_todo_trigger_events(doc.id)
+        log.set(trigger_events_answered=len(answered or []))
 
 
 async def _schedule_retry(

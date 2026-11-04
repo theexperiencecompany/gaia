@@ -2283,7 +2283,11 @@ class TestWorkflowQueueService:
             "execute_workflow_by_id:" + hashlib.sha256(dedup_payload.encode()).hexdigest()[:32]
         )
         mock_pool.enqueue_job.assert_awaited_once_with(
-            "execute_workflow_by_id", WORKFLOW_ID, {"key": "val"}, _job_id=expected_job_id
+            "execute_workflow_by_id",
+            WORKFLOW_ID,
+            {"key": "val"},
+            _job_id=expected_job_id,
+            _defer_until=None,
         )
 
     @patch("app.services.workflow.queue_service.RedisPoolManager")
@@ -2309,7 +2313,7 @@ class TestWorkflowQueueService:
         )
         # context defaults to empty dict
         mock_pool.enqueue_job.assert_awaited_once_with(
-            "execute_workflow_by_id", WORKFLOW_ID, {}, _job_id=expected_job_id
+            "execute_workflow_by_id", WORKFLOW_ID, {}, _job_id=expected_job_id, _defer_until=None
         )
 
     @patch("app.services.workflow.queue_service.RedisPoolManager")

@@ -9,10 +9,12 @@ __all__ = ["TriggerGateDecided"]
 
 
 class TriggerGateDecided(ServerEvent):
-    """A trigger gate decided whether a fired event runs its workflow or tracked todo.
+    """A trigger gate decided what a fired event does to its workflow or tracked todo.
 
     outcome is what the run did and reason is why, so a shadow gate (enforced
-    false) reports reason jev_skip with outcome run.
+    false) reports reason jev_skip with outcome run. Inside the user's quiet hours
+    an event is held for the morning or let through now; urgent_choice names why
+    a let-through one could not wait.
     """
 
     event: ClassVar[str] = "trigger:gate_decided"
@@ -23,15 +25,18 @@ class TriggerGateDecided(ServerEvent):
     trigger_name: Identifier
     gate_kind: Literal["authored", "system"]
     author: Literal["gaia", "user"] | None = None
-    outcome: Literal["run", "skip"]
+    outcome: Literal["run", "skip", "hold", "bypass"]
     reason: Literal[
         "jev_run",
         "jev_skip",
+        "jev_urgent",
+        "jev_can_wait",
         "free_run",
         "jev_error",
         "jev_timeout",
         "jev_malformed",
         "jev_unconfigured",
     ]
+    urgent_choice: Literal["incident", "service_down", "meeting"] | None = None
     enforced: bool
     latency_ms: int | None = None

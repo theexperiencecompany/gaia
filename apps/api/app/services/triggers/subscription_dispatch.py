@@ -42,9 +42,18 @@ from app.services.triggers.condition_matching import conditions_match
 from app.services.triggers.todo_trigger_window import (
     TODO_TRIGGER_WINDOW_CLAIMED,
     buffer_todo_trigger_event,
+    buffer_todo_trigger_event_until,
     trigger_window,
 )
-from app.services.triggers.trigger_gate import GatedJob, GateSkip, automation_text, decide_gate
+from app.services.triggers.trigger_gate import (
+    GateBypass,
+    GatedJob,
+    GateHold,
+    GateRun,
+    GateSkip,
+    automation_text,
+    decide_gate,
+)
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
 from shared.py.analytics import UserId
@@ -161,7 +170,10 @@ async def _fire_if_matching(
     if isinstance(verdict, GateSkip):
         await record_activity(todo.id, todo.user_id, TodoActivityEvent.RUN_SKIPPED, verdict.summary)
         return False
-    if subscription.action is SubscriptionAction.EXECUTE:
+    if not isinstance(verdict, GateRun):
+        # Quiet hours decide when it runs: at their end, or now because it cannot wait.
+        coalesced = isinstance(verdict, GateHold)
+    elif subscription.action is SubscriptionAction.EXECUTE:
         # A run costs an agent turn, so the todo runs once per window and an event
         # inside it rides the next run instead of being dropped.
         window = trigger_window(todo)
@@ -182,7 +194,7 @@ async def _fire_if_matching(
         )
         return False
 
-    await fire_subscription(todo, subscription, payload, coalesced=coalesced)
+    await fire_subscription(todo, subscription, payload, coalesced=coalesced, verdict=verdict)
     return True
 
 
@@ -192,9 +204,13 @@ async def fire_subscription(
     payload: dict[str, object],
     *,
     coalesced: bool = False,
+    verdict: GateRun | GateHold | GateBypass = GateRun(),
 ) -> None:
-    """Run a subscription's action for an event already matched to it, and count the fire."""
-    await _perform_action(todo, subscription, payload, coalesced=coalesced)
+    """Run a subscription's action for an event already matched to it, and count the fire.
+
+    A held verdict runs it when the user's quiet hours end; a bypass runs it now.
+    """
+    await _perform_action(todo, subscription, payload, coalesced=coalesced, verdict=verdict)
     # After the action, not on arrival: an event that was filtered out or
     # suppressed by cooldown is not a fire, and counting it as one would make
     # every funnel off this event read high.
@@ -241,12 +257,24 @@ async def _claim_slot(
     return bool(claimed)
 
 
+def _fire_note(verdict: GateRun | GateHold | GateBypass, *, coalesced: bool) -> str:
+    """Say when the fired action runs, for the trigger_fired activity line."""
+    match verdict:
+        case GateHold():
+            return "; held until your quiet hours end"
+        case GateBypass():
+            return f". {verdict.stamp.summary}"
+        case GateRun():
+            return "; held for the todo's next run" if coalesced else ""
+
+
 async def _perform_action(
     todo: TodoDocument,
     subscription: TriggerSubscription,
     payload: dict[str, object],
     *,
     coalesced: bool,
+    verdict: GateRun | GateHold | GateBypass,
 ) -> None:
     log.set(
         component="trigger_subscription",
@@ -257,17 +285,17 @@ async def _perform_action(
         subscription_action=subscription.action.value,
         coalesced=coalesced,
     )
-    held = "; held for the todo's next run" if coalesced else ""
+    note = _fire_note(verdict, coalesced=coalesced)
     await record_activity(
         todo.id,
         todo.user_id,
         TodoActivityEvent.TRIGGER_FIRED,
-        f"{subscription.trigger_name} matched; action: {subscription.action.value}{held}",
+        f"{subscription.trigger_name} matched; action: {subscription.action.value}{note}",
     )
     try:
         match subscription.action:
             case SubscriptionAction.EXECUTE:
-                await _execute(todo, subscription, payload, coalesced=coalesced)
+                await _execute(todo, subscription, payload, coalesced=coalesced, verdict=verdict)
             case SubscriptionAction.NOTIFY:
                 await _notify(todo, subscription)
             case SubscriptionAction.COMPLETE:
@@ -291,8 +319,9 @@ async def _execute(
     payload: dict[str, object],
     *,
     coalesced: bool,
+    verdict: GateRun | GateHold | GateBypass,
 ) -> None:
-    """Run the todo now, stamped with where it came from, or hold the event for its next run.
+    """Run the todo now, stamped with where it came from, or hold the event for a later run.
 
     A held event that cannot be buffered runs now: an extra run is recoverable,
     a lost reply is not.
@@ -301,8 +330,13 @@ async def _execute(
         subscription_id=subscription.id,
         trigger_name=subscription.trigger_name,
         payload=payload,
+        quiet_hours_bypass=verdict.stamp if isinstance(verdict, GateBypass) else None,
     )
-    if coalesced and await buffer_todo_trigger_event(todo.id, origin):
+    if isinstance(verdict, GateHold):
+        if await buffer_todo_trigger_event_until(todo.id, origin, verdict.until):
+            log.info("todo_subscription.execution_held_for_quiet_hours", todo_id=todo.id)
+            return
+    elif coalesced and await buffer_todo_trigger_event(todo.id, origin):
         log.info("todo_subscription.execution_coalesced", todo_id=todo.id)
         return
     pool = await RedisPoolManager.get_pool()
