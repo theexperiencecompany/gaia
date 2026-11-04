@@ -56,6 +56,8 @@ _TAB = re.compile(r"^Tab (\w+): (\S+)", re.MULTILINE)
 PAGE_URL = "{page_url}"
 #: The tools and triggers stores are built for vectors this long.
 _EMBEDDING_DIMS = 768
+#: The agent's answer while what a step waits on is not there yet; Browser-Use sleeps seconds - 1.
+WAIT_A_SECOND: dict[str, dict[str, int]] = {"wait": {"seconds": 2}}
 
 
 @dataclass(frozen=True)
@@ -376,7 +378,7 @@ class FakeModels:
             if run.waited > planned.patience:
                 self._fail(run, f"step {run.agent_cursor + 1} waited past its patience")
                 return _done("What the step waited on never came.", success=False)
-            return {"memory": "Waiting.", "action": [{"wait": {"seconds": 1}}]}
+            return {"memory": "Waiting.", "action": [WAIT_A_SECOND]}
         missing = [needed for needed in planned.require if needed not in state]
         if missing:
             self._fail(run, f"the agent was to report {missing} but never saw them")
