@@ -203,19 +203,22 @@ def test_an_action_check_whose_step_is_not_passed_is_skipped(
 def test_every_status_links_to_the_job_that_ran_the_check(api: FakeGitHub, tmp_path: Path) -> None:
     _post(tmp_path, "lint-node", {"ci:biome": "success"})
 
+    # The link is the job's own id, so finding it reads nothing: a jobs-listing
+    # lookup missed the in-progress job and posted no status at all (run 41878821054).
     assert [r for r in api.requests if r.method == "GET"] == []
-    assert _statuses(api)["ci / node / biome"]["target_url"] == JOB_URL
+    assert {fields["target_url"] for fields in _posted(api)} == {JOB_URL}
 
 
-def test_a_jobs_api_lagging_behind_the_run_still_links_the_status_to_this_job(
-    api: FakeGitHub, tmp_path: Path
+def test_the_link_follows_the_server_the_run_is_on(
+    api: FakeGitHub, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Regression: in a GitHub Actions incident the jobs API showed running jobs queued, runnerless."""
-    lagging = [{"runner_name": None, "status": "queued", "html_url": JOB_URL}]
-    api.on("GET", r"/jobs$", Reply(body={"jobs": lagging}))
+    monkeypatch.setenv("GITHUB_SERVER_URL", "https://ghe.example.com")
 
-    assert _post(tmp_path, "lint-node", {"ci:biome": "success"}) == 0
-    assert _statuses(api)["ci / node / biome"]["target_url"] == JOB_URL
+    _post(tmp_path, "lint-node", {"ci:biome": "success"})
+
+    assert _statuses(api)["ci / node / biome"]["target_url"] == (
+        f"https://ghe.example.com/{REPO}/actions/runs/{RUN}/job/{JOB_ID}"
+    )
 
 
 def test_a_skipped_check_says_whether_it_was_reused_or_had_nothing_to_check(
@@ -364,6 +367,19 @@ def test_a_rejected_post_is_not_read_back(api: FakeGitHub, tmp_path: Path) -> No
 
     assert _post(tmp_path, "repo-policy", {}, "--step", "gitleaks=success") == 1
     assert [r for r in api.requests if r.method == "GET"] == []
+
+
+def test_posting_without_the_job_id_is_refused(api: FakeGitHub, tmp_path: Path) -> None:
+    path = tmp_path / "results.json"
+    path.write_text("{}")
+    argv = [
+        "--job", "lint-node", "--results", str(path), "--job-tasks", "{}",
+        "--repo", REPO, "--sha", SHA, "--run-id", str(RUN),
+    ]  # fmt: skip
+
+    with pytest.raises(SystemExit):
+        verdict.cmd_post_statuses(argv)
+    assert _posted(api) == []
 
 
 def test_no_post_posts_nothing_but_still_decides_the_job(api: FakeGitHub, tmp_path: Path) -> None:

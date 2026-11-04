@@ -1392,6 +1392,12 @@ def job_outcomes(
     return outcomes
 
 
+def job_url(repo: str, run_id: int, job_id: int) -> str:
+    """Link to one job of a run; job_id is the job's check-run id (`job.check_run_id`)."""
+    server = os.environ.get("GITHUB_SERVER_URL") or "https://github.com"
+    return f"{server}/{repo}/actions/runs/{run_id}/job/{job_id}"
+
+
 def _one_line(finding: Finding) -> str:
     if not finding["file"]:
         # No location: the attached output's last line is where a tool states its conclusion.
@@ -1453,9 +1459,7 @@ def _post(
     findings: dict[str, str],
 ) -> bool:
     """Post one status per check; False when any did not land."""
-    # The job's own check-run id, not a jobs-API lookup: that API lags the run in an Actions incident.
-    server = os.environ.get("GITHUB_SERVER_URL") or "https://github.com"
-    url = f"{server}/{opts.repo}/actions/runs/{opts.run_id}/job/{opts.job_id}"
+    url = job_url(opts.repo, opts.run_id, opts.job_id)
     areas = check_areas()
     endpoint = f"repos/{opts.repo}/statuses/{opts.sha}"
     lost: list[str] = []
@@ -1537,7 +1541,11 @@ def cmd_post_statuses(args: list[str]) -> int:
         "--sha", help="the PR HEAD sha (a pull_request run's github.sha is the merge)"
     )
     parser.add_argument("--run-id", type=int)
-    parser.add_argument("--job-id", type=int, help="this job's check-run id (job.check_run_id)")
+    parser.add_argument(
+        "--job-id",
+        type=int,
+        help="this job's check-run id (`job.check_run_id`): what statuses link to",
+    )
     opts = parser.parse_args(args)
     reused: dict[str, str] = json.loads(opts.reused or "{}")
     raw: dict[str, nx_affected.TaskResult] = (

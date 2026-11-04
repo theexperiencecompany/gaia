@@ -406,7 +406,7 @@ def test_run_job_refuses_to_post_without_this_jobs_check_run_id(
     for name in ("GITHUB_REPOSITORY", "HEAD_SHA", "GITHUB_RUN_ID"):
         monkeypatch.setenv(name, "x")
     monkeypatch.delenv("NO_POST", raising=False)
-    monkeypatch.setenv("CHECK_RUN_ID", "")
+    monkeypatch.setenv("JOB_CHECK_RUN_ID", "")
 
-    with pytest.raises(runner_mod.Die, match="CHECK_RUN_ID"):
+    with pytest.raises(runner_mod.Die, match="JOB_CHECK_RUN_ID"):
         runner_mod._post_target()

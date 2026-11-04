@@ -256,3 +256,17 @@ async def test_a_cohort_read_skips_one_malformed_row_and_keeps_the_rest(
     (warning,) = wide["warnings"]
     assert warning["collection"] == "users"
     assert warning["document_id"] == legacy["_id"]
+
+
+class TestFindByEmailIgnoringCase:
+    async def test_it_matches_the_whole_address_case_insensitively_with_metacharacters_escaped(
+        self, repo: UserRepository, collection: MagicMock
+    ) -> None:
+        collection.find = MagicMock(return_value=_Cursor([_good("Erase.Me@Example.com")]))
+
+        found = await repo.find_by_email_ignoring_case("erase.me+1@example.com")
+
+        assert [user.email for user in found] == ["Erase.Me@Example.com"]
+        assert collection.find.call_args.args[0] == {
+            "email": {"$regex": r"^erase\.me\+1@example\.com$", "$options": "i"}
+        }
