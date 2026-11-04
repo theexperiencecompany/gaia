@@ -17,6 +17,7 @@ stale last_active_at; nothing reads that field off a cached path.
 
 from collections.abc import Iterable
 from datetime import UTC, datetime
+import re
 from typing import cast
 
 from bson import ObjectId
@@ -78,6 +79,10 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
     async def get_by_email(self, email: str) -> UserDocument | None:
         """Return a user by email — the authentication hot path."""
         return await self._find_one({"email": email})
+
+    async def find_by_email_ignoring_case(self, email: str) -> list[UserDocument]:
+        """Every user whose email equals this one in any case — account erasure refuses all but one."""
+        return await self._find({"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}})
 
     async def find_by_ids(self, user_ids: list[str]) -> list[UserDocument]:
         """Return users whose _id is in user_ids (invalid ids skipped) — the marketplace creator-join."""

@@ -68,6 +68,15 @@ class TestUserReads:
         assert await repo.get_by_email("x@y.com") == created
         assert await repo.get_by_email("missing@y.com") is None
 
+    async def test_find_by_email_ignoring_case_matches_whole_address_only(self, repo, make_user):
+        upper = await repo.create(make_user(email="Erase.Me@Y.com"))
+        await repo.create(make_user(email="erase.me@y.com.evil"))
+        await repo.create(make_user(email="eraseXme@y.com"))
+
+        found = await repo.find_by_email_ignoring_case("erase.me@y.com")
+
+        assert [u.id for u in found] == [upper.id]
+
     async def test_find_by_ids_skips_invalid(self, repo, make_user):
         a = await repo.create(make_user(email="c1@b.com"))
         b = await repo.create(make_user(email="c2@b.com"))
