@@ -15,7 +15,7 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from httpx import ASGITransport, AsyncClient
+from httpx import ASGITransport, AsyncClient, Response
 from posthog.contexts import get_context_distinct_id
 import pytest
 from starlette.testclient import TestClient
@@ -34,7 +34,7 @@ from app.services.bot_token_service import (
     verify_bot_session_token,
 )
 import shared.py.logging as shared_logging
-from tests.helpers import JOSE_MINTED_BOT_TOKEN, bot_jwt_claims, hostile_jwts
+from tests.helpers import JOSE_MINTED_BOT_TOKEN, bot_jwt_claims, forge_jwt, hostile_jwts
 
 # ---------------------------------------------------------------------------
 # Test constants
@@ -773,6 +773,83 @@ class TestSessionTokenFastPathReachesBotRoutes:
             )
 
         assert response.status_code == 401
+
+
+TELEGRAM_USER_ID = "4242424242"
+
+
+@pytest.mark.integration
+class TestTelegramClientSessionToken:
+    """The token the Telegram bot stores from its first stream frame, sent back as the bot client sends it.
+
+    The client also sends X-Bot-Platform-User-Id, and with it the API-key
+    fallback authenticates even when the JWT is refused, so a decoder that
+    refuses every token never shows on Telegram. These requests leave that
+    header off, so only the JWT can name the user.
+    """
+
+    @pytest.fixture
+    def guarded_app(self) -> FastAPI:
+        app = FastAPI()
+        app.add_middleware(BotAuthMiddleware)
+
+        @app.get("/api/v1/bot/guarded", dependencies=[Depends(require_bot_api_key)])
+        async def guarded(request: Request) -> dict[str, object]:
+            user = getattr(request.state, "user", None)
+            if user is None:
+                return {"user_id": None, "auth_provider": None}
+            return {"user_id": user.user_id, "auth_provider": user.auth_provider}
+
+        return app
+
+    async def _send(self, app: FastAPI, token: str) -> Response:
+        transport = ASGITransport(app=app, raise_app_exceptions=False)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            return await client.get(
+                "/api/v1/bot/guarded",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "X-Bot-API-Key": TEST_BOT_API_KEY,
+                    "X-Bot-Platform": "telegram",
+                },
+            )
+
+    async def test_a_minted_telegram_session_token_names_the_linked_user(
+        self,
+        guarded_app: FastAPI,
+        mock_redis_cache: dict[str, AsyncMock],
+        mock_platform_lookup: AsyncMock,
+    ) -> None:
+        mock_platform_lookup.return_value = TEST_USER_DOC
+        token = create_bot_session_token(
+            user_id=TEST_USER_ID, platform="telegram", platform_user_id=TELEGRAM_USER_ID
+        )
+
+        response = await self._send(guarded_app, token)
+
+        assert response.status_code == 200, response.text
+        assert response.json() == {"user_id": TEST_USER_ID, "auth_provider": "bot:telegram"}
+        mock_platform_lookup.assert_awaited_once_with("telegram", TELEGRAM_USER_ID)
+
+    @pytest.mark.parametrize("kind", [*sorted(hostile_jwts({}, "s")), "not_a_bot_role"])
+    async def test_a_bad_telegram_session_token_names_nobody(
+        self,
+        guarded_app: FastAPI,
+        mock_redis_cache: dict[str, AsyncMock],
+        mock_platform_lookup: AsyncMock,
+        kind: str,
+    ) -> None:
+        mock_platform_lookup.return_value = TEST_USER_DOC
+        claims = bot_jwt_claims(TEST_USER_ID, "telegram", TELEGRAM_USER_ID)
+        tokens = {
+            **hostile_jwts(claims, TEST_BOT_SESSION_SECRET),
+            "not_a_bot_role": forge_jwt({**claims, "role": "agent"}, TEST_BOT_SESSION_SECRET),
+        }
+
+        response = await self._send(guarded_app, tokens[kind])
+
+        assert response.status_code == 200, response.text
+        assert response.json() == {"user_id": None, "auth_provider": None}
 
 
 @pytest.mark.integration

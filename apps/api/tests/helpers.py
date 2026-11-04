@@ -23,6 +23,8 @@ import zoneinfo
 from bson import ObjectId
 from bson.errors import InvalidId
 from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from langchain_core.language_models import ModelProfile
 from langchain_core.language_models.fake_chat_models import (
     FakeMessagesListChatModel,
@@ -34,6 +36,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.types import ASGIApp
 import uvicorn
+from workos.session import SessionModule
 
 from app.config.rate_limits import RateLimitConfig
 from app.constants.analytics import AT_MOST_ONCE_TASK_NAME
@@ -647,13 +650,75 @@ def _b64url_json_decode(segment: str) -> dict[str, Any]:
 
 
 def forge_jwt(
-    claims: Mapping[str, object], secret: str, *, alg: str = "HS256", header_alg: str | None = None
+    claims: Mapping[str, object],
+    secret: str,
+    *,
+    alg: str = "HS256",
+    header_alg: str | None = None,
+    kid: str | None = None,
 ) -> str:
     """Sign claims as a compact HMAC JWT without any JWT library; header_alg forges the declared alg."""
-    header = {"alg": header_alg or alg, "typ": "JWT"}
+    header = {"alg": header_alg or alg, "typ": "JWT", **({"kid": kid} if kid else {})}
     signing_input = f"{_b64url_json(header)}.{_b64url_json(claims)}"
     signature = hmac.new(secret.encode(), signing_input.encode(), _HMAC_HASHES[alg]).digest()
     return f"{signing_input}.{_b64url(signature)}"
+
+
+def forge_rs256_jwt(claims: Mapping[str, object], key: rsa.RSAPrivateKey, *, kid: str) -> str:
+    """Sign claims as a compact RS256 JWT with cryptography alone, the shape WorkOS access tokens take."""
+    header = {"alg": "RS256", "typ": "JWT", "kid": kid}
+    signing_input = f"{_b64url_json(header)}.{_b64url_json(claims)}"
+    signature = key.sign(signing_input.encode(), padding.PKCS1v15(), hashes.SHA256())
+    return f"{signing_input}.{_b64url(signature)}"
+
+
+def rsa_public_jwk(key: rsa.RSAPrivateKey, *, kid: str) -> dict[str, str]:
+    """Publish an RSA key's public half as the JWK a JWKS endpoint serves."""
+    numbers = key.public_key().public_numbers()
+
+    def b64_int(value: int) -> str:
+        return _b64url(value.to_bytes((value.bit_length() + 7) // 8, "big"))
+
+    return {
+        "kty": "RSA",
+        "kid": kid,
+        "use": "sig",
+        "alg": "RS256",
+        "n": b64_int(numbers.n),
+        "e": b64_int(numbers.e),
+    }
+
+
+WORKOS_TEST_CLIENT_ID = "client_workos_session_test"
+WORKOS_TEST_KID = "sso_oidc_key_pair_test"
+
+
+def workos_access_token_claims(**overrides: object) -> dict[str, object]:
+    """Build the claims of a WorkOS access token that expires in five minutes."""
+    now = int(time.time())
+    claims: dict[str, object] = {
+        "sub": "user_01WORKOS",
+        "sid": "session_01WORKOS",
+        "iat": now,
+        "exp": now + 300,
+    }
+    return {**claims, **overrides}
+
+
+def seal_workos_session(access_token: str, cookie_password: str, *, email: str) -> str:
+    """Seal an access token into the wos-session cookie value, as WorkOS AuthKit does."""
+    user = {
+        "object": "user",
+        "id": "user_01WORKOS",
+        "email": email,
+        "email_verified": True,
+        "created_at": "2026-01-01T00:00:00Z",
+        "updated_at": "2026-01-01T00:00:00Z",
+    }
+    return SessionModule.seal_data(
+        {"access_token": access_token, "refresh_token": "refresh_test", "user": user},
+        cookie_password,
+    )
 
 
 def hostile_jwts(claims: Mapping[str, object], secret: str) -> dict[str, str]:
