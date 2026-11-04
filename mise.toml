@@ -528,7 +528,7 @@ run = "nx run-many -t test --projects tag:scope:typescript --parallel=3"
 
 [tasks."test:bots"]
 description = "Test all bots (Discord, Slack, Telegram, WhatsApp)"
-run = "cd apps/bots && pnpm vitest run"
+run = "nx run bots-e2e:test"
 
 [tasks."cli:try"]
 description = "Try this tree's CLI on a fresh VM without CI or a publish: builds + packs the CLI, builds the self-host bundle (release.sh selfhost-bundle), serves them and install.sh over HTTP (port CLI_TRY_PORT, default 8790) and prints the commands to paste in the VM. Images are a published release's: GAIA_VERSION, default the newest cli-v* tag"
@@ -536,7 +536,7 @@ run = "bash scripts/dev/cli-try.sh"
 
 [tasks."test:cli"]
 description = "Run CLI tests"
-run = "cd packages/cli && pnpm vitest run"
+run = "nx run cli:test"
 
 [tasks."cli:schema"]
 description = "Regenerate the CLI's vendored API config schema (packages/cli/src/lib/api-config-schema.generated.json) from the API's settings groups and capability table — CI's api-schema lane fails when it drifts"

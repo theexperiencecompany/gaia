@@ -471,11 +471,6 @@ const config: KnipConfig = {
       ignoreDependencies: [
         // Audio capture used by the React Native build path.
         "react-native-live-audio-stream",
-        // Vitest internals listed as devDeps but pulled in transitively.
-        "loupe",
-        "tinybench",
-        "tinypool",
-        "tinyrainbow",
         // Optional peers resolved by the consuming app (web vs native).
         "onnxruntime-react-native",
         "onnxruntime-web",
