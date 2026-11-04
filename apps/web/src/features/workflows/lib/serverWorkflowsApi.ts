@@ -1,6 +1,5 @@
 import { serverApi, serverData, serverDataOrNull } from "@/lib/api/server";
 
-const REQUEST_TIMEOUT_MS = 10_000;
 /** The community endpoint pages at most this many workflows per request. */
 const COMMUNITY_PAGE_SIZE = 100;
 
@@ -10,7 +9,6 @@ export async function getExploreWorkflowsServer(limit: number) {
   if (!client) return [];
   const result = await client.GET("/api/v1/workflows/explore", {
     params: { query: { limit, offset: 0 } },
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   return serverData(result).workflows;
 }
@@ -21,7 +19,6 @@ export async function getCommunityWorkflowsServer(limit: number, offset = 0) {
   if (!client) return { workflows: [], total: 0 };
   const result = await client.GET("/api/v1/workflows/community", {
     params: { query: { limit, offset } },
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   return serverData(result);
 }
@@ -49,7 +46,6 @@ export async function getPublicWorkflowServer(workflowRef: string) {
   if (!client) return null;
   const result = await client.GET("/api/v1/workflows/public/{workflow_ref}", {
     params: { path: { workflow_ref: workflowRef } },
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   return serverDataOrNull(result)?.workflow ?? null;
 }
