@@ -53,9 +53,9 @@ async def invoke_tool(
         # A pause for approval, not a finished call: recorded when it resumes and runs.
         raise
     except Exception as exc:
-        await _write(_recorded(tool, args, config, _error_text(exc), failed=True))
+        await _write(tool, args, config, _error_text(exc), failed=True)
         raise
-    await _write(_recorded(tool, args, config, output))
+    await _write(tool, args, config, output)
     return output
 
 
@@ -73,38 +73,52 @@ def invoke_tool_sync(
     except GraphBubbleUp:
         raise
     except Exception as exc:
-        _write_sync(_recorded(tool, args, config, _error_text(exc), failed=True))
+        _write_sync(tool, args, config, _error_text(exc), failed=True)
         raise
-    _write_sync(_recorded(tool, args, config, output))
+    _write_sync(tool, args, config, output)
     return output
 
 
-async def _write(recorded: tuple[str, RecordedCall] | None) -> None:
-    """Append a finished call to its run's record; a failed write is logged, never raised."""
-    if recorded is None:
-        return
+async def _write(
+    tool: BaseTool,
+    args: dict[str, object],
+    config: RunnableConfig | None,
+    output: object,
+    *,
+    failed: bool = False,
+) -> None:
+    """Record a finished call in its run; building or writing the record never raises."""
     try:
-        await append_call(*recorded)
+        recorded = _recorded(tool, args, config, output, failed=failed)
+        if recorded is not None:
+            await append_call(*recorded)
     except Exception as exc:
         # The tool already ran: raising would report it failed and invite a repeat.
-        _log_unrecorded(recorded[1], exc)
+        _log_unrecorded(tool.name, exc)
 
 
-def _write_sync(recorded: tuple[str, RecordedCall] | None) -> None:
+def _write_sync(
+    tool: BaseTool,
+    args: dict[str, object],
+    config: RunnableConfig | None,
+    output: object,
+    *,
+    failed: bool = False,
+) -> None:
     """Sync twin of _write."""
-    if recorded is None:
-        return
     try:
-        append_call_sync(*recorded)
+        recorded = _recorded(tool, args, config, output, failed=failed)
+        if recorded is not None:
+            append_call_sync(*recorded)
     except Exception as exc:
         # The tool already ran: raising would report it failed and invite a repeat.
-        _log_unrecorded(recorded[1], exc)
+        _log_unrecorded(tool.name, exc)
 
 
-def _log_unrecorded(call: RecordedCall, exc: Exception) -> None:
+def _log_unrecorded(tool_name: str, exc: Exception) -> None:
     log.error(
         f"{LogTag.TOOL} run record: a finished call was not recorded",
-        tool_name=call.tool_name,
+        tool_name=tool_name,
         error_type=type(exc).__name__,
         exc_info=True,
     )
