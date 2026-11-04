@@ -32,7 +32,9 @@ from app.constants.todos import (
     FAILED_LABEL,
     LOCK_DEFER_BACKOFF,
     LOCK_TTL_SECONDS,
+    MAX_HOLD_CHECKS,
     MAX_RETRY_ATTEMPTS,
+    OPEN_STATE_REPAIR_CHECK,
     PAUSED_RUN_RECHECK,
     RETRY_BACKOFF,
     RUN_LOCK_KEY,
@@ -43,6 +45,7 @@ from app.constants.todos import (
     TODO_SCHEDULE_FIRE_GRACE,
     TRIGGER_TODO_FEATURE_KEY,
     TodoActivityEvent,
+    WaitingOn,
 )
 from app.db.repositories.todos import todo_repository
 from app.decorators import enforce_daily_cost_budget
@@ -58,10 +61,12 @@ from app.models.todo_models import ExternalRefSource, TodoDocument, TodoUpdate
 from app.models.trigger_subscription_models import TriggerOrigin
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
+from app.services.analytics_service import capture
 from app.services.integrations.user_integrations import get_connected_integration_ids
 from app.services.notification_service import notification_service
 from app.services.todo_activity import record_activity
 from app.services.todos.inbox_desk import with_desk_notes
+from app.services.todos.open_state import wake_budget_update
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.triggers.subscription_service import teardown_subscriptions
 from app.services.triggers.todo_trigger_window import (
@@ -82,7 +87,10 @@ from app.workers.queue import enqueue_worker_job
 from app.workers.task_envelope import ArqJobContext
 from app.workers.tasks.todo_run_context import collect_run_context
 from app.workers.tasks.todo_run_prompt import build_execution_prompt
+from app.workers.tasks.todo_run_settle import Settlement, settle
+from shared.py.analytics import UserId
 from shared.py.analytics.catalog.attribution import Trigger
+from shared.py.analytics.catalog.todos import TodosOpenStateRepaired
 from shared.py.analytics.context import analytics_context, worker_context
 from shared.py.wide_events import log
 
@@ -472,9 +480,11 @@ async def _advance_schedule(
 ) -> bool:
     """Move scheduled_at to the next run and queue it; False when it was rescheduled mid-run.
 
-    A one-time todo's schedule ends unless one_time_rerun_at names its next try.
-    scheduled_at must name the next execution or the safety net re-queues the todo every scan.
+    A one-time todo either reruns at one_time_rerun_at, or its run settles it: closed,
+    rescheduled by the run, or given a next step by code (_settle_one_shot_run).
     """
+    if not doc.recurrence and one_time_rerun_at is None:
+        return await _settle_one_shot_run(doc)
     next_run = (
         _compute_next_run(doc.recurrence, user_tz, anchor=doc.scheduled_at)
         if doc.recurrence
@@ -499,6 +509,66 @@ async def _advance_schedule(
             f"next run {next_run.isoformat()} ({doc.recurrence or 'once'})",
         )
         log.info("tracked_todo.re_enqueued", todo_id=doc.id, next_run=next_run.isoformat())
+    return True
+
+
+async def _record_open_state_repair(woke: TodoDocument, next_check: datetime) -> None:
+    """Say loudly, in the todo's activity, the log and analytics, that code had to park it."""
+    await record_activity(
+        woke.id,
+        woke.user_id,
+        TodoActivityEvent.OPEN_STATE_REPAIRED,
+        "the run ended with no next step even after being sent back, so GAIA parked it "
+        f"as unplanned with a check at {next_check.isoformat()}",
+    )
+    waiting_on = woke.waiting_on.value if woke.waiting_on else None
+    log.warning("tracked_todo.open_state_repaired", todo_id=woke.id, waiting_on=waiting_on)
+    capture(UserId(woke.user_id), TodosOpenStateRepaired(todo_id=woke.id, waiting_on=waiting_on))
+
+
+async def _settle_one_shot_run(woke: TodoDocument) -> bool:
+    """Leave a one-time todo closed or with a next step; False when its run already did.
+
+    The run is delivered, so a failure here must not run it again: parking is the
+    one write that has to land, and it is recorded loudly because it means the model failed.
+    """
+    current = await todo_repository.get_by_id(woke.id)
+    settlement = settle(woke, current)
+    if settlement is Settlement.NOTHING:
+        log.info("tracked_todo.settled_by_its_run", todo_id=woke.id)
+        return False
+    if settlement is Settlement.CLOSE_UNANSWERED:
+        await tracked_todo_service.archive_tracked_todo(
+            woke.id,
+            woke.user_id,
+            reason=f"the question went unanswered through {MAX_HOLD_CHECKS} checks",
+        )
+        log.warning("tracked_todo.unanswered_hold_closed", todo_id=woke.id)
+        return True
+    park = settlement is Settlement.PARK_AS_UNPLANNED
+    next_check = datetime.now(UTC) + OPEN_STATE_REPAIR_CHECK if park else None
+    update = (
+        TodoUpdate(
+            gaia_retry_count=0,
+            scheduled_at=next_check,
+            waiting_on=WaitingOn.UNPLANNED,
+            question=None,
+            if_no_reply=None,
+            default_action=None,
+            hold_checks=0,
+        )
+        if park
+        else TodoUpdate(gaia_retry_count=0, scheduled_at=None)
+    )
+    parked = await todo_repository.update_if_scheduled_at(
+        woke.id, woke.user_id, expected=woke.scheduled_at, update=update
+    )
+    if parked is None:
+        log.info("tracked_todo.rescheduled_during_run", todo_id=woke.id)
+        return False
+    if next_check is not None:
+        await tracked_todo_service.schedule_execution(woke.id, next_check)
+        await _record_open_state_repair(woke, next_check)
     return True
 
 
@@ -605,6 +675,12 @@ async def _execute_on_executor(
     coalesced: Sequence[TriggerOrigin] = (),
 ) -> None:
     """Run the todo on the executor; its delivery step writes the finish entry and any message."""
+    if origin is None and doc.gaia_retry_count == 0 and (spend := wake_budget_update(doc)):
+        # The expiry's budget is spent before the run, so a retry of this same run doesn't spend it again.
+        spent = await todo_repository.update(doc.id, user_id=doc.user_id, update=spend)
+        if spent is None:
+            raise LookupError(f"tracked todo {doc.id} vanished before its run")
+        doc = spent
     doc = await with_desk_notes(doc)
     todo_id = doc.id
     user_id = doc.user_id

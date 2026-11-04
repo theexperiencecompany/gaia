@@ -81,6 +81,18 @@ class CanvasShapeError(AppError):
         )
 
 
+class OpenStateError(AppError):
+    """Raised (400) when a write would leave an open tracked todo without a valid next step."""
+
+    def __init__(self, problems: list[str]) -> None:
+        super().__init__(
+            message=" ".join(problems),
+            status_code=HTTPStatus.BAD_REQUEST,
+            code="open_state_invalid",
+        )
+        self.problems = problems
+
+
 class UnwatchedTodoKeptError(AppError):
     """Raised (a 500) when a new todo's watch failed and removing the todo failed too; carries its id."""
 

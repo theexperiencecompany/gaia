@@ -13,6 +13,7 @@ from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMes
 from langchain_core.tools import tool
 import pytest
 
+from app.agents.prompts.todo_prompts import TODO_REARM_BRIEF
 from app.constants.agents import PLAYBOOK_CHECK_TAG, PLAYBOOK_DECISION_NUDGE_MESSAGE
 from app.constants.general import FINISH_TASK_NAME
 from app.constants.llm import COMPLETION_NUDGE_MESSAGE, MAX_COMPLETION_NUDGES
@@ -497,18 +498,15 @@ class TestCompletionNudgeWiring:
 
     @pytest.mark.asyncio
     async def test_a_plain_text_stop_that_strands_a_tracked_todo_is_nudged_once(self):
-        """A todo created with nothing to wake it is the forever-open todo; the run gets one chance to arm it."""
+        """A scheduled run spends the check that woke it; stopping without closing or re-checking is the forever-open todo."""
         thread = [
-            HumanMessage(content="track the inbox desk change until it ships"),
-            AIMessage(
-                content="",
-                tool_calls=[{"name": "create_tracked_todo", "args": {"title": "t"}, "id": "c1"}],
-            ),
-            ToolMessage(content="created", tool_call_id="c1", name="create_tracked_todo"),
+            HumanMessage(content=f"Execute the scheduled task: ship it\n\n{TODO_REARM_BRIEF}"),
+            AIMessage(content="", tool_calls=[{"name": "read", "args": {}, "id": "c1"}]),
+            ToolMessage(content="canvas", tool_call_id="c1", name="read"),
         ]
         graph = self._compile_executor(
             BindableToolsFakeModel(
-                responses=[AIMessage(content="Tracking it."), AIMessage(content="Tracking it.")]
+                responses=[AIMessage(content="Still waiting."), AIMessage(content="Still waiting.")]
             )
         )
 
@@ -518,6 +516,33 @@ class TestCompletionNudgeWiring:
         )
 
         assert self._nudges(result) == [COMPLETION_NUDGE_MESSAGE]
+
+    @pytest.mark.asyncio
+    async def test_a_scheduled_run_that_sets_its_next_check_is_not_nudged(self):
+        thread = [
+            HumanMessage(content=f"Execute the scheduled task: ship it\n\n{TODO_REARM_BRIEF}"),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "update_tracked_todo",
+                        "args": {"todo_id": "t", "waiting_on": "time", "scheduled_at": "3d"},
+                        "id": "c1",
+                    }
+                ],
+            ),
+            ToolMessage(content="Updated", tool_call_id="c1", name="update_tracked_todo"),
+        ]
+        graph = self._compile_executor(
+            BindableToolsFakeModel(responses=[AIMessage(content="Checked again in 3 days.")])
+        )
+
+        result = await graph.ainvoke(
+            {"messages": thread, "todos": []},
+            config={"configurable": {"thread_id": "no-nudge-armed"}},
+        )
+
+        assert self._nudges(result) == []
 
     @pytest.mark.asyncio
     async def test_done_declared_with_no_work_is_nudged_once(self):

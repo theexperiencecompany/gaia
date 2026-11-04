@@ -25,6 +25,7 @@ from app.constants.todos import (
     OBSERVATIONS_RECURRING_SECTION,
     OBSERVATIONS_SENDERS_SECTION,
     WAITING_FOR_REPLY_LABEL,
+    WakeReason,
 )
 
 # System prompt appended to model context
@@ -80,15 +81,24 @@ you create says how it will be closed and what will wake you to check:
     for users", not "work on it"). evidence: where that proof will show up and how a run
     reads it, chosen from what this user actually uses (their connected services, a
     thread, a page, their own word). Never assume a service they have not connected.
-  - Something must wake it: a watch on where the evidence will arrive
-    (subscribe_todo_to_trigger) when that source has a trigger, else a next check
-    (scheduled_at) sized to the work: days for a quick task, weeks for a project.
+  - Every open todo without a recurrence has a next step, enforced in code: waiting_on
+    (what it waits for) plus scheduled_at (when GAIA next looks, a duration like '3d'
+    works). Size the next check to the work: hours when urgent, days for a quick task,
+    up to two weeks for a project. A wait of months is fine; it just looks again within
+    that. When the proof will arrive somewhere with a trigger, also watch it
+    (subscribe_todo_to_trigger, waiting_on='event'): the watch wakes it early, the next
+    check is the backup in case the event never comes.
+  - Waiting on the user (waiting_on='user') means you asked one specific question; pass
+    it as question, and decide right then what happens if they never answer
+    (if_no_reply): ask_again (it matters), proceed with a default_action, or hold
+    (nothing can move without it). The run woken by the expiry carries that out.
+  - Captured with no plan yet ("track it", a brain dump): waiting_on='unplanned' with
+    scheduled_at as the date to plan it by.
   - Each run checks Done when against Evidence and leaves the todo one of three ways:
-    closed with the proof in Learnings; still open with its next check or watch set
-    (partial progress moves the next check to the next milestone); or, when only the
-    user can tell, one specific question to them ("the inbox desk change: no sign it
-    shipped. still on it, done, or drop it?") plus a next check. A todo left open with
-    nothing to wake it is never a valid ending.
+    closed with the proof in Learnings; still open with its next step set (partial
+    progress moves the next check to the next milestone); or, when only the user can
+    tell, one specific question to them ("the inbox desk change: no sign it shipped.
+    still on it, done, or drop it?") as waiting_on='user'.
   - Learn how this user's work gets done. Before setting evidence, check their skills
     and standing instructions for a route that fits. When a check finds a reliable route
     (where their work shows up as done, what they count as done), or the user tells you
@@ -192,18 +202,60 @@ PARENT_STANDING_RULES_LABEL = (
 # Names the running todo, so a run can pass its own id as a sub-todo's parent_todo_id.
 TODO_ID_LINE = "This todo's id: {todo_id}."
 
-# Added to a run's brief when the todo has no recurrence and no watch, so this
-# run is the last thing that will ever look at it unless it says otherwise.
+# Added to a scheduled run's brief when the todo has no recurrence: the check that woke
+# this run is spent, so the run must close the todo or give it a new next step.
 TODO_REARM_BRIEF = (
     f"{TODO_REARM_TAG}\n"
-    "Nothing wakes this todo after this run: it has no recurrence and no watch. Check the "
-    "canvas's Done when against its Evidence. Then end the run one of three ways: it is "
-    "done, so complete_tracked_todo and record the proof in Learnings; it is not done yet, "
-    "so set when to look again with update_tracked_todo(scheduled_at=...), sized to the "
-    "work, or watch where the proof will arrive with subscribe_todo_to_trigger; or only the "
-    "user can tell, so ask them ONE specific question and still set the next check. A run "
-    "that leaves it open with nothing to wake it is sent back."
+    "WHY YOU WOKE: {why}\n"
+    "This run used up the check that woke it. Check the canvas's Done when against its "
+    "Evidence, then end the run one of these ways: done or no longer worth doing, so "
+    "complete_tracked_todo with the proof in Learnings; or still open, so "
+    "update_tracked_todo with waiting_on and a new scheduled_at ('3d' works). A run that "
+    "ends without one is sent back once; after that GAIA parks the todo as unplanned for "
+    "tomorrow and records that it had to."
 )
+
+# What woke a scheduled run, by WakeReason; filled with the todo's own fields.
+WAKE_REASON_TEXT: dict[WakeReason, str] = {
+    WakeReason.SCHEDULED_CHECK: "your scheduled check came up.",
+    WakeReason.BACKUP_CHECK: (
+        "your backup check came up and the event this todo watches for has not woken it. "
+        "Look for it yourself. If it still has not happened, keep waiting with a new "
+        "backup check, ask the user one question, or close the todo if it no longer matters."
+    ),
+    WakeReason.SUB_TODO_CHECK: (
+        "a sub-todo finished or your backup check came up. Read your sub-todos and "
+        "activity: when all the work is done, close this todo; otherwise set the next check."
+    ),
+    WakeReason.PLAN_IT: (
+        "this todo was captured without a plan and the date to plan it came up. Decide what "
+        "it waits on and set it (waiting_on plus scheduled_at), ask the user one short "
+        "question if only they can say, or close it if it no longer matters."
+    ),
+    WakeReason.REASK_DUE: (
+        'your question expired unanswered: "{question}". You chose to ask again, and this '
+        "is the todo's one re-ask: ask once more, briefly, then set waiting_on='user' with "
+        "if_no_reply 'proceed' (and a default_action) or 'hold'."
+    ),
+    WakeReason.DEFAULT_DUE: (
+        'your question expired unanswered: "{question}". You decided then: {plan}. Carry it '
+        "out, tell the user in one line what you did, then close the todo or set its next step."
+    ),
+    WakeReason.HOLD_CHECK: (
+        'your question is still unanswered: "{question}" (check {hold_checks} of '
+        "{max_hold_checks}). Nothing could move without it. Remind the user in one short "
+        "line, then keep waiting_on='user' and set the next check, up to {hold_days} days out."
+    ),
+    WakeReason.HOLD_LAST_CHECK: (
+        'your question went unanswered through {max_hold_checks} checks: "{question}". '
+        "Close the todo with complete_tracked_todo and tell the user in one line that you "
+        "closed it and why."
+    ),
+    WakeReason.QUESTION_EXPIRED: (
+        'your question expired unanswered: "{question}". Decide now: ask once more, act on '
+        "a sensible default and tell the user, or hold until they answer."
+    ),
+}
 
 # Heads a parent's open sub-todos in its run: they report here instead of to the user.
 SUB_TODOS_LABEL = (
@@ -363,7 +415,7 @@ TO_REPLY: a person expects an answer from the user, or the user promised them so
 AWAITING_REPLY: the user awaits an answer to their question or request.
 FYI: nobody awaits an answer, including documents and notices to review (statements, invoices, receipts, reports).
 ACTIONED: all answered, nobody waiting.
-6. For TO_REPLY and AWAITING_REPLY: create_tracked_todo(gmail_thread_id, gmail_account=<the id of the account it was fetched from>, parent_todo_id=this todo's id, labels=["{NEEDS_REPLY_LABEL}"] or ["{WAITING_FOR_REPLY_LABEL}"], scheduled_at=its first follow-up: 2 business days out for {NEEDS_REPLY_LABEL}, 3 for {WAITING_FOR_REPLY_LABEL}). If the thread already has a todo, that todo comes back: it watches the thread and owns it, so leave the thread to it.
+6. For TO_REPLY and AWAITING_REPLY: create_tracked_todo(gmail_thread_id, gmail_account=<the id of the account it was fetched from>, parent_todo_id=this todo's id, labels=["{NEEDS_REPLY_LABEL}"] or ["{WAITING_FOR_REPLY_LABEL}"], scheduled_at=its first follow-up: 2 business days out for {NEEDS_REPLY_LABEL}, 3 for {WAITING_FOR_REPLY_LABEL}, waiting_on='time' for {NEEDS_REPLY_LABEL} (the user owes the reply; the follow-up checks on it) or 'event' for {WAITING_FOR_REPLY_LABEL} (the thread watch wakes it; the follow-up is the backup)). If the thread already has a todo, that todo comes back: it watches the thread and owns it, so leave the thread to it.
 7. For each todo you created this run, {REPLY_DRAFT_RULE}
 8. Note mail carrying events: flights, bookings, invites, deadlines. Only if CONNECTED INTEGRATIONS lists Google Calendar: add the user's own events confirmed by the provider's own confirmation mail and not yet on the calendar; propose everything else (events with other people, dates a person merely mentions) in the briefing; skip mail carrying an invite file. Without Google Calendar call no calendar tool.
 9. Once per run, rewrite observations.md whole in one write, in the block format its comment shows; when this prompt shows only its conclusions, read it first. {OBSERVATIONS_SENDERS_SECTION}: for each address with an entry already, or whose messages today reach {OBSERVATION_MIN_MESSAGES} with step 3's counts, add step 3's count to today's figure in its {OBSERVATION_DAILY_COUNTS} (a later run the same day adds to it) and make today its {OBSERVATION_LAST_SEEN}; an address gets its entry the first day it reaches {OBSERVATION_MIN_MESSAGES}, never for a one-off. {OBSERVATIONS_RECURRING_SECTION} from the counts and subjects, {OBSERVATIONS_PEOPLE_SECTION} from the threads you read. Keep the {OBSERVATION_DAILY_COUNT_DAYS} most recent days in {OBSERVATION_DAILY_COUNTS} and fold older ones into {OBSERVATION_EARLIER}. Change a {OBSERVATION_CONCLUSION} only when the evidence has moved for several days, like a volume that held for 3 or more; raise its {OBSERVATION_CONFIDENCE} as consistent days accumulate and lower it when they disagree. Keep the file under {OBSERVATIONS_MAX_CHARS} characters by dropping the entries seen least recently.
@@ -401,6 +453,6 @@ GMAIL_THREAD_RUN_GUIDANCE = f"""EMAIL THREAD: this todo owns Gmail thread {{ref_
 - The user's own sent reply woke you (that event has no body, so fetch the thread): re-classify the whole thread. This todo is {NEEDS_REPLY_LABEL} while the user still owes something, including what that reply promised ("I'll send the lease tomorrow"), or {WAITING_FOR_REPLY_LABEL} if they asked or requested something. Complete this todo only when nobody owes anything.
 - Your schedule woke you, so a follow-up is due: if the user sent the last message and is still waiting, draft a nudge and say so in your report, unless Current State says the user discarded the nudge for it.
 - One live draft per thread: before saving a draft, delete the one named in Current State while the thread still has it (GMAIL_DELETE_DRAFT with its draft_id), then record the new id and the date you saved it there.
-- Whenever the thread stays open, set the next check with update_tracked_todo scheduled_at: 3 business days out for {WAITING_FOR_REPLY_LABEL}, 2 for {NEEDS_REPLY_LABEL}.
+- Whenever the thread stays open, set the next check with update_tracked_todo scheduled_at: 3 business days out for {WAITING_FOR_REPLY_LABEL} with waiting_on='event' (the thread watch wakes you; this is the backup), 2 for {NEEDS_REPLY_LABEL} with waiting_on='time'.
 - Everything is answered and nobody is waiting: complete_tracked_todo.
 Keep canvas.md current: the participants and the ask under Key Details; the deadline, the draft id with the date it was saved (or that the user discarded it) and the next follow-up date under Current State."""

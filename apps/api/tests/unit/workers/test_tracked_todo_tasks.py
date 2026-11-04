@@ -49,8 +49,10 @@ from app.agents.prompts.todo_prompts import (
     SUB_TODOS_LABEL,
     TODO_REARM_BRIEF,
     TRIGGERED_RELEVANCE_GUIDANCE,
+    WAKE_REASON_TEXT,
 )
 from app.constants import todos as todo_constants
+from app.constants.agents import TODO_REARM_TAG
 from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.todos import (
     ACTIVITY_PROMPT_TAIL_CHARS,
@@ -58,8 +60,10 @@ from app.constants.todos import (
     FAILED_LABEL,
     LOCK_DEFER_BACKOFF,
     LOCK_TTL_SECONDS,
+    MAX_HOLD_CHECKS,
     MAX_RETRY_ATTEMPTS,
     OBSERVATIONS_PROMPT_MAX_CHARS,
+    OPEN_STATE_REPAIR_CHECK,
     REFERENCED_TODOS_PROMPT_LIMIT,
     RETRY_BACKOFF,
     STANDING_RULES_MAX_CHARS,
@@ -67,7 +71,10 @@ from app.constants.todos import (
     SUB_TODOS_PROMPT_LIMIT,
     TODO_SCHEDULE_FIRE_GRACE,
     TRIGGER_TODO_FEATURE_KEY,
+    NoReplyPlan,
     TodoActivityEvent,
+    WaitingOn,
+    WakeReason,
 )
 from app.constants.vfs import SYSTEM_USER_ID
 from app.db.repositories.todos import todo_repository
@@ -198,6 +205,13 @@ def activity() -> Iterator[AsyncMock]:
     """Capture every activity.md entry the worker records, as (todo_id, user_id, event, detail)."""
     with patch(f"{MODULE}.record_activity", AsyncMock(return_value=True)) as recorded:
         yield recorded
+
+
+@pytest.fixture(autouse=True)
+def repaired() -> Iterator[AsyncMock]:
+    """Capture each time code had to park a todo; its event needs a real ObjectId these tests lack."""
+    with patch(f"{MODULE}._record_open_state_repair", AsyncMock()) as record:
+        yield record
 
 
 @pytest.fixture(autouse=True)
@@ -792,6 +806,7 @@ class TestTriggeredExecutionGating:
             patch(f"{MODULE}.enforce_daily_cost_budget", budget),
             patch(f"{MODULE}._execute_on_executor", via_agent),
             patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="UTC"))),
+            _serving(_pool()),
         ):
             await _execute_todo_with_retry("todo-1", origin)
         return budget, via_agent
@@ -1134,20 +1149,92 @@ class TestExecuteTodoWithRetrySuccess:
             result = await _execute_todo_with_retry("todo-1", origin)
         return result, repo, pool
 
-    async def test_one_shot_success_resets_retries_and_clears_scheduled_at(self):
-        """A stale scheduled_at makes find_due_tracked_all_users re-enqueue this completed run every 30 minutes, forever."""
+    async def test_a_one_shot_run_that_set_no_next_step_is_parked_for_tomorrow(self, repaired):
+        """Seen in real use: a one-shot run cleared its schedule and the todo stayed open forever, unwatched."""
         stale = datetime.now(UTC) - timedelta(minutes=5)
-        result, repo, pool = await self._run(_doc(scheduled_at=stale, recurrence=None))
+        woke = _doc(scheduled_at=stale, recurrence=None, waiting_on=WaitingOn.TIME)
+        result, repo, pool = await self._run(woke)
 
         assert result == "success:todo-1"
-        repo.update_if_scheduled_at.assert_awaited_once_with(
-            "todo-1",
-            OWNER_ID,
-            expected=stale,
-            update=TodoUpdate(gaia_retry_count=0, scheduled_at=None),
-        )
-        repo.update.assert_not_awaited()
+        ((expected, payload),) = _schedule_writes(repo)
+        assert expected == stale
+        assert payload.pop("scheduled_at") > datetime.now(UTC) + OPEN_STATE_REPAIR_CHECK / 2
+        assert payload == {
+            "gaia_retry_count": 0,
+            "waiting_on": WaitingOn.UNPLANNED,
+            "question": None,
+            "if_no_reply": None,
+            "default_action": None,
+            "hold_checks": 0,
+        }
+        pool.enqueue_job.assert_awaited_once()
+        repaired.assert_awaited_once()
+        assert repaired.await_args.args[0] is woke
+
+    async def test_a_run_that_closed_its_todo_leaves_it_closed(self, repaired):
+        woke = _doc(scheduled_at=datetime.now(UTC) - timedelta(minutes=5), recurrence=None)
+        closed = woke.model_copy(update={"completed": True})
+        pool = _pool()
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(side_effect=[woke, closed])
+        repo.update = AsyncMock()
+        repo.update_if_scheduled_at = AsyncMock()
+        with (
+            patch(f"{MODULE}.todo_repository", repo),
+            patch("app.workers.tasks.todo_run_context.todo_repository", repo),
+            patch(f"{MODULE}._execute_on_executor", AsyncMock()),
+            patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="UTC"))),
+            patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
+            _serving(pool),
+        ):
+            result = await _execute_todo_with_retry("todo-1")
+
+        assert result == "success:todo-1"
+        repo.update_if_scheduled_at.assert_not_awaited()
         pool.enqueue_job.assert_not_awaited()
+        repaired.assert_not_awaited()
+
+    async def test_a_hold_with_every_check_spent_closes_the_todo(self):
+        woke = _doc(
+            scheduled_at=datetime.now(UTC) - timedelta(minutes=5),
+            waiting_on=WaitingOn.USER,
+            question="Ship it?",
+            if_no_reply=NoReplyPlan.HOLD,
+            hold_checks=MAX_HOLD_CHECKS,
+        )
+        archive = AsyncMock(return_value=True)
+        with patch.object(tracked_todo_service, "archive_tracked_todo", archive):
+            result, repo, pool = await self._run(woke)
+
+        assert result == "success:todo-1"
+        archive.assert_awaited_once()
+        assert str(MAX_HOLD_CHECKS) in archive.await_args.kwargs["reason"]
+        repo.update_if_scheduled_at.assert_not_awaited()
+        pool.enqueue_job.assert_not_awaited()
+
+    async def test_a_todo_paused_during_its_run_just_ends_the_check_it_spent(self, repaired):
+        """Paused todos are re-armed when they resume, so parking one would double-schedule it."""
+        woke = _doc(scheduled_at=datetime.now(UTC) - timedelta(minutes=5))
+        paused = woke.model_copy(update={"pause_reason": DeactivationReason.SUBSCRIPTION_LAPSED})
+        pool = _pool()
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(side_effect=[woke, paused])
+        repo.update = AsyncMock()
+        repo.update_if_scheduled_at = AsyncMock(return_value=paused)
+        with (
+            patch(f"{MODULE}.todo_repository", repo),
+            patch("app.workers.tasks.todo_run_context.todo_repository", repo),
+            patch(f"{MODULE}._execute_on_executor", AsyncMock()),
+            patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="UTC"))),
+            patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
+            _serving(pool),
+        ):
+            await _execute_todo_with_retry("todo-1")
+
+        ((_expected, payload),) = _schedule_writes(repo)
+        assert payload == {"gaia_retry_count": 0, "scheduled_at": None}
+        pool.enqueue_job.assert_not_awaited()
+        repaired.assert_not_awaited()
 
     async def test_recurring_success_moves_scheduled_at_forward_and_re_enqueues(self):
         anchor = datetime.now(UTC).replace(microsecond=0) - timedelta(days=2)
@@ -1523,6 +1610,7 @@ class TestATrackedTodoAlwaysRunsTheAgent:
                 queue,
             ),
             patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="UTC"))),
+            _serving(_pool()),
         ):
             result = await _execute_todo_with_retry("todo-1")
 
@@ -1623,21 +1711,96 @@ class TestCollectReferenceLearnings:
 # ---------------------------------------------------------------------------
 
 
+def _rearm(reason: WakeReason, **fields: object) -> str:
+    """Build the re-arm brief a scheduled run gets for this wake reason."""
+    return TODO_REARM_BRIEF.format(why=WAKE_REASON_TEXT[reason].format(**fields))
+
+
 class TestBuildExecutionPrompt:
     def test_title_only(self):
         assert _prompt(_doc(title="Ship it")) == (
             "Execute the following scheduled task: Ship it\n\n"
             "This todo's id: todo-1.\n\n"
-            f"{TODO_REARM_BRIEF}\n\n"
+            f"{_rearm(WakeReason.SCHEDULED_CHECK)}\n\n"
             f"{DELIVERED_RESULT_GUIDANCE}"
         )
 
     def test_a_todo_that_wakes_on_its_own_gets_no_rearm_brief(self):
-        assert TODO_REARM_BRIEF not in _prompt(_doc(title="Brief me", recurrence="daily"))
+        assert TODO_REARM_TAG not in _prompt(_doc(title="Brief me", recurrence="daily"))
 
-    def test_a_todo_with_nothing_to_wake_it_is_told_this_run_is_its_last_look(self):
+    def test_a_scheduled_run_is_told_it_spent_the_check_that_woke_it(self):
         """Seen in real use: one-shot todos ran once, set no next check, and stayed open forever."""
-        assert TODO_REARM_BRIEF in _prompt(_doc(title="Ship it"))
+        prompt = _prompt(_doc(title="Ship it"))
+        assert TODO_REARM_TAG in prompt
+        assert "complete_tracked_todo" in prompt
+        assert "waiting_on" in prompt
+
+    def test_a_todo_with_a_watch_still_gets_the_rearm_brief_on_its_backup_check(self):
+        """The watch is not the next step: a scheduled run of it is the backup check and spends it."""
+        watch = TriggerSubscription(
+            trigger_name="gmail_new_message",
+            action=SubscriptionAction.EXECUTE,
+            resolution=SubscriptionResolution.ACCOUNT,
+        )
+        prompt = _prompt(_doc(waiting_on=WaitingOn.EVENT, trigger_subscriptions=[watch]))
+        assert _rearm(WakeReason.BACKUP_CHECK) in prompt
+
+    def test_a_trigger_run_does_not_spend_the_scheduled_check(self):
+        origin = TriggerOrigin(subscription_id="sub-1", trigger_name="gmail_new_message")
+        assert TODO_REARM_TAG not in _prompt(_doc(waiting_on=WaitingOn.EVENT), origin=origin)
+
+    @pytest.mark.parametrize(
+        ("fields", "reason"),
+        [
+            ({}, WakeReason.SCHEDULED_CHECK),
+            ({"waiting_on": WaitingOn.TIME}, WakeReason.SCHEDULED_CHECK),
+            ({"waiting_on": WaitingOn.EVENT}, WakeReason.BACKUP_CHECK),
+            ({"waiting_on": WaitingOn.SUB_TODOS}, WakeReason.SUB_TODO_CHECK),
+            ({"waiting_on": WaitingOn.UNPLANNED}, WakeReason.PLAN_IT),
+        ],
+    )
+    def test_the_brief_says_why_it_woke(self, fields, reason):
+        assert _rearm(reason) in _prompt(_doc(**fields))
+
+    def test_an_expired_question_names_the_question_and_what_was_decided_then(self):
+        """The run carries out the plan made when the question was asked, not a cold guess."""
+        doc = _doc(
+            waiting_on=WaitingOn.USER,
+            question="Should I ignore Raj's email?",
+            if_no_reply=NoReplyPlan.PROCEED,
+            default_action="archive the thread without replying",
+        )
+        prompt = _prompt(doc)
+        assert "Should I ignore Raj's email?" in prompt
+        assert "proceed: archive the thread without replying" in prompt
+
+    def test_the_one_reask_names_itself_as_the_last(self):
+        doc = _doc(
+            waiting_on=WaitingOn.USER, question="Ship it?", if_no_reply=NoReplyPlan.ASK_AGAIN
+        )
+        assert "this is the todo's one re-ask" in _prompt(doc)
+
+    def test_a_hold_check_counts_the_checks_left(self):
+        doc = _doc(
+            waiting_on=WaitingOn.USER,
+            question="Ship it?",
+            if_no_reply=NoReplyPlan.HOLD,
+            hold_checks=2,
+        )
+        assert f"check 2 of {MAX_HOLD_CHECKS}" in _prompt(doc)
+
+    def test_the_last_hold_check_tells_the_run_to_close_the_todo(self):
+        doc = _doc(
+            waiting_on=WaitingOn.USER,
+            question="Ship it?",
+            if_no_reply=NoReplyPlan.HOLD,
+            hold_checks=MAX_HOLD_CHECKS,
+        )
+        prompt = _prompt(doc)
+        assert (
+            _rearm(WakeReason.HOLD_LAST_CHECK, question="Ship it?", max_hold_checks=MAX_HOLD_CHECKS)
+            in prompt
+        )
 
     def test_a_triggered_run_is_told_its_own_id_too(self):
         """A run links a sub-todo to itself with parent_todo_id, so it must know its own id."""
@@ -1671,7 +1834,7 @@ class TestBuildExecutionPrompt:
             "sub-todo states",
             "Recent activity (activity.md):\n- 2026-09-01T09:00:00+00:00 started",
             "past stuff",
-            TODO_REARM_BRIEF,
+            _rearm(WakeReason.SCHEDULED_CHECK),
             # Last on purpose: the delivery contract is what the model should still
             # have in view when it writes the message this section is about.
             DELIVERED_RESULT_GUIDANCE,
@@ -1692,7 +1855,7 @@ class TestBuildExecutionPrompt:
             ACTIVITY_PROMPT_TAIL_CHARS
             + 300
             + len(DELIVERED_RESULT_GUIDANCE)
-            + len(TODO_REARM_BRIEF)
+            + len(_rearm(WakeReason.SCHEDULED_CHECK))
         )
 
     def test_a_truncated_activity_carries_the_full_exact_label(self):
@@ -2455,7 +2618,11 @@ class TestOneRunPerOccurrence:
                 assert await _fire(queue, moved_job) == "success:todo-1"
 
         assert run.await_count == 2
-        assert await _queued(queue) == []
+        # Neither run set a next step, so the second one's check was parked for tomorrow.
+        (parked_job,) = await _queued(queue)
+        assert parked_job.job_id != moved_job.job_id
+        assert row.doc.waiting_on is WaitingOn.UNPLANNED
+        assert row.doc.scheduled_at == moved + OPEN_STATE_REPAIR_CHECK
 
     async def test_a_trigger_retry_landing_on_a_scheduled_run_keeps_its_own_job(self, queue):
         """A triggered retry is no scheduled occurrence, so that occurrence's job id must not absorb it."""

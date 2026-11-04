@@ -14,6 +14,7 @@ __all__ = [
     "TodosCreated",
     "TodosDeleted",
     "TodosInboxDeskProvisioned",
+    "TodosOpenStateRepaired",
     "TodosRunResultDelivered",
     "TodosSubscriptionFailed",
     "TodosSubscriptionRegistered",
@@ -149,6 +150,17 @@ class TodosInboxDeskProvisioned(ServerEvent):
     event: ClassVar[str] = "todos:inbox_desk_provisioned"
     # One desk per user: provisioning repeats only on a reconnect race the insert dedupes.
     budget_per_user_day: ClassVar[int] = 2
+
+
+class TodosOpenStateRepaired(ServerEvent):
+    """A tracked todo run ended with no next step even after being sent back, so code set one."""
+
+    event: ClassVar[str] = "todos:open_state_repaired"
+    budget_per_user_day: ClassVar[int] = 20
+
+    todo_id: ObjectIdStr
+    # What the todo was waiting on when the run that left it without a next step woke.
+    waiting_on: Identifier | None = None
 
 
 class ProjectsCreated(ServerEvent):

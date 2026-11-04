@@ -6,7 +6,12 @@ from typing import Annotated, NamedTuple
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.constants.general import MAX_PAGE_NUMBER
-from app.constants.todos import GAIA_TRACKED_LABEL, TODO_RECURRENCE_SHORTCUTS
+from app.constants.todos import (
+    GAIA_TRACKED_LABEL,
+    TODO_RECURRENCE_SHORTCUTS,
+    NoReplyPlan,
+    WaitingOn,
+)
 from app.db.repositories.base import UserScopedDocument
 from app.models.scheduler_models import DeactivationReason
 from app.models.trigger_subscription_models import TriggerSubscription
@@ -525,6 +530,13 @@ class TodoDocument(UserScopedDocument):
     notify_on_run: bool = True
     #: Why the system paused this tracked todo's runs; None while it runs normally.
     pause_reason: DeactivationReason | None = None
+    # A tracked todo's open state: what it waits for until scheduled_at (see open_state.py).
+    waiting_on: WaitingOn | None = None
+    question: str | None = None
+    if_no_reply: NoReplyPlan | None = None
+    default_action: str | None = None
+    reasks_used: int = 0
+    hold_checks: int = 0
     completed_at: datetime | None = None
     # Canvas, activity, observations and log bodies for tracked todos live on the document itself.
     canvas_content: str | None = None
@@ -567,6 +579,12 @@ class TodoUpdate(BaseModel):
     parent_todo_id: str | None = None
     notify_on_run: bool | None = None
     pause_reason: DeactivationReason | None = None
+    waiting_on: WaitingOn | None = None
+    question: str | None = None
+    if_no_reply: NoReplyPlan | None = None
+    default_action: str | None = None
+    reasks_used: int | None = None
+    hold_checks: int | None = None
     completed_at: datetime | None = None
     canvas_content: str | None = None
     activity_content: str | None = None

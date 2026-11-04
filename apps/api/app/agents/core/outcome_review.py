@@ -14,13 +14,10 @@ from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolCal
 from app.agents.core.delegation_window import current_delegation
 from app.constants.agents import (
     OUTCOME_COMPLETE_TOOL,
-    OUTCOME_CREATE_TODO_TOOL,
     OUTCOME_SCHEDULE_ARGS,
     OUTCOME_SUBSCRIBE_TOOL,
     OUTCOME_TRACKED_TODO_TOOLS,
-    TODO_BOUND_BASH,
     TODO_REARM_TAG,
-    TODO_SELF_WAKING_CREATE_ARGS,
     OutcomeState,
 )
 from app.constants.execute import EXECUTE_TOOL_NAME
@@ -49,8 +46,12 @@ def _successful_calls(delegation: Sequence[AnyMessage]) -> list[ToolCall]:
         for m in delegation
         if isinstance(m, AIMessage)
         for call in m.tool_calls
-        if call.get("id") in answered
+        if _is_answered(call, answered)
     ]
+
+
+def _is_answered(call: ToolCall, answered: set[str]) -> bool:
+    return call["id"] in answered
 
 
 def _effective_call(call: ToolCall) -> tuple[str, Mapping[str, object]]:
@@ -71,14 +72,8 @@ def _wakes_later(call: ToolCall) -> bool:
 
 
 def _keeps_a_todo_awake(call: ToolCall) -> bool:
-    """Return whether this call closes a todo or leaves it something that wakes GAIA again."""
-    name, args = _effective_call(call)
-    bash_tool, bash_arg = TODO_BOUND_BASH
-    return (
-        name in (OUTCOME_COMPLETE_TOOL, OUTCOME_SUBSCRIBE_TOOL)
-        or _wakes_later(call)
-        or (name == bash_tool and bool(args.get(bash_arg)))
-    )
+    """Return whether this call closes a todo or gives it its next check."""
+    return _effective_call(call)[0] == OUTCOME_COMPLETE_TOOL or _wakes_later(call)
 
 
 def _briefed_to_rearm(delegation: Sequence[AnyMessage]) -> bool:
@@ -91,28 +86,15 @@ def _briefed_to_rearm(delegation: Sequence[AnyMessage]) -> bool:
 
 
 def todo_left_asleep(delegation: Sequence[AnyMessage]) -> str | None:
-    """Name how this delegation left a tracked todo open with nothing to wake it, if it did.
+    """Name how this run left its tracked todo with no next step, if it did.
 
-    Count based, since a create's id only exists in its result: every unarmed
-    create needs a later closing or arming call; a run briefed with the re-arm
-    tag must make one itself.
+    A run briefed with the re-arm tag spent the check that woke it, so it must
+    close the todo or set a new one. Creating a todo without one is refused in code.
     """
-    calls = _successful_calls(delegation)
-    unarmed = 0
-    for call in calls:
-        name, args = _effective_call(call)
-        if name == OUTCOME_CREATE_TODO_TOOL and not any(
-            args.get(key) for key in TODO_SELF_WAKING_CREATE_ARGS
-        ):
-            unarmed += 1
-        elif unarmed and _keeps_a_todo_awake(call):
-            unarmed -= 1
-    if unarmed:
-        return "a tracked todo was created with no schedule, recurrence or watch, so nothing will ever check it"
-    if _briefed_to_rearm(delegation) and not any(_keeps_a_todo_awake(c) for c in calls):
-        return (
-            "the todo was left open with no next check or watch, so nothing will look at it again"
-        )
+    if _briefed_to_rearm(delegation) and not any(
+        _keeps_a_todo_awake(c) for c in _successful_calls(delegation)
+    ):
+        return "the todo was left open with no next check, so nothing will look at it again"
     return None
 
 
