@@ -8,7 +8,6 @@ import type {
 import { serverApi, serverData, serverDataOrNull } from "@/lib/api/server";
 import type { CommunityWorkflow } from "@/types/features/workflowTypes";
 
-const REQUEST_TIMEOUT_MS = 10_000;
 /** How long the tool-slug index serves before it is rebuilt. */
 const SLUG_INDEX_TTL_MS = 3600 * 1000;
 /** The community endpoint caps `limit` at 100. */
@@ -25,7 +24,6 @@ export const getPublicIntegration = cache(
       "/api/v1/integrations/public/{identifier}",
       {
         params: { path: { identifier } },
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       },
     );
     return serverDataOrNull(result);
@@ -38,9 +36,7 @@ export const getNativeIntegrations = cache(
     const client = serverApi();
     if (!client) return [];
     const config = serverData(
-      await client.GET("/api/v1/integrations/config", {
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      }),
+      await client.GET("/api/v1/integrations/config", {}),
     );
     return config.integrations
       .filter((item) => item.source === "platform" && item.available !== false)
@@ -80,7 +76,6 @@ export async function getCommunityIntegrations(options: {
         category: options.category,
       },
     },
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   return serverData(result);
 }
@@ -114,7 +109,6 @@ export async function getIntegrationWorkflows(
     "/api/v1/integrations/public/{identifier}/workflows",
     {
       params: { path: { identifier: integrationId }, query: { limit } },
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     },
   );
   return (serverDataOrNull(result)?.workflows ?? []).slice(0, limit);

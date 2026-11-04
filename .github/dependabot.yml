@@ -22,6 +22,11 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 7
+    # One PR per ecosystem for every open advisory, not one PR per package.
+    groups:
+      npm-security:
+        applies-to: security-updates
+        patterns: ["*"]
 
   # --- Python (uv workspace) ------------------------------------------------
   # Single uv.lock at the repo root covers every uv workspace member
@@ -34,6 +39,11 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 7
+    # One PR per ecosystem for every open advisory, not one PR per package.
+    groups:
+      uv-security:
+        applies-to: security-updates
+        patterns: ["*"]
 
   # --- GitHub Actions --------------------------------------------------------
   # "/" covers .github/workflows/*.yml. Composite actions under
