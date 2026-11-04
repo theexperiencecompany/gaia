@@ -1,12 +1,15 @@
 """The run record as an author picks from it, and the playbook built from the picks.
 
 A playbook is built from calls this run actually made. The author names them by
-number and marks the values that change per run; the tool names and every other
-argument come from the record, so none of them can be retyped wrong. What is left to refuse is only what a pick itself says:
-a number that is not in the record, a path that is not in the call, a value
-that names no placeholder.
+the id the record shows (GMAIL_SEND_EMAIL#2: the tool, and which of its calls),
+copied, never counted, and marks the values that change per run; the tool names
+and every other argument come from the record, so none of them can be retyped
+wrong. What is left to refuse is only what a pick itself says: an id that is not
+in the record, a path that is not in the call, a value that names no placeholder,
+and a rewrite that drops an action the playbook it replaces takes.
 """
 
+from collections import Counter
 from collections.abc import Collection, Mapping, Sequence
 import copy
 from dataclasses import dataclass, field
@@ -30,6 +33,7 @@ from app.models.playbook_models import (
     PlaybookRefusal,
     TimeSlot,
     ToolStep,
+    is_work_call,
 )
 from app.models.workflow_execution_models import RecordedCall, parse_result
 from app.services.workflow.playbook.parser import PlaybookIssue, RecordedResult
@@ -51,27 +55,39 @@ _MAX_LISTED_PATHS = 20
 
 _TIME_ROOTS = frozenset({"now", "today"})
 
+#: Joins a call id's tool name to which of that tool's calls it is: tool_a#2.
+CALL_ID_SEPARATOR = "#"
+
 
 @dataclass(frozen=True, slots=True)
 class RecordEntry:
-    """One pickable call: its number, the call as it really ran, and its parsed result."""
+    """One pickable call: its id, the call as it really ran, and its parsed result."""
 
-    number: int
+    call_id: str
     call: RecordedCall
     result: object
 
 
-def number_record(calls: Sequence[RecordedCall], excluded: Collection[str]) -> list[RecordEntry]:
-    """Give the calls a playbook may replay their numbers from 1, seen through execute.
+def record_entries(calls: Sequence[RecordedCall], excluded: Collection[str]) -> list[RecordEntry]:
+    """Give the calls a playbook may replay their ids, seen through execute.
 
-    Excluded calls take no number. The record only ever appends, so a number
-    stays the same however far the run goes on.
+    An id is the tool and which of its pickable calls this is, from 1. The record
+    only ever appends, so an id stays the same however far the run goes on.
     """
-    pickable = [real for real in map(_as_run, calls) if real.tool_name not in excluded]
-    return [
-        RecordEntry(number=number, call=call, result=parse_result(call.result_digest))
-        for number, call in enumerate(pickable, start=1)
-    ]
+    made: Counter[str] = Counter()
+    entries: list[RecordEntry] = []
+    for call in map(_as_run, calls):
+        if call.tool_name in excluded:
+            continue
+        made[call.tool_name] += 1
+        entries.append(
+            RecordEntry(
+                call_id=f"{call.tool_name}{CALL_ID_SEPARATOR}{made[call.tool_name]}",
+                call=call,
+                result=parse_result(call.result_digest),
+            )
+        )
+    return entries
 
 
 def _as_run(call: RecordedCall) -> RecordedCall:
@@ -95,7 +111,7 @@ def render_record(entries: Sequence[RecordEntry]) -> list[dict[str, object]]:
     for entry in entries:
         call = entry.call
         line: dict[str, object] = {
-            "call": entry.number,
+            "call": entry.call_id,
             "tool": call.tool_name,
             "args": call.args,
         }
@@ -165,12 +181,21 @@ def _vary_mapping(value: object) -> object:
     return {} if value is None else decode_json_container(value)
 
 
+def _as_text(value: object) -> object:
+    """Read a counted position as text, so it is refused with the ids rather than a type error."""
+    return str(value) if isinstance(value, int) else value
+
+
 class PlaybookPick(BaseModel):
     """One step of a playbook, picked from this run's record."""
 
     model_config = ConfigDict(extra="ignore")
 
-    call: int = Field(ge=1, description="The call's number in read_run_record")
+    call: Annotated[str, BeforeValidator(_as_text)] = Field(
+        min_length=1,
+        description="The call's id, copied exactly as read_run_record shows it, e.g. "
+        f"'GMAIL_FETCH_EMAILS{CALL_ID_SEPARATOR}1'",
+    )
     id: str = Field(
         default="",
         description="A name later steps read this call's result by, as $steps.<id>.<path>",
@@ -211,10 +236,13 @@ def build_playbook(
     picks: Sequence[PlaybookPick],
     result_brief: str,
     record: Sequence[RecordEntry],
+    *,
+    replaces: Sequence[ToolStep | ForEachStep] = (),
 ) -> BuiltPlaybook:
     """Build the playbook body from picks, in the order the run made the calls.
 
     A call that ran through execute is replayed through it, as the same account.
+    replaces is the stored playbook's steps: every action it takes must survive.
     """
     built = BuiltPlaybook(body=None)
     placed = _place(picks, record, built.issues)
@@ -225,6 +253,8 @@ def build_playbook(
             continue
         built.sources.append(RecordedResult(args=item.entry.call.args, result=item.entry.result))
         steps.append(step)
+    if not built.issues:
+        built.issues.extend(_dropped_actions(replaces, steps))
     if built.issues:
         return built
     if not steps:
@@ -244,30 +274,28 @@ def _place(
     picks: Sequence[PlaybookPick], record: Sequence[RecordEntry], issues: list[PlaybookIssue]
 ) -> list[_Placed]:
     """Match each pick to its call, then order them as the run made the calls."""
-    by_number = {entry.number: entry for entry in record}
-    numbers = ", ".join(str(entry.number) for entry in record) or "none"
+    order = {entry.call_id: position for position, entry in enumerate(record)}
     placed: list[_Placed] = []
-    seen_calls: set[int] = set()
+    seen_calls: set[str] = set()
     seen_ids: set[str] = set()
     for index, pick in enumerate(picks):
         where = f"steps[{index}]"
-        entry = by_number.get(pick.call)
-        if entry is None:
+        if pick.call not in order:
             issues.append(
                 PlaybookIssue(
                     kind=PlaybookRefusal.NOT_IN_RECORD,
                     where=f"{where}.call",
-                    problem=f"call {pick.call} is not in this run's record; the calls you "
-                    f"can pick are {numbers} (read_run_record lists them)",
+                    problem=_unknown_call(pick.call, record),
                 )
             )
             continue
+        entry = record[order[pick.call]]
         if pick.call in seen_calls:
             issues.append(
                 PlaybookIssue(
                     kind=PlaybookRefusal.PICKED_TWICE,
                     where=f"{where}.call",
-                    problem=f"call {pick.call} is picked twice; one recorded call is one "
+                    problem=f"{pick.call} is picked twice; one recorded call is one "
                     "step, so pick it once",
                 )
             )
@@ -287,11 +315,48 @@ def _place(
         seen_ids.add(step_id)
         named = pick if pick.id else pick.model_copy(update={"id": step_id})
         placed.append(_Placed(where=where, pick=named, entry=entry))
-    return sorted(placed, key=lambda item: item.entry.number)
+    return sorted(placed, key=lambda item: order[item.entry.call_id])
 
 
-def _default_id(number: int) -> str:
-    return f"call{number}"
+def _unknown_call(named: str, record: Sequence[RecordEntry]) -> str:
+    """Say a pick names no recorded call, and list every id it could have named."""
+    ids = ", ".join(entry.call_id for entry in record)
+    counted = " A call is named by its id, never by its position." if named.isdigit() else ""
+    if not ids:
+        return f"{named!r} is not in this run's record, which has no call a playbook can replay."
+    return (
+        f"{named!r} is not in this run's record.{counted} Copy an id exactly as "
+        f"read_run_record shows it: {ids}"
+    )
+
+
+def _default_id(call_id: str) -> str:
+    """Spell the call id as a step id $steps can address: its separator as an underscore."""
+    return call_id.replace(CALL_ID_SEPARATOR, "_")
+
+
+def _dropped_actions(
+    replaces: Sequence[ToolStep | ForEachStep], steps: Sequence[ToolStep | ForEachStep]
+) -> list[PlaybookIssue]:
+    """Refuse a rewrite that silently stops an action the stored playbook takes for the user."""
+    kept = {_step_tool(step) for step in steps}
+    return [
+        PlaybookIssue(
+            kind=PlaybookRefusal.DROPS_ACTION,
+            where="steps",
+            problem=f"the playbook this replaces calls {tool} (step {step.label}), which acts "
+            "for the user, and no step here does. Pick that call from read_run_record; if "
+            "this run has not made it, make it first. If the workflow should no longer do "
+            "it, call disable_playbook instead of dropping it",
+        )
+        for step in replaces
+        if is_work_call(tool := _step_tool(step)) and tool not in kept
+    ]
+
+
+def _step_tool(step: ToolStep | ForEachStep) -> str:
+    """Return the tool a step really calls, seen through execute."""
+    return unwrap_execute_call(step.tool, step.args)[0]
 
 
 def _build_step(item: _Placed, issues: list[PlaybookIssue]) -> ToolStep | ForEachStep | None:
@@ -302,7 +367,7 @@ def _build_step(item: _Placed, issues: list[PlaybookIssue]) -> ToolStep | ForEac
             PlaybookIssue(
                 kind=PlaybookRefusal.FAILED_CALL,
                 where=f"{item.where}.call",
-                problem=f"call {pick.call} ({call.tool_name}) failed in this run "
+                problem=f"{pick.call} failed in this run "
                 f"({call.result_digest[:_FAILURE_MAX_CHARS]}); pick the call that succeeded",
             )
         )
