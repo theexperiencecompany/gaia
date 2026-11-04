@@ -3561,6 +3561,7 @@ class TestNothingNew:
     LAST_RUN_TWO = RecordedCall(
         replayed=True,
         tool_name="list_events",
+        args={"calendar_id": "primary"},
         result_digest='{"items": [{"id": "e1"}, {"id": "e2"}]}',
         item_fingerprint=item_fingerprint(frozenset({"e1", "e2"})),
     )

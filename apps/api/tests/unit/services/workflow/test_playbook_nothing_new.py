@@ -85,6 +85,23 @@ def test_the_same_read_as_another_account_is_no_baseline() -> None:
     ) == ("GMAIL_FETCH_MESSAGES returned the same 2 items as the last run")
 
 
+def test_the_same_tool_read_with_other_args_is_no_baseline() -> None:
+    """Review of #1621: yesterday's window returning a recurring event's same id says nothing about today's."""
+    today = {"timeMin": "2026-11-04T00:00:00Z"}
+    yesterday = {"timeMin": "2026-11-03T00:00:00Z"}
+
+    assert (
+        nothing_new("GMAIL_FETCH_MESSAGES", today, INBOX, [_replayed(INBOX_IDS, args=yesterday)])
+        is None
+    )
+    assert nothing_new(
+        "GMAIL_FETCH_MESSAGES",
+        today,
+        INBOX,
+        [_replayed(INBOX_IDS, args=yesterday), _replayed(INBOX_IDS, args=today)],
+    ) == ("GMAIL_FETCH_MESSAGES returned the same 2 items as the last run")
+
+
 def test_the_last_runs_read_is_found_past_its_other_calls_and_through_execute() -> None:
     proxied = _replayed(
         INBOX_IDS, tool="execute", args={"tool_name": "GMAIL_FETCH_MESSAGES", "data": {}}
