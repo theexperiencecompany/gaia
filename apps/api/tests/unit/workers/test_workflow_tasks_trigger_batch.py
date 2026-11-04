@@ -31,7 +31,7 @@ from app.utils.redis_utils import RedisPoolManager
 from app.utils.timezone import Timezone
 from app.workers.task_envelope import arq_task
 from app.workers.tasks.workflow_tasks import execute_workflow_by_id
-from tests.helpers import live_through, trigger_gate_seams
+from tests.helpers import captured_wide_event, live_through, trigger_gate_seams
 
 MODULE = "app.workers.tasks.workflow_tasks"
 
@@ -270,6 +270,8 @@ _POLLED = TriggerConfig(
     trigger_data=GmailPollInboxConfig(interval=15),
 )
 _PER_EMAIL = TriggerConfig(type=TriggerType.INTEGRATION, trigger_name="gmail_new_message")
+# Never batches by day: each event runs at once.
+_UNBATCHED = TriggerConfig(type=TriggerType.INTEGRATION, trigger_name="slack_new_message")
 
 
 def _on_kolkata_clock(day: int, hour: int, minute: int) -> datetime:
@@ -410,6 +412,13 @@ class TestAGatedBatchWaitsOutQuietHours:
                 id="batch-due-after-quiet-hours",
             ),
             pytest.param(
+                _BILLING,
+                _UNBATCHED,
+                [_on_kolkata_clock(1, 23, 0), _on_kolkata_clock(2, 2, 30)],
+                [(_on_kolkata_clock(2, 8, 0), 2)],
+                id="unbatched-trigger-held-overnight",
+            ),
+            pytest.param(
                 None,
                 _POLLED,
                 [_on_kolkata_clock(1, 21, 50), _on_kolkata_clock(1, 23, 0)],
@@ -436,3 +445,38 @@ class TestAGatedBatchWaitsOutQuietHours:
         assert (
             await _live_through(arq_queue, _workflow_gated_by(gate, trigger_config), emails) == runs
         )
+
+
+class TestADrainDueInsideQuietHours:
+    """A gated batch's drain that comes due at night moves to the morning, before any run starts."""
+
+    @pytest.mark.usefixtures("fake_redis")
+    async def test_it_moves_to_the_morning_with_its_context_and_says_so(
+        self, arq_queue: ArqRedis
+    ) -> None:
+        workflow = _workflow_gated_by(_BILLING, _POLLED)
+        context: dict[str, object] = {
+            "trigger_type": "integration",
+            "trigger_batch_key": f"trigger_batch:{_GATED_ID}",
+        }
+        night = _on_kolkata_clock(1, 23, 0)
+
+        with (
+            patch(f"{MODULE}.workflow_scheduler") as scheduler,
+            trigger_gate_seams(Timezone.parse("Asia/Kolkata"), now=night) as gate,
+        ):
+            scheduler.get_task = AsyncMock(return_value=workflow)
+            async with captured_wide_event() as event:
+                result = await execute_workflow_by_id({}, _GATED_ID, context)
+            (job,) = await arq_queue.queued_jobs()
+
+        assert result == f"Workflow {_GATED_ID} held until the user's quiet hours end"
+        scheduler.get_task.assert_awaited_once_with(_GATED_ID)
+        gate.tz.assert_awaited_once_with(_OWNER_ID)
+        assert job.args == (_GATED_ID, {**context, "quiet_hours": {"kind": "hold"}})
+        assert job.score == int(_on_kolkata_clock(2, 8, 0).timestamp() * 1000)
+        assert event["workflow_id"] == _GATED_ID
+        assert event["workflow"] == {
+            "outcome": "held_for_quiet_hours",
+            "held_until": "2026-10-02T08:00:00+05:30",
+        }

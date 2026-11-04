@@ -45,9 +45,9 @@ class _GmailMessage(BaseModel):
         return self.payload.headers if self.payload is not None else None
 
     def header(self, name: str) -> str:
-        """Return a header's value, trimmed; empty when the message has none or it is null."""
+        """Return a header's trimmed value, name given in lower case; empty when absent or null."""
         return next(
-            ((h.value or "").strip() for h in self.headers or () if h.name.lower() == name.lower()),
+            ((h.value or "").strip() for h in self.headers or () if h.name.lower() == name),
             "",
         )
 

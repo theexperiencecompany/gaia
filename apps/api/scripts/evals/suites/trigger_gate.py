@@ -13,7 +13,7 @@ Record: uv run --group backend python -m scripts.evals.record_trigger_gate <run-
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Mapping
+from collections.abc import Mapping
 from enum import StrEnum
 import hashlib
 import json
@@ -30,6 +30,8 @@ from app.constants.trigger_gates import (
     SYSTEM_GATE_PRESETS,
     TRIGGER_GATE_QUESTION_KEY,
     TRIGGER_GATE_SKIP_PROBABILITY,
+    TRIGGER_GATE_URGENT_PROBABILITY,
+    TRIGGER_GATE_URGENT_QUESTION_KEY,
     GateAuthor,
     SystemGatePreset,
 )
@@ -37,13 +39,12 @@ from app.models.jev_models import JevDecisionsResponse
 from app.models.trigger_gate_models import AuthoredGate, SystemGate, TriggerGate
 from app.services.hil.jev_client import JevUnconfiguredError, post_decisions
 from app.services.triggers.gmail_signals import gmail_gate_view
-from app.services.triggers.trigger_gate import gate_request, skip_probability
-from scripts.evals.core.cases import load_case_files
+from app.services.triggers.trigger_gate import gate_request, skip_probability, urgency
 from scripts.evals.core.cost import EvalCostTracker
-from scripts.evals.core.gates import score_gates
 from scripts.evals.core.journal import RunJournal
 from scripts.evals.core.providers import EvalConfig, ProviderConfig
-from scripts.evals.core.runner import Suite, register_suite
+from scripts.evals.core.runner import register_suite
+from scripts.evals.core.transport_suite import TransportSuite
 from scripts.evals.core.types import Case, CaseRun, ProviderError
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "trigger-gate"
@@ -90,12 +91,6 @@ class GateJournalFields(TypedDict):
     requests: dict[str, AskedRequest]
 
 
-class RecordedRow(GateJournalFields):
-    """One email's line in a recorded pass."""
-
-    case_id: str
-
-
 def record(run_dir: Path, out_dir: Path = RECORDED_DIR) -> Path:
     """Write a finished run's regrade inputs to <out_dir>/<run-id>.jsonl, one email per line.
 
@@ -113,12 +108,6 @@ def record(run_dir: Path, out_dir: Path = RECORDED_DIR) -> Path:
     )
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return out
-
-
-def read_recorded(path: Path) -> dict[str, RecordedRow]:
-    """Return one recorded pass, keyed by case id."""
-    rows: list[RecordedRow] = [json.loads(line) for line in path.read_text().splitlines()]
-    return {row["case_id"]: row for row in rows}
 
 
 def request_sha(body: Mapping[str, object]) -> str:
@@ -156,10 +145,26 @@ def day_outcome(
     return "skip" if skip_probability(gate, answer) >= TRIGGER_GATE_SKIP_PROBABILITY else "run"
 
 
+def quiet_wakes(body: JevDecisionsResponse) -> bool:
+    """Return whether the quiet-hours answer wakes the user. The sweep checks decide_gate agrees."""
+    answer = body.answers[TRIGGER_GATE_URGENT_QUESTION_KEY]
+    return urgency(answer).probability >= TRIGGER_GATE_URGENT_PROBABILITY
+
+
+def quiet_wake(case: Case, run: CaseRun) -> float:
+    """Fail a run whose quiet-hours answer wakes the user for mail that can wait, or that has none."""
+    asked = (run.end_state or {}).get("requests", {}).get(GateMode.QUIET)
+    if asked is None:
+        return 0.0
+    woke = quiet_wakes(JevDecisionsResponse.model_validate(asked["response"]))
+    return 0.0 if woke and not case.expected["urgent"] else 1.0
+
+
 EXTRA = {
     "gate_outcome": lambda case, run: (
         1.0 if (run.end_state or {}).get("outcome") == case.expected.get("outcome") else 0.0
     ),
+    "quiet_wake": quiet_wake,
 }
 
 
@@ -215,31 +220,10 @@ class GateTransport:
 
 
 @register_suite("trigger-gate")
-class TriggerGateSuite(Suite):
+class TriggerGateSuite(TransportSuite):
     name = "trigger-gate"
     project = "gaia-trigger-gate"
     label = "Trigger gate (Inbox desk)"
-
-    def __init__(self, cfg: EvalConfig) -> None:
-        del cfg
-        self._transport = GateTransport()
-
-    def load_cases(self, cfg: EvalConfig) -> list[Case]:
-        del cfg
-        return load_case_files(DATA_DIR, self.name, EXTRA)
-
-    def transport(
-        self,
-        case: Case,
-        cfg: EvalConfig,
-        tracker: EvalCostTracker,
-        provider: ProviderConfig,
-    ) -> Awaitable[CaseRun]:
-        return self._transport.run(case, cfg, tracker, provider)
-
-    def score(self, case: Case, run: CaseRun) -> dict[str, float]:
-        return score_gates(case, run, EXTRA)
-
-    def finalize_scorers(self, cfg: EvalConfig) -> list[object]:
-        del cfg
-        return []
+    data_dir = DATA_DIR
+    extra = EXTRA
+    transport_type = GateTransport

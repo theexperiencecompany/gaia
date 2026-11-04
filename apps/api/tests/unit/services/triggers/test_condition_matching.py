@@ -164,8 +164,13 @@ class TestBooleanConditions:
         [
             (ConditionOperator.EQUALS, True, True, True),
             (ConditionOperator.EQUALS, "true", False, False),
+            (ConditionOperator.EQUALS, " True ", True, True),
+            (ConditionOperator.EQUALS, "FALSE", False, True),
             (ConditionOperator.NOT_EQUALS, False, True, True),
             (ConditionOperator.NOT_EQUALS, "false", False, False),
+            # A word that is not true or false holds no value, so neither operator matches.
+            (ConditionOperator.EQUALS, "yes", False, False),
+            (ConditionOperator.NOT_EQUALS, "yes", True, False),
         ],
     )
     def test_operators(
@@ -177,8 +182,11 @@ class TestBooleanConditions:
             is expected
         )
 
-    def test_a_truthy_non_boolean_payload_value_does_not_match(self) -> None:
-        condition = _c("continues_thread", ConditionOperator.EQUALS, True)
+    @pytest.mark.parametrize("operator", [ConditionOperator.EQUALS, ConditionOperator.NOT_EQUALS])
+    def test_a_non_boolean_payload_value_satisfies_neither_operator(
+        self, operator: ConditionOperator
+    ) -> None:
+        condition = _c("continues_thread", operator, True)
         assert not evaluate_condition(
             condition, {"continues_thread": 1}, MatchableFieldType.BOOLEAN
         )

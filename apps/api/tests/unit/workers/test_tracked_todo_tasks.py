@@ -2303,7 +2303,9 @@ class _TodoRow:
 
     def __init__(self, doc: TodoDocument) -> None:
         self.doc = doc
-        self.get_by_id = AsyncMock(side_effect=lambda _todo_id: self.doc)
+        self.get_by_id = AsyncMock(
+            side_effect=lambda todo_id: self.doc if todo_id == self.doc.id else None
+        )
         self.update = AsyncMock(side_effect=self._apply)
         self.update_if_scheduled_at = AsyncMock(side_effect=self._apply_if_scheduled_at)
         self.add_labels = AsyncMock()
@@ -2457,6 +2459,30 @@ class TestOneRunPerOccurrence:
         assert run.await_args.kwargs["origin"] is None
         assert await fake_redis.llen("trigger_batch:todo:todo-1") == 0
         assert leftover == []
+
+    async def test_a_desk_briefing_counts_the_held_events_it_answers(self, queue, fake_redis):
+        row = _TodoRow(
+            _doc(
+                external_ref=ExternalRef(
+                    source=ExternalRefSource.INBOX_DESK, id=GMAIL_INTEGRATION_ID
+                ),
+                recurrence=INBOX_DESK_RECURRENCE,
+            )
+        )
+        await tracked_todo_service.schedule_execution("todo-1", row.doc.scheduled_at)
+        for message_id in ("m-1", "m-2"):
+            held = _GMAIL_ORIGIN.model_copy(update={"payload": {"message_id": message_id}})
+            await fake_redis.rpush("trigger_batch:todo:todo-1", held.model_dump_json())
+        (scheduled,) = await _queued(queue)
+
+        # The task's own arguments; the envelope's are not this run's to read.
+        task_kwargs = {k: v for k, v in scheduled.kwargs.items() if not k.startswith("_")}
+        with self._worker(row):
+            async with captured_wide_event() as wide:
+                await execute_tracked_todo({}, *scheduled.args, **task_kwargs)
+
+        assert wide["trigger_events_answered"] == 2
+        assert await fake_redis.llen("trigger_batch:todo:todo-1") == 0
 
     async def test_a_scheduled_run_leaves_held_payloads_for_their_own_run(self, queue, fake_redis):
         """Only a desk reads what changed itself; another todo's held event is its run's content."""
@@ -3039,6 +3065,10 @@ class TestQuietHoursHoldAGatedTodosWindow:
             patch(f"{_DISPATCH}.record_activity", AsyncMock()),
             patch(f"{_DISPATCH}.capture"),
         ):
+            # Kolkata is the owner's clock alone: a hold read for anyone else would read UTC.
+            gate.tz.side_effect = lambda user_id: Timezone.parse(
+                "Asia/Kolkata" if user_id == OWNER_ID else "UTC"
+            )
             gate.jev.mock(return_value=httpx.Response(200, json=_REPLY_CAN_WAIT))
             yield
 

@@ -11,14 +11,21 @@ import pytest
 
 from app.services.triggers.gmail_signals import gmail_gate_view, gmail_message_signals
 from app.services.triggers.handlers.gmail import gmail_trigger_handler
+from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
 
 
-def test_an_unreadable_payload_derives_nothing() -> None:
-    assert (
-        gmail_message_signals({"label_ids": "INBOX", "thread_id": "a1", "message_id": "b2"}) == {}
-    )
+async def test_an_unreadable_payload_derives_nothing_and_warns_with_the_error_clipped() -> None:
+    unreadable = {"label_ids": "INBOX", "thread_id": 5, "subject": 7, "attachment_list": "x"}
+
+    async with captured_wide_event() as event:
+        assert gmail_message_signals(unreadable) == {}
+
+    (warning,) = event["warnings"]
+    assert warning["msg"] == "[TRIGGER] Gmail payload unreadable for signals; none derived"
+    assert warning["error"].startswith("4 validation errors for _GmailMessage")
+    assert len(warning["error"]) == 300
 
 
 def _headers(**values: str) -> dict[str, object]:
@@ -48,6 +55,11 @@ class TestThread:
 
     def test_no_thread_id_leaves_the_signal_out(self) -> None:
         assert "continues_thread" not in gmail_message_signals({"message_id": "b2"})
+
+    def test_an_empty_message_id_names_no_thread(self) -> None:
+        assert "continues_thread" not in gmail_message_signals(
+            {"thread_id": "a1", "message_id": ""}
+        )
 
 
 class TestHeaders:
@@ -178,17 +190,24 @@ class TestGateView:
         assert view is not None
         assert (view.is_reply, view.cc) == (False, "")
 
+    def test_a_null_header_value_reads_empty(self) -> None:
+        view = gmail_gate_view(_message(payload={"headers": [{"name": "Cc", "value": None}]}))
+
+        assert view is not None
+        assert view.cc == ""
+
     def test_a_missing_field_reads_empty_and_an_unknown_signal_reads_null(self) -> None:
         view = gmail_gate_view({"thread_id": "a1", "message_id": "a1"})
 
         assert view is not None
         event = view.as_event()
-        assert (event["from"], event["to"], event["snippet"], event["attachments"]) == (
-            "",
-            "",
-            "",
-            0,
-        )
+        assert (
+            event["from"],
+            event["to"],
+            event["subject"],
+            event["snippet"],
+            event["attachments"],
+        ) == ("", "", "", "", 0)
         assert (event["is_reply"], event["has_list_unsubscribe"], event["gmail_category"]) == (
             None,
             None,

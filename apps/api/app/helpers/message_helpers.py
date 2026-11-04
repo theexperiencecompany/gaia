@@ -9,7 +9,7 @@ from app.agents.context.slots import TIME_CONTEXT_MARKER
 from app.agents.prompts.onboarding_prompts import (
     ONBOARDING_FIRST_CONVERSATION_SYSTEM_PROMPT,
 )
-from app.agents.prompts.trigger_prompts import QUIET_HOURS_BYPASS_NOTE
+from app.agents.prompts.quiet_hours_prompts import QUIET_HOURS_BYPASS_NOTE
 from app.agents.prompts.workflow_prompts import (
     EMAIL_TRIGGERED_WORKFLOW_PROMPT,
     SIGNAL_MATCHING_INSTRUCTIONS,
