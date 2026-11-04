@@ -2758,3 +2758,23 @@ class TestAHealRunReadsTheStoppedReplaysCalls:
             ("fetch_webpages#1", "fetch_webpages"),
         ]
         assert trace == [*self.REPLAYED, self.OWN]
+
+    async def test_each_fire_opens_a_record_of_its_own(self, fake_redis: object) -> None:
+        """A later fire must not inherit an earlier fire's calls as its own history."""
+
+        async def quiet_agent(**kwargs: object) -> SilentRunResult:
+            stream_id = str(kwargs["stream_id"])
+            return SilentRunResult(message="done", tool_data=[], stream_id=stream_id)
+
+        with (
+            patch(f"{MODULE}.get_or_create_workflow_conversation", AsyncMock(return_value="c1")),
+            patch(f"{MODULE}.add_workflow_execution_messages", AsyncMock()),
+            patch(f"{MODULE}.reset_workflow_threads", AsyncMock()),
+            patch("app.agents.core.agent.call_agent_silent", AsyncMock(side_effect=quiet_agent)),
+        ):
+            await execute_workflow_as_chat(
+                _workflow(), AGENT_USER, {}, reservation="r", replayed=self.REPLAYED
+            )
+            _, later = await execute_workflow_as_chat(_workflow(), AGENT_USER, {}, reservation="r")
+
+        assert later == []
