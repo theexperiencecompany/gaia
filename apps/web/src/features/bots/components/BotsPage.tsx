@@ -4,7 +4,7 @@ import { Button } from "@heroui/react";
 import Image from "next/image";
 import Link from "next/link";
 import type { ComponentProps } from "react";
-import { BOT_PLATFORM_ICONS, BOT_PLATFORM_LABELS } from "@/config/botPlatforms";
+import { BOT_PLATFORM_ICONS } from "@/config/botPlatforms";
 import type { BotConfig } from "../constants";
 import { useBotCards } from "../hooks/useBotCards";
 import { BOT_PLATFORM_REACH } from "../pageContent";
@@ -13,31 +13,31 @@ import BotsGuide from "./BotsGuide";
 const stackedIcons = [
   {
     src: BOT_PLATFORM_ICONS.discord,
-    alt: BOT_PLATFORM_LABELS.discord,
+    alt: "",
     rotate: "-rotate-12",
     z: "z-[1]",
   },
   {
     src: BOT_PLATFORM_ICONS.slack,
-    alt: BOT_PLATFORM_LABELS.slack,
+    alt: "",
     rotate: "-rotate-6",
     z: "z-[2]",
   },
   {
     src: BOT_PLATFORM_ICONS.imessage,
-    alt: BOT_PLATFORM_LABELS.imessage,
+    alt: "",
     rotate: "rotate-0",
     z: "z-[3]",
   },
   {
     src: BOT_PLATFORM_ICONS.telegram,
-    alt: BOT_PLATFORM_LABELS.telegram,
+    alt: "",
     rotate: "rotate-6",
     z: "z-[4]",
   },
   {
     src: BOT_PLATFORM_ICONS.whatsapp,
-    alt: BOT_PLATFORM_LABELS.whatsapp,
+    alt: "",
     rotate: "rotate-12",
     z: "z-[5]",
   },
