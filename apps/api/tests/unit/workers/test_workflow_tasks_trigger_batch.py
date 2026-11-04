@@ -273,6 +273,8 @@ _POLLED = TriggerConfig(
     trigger_data=GmailPollInboxConfig(interval=15),
 )
 _PER_EMAIL = TriggerConfig(type=TriggerType.INTEGRATION, trigger_name="gmail_new_message")
+# Never batches by day: each event runs at once.
+_UNBATCHED = TriggerConfig(type=TriggerType.INTEGRATION, trigger_name="slack_new_message")
 
 
 def _on_kolkata_clock(day: int, hour: int, minute: int) -> datetime:
@@ -421,6 +423,13 @@ class TestAGatedBatchWaitsOutQuietHours:
                 [_on_kolkata_clock(1, 14, 30), _on_kolkata_clock(2, 2, 30)],
                 [(_on_kolkata_clock(2, 8, 0), 2)],
                 id="batch-due-after-quiet-hours",
+            ),
+            pytest.param(
+                _BILLING,
+                _UNBATCHED,
+                [_on_kolkata_clock(1, 23, 0), _on_kolkata_clock(2, 2, 30)],
+                [(_on_kolkata_clock(2, 8, 0), 2)],
+                id="unbatched-trigger-held-overnight",
             ),
             pytest.param(
                 None,

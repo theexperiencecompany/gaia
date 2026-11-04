@@ -590,10 +590,11 @@ class TriggerHandler(ABC):
             # are batched into one run. Triggers with no declared interval stay
             # immediate — a meeting reminder held back for its window is a missed meeting.
             window_seconds = coalesce_window_seconds(workflow.trigger_config)
-            # Urgent runs now, never at the end of its batch; a held batch drains when the
-            # quiet hours end, however much later its window would.
+            # Urgent runs now, never at the end of its batch. Every held event, batching
+            # trigger or not, joins the one drain at the end of the quiet hours: a run per
+            # event would collide on the conversation lock at 08:00 and lose all but one.
             buffered = False
-            if window_seconds > 0 and isinstance(verdict, GateHold):
+            if isinstance(verdict, GateHold):
                 buffered = await hold_trigger_event(
                     workflow.id, workflow.user_id, data, verdict.until, context
                 )

@@ -320,16 +320,47 @@ class TestQuietHours:
         night.jev.mock(return_value=httpx.Response(200, json=_night_body(can_wait=1.0)))
         immediate = TriggerConfig(type=TriggerType.INTEGRATION, trigger_name="slack_new_message")
 
-        (job,), _ = await _fire_at(night, _workflow(trigger_config=immediate), zone=zone, at=at)
+        (job,), (held,) = await _fire_at(
+            night, _workflow(trigger_config=immediate), zone=zone, at=at
+        )
 
         assert job.function == "execute_workflow_by_id"
         assert job.score == _score(morning.replace(tzinfo=ZoneInfo(zone)))
         workflow_id, context = job.args
         assert workflow_id == WORKFLOW_ID
         assert context["quiet_hours"] == {"kind": "hold"}
-        assert context["trigger_data"]["message_id"] == "t1"
+        assert context["trigger_batch_key"] == f"trigger_batch:{WORKFLOW_ID}"
+        assert json.loads(held)["message_id"] == "t1"
         # Claimed when held: the event will run, so a second trigger for it must not.
         night.claim.assert_awaited_once()
+
+    async def test_a_night_of_events_on_an_unbatched_trigger_is_one_morning_run(
+        self, night: SimpleNamespace
+    ) -> None:
+        """One run per held event would collide on the conversation lock at 08:00 and lose all but one."""
+        night.jev.mock(return_value=httpx.Response(200, json=_night_body(can_wait=1.0)))
+        immediate = TriggerConfig(type=TriggerType.INTEGRATION, trigger_name="slack_new_message")
+        workflow = _workflow(trigger_config=immediate)
+
+        with (
+            patch(
+                "app.services.triggers.trigger_gate.get_profile_timezone",
+                AsyncMock(return_value=Timezone.parse(KOLKATA)),
+            ),
+            time_machine.travel(datetime(2026, 10, 1, 21, 0, tzinfo=UTC), tick=False),
+        ):
+            await _fire([workflow], text="Deploy is done")
+            await _fire([workflow], message_id="t2", text="Can you review the PR?")
+            batch = await night.redis.lrange(f"trigger_batch:{WORKFLOW_ID}", 0, -1)
+            jobs = await night.arq.queued_jobs()
+
+        (job,) = jobs
+        assert job.score == _score(datetime(2026, 10, 2, 8, tzinfo=ZoneInfo(KOLKATA)))
+        assert job.args[1]["trigger_batch_key"] == f"trigger_batch:{WORKFLOW_ID}"
+        assert [json.loads(event)["text"] for event in batch] == [
+            "Deploy is done",
+            "Can you review the PR?",
+        ]
 
     async def test_a_held_batched_workflow_drains_when_quiet_hours_end(
         self, night: SimpleNamespace
