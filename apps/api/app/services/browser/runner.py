@@ -256,6 +256,7 @@ class BrowserTaskRunner:
             config=self._config,
             hooks=hooks,
             setup=AgentRunSetup(
+                user_id=self._user_id,
                 ledger=self.ledger,
                 secrets=self._secrets,
                 steps_before=self._last_step,

@@ -553,6 +553,7 @@ def _host_patches(
             cdp_ws="ws://browser.test/cdp",
             live_ws="ws://browser.test/live",
             engine=BrowserEngine.OBSCURA if on_obscura else BrowserEngine.CHROMIUM,
+            fortress=False,
         )
 
     def _kill_engine() -> None:

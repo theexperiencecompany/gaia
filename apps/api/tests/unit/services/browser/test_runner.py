@@ -91,6 +91,7 @@ def _session(session_id: str = "s-primary") -> BrowserHostSession:
         cdp_url=f"ws://{session_id}",
         host_url=f"http://{session_id}-host",
         engine=BrowserEngine.OBSCURA if session_id == "s-primary" else BrowserEngine.CHROMIUM,
+        fortress=False,
     )
 
 
@@ -623,13 +624,19 @@ async def test_a_run_past_its_budget_never_moves_even_with_its_engine_wedged(
 async def test_the_agent_run_carries_this_runs_ledger_secrets_and_hooks() -> None:
     action_results = AsyncMock()
     user_waiting = AsyncMock(return_value=False)
-    runner, _ = _runner(_done, action_results=action_results, user_waiting=user_waiting)
+    runner, _ = _runner(
+        _done, user_id=OTHER_USER_ID, action_results=action_results, user_waiting=user_waiting
+    )
 
     await _run(runner)
 
     [run] = _ScriptedRun.made
     assert run.task == "book a table"
-    assert (run.setup.ledger, run.setup.secrets) == (runner.ledger, SECRETS)
+    assert (run.setup.user_id, run.setup.ledger, run.setup.secrets) == (
+        OTHER_USER_ID,
+        runner.ledger,
+        SECRETS,
+    )
     assert run.config.max_actions_per_step == 5
     assert (run.hooks.action_results, run.hooks.user_waiting) == (action_results, user_waiting)
     assert runner.used_fallback is False

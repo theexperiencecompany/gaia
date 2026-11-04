@@ -1,4 +1,4 @@
-"""The run's Browser-Use session: no page script of GAIA's on any tab, a capped load wait, and tabs titled from their documents."""
+"""The run's Browser-Use session: stealth on every tab for its user unless on Fortress, a capped load wait, and tabs titled from their documents."""
 
 from __future__ import annotations
 
@@ -10,16 +10,42 @@ from browser_use.browser.session import BrowserSession
 from browser_use.browser.views import TabInfo
 import pytest
 
+from app.browser_host.stealth import build_stealth_script
 from app.constants.browser import BROWSER_VIEWPORT_HEIGHT, BROWSER_VIEWPORT_WIDTH
 from app.services.browser import browser_use_session as session_mod
-from app.services.browser.browser_use_session import GaiaBrowserSession
+from app.services.browser.browser_use_session import GaiaBrowserSession, seed_for_user
 from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
 
 
-def _session() -> GaiaBrowserSession:
-    return GaiaBrowserSession(cdp_url="ws://host.test/x")
+def _session(user_id: str | None = "user-1", *, fortress: bool = False) -> GaiaBrowserSession:
+    return GaiaBrowserSession(cdp_url="ws://host.test/x", user_id=user_id, fortress=fortress)
+
+
+def _tabs(
+    monkeypatch: pytest.MonkeyPatch, add_script: AsyncMock
+) -> tuple[dict[str, Any], list[bool]]:
+    """Serve each target its own CDP session from Browser-Use's pool; return them by target, and each focus asked."""
+    served: dict[str, Any] = {}
+    focuses: list[bool] = []
+
+    async def _pooled(
+        self: BrowserSession, target_id: str | None = None, focus: bool = True
+    ) -> Any:
+        focuses.append(focus)
+        page = SimpleNamespace(addScriptToEvaluateOnNewDocument=add_script)
+        return served.setdefault(
+            target_id or "t1",
+            SimpleNamespace(
+                target_id=target_id or "t1",
+                session_id=f"sess-{target_id}",
+                cdp_client=SimpleNamespace(send=SimpleNamespace(Page=page)),
+            ),
+        )
+
+    monkeypatch.setattr(BrowserSession, "get_or_create_cdp_session", _pooled)
+    return served, focuses
 
 
 def test_the_session_attaches_to_the_host_at_the_screencast_size() -> None:
@@ -35,24 +61,69 @@ def test_the_session_attaches_to_the_host_at_the_screencast_size() -> None:
     assert (profile.device_scale_factor, profile.no_viewport) == (1, False)
 
 
-@pytest.mark.regression
-async def test_no_tab_gets_a_fingerprint_script_of_ours(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Regression: our JS stealth on Chrome was detectable and lost to Fortress's engine (12/24 vs 20/24 loads)."""
+async def test_every_tab_gets_the_users_stealth_script_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: the script registered on the first tab only, so a window.open tab was fingerprint-naked."""
     add_script = AsyncMock(return_value={"identifier": "1"})
-    served = SimpleNamespace(
-        target_id="t1",
-        session_id="sess-t1",
-        cdp_client=SimpleNamespace(
-            send=SimpleNamespace(Page=SimpleNamespace(addScriptToEvaluateOnNewDocument=add_script))
-        ),
-    )
-    monkeypatch.setattr(BrowserSession, "get_or_create_cdp_session", AsyncMock(return_value=served))
-    session = _session()
+    _, focuses = _tabs(monkeypatch, add_script)
+    session = _session("user-1")
 
-    assert await session.get_or_create_cdp_session(target_id="t1") is served
+    await session.get_or_create_cdp_session(target_id="t1")
+    await session.get_or_create_cdp_session(target_id="t1")
+    await session.get_or_create_cdp_session(target_id="t2", focus=False)
+
+    source = build_stealth_script(seed_for_user("user-1"))
+    assert [c.kwargs for c in add_script.await_args_list] == [
+        {"params": {"source": source, "runImmediately": True}, "session_id": "sess-t1"},
+        {"params": {"source": source, "runImmediately": True}, "session_id": "sess-t2"},
+    ]
+    assert focuses == [True, True, False]
+
+
+@pytest.mark.regression
+async def test_a_fortress_engines_tabs_get_no_stealth_script(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression for #1610: Fortress spoofs in C++, and a page script on top contradicts its persona."""
+    add_script = AsyncMock(return_value={"identifier": "1"})
+    served, _ = _tabs(monkeypatch, add_script)
+    session = _session("user-1", fortress=True)
+
+    assert await session.get_or_create_cdp_session(target_id="t1") is served["t1"]
     await session.get_or_create_cdp_session(target_id="t2", focus=False)
 
     add_script.assert_not_awaited()
+
+
+async def test_a_script_that_did_not_register_is_tried_again_and_the_page_goes_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    add_script = AsyncMock(side_effect=[RuntimeError("cdp down"), {"identifier": "1"}])
+    served, _ = _tabs(monkeypatch, add_script)
+    session = _session()
+
+    async with captured_wide_event() as event:
+        assert await session.get_or_create_cdp_session(target_id="t1") is served["t1"]
+    await session.get_or_create_cdp_session(target_id="t1")
+
+    assert add_script.await_count == 2
+    [warning] = event["warnings"]
+    assert (warning["msg"], warning["error_type"], warning["target_id"]) == (
+        "[BROWSER] Stealth script not registered",
+        "RuntimeError",
+        "t1",
+    )
+
+
+def test_each_user_is_one_stable_device_and_no_user_still_one() -> None:
+    users = ("user-1", "user-2", "alice@example.com")
+    seeds = [seed_for_user(user) for user in users]
+
+    assert all(0 <= seed < 2**32 for seed in seeds)
+    assert len(set(seeds)) == len(users)
+    assert seeds == [seed_for_user(user) for user in users]
+    assert seed_for_user(None) == seed_for_user("") == session_mod._DEFAULT_SEED
 
 
 @pytest.mark.parametrize(

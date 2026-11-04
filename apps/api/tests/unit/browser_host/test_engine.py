@@ -18,7 +18,7 @@ import pytest
 
 from app.browser_host import engine as engine_mod
 from app.browser_host.cdp_mux import CdpMux
-from app.browser_host.engine import Engine
+from app.browser_host.engine import ChromiumBinary, Engine, launch_engine
 from app.browser_host.host import BrowserHost
 from app.browser_host.obscura_launch import LaunchedEngine
 from app.browser_host.process import EngineLaunchError, ProcessSampler
@@ -36,6 +36,8 @@ from tests.unit.browser_host.conftest import FakeMux
 pytestmark = pytest.mark.unit
 
 _SHELL = "/ms-playwright/chromium_headless_shell-1187/chrome-linux/headless_shell"
+_SHELL_BIN = ChromiumBinary(path=_SHELL, fortress=False)
+_FORTRESS_BIN = ChromiumBinary(path="/opt/fortress/tilion", fortress=True)
 _WS = "ws://127.0.0.1:9333/devtools/browser/abc"
 
 
@@ -103,11 +105,15 @@ def test_a_configured_binary_wins_and_a_missing_one_fails_loud(
     binary = tmp_path / "chrome"
     binary.write_text("")
     monkeypatch.setattr(browser_host_settings, "CHROMIUM_BIN", str(binary))
-    assert engine_mod.resolve_chromium_path() == str(binary)
+    monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_FORTRESS", False)
+    assert engine_mod.resolve_chromium_binary() == ChromiumBinary(path=str(binary), fortress=False)
+
+    monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_FORTRESS", True)
+    assert engine_mod.resolve_chromium_binary() == ChromiumBinary(path=str(binary), fortress=True)
 
     monkeypatch.setattr(browser_host_settings, "CHROMIUM_BIN", str(tmp_path))
     with pytest.raises(RuntimeError, match="the Chromium binary is not a file"):
-        engine_mod.resolve_chromium_path()
+        engine_mod.resolve_chromium_binary()
 
 
 def test_fortress_on_without_a_configured_binary_launches_the_images_and_fails_loud_without_it(
@@ -118,11 +124,11 @@ def test_fortress_on_without_a_configured_binary_launches_the_images_and_fails_l
     monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_FORTRESS", True)
     monkeypatch.setattr(engine_mod, "FORTRESS_IMAGE_BIN", str(launcher))
     with pytest.raises(RuntimeError, match="the Chromium binary is not a file"):
-        engine_mod.resolve_chromium_path()
+        engine_mod.resolve_chromium_binary()
 
     launcher.write_text("")
 
-    assert engine_mod.resolve_chromium_path() == str(launcher)
+    assert engine_mod.resolve_chromium_binary() == ChromiumBinary(path=str(launcher), fortress=True)
 
 
 @pytest.mark.parametrize("shell", ["headless_shell", None])
@@ -136,7 +142,9 @@ def test_without_a_configured_binary_playwrights_own_is_used(
     playwright.__enter__.return_value.chromium.executable_path = str(full)
     monkeypatch.setattr(engine_mod, "sync_playwright", lambda: playwright)
 
-    assert Path(engine_mod.resolve_chromium_path()).name == (shell or "chrome")
+    resolved = engine_mod.resolve_chromium_binary()
+    assert Path(resolved.path).name == (shell or "chrome")
+    assert resolved.fortress is False
 
 
 # --- the Chromium command ---
@@ -147,7 +155,7 @@ def test_the_command_debugs_on_an_ephemeral_port_from_its_profile(
 ) -> None:
     monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_HEADED", False)
 
-    args = engine_mod.chromium_argv(_SHELL, "/tmp/p")
+    args = engine_mod.chromium_argv(_SHELL_BIN, "/tmp/p", None)
 
     assert args[:3] == [_SHELL, "--remote-debugging-port=0", "--user-data-dir=/tmp/p"]
     assert "--no-sandbox" in args
@@ -163,12 +171,15 @@ def test_the_full_browser_runs_the_new_headless_mode_and_a_headed_host_none(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_HEADED", False)
-    full = engine_mod.chromium_argv("/opt/fortress/tilion", "/tmp/p")
+    full = engine_mod.chromium_argv(ChromiumBinary("/opt/chrome", fortress=False), "/tmp/p", "UA/1")
     assert "--headless=new" in full
     assert "--headless" not in full
+    assert "--user-agent=UA/1" in full
 
     monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_HEADED", True)
-    assert not any(a.startswith("--headless") for a in engine_mod.chromium_argv(_SHELL, "/p"))
+    assert not any(
+        a.startswith("--headless") for a in engine_mod.chromium_argv(_SHELL_BIN, "/p", None)
+    )
 
 
 #: A throwaway CA (a public certificate, no key), and its SPKI pin as openssl computes it
@@ -195,13 +206,14 @@ def test_chrome_accepts_a_test_stacks_ca_only_while_one_is_set(
     ca_file.write_text(_TEST_CA_PEM)
     monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_TEST_CA_FILE", None)
     assert not any(
-        a.startswith("--ignore-certificate-errors") for a in engine_mod.chromium_argv(_SHELL, "/p")
+        a.startswith("--ignore-certificate-errors")
+        for a in engine_mod.chromium_argv(_SHELL_BIN, "/p", None)
     )
 
     monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_TEST_CA_FILE", str(ca_file))
 
     assert f"--ignore-certificate-errors-spki-list={_TEST_CA_PIN}" in engine_mod.chromium_argv(
-        _SHELL, "/p"
+        _SHELL_BIN, "/p", None
     )
 
 
@@ -238,9 +250,7 @@ def test_a_chromium_host_launches_no_persona_unless_fortress_is_switched_on(
     monkeypatch.delenv("BROWSER_HOST_FORTRESS", raising=False)
     assert BrowserHostSettings().BROWSER_HOST_FORTRESS is False
 
-    monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_FORTRESS", False)
-
-    args = engine_mod.chromium_argv(_SHELL, "/p")
+    args = engine_mod.chromium_argv(_SHELL_BIN, "/p", None)
 
     assert _persona_flags(args) == {}
     assert {"--disable-speech-synthesis-api", "--disable-speech-api"} <= set(args)
@@ -249,11 +259,10 @@ def test_a_chromium_host_launches_no_persona_unless_fortress_is_switched_on(
 def test_fortress_launches_with_every_surface_pinned_and_its_timezone_and_languages_from_settings(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_FORTRESS", True)
     monkeypatch.setattr(browser_host_settings, "FORTRESS_TIMEZONE", "Europe/Berlin")
     monkeypatch.setattr(browser_host_settings, "FORTRESS_LANGUAGES", ("en-US", "de"))
 
-    args = engine_mod.chromium_argv("/opt/fortress/tilion", "/p")
+    args = engine_mod.chromium_argv(_FORTRESS_BIN, "/p", None)
     flags = _persona_flags(args)
 
     assert set(flags) == _FORTRESS_SURFACES
@@ -321,11 +330,12 @@ async def test_an_obscura_launch_dials_the_endpoint_it_published(
         AsyncMock(return_value=LaunchedEngine(proc=cast(Any, proc), port=9333, ws_url=_WS)),
     )
 
-    engine = await Engine.launch(BrowserEngine.OBSCURA, None)
+    engine = await Engine.launch(BrowserEngine.OBSCURA, None, None)
 
     assert root.urls == [_WS]
     assert root.started == 1
     assert engine.profile_dir is None
+    assert engine.fortress is False
     assert engine.base_rss_mb == 321.0
     assert engine.alive
 
@@ -344,19 +354,29 @@ async def test_a_chromium_launch_gets_a_fresh_profile_and_dials_its_port(
 
     monkeypatch.setattr(engine_mod, "spawn_engine", _spawn)
 
-    engine = await Engine.launch(BrowserEngine.CHROMIUM, _SHELL)
+    engine = await Engine.launch(BrowserEngine.CHROMIUM, _SHELL_BIN, "UA/1")
 
     assert engine.profile_dir is not None
     assert Path(engine.profile_dir).parent == tmp_path
     assert f"--user-data-dir={engine.profile_dir}" in spawned[0]
+    assert "--user-agent=UA/1" in spawned[0]
+    assert engine.fortress is False
     assert root.urls == [_WS]
 
 
 @pytest.mark.regression
-async def test_a_headless_announcing_chromium_is_launched_once_with_its_own_user_agent(
-    root: FakeMux, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+@pytest.mark.parametrize(
+    ("chromium", "agents"),
+    [(_SHELL_BIN, [None, "Mozilla Chrome/153"]), (_FORTRESS_BIN, [None])],
+)
+async def test_a_headless_announcing_chromium_relaunches_as_plain_chrome_unless_it_is_fortress(
+    root: FakeMux,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    chromium: ChromiumBinary,
+    agents: list[str | None],
 ) -> None:
-    """Regression: the host relaunched Chrome with a hand-made --user-agent, which desyncs Fortress's Client Hints."""
+    """Regression for #1610: the default host announced HeadlessChrome; a made-up UA desyncs Fortress's Client Hints."""
     monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
     monkeypatch.setattr(browser_host_settings, "BROWSER_ENGINE", BrowserEngine.CHROMIUM)
     spawned: list[list[str]] = []
@@ -370,15 +390,19 @@ async def test_a_headless_announcing_chromium_is_launched_once_with_its_own_user
     monkeypatch.setattr(engine_mod, "spawn_engine", _spawn)
     monkeypatch.setattr(engine_mod, "stop_process", AsyncMock())
     host = BrowserHost(on_fatal=MagicMock())
-    host._chromium_path = _SHELL
+    host._chromium = chromium
 
     try:
-        await host._launch()
+        engine = await host._launch()
     finally:
         await host.stop()
 
-    assert len(spawned) == 1
-    assert not any(a.startswith("--user-agent") for a in spawned[0])
+    announced = [
+        next((a.split("=", 1)[1] for a in argv if a.startswith("--user-agent=")), None)
+        for argv in spawned
+    ]
+    assert announced == agents
+    assert engine.fortress is chromium.fortress
 
 
 async def test_chromium_is_spawned_without_the_desktop_session_bus(
@@ -397,7 +421,7 @@ async def test_chromium_is_spawned_without_the_desktop_session_bus(
 
     monkeypatch.setattr(engine_mod, "spawn_engine", _spawn)
 
-    await Engine.launch(BrowserEngine.CHROMIUM, _SHELL)
+    await Engine.launch(BrowserEngine.CHROMIUM, _SHELL_BIN, None)
 
     assert envs[0] is not None
     assert "DBUS_SESSION_BUS_ADDRESS" not in envs[0]
@@ -441,7 +465,7 @@ async def test_an_engine_that_never_finishes_the_handshake_fails_naming_it(
     with pytest.raises(
         EngineLaunchError, match=f"published {_WS} but did not finish the CDP handshake"
     ):
-        await Engine.launch(BrowserEngine.CHROMIUM, _SHELL)
+        await Engine.launch(BrowserEngine.CHROMIUM, _SHELL_BIN, None)
 
     stop.assert_awaited_once_with(proc)
     assert list(tmp_path.iterdir()) == []
@@ -460,7 +484,7 @@ async def test_a_launch_that_fails_leaves_no_process_and_no_profile(
     monkeypatch.setattr(engine_mod, "stop_process", stop)
 
     with pytest.raises(EngineLaunchError):
-        await Engine.launch(BrowserEngine.CHROMIUM, _SHELL)
+        await Engine.launch(BrowserEngine.CHROMIUM, _SHELL_BIN, None)
 
     stop.assert_awaited_once_with(proc)
     assert list(tmp_path.iterdir()) == []
@@ -468,8 +492,8 @@ async def test_a_launch_that_fails_leaves_no_process_and_no_profile(
 
 
 async def test_a_chromium_launch_needs_its_binary_resolved() -> None:
-    with pytest.raises(RuntimeError, match="chromium_path not resolved"):
-        await Engine.launch(BrowserEngine.CHROMIUM, None)
+    with pytest.raises(RuntimeError, match="chromium binary not resolved"):
+        await Engine.launch(BrowserEngine.CHROMIUM, None, None)
 
 
 def _engine(
@@ -483,6 +507,58 @@ def _engine(
         profile_dir=profile,
         sampler=None,
         base_rss_mb=0.0,
+        fortress=False,
+    )
+
+
+async def test_a_headless_chromium_is_relaunched_announcing_plain_chrome(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = _engine(mux=FakeMux({"Browser.getVersion": {"userAgent": "M HeadlessChrome/153"}}))
+    second = _engine()
+    launch = AsyncMock(side_effect=[first, second])
+    monkeypatch.setattr(Engine, "launch", launch)
+    shutdown = AsyncMock()
+    monkeypatch.setattr(Engine, "shutdown", shutdown)
+
+    engine, agent = await launch_engine(BrowserEngine.CHROMIUM, _SHELL_BIN, None)
+
+    assert engine is second
+    assert agent == "M Chrome/153"
+    assert [c.args for c in launch.await_args_list] == [
+        (BrowserEngine.CHROMIUM, _SHELL_BIN, None),
+        (BrowserEngine.CHROMIUM, _SHELL_BIN, "M Chrome/153"),
+    ]
+    shutdown.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    ("kind", "agent", "announced", "fortress"),
+    [
+        (BrowserEngine.OBSCURA, None, "unused", False),
+        (BrowserEngine.CHROMIUM, "Known/1", "unused", False),
+        (BrowserEngine.CHROMIUM, None, "M Chrome/153", False),
+        (BrowserEngine.CHROMIUM, None, "M HeadlessChrome/153", True),
+    ],
+)
+async def test_an_engine_that_already_announces_a_plain_browser_is_launched_once(
+    monkeypatch: pytest.MonkeyPatch,
+    kind: BrowserEngine,
+    agent: str | None,
+    announced: str,
+    fortress: bool,
+) -> None:
+    only = _engine(mux=FakeMux({"Browser.getVersion": {"userAgent": announced}}))
+    only.fortress = fortress
+    launch = AsyncMock(return_value=only)
+    monkeypatch.setattr(Engine, "launch", launch)
+
+    engine, learned = await launch_engine(kind, _SHELL_BIN, agent)
+
+    assert engine is only
+    assert [c.args for c in launch.await_args_list] == [(kind, _SHELL_BIN, agent)]
+    assert learned == (
+        announced if kind is BrowserEngine.CHROMIUM and not (agent or fortress) else agent
     )
 
 

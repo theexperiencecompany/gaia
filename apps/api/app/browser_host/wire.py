@@ -23,6 +23,8 @@ class CreatedSession(BaseModel):
     cdp_ws: str
     live_ws: str
     engine: BrowserEngine
+    #: The engine is Fortress, which fingerprints itself, so the API adds no stealth script.
+    fortress: bool
 
 
 class StorageStateResponse(BaseModel):

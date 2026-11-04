@@ -67,7 +67,7 @@ class _Page(GaiaBrowserSession):
     def __init__(
         self, url: str | None, title: str | None = None, elements: dict[int, Any] | None = None
     ) -> None:
-        super().__init__(cdp_url="ws://host.test/x")
+        super().__init__(cdp_url="ws://host.test/x", user_id=None, fortress=False)
         self.agent_focus_target_id = "tab-1" if url else None
         self.session_manager = SimpleNamespace(get_target={"tab-1": SimpleNamespace(url=url)}.get)
         self._title = title

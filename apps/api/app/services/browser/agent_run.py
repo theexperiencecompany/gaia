@@ -239,8 +239,9 @@ class _Step:
 
 @dataclass(frozen=True)
 class AgentRunSetup:
-    """What a run carries across engines: its ledger and secrets, the steps shown."""
+    """Who a run works for and what it carries across engines: the user, its ledger and secrets, the steps shown."""
 
+    user_id: str | None
     ledger: RunLedger
     secrets: RunSecrets
     #: A run resumed on the fallback engine numbers on from the steps the user already saw.
@@ -265,6 +266,7 @@ class BrowserAgentRun:
         self._hooks = hooks
         self._secrets = setup.secrets
         self._ledger = setup.ledger
+        self._user_id = setup.user_id
         self._resumed_from = setup.resumed_from
         self._agent: Any = None
         self._page: JevPage | None = None
@@ -301,7 +303,11 @@ class BrowserAgentRun:
             log.set_ns("browser", llm_error=type(exc).__name__)
             raise
         async with contextlib.AsyncExitStack() as jev_scope:
-            browser = GaiaBrowserSession(cdp_url=self._session.cdp_url)
+            browser = GaiaBrowserSession(
+                cdp_url=self._session.cdp_url,
+                user_id=self._user_id,
+                fortress=self._session.fortress,
+            )
             stalls = self._stalls = StalledLoads(browser)
             browser.event_bus.on(BrowserConnectedEvent, self._on_connected)
             browser.event_bus.on(BrowserConnectedEvent, stalls.attach)

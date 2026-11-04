@@ -56,6 +56,8 @@ _HOST_EXTRA_ARGS: tuple[str, ...] = ("--no-sandbox",)
 # Playwright names the shell binary per platform: headless_shell on Linux,
 # chrome-headless-shell on macOS, .exe on Windows.
 _HEADLESS_SHELL_BINARIES = ("headless_shell", "chrome-headless-shell", "headless_shell.exe")
+# How a headless build names itself in its User-Agent ("HeadlessChrome/153.0.0.0").
+_HEADLESS_MARKER = "HeadlessChrome/"
 # Per-renderer V8 heap ceiling: one runaway page must not OOM every other user's session.
 _JS_HEAP_MB = 512
 # A wedged engine stays alive and silent, so its root connection is asked on a
@@ -86,24 +88,34 @@ def _headless_shell_beside(chromium: Path) -> Path | None:
     return None
 
 
-def resolve_chromium_path() -> str:
+@dataclass(frozen=True)
+class ChromiumBinary:
+    """The Chromium build every launch runs, and whether it is Fortress, which owns its fingerprint."""
+
+    path: str
+    #: Fortress spoofs in C++ with one pinned persona: no page stealth script, no learned User-Agent.
+    fortress: bool
+
+
+def resolve_chromium_binary() -> ChromiumBinary:
     """Resolve the browser binary: CHROMIUM_BIN, else the image's Fortress when on, else Playwright's shell.
 
     The shell build drops the browser-UI layer (three contexts: 702 MB versus
     1419 MB). Playwright's resolver is sync-only, so call this in a worker thread.
     """
+    fortress = browser_host_settings.BROWSER_HOST_FORTRESS
     configured_bin = browser_host_settings.CHROMIUM_BIN or (
-        FORTRESS_IMAGE_BIN if browser_host_settings.BROWSER_HOST_FORTRESS else None
+        FORTRESS_IMAGE_BIN if fortress else None
     )
     if configured_bin:
         configured = Path(configured_bin)
         if not configured.is_file():
             raise RuntimeError(f"the Chromium binary is not a file: {configured}")
-        return str(configured)
+        return ChromiumBinary(path=str(configured), fortress=fortress)
     with sync_playwright() as p:
         full = Path(p.chromium.executable_path)
     shell = _headless_shell_beside(full)
-    return str(shell or full)
+    return ChromiumBinary(path=str(shell or full), fortress=False)
 
 
 def spki_pin(pem_path: str) -> str:
@@ -113,12 +125,13 @@ def spki_pin(pem_path: str) -> str:
     return base64.b64encode(hashlib.sha256(key).digest()).decode()
 
 
-def chromium_argv(chromium_path: str, profile_dir: str) -> list[str]:
+def chromium_argv(chromium: ChromiumBinary, profile_dir: str, user_agent: str | None) -> list[str]:
     """Build the full Chromium argv for one launch into its own fresh profile."""
-    fortress = browser_host_settings.BROWSER_HOST_FORTRESS
-    args = [chromium_path, "--remote-debugging-port=0", f"--user-data-dir={profile_dir}"]
+    args = [chromium.path, "--remote-debugging-port=0", f"--user-data-dir={profile_dir}"]
     args.extend(
-        a for a in CHROME_DEFAULT_ARGS if not (fortress and a in FORTRESS_UNSUPPRESSED_DEFAULT_ARGS)
+        a
+        for a in CHROME_DEFAULT_ARGS
+        if not (chromium.fortress and a in FORTRESS_UNSUPPRESSED_DEFAULT_ARGS)
     )
     args.extend(_HOST_EXTRA_ARGS)
     # Bounds the JS heap only (DOM, images and raster live outside V8): a ceiling, not a saving.
@@ -130,11 +143,13 @@ def chromium_argv(chromium_path: str, profile_dir: str) -> list[str]:
         args.append(
             f"--ignore-certificate-errors-spki-list={spki_pin(browser_host_settings.BROWSER_HOST_TEST_CA_FILE)}"
         )
+    if user_agent is not None:
+        args.append(f"--user-agent={user_agent}")
     if not browser_host_settings.BROWSER_HOST_HEADED:
         # The shell build is headless by construction and only knows the bare flag.
-        is_shell = Path(chromium_path).name in _HEADLESS_SHELL_BINARIES
+        is_shell = Path(chromium.path).name in _HEADLESS_SHELL_BINARIES
         args.append("--headless" if is_shell else "--headless=new")
-    if fortress:
+    if chromium.fortress:
         args.extend(_fortress_persona_argv())
     return args
 
@@ -195,9 +210,13 @@ class Engine:
     sampler: ProcessSampler | None
     # Engine-tree RSS with no session open: what the per-session estimate subtracts.
     base_rss_mb: float
+    #: Whether the engine is Fortress, which fingerprints itself: its pages get no stealth script.
+    fortress: bool
 
     @classmethod
-    async def launch(cls, kind: BrowserEngine, chromium_path: str | None) -> Engine:
+    async def launch(
+        cls, kind: BrowserEngine, chromium: ChromiumBinary | None, user_agent: str | None
+    ) -> Engine:
         """Start an engine and its root connection; nothing is left running when this raises."""
         profile_dir: str | None = None
         proc: asyncio.subprocess.Process | None = None
@@ -206,10 +225,12 @@ class Engine:
                 launched = await launch_obscura()
                 proc, root_ws_url = launched.proc, launched.ws_url
             else:
-                if chromium_path is None:
-                    raise RuntimeError("chromium_path not resolved")
+                if chromium is None:
+                    raise RuntimeError("chromium binary not resolved")
                 profile_dir = tempfile.mkdtemp(prefix="gaia-browser-host-")
-                proc = await spawn_engine(chromium_argv(chromium_path, profile_dir), chromium_env())
+                proc = await spawn_engine(
+                    chromium_argv(chromium, profile_dir, user_agent), chromium_env()
+                )
                 root_ws_url = await until_published(proc, _devtools_file_reader(profile_dir))
             root_mux = CdpMux(root_ws_url)
             try:
@@ -232,6 +253,7 @@ class Engine:
             profile_dir=profile_dir,
             sampler=ProcessSampler.for_pid(proc.pid),
             base_rss_mb=0.0,
+            fortress=chromium is not None and chromium.fortress,
         )
         engine.base_rss_mb = engine.rss_mb() or 0.0
         return engine
@@ -240,6 +262,10 @@ class Engine:
     def alive(self) -> bool:
         """Whether the process runs and its root connection is open."""
         return self.proc.returncode is None and not self.root_mux.closed
+
+    async def user_agent(self) -> str:
+        """Return the User-Agent the engine announces."""
+        return str((await cdp_call(self.root_mux, "Browser.getVersion"))["userAgent"])
 
     async def responsive(self, timeout: float) -> bool:
         """Whether the engine answers a round-trip on its root connection within timeout."""
@@ -288,6 +314,27 @@ class Engine:
         await stop_process(self.proc, graceful=graceful)
         await self.root_mux.close()
         await _remove_profile(self.profile_dir)
+
+
+async def launch_engine(
+    kind: BrowserEngine, chromium: ChromiumBinary | None, user_agent: str | None
+) -> tuple[Engine, str | None]:
+    """Launch an engine, returning it and the User-Agent every later Chromium launch must announce.
+
+    Headless Chromium sends "HeadlessChrome/<v>" in every User-Agent, which sites
+    read as a bot (DuckDuckGo answered with a CAPTCHA); the first launch learns
+    the plain form and relaunches once with it, keeping the client-hint brands.
+    Fortress's persona pins its own User-Agent, so it is launched as is.
+    """
+    engine = await Engine.launch(kind, chromium, user_agent)
+    if kind is BrowserEngine.OBSCURA or engine.fortress or user_agent is not None:
+        return engine, user_agent
+    announced = await engine.user_agent()
+    if _HEADLESS_MARKER not in announced:
+        return engine, announced
+    plain = announced.replace(_HEADLESS_MARKER, "Chrome/")
+    await engine.shutdown()
+    return await Engine.launch(kind, chromium, plain), plain
 
 
 async def _remove_profile(profile_dir: str | None) -> None:

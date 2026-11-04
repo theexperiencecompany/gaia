@@ -11,10 +11,13 @@ import json
 from typing import Any
 
 import httpx
+from playwright.sync_api import StorageState
 import pytest
 
 from app.browser_host import server
 from app.browser_host.wire import CreatedSession, SessionInfo
+from app.config.browser_host_settings import browser_host_settings
+from app.config.settings import settings
 from app.constants.browser import BROWSER_HOST_KEY_HEADER, BrowserEngine
 from app.services.browser import host_client
 from app.services.browser.exceptions import (
@@ -26,7 +29,7 @@ from app.services.browser.exceptions import (
 pytestmark = pytest.mark.unit
 
 _HOST = "http://browser-host:8930"
-_STATE = {"cookies": [{"name": "a", "value": "1", "domain": "x.com"}], "origins": []}
+_STATE: StorageState = {"cookies": [{"name": "a", "value": "1", "domain": "x.com"}], "origins": []}
 
 
 class _Host:
@@ -53,11 +56,11 @@ def host(monkeypatch: pytest.MonkeyPatch) -> Callable[[dict[str, httpx.Response]
             fake.timeouts.append(kw.get("timeout"))
             return real(transport=httpx.MockTransport(fake.handle), **kw)
 
-        monkeypatch.setattr(host_client.httpx, "AsyncClient", _client)
+        monkeypatch.setattr(httpx, "AsyncClient", _client)
         return fake
 
-    monkeypatch.setattr(host_client.settings, "BROWSER_HOST_KEY", "the-key")
-    monkeypatch.setattr(server.browser_host_settings, "BROWSER_HOST_KEY", "the-key")
+    monkeypatch.setattr(settings, "BROWSER_HOST_KEY", "the-key")
+    monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_KEY", "the-key")
     return _install
 
 
@@ -71,6 +74,7 @@ async def test_a_session_is_created_with_its_seed_the_key_and_a_deadline(host: A
                     "cdp_ws": "ws://c",
                     "live_ws": "ws://l",
                     "engine": "obscura",
+                    "fortress": False,
                 },
             )
         }
@@ -79,7 +83,11 @@ async def test_a_session_is_created_with_its_seed_the_key_and_a_deadline(host: A
     created = await host_client.create_session(_STATE, _HOST)
 
     assert created == CreatedSession(
-        session_id="s1", cdp_ws="ws://c", live_ws="ws://l", engine=BrowserEngine.OBSCURA
+        session_id="s1",
+        cdp_ws="ws://c",
+        live_ws="ws://l",
+        engine=BrowserEngine.OBSCURA,
+        fortress=False,
     )
     sent = fake.requests[0]
     assert json.loads(sent.content) == {"storage_state": _STATE}
@@ -136,7 +144,7 @@ async def test_session_info_is_read_inside_the_callers_own_deadline(host: Any) -
 
 async def test_without_a_key_none_is_sent(host: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     fake = host({"POST /sessions/s1/lease": httpx.Response(204)})
-    monkeypatch.setattr(host_client.settings, "BROWSER_HOST_KEY", None)
+    monkeypatch.setattr(settings, "BROWSER_HOST_KEY", None)
 
     await host_client.renew_session_lease("s1", _HOST)
 
@@ -179,7 +187,7 @@ async def test_an_unreachable_host_is_unavailable_naming_the_host(
 
     real = httpx.AsyncClient
     monkeypatch.setattr(
-        host_client.httpx,
+        httpx,
         "AsyncClient",
         lambda **kw: real(transport=httpx.MockTransport(_refuse), **kw),
     )
