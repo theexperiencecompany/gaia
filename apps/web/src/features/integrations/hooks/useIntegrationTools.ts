@@ -10,6 +10,8 @@ export interface IntegrationToolEntry {
   name: string;
   label: string;
   destructive: boolean;
+  /** The server's HIL key for this tool's approval override; sent back unchanged. */
+  approvalKey: string;
 }
 
 export interface UseIntegrationToolsReturn {
@@ -46,7 +48,12 @@ export const useIntegrationTools = (
       // (e.g. removing "Gmail" from "Gmailsearch" yields "search"), so
       // re-apply Title Case to guarantee every word starts uppercase.
       const label = toTitleCase(stripped || formatted);
-      return { name: tool.name, label, destructive: tool.destructive ?? false };
+      return {
+        name: tool.name,
+        label,
+        destructive: tool.destructive ?? false,
+        approvalKey: tool.approval_key,
+      };
     });
 
     const mentionNames = Array.from(

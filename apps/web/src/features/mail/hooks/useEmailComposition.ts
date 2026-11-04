@@ -1,9 +1,6 @@
-import CharacterCount from "@tiptap/extension-character-count";
 import Highlight from "@tiptap/extension-highlight";
-import Link from "@tiptap/extension-link";
-import Placeholder from "@tiptap/extension-placeholder";
 import Typography from "@tiptap/extension-typography";
-import Underline from "@tiptap/extension-underline";
+import { CharacterCount, Placeholder } from "@tiptap/extensions";
 import { type EditorOptions, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import type { Tag } from "emblor";
@@ -87,15 +84,12 @@ export function useEmailComposition(): UseEmailCompositionReturn {
   // Editor configuration
   const editorConfig: Partial<EditorOptions> = {
     extensions: [
-      StarterKit,
+      StarterKit.configure({
+        link: { openOnClick: true, autolink: true, linkOnPaste: true },
+        trailingNode: false,
+      }),
       Highlight,
       Typography,
-      Underline,
-      Link.configure({
-        openOnClick: true,
-        autolink: true,
-        linkOnPaste: true,
-      }),
       CharacterCount.configure({ limit: 10_000 }),
       Placeholder.configure({
         placeholder: () => "Body",
