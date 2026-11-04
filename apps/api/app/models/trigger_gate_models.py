@@ -6,7 +6,7 @@ off and its text is kept, so turning it back on restores it.
 
 from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from app.constants.trigger_gates import (
     QUIET_HOURS_BYPASS_SUMMARY,
@@ -18,6 +18,11 @@ from app.constants.trigger_gates import (
     GateOutcome,
     SystemGatePreset,
 )
+
+# The one shape of a condition: what GAIA drafts, what the user edits, what a gate stores.
+GateCondition = Annotated[
+    str, StringConstraints(min_length=1, max_length=TRIGGER_GATE_CONDITION_MAX_CHARS)
+]
 
 
 class _StoredGate(BaseModel):
@@ -35,7 +40,7 @@ class AuthoredGate(_StoredGate):
     """A plain-text condition, shown to the user as "Runs only when: <condition>"."""
 
     kind: Literal[GateKind.AUTHORED] = GateKind.AUTHORED
-    condition: str = Field(min_length=1, max_length=TRIGGER_GATE_CONDITION_MAX_CHARS)
+    condition: GateCondition
     author: GateAuthor
     enabled: bool = True
 
@@ -64,7 +69,7 @@ class AuthoredGateEdit(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    condition: str = Field(min_length=1, max_length=TRIGGER_GATE_CONDITION_MAX_CHARS)
+    condition: GateCondition
     enabled: bool = True
 
     def applied_to(self, current: AuthoredGate | SystemGate | None) -> AuthoredGate:

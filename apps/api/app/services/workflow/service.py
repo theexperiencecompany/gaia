@@ -4,10 +4,12 @@ import uuid
 from pymongo.errors import DuplicateKeyError
 
 from app.constants.log_tags import LogTag
+from app.constants.trigger_gates import GateAuthor
 from app.db.chroma.chromadb import ChromaClient
 from app.db.repositories.workflows import workflow_repository
 from app.decorators.caching import Cacheable
 from app.models.scheduler_models import DeactivationReason
+from app.models.trigger_gate_models import AuthoredGate
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     PublicWorkflowCard,
@@ -252,6 +254,11 @@ class WorkflowService:
                 icon_color=request.icon_color,
                 steps=workflow_steps,
                 trigger_config=trigger_config,
+                gate=(
+                    None
+                    if request.runs_only_when is None
+                    else AuthoredGate(condition=request.runs_only_when, author=GateAuthor.GAIA)
+                ),
                 activated=False,  # Start in pending state
                 notify_on_completion=request.notify_on_completion,
                 user_id=user_id,
