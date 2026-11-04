@@ -2,7 +2,9 @@
 
 Fortress draws a persona per created context unless every surface is pinned, so
 three users on one host would otherwise look like three machines, each sending
-headers its own JavaScript contradicts. Linux-only: Fortress ships no macOS build.
+headers its own JavaScript contradicts. Fortress is opt-in and off everywhere else
+in the tier, so this test alone launches it, from FORTRESS_BIN; a Linux run without
+one fails. Linux-only: Fortress ships no macOS build.
 """
 
 from __future__ import annotations
@@ -21,6 +23,7 @@ from app.browser_host.cdp_mux import cdp_call
 from app.browser_host.host import BrowserHost, HostSession
 from app.config.browser_host_settings import browser_host_settings
 from app.constants.browser import BrowserEngine
+from tests.integration.real.browser._stack.stack import required_binary
 
 pytestmark = pytest.mark.skipif(
     not sys.platform.startswith("linux"), reason="Fortress ships no build for this platform"
@@ -136,9 +139,9 @@ def echo_origin() -> Iterator[str]:
 async def test_every_fortress_context_presents_one_identity_whose_page_matches_its_headers(
     echo_origin: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    if not browser_host_settings.BROWSER_HOST_FORTRESS:
-        pytest.fail("this tier runs Fortress: set BROWSER_HOST_FORTRESS=true and CHROMIUM_BIN")
     monkeypatch.setattr(browser_host_settings, "BROWSER_ENGINE", BrowserEngine.CHROMIUM)
+    monkeypatch.setattr(browser_host_settings, "CHROMIUM_BIN", required_binary("FORTRESS_BIN"))
+    monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_FORTRESS", True)
     host = BrowserHost(on_fatal=lambda: None)
     await host.start()
     seen: list[dict[str, Any]] = []

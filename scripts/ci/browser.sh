@@ -2,18 +2,18 @@
 # browser.sh — the real browsers a lane drives: finding them, and serving one.
 #
 # Subcommands:
-#   locate          Install the Fortress build the gaia image ships (its opt-in
-#                   Chromium), find the Obscura binary the obscura-bin build stage
-#                   exported to $RUNNER_TEMP/obscura, install the Caddy self-host
-#                   ships (the proxy a user's live view goes through), and publish
-#                   CHROMIUM_BIN / BROWSER_HOST_FORTRESS / OBSCURA_BIN / CADDY_BIN
-#                   to $GITHUB_ENV. Any one missing fails: the browser slice never
-#                   skips a scenario.
-#   chrome-host     Start a Chromium browser host (python -m app.browser_host) on
-#                   Fortress in the background on BROWSER_HOST_PORT with a fresh
-#                   host key, publish the key and a login-encryption key to
-#                   $GITHUB_ENV, and wait for its healthz. Used by the on-demand
-#                   browser eval.
+#   locate          Find Chrome (google-chrome on the runner image) and the Obscura
+#                   binary the obscura-bin build stage exported to
+#                   $RUNNER_TEMP/obscura, install the Caddy self-host ships (the
+#                   proxy a user's live view goes through) and the Fortress build
+#                   the gaia image pins (its opt-in Chromium, which only Fortress's
+#                   own identity test launches), and publish CHROMIUM_BIN /
+#                   OBSCURA_BIN / CADDY_BIN / FORTRESS_BIN to $GITHUB_ENV. Any one
+#                   missing fails: the browser slice never skips a scenario.
+#   chrome-host     Start a Chrome browser host (python -m app.browser_host) in the
+#                   background on BROWSER_HOST_PORT with a fresh host key, publish
+#                   the key and a login-encryption key to $GITHUB_ENV, and wait for
+#                   its healthz. Used by the on-demand browser eval.
 #   eval [ids]      Run the browser quality eval suite, all cases or the
 #                   comma-separated ids given.
 #
@@ -21,9 +21,7 @@
 #   locate        RUNNER_TEMP, GITHUB_ENV; CADDY_RELEASE_URL / CADDY_SHA512 and
 #                 FORTRESS_RELEASE_URL / FORTRESS_SHA256 replace the pinned releases
 #                 only for the script's own tests.
-#   chrome-host   RUNNER_TEMP, GITHUB_ENV, BROWSER_HOST_PORT; CHROMIUM_BIN (a Fortress
-#                 launcher), else the pinned Fortress release.
-#                 TILION_LICENSE_KEY, when set, runs Fortress's licensed engine.
+#   chrome-host   RUNNER_TEMP, GITHUB_ENV, BROWSER_HOST_PORT; CHROMIUM_BIN, else google-chrome.
 #   eval          what the suite reads (BROWSER_HOST_URL, OPENROUTER_API_KEY, ...), and
 #                 OPENROUTER_MODEL: the model the browser agent runs on, which the
 #                 eval records as the run's model (the product, not the eval, picks it).
@@ -84,24 +82,25 @@ install_caddy() {
 }
 
 cmd_locate() {
-  local chrome obscura caddy
+  local chrome obscura caddy fortress
+  chrome="$(command -v google-chrome)" || ci_die "google-chrome is not on this runner"
   obscura="${RUNNER_TEMP:?RUNNER_TEMP required}/obscura/obscura"
   [ -x "$obscura" ] || ci_die "no Obscura binary at $obscura (the obscura-bin build stage did not export one)"
-  chrome="$(install_fortress)"
   {
     echo "CHROMIUM_BIN=$chrome"
-    echo "BROWSER_HOST_FORTRESS=true"
     echo "OBSCURA_BIN=$obscura"
   } >> "${GITHUB_ENV:?GITHUB_ENV required}"
   caddy="$(install_caddy)"
   echo "CADDY_BIN=$caddy" >> "$GITHUB_ENV"
-  ci_ok "browsers: Fortress $(dockerfile_arg FORTRESS_VERSION) at $chrome, Obscura at $obscura, proxy $("$caddy" version)"
+  fortress="$(install_fortress)"
+  echo "FORTRESS_BIN=$fortress" >> "$GITHUB_ENV"
+  ci_ok "browsers: $("$chrome" --version), Obscura at $obscura, Fortress $(dockerfile_arg FORTRESS_VERSION) at $fortress, proxy $("$caddy" version)"
 }
 
 cmd_chrome_host() {
   local port="${BROWSER_HOST_PORT:?BROWSER_HOST_PORT required}"
   local chrome key log
-  chrome="${CHROMIUM_BIN:-$(install_fortress)}"
+  chrome="${CHROMIUM_BIN:-$(command -v google-chrome)}" || ci_die "google-chrome is not on this runner"
   key="$(openssl rand -hex 16)"
   log="${RUNNER_TEMP:?RUNNER_TEMP required}/browser-host.log"
   {
@@ -110,7 +109,7 @@ cmd_chrome_host() {
   } >> "${GITHUB_ENV:?GITHUB_ENV required}"
   (
     cd "$REPO_ROOT/apps/api"
-    BROWSER_HOST_KEY="$key" BROWSER_ENGINE=chromium CHROMIUM_BIN="$chrome" BROWSER_HOST_FORTRESS=true \
+    BROWSER_HOST_KEY="$key" BROWSER_ENGINE=chromium CHROMIUM_BIN="$chrome" \
       nohup uv run --frozen --group backend python -m app.browser_host > "$log" 2>&1 &
   )
   local waited=0
@@ -118,11 +117,11 @@ cmd_chrome_host() {
     waited=$((waited + 1))
     if [ "$waited" -ge "$HOST_READY_SECONDS" ]; then
       cat "$log" >&2
-      ci_die "the Chromium host never answered healthz on port $port within ${HOST_READY_SECONDS}s"
+      ci_die "the Chrome host never answered healthz on port $port within ${HOST_READY_SECONDS}s"
     fi
     sleep 1
   done
-  ci_ok "Chromium host: serving on Fortress on port $port (log $log)"
+  ci_ok "Chrome host: serving on port $port (log $log)"
 }
 
 cmd_eval() {
@@ -135,7 +134,7 @@ cmd_eval() {
 }
 
 usage() {
-  sed -n '2,29p' "$0" >&2
+  sed -n '2,27p' "$0" >&2
 }
 
 main() {
