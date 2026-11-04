@@ -292,7 +292,6 @@ apps/api/tests/unit/core/test_middleware.py	arg-type
 apps/api/tests/unit/core/test_middleware.py	attr-defined
 apps/api/tests/unit/core/test_provider_registration.py	attr-defined
 apps/api/tests/unit/db/repositories/test_base_repository.py	unused-ignore
-apps/api/tests/unit/db/repositories/test_conversations.py	attr-defined
 apps/api/tests/unit/db/repositories/test_playbooks.py	call-overload
 apps/api/tests/unit/db/test_chroma_store.py	arg-type
 apps/api/tests/unit/db/test_chroma_store.py	attr-defined

@@ -122,7 +122,8 @@ class TestChromaInventory:
 
         _chroma_inventory(client, UID)
 
-        assert memories.calls[0]["where"] == {"user_id": UID}
+        # include=[] fetches ids only; the limit is set far past any one user's vector count.
+        assert memories.calls == [{"where": {"user_id": UID}, "limit": 200_000, "include": []}]
 
     def test_a_collection_with_no_ids_key_counts_as_empty(self) -> None:
         """Chroma omits ids rather than returning an empty list on some backends."""

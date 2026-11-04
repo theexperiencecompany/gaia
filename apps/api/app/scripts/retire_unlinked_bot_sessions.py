@@ -94,7 +94,7 @@ async def _run(args: argparse.Namespace) -> int:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true", help="Persist (otherwise dry run).")
-    parser.add_argument("--platform", default=None, help="Restrict to one platform.")
+    parser.add_argument("--platform", help="Restrict to one platform.")
     raise SystemExit(asyncio.run(_run(parser.parse_args())))
 
 
