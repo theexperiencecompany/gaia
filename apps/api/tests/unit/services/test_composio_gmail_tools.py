@@ -1152,17 +1152,23 @@ class TestAFileBoundFetch:
             return mailbox(request)
 
         mock_proxy.side_effect = serve
-        with patch(
-            f"{GMAIL_TOOLS}.current_run_config",
-            return_value={"configurable": {"user_timezone": "+05:30"}},
+        # 20:00 UTC is already tomorrow in +05:30, so the two days differ.
+        with (
+            time_machine.travel(datetime(2026, 10, 1, 20, tzinfo=UTC), tick=False),
+            patch(
+                f"{GMAIL_TOOLS}.current_run_config",
+                return_value={"configurable": {"user_timezone": "+05:30"}},
+            ),
         ):
             _register_and_get_tools()["FETCH_MESSAGES"](
                 request=FetchMessagesInput(timeframe="today"),
                 execute_request=MagicMock(),
                 auth_credentials=AUTH_CREDS,
             )
+            expected, _ = _resolve_timeframe("today", None, Timezone.parse("+05:30"))
+            in_utc, _ = _resolve_timeframe("today", None, Timezone.parse("+00:00"))
 
-        expected, _ = _resolve_timeframe("today", None, Timezone.parse("+05:30"))
+        assert expected != in_utc
         assert queries[0] == expected
 
 
@@ -1229,6 +1235,17 @@ class TestTheThreadRead:
 
         assert (result["fetched_threads"], result["total_messages"]) == (1, 3)
         assert writer.call_args.args[0]["resultSize"] == 3
+
+    def test_a_thread_read_at_the_message_limit_stays_grouped(self, mock_proxy: MagicMock) -> None:
+        mock_proxy.side_effect = self._threads(count=OFFLOAD_MIN_MESSAGES)
+
+        result = _register_and_get_tools()["FETCH_THREAD"](
+            request=FetchThreadInput(thread_ids=["thread-1"]),
+            execute_request=MagicMock(),
+            auth_credentials=AUTH_CREDS,
+        )
+
+        assert result["threads"][0]["message_count"] == OFFLOAD_MIN_MESSAGES
 
     def test_a_large_thread_read_cut_at_its_cap_says_so_and_renders_no_card(
         self, mock_proxy: MagicMock
