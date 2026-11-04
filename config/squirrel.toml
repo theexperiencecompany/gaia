@@ -50,5 +50,5 @@ whitelist = ["les", "des", "und", "mehr", "vos", "com", "con", "avec", "airtable
 # whitespace word counter cannot measure a full page (Japanese has no spaces).
 [[ignore]]
 rule = "content/word-count"
-urls = ["/ja/", "/contact", "/download", "regex:^/blog/?$:i", "/use-cases/"]
+urls = ["/ja/", "/contact", "/download", "regex:^/blog/?$:i", "/use-cases/", "/marketplace"]
 reason = "Utility pages and CJK word segmentation; see apps/web/src/config/seoSnippet.json"
