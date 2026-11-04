@@ -101,8 +101,9 @@ FEATURE_FLAGS: dict[FeatureFlag, FlagSpec] = {
     ),
     FeatureFlag.TRIGGER_GATES: FlagSpec(
         description=(
-            "A trigger gate's confident skip stops the run and records it as skipped; "
-            "off evaluates and records every gate but runs anyway (see ENABLE_TRIGGER_GATES)."
+            "Kill switch for trigger gates: on, a confident skip from an enforced gate kind "
+            "stops the run and records it as skipped; off, every gate is still evaluated and "
+            "recorded but every run goes ahead (see ENABLE_TRIGGER_GATES)."
         ),
         default=lambda: settings.ENABLE_TRIGGER_GATES,
     ),

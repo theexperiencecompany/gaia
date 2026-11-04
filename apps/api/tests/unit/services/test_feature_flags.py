@@ -345,9 +345,8 @@ class TestAgentLab:
 
 
 class TestTriggerGates:
-    async def test_trigger_gates_ship_in_shadow(self, no_client: None) -> None:
-        # Off until the founder signs off on the eval review: every gate records, none skips.
-        assert await is_trigger_gates_enforced(USER_ID) is False
+    async def test_trigger_gates_ship_enforced(self, no_client: None) -> None:
+        assert await is_trigger_gates_enforced(USER_ID) is True
 
 
 class TestShippedDefaults:
