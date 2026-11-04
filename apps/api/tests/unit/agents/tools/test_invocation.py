@@ -227,6 +227,38 @@ async def test_a_call_the_record_could_not_take_keeps_its_own_outcome(
     }
 
 
+@tool
+async def answers_unencodable(query: str) -> dict[tuple[int, int], str]:
+    """Answer with a result JSON cannot encode (a tuple key)."""
+    return {(1, 2): query}
+
+
+@tool
+def answers_unencodable_sync(query: str) -> dict[tuple[int, int], str]:
+    """Answer synchronously with a result JSON cannot encode."""
+    return {(1, 2): query}
+
+
+async def test_a_result_the_record_cannot_encode_still_returns(fake_redis: Any) -> None:
+    """Review of #1618: building the record raised TypeError after the tool had already run."""
+    with patch("app.agents.tools.invocation.log") as log:
+        assert await invoke_tool(answers_unencodable, {"query": "q"}, CONFIG) == {(1, 2): "q"}
+
+    assert await read_run_record(STREAM_ID) == []
+    assert log.error.call_args.kwargs == {
+        "tool_name": "answers_unencodable",
+        "error_type": "TypeError",
+        "exc_info": True,
+    }
+
+
+def test_a_sync_result_the_record_cannot_encode_still_returns() -> None:
+    with patch("app.agents.tools.invocation.log") as log:
+        assert invoke_tool_sync(answers_unencodable_sync, {"query": "q"}, CONFIG) == {(1, 2): "q"}
+
+    assert log.error.call_args.kwargs["error_type"] == "TypeError"
+
+
 def test_a_sync_call_the_record_could_not_take_still_returns() -> None:
     with (
         patch("app.agents.tools.invocation.append_call_sync", MagicMock(side_effect=OSError("x"))),
