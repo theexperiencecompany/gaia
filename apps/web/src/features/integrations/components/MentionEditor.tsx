@@ -116,10 +116,9 @@ export const MentionEditor = ({
   useEffect(() => {
     if (!editor) return;
     if (docToValue(editor.state.doc) === value) return;
-    editor.commands.setContent(
-      valueToContent(value, toolNamesRef.current),
-      false,
-    );
+    editor.commands.setContent(valueToContent(value, toolNamesRef.current), {
+      emitUpdate: false,
+    });
   }, [editor, value]);
 
   // When the tool list loads after mount, re-parse so existing `@name` text
@@ -129,7 +128,9 @@ export const MentionEditor = ({
     if (!editor || prevToolNamesRef.current === toolNames) return;
     prevToolNamesRef.current = toolNames;
     if (!editor.isFocused) {
-      editor.commands.setContent(valueToContent(value, toolNames), false);
+      editor.commands.setContent(valueToContent(value, toolNames), {
+        emitUpdate: false,
+      });
     }
   }, [editor, toolNames, value]);
 
