@@ -1,4 +1,7 @@
 "use client";
+import "./page.css";
+import "./page.2.css";
+import "./page.3.css";
 
 import { useEffect } from "react";
 import { useConversation } from "@/features/chat/hooks/useConversation";

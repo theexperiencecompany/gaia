@@ -1,3 +1,4 @@
+import "./layout.css";
 import type { ReactNode } from "react";
 import LandingLayoutShell from "@/components/layouts/LandingLayoutShell";
 import JsonLd from "@/components/seo/JsonLd";

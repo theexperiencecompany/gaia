@@ -1,3 +1,4 @@
+import "./page.css";
 import { permanentRedirect } from "next/navigation";
 
 interface WorkflowPageProps {

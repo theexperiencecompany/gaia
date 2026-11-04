@@ -1,4 +1,5 @@
 "use client";
+import "./page.css";
 
 import TodoListPage from "@/features/todo/components/TodoListPage";
 import type { Todo } from "@/types/features/todoTypes";

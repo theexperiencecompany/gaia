@@ -1,3 +1,4 @@
+import "./page.css";
 import type { Metadata } from "next";
 import UseCasesPageClient from "@/app/[locale]/(landing)/use-cases/client";
 import JsonLd from "@/components/seo/JsonLd";

@@ -1,3 +1,4 @@
+import "./page.css";
 import { redirect } from "next/navigation";
 import { DEFAULT_SECTION } from "@/features/settings/config/sectionKeys";
 

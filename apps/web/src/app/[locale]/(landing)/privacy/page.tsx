@@ -1,3 +1,4 @@
+import "./page.css";
 import { Link } from "@heroui/react";
 import type { Metadata } from "next";
 

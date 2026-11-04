@@ -1,3 +1,4 @@
+import "./page.css";
 import { notFound, redirect } from "next/navigation";
 import { getSetupStatusServer } from "@/features/auth/api/serverSetupStatusApi";
 import { SetupWizard } from "@/features/setup-wizard/components/SetupWizard";

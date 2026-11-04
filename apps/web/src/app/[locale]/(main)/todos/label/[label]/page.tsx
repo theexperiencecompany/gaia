@@ -1,3 +1,4 @@
+import "./page.css";
 import TodoListPage from "@/features/todo/components/TodoListPage";
 
 interface LabelTodosPageProps {

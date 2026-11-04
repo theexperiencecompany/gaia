@@ -1,3 +1,4 @@
+import "./page.css";
 import type { Metadata } from "next";
 import JsonLd from "@/components/seo/JsonLd";
 import { AGENCY_FAQS } from "@/features/landing/data/personaFaqs";

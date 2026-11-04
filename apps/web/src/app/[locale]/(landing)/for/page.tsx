@@ -1,3 +1,4 @@
+import "./page.css";
 import { CircleArrowRight02Icon } from "@icons";
 import type { Metadata } from "next";
 import { getTranslations, setRequestLocale } from "next-intl/server";

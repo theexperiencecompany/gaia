@@ -1,3 +1,4 @@
+import "./page.css";
 import { notFound } from "next/navigation";
 import TodoListPage from "@/features/todo/components/TodoListPage";
 import { Priority } from "@/types/features/todoTypes";

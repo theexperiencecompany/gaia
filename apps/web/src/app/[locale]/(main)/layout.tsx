@@ -1,3 +1,4 @@
+import "./layout.css";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { MainLayoutShell } from "@/components/layouts/MainLayoutShell";

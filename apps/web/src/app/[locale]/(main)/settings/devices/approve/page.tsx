@@ -1,3 +1,4 @@
+import "./page.css";
 import { Suspense } from "react";
 import { ApproveDeviceForm } from "@/features/devices/components/ApproveDeviceForm";
 

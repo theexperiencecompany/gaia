@@ -1,3 +1,5 @@
+import "./page.css";
+import "./page.2.css";
 import { redirect } from "next/navigation";
 import type { SettingsSection } from "@/features/settings/config/sectionKeys";
 import {

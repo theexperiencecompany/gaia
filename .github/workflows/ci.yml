@@ -536,6 +536,11 @@ jobs:
           exit $rc
       - *upload-verdict-so-far
 
+      - name: css-split — generated layout/page CSS matches the import graph
+        id: css-split
+        if: needs.detect.outputs.has_typescript == 'true'
+        run: pnpm --filter gaia css:split:check
+
       - name: circular — no circular imports (Biome)
         id: circular
         continue-on-error: true

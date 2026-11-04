@@ -1,3 +1,4 @@
+import "./layout.css";
 import type { ReactNode } from "react";
 import PopupRouteLock from "@/features/desktop-popup/components/PopupRouteLock";
 import ProvidersLayout from "@/layouts/ProvidersLayout";

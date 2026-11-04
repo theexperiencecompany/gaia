@@ -1,3 +1,4 @@
+import "./page.css";
 import TodoListPage from "@/features/todo/components/TodoListPage";
 import { Priority, type TodoFilters } from "@/types/features/todoTypes";
 

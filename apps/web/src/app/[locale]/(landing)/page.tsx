@@ -1,4 +1,4 @@
-import "./home.css";
+import "./page.css";
 import type { Metadata } from "next";
 
 import LandingPageClient from "@/app/[locale]/(landing)/client";

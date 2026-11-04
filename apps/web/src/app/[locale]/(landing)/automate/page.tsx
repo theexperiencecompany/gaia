@@ -1,3 +1,4 @@
+import "./page.css";
 import type { Metadata } from "next";
 
 import { AutomateHub } from "./Hub";

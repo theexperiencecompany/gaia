@@ -1,4 +1,5 @@
 "use client";
+import "./page.css";
 
 import { Avatar, Skeleton } from "@heroui/react";
 import {

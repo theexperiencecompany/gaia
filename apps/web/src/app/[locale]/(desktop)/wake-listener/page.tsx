@@ -1,4 +1,5 @@
 "use client";
+import "./page.css";
 
 import dynamic from "next/dynamic";
 import ErrorBoundary from "@/components/shared/ErrorBoundary";

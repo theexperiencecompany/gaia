@@ -1,4 +1,5 @@
 "use client";
+import "./page.css";
 
 import { Button, Spinner } from "@heroui/react";
 import {

@@ -1,3 +1,4 @@
+import "./page.css";
 import { LiveViewPage } from "@/features/chat/components/browser/LiveViewPage";
 
 interface LivePageProps {

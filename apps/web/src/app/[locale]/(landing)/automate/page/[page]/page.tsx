@@ -1,3 +1,4 @@
+import "./page.css";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getAllCombos } from "@/features/integrations/data/combosData";
