@@ -208,6 +208,8 @@ class DodoPaymentService:
                     "allow_discount_code": True,
                     # Allow customers to change their billing address country
                     "allow_customer_editing_country": True,
+                    # Wallets, email, billing and card on one page, no Continue to Payment step
+                    "single_page": True,
                 },
                 "return_url": f"{settings.FRONTEND_URL}{return_path}",
                 # The app is dark-only; Dodo's default follows the OS, which
