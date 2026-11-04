@@ -12,6 +12,8 @@ import re
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from arq.connections import ArqRedis
+import fakeredis.aioredis
 import pytest
 import time_machine
 
@@ -590,6 +592,25 @@ class TestHoldTriggerEvent:
         assert job == ["execute_workflow_by_id", "wf_1", _HELD_CONTEXT]
         assert enqueue.await_args.kwargs == {"_job_id": _HELD_JOB_ID, "_defer_by": 5.5 * 3600}
 
+    async def test_without_redis_the_event_is_not_held_and_says_whose_it_is(self) -> None:
+        with (
+            patch(f"{MODULE}.redis_cache") as cache,
+            patch(f"{MODULE}.enqueue_worker_job", new_callable=AsyncMock) as enqueue_mock,
+        ):
+            cache.redis = None
+            async with captured_wide_event() as event:
+                held = await hold_trigger_event("wf_1", "user_1", {"id": 1}, _MORNING, {})
+
+        assert held is False
+        enqueue_mock.assert_not_awaited()
+        assert event["warnings"] == [
+            {
+                "msg": "[TRIGGER] Redis unavailable — trigger event cannot be batched",
+                "workflow_id": "wf_1",
+                "user_id": "user_1",
+            }
+        ]
+
     async def test_a_morning_already_past_drains_at_once(
         self, fake_redis: _FakeRedis, enqueue: Any
     ) -> None:
@@ -606,16 +627,24 @@ class TestHoldTriggerBatch:
     """A drain due inside quiet hours moves to their end, keeping the batch until then."""
 
     async def test_the_drain_moves_to_the_morning_and_the_batch_outlives_it(
-        self, fake_redis: _FakeRedis, enqueue: Any
+        self, fake_redis: _FakeRedis
     ) -> None:
         context = {"trigger_type": "integration", "trigger_batch_key": "trigger_batch:wf_1"}
+        server = fakeredis.aioredis.FakeRedis()
+        queue = ArqRedis(pool_or_conn=server.connection_pool)
 
-        assert await hold_trigger_batch("wf_1", _MORNING, context) is True
+        with (
+            patch(f"{MODULE}.redis_cache") as cache,
+            patch(f"{MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=queue)),
+        ):
+            cache.redis = fake_redis
+            assert await hold_trigger_batch("wf_1", _MORNING, context) is True
+            (job,) = await queue.queued_jobs()
+        await server.aclose()
 
         assert fake_redis.expires[TRIGGER_BATCH_KEY.format(workflow_id="wf_1")] == 4 * 5.5 * 3600
-        _pool, *job = enqueue.await_args.args
-        assert job == ["execute_workflow_by_id", "wf_1", _HELD_CONTEXT]
-        assert enqueue.await_args.kwargs == {"_job_id": _HELD_JOB_ID, "_defer_by": 5.5 * 3600}
+        assert (job.function, job.args) == ("execute_workflow_by_id", ("wf_1", _HELD_CONTEXT))
+        assert job.score == int(_MORNING.timestamp() * 1000)
 
     async def test_redis_down_holds_nothing_and_says_so(self) -> None:
         with (
