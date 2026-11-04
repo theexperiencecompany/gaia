@@ -59,7 +59,7 @@ Subcommands:
         report: one finding per result, at its location.
     post-statuses --job J --results FILE --job-tasks JSON [--step check=outcome ...]
                   [--reused JSON] [--check C]
-                  [--no-post | --repo R --sha S --run-id N --run-attempt A]
+                  [--no-post | --repo R --sha S --run-id N --job-id J]
         Post one `ci / <area> / <check>` commit status per check of job J (its
         nx targets' metadata.ci), from run-job's task results and the outcome
         of each check a step ran, and fail when any check failed. With --check,
@@ -1391,20 +1391,6 @@ def job_outcomes(
     return outcomes
 
 
-def _this_job_url(gh: GitHub, repo: str, run_id: int, attempt: int) -> str | None:
-    """Return the html_url of the in-progress job on this runner, or None when no single job is."""
-    jobs = gh.collect(
-        f"repos/{repo}/actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100", "jobs"
-    )
-    runner = os.environ.get("RUNNER_NAME", "")
-    mine = [
-        job
-        for job in jobs
-        if job.get("runner_name") == runner and job.get("status") == "in_progress"
-    ]
-    return field_of(mine[0], "html_url", str) if len(mine) == 1 else None
-
-
 def _one_line(finding: Finding) -> str:
     if not finding["file"]:
         # No location: the attached output's last line is where a tool states its conclusion.
@@ -1445,19 +1431,9 @@ def _post(
     findings: dict[str, str],
 ) -> bool:
     """Post one status per check; False when any did not land."""
-    try:
-        url = _this_job_url(gh, opts.repo, opts.run_id, opts.run_attempt)
-    except GitHubError as err:
-        print(
-            f"::error::post-statuses: run {opts.run_id}'s jobs are unreadable ({err}) — nothing posted"
-        )
-        return False
-    if url is None:
-        print(
-            f"::error::post-statuses: no single in-progress job of run {opts.run_id} "
-            f"runs on {os.environ.get('RUNNER_NAME', '<unset RUNNER_NAME>')} — nothing posted"
-        )
-        return False
+    # The job's own check-run id, not a jobs-API lookup: that API lags the run in an Actions incident.
+    server = os.environ.get("GITHUB_SERVER_URL") or "https://github.com"
+    url = f"{server}/{opts.repo}/actions/runs/{opts.run_id}/job/{opts.job_id}"
     areas = check_areas()
     endpoint = f"repos/{opts.repo}/statuses/{opts.sha}"
     lost: list[str] = []
@@ -1529,7 +1505,7 @@ def cmd_post_statuses(args: list[str]) -> int:
         "--sha", help="the PR HEAD sha (a pull_request run's github.sha is the merge)"
     )
     parser.add_argument("--run-id", type=int)
-    parser.add_argument("--run-attempt", type=int)
+    parser.add_argument("--job-id", type=int, help="this job's check-run id (job.check_run_id)")
     opts = parser.parse_args(args)
     reused: dict[str, str] = json.loads(opts.reused or "{}")
     raw: dict[str, nx_affected.TaskResult] = (
@@ -1558,8 +1534,8 @@ def cmd_post_statuses(args: list[str]) -> int:
     )
     landed = True
     if not opts.no_post:
-        if not (opts.repo and opts.sha and opts.run_id and opts.run_attempt):
-            parser.error("--repo, --sha, --run-id and --run-attempt are required to post")
+        if not (opts.repo and opts.sha and opts.run_id and opts.job_id):
+            parser.error("--repo, --sha, --run-id and --job-id are required to post")
         landed = _post(GitHub.from_env(), opts, to_post, reused, first_findings)
     if opts.check:
         if landed and not opts.no_post:

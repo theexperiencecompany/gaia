@@ -253,7 +253,7 @@ jobs:
           PR_BRANCH: ${{ github.head_ref }}
           PR_BASE: ${{ steps.base.outputs.base_ref }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: python3 scripts/ci/verdict.py reuse-plan --repo "$GITHUB_REPOSITORY" --workflow ci.yml --branch "$PR_BRANCH" --base "$PR_BASE" --head-sha "$PR_HEAD_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" --event "$GITHUB_EVENT_NAME"
+        run: python3 scripts/ci/verdict.py reuse-plan --repo "$GITHUB_REPOSITORY" --workflow ci.yml --branch "$PR_BRANCH" --base "$PR_BASE" --head-sha "$PR_HEAD_SHA" --run-id "$GITHUB_RUN_ID" --job-id "$JOB_ID" --event "$GITHUB_EVENT_NAME"
 
       - name: Ask nx which checks this change reaches
         id: affected
@@ -359,6 +359,7 @@ jobs:
         continue-on-error: true
         env:
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
+          JOB_ID: ${{ job.check_run_id }}
         run: python3 scripts/ci/runner.py run-job lint-node
       # Every status run-job did not post (a step's check, a skip, a lost post),
       # a verdict per failed check, then the job's.
@@ -366,7 +367,8 @@ jobs:
         if: always()
         env:
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
-        run: python3 scripts/ci/verdict.py post-statuses --job lint-node --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" $NO_POST
+          JOB_ID: ${{ job.check_run_id }}
+        run: python3 scripts/ci/verdict.py post-statuses --job lint-node --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --job-id "$JOB_ID" $NO_POST
       - name: Upload the verdict
         if: always()
         uses: ./.github/actions/upload-verdict
@@ -458,6 +460,7 @@ jobs:
         continue-on-error: true
         env:
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
+          JOB_ID: ${{ job.check_run_id }}
         run: python3 scripts/ci/runner.py run-job lint-python
       # Every status run-job did not post (a step's check, a skip, a lost post),
       # a verdict per failed check, then the job's.
@@ -465,7 +468,8 @@ jobs:
         if: always()
         env:
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
-        run: python3 scripts/ci/verdict.py post-statuses --job lint-python --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" $NO_POST
+          JOB_ID: ${{ job.check_run_id }}
+        run: python3 scripts/ci/verdict.py post-statuses --job lint-python --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --job-id "$JOB_ID" $NO_POST
       - name: Upload the verdict
         if: always()
         uses: ./.github/actions/upload-verdict
@@ -531,6 +535,7 @@ jobs:
         continue-on-error: true
         env:
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
+          JOB_ID: ${{ job.check_run_id }}
         run: python3 scripts/ci/runner.py run-job lint-mixed
 
       # Reads the LIVE PostHog project against the event catalog and
@@ -572,7 +577,8 @@ jobs:
         if: always()
         env:
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
-        run: python3 scripts/ci/verdict.py post-statuses --job lint-mixed --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --step analytics-sync=${{ steps.analytics-sync.outcome }} --step analytics-check=${{ steps.analytics-check.outcome }} --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" $NO_POST
+          JOB_ID: ${{ job.check_run_id }}
+        run: python3 scripts/ci/verdict.py post-statuses --job lint-mixed --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --step analytics-sync=${{ steps.analytics-sync.outcome }} --step analytics-check=${{ steps.analytics-check.outcome }} --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --job-id "$JOB_ID" $NO_POST
       - name: Upload the verdict
         if: always()
         uses: ./.github/actions/upload-verdict
@@ -620,6 +626,7 @@ jobs:
         continue-on-error: true
         env:
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
+          JOB_ID: ${{ job.check_run_id }}
         run: python3 scripts/ci/runner.py run-job repo-policy
 
       # Only the events that bring new commits, scanned as a range (ci:gitleaks's
@@ -647,7 +654,8 @@ jobs:
         if: always()
         env:
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
-        run: python3 scripts/ci/verdict.py post-statuses --job repo-policy --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --step gitleaks=${{ steps.gitleaks.outcome }} --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" $NO_POST
+          JOB_ID: ${{ job.check_run_id }}
+        run: python3 scripts/ci/verdict.py post-statuses --job repo-policy --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --step gitleaks=${{ steps.gitleaks.outcome }} --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --job-id "$JOB_ID" $NO_POST
       - name: Upload the verdict
         if: always()
         uses: ./.github/actions/upload-verdict
@@ -701,6 +709,7 @@ jobs:
         continue-on-error: true
         env:
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
+          JOB_ID: ${{ job.check_run_id }}
         run: python3 scripts/ci/runner.py run-job python-audit
       # Every status run-job did not post (a step's check, a skip, a lost post),
       # a verdict per failed check, then the job's.
@@ -708,7 +717,8 @@ jobs:
         if: always()
         env:
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
-        run: python3 scripts/ci/verdict.py post-statuses --job python-audit --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" $NO_POST
+          JOB_ID: ${{ job.check_run_id }}
+        run: python3 scripts/ci/verdict.py post-statuses --job python-audit --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --job-id "$JOB_ID" $NO_POST
       - name: Upload the verdict
         if: always()
         uses: ./.github/actions/upload-verdict
@@ -764,6 +774,7 @@ jobs:
         continue-on-error: true
         env:
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
+          JOB_ID: ${{ job.check_run_id }}
         run: python3 scripts/ci/runner.py run-job ts-build-test
       # Every status run-job did not post (a step's check, a skip, a lost post),
       # a verdict per failed check, then the job's.
@@ -771,7 +782,8 @@ jobs:
         if: always()
         env:
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
-        run: python3 scripts/ci/verdict.py post-statuses --job ts-build-test --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" $NO_POST
+          JOB_ID: ${{ job.check_run_id }}
+        run: python3 scripts/ci/verdict.py post-statuses --job ts-build-test --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --job-id "$JOB_ID" $NO_POST
       - name: Upload the verdict
         if: always()
         uses: ./.github/actions/upload-verdict
@@ -891,7 +903,8 @@ jobs:
         if: always()
         env:
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
-        run: python3 scripts/ci/verdict.py post-statuses --job scan --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --step semgrep=${{ steps.semgrep.outcome }} --step trivy=${{ steps.trivy.outcome }} --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" $NO_POST
+          JOB_ID: ${{ job.check_run_id }}
+        run: python3 scripts/ci/verdict.py post-statuses --job scan --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --step semgrep=${{ steps.semgrep.outcome }} --step trivy=${{ steps.trivy.outcome }} --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --job-id "$JOB_ID" $NO_POST
       - name: Upload the verdict
         if: always()
         uses: ./.github/actions/upload-verdict

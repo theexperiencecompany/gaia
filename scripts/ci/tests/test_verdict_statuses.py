@@ -23,8 +23,8 @@ import verdict
 REPO = "theexperiencecompany/gaia"
 SHA = "c9d667254c9d667254c9d667254c9d667254c9d6"
 RUN = 4242
-JOB_URL = f"https://github.com/{REPO}/actions/runs/{RUN}/job/77"
-RUNNER = "gaia-home-5"
+JOB_ID = 77
+JOB_URL = f"https://github.com/{REPO}/actions/runs/{RUN}/job/{JOB_ID}"
 
 STATUSES = rf"/repos/{REPO}/statuses/{SHA}$"
 # Bound before the autouse fixture swaps it, for the invariant on the real graph.
@@ -53,16 +53,10 @@ FAKE_CHECKS = {
 }
 
 
-def _this_job(**overrides: Any) -> dict[str, Any]:
-    return {"runner_name": RUNNER, "status": "in_progress", "html_url": JOB_URL, **overrides}
-
-
 @pytest.fixture(autouse=True)
 def _this_run(api: FakeGitHub, monkeypatch: pytest.MonkeyPatch) -> None:
-    jobs = [_this_job(), _this_job(runner_name="gaia-home-6", html_url="elsewhere")]
-    api.on("GET", r"/attempts/2/jobs$", Reply(body={"jobs": jobs}))
     api.on("POST", STATUSES, Reply(201, {}))
-    monkeypatch.setenv("RUNNER_NAME", RUNNER)
+    monkeypatch.delenv("GITHUB_SERVER_URL", raising=False)
     monkeypatch.setattr(nx_affected, "checks", lambda: FAKE_CHECKS)
 
 
@@ -88,7 +82,7 @@ def _post(
     argv = [
         "--job", job, "--results", str(path),
         "--job-tasks", json.dumps({job: list(results) if planned is None else planned}),
-        "--repo", REPO, "--sha", SHA, "--run-id", str(RUN), "--run-attempt", "2",
+        "--repo", REPO, "--sha", SHA, "--run-id", str(RUN), "--job-id", str(JOB_ID),
     ]  # fmt: skip
     return verdict.cmd_post_statuses([*argv, *flags])
 
@@ -209,10 +203,18 @@ def test_an_action_check_whose_step_is_not_passed_is_skipped(
 def test_every_status_links_to_the_job_that_ran_the_check(api: FakeGitHub, tmp_path: Path) -> None:
     _post(tmp_path, "lint-node", {"ci:biome": "success"})
 
-    # This run attempt's jobs, and of those the one on THIS runner: a sibling job
-    # in the same run must not be the link.
-    reads = [(r.path, r.query) for r in api.requests if r.method == "GET"]
-    assert reads == [(f"/repos/{REPO}/actions/runs/{RUN}/attempts/2/jobs", {"per_page": "100"})]
+    assert [r for r in api.requests if r.method == "GET"] == []
+    assert _statuses(api)["ci / node / biome"]["target_url"] == JOB_URL
+
+
+def test_a_jobs_api_lagging_behind_the_run_still_links_the_status_to_this_job(
+    api: FakeGitHub, tmp_path: Path
+) -> None:
+    """Regression: in a GitHub Actions incident the jobs API showed running jobs queued, runnerless."""
+    lagging = [{"runner_name": None, "status": "queued", "html_url": JOB_URL}]
+    api.on("GET", r"/jobs$", Reply(body={"jobs": lagging}))
+
+    assert _post(tmp_path, "lint-node", {"ci:biome": "success"}) == 0
     assert _statuses(api)["ci / node / biome"]["target_url"] == JOB_URL
 
 
@@ -287,29 +289,6 @@ def test_a_rejected_post_is_not_retried(api: FakeGitHub, tmp_path: Path) -> None
 
     assert _post(tmp_path, "repo-policy", {}, "--step", "gitleaks=success") == 1
     assert len(_posted(api)) == 1
-
-
-def test_no_job_on_this_runner_posts_nothing_and_fails(
-    api: FakeGitHub,
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    monkeypatch.setenv("RUNNER_NAME", "somewhere-else")
-
-    assert _post(tmp_path, "lint-node", {"ci:biome": "success"}) == 1
-    assert _posted(api) == []
-    assert "::error::" in capsys.readouterr().out
-
-
-def test_an_unreadable_jobs_listing_posts_nothing_and_fails(
-    api: FakeGitHub, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    api.on("GET", r"/jobs$", Reply(503, {"message": "unavailable"}))
-
-    assert _post(tmp_path, "lint-node", {"ci:biome": "success"}) == 1
-    assert _posted(api) == []
-    assert "jobs are unreadable" in capsys.readouterr().out
 
 
 def test_no_post_posts_nothing_but_still_decides_the_job(api: FakeGitHub, tmp_path: Path) -> None:
