@@ -162,10 +162,6 @@ apps/api/tests/unit/agents/test_browser_task_status_hook.py	arg-type
 apps/api/tests/unit/agents/test_call_record.py	arg-type
 apps/api/tests/unit/agents/test_comms_narrator.py	attr-defined
 apps/api/tests/unit/agents/test_comms_narrator.py	return-value
-apps/api/tests/unit/agents/test_compaction_middleware.py	arg-type
-apps/api/tests/unit/agents/test_compaction_middleware.py	attr-defined
-apps/api/tests/unit/agents/test_compaction_middleware.py	call-overload
-apps/api/tests/unit/agents/test_compaction_middleware.py	union-attr
 apps/api/tests/unit/agents/test_delegation.py	arg-type
 apps/api/tests/unit/agents/test_delegation.py	assignment
 apps/api/tests/unit/agents/test_delegation.py	attr-defined
