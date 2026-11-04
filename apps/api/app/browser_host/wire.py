@@ -24,7 +24,8 @@ class CreatedSession(BaseModel):
     live_ws: str
     engine: BrowserEngine
     #: The engine is Fortress, which fingerprints itself, so the API adds no stealth script.
-    fortress: bool
+    #: Defaults False because a host older than Fortress omits the key and never runs it.
+    fortress: bool = False
 
 
 class StorageStateResponse(BaseModel):

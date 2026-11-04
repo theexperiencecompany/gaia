@@ -96,6 +96,29 @@ async def test_a_session_is_created_with_its_seed_the_key_and_a_deadline(host: A
     assert fake.timeouts == [30.0]
 
 
+async def test_a_host_older_than_fortress_creates_a_session_that_is_not_fortress(
+    host: Any,
+) -> None:
+    """A rolling deploy puts a new API in front of an old host, whose reply has no fortress key."""
+    host(
+        {
+            "POST /sessions": httpx.Response(
+                200,
+                json={
+                    "session_id": "s1",
+                    "cdp_ws": "ws://c",
+                    "live_ws": "ws://l",
+                    "engine": "chromium",
+                },
+            )
+        }
+    )
+
+    created = await host_client.create_session(None, _HOST)
+
+    assert created.fortress is False
+
+
 async def test_a_host_at_capacity_is_a_concurrency_limit(host: Any) -> None:
     host({"POST /sessions": httpx.Response(429, json={"detail": "at_capacity"})})
 
