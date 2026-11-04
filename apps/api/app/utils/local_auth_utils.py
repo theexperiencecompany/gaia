@@ -6,9 +6,10 @@ the gaia session cookie as the twin of the WorkOS sealed-session cookie.
 
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
-from typing import NamedTuple, TypedDict, cast
+from typing import NamedTuple
 
-from jose import JWTError, jwt
+import jwt
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from app.constants.auth import JWT_ALGORITHM
 from app.constants.log_tags import LogTag
@@ -27,15 +28,18 @@ SESSION_TTL_SECONDS = 30 * 24 * 3600
 _resolved_secret: str | None = None
 
 
-class SessionClaims(TypedDict, total=False):
+class SessionClaims(BaseModel):
     """The local-session JWT claims this module reads.
 
     Sub carries the user id and ver the password-bumpable token version, so a
     bump stops every older session verifying.
     """
 
-    sub: str
-    ver: int
+    model_config = ConfigDict(extra="ignore")
+
+    sub: str | None = None
+    # Legacy tokens without ver read as 0.
+    ver: int = 0
 
 
 async def _session_secret() -> str:
@@ -60,7 +64,7 @@ async def issue_session_token(user_id: str, token_version: int) -> str:
         "iat": now,
         "ver": token_version,
     }
-    return cast(str, jwt.encode(payload, secret, algorithm=JWT_ALGORITHM))
+    return jwt.encode(payload, secret, algorithm=JWT_ALGORITHM)
 
 
 class _Session(NamedTuple):
@@ -73,12 +77,10 @@ class _Session(NamedTuple):
 def _decode_session(token: str, secret: str) -> _Session | None:
     """Return the session of a validly signed, unexpired token naming a user, else None."""
     try:
-        claims: SessionClaims = jwt.decode(token, secret, algorithms=[JWT_ALGORITHM])
-    except JWTError:
+        claims = SessionClaims.model_validate(jwt.decode(token, secret, algorithms=[JWT_ALGORITHM]))
+    except (jwt.PyJWTError, ValidationError):
         return None
-    sub = claims.get("sub")
-    # Legacy tokens without ver read as 0.
-    return _Session(str(sub), claims.get("ver", 0)) if sub else None
+    return _Session(claims.sub, claims.ver) if claims.sub else None
 
 
 async def resolve_session_token(token: str) -> str | None:
@@ -92,10 +94,6 @@ async def resolve_session_token(token: str) -> str | None:
     user_id = session.user_id
     # Version check — stateless JWTs are revoked by bumping
     # auth_credentials.token_version on password change.
-    try:
-        token_ver_int = int(session.version)
-    except (TypeError, ValueError):
-        return None
     # Credential lookup is the revocation source.
     try:
         credential = await local_credentials_repository.get_by_user_id(user_id)
@@ -108,13 +106,13 @@ async def resolve_session_token(token: str) -> str | None:
             error=str(exc),
             error_type=type(exc).__name__,
         )
-        return user_id if token_ver_int == 0 else None
+        return user_id if session.version == 0 else None
     if credential is None:
         # No credential row: only honour legacy ver 0 tokens (pre-migration).
-        return user_id if token_ver_int == 0 else None
+        return user_id if session.version == 0 else None
     if credential.disabled_at is not None:
         return None
-    if token_ver_int != credential.token_version:
+    if session.version != credential.token_version:
         return None
     return user_id
 
