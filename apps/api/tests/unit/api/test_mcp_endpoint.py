@@ -1,8 +1,8 @@
 """Unit tests for the MCP integration endpoints (app/api/v1/endpoints/mcp.py).
 
 The OAuth callback route owns the redirect URLs: every test pins the exact
-Location the browser is sent to. The MCPClient is the seam; the oauth_callback
-service runs for real.
+Location the browser is sent to. The MCPClient and the OAuth flow functions
+are the seam; the oauth_callback service runs for real.
 """
 
 from collections.abc import Iterator
@@ -29,10 +29,8 @@ USER_ID = FAKE_USER.user_id
 REDIRECT_URI = "http://api/api/v1/mcp/oauth/callback"
 
 
-def _mcp_client(*, retry_url: str | None = None) -> MagicMock:
+def _mcp_client() -> MagicMock:
     mcp_client = MagicMock()
-    mcp_client.handle_oauth_callback = AsyncMock()
-    mcp_client.build_scope_retry_url = AsyncMock(return_value=retry_url)
     mcp_client.token_store = MagicMock()
     mcp_client.token_store.clear_excluded_scopes = AsyncMock()
     return mcp_client
@@ -46,9 +44,19 @@ def _resolved(name: str = "GitHub") -> MagicMock:
 
 @contextmanager
 def _callback_seams(
-    mcp_client: MagicMock, resolved: MagicMock | None = None
+    mcp_client: MagicMock,
+    resolved: MagicMock | None = None,
+    *,
+    retry_url: str | None = None,
+    exchange_error: Exception | None = None,
 ) -> Iterator[dict[str, MagicMock]]:
     with (
+        patch(
+            f"{_CALLBACK}.handle_oauth_callback", new_callable=AsyncMock, side_effect=exchange_error
+        ) as exchange,
+        patch(
+            f"{_CALLBACK}.build_scope_retry_url", new_callable=AsyncMock, return_value=retry_url
+        ) as scope_retry,
         patch(f"{_MODULE}.get_mcp_client", new_callable=AsyncMock, return_value=mcp_client),
         patch(
             f"{_MODULE}.IntegrationResolver.resolve",
@@ -65,7 +73,12 @@ def _callback_seams(
         patch(f"{_MODULE}.get_frontend_url", return_value="http://frontend"),
         patch(f"{_CALLBACK}.capture") as capture,
     ):
-        yield {"invalidate": inv, "capture": capture}
+        yield {
+            "invalidate": inv,
+            "capture": capture,
+            "exchange": exchange,
+            "scope_retry": scope_retry,
+        }
 
 
 class TestMCPOAuthCallback:
@@ -88,11 +101,13 @@ class TestMCPOAuthCallback:
             resp.headers["location"]
             == "http://frontend/integrations?id=github&status=connected&name=My%20MCP%20Server"
         )
-        mcp_client.handle_oauth_callback.assert_awaited_once_with(
+        seams["exchange"].assert_awaited_once_with(
+            mcp_client.token_store,
             integration_id="github",
             code="code1",
             state="tok",
             redirect_uri=REDIRECT_URI,
+            connect_after_oauth=mcp_client.connect_after_oauth,
         )
         mcp_client.token_store.clear_excluded_scopes.assert_awaited_once_with("github")
         seams["invalidate"].assert_awaited_once_with(USER_ID)
@@ -190,7 +205,7 @@ class TestMCPOAuthCallback:
             resp.headers["location"]
             == "http://frontend/settings/integrations?id=github&status=failed&error=missing_code"
         )
-        mcp_client.handle_oauth_callback.assert_not_awaited()
+        seams["exchange"].assert_not_awaited()
         seams["capture"].assert_not_called()
 
     async def test_provider_error_redirects_with_the_resolved_code(
@@ -215,14 +230,12 @@ class TestMCPOAuthCallback:
             == "http://frontend/integrations?id=github&status=failed&error=access_denied"
         )
         mcp_client.token_store.clear_excluded_scopes.assert_awaited_once_with("github")
-        mcp_client.handle_oauth_callback.assert_not_awaited()
+        seams["exchange"].assert_not_awaited()
         seams["capture"].assert_not_called()
 
     async def test_provider_error_with_a_code_still_fails(self, client: AsyncClient) -> None:
         # An error response wins over a stray code: nothing is exchanged.
-        mcp_client = _mcp_client()
-
-        with _callback_seams(mcp_client):
+        with _callback_seams(_mcp_client()) as seams:
             resp = await client.get(
                 CALLBACK_URL,
                 params={
@@ -237,14 +250,16 @@ class TestMCPOAuthCallback:
             resp.headers["location"]
             == "http://frontend/settings/integrations?id=github&status=failed&error=oauth_server_error"
         )
-        mcp_client.handle_oauth_callback.assert_not_awaited()
+        seams["exchange"].assert_not_awaited()
 
     async def test_invalid_scope_retries_authorization_with_the_callback_details(
         self, client: AsyncClient
     ) -> None:
-        mcp_client = _mcp_client(retry_url="https://provider/authorize?scope=less")
+        mcp_client = _mcp_client()
 
-        with _callback_seams(mcp_client):
+        with _callback_seams(
+            mcp_client, retry_url="https://provider/authorize?scope=less"
+        ) as seams:
             resp = await client.get(
                 CALLBACK_URL,
                 params={
@@ -257,17 +272,21 @@ class TestMCPOAuthCallback:
 
         assert resp.status_code == 307
         assert resp.headers["location"] == "https://provider/authorize?scope=less"
-        mcp_client.build_scope_retry_url.assert_awaited_once_with(
-            "github", "user:org:read rejected", REDIRECT_URI, "/settings/integrations"
+        seams["scope_retry"].assert_awaited_once_with(
+            mcp_client.token_store,
+            "github",
+            "user:org:read rejected",
+            REDIRECT_URI,
+            "/settings/integrations",
         )
-        mcp_client.handle_oauth_callback.assert_not_awaited()
+        seams["exchange"].assert_not_awaited()
 
     async def test_invalid_scope_without_a_retry_url_fails_with_the_provider_code(
         self, client: AsyncClient
     ) -> None:
-        mcp_client = _mcp_client(retry_url=None)
+        mcp_client = _mcp_client()
 
-        with _callback_seams(mcp_client):
+        with _callback_seams(mcp_client) as seams:
             resp = await client.get(
                 CALLBACK_URL,
                 params={"state": "tok:github:/integrations", "error": "invalid_scope"},
@@ -278,8 +297,8 @@ class TestMCPOAuthCallback:
             resp.headers["location"]
             == "http://frontend/integrations?id=github&status=failed&error=invalid_scope"
         )
-        mcp_client.build_scope_retry_url.assert_awaited_once_with(
-            "github", None, REDIRECT_URI, "/integrations"
+        seams["scope_retry"].assert_awaited_once_with(
+            mcp_client.token_store, "github", None, REDIRECT_URI, "/integrations"
         )
 
     @pytest.mark.parametrize(
@@ -294,10 +313,7 @@ class TestMCPOAuthCallback:
     async def test_exchange_failure_redirects_with_a_sanitized_code(
         self, client: AsyncClient, exc: Exception, code: str
     ) -> None:
-        mcp_client = _mcp_client()
-        mcp_client.handle_oauth_callback = AsyncMock(side_effect=exc)
-
-        with _callback_seams(mcp_client, _resolved()) as seams:
+        with _callback_seams(_mcp_client(), _resolved(), exchange_error=exc) as seams:
             resp = await client.get(
                 CALLBACK_URL,
                 params={"state": "tok:github:/settings/integrations", "code": "code1"},
@@ -313,10 +329,9 @@ class TestMCPOAuthCallback:
         seams["capture"].assert_not_called()
 
     async def test_exchange_failure_is_recorded_on_the_wide_event(self) -> None:
-        mcp_client = _mcp_client()
-        mcp_client.handle_oauth_callback = AsyncMock(side_effect=ValueError("Invalid state token"))
-
-        with _callback_seams(mcp_client, _resolved("GitHub")):
+        with _callback_seams(
+            _mcp_client(), _resolved("GitHub"), exchange_error=ValueError("Invalid state token")
+        ):
             async with captured_wide_event() as event:
                 resp = await mcp_oauth_callback(
                     state="tok:github:/integrations",

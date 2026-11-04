@@ -25,7 +25,6 @@ from app.agents.context.fetchers import (
     build_memory_recall_block,
     build_new_user_guidance_block,
     build_open_pendings_block,
-    build_provider_metadata_block,
     build_tracked_todos_block,
     build_workspace_session_banner,
 )
@@ -163,37 +162,21 @@ async def _connected_devices(ctx: SectionContext) -> str:
     return await build_connected_devices_manifest(ctx.user_id, header=header)
 
 
-async def _provider_metadata(ctx: SectionContext) -> str:
-    return await build_provider_metadata_block(ctx.integration_id, ctx.user_id)
-
-
-async def _instructions_block(user_id: str, scope: str) -> str:
+async def _global_instructions(ctx: SectionContext) -> str:
+    if not ctx.user_id:
+        return ""
     try:
-        content = await get_instructions(user_id, scope)
+        content = await get_instructions(ctx.user_id, GLOBAL_INSTRUCTIONS_SCOPE)
     except Exception as e:
         log.warning(
             f"{LogTag.AGENT} Failed to fetch user instructions",
-            scope=scope,
-            user_id=user_id,
+            scope=GLOBAL_INSTRUCTIONS_SCOPE,
+            user_id=ctx.user_id,
             error_type=type(e).__name__,
             error=str(e),
         )
         return ""
-    return render_user_instructions(scope, content) if content else ""
-
-
-async def _global_instructions(ctx: SectionContext) -> str:
-    if not ctx.user_id:
-        return ""
-    return await _instructions_block(ctx.user_id, GLOBAL_INSTRUCTIONS_SCOPE)
-
-
-async def _integration_instructions(ctx: SectionContext) -> str:
-    """Injected in full rather than as a read-on-demand pointer, so "focus on #eng" needs no file read."""
-    target = ctx.integration_id or ctx.subagent_id
-    if not (target and ctx.user_id):
-        return ""
-    return await _instructions_block(ctx.user_id, target)
+    return render_user_instructions(GLOBAL_INSTRUCTIONS_SCOPE, content) if content else ""
 
 
 async def _skills(ctx: SectionContext) -> str:
@@ -275,20 +258,6 @@ SECTIONS: tuple[Section, ...] = (
         frozenset({AgentTier.COMMS, AgentTier.EXECUTOR}),
         45,
         _connected_devices,
-    ),
-    Section(
-        "provider_metadata",
-        PromptSlot.DYNAMIC_STABLE,
-        frozenset({AgentTier.PROVIDER_SUBAGENT}),
-        50,
-        _provider_metadata,
-    ),
-    Section(
-        "integration_instructions",
-        PromptSlot.DYNAMIC_STABLE,
-        frozenset({AgentTier.PROVIDER_SUBAGENT}),
-        60,
-        _integration_instructions,
     ),
     # Capability info, not retrieval: pure function of user + agent, Redis-
     # cached 12h (was re-read every worker call in the volatile slot). Same

@@ -296,26 +296,24 @@ class TestBuildInitialMessages:
 
     @pytest.mark.asyncio
     async def test_tier_and_ids_reach_the_assembler(self):
-        """The tier selects which sections apply; the wrong one silently loses provider metadata."""
+        """The tier selects which sections apply; the wrong one silently loses its sections."""
         with self._assembled() as mock_assemble:
             await build_initial_messages(
                 system_message=SystemMessage(content="sys"),
                 agent_name="agent",
                 task="task",
                 seed=ThreadSeed(
-                    tier=AgentTier.PROVIDER_SUBAGENT,
+                    tier=AgentTier.SPAWN,
                     configurable={},
                     user_id="uid-1",
                     subagent_id="github_agent",
-                    integration_id="github",
                 ),
             )
 
         ctx = mock_assemble.call_args.args[0]
-        assert ctx.tier is AgentTier.PROVIDER_SUBAGENT
+        assert ctx.tier is AgentTier.SPAWN
         assert ctx.user_id == "uid-1"
         assert ctx.subagent_id == "github_agent"
-        assert ctx.integration_id == "github"
 
 
 # ---------------------------------------------------------------------------
@@ -925,7 +923,10 @@ class TestConsumeStreamEvent:
         run = _make_run(
             stream_writer=writer, subagent_id="sub-1", ctx_overrides={"stream_id": stream_id}
         )
-        payload = (ToolMessage(content="3 unread", tool_call_id="tc-1", name="read"), {})
+        payload: tuple[ToolMessage, dict[str, object]] = (
+            ToolMessage(content="3 unread", tool_call_id="tc-1", name="read"),
+            {},
+        )
 
         with patch(
             "app.agents.core.subagents.subagent_runner.claim_tool_output", return_value=True
@@ -1465,7 +1466,7 @@ class TestPrepareExecutorExecution:
 
         assert task == "find the roadmap page"
 
-    async def test_a_per_user_mcp_category_is_handed_off(self):
+    async def test_a_per_user_mcp_category_is_activated_in_context(self):
         notion = _mcp_subagent("notion-mcp", requires_auth=True)
 
         task = await self._task_for_category("notion-mcp", notion)
@@ -1474,8 +1475,8 @@ class TestPrepareExecutorExecution:
             "find the roadmap page\n\n"
             "DIRECT EXECUTION HINT: This request should be handled by 'notion-mcp'. "
             "Skip retrieve_tools discovery and directly "
-            'handoff(subagent_id="notion-mcp", task="...") with the full request, then '
-            "use its result for the user's request."
+            'call activate_integration(integration_id="notion-mcp"), then '
+            "act on the user's request yourself with its tools."
         )
 
     async def test_an_mcp_category_needing_no_sign_in_is_activated_in_context(self):
@@ -1492,10 +1493,7 @@ class TestPrepareExecutorExecution:
 # ---------------------------------------------------------------------------
 
 
-from app.agents.core.subagents.subagent_helpers import (
-    build_subagent_system_prompt,
-    create_subagent_system_message,
-)
+from app.agents.core.subagents.subagent_helpers import build_subagent_system_prompt
 
 
 class TestBuildSubagentSystemPrompt:
@@ -1563,25 +1561,6 @@ class TestBuildSubagentSystemPrompt:
     async def test_blank_integration_id_returns_empty(self):
         with patch("app.agents.core.subagents.subagent_helpers.log"):
             assert await build_subagent_system_prompt("") == ""
-
-
-# ---------------------------------------------------------------------------
-# create_subagent_system_message
-# ---------------------------------------------------------------------------
-
-
-class TestCreateSubagentSystemMessage:
-    @pytest.mark.asyncio
-    async def test_returns_system_message(self):
-        with patch(
-            "app.agents.core.subagents.subagent_helpers.build_subagent_system_prompt",
-            new_callable=AsyncMock,
-            return_value="Test prompt",
-        ):
-            result = await create_subagent_system_message(integration_id="github")
-
-        assert isinstance(result, SystemMessage)
-        assert result.content == "Test prompt"
 
 
 # ---------------------------------------------------------------------------
@@ -2092,7 +2071,10 @@ class TestReasoningDeltaSources:
 # ---------------------------------------------------------------------------
 
 SUBAGENT_THREAD = "spawn_c1_call-1"
-_SUPERSTEP = ("updates", {"agent": {"messages": []}})
+_SUPERSTEP: tuple[str, dict[str, dict[str, list[AIMessage]]]] = (
+    "updates",
+    {"agent": {"messages": []}},
+)
 
 
 def _cancellable_run(*events: tuple[str, Any], stream_id: str | None = "s-1") -> Any:

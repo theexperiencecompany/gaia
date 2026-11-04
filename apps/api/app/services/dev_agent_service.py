@@ -1,20 +1,18 @@
 """Dev-only direct agent invocation.
 
-Runs the executor agent or any single subagent directly, skipping the comms
-front door, so tests and coding agents can exercise one layer in isolation
-instead of always driving the full comms → executor → handoff chain. Reuses
-the exact production preparation paths (prepare_executor_execution,
-prepare_subagent_execution) so a direct run can never drift from what the
-real hand-off does. Mounted only in development behind the auth bypass — see
-create_app. Under GAIA_SIM_MODE the graphs already resolve to the
+Runs the executor agent directly, skipping the comms front door, so tests and
+coding agents can exercise it in isolation instead of always driving the full
+comms → executor chain. Reuses the production preparation path
+(prepare_executor_execution) so a direct run can never drift from what
+call_executor does. Integrations are reached the way production reaches them:
+the task asks the executor to activate one. Mounted only in development behind
+the auth bypass — see create_app. Under GAIA_SIM_MODE the graphs already resolve to the
 scripted LLM stub, so directive-bearing tasks run deterministically.
 """
 
 from typing import cast
 from uuid import uuid4
 
-from app.agents.core.subagents.handoff_tools import prepare_subagent_execution
-from app.agents.core.subagents.registry import all_subagents
 from app.agents.core.subagents.subagent_runner import (
     SubagentOutcome,
     execute_subagent_stream,
@@ -24,24 +22,11 @@ from app.agents.llm.lane import AgentRole, dev_option_for
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import AgentIdentity, AgentLane, AgentTurn, build_agent_config
 from app.models.agent_models import AgentConfigurable, AgentRunnableConfig, AgentUserContext
-from app.schemas.dev_schemas import DevAgentRunResponse, DevSubagentInfo
+from app.schemas.dev_schemas import DevAgentRunResponse
 from app.services.dev_service import require_dev_user
 from app.utils.errors import create_error
 from app.utils.user_preferences_utils import onboarding_preferences
 from shared.py.wide_events import log
-
-
-def list_dev_subagents() -> list[DevSubagentInfo]:
-    """Every registered subagent, with the ids accepted by the direct-run endpoint."""
-    return [
-        DevSubagentInfo(
-            id=sa.id,
-            name=sa.name,
-            short_name=sa.short_name,
-            agent_name=sa.config.agent_name,
-        )
-        for sa in all_subagents()
-    ]
 
 
 async def _dev_base_configurable(
@@ -119,49 +104,6 @@ async def run_executor_direct(
         f"{LogTag.DEV} ran executor directly",
         email=email,
         user_id=user_id,
-        conversation_id=cid,
-        response_length=len(outcome.text),
-    )
-    run_configurable: AgentConfigurable = ctx.configurable
-    return DevAgentRunResponse(
-        user_id=user_id,
-        conversation_id=cid,
-        thread_id=run_configurable.get("thread_id", ""),
-        agent=ctx.agent_name,
-        message=outcome.text,
-    )
-
-
-async def run_subagent_direct(
-    email: str,
-    subagent_id: str,
-    task: str,
-    conversation_id: str | None = None,
-    model: str | None = None,
-) -> DevAgentRunResponse:
-    """Run one subagent directly with a task, returning its final message."""
-    configurable, user_id, cid = await _dev_base_configurable(
-        email, conversation_id, "dev_direct", model
-    )
-    ctx, integration_metadata, error = await prepare_subagent_execution(
-        subagent_id=subagent_id,
-        task=task,
-        configurable=configurable,
-    )
-    if ctx is None:
-        raise create_error(
-            message=f"Cannot run subagent {subagent_id!r}",
-            why=error or "prepare_subagent_execution returned no context",
-            fix="GET /api/v1/dev/subagents lists the runnable ids",
-            status_code=400,
-        )
-    outcome = await execute_subagent_stream(ctx, integration_metadata=integration_metadata)
-    _reject_pause(outcome, ctx.agent_name)
-    log.info(
-        f"{LogTag.DEV} ran subagent directly",
-        email=email,
-        user_id=user_id,
-        subagent=ctx.agent_name,
         conversation_id=cid,
         response_length=len(outcome.text),
     )
