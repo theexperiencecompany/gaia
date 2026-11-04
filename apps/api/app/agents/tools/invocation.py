@@ -130,7 +130,7 @@ def _recorded(
     config: RunnableConfig | None,
     output: object,
     *,
-    failed: bool = False,
+    failed: bool,
 ) -> tuple[str, RecordedCall] | None:
     """Return (stream id, call) for a call that belongs to a run, else None."""
     if tool.name == EXECUTE_TOOL_NAME or config is None:
