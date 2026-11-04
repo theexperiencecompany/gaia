@@ -1,5 +1,6 @@
 "use client";
 import "./page.css";
+import "./page.2.css";
 
 import ErrorBoundary from "@/components/shared/ErrorBoundary";
 import { AssistantPopup } from "@/features/desktop-popup";

@@ -1,4 +1,5 @@
 import "./page.css";
+import "./page.2.css";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getAllComparisons } from "@/features/comparisons/data/comparisonsData";

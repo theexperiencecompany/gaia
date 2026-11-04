@@ -1,4 +1,6 @@
 import "./page.css";
+import "./page.2.css";
+import "./page.3.css";
 import { Chip } from "@heroui/react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";

@@ -121,19 +121,31 @@ const ROOT_LAYOUT = path.join(APP, "layout.tsx");
 const BASE_OWNED = new Set(graph(ROOT_LAYOUT));
 
 function cssFor(entry, files, components) {
+  // Tailwind 4.3 drops every source when a parent-relative source follows a
+  // local one, so emit ancestors first and keep same-directory files last.
   const sources = [...files]
-    .sort()
-    .map((file) => `@source "${path.relative(path.dirname(entry), file).replace(/\\/g, "/")}";`);
+    .map((file) => path.relative(path.dirname(entry), file).replace(/\\/g, "/"))
+    .sort((a, b) => {
+      const ap = a.startsWith(".."), bp = b.startsWith("..");
+      if (ap !== bp) return ap ? -1 : 1;
+      return a.localeCompare(b);
+    })
+    .map((rel) => `@source "${rel}";`);
   const componentImports = components.map((name) => `@import "@heroui/styles/components/${name}.css";`);
   const body = [
     HEADER + "@layer theme, base, openui, components, utilities;",
     '@import "tailwindcss/theme.css" layer(theme);',
     '@import "tailwindcss/utilities.css" layer(utilities) source(none);',
     ...componentImports,
-    '@reference "@heroui/styles/themes/default";',
     '@import "@heroui/styles/utilities";',
     '@import "@heroui/styles/variants";',
+    '@reference "@heroui/styles/themes/default";',
     '@plugin "tailwindcss-animate";',
+    '@theme {',
+    '  --font-sans: var(--font-inter), system-ui, sans-serif;',
+    '  --font-serif: var(--font-aeonik), system-ui, sans-serif;',
+    '  --font-mono: var(--font-geist-mono), ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;',
+    '}',
     ...sources,
     '@custom-variant dark (&:is(.dark *));',
     "",
@@ -141,10 +153,8 @@ function cssFor(entry, files, components) {
   return body.join("\n");
 }
 
-// Tailwind output grows with the source count. Entries above this are split
-// into page.css, page.2.css, ... each imported by the same entry, so no single
-// generated file crosses the 150 KB audit threshold.
-const MAX_SOURCES = 100000;
+// Tailwind 4.3 drops sources past this; chunks are worker-inlined.
+const MAX_SOURCES = 100;
 const FORCE_CHUNKS = new Map();
 
 function chunkSources(sources, minimum = 1) {
@@ -243,7 +253,7 @@ for (const [entry, cssNames] of desiredImports) {
 for (const file of walk(APP)) {
   if (path.basename(file) !== "layout.tsx") continue;
   const text = fs.readFileSync(file, "utf8");
-  const next = text.replace(/^import\s+["']\.\/[^"']+\.css["'];\n?/gm, "");
+  const next = text.replace(/^import\s+["']\.\/layout\.css["'];\n?/gm, "");
   if (next === text) continue;
   problems.push(`${path.relative(ROOT, file)}: stale local CSS import`);
   if (!check) fs.writeFileSync(file, next);

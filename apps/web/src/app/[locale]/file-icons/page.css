@@ -6,18 +6,17 @@
 @import "@heroui/styles/components/modal.css";
 @import "@heroui/styles/components/spinner.css";
 @import "@heroui/styles/components/tooltip.css";
-@reference "@heroui/styles/themes/default";
 @import "@heroui/styles/utilities";
 @import "@heroui/styles/variants";
+@reference "@heroui/styles/themes/default";
 @plugin "tailwindcss-animate";
-@source "page.tsx";
-@source "../layout.tsx";
-@source "../../fonts/aeonik.ts";
-@source "../../fonts/geist-mono.ts";
-@source "../../fonts/index.ts";
-@source "../../fonts/instrument-serif.ts";
-@source "../../fonts/inter.ts";
-@source "../../fonts/pp-editorial-new.ts";
+@theme {
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+  --font-serif: var(--font-aeonik), system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+}
+@source "../../../../../../libs/shared/ts/src/analytics/identity.ts";
+@source "../../../../../../libs/shared/ts/src/analytics/types.ts";
 @source "../../../components/dev/AgentationProvider.tsx";
 @source "../../../components/shared/ChunkErrorRecovery.tsx";
 @source "../../../components/ui/raised-button.tsx";
@@ -29,8 +28,8 @@
 @source "../../../features/auth/hooks/useLoginModal.ts";
 @source "../../../features/auth/utils/toCurrentUser.ts";
 @source "../../../features/chat/components/files/FilePreview.tsx";
-@source "../../../features/chat/components/files/FileTypeIcon.tsx";
 @source "../../../features/chat/components/files/fileTypeConfig.ts";
+@source "../../../features/chat/components/files/FileTypeIcon.tsx";
 @source "../../../features/pricing/advertisedPrice.ts";
 @source "../../../features/pricing/utils/money.ts";
 @source "../../../features/settings/api/providersApi.ts";
@@ -42,9 +41,9 @@
 @source "../../../i18n/routing.ts";
 @source "../../../layouts/AnalyticsLayout.tsx";
 @source "../../../layouts/HeroUIProvider.tsx";
+@source "../../../layouts/queryPersister.ts";
 @source "../../../layouts/QueryProvider.tsx";
 @source "../../../layouts/RootProviders.tsx";
-@source "../../../layouts/queryPersister.ts";
 @source "../../../lib/analytics-headers.ts";
 @source "../../../lib/analytics.ts";
 @source "../../../lib/api/client.ts";
@@ -62,6 +61,10 @@
 @source "../../../lib/utils.ts";
 @source "../../../stores/loginModalStore.ts";
 @source "../../../utils/colorUtils.ts";
-@source "../../../../../../libs/shared/ts/src/analytics/identity.ts";
-@source "../../../../../../libs/shared/ts/src/analytics/types.ts";
+@source "../../fonts/aeonik.ts";
+@source "../../fonts/geist-mono.ts";
+@source "../../fonts/index.ts";
+@source "../../fonts/inter.ts";
+@source "../layout.tsx";
+@source "page.tsx";
 @custom-variant dark (&:is(.dark *));

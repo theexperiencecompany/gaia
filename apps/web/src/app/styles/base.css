@@ -1358,3 +1358,22 @@ html {
 .chip {
   border-radius: 0.5rem;
 }
+
+/* Page CSS is split into several files, so a later chunk's base utility can
+   override an earlier chunk's responsive variant (e.g. `.hidden` over
+   `.sm:flex`). Keep the display variants the marketing chrome relies on
+   unlayered so they win regardless of chunk order. */
+@media (min-width: 40rem) {
+  .sm\:flex {
+    display: flex;
+  }
+}
+
+@media (min-width: 64rem) {
+  .lg\:inline {
+    display: inline;
+  }
+  .lg\:flex {
+    display: flex;
+  }
+}

@@ -1,5 +1,9 @@
 "use client";
 import "./page.css";
+import "./page.2.css";
+import "./page.3.css";
+import "./page.4.css";
+import "./page.5.css";
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";

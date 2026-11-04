@@ -1,4 +1,8 @@
 import "./page.css";
+import "./page.2.css";
+import "./page.3.css";
+import "./page.4.css";
+import "./page.5.css";
 import LinkPlatformClient from "@/app/[locale]/(main)/auth/link-platform/client";
 
 interface LinkPlatformPageProps {

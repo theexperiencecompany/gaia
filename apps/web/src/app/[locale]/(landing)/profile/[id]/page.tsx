@@ -1,5 +1,6 @@
 "use client";
 import "./page.css";
+import "./page.2.css";
 
 import { Button, Skeleton, Tooltip } from "@heroui/react";
 import { Share08Icon } from "@icons";

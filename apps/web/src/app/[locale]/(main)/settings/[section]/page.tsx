@@ -1,4 +1,10 @@
 import "./page.css";
+import "./page.2.css";
+import "./page.3.css";
+import "./page.4.css";
+import "./page.5.css";
+import "./page.6.css";
+import "./page.7.css";
 import { redirect } from "next/navigation";
 import type { SettingsSection } from "@/features/settings/config/sectionKeys";
 import {
