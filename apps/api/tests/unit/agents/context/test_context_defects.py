@@ -6,7 +6,7 @@ actually receives. That is the whole reason they survived in production.
 
 Every test here was written and observed RED before its fix, and the invariants
 they rest on are mutation-checked (see test_context_invariants.py). They
-deliberately carry no @pytest.mark.regression marker: that gate re-runs
+deliberately carry no regression marker: the regression-proof gate re-runs
 marked tests against the base revision, and these import a harness the same
 change introduces, so on base they do not fail — they fail to *collect*. An
 error is not proof, and claiming the marker would assert a proof the gate
