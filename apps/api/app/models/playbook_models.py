@@ -503,8 +503,12 @@ class ForEachStep(_CallStep):
         return node
 
 
-def _call_shape(value: object) -> str:
-    """Which call variant a value is: the one that carries ``for_each``."""
+def _step_shape(value: object) -> str:
+    """Which variant a value is, read off its shape: the one that carries ``for_each``.
+
+    No ``kind`` key is stored or rendered: the documents already in Mongo and
+    the YAML the agent reads carry none, and the shape says it anyway.
+    """
     if isinstance(value, ForEachStep):
         return "for_each"
     if isinstance(value, ToolStep):
@@ -515,84 +519,21 @@ def _call_shape(value: object) -> str:
 
 
 class _ShapeProbe(BaseModel):
-    """The keys that tell a step's shape apart before it is parsed: a handoff, a repeating call."""
+    """The key that tells a step's shape apart before it is parsed: a repeating call."""
 
     model_config = ConfigDict(extra="ignore")
 
     for_each: object = None
-    handoff: object = None
-
-
-#: A handoff's child: a call, plain or repeating, never another handoff. Depth
-#: one is a property of this type, not of a validator.
-HandoffChild = Annotated[
-    Annotated[ToolStep, Tag("tool")] | Annotated[ForEachStep, Tag("for_each")],
-    Discriminator(_call_shape),
-]
-
-
-class HandoffStep(BaseModel):
-    """A delegation to a subagent, carrying the calls that subagent ran.
-
-    The children execute in that subagent's context, so the subagent's existing
-    tool space *is* the auth boundary; there is no separate binding rule.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    id: str = Field(default="", description=_STEP_ID_DESCRIPTION)
-    handoff: str = Field(min_length=1, description="Subagent id")
-    steps: list[HandoffChild] = Field(min_length=1, description="The calls that subagent ran")
-
-    @model_validator(mode="before")
-    @classmethod
-    def _read_legacy_nulls(cls, data: object) -> object:
-        return _nulls_are_unset(data)
-
-    @property
-    def label(self) -> str:
-        return self.id or self.handoff
-
-    def ask_slots(self, prefix: str) -> list[LocatedAsk]:
-        """The children's slots, each under its own label: a child's key names
-        the child, since that is the step the evaluator fills."""
-        del prefix  # a handoff has no slots of its own; its children key themselves
-        return [slot for child in self.steps for slot in child.ask_slots(child.label)]
-
-    def to_document(self) -> dict[str, object]:
-        node: dict[str, object] = {}
-        if self.id:
-            node["id"] = self.id
-        node["handoff"] = self.handoff
-        node["steps"] = [child.to_document() for child in self.steps]
-        return node
-
-
-def _step_shape(value: object) -> str:
-    """Which variant a value is, read off its shape.
-
-    No ``kind`` key is stored or rendered: the documents already in Mongo and
-    the YAML the agent reads carry none, and the shape says it anyway. A
-    ``handoff`` key is a handoff; a ``for_each`` key is a repeating call; the
-    rest is a plain call.
-    """
-    if isinstance(value, HandoffStep):
-        return "handoff"
-    if isinstance(value, Mapping) and _ShapeProbe.model_validate(dict(value)).handoff is not None:
-        return "handoff"
-    return _call_shape(value)
 
 
 PlaybookStep = Annotated[
-    Annotated[ToolStep, Tag("tool")]
-    | Annotated[ForEachStep, Tag("for_each")]
-    | Annotated[HandoffStep, Tag("handoff")],
+    Annotated[ToolStep, Tag("tool")] | Annotated[ForEachStep, Tag("for_each")],
     Discriminator(_step_shape),
 ]
 
 
-def ask_slots(steps: Sequence[ToolStep | ForEachStep | HandoffStep]) -> list[LocatedAsk]:
-    """Every ask slot in a playbook, in execution order, handoff children included.
+def ask_slots(steps: Sequence[ToolStep | ForEachStep]) -> list[LocatedAsk]:
+    """Every ask slot in a playbook, in execution order.
 
     Keys are unique: step ids are unique (the validator refuses a repeat) and
     two slots in one step sit at two different argument paths.

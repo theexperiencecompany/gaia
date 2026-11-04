@@ -219,6 +219,9 @@ class ApprovalProposal(BaseModel):
     user_id: str = ""
     fingerprint: str
     tool_name: str
+    # HIL key (services/hil/tool_key) of the tool behind the call, for the card's
+    # "always allow". None on rows registered before keys were MCP-scoped.
+    tool_key: str | None = None
     args: dict[str, Any] = Field(default_factory=dict)
     # The connected account the call acts as; None is the integration's primary.
     account: str | None = None

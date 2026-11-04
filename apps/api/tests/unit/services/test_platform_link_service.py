@@ -13,18 +13,18 @@ from unittest.mock import AsyncMock, call, patch
 from bson import ObjectId
 import pytest
 
-from app.constants.platform_links import IMESSAGE_PENDING_REGISTRATION_TTL
+from app.constants.platform_links import IMESSAGE_PENDING_REGISTRATION_TTL, Platform
 from app.models.payment_models import PlanType
 from app.models.platform_models import (
     DisconnectPlatformResponse,
     InitiatePlatformConnectResponse,
     PendingPlatformRegistrationDocument,
 )
-from app.models.user_models import UserDocument
+from app.models.user_models import AuthenticatedUser, UserDocument
 from app.services.platform_link_service import (
-    Platform,
     PlatformLinkService,
     disconnect_platform_account,
+    open_platform_chat,
     platform_requires_upgrade,
     reap_abandoned_imessage_registrations,
     register_pending_imessage_number,
@@ -996,7 +996,9 @@ class TestDisconnectPlatformAccount:
         [event] = posthog_events
         assert event["event"] == IntegrationDisconnected.event
         assert event["distinct_id"] == sample_user_id
-        assert event["properties"]["integration_id"] == "discord"
+        properties = event["properties"]
+        assert isinstance(properties, dict)
+        assert properties["integration_id"] == "discord"
 
     async def test_never_linked_platform_is_a_404_not_a_silent_noop(self, sample_user_id):
         with (
@@ -1049,3 +1051,54 @@ class TestDisconnectPlatformAccount:
             reason="unlink_failed",
             error_type="ValueError",
         )
+
+
+class TestOpenPlatformChat:
+    async def test_returns_the_session_conversation_and_captures(
+        self, sample_user_id: str, posthog_events: list[dict[str, object]]
+    ) -> None:
+        user = AuthenticatedUser(user_id=sample_user_id, email="test@example.com")
+        with (
+            patch(
+                "app.services.platform_link_service.PlatformLinkService.get_linked_platforms",
+                new_callable=AsyncMock,
+                return_value={"telegram": {"platformUserId": "12345"}},
+            ) as mock_linked,
+            patch(
+                "app.services.platform_link_service.BotService.get_or_create_session",
+                new_callable=AsyncMock,
+                return_value="conv-telegram",
+            ) as mock_session,
+        ):
+            result = await open_platform_chat(sample_user_id, "telegram", user)
+
+        assert result == "conv-telegram"
+        mock_linked.assert_awaited_once_with(sample_user_id)
+        mock_session.assert_awaited_once_with("telegram", "12345", None, user, is_dm=True)
+        [event] = posthog_events
+        assert event["event"] == "bot:chat_opened"
+        assert event["distinct_id"] == sample_user_id
+        properties = event["properties"]
+        assert isinstance(properties, dict)
+        assert properties["platform"] == "telegram"
+
+    async def test_unlinked_platform_is_a_404(self, sample_user_id: str) -> None:
+        user = AuthenticatedUser(user_id=sample_user_id, email="test@example.com")
+        with (
+            patch(
+                "app.services.platform_link_service.PlatformLinkService.get_linked_platforms",
+                new_callable=AsyncMock,
+                return_value={},
+            ),
+            patch(
+                "app.services.platform_link_service.BotService.get_or_create_session",
+                new_callable=AsyncMock,
+            ) as mock_session,
+            pytest.raises(AppError) as exc_info,
+        ):
+            await open_platform_chat(sample_user_id, "telegram", user)
+
+        assert exc_info.value.status_code == 404
+        assert exc_info.value.message == "No telegram account is linked"
+        assert exc_info.value.fix == "Check account/linked-accounts for what is actually connected"
+        mock_session.assert_not_awaited()

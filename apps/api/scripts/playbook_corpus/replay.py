@@ -29,10 +29,6 @@ from app.services.workflow.playbook.record import (
     build_playbook,
     number_record,
 )
-from app.services.workflow.playbook.tool_space import SubagentTools
-
-#: The user every corpus attempt validates as; tool existence is faked per record.
-CORPUS_USER = "000000000000000000000000"
 
 
 @dataclass
@@ -61,13 +57,9 @@ async def replay(
     built = build_playbook(description, picks, result_brief, record)
     if built.body is None:
         return Outcome(issues=built.issues)
-    tools = _recorded_tools(record)
-    space = SubagentTools(tools=tools, initial_tool_ids=list(tools))
-    with (
-        patch.object(parser, "get_tool_registry", AsyncMock(return_value=_Registry(tools))),
-        patch.object(parser, "resolve_subagent_tools", AsyncMock(return_value=space)),
-    ):
-        validation = await validate_playbook(built.body, CORPUS_USER, built.sources)
+    registry = _Registry(_recorded_tools(record))
+    with patch.object(parser, "get_tool_registry", AsyncMock(return_value=registry)):
+        validation = await validate_playbook(built.body, built.sources)
     return Outcome(issues=validation.issues)
 
 

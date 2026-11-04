@@ -53,7 +53,7 @@ from app.services.hil.bridge import (
     settle_session_approval_frame,
     sync_conversation_approval_flag,
 )
-from app.services.hil.policy import asks_every_time
+from app.services.hil.policy import asks_every_time, resolved_tool_key
 from app.services.hil.preferences import set_tool_override
 from app.services.hil.resolution import (
     ApprovalRequestForbiddenError,
@@ -130,7 +130,8 @@ async def decide_ledger_card(
         row, user_id=user_id, kind=tap.decision, feedback=tap.feedback, v=tap.v, via="card"
     )
     if tap.scope == "always_tool" and outcome.committed and outcome.state is LedgerState.APPROVED:
-        await set_tool_override(user_id, row.tool_name, False)
+        tool_key = row.tool_key or await resolved_tool_key(user_id, row.tool_name)
+        await set_tool_override(user_id, tool_key, False)
     return outcome
 
 

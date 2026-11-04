@@ -27,6 +27,7 @@ type JsonObject = Record<string, unknown>;
 export interface SubagentStartPayload {
   subagent_id: string;
   subagent_name: string;
+  /** "handoff" survives only in stored conversations; new runs are "spawned". */
   agent_type: "handoff" | "spawned";
   started_at: string;
   icon_url?: string;
@@ -280,9 +281,11 @@ const extractSubagentStart = (payload: JsonObject): ChatStreamEvent[] => {
       payload: {
         subagent_id: s.subagent_id,
         subagent_name: s.subagent_name,
+        // Frames without a type predate the field; nothing emits "handoff" any more,
+        // but stored conversations still carry it explicitly and render as such.
         agent_type: (typeof s.agent_type === "string"
           ? s.agent_type
-          : "handoff") as "handoff" | "spawned",
+          : "spawned") as "handoff" | "spawned",
         started_at:
           typeof s.started_at === "string"
             ? s.started_at
