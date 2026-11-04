@@ -134,7 +134,13 @@ from shared.py.analytics.context import (
     current_analytics_context,
     worker_context,
 )
-from tests.helpers import UNKNOWN_USER_ID, captured_wide_event, live_through, users_get
+from tests.helpers import (
+    UNKNOWN_USER_ID,
+    captured_wide_event,
+    live_through,
+    trigger_gate_seams,
+    users_get,
+)
 from tests.integration_account_factories import make_integration_account, make_integration_record
 
 # Analytics attributes a todo run to its owner, so the owner is a real user id.
@@ -3023,19 +3029,7 @@ class TestQuietHoursHoldAGatedTodosWindow:
             runs.append((datetime.now(KOLKATA), sorted(set(re.findall(r"m-\d+", request.task)))))
 
         with (
-            respx.mock(assert_all_called=False) as jev,
-            patch(
-                "app.services.hil.jev_client.resolve",
-                AsyncMock(
-                    return_value=ProviderConfig(api_key="or-key")
-                ),  # pragma: allowlist secret
-            ),
-            patch(f"{_GATE}.is_trigger_gates_enforced", AsyncMock(return_value=True)),
-            patch(
-                f"{_GATE}.get_profile_timezone",
-                AsyncMock(return_value=Timezone.parse("Asia/Kolkata")),
-            ),
-            patch(f"{_GATE}.capture"),
+            trigger_gate_seams(Timezone.parse("Asia/Kolkata")) as gate,
             patch(f"{MODULE}.todo_repository", row),
             patch("app.workers.tasks.todo_run_context.todo_repository", row),
             patch(f"{_DISPATCH}.todo_repository", row),
@@ -3045,7 +3039,7 @@ class TestQuietHoursHoldAGatedTodosWindow:
             patch(f"{_DISPATCH}.record_activity", AsyncMock()),
             patch(f"{_DISPATCH}.capture"),
         ):
-            jev.post(HIL_JEV_URL).mock(return_value=httpx.Response(200, json=_REPLY_CAN_WAIT))
+            gate.jev.mock(return_value=httpx.Response(200, json=_REPLY_CAN_WAIT))
             yield
 
     @pytest.mark.parametrize(

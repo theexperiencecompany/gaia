@@ -17,18 +17,16 @@ from arq.jobs import JobDef
 import fakeredis.aioredis
 import httpx
 import pytest
-import respx
 import time_machine
 
-from app.constants.hil import HIL_JEV_URL
 from app.constants.trigger_gates import GateAuthor
 from app.models.trigger_configs import GmailPollInboxConfig
 from app.models.trigger_gate_models import AuthoredGate, TriggerGate
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow, WorkflowStep
-from app.services.providers.provider_credentials_service import ProviderConfig
 from app.services.triggers.handlers.gmail import GmailTriggerHandler
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.timezone import Timezone
+from tests.helpers import trigger_gate_seams
 
 pytestmark = pytest.mark.unit
 
@@ -101,20 +99,7 @@ def _night_body(*, can_wait: float, not_needed: float = 0.1) -> dict[str, object
 @pytest.fixture
 def seams() -> Iterator[SimpleNamespace]:
     with (
-        respx.mock(assert_all_called=False) as router,
-        patch(
-            "app.services.hil.jev_client.resolve",
-            AsyncMock(return_value=ProviderConfig(api_key="or-key")),  # pragma: allowlist secret
-        ),
-        patch(
-            "app.services.triggers.trigger_gate.is_trigger_gates_enforced",
-            AsyncMock(return_value=True),
-        ),
-        patch(
-            "app.services.triggers.trigger_gate.get_profile_timezone",
-            AsyncMock(return_value=Timezone.parse(KOLKATA)),
-        ),
-        time_machine.travel(AFTERNOON, tick=False),
+        trigger_gate_seams(Timezone.parse(KOLKATA), now=AFTERNOON) as gate,
         patch(f"{_BASE}.TriggerHandler._queue_todo_dispatch", AsyncMock(return_value=True)),
         patch(f"{_BASE}.get_signal_matching_context", AsyncMock(return_value="")),
         patch(f"{_BASE}._claim_occurrence", AsyncMock(return_value=True)) as claim,
@@ -123,7 +108,7 @@ def seams() -> Iterator[SimpleNamespace]:
         patch(f"{_BASE}.record_skipped_execution", AsyncMock()) as skipped,
     ):
         yield SimpleNamespace(
-            jev=router.post(HIL_JEV_URL), claim=claim, buffer=buffer, queue=queue, skipped=skipped
+            jev=gate.jev, claim=claim, buffer=buffer, queue=queue, skipped=skipped
         )
 
 
@@ -245,23 +230,13 @@ async def arq() -> AsyncIterator[ArqRedis]:
 def night(fake_redis: fakeredis.aioredis.FakeRedis, arq: ArqRedis) -> Iterator[SimpleNamespace]:
     """Gate a workflow with the real queue and batch underneath; the test sets the clock."""
     with (
-        respx.mock(assert_all_called=False) as router,
-        patch(
-            "app.services.hil.jev_client.resolve",
-            AsyncMock(return_value=ProviderConfig(api_key="or-key")),  # pragma: allowlist secret
-        ),
-        patch(
-            "app.services.triggers.trigger_gate.is_trigger_gates_enforced",
-            AsyncMock(return_value=True),
-        ),
+        trigger_gate_seams(Timezone.parse(KOLKATA)) as gate,
         patch(f"{_BASE}.TriggerHandler._queue_todo_dispatch", AsyncMock(return_value=True)),
         patch(f"{_BASE}.get_signal_matching_context", AsyncMock(return_value="")),
         patch(f"{_BASE}._claim_occurrence", AsyncMock(return_value=True)) as claim,
         patch(f"{_BASE}.record_skipped_execution", AsyncMock()) as skipped,
     ):
-        yield SimpleNamespace(
-            jev=router.post(HIL_JEV_URL), claim=claim, skipped=skipped, arq=arq, redis=fake_redis
-        )
+        yield SimpleNamespace(jev=gate.jev, claim=claim, skipped=skipped, arq=arq, redis=fake_redis)
 
 
 async def _fire_at(

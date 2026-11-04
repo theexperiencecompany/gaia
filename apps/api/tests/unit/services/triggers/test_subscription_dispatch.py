@@ -18,7 +18,6 @@ from redis.exceptions import RedisError
 import respx
 import time_machine
 
-from app.constants.hil import HIL_JEV_URL
 from app.constants.todos import TodoActivityEvent
 from app.constants.trigger_gates import GateAuthor
 from app.models.notification.notification_models import (
@@ -37,7 +36,6 @@ from app.models.trigger_subscription_models import (
     TriggerSubscription,
     TriggerSubscriptionStatus,
 )
-from app.services.providers.provider_credentials_service import ProviderConfig
 from app.services.triggers.subscription_dispatch import (
     dispatch_to_subscribed_todos,
     fire_subscription,
@@ -52,7 +50,7 @@ from shared.py.analytics.context import (
     current_analytics_context,
     worker_context,
 )
-from tests.helpers import captured_wide_event
+from tests.helpers import captured_wide_event, trigger_gate_seams
 
 _DISPATCH = "app.services.triggers.subscription_dispatch"
 
@@ -773,23 +771,8 @@ def _jev_body(not_needed: float) -> dict[str, object]:
 
 @pytest.fixture
 def jev() -> Iterator[respx.Route]:
-    with (
-        respx.mock(assert_all_called=False) as router,
-        patch(
-            "app.services.hil.jev_client.resolve",
-            AsyncMock(return_value=ProviderConfig(api_key="or-key")),  # pragma: allowlist secret
-        ),
-        patch(
-            "app.services.triggers.trigger_gate.is_trigger_gates_enforced",
-            AsyncMock(return_value=True),
-        ),
-        patch(
-            "app.services.triggers.trigger_gate.get_profile_timezone",
-            AsyncMock(return_value=KOLKATA),
-        ),
-        time_machine.travel(datetime(2026, 10, 2, 9, 0, tzinfo=UTC), tick=False),
-    ):
-        yield router.post(HIL_JEV_URL)
+    with trigger_gate_seams(KOLKATA, now=datetime(2026, 10, 2, 9, 0, tzinfo=UTC)) as gate:
+        yield gate.jev
 
 
 class TestTriggerGate:

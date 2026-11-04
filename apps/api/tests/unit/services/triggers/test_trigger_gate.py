@@ -14,15 +14,13 @@ from datetime import UTC, datetime
 import json
 from types import SimpleNamespace
 from typing import TypedDict, get_args
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import httpx
 from prometheus_client import REGISTRY
 import pytest
-import respx
 import time_machine
 
-from app.constants.hil import HIL_JEV_URL
 from app.constants.trigger_gates import (
     GateAuthor,
     GateKind,
@@ -33,7 +31,6 @@ from app.constants.trigger_gates import (
     UrgentChoice,
 )
 from app.models.trigger_gate_models import AuthoredGate, SystemGate, TriggerGate
-from app.services.providers.provider_credentials_service import ProviderConfig
 from app.services.triggers.trigger_gate import (
     GateBypass,
     GatedJob,
@@ -46,7 +43,7 @@ from app.services.triggers.trigger_gate import (
 from app.utils.general_utils import ELLIPSIS
 from app.utils.timezone import Timezone
 from shared.py.analytics.catalog.triggers import TriggerGateDecided
-from tests.helpers import captured_wide_event
+from tests.helpers import captured_wide_event, trigger_gate_seams
 
 pytestmark = pytest.mark.unit
 
@@ -170,18 +167,8 @@ def _answer(
 
 @pytest.fixture
 def seams() -> Iterator[SimpleNamespace]:
-    with (
-        respx.mock(assert_all_called=False) as router,
-        patch(
-            "app.services.hil.jev_client.resolve",
-            AsyncMock(return_value=ProviderConfig(api_key="or-key")),  # pragma: allowlist secret
-        ),
-        patch(f"{_MOD}.is_trigger_gates_enforced", AsyncMock(return_value=True)) as enforced,
-        patch(f"{_MOD}.capture", MagicMock()) as capture,
-        patch(f"{_MOD}.get_profile_timezone", AsyncMock(return_value=KOLKATA)),
-        time_machine.travel(AFTERNOON, tick=False),
-    ):
-        yield SimpleNamespace(jev=router.post(HIL_JEV_URL), enforced=enforced, capture=capture)
+    with trigger_gate_seams(KOLKATA, now=AFTERNOON) as seams:
+        yield seams
 
 
 async def _skip(

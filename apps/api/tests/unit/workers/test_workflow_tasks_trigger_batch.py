@@ -20,21 +20,18 @@ from arq.jobs import JobDef
 import fakeredis.aioredis
 import httpx
 import pytest
-import respx
 
-from app.constants.hil import HIL_JEV_URL
 from app.constants.trigger_gates import GateAuthor
 from app.models.trigger_configs import GmailPollInboxConfig
 from app.models.trigger_gate_models import AuthoredGate, TriggerGate
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow, WorkflowStep
-from app.services.providers.provider_credentials_service import ProviderConfig
 from app.services.triggers.handlers.gmail import GmailTriggerHandler
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.timezone import Timezone
 from app.workers.task_envelope import arq_task
 from app.workers.tasks.workflow_tasks import execute_workflow_by_id
-from tests.helpers import live_through
+from tests.helpers import live_through, trigger_gate_seams
 
 MODULE = "app.workers.tasks.workflow_tasks"
 
@@ -315,17 +312,7 @@ def _live_stack(workflow: Workflow, runs: list[tuple[datetime, int]]) -> Iterato
         return "conv-1", []
 
     with (
-        respx.mock(assert_all_called=False) as jev,
-        patch(
-            "app.services.hil.jev_client.resolve",
-            AsyncMock(return_value=ProviderConfig(api_key="or-key")),  # pragma: allowlist secret
-        ),
-        patch(f"{_GATE_MODULE}.is_trigger_gates_enforced", AsyncMock(return_value=True)),
-        patch(
-            f"{_GATE_MODULE}.get_profile_timezone",
-            AsyncMock(return_value=Timezone.parse("Asia/Kolkata")),
-        ),
-        patch(f"{_GATE_MODULE}.capture"),
+        trigger_gate_seams(Timezone.parse("Asia/Kolkata")) as gate,
         patch(
             "app.services.triggers.base.TriggerHandler._queue_todo_dispatch",
             AsyncMock(return_value=True),
@@ -344,7 +331,7 @@ def _live_stack(workflow: Workflow, runs: list[tuple[datetime, int]]) -> Iterato
         patch(f"{MODULE}.WorkflowService.increment_execution_count", AsyncMock()),
         patch(f"{MODULE}.capture"),
     ):
-        jev.post(HIL_JEV_URL).mock(return_value=httpx.Response(200, json=_CAN_WAIT))
+        gate.jev.mock(return_value=httpx.Response(200, json=_CAN_WAIT))
         scheduler.get_task = AsyncMock(return_value=workflow)
         scheduler.handle_recurring_task = AsyncMock()
         yield
