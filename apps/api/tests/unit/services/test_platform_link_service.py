@@ -200,32 +200,6 @@ class TestLinkAccount:
         with pytest.raises(ValueError, match="already has a different discord account linked"):
             await PlatformLinkService.link_account(sample_user_id, "discord", "new_id")
 
-    async def test_unlink_ends_the_platform_accounts_bot_sessions(
-        self, mock_repo, mock_bot_session_repo, sample_user_id
-    ):
-        mock_repo.get.return_value = _user(
-            id=sample_user_id, platform_links={"telegram": {"id": "tg-42"}}
-        )
-        mock_repo.unlink_platform.return_value = _user(id=sample_user_id)
-
-        await PlatformLinkService.unlink_account(sample_user_id, "telegram")
-
-        mock_bot_session_repo.delete_for_platform_user.assert_awaited_once_with(
-            platform="telegram", platform_user_id="tg-42"
-        )
-
-    async def test_unlink_with_no_link_on_that_platform_deletes_no_sessions(
-        self, mock_repo, mock_bot_session_repo, sample_user_id
-    ):
-        mock_repo.get.return_value = _user(
-            id=sample_user_id, platform_links={"discord": {"id": "d-1"}}
-        )
-        mock_repo.unlink_platform.return_value = _user(id=sample_user_id)
-
-        await PlatformLinkService.unlink_account(sample_user_id, "telegram")
-
-        mock_bot_session_repo.delete_for_platform_user.assert_not_awaited()
-
     async def test_raises_on_user_not_found(self, mock_repo, sample_user_id):
         mock_repo.get.return_value = None
         mock_repo.link_platform.return_value = None
@@ -315,6 +289,46 @@ class TestLinkAccount:
 
 
 class TestUnlinkAccount:
+    async def test_unlink_ends_the_platform_accounts_bot_sessions(
+        self, mock_repo, mock_bot_session_repo, sample_user_id
+    ):
+        mock_repo.get.return_value = _user(
+            id=sample_user_id, platform_links={"telegram": {"id": "tg-42"}}
+        )
+        mock_repo.unlink_platform.return_value = _user(id=sample_user_id)
+
+        await PlatformLinkService.unlink_account(sample_user_id, "telegram")
+
+        mock_bot_session_repo.delete_for_platform_user.assert_awaited_once_with(
+            platform="telegram", platform_user_id="tg-42"
+        )
+
+    async def test_unlink_with_no_link_on_that_platform_deletes_no_sessions(
+        self, mock_repo, mock_bot_session_repo, sample_user_id
+    ):
+        mock_repo.get.return_value = _user(
+            id=sample_user_id, platform_links={"discord": {"id": "d-1"}}
+        )
+        mock_repo.unlink_platform.return_value = _user(id=sample_user_id)
+
+        await PlatformLinkService.unlink_account(sample_user_id, "telegram")
+
+        mock_bot_session_repo.delete_for_platform_user.assert_not_awaited()
+
+    async def test_a_failed_session_delete_leaves_the_link_for_a_retry(
+        self, mock_repo, mock_bot_session_repo, sample_user_id
+    ):
+        """The link is the only record of which sessions are this user's, so it goes last."""
+        mock_repo.get.return_value = _user(
+            id=sample_user_id, platform_links={"telegram": {"id": "tg-42"}}
+        )
+        mock_bot_session_repo.delete_for_platform_user.side_effect = RuntimeError("mongo down")
+
+        with pytest.raises(RuntimeError):
+            await PlatformLinkService.unlink_account(sample_user_id, "telegram")
+
+        mock_repo.unlink_platform.assert_not_awaited()
+
     async def test_unlinks_successfully(self, mock_repo, sample_user_id):
         mock_repo.unlink_platform.return_value = _user(id=sample_user_id)
 
@@ -327,7 +341,7 @@ class TestUnlinkAccount:
     async def test_raises_on_user_not_found(self, mock_repo, sample_user_id):
         mock_repo.unlink_platform.return_value = None
 
-        with pytest.raises(ValueError, match="User not found"):
+        with pytest.raises(ValueError, match="^User not found$"):
             await PlatformLinkService.unlink_account(sample_user_id, "discord")
 
     async def test_imessage_unlink_releases_photon_registration(self, mock_repo, sample_user_id):

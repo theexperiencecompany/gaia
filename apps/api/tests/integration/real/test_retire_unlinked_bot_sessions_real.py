@@ -15,6 +15,7 @@ HEALTHY_OID = ObjectId("6acc0dac0cc0a00000000201")
 FOREIGN_OID = ObjectId("6acc0dac0cc0a00000000202")
 SHARED_OID = ObjectId("6acc0dac0cc0a00000000203")
 PREVIOUS_OID = ObjectId("6acc0dac0cc0a00000000204")
+OWNERLESS_OID = ObjectId("6acc0dac0cc0a00000000205")
 PREVIOUS = str(PREVIOUS_OID)
 
 
@@ -46,6 +47,7 @@ async def _seed(mongo_db, real_redis):
             _user(FOREIGN_OID, "tg-foreign"),
             _user(SHARED_OID, "tg-shared"),
             _user(PREVIOUS_OID, None),
+            _user(OWNERLESS_OID, "tg-ownerless"),
         ]
     )
     await mongo_db["bot_sessions"].insert_many(
@@ -54,6 +56,7 @@ async def _seed(mongo_db, real_redis):
             _session("tg-unlinked", "c-unlinked"),
             _session("tg-foreign", "c-foreign"),
             _session("tg-shared", "c-shared"),
+            _session("tg-ownerless", "c-deleted"),
         ]
     )
     await mongo_db["conversations"].insert_many(
@@ -75,6 +78,7 @@ async def test_plan_judges_each_session():
 
     assert plan == {
         "tg-unlinked": Verdict.UNLINKED,
+        "tg-ownerless": Verdict.OWNERLESS,
         "tg-foreign": Verdict.FOREIGN,
         "tg-shared": Verdict.SHARED,
     }
@@ -82,7 +86,7 @@ async def test_plan_judges_each_session():
 
 async def test_dry_run_writes_nothing_and_apply_keeps_only_the_healthy_session(mongo_db):
     assert await _run(argparse.Namespace(apply=False, platform=None)) == 0
-    assert await mongo_db["bot_sessions"].count_documents({}) == 4
+    assert await mongo_db["bot_sessions"].count_documents({}) == 5
 
     assert await _run(argparse.Namespace(apply=True, platform=None)) == 0
 

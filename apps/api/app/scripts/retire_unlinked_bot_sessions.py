@@ -7,6 +7,8 @@ with it the previous user's LangGraph thread. Unlinking now deletes them; this
 retires the rows left by unlinks before that. Per session, one verdict:
 
 - **unlinked** — no GAIA user holds the platform account; the next link inherits it.
+- **ownerless** — no user holds the conversation, so the next message recreates it
+  under the old id, on whatever agent thread that id still names.
 - **foreign** — the linked user does not own the conversation and another user does.
 - **shared** — the linked user and another user both hold it: the leak already
   happened. Retiring stops new messages joining it; the conversations and their
@@ -37,6 +39,7 @@ from app.models.bot_models import BotSessionDocument
 
 class Verdict(StrEnum):
     UNLINKED = "unlinked"
+    OWNERLESS = "ownerless"
     FOREIGN = "foreign"
     SHARED = "shared"
 
@@ -50,7 +53,9 @@ def judge(linked_user_id: str | None, owner_ids: set[str]) -> Verdict | None:
     """Return why a session must go, or None when it belongs to the user its account links to."""
     if linked_user_id is None:
         return Verdict.UNLINKED
-    if not owner_ids - {linked_user_id}:
+    if not owner_ids:
+        return Verdict.OWNERLESS
+    if owner_ids == {linked_user_id}:
         return None
     return Verdict.SHARED if linked_user_id in owner_ids else Verdict.FOREIGN
 

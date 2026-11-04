@@ -48,7 +48,7 @@ def repos() -> Iterator[tuple[AsyncMock, AsyncMock, AsyncMock]]:
     [
         (None, set(), Verdict.UNLINKED),
         (None, {"a"}, Verdict.UNLINKED),
-        ("a", set(), None),
+        ("a", set(), Verdict.OWNERLESS),
         ("a", {"a"}, None),
         ("a", {"b"}, Verdict.FOREIGN),
         ("a", {"a", "b"}, Verdict.SHARED),
@@ -100,9 +100,11 @@ async def test_dry_run_reports_every_retirement_and_writes_nothing(
     assert capsys.readouterr().out.splitlines() == [
         f"  [unlinked] {orphan.session_key} -> {orphan.conversation_id}",
         f"  [shared] {shared.session_key} -> {shared.conversation_id}",
-        "Summary: 1 unlinked, 0 foreign, 1 shared",
-        "SHARED conversations already mix two users' agent threads; review them by hand "
-        "(this script does not touch conversations or threads).",
+        "Summary: 1 unlinked, 0 ownerless, 0 foreign, 1 shared",
+        (
+            "SHARED conversations already mix two users' agent threads; review them by hand "
+            "(this script does not touch conversations or threads)."
+        ),
         "Dry run only. Re-run with --apply to commit.",
     ]
 
@@ -114,7 +116,7 @@ async def test_no_shared_conversation_means_no_review_notice(
         await script._run(argparse.Namespace(apply=False, platform=None))
 
     out = capsys.readouterr().out
-    assert "Summary: 0 unlinked, 1 foreign, 0 shared" in out
+    assert "Summary: 0 unlinked, 0 ownerless, 1 foreign, 0 shared" in out
     assert "review them by hand" not in out
 
 

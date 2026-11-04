@@ -569,16 +569,17 @@ class PlatformLinkService:
         entry: PlatformLinkEntry | None = linked.get(platform)
         pending = await pending_platform_registration_repository.get_for_user(user_id, platform)
 
-        result = await user_repository.unlink_platform(user_id, platform)
-        if result is None:
-            raise ValueError("User not found")
-
-        # A session outlives nothing but its link: left in place, the next GAIA user
-        # this account links to would continue this user's conversation and agent thread.
+        # A session outlives nothing but its link: left in place, the next GAIA user this
+        # account links to continues this user's conversation and agent thread. Ended before
+        # the $unset, because the link is the only record of which sessions are this user's.
         if entry is not None:
             await bot_session_repository.delete_for_platform_user(
                 platform=platform, platform_user_id=entry["platformUserId"]
             )
+
+        result = await user_repository.unlink_platform(user_id, platform)
+        if result is None:
+            raise ValueError("User not found")
 
         if platform != Platform.IMESSAGE.value:
             await pending_platform_registration_repository.delete_for_user(user_id, platform)
