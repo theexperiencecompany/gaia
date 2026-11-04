@@ -443,11 +443,8 @@ class TriggerHandler(ABC):
         skips = await asyncio.gather(
             *(self._gate_workflow(workflow, data, event_type) for workflow in workflows)
         )
-        for workflow, skip in zip(
-            workflows,
-            skips,
-            strict=True,  # pragma: no mutate — gather returns one result per workflow
-        ):
+        # Unmutated: gather returns one result per workflow, so strict can never trip.
+        for workflow, skip in zip(workflows, skips, strict=True):  # pragma: no mutate
             if skip is None and await self._queue_one_workflow(
                 workflow, data, signal_context_by_user, event_type, trigger_id
             ):
