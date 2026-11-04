@@ -167,6 +167,7 @@
     "next-intl": "^4.13.2",
     "onnxruntime-web": "^1.27.0",
     "openapi-fetch": "^0.17.0",
+    "p-retry": "^8.0.1",
     "postcss": "^8.5.32",
     "posthog-js": "^1.422.5",
     "react": "19.2.3",
