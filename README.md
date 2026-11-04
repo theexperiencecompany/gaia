@@ -1,5 +1,5 @@
 > [!NOTE]
-> GAIA is built by a small team, in the open. If it earns a place in your day, a ⭐ means a lot: [Star GAIA on GitHub](https://github.com/theexperiencecompany/gaia/stargazers).
+> We're a small team building GAIA in the open. If it makes your day easier, [a star](https://github.com/theexperiencecompany/gaia/stargazers) genuinely helps.
 
 <div align="center">
 
