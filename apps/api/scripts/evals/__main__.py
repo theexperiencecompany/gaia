@@ -19,6 +19,7 @@ from .core.dashboards import build as build_dashboards
 from .core.flaky import report as flaky_report
 from .core.ingest import rebuild, verify as verify_ingest
 from .core.ingest_check import api_base
+from .core.journal import RunJournal, RunMeta
 from .core.opiksink import load_opik_env
 from .core.project import project
 from .core.providers import EvalConfig, load_config, price_book
@@ -225,8 +226,8 @@ def _run(cfg: EvalConfig, args: argparse.Namespace) -> None:
 
 
 def _report(cfg: EvalConfig, args: argparse.Namespace) -> None:
-    journal = runner.RunJournal(runner.RUNS_DIR, args.run_id)
-    label = (journal.load_meta() or runner.RunMeta(args.run_id, "?", "?")).suite
+    journal = RunJournal(runner.RUNS_DIR, args.run_id)
+    label = (journal.load_meta() or RunMeta(args.run_id, "?", "?")).suite
     print(write_report(journal, label, price_book(cfg)))
 
 
@@ -246,7 +247,7 @@ def _rescore(cfg: EvalConfig, args: argparse.Namespace) -> None:
 def _compare(cfg: EvalConfig, args: argparse.Namespace) -> int:
     del cfg
     comparison = baseline.for_run(
-        runner.RunJournal(runner.RUNS_DIR, args.run_id),
+        RunJournal(runner.RUNS_DIR, args.run_id),
         rebaseline=args.rebaseline,
         provisional=args.provisional,
     )
@@ -282,7 +283,7 @@ _COMMANDS: Final[Mapping[Command, Callable[[EvalConfig, argparse.Namespace], int
 }
 
 
-def _verify(cfg: object, only: str | None) -> int:
+def _verify(cfg: EvalConfig, only: str | None) -> int:
     """Falsifiability sweep across every registered suite.
 
     Exits non-zero when any case's gate accepted a worthless run, so this can
