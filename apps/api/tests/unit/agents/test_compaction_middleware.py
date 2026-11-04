@@ -801,7 +801,7 @@ class TestDigestComposition:
             existing_additional_kwargs={},
         )
 
-        assert msg.content.startswith(
+        assert msg.text.startswith(
             "[t compacted: r] the digest\n\n"
             '[Envelope fields: {"fetched_at": "2026-11-04T10:00:00Z", "truncated": true}]\n\n'
         )
