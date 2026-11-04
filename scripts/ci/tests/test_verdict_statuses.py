@@ -289,17 +289,21 @@ def test_a_rejected_post_is_not_retried(api: FakeGitHub, tmp_path: Path) -> None
     assert len(_posted(api)) == 1
 
 
-def test_no_job_on_this_runner_posts_nothing_and_fails(
+def test_no_job_on_this_runner_still_posts_and_links_the_run(
     api: FakeGitHub,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    """Regression for 2026-11-04: GitHub's jobs listing omitted runner_name, and every lane went red."""
     monkeypatch.setenv("RUNNER_NAME", "somewhere-else")
 
-    assert _post(tmp_path, "lint-node", {"ci:biome": "success"}) == 1
-    assert _posted(api) == []
-    assert "::error::" in capsys.readouterr().out
+    assert _post(tmp_path, "lint-node", {"ci:biome": "success"}) == 0
+    assert _states(api)["ci / node / biome"] == "success"
+    assert _statuses(api)["ci / node / biome"]["target_url"] == (
+        f"https://github.com/{REPO}/actions/runs/{RUN}/attempts/2"
+    )
+    assert "::warning::" in capsys.readouterr().out
 
 
 def test_an_unreadable_jobs_listing_posts_nothing_and_fails(

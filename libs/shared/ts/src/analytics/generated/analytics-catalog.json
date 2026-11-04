@@ -2722,36 +2722,18 @@
       }
     },
     {
-      "event": "email:compose_opened",
-      "class": "EmailComposeOpened",
-      "owner": "web",
-      "domain": "email",
-      "description": "A user opened the compose modal; the server only sees the eventual send.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": null,
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user opened the compose modal; the server only sees the eventual send.",
-        "properties": {},
-        "title": "EmailComposeOpened",
-        "type": "object"
-      }
-    },
-    {
       "event": "email:draft_composed",
       "class": "EmailDraftComposed",
       "owner": "server",
       "domain": "email",
-      "description": "The assistant finished composing a draft; not the web's email:compose_opened modal open.",
+      "description": "The assistant finished composing a draft.",
       "previous_names": [],
       "budget_per_user_day": 50,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "The assistant finished composing a draft; not the web's email:compose_opened modal open.",
+        "description": "The assistant finished composing a draft.",
         "properties": {},
         "title": "EmailDraftComposed",
         "type": "object"
@@ -2982,31 +2964,6 @@
         },
         "required": ["message_count"],
         "title": "EmailMovedToInbox",
-        "type": "object"
-      }
-    },
-    {
-      "event": "email:opened",
-      "class": "EmailOpened",
-      "owner": "web",
-      "domain": "email",
-      "description": "A user opened an email in the mail view.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": null,
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user opened an email in the mail view.",
-        "properties": {
-          "mail_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
-            "title": "Mail Id",
-            "type": "string"
-          }
-        },
-        "required": ["mail_id"],
-        "title": "EmailOpened",
         "type": "object"
       }
     },
