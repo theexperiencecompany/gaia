@@ -5,16 +5,7 @@
 @layer theme, base, openui, components, utilities;
 @import "tailwindcss" source(none);
 @import "@heroui/styles/themes/default" layer(theme);
-@import "@heroui/styles/components/scroll-shadow.css";
-@import "@heroui/styles/components/input.css";
-@import "@heroui/styles/components/field-error.css";
-@import "@heroui/styles/components/skeleton.css";
-@import "@heroui/styles/components/spinner.css";
 
-@import "@heroui/styles/components/tooltip.css";
-@import "@heroui/styles/components/kbd.css";
-@import "@heroui/styles/components/label.css";
-@import "@heroui/styles/components/header.css";
 @import "@heroui/styles/utilities";
 @import "@heroui/styles/variants";
 
@@ -35,12 +26,6 @@
 @source inline("row-span-2 row-span-3 row-span-4");
 @source inline("col-span-2 col-span-3 col-span-4");
 @source inline("grid-rows-3 grid-rows-4 grid-cols-3 grid-cols-4");
-@source "../../components/navigation";
-@source "../../components/layouts";
-@source "../../components/ui";
-@source "../../components/shared";
-@source "../../components/seo";
-@source "../../../../../libs/shared/ts/src/**/*.{js,ts,jsx,tsx}";
 @custom-variant dark (&:is(.dark *));
 @plugin "tailwindcss-animate";
 

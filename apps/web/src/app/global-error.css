@@ -10,4 +10,6 @@
 @source "../lib/analytics-headers.ts";
 @source "../lib/analytics.ts";
 @source "../lib/chunkErrorRecovery.ts";
+@source "../../../../libs/shared/ts/src/analytics/identity.ts";
+@source "../../../../libs/shared/ts/src/analytics/types.ts";
 @custom-variant dark (&:is(.dark *));

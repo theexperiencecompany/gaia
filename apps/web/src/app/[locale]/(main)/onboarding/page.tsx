@@ -13,8 +13,6 @@
 
 "use client";
 import "./page.css";
-import "./page.2.css";
-import "./page.3.css";
 
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";

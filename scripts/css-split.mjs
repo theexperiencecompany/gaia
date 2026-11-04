@@ -119,10 +119,6 @@ const AVAILABLE = componentFiles();
 const BASE_COMPONENTS = baseComponents();
 const ROOT_LAYOUT = path.join(APP, "layout.tsx");
 const BASE_OWNED = new Set(graph(ROOT_LAYOUT));
-for (const dir of SHARED_DIRS) {
-  for (const file of walk(dir)) BASE_OWNED.add(path.resolve(file));
-}
-for (const file of walk(LIBS)) BASE_OWNED.add(path.resolve(file));
 
 function cssFor(entry, files, components) {
   const sources = [...files]
@@ -148,10 +144,8 @@ function cssFor(entry, files, components) {
 // Tailwind output grows with the source count. Entries above this are split
 // into page.css, page.2.css, ... each imported by the same entry, so no single
 // generated file crosses the 150 KB audit threshold.
-const MAX_SOURCES = 115;
-const FORCE_CHUNKS = new Map([
-  ["apps/web/src/app/[locale]/(main)/onboarding/page.tsx", 3],
-]);
+const MAX_SOURCES = 100000;
+const FORCE_CHUNKS = new Map();
 
 function chunkSources(sources, minimum = 1) {
   const sorted = [...sources].sort();
@@ -186,16 +180,14 @@ function ensureImports(text, cssNames) {
   return lines + cleaned;
 }
 
-const entries = walk(APP).filter((file) => ENTRY_NAMES.includes(path.basename(file)) && file !== ROOT_LAYOUT);
+const entries = walk(APP).filter((file) => ENTRY_NAMES.includes(path.basename(file)) && path.basename(file) !== "layout.tsx" && file !== ROOT_LAYOUT);
 const desiredCss = new Map();
 const desiredImports = new Map();
 
 for (const entry of entries) {
   const files = graph(entry);
-  const ancestorGraphs = new Set();
-  for (const layout of ancestorsOf(entry)) for (const file of graph(layout)) ancestorGraphs.add(path.resolve(file));
-  const exclusive = new Set([...files].filter((file) => !ancestorGraphs.has(path.resolve(file))));
-  const sources = [...exclusive].filter((file) => !BASE_OWNED.has(path.resolve(file)));
+  for (const layout of ancestorsOf(entry)) for (const file of graph(layout)) files.add(path.resolve(file));
+  const sources = [...files].filter((file) => !BASE_OWNED.has(path.resolve(file)));
 
   // Component CSS follows the chunk that first imports it. A component shared by
   // several chunks is still loaded once; CSS is global to the route.
@@ -246,6 +238,15 @@ for (const [entry, cssNames] of desiredImports) {
   if (next === text) continue;
   problems.push(`${path.relative(ROOT, entry)}: missing ${cssNames.map((name) => `"./${name}"`).join(", ")}`);
   if (!check) fs.writeFileSync(entry, next);
+}
+
+for (const file of walk(APP)) {
+  if (path.basename(file) !== "layout.tsx") continue;
+  const text = fs.readFileSync(file, "utf8");
+  const next = text.replace(/^import\s+["']\.\/[^"']+\.css["'];\n?/gm, "");
+  if (next === text) continue;
+  problems.push(`${path.relative(ROOT, file)}: stale local CSS import`);
+  if (!check) fs.writeFileSync(file, next);
 }
 
 for (const file of walk(APP)) {

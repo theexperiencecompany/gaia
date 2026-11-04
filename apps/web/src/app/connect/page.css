@@ -6,7 +6,15 @@
 @import "@heroui/styles/utilities";
 @import "@heroui/styles/variants";
 @plugin "tailwindcss-animate";
+@source "layout.tsx";
 @source "page.tsx";
+@source "../fonts/aeonik.ts";
+@source "../fonts/geist-mono.ts";
+@source "../fonts/index.ts";
+@source "../fonts/instrument-serif.ts";
+@source "../fonts/inter.ts";
+@source "../fonts/pp-editorial-new.ts";
+@source "../../components/ui/raised-button.tsx";
 @source "../../features/integrations/constants/connect.ts";
 @source "../../features/pricing/advertisedPrice.ts";
 @source "../../features/pricing/utils/money.ts";
