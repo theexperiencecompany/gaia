@@ -16,17 +16,21 @@ from arq.connections import ArqRedis
 from arq.jobs import JobDef
 import fakeredis.aioredis
 import httpx
+from pymongo.errors import PyMongoError
 import pytest
+from sentry_sdk.types import Event
 import time_machine
 
 from app.constants.trigger_gates import GateAuthor
+from app.db.redis import redis_cache
 from app.models.trigger_configs import GmailPollInboxConfig
 from app.models.trigger_gate_models import AuthoredGate, TriggerGate
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow, WorkflowStep
 from app.services.triggers.handlers.gmail import GmailTriggerHandler
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.timezone import Timezone
-from tests.helpers import trigger_gate_seams
+from shared.py.analytics.catalog.triggers import TriggerGateDecided
+from tests.helpers import captured_wide_event, trigger_gate_seams
 
 pytestmark = pytest.mark.unit
 
@@ -44,6 +48,7 @@ def _workflow(
     gate: TriggerGate | None = _GATE,
     workflow_id: str = WORKFLOW_ID,
     trigger_config: TriggerConfig | None = None,
+    trigger_name: str | None = "gmail_new_message",
 ) -> Workflow:
     return Workflow(
         id=workflow_id,
@@ -52,7 +57,7 @@ def _workflow(
         description="Draft a reply to mail that needs one",
         steps=[WorkflowStep(title="Draft", description="Draft the reply")],
         trigger_config=trigger_config
-        or TriggerConfig(type=TriggerType.INTEGRATION, trigger_name="gmail_new_message"),
+        or TriggerConfig(type=TriggerType.INTEGRATION, trigger_name=trigger_name),
         gate=gate,
     )
 
@@ -108,7 +113,12 @@ def seams() -> Iterator[SimpleNamespace]:
         patch(f"{_BASE}.record_skipped_execution", AsyncMock()) as skipped,
     ):
         yield SimpleNamespace(
-            jev=gate.jev, claim=claim, buffer=buffer, queue=queue, skipped=skipped
+            jev=gate.jev,
+            claim=claim,
+            buffer=buffer,
+            queue=queue,
+            skipped=skipped,
+            capture=gate.capture,
         )
 
 
@@ -284,16 +294,70 @@ class TestQuietHours:
         night.jev.mock(return_value=httpx.Response(200, json=_night_body(can_wait=1.0)))
         immediate = TriggerConfig(type=TriggerType.INTEGRATION, trigger_name="slack_new_message")
 
-        (job,), _ = await _fire_at(night, _workflow(trigger_config=immediate), zone=zone, at=at)
+        (job,), (held,) = await _fire_at(
+            night, _workflow(trigger_config=immediate), zone=zone, at=at
+        )
 
         assert job.function == "execute_workflow_by_id"
         assert job.score == _score(morning.replace(tzinfo=ZoneInfo(zone)))
         workflow_id, context = job.args
         assert workflow_id == WORKFLOW_ID
         assert context["quiet_hours"] == {"kind": "hold"}
-        assert context["trigger_data"]["message_id"] == "t1"
+        assert context["trigger_batch_key"] == f"trigger_batch:{WORKFLOW_ID}"
+        assert json.loads(held)["message_id"] == "t1"
         # Claimed when held: the event will run, so a second trigger for it must not.
         night.claim.assert_awaited_once()
+
+    async def test_a_held_event_redis_cannot_batch_still_waits_for_the_morning(
+        self, night: SimpleNamespace
+    ) -> None:
+        night.jev.mock(return_value=httpx.Response(200, json=_night_body(can_wait=1.0)))
+        immediate = TriggerConfig(type=TriggerType.INTEGRATION, trigger_name="slack_new_message")
+
+        with patch.object(redis_cache, "redis", None):
+            async with captured_wide_event() as event:
+                (job,), _ = await _fire_at(
+                    night,
+                    _workflow(trigger_config=immediate),
+                    zone=KOLKATA,
+                    at=datetime(2026, 10, 1, 21, 0, tzinfo=UTC),
+                )
+
+        assert job.score == _score(datetime(2026, 10, 2, 8, tzinfo=ZoneInfo(KOLKATA)))
+        assert job.args[1]["trigger_data"]["message_id"] == "t1"
+        assert {
+            "msg": "[TRIGGER] Redis unavailable — trigger event cannot be batched",
+            "workflow_id": WORKFLOW_ID,
+            "user_id": USER_ID,
+        } in event["warnings"]
+
+    async def test_a_night_of_events_on_an_unbatched_trigger_is_one_morning_run(
+        self, night: SimpleNamespace
+    ) -> None:
+        """One run per held event would collide on the conversation lock at 08:00 and lose all but one."""
+        night.jev.mock(return_value=httpx.Response(200, json=_night_body(can_wait=1.0)))
+        immediate = TriggerConfig(type=TriggerType.INTEGRATION, trigger_name="slack_new_message")
+        workflow = _workflow(trigger_config=immediate)
+
+        with (
+            patch(
+                "app.services.triggers.trigger_gate.get_profile_timezone",
+                AsyncMock(return_value=Timezone.parse(KOLKATA)),
+            ),
+            time_machine.travel(datetime(2026, 10, 1, 21, 0, tzinfo=UTC), tick=False),
+        ):
+            await _fire([workflow], text="Deploy is done")
+            await _fire([workflow], message_id="t2", text="Can you review the PR?")
+            batch = await night.redis.lrange(f"trigger_batch:{WORKFLOW_ID}", 0, -1)
+            jobs = await night.arq.queued_jobs()
+
+        (job,) = jobs
+        assert job.score == _score(datetime(2026, 10, 2, 8, tzinfo=ZoneInfo(KOLKATA)))
+        assert job.args[1]["trigger_batch_key"] == f"trigger_batch:{WORKFLOW_ID}"
+        assert [json.loads(event)["text"] for event in batch] == [
+            "Deploy is done",
+            "Can you review the PR?",
+        ]
 
     async def test_a_held_batched_workflow_drains_when_quiet_hours_end(
         self, night: SimpleNamespace
@@ -370,3 +434,94 @@ class TestQuietHours:
         assert not night.jev.called
         assert job.score == _score(at)
         assert "quiet_hours" not in job.args[1]
+
+
+async def test_the_gate_asks_about_each_workflow_under_its_own_id(seams: SimpleNamespace) -> None:
+    seams.jev.mock(return_value=httpx.Response(200, json=_jev_body(0.1)))
+
+    async with captured_wide_event() as event:
+        await _fire([_workflow(), _workflow(workflow_id="wf_gated000002")])
+
+    assert set(event["trigger_gate"]) == {WORKFLOW_ID, "wf_gated000002"}
+    automations = {json.loads(c.request.content)["state"]["automation"] for c in seams.jev.calls}
+    assert automations == {"Draft replies: Draft a reply to mail that needs one"}
+
+
+async def test_a_workflow_whose_trigger_names_nothing_is_gated_under_the_event(
+    seams: SimpleNamespace,
+) -> None:
+    await _fire([_workflow(trigger_name=None)])
+
+    (decided,) = [c.args[1] for c in seams.capture.call_args_list]
+    assert isinstance(decided, TriggerGateDecided)
+    assert decided.trigger_name == "GMAIL_NEW_GMAIL_MESSAGE"
+    seams.queue.assert_awaited_once()
+
+
+async def test_the_run_reads_the_signals_derived_from_the_event(seams: SimpleNamespace) -> None:
+    await _fire([_workflow(gate=None)])
+
+    trigger_data = seams.queue.await_args.kwargs["context"]["trigger_data"]
+    assert trigger_data["continues_thread"] is False
+
+
+async def test_a_gate_that_crashes_runs_its_workflow_and_spares_the_others(
+    seams: SimpleNamespace,
+) -> None:
+    seams.jev.mock(return_value=httpx.Response(200, json=_jev_body(0.99)))
+
+    with patch(
+        "app.services.triggers.trigger_gate.is_trigger_gates_enforced",
+        AsyncMock(side_effect=RuntimeError("flag store down")),
+    ):
+        await _fire([_workflow(), _workflow(gate=None, workflow_id="wf_ungated0001")])
+
+    queued = {c.args[0] for c in seams.queue.await_args_list}
+    assert queued == {WORKFLOW_ID, "wf_ungated0001"}
+    seams.skipped.assert_not_awaited()
+
+
+async def test_a_skip_whose_history_write_fails_is_reported_and_spares_the_others(
+    seams: SimpleNamespace, sentry_events: list[Event]
+) -> None:
+    seams.jev.mock(return_value=httpx.Response(200, json=_jev_body(0.99)))
+    seams.skipped.side_effect = PyMongoError("history down")
+
+    async with captured_wide_event() as event:
+        await _fire([_workflow(), _workflow(gate=None, workflow_id="wf_ungated0001")])
+
+    assert [c.args[0] for c in seams.queue.await_args_list] == ["wf_ungated0001"]
+    assert event["errors"] == [
+        {
+            "msg": "trigger_workflow_skip_record_failed",
+            "workflow_id": WORKFLOW_ID,
+            "user_id": USER_ID,
+            "error_type": "PyMongoError",
+            "error": "history down",
+        }
+    ]
+    assert [e["exception"]["values"][-1]["type"] for e in sentry_events] == ["PyMongoError"]
+
+
+async def test_a_workflow_that_fails_to_queue_names_its_trigger(seams: SimpleNamespace) -> None:
+    seams.queue.side_effect = RuntimeError("queue down")
+
+    async with captured_wide_event() as event:
+        await _Handler([_workflow(gate=None)]).process_event(
+            "GMAIL_NEW_GMAIL_MESSAGE",
+            "trg_1",
+            USER_ID,
+            {"thread_id": "t1", "message_id": "t1", "subject": "Sale!"},
+        )
+
+    assert [e for e in event["errors"] if e["msg"] == "trigger_workflow_queue_failed"] == [
+        {
+            "msg": "trigger_workflow_queue_failed",
+            "workflow_id": WORKFLOW_ID,
+            "user_id": USER_ID,
+            "event_type": "GMAIL_NEW_GMAIL_MESSAGE",
+            "trigger_id": "trg_1",
+            "error_type": "RuntimeError",
+            "error": "queue down",
+        }
+    ]

@@ -9,6 +9,7 @@ from datetime import datetime
 import json
 from types import MappingProxyType
 
+from app.agents.prompts.quiet_hours_prompts import QUIET_HOURS_BYPASS_NOTE
 from app.agents.prompts.todo_prompts import (
     DELIVERED_RESULT_GUIDANCE,
     DELIVERED_RESULT_RULES,
@@ -23,7 +24,6 @@ from app.agents.prompts.todo_prompts import (
     TODO_ID_LINE,
     TRIGGERED_RELEVANCE_GUIDANCE,
 )
-from app.agents.prompts.trigger_prompts import QUIET_HOURS_BYPASS_NOTE
 from app.constants.todos import ACTIVITY_PROMPT_TAIL_CHARS, TRIGGER_EVENTS_PROMPT_MAX_CHARS
 from app.models.todo_models import ExternalRefSource, TodoDocument, TodoRunContext
 from app.models.trigger_subscription_models import TriggerOrigin

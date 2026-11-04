@@ -177,6 +177,29 @@ class TestFormatWorkflowExecutionMessage:
         assert "quiet-hours bypass" not in held
 
     @pytest.mark.asyncio
+    async def test_the_bypass_note_follows_a_playbook_fallback_on_its_own_paragraph(
+        self,
+    ) -> None:
+        selected = SelectedWorkflowData(id="wf9", title="Replies", description="d", steps=[])
+        reason = "someone is waiting on you for a meeting happening soon"
+        context = {
+            "quiet_hours": {"kind": "bypass", "reason": reason},
+            "playbook_fallback": "The playbook stopped at step 2.",
+            "workflow_id": "wf9",
+        }
+
+        with patch(
+            "app.helpers.message_helpers.WorkflowService.get_workflow",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            message = await format_workflow_execution_message(
+                selected, user_id="u1", trigger_context=context
+            )
+
+        assert f"The playbook stopped at step 2.\n\nquiet-hours bypass: {reason}." in message
+
+    @pytest.mark.asyncio
     async def test_manual_fallback_to_selected_data(self) -> None:
         selected = SelectedWorkflowData(
             id="wf2",

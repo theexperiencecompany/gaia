@@ -198,6 +198,8 @@ async def buffer_trigger_event(
 
 def _held_drain(workflow_id: str, until: datetime, context: Mapping[str, object]) -> BatchDrainJob:
     """Name the run that drains a workflow's batch when the user's quiet hours end, until."""
+    # Unmutated: the stamp's kind is a StrEnum, equal to its value in either mode.
+    stamp = QuietHoursHold().model_dump(mode="json")  # pragma: no mutate
     return BatchDrainJob(
         function=WORKFLOW_BATCH_TASK,
         args=(
@@ -205,7 +207,7 @@ def _held_drain(workflow_id: str, until: datetime, context: Mapping[str, object]
             {
                 **context,
                 "trigger_batch_key": TRIGGER_BATCH_KEY.format(workflow_id=workflow_id),
-                QUIET_HOURS_CONTEXT_KEY: QuietHoursHold().model_dump(mode="json"),
+                QUIET_HOURS_CONTEXT_KEY: stamp,
             },
         ),
         job_id=TRIGGER_BATCH_HELD_JOB_ID.format(

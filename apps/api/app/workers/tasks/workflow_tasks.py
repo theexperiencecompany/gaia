@@ -22,7 +22,7 @@ from app.agents.prompts.playbook_prompts import (
     PLAYBOOK_FALLBACK_TEMPLATE,
     PLAYBOOK_SUSPECT_FALLBACK_TEMPLATE,
 )
-from app.agents.prompts.trigger_prompts import QUIET_HOURS_BYPASS_OPENING
+from app.agents.prompts.quiet_hours_prompts import QUIET_HOURS_BYPASS_OPENING
 from app.agents.prompts.workflow_prompts import (
     TODO_WORKFLOW_DESCRIPTION_TEMPLATE,
     TODO_WORKFLOW_PROMPT_TEMPLATE,

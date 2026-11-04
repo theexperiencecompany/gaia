@@ -25,6 +25,10 @@ def test_quiet_hours_span_midnight(hour: int, minute: int, quiet: bool) -> None:
     ("moment", "expected"),
     [
         (
+            datetime(2026, 10, 3, 22, 0, tzinfo=KOLKATA),
+            datetime(2026, 10, 4, 8, 0, tzinfo=KOLKATA),
+        ),
+        (
             datetime(2026, 10, 3, 23, 40, tzinfo=KOLKATA),
             datetime(2026, 10, 4, 8, 0, tzinfo=KOLKATA),
         ),
@@ -38,7 +42,7 @@ def test_quiet_hours_span_midnight(hour: int, minute: int, quiet: bool) -> None:
             datetime(2026, 11, 1, 8, 0, tzinfo=NEW_YORK),
         ),
     ],
-    ids=["before-midnight", "after-midnight", "across-a-dst-change"],
+    ids=["at-their-start", "before-midnight", "after-midnight", "across-a-dst-change"],
 )
 def test_a_moment_in_quiet_hours_waits_for_their_end(moment: datetime, expected: datetime) -> None:
     assert after_quiet_hours(moment) == expected
