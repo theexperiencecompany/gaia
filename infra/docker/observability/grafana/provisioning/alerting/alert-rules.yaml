@@ -1651,3 +1651,58 @@ groups:
         labels:
           severity: critical
           service: redis
+
+      # 26. Trigger gates cannot get an answer from JEV. Gates fail open, so no run is
+      # lost; every unanswered gate costs a full agent run it might have skipped.
+      # The denominator is every decision that asked JEV: free runs never call it, and
+      # jev_unconfigured (a self-host with no OpenRouter key) is not an outage. Both
+      # the API (workflows) and the worker (tracked todos) export the counter. No
+      # dashboard link: nothing charts trigger gates yet.
+      - uid: gaia-trigger-gate-jev-errors
+        title: Trigger gates cannot reach JEV
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: |
+                100 * (
+                  sum(rate(trigger_gate_decision_total{job=~"gaia-api|arq_worker", reason=~"jev_error|jev_timeout|jev_malformed"}[5m]))
+                  /
+                  clamp_min(sum(rate(trigger_gate_decision_total{job=~"gaia-api|arq_worker", reason=~"jev_run|jev_skip|jev_error|jev_timeout|jev_malformed"}[5m])), 0.0001)
+                )
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [20] }
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        annotations:
+          summary: >-
+            {{ if $values.B }}{{ printf "%.2f" $values.B.Value }}% of trigger gate checks got
+            no usable answer from JEV over the last 5 minutes (threshold
+            20%){{ else }}Unable to read the trigger gate JEV error rate — this rule could
+            not be evaluated, which almost always means Prometheus is down or
+            unreachable.{{ end }}
+          description: >-
+            Gated workflows and tracked todos still run when JEV fails, so users
+            lose nothing, but every gate that cannot be answered pays for a full
+            agent run it might have skipped. Check OpenRouter's status and the
+            OpenRouter key's credits, then the trigger_gate.jev_failed warnings
+            in the API and worker logs, whose reason says whether JEV errored,
+            timed out or sent an answer the gate could not read.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-trigger-gate-jev-errors
+        labels:
+          severity: warning
+          service: api
