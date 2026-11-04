@@ -59,6 +59,7 @@ from app.constants.todos import (
     ACTIVITY_PROMPT_TAIL_CHARS,
     CANVAS_PROMPT_MAX_CHARS,
     FAILED_LABEL,
+    INBOX_DESK_RECURRENCE,
     LOCK_DEFER_BACKOFF,
     LOCK_TTL_SECONDS,
     MAX_RETRY_ATTEMPTS,
@@ -101,6 +102,7 @@ from app.models.workflow_models import TriggerType
 from app.services.tracked_todo_service import starting_canvas, tracked_todo_service
 from app.services.triggers.batching import MAX_TRIGGER_BATCH_EVENTS
 from app.services.triggers.subscription_dispatch import dispatch_to_subscribed_todos
+from app.services.triggers.todo_trigger_window import buffer_todo_trigger_event_until
 from app.utils import auth_utils
 from app.utils.cron_utils import get_next_run_time
 from app.utils.occurrence import occurrence_stamp
@@ -2298,6 +2300,48 @@ class TestOneRunPerOccurrence:
             patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="UTC"))),
         ):
             yield run
+
+    async def test_a_desk_event_held_overnight_rides_the_morning_run_once(self, queue):
+        kolkata = ZoneInfo("Asia/Kolkata")
+        morning = datetime(2026, 10, 2, 8, tzinfo=kolkata)
+        row = _TodoRow(
+            _doc(
+                external_ref=ExternalRef(
+                    source=ExternalRefSource.INBOX_DESK, id=GMAIL_INTEGRATION_ID
+                ),
+                recurrence=INBOX_DESK_RECURRENCE,
+                scheduled_at=morning.astimezone(UTC),
+            )
+        )
+        with time_machine.travel(datetime(2026, 10, 2, 2, tzinfo=kolkata), tick=False):
+            await tracked_todo_service.schedule_execution("todo-1", morning.astimezone(UTC))
+            assert await buffer_todo_trigger_event_until("todo-1", _GMAIL_ORIGIN, morning)
+            jobs = await _queued(queue)
+        assert {job.score for job in jobs} == {int(morning.timestamp() * 1000)}
+        drain, scheduled = sorted(jobs, key=lambda job: "scheduled_for" in job.kwargs)
+
+        with (
+            time_machine.travel(morning, tick=False),
+            self._worker(row) as run,
+            patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="Asia/Kolkata"))),
+        ):
+            assert await _fire(queue, scheduled) == "success:todo-1"
+            assert await _fire(queue, drain) == "skipped:todo-1 (no held trigger events)"
+
+        run.assert_awaited_once()
+        assert run.await_args.kwargs["origin"] is None
+
+    async def test_a_scheduled_run_leaves_held_payloads_for_their_own_run(self, queue, fake_redis):
+        """Only a desk reads what changed itself; another todo's held event is its run's content."""
+        row = _TodoRow(_doc())
+        await tracked_todo_service.schedule_execution("todo-1", row.doc.scheduled_at)
+        await fake_redis.rpush("trigger_batch:todo:todo-1", _GMAIL_ORIGIN.model_dump_json())
+        (scheduled,) = await _queued(queue)
+
+        with self._worker(row):
+            assert await _fire(queue, scheduled) == "success:todo-1"
+
+        assert await fake_redis.llen("trigger_batch:todo:todo-1") == 1
 
     async def test_a_todo_resumed_after_resubscribing_runs_its_missed_occurrence_once(
         self, queue, account

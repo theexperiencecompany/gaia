@@ -89,7 +89,7 @@ from app.utils.timezone import Timezone
 from app.workers.queue import enqueue_worker_job
 from app.workers.task_envelope import ArqJobContext
 from app.workers.tasks.todo_run_context import collect_run_context
-from app.workers.tasks.todo_run_prompt import build_execution_prompt
+from app.workers.tasks.todo_run_prompt import WAKE_OPENINGS, build_execution_prompt
 from shared.py.analytics.catalog.attribution import Trigger
 from shared.py.analytics.context import analytics_context, worker_context
 from shared.py.wide_events import log
@@ -293,6 +293,10 @@ async def _execute_todo_with_retry(
         log.set(trigger_events=1 + len(coalesced))
         await open_trigger_window(trigger_window(doc))
         await enforce_daily_cost_budget(user_id, feature_key=TRIGGER_TODO_FEATURE_KEY)
+    elif doc.external_ref is not None and doc.external_ref.source in WAKE_OPENINGS:
+        # Its steps read what changed, so a scheduled run answers every wake-up held for it.
+        answered = await drain_todo_trigger_events(todo_id)
+        log.set(trigger_events_answered=len(answered or []))
 
     outcome = "success"
     try:
