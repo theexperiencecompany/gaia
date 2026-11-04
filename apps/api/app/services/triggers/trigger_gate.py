@@ -5,7 +5,8 @@ claimed, buffered or queued, so a skipped event leaves nothing behind that marks
 it handled. By day only P(skip label) >= 0.95 skips, and every other answer or
 failure runs. Inside the user's quiet hours the same call also asks whether the
 event is worth waking them for: P(urgent) >= 0.80 runs now, then a confident
-skip skips, and everything else, every failure included, waits for 08:00.
+skip skips, and everything else, every JEV failure included, waits for 08:00.
+A gate that crashes outside its JEV call runs the job now, day or night.
 """
 
 import asyncio
@@ -218,7 +219,7 @@ def skip_probability(gate: TriggerGate, answer: JevChoiceAnswer) -> float:
     question = _question(gate)
     probabilities = answer.probabilities
     if not probabilities or not probabilities.keys() <= question.labels:
-        raise ValueError(f"gate answer has no usable probabilities: {probabilities!r}"[:300])
+        raise ValueError(f"gate answer has no usable probabilities: {probabilities!r}")
     return probabilities.get(question.skip_label, 0.0)
 
 
@@ -233,7 +234,7 @@ def urgency(answer: JevChoiceAnswer) -> Urgency:
         or not probabilities.keys() <= _URGENT_LABELS
         or UrgentChoice.CAN_WAIT not in probabilities
     ):
-        raise ValueError(f"urgent answer has no usable probabilities: {probabilities!r}"[:300])
+        raise ValueError(f"urgent answer has no usable probabilities: {probabilities!r}")
     leaning = max(QUIET_HOURS_BYPASS_REASONS, key=lambda choice: probabilities.get(choice, 0.0))
     return Urgency(1 - probabilities[UrgentChoice.CAN_WAIT], leaning)
 
@@ -393,13 +394,24 @@ async def quiet_hours_hold(gate: TriggerGate | None, user_id: str) -> GateHold |
 async def decide_gate(
     gate: TriggerGate | None, job: GatedJob, *, trigger_name: str, payload: Mapping[str, object]
 ) -> GateVerdict:
-    """Decide what one fired event does to its job's run, on the user's own clock.
+    """Decide what one fired event does to its job's run, on the user's own clock; a crash runs it.
 
     Counts the decision, writes it to the wide event under the job's id and sends
     trigger:gate_decided. A gate that is absent or turned off is not asked.
     """
     if gate is None or not gate.enabled:
         return GateRun()
+    try:
+        return await _decide(gate, job, trigger_name, payload)
+    except Exception:
+        # A gate that cannot decide runs its job, and never costs a fan-out its other jobs.
+        log.error("trigger_gate.failed", owner=job.owner.value, job_id=job.id, exc_info=True)
+        return GateRun()
+
+
+async def _decide(
+    gate: TriggerGate, job: GatedJob, trigger_name: str, payload: Mapping[str, object]
+) -> GateVerdict:
     hold = await _hold_on_users_clock(job.user_id)
     event = _event(trigger_name, payload)
     if event is None or (event.continues_thread and hold is None):

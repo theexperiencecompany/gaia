@@ -987,7 +987,7 @@ class TestUpdateWorkflowGate:
             WORKFLOW_ID, _make_update_request(title="Renamed"), USER_ID
         )
 
-        assert "gate" not in self._written(repo)
+        assert self._written(repo) == {"title": "Renamed"}
 
     async def test_a_trigger_rebuilt_from_the_editor_keeps_the_gate(self, repo: AsyncMock) -> None:
         request = _make_update_request(
@@ -1016,6 +1016,20 @@ class TestUpdateWorkflowGate:
         assert Workflow.model_validate(
             {**_gated_gmail_workflow().model_dump(), "gate": stored}
         ).gate == AuthoredGate(condition="the email is about an invoice", author=GateAuthor.USER)
+
+    async def test_an_unchanged_condition_keeps_its_author(self, repo: AsyncMock) -> None:
+        request = UpdateWorkflowRequest.model_validate(
+            {"gate": {"condition": _GAIA_GATE.condition, "enabled": False}}
+        )
+
+        await WorkflowService.update_workflow(WORKFLOW_ID, request, USER_ID)
+
+        stored = self._written(repo)["gate"]
+        assert Workflow.model_validate(
+            {**_gated_gmail_workflow().model_dump(), "gate": stored}
+        ).gate == AuthoredGate(
+            condition=_GAIA_GATE.condition, author=GateAuthor.GAIA, enabled=False
+        )
 
     async def test_moving_off_an_integration_trigger_drops_the_gate_in_the_same_write(
         self, repo: AsyncMock
@@ -1060,7 +1074,19 @@ class TestUpdateWorkflowGate:
         ):
             await WorkflowService.update_workflow(WORKFLOW_ID, request, USER_ID)
 
-        assert refused.value.status_code == 422
+        assert (
+            refused.value.status_code,
+            refused.value.message,
+            refused.value.why,
+            refused.value.fix,
+            refused.value.meta,
+        ) == (
+            422,
+            "Only a workflow started by an integration event can have a gate",
+            "a gate reads the event that fired the workflow; this trigger has none",
+            "send gate null, or switch the trigger to an integration event",
+            {"workflow_id": WORKFLOW_ID},
+        )
         repo.assert_not_awaited()
 
 

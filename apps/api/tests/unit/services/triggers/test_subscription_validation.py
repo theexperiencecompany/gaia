@@ -128,6 +128,9 @@ class TestMechanicalRepair:
         assert outcome.ok
         assert outcome.conditions[0].value == 42
         assert isinstance(outcome.conditions[0].value, int)
+        assert [r.reason for r in outcome.repairs] == [
+            "'42' coerced to an integer for 'row_number'"
+        ]
 
     def test_a_number_is_rendered_as_text_for_a_string_field(self) -> None:
         outcome = validate_conditions(GMAIL, [_condition("subject", ConditionOperator.EQUALS, 42)])
@@ -313,6 +316,9 @@ class TestNumberCoercion:
         assert outcome.ok
         assert outcome.conditions[0].value == 15.5
         assert isinstance(outcome.conditions[0].value, float)
+        assert [r.reason for r in outcome.repairs] == [
+            "'15.5' coerced to a number for 'minutes_until_start'"
+        ]
 
 
 class TestBooleanCoercion:
@@ -330,6 +336,20 @@ class TestBooleanCoercion:
 
         assert outcome.ok
         assert outcome.conditions[0].value is expected
+
+    def test_a_bool_needs_no_repair(self) -> None:
+        outcome = validate_conditions(
+            GMAIL, [_condition("continues_thread", ConditionOperator.EQUALS, True)]
+        )
+
+        assert outcome.repairs == []
+
+    def test_a_word_read_as_a_bool_says_so(self) -> None:
+        outcome = validate_conditions(
+            GMAIL, [_condition("continues_thread", ConditionOperator.EQUALS, "True")]
+        )
+
+        assert [r.reason for r in outcome.repairs] == ["'True' read as true for 'continues_thread'"]
 
     def test_any_other_value_is_rejected(self) -> None:
         outcome = validate_conditions(

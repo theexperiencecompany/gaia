@@ -16,8 +16,10 @@ from arq.connections import ArqRedis
 from arq.jobs import JobDef
 import fakeredis.aioredis
 import httpx
+from pymongo.errors import PyMongoError
 import pytest
 import respx
+from sentry_sdk.types import Event
 import time_machine
 
 from app.constants.hil import HIL_JEV_URL
@@ -29,6 +31,8 @@ from app.services.providers.provider_credentials_service import ProviderConfig
 from app.services.triggers.handlers.gmail import GmailTriggerHandler
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.timezone import Timezone
+from shared.py.analytics.catalog.triggers import TriggerGateDecided
+from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
 
@@ -46,6 +50,7 @@ def _workflow(
     gate: TriggerGate | None = _GATE,
     workflow_id: str = WORKFLOW_ID,
     trigger_config: TriggerConfig | None = None,
+    trigger_name: str | None = "gmail_new_message",
 ) -> Workflow:
     return Workflow(
         id=workflow_id,
@@ -54,7 +59,7 @@ def _workflow(
         description="Draft a reply to mail that needs one",
         steps=[WorkflowStep(title="Draft", description="Draft the reply")],
         trigger_config=trigger_config
-        or TriggerConfig(type=TriggerType.INTEGRATION, trigger_name="gmail_new_message"),
+        or TriggerConfig(type=TriggerType.INTEGRATION, trigger_name=trigger_name),
         gate=gate,
     )
 
@@ -121,9 +126,15 @@ def seams() -> Iterator[SimpleNamespace]:
         patch(f"{_BASE}.buffer_trigger_event", AsyncMock(return_value=False)) as buffer,
         patch(f"{_BASE}.WorkflowQueueService.queue_workflow_execution", AsyncMock()) as queue,
         patch(f"{_BASE}.record_skipped_execution", AsyncMock()) as skipped,
+        patch("app.services.triggers.trigger_gate.capture") as capture,
     ):
         yield SimpleNamespace(
-            jev=router.post(HIL_JEV_URL), claim=claim, buffer=buffer, queue=queue, skipped=skipped
+            jev=router.post(HIL_JEV_URL),
+            claim=claim,
+            buffer=buffer,
+            queue=queue,
+            skipped=skipped,
+            capture=capture,
         )
 
 
@@ -395,3 +406,70 @@ class TestQuietHours:
         assert not night.jev.called
         assert job.score == _score(at)
         assert "quiet_hours" not in job.args[1]
+
+
+async def test_the_gate_asks_about_each_workflow_under_its_own_id(seams: SimpleNamespace) -> None:
+    seams.jev.mock(return_value=httpx.Response(200, json=_jev_body(0.1)))
+
+    async with captured_wide_event() as event:
+        await _fire([_workflow(), _workflow(workflow_id="wf_gated000002")])
+
+    assert set(event["trigger_gate"]) == {WORKFLOW_ID, "wf_gated000002"}
+    automations = {json.loads(c.request.content)["state"]["automation"] for c in seams.jev.calls}
+    assert automations == {"Draft replies: Draft a reply to mail that needs one"}
+
+
+async def test_a_workflow_whose_trigger_names_nothing_is_gated_under_the_event(
+    seams: SimpleNamespace,
+) -> None:
+    await _fire([_workflow(trigger_name=None)])
+
+    (decided,) = [c.args[1] for c in seams.capture.call_args_list]
+    assert isinstance(decided, TriggerGateDecided)
+    assert decided.trigger_name == "GMAIL_NEW_GMAIL_MESSAGE"
+    seams.queue.assert_awaited_once()
+
+
+async def test_the_run_reads_the_signals_derived_from_the_event(seams: SimpleNamespace) -> None:
+    await _fire([_workflow(gate=None)])
+
+    trigger_data = seams.queue.await_args.kwargs["context"]["trigger_data"]
+    assert trigger_data["continues_thread"] is False
+
+
+async def test_a_gate_that_crashes_runs_its_workflow_and_spares_the_others(
+    seams: SimpleNamespace,
+) -> None:
+    seams.jev.mock(return_value=httpx.Response(200, json=_jev_body(0.99)))
+
+    with patch(
+        "app.services.triggers.trigger_gate.is_trigger_gates_enforced",
+        AsyncMock(side_effect=RuntimeError("flag store down")),
+    ):
+        await _fire([_workflow(), _workflow(gate=None, workflow_id="wf_ungated0001")])
+
+    queued = {c.args[0] for c in seams.queue.await_args_list}
+    assert queued == {WORKFLOW_ID, "wf_ungated0001"}
+    seams.skipped.assert_not_awaited()
+
+
+async def test_a_skip_whose_history_write_fails_is_reported_and_spares_the_others(
+    seams: SimpleNamespace, sentry_events: list[Event]
+) -> None:
+    seams.jev.mock(return_value=httpx.Response(200, json=_jev_body(0.99)))
+    seams.skipped.side_effect = PyMongoError("history down")
+
+    async with captured_wide_event() as event:
+        await _fire([_workflow(), _workflow(gate=None, workflow_id="wf_ungated0001")])
+
+    assert [c.args[0] for c in seams.queue.await_args_list] == ["wf_ungated0001"]
+    assert event["errors"] == [
+        {
+            "msg": "trigger_workflow_skip_record_failed",
+            "workflow_id": WORKFLOW_ID,
+            "user_id": USER_ID,
+            "error_type": "PyMongoError",
+            "error": "history down",
+        }
+    ]
+    assert [e["exception"]["values"][-1]["type"] for e in sentry_events] == ["PyMongoError"]

@@ -456,7 +456,8 @@ class TriggerHandler(ABC):
         verdicts = await asyncio.gather(
             *(self._gate_workflow(workflow, data, event_type) for workflow in workflows)
         )
-        for workflow, verdict in zip(workflows, verdicts, strict=True):
+        # Unmutated: gather returns one result per workflow, so strict can never trip.
+        for workflow, verdict in zip(workflows, verdicts, strict=True):  # pragma: no mutate
             if not isinstance(verdict, GateSkip) and await self._queue_one_workflow(
                 workflow, data, signal_context_by_user, event_type, trigger_id, verdict
             ):
