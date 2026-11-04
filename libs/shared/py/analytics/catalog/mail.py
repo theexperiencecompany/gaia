@@ -2,12 +2,10 @@
 
 from typing import ClassVar
 
-from shared.py.analytics.catalog.base import ServerEvent, WebEvent
-from shared.py.analytics.catalog.properties import Identifier
+from shared.py.analytics.catalog.base import ServerEvent
 
 __all__ = [
     "EmailArchived",
-    "EmailComposeOpened",
     "EmailDraftComposed",
     "EmailDraftCreated",
     "EmailDraftDeleted",
@@ -20,7 +18,6 @@ __all__ = [
     "EmailMarkedRead",
     "EmailMarkedUnread",
     "EmailMovedToInbox",
-    "EmailOpened",
     "EmailReplied",
     "EmailSent",
     "EmailStarred",
@@ -52,7 +49,7 @@ class EmailReplied(ServerEvent):
 
 
 class EmailDraftComposed(ServerEvent):
-    """The assistant finished composing a draft; not the web's email:compose_opened modal open."""
+    """The assistant finished composing a draft."""
 
     event: ClassVar[str] = "email:draft_composed"
     budget_per_user_day: ClassVar[int] = 50
@@ -187,20 +184,4 @@ class EmailDraftDeleted(ServerEvent):
     """A user deleted a draft."""
 
     event: ClassVar[str] = "email:draft_deleted"
-    budget_per_user_day: ClassVar[int] = 50
-
-
-class EmailOpened(WebEvent):
-    """A user opened an email in the mail view."""
-
-    event: ClassVar[str] = "email:opened"
-    budget_per_user_day: ClassVar[int] = 50
-
-    mail_id: Identifier
-
-
-class EmailComposeOpened(WebEvent):
-    """A user opened the compose modal; the server only sees the eventual send."""
-
-    event: ClassVar[str] = "email:compose_opened"
     budget_per_user_day: ClassVar[int] = 50
