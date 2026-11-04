@@ -16,7 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from httpx import ASGITransport, AsyncClient
-from jose import JWTError, jwt
+from jwt import InvalidTokenError
 from posthog.contexts import get_context_distinct_id
 import pytest
 from starlette.testclient import TestClient
@@ -37,6 +37,7 @@ from app.services.bot_token_service import (
     verify_bot_session_token,
 )
 import shared.py.logging as shared_logging
+from tests.helpers import JOSE_MINTED_BOT_TOKEN, forge_jwt, hostile_jwts, read_jwt
 
 # ---------------------------------------------------------------------------
 # Test constants
@@ -142,6 +143,16 @@ async def _noop_call_next(request: Request) -> MagicMock:
     return MagicMock(status_code=200)
 
 
+def _bot_claims() -> dict[str, object]:
+    return {
+        "sub": TEST_USER_ID,
+        "platform": TEST_PLATFORM,
+        "platform_user_id": TEST_PLATFORM_USER_ID,
+        "role": "bot",
+        "exp": int((datetime.now(UTC) + timedelta(minutes=15)).timestamp()),
+    }
+
+
 # ---------------------------------------------------------------------------
 # TEST 7: Bot-to-API Authentication Chain
 # ---------------------------------------------------------------------------
@@ -174,7 +185,7 @@ class TestBotTokenService:
             expires_minutes=10,
         )
 
-        raw = jwt.decode(token, TEST_BOT_SESSION_SECRET, algorithms=[JWT_ALGORITHM])
+        _, raw = read_jwt(token)
 
         assert raw["sub"] == TEST_USER_ID
         assert raw["platform"] == "slack"
@@ -192,7 +203,7 @@ class TestBotTokenService:
             expires_minutes=-1,  # Already expired
         )
 
-        with pytest.raises(JWTError, match="Token verification failed"):
+        with pytest.raises(InvalidTokenError, match="Token verification failed"):
             verify_bot_session_token(token)
 
     def test_tampered_token_rejected(self) -> None:
@@ -204,13 +215,26 @@ class TestBotTokenService:
             "platform": TEST_PLATFORM,
             "platform_user_id": TEST_PLATFORM_USER_ID,
             "role": "bot",
-            "exp": expire,
-            "iat": datetime.now(UTC),
+            "exp": int(expire.timestamp()),
+            "iat": int(datetime.now(UTC).timestamp()),
         }
-        bad_token = jwt.encode(payload, wrong_secret, algorithm=JWT_ALGORITHM)
+        bad_token = forge_jwt(payload, wrong_secret, alg=JWT_ALGORITHM)
 
-        with pytest.raises(JWTError, match="Token verification failed"):
+        with pytest.raises(InvalidTokenError, match="Token verification failed"):
             verify_bot_session_token(bad_token)
+
+    def test_a_token_minted_by_python_jose_still_verifies(self) -> None:
+        assert verify_bot_session_token(JOSE_MINTED_BOT_TOKEN) == {
+            "user_id": "u-jose",
+            "platform": "telegram",
+            "platform_user_id": "tg-jose",
+        }
+
+    @pytest.mark.parametrize("kind", sorted(hostile_jwts({}, "s")))
+    def test_a_hostile_token_is_rejected(self, kind: str) -> None:
+        token = hostile_jwts(_bot_claims(), TEST_BOT_SESSION_SECRET)[kind]
+        with pytest.raises(InvalidTokenError, match="^Token verification failed: "):
+            verify_bot_session_token(token)
 
     def test_wrong_role_rejected(self) -> None:
         """A token with role != 'bot' is rejected even if otherwise valid."""
@@ -220,12 +244,12 @@ class TestBotTokenService:
             "platform": TEST_PLATFORM,
             "platform_user_id": TEST_PLATFORM_USER_ID,
             "role": "agent",  # Wrong role
-            "exp": expire,
-            "iat": datetime.now(UTC),
+            "exp": int(expire.timestamp()),
+            "iat": int(datetime.now(UTC).timestamp()),
         }
-        token = jwt.encode(payload, TEST_BOT_SESSION_SECRET, algorithm=JWT_ALGORITHM)
+        token = forge_jwt(payload, TEST_BOT_SESSION_SECRET, alg=JWT_ALGORITHM)
 
-        with pytest.raises(JWTError, match="Invalid token role"):
+        with pytest.raises(InvalidTokenError, match="Invalid token role"):
             verify_bot_session_token(token)
 
     def test_missing_secret_raises_value_error(self) -> None:
@@ -257,7 +281,7 @@ class TestBotTokenService:
             platform=TEST_PLATFORM,
             platform_user_id=TEST_PLATFORM_USER_ID,
         )
-        raw = jwt.decode(token, TEST_BOT_SESSION_SECRET, algorithms=[JWT_ALGORITHM])
+        _, raw = read_jwt(token)
 
         iat = datetime.fromtimestamp(raw["iat"], tz=UTC)
         exp = datetime.fromtimestamp(raw["exp"], tz=UTC)
@@ -357,6 +381,37 @@ class TestBotAuthMiddlewareJWT:
         assert request.state.authenticated is True
         # Cache was hit, so set_cache should not have been called
         mock_redis_cache["set"].assert_not_called()
+
+    async def test_a_bot_token_minted_by_python_jose_authenticates(
+        self, mock_redis_cache: dict
+    ) -> None:
+        cached_user = AuthenticatedUser(
+            user_id="u-jose",
+            email="jose@example.com",
+            name="Jose User",
+            auth_provider="bot:telegram",
+            bot_authenticated=True,
+        )
+        mock_redis_cache["get"].return_value = cached_user
+        request = _make_mock_request(headers={"Authorization": f"Bearer {JOSE_MINTED_BOT_TOKEN}"})
+
+        await BotAuthMiddleware(app=MagicMock()).dispatch(request, _noop_call_next)
+
+        assert request.state.authenticated is True
+        assert request.state.user == cached_user
+        assert mock_redis_cache["get"].await_args.args[0] == "bot_user:telegram:tg-jose"
+
+    @pytest.mark.parametrize("kind", sorted(hostile_jwts({}, "s")))
+    async def test_a_hostile_bot_token_authenticates_nobody(
+        self, mock_redis_cache: dict, kind: str
+    ) -> None:
+        token = hostile_jwts(_bot_claims(), TEST_BOT_SESSION_SECRET)[kind]
+        request = _make_mock_request(headers={"Authorization": f"Bearer {token}"})
+
+        await BotAuthMiddleware(app=MagicMock()).dispatch(request, _noop_call_next)
+
+        assert not hasattr(request.state, "authenticated")
+        mock_redis_cache["get"].assert_not_awaited()
 
     async def test_invalid_jwt_falls_through_to_api_key(self, mock_redis_cache: dict) -> None:
         """Invalid JWT does not set authenticated, falls through to API key check."""

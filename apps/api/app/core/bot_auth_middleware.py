@@ -14,7 +14,7 @@ from collections.abc import Awaitable, Callable
 import secrets
 
 from fastapi import Request, Response
-from jose import JWTError
+from jwt import PyJWTError
 from pydantic import BaseModel, ConfigDict
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
@@ -91,7 +91,7 @@ class BotAuthMiddleware(BaseHTTPMiddleware):
         token = auth_header.removeprefix(_BEARER_PREFIX)
         try:
             user_info = await self._authenticate_jwt(token)
-        except JWTError as e:
+        except PyJWTError as e:
             log.debug(
                 f"{LogTag.API} Bot JWT rejected, trying API key",
                 error=str(e),
@@ -208,5 +208,5 @@ class BotAuthMiddleware(BaseHTTPMiddleware):
             await set_cache(cache_key, user_info, ttl=TEN_MINUTES_TTL, model=AuthenticatedUser)
             return user_info
 
-        except JWTError:
+        except PyJWTError:
             raise

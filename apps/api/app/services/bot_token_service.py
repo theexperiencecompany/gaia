@@ -6,7 +6,7 @@ by issuing tokens only after legitimate platform messages.
 
 from datetime import UTC, datetime, timedelta
 
-from jose import JWTError, jwt
+import jwt
 
 from app.config.settings import settings
 from app.constants.auth import JWT_ALGORITHM
@@ -41,7 +41,7 @@ def create_bot_session_token(
 def verify_bot_session_token(token: str) -> dict:
     """Decode and verify a bot session token, returning user_id/platform/platform_user_id.
 
-    Raises JWTError if invalid, expired, malformed, or not a bot-role token.
+    Raises InvalidTokenError if invalid, expired, malformed, or not a bot-role token.
     """
     secret = _get_bot_session_secret()
 
@@ -50,7 +50,7 @@ def verify_bot_session_token(token: str) -> dict:
 
         # Verify it's a bot session token
         if payload.get("role") != "bot":
-            raise JWTError("Invalid token role")
+            raise jwt.InvalidTokenError("Invalid token role")
 
         return {
             "user_id": payload.get("sub"),
@@ -58,8 +58,8 @@ def verify_bot_session_token(token: str) -> dict:
             "platform_user_id": payload.get("platform_user_id"),
         }
 
-    except JWTError as e:
-        raise JWTError(f"Token verification failed: {e!s}") from e
+    except jwt.PyJWTError as e:
+        raise jwt.InvalidTokenError(f"Token verification failed: {e!s}") from e
 
 
 def _get_bot_session_secret() -> str:

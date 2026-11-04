@@ -6,9 +6,9 @@ the gaia session cookie as the twin of the WorkOS sealed-session cookie.
 
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
-from typing import NamedTuple, TypedDict, cast
+from typing import NamedTuple
 
-from jose import JWTError, jwt
+import jwt
 
 from app.constants.auth import JWT_ALGORITHM
 from app.constants.log_tags import LogTag
@@ -25,17 +25,6 @@ SESSION_TTL_SECONDS = 30 * 24 * 3600
 # Cached once per process so a request does not await Mongo for it; tests
 # reset this attribute directly.
 _resolved_secret: str | None = None
-
-
-class SessionClaims(TypedDict, total=False):
-    """The local-session JWT claims this module reads.
-
-    Sub carries the user id and ver the password-bumpable token version, so a
-    bump stops every older session verifying.
-    """
-
-    sub: str
-    ver: int
 
 
 async def _session_secret() -> str:
@@ -60,7 +49,7 @@ async def issue_session_token(user_id: str, token_version: int) -> str:
         "iat": now,
         "ver": token_version,
     }
-    return cast(str, jwt.encode(payload, secret, algorithm=JWT_ALGORITHM))
+    return jwt.encode(payload, secret, algorithm=JWT_ALGORITHM)
 
 
 class _Session(NamedTuple):
@@ -73,8 +62,8 @@ class _Session(NamedTuple):
 def _decode_session(token: str, secret: str) -> _Session | None:
     """Return the session of a validly signed, unexpired token naming a user, else None."""
     try:
-        claims: SessionClaims = jwt.decode(token, secret, algorithms=[JWT_ALGORITHM])
-    except JWTError:
+        claims = jwt.decode(token, secret, algorithms=[JWT_ALGORITHM])
+    except jwt.PyJWTError:
         return None
     sub = claims.get("sub")
     # Legacy tokens without ver read as 0.

@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 import hashlib
 import secrets
 
-from jose import JWTError, jwt
+import jwt
 
 from app.config.settings import settings
 from app.constants.auth import JWT_ALGORITHM
@@ -62,7 +62,7 @@ def verify_device_token(token: str) -> DeviceTokenClaims | None:
             algorithms=[JWT_ALGORITHM],
             audience=DEVICE_TOKEN_AUDIENCE,
         )
-    except JWTError:
+    except jwt.PyJWTError:
         return None
     if payload.get("role") != "device":
         return None

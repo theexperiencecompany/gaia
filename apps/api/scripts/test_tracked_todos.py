@@ -29,7 +29,7 @@ import time
 
 from dotenv import load_dotenv
 import httpx
-from jose import jwt
+import jwt
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 # Secrets and the test user identity come from the environment (.env). Never

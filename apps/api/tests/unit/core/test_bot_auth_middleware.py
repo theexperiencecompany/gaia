@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import FastAPI, Request, Response
 from httpx import ASGITransport, AsyncClient
-from jose import JWTError
+from jwt import InvalidTokenError
 import pytest
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
@@ -318,8 +318,8 @@ class TestJWTAuth:
         mock_verify: MagicMock,
         app: FastAPI,
     ) -> None:
-        """JWTError should be caught; request proceeds unauthenticated."""
-        mock_verify.side_effect = JWTError("expired")
+        """An invalid token is caught; request proceeds unauthenticated."""
+        mock_verify.side_effect = InvalidTokenError("expired")
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="https://test") as client:
@@ -864,7 +864,7 @@ class TestAFailedJwtFallsThroughToTheApiKey:
     @pytest.mark.parametrize(
         "verify",
         [
-            MagicMock(side_effect=JWTError("expired")),
+            MagicMock(side_effect=InvalidTokenError("expired")),
             MagicMock(side_effect=RuntimeError("redis down")),
             # A valid token for a platform account no GAIA user is linked to.
             MagicMock(return_value=FAKE_JWT_PAYLOAD),
