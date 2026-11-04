@@ -8,6 +8,7 @@ export type ServerEventName =
   | "ai:llm_call_completed"
   | "approval:decided"
   | "bot:audio_transcribed"
+  | "bot:chat_opened"
   | "bot:session_reset"
   | "browser:engine_switched"
   | "browser:handoff_resolved"
@@ -352,6 +353,12 @@ export interface EventProperties {
     "transcript_length": number;
   };
   "bot:auth_initiated": Record<string, never>;
+  "bot:chat_opened": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "platform": string;
+  };
   "bot:command_executed": {
     "command": string;
     "duration_ms": number;

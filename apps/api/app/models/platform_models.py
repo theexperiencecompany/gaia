@@ -58,6 +58,12 @@ class GetPlatformLinksResponse(ResponseModel):
     )
 
 
+class PlatformConversationResponse(ResponseModel):
+    """The linked platform's DM chat, opened from the settings page."""
+
+    conversation_id: str = Field(..., description="Conversation id of the platform's DM chat")
+
+
 class PlatformLinkResult(BaseModel):
     """What ``PlatformLinkService.link_account`` reports back to its callers.
 

@@ -33,6 +33,7 @@ from .conftest import (
     USER_ID,
     make_record,
     make_request,
+    make_tool,
     run_through_gate,
 )
 
@@ -169,6 +170,21 @@ class TestApproveJourney:
         args = gate["override"].await_args.args
         assert args[1] == "send_email"
         assert args[2] is False, "always_tool must record 'never ask', not 'always ask'"
+
+    async def test_always_allow_on_an_mcp_tool_writes_its_server_scoped_key(
+        self, gate: dict
+    ) -> None:
+        tool = make_tool(
+            name="posthog_delete_item",
+            metadata={"integration_id": "srv_a", "mcp_server_name": "delete_item"},
+        )
+        request = make_request(name="posthog_delete_item", tool=tool)
+        await asks(gate, request)
+        decides(gate, status="approved", scope="always_tool")
+
+        await run_through_gate(request, Handler(gate["log"]))
+
+        gate["override"].assert_awaited_once_with(USER_ID, "mcp:srv_a:delete_item", False)
 
     async def test_a_one_off_approval_changes_no_preference(self, gate: dict) -> None:
         # Approving once must not silently disarm the gate for every future call.
