@@ -27,8 +27,6 @@
     "dev": "nx next:dev --turbopack --port=${WEB_PORT:-3000}",
     "build": "npm run type-check && nx next:build",
     "start": "nx next:start",
-    "css:split": "node ../../scripts/css-split.mjs",
-    "css:split:check": "node ../../scripts/css-split.mjs --check",
     "type": "next typegen && node ../../scripts/ts/type-check.mjs --noEmit",
     "type-check": "npm run type",
     "depcheck": "depcheck",

@@ -1,5 +1,4 @@
-import "./page.css";
-import "./page.2.css";
+import "../../../styles/marketing.css";
 import {
   DESKTOP_SERVER_FORM_PARAM,
   type DesktopServerFormReason,

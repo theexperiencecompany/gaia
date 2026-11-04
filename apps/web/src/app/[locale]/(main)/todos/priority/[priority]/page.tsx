@@ -1,8 +1,3 @@
-import "./page.css";
-import "./page.2.css";
-import "./page.3.css";
-import "./page.4.css";
-import "./page.5.css";
 import { notFound } from "next/navigation";
 import TodoListPage from "@/features/todo/components/TodoListPage";
 import { Priority } from "@/types/features/todoTypes";

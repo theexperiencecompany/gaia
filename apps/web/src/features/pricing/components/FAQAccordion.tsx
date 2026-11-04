@@ -44,8 +44,10 @@ export function FAQAccordion({ faqs }: { faqs?: FAQItem[] }) {
                   <Accordion.Indicator />
                 </Accordion.Trigger>
               </Accordion.Heading>
-              <Accordion.Panel className="mb-6 max-w-full text-base font-light text-foreground-500 sm:max-w-[60%] sm:text-xl">
-                <span className="select-text">{item.answer}</span>
+              <Accordion.Panel>
+                <Accordion.Body className="mb-6 max-w-full text-base font-light text-foreground-500 sm:max-w-[60%] sm:text-xl">
+                  <span className="select-text">{item.answer}</span>
+                </Accordion.Body>
               </Accordion.Panel>
             </Accordion.Item>
           ))}

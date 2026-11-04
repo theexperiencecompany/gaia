@@ -1,5 +1,4 @@
-import "./page.css";
-import "./page.2.css";
+import "../../../styles/marketing.css";
 import type { Metadata } from "next";
 import JsonLd from "@/components/seo/JsonLd";
 import { EM_FAQS } from "@/features/landing/data/personaFaqs";

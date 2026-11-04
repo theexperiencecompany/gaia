@@ -33,8 +33,10 @@ export default function FAQPageClient({ faqs }: FAQPageClientProps) {
                   <Accordion.Indicator />
                 </Accordion.Trigger>
               </Accordion.Heading>
-              <Accordion.Panel className="text-xl max-w-[90%] text-foreground-500 font-light mb-6">
-                <span className="select-text">{item.answer}</span>
+              <Accordion.Panel>
+                <Accordion.Body className="mb-6 max-w-[90%] text-xl font-light text-foreground-500">
+                  <span className="select-text">{item.answer}</span>
+                </Accordion.Body>
               </Accordion.Panel>
             </Accordion.Item>
           ))}

@@ -1,4 +1,3 @@
-import "./page.css";
 import { ConnectIcon } from "@icons";
 import type { Metadata } from "next";
 import { cookies } from "next/headers";

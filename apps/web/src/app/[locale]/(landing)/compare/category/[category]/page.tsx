@@ -1,5 +1,4 @@
-import "./page.css";
-import "./page.2.css";
+import "../../../../../styles/marketing.css";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";

@@ -1,6 +1,5 @@
 "use client";
-import "./page.css";
-import "./page.2.css";
+import "../../../../styles/marketing.css";
 
 import { Button, Spinner } from "@heroui/react";
 import {

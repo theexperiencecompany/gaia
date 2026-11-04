@@ -1,8 +1,3 @@
-import "./page.css";
-import "./page.2.css";
-import "./page.3.css";
-import "./page.4.css";
-import "./page.5.css";
 import { notFound, redirect } from "next/navigation";
 import { getSetupStatusServer } from "@/features/auth/api/serverSetupStatusApi";
 import { SetupWizard } from "@/features/setup-wizard/components/SetupWizard";

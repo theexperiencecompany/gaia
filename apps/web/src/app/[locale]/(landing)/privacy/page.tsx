@@ -1,5 +1,4 @@
-import "./page.css";
-import "./page.2.css";
+import "../../../styles/marketing.css";
 import { Link } from "@heroui/react";
 import type { Metadata } from "next";
 

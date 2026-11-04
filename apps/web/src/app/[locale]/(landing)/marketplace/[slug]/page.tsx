@@ -1,6 +1,4 @@
-import "./page.css";
-import "./page.2.css";
-import "./page.3.css";
+import "../../../../styles/content.css";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import JsonLd from "@/components/seo/JsonLd";

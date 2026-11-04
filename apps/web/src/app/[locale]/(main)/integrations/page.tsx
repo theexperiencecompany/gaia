@@ -1,9 +1,4 @@
 "use client";
-import "./page.css";
-import "./page.2.css";
-import "./page.3.css";
-import "./page.4.css";
-import "./page.5.css";
 
 import { Button, Kbd } from "@heroui/react";
 import { ConnectIcon, MessageFavourite02Icon } from "@icons";

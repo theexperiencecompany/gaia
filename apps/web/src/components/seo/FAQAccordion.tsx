@@ -23,8 +23,10 @@ export default function FAQAccordion({ faqs }: { faqs: FAQ[] }) {
               <Accordion.Indicator />
             </Accordion.Trigger>
           </Accordion.Heading>
-          <Accordion.Panel className="text-base text-zinc-400 font-light pb-4">
-            {faq.answer}
+          <Accordion.Panel>
+            <Accordion.Body className="pb-4 text-base font-light text-zinc-400">
+              {faq.answer}
+            </Accordion.Body>
           </Accordion.Panel>
         </Accordion.Item>
       ))}

@@ -1,5 +1,4 @@
-import "./page.css";
-import "./page.2.css";
+import "../../../styles/content.css";
 import type { Metadata } from "next";
 import { Suspense } from "react";
 
@@ -98,20 +97,22 @@ export default async function MarketplacePage() {
             <h1 className="mb-4 font-serif text-5xl font-normal text-foreground md:text-7xl">
               Integration Marketplace
             </h1>
-            <p className="max-w-2xl text-lg font-light text-foreground-500">
-              GAIA&apos;s integration marketplace is the catalogue of tools GAIA
-              can connect to. It combines native integrations such as Gmail,
-              Slack, Notion, GitHub, and Google Calendar with community-built
-              MCP servers that extend the assistant to other services. Each
-              listing explains what the integration exposes and how to connect
-              it to your account. Use the search field to find a tool by name,
-              filter by category, and sort by popularity, recency, or name. The
-              directory below lists the integrations alphabetically, with
-              further pages linked at the bottom, so you can jump straight to a
-              detail page. If a tool is missing, MCP is the extension path:
-              build the server, publish it, and it can appear here for other
-              users.
-            </p>
+            <div className="max-w-3xl space-y-3 text-base font-light leading-relaxed text-foreground-500">
+              <p>
+                GAIA&apos;s integration marketplace is the catalogue of tools GAIA
+                can connect to. It combines native integrations such as Gmail,
+                Slack, Notion, GitHub, and Google Calendar with community-built
+                MCP servers that extend the assistant to other services.
+              </p>
+              <p>
+                Each listing explains what the integration exposes and how to
+                connect it. Use the search field to find a tool by name, filter
+                by category, or sort by popularity. The directory below lists the
+                integrations alphabetically, with further pages linked at the
+                bottom. If a tool is missing, MCP is the extension path: build
+                the server, publish it, and it can appear here for other users.
+              </p>
+            </div>
           </div>
           {/* useSearchParams opts the grid into client rendering; the header
               and directory around it stay in the prerendered HTML. */}
