@@ -4,6 +4,7 @@ import asyncio
 import base64
 from collections.abc import AsyncGenerator, AsyncIterator, Iterator, Mapping, Sequence
 from contextlib import asynccontextmanager, contextmanager
+from datetime import UTC, datetime, timedelta
 import hashlib
 import hmac
 import importlib.util
@@ -619,6 +620,17 @@ def _b64url(raw: bytes) -> str:
 
 def _b64url_json(value: Mapping[str, object]) -> str:
     return _b64url(json.dumps(value, separators=(",", ":")).encode())
+
+
+def bot_jwt_claims(user_id: str, platform: str, platform_user_id: str) -> dict[str, object]:
+    """Build the claims of a valid bot session JWT that expires in 15 minutes."""
+    return {
+        "sub": user_id,
+        "platform": platform,
+        "platform_user_id": platform_user_id,
+        "role": "bot",
+        "exp": int((datetime.now(UTC) + timedelta(minutes=15)).timestamp()),
+    }
 
 
 def read_jwt(token: str) -> tuple[dict[str, Any], dict[str, Any]]:
