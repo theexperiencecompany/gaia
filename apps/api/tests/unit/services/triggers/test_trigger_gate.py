@@ -28,7 +28,13 @@ from app.constants.trigger_gates import (
 )
 from app.models.trigger_gate_models import AuthoredGate, SystemGate, TriggerGate
 from app.services.providers.provider_credentials_service import ProviderConfig
-from app.services.triggers.trigger_gate import GatedJob, GateSkip, gate_skip
+from app.services.triggers.trigger_gate import (
+    GatedJob,
+    GateRun,
+    GateSkip,
+    GateVerdict,
+    decide_gate,
+)
 from app.utils.general_utils import ELLIPSIS
 from shared.py.analytics.catalog.triggers import TriggerGateDecided
 from tests.helpers import captured_wide_event
@@ -156,9 +162,9 @@ async def _skip(
     trigger_name: str = GMAIL,
     owner: GateOwner = GateOwner.WORKFLOW,
     payload: Mapping[str, object] | None = None,
-) -> GateSkip | None:
+) -> GateVerdict:
     overrides = dict(payload or {})
-    return await gate_skip(
+    return await decide_gate(
         gate,
         GatedJob(
             owner=owner,
@@ -205,12 +211,13 @@ class TestTheSkipLine:
         skip = await _skip()
 
         assert skip == GateSkip(condition=BILLING)
+        assert isinstance(skip, GateSkip)
         assert skip.summary == f"Skipped: runs only when {BILLING}"
 
     async def test_just_under_the_line_runs(self, seams: SimpleNamespace) -> None:
         seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.949, run_label="needed")))
 
-        assert await _skip() is None
+        assert await _skip() == GateRun()
         assert _decided(seams).reason == GateReason.JEV_RUN
 
     async def test_the_probability_decides_not_the_choice(self, seams: SimpleNamespace) -> None:
@@ -218,7 +225,7 @@ class TestTheSkipLine:
         body = _answer(0.90, choice="not_needed", confidence=0.99, run_label="needed")
         seams.jev.mock(return_value=httpx.Response(200, json=body))
 
-        assert await _skip() is None
+        assert await _skip() == GateRun()
 
     async def test_a_system_gate_skips_with_its_preset_condition(
         self, seams: SimpleNamespace
@@ -227,7 +234,7 @@ class TestTheSkipLine:
 
         skip = await _skip(DESK)
 
-        assert skip is not None
+        assert isinstance(skip, GateSkip)
         assert (
             skip.summary
             == "Skipped: runs only when a real person or a real obligation is waiting on you"
@@ -298,7 +305,7 @@ class TestEveryFailureRuns:
             seams.jev.mock(return_value=response)
 
         async with captured_wide_event() as event:
-            assert await _skip() is None
+            assert await _skip() == GateRun()
 
         assert event["trigger_gate"][OWNER_ID]["reason"] == reason
         assert _decided(seams).reason == reason
@@ -311,13 +318,13 @@ class TestEveryFailureRuns:
             patch(f"{_MOD}.TRIGGER_GATE_JEV_TIMEOUT_SECONDS", 0.01),
             patch(f"{_MOD}.post_decisions", never_answers),
         ):
-            assert await _skip() is None
+            assert await _skip() == GateRun()
 
         assert _decided(seams).reason == GateReason.JEV_TIMEOUT
 
     async def test_no_openrouter_key_runs_as_unconfigured(self, seams: SimpleNamespace) -> None:
         with patch("app.services.hil.jev_client.resolve", AsyncMock(return_value=None)):
-            assert await _skip() is None
+            assert await _skip() == GateRun()
 
         assert not seams.jev.called
         assert _decided(seams).reason == GateReason.JEV_UNCONFIGURED
@@ -328,7 +335,7 @@ class TestRunsWithoutAskingJev:
     async def test_a_reply_on_an_existing_thread_runs(
         self, seams: SimpleNamespace, trigger_name: str
     ) -> None:
-        assert await _skip(trigger_name=trigger_name, payload={"message_id": "m2"}) is None
+        assert await _skip(trigger_name=trigger_name, payload={"message_id": "m2"}) == GateRun()
 
         assert not seams.jev.called
         assert _decided(seams).reason == GateReason.FREE_RUN
@@ -341,12 +348,14 @@ class TestRunsWithoutAskingJev:
     async def test_a_message_the_signals_cannot_place_runs(
         self, seams: SimpleNamespace, unreadable: dict[str, object]
     ) -> None:
-        assert await _skip(payload=unreadable) is None
+        assert await _skip(payload=unreadable) == GateRun()
 
         assert not seams.jev.called
 
     async def test_an_event_with_nothing_to_read_runs(self, seams: SimpleNamespace) -> None:
-        assert await _skip(trigger_name="slack_new_message", payload={"unrelated": "x"}) is None
+        assert (
+            await _skip(trigger_name="slack_new_message", payload={"unrelated": "x"}) == GateRun()
+        )
 
         assert not seams.jev.called
 
@@ -358,7 +367,7 @@ class TestRunsWithoutAskingJev:
     async def test_a_gate_that_is_not_on_is_not_asked(
         self, seams: SimpleNamespace, gate: TriggerGate | None
     ) -> None:
-        assert await _skip(gate) is None
+        assert await _skip(gate) == GateRun()
 
         assert not seams.jev.called
         seams.capture.assert_not_called()
@@ -371,7 +380,7 @@ class TestShadow:
         seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.99, run_label="needed")))
         seams.enforced.return_value = False
 
-        assert await _skip() is None
+        assert await _skip() == GateRun()
 
         decided = _decided(seams)
         assert (decided.outcome, decided.reason, decided.enforced) == ("run", "jev_skip", False)
@@ -382,7 +391,7 @@ class TestShadow:
         seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.99, run_label="needed")))
 
         with patch(f"{_MOD}.ENFORCED_GATE_KINDS", frozenset({GateKind.SYSTEM})):
-            assert await _skip() is None
+            assert await _skip() == GateRun()
 
         assert _decided(seams).enforced is False
 

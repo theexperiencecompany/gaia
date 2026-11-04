@@ -1,6 +1,6 @@
 """Trigger gates: one JEV question about a fired event, asked before it costs a run.
 
-Both fan-outs of TriggerHandler.process_event call gate_skip before anything is
+Both fan-outs of TriggerHandler.process_event call decide_gate before anything is
 claimed, buffered or queued, so a skipped event leaves nothing behind that marks
 it handled. Only P(skip label) >= 0.95 skips; every other answer, and every
 failure, runs the job as if the gate were not there.
@@ -59,14 +59,23 @@ _FAILURE_REASONS: tuple[tuple[type[Exception] | tuple[type[Exception], ...], Gat
 
 
 @dataclass(frozen=True, slots=True)
+class GateRun:
+    """Run the job now, as if the gate were not there."""
+
+
+@dataclass(frozen=True, slots=True)
 class GateSkip:
-    """A gated event that must not run; summary is the line its run history shows."""
+    """Do not run the job; summary is the line its run history shows."""
 
     condition: str
 
     @property
     def summary(self) -> str:
         return TRIGGER_GATE_SKIPPED_SUMMARY.format(condition=self.condition)
+
+
+# What a gate tells its fan-out to do with one fired event.
+GateVerdict = GateRun | GateSkip
 
 
 @dataclass(frozen=True, slots=True)
@@ -194,16 +203,16 @@ async def _ask_jev(gate: TriggerGate, event: Mapping[str, object], automation: s
     return _Decision(reason, answer, p_skip, int((time.perf_counter() - started) * 1000))
 
 
-async def gate_skip(
+async def decide_gate(
     gate: TriggerGate | None, job: GatedJob, *, trigger_name: str, payload: Mapping[str, object]
-) -> GateSkip | None:
-    """Decide whether one fired event skips its job's run; None runs it, and a JEV failure runs.
+) -> GateVerdict:
+    """Decide what one fired event does to its job's run; a JEV failure runs it.
 
     Counts the decision, writes it to the wide event under the job's id and sends
     trigger:gate_decided. A gate that is absent or turned off is not asked.
     """
     if gate is None or not gate.enabled:
-        return None
+        return GateRun()
     event = _event(trigger_name, payload)
     decision = (
         _Decision(GateReason.FREE_RUN)
@@ -249,4 +258,4 @@ async def gate_skip(
                 latency_ms=decision.latency_ms,
             ),
         )
-    return GateSkip(gate.display_condition) if outcome is GateOutcome.SKIP else None
+    return GateSkip(gate.display_condition) if outcome is GateOutcome.SKIP else GateRun()

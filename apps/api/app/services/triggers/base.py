@@ -26,7 +26,14 @@ from app.services.composio.composio_service import get_composio_service
 from app.services.integrations.integration_accounts import primary_connected_account_id
 from app.services.todos.signal_context import get_signal_matching_context
 from app.services.triggers.batching import buffer_trigger_event, coalesce_window_seconds
-from app.services.triggers.trigger_gate import GatedJob, GateSkip, automation_text, gate_skip
+from app.services.triggers.trigger_gate import (
+    GatedJob,
+    GateRun,
+    GateSkip,
+    GateVerdict,
+    automation_text,
+    decide_gate,
+)
 from app.services.workflow.execution_service import record_skipped_execution
 from app.services.workflow.queue_service import WorkflowQueueService
 from app.utils.exceptions import TriggerRegistrationError
@@ -440,11 +447,11 @@ class TriggerHandler(ABC):
         queued_count = 0
         signal_context_by_user: dict[str, str] = {}
         # Concurrently, so one email waits for the slowest JEV call rather than the sum.
-        skips = await asyncio.gather(
+        verdicts = await asyncio.gather(
             *(self._gate_workflow(workflow, data, event_type) for workflow in workflows)
         )
-        for workflow, skip in zip(workflows, skips, strict=True):
-            if skip is None and await self._queue_one_workflow(
+        for workflow, verdict in zip(workflows, verdicts, strict=True):
+            if not isinstance(verdict, GateSkip) and await self._queue_one_workflow(
                 workflow, data, signal_context_by_user, event_type, trigger_id
             ):
                 queued_count += 1
@@ -486,7 +493,7 @@ class TriggerHandler(ABC):
 
     async def _gate_workflow(
         self, workflow: Workflow, data: dict[str, object], event_type: str
-    ) -> GateSkip | None:
+    ) -> GateVerdict:
         """Ask the workflow's gate about this event; a skip is recorded as a skipped run.
 
         Before the occurrence claim and the batch, so a skipped event leaves
@@ -494,8 +501,8 @@ class TriggerHandler(ABC):
         """
         if workflow.id is None:
             # Not queueable either; _queue_one_workflow reports it.
-            return None
-        skip = await gate_skip(
+            return GateRun()
+        verdict = await decide_gate(
             workflow.gate,
             GatedJob(
                 owner=GateOwner.WORKFLOW,
@@ -506,10 +513,10 @@ class TriggerHandler(ABC):
             trigger_name=workflow.trigger_config.trigger_name or event_type,
             payload=data,
         )
-        if skip is not None:
+        if isinstance(verdict, GateSkip):
             try:
                 await record_skipped_execution(
-                    workflow.id, workflow.user_id, TriggerType.INTEGRATION.value, skip.summary
+                    workflow.id, workflow.user_id, TriggerType.INTEGRATION.value, verdict.summary
                 )
             except Exception as e:
                 # One workflow's history write must not cost the others their dispatch.
@@ -521,7 +528,7 @@ class TriggerHandler(ABC):
                     error=str(e),
                     exc_info=True,
                 )
-        return skip
+        return verdict
 
     async def _queue_one_workflow(
         self,

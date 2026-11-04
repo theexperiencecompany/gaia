@@ -44,7 +44,7 @@ from app.services.triggers.todo_trigger_window import (
     buffer_todo_trigger_event,
     trigger_window,
 )
-from app.services.triggers.trigger_gate import GatedJob, automation_text, gate_skip
+from app.services.triggers.trigger_gate import GatedJob, GateSkip, automation_text, decide_gate
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
 from shared.py.analytics import UserId
@@ -147,7 +147,7 @@ async def _fire_if_matching(
         return False
     # Before any window or cooldown claim: a skipped event must not burn the slot
     # the next real one needs, nor read as handled. Only an EXECUTE subscription has a gate.
-    skip = await gate_skip(
+    verdict = await decide_gate(
         subscription.gate,
         GatedJob(
             owner=GateOwner.TODO,
@@ -158,8 +158,8 @@ async def _fire_if_matching(
         trigger_name=trigger_name,
         payload=payload,
     )
-    if skip is not None:
-        await record_activity(todo.id, todo.user_id, TodoActivityEvent.RUN_SKIPPED, skip.summary)
+    if isinstance(verdict, GateSkip):
+        await record_activity(todo.id, todo.user_id, TodoActivityEvent.RUN_SKIPPED, verdict.summary)
         return False
     if subscription.action is SubscriptionAction.EXECUTE:
         # A run costs an agent turn, so the todo runs once per window and an event
