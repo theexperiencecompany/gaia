@@ -92,15 +92,14 @@ def invoke_tool_sync(
 async def _write(
     pending: tuple[str, RecordedCall] | None, output: object, *, failed: bool = False
 ) -> None:
-    """Append a finished call to its run's record; a failed write is logged, never raised."""
+    """Record a finished call in its run; building or writing the record never raises."""
     if pending is None:
         return
-    call = _finished(pending[1], output, failed=failed)
     try:
-        await append_call(pending[0], call)
+        await append_call(pending[0], _finished(pending[1], output, failed=failed))
     except Exception as exc:
         # The tool already ran: raising would report it failed and invite a repeat.
-        _log_unrecorded(call, exc)
+        _log_unrecorded(pending[1].tool_name, exc)
 
 
 def _write_sync(
@@ -109,18 +108,17 @@ def _write_sync(
     """Sync twin of _write."""
     if pending is None:
         return
-    call = _finished(pending[1], output, failed=failed)
     try:
-        append_call_sync(pending[0], call)
+        append_call_sync(pending[0], _finished(pending[1], output, failed=failed))
     except Exception as exc:
         # The tool already ran: raising would report it failed and invite a repeat.
-        _log_unrecorded(call, exc)
+        _log_unrecorded(pending[1].tool_name, exc)
 
 
-def _log_unrecorded(call: RecordedCall, exc: Exception) -> None:
+def _log_unrecorded(tool_name: str, exc: Exception) -> None:
     log.error(
         f"{LogTag.TOOL} run record: a finished call was not recorded",
-        tool_name=call.tool_name,
+        tool_name=tool_name,
         error_type=type(exc).__name__,
         exc_info=True,
     )
