@@ -188,8 +188,15 @@ def human_messages_by_source(db: Database[Document], window: Window) -> dict[str
     pipeline: list[Document] = [
         {"$match": {"messages.type": "user", "is_system_generated": {"$ne": True}}},
         {"$unwind": "$messages"},
-        # A first-contact message was stored at account linking, with no chat turn behind it.
-        {"$match": {"messages.type": "user", "messages.first_contact": {"$ne": True}}},
+        # A first-contact message was stored at account linking, and a todo-run wake by its
+        # schedule or trigger: neither has a chat turn the user sent behind it.
+        {
+            "$match": {
+                "messages.type": "user",
+                "messages.first_contact": {"$ne": True},
+                "messages.todo_run_wake": None,
+            }
+        },
         {
             "$project": {
                 "source": {"$ifNull": ["$source", WEB_AND_DESKTOP]},

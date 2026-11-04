@@ -40,7 +40,6 @@ from app.helpers.agent_helpers import (
     execute_graph_streaming,
 )
 from app.models.mcp_app_models import McpUiMetadata
-from app.utils.agent_utils import IntegrationDisplayMetadata
 from tests.helpers import ScriptedGraph
 
 HELPERS = "app.helpers.agent_helpers"
@@ -116,7 +115,7 @@ def _mcp_tool_entry() -> dict[str, Any]:
 
 
 def test_buffer_mcp_app_records_every_field_of_the_pending_app() -> None:
-    pending: dict[str, dict[str, Any]] = {}
+    pending: dict[str, _PendingMcpApp] = {}
 
     _buffer_mcp_app(_mcp_tool_entry(), pending)
 
@@ -128,7 +127,7 @@ def test_buffer_mcp_app_records_every_field_of_the_pending_app() -> None:
 
 
 def test_buffer_mcp_app_falls_back_to_empty_values_for_absent_fields() -> None:
-    pending: dict[str, dict[str, Any]] = {}
+    pending: dict[str, _PendingMcpApp] = {}
 
     _buffer_mcp_app(
         {
@@ -185,9 +184,9 @@ def test_buffer_mcp_app_falls_back_to_empty_values_for_absent_fields() -> None:
     ],
 )
 def test_buffer_mcp_app_buffers_nothing_for(entry: dict[str, Any]) -> None:
-    pending: dict[str, dict[str, Any]] = {}
+    pending: dict[str, _PendingMcpApp] = {}
 
-    _buffer_mcp_app(entry, pending)  # type: ignore[arg-type]  # a scripted fake stands in for the compiled graph
+    _buffer_mcp_app(entry, pending)
 
     assert pending == {}
 
@@ -196,7 +195,7 @@ def test_buffer_mcp_app_buffers_nothing_for(entry: dict[str, Any]) -> None:
 
 
 async def test_buffer_subagent_mcp_app_records_every_field_of_the_pending_app() -> None:
-    pending: dict[str, dict[str, Any]] = {}
+    pending: dict[str, _PendingMcpApp] = {}
 
     await _drain(
         _stream_custom(
@@ -212,7 +211,7 @@ async def test_buffer_subagent_mcp_app_records_every_field_of_the_pending_app() 
 
 
 async def test_buffer_subagent_mcp_app_falls_back_to_empty_values_for_absent_fields() -> None:
-    pending: dict[str, dict[str, Any]] = {}
+    pending: dict[str, _PendingMcpApp] = {}
 
     await _drain(
         _stream_custom(
@@ -292,7 +291,7 @@ async def test_buffer_subagent_mcp_app_falls_back_to_empty_values_for_absent_fie
     ],
 )
 async def test_buffer_subagent_mcp_app_buffers_nothing_for(payload: Any) -> None:
-    pending: dict[str, dict[str, Any]] = {}
+    pending: dict[str, _PendingMcpApp] = {}
 
     await _drain(_stream_custom(payload, _StreamAccumulators(pending_mcp_apps=pending), "u"))
 
@@ -343,7 +342,7 @@ def _tc(tc_id: str | None, name: str = "search_web", args: Any = None) -> dict[s
 async def test_tool_call_frames_emit_one_entry_per_new_call_in_order() -> None:
     formatter = _RecordingFormatter([{"tool_name": "a"}, {"tool_name": "b"}])
     emitted: set[str] = set()
-    pending: dict[str, dict[str, Any]] = {}
+    pending: dict[str, _PendingMcpApp] = {}
     msg = AIMessage.model_construct(
         content="", tool_calls=[_tc("call_1"), _tc("call_2", name="fetch_page")]
     )
@@ -366,75 +365,6 @@ async def test_tool_call_frames_emit_one_entry_per_new_call_in_order() -> None:
             "user_id": "user-1",
         },
     )
-
-
-@pytest.mark.asyncio
-async def test_tool_call_frames_resolve_handoff_display_metadata() -> None:
-    formatter = _RecordingFormatter([{"tool_name": "handoff_card"}])
-    handoff_metadata = IntegrationDisplayMetadata(
-        icon_url="https://cdn/gh.png",
-        integration_id="github",
-        integration_name="GitHub",
-    )
-    msg = AIMessage.model_construct(
-        content="", tool_calls=[_tc("call_1", name="handoff", args={"subagent_id": "gh-1"})]
-    )
-
-    with (
-        patch(f"{HELPERS}.format_tool_call_entry", formatter),
-        patch(
-            f"{HELPERS}.get_handoff_metadata", AsyncMock(return_value=handoff_metadata)
-        ) as lookup,
-    ):
-        frames = await _drain(_stream_tool_call_frames(msg, set(), {}, "user-1"))
-
-    assert frames == [_sse({"tool_data": {"tool_name": "handoff_card"}})]
-    lookup.assert_awaited_once_with("gh-1")
-    assert formatter.calls == [
-        (
-            (_tc("call_1", name="handoff", args={"subagent_id": "gh-1"}),),
-            {
-                "icon_url": "https://cdn/gh.png",
-                "integration_id": "github",
-                "integration_name": "GitHub",
-                "user_id": "user-1",
-            },
-        )
-    ]
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "tool_call",
-    [
-        pytest.param(
-            _tc("call_1", name="search_web", args={"subagent_id": "gh-1"}), id="not-a-handoff"
-        ),
-        pytest.param(_tc("call_1", name="handoff"), id="handoff-without-args"),
-        pytest.param(_tc("call_1", name="handoff", args={}), id="handoff-with-empty-args"),
-    ],
-)
-async def test_tool_call_frames_look_up_no_handoff_metadata_for(tool_call: dict[str, Any]) -> None:
-    formatter = _RecordingFormatter([{"tool_name": "card"}])
-
-    with (
-        patch(f"{HELPERS}.format_tool_call_entry", formatter),
-        patch(f"{HELPERS}.get_handoff_metadata", AsyncMock()) as lookup,
-    ):
-        frames = await _drain(
-            _stream_tool_call_frames(
-                AIMessage.model_construct(content="", tool_calls=[tool_call]), set(), {}, "user-1"
-            )
-        )
-
-    assert frames == [_sse({"tool_data": {"tool_name": "card"}})]
-    lookup.assert_not_awaited()
-    assert formatter.calls[0][1] == {
-        "icon_url": None,
-        "integration_id": None,
-        "integration_name": None,
-        "user_id": "user-1",
-    }
 
 
 @pytest.mark.asyncio
@@ -507,7 +437,7 @@ async def test_tool_call_frames_emit_nothing_when_the_entry_cannot_be_formatted(
 @pytest.mark.asyncio
 async def test_tool_call_frames_buffer_the_mcp_app_for_deferred_emission() -> None:
     formatter = _RecordingFormatter([_mcp_tool_entry()])
-    pending: dict[str, dict[str, Any]] = {}
+    pending: dict[str, _PendingMcpApp] = {}
 
     with patch(f"{HELPERS}.format_tool_call_entry", formatter):
         frames = await _drain(

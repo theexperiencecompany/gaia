@@ -19,6 +19,7 @@ from collections.abc import Awaitable, Callable
 
 from app.constants.account import ACCOUNT_DIR, ACCOUNT_LINKED_ACCOUNTS_DIRNAME
 from app.constants.log_tags import LogTag
+from app.constants.platform_links import Platform
 from app.db.repositories.user_instructions import user_instructions_repository
 from app.db.repositories.users import user_repository
 from app.models.account_models import (
@@ -36,7 +37,7 @@ from app.models.payment_models import PlanDuration, PlanType
 from app.models.user_instructions_models import GLOBAL_INSTRUCTIONS_SCOPE
 from app.services._vfs_scheduler import make_scheduler
 from app.services.payments.payment_service import payment_service
-from app.services.platform_link_service import Platform, PlatformLinkService
+from app.services.platform_link_service import PlatformLinkService
 from app.services.storage.account_vfs import AccountFileProjection, materialize_account_files
 from app.services.storage.juicefs import _is_mounted, user_workspace_path
 from app.services.usage_summary import build_usage_summary
