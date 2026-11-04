@@ -291,6 +291,58 @@ def test_a_rejected_post_is_not_retried(api: FakeGitHub, tmp_path: Path) -> None
     assert len(_posted(api)) == 1
 
 
+COMMIT_STATUSES = rf"/repos/{REPO}/commits/{SHA}/statuses$"
+
+
+def _recorded(context: str) -> dict[str, str]:
+    return {
+        "context": context, "state": "success",
+        "description": "passed", "target_url": JOB_URL,
+    }  # fmt: skip
+
+
+def test_a_status_github_answered_500_to_but_recorded_counts_as_landed(
+    api: FakeGitHub, tmp_path: Path
+) -> None:
+    """Regression: run 41888138270, every 500'd POST still created the status."""
+    api.on("POST", STATUSES, Reply(500, {}))
+    api.on(
+        "GET", COMMIT_STATUSES, Reply(body=[]),
+        Reply(body=[_recorded("ci / security / gitleaks")]),
+    )  # fmt: skip
+
+    assert _post(tmp_path, "repo-policy", {}, "--step", "gitleaks=success") == 0
+    reads = [r for r in api.requests if r.method == "GET"]
+    assert len(reads) == 2
+
+
+def test_a_status_that_never_shows_on_read_back_fails_the_step(
+    api: FakeGitHub, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    api.on("POST", STATUSES, Reply(500, {}))
+    other = {**_recorded("ci / security / gitleaks"), "state": "failure"}
+    api.on("GET", COMMIT_STATUSES, Reply(body=[other]))
+
+    assert _post(tmp_path, "repo-policy", {}, "--step", "gitleaks=success") == 1
+    assert len([r for r in api.requests if r.method == "GET"]) == verdict.STATUS_READ_BACKS
+    assert "1 status(es) never landed: ci / security / gitleaks" in capsys.readouterr().out
+
+
+def test_a_rejected_post_is_not_read_back(api: FakeGitHub, tmp_path: Path) -> None:
+    api.on("POST", STATUSES, Reply(422, {"message": "Validation Failed"}))
+
+    assert _post(tmp_path, "repo-policy", {}, "--step", "gitleaks=success") == 1
+    assert [r for r in api.requests if r.method == "GET"] == []
+
+
+def test_a_secondary_rate_limit_is_retried(api: FakeGitHub, tmp_path: Path) -> None:
+    limited = Reply(403, {"message": "You have exceeded a secondary rate limit."})
+    api.on("POST", STATUSES, limited, Reply(201, {}))
+
+    assert _post(tmp_path, "repo-policy", {}, "--step", "gitleaks=success") == 0
+    assert len(_posted(api)) == 2
+
+
 def test_no_post_posts_nothing_but_still_decides_the_job(api: FakeGitHub, tmp_path: Path) -> None:
     assert _post(tmp_path, "lint-node", {"ci:deps": "failure"}, "--no-post") == 1
 

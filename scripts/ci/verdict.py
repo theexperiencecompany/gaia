@@ -85,6 +85,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import time
 from typing import NamedTuple, TypedDict
 
 from lib import nx_affected, output_findings
@@ -1423,6 +1424,27 @@ def _status_fields(
     }
 
 
+STATUS_READ_BACKS = 3
+
+
+def _status_landed(gh: GitHub, repo: str, sha: str, fields: dict[str, str]) -> bool:
+    """Whether GitHub recorded a status it answered 5xx to; in an Actions incident it writes, then 500s."""
+    for attempt in range(1, STATUS_READ_BACKS + 1):
+        time.sleep(gh.backoff * attempt)
+        try:
+            statuses = gh.get_list(f"repos/{repo}/commits/{sha}/statuses?per_page=100")
+        except GitHubError as err:
+            print(
+                f"  {fields['context']:<28} read-back {attempt}/{STATUS_READ_BACKS} failed: {err}"
+            )
+            continue
+        if any(
+            all(status.get(key) == value for key, value in fields.items()) for status in statuses
+        ):
+            return True
+    return False
+
+
 def _post(
     gh: GitHub,
     opts: argparse.Namespace,
@@ -1442,9 +1464,12 @@ def _post(
         try:
             gh.post(endpoint, fields)
         except GitHubError as err:
-            print(f"  {fields['context']:<28} not posted: {err}")
-            lost.append(fields["context"])
-            continue
+            # No status code or a 5xx leaves the write's fate unknown; anything else was refused.
+            unknown = err.status is None or err.status >= 500
+            if not (unknown and _status_landed(gh, opts.repo, opts.sha, fields)):
+                print(f"  {fields['context']:<28} not posted: {err}")
+                lost.append(fields["context"])
+                continue
         print(f"  {fields['context']:<28} {fields['state']:<8} {fields['description']}")
     if lost:
         print(f"::error::post-statuses: {len(lost)} status(es) never landed: {', '.join(lost)}")
