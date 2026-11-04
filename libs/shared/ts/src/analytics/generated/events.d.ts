@@ -8,6 +8,7 @@ export type ServerEventName =
   | "ai:llm_call_completed"
   | "approval:decided"
   | "bot:audio_transcribed"
+  | "bot:chat_opened"
   | "bot:session_reset"
   | "browser:engine_switched"
   | "browser:handoff_resolved"
@@ -177,8 +178,6 @@ export type WebEventName =
   | "cta:get_started_clicked"
   | "desktop_popup:dismissed"
   | "desktop_popup:opened"
-  | "email:compose_opened"
-  | "email:opened"
   | "error:occurred"
   | "error:route_error_shown"
   | "feature:discovered"
@@ -352,6 +351,12 @@ export interface EventProperties {
     "transcript_length": number;
   };
   "bot:auth_initiated": Record<string, never>;
+  "bot:chat_opened": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "platform": string;
+  };
   "bot:command_executed": {
     "command": string;
     "duration_ms": number;
@@ -649,7 +654,6 @@ export interface EventProperties {
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "message_count": number;
   };
-  "email:compose_opened": Record<string, never>;
   "email:draft_composed": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
@@ -714,9 +718,6 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "message_count": number;
-  };
-  "email:opened": {
-    "mail_id": string;
   };
   "email:replied": {
     "actor": "user" | "agent";
@@ -1657,11 +1658,11 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "origin": "user_created" | "chat_agent" | "todo_converted" | "todo_requested";
     "workflow_id"?: string;
     "trigger_type"?: string;
     "steps_count"?: number;
     "generated_immediately"?: boolean;
-    "from_todo"?: boolean;
     "is_todo_workflow"?: boolean;
   };
   "workflow:deactivated": {

@@ -829,6 +829,31 @@
       }
     },
     {
+      "event": "bot:chat_opened",
+      "class": "BotChatOpened",
+      "owner": "server",
+      "domain": "bot",
+      "description": "A user opened a linked bot's DM chat from the web settings page.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A user opened a linked bot's DM chat from the web settings page.",
+        "properties": {
+          "platform": {
+            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
+            "title": "Platform",
+            "type": "string"
+          }
+        },
+        "required": ["platform"],
+        "title": "BotChatOpened",
+        "type": "object"
+      }
+    },
+    {
       "event": "bot:command_executed",
       "class": "BotCommandExecuted",
       "owner": "bot",
@@ -2697,36 +2722,18 @@
       }
     },
     {
-      "event": "email:compose_opened",
-      "class": "EmailComposeOpened",
-      "owner": "web",
-      "domain": "email",
-      "description": "A user opened the compose modal; the server only sees the eventual send.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": null,
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user opened the compose modal; the server only sees the eventual send.",
-        "properties": {},
-        "title": "EmailComposeOpened",
-        "type": "object"
-      }
-    },
-    {
       "event": "email:draft_composed",
       "class": "EmailDraftComposed",
       "owner": "server",
       "domain": "email",
-      "description": "The assistant finished composing a draft; not the web's email:compose_opened modal open.",
+      "description": "The assistant finished composing a draft.",
       "previous_names": [],
       "budget_per_user_day": 50,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "The assistant finished composing a draft; not the web's email:compose_opened modal open.",
+        "description": "The assistant finished composing a draft.",
         "properties": {},
         "title": "EmailDraftComposed",
         "type": "object"
@@ -2957,31 +2964,6 @@
         },
         "required": ["message_count"],
         "title": "EmailMovedToInbox",
-        "type": "object"
-      }
-    },
-    {
-      "event": "email:opened",
-      "class": "EmailOpened",
-      "owner": "web",
-      "domain": "email",
-      "description": "A user opened an email in the mail view.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": null,
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user opened an email in the mail view.",
-        "properties": {
-          "mail_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+\\-]{1,256}$",
-            "title": "Mail Id",
-            "type": "string"
-          }
-        },
-        "required": ["mail_id"],
-        "title": "EmailOpened",
         "type": "object"
       }
     },
@@ -7916,14 +7898,14 @@
       "class": "UserActive",
       "owner": "server",
       "domain": "user",
-      "description": "A user did something themselves today, on any surface: the one definition of an active user.\n\n    Emitted by the server capture function on a user's first actor=user event of\n    the IST day, never by a call site.",
+      "description": "A user used GAIA today, on any surface: the one definition of an active user.\n\n    Emitted by the server capture function on a user's first event of the IST day\n    that shared.py.analytics.activity counts as use, never by a call site.",
       "previous_names": [],
       "budget_per_user_day": 1,
       "at_most_once_ttl_seconds": 172800,
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "A user did something themselves today, on any surface: the one definition of an active user.\n\nEmitted by the server capture function on a user's first actor=user event of\nthe IST day, never by a call site.",
+        "description": "A user used GAIA today, on any surface: the one definition of an active user.\n\nEmitted by the server capture function on a user's first event of the IST day\nthat shared.py.analytics.activity counts as use, never by a call site.",
         "properties": {},
         "title": "UserActive",
         "type": "object"
@@ -8438,15 +8420,25 @@
       "class": "WorkflowCreated",
       "owner": "server",
       "domain": "workflow",
-      "description": "A workflow was created, by the user or generated for a todo.",
+      "description": "A workflow was created, by the user or generated for a todo; origin says which.",
       "previous_names": ["workflows:created"],
       "budget_per_user_day": 200,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "A workflow was created, by the user or generated for a todo.",
+        "description": "A workflow was created, by the user or generated for a todo; origin says which.",
         "properties": {
+          "origin": {
+            "enum": [
+              "user_created",
+              "chat_agent",
+              "todo_converted",
+              "todo_requested"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
           "workflow_id": {
             "anyOf": [
               {
@@ -8497,18 +8489,6 @@
             "default": null,
             "title": "Generated Immediately"
           },
-          "from_todo": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "From Todo"
-          },
           "is_todo_workflow": {
             "anyOf": [
               {
@@ -8522,6 +8502,7 @@
             "title": "Is Todo Workflow"
           }
         },
+        "required": ["origin"],
         "title": "WorkflowCreated",
         "type": "object"
       }

@@ -1070,3 +1070,58 @@ class TestImessagePremiumGate:
             resp = await client.post(f"{BASE}/telegram/connect", json={})
 
         assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# POST /platform-links/{platform}/conversation
+# ---------------------------------------------------------------------------
+
+
+class TestOpenPlatformChat:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("platform", ["telegram", "whatsapp", "imessage"])
+    async def test_returns_the_linked_platform_conversation(
+        self, client: AsyncClient, platform: str
+    ) -> None:
+        with (
+            patch(
+                "app.api.v1.endpoints.platform_links.open_platform_chat",
+                new_callable=AsyncMock,
+                return_value=f"conv-{platform}",
+            ) as mock_open,
+            patch("app.api.v1.endpoints.platform_links.log") as mock_log,
+        ):
+            resp = await client.post(f"{BASE}/{platform}/conversation")
+
+        assert resp.status_code == 200
+        assert resp.json() == {"conversation_id": f"conv-{platform}"}
+        mock_open.assert_awaited_once_with(FAKE_USER_ID, platform, FAKE_USER)
+        mock_log.set.assert_any_call(
+            user={"id": FAKE_USER_ID}, operation="open_platform_chat", platform=platform
+        )
+        mock_log.set_ns.assert_any_call(
+            "platform", conversation_id=f"conv-{platform}", outcome="success"
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("platform", ["slack", "discord"])
+    async def test_rejects_a_platform_without_a_chat(
+        self, client: AsyncClient, platform: str
+    ) -> None:
+        with patch(
+            "app.api.v1.endpoints.platform_links.open_platform_chat",
+            new_callable=AsyncMock,
+        ) as mock_open:
+            resp = await client.post(f"{BASE}/{platform}/conversation")
+
+        assert resp.status_code == 404
+        assert resp.json() == {
+            "message": f"{platform} has no chat to open",
+            "fix": "Open chats for Telegram, WhatsApp or iMessage only",
+        }
+        mock_open.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_unauthenticated(self, unauthed_client: AsyncClient) -> None:
+        resp = await unauthed_client.post(f"{BASE}/telegram/conversation")
+        assert resp.status_code == 401

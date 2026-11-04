@@ -31,9 +31,9 @@ from app.constants.cache import (
     PLATFORM_LINK_CODE_PREFIX,
     PLATFORM_LINK_CODE_TTL,
 )
+from app.constants.platform_links import Platform
 from app.db.redis import delete_cache, get_cache, redis_cache, set_cache
 from app.models.user_models import OnboardingPreferences
-from app.services.platform_link_service import Platform
 from app.utils.errors import create_error
 from shared.py.wide_events import log
 

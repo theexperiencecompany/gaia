@@ -10,6 +10,8 @@ export interface ToolEntry {
   name: string;
   label: string;
   destructive: boolean;
+  /** The server's HIL key for this tool's approval override; sent back unchanged. */
+  approvalKey: string;
 }
 
 interface IntegrationToolApprovalsProps {
@@ -87,7 +89,7 @@ export function IntegrationToolApprovals({
 
       <View>
         {ordered.map((tool) => {
-          const ask = toolAsks(prefs, tool.name, tool.destructive);
+          const ask = toolAsks(prefs, tool.approvalKey, tool.destructive);
           return (
             <View
               key={tool.name}
@@ -124,7 +126,7 @@ export function IntegrationToolApprovals({
               <Switch
                 value={ask}
                 onValueChange={(v) =>
-                  setToolApproval(tool.name, v, tool.destructive)
+                  setToolApproval(tool.approvalKey, v, tool.destructive)
                 }
                 disabled={disabled}
                 trackColor={{ false: "#3a3a3c", true: "rgba(22,193,255,0.6)" }}
