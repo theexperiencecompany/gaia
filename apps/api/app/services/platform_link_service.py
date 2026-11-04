@@ -34,8 +34,9 @@ from app.models.platform_models import (
     PlatformLinkEntry,
     PlatformLinkResult,
 )
-from app.models.user_models import PlatformLinkRecord, UserDocument
+from app.models.user_models import AuthenticatedUser, PlatformLinkRecord, UserDocument
 from app.services.analytics_service import capture
+from app.services.bot_service import BotService
 from app.services.oauth.oauth_state_service import create_oauth_state
 from app.services.payments.payment_service import payment_service
 from app.services.photon.photon_client import (
@@ -45,6 +46,7 @@ from app.services.photon.photon_client import (
 )
 from app.utils.errors import AppError, create_error
 from shared.py.analytics import UserId
+from shared.py.analytics.catalog.bots import BotChatOpened
 from shared.py.analytics.catalog.integrations import IntegrationDisconnected
 from shared.py.wide_events import log
 
@@ -380,6 +382,19 @@ async def start_platform_connect(
     )
 
 
+async def _require_linked_entry(user_id: str, platform: str) -> PlatformLinkEntry:
+    """Return the user's link on platform, or raise a 404 naming what is actually linked."""
+    linked = await PlatformLinkService.get_linked_platforms(user_id)
+    entry = linked.get(platform)
+    if entry is None:
+        raise create_error(
+            message=f"No {platform} account is linked",
+            fix="Check account/linked-accounts for what is actually connected",
+            status_code=404,
+        )
+    return entry
+
+
 async def disconnect_platform_account(user_id: str, platform: str) -> DisconnectPlatformResponse:
     """Unlink platform from the user and clear the bot auth cache entry.
 
@@ -387,17 +402,10 @@ async def disconnect_platform_account(user_id: str, platform: str) -> Disconnect
     tool so every unlink path gets the same cleanup. Raises AppError (404) when
     the unlink fails.
     """
-    # Read platform_user_id before unlinking so we can clear the bot auth cache
-    existing = await PlatformLinkService.get_linked_platforms(user_id)
-    entry: PlatformLinkEntry | None = existing.get(platform)
-    if entry is None:
-        # A no-op "disconnected" would lie to the caller (the agent would tell
-        # the user something that was never linked is now gone).
-        raise create_error(
-            message=f"No {platform} account is linked",
-            fix="Check account/linked-accounts for what is actually connected",
-            status_code=404,
-        )
+    # Read platform_user_id before unlinking so we can clear the bot auth cache.
+    # A missing link is a 404, not a no-op "disconnected": the agent would tell
+    # the user something that was never linked is now gone.
+    entry: PlatformLinkEntry = await _require_linked_entry(user_id, platform)
     platform_user_id = entry["platformUserId"]
 
     try:
@@ -426,6 +434,16 @@ async def disconnect_platform_account(user_id: str, platform: str) -> Disconnect
         await redis_cache.client.delete(cache_key)
 
     return result
+
+
+async def open_platform_chat(user_id: str, platform: str, user: AuthenticatedUser) -> str:
+    """Return the linked platform's DM conversation, creating it before its first message."""
+    entry: PlatformLinkEntry = await _require_linked_entry(user_id, platform)
+    conversation_id = await BotService.get_or_create_session(
+        platform, entry["platformUserId"], None, user, is_dm=True
+    )
+    capture(UserId(user_id), BotChatOpened(platform=platform))
+    return conversation_id
 
 
 def linked_platforms_of(user: UserDocument) -> dict[str, PlatformLinkEntry]:
