@@ -9,6 +9,7 @@ from langgraph.types import StreamWriter
 
 from app.constants.log_tags import LogTag
 from app.models.agent_models import read_agent_configurable
+from app.models.trigger_gate_models import AuthoredGateEdit
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     TriggerConfig,
@@ -303,6 +304,10 @@ def build_edit_workflow_task(workflow: Workflow, user_request: str) -> str:
         trigger_desc += f" (cron: {tc.cron_expression}, timezone: {tc.timezone})"
     if tc.trigger_name:
         trigger_desc += f" (trigger: {tc.trigger_name})"
+    gate_line = ""
+    if tc.type is TriggerType.INTEGRATION:
+        condition = workflow.gate.display_condition if workflow.gate else "null (every event runs)"
+        gate_line = f"- Runs only when: {condition}\n"
 
     return f"""Edit an existing workflow.
 
@@ -310,7 +315,7 @@ Current workflow:
 - Title: {workflow.title}
 - Description: {workflow.description}
 - Trigger: {trigger_desc}
-- Prompt:
+{gate_line}- Prompt:
 {workflow.effective_prompt}
 
 The user wants to change:
@@ -326,16 +331,34 @@ Your job:
 Remember to include a JSON block in your response."""
 
 
+def _edited_gate(draft: FinalizedOutput, workflow: Workflow) -> AuthoredGateEdit | None:
+    """Return the condition an edit draft names, or None to keep the gate as it is.
+
+    A draft with no condition keeps the gate, which is turned off or removed in the
+    editor. A trigger the editor has yet to set cannot take a gate, so none is sent.
+    """
+    current = workflow.gate
+    if (
+        draft.runs_only_when is None
+        or workflow.trigger_config.type is not TriggerType.INTEGRATION
+        or (current is not None and draft.runs_only_when == current.display_condition)
+    ):
+        return None
+    return AuthoredGateEdit(
+        condition=draft.runs_only_when, enabled=current.enabled if current else True
+    )
+
+
 async def _edited_fields(
     draft: FinalizedOutput, workflow: Workflow
-) -> dict[str, str | list[str] | TriggerConfig]:
+) -> dict[str, str | list[str] | TriggerConfig | AuthoredGateEdit]:
     """Return the fields an edit draft actually changes.
 
     The assistant re-emits the FULL workflow on every edit, so only persist
     fields that actually changed. This keeps a rename/schedule-only edit from
     rewriting the prompt and triggering an unnecessary step regeneration.
     """
-    update_fields: dict[str, str | list[str] | TriggerConfig] = {}
+    update_fields: dict[str, str | list[str] | TriggerConfig | AuthoredGateEdit] = {}
     if draft.title and draft.title != workflow.title:
         update_fields["title"] = draft.title
     if draft.description and draft.description != (workflow.description or ""):
@@ -350,6 +373,9 @@ async def _edited_fields(
         filtered_integration_ids = await filter_existing_integration_ids(draft.integration_ids)
         if filtered_integration_ids != (workflow.integration_ids or []):
             update_fields["integration_ids"] = filtered_integration_ids
+    gate = _edited_gate(draft, workflow)
+    if gate is not None:
+        update_fields["gate"] = gate
     return update_fields
 
 

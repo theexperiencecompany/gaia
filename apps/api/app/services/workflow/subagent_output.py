@@ -6,16 +6,17 @@ The workflow subagent can respond in two modes:
 2. Finalized workflow - ready to create the workflow draft
 
 The expected JSON block format lives in the subagent prompt
-(app/agents/prompts/workflow_prompts.py); this module validates it.
+(app/agents/prompts/subagent_prompts.py); this module validates it.
 """
 
 import json
 import re
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.constants.log_tags import LogTag
+from app.models.trigger_gate_models import GateCondition
 from app.models.workflow_models import TriggerType
 from shared.py.wide_events import log
 
@@ -61,6 +62,10 @@ class FinalizedOutput(BaseModel):
     trigger_slug: str | None = Field(
         default=None, description="Trigger slug for integration triggers"
     )
+    runs_only_when: GateCondition | None = Field(
+        default=None,
+        description="Integration triggers only: which events are worth a run; None when every event is",
+    )
     integration_ids: list[str] = Field(
         default_factory=list,
         description=(
@@ -73,6 +78,15 @@ class FinalizedOutput(BaseModel):
         default=False,
         description="True only for simple, unambiguous workflows where no user feedback is needed",
     )
+
+    @model_validator(mode="after")
+    def _runs_only_when_needs_an_event(self) -> Self:
+        if self.runs_only_when is not None and self.trigger_type != "integration":
+            raise ValueError(
+                "runs_only_when is only for integration triggers; omit it for "
+                f"a {self.trigger_type} workflow"
+            )
+        return self
 
     @property
     def backend_trigger_type(self) -> TriggerType:
@@ -90,6 +104,7 @@ class FinalizedOutput(BaseModel):
                 "trigger_slug": self.trigger_slug,
                 "integration_ids": self.integration_ids,
                 "cron_expression": self.cron_expression,
+                "runs_only_when": self.runs_only_when,
                 "direct_create": self.direct_create,
             }
         }
