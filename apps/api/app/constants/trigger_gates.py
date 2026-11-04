@@ -4,7 +4,7 @@ The desk preset is the trigger-gate eval's V4 request, byte for byte (420
 founder-labelled emails, 0 needs_you false skips on the holdout). Skip only at
 P(not_needed) >= 0.95; every other answer, and every failure, runs. Inside the
 user's quiet hours the same call also asks the eval's urgent question: wake the
-user only at P(urgent) >= 0.95, and hold the rest, every failure included.
+user only at P(urgent) >= 0.80, and hold the rest, every failure included.
 """
 
 from collections.abc import Mapping
@@ -120,8 +120,8 @@ TRIGGER_GATE_QUESTION_KEY: Final = "gate"
 TRIGGER_GATE_SKIPPED_SUMMARY: Final = "Skipped: runs only when {condition}"
 
 TRIGGER_GATE_URGENT_QUESTION_KEY: Final = "urgent"
-# P(urgent) is 1 - P(can_wait); a wrong wake costs trust, a held email only waits until 08:00.
-TRIGGER_GATE_URGENT_PROBABILITY: Final = 0.95
+# P(urgent) is 1 - P(can_wait). On the eval: 2 of 3 urgent woke, 0 false, next non-urgent 0.63.
+TRIGGER_GATE_URGENT_PROBABILITY: Final = 0.80
 # The eval's Q3 urgent question, byte for byte, asked next to the unchanged gate question.
 TRIGGER_GATE_URGENT_INSTRUCTIONS: Final = (
     "It is the middle of the night for the user, inside their quiet hours. Is this email worth "

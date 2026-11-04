@@ -4,7 +4,7 @@ Both fan-outs of TriggerHandler.process_event call decide_gate before anything i
 claimed, buffered or queued, so a skipped event leaves nothing behind that marks
 it handled. By day only P(skip label) >= 0.95 skips, and every other answer or
 failure runs. Inside the user's quiet hours the same call also asks whether the
-event is worth waking them for: P(urgent) >= 0.95 runs now, then a confident
+event is worth waking them for: P(urgent) >= 0.80 runs now, then a confident
 skip skips, and everything else, every failure included, waits for 08:00.
 """
 

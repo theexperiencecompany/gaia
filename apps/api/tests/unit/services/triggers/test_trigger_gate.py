@@ -1,7 +1,7 @@
 """Trigger gates: one JEV call at fire time; by day only P(skip) >= 0.95 skips, every failure runs.
 
 Inside the user's quiet hours the same call asks whether the event is worth
-waking them for: P(urgent) >= 0.95 runs now, a confident skip skips, and the
+waking them for: P(urgent) >= 0.80 runs now, a confident skip skips, and the
 rest, every failure included, is held for 08:00. JEV is served at its HTTP
 boundary (respx on the Decisions URL), so the real client, its validation and
 the gate's handling of a 5xx, a timeout or a garbage body are what these tests
@@ -589,7 +589,7 @@ def night(seams: SimpleNamespace) -> Iterator[SimpleNamespace]:
 
 class TestTheUrgencyLine:
     async def test_the_line_itself_runs_now_and_says_why(self, night: SimpleNamespace) -> None:
-        night.jev.mock(return_value=httpx.Response(200, json=_night_answer(can_wait=0.05)))
+        night.jev.mock(return_value=httpx.Response(200, json=_night_answer(can_wait=0.2)))
 
         verdict = await _skip(DESK)
 
@@ -604,7 +604,7 @@ class TestTheUrgencyLine:
     async def test_just_under_the_line_is_held_for_the_morning(
         self, night: SimpleNamespace
     ) -> None:
-        night.jev.mock(return_value=httpx.Response(200, json=_night_answer(can_wait=0.051)))
+        night.jev.mock(return_value=httpx.Response(200, json=_night_answer(can_wait=0.201)))
 
         assert await _skip(DESK) == GateHold(until=MORNING)
         assert _decided(night).reason == GateReason.JEV_CAN_WAIT
