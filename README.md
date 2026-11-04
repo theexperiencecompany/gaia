@@ -1,5 +1,5 @@
-> [!TIP]
-> ⭐ **[Star GAIA on GitHub](https://github.com/theexperiencecompany/gaia/stargazers)** — if it saves you time, a star helps someone else find it.
+> [!NOTE]
+> GAIA is built by a small team, in the open. If it earns a place in your day, a ⭐ means a lot: [Star GAIA on GitHub](https://github.com/theexperiencecompany/gaia/stargazers).
 
 <div align="center">
 
