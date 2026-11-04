@@ -131,6 +131,27 @@ async def register_subscription(
             f"Invalid configuration for '{trigger_name}': {first_error['msg']}",
         ) from e
 
+    # Built before Composio is called: a row its own rules refuse (a gate on a
+    # watch that starts no run) must leave no trigger instance upstream.
+    try:
+        subscription = TriggerSubscription(
+            trigger_name=trigger_name,
+            account_id=account_id,
+            conditions=outcome.conditions,
+            match=match,
+            action=action,
+            cooldown_seconds=cooldown_seconds,
+            resolution=(
+                SubscriptionResolution.TRIGGER_ID
+                if handler.registers_instances
+                else SubscriptionResolution.ACCOUNT
+            ),
+            trigger_data=dict(trigger_data or {}),
+            gate=gate,
+        )
+    except ValidationError as e:
+        raise _fail("invalid_subscription", f"Invalid subscription: {e.errors()[0]['msg']}") from e
+
     try:
         trigger_ids = await TriggerService.register_triggers(
             user_id, todo_id, trigger_name, config, raise_on_failure=True
@@ -147,23 +168,7 @@ async def register_subscription(
             f"Registering '{trigger_name}' returned no trigger instance, so the "
             "subscription would never fire. Check the trigger configuration.",
         )
-
-    subscription = TriggerSubscription(
-        trigger_name=trigger_name,
-        account_id=account_id,
-        conditions=outcome.conditions,
-        match=match,
-        action=action,
-        cooldown_seconds=cooldown_seconds,
-        resolution=(
-            SubscriptionResolution.TRIGGER_ID
-            if handler.registers_instances
-            else SubscriptionResolution.ACCOUNT
-        ),
-        composio_trigger_ids=trigger_ids,
-        trigger_data=dict(trigger_data or {}),
-        gate=gate,
-    )
+    subscription.composio_trigger_ids = trigger_ids
 
     stored = await store_subscription(
         todo,
