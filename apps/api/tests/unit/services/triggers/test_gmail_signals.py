@@ -1,8 +1,8 @@
 """Gmail signals derived at dispatch: what the gate and every condition read off a new message.
 
 The absent cases matter as much as the set ones: a payload with no headers must
-not claim the mail is free of List-Unsubscribe, or a run_when/skip_when rule would
-act on a fact the event never carried.
+not claim the mail is free of List-Unsubscribe, or a todo condition would act on
+a fact the event never carried.
 """
 
 import json
