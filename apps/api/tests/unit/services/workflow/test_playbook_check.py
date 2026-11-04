@@ -33,11 +33,10 @@ from app.constants.log_tags import LogTag
 from app.db.repositories.workflows import workflow_repository
 from app.models.playbook_models import (
     DeclineKind,
-    HandoffStep,
+    ForEachStep,
     PlaybookDocument,
     PlaybookRunOutcome,
     PlaybookRunStatus,
-    PlaybookStep,
     ToolStep,
 )
 from app.models.workflow_execution_models import RecordedCall
@@ -463,16 +462,8 @@ WRITTEN = '{"success": true, "data": {"playbook_id": "pb_1", "steps": 1}}'
 REFUSED = "Error: ValidationError: 1 validation error for write_playbook"
 
 
-def _frozen(*tools: str, handoff: str | None = None) -> PlaybookDocument:
-    steps: list[PlaybookStep]
-    if handoff:
-        steps = [
-            HandoffStep(
-                id="h", handoff=handoff, steps=[ToolStep(id=t, tool=t, args={}) for t in tools]
-            )
-        ]
-    else:
-        steps = [ToolStep(id=t, tool=t, args={}) for t in tools]
+def _frozen(*tools: str) -> PlaybookDocument:
+    steps: list[ToolStep | ForEachStep] = [ToolStep(id=t, tool=t, args={}) for t in tools]
     return PlaybookDocument(
         playbook_id="pb_1",
         workflow_id=WORKFLOW_ID,
@@ -515,13 +506,6 @@ class TestFrozenOnEmpty:
 
         assert frozen_on_empty(_frozen("GMAIL_FETCH_MESSAGES"), trace) is None
 
-    def test_handoff_children_are_inspected(self) -> None:
-        reason = frozen_on_empty(
-            _frozen("GMAIL_FETCH_MESSAGES", handoff="gmail"), [_call("GMAIL_FETCH_MESSAGES", EMPTY)]
-        )
-
-        assert reason is not None
-
     def test_a_frozen_tool_the_run_never_called_is_left_alone(self) -> None:
         assert (
             frozen_on_empty(_frozen("GMAIL_FETCH_MESSAGES"), [_call("list_todos", EMPTY)]) is None
@@ -558,9 +542,7 @@ class TestDistrustFreshPlaybook:
         record.assert_not_awaited()
 
     async def test_a_playbook_frozen_on_an_empty_result_is_recorded_suspect(self) -> None:
-        playbook = _frozen("GMAIL_FETCH_MESSAGES", handoff="gmail").model_copy(
-            update={"revision": 3}
-        )
+        playbook = _frozen("GMAIL_FETCH_MESSAGES").model_copy(update={"revision": 3})
         with (
             patch(
                 f"{MODULE}.playbook_repository.get_for_workflow", AsyncMock(return_value=playbook)

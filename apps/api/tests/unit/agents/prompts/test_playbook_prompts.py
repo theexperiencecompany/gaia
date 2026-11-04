@@ -25,7 +25,6 @@ from app.services.workflow.playbook.parser import validate_playbook
 from app.services.workflow.playbook.record import PlaybookPick, build_playbook, number_record
 
 PARSER = "app.services.workflow.playbook.parser"
-USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 EXAMPLES = [
     (PLAYBOOK_EXAMPLE_RECORD, PLAYBOOK_EXAMPLE_WRITE),
     (PLAYBOOK_FOR_EACH_RECORD, PLAYBOOK_FOR_EACH_WRITE),
@@ -55,7 +54,7 @@ async def test_each_example_write_builds_over_its_record_and_validates(
     assert built.body is not None
 
     with patch(f"{PARSER}.get_tool_registry", new=AsyncMock(return_value=registry)):
-        validation = await validate_playbook(built.body, USER_ID, built.sources)
+        validation = await validate_playbook(built.body, built.sources)
     assert validation.issues == []
 
 

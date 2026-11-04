@@ -143,7 +143,6 @@ def _pending(
     call = RecordedCall(
         tool_name=tool.name,
         subagent_id=configurable.get("subagent_id"),
-        subagent=configurable.get("run_scope"),
         args=_call_args(tool_input) if call_args is None else dict(call_args),
         proxied=via is not None,
         account=via.account if via is not None else None,

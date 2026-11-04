@@ -5,7 +5,12 @@ import json
 import pytest
 
 from app.models.workflow_execution_models import RecordedCall
-from app.services.workflow.playbook.nothing_new import is_opening_read, item_ids, nothing_new
+from app.services.workflow.playbook.nothing_new import (
+    is_opening_read,
+    item_fingerprint,
+    item_ids,
+    nothing_new,
+)
 
 INBOX = {"data": {"messages": [{"id": "m1", "subject": "a"}, {"id": "m2", "subject": "b"}]}}
 INBOX_IDS = ["m1", "m2"]
@@ -20,7 +25,7 @@ def _replayed(
             "tool_name": tool,
             "result_digest": json.dumps(INBOX),
             "replayed": True,
-            "item_ids": ids,
+            "item_fingerprint": None if ids is None else item_fingerprint(frozenset(ids)),
             **fields,
         }
     )
@@ -80,6 +85,23 @@ def test_the_same_read_as_another_account_is_no_baseline() -> None:
     ) == ("GMAIL_FETCH_MESSAGES returned the same 2 items as the last run")
 
 
+def test_the_same_tool_read_with_other_args_is_no_baseline() -> None:
+    """Review of #1621: yesterday's window returning a recurring event's same id says nothing about today's."""
+    today = {"timeMin": "2026-11-04T00:00:00Z"}
+    yesterday = {"timeMin": "2026-11-03T00:00:00Z"}
+
+    assert (
+        nothing_new("GMAIL_FETCH_MESSAGES", today, INBOX, [_replayed(INBOX_IDS, args=yesterday)])
+        is None
+    )
+    assert nothing_new(
+        "GMAIL_FETCH_MESSAGES",
+        today,
+        INBOX,
+        [_replayed(INBOX_IDS, args=yesterday), _replayed(INBOX_IDS, args=today)],
+    ) == ("GMAIL_FETCH_MESSAGES returned the same 2 items as the last run")
+
+
 def test_the_last_runs_read_is_found_past_its_other_calls_and_through_execute() -> None:
     proxied = _replayed(
         INBOX_IDS, tool="execute", args={"tool_name": "GMAIL_FETCH_MESSAGES", "data": {}}
@@ -116,3 +138,14 @@ def test_ids_are_read_off_the_largest_list_past_the_envelope() -> None:
 def test_elements_without_ids_or_with_an_empty_one_have_no_identity() -> None:
     assert item_ids({"events": [{"title": "standup"}]}) is None
     assert item_ids({"items": [{"id": "m1"}, {"id": ""}]}) is None
+
+
+def test_a_fingerprint_is_order_free_counts_its_ids_and_stays_one_size() -> None:
+    """Review of #1621: a read of ten thousand ids is recorded at the same size as one of two."""
+    many = frozenset(f"m{index}" for index in range(10_000))
+
+    assert item_fingerprint(frozenset({"a", "b"})) == item_fingerprint(frozenset({"b", "a"}))
+    assert item_fingerprint(frozenset({"a", "b"})) != item_fingerprint(frozenset({"a", "c"}))
+    assert item_fingerprint(many).startswith("10000:")
+    assert len(item_fingerprint(many)) == len("10000:") + 64
+    RecordedCall(tool_name="t", item_fingerprint=item_fingerprint(many))

@@ -311,6 +311,7 @@ export type {
   IntegrationStatusRecord,
   IntegrationStatusValue,
   IntegrationTool,
+  IntegrationToolApproval,
   IntegrationToolsResponse,
   LLMModel,
   MarketplaceIntegration,

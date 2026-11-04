@@ -50,7 +50,6 @@ from app.models.playbook_models import (
     AskKind,
     AskSlot,
     ForEachStep,
-    HandoffStep,
     LocatedAsk,
     PlaybookAskFill,
     PlaybookDocument,
@@ -81,14 +80,14 @@ from app.services.workflow.playbook.evaluator import (
     resolve_args,
     resolve_value,
 )
-from app.services.workflow.playbook.nothing_new import is_opening_read, item_ids, nothing_new
-from app.services.workflow.playbook.scripted_model import ScriptedCall, ScriptedModel
-from app.services.workflow.playbook.tool_space import (
-    ToolSpace,
-    handoff_tool_space,
-    resolve_subagent_tools,
-    tool_space_denial,
+from app.services.workflow.playbook.nothing_new import (
+    is_opening_read,
+    item_fingerprint,
+    item_ids,
+    nothing_new,
 )
+from app.services.workflow.playbook.scripted_model import ScriptedCall, ScriptedModel
+from app.services.workflow.playbook.tool_space import ToolSpace, tool_space_denial
 from app.utils.timezone import Timezone
 from shared.py.wide_events import log
 
@@ -105,10 +104,6 @@ _NARRATION_RESULT_MAX_CHARS = 60_000
 #: only the tool name and 20 results, the verdict called a month of read mail
 #: "unread, last 24 hours". The args are what it has to judge against.
 _NARRATION_ARGS_MAX_CHARS = 400
-
-#: The tool name a handoff node records itself under, matching what the agent
-#: path emits for the same delegation.
-_HANDOFF_TOOL = "handoff"
 
 #: What a replayed step's graph is metered and logged as.
 _REPLAY_AGENT_NAME = "playbook_replay"
@@ -215,6 +210,8 @@ class _Run:
     suspect: str | None = None
     #: Set on a dry run: only its allowlisted reads reach a tool.
     dry_run: DryRun | None = None
+    #: The newest run that delivered its result: the only baseline for nothing new.
+    last_delivered: Sequence[RecordedCall] = ()
     #: Set once the first call has been recorded: only that one may end the run as nothing new.
     opened: bool = False
     nothing_new: str | None = None
@@ -257,8 +254,11 @@ async def run_playbook(
         configurable=configurable,
         recent_traces=[execution.trace for execution in recent],
         dry_run=dry_run,
+        last_delivered=next(
+            (execution.trace for execution in recent if execution.status == "success"), ()
+        ),
     )
-    space = ToolSpace(tools=registry.get_tool_dict(), runtime=None, subagent_id=None)
+    space = ToolSpace(tools=registry.get_tool_dict())
 
     failure = await _run_steps(playbook, playbook.steps, run, space)
     if failure is not None:
@@ -310,7 +310,7 @@ async def _run_steps(
     run: _Run,
     space: ToolSpace,
 ) -> _StepFailure | None:
-    """Run one level of the playbook in order. The first failure stops everything.
+    """Run the steps in order. The first failure stops everything.
 
     So does the first step the record shows to be suspect: a fetch that came
     back empty where the previous replay had items is answered by the agent,
@@ -319,36 +319,12 @@ async def _run_steps(
     """
     for step in steps:
         run.position += 1
-        failure = (
-            await _run_handoff(playbook, step, run)
-            if isinstance(step, HandoffStep)
-            else await _run_tool_step(playbook, step, run, space)
-        )
+        failure = await _run_tool_step(playbook, step, run, space)
         if failure is not None:
             return failure
         if run.suspect is not None or run.nothing_new is not None:
             return None
     return None
-
-
-async def _run_handoff(
-    playbook: PlaybookDocument, step: HandoffStep, run: _Run
-) -> _StepFailure | None:
-    """Run a handoff's recorded children inside that subagent's tool space."""
-    subagent_id = step.handoff
-    position = run.position
-    space = await _subagent_space(subagent_id, playbook.user_id, run.registry)
-    if space is None:
-        return _StepFailure(position, _HANDOFF_TOOL, f"no subagent named {subagent_id!r} exists")
-
-    run.trace.append(
-        RecordedCall(
-            tool_name=_HANDOFF_TOOL,
-            tool_category=_HANDOFF_TOOL,
-            args={"subagent_id": subagent_id},
-        )
-    )
-    return await _run_steps(playbook, step.steps, run, space)
 
 
 @dataclass(frozen=True)
@@ -412,7 +388,7 @@ async def _replay_one(
     answered = await _call_step(playbook, run, space, call)
     if isinstance(answered, _StepFailure):
         return answered
-    return _record_step(playbook, run, space, call, answered)
+    return _record_step(playbook, run, call, answered)
 
 
 async def _run_for_each(
@@ -572,7 +548,6 @@ async def _call_step(
 def _record_step(
     playbook: PlaybookDocument,
     run: _Run,
-    space: ToolSpace,
     call: _StepCall,
     message: ToolMessage,
 ) -> _StepFailure | None:
@@ -586,7 +561,7 @@ def _record_step(
     # The record is the run's contract: a call that ran but cannot be recorded
     # stops the run as a report, never as a raise that loses the steps before it.
     try:
-        _record(run, tool_name, space.subagent_id, call.args, text)
+        _record(run, tool_name, call.args, text)
     except ValidationError as exc:
         log.exception(
             f"{LogTag.WORKFLOW} Playbook step ran but its result could not be recorded",
@@ -613,8 +588,7 @@ def _record_step(
     opening = not run.opened
     run.opened = True
     if opening and _may_end_the_run(step, call):
-        previous = run.recent_traces[0] if run.recent_traces else ()
-        run.nothing_new = nothing_new(tool_name, call.args, value, previous)
+        run.nothing_new = nothing_new(tool_name, call.args, value, run.last_delivered)
     if run.suspect is None:
         run.suspect = _empty_where_previous_had_items(tool_name, value, run.recent_traces)
     # This line is the model's only view of what the tool returned, and it has
@@ -666,7 +640,7 @@ async def _replay_call(call: ScriptedCall, run: _Run, space: ToolSpace) -> ToolM
             ),
         ),
     )
-    configurable: AgentConfigurable = _configurable_for(run, space)
+    configurable: AgentConfigurable = run.configurable.copy()
     state: State = cast(
         State,
         await builder.compile().ainvoke(
@@ -748,9 +722,7 @@ def _suspect_verdict(
     return narration.reason or "the narration judged the results suspect", "narration"
 
 
-def _record(
-    run: _Run, tool_name: str, subagent_id: str | None, args: Mapping[str, object], text: str
-) -> None:
+def _record(run: _Run, tool_name: str, args: Mapping[str, object], text: str) -> None:
     """Append the call to the trace the moment it resolves.
 
     Appended before the caller decides what the result means, so a step that
@@ -760,41 +732,17 @@ def _record(
         RecordedCall(
             tool_name=tool_name,
             tool_category=run.registry.get_category_of_tool(tool_name),
-            subagent=subagent_id,
             args=dict(args),
             result_digest=build_result_digest(text),
             replayed=True,
-            item_ids=_sorted_ids(text),
+            item_fingerprint=_fingerprint(text),
         )
     )
 
 
-def _sorted_ids(text: str) -> list[str] | None:
+def _fingerprint(text: str) -> str | None:
     ids = item_ids(parse_result(text))
-    return None if ids is None else sorted(ids)
-
-
-async def _subagent_space(
-    subagent_id: str, user_id: str, registry: ToolRegistry
-) -> ToolSpace | None:
-    """Return the tool space a handoff's children run in, or None for an unknown id.
-
-    Must use the same resolution and construction the validator used when
-    this playbook was written, or a playbook could be accepted and then
-    replayed against a tool space that never had the tool it recorded.
-    """
-    space = await resolve_subagent_tools(subagent_id, user_id, registry)
-    if space is None:
-        return None
-    return handoff_tool_space(space)
-
-
-def _configurable_for(run: _Run, space: ToolSpace) -> AgentConfigurable:
-    """Return the run's configurable, tagged with the subagent when inside a handoff."""
-    configurable: AgentConfigurable = run.configurable.copy()
-    if space.subagent_id is not None:
-        configurable["subagent_id"] = space.subagent_id
-    return configurable
+    return None if ids is None else item_fingerprint(ids)
 
 
 def _context(run: _Run, *, item: object = NO_ITEM) -> RunContext:
@@ -958,15 +906,8 @@ async def _structured_call(
 
 
 def _labels(steps: Sequence[PlaybookStep]) -> list[str]:
-    """Every node in execution order, flattened the same way positions count."""
-    labels: list[str] = []
-    for step in steps:
-        if isinstance(step, HandoffStep):
-            labels.append(f"{_HANDOFF_TOOL} to {step.handoff}")
-            labels.extend(_labels(step.steps))
-        else:
-            labels.append(f"{step.label} ({step.tool})")
-    return labels
+    """Every step in execution order, as positions count them."""
+    return [f"{step.label} ({step.tool})" for step in steps]
 
 
 def _render_element(item: object) -> str:
