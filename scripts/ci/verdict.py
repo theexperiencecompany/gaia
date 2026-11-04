@@ -1425,24 +1425,24 @@ def _status_fields(
 
 
 STATUS_READ_BACKS = 3
+# A recorded status is matched on these; GitHub may normalise the description it stores.
+STATUS_IDENTITY = ("context", "state", "target_url")
 
 
-def _status_landed(gh: GitHub, repo: str, sha: str, fields: dict[str, str]) -> bool:
-    """Whether GitHub recorded a status it answered 5xx to; in an Actions incident it writes, then 500s."""
+def _unrecorded(gh: GitHub, repo: str, sha: str, pending: list[dict[str, str]]) -> list[str]:
+    """Contexts GitHub answered 5xx to and never recorded; it can write a status, then 500."""
     for attempt in range(1, STATUS_READ_BACKS + 1):
+        if not pending:
+            break
         time.sleep(gh.backoff * attempt)
         try:
-            statuses = gh.get_list(f"repos/{repo}/commits/{sha}/statuses?per_page=100")
+            recorded = gh.get_list(f"repos/{repo}/commits/{sha}/statuses?per_page=100")
         except GitHubError as err:
-            print(
-                f"  {fields['context']:<28} read-back {attempt}/{STATUS_READ_BACKS} failed: {err}"
-            )
+            print(f"  read-back {attempt}/{STATUS_READ_BACKS} failed: {err}")
             continue
-        if any(
-            all(status.get(key) == value for key, value in fields.items()) for status in statuses
-        ):
-            return True
-    return False
+        seen = {tuple(status.get(key) for key in STATUS_IDENTITY) for status in recorded}
+        pending = [f for f in pending if tuple(f[key] for key in STATUS_IDENTITY) not in seen]
+    return [fields["context"] for fields in pending]
 
 
 def _post(
@@ -1459,18 +1459,25 @@ def _post(
     areas = check_areas()
     endpoint = f"repos/{opts.repo}/statuses/{opts.sha}"
     lost: list[str] = []
+    unknown: list[dict[str, str]] = []
     for name, outcome in outcomes.items():
         fields = _status_fields(name, areas[name], outcome, reused, url, findings.get(name))
         try:
             gh.post(endpoint, fields)
         except GitHubError as err:
+            print(f"  {fields['context']:<28} not posted: {err}")
             # No status code or a 5xx leaves the write's fate unknown; anything else was refused.
-            unknown = err.status is None or err.status >= 500
-            if not (unknown and _status_landed(gh, opts.repo, opts.sha, fields)):
-                print(f"  {fields['context']:<28} not posted: {err}")
+            if err.status is None or err.status >= 500:
+                unknown.append(fields)
+            else:
                 lost.append(fields["context"])
-                continue
+            continue
         print(f"  {fields['context']:<28} {fields['state']:<8} {fields['description']}")
+    missing = _unrecorded(gh, opts.repo, opts.sha, unknown)
+    for fields in unknown:
+        if fields["context"] not in missing:
+            print(f"  {fields['context']:<28} {fields['state']:<8} recorded despite the error")
+    lost += missing
     if lost:
         print(f"::error::post-statuses: {len(lost)} status(es) never landed: {', '.join(lost)}")
     return not lost
