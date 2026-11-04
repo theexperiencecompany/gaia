@@ -33,6 +33,7 @@ from app.db.repositories.users import user_repository
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.services.bot_token_service import (
     BOT_SESSION_TOKEN_EXPIRY_MINUTES,
+    BotSessionClaims,
     create_bot_session_token,
     verify_bot_session_token,
 )
@@ -172,9 +173,9 @@ class TestBotTokenService:
 
         payload = verify_bot_session_token(token)
 
-        assert payload["user_id"] == TEST_USER_ID
-        assert payload["platform"] == TEST_PLATFORM
-        assert payload["platform_user_id"] == TEST_PLATFORM_USER_ID
+        assert payload.user_id == TEST_USER_ID
+        assert payload.platform == TEST_PLATFORM
+        assert payload.platform_user_id == TEST_PLATFORM_USER_ID
 
     def test_token_contains_correct_claims(self) -> None:
         """Verify the raw JWT claims include role=bot, correct sub, and expiry."""
@@ -224,15 +225,23 @@ class TestBotTokenService:
             verify_bot_session_token(bad_token)
 
     def test_a_token_minted_by_python_jose_still_verifies(self) -> None:
-        assert verify_bot_session_token(JOSE_MINTED_BOT_TOKEN) == {
-            "user_id": "u-jose",
-            "platform": "telegram",
-            "platform_user_id": "tg-jose",
-        }
+        assert verify_bot_session_token(JOSE_MINTED_BOT_TOKEN) == BotSessionClaims(
+            user_id="u-jose",
+            platform="telegram",
+            platform_user_id="tg-jose",
+        )
 
     @pytest.mark.parametrize("kind", sorted(hostile_jwts({}, "s")))
     def test_a_hostile_token_is_rejected(self, kind: str) -> None:
         token = hostile_jwts(_bot_claims(), TEST_BOT_SESSION_SECRET)[kind]
+        with pytest.raises(InvalidTokenError, match="^Token verification failed: "):
+            verify_bot_session_token(token)
+
+    def test_a_claim_of_the_wrong_type_is_rejected(self) -> None:
+        token = forge_jwt(
+            {**_bot_claims(), "platform_user_id": 42}, TEST_BOT_SESSION_SECRET, alg=JWT_ALGORITHM
+        )
+
         with pytest.raises(InvalidTokenError, match="^Token verification failed: "):
             verify_bot_session_token(token)
 
@@ -841,9 +850,9 @@ class TestBotAuthFullChain:
                 platform_user_id=f"{platform}-user-42",
             )
             payload = verify_bot_session_token(token)
-            assert payload["platform"] == platform
-            assert payload["platform_user_id"] == f"{platform}-user-42"
-            assert payload["user_id"] == TEST_USER_ID
+            assert payload.platform == platform
+            assert payload.platform_user_id == f"{platform}-user-42"
+            assert payload.user_id == TEST_USER_ID
 
 
 @pytest.mark.integration

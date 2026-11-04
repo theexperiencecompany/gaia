@@ -18,6 +18,7 @@ from app.constants.cache import TEN_MINUTES_TTL
 from app.constants.log_tags import LogTag
 from app.core.bot_auth_middleware import BotAuthMiddleware
 from app.models.user_models import AuthenticatedUser, UserDocument
+from app.services.bot_token_service import BotSessionClaims
 from app.utils.log_identifiers import hash_platform_user_id
 
 # ---------------------------------------------------------------------------
@@ -31,11 +32,11 @@ FAKE_USER_DATA = UserDocument(
     picture="https://example.com/pic.png",
 )
 
-FAKE_JWT_PAYLOAD: dict[str, Any] = {
-    "user_id": "user_abc123",
-    "platform": "discord",
-    "platform_user_id": "disc_999",
-}
+FAKE_JWT_PAYLOAD = BotSessionClaims(
+    user_id="user_abc123",
+    platform="discord",
+    platform_user_id="disc_999",
+)
 
 
 def _build_app(
@@ -341,11 +342,11 @@ class TestJWTAuth:
         app: FastAPI,
     ) -> None:
         """Token payload missing required fields should not authenticate."""
-        mock_verify.return_value = {
-            "user_id": None,
-            "platform": "discord",
-            "platform_user_id": "disc_999",
-        }
+        mock_verify.return_value = BotSessionClaims(
+            user_id=None,
+            platform="discord",
+            platform_user_id="disc_999",
+        )
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="https://test") as client:
@@ -374,11 +375,11 @@ class TestJWTAuth:
         app: FastAPI,
     ) -> None:
         """If JWT user_id doesn't match the linked user's id, authentication fails."""
-        mock_verify.return_value = {
-            "user_id": "different_user_id",
-            "platform": "discord",
-            "platform_user_id": "disc_999",
-        }
+        mock_verify.return_value = BotSessionClaims(
+            user_id="different_user_id",
+            platform="discord",
+            platform_user_id="disc_999",
+        )
         mock_get_cache.return_value = None
         mock_platform.return_value = FAKE_USER_DATA  # id = "user_abc123"
 

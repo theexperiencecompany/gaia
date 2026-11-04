@@ -69,6 +69,7 @@ def test_a_hostile_token_is_rejected(kind: str) -> None:
         pytest.param(_claims(aud=["somewhere-else"]), id="wrong-audience-list"),
         pytest.param(_claims(role="agent"), id="agent-role"),
         pytest.param(_claims(device_id=None), id="no-device-id"),
+        pytest.param(_claims(device_id=7), id="non-string-device-id"),
         pytest.param({k: v for k, v in _claims().items() if k != "sub"}, id="no-subject"),
         pytest.param({k: v for k, v in _claims().items() if k != "aud"}, id="no-audience"),
     ],

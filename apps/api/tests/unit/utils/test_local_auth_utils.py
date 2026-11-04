@@ -168,3 +168,9 @@ async def test_a_session_token_naming_no_user_is_refused(credentials: _Credentia
     token = forge_jwt({"ver": 0, "exp": int(time.time()) + 3600}, TEST_SECRET)
 
     assert await resolve_session_token(token) is None
+
+
+def test_a_session_token_with_a_non_integer_version_is_refused() -> None:
+    forged = forge_jwt({"sub": "u1", "ver": "abc", "exp": int(time.time()) + 600}, TEST_SECRET)
+
+    assert local_auth_utils._decode_session(forged, TEST_SECRET) is None

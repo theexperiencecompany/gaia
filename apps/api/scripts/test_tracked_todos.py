@@ -527,6 +527,26 @@ def _evaluate_scenario(
     return failures, notes
 
 
+def _missing_integrations(scenario: TestScenario, connected: set[str] | None) -> list[str]:
+    """Integrations a skippable scenario needs that the account has not connected."""
+    if not (scenario.requires_integrations and scenario.skip_if_no_integrations):
+        return []
+    avail = connected or set()
+    return [i for i in scenario.requires_integrations if i.lower() not in avail]
+
+
+def _print_chat_result(result: ChatResult) -> None:
+    """Print one chat turn's error, or its tools and reply preview."""
+    if result.error:
+        print(f"    ERROR: {result.error}")
+        return
+    tool_names = [t["name"] for t in result.tool_calls]
+    print(f"    Tools: {tool_names or '(none)'}")
+    if result.response_text:
+        preview = result.response_text[:120].replace("\n", " ")
+        print(f"    Reply: {preview}...")
+
+
 async def run_scenario(
     scenario: TestScenario,
     token: str,
@@ -538,21 +558,18 @@ async def run_scenario(
     print(f"[{scenario.id}] {scenario.name}")
     print(f"  Tags: {', '.join(scenario.tags)}")
 
-    # Skip if required integrations are not connected
-    if scenario.requires_integrations and scenario.skip_if_no_integrations:
-        avail = connected_integrations or set()
-        missing = [i for i in scenario.requires_integrations if i.lower() not in avail]
-        if missing:
-            print(f"  ⏭️  SKIPPED — integrations not connected: {missing}")
-            return ScenarioResult(
-                scenario=scenario,
-                chat_results=[],
-                todos_before=[],
-                todos_after=[],
-                passed=True,
-                failures=[],
-                notes=[f"Skipped: integrations not connected: {missing}"],
-            )
+    missing = _missing_integrations(scenario, connected_integrations)
+    if missing:
+        print(f"  ⏭️  SKIPPED — integrations not connected: {missing}")
+        return ScenarioResult(
+            scenario=scenario,
+            chat_results=[],
+            todos_before=[],
+            todos_after=[],
+            passed=True,
+            failures=[],
+            notes=[f"Skipped: integrations not connected: {missing}"],
+        )
 
     async with httpx.AsyncClient(timeout=STREAM_TIMEOUT) as client:
         # Capture todos before
@@ -572,14 +589,7 @@ async def run_scenario(
                 (e["conversation_id"] for e in result.raw_events if e.get("conversation_id")), None
             )
 
-            if result.error:
-                print(f"    ERROR: {result.error}")
-            else:
-                tool_names = [t["name"] for t in result.tool_calls]
-                print(f"    Tools: {tool_names or '(none)'}")
-                if result.response_text:
-                    preview = result.response_text[:120].replace("\n", " ")
-                    print(f"    Reply: {preview}...")
+            _print_chat_result(result)
 
             # Update history for next chat
             history.append({"role": "user", "content": message})
