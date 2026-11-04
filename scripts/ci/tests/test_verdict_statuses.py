@@ -294,6 +294,81 @@ def test_a_rejected_post_is_not_retried(api: FakeGitHub, tmp_path: Path) -> None
     assert len(_posted(api)) == 1
 
 
+COMMIT_STATUSES = rf"/repos/{REPO}/commits/{SHA}/statuses$"
+
+
+def _recorded(context: str) -> dict[str, str]:
+    return {
+        "context": context, "state": "success",
+        "description": "passed", "target_url": JOB_URL,
+    }  # fmt: skip
+
+
+def test_a_status_github_answered_500_to_but_recorded_counts_as_landed(
+    api: FakeGitHub, tmp_path: Path
+) -> None:
+    """Regression: run 41888138270, every 500'd POST still created the status."""
+    api.on("POST", STATUSES, Reply(500, {}))
+    api.on(
+        "GET", COMMIT_STATUSES, Reply(body=[]),
+        Reply(body=[_recorded("ci / security / gitleaks")]),
+    )  # fmt: skip
+
+    assert _post(tmp_path, "repo-policy", {}, "--step", "gitleaks=success") == 0
+    reads = [r for r in api.requests if r.method == "GET"]
+    assert len(reads) == 2
+
+
+def test_statuses_github_500s_on_are_read_back_together_not_one_by_one(
+    api: FakeGitHub, tmp_path: Path
+) -> None:
+    api.on("POST", STATUSES, Reply(500, {}))
+    both = [_recorded("ci / python / ruff"), _recorded("ci / python / lint-imports")]
+    api.on("GET", COMMIT_STATUSES, Reply(body=[]), Reply(body=both))
+
+    assert _post(tmp_path, "lint-python", {"ci:ruff": "success", "ci:lint-imports": "success"}) == 0
+    assert len([r for r in api.requests if r.method == "GET"]) == 2
+
+
+def test_a_recorded_status_matches_even_when_github_rewrote_its_description(
+    api: FakeGitHub, tmp_path: Path
+) -> None:
+    api.on("POST", STATUSES, Reply(500, {}))
+    rewritten = {**_recorded("ci / security / gitleaks"), "description": "pass…"}
+    api.on("GET", COMMIT_STATUSES, Reply(body=[rewritten]))
+
+    assert _post(tmp_path, "repo-policy", {}, "--step", "gitleaks=success") == 0
+
+
+@pytest.mark.parametrize("job_id", ["", "0"])
+def test_a_missing_job_id_refuses_to_post_a_broken_link(
+    api: FakeGitHub, tmp_path: Path, job_id: str
+) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        _post(tmp_path, "lint-node", {"ci:biome": "success"}, "--job-id", job_id)
+    assert exit_info.value.code != 0
+    assert _posted(api) == []
+
+
+def test_a_status_that_never_shows_on_read_back_fails_the_step(
+    api: FakeGitHub, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    api.on("POST", STATUSES, Reply(500, {}))
+    other = {**_recorded("ci / security / gitleaks"), "state": "failure"}
+    api.on("GET", COMMIT_STATUSES, Reply(body=[other]))
+
+    assert _post(tmp_path, "repo-policy", {}, "--step", "gitleaks=success") == 1
+    assert len([r for r in api.requests if r.method == "GET"]) == verdict.STATUS_READ_BACKS
+    assert "1 status(es) never landed: ci / security / gitleaks" in capsys.readouterr().out
+
+
+def test_a_rejected_post_is_not_read_back(api: FakeGitHub, tmp_path: Path) -> None:
+    api.on("POST", STATUSES, Reply(422, {"message": "Validation Failed"}))
+
+    assert _post(tmp_path, "repo-policy", {}, "--step", "gitleaks=success") == 1
+    assert [r for r in api.requests if r.method == "GET"] == []
+
+
 def test_posting_without_the_job_id_is_refused(api: FakeGitHub, tmp_path: Path) -> None:
     path = tmp_path / "results.json"
     path.write_text("{}")
