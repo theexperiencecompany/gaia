@@ -8,7 +8,10 @@ import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import type { Integration } from "@/features/integrations/types";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
-import { toTriggerConfig } from "@/features/workflows/triggers/types";
+import {
+  isIntegrationTrigger,
+  toTriggerConfig,
+} from "@/features/workflows/triggers/types";
 import { useRouter } from "@/i18n/navigation";
 import { toast } from "@/lib/toast";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
@@ -255,6 +258,10 @@ export function useWorkflowModalActions({
       icon: data.icon ?? undefined,
       icon_color: data.icon_color ?? undefined,
       trigger_config: toTriggerConfig(data.trigger_config),
+      // The server refuses a condition on a trigger with no event to read.
+      runs_only_when: isIntegrationTrigger(data.trigger_config)
+        ? data.runs_only_when
+        : undefined,
       // When predefined steps are supplied (from a community/featured
       // workflow), forward them so the backend reuses them instead of
       // regenerating a fresh plan.
