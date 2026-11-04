@@ -5,6 +5,7 @@ agent run per inbound email — 56 runs in three minutes, which spent a paying
 user's whole daily budget before he had sent a single message.
 """
 
+from collections.abc import Iterator
 from datetime import UTC, datetime
 import json
 import re
@@ -12,6 +13,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import time_machine
 
 from app.models.trigger_configs import GmailNewMessageConfig, GmailPollInboxConfig
 from app.models.workflow_models import TriggerConfig, TriggerType
@@ -23,8 +25,11 @@ from app.services.triggers.batching import (
     buffer_trigger_event,
     coalesce_window_seconds,
     drain_trigger_batch,
+    hold_trigger_batch,
+    hold_trigger_event,
     reschedule_if_refilled,
 )
+from tests.helpers import captured_wide_event
 
 MODULE = "app.services.triggers.batching"
 
@@ -545,3 +550,86 @@ class TestRefillTtlRenewal:
         await reschedule_if_refilled("wf_1", key, day, {})
 
         assert fake_redis.expires[key] == day * 4
+
+
+# 02:30 and 08:00 on Oct 2 in Kolkata: inside the user's quiet hours, and their end.
+_NIGHT = datetime(2026, 10, 1, 21, 0, tzinfo=UTC)
+_MORNING = datetime(2026, 10, 2, 2, 30, tzinfo=UTC)
+_HELD_JOB_ID = f"trigger_batch:wf_1:held:{int(_MORNING.timestamp())}"
+
+
+@pytest.fixture
+def night_clock() -> Iterator[None]:
+    with time_machine.travel(_NIGHT, tick=False):
+        yield
+
+
+_HELD_CONTEXT = {
+    "trigger_type": "integration",
+    "trigger_batch_key": "trigger_batch:wf_1",
+    "quiet_hours": {"kind": "hold"},
+}
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("night_clock")
+class TestHoldTriggerEvent:
+    """A held event rides the workflow's batch, and its drain is the one run when quiet hours end."""
+
+    async def test_the_event_joins_the_batch_drained_at_the_morning(
+        self, fake_redis: _FakeRedis, enqueue: Any
+    ) -> None:
+        context = {"trigger_type": "integration"}
+
+        assert await hold_trigger_event("wf_1", "user_1", {"id": 1}, _MORNING, context)
+
+        key = TRIGGER_BATCH_KEY.format(workflow_id="wf_1")
+        assert [json.loads(raw) for raw in fake_redis.store[key]] == [{"id": 1}]
+        assert fake_redis.expires[key] == 4 * 5.5 * 3600
+        _pool, *job = enqueue.await_args.args
+        assert job == ["execute_workflow_by_id", "wf_1", _HELD_CONTEXT]
+        assert enqueue.await_args.kwargs == {"_job_id": _HELD_JOB_ID, "_defer_by": 5.5 * 3600}
+
+    async def test_a_morning_already_past_drains_at_once(
+        self, fake_redis: _FakeRedis, enqueue: Any
+    ) -> None:
+        await hold_trigger_event(
+            "wf_1", "user_1", {"id": 1}, datetime(2026, 10, 1, 8, tzinfo=UTC), {}
+        )
+
+        assert enqueue.await_args.kwargs["_defer_by"] == 0
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("night_clock")
+class TestHoldTriggerBatch:
+    """A drain due inside quiet hours moves to their end, keeping the batch until then."""
+
+    async def test_the_drain_moves_to_the_morning_and_the_batch_outlives_it(
+        self, fake_redis: _FakeRedis, enqueue: Any
+    ) -> None:
+        context = {"trigger_type": "integration", "trigger_batch_key": "trigger_batch:wf_1"}
+
+        assert await hold_trigger_batch("wf_1", _MORNING, context) is True
+
+        assert fake_redis.expires[TRIGGER_BATCH_KEY.format(workflow_id="wf_1")] == 4 * 5.5 * 3600
+        _pool, *job = enqueue.await_args.args
+        assert job == ["execute_workflow_by_id", "wf_1", _HELD_CONTEXT]
+        assert enqueue.await_args.kwargs == {"_job_id": _HELD_JOB_ID, "_defer_by": 5.5 * 3600}
+
+    async def test_redis_down_holds_nothing_and_says_so(self) -> None:
+        with (
+            patch(f"{MODULE}.redis_cache") as cache,
+            patch(f"{MODULE}.enqueue_worker_job", new_callable=AsyncMock) as enqueue_mock,
+        ):
+            cache.redis = None
+            async with captured_wide_event() as event:
+                assert await hold_trigger_batch("wf_1", _MORNING, {}) is False
+
+        enqueue_mock.assert_not_awaited()
+        assert event["warnings"] == [
+            {
+                "msg": "[TRIGGER] Redis unavailable — trigger batch cannot be held",
+                "workflow_id": "wf_1",
+            }
+        ]

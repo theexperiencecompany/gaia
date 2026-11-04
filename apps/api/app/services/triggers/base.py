@@ -569,7 +569,9 @@ class TriggerHandler(ABC):
             # manual "run now" (unstamped, it defaulted to "manual" and was mislabeled).
             context: dict[str, Any] = {"trigger_type": TriggerType.INTEGRATION.value}
             if not isinstance(verdict, GateRun):
-                context[QUIET_HOURS_CONTEXT_KEY] = verdict.stamp.model_dump(mode="json")
+                # Unmutated: the stamp's kind is a StrEnum, equal to its value in either mode.
+                stamp = verdict.stamp.model_dump(mode="json")  # pragma: no mutate
+                context[QUIET_HOURS_CONTEXT_KEY] = stamp
             if workflow.user_id not in signal_context_by_user:
                 try:
                     signal_context_by_user[workflow.user_id] = await get_signal_matching_context(

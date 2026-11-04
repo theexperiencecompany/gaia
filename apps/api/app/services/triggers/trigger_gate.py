@@ -276,7 +276,7 @@ def _settle(
     gate: TriggerGate, body: JevDecisionsResponse, *, hold: GateHold | None, continues_thread: bool
 ) -> _Decision:
     """Read JEV's answers in the settle order; hold is what quiet hours do, None by day."""
-    urgent: Urgency | None = None
+    urgent: Urgency | None = None  # pragma: no mutate — only read as truthy; "" equals None
     if hold is not None:
         labels = _URGENT_LABELS
         urgent = urgency(body.choice(TRIGGER_GATE_URGENT_QUESTION_KEY, labels, label="urgent "))

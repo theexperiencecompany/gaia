@@ -43,10 +43,17 @@ from app.services.triggers.trigger_gate import (
     GateSkip,
     GateVerdict,
     decide_gate,
+    quiet_hours_hold,
 )
 from app.utils.general_utils import ELLIPSIS
 from app.utils.timezone import Timezone
+from shared.py.analytics.catalog.attribution import Trigger
 from shared.py.analytics.catalog.triggers import TriggerGateDecided
+from shared.py.analytics.context import (
+    AnalyticsContext,
+    current_analytics_context,
+    worker_context,
+)
 from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
@@ -179,10 +186,12 @@ def seams() -> Iterator[SimpleNamespace]:
         ),
         patch(f"{_MOD}.is_trigger_gates_enforced", AsyncMock(return_value=True)) as enforced,
         patch(f"{_MOD}.capture", MagicMock()) as capture,
-        patch(f"{_MOD}.get_profile_timezone", AsyncMock(return_value=KOLKATA)),
+        patch(f"{_MOD}.get_profile_timezone", AsyncMock(return_value=KOLKATA)) as tz,
         time_machine.travel(AFTERNOON, tick=False),
     ):
-        yield SimpleNamespace(jev=router.post(HIL_JEV_URL), enforced=enforced, capture=capture)
+        yield SimpleNamespace(
+            jev=router.post(HIL_JEV_URL), enforced=enforced, capture=capture, tz=tz
+        )
 
 
 async def _skip(
@@ -936,3 +945,181 @@ class TestQuietHoursRecording:
 
         decided = _decided(night)
         assert (decided.outcome, decided.reason) == ("run", "jev_can_wait")
+
+
+def _recorded(event: Mapping[str, object]) -> object:
+    gates = event["trigger_gate"]
+    assert isinstance(gates, dict)
+    return gates[OWNER_ID]
+
+
+class TestTheNightRecord:
+    """What the wide event says about a night decision: both questions' answers, as JEV gave them."""
+
+    @pytest.mark.usefixtures("one_second_answer")
+    async def test_a_held_event_records_both_answers(self, night: SimpleNamespace) -> None:
+        night.jev.mock(return_value=httpx.Response(200, json=_night_answer(can_wait=0.75)))
+
+        async with captured_wide_event() as event:
+            assert await _skip(DESK) == GateHold(until=MORNING)
+
+        assert _recorded(event) == {
+            "owner": "workflow",
+            "kind": "system",
+            "outcome": "hold",
+            "reason": "jev_can_wait",
+            "enforced": True,
+            "skip_probability": 0.1,
+            "choice": "needs_you",
+            "confidence": 0.9,
+            "urgent_probability": 0.25,
+            "urgent_choice": "meeting",
+            "latency_ms": 1000,
+        }
+
+    async def test_a_skip_at_night_records_its_urgency_too(self, night: SimpleNamespace) -> None:
+        body = _night_answer(can_wait=0.75, not_needed=0.99)
+        night.jev.mock(return_value=httpx.Response(200, json=body))
+
+        async with captured_wide_event() as event:
+            assert isinstance(await _skip(DESK), GateSkip)
+
+        recorded = _recorded(event)
+        assert isinstance(recorded, dict)
+        assert {k: recorded[k] for k in ("reason", "skip_probability", "choice")} == {
+            "reason": "jev_skip",
+            "skip_probability": 0.99,
+            "choice": "not_needed",
+        }
+        assert (recorded["urgent_probability"], recorded["urgent_choice"]) == (0.25, "meeting")
+
+    async def test_a_held_thread_reply_records_only_its_urgency(
+        self, night: SimpleNamespace
+    ) -> None:
+        night.jev.mock(return_value=httpx.Response(200, json=_night_answer(can_wait=0.75)))
+
+        async with captured_wide_event() as event:
+            await _skip(DESK, payload={"message_id": "m2"})
+
+        recorded = _recorded(event)
+        assert isinstance(recorded, dict)
+        assert {
+            k: recorded[k]
+            for k in ("reason", "skip_probability", "choice", "urgent_probability", "urgent_choice")
+        } == {
+            "reason": "jev_can_wait",
+            "skip_probability": None,
+            "choice": None,
+            "urgent_probability": 0.25,
+            "urgent_choice": "meeting",
+        }
+
+    async def test_a_day_run_records_its_answer(self, seams: SimpleNamespace) -> None:
+        seams.jev.mock(return_value=httpx.Response(200, json=_answer(0.1)))
+
+        async with captured_wide_event() as event:
+            assert await _skip(DESK) == GateRun()
+
+        recorded = _recorded(event)
+        assert isinstance(recorded, dict)
+        assert {k: recorded[k] for k in ("reason", "skip_probability", "choice")} == {
+            "reason": "jev_run",
+            "skip_probability": 0.1,
+            "choice": "needs_you",
+        }
+
+    async def test_the_clock_is_the_jobs_users(self, night: SimpleNamespace) -> None:
+        night.jev.mock(return_value=httpx.Response(200, json=_night_answer(can_wait=1.0)))
+
+        await _skip(DESK)
+
+        night.tz.assert_awaited_once_with(USER_ID)
+
+
+class TestTheUrgentAnswer:
+    async def test_an_absent_urgent_choice_never_wins_the_reason(
+        self, night: SimpleNamespace
+    ) -> None:
+        urgent = {
+            "type": "choice",
+            "choice": "meeting",
+            "probabilities": {"meeting": 0.9, "can_wait": 0.1},
+        }
+        body = {"answers": {"gate": _gate_answer(0.1), "urgent": urgent}}
+        night.jev.mock(return_value=httpx.Response(200, json=body))
+
+        assert await _skip(DESK) == GateBypass(
+            reason="someone is waiting on you for a meeting happening soon"
+        )
+
+    async def test_a_label_the_question_never_offered_is_malformed_and_held(
+        self, night: SimpleNamespace
+    ) -> None:
+        probabilities = {"can_wait": 0.1, "panic": 0.9}
+        urgent = {"type": "choice", "choice": "can_wait", "probabilities": probabilities}
+        body = {"answers": {"gate": _gate_answer(0.1), "urgent": urgent}}
+        night.jev.mock(return_value=httpx.Response(200, json=body))
+
+        async with captured_wide_event() as event:
+            assert await _skip(DESK) == GateHold(until=MORNING)
+
+        (failure,) = _jev_failures(event)
+        assert failure["reason"] == "jev_malformed"
+        assert failure["error"] == (
+            "urgent answer has no usable probabilities: {'can_wait': 0.1, 'panic': 0.9}"
+        )
+
+    async def test_a_missing_urgent_answer_is_warned_by_name(self, night: SimpleNamespace) -> None:
+        body = {"answers": {"gate": _gate_answer(0.1)}}
+        night.jev.mock(return_value=httpx.Response(200, json=body))
+
+        async with captured_wide_event() as event:
+            await _skip(DESK)
+
+        (failure,) = _jev_failures(event)
+        assert failure["error"] == "JEV urgent answer missing for question 'urgent'"
+
+
+class TestQuietHoursHold:
+    """The hold a drain of a gated job's batch waits on: only an enforced gate, at night, holds."""
+
+    async def test_an_enforced_gate_at_night_holds_until_the_morning(
+        self, night: SimpleNamespace
+    ) -> None:
+        seen: list[AnalyticsContext] = []
+
+        def enforced(_: str) -> bool:
+            seen.append(current_analytics_context())
+            return True
+
+        night.enforced.side_effect = enforced
+
+        assert await quiet_hours_hold(DESK, USER_ID) == GateHold(until=MORNING)
+
+        night.tz.assert_awaited_once_with(USER_ID)
+        night.enforced.assert_awaited_once_with(USER_ID)
+        assert seen == [worker_context(Trigger.INTEGRATION_TRIGGER)]
+
+    async def test_by_day_nothing_holds(self, seams: SimpleNamespace) -> None:
+        assert await quiet_hours_hold(DESK, USER_ID) is None
+
+    async def test_with_the_kill_switch_off_nothing_holds(self, night: SimpleNamespace) -> None:
+        night.enforced.return_value = False
+
+        assert await quiet_hours_hold(DESK, USER_ID) is None
+
+    @pytest.mark.parametrize(
+        "gate",
+        [None, DESK.model_copy(update={"enabled": False})],
+        ids=["no-gate", "turned-off"],
+    )
+    async def test_a_gate_that_is_not_on_never_holds(
+        self, night: SimpleNamespace, gate: TriggerGate | None
+    ) -> None:
+        assert await quiet_hours_hold(gate, USER_ID) is None
+
+    async def test_a_kind_outside_the_enforced_set_never_holds(
+        self, night: SimpleNamespace
+    ) -> None:
+        with patch(f"{_MOD}.ENFORCED_GATE_KINDS", frozenset({GateKind.SYSTEM})):
+            assert await quiet_hours_hold(AUTHORED, USER_ID) is None

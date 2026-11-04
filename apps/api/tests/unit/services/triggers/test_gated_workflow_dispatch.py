@@ -24,6 +24,7 @@ import time_machine
 
 from app.constants.hil import HIL_JEV_URL
 from app.constants.trigger_gates import GateAuthor
+from app.db.redis import redis_cache
 from app.models.trigger_configs import GmailPollInboxConfig
 from app.models.trigger_gate_models import AuthoredGate, TriggerGate
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow, WorkflowStep
@@ -334,6 +335,29 @@ class TestQuietHours:
         # Claimed when held: the event will run, so a second trigger for it must not.
         night.claim.assert_awaited_once()
 
+    async def test_a_held_event_redis_cannot_batch_still_waits_for_the_morning(
+        self, night: SimpleNamespace
+    ) -> None:
+        night.jev.mock(return_value=httpx.Response(200, json=_night_body(can_wait=1.0)))
+        immediate = TriggerConfig(type=TriggerType.INTEGRATION, trigger_name="slack_new_message")
+
+        with patch.object(redis_cache, "redis", None):
+            async with captured_wide_event() as event:
+                (job,), _ = await _fire_at(
+                    night,
+                    _workflow(trigger_config=immediate),
+                    zone=KOLKATA,
+                    at=datetime(2026, 10, 1, 21, 0, tzinfo=UTC),
+                )
+
+        assert job.score == _score(datetime(2026, 10, 2, 8, tzinfo=ZoneInfo(KOLKATA)))
+        assert job.args[1]["trigger_data"]["message_id"] == "t1"
+        assert {
+            "msg": "[TRIGGER] Redis unavailable — trigger event cannot be batched",
+            "workflow_id": WORKFLOW_ID,
+            "user_id": USER_ID,
+        } in event["warnings"]
+
     async def test_a_night_of_events_on_an_unbatched_trigger_is_one_morning_run(
         self, night: SimpleNamespace
     ) -> None:
@@ -504,3 +528,27 @@ async def test_a_skip_whose_history_write_fails_is_reported_and_spares_the_other
         }
     ]
     assert [e["exception"]["values"][-1]["type"] for e in sentry_events] == ["PyMongoError"]
+
+
+async def test_a_workflow_that_fails_to_queue_names_its_trigger(seams: SimpleNamespace) -> None:
+    seams.queue.side_effect = RuntimeError("queue down")
+
+    async with captured_wide_event() as event:
+        await _Handler([_workflow(gate=None)]).process_event(
+            "GMAIL_NEW_GMAIL_MESSAGE",
+            "trg_1",
+            USER_ID,
+            {"thread_id": "t1", "message_id": "t1", "subject": "Sale!"},
+        )
+
+    assert [e for e in event["errors"] if e["msg"] == "trigger_workflow_queue_failed"] == [
+        {
+            "msg": "trigger_workflow_queue_failed",
+            "workflow_id": WORKFLOW_ID,
+            "user_id": USER_ID,
+            "event_type": "GMAIL_NEW_GMAIL_MESSAGE",
+            "trigger_id": "trg_1",
+            "error_type": "RuntimeError",
+            "error": "queue down",
+        }
+    ]

@@ -21,6 +21,7 @@ import fakeredis.aioredis
 import httpx
 import pytest
 import respx
+import time_machine
 
 from app.constants.hil import HIL_JEV_URL
 from app.constants.trigger_gates import GateAuthor
@@ -34,7 +35,7 @@ from app.utils.redis_utils import RedisPoolManager
 from app.utils.timezone import Timezone
 from app.workers.task_envelope import arq_task
 from app.workers.tasks.workflow_tasks import execute_workflow_by_id
-from tests.helpers import live_through
+from tests.helpers import captured_wide_event, live_through
 
 MODULE = "app.workers.tasks.workflow_tasks"
 
@@ -458,3 +459,37 @@ class TestAGatedBatchWaitsOutQuietHours:
         assert (
             await _live_through(arq_queue, _workflow_gated_by(gate, trigger_config), emails) == runs
         )
+
+
+class TestADrainDueInsideQuietHours:
+    """A gated batch's drain that comes due at night moves to the morning, before any run starts."""
+
+    @pytest.mark.usefixtures("fake_redis")
+    async def test_it_moves_to_the_morning_with_its_context_and_says_so(
+        self, arq_queue: ArqRedis
+    ) -> None:
+        workflow = _workflow_gated_by(_BILLING, _POLLED)
+        context = {"trigger_type": "integration", "trigger_batch_key": f"trigger_batch:{_GATED_ID}"}
+        tz = AsyncMock(return_value=Timezone.parse("Asia/Kolkata"))
+
+        with (
+            patch(f"{MODULE}.workflow_scheduler") as scheduler,
+            patch(f"{_GATE_MODULE}.get_profile_timezone", tz),
+            patch(f"{_GATE_MODULE}.is_trigger_gates_enforced", AsyncMock(return_value=True)),
+            time_machine.travel(_on_kolkata_clock(1, 23, 0), tick=False),
+        ):
+            scheduler.get_task = AsyncMock(return_value=workflow)
+            async with captured_wide_event() as event:
+                result = await execute_workflow_by_id({}, _GATED_ID, context)
+            (job,) = await arq_queue.queued_jobs()
+
+        assert result == f"Workflow {_GATED_ID} held until the user's quiet hours end"
+        scheduler.get_task.assert_awaited_once_with(_GATED_ID)
+        tz.assert_awaited_once_with(_OWNER_ID)
+        assert job.args == (_GATED_ID, {**context, "quiet_hours": {"kind": "hold"}})
+        assert job.score == int(_on_kolkata_clock(2, 8, 0).timestamp() * 1000)
+        assert event["workflow_id"] == _GATED_ID
+        assert event["workflow"] == {
+            "outcome": "held_for_quiet_hours",
+            "held_until": "2026-10-02T08:00:00+05:30",
+        }
