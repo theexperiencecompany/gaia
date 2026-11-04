@@ -136,9 +136,9 @@ OWNER_ID = "6812f0b3c9a14e2b7d5a91cf"
 _GMAIL_ORIGIN = TriggerOrigin(subscription_id="sub-1", trigger_name="gmail_new_message")
 
 
-def _user_context(**fields: object) -> Callable[[str], AuthenticatedUser]:
+def _user_context(*, timezone: str | None = None) -> Callable[[str], AuthenticatedUser]:
     """Fake load_user_context: answer for whichever user id it is asked for."""
-    return lambda user_id: AuthenticatedUser(user_id=user_id, **fields)
+    return lambda user_id: AuthenticatedUser(user_id=user_id, timezone=timezone)
 
 
 MODULE = "app.workers.tasks.tracked_todo_tasks"
@@ -1610,7 +1610,7 @@ def _ref_id(n: int) -> str:
 
 
 class TestCollectReferenceLearnings:
-    async def _run(self, ref_ids: list[str], owned: list[TodoDocument]) -> None:
+    async def _run(self, ref_ids: list[str], owned: list[TodoDocument]) -> tuple[str, AsyncMock]:
         find = AsyncMock(return_value=owned)
         with patch.object(todo_repository, "find_by_ids", find):
             return await collect_reference_learnings(ref_ids, OWNER_ID), find
@@ -1955,7 +1955,9 @@ class TestTheDeskRunReadsItsObservations:
             )
         }
 
-        async def replace(todo_id: str, user_id: str, *, update: TodoUpdate, **_: object) -> None:
+        async def replace(
+            todo_id: str, user_id: str, *, update: TodoUpdate, **_: object
+        ) -> TodoDocument:
             stored[todo_id] = stored[todo_id].model_copy(
                 update=update.model_dump(exclude_unset=True)
             )
@@ -2579,7 +2581,7 @@ _DISPATCH = "app.services.triggers.subscription_dispatch"
 _BATCH_FULL = "[TRIGGER] Trigger batch full — oldest events dropped"
 
 
-def _reply_payload(n: int) -> dict[str, str]:
+def _reply_payload(n: int) -> dict[str, object]:
     return {"thread_id": "t-1", "message_id": f"m-{n}"}
 
 
@@ -3349,14 +3351,16 @@ class TestResumeTrackedTodo:
 
     async def _resume(
         self,
-        *args: object,
+        *job: *tuple[str, str, str, str],
+        attempt: int = 0,
         doc: TodoDocument | None = None,
         lock_acquired: bool = True,
         agent: AsyncMock | None = None,
     ) -> _ResumeRun:
+        """Resume the job (todo, conversation, approval, receipt) through the real task."""
         run = self._build(doc=doc, lock_acquired=lock_acquired, agent=agent)
         with self._patched(run):
-            run.result = await resume_tracked_todo({}, *args)
+            run.result = await resume_tracked_todo({}, *job, attempt=attempt)
         return run
 
     async def test_continues_the_parked_conversation_not_a_fresh_one(self) -> None:
@@ -3519,7 +3523,9 @@ class TestResumeTrackedTodo:
 
     async def test_a_held_lock_past_the_last_backoff_step_drops_loudly(self) -> None:
         exhausted = len(LOCK_DEFER_BACKOFF)
-        run = await self._resume("todo-1", "conv-x", "ap_1", "r", exhausted, lock_acquired=False)
+        run = await self._resume(
+            "todo-1", "conv-x", "ap_1", "r", attempt=exhausted, lock_acquired=False
+        )
 
         assert run.result == "resume_dropped:todo-1 (lock held)"
         # The grant entry promised the run would continue, so the todo says it did not.
@@ -3564,7 +3570,7 @@ class TestResumeTrackedTodo:
     async def test_an_executor_busy_past_the_last_backoff_step_drops_loudly(self) -> None:
         busy = AsyncMock(side_effect=ExecutorBusyError("the executor is already running"))
         exhausted = len(LOCK_DEFER_BACKOFF)
-        run = await self._resume("todo-1", "conv-x", "ap_1", "r", exhausted, agent=busy)
+        run = await self._resume("todo-1", "conv-x", "ap_1", "r", attempt=exhausted, agent=busy)
 
         assert run.result == "resume_dropped:todo-1 (executor busy)"
         assert run.entries() == [

@@ -9,7 +9,7 @@ from composio_client import APIStatusError, InternalServerError, PermissionDenie
 import httpx
 import pytest
 
-from app.models.trigger_configs import GmailPollInboxConfig
+from app.models.trigger_configs import GmailPollInboxConfig, TriggerConfigData
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow, WorkflowStep
 from app.services.triggers.base import TriggerHandler, _log_event_timing
 from tests.helpers import captured_wide_event
@@ -119,7 +119,7 @@ class TestQueueOneWorkflowDispatch:
     """The coalescing decision in _queue_one_workflow — the seam every integration webhook passes through."""
 
     @staticmethod
-    def _workflow(trigger_name: str, trigger_data: object) -> Workflow:
+    def _workflow(trigger_name: str, trigger_data: TriggerConfigData | None) -> Workflow:
         return Workflow(
             id="wf_disp",
             user_id="user_disp",

@@ -330,6 +330,15 @@ async def test_queueing_hands_the_user_to_the_provisioning_job() -> None:
 
 
 STAMP = datetime(2026, 9, 1, tzinfo=UTC)
+
+
+def _note_writes() -> AsyncMock:
+    """Return the note write the stored fixture patched in."""
+    writes = todo_repository.replace_note_fields
+    assert isinstance(writes, AsyncMock)
+    return writes
+
+
 OLD_DESK_CANVAS = starting_canvas(INBOX_DESK_TITLE, [INBOX_DESK_DELIVERY_RULE])
 
 
@@ -384,7 +393,7 @@ async def test_a_desk_without_observations_md_is_seeded_once_before_its_run(
     assert ready.canvas_content == OLD_DESK_CANVAS
     assert again == ready == stored[DESK_ID]
     assert ready.updated_at == STAMP
-    assert todo_repository.replace_note_fields.await_count == 1
+    assert _note_writes().await_count == 1
 
 
 @time_machine.travel(datetime(2026, 10, 3, 19, 30, tzinfo=UTC), tick=False)
@@ -413,7 +422,7 @@ async def test_the_canvas_observations_move_into_observations_md_once(
     )
     assert again == ready == stored[DESK_ID]
     assert ready.updated_at == STAMP
-    assert todo_repository.replace_note_fields.await_count == 1
+    assert _note_writes().await_count == 1
 
 
 async def test_a_desk_with_no_canvas_at_all_is_seeded_from_the_seed_alone(
@@ -435,7 +444,7 @@ async def test_a_desk_that_keeps_observations_md_is_not_written(
     stored[DESK_ID] = desk
 
     assert await inbox_desk.with_desk_notes(desk) is desk
-    todo_repository.replace_note_fields.assert_not_awaited()
+    _note_writes().assert_not_awaited()
 
 
 @time_machine.travel(datetime(2026, 10, 3, 19, 30, tzinfo=UTC), tick=False)
@@ -469,7 +478,7 @@ async def test_a_repair_writes_this_desks_own_notes_under_its_own_user(
 
     await inbox_desk.with_desk_notes(stored[DESK_ID])
 
-    assert todo_repository.replace_note_fields.await_args.args[:2] == (DESK_ID, USER_ID)
+    assert _note_writes().await_args.args[:2] == (DESK_ID, USER_ID)
 
 
 @pytest.mark.parametrize(
@@ -485,4 +494,4 @@ async def test_a_todo_that_is_not_the_desk_gets_no_observations(
     stored[DESK_ID] = todo
 
     assert await inbox_desk.with_desk_notes(todo) is todo
-    todo_repository.replace_note_fields.assert_not_awaited()
+    _note_writes().assert_not_awaited()
