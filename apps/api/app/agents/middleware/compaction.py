@@ -377,6 +377,10 @@ def _summarized_compact_message(
     summary stands alone. spilled is (fmt, sandbox_path) from _write_raw_output.
     """
     body = f"[{tool_name} compacted: {reason}] {summary}"
+    extracted = extract_offload_records(content_str)
+    if extracted is not None and extracted.metadata:
+        # The spilled file holds only the records, and the digest may drop these fields.
+        body += f"\n\n[Envelope fields: {json.dumps(extracted.metadata)}]"
     additional: dict[str, object] = {
         **existing_additional_kwargs,
         "original_length": len(content_str),
