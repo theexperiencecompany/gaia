@@ -38,7 +38,7 @@ from scripts.evals.suites.trigger_gate import (
 )
 import time_machine
 
-from app.constants.trigger_gates import GateOwner
+from app.constants.trigger_gates import ENFORCED_GATE_KINDS, GateKind, GateOwner
 from app.constants.triggers import GMAIL_NEW_MESSAGE_TRIGGER_NAME
 from app.services.triggers.trigger_gate import (
     GateBypass,
@@ -230,6 +230,15 @@ def test_in_quiet_hours_no_needs_you_email_is_skipped_but_the_named_and_anonymis
     skipped = _needs_you_skipped(cases, _passes(regraded, EvalGate.SYSTEM), GateMode.QUIET)
     assert skipped == RECORDED_QUIET_FALSE_SKIPS
     assert skipped <= NAMED_FALSE_SKIPS | ANONYMISED_ONLY_FALSE_SKIPS
+
+
+def test_authored_gates_skip_only_while_they_lose_no_needs_you_email_the_desk_preset_runs(
+    cases: dict[str, Case], regraded: list[_Pass]
+) -> None:
+    desk = _needs_you_skipped(cases, _passes(regraded, EvalGate.SYSTEM), GateMode.DAY)
+    authored = _needs_you_skipped(cases, _passes(regraded, EvalGate.AUTHORED), GateMode.DAY)
+    lost = sorted(authored - desk)
+    assert (GateKind.AUTHORED in ENFORCED_GATE_KINDS) == (not lost), lost
 
 
 async def test_the_live_suite_journals_the_hash_of_the_request_it_sent_and_the_answer(
