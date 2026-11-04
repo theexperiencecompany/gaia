@@ -24,6 +24,7 @@ from app.services.analytics_service import capture
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.integrations.user_integrations import invalidate_user_integration_caches
 from app.services.mcp.mcp_client import get_mcp_client
+from app.services.mcp.mcp_oauth import build_oauth_auth_url
 from app.services.mcp.oauth_callback import (
     ProviderError,
     ScopeRetry,
@@ -120,7 +121,8 @@ async def test_mcp_connection(
     )
 
     try:
-        auth_url = await client.build_oauth_auth_url(
+        auth_url = await build_oauth_auth_url(
+            client.token_store,
             integration_id=integration_id,
             redirect_uri=get_mcp_oauth_redirect_uri(),
             redirect_path="/integrations",

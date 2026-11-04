@@ -18,6 +18,7 @@ export type {
   BatchDecisionOutcome,
   HilMode,
   HilPreferences,
+  HilPreferencesUpdate,
 } from "./approvals.types";
 
 export const APPROVAL_REQUEST_TOOL_NAME = "approval_request";
@@ -43,13 +44,16 @@ export function isSettled(status: ApprovalStatus): boolean {
   return status !== "pending";
 }
 
-/** Whether a tool needs approval — i.e. is in the gated set the mode acts on. */
+/**
+ * Whether a tool needs approval — i.e. is in the gated set the mode acts on.
+ * `approvalKey` is the server-issued HIL key, never the tool's display name.
+ */
 export function toolAsks(
   prefs: HilPreferences | undefined,
-  name: string,
+  approvalKey: string,
   destructive: boolean,
 ): boolean {
-  return prefs?.tool_overrides?.[name] ?? destructive;
+  return prefs?.tool_overrides?.[approvalKey] ?? destructive;
 }
 
 /**
