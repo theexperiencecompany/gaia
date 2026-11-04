@@ -664,6 +664,33 @@ class TestCreateSubscription:
         call_kwargs = mock_dodo_client.checkout_sessions.create.call_args[1]
         assert call_kwargs["customization"] == {"theme": "dark"}
 
+    async def test_the_checkout_is_one_page_with_the_wallets_first(
+        self,
+        payment_service,
+        mock_users_collection,
+        mock_subscription_repository,
+        mock_plan_repository,
+        mock_redis_cache,
+        mock_dodo_client,
+    ):
+        """Dodo's two-page checkout put Apple Pay / Google Pay behind a Continue to Payment step."""
+        _set_user(mock_users_collection, SAMPLE_USER_DOC)
+        mock_subscription_repository.get_active_for_user = AsyncMock(return_value=None)
+        checkout_response = MagicMock()
+        checkout_response.session_id = "sess_004"
+        checkout_response.checkout_url = "https://checkout.dodo.dev/sess_004"
+        mock_dodo_client.checkout_sessions.create = MagicMock(return_value=checkout_response)
+        mock_plan_repository.list_plans = AsyncMock(return_value=[])
+
+        await payment_service.create_subscription(user_id=FAKE_USER_ID, product_id="prod_abc123")
+
+        call_kwargs = mock_dodo_client.checkout_sessions.create.call_args[1]
+        assert call_kwargs["feature_flags"] == {
+            "allow_discount_code": True,
+            "allow_customer_editing_country": True,
+            "single_page": True,
+        }
+
     async def test_outside_production_everything_but_the_card_is_prefilled(
         self,
         payment_service,
