@@ -115,6 +115,7 @@ function buildDraftFormValues(
     selectedTrigger: selectedTriggerValue,
     trigger_config: triggerConfig,
     notify_on_completion: true,
+    runs_only_when: draftData.runs_only_when ?? undefined,
   };
 }
 
