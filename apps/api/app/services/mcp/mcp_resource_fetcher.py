@@ -5,6 +5,7 @@ from __future__ import annotations
 from app.constants.log_tags import LogTag
 from app.models.mcp_config import McpUiResourceDetails
 from app.services.mcp.mcp_client import get_mcp_client
+from app.services.mcp.server_routing import read_ui_resource_details
 from shared.py.wide_events import McpContext, log
 
 
@@ -23,7 +24,8 @@ async def fetch_mcp_ui_resource(
     )
     try:
         mcp_client = await get_mcp_client(user_id=user_id)
-        details = await mcp_client.read_ui_resource_details(
+        details = await read_ui_resource_details(
+            mcp_client,
             server_url=server_url,
             resource_uri=resource_uri,
         )

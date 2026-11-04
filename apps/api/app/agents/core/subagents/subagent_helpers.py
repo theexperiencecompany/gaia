@@ -6,8 +6,6 @@ instructions, memories — is assembled separately by app.agents.context and
 delivered in its own messages, deliberately not in this string.
 """
 
-from langchain_core.messages import SystemMessage
-
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.prompts.custom_mcp_prompts import CUSTOM_MCP_SUBAGENT_PROMPT
 from app.constants.log_tags import LogTag
@@ -28,15 +26,3 @@ async def build_subagent_system_prompt(
         return base_system_prompt or ""
 
     return base_system_prompt or subagent.config.system_prompt or ""
-
-
-async def create_subagent_system_message(
-    integration_id: str,
-    base_system_prompt: str | None = None,
-) -> SystemMessage:
-    """Return the static subagent prompt as a SystemMessage."""
-    system_prompt = await build_subagent_system_prompt(
-        integration_id=integration_id,
-        base_system_prompt=base_system_prompt,
-    )
-    return SystemMessage(content=system_prompt)

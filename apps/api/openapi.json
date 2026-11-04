@@ -9037,6 +9037,41 @@
         "title": "IntegrationTool",
         "type": "object"
       },
+      "IntegrationToolApproval": {
+        "properties": {
+          "approval_key": {
+            "description": "Key the user's per-tool approval override is stored under; send it back unchanged.",
+            "title": "Approval Key",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "destructive": {
+            "default": false,
+            "title": "Destructive",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "approval_key"
+        ],
+        "title": "IntegrationToolApproval",
+        "type": "object"
+      },
       "IntegrationToolsResponse": {
         "description": "Full tool list for a single integration (catalog data, on demand).",
         "properties": {
@@ -9052,7 +9087,7 @@
           "tools": {
             "default": [],
             "items": {
-              "$ref": "#/components/schemas/IntegrationTool"
+              "$ref": "#/components/schemas/IntegrationToolApproval"
             },
             "title": "Tools",
             "type": "array"
@@ -11194,6 +11229,17 @@
               }
             ]
           },
+          "stopped": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stopped"
+          },
           "subtype": {
             "anyOf": [
               {
@@ -11481,6 +11527,17 @@
                 "type": "null"
               }
             ]
+          },
+          "stopped": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stopped"
           },
           "subtype": {
             "anyOf": [
@@ -14006,6 +14063,21 @@
         ],
         "title": "PlanType",
         "type": "string"
+      },
+      "PlatformConversationResponse": {
+        "description": "The linked platform's DM chat, opened from the settings page.",
+        "properties": {
+          "conversation_id": {
+            "description": "Conversation id of the platform's DM chat",
+            "title": "Conversation Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation_id"
+        ],
+        "title": "PlatformConversationResponse",
+        "type": "object"
       },
       "PlatformLinkEntry": {
         "description": "One linked platform account \u2014 the single shape for this entry.\n\nA ``TypedDict`` rather than a model (Type Safety item 6) because it has two\nconsumers with different needs, and this type serves both without a rival\ncopy. ``PlatformLinkService.get_linked_platforms`` assembles it in-process\nfrom an already-loaded ``UserDocument``, and the outbound-delivery paths\nread it tolerating a legacy non-string ``platformUserId`` (Telegram stores\nchat_id as an int) which they coerce at the envelope; validating there would\nstart raising on those rows \u2014 a behaviour change (item 13). Pydantic still\nvalidates it as a field of ``GetPlatformLinksResponse`` below, so the HTTP\nboundary rejects the same values a ``BaseModel`` here would.",
@@ -22807,7 +22879,7 @@
     },
     "/api/v1/approvals/tools/{tool_name}": {
       "put": {
-        "description": "Set (``ask`` true/false) or clear (``ask`` null) one tool's approval override.",
+        "description": "Set (``ask`` true/false) or clear (``ask`` null) one tool's approval override.\n\ntool_name is the HIL tool key the client was given (an MCP tool's is server-scoped).",
         "operationId": "approvals_set_tool_approval",
         "parameters": [
           {
@@ -34694,7 +34766,7 @@
     },
     "/api/v1/oauth/login/workos": {
       "get": {
-        "description": "Start the WorkOS SSO authentication flow.\n\nArgs:\n    return_url: Optional URL to redirect to after authentication.\n\nReturns:\n    RedirectResponse: Redirects the user to the WorkOS SSO authorization URL",
+        "description": "Start the WorkOS SSO authentication flow.\n\nArgs:\n    return_url: Optional URL to redirect to after authentication.\n    screen_hint: The AuthKit screen to open on; /signup asks for sign-up.\n\nReturns:\n    RedirectResponse: Redirects the user to the WorkOS SSO authorization URL",
         "operationId": "oauth_login_workos",
         "parameters": [
           {
@@ -34711,6 +34783,26 @@
                 }
               ],
               "title": "Return Url"
+            }
+          },
+          {
+            "in": "query",
+            "name": "screen_hint",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "sign-up",
+                    "sign-in"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Screen Hint"
             }
           }
         ],
@@ -36670,6 +36762,69 @@
           }
         },
         "summary": "Initiate Platform Connect",
+        "tags": [
+          "Platform Links"
+        ]
+      }
+    },
+    "/api/v1/platform-links/{platform}/conversation": {
+      "post": {
+        "description": "Open the DM chat of a linked Telegram, WhatsApp or iMessage account.",
+        "operationId": "platform_links_open_platform_chat_endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "platform",
+            "required": true,
+            "schema": {
+              "title": "Platform",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformConversationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Open Platform Chat Endpoint",
         "tags": [
           "Platform Links"
         ]

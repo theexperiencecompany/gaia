@@ -72,7 +72,7 @@ jobs:
         id: t0
         run: echo "epoch=$(date +%s)" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: open-next
           path: apps/web/.open-next
@@ -171,7 +171,9 @@ jobs:
       - name: Submit the changed pages to IndexNow (Bing, Yandex, Seznam, Naver)
         env:
           GH_TOKEN: ${{ github.token }}
-          # Called from ci.yml's deploy-web job, which prefixes the job names.
-          INDEXNOW_DEPLOY_JOB: deploy-web / deploy-production
-          INDEXNOW_JOB: deploy-web / IndexNow (post-deploy)
+          # This file's job names, matched bare in its own pre-ci.yml push runs and
+          # under ci.yml's "deploy-web / " prefix since ci.yml calls it.
+          INDEXNOW_DEPLOY_WORKFLOW: deploy-web.yml
+          INDEXNOW_DEPLOY_JOB: deploy-production
+          INDEXNOW_JOB: IndexNow (post-deploy)
         run: bash scripts/ci/smoke-web.sh indexnow

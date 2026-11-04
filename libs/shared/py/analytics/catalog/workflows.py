@@ -10,6 +10,7 @@ __all__ = [
     "WorkflowActivated",
     "WorkflowCardNavigate",
     "WorkflowCreated",
+    "WorkflowCreatedOrigin",
     "WorkflowDeactivated",
     "WorkflowDeleted",
     "WorkflowExecuted",
@@ -22,18 +23,25 @@ __all__ = [
 ]
 
 
+#: user_created: saved from the editor or a confirmed chat draft; chat_agent: the agent created
+#: it straight from a chat request; todo_converted: the user turned a todo into a workflow;
+#: todo_requested: the user pressed Generate Workflow on a todo.
+WorkflowCreatedOrigin = Literal["user_created", "chat_agent", "todo_converted", "todo_requested"]
+
+
 class WorkflowCreated(ServerEvent):
-    """A workflow was created, by the user or generated for a todo."""
+    """A workflow was created, by the user or generated for a todo; origin says which."""
 
     event: ClassVar[str] = "workflow:created"
     previous_names: ClassVar[tuple[str, ...]] = ("workflows:created",)
     budget_per_user_day: ClassVar[int] = 200
 
+    origin: WorkflowCreatedOrigin
     workflow_id: Identifier | None = None
     trigger_type: Identifier | None = None
     steps_count: int | None = None
     generated_immediately: bool | None = None
-    from_todo: bool | None = None
+    #: Kept for the Feature Adoption insight that splits on it; origin is the finer split.
     is_todo_workflow: bool | None = None
 
 

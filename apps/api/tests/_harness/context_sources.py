@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
-from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
+from app.models.integration_models import UserIntegrationDocument
 from app.models.memory_models import MemoryEntry, MemorySearchResult
 from app.models.presence_models import PresenceSnapshot
 from app.models.todo_models import TodoDocument
@@ -44,13 +44,10 @@ class ContextSources:
     skills: str = ""
     #: ``get_connected_integrations_named`` shape: ``[{"id": ..., "name": ...}]``.
     connected_integrations: list[dict[str, str]] = field(default_factory=list)
-    #: Identity of the user's one connected account on the integration in context.
-    account_identity: dict[str, str] = field(default_factory=dict)
     #: Integrations holding several accounts, for the manifest's account lists.
     multi_account_records: list[UserIntegrationDocument] = field(default_factory=list)
-    #: The user's "global" standing instructions; every other scope reads ``integration_instructions``.
+    #: The user's "global" standing instructions, the only scope a context section reads.
     global_instructions: str = ""
-    integration_instructions: str = ""
     active_todo: TodoDocument | None = None
     #: Ground-truth block the workflow authoring tier folds into its human turn.
     workflow_integrations_hint: str = ""
@@ -62,10 +59,6 @@ class ContextSources:
     )
     #: The one place a proactive message would land on.
     proactive_target: ProactiveTarget = field(default_factory=lambda: InApp(reason="no_chat_app"))
-
-
-def _instructions_for(sources: ContextSources, scope: str) -> str:
-    return sources.global_instructions if scope == "global" else sources.integration_instructions
 
 
 #: The real clients underneath the faked edges, reachable from some context
@@ -146,12 +139,6 @@ def fake_context_sources(sources: ContextSources) -> Iterator[None]:
         )
         enter(
             patch(
-                "app.agents.context.fetchers.get_account_record",
-                AsyncMock(return_value=_single_account_record(sources.account_identity)),
-            )
-        )
-        enter(
-            patch(
                 "app.agents.context.fetchers.list_account_records",
                 AsyncMock(return_value=list(sources.multi_account_records)),
             )
@@ -159,7 +146,7 @@ def fake_context_sources(sources: ContextSources) -> Iterator[None]:
         enter(
             patch(
                 "app.agents.context.sections.get_instructions",
-                AsyncMock(side_effect=lambda _user_id, scope: _instructions_for(sources, scope)),
+                AsyncMock(return_value=sources.global_instructions),
             )
         )
         enter(
@@ -192,20 +179,6 @@ def fake_context_sources(sources: ContextSources) -> Iterator[None]:
         for target in _FENCED_CLIENTS:
             enter(patch(target, _fence(target)))
         yield
-
-
-def _single_account_record(identity: dict[str, str]) -> UserIntegrationDocument | None:
-    if not identity:
-        return None
-    return UserIntegrationDocument(
-        user_id="user-1",
-        integration_id="gmail",
-        status="connected",
-        accounts=[
-            IntegrationAccount(id="ca_1", connected_account_id="ca_1", identity=identity, label="x")
-        ],
-        primary_account_id="ca_1",
-    )
 
 
 @contextmanager

@@ -26,7 +26,6 @@ class SectionScope:
     request_query: str | None = None
     user_id: str | None = None
     subagent_id: str | None = None
-    integration_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -59,7 +58,6 @@ class SectionContext:
     #: on them. Memory recall reuses that result before querying with query.
     request_query: str | None = None
     subagent_id: str | None = None
-    integration_id: str | None = None
     vfs_session_id: str | None = None
     active_todo_id: str | None = None
     execution_mode: ExecutionMode = "interactive"
@@ -94,7 +92,6 @@ class SectionContext:
             query=scope.query,
             request_query=scope.request_query,
             subagent_id=scope.subagent_id,
-            integration_id=scope.integration_id,
             vfs_session_id=configurable.get("vfs_session_id"),
             active_todo_id=configurable.get("active_todo_id"),
             execution_mode="background" if mode == "background" else "interactive",

@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
 import subprocess
 import sys
+import threading
 
 from http_stub import Routes, serve
 import pytest
@@ -186,3 +189,59 @@ def test_description_bounds_are_the_web_apps_snippet_config() -> None:
     assert "WARN meta description length: 2" in result.stdout, result.stdout
     assert f"{low - 1} {NAMED}/under" in result.stdout
     assert f"{high + 1} {NAMED}/over" in result.stdout
+
+
+@contextmanager
+def _truncating_site(truncated_replies: int) -> Iterator[str]:
+    """Serve one clean page whose first truncated_replies answers close mid chunked body."""
+    truncated = [0]
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            base = f"http://{self.headers['Host']}"
+            if self.path == "/sitemap.xml":
+                body, kind = f"<urlset><url><loc>{base}/page</loc></url></urlset>", "text/xml"
+            elif self.path == "/og.png":
+                body, kind = "png", "image/png"
+            else:
+                body, kind = _page(base, "/page"), "text/html"
+            self.send_response(200)
+            self.send_header("Content-Type", kind)
+            if self.path != "/page" or truncated[0] >= truncated_replies:
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body.encode())
+                return
+            truncated[0] += 1
+            # One whole chunk, then the connection closes before the next chunk-size line.
+            self.send_header("Transfer-Encoding", "chunked")
+            self.end_headers()
+            self.wfile.write(f"{len(body):x}\r\n{body}\r\n".encode())
+
+        def log_message(self, *_args: object) -> None:
+            return None
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        yield f"http://127.0.0.1:{server.server_address[1]}"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_a_truncated_response_is_retried() -> None:
+    with _truncating_site(truncated_replies=1) as base:
+        result = _audit(base)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_a_response_truncated_on_every_attempt_is_a_finding_not_a_crash() -> None:
+    with _truncating_site(truncated_replies=99) as base:
+        result = _audit(base)
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "Traceback" not in result.stderr, result.stderr
+    assert "ERROR sitemap URL not 200: 1" in result.stdout, result.stdout
+    assert f"{base}/page -> 0" in result.stdout, result.stdout
