@@ -15,18 +15,19 @@ from app.models.jev_models import JevDecisionsResponse
 from app.services.providers.provider_credentials_service import ProviderConfig, resolve
 
 
+class JevUnconfiguredError(RuntimeError):
+    """No OpenRouter key is saved or set, so JEV cannot be asked at all (a self-host without one)."""
+
+
 async def post_decisions(
-    state: Mapping[str, object],
-    questions: Mapping[str, Mapping[str, object]],
-    *,
-    timeout_seconds: float = HIL_JEV_TIMEOUT_SECONDS,
+    state: Mapping[str, object], questions: Mapping[str, Mapping[str, object]]
 ) -> JevDecisionsResponse:
     """One Decisions call on the saved or env OpenRouter key; raises on a missing key, transport failure, or a malformed body."""
     config: ProviderConfig | None = await resolve(CredentialProviderName.OPENROUTER)
     key = config.api_key if config else None
     if not key:
-        raise RuntimeError("No OpenRouter key saved or set; cannot reach the JEV judge")
-    async with httpx.AsyncClient(timeout=timeout_seconds) as client:
+        raise JevUnconfiguredError("No OpenRouter key saved or set; cannot reach the JEV judge")
+    async with httpx.AsyncClient(timeout=HIL_JEV_TIMEOUT_SECONDS) as client:
         resp = await client.post(
             HIL_JEV_URL,
             json={"model": HIL_JEV_MODEL_NAME, "state": state, "questions": questions},

@@ -149,6 +149,7 @@ export type ServerEventName =
   | "todos:updated"
   | "tool:execute_failed"
   | "tool:used"
+  | "trigger:gate_decided"
   | "usage:queried"
   | "user:active"
   | "user:logged_in"
@@ -162,7 +163,6 @@ export type ServerEventName =
   | "workflow:published"
   | "workflow:result_delivered"
   | "workflow:steps_regenerated"
-  | "workflow:trigger_gate_decided"
   | "workflow:unpublished"
   | "workflow:updated";
 
@@ -1570,6 +1570,19 @@ export interface EventProperties {
     "account_count"?: number;
     "account_is_primary"?: boolean;
   };
+  "trigger:gate_decided": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "owner_type": "workflow" | "todo";
+    "trigger_name": string;
+    "gate_kind": "authored" | "system";
+    "author"?: "gaia" | "user";
+    "outcome": "run" | "skip";
+    "reason": "jev_run" | "jev_skip" | "free_run" | "jev_error" | "jev_timeout" | "jev_malformed" | "jev_unconfigured";
+    "enforced": boolean;
+    "latency_ms"?: number;
+  };
   "ui:sidebar_collapsed": Record<string, never>;
   "ui:sidebar_expanded": Record<string, never>;
   "usage:queried": {
@@ -1710,19 +1723,6 @@ export interface EventProperties {
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "force_different_tools": boolean;
     "steps_count": number;
-  };
-  "workflow:trigger_gate_decided": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "owner_type": "workflow" | "todo";
-    "trigger_name": string;
-    "outcome": "run" | "skip";
-    "reason": "rule" | "jev_skip" | "jev_run" | "jev_unsure" | "jev_error";
-    "author": "gaia" | "user" | "system";
-    "enforced": boolean;
-    "skipped": boolean;
-    "latency_ms"?: number;
   };
   "workflow:unpublished": {
     "actor": "user" | "agent";

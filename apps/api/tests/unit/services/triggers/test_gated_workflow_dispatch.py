@@ -1,6 +1,8 @@
-"""A gated workflow at dispatch: a confident skip records a visible skipped run and claims nothing."""
+"""A gated workflow at dispatch: a skip records a visible skipped run and claims, batches and queues nothing."""
 
+import asyncio
 from collections.abc import Iterator, Mapping
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -10,12 +12,7 @@ import respx
 
 from app.constants.hil import HIL_JEV_URL
 from app.constants.trigger_gates import GateAuthor
-from app.models.trigger_subscription_models import (
-    ConditionOperator,
-    GateChoice,
-    SubscriptionCondition,
-    TriggerGate,
-)
+from app.models.trigger_gate_models import AuthoredGate, TriggerGate
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow, WorkflowStep
 from app.services.providers.provider_credentials_service import ProviderConfig
 from app.services.triggers.handlers.gmail import GmailTriggerHandler
@@ -25,33 +22,21 @@ pytestmark = pytest.mark.unit
 _BASE = "app.services.triggers.base"
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 WORKFLOW_ID = "wf_gated000001"
-_GATE = TriggerGate(
-    question="Is someone waiting on the user?",
-    choices=[
-        GateChoice(label="needs_you", meaning="Someone is waiting."),
-        GateChoice(label="not_needed", meaning="Nobody is waiting."),
-    ],
-    skip_on=["not_needed"],
-    min_confidence=0.95,
-    run_when=[
-        SubscriptionCondition(
-            field_name="continues_thread", operator=ConditionOperator.EQUALS, value=True
-        )
-    ],
-    author=GateAuthor.GAIA,
-)
+CONDITION = "the email is from a customer about billing"
+_GATE = AuthoredGate(condition=CONDITION, author=GateAuthor.GAIA)
 
 
-def _workflow(gate: TriggerGate | None = _GATE) -> Workflow:
+def _workflow(gate: TriggerGate | None = _GATE, workflow_id: str = WORKFLOW_ID) -> Workflow:
     return Workflow(
-        id=WORKFLOW_ID,
+        id=workflow_id,
         user_id=USER_ID,
         title="Draft replies",
         description="Draft a reply to mail that needs one",
         steps=[WorkflowStep(title="Draft", description="Draft the reply")],
         trigger_config=TriggerConfig(
-            type=TriggerType.INTEGRATION, trigger_name="gmail_new_message", gate=gate
+            type=TriggerType.INTEGRATION, trigger_name="gmail_new_message"
         ),
+        gate=gate,
     )
 
 
@@ -75,9 +60,9 @@ def _jev_body(not_needed: float) -> dict[str, object]:
         "answers": {
             "gate": {
                 "type": "choice",
-                "choice": "not_needed" if not_needed >= 0.5 else "needs_you",
+                "choice": "not_needed" if not_needed >= 0.5 else "needed",
                 "confidence": max(not_needed, 1 - not_needed),
-                "probabilities": {"not_needed": not_needed, "needs_you": 1 - not_needed},
+                "probabilities": {"not_needed": not_needed, "needed": 1 - not_needed},
             }
         }
     }
@@ -112,9 +97,7 @@ async def _fire(workflows: list[Workflow], **payload: object) -> None:
     await _Handler(workflows).process_event("GMAIL_NEW_GMAIL_MESSAGE", None, USER_ID, data)
 
 
-async def test_a_confident_skip_records_a_skipped_run_and_claims_nothing(
-    seams: SimpleNamespace,
-) -> None:
+async def test_a_skip_records_a_skipped_run_and_claims_nothing(seams: SimpleNamespace) -> None:
     seams.jev.mock(return_value=httpx.Response(200, json=_jev_body(0.99)))
 
     await _fire([_workflow()])
@@ -124,10 +107,7 @@ async def test_a_confident_skip_records_a_skipped_run_and_claims_nothing(
     # The occurrence stays unclaimed, so a later trigger for the same one still runs.
     seams.claim.assert_not_awaited()
     seams.skipped.assert_awaited_once_with(
-        WORKFLOW_ID,
-        USER_ID,
-        TriggerType.INTEGRATION.value,
-        "Skipped by gate: Nobody is waiting. (not_needed, 0.99)",
+        WORKFLOW_ID, USER_ID, TriggerType.INTEGRATION.value, f"Skipped: runs only when {CONDITION}"
     )
 
 
@@ -140,7 +120,7 @@ async def test_a_confident_skip_records_a_skipped_run_and_claims_nothing(
     ],
     ids=["unsure", "5xx", "garbage"],
 )
-async def test_unsure_or_failing_gate_queues_as_today(
+async def test_an_unsure_or_failing_gate_queues_as_today(
     seams: SimpleNamespace, response: httpx.Response
 ) -> None:
     seams.jev.mock(return_value=response)
@@ -163,3 +143,54 @@ async def test_an_ungated_workflow_never_asks_jev(seams: SimpleNamespace) -> Non
 
     assert not seams.jev.called
     seams.queue.assert_awaited_once()
+
+
+async def test_each_matched_workflow_gets_its_own_verdict(seams: SimpleNamespace) -> None:
+    other = "the email is a meeting request"
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        criteria = json.loads(request.content)["questions"]["gate"]["criteria"]
+        return (
+            httpx.Response(200, json=_jev_body(0.99))
+            if criteria["needed"] == CONDITION
+            else httpx.Response(503, text="down")
+        )
+
+    seams.jev.mock(side_effect=answer)
+
+    await _fire(
+        [
+            _workflow(),
+            _workflow(AuthoredGate(condition=other, author=GateAuthor.USER), "wf_gated000002"),
+        ]
+    )
+
+    seams.skipped.assert_awaited_once()
+    assert seams.skipped.await_args.args[0] == WORKFLOW_ID
+    seams.queue.assert_awaited_once()
+    assert seams.queue.await_args.args[0] == "wf_gated000002"
+
+
+async def test_matched_workflows_are_gated_at_the_same_time(seams: SimpleNamespace) -> None:
+    both_asked = asyncio.Event()
+    in_flight = most_in_flight = 0
+
+    async def answer(_: httpx.Request) -> httpx.Response:
+        nonlocal in_flight, most_in_flight
+        in_flight += 1
+        most_in_flight = max(most_in_flight, in_flight)
+        if in_flight == 2:
+            both_asked.set()
+        try:
+            # A dispatcher that asks one at a time never has the second question in flight.
+            await asyncio.wait_for(both_asked.wait(), timeout=1)
+        finally:
+            in_flight -= 1
+        return httpx.Response(200, json=_jev_body(0.1))
+
+    seams.jev.mock(side_effect=answer)
+
+    await _fire([_workflow(), _workflow(workflow_id="wf_gated000002")])
+
+    assert most_in_flight == 2
+    assert seams.queue.await_count == 2

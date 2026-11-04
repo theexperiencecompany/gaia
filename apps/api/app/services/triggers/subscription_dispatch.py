@@ -18,7 +18,7 @@ from redis.exceptions import RedisError
 
 from app.constants.integrations import EVENT_ACCOUNT_ID_KEY
 from app.constants.todos import BLOCKING_LABELS, EXECUTE_TRACKED_TODO_TASK, TodoActivityEvent
-from app.constants.trigger_gates import TRIGGER_GATE_SKIPPED_SUMMARY, GateOwner
+from app.constants.trigger_gates import GateOwner
 from app.db.redis import redis_cache
 from app.db.repositories.todos import todo_repository
 from app.models.notification.notification_models import (
@@ -44,7 +44,7 @@ from app.services.triggers.todo_trigger_window import (
     buffer_todo_trigger_event,
     trigger_window,
 )
-from app.services.triggers.trigger_gate import admit_event, automation_text
+from app.services.triggers.trigger_gate import GatedJob, automation_text, gate_skip
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
 from shared.py.analytics import UserId
@@ -146,22 +146,20 @@ async def _fire_if_matching(
     if not conditions_match(trigger_name, subscription.conditions, payload, subscription.match):
         return False
     # Before any window or cooldown claim: a skipped event must not burn the slot
-    # the next real one needs, nor read as handled.
-    verdict = await admit_event(
+    # the next real one needs, nor read as handled. Only an EXECUTE subscription has a gate.
+    skip = await gate_skip(
         subscription.gate,
-        owner=GateOwner.TODO,
-        user_id=todo.user_id,
+        GatedJob(
+            owner=GateOwner.TODO,
+            id=subscription.id,
+            user_id=todo.user_id,
+            automation=automation_text(todo.title, todo.description),
+        ),
         trigger_name=trigger_name,
         payload=payload,
-        automation=automation_text(todo.title, todo.description),
     )
-    if verdict is not None and verdict.skips:
-        await record_activity(
-            todo.id,
-            todo.user_id,
-            TodoActivityEvent.RUN_SKIPPED,
-            TRIGGER_GATE_SKIPPED_SUMMARY.format(reason=verdict.decision.detail),
-        )
+    if skip is not None:
+        await record_activity(todo.id, todo.user_id, TodoActivityEvent.RUN_SKIPPED, skip.summary)
         return False
     if subscription.action is SubscriptionAction.EXECUTE:
         # A run costs an agent turn, so the todo runs once per window and an event

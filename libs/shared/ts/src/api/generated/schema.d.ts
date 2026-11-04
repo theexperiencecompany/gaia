@@ -6753,6 +6753,38 @@ export interface components {
             twitter?: string | null;
         };
         /**
+         * AuthoredGate
+         * @description A plain-text condition, shown to the user as "Runs only when: <condition>".
+         */
+        AuthoredGate: {
+            author: components["schemas"]["GateAuthor"];
+            /** Condition */
+            condition: string;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled?: boolean;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "authored";
+        };
+        /**
+         * AuthoredGateEdit
+         * @description A condition as a client sends it; the server decides who wrote it.
+         */
+        AuthoredGateEdit: {
+            /** Condition */
+            condition: string;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled?: boolean;
+        };
+        /**
          * BatchApprovalDecisionRequest
          * @description Body for deciding several pending approvals in one submission.
          */
@@ -8540,7 +8572,7 @@ export interface components {
              */
             title: string;
             /** @description Trigger configuration */
-            trigger_config: components["schemas"]["TriggerConfigInput"];
+            trigger_config: components["schemas"]["TriggerConfig"];
         };
         /**
          * CredentialProviderName
@@ -9575,20 +9607,10 @@ export interface components {
         };
         /**
          * GateAuthor
-         * @description Who wrote a gate: GAIA on create, the user in the editor, or a system default.
+         * @description Who wrote an authored gate's condition; always set by the server.
          * @enum {string}
          */
-        GateAuthor: "gaia" | "user" | "system";
-        /**
-         * GateChoice
-         * @description One answer JEV may give, with what it means for this job.
-         */
-        GateChoice: {
-            /** Label */
-            label: string;
-            /** Meaning */
-            meaning: string;
-        };
+        GateAuthor: "gaia" | "user";
         /**
          * GenerateWorkflowPromptRequest
          * @description Request model for AI-generated workflow instructions.
@@ -13415,7 +13437,7 @@ export interface components {
             title: string;
             /** Total Executions */
             total_executions: number | null;
-            trigger_config: components["schemas"]["TriggerConfigOutput"] | null;
+            trigger_config: components["schemas"]["TriggerConfig"] | null;
         };
         /**
          * PublicWorkflowsResponse
@@ -15137,6 +15159,29 @@ export interface components {
          */
         SupportRequestType: "support" | "feature";
         /**
+         * SystemGate
+         * @description A preset owned by code; its question and wording are read from the preset table.
+         */
+        SystemGate: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled?: boolean;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "system";
+            preset: components["schemas"]["SystemGatePreset"];
+        };
+        /**
+         * SystemGatePreset
+         * @description A gate whose question, criteria and wording live in code, not on the job.
+         * @enum {string}
+         */
+        SystemGatePreset: "inbox_desk";
+        /**
          * SystemPurpose
          * @description Why a system-generated conversation was created.
          * @enum {string}
@@ -15763,6 +15808,55 @@ export interface components {
             why_important?: string;
         };
         /**
+         * TriggerConfig
+         * @description Configuration for workflow triggers.
+         *
+         *     Uses a discriminated union pattern for type-safe provider configs.
+         *     Provider-specific data is stored in `trigger_data` field.
+         */
+        TriggerConfig: {
+            /**
+             * Composio Trigger Ids
+             * @description List of Composio trigger IDs registered for this workflow
+             */
+            composio_trigger_ids?: string[] | null;
+            /**
+             * Cron Expression
+             * @description Cron expression for scheduled workflows
+             */
+            cron_expression?: string | null;
+            /**
+             * Enabled
+             * @description Whether the trigger is enabled
+             * @default true
+             */
+            enabled?: boolean;
+            /**
+             * Next Run
+             * @description Next scheduled execution time
+             */
+            next_run?: string | null;
+            /**
+             * Timezone
+             * @description Timezone for scheduled execution
+             */
+            timezone?: string | null;
+            /**
+             * Trigger Data
+             * @description Provider-specific trigger configuration
+             */
+            trigger_data?: (components["schemas"]["CalendarEventCreatedConfig"] | components["schemas"]["CalendarEventStartingSoonConfig"] | components["schemas"]["GmailNewMessageConfig"] | components["schemas"]["GmailEmailSentConfig"] | components["schemas"]["GmailPollInboxConfig"] | components["schemas"]["GitHubCommitEventConfig"] | components["schemas"]["GitHubPrEventConfig"] | components["schemas"]["GitHubStarAddedConfig"] | components["schemas"]["GitHubIssueAddedConfig"] | components["schemas"]["GoogleDocsNewDocumentConfig"] | components["schemas"]["GoogleDocsDocumentDeletedConfig"] | components["schemas"]["GoogleDocsDocumentUpdatedConfig"] | components["schemas"]["GoogleSheetsNewRowConfig"] | components["schemas"]["GoogleSheetsNewSheetConfig"] | components["schemas"]["LinearIssueCreatedConfig"] | components["schemas"]["LinearIssueUpdatedConfig"] | components["schemas"]["LinearCommentAddedConfig"] | components["schemas"]["NotionNewPageInDbConfig"] | components["schemas"]["NotionPageUpdatedConfig"] | components["schemas"]["NotionAllPageEventsConfig"] | components["schemas"]["NotionPageContentUpdatedConfig"] | components["schemas"]["SlackNewMessageConfig"] | components["schemas"]["SlackChannelCreatedConfig"] | components["schemas"]["TodoistNewTaskCreatedConfig"] | components["schemas"]["AsanaTaskTriggerConfig"]) | null;
+            /**
+             * Trigger Name
+             * @description Specific trigger slug for identification
+             */
+            trigger_name?: string | null;
+            /** @description Type of trigger */
+            type: components["schemas"]["TriggerType"];
+        } & {
+            [key: string]: unknown;
+        };
+        /**
          * TriggerConfigFieldSchema
          * @description Schema for a single trigger configuration field.
          */
@@ -15782,186 +15876,6 @@ export interface components {
              * @enum {string}
              */
             type: "string" | "integer" | "boolean" | "number";
-        };
-        /**
-         * TriggerConfig
-         * @description Configuration for workflow triggers.
-         *
-         *     Uses a discriminated union pattern for type-safe provider configs.
-         *     Provider-specific data is stored in `trigger_data` field.
-         */
-        TriggerConfigInput: {
-            /**
-             * Composio Trigger Ids
-             * @description List of Composio trigger IDs registered for this workflow
-             */
-            composio_trigger_ids?: string[] | null;
-            /**
-             * Cron Expression
-             * @description Cron expression for scheduled workflows
-             */
-            cron_expression?: string | null;
-            /**
-             * Enabled
-             * @description Whether the trigger is enabled
-             * @default true
-             */
-            enabled?: boolean;
-            /** @description The check a fired event must pass before this workflow runs */
-            gate?: components["schemas"]["TriggerGateInput"] | null;
-            /**
-             * Next Run
-             * @description Next scheduled execution time
-             */
-            next_run?: string | null;
-            /**
-             * Timezone
-             * @description Timezone for scheduled execution
-             */
-            timezone?: string | null;
-            /**
-             * Trigger Data
-             * @description Provider-specific trigger configuration
-             */
-            trigger_data?: (components["schemas"]["CalendarEventCreatedConfig"] | components["schemas"]["CalendarEventStartingSoonConfig"] | components["schemas"]["GmailNewMessageConfig"] | components["schemas"]["GmailEmailSentConfig"] | components["schemas"]["GmailPollInboxConfig"] | components["schemas"]["GitHubCommitEventConfig"] | components["schemas"]["GitHubPrEventConfig"] | components["schemas"]["GitHubStarAddedConfig"] | components["schemas"]["GitHubIssueAddedConfig"] | components["schemas"]["GoogleDocsNewDocumentConfig"] | components["schemas"]["GoogleDocsDocumentDeletedConfig"] | components["schemas"]["GoogleDocsDocumentUpdatedConfig"] | components["schemas"]["GoogleSheetsNewRowConfig"] | components["schemas"]["GoogleSheetsNewSheetConfig"] | components["schemas"]["LinearIssueCreatedConfig"] | components["schemas"]["LinearIssueUpdatedConfig"] | components["schemas"]["LinearCommentAddedConfig"] | components["schemas"]["NotionNewPageInDbConfig"] | components["schemas"]["NotionPageUpdatedConfig"] | components["schemas"]["NotionAllPageEventsConfig"] | components["schemas"]["NotionPageContentUpdatedConfig"] | components["schemas"]["SlackNewMessageConfig"] | components["schemas"]["SlackChannelCreatedConfig"] | components["schemas"]["TodoistNewTaskCreatedConfig"] | components["schemas"]["AsanaTaskTriggerConfig"]) | null;
-            /**
-             * Trigger Name
-             * @description Specific trigger slug for identification
-             */
-            trigger_name?: string | null;
-            /** @description Type of trigger */
-            type: components["schemas"]["TriggerType"];
-        } & {
-            [key: string]: unknown;
-        };
-        /**
-         * TriggerConfig
-         * @description Configuration for workflow triggers.
-         *
-         *     Uses a discriminated union pattern for type-safe provider configs.
-         *     Provider-specific data is stored in `trigger_data` field.
-         */
-        TriggerConfigOutput: {
-            /**
-             * Composio Trigger Ids
-             * @description List of Composio trigger IDs registered for this workflow
-             */
-            composio_trigger_ids?: string[] | null;
-            /**
-             * Cron Expression
-             * @description Cron expression for scheduled workflows
-             */
-            cron_expression?: string | null;
-            /**
-             * Enabled
-             * @description Whether the trigger is enabled
-             * @default true
-             */
-            enabled?: boolean;
-            /** @description The check a fired event must pass before this workflow runs */
-            gate?: components["schemas"]["TriggerGateOutput"] | null;
-            /**
-             * Next Run
-             * @description Next scheduled execution time
-             */
-            next_run?: string | null;
-            /**
-             * Timezone
-             * @description Timezone for scheduled execution
-             */
-            timezone?: string | null;
-            /**
-             * Trigger Data
-             * @description Provider-specific trigger configuration
-             */
-            trigger_data?: (components["schemas"]["CalendarEventCreatedConfig"] | components["schemas"]["CalendarEventStartingSoonConfig"] | components["schemas"]["GmailNewMessageConfig"] | components["schemas"]["GmailEmailSentConfig"] | components["schemas"]["GmailPollInboxConfig"] | components["schemas"]["GitHubCommitEventConfig"] | components["schemas"]["GitHubPrEventConfig"] | components["schemas"]["GitHubStarAddedConfig"] | components["schemas"]["GitHubIssueAddedConfig"] | components["schemas"]["GoogleDocsNewDocumentConfig"] | components["schemas"]["GoogleDocsDocumentDeletedConfig"] | components["schemas"]["GoogleDocsDocumentUpdatedConfig"] | components["schemas"]["GoogleSheetsNewRowConfig"] | components["schemas"]["GoogleSheetsNewSheetConfig"] | components["schemas"]["LinearIssueCreatedConfig"] | components["schemas"]["LinearIssueUpdatedConfig"] | components["schemas"]["LinearCommentAddedConfig"] | components["schemas"]["NotionNewPageInDbConfig"] | components["schemas"]["NotionPageUpdatedConfig"] | components["schemas"]["NotionAllPageEventsConfig"] | components["schemas"]["NotionPageContentUpdatedConfig"] | components["schemas"]["SlackNewMessageConfig"] | components["schemas"]["SlackChannelCreatedConfig"] | components["schemas"]["TodoistNewTaskCreatedConfig"] | components["schemas"]["AsanaTaskTriggerConfig"]) | null;
-            /**
-             * Trigger Name
-             * @description Specific trigger slug for identification
-             */
-            trigger_name?: string | null;
-            /** @description Type of trigger */
-            type: components["schemas"]["TriggerType"];
-        } & {
-            [key: string]: unknown;
-        };
-        /**
-         * TriggerGate
-         * @description Runs unless a skip_when rule holds or JEV is sure it should skip; a run_when rule always runs.
-         */
-        TriggerGateInput: {
-            author: components["schemas"]["GateAuthor"];
-            /** Choices */
-            choices?: components["schemas"]["GateChoice"][];
-            /**
-             * Enabled
-             * @default true
-             */
-            enabled?: boolean;
-            /**
-             * Min Confidence
-             * @default 0.9
-             */
-            min_confidence?: number;
-            /**
-             * Question
-             * @description A yes/no question about the event, shown to the user as 'Runs only when'
-             */
-            question: string;
-            /**
-             * Run When
-             * @description Free payload rules checked first; any one that holds runs without asking JEV
-             */
-            run_when?: components["schemas"]["SubscriptionCondition"][];
-            /**
-             * Skip On
-             * @description Choices that skip the run when JEV picks one at min_confidence or above
-             */
-            skip_on?: string[];
-            /**
-             * Skip When
-             * @description Free payload rules checked before JEV; any one that holds skips the run
-             */
-            skip_when?: components["schemas"]["SubscriptionCondition"][];
-        };
-        /**
-         * TriggerGate
-         * @description Runs unless a skip_when rule holds or JEV is sure it should skip; a run_when rule always runs.
-         */
-        TriggerGateOutput: {
-            author: components["schemas"]["GateAuthor"];
-            /** Choices */
-            choices?: components["schemas"]["GateChoice"][];
-            /**
-             * Enabled
-             * @default true
-             */
-            enabled?: boolean;
-            /**
-             * Min Confidence
-             * @default 0.9
-             */
-            min_confidence?: number;
-            /**
-             * Question
-             * @description A yes/no question about the event, shown to the user as 'Runs only when'
-             */
-            question: string;
-            /**
-             * Run When
-             * @description Free payload rules checked first; any one that holds runs without asking JEV
-             */
-            run_when?: components["schemas"]["SubscriptionCondition"][];
-            /**
-             * Skip On
-             * @description Choices that skip the run when JEV picks one at min_confidence or above
-             */
-            skip_on?: string[];
-            /**
-             * Skip When
-             * @description Free payload rules checked before JEV; any one that holds skips the run
-             */
-            skip_when?: components["schemas"]["SubscriptionCondition"][];
         };
         /**
          * TriggerOption
@@ -16020,8 +15934,11 @@ export interface components {
              * Format: date-time
              */
             created_at?: string;
-            /** @description The check a fired event must pass before this subscription acts */
-            gate?: components["schemas"]["TriggerGateOutput"] | null;
+            /**
+             * Gate
+             * @description The check a fired event must pass before an EXECUTE subscription runs
+             */
+            gate?: (components["schemas"]["AuthoredGate"] | components["schemas"]["SystemGate"]) | null;
             /** Id */
             id?: string;
             /**
@@ -16365,6 +16282,8 @@ export interface components {
             activated?: boolean | null;
             /** Description */
             description?: string | null;
+            /** @description Absent keeps the gate, null removes it, a value replaces it */
+            gate?: components["schemas"]["AuthoredGateEdit"] | null;
             /** Icon */
             icon?: string | null;
             /** Icon Color */
@@ -16379,7 +16298,7 @@ export interface components {
             steps?: components["schemas"]["WorkflowStepInput"][] | null;
             /** Title */
             title?: string | null;
-            trigger_config?: components["schemas"]["TriggerConfigInput"] | null;
+            trigger_config?: components["schemas"]["TriggerConfig"] | null;
         };
         /** URLRequest */
         URLRequest: {
@@ -17068,6 +16987,11 @@ export interface components {
              */
             execution_logs: string[];
             /**
+             * Gate
+             * @description The check a fired integration event must pass before this workflow runs
+             */
+            gate: (components["schemas"]["AuthoredGate"] | components["schemas"]["SystemGate"]) | null;
+            /**
              * Icon
              * @description User-chosen icon slug (gaia-icons component name) shown when the workflow has no integration icons.
              */
@@ -17209,7 +17133,7 @@ export interface components {
              */
             total_executions: number;
             /** @description Trigger configuration */
-            trigger_config: components["schemas"]["TriggerConfigOutput"];
+            trigger_config: components["schemas"]["TriggerConfig"];
             /**
              * Updated At
              * @description Last update timestamp
@@ -17292,6 +17216,8 @@ export type ArtifactRegistryEntry = components['schemas']['ArtifactRegistryEntry
 export type AsanaTaskTriggerConfig = components['schemas']['AsanaTaskTriggerConfig'];
 export type AuthenticatedUserResponse = components['schemas']['AuthenticatedUserResponse'];
 export type AuthorDetails = components['schemas']['AuthorDetails'];
+export type AuthoredGate = components['schemas']['AuthoredGate'];
+export type AuthoredGateEdit = components['schemas']['AuthoredGateEdit'];
 export type BatchApprovalDecisionRequest = components['schemas']['BatchApprovalDecisionRequest'];
 export type BatchApprovalDecisionResponse = components['schemas']['BatchApprovalDecisionResponse'];
 export type BatchDecisionItem = components['schemas']['BatchDecisionItem'];
@@ -17463,7 +17389,6 @@ export type FirstStepsResponse = components['schemas']['FirstStepsResponse'];
 export type FirstStepsState = components['schemas']['FirstStepsState'];
 export type FoldedCards = components['schemas']['FoldedCards'];
 export type GateAuthor = components['schemas']['GateAuthor'];
-export type GateChoice = components['schemas']['GateChoice'];
 export type GenerateWorkflowPromptRequest = components['schemas']['GenerateWorkflowPromptRequest'];
 export type GenerateWorkflowPromptResponse = components['schemas']['GenerateWorkflowPromptResponse'];
 export type GetPlatformLinksResponse = components['schemas']['GetPlatformLinksResponse'];
@@ -17765,6 +17690,8 @@ export type SupportRequestResponse = components['schemas']['SupportRequestRespon
 export type SupportRequestStatus = components['schemas']['SupportRequestStatus'];
 export type SupportRequestSubmissionResponse = components['schemas']['SupportRequestSubmissionResponse'];
 export type SupportRequestType = components['schemas']['SupportRequestType'];
+export type SystemGate = components['schemas']['SystemGate'];
+export type SystemGatePreset = components['schemas']['SystemGatePreset'];
 export type SystemPurpose = components['schemas']['SystemPurpose'];
 export type TodoCanvasResponse = components['schemas']['TodoCanvasResponse'];
 export type TodoConversationResponse = components['schemas']['TodoConversationResponse'];
@@ -17790,11 +17717,8 @@ export type ToolsListResponse = components['schemas']['ToolsListResponse'];
 export type TranscribeAudioResponse = components['schemas']['TranscribeAudioResponse'];
 export type TrashEmailsResponse = components['schemas']['TrashEmailsResponse'];
 export type TriageEmailSummary = components['schemas']['TriageEmailSummary'];
+export type TriggerConfig = components['schemas']['TriggerConfig'];
 export type TriggerConfigFieldSchema = components['schemas']['TriggerConfigFieldSchema'];
-export type TriggerConfigInput = components['schemas']['TriggerConfigInput'];
-export type TriggerConfigOutput = components['schemas']['TriggerConfigOutput'];
-export type TriggerGateInput = components['schemas']['TriggerGateInput'];
-export type TriggerGateOutput = components['schemas']['TriggerGateOutput'];
 export type TriggerOption = components['schemas']['TriggerOption'];
 export type TriggerOptionGroup = components['schemas']['TriggerOptionGroup'];
 export type TriggerOptionsResponse = components['schemas']['TriggerOptionsResponse'];

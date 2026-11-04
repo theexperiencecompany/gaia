@@ -9,6 +9,8 @@ GMAIL_EMAIL_SENT_TRIGGER_NAME: Final = "gmail_email_sent"
 
 # The GAIA trigger name for inbound Gmail mail (Composio's GMAIL_NEW_GMAIL_MESSAGE).
 GMAIL_NEW_MESSAGE_TRIGGER_NAME: Final = "gmail_new_message"
+# The interval-polled trigger on the same Composio event and payload.
+GMAIL_POLL_INBOX_TRIGGER_NAME: Final = "gmail_poll_inbox"
 
 # Account-level Gmail triggers that fire once per message, inbound or sent.
 PER_EMAIL_TRIGGER_NAMES: Final = frozenset(

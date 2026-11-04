@@ -18,7 +18,6 @@ __all__ = [
     "WorkflowResultDelivered",
     "WorkflowResultDeliveryOutcome",
     "WorkflowStepsRegenerated",
-    "WorkflowTriggerGateDecided",
     "WorkflowUnpublished",
     "WorkflowUpdated",
 ]
@@ -139,24 +138,3 @@ class WorkflowCardNavigate(WebEvent):
 
     slug: Identifier
     variant: Identifier
-
-
-class WorkflowTriggerGateDecided(ServerEvent):
-    """A trigger gate decided whether a fired event runs its workflow or tracked todo.
-
-    skipped is what the run did; outcome is what the gate said, so a shadow gate
-    (enforced false) reports outcome skip with skipped false.
-    """
-
-    event: ClassVar[str] = "workflow:trigger_gate_decided"
-    # One per gated event: a busy inbox fires a Gmail gate a few hundred times a day.
-    budget_per_user_day: ClassVar[int] = 500
-
-    owner_type: Literal["workflow", "todo"]
-    trigger_name: Identifier
-    outcome: Literal["run", "skip"]
-    reason: Literal["rule", "jev_skip", "jev_run", "jev_unsure", "jev_error"]
-    author: Literal["gaia", "user", "system"]
-    enforced: bool
-    skipped: bool
-    latency_ms: int | None = None

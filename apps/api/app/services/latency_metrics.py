@@ -272,8 +272,11 @@ _TRIGGER_GATE_DECISION_TOTAL = _register_once(
     "trigger_gate_decision_total",
     lambda: Counter(
         name="trigger_gate_decision_total",
-        documentation="Lifetime trigger gate decisions; reason jev_error is the JEV error rate",
-        labelnames=("owner", "outcome", "reason", "enforced"),
+        documentation=(
+            "Lifetime trigger gate decisions; jev_error, jev_timeout and jev_malformed over "
+            "every reason that asked JEV is the gate's JEV error rate"
+        ),
+        labelnames=("owner", "outcome", "reason"),
     ),
 )
 
@@ -464,15 +467,9 @@ def observe_subagent_run(seconds: float, *, subagent_id: str, status: str) -> No
     _observe(_SUBAGENT_RUN_SECONDS, seconds, subagent_id=subagent_id, status=status)
 
 
-def observe_trigger_gate_decision(*, owner: str, outcome: str, reason: str, enforced: bool) -> None:
+def observe_trigger_gate_decision(*, owner: str, outcome: str, reason: str) -> None:
     """Count one trigger gate decision."""
-    _inc(
-        _TRIGGER_GATE_DECISION_TOTAL,
-        owner=owner,
-        outcome=outcome,
-        reason=reason,
-        enforced=_bool_label(enforced),
-    )
+    _inc(_TRIGGER_GATE_DECISION_TOTAL, owner=owner, outcome=outcome, reason=reason)
 
 
 def observe_hil_pause() -> None:

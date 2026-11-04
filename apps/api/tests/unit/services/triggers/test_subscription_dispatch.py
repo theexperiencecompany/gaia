@@ -24,14 +24,13 @@ from app.models.notification.notification_models import (
     NotificationType,
 )
 from app.models.todo_models import TodoDocument
+from app.models.trigger_gate_models import AuthoredGate
 from app.models.trigger_subscription_models import (
     ConditionMatch,
     ConditionOperator,
-    GateChoice,
     SubscriptionAction,
     SubscriptionCondition,
     SubscriptionResolution,
-    TriggerGate,
     TriggerOrigin,
     TriggerSubscription,
     TriggerSubscriptionStatus,
@@ -742,30 +741,24 @@ class TestDispatchAttribution:
         assert seen == [worker_context(Trigger.INTEGRATION_TRIGGER)]
 
 
+CONDITION = "the reply is from Acme about the pilot"
+_GATE = AuthoredGate(condition=CONDITION, author=GateAuthor.GAIA)
+# A first message on its own thread: the only Gmail mail a gate asks JEV about.
+_NEW_THREAD: dict[str, object] = {"thread_id": "m-1", "message_id": "m-1", "subject": "Sale!"}
+
+
 def _jev_body(not_needed: float) -> dict[str, object]:
-    choice = "not_needed" if not_needed >= 0.5 else "needs_you"
+    choice = "not_needed" if not_needed >= 0.5 else "needed"
     return {
         "answers": {
             "gate": {
                 "type": "choice",
                 "choice": choice,
                 "confidence": max(not_needed, 1 - not_needed),
-                "probabilities": {"not_needed": not_needed, "needs_you": 1 - not_needed},
+                "probabilities": {"not_needed": not_needed, "needed": 1 - not_needed},
             }
         }
     }
-
-
-_GATE = TriggerGate(
-    question="Is someone waiting on the user?",
-    choices=[
-        GateChoice(label="needs_you", meaning="Someone is waiting."),
-        GateChoice(label="not_needed", meaning="Nobody is waiting."),
-    ],
-    skip_on=["not_needed"],
-    min_confidence=0.95,
-    author=GateAuthor.SYSTEM,
-)
 
 
 @pytest.fixture
@@ -785,7 +778,7 @@ def jev() -> Iterator[respx.Route]:
 
 
 class TestTriggerGate:
-    async def test_a_confident_skip_runs_nothing_claims_nothing_and_says_why(
+    async def test_a_skip_runs_nothing_claims_no_window_and_says_why(
         self, deps, jev: respx.Route
     ) -> None:
         jev.mock(return_value=httpx.Response(200, json=_jev_body(0.99)))
@@ -793,7 +786,7 @@ class TestTriggerGate:
             _todo(trigger_subscriptions=[_subscription(gate=_GATE)])
         ]
 
-        fired = await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {"subject": "Sale!"})
+        fired = await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, dict(_NEW_THREAD))
 
         assert fired == 0
         deps.enqueue.assert_not_awaited()
@@ -803,14 +796,14 @@ class TestTriggerGate:
         deps.activity.assert_awaited_once()
         event, detail = deps.activity.await_args.args[2:]
         assert event is TodoActivityEvent.RUN_SKIPPED
-        assert detail == "Skipped by gate: Nobody is waiting. (not_needed, 0.99)"
+        assert detail == f"Skipped: runs only when {CONDITION}"
 
     @pytest.mark.parametrize(
         "response",
         [httpx.Response(200, json=_jev_body(0.94)), httpx.Response(503, text="down")],
         ids=["unsure", "jev-down"],
     )
-    async def test_unsure_or_failing_gate_runs_as_today(
+    async def test_an_unsure_or_failing_gate_runs_as_today(
         self, deps, jev: respx.Route, response: httpx.Response
     ) -> None:
         jev.mock(return_value=response)
@@ -818,7 +811,7 @@ class TestTriggerGate:
             _todo(trigger_subscriptions=[_subscription(gate=_GATE)])
         ]
 
-        assert await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {"subject": "?"}) == 1
+        assert await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, dict(_NEW_THREAD)) == 1
         deps.enqueue.assert_awaited_once()
 
     async def test_the_gate_reads_the_todo_as_its_job(self, deps, jev: respx.Route) -> None:
@@ -830,7 +823,7 @@ class TestTriggerGate:
             )
         ]
 
-        await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {"subject": "?"})
+        await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, dict(_NEW_THREAD))
 
         body = json.loads(jev.calls.last.request.content)
         assert body["state"]["automation"] == "Chase Acme: Reply to Acme about the pilot"
@@ -848,5 +841,5 @@ class TestTriggerGate:
             _todo(trigger_subscriptions=[sub])
         ]
 
-        assert await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {"thread_id": "t-1"}) == 0
+        assert await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, dict(_NEW_THREAD)) == 0
         assert not jev.called
