@@ -18,7 +18,6 @@ apps/api/tests/composio/test_connection_expiry_live.py	call-arg
 apps/api/tests/composio/test_connection_expiry_live.py	call-overload
 apps/api/tests/contracts/test_blog_repository.py	misc
 apps/api/tests/contracts/test_browser_profiles_repository.py	misc
-apps/api/tests/contracts/test_conversations_repository.py	assignment
 apps/api/tests/contracts/test_folded_cards.py	list-item
 apps/api/tests/contracts/test_notifications_repository.py	arg-type
 apps/api/tests/contracts/test_user_instructions_repository.py	assignment
@@ -289,7 +288,6 @@ apps/api/tests/unit/core/test_middleware.py	arg-type
 apps/api/tests/unit/core/test_middleware.py	attr-defined
 apps/api/tests/unit/core/test_provider_registration.py	attr-defined
 apps/api/tests/unit/db/repositories/test_base_repository.py	unused-ignore
-apps/api/tests/unit/db/repositories/test_conversations.py	attr-defined
 apps/api/tests/unit/db/repositories/test_playbooks.py	call-overload
 apps/api/tests/unit/db/test_chroma_store.py	arg-type
 apps/api/tests/unit/db/test_chroma_store.py	attr-defined
@@ -433,7 +431,6 @@ apps/api/tests/unit/scripts/analytics_ops/test_merge_email_persons.py	index
 apps/api/tests/unit/scripts/analytics_ops/test_reconcile.py	arg-type
 apps/api/tests/unit/scripts/test_archive_system_owned_runs.py	attr-defined
 apps/api/tests/unit/scripts/test_backfill_true_cost.py	attr-defined
-apps/api/tests/unit/scripts/test_delete_user_account.py	arg-type
 apps/api/tests/unit/scripts/test_loki.py	no-redef
 apps/api/tests/unit/scripts/test_migrate_hooked_tool_envelope.py	arg-type
 apps/api/tests/unit/scripts/test_migrate_integration_accounts.py	arg-type

@@ -175,12 +175,16 @@ describe("PaymentSuccessPage", () => {
     );
   });
 
-  it("sends a user with unfinished onboarding back into the flow", async () => {
+  it("sends a user with unfinished onboarding back into the flow, and says so", async () => {
     onboarding = { completed: false };
     render(<PaymentSuccessPage />);
 
+    // The label names where the button goes: it never says chat and opens the wizard.
+    expect(
+      screen.queryByRole("button", { name: /continue to chat/i }),
+    ).toBeNull();
     const cta = await screen.findByRole("button", {
-      name: /continue to chat/i,
+      name: /finish setting up/i,
     });
     cta.click();
     await waitFor(() => expect(push).toHaveBeenCalledWith("/onboarding"));
@@ -195,6 +199,20 @@ describe("PaymentSuccessPage", () => {
     retry.click();
     await waitFor(() => expect(push).toHaveBeenCalledWith("/onboarding"));
     expect(createSubscriptionAndRedirect).not.toHaveBeenCalled();
+  });
+
+  it("takes the customer's email and payment id out of the address bar", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/payment/success?subscription_id=sub_123&payment_id=pay_1&status=succeeded&email=pat%40example.com",
+    );
+    render(<PaymentSuccessPage />);
+
+    await screen.findByText("Receipt printed");
+    expect(window.location.search).toBe("");
+    // The id was read before the strip, so verification still reconciles it.
+    expect(verifyPayment).toHaveBeenCalledWith("sub_123");
   });
 
   it("sends a finished user to chat", async () => {
