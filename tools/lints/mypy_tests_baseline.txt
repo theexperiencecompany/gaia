@@ -59,8 +59,6 @@ apps/api/tests/e2e/test_voice_device_realtime_e2e.py	attr-defined
 apps/api/tests/e2e/test_webhook_fanout_e2e.py	arg-type
 apps/api/tests/e2e/test_webhook_fanout_e2e.py	func-returns-value
 apps/api/tests/factories.py	arg-type
-apps/api/tests/helpers.py	assignment
-apps/api/tests/helpers.py	exit-return
 apps/api/tests/integration/agents/conftest.py	attr-defined
 apps/api/tests/integration/agents/test_agent_graph_checkpointing.py	attr-defined
 apps/api/tests/integration/agents/test_browser_job_delivery.py	attr-defined
@@ -87,7 +85,6 @@ apps/api/tests/integration/db/test_chroma_store.py	assignment
 apps/api/tests/integration/db/test_chroma_store.py	attr-defined
 apps/api/tests/integration/endpoints/conftest.py	arg-type
 apps/api/tests/integration/endpoints/conftest.py	misc
-apps/api/tests/integration/endpoints/test_auth_local.py	attr-defined
 apps/api/tests/integration/endpoints/test_members_api.py	attr-defined
 apps/api/tests/integration/endpoints/test_setup_api.py	arg-type
 apps/api/tests/integration/endpoints/test_setup_composio_api.py	attr-defined
@@ -252,7 +249,6 @@ apps/api/tests/unit/api/test_support_endpoint.py	call-arg
 apps/api/tests/unit/api/test_tiered_rate_limiter.py	index
 apps/api/tests/unit/api/test_tiered_rate_limiter.py	method-assign
 apps/api/tests/unit/api/test_user_endpoint.py	arg-type
-apps/api/tests/unit/api/test_voice_endpoint.py	misc
 apps/api/tests/unit/api/v1/endpoints/test_browser.py	attr-defined
 apps/api/tests/unit/api/v1/endpoints/test_features.py	arg-type
 apps/api/tests/unit/api/v1/endpoints/test_features.py	index
