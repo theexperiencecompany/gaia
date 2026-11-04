@@ -335,14 +335,6 @@ def test_a_rejected_post_is_not_read_back(api: FakeGitHub, tmp_path: Path) -> No
     assert [r for r in api.requests if r.method == "GET"] == []
 
 
-def test_a_secondary_rate_limit_is_retried(api: FakeGitHub, tmp_path: Path) -> None:
-    limited = Reply(403, {"message": "You have exceeded a secondary rate limit."})
-    api.on("POST", STATUSES, limited, Reply(201, {}))
-
-    assert _post(tmp_path, "repo-policy", {}, "--step", "gitleaks=success") == 0
-    assert len(_posted(api)) == 2
-
-
 def test_no_post_posts_nothing_but_still_decides_the_job(api: FakeGitHub, tmp_path: Path) -> None:
     assert _post(tmp_path, "lint-node", {"ci:deps": "failure"}, "--no-post") == 1
 

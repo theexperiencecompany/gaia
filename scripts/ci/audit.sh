@@ -155,6 +155,14 @@ PIP_AUDIT_IGNORED=(
   # jose.jwt.decode call site passes an explicit algorithms=[HS256], which is
   # exactly the precondition the advisory requires to be absent.
   GHSA-3qf3-8w2g-rqmx
+  # chromadb (1.5.9 is the latest release): all four are in chromadb's Python
+  # server (FastAPI routes, SimpleRBACAuthorizationProvider, server-side
+  # trust_remote_code). GAIA imports chromadb only as an HTTP client; the server
+  # is the chromadb/chroma image, a single Rust binary with no Python in it.
+  GHSA-f4j7-r4q5-qw2c
+  GHSA-2wm9-hf6c-p5cr
+  GHSA-xph7-9rjv-w5fr
+  GHSA-36p7-vc44-83pf
 )
 
 cmd_pip() {
