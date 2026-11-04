@@ -209,7 +209,11 @@ class TestWhyAScheduledRunWoke:
             (_asking(NoReplyPlan.ASK_AGAIN), WakeReason.REASK_DUE),
             (_asking(NoReplyPlan.PROCEED), WakeReason.DEFAULT_DUE),
             (_asking(NoReplyPlan.HOLD, hold_checks=1), WakeReason.HOLD_CHECK),
-            (_asking(NoReplyPlan.HOLD, hold_checks=MAX_HOLD_CHECKS), WakeReason.HOLD_LAST_CHECK),
+            (_asking(NoReplyPlan.HOLD, hold_checks=MAX_HOLD_CHECKS), WakeReason.HOLD_CHECK),
+            (
+                _asking(NoReplyPlan.HOLD, hold_checks=MAX_HOLD_CHECKS + 1),
+                WakeReason.HOLD_LAST_CHECK,
+            ),
             (_asking(None), WakeReason.QUESTION_EXPIRED),
         ],
     )

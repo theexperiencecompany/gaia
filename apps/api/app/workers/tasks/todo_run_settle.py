@@ -8,8 +8,8 @@ holds. This module decides; the worker applies the decision with its own writes.
 
 from enum import StrEnum
 
-from app.constants.todos import MAX_HOLD_CHECKS, NoReplyPlan, WaitingOn
 from app.models.todo_models import TodoDocument
+from app.services.todos.open_state import hold_ran_out
 
 
 class Settlement(StrEnum):
@@ -31,10 +31,6 @@ def settle(woke: TodoDocument, current: TodoDocument | None) -> Settlement:
         return Settlement.NOTHING
     if current.pause_reason is not None:
         return Settlement.END_CHECK
-    if (
-        current.waiting_on is WaitingOn.USER
-        and current.if_no_reply is NoReplyPlan.HOLD
-        and current.hold_checks >= MAX_HOLD_CHECKS
-    ):
+    if hold_ran_out(current):
         return Settlement.CLOSE_UNANSWERED
     return Settlement.PARK_AS_UNPLANNED

@@ -62,12 +62,12 @@ class TestWhatAFinishedRunLeavesToDo:
             waiting_on=WaitingOn.USER,
             question="Ship it?",
             if_no_reply=NoReplyPlan.HOLD,
-            hold_checks=MAX_HOLD_CHECKS,
+            hold_checks=MAX_HOLD_CHECKS + 1,
         )
 
         assert settle(held, held.model_copy()) is Settlement.CLOSE_UNANSWERED
 
-    @pytest.mark.parametrize("checks", range(MAX_HOLD_CHECKS))
+    @pytest.mark.parametrize("checks", range(MAX_HOLD_CHECKS + 1))
     def test_a_hold_with_checks_left_is_parked_not_closed(self, checks):
         held = _woke(
             waiting_on=WaitingOn.USER,
@@ -83,7 +83,7 @@ class TestWhatAFinishedRunLeavesToDo:
             waiting_on=WaitingOn.USER,
             question="Ship it?",
             if_no_reply=NoReplyPlan.ASK_AGAIN,
-            hold_checks=MAX_HOLD_CHECKS,
+            hold_checks=MAX_HOLD_CHECKS + 1,
         )
 
         assert settle(asked, asked.model_copy()) is Settlement.PARK_AS_UNPLANNED

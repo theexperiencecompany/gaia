@@ -172,6 +172,15 @@ def wake_reason(doc: TodoDocument) -> WakeReason:
     return WakeReason.SCHEDULED_CHECK
 
 
+def hold_ran_out(doc: TodoDocument) -> bool:
+    """Return whether an unanswered hold has had all its reminders, so its next wake closes the todo."""
+    return (
+        doc.waiting_on is WaitingOn.USER
+        and doc.if_no_reply is NoReplyPlan.HOLD
+        and doc.hold_checks > MAX_HOLD_CHECKS
+    )
+
+
 def _question_wake(doc: TodoDocument) -> WakeReason:
     if doc.if_no_reply is None:
         return WakeReason.QUESTION_EXPIRED
@@ -181,9 +190,7 @@ def _question_wake(doc: TodoDocument) -> WakeReason:
         case NoReplyPlan.PROCEED:
             return WakeReason.DEFAULT_DUE
         case NoReplyPlan.HOLD:
-            if doc.hold_checks >= MAX_HOLD_CHECKS:
-                return WakeReason.HOLD_LAST_CHECK
-            return WakeReason.HOLD_CHECK
+            return WakeReason.HOLD_LAST_CHECK if hold_ran_out(doc) else WakeReason.HOLD_CHECK
 
 
 def require_open_state(doc: TodoDocument, now: datetime) -> None:

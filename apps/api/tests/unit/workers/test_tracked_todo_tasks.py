@@ -1229,7 +1229,7 @@ class TestExecuteTodoWithRetrySuccess:
             waiting_on=WaitingOn.USER,
             question="Ship it?",
             if_no_reply=NoReplyPlan.HOLD,
-            hold_checks=MAX_HOLD_CHECKS,
+            hold_checks=MAX_HOLD_CHECKS + 1,
         )
         archive = AsyncMock(return_value=True)
         with patch.object(tracked_todo_service, "archive_tracked_todo", archive):
@@ -1861,7 +1861,7 @@ class TestBuildExecutionPrompt:
             waiting_on=WaitingOn.USER,
             question="Ship it?",
             if_no_reply=NoReplyPlan.HOLD,
-            hold_checks=MAX_HOLD_CHECKS,
+            hold_checks=MAX_HOLD_CHECKS + 1,
         )
         prompt = _prompt(doc)
         assert (
