@@ -1,5 +1,5 @@
-> [!NOTE]
-> We're a small team building GAIA in the open. If it makes your day easier, [a star](https://github.com/theexperiencecompany/gaia/stargazers) genuinely helps.
+> [!TIP]
+> We're a small team building GAIA in the open. If it seems interesting, or makes your day easier, [give it a ⭐](https://github.com/theexperiencecompany/gaia/stargazers).
 
 <div align="center">
 
