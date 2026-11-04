@@ -25,7 +25,11 @@ from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.integrations.integration_accounts import primary_connected_account_id
 from app.services.todos.signal_context import get_signal_matching_context
-from app.services.triggers.batching import buffer_trigger_event, coalesce_window_seconds
+from app.services.triggers.batching import (
+    buffer_trigger_event,
+    coalesce_window_seconds,
+    hold_trigger_event,
+)
 from app.services.triggers.trigger_gate import (
     GateBypass,
     GatedJob,
@@ -585,15 +589,18 @@ class TriggerHandler(ABC):
             # are batched into one run. Triggers with no declared interval stay
             # immediate — a meeting reminder held back for its window is a missed meeting.
             window_seconds = coalesce_window_seconds(workflow.trigger_config)
-            match verdict:
-                case GateBypass():
-                    # Urgent: it runs now, never at the end of its batch.
-                    window_seconds = 0
-                case GateHold() if window_seconds > 0:
-                    window_seconds = verdict.batch_seconds(window_seconds)
-            if window_seconds > 0 and await buffer_trigger_event(
-                workflow.id, workflow.user_id, data, window_seconds, context
-            ):
+            # Urgent runs now, never at the end of its batch; a held batch drains when the
+            # quiet hours end, however much later its window would.
+            buffered = False
+            if window_seconds > 0 and isinstance(verdict, GateHold):
+                buffered = await hold_trigger_event(
+                    workflow.id, workflow.user_id, data, verdict.until, context
+                )
+            elif window_seconds > 0 and isinstance(verdict, GateRun):
+                buffered = await buffer_trigger_event(
+                    workflow.id, workflow.user_id, data, window_seconds, context
+                )
+            if buffered:
                 return True
 
             await WorkflowQueueService.queue_workflow_execution(

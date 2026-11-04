@@ -11,7 +11,7 @@ skip skips, and everything else, every failure included, waits for 08:00.
 import asyncio
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta
+from datetime import datetime
 import time
 from typing import Final
 
@@ -101,12 +101,6 @@ class GateHold:
     @property
     def stamp(self) -> QuietHoursHold:
         return QuietHoursHold()
-
-    def batch_seconds(self, window_seconds: int) -> int:
-        """Seconds a held event's batch waits: its whole window, then out of any quiet hours it ends in."""
-        now = datetime.now(self.until.tzinfo)
-        runs_at = after_quiet_hours(max(self.until, now + timedelta(seconds=window_seconds)))
-        return int((runs_at - now).total_seconds())
 
 
 @dataclass(frozen=True, slots=True)
@@ -376,6 +370,26 @@ def _record(
     )
 
 
+async def _hold_on_users_clock(user_id: str) -> GateHold | None:
+    """Return a hold until the user's quiet hours end when their own clock is inside them now."""
+    local_now = datetime.now((await get_profile_timezone(user_id)).tzinfo)
+    return GateHold(after_quiet_hours(local_now)) if in_quiet_hours(local_now) else None
+
+
+async def quiet_hours_hold(gate: TriggerGate | None, user_id: str) -> GateHold | None:
+    """Return the hold a run of the job behind gate waits on if it would start now, or None.
+
+    An enforced gate starts no run inside the user's quiet hours; an urgent run is
+    decided per event, so the caller says when one is carried.
+    """
+    if gate is None or not gate.enabled or gate.kind not in ENFORCED_GATE_KINDS:
+        return None
+    if (hold := await _hold_on_users_clock(user_id)) is None:
+        return None
+    with analytics_context(worker_context(Trigger.INTEGRATION_TRIGGER)):
+        return hold if await is_trigger_gates_enforced(user_id) else None
+
+
 async def decide_gate(
     gate: TriggerGate | None, job: GatedJob, *, trigger_name: str, payload: Mapping[str, object]
 ) -> GateVerdict:
@@ -386,8 +400,7 @@ async def decide_gate(
     """
     if gate is None or not gate.enabled:
         return GateRun()
-    local_now = datetime.now((await get_profile_timezone(job.user_id)).tzinfo)
-    hold = GateHold(after_quiet_hours(local_now)) if in_quiet_hours(local_now) else None
+    hold = await _hold_on_users_clock(job.user_id)
     event = _event(trigger_name, payload)
     if event is None or (event.continues_thread and hold is None):
         decision = _Decision(GateReason.FREE_RUN, hold or GateRun())

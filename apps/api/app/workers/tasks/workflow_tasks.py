@@ -85,8 +85,10 @@ from app.services.notification_service import notification_service
 from app.services.triggers.batching import (
     coalesce_window_seconds,
     drain_trigger_batch,
+    hold_trigger_batch,
     reschedule_if_refilled,
 )
+from app.services.triggers.trigger_gate import quiet_hours_hold
 from app.services.user_service import get_user_by_id
 from app.services.workflow.conversation_service import (
     add_playbook_run_messages,
@@ -1472,9 +1474,27 @@ async def execute_workflow_by_id(
     context: dict[str, object] | None = None,
 ) -> str:
     """Execute a workflow by ID, as the agent, attributed to what fired it."""
-    trigger_type = _derive_trigger_type(_FireStamp.model_validate(context or {}))
+    stamp = _FireStamp.model_validate(context or {})
+    trigger_type = _derive_trigger_type(stamp)
     with analytics_context(_fire_analytics_context(trigger_type).acting_as(Actor.AGENT)):
+        if stamp.trigger_batch_key and (held := await _hold_for_quiet_hours(workflow_id, context)):
+            return held
         return await _execute_workflow_fire(workflow_id, context)
+
+
+async def _hold_for_quiet_hours(workflow_id: str, context: dict[str, object] | None) -> str | None:
+    """Move a batch drain due inside the user's quiet hours to their end; None when it runs now.
+
+    No batch holds an urgent event, so a gated one never drains inside them. Held
+    before the fire starts, it owes no refill: the drain at their end takes it all.
+    """
+    workflow = await workflow_scheduler.get_task(workflow_id)
+    hold = await quiet_hours_hold(workflow.gate, workflow.user_id) if workflow else None
+    if hold is None or not await hold_trigger_batch(workflow_id, hold.until, context or {}):
+        return None
+    log.set(workflow_id=workflow_id)
+    log.set_ns("workflow", outcome="held_for_quiet_hours", held_until=hold.until.isoformat())
+    return f"Workflow {workflow_id} held until the user's quiet hours end"
 
 
 def _fire_analytics_context(trigger_type: str) -> AnalyticsContext:

@@ -131,13 +131,11 @@ async def buffer_todo_trigger_event(todo_id: str, event: TriggerOrigin) -> bool:
     )
 
 
-async def buffer_todo_trigger_event_until(
-    todo_id: str, event: TriggerOrigin, until: datetime
-) -> bool:
-    """Hold one event for a run no sooner than until; False when it could not be held.
+async def stretch_trigger_window(todo_id: str, until: datetime) -> bool:
+    """Hold the todo's window open until at least until; False when it could not be stretched.
 
-    The window stretches to until, so every path that schedules the todo's drain,
-    a run ending overnight included, waits for it; a later window end stands.
+    Every path that schedules the todo's drain targets the window's end, a run
+    ending overnight included, so each waits for it; a later window end stands.
     """
     key = TODO_TRIGGER_WINDOW_KEY.format(todo_id=todo_id)
     client = redis_cache.redis
@@ -156,7 +154,25 @@ async def buffer_todo_trigger_event_until(
             error_type=type(e).__name__,
         )
         return False
-    return await buffer_todo_trigger_event(todo_id, event)
+    return True
+
+
+async def buffer_todo_trigger_event_until(
+    todo_id: str, event: TriggerOrigin, until: datetime
+) -> bool:
+    """Hold one event for a run no sooner than until; False when it could not be held."""
+    return await stretch_trigger_window(todo_id, until) and await buffer_todo_trigger_event(
+        todo_id, event
+    )
+
+
+async def held_todo_trigger_events(todo_id: str) -> list[TriggerOrigin]:
+    """Return the events held for the todo, oldest first, leaving them held."""
+    client = redis_cache.redis
+    if client is None:
+        return []
+    raw = await client.lrange(TODO_TRIGGER_BATCH_KEY.format(todo_id=todo_id), 0, -1)
+    return [TriggerOrigin.model_validate_json(event) for event in raw]
 
 
 async def drain_todo_trigger_events(todo_id: str) -> list[TriggerOrigin] | None:
