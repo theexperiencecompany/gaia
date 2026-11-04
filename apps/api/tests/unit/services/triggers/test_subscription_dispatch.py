@@ -782,21 +782,26 @@ class TestTriggerGate:
         self, deps, jev: respx.Route
     ) -> None:
         jev.mock(return_value=httpx.Response(200, json=_jev_body(0.99)))
+        subscription = _subscription(gate=_GATE)
         deps.repo.find_active_by_user_and_trigger.return_value = [
-            _todo(trigger_subscriptions=[_subscription(gate=_GATE)])
+            _todo(trigger_subscriptions=[subscription])
         ]
 
-        fired = await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, dict(_NEW_THREAD))
+        async with captured_wide_event() as event:
+            fired = await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, dict(_NEW_THREAD))
 
         assert fired == 0
         deps.enqueue.assert_not_awaited()
         deps.hold.assert_not_awaited()
         # No window slot taken: the next real event must still wake the todo at once.
         deps.redis.redis.set.assert_not_awaited()
-        deps.activity.assert_awaited_once()
-        event, detail = deps.activity.await_args.args[2:]
-        assert event is TodoActivityEvent.RUN_SKIPPED
-        assert detail == f"Skipped: runs only when {CONDITION}"
+        deps.activity.assert_awaited_once_with(
+            TODO_ID,
+            USER_ID,
+            TodoActivityEvent.RUN_SKIPPED,
+            f"Skipped: runs only when {CONDITION}",
+        )
+        assert list(event["trigger_gate"]) == [subscription.id]
 
     @pytest.mark.parametrize(
         "response",

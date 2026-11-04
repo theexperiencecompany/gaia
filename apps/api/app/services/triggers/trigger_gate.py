@@ -131,7 +131,7 @@ def skip_probability(gate: TriggerGate, answer: JevChoiceAnswer) -> float:
     question = _question(gate)
     probabilities = answer.probabilities
     if not probabilities or not probabilities.keys() <= question.labels:
-        raise ValueError(f"gate answer has no usable probabilities: {probabilities!r}"[:300])
+        raise ValueError(f"gate answer has no usable probabilities: {probabilities!r}")
     return probabilities.get(question.skip_label, 0.0)
 
 
@@ -197,13 +197,24 @@ async def _ask_jev(gate: TriggerGate, event: Mapping[str, object], automation: s
 async def gate_skip(
     gate: TriggerGate | None, job: GatedJob, *, trigger_name: str, payload: Mapping[str, object]
 ) -> GateSkip | None:
-    """Decide whether one fired event skips its job's run; None runs it, and a JEV failure runs.
+    """Decide whether one fired event skips its job's run; None runs it, and any failure runs.
 
     Counts the decision, writes it to the wide event under the job's id and sends
     trigger:gate_decided. A gate that is absent or turned off is not asked.
     """
     if gate is None or not gate.enabled:
         return None
+    try:
+        return await _decide(gate, job, trigger_name, payload)
+    except Exception:
+        # A gate that cannot decide runs its job, and never costs a fan-out its other jobs.
+        log.error("trigger_gate.failed", owner=job.owner.value, job_id=job.id, exc_info=True)
+        return None
+
+
+async def _decide(
+    gate: TriggerGate, job: GatedJob, trigger_name: str, payload: Mapping[str, object]
+) -> GateSkip | None:
     event = _event(trigger_name, payload)
     decision = (
         _Decision(GateReason.FREE_RUN)

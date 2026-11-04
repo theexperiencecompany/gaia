@@ -348,6 +348,13 @@ class TestTriggerGates:
     async def test_trigger_gates_ship_enforced(self, no_client: None) -> None:
         assert await is_trigger_gates_enforced(USER_ID) is True
 
+    async def test_the_rollout_is_read_for_the_user(
+        self, mock_client: MagicMock, evaluated: MagicMock
+    ) -> None:
+        _posthog_serves(mock_client, {"TRIGGER_GATES": False})
+
+        assert await is_trigger_gates_enforced(USER_ID) is False
+
 
 class TestShippedDefaults:
     @pytest.mark.parametrize("setting", ["ENABLE_HIL_LEDGER", "ENABLE_CODE_MODE"])
