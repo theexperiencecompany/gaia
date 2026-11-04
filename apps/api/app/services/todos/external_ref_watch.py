@@ -8,8 +8,11 @@ from app.constants.todos import (
     INBOX_DESK_WATCH_LABELS,
     INBOX_DESK_WATCH_WINDOW_SECONDS,
 )
+from app.constants.trigger_gates import SystemGatePreset
 from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
+from app.db.repositories.todos import todo_repository
 from app.models.todo_models import ExternalRef, ExternalRefSource
+from app.models.trigger_gate_models import SystemGate, TriggerGate
 from app.models.trigger_subscription_models import (
     ConditionOperator,
     SubscriptionAction,
@@ -24,13 +27,22 @@ from app.services.triggers.subscription_service import (
 
 
 class _RefWatch(NamedTuple):
-    """How to see an outside object change: what an event must match, its triggers, its window."""
+    """How to see an outside object change: what an event must match, its triggers, window and gate."""
 
     conditions: tuple[SubscriptionCondition, ...]
     trigger_names: tuple[str, ...]
     window_seconds: int
     # The one account the object lives in; None watches every account.
     account_id: str | None = None
+    gate: TriggerGate | None = None
+
+    def covers(self, subscription: TriggerSubscription) -> bool:
+        """Whether subscription already fires on every event this watch needs."""
+        return (
+            subscription.trigger_name in self.trigger_names
+            and set(self.conditions) <= set(subscription.conditions)
+            and subscription.account_id == self.account_id
+        )
 
 
 # A person's new mail in the Primary inbox; the desk's fetch skips the same senders.
@@ -48,6 +60,7 @@ _DESK_MAIL = (
         for sender in INBOX_DESK_AUTOMATED_SENDERS
     ),
 )
+_DESK_GATE = SystemGate(preset=SystemGatePreset.INBOX_DESK)
 
 
 def _ref_watch(ref: ExternalRef) -> _RefWatch:
@@ -65,7 +78,10 @@ def _ref_watch(ref: ExternalRef) -> _RefWatch:
             )
         case ExternalRefSource.INBOX_DESK:
             return _RefWatch(
-                _DESK_MAIL, (GMAIL_NEW_MESSAGE_TRIGGER_NAME,), INBOX_DESK_WATCH_WINDOW_SECONDS
+                _DESK_MAIL,
+                (GMAIL_NEW_MESSAGE_TRIGGER_NAME,),
+                INBOX_DESK_WATCH_WINDOW_SECONDS,
+                gate=_DESK_GATE,
             )
 
 
@@ -74,14 +90,11 @@ async def watch_external_ref(
 ) -> list[TriggerSubscription]:
     """Run the todo whenever ref changes, adding only the watches subscriptions lacks.
 
-    Returns the watches it added; when one fails, the ones it added are removed again.
+    A watch it already has that never had ref's gate gets it. Returns the watches it
+    added; when one fails, the ones it added are removed again.
     """
     watch = _ref_watch(ref)
-    watched = {
-        sub.trigger_name
-        for sub in subscriptions
-        if set(watch.conditions) <= set(sub.conditions) and sub.account_id == watch.account_id
-    }
+    watched = {sub.trigger_name for sub in subscriptions if watch.covers(sub)}
     added: list[TriggerSubscription] = []
     try:
         for trigger_name in watch.trigger_names:
@@ -95,6 +108,7 @@ async def watch_external_ref(
                 action=SubscriptionAction.EXECUTE,
                 cooldown_seconds=watch.window_seconds,
                 account_id=watch.account_id,
+                gate=watch.gate,
             )
             # Only rows this call stored are rolled back: a concurrent winner's
             # row is not ours to remove if a later watch fails.
@@ -103,7 +117,36 @@ async def watch_external_ref(
     except Exception:
         await release_watches(todo_id, user_id, added)
         raise
+    await gate_watches(todo_id, user_id, ref, subscriptions)
     return added
+
+
+def ungated_watches(
+    ref: ExternalRef, subscriptions: Sequence[TriggerSubscription]
+) -> list[TriggerSubscription]:
+    """Return ref's watches that never had its gate; one the user turned off still has it."""
+    watch = _ref_watch(ref)
+    if watch.gate is None:
+        return []
+    return [
+        sub
+        for sub in subscriptions
+        if watch.covers(sub) and sub.action is SubscriptionAction.EXECUTE and sub.gate is None
+    ]
+
+
+async def gate_watches(
+    todo_id: str, user_id: str, ref: ExternalRef, subscriptions: Sequence[TriggerSubscription]
+) -> bool:
+    """Put ref's gate on its watches that never had one; True when this call gated one."""
+    gate = _ref_watch(ref).gate
+    ungated = ungated_watches(ref, subscriptions)
+    if gate is None or not ungated:
+        return False
+    gated = await todo_repository.gate_ungated_subscriptions(
+        todo_id, user_id=user_id, subscription_ids=[sub.id for sub in ungated], gate=gate
+    )
+    return gated is not None
 
 
 async def release_watches(

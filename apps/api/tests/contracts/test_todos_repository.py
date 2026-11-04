@@ -17,6 +17,7 @@ from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.constants.todos import BLOCKING_LABEL, GAIA_TRACKED_LABEL
+from app.constants.trigger_gates import SystemGatePreset
 from app.db.mongodb import indexes
 from app.db.repositories import todos as todos_repository_module
 from app.db.repositories.todos import TodosRepository
@@ -31,6 +32,7 @@ from app.models.todo_models import (
     TodoSearchParams,
     TodoUpdate,
 )
+from app.models.trigger_gate_models import SystemGate
 from app.models.trigger_subscription_models import (
     ConditionMatch,
     ConditionOperator,
@@ -41,6 +43,8 @@ from app.models.trigger_subscription_models import (
     TriggerSubscriptionStatus,
 )
 from tests.contracts.base_contract import UserScopedRepositoryContract
+
+_DESK_GATE = SystemGate(preset=SystemGatePreset.INBOX_DESK)
 
 
 @pytest.fixture
@@ -664,6 +668,66 @@ class TestTodosRepository(UserScopedRepositoryContract):
 
         found = await repo.find_active_by_composio_trigger("ti_upd")
         assert [t.id for t in found] == [doc.id]
+
+    async def test_a_watch_stored_before_gates_existed_is_gated_alone(
+        self, repo, make_doc, raw_collection
+    ):
+        desk_mail, other = _subscription(), _subscription(trigger_name="gmail_email_sent")
+        doc = await repo.create(make_doc(user_id="u", trigger_subscriptions=[desk_mail, other]))
+        raw = await raw_collection.find_one({"_id": ObjectId(doc.id)})
+        assert all("gate" not in watch for watch in raw["trigger_subscriptions"])
+
+        gated = await repo.gate_ungated_subscriptions(
+            doc.id, user_id="u", subscription_ids=[desk_mail.id], gate=_DESK_GATE
+        )
+
+        assert gated is not None
+        assert [w.gate for w in gated.trigger_subscriptions] == [_DESK_GATE, None]
+        stored = await repo.get(doc.id, user_id="u")
+        assert [w.gate for w in stored.trigger_subscriptions] == [_DESK_GATE, None]
+
+    async def test_an_appended_watch_with_no_gate_is_gated(self, repo, make_doc):
+        doc = await repo.create(make_doc(user_id="u"))
+        watch = _subscription()
+        await repo.add_trigger_subscription(doc.id, user_id="u", subscription=watch)
+
+        await repo.gate_ungated_subscriptions(
+            doc.id, user_id="u", subscription_ids=[watch.id], gate=_DESK_GATE
+        )
+
+        stored = await repo.get(doc.id, user_id="u")
+        assert [w.gate for w in stored.trigger_subscriptions] == [_DESK_GATE]
+
+    @pytest.mark.parametrize(
+        "gate",
+        [SystemGate(preset=SystemGatePreset.INBOX_DESK, enabled=False), _DESK_GATE],
+        ids=["turned_off_by_the_user", "already_on"],
+    )
+    async def test_a_watch_that_has_a_gate_is_not_written(
+        self, repo, make_doc, raw_collection, gate
+    ):
+        watch = _subscription(gate=gate)
+        doc = await repo.create(make_doc(user_id="u", trigger_subscriptions=[watch]))
+        before = await raw_collection.find_one({"_id": ObjectId(doc.id)})
+
+        gated = await repo.gate_ungated_subscriptions(
+            doc.id, user_id="u", subscription_ids=[watch.id], gate=_DESK_GATE
+        )
+
+        assert gated is None
+        assert await raw_collection.find_one({"_id": ObjectId(doc.id)}) == before
+
+    async def test_gating_another_users_todo_writes_nothing(self, repo, make_doc):
+        watch = _subscription()
+        doc = await repo.create(make_doc(user_id="u", trigger_subscriptions=[watch]))
+
+        gated = await repo.gate_ungated_subscriptions(
+            doc.id, user_id="intruder", subscription_ids=[watch.id], gate=_DESK_GATE
+        )
+
+        assert gated is None
+        stored = await repo.get(doc.id, user_id="u")
+        assert [w.gate for w in stored.trigger_subscriptions] == [None]
 
     async def test_count_trigger_references_counts_across_users(self, repo, make_doc):
         sub = _subscription(

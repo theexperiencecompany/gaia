@@ -514,7 +514,6 @@ apps/api/tests/unit/services/test_voice_service.py	arg-type
 apps/api/tests/unit/services/test_workflow_subagent.py	arg-type
 apps/api/tests/unit/services/test_workflow_subagent.py	override
 apps/api/tests/unit/services/todos/test_signal_context.py	arg-type
-apps/api/tests/unit/services/triggers/test_subscription_service.py	union-attr
 apps/api/tests/unit/services/workflow/test_playbook_evaluator.py	arg-type
 apps/api/tests/unit/services/workflow/test_playbook_evaluator.py	operator
 apps/api/tests/unit/storage/test_gaia_tasks_vfs.py	attr-defined
