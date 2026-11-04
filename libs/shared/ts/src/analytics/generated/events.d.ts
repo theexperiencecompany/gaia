@@ -179,8 +179,6 @@ export type WebEventName =
   | "cta:get_started_clicked"
   | "desktop_popup:dismissed"
   | "desktop_popup:opened"
-  | "email:compose_opened"
-  | "email:opened"
   | "error:occurred"
   | "error:route_error_shown"
   | "feature:discovered"
@@ -657,7 +655,6 @@ export interface EventProperties {
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "message_count": number;
   };
-  "email:compose_opened": Record<string, never>;
   "email:draft_composed": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
@@ -722,9 +719,6 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "message_count": number;
-  };
-  "email:opened": {
-    "mail_id": string;
   };
   "email:replied": {
     "actor": "user" | "agent";
