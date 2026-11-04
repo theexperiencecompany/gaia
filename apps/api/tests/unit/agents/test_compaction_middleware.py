@@ -783,6 +783,26 @@ class TestDigestComposition:
         )
         assert "a" * 500 in msg.content
 
+    def test_an_enveloped_record_list_keeps_its_envelope_fields_beside_the_digest(
+        self,
+    ) -> None:
+        content = json.dumps(
+            {"fetched_at": "2026-11-04T10:00:00Z", "truncated": True, "data": [{"i": 1}]}
+        )
+
+        msg = _summarized_compact_message(
+            summary="the digest",
+            tool_name="t",
+            tool_call_id="c",
+            reason="r",
+            status="success",
+            content_str=content,
+            spilled=("jsonl", "/w/t.jsonl"),
+            existing_additional_kwargs={},
+        )
+
+        assert '{"fetched_at": "2026-11-04T10:00:00Z", "truncated": true}' in msg.content
+
 
 class TestOffloadKwargsFields:
     def test_every_field_is_set_from_the_inputs(self) -> None:
