@@ -23,7 +23,7 @@ from app.models.trigger_subscription_models import (
     SubscriptionResolution,
     TriggerSubscription,
 )
-from app.services.todos.external_ref_watch import watch_external_ref
+from app.services.todos.external_ref_watch import gate_watches, watch_external_ref
 from app.services.triggers.condition_matching import conditions_match
 from app.services.triggers.subscription_service import DEFAULT_COOLDOWN_SECONDS, SubscriptionError
 from tests.e2e._harness.fake_todos import InMemoryTodos
@@ -169,6 +169,18 @@ async def test_a_desk_watching_since_before_the_gate_gets_it_and_no_second_watch
 
     assert await _gates_after_rewatch(DESK, desk) == [DESK_GATE]
     register.assert_not_awaited()
+
+
+async def test_gating_says_whether_this_call_gated_a_watch(register: AsyncMock) -> None:
+    """A snapshot read before another write gated the watch counts nothing twice."""
+    snapshot = await _watches_made(register, DESK)
+
+    with _stored(_todo(DESK, snapshot)) as todos:
+        assert await gate_watches(TODO_ID, USER_ID, DESK, snapshot) is True
+        assert await gate_watches(TODO_ID, USER_ID, DESK, snapshot) is False
+        stored = await todos.get(TODO_ID, user_id=USER_ID)
+        assert stored is not None
+        assert await gate_watches(TODO_ID, USER_ID, DESK, stored.trigger_subscriptions) is False
 
 
 @pytest.mark.parametrize(

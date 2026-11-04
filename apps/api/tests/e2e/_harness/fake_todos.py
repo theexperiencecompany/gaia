@@ -74,8 +74,8 @@ class InMemoryTodos:
         subscription_ids: Collection[str],
         gate: AuthoredGate | SystemGate,
     ) -> TodoDocument | None:
-        todo = await self.get(todo_id, user_id=user_id)
-        if todo is None:
+        todo = self._by_id.get(todo_id)
+        if todo is None or todo.user_id != user_id:
             return None
         due = {
             s.id for s in todo.trigger_subscriptions if s.id in subscription_ids and s.gate is None

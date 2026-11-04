@@ -30,6 +30,7 @@ DESK = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
 DESK_GATE = SystemGate(preset=SystemGatePreset.INBOX_DESK)
 TURNED_OFF = SystemGate(preset=SystemGatePreset.INBOX_DESK, enabled=False)
 UNGATED_ID = "66f838cc8829054e5f10e401"
+ALSO_UNGATED_ID = "66f838cc8829054e5f10e405"
 DESK_MAIL = [
     *(
         SubscriptionCondition(field_name="label_ids", operator=ConditionOperator.CONTAINS, value=v)
@@ -80,6 +81,7 @@ def todos() -> Iterator[InMemoryTodos]:
         _desk("66f838cc8829054e5f10e402", "u2", _watch(DESK_MAIL, TURNED_OFF)),
         _desk("66f838cc8829054e5f10e403", "u3", _watch(DESK_MAIL, DESK_GATE)),
         _desk("66f838cc8829054e5f10e404", "u4", _watch(DESK_MAIL), completed=True),
+        _desk(ALSO_UNGATED_ID, "u5", _watch(DESK_MAIL)),
     )
     with (
         patch.object(
@@ -96,7 +98,7 @@ def todos() -> Iterator[InMemoryTodos]:
 
 async def _gates(todos: InMemoryTodos) -> dict[str, list[AuthoredGate | SystemGate | None]]:
     """Each desk's watch gates, by owner."""
-    desks = [await todos.get(f"66f838cc8829054e5f10e40{n}") for n in range(1, 5)]
+    desks = [await todos.get(f"66f838cc8829054e5f10e40{n}") for n in range(1, 6)]
     return {d.user_id: [w.gate for w in d.trigger_subscriptions] for d in desks if d is not None}
 
 
@@ -105,8 +107,9 @@ BEFORE = {
     "u2": [TURNED_OFF],
     "u3": [DESK_GATE],
     "u4": [None],
+    "u5": [None],
 }
-AFTER = {**BEFORE, "u1": [DESK_GATE, None]}
+AFTER = {**BEFORE, "u1": [DESK_GATE, None], "u5": [DESK_GATE]}
 
 
 async def test_a_dry_run_names_each_desk_it_would_gate_and_writes_nothing(
@@ -116,9 +119,10 @@ async def test_a_dry_run_names_each_desk_it_would_gate_and_writes_nothing(
 
     assert await _gates(todos) == BEFORE
     assert capsys.readouterr().out.splitlines() == [
-        "open Inbox desks: 3",
-        "desks whose mail watch has no gate: 1",
+        "open Inbox desks: 4",
+        "desks whose mail watch has no gate: 2",
         f"  desk {UNGATED_ID} of user u1",
+        f"  desk {ALSO_UNGATED_ID} of user u5",
         "",
         "dry run: nothing written. Re-run with --apply to gate them.",
     ]
@@ -130,7 +134,7 @@ async def test_apply_gates_only_the_mail_watch_that_never_had_one(
     await script._run(argparse.Namespace(apply=True))
 
     assert await _gates(todos) == AFTER
-    assert capsys.readouterr().out.splitlines()[-1] == "gated 1 desk(s)"
+    assert capsys.readouterr().out.splitlines()[-1] == "gated 2 desk(s)"
 
 
 async def test_a_second_apply_finds_nothing_left_to_gate(
@@ -143,7 +147,7 @@ async def test_a_second_apply_finds_nothing_left_to_gate(
 
     assert await _gates(todos) == AFTER
     assert capsys.readouterr().out.splitlines() == [
-        "open Inbox desks: 3",
+        "open Inbox desks: 4",
         "desks whose mail watch has no gate: 0",
         "",
         "gated 0 desk(s)",
