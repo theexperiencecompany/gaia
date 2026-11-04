@@ -245,7 +245,9 @@ cmd_flake_gate() {
   # push that still fails the lane (--fail-on-flaky, exit 7), since a human is
   # there to stabilise it. In the merge queue and on master it warns, because
   # failing costs a whole group run and ejects a PR that just proved itself.
-  local flaky=(--reruns 1) rc out
+  # --rerun-show-tracebacks prints each first attempt's failure: without it only the
+  # rerun's is shown, and a rerun that fails differently hides why the test failed.
+  local flaky=(--reruns 1 --rerun-show-tracebacks) rc out
   case "${GITHUB_EVENT_NAME:-}" in
     merge_group | push) ;;
     *) flaky+=(--fail-on-flaky) ;;

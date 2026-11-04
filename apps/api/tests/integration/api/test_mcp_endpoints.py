@@ -27,8 +27,6 @@ def _make_resolved_integration(
 def _make_mcp_client(
     probe_result: dict | None = None,
     connect_tools: list | None = None,
-    oauth_url: str = "https://oauth.provider.test/authorize",
-    handle_oauth_tools: list | None = None,
 ):
     """Build a mock MCPClient instance."""
     client = MagicMock()
@@ -36,11 +34,7 @@ def _make_mcp_client(
         return_value=probe_result or {"requires_auth": False, "error": None}
     )
     client.connect = AsyncMock(return_value=connect_tools or [MagicMock(name="tool_a")])
-    client.build_oauth_auth_url = AsyncMock(return_value=oauth_url)
     client.update_integration_auth_status = AsyncMock()
-    client.handle_oauth_callback = AsyncMock(
-        return_value=handle_oauth_tools or [MagicMock(name="tool_x")]
-    )
     return client
 
 
@@ -183,11 +177,15 @@ class TestMCPTestConnectionEndpoint:
                 "auth_type": "oauth",
                 "error": None,
             },
-            oauth_url="https://auth.provider.test/oauth/authorize?client_id=abc",
         )
         mock_get_client.return_value = mock_client
 
-        response = await test_client.post("/api/v1/mcp/test/oauth-integration")
+        with patch(
+            "app.api.v1.endpoints.mcp.build_oauth_auth_url",
+            new_callable=AsyncMock,
+            return_value="https://auth.provider.test/oauth/authorize?client_id=abc",
+        ):
+            response = await test_client.post("/api/v1/mcp/test/oauth-integration")
 
         assert response.status_code == 200
         data = response.json()
@@ -281,6 +279,13 @@ class TestMCPOAuthCallbackEndpoint:
         ):
             yield
 
+    @pytest.fixture(autouse=True)
+    def exchange(self):
+        with patch(
+            "app.services.mcp.oauth_callback.handle_oauth_callback", new_callable=AsyncMock
+        ) as mock:
+            yield mock
+
     @patch(
         "app.api.v1.endpoints.mcp.get_mcp_client",
         new_callable=AsyncMock,
@@ -309,9 +314,7 @@ class TestMCPOAuthCallbackEndpoint:
         mock_resolve.return_value = _make_resolved_integration()
         mock_resolve.return_value.name = "My MCP Integration"
 
-        mock_client = _make_mcp_client(
-            handle_oauth_tools=[MagicMock(name="tool1"), MagicMock(name="tool2")]
-        )
+        mock_client = _make_mcp_client()
         mock_client.token_store = MagicMock()
         mock_client.token_store.clear_excluded_scopes = AsyncMock()
         mock_get_client.return_value = mock_client
@@ -450,13 +453,14 @@ class TestMCPOAuthCallbackEndpoint:
         mock_resolve,
         mock_get_client,
         test_client,
+        exchange,
     ):
         """GET /api/v1/mcp/oauth/callback redirects to error page when handle_oauth_callback raises."""
         mock_resolve.return_value = _make_resolved_integration()
         mock_resolve.return_value.name = "Failing Integration"
 
         mock_client = _make_mcp_client()
-        mock_client.handle_oauth_callback = AsyncMock(side_effect=ValueError("Invalid state token"))
+        exchange.side_effect = ValueError("Invalid state token")
         mock_get_client.return_value = mock_client
 
         state = "bad-token:failing-integration:/integrations"
@@ -500,7 +504,7 @@ class TestMCPOAuthCallbackEndpoint:
         mock_resolve.return_value = _make_resolved_integration()
         mock_resolve.return_value.name = "Some Integration"
 
-        mock_client = _make_mcp_client(handle_oauth_tools=[MagicMock()])
+        mock_client = _make_mcp_client()
         mock_client.token_store = MagicMock()
         mock_client.token_store.clear_excluded_scopes = AsyncMock()
         mock_get_client.return_value = mock_client
@@ -633,6 +637,7 @@ class TestMCPOAuthCallbackEndpoint:
         mock_resolve,
         mock_get_client,
         test_client,
+        exchange,
     ):
         """GET /api/v1/mcp/oauth/callback with an expired (unknown) state token redirects to error."""
         mock_resolve.return_value = _make_resolved_integration()
@@ -641,8 +646,8 @@ class TestMCPOAuthCallbackEndpoint:
         mock_client = _make_mcp_client()
         # Simulate what happens when Redis has expired the OAuth state key:
         # verify_oauth_state returns (False, None) → handle_oauth_callback raises
-        mock_client.handle_oauth_callback = AsyncMock(
-            side_effect=ValueError("Invalid state token: state has expired or does not exist")
+        exchange.side_effect = ValueError(
+            "Invalid state token: state has expired or does not exist"
         )
         mock_get_client.return_value = mock_client
 
@@ -680,16 +685,15 @@ class TestMCPOAuthCallbackEndpoint:
         mock_resolve,
         mock_get_client,
         test_client,
+        exchange,
     ):
         """GET /api/v1/mcp/oauth/callback with a mismatched state token redirects to error."""
         mock_resolve.return_value = _make_resolved_integration()
         mock_resolve.return_value.name = "Test Integration"
 
         mock_client = _make_mcp_client()
-        mock_client.handle_oauth_callback = AsyncMock(
-            side_effect=ValueError(
-                "OAuth state mismatch: received token does not match stored state"
-            )
+        exchange.side_effect = ValueError(
+            "OAuth state mismatch: received token does not match stored state"
         )
         mock_get_client.return_value = mock_client
 

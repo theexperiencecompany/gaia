@@ -11,11 +11,8 @@ import {
   SentIcon,
   StarsIcon,
 } from "@icons";
-import CharacterCount from "@tiptap/extension-character-count";
-import Link from "@tiptap/extension-link";
-import Placeholder from "@tiptap/extension-placeholder";
 import Typography from "@tiptap/extension-typography";
-import Underline from "@tiptap/extension-underline";
+import { CharacterCount, Placeholder } from "@tiptap/extensions";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import he from "he";
@@ -325,9 +322,7 @@ export default function ViewEmail({
 
   const editor = useEditor({
     extensions: [
-      StarterKit,
-      Underline,
-      Link,
+      StarterKit.configure({ trailingNode: false }),
       Typography,
       Placeholder.configure({
         placeholder: "Write your reply here...",

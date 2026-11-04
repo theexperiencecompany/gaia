@@ -152,6 +152,6 @@ async def test_the_dev_router_never_mounts_outside_development(
 ) -> None:
     monkeypatch.setattr(settings, "DEV_AUTH_BYPASS_EMAIL", "dev@gaia.test")
     async with _as_deployment(monkeypatch, kind, METRICS_TOKEN) as client:
-        resp = await client.get("/api/v1/dev/subagents")
+        resp = await client.post("/api/v1/dev/executor", json={"task": "noop"})
 
     assert resp.status_code == 404

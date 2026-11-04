@@ -1,6 +1,6 @@
 """retrieve_tools binding mode: which requested names bind, which are refused, and what is logged."""
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, call, patch
@@ -63,11 +63,13 @@ def test_out_of_scope_guidance_names_the_tools_and_who_runs_them() -> None:
 def _binding_deps(
     *, mcp_names_for: dict[str, set[str]] | None = None, unconnected: dict | None = None
 ) -> Iterator[MagicMock]:
-    async def _mcp_names(user_id: str | None) -> set[str]:
-        return (mcp_names_for or {}).get(user_id or "", set())
+    async def _mcp_names(
+        user_id: str | None, _active_targets: Mapping[str, object] | None = None
+    ) -> retrieval._UserMcpTools:
+        return retrieval._UserMcpTools((mcp_names_for or {}).get(user_id or "", set()), {})
 
     with (
-        patch.object(retrieval, "_user_mcp_tool_names", new=AsyncMock(side_effect=_mcp_names)),
+        patch.object(retrieval, "_user_mcp_tools", new=AsyncMock(side_effect=_mcp_names)),
         patch.object(
             retrieval, "_unconnected_for_tools", new=AsyncMock(return_value=unconnected or {})
         ),

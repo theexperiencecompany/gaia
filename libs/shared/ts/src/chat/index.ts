@@ -10,6 +10,7 @@ export type {
   BatchDecisionOutcome,
   HilMode,
   HilPreferences,
+  HilPreferencesUpdate,
 } from "./approvals";
 export {
   APPROVAL_REQUEST_TOOL_NAME,

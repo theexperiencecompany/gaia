@@ -15,10 +15,10 @@
     "@grammyjs/types": "^3.28.0",
     "amqplib": "^0.10.9",
     "discord.js": "^14.26.5",
-    "hono": "^4.12.29",
+    "hono": "^4.13.14",
     "spectrum-ts": "^12.7.0",
     "typescript": "^7.0.2",
-    "vite": "^7.3.6",
+    "vite": "^7.3.7",
     "vitest": "^5.0.5"
   }
 }
